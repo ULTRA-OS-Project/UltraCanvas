@@ -1,10 +1,11 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
+// Version: 2.5.0 - GetWindowPosition and GetContentScreenOrigin: top-left screen coordinates
 // Version: 2.4.0 - Input method composition: the content view is an
 //   NSTextInputClient, and an element that draws compositions gets
 //   TextComposition events (InterpretKeyDown, the Ime* callbacks)
 // Version: 2.3.0 - GetContentView() for the VoiceOver (NSAccessibility) bridge
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -110,6 +111,11 @@ namespace UltraCanvas {
         NativeWindowHandle GetNativeHandle() const override;
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
+        // Where the window's frame, and its content below the title bar, are
+        // on the screen: top-left screen coordinates in points, y down from
+        // the top of the primary screen (SetWindowPosition takes the frame's)
+        void GetWindowPosition(int& x, int& y) const override;
+        void GetContentScreenOrigin(int& x, int& y) const override;
         // macOS window geometry is in logical points (Cocoa applies the backing
         // scale itself), so the native window size equals the logical size.
         void GetNativeWindowSize(int& w, int& h) const override { w = config_.width; h = config_.height; }

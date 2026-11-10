@@ -1,0 +1,22 @@
+{
+  "@language": "ro",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "S-a adăugat textul: pentru a-l edita, faceți clic pe el cu instrumentul Text sau faceți dublu clic pe el",
+  "Changed the text": "S-a modificat textul",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Faceți clic pe pagină și tastați sau faceți clic pe un text pentru a-l edita; bara de deasupra îi setează fontul, dimensiunea, stilul, alinierea și spațierea. Escape, Ctrl+Enter sau un clic în afară încheie",
+  "Delete Text": "Ștergere text",
+  "Edit Text": "Editare text",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Editarea textului: Enter începe un rând nou; Escape, Ctrl+Enter sau un clic în afară încheie",
+  "Letter Spacing": "Spațiere între litere",
+  "Line Spacing": "Spațiere între linii",
+  "Nothing was typed": "Nu s-a tastat nimic",
+  "Text Alignment": "Aliniere text",
+  "Text Bold": "Text aldin",
+  "Text Font": "Font text",
+  "Text Italic": "Text cursiv",
+  "Text Size": "Dimensiune text",
+  "Text Strikethrough": "Tăiere cu o linie a textului",
+  "Text Underline": "Subliniere text",
+  "The text was emptied, so it was deleted": "Textul a fost golit, așa că a fost șters",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Tastarea unui text nou: Enter începe un rând nou; Escape, Ctrl+Enter sau un clic în afară încheie"
+}

@@ -1,0 +1,15 @@
+{
+  "@language": "vi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Nhấp rồi gõ, hoặc kéo một khung để các dòng tự xuống dòng trong đó; nhấp vào một văn bản để chỉnh sửa. Thanh phía trên đặt phông chữ, kích thước, kiểu, căn chỉnh và khoảng cách; màu là màu tiền cảnh. Escape hoặc nhấp ra ngoài để kết thúc",
+  "Letter Spacing": "Khoảng cách chữ",
+  "Line Spacing": "Giãn dòng",
+  "Text Alignment": "Căn chỉnh văn bản",
+  "Text Bold": "Văn bản đậm",
+  "Text Colour": "Màu văn bản",
+  "Text Font": "Phông chữ văn bản",
+  "Text Italic": "Văn bản nghiêng",
+  "Text Size": "Kích thước văn bản",
+  "Text Strikethrough": "Gạch ngang văn bản",
+  "Text Underline": "Gạch chân văn bản"
+}

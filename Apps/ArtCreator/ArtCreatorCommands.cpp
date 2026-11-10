@@ -7,11 +7,12 @@
 // whose shortcut a key press is; and the menus and toolbars read each
 // command's state - Undo with its step, what needs a selection, the active
 // tool - from the command itself (RefreshCommandStates).
+// Version: 1.3.0 - File > Close Tab (Ctrl+W): a window holds several drawings, one per tab
 // Version: 1.2.0 - a command (but a View one) finishes the text being typed on the page first
 // Version: 1.1.0 - the menus are saved with ArtCreator's and merged with a newer version's
 //                  (a command it adds appears); the toolbar's commands have their own 24 px icons
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -180,6 +181,7 @@ void ArtCreatorWindow::RegisterCommands() {
         commands.Register(newIcon);
     }
     action("file.open", "File", "Open...", "open.svg", "Ctrl+O", [this]() { CmdOpen(); });
+    action("file.close-tab", "File", "Close Tab", "", "Ctrl+W", [this]() { CmdCloseTab(); });
     action("file.save", "File", "Save", "save.svg", "Ctrl+S", [this]() { CmdSave(); });
     action("file.save-as", "File", "Save As...", "save-as.svg", "Ctrl+Shift+S", [this]() { CmdSaveAs(); });
     action("file.export", "File", "Export...", "export.svg", "Ctrl+E", [this]() { CmdExport(); });
@@ -192,15 +194,15 @@ void ArtCreatorWindow::RegisterCommands() {
         undo.iconName = "undo.svg";
         undo.shortcut = "Ctrl+Z";
         undo.onClick = [this]() { CmdUndo(); };
-        undo.isEnabled = [this]() { return history.CanUndo(); };
-        undo.dynamicLabel = [this]() { return history.CanUndo() ? "Undo " + history.UndoLabel() : std::string("Undo"); };
+        undo.isEnabled = [this]() { return history->CanUndo(); };
+        undo.dynamicLabel = [this]() { return history->CanUndo() ? "Undo " + history->UndoLabel() : std::string("Undo"); };
         commands.Register(undo);
         MenuCommand redo("edit.redo", "Edit", "Redo");
         redo.iconName = "redo.svg";
         redo.shortcut = "Ctrl+Y";
         redo.onClick = [this]() { CmdRedo(); };
-        redo.isEnabled = [this]() { return history.CanRedo(); };
-        redo.dynamicLabel = [this]() { return history.CanRedo() ? "Redo " + history.RedoLabel() : std::string("Redo"); };
+        redo.isEnabled = [this]() { return history->CanRedo(); };
+        redo.dynamicLabel = [this]() { return history->CanRedo() ? "Redo " + history->RedoLabel() : std::string("Redo"); };
         commands.Register(redo);
     }
     action("edit.cut", "Edit", "Cut", "cut.svg", "Ctrl+X", [this]() { CmdCut(); }, hasSelection);
@@ -397,7 +399,7 @@ MenuLayoutSet ArtCreatorWindow::DefaultMenuLayout() {
     MenuLayoutSet set;
     MenuLayout& bar = set.FindOrAdd("Menu bar");
     bar.topLevel = {
-        Submenu("File", { Item("file.new"), Item("file.new-window"), Item("file.new-icon"), Item("file.open"), Sep(),
+        Submenu("File", { Item("file.new"), Item("file.new-window"), Item("file.new-icon"), Item("file.open"), Item("file.close-tab"), Sep(),
                        Item("file.save"), Item("file.save-as"), Item("file.export"), Sep(),
                        Item("file.document-setup"), Sep(), Item("file.quit") }),
         Submenu("Edit", { Item("edit.undo"), Item("edit.redo"), Sep(),

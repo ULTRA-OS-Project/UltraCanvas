@@ -15,7 +15,7 @@
 //                  coordinates, with the mouse captured, and stays where it
 //                  is dropped (its CSS position moves, not just its bounds)
 // Version: 1.6.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
@@ -47,6 +47,7 @@ namespace UltraCanvas {
         SetContainerStyle(noScroll);
 
         CreateLayout();
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasToolbar::CreateLayout() {
@@ -124,6 +125,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::SetAppearance(const ToolbarAppearance& app) {
+        StyleSetByHand();
         toolbarAppearance = app;
 
         // Update toolbar container appearance
@@ -353,6 +355,11 @@ namespace UltraCanvas {
 
         auto badge = std::make_shared<UltraCanvasBadge>(id + ".badge");
         badge->SetOverlayRing(false);
+        // A mark on the item, not a control of its own: the pointer goes
+        // through it to the item, whose corner it covers - a click on a
+        // button's count is a click on the button. A host that gives the
+        // badge an onClick of its own makes it interactive again.
+        badge->SetInteractive(false);
         badgeMap[id] = badge;
         badgeSet.insert(badge.get());
         AddChild(badge);

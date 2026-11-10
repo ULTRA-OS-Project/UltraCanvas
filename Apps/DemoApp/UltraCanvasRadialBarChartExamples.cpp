@@ -29,14 +29,14 @@ namespace UltraCanvas {
         std::mt19937 gen(42);
         std::vector<std::pair<std::string, std::vector<double>>> sensorData;
 
-        struct SensorSpec { const char* name; double mean; double stddev; };
+        struct SensorSpec { std::string name; double mean; double stddev; };
         const SensorSpec specs[] = {
-            {"Sensor 01", 467.0, 100.0},
-            {"Sensor 02", 258.0,  80.0},
-            {"Sensor 03", 993.0, 200.0},
-            {"Sensor 04",  50.0,  20.0},
-            {"Sensor 05", 650.0, 150.0},
-            {"Sensor 06", 985.0, 100.0}
+            {TrF("Sensor {0}", "01"), 467.0, 100.0},
+            {TrF("Sensor {0}", "02"), 258.0,  80.0},
+            {TrF("Sensor {0}", "03"), 993.0, 200.0},
+            {TrF("Sensor {0}", "04"),  50.0,  20.0},
+            {TrF("Sensor {0}", "05"), 650.0, 150.0},
+            {TrF("Sensor {0}", "06"), 985.0, 100.0}
         };
         for (const auto& spec : specs) {
             std::normal_distribution<> dist(spec.mean, spec.stddev);
@@ -66,42 +66,42 @@ namespace UltraCanvas {
     {
         auto chart = CreateRadialBarChart(id, x, y, w, h);
 
-        chart->AddSeries("North America", {
-            {"United States", 38.5}, {"Canada", 41.8}, {"Mexico", 29.2},
-            {"Guatemala", 22.1}, {"Costa Rica", 32.6}, {"Cuba", 42.1},
-            {"Jamaica", 31.4}, {"Panama", 29.8}
+        chart->AddSeries(Tr("North America"), {
+            {Tr("United States"), 38.5}, {Tr("Canada"), 41.8}, {Tr("Mexico"), 29.2},
+            {Tr("Guatemala"), 22.1}, {Tr("Costa Rica"), 32.6}, {Tr("Cuba"), 42.1},
+            {Tr("Jamaica"), 31.4}, {Tr("Panama"), 29.8}
         }, Color(33, 150, 243, 255));
 
-        chart->AddSeries("South America", {
-            {"Brazil", 33.2}, {"Argentina", 31.9}, {"Chile", 35.4},
-            {"Peru", 28.0}, {"Colombia", 31.0}, {"Ecuador", 27.2},
-            {"Uruguay", 35.0}, {"Bolivia", 25.4}
+        chart->AddSeries(Tr("South America"), {
+            {Tr("Brazil"), 33.2}, {Tr("Argentina"), 31.9}, {Tr("Chile"), 35.4},
+            {Tr("Peru"), 28.0}, {Tr("Colombia"), 31.0}, {Tr("Ecuador"), 27.2},
+            {Tr("Uruguay"), 35.0}, {Tr("Bolivia"), 25.4}
         }, Color(255, 193, 7, 255));
 
-        chart->AddSeries("Europe", {
-            {"Germany", 47.8}, {"France", 41.7}, {"United Kingdom", 40.6},
-            {"Italy", 46.5}, {"Spain", 44.9}, {"Poland", 41.9},
-            {"Netherlands", 42.8}, {"Greece", 45.3}, {"Sweden", 41.1},
-            {"Ireland", 37.8}
+        chart->AddSeries(Tr("Europe"), {
+            {Tr("Germany"), 47.8}, {Tr("France"), 41.7}, {Tr("United Kingdom"), 40.6},
+            {Tr("Italy"), 46.5}, {Tr("Spain"), 44.9}, {Tr("Poland"), 41.9},
+            {Tr("Netherlands"), 42.8}, {Tr("Greece"), 45.3}, {Tr("Sweden"), 41.1},
+            {Tr("Ireland"), 37.8}
         }, Color(3, 169, 244, 255));
 
-        chart->AddSeries("Africa", {
-            {"Nigeria", 18.1}, {"Ethiopia", 19.5}, {"Egypt", 24.6},
-            {"South Africa", 27.3}, {"Kenya", 20.1}, {"Ghana", 21.4},
-            {"Morocco", 29.3}, {"Tunisia", 32.7}, {"Senegal", 19.4},
-            {"Uganda", 16.7}
+        chart->AddSeries(Tr("Africa"), {
+            {Tr("Nigeria"), 18.1}, {Tr("Ethiopia"), 19.5}, {Tr("Egypt"), 24.6},
+            {Tr("South Africa"), 27.3}, {Tr("Kenya"), 20.1}, {Tr("Ghana"), 21.4},
+            {Tr("Morocco"), 29.3}, {Tr("Tunisia"), 32.7}, {Tr("Senegal"), 19.4},
+            {Tr("Uganda"), 16.7}
         }, Color(76, 175, 80, 255));
 
-        chart->AddSeries("Asia", {
-            {"China", 38.4}, {"India", 28.2}, {"Japan", 48.6},
-            {"Indonesia", 30.2}, {"Vietnam", 32.5}, {"Thailand", 39.0},
-            {"South Korea", 43.7}, {"Turkey", 32.2}, {"Israel", 30.4},
-            {"Singapore", 42.2}
+        chart->AddSeries(Tr("Asia"), {
+            {Tr("China"), 38.4}, {Tr("India"), 28.2}, {Tr("Japan"), 48.6},
+            {Tr("Indonesia"), 30.2}, {Tr("Vietnam"), 32.5}, {Tr("Thailand"), 39.0},
+            {Tr("South Korea"), 43.7}, {Tr("Turkey"), 32.2}, {Tr("Israel"), 30.4},
+            {Tr("Singapore"), 42.2}
         }, Color(233, 30, 99, 255));
 
-        chart->AddSeries("Oceania", {
-            {"Australia", 38.7}, {"New Zealand", 38.4}, {"Fiji", 28.9},
-            {"Samoa", 21.4}, {"Palau", 34.5}
+        chart->AddSeries(Tr("Oceania"), {
+            {Tr("Australia"), 38.7}, {Tr("New Zealand"), 38.4}, {Tr("Fiji"), 28.9},
+            {Tr("Samoa"), 21.4}, {Tr("Palau"), 34.5}
         }, Color(156, 39, 176, 255));
 
         return chart;
@@ -112,10 +112,10 @@ namespace UltraCanvas {
         const std::string& id, int x, int y, int w, int h)
     {
         auto chart = CreateRadialBarChart(id, x, y, w, h);
-        chart->AddSeries("Rainfall (mm)", {
-            {"Jan", 78}, {"Feb", 64}, {"Mar", 82}, {"Apr", 110},
-            {"May", 145}, {"Jun", 180}, {"Jul", 210}, {"Aug", 196},
-            {"Sep", 152}, {"Oct", 118}, {"Nov", 96}, {"Dec", 84}
+        chart->AddSeries(Tr("Rainfall (mm)"), {
+            {Tr("Jan"), 78}, {Tr("Feb"), 64}, {Tr("Mar"), 82}, {Tr("Apr"), 110},
+            {Tr("May"), 145}, {Tr("Jun"), 180}, {Tr("Jul"), 210}, {Tr("Aug"), 196},
+            {Tr("Sep"), 152}, {Tr("Oct"), 118}, {Tr("Nov"), 96}, {Tr("Dec"), 84}
         }, Color(0, 122, 204, 255));
         return chart;
     }
@@ -141,11 +141,11 @@ namespace UltraCanvas {
             return group;
         };
 
-        auto styleGroup = addGroup("RbStyleGroup", "RbStyleHeader", "Bar Style:");
+        auto styleGroup = addGroup("RbStyleGroup", "RbStyleHeader", Tr("Bar Style:"));
 
         auto styleDropdown = std::make_shared<UltraCanvasDropdown>("RbStyle", 0, 0, controlWidth, controlHeight);
-        styleDropdown->AddItem("Bars");
-        styleDropdown->AddItem("Lines");
+        styleDropdown->AddItem(Tr("Bars"));
+        styleDropdown->AddItem(Tr("Lines"));
         styleDropdown->SetSelectedIndex(0);
         styleDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             RadialBarStyle style = index == 1 ? RadialBarStyle::Lines
@@ -155,10 +155,10 @@ namespace UltraCanvas {
         DemoKit::AddFixed(styleGroup, styleDropdown);
 
         auto capDropdown = std::make_shared<UltraCanvasDropdown>("RbCap", 0, 0, controlWidth, controlHeight);
-        capDropdown->AddItem("Round Cap");
-        capDropdown->AddItem("Butt Cap");
-        capDropdown->AddItem("Square Cap");
-        capDropdown->AddItem("Arrow Cap");
+        capDropdown->AddItem(Tr("Round Cap"));
+        capDropdown->AddItem(Tr("Butt Cap"));
+        capDropdown->AddItem(Tr("Square Cap"));
+        capDropdown->AddItem(Tr("Arrow Cap"));
         capDropdown->SetSelectedIndex(0);
         capDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             RadialBarCapStyle cap;
@@ -172,18 +172,18 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(styleGroup, capDropdown);
 
-        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("RbGradient", "Gradient Fade");
+        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("RbGradient", Tr("Gradient Fade"));
         gradientCheckbox->SetChecked(true);
         gradientCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetGradientFade(newState == CheckedState::Checked);
         };
         DemoKit::Add(styleGroup, gradientCheckbox);
 
-        auto scaleGroup = addGroup("RbScaleGroup", "RbScaleHeader", "Value Scaling:");
+        auto scaleGroup = addGroup("RbScaleGroup", "RbScaleHeader", Tr("Value Scaling:"));
 
         auto normDropdown = std::make_shared<UltraCanvasDropdown>("RbNorm", 0, 0, controlWidth, controlHeight);
-        normDropdown->AddItem("Global Scale");
-        normDropdown->AddItem("Per-Series Scale");
+        normDropdown->AddItem(Tr("Global Scale"));
+        normDropdown->AddItem(Tr("Per-Series Scale"));
         normDropdown->SetSelectedIndex(0);
         normDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             RadialBarNormalization mode = index == 1
@@ -193,7 +193,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(scaleGroup, normDropdown);
 
-        auto holeGroup = addGroup("RbHoleGroup", "RbHoleHeader", "Inner Circle Size:");
+        auto holeGroup = addGroup("RbHoleGroup", "RbHoleHeader", Tr("Inner Circle Size:"));
 
         auto innerSlider = std::make_shared<UltraCanvasSlider>("RbInner", 0, 0, controlWidth, controlHeight);
         innerSlider->SetRange(0.1, 0.6);
@@ -204,7 +204,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(holeGroup, innerSlider);
 
-        auto gapHeader = DemoKit::AddText(holeGroup, "RbGapHeader", "Series Gap (degrees):");
+        auto gapHeader = DemoKit::AddText(holeGroup, "RbGapHeader", Tr("Series Gap (degrees):"));
         gapHeader->SetFontWeight(FontWeight::Bold);
 
         auto gapSlider = std::make_shared<UltraCanvasSlider>("RbGap", 0, 0, controlWidth, controlHeight);
@@ -216,30 +216,30 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(holeGroup, gapSlider);
 
-        auto extrasGroup = addGroup("RbExtrasGroup", "RbExtrasHeader", "Extras:");
+        auto extrasGroup = addGroup("RbExtrasGroup", "RbExtrasHeader", Tr("Extras:"));
 
-        auto guidesCheckbox = std::make_shared<UltraCanvasCheckbox>("RbGuides", "Ring Guides");
+        auto guidesCheckbox = std::make_shared<UltraCanvasCheckbox>("RbGuides", Tr("Ring Guides"));
         guidesCheckbox->SetChecked(false);
         guidesCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetShowRingGuides(newState == CheckedState::Checked);
         };
         DemoKit::Add(extrasGroup, guidesCheckbox);
 
-        auto seriesLabelsCheckbox = std::make_shared<UltraCanvasCheckbox>("RbSeriesLabels", "Series Labels");
+        auto seriesLabelsCheckbox = std::make_shared<UltraCanvasCheckbox>("RbSeriesLabels", Tr("Series Labels"));
         seriesLabelsCheckbox->SetChecked(true);
         seriesLabelsCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetShowSeriesLabels(newState == CheckedState::Checked);
         };
         DemoKit::Add(extrasGroup, seriesLabelsCheckbox);
 
-        auto peakCheckbox = std::make_shared<UltraCanvasCheckbox>("RbPeaks", "Peak (Max) Labels");
+        auto peakCheckbox = std::make_shared<UltraCanvasCheckbox>("RbPeaks", Tr("Peak (Max) Labels"));
         peakCheckbox->SetChecked(true);
         peakCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetShowPeakLabels(newState == CheckedState::Checked);
         };
         DemoKit::Add(extrasGroup, peakCheckbox);
 
-        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("RbHover", "Hover Highlight");
+        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("RbHover", Tr("Hover Highlight"));
         hoverCheckbox->SetChecked(true);
         hoverCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetHoverHighlightEnabled(newState == CheckedState::Checked);
@@ -251,10 +251,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRadialBarChartExamples() {
         auto page = DemoKit::CreatePage("RadialBarChartContainer",
-            "Radial Bar Chart Examples - Value-Driven Rays Around a Circle",
-            "Rays radiate from a base ring; ray length is proportional to value. Series occupy contiguous angular "
+            Tr("Radial Bar Chart Examples - Value-Driven Rays Around a Circle"),
+            Tr("Rays radiate from a base ring; ray length is proportional to value. Series occupy contiguous angular "
             "sectors with configurable gaps. Features bar and line styles, cap shapes including arrows, gradient fade, "
-            "global/per-series/manual scaling, ring guides, peak annotations, tooltips and hover highlighting."
+            "global/per-series/manual scaling, ring guides, peak annotations, tooltips and hover highlighting.")
         );
 
         auto controlsCard = DemoKit::AddCard(page, "RbControls");
@@ -263,10 +263,10 @@ namespace UltraCanvas {
         auto charts = DemoKit::AddRow(page, "RbCharts");
 
         // ===== EXAMPLE 1: MULTI-SENSOR RADIAL BARS =====
-        auto sensorCard = DemoKit::AddCard(charts, "RbSensorLabel", "Multi-Sensor Readings (6 Sensors × 24 Hours)", "", chartCardWidth);
+        auto sensorCard = DemoKit::AddCard(charts, "RbSensorLabel", Tr("Multi-Sensor Readings (6 Sensors × 24 Hours)"), "", chartCardWidth);
 
         auto sensorChart = BuildSensorChart("SensorRadialBars", 0, 0, 460, 320);
-        sensorChart->SetCenterText("Sensors");
+        sensorChart->SetCenterText(Tr("Sensors"));
         sensorChart->SetGradientFade(true);
         sensorChart->SetCapStyle(RadialBarCapStyle::Round);
         sensorChart->SetShowPeakLabels(true);
@@ -275,25 +275,25 @@ namespace UltraCanvas {
         DemoKit::AddFixed(sensorCard, sensorChart);
 
         // ===== EXAMPLE 2: GEOGRAPHIC RADIAL LINES =====
-        auto geoCard = DemoKit::AddCard(charts, "RbGeoLabel", "Median Age by Country (Radial Lines per Continent)", "", chartCardWidth);
+        auto geoCard = DemoKit::AddCard(charts, "RbGeoLabel", Tr("Median Age by Country (Radial Lines per Continent)"), "", chartCardWidth);
 
         auto geoChart = BuildMedianAgeRays("GeoRadialLines", 0, 0, 460, 320);
         geoChart->SetBarStyle(RadialBarStyle::Lines);
         geoChart->SetGradientFade(false);
         geoChart->SetInnerRadiusFraction(0.18f);
         geoChart->SetSeriesGapAngle(6.0f);
-        geoChart->SetCenterText("Median Age");
+        geoChart->SetCenterText(Tr("Median Age"));
         geoChart->SetCenterFont("Arial", 11.0f, FontWeight::Bold);
         geoChart->SetValueFormatter([](double v) {
             char buf[32];
-            std::snprintf(buf, sizeof(buf), "%.1f yrs", v);
-            return std::string(buf);
+            std::snprintf(buf, sizeof(buf), "%.1f", v);
+            return TrF("{0} yrs", buf);
         });
         geoChart->SetTooltipsEnabled(true);
         DemoKit::AddFixed(geoCard, geoChart);
 
         // ===== EXAMPLE 3: PARTIAL-SWEEP RAINFALL FAN =====
-        auto rainCard = DemoKit::AddCard(charts, "RbRainLabel", "Monthly Rainfall (270° Fan, Ring Guides, Square Caps)", "", chartCardWidth);
+        auto rainCard = DemoKit::AddCard(charts, "RbRainLabel", Tr("Monthly Rainfall (270° Fan, Ring Guides, Square Caps)"), "", chartCardWidth);
 
         auto rainChart = BuildRainfallChart("RainfallFan", 0, 0, 460, 280);
         rainChart->SetSweepAngle(270.0f);
@@ -314,17 +314,17 @@ namespace UltraCanvas {
         DemoKit::AddFixed(rainCard, rainChart);
 
         // ===== EXAMPLE 4: ARROW RAYS / MANUAL RANGE =====
-        auto kpiCard = DemoKit::AddCard(charts, "RbKpiLabel", "KPI Attainment (Arrow Caps, Manual 0–150% Range)", "", chartCardWidth);
+        auto kpiCard = DemoKit::AddCard(charts, "RbKpiLabel", Tr("KPI Attainment (Arrow Caps, Manual 0–150% Range)"), "", chartCardWidth);
 
         auto kpiChart = CreateRadialBarChart("KpiRadialBars", 0, 0, 460, 280);
-        kpiChart->AddSeries("Sales", {
-            {"Q1", 92}, {"Q2", 108}, {"Q3", 117}, {"Q4", 131}
+        kpiChart->AddSeries(Tr("Sales"), {
+            {Tr("Q1"), 92}, {Tr("Q2"), 108}, {Tr("Q3"), 117}, {Tr("Q4"), 131}
         }, Color(15, 157, 88, 255));
-        kpiChart->AddSeries("Support", {
-            {"Q1", 74}, {"Q2", 88}, {"Q3", 95}, {"Q4", 103}
+        kpiChart->AddSeries(Tr("Support"), {
+            {Tr("Q1"), 74}, {Tr("Q2"), 88}, {Tr("Q3"), 95}, {Tr("Q4"), 103}
         }, Color(66, 133, 244, 255));
-        kpiChart->AddSeries("Engineering", {
-            {"Q1", 99}, {"Q2", 112}, {"Q3", 104}, {"Q4", 121}
+        kpiChart->AddSeries(Tr("Engineering"), {
+            {Tr("Q1"), 99}, {Tr("Q2"), 112}, {Tr("Q3"), 104}, {Tr("Q4"), 121}
         }, Color(244, 180, 0, 255));
         kpiChart->SetValueRange(0.0, 150.0);
         kpiChart->SetCapStyle(RadialBarCapStyle::Arrow);
@@ -334,7 +334,7 @@ namespace UltraCanvas {
         kpiChart->SetInnerRadiusFraction(0.28f);
         kpiChart->SetShowRingGuides(true);
         kpiChart->SetRingGuideCount(3);
-        kpiChart->SetCenterText("KPI %");
+        kpiChart->SetCenterText(Tr("KPI %"));
         kpiChart->SetValueFormatter([](double v) {
             char buf[32];
             std::snprintf(buf, sizeof(buf), "%.0f%%", v);

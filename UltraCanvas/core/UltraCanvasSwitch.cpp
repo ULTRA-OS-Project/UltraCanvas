@@ -4,7 +4,7 @@
 // Version: 1.5.0 - switch.thumb, switch.thumb-border
 // Version: 1.4.0 - SwitchVisualStyle::FromTheme
 // Version: 1.3.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSwitch.h"
@@ -26,7 +26,9 @@ namespace UltraCanvas {
     UltraCanvasSwitch::UltraCanvasSwitch(const std::string& identifier,
                                          float x, float y, float w, float h,
                                          const std::string& labelText)
-            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {
+        ApplyThemeIfFollowing();
+    }
 
     void UltraCanvasSwitch::SetCheckState(CheckedState state) {
         if (state == CheckedState::Indeterminate) state = CheckedState::Unchecked;
@@ -440,6 +442,9 @@ namespace UltraCanvas {
     SwitchVisualStyle SwitchVisualStyle::FromTheme(const UltraCanvasTheme& theme, const SwitchVisualStyle& base) {
         SwitchVisualStyle s = base;
         const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.base.fontFamily = body.fontFamily;
+        s.base.fontSize = static_cast<float>(body.fontSize);
         s.base.textColor = r.ink;
         s.base.textHoverColor = r.ink;
         s.base.textDisabledColor = r.inkFaint;

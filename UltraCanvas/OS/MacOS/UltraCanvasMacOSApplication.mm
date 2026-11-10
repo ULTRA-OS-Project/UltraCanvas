@@ -1,5 +1,8 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.10.1 - pointerGlobal flipped about the primary screen, as the windows' top-left positions are
+// Version: 2.10.0 - the host appearance observers installed at start and removed at shutdown
+//                   (UltraCanvasMacOSHostAppearance.mm)
 // Version: 2.9.0 - RegisterPlatformBundledFonts: the CoreText registration of the bundled fonts, shared with a tool
 // Version: 2.8.0 - the monospace font is the system's (SF Mono by Menlo) at the interface size, not Ubuntu Mono 12
 // Version: 2.7.0 - key presses for an element that draws input method
@@ -12,7 +15,7 @@
 // Version: 2.3.0 - RunInEventLoop() commits the CoreAnimation transaction each
 //   main-loop iteration, so frames rendered without a Cocoa event reach the
 //   screen (previously they waited for the next mouse move)
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSAccessibility.h"
@@ -104,6 +107,9 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 
             // STEP 6: Initialize wakeup mechanism for cross-thread signaling
             InitializeWakeUp();
+
+            // STEP 7: hear the host's look change (dark, accent, contrast)
+            InstallHostAppearanceObservers();
 
             initialized = true;
 
@@ -230,6 +236,7 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
     void UltraCanvasMacOSApplication::ShutdownNative() {
         debugOutput << "UltraCanvas: Shutting down macOS Application..." << std::endl;
 
+        RemoveHostAppearanceObservers();
         MacOSAccessibility::Shutdown();
 
         ShutdownWakeUp();
@@ -431,9 +438,14 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
             event.pointerWindow = { (int)locInWindow.x, (int)(windowHeight - locInWindow.y) };
             event.pointer = event.pointerWindow;
             if (nsWindow) {
+                // Top-left screen coordinates, as the windows' positions are:
+                // flipped about the primary screen (Cocoa's origin is its
+                // bottom-left corner), not the one with the key window
                 NSPoint screenPoint = [nsWindow convertPointToScreen:locInWindow];
-                NSRect screenFrame = [[NSScreen mainScreen] frame];
-                event.pointerGlobal = { (int)screenPoint.x, (int)(screenFrame.size.height - screenPoint.y) };
+                NSArray<NSScreen*>* screens = [NSScreen screens];
+                NSRect primaryFrame = [screens count] > 0 ? [[screens objectAtIndex:0] frame]
+                                                          : [[NSScreen mainScreen] frame];
+                event.pointerGlobal = { (int)screenPoint.x, (int)(primaryFrame.size.height - screenPoint.y) };
             }
             NSUInteger flags = [ev modifierFlags];
             event.ctrl = (flags & NSEventModifierFlagControl) != 0;

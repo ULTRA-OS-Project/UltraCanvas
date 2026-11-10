@@ -1,0 +1,19 @@
+{
+  "@language": "sv",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Titelfärg",
+  "Edit Title": "Redigera titel",
+  "The title is in the video": "Titeln finns i videon",
+  "The title is unchanged": "Titeln är oförändrad",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Titeln tömdes: den behåller sin text (ta bort titeln på dess spår för att ta bort den)",
+  "Title Alignment": "Titeljustering",
+  "Title Bold": "Fet titel",
+  "Title Font": "Titelns teckensnitt",
+  "Title Italic": "Kursiv titel",
+  "Title Letter Spacing": "Titelns teckenavstånd",
+  "Title Line Spacing": "Titelns radavstånd",
+  "Title Size": "Titelstorlek",
+  "Title Strikethrough": "Genomstruken titel",
+  "Title Underline": "Understruken titel",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Skriver titeln på bildrutan: Escape, Ctrl+Enter eller ett klick utanför lägger in den i videon"
+}

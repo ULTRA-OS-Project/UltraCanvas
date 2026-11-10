@@ -11,6 +11,7 @@
   - [State and label](#state-and-label)
   - [Callbacks](#callbacks)
   - [Shared visual fields](#shared-visual-fields)
+  - [Following the theme](#following-the-theme)
   - [Sizing and placement](#sizing-and-placement)
 - [UltraCanvasCheckbox](#ultracanvascheckbox)
   - [Constructors and factory](#constructors-and-factory)
@@ -59,8 +60,8 @@ content sizing. The on/off **switch** is a third class on the same base,
 The checkbox no longer has a switch or radio style: those are the separate
 classes.
 
-**Version:** 2.1.0
-**Last Modified:** 2026-10-07
+**Version:** 2.2.0 - `FromTheme` on both visual styles, `ApplyTheme`: the controls follow the theme
+**Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 **Headers:** `include/UltraCanvasCheckbox.h`, `include/UltraCanvasRadio.h`, `include/UltraCanvasLabeledToggleBase.h`
 **Implementation:** `core/UltraCanvasCheckbox.cpp`, `core/UltraCanvasRadio.cpp`, `core/UltraCanvasLabeledToggleBase.cpp`
@@ -201,6 +202,28 @@ struct LabeledToggleVisualStyle {
 
 The label is drawn in `textHoverColor` while the pointer is over the control,
 so a custom `textColor` usually wants the same `textHoverColor`.
+
+### Following the theme
+
+Both controls read the framework theme (`UltraCanvasTheme.md`):
+`CheckboxVisualStyle::FromTheme` and `RadioVisualStyle::FromTheme` put the
+roles over a base style's own shape - the well with the control border for
+the box or the ring, the hover and pressed fills, the panel disabled, the
+mark or the dot in the accent (the element roles `checkbox.mark` and
+`radio.dot` where a theme names them), the label in ink with the interface
+font at the body size and the focus ring from `LabeledToggleVisualStyle::FromTheme`.
+Under the theme policy a new control follows the theme by itself; a
+`SetVisualStyle` by hand stops that, `SetFollowTheme(true)` after it keeps
+both.
+
+```cpp
+auto agree = std::make_shared<UltraCanvasCheckbox>("agree", "I agree");
+CheckboxVisualStyle big = agree->GetVisualStyle();
+big.boxSize = 20;
+agree->SetVisualStyle(CheckboxVisualStyle::FromTheme(UltraCanvasTheme::Current(), big));
+agree->SetFollowTheme(true);                                   // the roles over the bigger box, on every change
+RadioVisualStyle themed = RadioVisualStyle::FromTheme();       // the current theme over the default shape
+```
 
 ### Sizing and placement
 

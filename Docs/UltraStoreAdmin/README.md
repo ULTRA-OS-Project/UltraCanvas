@@ -52,6 +52,11 @@ does and what a command does never differ.
 
 ## The window
 
+How the window looks is drawn in the store's
+[`design/README.md`](../UltraStore/design/README.md): Overview, the apps
+table with *Add an app or a component*, an app's form, Sales, Finance and
+Publish.
+
 `ultrastoreadmin` alone, or `ultrastoreadmin --store <dir>` alone, opens
 the window on the store (the default store is
 `<data folder>/UltraStoreAdmin`, created on the first start). A sidebar
@@ -199,6 +204,11 @@ Hello.
 - The catalog is schema 2 and announces every active key (`trusted_keys`):
   to rotate, `key new`, publish once with the old key, then with the new
   one; `key retire` the old one afterwards.
+- The pages under `go/` have the look of the payment service's pages
+  (`PageFrame.h`: the same stylesheet, the ULTRA OS mark at the top, a dark
+  look where the browser asks for one); the mark comes from the
+  framework's `media/icons/desktop/` and is copied to the publish folder's
+  `media/` when publish finds it there.
 - The sequence is recorded only after the files are in place, so a failed
   publish leaves the next one at the same number.
 
@@ -218,3 +228,7 @@ Hello.
    *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
    sales into the ledger, the catalog naming the service from the
    `payment.*` settings.
+6. **The marketplace** (the store's README, *The operator tier*): `submit`
+   sends a release to the operator's service signed with this backend's
+   key; the notices banner and the *Terms* page read from it; `publish`
+   stays for a private or test catalog.

@@ -1,3 +1,183 @@
+#### 2026-11-10 *1.107.10*
+- **A file on a drive with no preview opens in its program.** Double-clicking
+  a document, a spreadsheet, an archive or anything else on a drive that the
+  preview pane does not show did nothing: the system's opener was handed the
+  drive's path and found no file. It is now fetched like any download, with
+  its progress on the status line, into UltraCanvas's cache folder
+  (`remote-opened`, one folder per file and version) and opened with the
+  program this computer opens its type with (`OpenRemoteFile`). The status
+  line says changes to the copy are not saved to the drive. Opened again
+  while the file on the server is unchanged, the same copy opens without a
+  request; a fetch that did not finish is never opened. A program, a script,
+  an installer or a launcher is not started from a drive - the dialog says to
+  copy it to this computer first - since on Windows the system's opener runs
+  such a file. A fetch that fails says so in a dialog, a file no longer there
+  as *File not found* with its folder read again.
+- **A drive's folder fetched a while ago is asked for again when opened.**
+  Within a session a listing was served from the cache for good, so leaving
+  a folder and coming back never showed a file another device had added or
+  deleted. A listing older than two minutes (`kRemoteListingFreshFor`) is now
+  shown as it was and fetched again behind it when its folder is listed, as
+  a listing kept from the last run is; within the two minutes, and for a
+  subfolder fetched ahead, it costs no request.
+- **Configure drive saves while the server is out of reach.** Save always
+  signed in first, so a drive whose server could not be reached could not
+  even be renamed. Once that sign-in fails, *Save without signing in* appears
+  beside Cancel and stores the settings as they are, to be tried the next
+  time the drive is opened.
+
+#### 2026-11-10 *1.107.9*
+- **The path bar names a drive by its volume, and a setting says whether.**
+  The path bar above the file display called a drive "D:" while the folder
+  tree and the Computer page call it "My Passport Ultra (D:)". It now shows
+  the same name, on the drive's own node and in the list of drives under its
+  Computer entry, also over each pane of the split view. Settings > Display
+  > Path bar turns it off, for a shorter strip with the letter alone (saved
+  as `display.pathbar.volume.names`, on by default). The names are the ones
+  the tree has already read, so the strip never waits on a disk; a drive
+  whose volume has no name, and a network drive, keep the letter.
+
+#### 2026-11-10 *1.107.8*
+- **A remote drive that can no longer sign in can be deleted or mended.**
+  Its row under *Remote Drives* kept *Delete* greyed out, like every root of
+  the tree, and nothing offered to change its settings, so a drive whose
+  password was changed on the server stayed in the tree for good, failing.
+  - *Delete* on a drive's row now deletes the drive from UltraFiler, after a
+    question that says the files on the server are not touched: its account
+    and saved password go (`UltraFilerRemoteDrives::RemoveDrive`), and so do
+    its cached listings and the requests still waiting for it - the question
+    counts the uploads and downloads that are dropped. A display on the drive
+    moves to Home.
+  - *Configure drive* beside it opens the add-drive form filled in with the
+    drive's settings (UltraCloud's new `ShowEditAccountDialog`): the kind of
+    server fixed, the protocol, server, port, user, key file and folder as
+    stored, and the password field empty, which keeps the saved password
+    unless a new one is typed. Saving signs in first and stores only what the
+    server accepts; the drive keeps its id, so open folders and pins on it
+    still work, and is read again with the new settings. Its sign-ins are in
+    the connection log as *Configure drive*.
+- **Refresh on every folder.** A drive's folders are shown from a cache, so
+  a file uploaded or deleted from another device did not show, even after
+  leaving the folder and coming back. *Refresh* is now in the folder tree's
+  context menu for every folder and drive row, and in the folder display's
+  context menu for the folder shown or the folder right-clicked: the folder
+  is read again with its tree rows and every display showing it, and on a
+  drive the server is asked again, ahead of the queue, while the files it
+  showed stay on screen (`RefreshFolderEverywhere`,
+  `UltraFilerRemoteDrives::RefreshFolder`). The toolbar's *Refresh* does the
+  same on a drive instead of blanking the folder until the answer is in.
+- **A file deleted on a drive says so in a dialog.** Selecting such a file -
+  a picture on Google Drive deleted from another device, say - only put
+  *No preview of ...* on the status line. A preview fetch that fails now
+  carries what kind of failure it was (`RemoteFailure`): a file that is not
+  there opens *File not found* and its folder is read again, so the file
+  leaves the display; a refused sign-in or another refusal opens *Cannot open
+  the file*, pointing to the connection log. A network that does not answer
+  or a service that asks to wait stays a note on the status line, and the
+  dialog comes once per selection, not at every update of the pane.
+
+#### 2026-11-10 *1.107.7*
+- **The Computer page lists the remote drives and the RAM discs too.** Under
+  Drives, a "Remote Drives" section has a card for each FTP / SFTP server and
+  cloud account, and a "RAM Discs" section one for each RAM disc - the same
+  card a drive has, opening the drive when clicked. A section shows only
+  while it has a card. A RAM disc that is also a drive letter (ImDisk) is
+  under RAM Discs, not Drives. A remote drive's ring stays neutral: UltraCloud
+  does not say how full a server or an account is. The page's headings are
+  translated now as well.
+- **A drive shows its name, as Explorer does.** The folder tree and the
+  drive cards on the Computer page used to call a drive by its letter alone
+  ("D:"); they now show the volume's own name with it - "My Passport Ultra
+  (D:)", "Windows-SSD (C:)". The name is read off the UI thread, so the
+  letters show first and the names follow a moment later; a renamed volume
+  is picked up on the next drive refresh. Network drives keep their letter.
+- **An external USB drive no longer appears twice.** A drive such as a
+  "My Passport Ultra" showed both as its letter (D:) and as a portable
+  device under its own name, reached through an `ultracloud://device-…`
+  path that lists the folders but draws no thumbnails and copies every file
+  over WPD. Only the drive letter is listed now; phones, cameras and players
+  (MTP / PTP) still come in as before.
+- **The "New RAM disc" dialog shows its whole note.** The explanation under
+  the size ran to more lines than its fixed box held, so its last line was
+  cut off just above the buttons. The note is now measured and as tall as
+  its text, the window grows to fit it, and Create and Cancel sit at the
+  bottom right (`UltraFilerRamDiskDialog.cpp` 1.1.2).
+- **The rest of the "New RAM disc" dialog is translated.** The notes on how
+  the memory is used, how much is free, and that everything is lost on
+  eject, and the messages for a missing, too long or wrongly spelt name,
+  were English in every language; they now go through `Tr` (German
+  included, the other languages follow with the next catalogue draft).
+- **The tree's Cloud Storage, Remote Drives and RAM Discs rows do something.**
+  Selecting one changed nothing. Each now opens the Computer page with its
+  own section alone: the cloud folders, the remote drives' cards, or the RAM
+  discs' cards. The Computer row, the breadcrumb and the Up button still show
+  the whole page.
+
+#### 2026-11-06 *1.107.6*
+- **A failed cloud operation or listing says why in your language.** A
+  download, upload, delete or rename that fails on a remote drive, and a
+  folder that cannot be listed, used to show only the provider's English
+  text ("cannot list this folder: 530 Login incorrect"). They now lead with
+  a sentence in the reader's language picked by the failure's kind -
+  sign-in refused, server unreachable, not found, the server's error with
+  its HTTP status, rate limited - through UltraCloud's `DescribeResult`,
+  and keep the provider's own words in brackets, since "550 Permission
+  denied" still tells the user what to change
+  (`UltraFilerRemoteDrives.cpp` 1.14.2).
+
+#### 2026-11-06 *1.107.5*
+- **Text selected in the preview pane can be copied.** Ctrl+C after
+  selecting text in a previewed text file or in the Details panel copied the
+  selected files instead (the file display still held the keyboard). A press
+  in the text now moves the keyboard to the preview, so Ctrl+C copies the
+  text, Ctrl+A selects all of it, and a right-click opens Copy / Select All.
+
+#### 2026-11-05 *1.107.4*
+- **The folder tree drops a folder deleted in the file pane, even when the
+  delete stopped at a locked file first.** Windows kept such a folder listed
+  until the program holding the file let go. The tree looked at the folder
+  the moment the delete reported, saw it still there, and kept its row. The
+  tree now also follows what a pane's folder watch sees change on disk. A
+  folder that goes later, or that another program deletes or creates in a
+  folder a pane shows, is brought in line as soon as the pane re-lists it.
+
+#### 2026-11-04 *1.107.3*
+- **UltraFiler in every language.** The settings window's last English
+  texts - the folder tree's colours and width, the file-operation and
+  thumbnail-cache captions, the cache figures, the TAR page's labels - go
+  through `Tr`, the counts through `TrN`; a cache note that translated only
+  its first half is one sentence now; the conflict choices' element ids no
+  longer change with the language. And UltraFiler's own catalogue
+  (`media/locale/<lang>/UltraFiler.json`) now exists in all thirty
+  languages: until now every one of its texts - the toolbar, the menus,
+  the dialogs, the status line, the whole settings window - showed in
+  English whatever the language.
+
+#### 2026-11-04 *1.107.2*
+- **Deleting a folder on an external drive no longer ends in "could not be
+  deleted even with administrator permission".** Windows answers "Access is
+  denied" for several things that are not about permission. Read-only
+  folders inside the one being deleted are one of them. So is a picture
+  UltraFiler itself still held from drawing its thumbnail. UltraFiler now
+  handles each of these as Explorer does, and asks for administrator rights
+  only when the access list says no. The framework change is
+  `UltraCanvasFileRemoval`; see the framework changelog.
+- **Deleting, moving or renaming a folder while the other pane shows a
+  subfolder of it works as it does with one pane.** The other pane's folder
+  watch no longer holds the subfolder open while the operation runs.
+- **A read-only folder is deleted without the "write-protected?" question on
+  Windows**, as Explorer deletes it.
+- **A pane whose folder is deleted - from the other pane or by another
+  program - moves up to the nearest folder that is still there**, instead of
+  showing an empty folder that no longer exists. A USB stick pulled out is
+  still waited for, so plugging it back in shows its folder again.
+
+#### 2026-11-04 *1.107.1*
+- Seventeen more texts go through `Tr`: the settings window's and the
+  properties' buttons, the Run Windows program dialog's environment item
+  and its Wine note, the folder tree's section names, the upload
+  conflict's and the eject question's buttons, the CSV export filter.
+
 #### 2026-11-04 *1.107.0*
 - **UltraFiler speaks the chosen language.** Its own texts - the toolbar's
   tooltips and drop-downs, the menus, the dialogs (Find text, New RAM disc,

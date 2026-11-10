@@ -1,5 +1,11 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
+// Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
+//                  from the host at start and on every host change, a window's ground from it
+// Version: 1.16.0 - GetHostAppearance: the desktop's look (dark, contrast, accent, fonts,
+//                  text scale) from the platform, refreshed on its change event, the
+//                  ULTRACANVAS_HOST_APPEARANCE override; the system fonts served from it
 // Version: 1.15.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
 // Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
@@ -11,7 +17,7 @@
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -24,6 +30,8 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasFocusHistory.h"
+#include "UltraCanvasHostAppearance.h"
+#include <atomic>
 #include <vector>
 #include <algorithm>
 #include <functional>
@@ -66,6 +74,21 @@ namespace UltraCanvas {
     // bitmaps' size. The generated fonts.conf carries it on Windows and
     // Android; a config made another way without a conf.d loads this.
     std::string GenerateBitmapScalingConfig();
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+    // The Windows font folders - the system's (%SystemRoot%\Fonts) and the
+    // user's (%LOCALAPPDATA%\Microsoft\Windows\Fonts) - and fontconfig's
+    // cache folder as a <fontconfig> document of <dir> and <cachedir>
+    // elements, by path. fontconfig's own keywords for them (WINDOWSFONTDIR,
+    // WINDOWSUSERFONTDIR, LOCAL_APPDATA_FONTCONFIG_CACHE) depend on how the
+    // fontconfig at hand resolves them in a config read from memory, and one
+    // it cannot resolve fails the whole document - the system fonts were
+    // then never loaded. A keyword stands in only where the path is unknown.
+    std::string GenerateWindowsFontFoldersConfig();
+    // The system font folder's path with forward slashes ("C:/WINDOWS/fonts"),
+    // "" when %SystemRoot% is not set.
+    std::string GetWindowsFontsFolder();
 #endif
 
     // Every font family this process can set text in: the fonts installed on
@@ -144,6 +167,16 @@ namespace UltraCanvas {
     // you by UltraCanvasApplicationBase::RegisterFontFile(); call it directly
     // only after registering a font behind the framework's back.
     void RefreshFontConfiguration();
+
+    // Goes up each time the fonts the text engine knows change: a font file
+    // was registered (RefreshFontConfiguration), or the system fonts that a
+    // scan still running at the start brought later were switched to
+    // (Windows). A list of the installed families (GetInstalledFontFamilies)
+    // made at another count is out of date - a font list made with the
+    // window held the bundled fonts alone after a start with a cold font
+    // cache. The windows are laid out again after such a change, so an
+    // element holding a list compares the count in InvalidateLayout().
+    unsigned long GetFontSetGeneration();
 
     // The bundled fonts (kEmbeddedAllFonts in GetBundledFontsDir) made
     // available to the text engine, the platform's one way - defined once
@@ -277,9 +310,25 @@ namespace UltraCanvas {
         const float DOUBLE_CLICK_TIME = 0;
         const int DOUBLE_CLICK_DISTANCE = 0;
 
-        // Cached system font styles
+        // The system fonts pinned by SetSystemFontStyle / SetDefaultMonospacedFontStyle;
+        // unpinned, they are the host appearance's.
         std::optional<FontStyle> cachedSystemFontStyle_;
         std::optional<FontStyle> cachedMonospacedFontStyle_;
+
+        // The host's look, read on the first GetHostAppearance and again by
+        // RefreshHostAppearance; the handlers hear a change.
+        std::optional<HostAppearance> hostAppearance_;
+        // The theme policy (UltraCanvasTheme.h): what ApplyThemePolicy builds,
+        // the provider an Own application gave, and the name of the theme
+        // the policy set last - a current theme of another name means the
+        // application set its own, which the policy then leaves alone.
+        ThemePolicy themePolicy_ = ThemePolicy::FollowHost;
+        std::function<UltraCanvasTheme(const HostAppearance&)> themeProvider_;
+        std::string policyThemeName_;
+        bool themePolicyApplied_ = false;
+        std::atomic<bool> hostAppearanceRefreshPending_{false};
+        std::vector<std::pair<int, std::function<void(const HostAppearance&)>>> hostAppearanceHandlers_;
+        int nextHostAppearanceHandlerId_ = 1;
 
         // Font files handed to RegisterFontFile(), by resolved path, so a
         // second call for the same file does not register it twice.
@@ -440,12 +489,55 @@ namespace UltraCanvas {
         void CaptureMouse(UltraCanvasUIElement* element);
         void ReleaseMouse();
 
+        // ===== THE HOST'S LOOK =====
+        // What the desktop says now - dark or light, high contrast, reduced
+        // motion, its accent, its interface and monospace fonts, its text
+        // scale (UltraCanvasHostAppearance.h) - read on the first call and
+        // kept; the platform's change event (WM_SETTINGCHANGE, AppKit's
+        // effectiveAppearance) reads it again. ULTRACANVAS_HOST_APPEARANCE
+        // ("dark,font=Noto Sans 14", see the header) is applied over it. UI
+        // thread.
+        const HostAppearance& GetHostAppearance();
+        // Reads the host again now; the handlers run when it changed. UI
+        // thread - a platform's event calls ScheduleHostAppearanceRefresh,
+        // which posts it here once per burst of events.
+        void RefreshHostAppearance();
+        void ScheduleHostAppearanceRefresh();
+        // Called on the UI thread after a change, with the new value.
+        using HostAppearanceHandler = std::function<void(const HostAppearance&)>;
+        int AddHostAppearanceHandler(HostAppearanceHandler handler);
+        void RemoveHostAppearanceHandler(int id);
+
+        // ===== THE THEME POLICY =====
+        // What the theme follows: FollowHost (the default) builds
+        // UltraCanvasTheme::FromHost(GetHostAppearance()) at start and again
+        // on every host change; Light and Dark take the framework's preset
+        // with the host's fonts; Own leaves the theme to the application,
+        // with the provider - a function from the host to the application's
+        // theme, UltraVideo's ThemeFor is one - called at start and on every
+        // change when it gave one. Under FollowHost, Light and Dark the
+        // elements follow the theme by default
+        // (UltraCanvasUIElement::SetFollowThemeByDefault); an Own
+        // application sets that itself. An application that calls
+        // UltraCanvasTheme::SetCurrent itself under another policy has taken
+        // over: the policy does not put its theme back over it.
+        void SetThemePolicy(ThemePolicy policy);
+        ThemePolicy GetThemePolicy() const { return themePolicy_; }
+        void SetThemeProvider(std::function<UltraCanvasTheme(const HostAppearance&)> provider);
+        // Builds the policy's theme from the host and makes it current (the
+        // change handlers run); Initialize and a host change call it.
+        void ApplyThemePolicy();
+        // The current theme is the one the policy set: a window built with
+        // the default background takes the theme's ground then.
+        bool ThemeIsFromPolicy() const;
+
         // System font detection: the desktop's interface and monospace fonts,
-        // read once and cached. SetSystemFontStyle / SetDefaultMonospacedFontStyle
-        // pin them instead - for a program that brings its own, or a test that
-        // measures text and must not depend on whatever font the machine has
-        // (the demo's layout audit pins the bundled Ubuntu 12). An empty
-        // family or a size of 0 is ignored.
+        // the host appearance's uiFont and monoFont. SetSystemFontStyle /
+        // SetDefaultMonospacedFontStyle pin them instead - for a program that
+        // brings its own, or a test that measures text and must not depend on
+        // whatever font the machine has (the demo's layout audit pins the
+        // bundled Ubuntu 12). An empty family or a size of 0 is ignored; a
+        // pin outlives a host change.
         FontStyle GetSystemFontStyle();
         FontStyle GetDefaultMonospacedFontStyle();
         void SetSystemFontStyle(const FontStyle& style);
@@ -560,6 +652,10 @@ namespace UltraCanvas {
         // Platform-specific system font detection
         virtual FontStyle DetectSystemFontStyleNative() = 0;
         virtual FontStyle DetectMonospacedFontStyleNative() = 0;
+        // The host's look. The base answers the default - light, no accent -
+        // with the two font detectors' fonts; Windows (the registry and the
+        // metrics) and macOS (AppKit) override it.
+        virtual HostAppearance DetectHostAppearanceNative();
 
         // Register the bundled DejaVu fonts (process-private) so they are
         // available as the framework defaults on every platform. Implemented

@@ -1,5 +1,10 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.14.0 - the export's progress window names its size, frame rate, codec and sound; the
+//                  path in "Saved ..." keeps its backslashes (escaped for the Markdown message)
+// Version: 0.13.0 - selected words of a title take a letter spacing and a colour (the Clip
+//                  panel's, while words are selected) of their own; a size typed into the text
+//                  bar (or a font looked up by its letters) no longer finishes the title
 // Version: 0.12.0 - titles typed on the frame with the text bar, drawn by UltraCanvas as the engine's
 //                  text renderer (VideoFXUltraCanvasText) for the viewer and the export
 // Version: 0.11.0 - a tile's press arms the file drag as a button's arms the others: one filter, one cancel for all four
@@ -11,7 +16,7 @@
 // Version: 0.6.0 - OpenFiles: files handed over by a second start
 // Version: 0.5.0 - Import, the overlay and a sound on A2 offer FileLoader's types the engine reads
 // Version: 0.4.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoFormats.h"
@@ -26,9 +31,13 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <functional>
 #include <cmath>
 #include <filesystem>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 #include <system_error>
 
 // ULTRAVIDEO_VERSION comes from the build alone: CMake reads the first line
@@ -49,6 +58,103 @@ constexpr unsigned kTickMs = 20;
 constexpr int kMessageTicks = 200;       // 4 s
 constexpr double kMinZoom = 2.0;
 constexpr double kMaxZoom = 2000.0;
+
+// Free text into a dialog's message, which is Markdown: a Windows path's
+// backslashes would otherwise escape the letter after them and vanish
+std::string EscapeMarkdown(const std::string& text) {
+    std::string out;
+    out.reserve(text.size() + 8);
+    for (const char c : text) {
+        if (c == '\\' || c == '*' || c == '_' || c == '`' || c == '[' || c == ']' || c == '<' || c == '>' ||
+            c == '$' || c == '#' || c == '|' || c == '~')
+            out.push_back('\\');
+        out.push_back(c);
+    }
+    return out;
+}
+
+const char* VideoCodecName(VideoFXVideoCodec codec, VideoFXContainer container) {
+    if (codec == VideoFXVideoCodec::Auto) {
+        switch (container) {
+            case VideoFXContainer::WebM: codec = VideoFXVideoCodec::VP9; break;
+            case VideoFXContainer::GIF: codec = VideoFXVideoCodec::GIF; break;
+            default: codec = VideoFXVideoCodec::H264; break;
+        }
+    }
+    switch (codec) {
+        case VideoFXVideoCodec::H264: return "H.264";
+        case VideoFXVideoCodec::H265: return "H.265";
+        case VideoFXVideoCodec::VP8: return "VP8";
+        case VideoFXVideoCodec::VP9: return "VP9";
+        case VideoFXVideoCodec::AV1: return "AV1";
+        case VideoFXVideoCodec::MPEG4: return "MPEG-4";
+        case VideoFXVideoCodec::MJPEG: return "MJPEG";
+        case VideoFXVideoCodec::ProRes: return "ProRes";
+        case VideoFXVideoCodec::FFV1: return "FFV1";
+        case VideoFXVideoCodec::GIF: return "GIF";
+        default: return "";
+    }
+}
+
+const char* AudioCodecName(VideoFXAudioCodec codec, VideoFXContainer container) {
+    if (codec == VideoFXAudioCodec::Auto) {
+        switch (container) {
+            case VideoFXContainer::WebM: case VideoFXContainer::OGG: codec = VideoFXAudioCodec::Opus; break;
+            case VideoFXContainer::MP3: codec = VideoFXAudioCodec::MP3; break;
+            case VideoFXContainer::WAV: codec = VideoFXAudioCodec::PCM16; break;
+            case VideoFXContainer::FLAC: codec = VideoFXAudioCodec::FLAC; break;
+            case VideoFXContainer::GIF: codec = VideoFXAudioCodec::Disabled; break;
+            default: codec = VideoFXAudioCodec::AAC; break;
+        }
+    }
+    switch (codec) {
+        case VideoFXAudioCodec::AAC: return "AAC";
+        case VideoFXAudioCodec::MP3: return "MP3";
+        case VideoFXAudioCodec::Opus: return "Opus";
+        case VideoFXAudioCodec::Vorbis: return "Vorbis";
+        case VideoFXAudioCodec::FLAC: return "FLAC";
+        case VideoFXAudioCodec::PCM16: return "PCM";
+        default: return "";
+    }
+}
+
+// What the export writes, in one line under the file name in the progress
+// window: "1920 × 1080 · 25 fps · H.264 · AAC stereo". The engine's rules
+// for what the settings leave open: no size takes the project's, one side
+// alone keeps the project's shape (even numbers, as the encoders want), no
+// rate takes the project's, no channel count is stereo.
+std::string ExportSummary(const VideoFXExportSettings& s, const Document& doc) {
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    const char* dot = " \xC2\xB7 ";
+    const bool video = s.videoCodec != VideoFXVideoCodec::Disabled;
+    if (video) {
+        const int docW = std::max(1, doc.Width()), docH = std::max(1, doc.Height());
+        int w = s.width, h = s.height;
+        auto even = [](double v) { return std::max(2, static_cast<int>(std::lround(v / 2.0)) * 2); };
+        if (w <= 0 && h <= 0) { w = docW; h = docH; }
+        else if (w <= 0) w = even(static_cast<double>(h) * docW / docH);
+        else if (h <= 0) h = even(static_cast<double>(w) * docH / docW);
+        const double fps = s.frameRate > 0.0 ? s.frameRate : doc.FrameRate();
+        out << w << " \xC3\x97 " << h << dot;
+        if (std::fabs(fps - std::round(fps)) < 0.01) out << static_cast<int>(std::lround(fps));
+        else out << std::fixed << std::setprecision(2) << fps;
+        out << ' ' << Tr("fps");
+        const char* codec = VideoCodecName(s.videoCodec, s.container);
+        if (*codec) out << dot << codec;
+    }
+    const char* audio = AudioCodecName(s.audioCodec, s.container);
+    if (video) out << dot;
+    if (!*audio) {
+        out << Tr("no sound");
+    } else {
+        out << audio << ' ' << (s.channels == 1 ? Tr("mono") : s.channels > 2 ? std::to_string(s.channels) + " ch" : Tr("stereo"));
+        out.unsetf(std::ios::floatfield);
+        if (s.sampleRate > 0) out << ' ' << std::setprecision(3) << s.sampleRate / 1000.0 << " kHz";
+        if (s.audioBitRate > 0) out << ' ' << s.audioBitRate / 1000 << " kbit/s";
+    }
+    return out.str();
+}
 
 bool IsProjectFile(const std::string& path) {
     return PathToUtf8(PathFromUtf8(path).extension()) == ".ultravideo";
@@ -144,6 +250,7 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     inspector_.onEditEnd = [this]() { history_.EndMerge(); };
     inspector_.onAddMusic = [this]() { ImportMedia(); };
     inspector_.onUseProxies = [this](bool on) { SetUseProxies(on); };
+    inspector_.onTitleColour = [this](int title, uint32_t rgb) { return ColourTitle(title, rgb); };
     proxies_.onDone = [this](const std::string& clip, ProxyMaker::State state) { ProxyDone(clip, state); };
     proxies_.onProgress = [this]() { RefreshBin(); };
     inspectorPane_->AddChild(inspectorTabs_);
@@ -598,17 +705,23 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
                 const int count = still ? 1 : std::max(1, frames);
                 for (int i = 0; i < count; ++i) {
                     const double t = still ? 0.0 : (count > 1 ? in + (out - in) * i / (count - 1) : in);
+                    // a picture that cannot be read leaves its slot empty
+                    // (an empty frame, no pixmap), so the others keep their places
                     VideoFXFrame frame;
-                    if (VideoFX_ExtractFrame(source, t, frame, 0, height) == VideoFXResult::Ok) decoded->push_back(std::move(frame));
-                    else break;
+                    if (VideoFX_ExtractFrame(source, t, frame, 0, height) != VideoFXResult::Ok) frame = VideoFXFrame{};
+                    decoded->push_back(std::move(frame));
                 }
             },
             [decoded, frames, still, done]() {
                 std::vector<UCPixmapPtr> strip;
                 for (const VideoFXFrame& f : *decoded) {
+                    if (f.width <= 0 || f.height <= 0 || f.pixels.size() < static_cast<size_t>(f.width) * f.height * 4) {
+                        strip.push_back(nullptr);
+                        continue;
+                    }
                     auto pix = std::make_shared<UCPixmap>(f.width, f.height);
                     uint32_t* out = pix->GetPixelData();
-                    if (!out) continue;
+                    if (!out) { strip.push_back(nullptr); continue; }
                     const uint8_t* in = f.pixels.data();
                     const size_t n = static_cast<size_t>(f.width) * f.height;
                     for (size_t i = 0; i < n; ++i, in += 4)
@@ -616,7 +729,7 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
                     pix->MarkDirty();
                     strip.push_back(pix);
                 }
-                if (still && !strip.empty()) strip.resize(static_cast<size_t>(std::max(1, frames)), strip.front());
+                if (still && !strip.empty() && strip.front()) strip.resize(static_cast<size_t>(std::max(1, frames)), strip.front());
                 done(std::move(strip));
             });
     };
@@ -2061,12 +2174,14 @@ void UltraVideoWindow::StartExport(const ExportChoice& choice) {
     job_ = std::make_unique<VideoFXExportJob>();
     exportPath_ = choice.outputPath;
     if (!job_->Start(segments, exportPath_, settings)) {
-        UltraCanvasAlert::Error("The export could not start: " + job_->GetError(), "Export", nullptr, window_.get());
+        UltraCanvasAlert::Error("The export could not start: " + EscapeMarkdown(job_->GetError()), "Export", nullptr, window_.get());
         job_.reset();
         return;
     }
-    progress_ = UltraCanvasProgressDialog::Show(window_.get(), "Exporting", PathToUtf8(PathFromUtf8(exportPath_).filename()),
+    progress_ = UltraCanvasProgressDialog::Show(window_.get(), "Exporting",
+                                                EscapeMarkdown(PathToUtf8(PathFromUtf8(exportPath_).filename())),
                                                 [this]() { if (job_) job_->Cancel(); });
+    if (progress_) progress_->SetDetail(ExportSummary(settings, exported));
     Message("Exporting\xE2\x80\xA6");
 }
 
@@ -2085,12 +2200,12 @@ void UltraVideoWindow::PollExport() {
     }
     if (result == VideoFXResult::Ok) {
         Message("Exported " + PathToUtf8(PathFromUtf8(exportPath_).filename()) + ".");
-        UltraCanvasAlert::Successful("Saved " + exportPath_, "Export", nullptr, window_.get());
+        UltraCanvasAlert::Successful("Saved " + EscapeMarkdown(exportPath_), "Export", nullptr, window_.get());
     } else if (result == VideoFXResult::Cancelled) {
         Message("Export cancelled.");
     } else {
         Message("Export failed.");
-        UltraCanvasAlert::Error(error.empty() ? VideoFX_ResultToString(result) : error, "Export", nullptr, window_.get());
+        UltraCanvasAlert::Error(EscapeMarkdown(error.empty() ? VideoFX_ResultToString(result) : error), "Export", nullptr, window_.get());
     }
 }
 
@@ -2134,6 +2249,7 @@ namespace {
                     case TextFormatAttribute::Italic: run.italic = f.italic; break;
                     case TextFormatAttribute::Underline: run.underline = f.underline; break;
                     case TextFormatAttribute::Strikethrough: run.strikethrough = f.strikethrough; break;
+                    case TextFormatAttribute::LetterSpacing: run.letterSpacingPt.reset(); break;
                     default: break;
                 }
             }
@@ -2327,9 +2443,15 @@ void UltraVideoWindow::PlaceTitleEditor() {
     const double size = std::max(4.0, t.fontSize * h);
     const double tracking = t.letterSpacing * h;
     double widest = 0.0;
+    // The lines' heights as their largest letters need them: the editor lays
+    // a larger or smaller word out on its next frame, and a box sized before
+    // that showed a scrollbar.
+    const double lineAdvance = size * t.lineSpacing / 100.0;
+    double linesHeight = 0.0;
     if (auto words = titleEditor_->GetDocument()) {
         for (const auto& block : words->blocks) {
             double width = 0.0;
+            double lineHeight = lineAdvance;
             for (const auto& run : block.runs) {
                 if (run.text.empty()) continue;
                 FontStyle fs;
@@ -2337,9 +2459,11 @@ void UltraVideoWindow::PlaceTitleEditor() {
                 fs.fontSize = run.fontSizePt > 0.0f ? run.fontSizePt : static_cast<float>(size * kTextOverlayPointsPerPixel);
                 fs.fontWeight = run.bold ? FontWeight::Bold : FontWeight::Normal;
                 fs.fontSlant = run.italic ? FontSlant::Italic : FontSlant::Normal;
+                lineHeight = std::max(lineHeight, fs.fontSize / kTextOverlayPointsPerPixel * 1.3);
                 size_t letters = 0;
                 for (unsigned char ch : run.text) if ((ch & 0xC0) != 0x80) ++letters;
-                width += letters * tracking;
+                // A word's own letter spacing, or the title's
+                width += letters * (run.letterSpacingPt ? *run.letterSpacingPt / kTextOverlayPointsPerPixel : tracking);
                 if (titleMeasure_) {
                     titleMeasure_->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
                     titleMeasure_->SetFontSize(fs.fontSize);
@@ -2347,9 +2471,10 @@ void UltraVideoWindow::PlaceTitleEditor() {
                 }
             }
             widest = std::max(widest, width);
+            linesHeight += lineHeight;
         }
     }
-    const double textH = std::max<double>(titleEditor_->GetContentHeight(), size * t.lineSpacing / 100.0);
+    const double textH = std::max({static_cast<double>(titleEditor_->GetContentHeight()), lineAdvance, linesHeight});
     const int band = t.box ? std::max(2, static_cast<int>(std::lround(size / 3.0))) : 0;
     const int drop = t.shadow ? std::max(1, static_cast<int>(std::lround(size / 18.0))) : 0;
     const int pad = std::max(band, drop);
@@ -2387,6 +2512,37 @@ void UltraVideoWindow::RestyleTitleEditor() {
     PlaceTitleEditor();
 }
 
+bool UltraVideoWindow::ColourTitle(int title, uint32_t rgb) {
+    char hex[8];
+    std::snprintf(hex, sizeof hex, "#%06X", static_cast<unsigned>(rgb & 0xFFFFFFu));
+    if (!editingTitle_.empty() && titleEditor_ && titleEditor_->HasSelection()) {
+        // The selected words, as runs of their own
+        RichCharFormatDelta colour;
+        colour.setColor = true;
+        colour.color = hex;
+        titleEditor_->ApplyCharFormat(colour);
+        titleEditor_->SetFocus(true);
+        return true;
+    }
+    // The whole title: its colour, and its words' own colours go (Edit puts
+    // a title being typed in first)
+    if (title < 0 || static_cast<size_t>(title) >= document_.titles.size()) return false;
+    const int h = document_.Height();
+    Edit(Tr("Colour title"), [title, rgb, h](Document& d) {
+        if (title < 0 || static_cast<size_t>(title) >= d.titles.size()) return;
+        TitleSpan& t = d.titles[static_cast<size_t>(title)];
+        t.look.textColor = rgb;
+        if (!t.look.richText.empty()) {
+            auto words = TextOverlayWords(t.Look(), h);
+            for (auto& block : words->blocks)
+                for (auto& run : block.runs) run.color.clear();
+            t.look.richText = TextOverlayWordsToHtml(*words);
+            t.look.richTextHeight = h;
+        }
+    });
+    return true;
+}
+
 void UltraVideoWindow::ApplyTitleAttribute(TextFormatAttribute attribute, const TextFormat& f) {
     const int h = document_.Height();
     if (!editingTitle_.empty() && titleEditor_) {
@@ -2398,7 +2554,7 @@ void UltraVideoWindow::ApplyTitleAttribute(TextFormatAttribute attribute, const 
             ApplyToSpan(editingSpan_, attribute, f, h);
             if (auto words = titleEditor_->GetDocument()) ApplyToAllRuns(*words, attribute, f);
             if (IsCharacterAttribute(attribute) && attribute != TextFormatAttribute::Font &&
-                attribute != TextFormatAttribute::Size) {
+                attribute != TextFormatAttribute::Size && attribute != TextFormatAttribute::LetterSpacing) {
                 titleEditor_->ApplyCharFormat(TextFormatCharDelta(attribute, f, kTextOverlayPointsPerPixel));   // and what is typed next
             }
             RestyleTitleEditor();
@@ -2492,7 +2648,8 @@ void UltraVideoWindow::CommitTitleEdit() {
 bool UltraVideoWindow::TextHasFocus() const {
     UltraCanvasUIElement* focused = window_ ? window_->GetFocusedElement() : nullptr;
     return focused && (dynamic_cast<UltraCanvasTextInput*>(focused) || dynamic_cast<UltraCanvasTimecodeField*>(focused) ||
-                       dynamic_cast<UltraCanvasRichTextEdit*>(focused));
+                       dynamic_cast<UltraCanvasRichTextEdit*>(focused) ||
+                       (textBar_ && textBar_->HasKeyboardFocus()));   // a size typed, a font looked up
 }
 
 bool UltraVideoWindow::OnKey(const UCEvent& event) {
@@ -2507,13 +2664,24 @@ bool UltraVideoWindow::OnKey(const UCEvent& event) {
     // (Enter starts a new line); the file keys still work, after it; every
     // other key is the title's.
     if (!editingTitle_.empty()) {
+        const bool fileKey = ctrl && (event.virtualKey == UCKeys::S || event.virtualKey == UCKeys::O ||
+                                      event.virtualKey == UCKeys::N || event.virtualKey == UCKeys::E);
+        // A control of the text bar has the keyboard (a size typed, a font
+        // looked up by its first letters): the keys are its, and the title
+        // stays open - finishing it sent the size to the whole title.
+        // Escape gives the keys back to the title.
+        if (!fileKey && textBar_ && textBar_->IsVisible() && textBar_->HasKeyboardFocus()) {
+            if (event.virtualKey == UCKeys::Escape && titleEditor_) {
+                titleEditor_->SetFocus(true);
+                return true;
+            }
+            return false;
+        }
         if (event.virtualKey == UCKeys::Escape ||
             (ctrl && (event.virtualKey == UCKeys::Return || event.virtualKey == UCKeys::NumPadEnter))) {
             CommitTitleEdit();
             return true;
         }
-        const bool fileKey = ctrl && (event.virtualKey == UCKeys::S || event.virtualKey == UCKeys::O ||
-                                      event.virtualKey == UCKeys::N || event.virtualKey == UCKeys::E);
         if (!fileKey && TextHasFocus()) return false;
         CommitTitleEdit();
     }

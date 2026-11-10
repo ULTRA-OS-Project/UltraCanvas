@@ -4,6 +4,8 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.16.0 - FromTheme sets the body size, a heading the heading size; the SetStyle rule and
+//                  the constructor tail of an element that follows by default
 // Version: 2.15.0 - GetNaturalTextWidth: the width the text takes, for placing
 //                  something right after it
 // Version: 2.14.0 - the layout is an UltraCanvasTextLayoutCache: rebuilt when its inputs change, not reset by every setter
@@ -26,7 +28,7 @@
 //                 background, rounded corners (LabelInlineImageFrame)
 // Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
 //                 object-position)
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -387,7 +389,7 @@ namespace UltraCanvas {
         // following label re-styles at once
         void SetThemeVariant(LabelVariant variant) {
             themeVariant = variant;
-            if (GetFollowTheme()) ApplyTheme(UltraCanvasTheme::Current());
+            ApplyThemeIfFollowing();
         }
         LabelVariant GetThemeVariant() const { return themeVariant; }
 

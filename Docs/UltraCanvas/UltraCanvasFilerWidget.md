@@ -37,6 +37,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Long names](#long-names)
 - [File extensions](#file-extensions)
 - [File icons](#file-icons)
+- [Following the theme](#following-the-theme)
 - [Name tooltips](#name-tooltips)
 - [Context menu](#context-menu)
 - [Programs inside archives](#programs-inside-archives)
@@ -410,6 +411,29 @@ in the listing's colours (the Save dialog's big type logo).
 filer->DrawTypeIcon(ctx, "holiday.jpg", false, Rect2Di(4, 4, 24, 24));
 ```
 
+## Following the theme
+
+`FilerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the well for the file
+area, ink and muted ink for the names and their details, the panel for the
+header, the info bar and a bar's background with ink on it, hairlines for
+the grid, the hover fill, the soft accent for the selection with the accent
+round it, the accent for the bars and the loading bar, the well with the
+accent for the rename editor; the interface font at the body size, the
+small text at the caption size. The hover icon menu and the extension tag
+keep their dark overlays unless the theme names `filer.icon-menu`,
+`filer.on-icon-menu`, `filer.icon-menu-done`, `filer.extension-bar`,
+`filer.extension-tag` and `filer.on-extension-tag`. Under the theme policy
+a new widget follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+FilerStyle roomy = filer->GetStyle();
+roomy.tileGap = 16;
+filer->SetStyle(FilerStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+filer->SetFollowTheme(true);
+```
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -447,6 +471,8 @@ Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 Copy / Cut / Paste / Delete / Delete Permanently / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
+Refresh           the folder on display, or the one folder right-clicked,
+                  read again (onRefreshRequested)
 ──────────
 Compress / Extract
 ──────────
@@ -493,6 +519,21 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Refresh** is for the one folder entry the menu was opened on, or else
+  the folder on display. Without a hook it re-reads the folder on display
+  (`Refresh()`). With `onRefreshRequested` set, the host is handed that
+  folder and carries the refresh out itself, this display's re-read
+  included: a host that answers remote folders from a cache
+  (`remoteListing`) asks the server again first, and one with a folder tree
+  brings its rows in line. UltraFiler does both, the same as its tree's
+  *Refresh*.
+
+  ```cpp
+  filer->onRefreshRequested = [display = filer.get()](const std::string& folder) {
+      // drop or re-ask what a cache holds for `folder`, then:
+      if (folder == display->GetPath()) display->Refresh();
+  };
+  ```
 - **Open with** is the first entry — opening a file is what the menu is
   opened for most often — and the entry itself is clickable: it opens the
   whole selection with the OS default application, the same thing a
@@ -2218,7 +2259,13 @@ beside them:
   `"X" is write-protected.` — with **Skip** (the default) / **Delete anyway**
   (red) and an *Apply to all remaining write-protected items* checkbox.
   Delete-anyway lifts the protection first, so it also works on Windows, where
-  a read-only file can never be removed directly.
+  a read-only file can never be removed directly. A read-only **folder** is
+  not asked about on Windows: the attribute protects nothing there, and
+  Windows sets it itself on a folder with a `desktop.ini` and on folders
+  copied off a CD or a camera card, so Explorer deletes such a folder without
+  a word - and so does the widget, lifting the attribute as it goes. On Linux
+  and macOS a folder without write permission is a real protection (nothing
+  in it can be deleted) and is asked about.
 - A **failed delete** asks *afterwards* — `"X" could not be deleted.` with
   *Reason: Permission denied* — with **Try again** (the default) / **Skip**
   and an *Apply to all later failures* checkbox. A stored try-again-for-all
@@ -2228,23 +2275,37 @@ beside them:
 - A failure **inside a folder** is reported for the file that refused, not
   the folder: the question reads `"libvips-42.dll" in "lib" could not be
   deleted.` and the facts add a *Stopped at:* line with the file's path under
-  the folder's. A read-only file inside a folder is not a failure at all: it
-  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
-  so a folder unpacked with its read-only bits goes in one pass.
-- A file **a running program holds** — its executable, a DLL it has loaded —
-  answers "Access is denied" on Windows too, but no administrator can delete
-  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
-  Restart Manager) before it decides, and such a file gets **Delete: a file
+  the folder's. A read-only file **or folder** inside a folder is not a
+  failure at all: it is lifted and removed, as *Delete anyway* lifts the
+  entry's own protection, so a folder unpacked with its read-only bits - or
+  copied off a CD or a camera card, or carrying a `desktop.ini` - goes in one
+  pass, as it does in Explorer. Every entry is removed through
+  [`UltraCanvasFileRemoval`](UltraCanvasFileRemoval.md), which also counts
+  an entry Windows still lists as **delete pending** (deleted, but held open
+  by a virus scanner or the indexer) as gone, and waits a moment for the
+  folder it empties.
+- A file **a running program holds** — its executable, a DLL it has loaded, a
+  picture an image library has memory-mapped — answers "Access is denied" on
+  Windows too, but no administrator can delete it either. `UltraCanvasFileRemoval`
+  tells it apart: the system granted the delete access, and only then refused
+  the delete. The program holding it may be this one - the thumbnails and
+  folder previews of the pictures being deleted are decoded by libvips, which
+  keeps what it read mapped - so the widget first lets go of those
+  (`UCImage::ReleaseCachedFiles`) and tries once more on its own. What is
+  still held asks the [lock probe](UltraCanvasFileLock.md) (the Restart
+  Manager) who holds it, and gets **Delete: a file
   in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
   program.` with *In use by: UltraFiler (4120)* among the facts — with
   **Skip** (the default) / **Try again** and an *Apply to all later files in
   use* checkbox, and no administrator button. When the holder is the running
   application itself the note says so and tells the user to close it and
   delete from elsewhere.
-- A delete that fails with **"Access is denied"** on Windows and is held by
-  nobody is the one Explorer
+- A delete the **access list** refuses (`FileRemovalProblem::NotPermitted` -
+  "Access is denied" before anything was attempted) is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
-  user. Where the host has wired
+  user. Every "Access is denied" used to be taken for this one, and a
+  picture held by the Filer's own thumbnails was handed to the administrator,
+  who got the same answer. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
   (UltraFiler has), the dialog is **Delete: administrator permission needed** —
   "Windows asks you to confirm once, at the end, for every item handed to the
@@ -2256,7 +2317,9 @@ beside them:
   Administrator" progress window stands in for the wait, and the widget stays
   responsive because the helper is waited for off the UI thread. What the
   helper still could not delete comes back in the [summary](#the-summary-at-the-end)
-  (*Delete finished*) with the system's reason beside each entry; a declined
+  (*Delete finished*) with the system's reason beside each entry - naming the
+  file inside that refused, and saying "in use by a program" when one holds
+  it; a declined
   prompt is reported through
   `onError` and leaves the entries in place. Sharing violations ("in use by
   another program") are not permission failures and keep the plain dialog,
@@ -2374,6 +2437,36 @@ noticing changes instead of quietly freezing on a listing that no longer
 exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
 folder even while it is gone, which is what makes the same stick plugged back
 in re-list itself rather than needing a manual refresh.
+
+A folder that is gone while its volume is still there was deleted or renamed,
+from the other pane or by another program, and is not coming back. On its
+next `Refresh()` (what the watch calls when it notices) the display **moves up
+to the nearest folder above it that is still there**, through `SetPath`, so
+`onPathChanged` tells the host. It no longer sits on an empty listing of a
+folder that does not exist. The two cases are told apart by what is left:
+
+- **Windows:** a pulled stick or a dropped share takes its drive root
+  (`E:\`, `\\server\share`) with it, so nothing above the folder is left.
+- **Linux and macOS:** the stick's mount point vanishes too, and the folder
+  left above it is on another device than the one the folder was listed from.
+
+In both cases the display stays and waits, as before. Only a folder the last
+scan listed as a real directory is moved up from. A folder that answers
+neither "there" nor "gone" — one Windows still lists as delete pending, a
+network share that did not reply — is left for the next look. An archive
+interior, a remote drive and a file list never move.
+
+A delete, a move and a folder rename take an
+[`UltraCanvasFolderWatchHold`](UltraCanvasFolderWatcher.md#letting-go-of-a-folder-about-to-change)
+on the folders they change, for as long as they run. Every watch in the
+process on one of those folders or below it lets go, and none starts there
+until the operation ends. That includes another display, such as the second
+pane of a split view, showing a subfolder of the folder being deleted. On
+Windows that watch held the subfolder open. On a FAT or exFAT drive the deleted
+folder then stayed listed as *delete pending*, and on any drive a folder above
+it could not be moved, not even to the Recycle Bin. The display whose watch was
+released moves to polling, as for a lost watch, and so notices that its folder
+is gone.
 
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a
@@ -2874,6 +2967,32 @@ filer->onFolderModified = [this](const std::string& folder) {
 };
 ```
 
+**Changes the widget did not make** arrive through
+`onFolderChangedOnDisk(folderPath)` instead. The folder watch (see
+[Watching the shown folder](#watching-the-shown-folder)) noticed the shown
+folder change on disk, and the display re-listed it. Navigation, sorting and a
+plain `Refresh()` never fire it, and nothing goes to a "worked in" list. Its
+cases are:
+
+- Another program created, deleted or renamed something in the folder.
+- An entry this widget deleted went at last. On Windows, a folder whose last
+  file a program still held, perhaps the locked file a delete stopped at,
+  stays listed as *delete pending* until the program lets go. So when the
+  delete reported the folder through `onFolderModified`, the folder was still
+  there.
+- The shown folder itself was deleted. The display has already
+  [moved up](#watching-the-shown-folder), and the argument is the folder that
+  went.
+
+A host's folder tree should re-sync that folder's rows from both callbacks.
+UltraFiler's tree kept a deleted subfolder's row for good while it listened to
+`onFolderModified` alone.
+
+```cpp
+filer->onFolderModified      = [this](const std::string& f) { tree.Resync(f); history.Record(f); };
+filer->onFolderChangedOnDisk = [this](const std::string& f) { tree.Resync(f); };
+```
+
 ### Finished copies and moves
 
 `onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
@@ -3062,6 +3181,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
 | `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
+| `onFolderChangedOnDisk(folderPath)` | The folder watch saw the shown folder change on disk and the display re-listed it: another program's change, an entry deleted here that Windows listed until a program let go, or the folder itself gone (the display has moved up) — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |

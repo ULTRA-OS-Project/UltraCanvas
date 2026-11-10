@@ -3,9 +3,9 @@
 <!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
 
 **Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3); the localisation editor - every set in one grid, the merge operations, the two save paths, the compare column, the drafting button - as an element, a dialog, the UOS-Settings Translations page and a DemoApp page (L4, [`UltraCanvasLocalisationEditor.md`](../../UltraCanvas/UltraCanvasLocalisationEditor.md)). The applications (L5) and locale formatting (L6) follow.
-**Version:** 1.2.0
+**Version:** 1.2.1
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-11-02
+**Last Modified:** 2026-11-04
 
 `Tr("Save")` gives the translation of the English text written at the
 site, in the language the person's desktop is set to, from three layers of
@@ -28,6 +28,15 @@ std::string open = TrC("button", "Open");                         // the "button
 std::string files = TrN("{n} file", "{n} files", count);          // "3 Dateien": the language's plural rule
 std::string progress = TrF("Deleted {0} of {1}", done, count);    // "1 von 3 gelöscht"
 ```
+
+## Contents
+
+- [The three layers](#the-three-layers)
+- [The catalogue file](#the-catalogue-file)
+- [The language](#the-language)
+- [The catalogues and the scripts](#the-catalogues-and-the-scripts)
+- [Drafting a language](#drafting-a-language)
+- [Related](#related)
 
 ## The three layers
 
@@ -152,7 +161,8 @@ with the values in its language.
 | Script | Does |
 |---|---|
 | `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
-| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; every language translates every entry of the English standard set (a regional variant counts its parent's); and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/tests/test_extract_ui_strings.py` | the extractor's reading rules, held without a checkout: a literal's escapes (`\xHH` a byte of the UTF-8 text, `\uXXXX` a code point), comments stripped without a `"/*"` in a string swallowing the code after it, a call's literal arguments (continued literals joined, a variable stopping the list), the sites a file yields - `python3 -m unittest discover -s scripts/tests`, run by `locale-catalogues.yml` |
 | `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
 
 ## Drafting a language
@@ -199,6 +209,7 @@ shape, the chosen language its words.
 
 ## Related
 
+- DemoApp, *ULTRA OS modules > Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) - the four calls live in a picked language, with the layer that answered each, and the catalogue files of the three layers; *Widgets > Localisation Editor* is the editor over the sets
 - [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) - the design, the standard set (Appendix A) and the base sets (Appendix B)
 - [`UltraCanvasSystemLanguage.md`](../../UltraCanvas/UltraCanvasSystemLanguage.md) - the desktop's languages
 - [`UltraCanvasEmojiSettings.md`](../../UltraCanvas/UltraCanvasEmojiSettings.md) - the shared-setting pattern `Language.conf` follows

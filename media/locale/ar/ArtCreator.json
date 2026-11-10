@@ -1,0 +1,22 @@
+{
+  "@language": "ar",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "أُضيف النص: انقر عليه بأداة النص، أو انقر عليه نقرًا مزدوجًا، لتحريره",
+  "Changed the text": "تم تغيير النص",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "انقر على الصفحة واكتب، أو انقر على نص لتحريره؛ يضبط الشريط أعلاه خطه وحجمه ونمطه ومحاذاته وتباعده. يُنهي Escape أو Ctrl+Enter أو النقر في الخارج الكتابة",
+  "Delete Text": "حذف النص",
+  "Edit Text": "تحرير النص",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "تحرير النص: يبدأ Enter سطرًا جديدًا؛ ويُنهي Escape أو Ctrl+Enter أو النقر في الخارج التحرير",
+  "Letter Spacing": "تباعد الأحرف",
+  "Line Spacing": "تباعد الأسطر",
+  "Nothing was typed": "لم يُكتب أي شيء",
+  "Text Alignment": "محاذاة النص",
+  "Text Bold": "نص غامق",
+  "Text Font": "خط النص",
+  "Text Italic": "نص مائل",
+  "Text Size": "حجم النص",
+  "Text Strikethrough": "نص يتوسطه خط",
+  "Text Underline": "تسطير النص",
+  "The text was emptied, so it was deleted": "أصبح النص فارغًا، لذا حُذف",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "كتابة نص جديد: يبدأ Enter سطرًا جديدًا؛ ويُنهي Escape أو Ctrl+Enter أو النقر في الخارج الكتابة"
+}

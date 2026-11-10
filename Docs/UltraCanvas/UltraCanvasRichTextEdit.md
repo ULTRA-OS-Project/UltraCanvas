@@ -303,6 +303,23 @@ style.letterSpacing = 1.5f;                     // 0 = the font's own spacing
 editor->SetStyle(style);
 ```
 
+Some words can have a letter spacing of their own, over the whole text's - a
+run's `letterSpacingPt`, in points (below 0 sets the letters closer). It is a
+character format like the font or the colour: `ApplyCharFormat` sets it on the
+selection (or arms it for what is typed next), `GetFormatState` reports it, and
+the ODT, DOCX and HTML writers and readers keep it (`fo:letter-spacing`,
+`w:spacing`, CSS `letter-spacing`) - a character style's too:
+
+```cpp
+RichCharFormatDelta wider;
+wider.setLetterSpacing = true;
+wider.letterSpacingPt = 2.0f;                   // std::nullopt: the whole text's again
+editor->ApplyCharFormat(wider);
+const RichCharFormatState now = editor->GetFormatState();
+// now.letterSpacingPt: the selection's, unset when it has none of its own
+// or the selected runs disagree (now.letterSpacingMixed)
+```
+
 ### Named styles
 
 ```cpp

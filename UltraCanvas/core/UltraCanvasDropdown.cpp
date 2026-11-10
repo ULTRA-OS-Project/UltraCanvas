@@ -8,7 +8,7 @@
 // Version: 1.0.4 - type-ahead, the keyboard focus, Return chooses, DropdownItem::tooltip,
 //                  DropdownStyle::buttonShowsText
 // Version: 1.0.3 - DropdownStyle::FromTheme, ApplyTheme
-// Last Modified: 2026-10-12 - DropdownStyle::FromTheme
+// Last Modified: 2026-11-10 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
 #include <cctype>
 #include <chrono>
@@ -198,6 +198,7 @@ namespace UltraCanvas {
         dropdownModel = std::make_shared<DropdownListModel>();
         CreatePopupListView();
         WireListViewCallbacks();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasDropdown::~UltraCanvasDropdown() {
@@ -563,6 +564,7 @@ namespace UltraCanvas {
     // ===== STYLING =====
 
     void UltraCanvasDropdown::SetStyle(const DropdownStyle &newStyle) {
+        StyleSetByHand();
         style = newStyle;
         ApplyStyleToListView();
         RequestRedraw();
@@ -1063,6 +1065,9 @@ namespace UltraCanvas {
     DropdownStyle DropdownStyle::FromTheme(const UltraCanvasTheme& theme, const DropdownStyle& base) {
         DropdownStyle s = base;
         const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
         s.normalColor = r.raised;
         s.hoverColor = r.hover;
         s.pressedColor = r.pressed;

@@ -1,7 +1,6 @@
 {
   "@language": "hi",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "खाता जोड़ें",
   "App password": "ऐप पासवर्ड",
   "Attach file": "फ़ाइल संलग्न करें",
   "Attachment": "अनुलग्नक",
@@ -44,7 +43,6 @@
   "Search messages": "संदेश खोजें",
   "Sending": "भेजा जा रहा है",
   "Sent": "भेजे गए",
-  "Server": "सर्वर",
   "Sign out": "साइन आउट करें",
   "Sign-in": "साइन-इन",
   "Spam": "स्पैम",

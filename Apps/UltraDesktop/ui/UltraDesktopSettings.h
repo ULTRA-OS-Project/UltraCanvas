@@ -5,6 +5,16 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.9.0 - UltraNotifications starts with the desktop by default
+//                  (startupDefaults: added once to a settings file older
+//                  than that, so unticking it afterwards holds)
+// Version: 0.8.0 - where files dropped on the wallpaper go (dropFilesOn) and
+//                  the desktop icons' places (desktopIcons)
+// Version: 0.7.0 - the bars' theme (theme: "dark" or "light")
+// Version: 0.6.0 - the Sticker board's card display and hover preview size
+// Version: 0.5.0 - StartupProgram::arguments and ::builtIn: UltraClipboard
+//                  and UltraNotifications start in the background
+//                  (--background), the Sticker board is made ready unseen
 // Version: 0.4.0 - the Apps window's view, split threshold, Recent count and
 //                  history (appsView, appsSplitAbove, recentAppsShown, recentApps);
 //                  the applications dragged to another category (appMoves)
@@ -44,6 +54,13 @@ struct Sticker {
 struct CategoryBoardSettings {
     bool visible = false;
     std::string design = "stickynotes";   // stickynotes | poster | schematic | dark
+    // How a card shows its file: "text" (the name only), "thumbnail" (the
+    // picture with the name centred under it) or "row" (a small picture
+    // and the name beside it).
+    std::string display = "thumbnail";
+    // The larger preview after the pointer rests on a card for two seconds:
+    // "small", "medium" or "large".
+    std::string hoverPreview = "medium";
     float x = 320;
     float y = 60;
     float width = 780;
@@ -54,9 +71,12 @@ struct CategoryBoardSettings {
 // A program the desktop can start with itself, in the background: one that
 // keeps working while nobody looks at it (messages arrive, mail is counted).
 struct StartupProgram {
-    const char* program;        // LaunchProgram's name: "ChatCube"
+    const char* program;        // LaunchProgram's name: "ChatCube"; the key in startWithDesktop
     const char* appId;          // its single-instance id: running already, it is left alone
     const char* label;          // what the settings show
+    const char* name;           // the menu's entry: "ChatCube", "Sticker board"
+    const char* arguments;      // how it starts unseen: "--minimized", "--background"
+    bool builtIn;               // part of the desktop itself (the Sticker board), not a program
 };
 
 struct DesktopSettings {
@@ -68,6 +88,29 @@ struct DesktopSettings {
     std::string ramDiscPath = "/dev/shm";   // "" = no RAM disc button
 #endif
     std::string filerProgram = "UltraFiler";
+    // The clock at the foot of the right bar: "analog-date" (the face over
+    // the date, the default), "analog", "digital-date", "digital" or
+    // "digital-seconds"; chosen on the clock's right-click menu.
+    std::string clockStyle = "analog-date";
+    static bool IsClockStyle(const std::string& style);
+    // The bars' colours: "dark" (light icons on dark grey, the default) or
+    // "light" (dark icons on light grey); chosen on the desktop's
+    // right-click menu or in UOS-Settings.
+    std::string theme = "dark";
+    static bool IsTheme(const std::string& theme);
+    // Files dropped on the wallpaper: "board" (onto the Sticker board, in
+    // its "Unsorted" category - the default) or "desktop" (moved into the
+    // Desktop folder, whose contents the wallpaper then shows as icons).
+    std::string dropFilesOn = "board";
+    static bool IsDropTarget(const std::string& target);
+    // Where the desktop icons lie, in work-area coordinates, by the entry's
+    // name in the Desktop folder. An entry not listed is placed in the
+    // first free cell of the grid.
+    struct IconPlace {
+        float x = 0;
+        float y = 0;
+    };
+    std::map<std::string, IconPlace> desktopIcons;
     int virtualDesktops = 3;            // 1..9, what the organiser offers
     bool stickerboardVisible = false;
     std::vector<Sticker> stickers;
@@ -79,8 +122,14 @@ struct DesktopSettings {
     // is stable across sessions and survives the entry's name changing.
     std::vector<std::string> pinnedApps;
     // The programs started with the desktop (their StartupProgram::program),
-    // minimized, unless a copy runs already. Off by default.
-    std::vector<std::string> startWithDesktop;
+    // unseen, unless a copy runs already. UltraNotifications by default, so
+    // the bell counts from the first sign-in; the others are off.
+    std::vector<std::string> startWithDesktop = {"UltraNotifications"};
+    // Which defaults of startWithDesktop a settings file has had applied
+    // (kStartupDefaults): a file from before one is given it once, at the
+    // next start, and what the person changes after that is kept.
+    static constexpr int kStartupDefaults = 1;
+    int startupDefaults = kStartupDefaults;
 
     // The Apps window. Its view ("tiles", a grid per category as on Windows'
     // Start, or "tree", the categories beside a list of their applications);
@@ -112,7 +161,9 @@ struct DesktopSettings {
     std::string ToJson() const;
     bool FromJson(const std::string& json, std::string* error = nullptr);
 
-    // The programs that may be in startWithDesktop: ChatCube and UltraMail.
+    // The programs that may be in startWithDesktop: ChatCube and UltraMail
+    // (minimized), UltraClipboard and UltraNotifications (no window), and
+    // the desktop's own Sticker board (made ready, not shown).
     static const std::vector<StartupProgram>& StartupPrograms();
     bool StartsWithDesktop(const std::string& program) const;
     void SetStartsWithDesktop(const std::string& program, bool start);

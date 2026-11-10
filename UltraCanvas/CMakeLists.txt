@@ -435,7 +435,10 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     # xi: XInput2's raw key events, which the desktop shell's "Super" tap
     # watches without grabbing the key (GTK 3 depends on it, so it is
     # installed wherever the GTK dependency below is).
-    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr xi)
+    # xext: the shape extension, which gives the tooltip's own window an
+    # empty input region so the pointer passes through it (libxi needs
+    # libxext, so it is installed wherever xi is).
+    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr xi xext)
     if(ULTRACANVAS_WAYLAND)
         # The Wayland backend: libwayland-client, the cursor themes, and
         # xkbcommon for the seat's keymap. The X11 libraries stay linked:
@@ -451,12 +454,6 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
             find_program(ULTRACANVAS_WAYLAND_SCANNER wayland-scanner REQUIRED)
         endif()
         message(STATUS "  Wayland backend: wayland-client ${WAYLAND_wayland-client_VERSION}, protocols in ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}")
-        if(ULTRACANVAS_ENABLE_GL)
-            # The GL context managers are GLX / EGL-on-Xlib; EGL on a
-            # wl_egl_window is a later step of the backend.
-            message(STATUS "  Wayland backend: GL surfaces are not available yet (ULTRACANVAS_ENABLE_GL forced OFF)")
-            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
-        endif()
     endif()
     # XFixes: the clipboard backend hears of every new clipboard owner (an
     # image or a file copy as much as a text) instead of comparing the text.
@@ -466,17 +463,26 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     find_package(OpenGL REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
 
-    # OpenGL/EGL support for GL surfaces
+    # OpenGL/EGL support for GL surfaces. The surfaces are pbuffers read
+    # back into the window's picture, so the context manager needs a
+    # display, not a window: EGL on the Wayland connection (or Mesa's
+    # surfaceless platform) in a Wayland build, where GLX - an X11 API -
+    # is left out; EGL first and GLX as the fallback on X11.
     if(ULTRACANVAS_ENABLE_GL)
         pkg_check_modules(EGL egl)
         if(EGL_FOUND)
             set(ULTRACANVAS_HAS_EGL TRUE)
             message(STATUS "  EGL: ${EGL_VERSION} (primary GL context backend)")
+        elseif(ULTRACANVAS_WAYLAND)
+            message(STATUS "  Wayland backend: no EGL, so no GL surfaces (ULTRACANVAS_ENABLE_GL forced OFF)")
+            set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
         else()
             message(STATUS "  EGL: NOT FOUND (will use GLX fallback)")
         endif()
-        # GLX is always available with OpenGL on Linux
-        set(ULTRACANVAS_HAS_GLX TRUE)
+        if(NOT ULTRACANVAS_WAYLAND)
+            # GLX is always available with OpenGL on X11
+            set(ULTRACANVAS_HAS_GLX TRUE)
+        endif()
     endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
@@ -633,7 +639,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # The editing canvas: page, rulers, guides, grid, snapping, selection
         # handles and tool hooks over a VectorDocument (the vector twin of
         # UltraCanvasPaintSurface).
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorCanvas.cpp
+        # UltraCanvasVectorCanvas.cpp: a selectable widget - see WIDGET SYSTEM below
         # The gradient ramp editor (stops on a strip).
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGradientEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
@@ -667,6 +673,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # Tone curve model + interactive curve editor (Curves dialog, image tools)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToneCurve.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCurveEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHistogramModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCurvesDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasMetadataDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasModelViewDialog.cpp
@@ -694,10 +701,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBusyIndicator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPaletteManager.cpp
+        # UltraCanvasColorPaletteManager.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
+        # UltraCanvasSlideshow.cpp: a selectable widget - see WIDGET SYSTEM below
+        # UltraCanvasAlbum.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
         # The icon the HOST desktop draws for a file type (Explorer / Finder /
@@ -779,6 +786,12 @@ set(ULTRACANVAS_CORE_SOURCES
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
+        # Deleting for good, and why it failed: "in use" (no administrator
+        # helps) told apart from "not permitted", read-only folders and
+        # Windows' delete-pending entries handled. Windows backend under
+        # OS/MSWindows/, picked up by the platform glob; std::filesystem
+        # everywhere else, in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileRemoval.cpp
         # An installed Windows package whose ImageMagick coder carries a
         # system DLL's name (mpr.dll, 0.9.92 and older, or a newer package
         # extracted over it) is put right before the image subsystem starts.
@@ -798,6 +811,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # the platform glob.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSessionLock.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
+        # ExtractText: the words in a file (documents, PDF, spreadsheets,
+        # pictures through text recognition, recordings through speech to text).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoaderText.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaCodecRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
@@ -896,7 +912,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveformElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimelineModel.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp
+        # UltraCanvasVideoTimeline.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimecodeField.cpp
 
@@ -919,6 +935,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasControlLimits.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
         # Engine ports of the legacy charts (Docs/UltraCanvas/UltraCanvasEngineCharts.md)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.cpp
@@ -936,6 +953,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Charts built on the engine with no legacy twin
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -1297,6 +1317,170 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasChartRegistration.cp
 list(APPEND ULTRACANVAS_CORE_SOURCES
      ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasChartRegistration.generated.cpp)
 
+# ===== WIDGET SYSTEM (element plugin proposal §4, widgets) =====
+# The widget counterpart of the chart selection above. A selectable widget
+# compiles into the library when named in ULTRACANVAS_WIDGETS ("all" - the
+# default -, empty, or a ;-list of keys) and registers from the generated
+# UltraCanvas_RegisterSelectedWidgets(); one NOT named there is built as its
+# own runtime module (ultracanvas-widget-<name>, in <build>/Plugins/Elements)
+# that registers through the element plugin loader. Widgets stay bundled by
+# default (proposal goal 4, §10.4): only a lean build that leaves one out
+# turns it into a module. An application that uses a widget's typed API
+# needs it compiled in; the top-level CMakeLists refuses a configuration that
+# leaves one out (ultracanvas_require_widgets: DemoApp, UltraVideo, UltraPaint,
+# ArtCreator).
+set(ULTRACANVAS_WIDGETS "all" CACHE STRING
+    "Selectable widgets linked into the library: 'all', empty, or a ;-list of keys")
+option(ULTRACANVAS_WIDGET_RUNTIME_MODULES
+    "Build unselected widgets as runtime-loadable modules" ON)
+if((EMSCRIPTEN OR ANDROID) AND ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    message(STATUS "Widgets: no dynamic loading on this platform - runtime modules disabled")
+    set(ULTRACANVAS_WIDGET_RUNTIME_MODULES OFF)
+endif()
+
+# --- selectable widget table (key -> kebab name, sources, plugin glue, header,
+# register fn). _ANCHORS: one expression per core object file the module needs
+# that a host with a UI of its own may not otherwise link - a function, a
+# member function or &typeid(Class) defined in that file - with the headers
+# declaring them in _ANCHOR_INCLUDES. A static host keeps those objects when
+# it calls UltraCanvas_RegisterSelectedWidgets(), so the module resolves them
+# at dlopen. ElementModulesTest loads every module into a host with nothing but
+# one plain element, so a missing anchor fails it with the undefined symbol.
+set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
+set(UC_WIDGET_VideoTimeline_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
+set(UC_WIDGET_VideoTimeline_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasVideoTimelinePlugin.cpp)
+set(UC_WIDGET_VideoTimeline_HEADER   "UltraCanvasVideoTimeline.h")
+set(UC_WIDGET_VideoTimeline_REGISTER "RegisterVideoTimelineElement")
+set(UC_WIDGET_VideoTimeline_ANCHOR_INCLUDES "UltraCanvasVideoTimelineModel.h")
+set(UC_WIDGET_VideoTimeline_ANCHORS "&TimelineDeriveStarts")
+
+set(UC_WIDGET_Slideshow_KEBAB    "slideshow")
+set(UC_WIDGET_Slideshow_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp)
+set(UC_WIDGET_Slideshow_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasSlideshowPlugin.cpp)
+set(UC_WIDGET_Slideshow_HEADER   "UltraCanvasSlideshow.h")
+set(UC_WIDGET_Slideshow_REGISTER "RegisterSlideshowElement")
+set(UC_WIDGET_Slideshow_ANCHOR_INCLUDES "UltraCanvasImageFileWatch.h")
+set(UC_WIDGET_Slideshow_ANCHORS
+    "&UltraCanvasImageFileWatch::SetDrawnImages")
+
+set(UC_WIDGET_Album_KEBAB    "album")
+set(UC_WIDGET_Album_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp)
+set(UC_WIDGET_Album_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasAlbumPlugin.cpp)
+set(UC_WIDGET_Album_HEADER   "UltraCanvasAlbum.h")
+set(UC_WIDGET_Album_REGISTER "RegisterAlbumElement")
+set(UC_WIDGET_Album_ANCHOR_INCLUDES "UltraCanvasImageFileWatch.h" "UltraCanvasImageAnimation.h" "UltraCanvasVideoHoverPreview.h" "UltraCanvasVideoThumbnail.h" "UltraCanvasMenu.h")
+set(UC_WIDGET_Album_ANCHORS
+    "&UltraCanvasImageFileWatch::SetDrawnImages"
+    "&UCImageAnimationController::GetCurrentFramePixmap"
+    "&UltraCanvasVideoHoverPreview::Begin"
+    "&CaptureVideoThumbnailPixmap"
+    "&GetDefaultMenuCheckboxShape")
+
+set(UC_WIDGET_ColorPaletteManager_KEBAB    "color-palette-manager")
+set(UC_WIDGET_ColorPaletteManager_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPaletteManager.cpp)
+set(UC_WIDGET_ColorPaletteManager_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasColorPaletteManagerPlugin.cpp)
+set(UC_WIDGET_ColorPaletteManager_HEADER   "UltraCanvasColorPaletteManager.h")
+set(UC_WIDGET_ColorPaletteManager_REGISTER "RegisterColorPaletteManagerElement")
+set(UC_WIDGET_ColorPaletteManager_ANCHOR_INCLUDES "UltraCanvasColorSwatchBar.h" "UltraCanvasColorPicker.h" "UltraCanvasLabel.h" "UltraCanvasButton.h" "UltraCanvasTextInput.h")
+set(UC_WIDGET_ColorPaletteManager_ANCHORS
+    "&typeid(UltraCanvasColorSwatchBar)"
+    "&ColorPickerStyle::Light"
+    "&typeid(UltraCanvasLabel)"
+    "&typeid(UltraCanvasButton)"
+    "&typeid(UltraCanvasTextInput)")
+
+set(UC_WIDGET_VectorCanvas_KEBAB    "vector-canvas")
+set(UC_WIDGET_VectorCanvas_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorCanvas.cpp)
+set(UC_WIDGET_VectorCanvas_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasVectorCanvasPlugin.cpp)
+set(UC_WIDGET_VectorCanvas_HEADER   "UltraCanvasVectorCanvas.h")
+set(UC_WIDGET_VectorCanvas_REGISTER "RegisterVectorCanvasElement")
+set(UC_WIDGET_VectorCanvas_ANCHOR_INCLUDES "DataFormats/UltraCanvasVectorEdit.h")
+set(UC_WIDGET_VectorCanvas_ANCHORS
+    "&VectorEdit::OwnPaintBounds")
+
+set(UC_WIDGET_SELECTED_KEYS "")
+set(UC_WIDGET_MODULE_KEYS "")
+if(ULTRACANVAS_WIDGETS STREQUAL "all")
+    set(UC_WIDGET_SELECTED_KEYS ${UC_WIDGET_KEYS})
+elseif(NOT ULTRACANVAS_WIDGETS STREQUAL "")
+    foreach(key IN LISTS ULTRACANVAS_WIDGETS)
+        if(NOT key IN_LIST UC_WIDGET_KEYS)
+            message(FATAL_ERROR "ULTRACANVAS_WIDGETS names unknown widget '${key}' (known: ${UC_WIDGET_KEYS})")
+        endif()
+        list(APPEND UC_WIDGET_SELECTED_KEYS ${key})
+    endforeach()
+endif()
+foreach(key IN LISTS UC_WIDGET_KEYS)
+    if(NOT key IN_LIST UC_WIDGET_SELECTED_KEYS)
+        list(APPEND UC_WIDGET_MODULE_KEYS ${key})
+    endif()
+endforeach()
+if(NOT ULTRACANVAS_WIDGET_RUNTIME_MODULES AND UC_WIDGET_MODULE_KEYS)
+    message(WARNING "Widgets not selected and runtime modules off - unavailable: ${UC_WIDGET_MODULE_KEYS}")
+endif()
+foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
+    list(APPEND ULTRACANVAS_CORE_SOURCES ${UC_WIDGET_${key}_SOURCES})
+endforeach()
+# The top-level CMakeLists and Tests/ check an application's widgets against these.
+set_property(GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN "${UC_WIDGET_SELECTED_KEYS}")
+set_property(GLOBAL PROPERTY ULTRACANVAS_WIDGET_MODULES "${UC_WIDGET_MODULE_KEYS}")
+message(STATUS "Widgets: compiled in [${UC_WIDGET_SELECTED_KEYS}], modules [${UC_WIDGET_MODULE_KEYS}]")
+
+# Generated registration TU: always present, so apps can call
+# UltraCanvas_RegisterSelectedWidgets() unconditionally.
+set(UC_WIDGET_REG_INCLUDES "")
+set(UC_WIDGET_REG_CALLS "")
+set(UC_WIDGET_REG_ANCHOR "")
+foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
+    string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${UC_WIDGET_${key}_HEADER}\"\n")
+    string(APPEND UC_WIDGET_REG_CALLS "    ${UC_WIDGET_${key}_REGISTER}();\n")
+endforeach()
+set(uc_widget_anchors "")
+if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+        foreach(inc IN LISTS UC_WIDGET_${key}_ANCHOR_INCLUDES)
+            string(APPEND UC_WIDGET_REG_INCLUDES "#include \"${inc}\"\n")
+        endforeach()
+        foreach(anchor IN LISTS UC_WIDGET_${key}_ANCHORS)
+            string(APPEND uc_widget_anchors "    KeepForWidgetModules(${anchor});   // ${key}\n")
+        endforeach()
+    endforeach()
+endif()
+if(uc_widget_anchors)
+    string(APPEND UC_WIDGET_REG_INCLUDES "#include <typeinfo>\n")
+    string(APPEND UC_WIDGET_REG_ANCHOR "
+// Keeps in a static host the core objects the widget modules need: a volatile
+// store cannot be optimised away, so each anchor stays a reference the linker
+// resolves from the archive. Called from the registration below.
+namespace {
+template <typename T> void KeepForWidgetModules(T anchor) {
+    static T volatile sink;
+    sink = anchor;
+}
+} // namespace
+
+void UltraCanvas_WidgetModuleAnchors() {
+${uc_widget_anchors}}
+")
+    string(APPEND UC_WIDGET_REG_CALLS "    UltraCanvas_WidgetModuleAnchors();\n")
+endif()
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/UltraCanvasWidgetRegistration.cpp.in
+               ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasWidgetRegistration.generated.cpp
+               @ONLY)
+list(APPEND ULTRACANVAS_CORE_SOURCES
+     ${CMAKE_CURRENT_BINARY_DIR}/generated/UltraCanvasWidgetRegistration.generated.cpp)
+
 # libvips-dependent sources
 if(ULTRACANVAS_HAS_VIPS)
     list(APPEND ULTRACANVAS_CORE_SOURCES
@@ -1626,19 +1810,26 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ULTRACANVAS_WAYLAND)
     set(ULTRACANVAS_WAYLAND_PROTOCOL_DIR ${CMAKE_CURRENT_BINARY_DIR}/wayland-protocols)
     file(MAKE_DIRECTORY ${ULTRACANVAS_WAYLAND_PROTOCOL_DIR})
     # wayland-protocols' own, by their path under its share directory
-    # (xdg-activation is in it from 1.21, so the 22.04 runners' 1.25 has
-    # it), and the ones that travel with the backend under
+    # (xdg-activation is in it from 1.21 and ext-session-lock from 1.25,
+    # so the 22.04 runners' 1.25 has both), and the ones that travel with
+    # the backend under
     # OS/Linux/Wayland/protocols/: the wlroots layer shell (the desktop and
     # its bars) and foreign toplevels (the window list), which
     # wayland-protocols does not carry, and ext-workspace (the virtual
-    # desktops), which it carries only from 1.39.
+    # desktops), which it carries only from 1.39, and the window capture
+    # (ext-foreign-toplevel-list, ext-image-capture-source,
+    # ext-image-copy-capture: a taskbar's window pictures), from 1.37.
     set(_ultracanvas_wayland_protocols
         ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml
         ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml
         ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/staging/xdg-activation/xdg-activation-v1.xml
+        ${ULTRACANVAS_WAYLAND_PROTOCOLS_DIR}/staging/ext-session-lock/ext-session-lock-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-layer-shell-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/wlr-foreign-toplevel-management-unstable-v1.xml
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-workspace-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-foreign-toplevel-list-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-image-capture-source-v1.xml
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/Wayland/protocols/ext-image-copy-capture-v1.xml
     )
     foreach(_xml IN LISTS _ultracanvas_wayland_protocols)
         get_filename_component(_name ${_xml} NAME_WE)
@@ -2106,8 +2297,12 @@ if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
             ${UC_CHART_${key}_PLUGIN})
         # Same include set the LaTeX MODULE uses - target-scoped, so modules
         # must name the platform dirs themselves.
+        # generated/include holds UltraCanvasFrameworkHeadersId.h: without it
+        # the module reports its framework headers as "unknown" and the
+        # loader refuses it (UltraCanvasElementPlugins.h).
         target_include_directories(${uc_chart_target} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_BINARY_DIR}/generated/include
             ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
             ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
         target_compile_features(${uc_chart_target} PRIVATE cxx_std_20)
@@ -2122,6 +2317,39 @@ if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
             target_link_libraries(${uc_chart_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
         endif()
         message(STATUS "  [✓] chart module ${uc_chart_target}")
+    endforeach()
+endif()
+
+# ===== WIDGET RUNTIME MODULES =====
+# One MODULE DSO per unselected selectable widget, the same way as the chart
+# modules above (ENABLE_EXPORTS + RTLD_GLOBAL on Unix, the shared core DLL on
+# Windows, so a Windows static build skips them).
+if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+    foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+        set(uc_widget_target "ultracanvas-widget-${UC_WIDGET_${key}_KEBAB}")
+        if(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
+            message(STATUS "  [−] widget module ${uc_widget_target} - SKIPPED (needs shared core on Windows)")
+            continue()
+        endif()
+        add_library(${uc_widget_target} MODULE
+            ${UC_WIDGET_${key}_SOURCES}
+            ${UC_WIDGET_${key}_PLUGIN})
+        target_include_directories(${uc_widget_target} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_BINARY_DIR}/generated/include
+            ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
+            ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+        target_compile_features(${uc_widget_target} PRIVATE cxx_std_20)
+        set_target_properties(${uc_widget_target} PROPERTIES
+            PREFIX ""
+            POSITION_INDEPENDENT_CODE ON
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/Elements)
+        if(WIN32 OR ULTRACANVAS_BUILD_SHARED)
+            target_link_libraries(${uc_widget_target} PRIVATE ${ULTRACANVAS_LIB_NAME})
+        elseif(APPLE)
+            set_target_properties(${uc_widget_target} PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
+        endif()
+        message(STATUS "  [✓] widget module ${uc_widget_target}")
     endforeach()
 endif()
 

@@ -5,7 +5,8 @@ Docs/UltraCanvas/UltraCanvasLocalisationProposal.md §8. Every call of
 Tr("..."), TrC("ctx", "..."), TrN("one", "many", n) and TrF("...", ...)
 with a literal is a key:
 
-- the framework's (UltraCanvas/{include,core,libspecific,OS,Plugins}) go
+- the framework's (UltraCanvas/{include,core,libspecific,OS,Plugins}),
+  and UltraCloud/ui's shared dialogs, go
   into media/locale/en/Standard.json, which is maintained as well as
   generated: a key the sources use is added, nothing is ever removed, so
   the curated vocabulary (the proposal's Appendix A) stays for the
@@ -43,16 +44,93 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCALE = ROOT / "media" / "locale"
+# The framework, and the modules' shared dialogs every application that uses
+# the module shows (UltraCloud's account and picker dialogs: UltraFiler,
+# UltraPress): their texts are the standard set's.
 FRAMEWORK_DIRS = ["UltraCanvas/include", "UltraCanvas/core", "UltraCanvas/libspecific", "UltraCanvas/OS",
-                  "UltraCanvas/Plugins"]
-SKIP_APPS = {"DemoApp", "CSSLayoutTests"}
+                  "UltraCanvas/Plugins", "UltraCloud/ui"]
+SKIP_APPS = {"CSSLayoutTests"}
 LIT = r'"((?:[^"\\\n]|\\.)*)"'
 SITE = re.compile(r"(?<![A-Za-z0-9_:])(Tr|TrC|TrN|TrF)\s*\(")
 SOURCE_SUFFIXES = (".cpp", ".h", ".mm", ".hpp")
 
 
+ESCAPE = re.compile(r"\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{1,2}|[0-7]{1,3}|.)", re.S)
+SIMPLE_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\f", "v": "\v",
+                  '"': '"', "'": "'", "\\": "\\", "?": "?"}
+
+
 def unescape(s: str) -> str:
-    return bytes(s, "utf-8").decode("unicode_escape").encode("latin-1").decode("utf-8") if "\\" in s else s
+    """The text a C++ string literal's body stands for: \\n, \\", \\\\, \\xHH, octal,
+    \\uXXXX and \\UXXXXXXXX (a character outside Latin-1, such as \\u2022, as
+    the UTF-8 text the compiler emits).
+
+    \\xHH and octal escapes are bytes, as in the compiled narrow literal: a
+    source that spells a character as its UTF-8 bytes ("\\xC2\\xB7" for the
+    middle dot) means that character, so the bytes are gathered and decoded
+    as UTF-8 together. Only when they are not valid UTF-8 is each one read
+    as a character of its own, as before."""
+    if "\\" not in s:
+        return s
+
+    data = bytearray()
+    pos = 0
+    for m in ESCAPE.finditer(s):
+        data += s[pos:m.start()].encode("utf-8")
+        e = m.group(1)
+        if e[0] == "x":
+            data.append(int(e[1:], 16))
+        elif e[0] in "01234567":
+            data.append(int(e, 8) & 0xFF)
+        elif e[0] in "uU":
+            data += chr(int(e[1:], 16)).encode("utf-8")
+        else:
+            data += SIMPLE_ESCAPES.get(e, e).encode("utf-8")
+        pos = m.end()
+    data += s[pos:].encode("utf-8")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+
+    def one(m):
+        e = m.group(1)
+        if e[0] in "uUx":
+            return chr(int(e[1:], 16))
+        if e[0] in "01234567":
+            return chr(int(e, 8))
+        return SIMPLE_ESCAPES.get(e, e)
+
+    return ESCAPE.sub(one, s)
+
+
+def strip_comments(text: str) -> str:
+    """The source without its // and /* */ comments. String and character
+    literals are walked over, so a "/*" or "//" inside one (a comment
+    opener in a list of markers, a URL) does not swallow the code after it;
+    the newlines of a block comment stay, so line numbers hold."""
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"' or c == "'":
+            j = i + 1
+            while j < n and text[j] != c:
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            end = n if j < 0 else j + 2
+            out.append("\n" * text.count("\n", i, end))
+            i = end
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
 
 
 def literal_args(text: str, open_paren: int):
@@ -93,8 +171,7 @@ def sites_in(path: Path):
         text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []
-    text = re.sub(r"//[^\n]*", "", text)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = strip_comments(text)
     found = []
     for m in SITE.finditer(text):
         name = m.group(1)
@@ -202,7 +279,9 @@ def serialize(meta: dict, entries: dict, plurals: dict) -> str:
 
 def app_name(folder: Path) -> str:
     for path in walk(folder):
-        m = re.search(r'Initialize\("([^"]+)"\)', path.read_text(encoding="utf-8", errors="ignore"))
+        # Initialize("Name"), or a helper that passes it on as its last
+        # argument - DemoApp's InitializeSystem(g_app, "UltraCanvasDemo").
+        m = re.search(r'Initialize\w*\((?:[^()"]*,\s*)?"([^"]+)"\)', path.read_text(encoding="utf-8", errors="ignore"))
         if m:
             return m.group(1)
     return folder.name

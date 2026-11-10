@@ -40,7 +40,7 @@
 // Version: 2.5.0 - inline images fitted and placed by their fit / position
 // Version: 2.4.0 - min-content width is the widest unbreakable run
 // Version: 2.3.0 - inline images at U+FFFC placeholders (LabelInlineImage)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -94,6 +94,7 @@ namespace UltraCanvas {
         // Initialize style
         style = LabelStyle::DefaultStyle();
         SetText(labelText);
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasLabel::~UltraCanvasLabel() {
@@ -122,6 +123,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLabel::SetStyle(const LabelStyle &newStyle) {
+        StyleSetByHand();
         style = newStyle;
         InvalidateLayout();
         RequestRedraw();
@@ -1107,6 +1109,11 @@ namespace UltraCanvas {
     LabelStyle LabelStyle::FromTheme(const UltraCanvasTheme& theme, const LabelStyle& base, LabelVariant variant) {
         LabelStyle s = base;
         const ThemeRoles& r = theme.roles;
+        // a heading at the heading size, the rest at the body size; the
+        // weight stays the style's
+        const FontStyle font = theme.Font(variant == LabelVariant::Heading ? ThemeTextRole::Heading : ThemeTextRole::Body);
+        s.fontStyle.fontFamily = font.fontFamily;
+        s.fontStyle.fontSize = font.fontSize;
         switch (variant) {
             case LabelVariant::Muted: s.textColor = theme.Role("label.muted", r.inkMuted); break;
             case LabelVariant::Faint: s.textColor = theme.Role("label.faint", r.inkFaint); break;

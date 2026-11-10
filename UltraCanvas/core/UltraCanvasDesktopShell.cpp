@@ -6,6 +6,9 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.12.0 - OpenDisplaySettings, CanOpenDisplaySettings
+// Version: 1.11.0 - CaptureWindowImage (scaled down here); MatchApplication
+//                  matches Windows' AppUserModelID first
 // Version: 1.10.0 - CaptureScreenArea, DefaultRecordingPath
 // Version: 1.9.0 - GetWindowBounds, MoveWindow, BringWindowOnScreen,
 //                  KillWindowProcess; CloseWindow brings the window to the
@@ -377,6 +380,78 @@ bool UltraCanvasDesktopShell::CaptureScreenArea(int x, int y, int width, int hei
     return false;
 }
 
+namespace {
+
+// `source` shrunk by an integer-free box filter: each target pixel is the
+// average of the source pixels its area covers, so text and edges thin out
+// instead of breaking up as they would with every n-th pixel.
+DesktopScreenImage ShrinkImage(const DesktopScreenImage& source, int width, int height) {
+    DesktopScreenImage out;
+    out.x = source.x;
+    out.y = source.y;
+    out.width = width;
+    out.height = height;
+    out.stride = width * 4;
+    out.pixels.assign(static_cast<size_t>(out.stride) * height, 0);
+    for (int ty = 0; ty < height; ++ty) {
+        const int y0 = static_cast<int>(static_cast<int64_t>(ty) * source.height / height);
+        const int y1 = std::max(y0 + 1, static_cast<int>(static_cast<int64_t>(ty + 1) * source.height / height));
+        uint8_t* target = out.pixels.data() + static_cast<size_t>(ty) * out.stride;
+        for (int tx = 0; tx < width; ++tx) {
+            const int x0 = static_cast<int>(static_cast<int64_t>(tx) * source.width / width);
+            const int x1 = std::max(x0 + 1, static_cast<int>(static_cast<int64_t>(tx + 1) * source.width / width));
+            uint32_t sum[3] = {0, 0, 0};
+            for (int sy = y0; sy < y1; ++sy) {
+                const uint8_t* row = source.pixels.data() + static_cast<size_t>(sy) * source.stride;
+                for (int sx = x0; sx < x1; ++sx) {
+                    sum[0] += row[sx * 4];
+                    sum[1] += row[sx * 4 + 1];
+                    sum[2] += row[sx * 4 + 2];
+                }
+            }
+            const uint32_t count = static_cast<uint32_t>((y1 - y0) * (x1 - x0));
+            target[tx * 4] = static_cast<uint8_t>(sum[0] / count);
+            target[tx * 4 + 1] = static_cast<uint8_t>(sum[1] / count);
+            target[tx * 4 + 2] = static_cast<uint8_t>(sum[2] / count);
+            target[tx * 4 + 3] = 255;
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+bool UltraCanvasDesktopShell::CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
+                                                 std::string* error) {
+    std::string reason;
+    DesktopScreenImage full;
+    if (id == 0) {
+        reason = "No window to capture.";
+    } else if (maxWidth <= 0 || maxHeight <= 0) {
+        reason = "The picture's size is empty.";
+    } else if (DesktopShellBackend::CaptureWindowImage(id, full, reason) && full.IsValid()) {
+        const double scale = std::min({1.0, static_cast<double>(maxWidth) / full.width,
+                                       static_cast<double>(maxHeight) / full.height});
+        if (scale >= 1.0) {
+            out = std::move(full);
+            return true;
+        }
+        const int width = std::max(1, static_cast<int>(full.width * scale + 0.5));
+        const int height = std::max(1, static_cast<int>(full.height * scale + 0.5));
+        try {
+            out = ShrinkImage(full, width, height);
+            return true;
+        } catch (const std::bad_alloc&) {
+            reason = "Not enough memory for the window's picture.";
+        }
+    } else if (reason.empty()) {
+        reason = "The window could not be captured.";
+    }
+    out = DesktopScreenImage();
+    if (error) *error = reason;
+    return false;
+}
+
 std::string UltraCanvasDesktopShell::DefaultScreenshotPath() {
     std::string base;
     for (const UserFolderInfo& folder : GetWellKnownUserFolders()) {
@@ -496,6 +571,14 @@ const UCDesktopEntry* UltraCanvasDesktopShell::MatchApplication(const DesktopWin
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return text;
     };
+    // Windows: the AppUserModelID names the application outright - a Store
+    // application has no program file to match.
+    if (!window.appUserModelId.empty()) {
+        const std::string id = lower(window.appUserModelId);
+        for (const UCDesktopEntry& entry : applications) {
+            if (!entry.appUserModelId.empty() && lower(entry.appUserModelId) == id) return &entry;
+        }
+    }
     const std::string appClass = lower(window.appClass);
     const std::string appName = lower(window.appName);
     if (appClass.empty() && appName.empty()) return nullptr;
@@ -713,6 +796,17 @@ bool UltraCanvasDesktopShell::CanLockSession() { return DesktopShellBackend::Can
 bool UltraCanvasDesktopShell::LockSession(std::string* error) {
     std::string reason;
     if (DesktopShellBackend::LockSession(reason)) return true;
+    if (error) *error = reason;
+    return false;
+}
+
+// ===== THE DISPLAYS =====
+
+bool UltraCanvasDesktopShell::CanOpenDisplaySettings() { return DesktopShellBackend::CanOpenDisplaySettings(); }
+
+bool UltraCanvasDesktopShell::OpenDisplaySettings(std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::OpenDisplaySettings(reason)) return true;
     if (error) *error = reason;
     return false;
 }
@@ -1020,6 +1114,11 @@ namespace DesktopShellBackend {
         error = "Screenshots are not available on this platform yet.";
         return false;
     }
+    bool CaptureWindowImage(uint64_t, DesktopScreenImage& out, std::string& error) {
+        out = DesktopScreenImage();
+        error = "Window pictures are not available on this platform yet.";
+        return false;
+    }
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
     bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
@@ -1053,6 +1152,26 @@ namespace DesktopShellBackend {
         error = "Locking the screen is not available on this platform yet.";
         return false;
     }
+
+    // macOS has no window-list backend, but its System Settings opens on the
+    // Displays pane through `open` and the pane's URL.
+#if defined(__APPLE__)
+    bool CanOpenDisplaySettings() { return !UltraCanvasDesktopShell::FindProgram("/usr/bin/open").empty(); }
+    bool OpenDisplaySettings(std::string& error) {
+        if (UltraCanvasDesktopShell::LaunchProgram(
+                    "/usr/bin/open", {"x-apple.systempreferences:com.apple.Displays-Settings.extension"}, &error)) {
+            return true;
+        }
+        if (error.empty()) error = "System Settings did not open.";
+        return false;
+    }
+#else
+    bool CanOpenDisplaySettings() { return false; }
+    bool OpenDisplaySettings(std::string& error) {
+        error = "Display settings are not available on this platform yet.";
+        return false;
+    }
+#endif
 
     DesktopAudioOutput ReadAudioOutput() {
         DesktopAudioOutput out;

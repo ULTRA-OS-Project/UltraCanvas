@@ -1,7 +1,10 @@
 // TesseractOCREngine.cpp
 // Tier-1 Tesseract 5 backend implementation.
+// Version: 0.1.3 - builds against Tesseract 4.1 (no version.h; GenericVector languages)
+// Version: 0.1.2 - the language files read through OpenFileUtf8 (Tesseract 5's FileReader)
+// Version: 0.1.1 - RecognizeFile reads the file through OpenFileUtf8 (a UTF-8 name on Windows)
 // Version: 0.1.0
-// Last Modified: 2026-05-21
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "TesseractOCREngine.h"
@@ -10,6 +13,20 @@
 #if defined(ULTRACANVAS_OCR_SUPPORT) && defined(ULTRACANVAS_OCR_TESSERACT_SUPPORT)
 
 #include <tesseract/baseapi.h>
+// TESSERACT_MAJOR_VERSION: Tesseract 5 has version.h, 4.x (Ubuntu 22.04's
+// 4.1) tess_version.h; 4.x takes the reader-less paths below.
+#if __has_include(<tesseract/version.h>)
+#include <tesseract/version.h>
+#elif __has_include(<tesseract/tess_version.h>)
+#include <tesseract/tess_version.h>   // Tesseract 4.x
+#endif
+#if defined(TESSERACT_MAJOR_VERSION) && TESSERACT_MAJOR_VERSION < 5
+#include <tesseract/genericvector.h>  // Tesseract 4's language list is a GenericVector<STRING>
+#include <tesseract/strngs.h>
+#endif
+#if defined(TESSERACT_MAJOR_VERSION) && TESSERACT_MAJOR_VERSION >= 5
+#define UC_TESSERACT_HAS_FILE_READER 1
+#endif
 #include <tesseract/ocrclass.h>
 #include <tesseract/publictypes.h>
 #include <tesseract/resultiterator.h>
@@ -21,10 +38,12 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
 #include <system_error>
+#include <vector>
 
 #include "UltraCanvasUtils.h"   // GetExecutableDir()
 #include "UltraCanvasConfig.h"  // GetResourcesDir()
@@ -119,6 +138,24 @@ std::string TesseractOCREngine::ResolveDataPath(const std::string& userPath,
     return {}; // nothing found; caller falls back to tesseract's own probing
 }
 
+#ifdef UC_TESSERACT_HAS_FILE_READER
+namespace {
+// Tesseract's FileReader: the whole file, opened by its UTF-8 name.
+bool ReadTessdataFile(const char* filename, std::vector<char>* data) {
+    if (!filename || !data) return false;
+    std::FILE* file = OpenFileUtf8(filename, "rb");
+    if (!file) return false;
+    data->clear();
+    char buffer[65536];
+    size_t read = 0;
+    while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0) data->insert(data->end(), buffer, buffer + read);
+    const bool failed = std::ferror(file) != 0;
+    std::fclose(file);
+    return !failed && !data->empty();
+}
+} // namespace
+#endif
+
 bool TesseractOCREngine::Initialize(const OCRConfig& cfg) {
     std::lock_guard<std::mutex> lock(mtx);
     config = cfg;
@@ -134,9 +171,21 @@ bool TesseractOCREngine::Initialize(const OCRConfig& cfg) {
     // On Linux the system tessdata is found through Tesseract's compiled-in
     // default path even when `dataPath` is empty; on a portable Windows build
     // it is not, so an empty result here is the usual cause of failure.
+#ifdef UC_TESSERACT_HAS_FILE_READER
+    // The language files are read through ReadTessdataFile (OpenFileUtf8):
+    // Tesseract's own reader opens them with fopen, which takes the name in
+    // the ANSI code page on Windows, so a data folder under a Thai or emoji
+    // user name or install path failed to load there.
+    const int rc = api->Init(dataPath.c_str(), 0, langs.c_str(),
+                             tesseract::OcrEngineMode::OEM_LSTM_ONLY,
+                             nullptr, 0, nullptr, nullptr, false, &ReadTessdataFile);
+#else
+    // Tesseract 4's FileReader takes its own string and vector types; it
+    // reads by itself (no Windows build uses Tesseract 4).
     const int rc = api->Init(dataPath.empty() ? nullptr : dataPath.c_str(),
                              langs.c_str(),
                              tesseract::OcrEngineMode::OEM_LSTM_ONLY);
+#endif
     if (rc != 0) {
         api.reset();
         ready = false;
@@ -259,7 +308,18 @@ OCRResult TesseractOCREngine::RecognizeFile(const std::string& path) {
     }
 
     const auto t0 = std::chrono::steady_clock::now();
-    Pix* pix = pixRead(path.c_str());
+    // Leptonica's pixRead takes the name in the ANSI code page on Windows,
+    // so a Thai or emoji folder failed there: the bytes are read here, by
+    // the UTF-8 name, and decoded from memory.
+    std::vector<l_uint8> bytes;
+    if (std::FILE* file = OpenFileUtf8(path, "rb")) {
+        l_uint8 buffer[65536];
+        size_t read = 0;
+        while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0)
+            bytes.insert(bytes.end(), buffer, buffer + read);
+        std::fclose(file);
+    }
+    Pix* pix = bytes.empty() ? nullptr : pixReadMem(bytes.data(), bytes.size());
     if (!pix) {
         OCRResult r; r.error = "Failed to read image: " + path; return r;
     }
@@ -319,7 +379,15 @@ std::vector<std::string> TesseractOCREngine::AvailableLanguages() const {
     std::lock_guard<std::mutex> lock(mtx);
     std::vector<std::string> out;
     if (!api) return out;
+#if defined(TESSERACT_MAJOR_VERSION) && TESSERACT_MAJOR_VERSION < 5
+    // Tesseract 4: its own vector and string types.
+    GenericVector<STRING> languages;
+    api->GetAvailableLanguagesAsVector(&languages);
+    for (int i = 0; i < languages.size(); ++i)
+        out.emplace_back(languages[i].string());   // path-string-ok: Tesseract 4's STRING holding a language code, not a path
+#else
     api->GetAvailableLanguagesAsVector(&out); // Tesseract 5: std::vector<std::string>
+#endif
     return out;
 }
 

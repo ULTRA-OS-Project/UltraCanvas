@@ -1,0 +1,15 @@
+{
+  "@language": "tr",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Tıklayıp yazın veya satırların içinde kaydırılacağı bir kutu sürükleyin; düzenlemek için bir metne tıklayın. Yukarıdaki çubuk yazı tipini, boyutu, stili, hizalamayı ve aralığı ayarlar; renk, ön plan rengidir. Escape veya dışarıya tıklama işlemi bitirir",
+  "Letter Spacing": "Harf aralığı",
+  "Line Spacing": "Satır aralığı",
+  "Text Alignment": "Metin hizalaması",
+  "Text Bold": "Kalın metin",
+  "Text Colour": "Metin rengi",
+  "Text Font": "Metin yazı tipi",
+  "Text Italic": "İtalik metin",
+  "Text Size": "Metin boyutu",
+  "Text Strikethrough": "Üstü çizili metin",
+  "Text Underline": "Altı çizili metin"
+}

@@ -2,8 +2,9 @@
 // See the header. The look came from UltraFiler's settings window
 // (Apps/UltraFiler/UltraFilerSettingsDialog.cpp), where it was written
 // first; UltraSnip copied it, and the copy became this kit.
+// Version: 1.1.0 - ShowSaveSettingsDialog
 // Version: 1.0.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSettingsPageKit.h"
@@ -12,6 +13,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSlider.h"
@@ -277,17 +279,24 @@ void SetColorBoxColor(const std::shared_ptr<UltraCanvasButton>& box, const Color
     box->RequestRedraw();
 }
 
+// ===== DIALOGS =====
+
+void ShowSaveSettingsDialog(const std::string& extensionOrPath, UltraCanvasWindowBase* parent) {
+    UltraCanvasFileLoader::ShowSaveSettingsDialog(extensionOrPath, FileSavePicture(), FileSaveImageSize(), parent,
+                                                  nullptr, kTextFontSize);
+}
+
 // ===== THE WINDOW =====
 
-bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std::string& title, int width,
-                                       int height) {
+bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std::string& title,
+                                       const SettingsWindowOptions& options) {
     WindowConfig wc;
     wc.title = title;
-    wc.width = width;
-    wc.height = height;
+    wc.width = options.width;
+    wc.height = options.height;
     wc.resizable = true;
-    wc.type = WindowType::Dialog;
-    wc.parentWindow = parent;
+    wc.type = options.dialog ? WindowType::Dialog : WindowType::Standard;
+    wc.parentWindow = options.dialog ? parent : nullptr;
     window = CreateWindow(wc);
     if (!window || !window->IsCreated()) {
         window.reset();
@@ -302,6 +311,14 @@ bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std:
     content->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     content->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+    // The sidebar: what stands above the tree (a logo), then the tree
+    auto sidebar = std::make_shared<UltraCanvasContainer>("settings-sidebar");
+    sidebar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    sidebar->SetBackgroundColor(kTreeBackground);
+    sidebar->size.width = CSSLayout::Dimension::Px(options.treeWidth);
+    sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    if (options.sidebarHeader) sidebar->AddChild(options.sidebarHeader);
+
     tree = std::make_shared<UltraCanvasTreeView>("settings-tree");
     tree->SetFontSize(kTreeFontSize);
     tree->SetRowHeight(24);
@@ -313,15 +330,16 @@ bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std:
     // leaving two rows that show the same thing.
     tree->SetShowFirstChildOnExpand(true);
     tree->SetAutoExpandSelectedNode(true);
-    tree->size.width = CSSLayout::Dimension::Px(kTreeWidth);
-    tree->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     // The root row itself is not shown (Finish hides it, once its children
     // exist): the sections are the top level of the list.
     TreeNodeData rootData;
     rootData.nodeId = "settings";
     rootData.text = "Settings";
     tree->SetRootNode(rootData);
-    content->AddChild(tree);
+    sidebar->AddChild(tree);
+    content->AddChild(sidebar);
 
     pageArea = std::make_shared<UltraCanvasContainer>("settings-pages");
     pageArea->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -349,7 +367,7 @@ bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std:
     restoreButton->SetVisible(false);
     bottomLeft->AddChild(restoreButton);
     bottom->AddChild(bottomLeft);
-    bottom->AddChild(MakeButton("settings-close", "Close", 90, [this]() {
+    bottom->AddChild(MakeButton("settings-close", options.closeLabel, 90, [this]() {
         if (window) window->Close();
     }));
     window->AddChild(bottom);
@@ -389,7 +407,7 @@ void UltraCanvasSettingsWindow::AddPage(const std::string& pageId, const std::sh
     pageArea->AddChild(page);
 }
 
-void UltraCanvasSettingsWindow::Finish(const std::string& startPage) {
+void UltraCanvasSettingsWindow::Finish(const std::string& startPage, bool show) {
     if (!window || !tree) return;
     // After the nodes: hiding the root promotes its children to the top
     // level, which it can only do once they exist. The sections themselves
@@ -410,7 +428,7 @@ void UltraCanvasSettingsWindow::Finish(const std::string& startPage) {
         ShowPage(node->data.nodeId);
     };
     ShowPage(startPage);
-    window->Show();
+    if (show) window->Show();
 }
 
 void UltraCanvasSettingsWindow::UpdateRestoreButton() {

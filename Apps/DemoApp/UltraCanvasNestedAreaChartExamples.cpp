@@ -42,9 +42,9 @@ namespace {
 // =============================================================================
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNestedAreaChartExamples() {
-        auto container = DemoKit::CreatePage("NestedAreaChartDemo", "Nested Proportional Area Chart Examples", "");
+        auto container = DemoKit::CreatePage("NestedAreaChartDemo", Tr("Nested Proportional Area Chart Examples"), "");
 
-        auto controlsCard = DemoKit::AddCard(container, "NestedControlsCard", "Interactive controls");
+        auto controlsCard = DemoKit::AddCard(container, "NestedControlsCard", Tr("Interactive controls"));
         auto controlsRow = DemoKit::AddRow(controlsCard, "NestedControlsRow", 20);
         controlsRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
@@ -62,8 +62,8 @@ namespace {
                 {"Brazil", 8.5}, {"Australia", 7.7}, {"India", 3.3}
         };
         for (auto& point : countrySizeData) {
-            point.unit = "M km²";
-            point.category = "Land Area";
+            point.unit = Tr("M km²");
+            point.category = Tr("Land Area");
         }
 
         // Company market capitalization (in trillion $)
@@ -72,29 +72,29 @@ namespace {
                 {"Alphabet", 1.7}, {"Amazon", 1.5}, {"NVIDIA", 1.2}
         };
         for (auto& point : marketCapData) {
-            point.unit = "T$";
-            point.category = "Market Cap";
+            point.unit = Tr("T$");
+            point.category = Tr("Market Cap");
         }
 
         // Population comparison (in billions)
         std::vector<NestedAreaDataPoint> populationData = {
-                {"World", 8.0}, {"Asia", 4.7}, {"China", 1.4},
+                {Tr("World"), 8.0}, {"Asia", 4.7}, {"China", 1.4},
                 {"EU", 0.45}, {"USA", 0.33}, {"Japan", 0.12}
         };
         for (auto& point : populationData) {
-            point.unit = "B";
-            point.category = "Population";
+            point.unit = Tr("B");
+            point.category = Tr("Population");
         }
 
         // =============================================================================
         // EXAMPLE 1: RECTANGLE MODE - COUNTRY LAND AREAS
         // =============================================================================
 
-        auto rectangleCard = DemoKit::AddCard(topRow, "nestedRectCard", "Rectangle mode",
-                "Country land areas, aligned bottom-left", kNestedChartCardWidth);
+        auto rectangleCard = DemoKit::AddCard(topRow, "nestedRectCard", Tr("Rectangle mode"),
+                Tr("Country land areas, aligned bottom-left"), kNestedChartCardWidth);
         auto rectangleChart = CreateNestedAreaChartElement(
                 "nestedRectChart", 0, 0, 480, 320);
-        rectangleChart->SetChartTitle("Country Land Area (M km²)");
+        rectangleChart->SetChartTitle(Tr("Country Land Area (M km²)"));
         rectangleChart->SetShapeMode(NestedAreaShapeMode::Rectangle);
         rectangleChart->SetAlignmentMode(NestedAreaAlignmentMode::BottomLeft);
         rectangleChart->SetColorTheme(NestedAreaColorTheme::Default);
@@ -110,11 +110,11 @@ namespace {
         // EXAMPLE 2: CIRCLE MODE - MARKET CAPITALIZATION
         // =============================================================================
 
-        auto circleCard = DemoKit::AddCard(topRow, "nestedCircleCard", "Circle mode",
-                "Market capitalization as concentric circles", kNestedChartCardWidth);
+        auto circleCard = DemoKit::AddCard(topRow, "nestedCircleCard", Tr("Circle mode"),
+                Tr("Market capitalization as concentric circles"), kNestedChartCardWidth);
         auto circleChart = CreateNestedAreaChartElement(
                 "nestedCircleChart", 0, 0, 480, 320);
-        circleChart->SetChartTitle("Market Capitalization (T$)");
+        circleChart->SetChartTitle(Tr("Market Capitalization (T$)"));
         circleChart->SetShapeMode(NestedAreaShapeMode::Circle);
         circleChart->SetAlignmentMode(NestedAreaAlignmentMode::Center);
         circleChart->SetColorTheme(NestedAreaColorTheme::Categorical);
@@ -130,11 +130,11 @@ namespace {
         // EXAMPLE 3: THEME SHOWCASE - ROUNDED RECTANGLES, POPULATION DATA
         // =============================================================================
 
-        auto themeCard = DemoKit::AddCard(bottomRow, "nestedThemeCard", "Theme showcase",
-                "Rounded rectangles over population data", kNestedChartCardWidth);
+        auto themeCard = DemoKit::AddCard(bottomRow, "nestedThemeCard", Tr("Theme showcase"),
+                Tr("Rounded rectangles over population data"), kNestedChartCardWidth);
         auto themeChart = CreateNestedAreaChartElement(
                 "nestedThemeChart", 0, 0, 480, 330);
-        themeChart->SetChartTitle("World Population (B)");
+        themeChart->SetChartTitle(Tr("World Population (B)"));
         themeChart->SetShapeMode(NestedAreaShapeMode::RoundedRect);
         themeChart->SetAlignmentMode(NestedAreaAlignmentMode::BottomLeft);
         themeChart->SetColorTheme(NestedAreaColorTheme::Sunset);
@@ -152,47 +152,47 @@ namespace {
 
         auto themeDropdown = std::make_shared<UltraCanvasDropdown>(
                 "nestedThemeDropdown", 0, 0, 160, 28);
-        themeDropdown->AddItem("Default (Blue)");
-        themeDropdown->AddItem("Categorical");
-        themeDropdown->AddItem("Sequential");
-        themeDropdown->AddItem("Warm");
-        themeDropdown->AddItem("Cool");
-        themeDropdown->AddItem("Earth");
-        themeDropdown->AddItem("Pastel");
-        themeDropdown->AddItem("Vibrant");
-        themeDropdown->AddItem("Monochrome");
-        themeDropdown->AddItem("Ocean");
-        themeDropdown->AddItem("Sunset");
-        themeDropdown->AddItem("Forest");
-        themeDropdown->AddItem("Corporate");
-        themeDropdown->AddItem("Colorblind");
+        themeDropdown->AddItem(Tr("Default (Blue)"));
+        themeDropdown->AddItem(Tr("Categorical"));
+        themeDropdown->AddItem(Tr("Sequential"));
+        themeDropdown->AddItem(Tr("Warm"));
+        themeDropdown->AddItem(Tr("Cool"));
+        themeDropdown->AddItem(Tr("Earth"));
+        themeDropdown->AddItem(Tr("Pastel"));
+        themeDropdown->AddItem(Tr("Vibrant"));
+        themeDropdown->AddItem(Tr("Monochrome"));
+        themeDropdown->AddItem(Tr("Ocean"));
+        themeDropdown->AddItem(Tr("Sunset"));
+        themeDropdown->AddItem(Tr("Forest"));
+        themeDropdown->AddItem(Tr("Corporate"));
+        themeDropdown->AddItem(Tr("Colorblind"));
         themeDropdown->SetSelectedIndex(10);  // Sunset - matches the showcase chart
-        AddLabelledControl(controlsRow, "nestedThemeLabel", "Theme:", themeDropdown);
+        AddLabelledControl(controlsRow, "nestedThemeLabel", Tr("Theme:"), themeDropdown);
 
         auto shapeDropdown = std::make_shared<UltraCanvasDropdown>(
                 "nestedShapeDropdown", 0, 0, 120, 28);
-        shapeDropdown->AddItem("Rectangle");
-        shapeDropdown->AddItem("Circle");
-        shapeDropdown->AddItem("Rounded");
+        shapeDropdown->AddItem(Tr("Rectangle"));
+        shapeDropdown->AddItem(Tr("Circle"));
+        shapeDropdown->AddItem(Tr("Rounded"));
         shapeDropdown->SetSelectedIndex(2);  // RoundedRect - matches the showcase chart
-        AddLabelledControl(controlsRow, "nestedShapeLabel", "Shape:", shapeDropdown);
+        AddLabelledControl(controlsRow, "nestedShapeLabel", Tr("Shape:"), shapeDropdown);
 
         auto alignmentDropdown = std::make_shared<UltraCanvasDropdown>(
                 "nestedAlignDropdown", 0, 0, 130, 28);
-        alignmentDropdown->AddItem("Bottom Left");
-        alignmentDropdown->AddItem("Bottom Right");
-        alignmentDropdown->AddItem("Top Left");
-        alignmentDropdown->AddItem("Top Right");
-        alignmentDropdown->AddItem("Center");
+        alignmentDropdown->AddItem(Tr("Bottom Left"));
+        alignmentDropdown->AddItem(Tr("Bottom Right"));
+        alignmentDropdown->AddItem(Tr("Top Left"));
+        alignmentDropdown->AddItem(Tr("Top Right"));
+        alignmentDropdown->AddItem(Tr("Center"));
         alignmentDropdown->SetSelectedIndex(0);
-        AddLabelledControl(controlsRow, "nestedAlignLabel", "Align:", alignmentDropdown);
+        AddLabelledControl(controlsRow, "nestedAlignLabel", Tr("Align:"), alignmentDropdown);
 
         DemoKit::AddCaption(controlsCard, "nestedHintLabel",
-                "Theme/Shape apply to the population chart. Hover & click shapes!");
+                Tr("Theme/Shape apply to the population chart. Hover & click shapes!"));
 
         // Status label - shows hover/click feedback from the charts
         auto statusLabel = DemoKit::AddText(controlsCard, "nestedStatusLabel",
-                "Click a shape to select it, hover for tooltips.");
+                Tr("Click a shape to select it, hover for tooltips."));
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
 
@@ -219,7 +219,7 @@ namespace {
             };
             if (index >= 0 && index < 14) {
                 themeChart->SetColorTheme(themes[index]);
-                statusLabel->SetText("Theme changed to: " + item.text);
+                statusLabel->SetText(TrF("Theme changed to: {0}", item.text));
             }
         };
 
@@ -231,7 +231,7 @@ namespace {
             };
             if (index >= 0 && index < 3) {
                 themeChart->SetShapeMode(modes[index]);
-                statusLabel->SetText("Shape mode changed to: " + item.text);
+                statusLabel->SetText(TrF("Shape mode changed to: {0}", item.text));
             }
         };
 
@@ -248,7 +248,7 @@ namespace {
                 rectangleChart->SetAlignmentMode(aligns[index]);
                 circleChart->SetAlignmentMode(aligns[index]);
                 themeChart->SetAlignmentMode(aligns[index]);
-                statusLabel->SetText("Alignment changed to: " + item.text);
+                statusLabel->SetText(TrF("Alignment changed to: {0}", item.text));
             }
         };
 
@@ -256,8 +256,8 @@ namespace {
         auto reportClick = [statusLabel](const std::shared_ptr<UltraCanvasNestedAreaChart>& chart) {
             return [chart, statusLabel](size_t index) {
                 const auto& point = chart->GetDataPoint(index);
-                statusLabel->SetText("Clicked: " + point.label + " (" +
-                                     std::to_string(point.value) + " " + point.unit + ")");
+                statusLabel->SetText(TrF("Clicked: {0} ({1} {2})", point.label,
+                                         std::to_string(point.value), point.unit));
             };
         };
         rectangleChart->onShapeClick = reportClick(rectangleChart);
@@ -268,21 +268,21 @@ namespace {
         // INFO PANEL
         // =============================================================================
 
-        auto infoCard = DemoKit::AddNotes(bottomRow, "NestedAreaInfo", "Nested Area Chart Features:", {
-                "Shape area is PROPORTIONAL to value "
-                "(side/radius = sqrt(value/max) - mathematically correct)",
-                "Shape modes: Rectangle, Circle, RoundedRect",
-                "7 alignment modes (corners, centers, concentric)",
-                "14 predefined color themes + custom colors",
-                "Inside/outside labels with automatic contrast",
-                "Legend with values, optional reference grid",
-                "Hover highlighting and tooltips",
-                "Click selection with callbacks: "
-                "onShapeHover, onShapeClick, onShapeSelect",
-                "Fluent NestedAreaChartBuilder for quick setup"});
+        auto infoCard = DemoKit::AddNotes(bottomRow, "NestedAreaInfo", Tr("Nested Area Chart Features:"), {
+                Tr("Shape area is PROPORTIONAL to value "
+                "(side/radius = sqrt(value/max) - mathematically correct)"),
+                Tr("Shape modes: Rectangle, Circle, RoundedRect"),
+                Tr("7 alignment modes (corners, centers, concentric)"),
+                Tr("14 predefined color themes + custom colors"),
+                Tr("Inside/outside labels with automatic contrast"),
+                Tr("Legend with values, optional reference grid"),
+                Tr("Hover highlighting and tooltips"),
+                Tr("Click selection with callbacks: "
+                "onShapeHover, onShapeClick, onShapeSelect"),
+                Tr("Fluent NestedAreaChartBuilder for quick setup")});
         DemoKit::AddCaption(infoCard, "NestedAreaInfoSee",
-                "See the Programmer's Guide (doc icon above) and the "
-                "example source (C++ icon above) for API details.");
+                Tr("See the Programmer's Guide (doc icon above) and the "
+                "example source (C++ icon above) for API details."));
 
         return container;
     }

@@ -6,8 +6,10 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.4.0 - RichTextRun::letterSpacingPt: a run's own room between its letters;
+//                  RichStyleCharacter::letterSpacingPt: a character style's
 // Version: 1.3.3
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -43,6 +45,11 @@ struct RichTextRun {
     float fontSizePt = 0.0f;        // 0 = inherit
     std::string color;              // "#RRGGBB" or empty = inherit
     std::string highlightColor;     // background behind the text, "#RRGGBB"; empty = none
+    // Extra room between the letters of this run, in points - Word's
+    // character spacing, CSS letter-spacing, a drawing's tracking of some of
+    // its words; below 0 sets them closer. Unset = the view's own (the
+    // editor's RichTextEditStyle::letterSpacing, normally the font's).
+    std::optional<float> letterSpacingPt;
     bool lineBreakBefore = false;   // hard line break precedes this run (within the same paragraph)
 
     // ===== INLINE IMAGE =====
@@ -132,6 +139,7 @@ struct RichTextRun {
             && subscript == other.subscript && superscript == other.superscript
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
+            && letterSpacingPt == other.letterSpacingPt
             && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
             && commentIds == other.commentIds && change == other.change && revision == other.revision
             && field == Field::Plain && other.field == Field::Plain   // a field stays its own run
@@ -534,10 +542,11 @@ struct RichStyleCharacter {
     std::optional<float> fontSizePt;
     std::optional<std::string> color;
     std::optional<std::string> highlightColor;
+    std::optional<float> letterSpacingPt;   // RichTextRun::letterSpacingPt
 
     bool IsEmpty() const {
         return !bold && !italic && !underline && !strikethrough && !code && !fontFamily
-            && !fontSizePt && !color && !highlightColor;
+            && !fontSizePt && !color && !highlightColor && !letterSpacingPt;
     }
     // Sets `run`'s properties to the ones stated here.
     void ApplyTo(RichTextRun& run) const;

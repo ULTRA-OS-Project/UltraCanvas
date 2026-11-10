@@ -25,48 +25,48 @@ namespace UltraCanvas {
 // ===== BASIC UI ELEMENTS =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextInputExamples() {
-        auto container = DemoKit::CreatePage("TextInputExamples", "Text Input Examples",
-                "Single- and multi-line inputs, password fields with strength meters and rule "
-                "legends, and buttons inside the field");
+        auto container = DemoKit::CreatePage("TextInputExamples", Tr("Text Input Examples"),
+                Tr("Single- and multi-line inputs, password fields with strength meters and rule "
+                "legends, and buttons inside the field"));
 
         // The examples share the width and wrap under each other when narrow.
         auto examples = DemoKit::AddRow(container, "TextInputCards");
 
         // ===== COLUMN 1: BASIC INPUTS =====
-        auto basicCard = DemoKit::AddCard(examples, "TextInputBasicCard", "Basic Inputs");
+        auto basicCard = DemoKit::AddCard(examples, "TextInputBasicCard", Tr("Basic Inputs"));
 
-        DemoKit::AddText(basicCard, "SingleLineLabel", "Single Line Input");
+        DemoKit::AddText(basicCard, "SingleLineLabel", Tr("Single Line Input"));
 
         // Single Line Input
         auto singleLineInput = std::make_shared<UltraCanvasTextInput>("SingleLineInput", 0, 0, 300, 30);
-        singleLineInput->SetPlaceholder("Enter single line text...");
+        singleLineInput->SetPlaceholder(Tr("Enter single line text..."));
         singleLineInput->SetMaxLength(100);
         DemoKit::AddStretched(basicCard, singleLineInput);
 
 
         // Multi-line Text Area
-        DemoKit::AddText(basicCard, "MultiLineLabel", "Multi-line Text Input");
+        DemoKit::AddText(basicCard, "MultiLineLabel", Tr("Multi-line Text Input"));
 
         // A text area has no frame of its own - it is also the editor that
         // fills a window - so these two get the text inputs' border.
         auto multiLineInput = std::make_shared<UltraCanvasTextArea>("MultiLineInput", 0, 0, 300, 100);
         multiLineInput->SetBorders(1.0f, Color(200, 200, 200, 255), 4.0f);
         multiLineInput->SetWordWrap(true);
-        multiLineInput->SetPlaceholder("Enter multi-line text...\nSupports line breaks.");
+        multiLineInput->SetPlaceholder(Tr("Enter multi-line text...\nSupports line breaks."));
         DemoKit::AddStretched(basicCard, multiLineInput);
 
 
-        DemoKit::AddText(basicCard, "PasswordLabel", "Basic Password Field (eye reveals text)");
+        DemoKit::AddText(basicCard, "PasswordLabel", Tr("Basic Password Field (eye reveals text)"));
 
         // Password Field (Basic) - the in-field eye button shows the typed text
         auto passwordInput = std::make_shared<UltraCanvasTextInput>("PasswordInput", 0, 0, 300, 30);
         passwordInput->SetInputType(TextInputType::Password);
-        passwordInput->SetPlaceholder("Enter password...");
+        passwordInput->SetPlaceholder(Tr("Enter password..."));
         passwordInput->SetShowPasswordToggle(true);
         DemoKit::AddStretched(basicCard, passwordInput);
 
 
-        DemoKit::AddText(basicCard, "NumericLabel", "Numeric Input (0-1000)");
+        DemoKit::AddText(basicCard, "NumericLabel", Tr("Numeric Input (0-1000)"));
 
         // Numeric Input
         auto numericInput = std::make_shared<UltraCanvasTextInput>("NumericInput", 0, 0, 300, 30);
@@ -75,12 +75,12 @@ namespace UltraCanvas {
         DemoKit::AddStretched(basicCard, numericInput);
 
 
-        DemoKit::AddText(basicCard, "TextAreaLabel", "Text Area Component");
+        DemoKit::AddText(basicCard, "TextAreaLabel", Tr("Text Area Component"));
 
         // Text Area Component
         auto textAreaInput = std::make_shared<UltraCanvasTextArea>("TextArea", 0, 0, 300, 100);
         textAreaInput->SetBorders(1.0f, Color(200, 200, 200, 255), 4.0f);
-        textAreaInput->SetPlaceholder("A plain text area: type, paste, undo...");
+        textAreaInput->SetPlaceholder(Tr("A plain text area: type, paste, undo..."));
         DemoKit::AddStretched(basicCard, textAreaInput);
 
         // ===== IN-FIELD BUTTONS: CLEAR AND "RESET" =====
@@ -91,40 +91,40 @@ namespace UltraCanvas {
         // calls onTextChanged, then onCleared. Both start filled, so the
         // buttons are on show.
         auto clearCard = DemoKit::AddCard(examples, "ClearButtonLabel",
-                "Buttons inside the field: clear and \"Reset\"");
+                Tr("Buttons inside the field: clear and \"Reset\""));
 
         auto clearInput = std::make_shared<UltraCanvasTextInput>("ClearButtonInput", 0, 0, 300, 30);
-        clearInput->SetPlaceholder("Type, then click the cross...");
+        clearInput->SetPlaceholder(Tr("Type, then click the cross..."));
         clearInput->SetShowClearButton(true);
-        clearInput->SetText("Click the cross to clear me");
+        clearInput->SetText(Tr("Click the cross to clear me"));
         DemoKit::AddStretched(clearCard, clearInput);
 
         auto resetInput = std::make_shared<UltraCanvasTextInput>("ResetButtonInput", 0, 0, 300, 30);
-        resetInput->SetPlaceholder("Filter components");
+        resetInput->SetPlaceholder(Tr("Filter components"));
         resetInput->SetShowClearButton(true);
-        resetInput->SetClearButtonText("Reset");
-        resetInput->SetText("chart");
+        resetInput->SetClearButtonText(Tr("Reset"));
+        resetInput->SetText(Tr("chart"));
         DemoKit::AddStretched(clearCard, resetInput);
 
         auto clearStatus = DemoKit::AddCaption(clearCard, "ClearButtonStatus",
-                "SetShowClearButton(true) shows the button,\n"
-                "SetClearButtonText(\"Reset\") gives it a word");
+                Tr("SetShowClearButton(true) shows the button,\n"
+                "SetClearButtonText(\"Reset\") gives it a word"));
 
         clearInput->onCleared = [clearStatus]() {
-            clearStatus->SetText("The cross emptied the field\n(onTextChanged, then onCleared)");
+            clearStatus->SetText(Tr("The cross emptied the field\n(onTextChanged, then onCleared)"));
         };
         resetInput->onCleared = [clearStatus]() {
-            clearStatus->SetText("\"Reset\" emptied the field\n(onTextChanged, then onCleared)");
+            clearStatus->SetText(Tr("\"Reset\" emptied the field\n(onTextChanged, then onCleared)"));
         };
 
 
         // ===== PASSWORD WITH BAR STRENGTH METER =====
-        auto barCard = DemoKit::AddCard(examples, "PasswordTitle1", "Password with Bar Strength Meter");
+        auto barCard = DemoKit::AddCard(examples, "PasswordTitle1", Tr("Password with Bar Strength Meter"));
 
         // Reveal ("eye") button on the right of the field: click it to read back the
         // password in clear text, click again to mask it.
         auto passwordInput1 = CreateRevealablePasswordInput("Password1", 0, 0, 350, 30);
-        passwordInput1->SetPlaceholder("Enter password...");
+        passwordInput1->SetPlaceholder(Tr("Enter password..."));
 
         // Add validation rules
         passwordInput1->AddValidationRule(ValidationRule::MinLength(8));
@@ -144,8 +144,8 @@ namespace UltraCanvas {
 
         // Description
         DemoKit::AddCaption(barCard, "BarDesc",
-                "Real-time strength indicator with animated color transitions (red, then "
-                "yellow, then green). Click the eye icon in the field to show the password.");
+                Tr("Real-time strength indicator with animated color transitions (red, then "
+                "yellow, then green). Click the eye icon in the field to show the password."));
 
         // ===== PASSWORD WITH SEGMENTED METER =====
 
@@ -155,7 +155,7 @@ namespace UltraCanvas {
 //        container->AddChild(passwordTitle2);
 //
 //        auto passwordInput2 = CreatePasswordInput("Password2", 350, 230, 350, 30);
-//        passwordInput2->SetPlaceholder("Try a strong password...");
+//        passwordInput2->SetPlaceholder(Tr("Try a strong password..."));
 //        container->AddChild(passwordInput2);
 //
 //        // Segmented Strength Meter
@@ -178,15 +178,15 @@ namespace UltraCanvas {
 //        container->AddChild(segmentDescription);
 
         // ===== PASSWORD WITH CHECKLIST =====
-        auto checklistCard = DemoKit::AddCard(examples, "PasswordTitle3", "Password with Requirements Checklist");
+        auto checklistCard = DemoKit::AddCard(examples, "PasswordTitle3", Tr("Password with Requirements Checklist"));
 
         auto passwordInput3 = CreatePasswordInput("Password3", 0, 0, 350, 30);
-        passwordInput3->SetPlaceholder("Meet all requirements...");
+        passwordInput3->SetPlaceholder(Tr("Meet all requirements..."));
         DemoKit::AddStretched(checklistCard, passwordInput3);
 
         // Explicit "Show password" flag instead of the in-field eye icon: an
         // external control driving the same SetPasswordRevealed() state.
-        auto showPassword3 = std::make_shared<UltraCanvasCheckbox>("ShowPassword3", "Show password");
+        auto showPassword3 = std::make_shared<UltraCanvasCheckbox>("ShowPassword3", Tr("Show password"));
         showPassword3->SetChecked(false);
         auto* password3 = passwordInput3.get();
         showPassword3->onStateChanged = [password3](CheckedState, CheckedState newState) {
@@ -218,12 +218,12 @@ namespace UltraCanvas {
 
         // Description
         DemoKit::AddCaption(checklistCard, "ChecklistDesc",
-                "Interactive checklist with met / unmet indicators showing real-time "
-                "validation status. \"Show password\" flag unmasks the field.");
+                Tr("Interactive checklist with met / unmet indicators showing real-time "
+                "validation status. \"Show password\" flag unmasks the field."));
 
         // ===== COMPLETE PASSWORD SETUP =====
         // Wide enough for the 435 px legend before it wraps.
-        auto completeCard = DemoKit::AddCard(examples, "PasswordTitle4", "Complete Setup: Meter + Detailed Legend",
+        auto completeCard = DemoKit::AddCard(examples, "PasswordTitle4", Tr("Complete Setup: Meter + Detailed Legend"),
                                              "", 435 + 2 * DemoKit::kCardPadding + 2);
 
         // The field and its flag beside the circular meter.
@@ -235,10 +235,10 @@ namespace UltraCanvas {
         // Both reveal controls on one field: the in-field eye icon and the explicit
         // "Show password" flag below stay in sync.
         auto passwordInput4 = CreateRevealablePasswordInput("Password4", 0, 0, 350, 30);
-        passwordInput4->SetPlaceholder("Create strong password...");
+        passwordInput4->SetPlaceholder(Tr("Create strong password..."));
         DemoKit::AddStretched(completeFields, passwordInput4);
 
-        auto showPassword4 = std::make_shared<UltraCanvasCheckbox>("ShowPassword4", "Show password");
+        auto showPassword4 = std::make_shared<UltraCanvasCheckbox>("ShowPassword4", Tr("Show password"));
         showPassword4->SetChecked(false);
         auto* password4 = passwordInput4.get();
         auto* showPassword4Ptr = showPassword4.get();
@@ -295,11 +295,11 @@ namespace UltraCanvas {
 
         // Description
         DemoKit::AddCaption(completeCard, "CompleteDesc",
-                "Professional registration form setup with:\n"
+                Tr("Professional registration form setup with:\n"
                 "• Eye icon and \"Show password\" flag (kept in sync)\n"
                 "• Circular strength meter with percentage\n"
                 "• Detailed rule legend with backgrounds\n"
-                "• Strict validation (12+ chars, no patterns)");
+                "• Strict validation (12+ chars, no patterns)"));
 
 //        // ===== COMPACT LEGEND EXAMPLE =====
 //
@@ -310,7 +310,7 @@ namespace UltraCanvas {
 //        container->AddChild(compactTitle);
 //
 //        auto passwordInput5 = CreatePasswordInput("Password5", 730, 550, 350, 30);
-//        passwordInput5->SetPlaceholder("Space-efficient display...");
+//        passwordInput5->SetPlaceholder(Tr("Space-efficient display..."));
 //        container->AddChild(passwordInput5);
 //
 //        // Compact Legend

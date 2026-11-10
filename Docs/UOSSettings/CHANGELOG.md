@@ -1,3 +1,45 @@
+#### 2026-11-09 *0.20.0*
+- **Desktop: a *Theme* choice** - *Dark* or *Light* bars for UltraDesktop
+  (`theme` in `desktop.json`), under *Taskbar*. A running desktop follows it
+  within a second.
+- **Desktop: *Dropped files*** - where files dropped on UltraDesktop's
+  wallpaper go: the Sticker board's Unsorted category or the Desktop folder,
+  shown as icons (`dropFilesOn`).
+
+#### 2026-11-07 *0.19.0*
+- **Built on the framework's settings page kit** (`UltraCanvasSettingsPageKit`,
+  framework changelog `settings-page-kit-options`): the window, the tree of
+  pages, the bottom bar and the page switching come from it, where they were
+  this window's own; the ULTRA OS logo is the kit's sidebar header. Nothing
+  changes on screen.
+
+#### 2026-11-06 *0.18.0*
+- **Desktop: the Sticker board's cards and hover preview.** Two more rows on
+  the *Desktop* page: *Sticker board cards* (*Text only*, *Thumbnail and
+  text*, *Thumbnail and text in a row*) and *Hover preview* (*Small*,
+  *Medium*, *Large*). The desktop takes a change within a second.
+
+#### 2026-11-06 *0.17.0*
+- **Desktop > Start with the desktop** lists UltraClipboard,
+  UltraNotifications and the Sticker board as well (UltraDesktop's own
+  list): the two programs start with no window, the board is made ready
+  unseen.
+
+#### 2026-11-05 *0.16.0*
+- **UOS-Settings takes the Computer base set.** Its catalogue names
+  `Computer` under `@bases`, as the localisation proposal's Appendix B
+  assigns it: "Notifications" and "System" now come from that set, worded
+  as UltraFiler and the other system tools word them, instead of from a
+  copy in UOS-Settings' own catalogue.
+
+#### 2026-11-05 *0.15.0*
+- **Settings in every language.** UOS-Settings' own catalogue
+  (`media/locale/<lang>/UOS-Settings.json`) now exists in all thirty
+  languages: its page names (Appearance, Notifications, Translations,
+  Trusted certificates ...), the language page with its notes, and the
+  localisation editor's translator field showed in English whatever the
+  language - on the very page where the language is chosen.
+
 #### 2026-11-03 *0.14.0*
 - **Language > Translations: the localisation editor.** A page under
   Language hosts `UltraCanvasLocalisationEditor`: every set an

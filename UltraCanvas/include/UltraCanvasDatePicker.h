@@ -1,4 +1,6 @@
 // include/UltraCanvasDatePicker.h
+// Version: 1.2.0 - CalendarStyle::FromTheme, DatePickerStyle::FromTheme, ApplyTheme on the calendar view and the
+//                  two pickers: they follow the theme; a SetStyle by hand stops the following
 // Version: 1.1.0 - the calendar names follow a language switched at run time
 // Calendar / date-selection widgets for UltraCanvas.
 //
@@ -33,7 +35,7 @@
 // Version: 1.1.0 - 2026-06-17 - several months per view, stacked or side by side (SetMonthsPerView,
 //                  CalendarOrientation)
 // Version: 1.0.0 - 2026-06-14 - UltraCanvasCalendarView and UltraCanvasDatePicker
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -186,6 +188,20 @@ namespace UltraCanvas {
         std::string fontFamily;
         float fontSize              = 12.0f;
         float headerFontSize        = 13.0f;
+
+        // The theme's roles: the raised surface for the panel and its header
+        // with hairlines, ink for the cells and the header, muted ink for
+        // the weekday row and the arrows, faint ink for the days of the
+        // months beside and the week numbers, the hover fill, the accent
+        // with text on it for the selected day, today's ring and the
+        // footer, the soft accent for a range, the focus ring, danger for a
+        // blocked day's strike; the weekend colour is the element role
+        // "calendar.weekend" where a theme names it, else the base's; the
+        // interface font at the body size - over a base's own shape
+        // (metrics), or a default one
+        static CalendarStyle FromTheme(const UltraCanvasTheme& theme, const CalendarStyle& base);
+        static CalendarStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, CalendarStyle()); }
+        static CalendarStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== CALENDAR VIEW =====
@@ -289,9 +305,10 @@ namespace UltraCanvas {
         void SetScrollMonthRange(const UCDate& from, const UCDate& to);
 
         // ===== STYLE =====
-        void SetStyle(const CalendarStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const CalendarStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
         const CalendarStyle& GetStyle() const { return style; }
         CalendarStyle& GetStyle() { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(CalendarStyle::FromTheme(theme, style)); }
 
         // Preferred size for the current style/configuration (used when hosted
         // in a popup or to size an inline calendar).
@@ -482,6 +499,16 @@ namespace UltraCanvas {
         float fontSize       = 12.0f;
 
         CalendarStyle calendarStyle;
+
+        // The theme's roles: the well for the field with the control border
+        // and the focus ring, the hover fill, the panel disabled, ink and the
+        // caret in ink, faint ink for the hint, muted ink for the glyph; the
+        // interface font at the body size; the calendar from
+        // CalendarStyle::FromTheme - over a base's own shape (metrics), or a
+        // default one
+        static DatePickerStyle FromTheme(const UltraCanvasTheme& theme, const DatePickerStyle& base);
+        static DatePickerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, DatePickerStyle()); }
+        static DatePickerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== DATE PICKER (dropdown calendar) =====
@@ -555,6 +582,7 @@ namespace UltraCanvas {
         // ===== STYLE =====
         void SetStyle(const DatePickerStyle& s);
         const DatePickerStyle& GetStyle() const { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(DatePickerStyle::FromTheme(theme, style)); }
 
         // ===== OVERRIDES =====
         void SetWindow(UltraCanvasWindowBase* win) override;
@@ -656,6 +684,7 @@ namespace UltraCanvas {
 
         // ===== STYLE =====
         void SetStyle(const DatePickerStyle& s);
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(DatePickerStyle::FromTheme(theme, style)); }
 
         // ===== OVERRIDES =====
         void SetBounds(const Rect2Df& b) override;

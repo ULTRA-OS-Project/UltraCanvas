@@ -28,13 +28,16 @@ add_executable(UltraDesktop
     ui/UltraDesktopClipboardPanel.cpp
     ui/UltraDesktopClockPanel.cpp
     ui/UltraDesktopDevicePanel.cpp
+    ui/UltraDesktopPanelTheme.cpp
     ui/UltraDesktopPopupPanel.cpp
     ui/UltraDesktopSettings.cpp
     ui/UltraDesktopStickerboard.cpp
+    ui/UltraDesktopDesktopIcons.cpp
     ui/UltraDesktopTasksWindow.cpp
     ui/UltraDesktopVolumePanel.cpp
     ui/UltraDesktopWifiPanel.cpp
     ui/UltraDesktopWindow.cpp
+    ui/UltraDesktopWindowPreviews.cpp
 )
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols

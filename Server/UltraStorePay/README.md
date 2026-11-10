@@ -52,14 +52,26 @@ Requests and answers are JSON unless said; errors are
 |---|---|
 | `POST /v1/checkout` | `{app, code?, language?}` → the order (`order_id`, `secret`, `amount`, `currency`, `list_price`, `code`, `code_applied`, `checkout_url`, `environment`) |
 | `GET /pay/{order}` | the page that sends the buyer to Skrill (HTML) |
+| `GET /pay/static/style.css`, `/pay/static/logo-light.png`, `/pay/static/logo-dark.png` | the look of the pages: the stylesheet and the ULTRA OS mark, from the package (`ultrastore_pay/static/`), cached for a day |
 | `POST /v1/skrill/status` | Skrill's status report (form fields) → `OK` |
 | `GET /pay/{order}/return`, `/cancel` | where Skrill sends the buyer back (HTML) |
 | `GET /v1/orders/{order}?secret=` | the order's state; when paid, `licence`, `licence_id`, `receipt_no`, `paid_at` |
-| `GET /v1/orders/{order}/receipt?secret=` | the receipt (text) |
+| `GET /v1/orders/{order}/receipt?secret=` | the receipt: a page for a browser (`Accept: text/html` first, as the store's *Receipt* button opens it), text for anything else |
 | `POST /v1/orders/{order}/download?secret=&file=` | `{url, expires}` for one of the app's restricted packages |
 | `GET /v1/sales?since=N` | `Authorization: Bearer <admin token>` → `{sales: [{seq, order_id, at, code, app, amount, currency, receipt_no, skrill_transaction}], next}` |
 | `GET /v1/keys` | `{licence_public_key, environment}` |
 | `GET /healthz` | `ok`, or what is not configured |
+
+## The pages
+
+Everything a buyer reads in a browser - the checkout hand-off, the
+thank-you and cancel pages, the receipt - is one frame (`pages.py`): the
+ULTRA OS mark and the name at the top, the content on a card, the store's
+colours (the window's `StoreTheme.h`), a dark look where the browser asks
+for one, and no script or font from anywhere else. The stylesheet and the
+mark are served by the service itself under `/pay/static/`. The admin
+backend's partner landing pages (`go/<CODE>/`) carry the same stylesheet,
+copied in `Affiliates.cpp`: change both together.
 
 ## The licence
 

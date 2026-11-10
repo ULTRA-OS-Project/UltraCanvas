@@ -1,7 +1,6 @@
 {
   "@language": "ca",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "Afegeix un compte",
   "App password": "Contrasenya d'aplicació",
   "Attach file": "Adjunta un fitxer",
   "Attachment": "Fitxer adjunt",
@@ -44,7 +43,6 @@
   "Search messages": "Cerca missatges",
   "Sending": "S'està enviant",
   "Sent": "Enviats",
-  "Server": "Servidor",
   "Sign out": "Tanca la sessió",
   "Sign-in": "Inici de sessió",
   "Spam": "Correu brossa",

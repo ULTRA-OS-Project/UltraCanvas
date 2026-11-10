@@ -44,7 +44,7 @@ namespace UltraCanvas {
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
         auto tab = MakeTabPage("ArcFriendsTab", "ArcFriendsDesc",
-                "Character co-occurrence: node size = degree, labels vertical, semicircle arcs. Click a node to see connections.");
+                Tr("Character co-occurrence: node size = degree, labels vertical, semicircle arcs. Click a node to see connections."));
 
         auto diagram = std::make_shared<UltraCanvasArcDiagram>(
                 "ArcFriends", 10, 34, 990, 654);
@@ -148,12 +148,11 @@ namespace UltraCanvas {
         diagram->SetStyle(s);
 
         diagram->onNodeClick = [statusLabel](int, const ArcNode& n) {
-            statusLabel->SetText("Character: " + n.label);
+            statusLabel->SetText(TrF("Character: {0}", n.label));
         };
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
-            std::ostringstream ss;
-            ss << e.sourceId << " — " << e.targetId << "  scenes: " << static_cast<int>(e.weight);
-            statusLabel->SetText(ss.str());
+            statusLabel->SetText(TrF("{0} — {1}  scenes: {2}", e.sourceId, e.targetId,
+                                     static_cast<int>(e.weight)));
         };
 
         DemoKit::AddFixed(tab, diagram);
@@ -168,7 +167,7 @@ namespace UltraCanvas {
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
         auto tab = MakeTabPage("ArcCanonTab", "ArcCanonDesc",
-                "Canonical arc diagram: arcs colored by category, width encodes strength. Perfect semicircle geometry.");
+                Tr("Canonical arc diagram: arcs colored by category, width encodes strength. Perfect semicircle geometry."));
 
         auto diagram = std::make_shared<UltraCanvasArcDiagram>(
                 "ArcCanon", 10, 34, 990, 654);
@@ -219,15 +218,13 @@ namespace UltraCanvas {
         s.marginV        = 60.0f;
         s.showAxisArrow  = true;
         s.showLegend     = true;
-        s.legendEntries  = {{"Category 1", red}, {"Category 2", orange}, {"Category 3", blue}};
+        s.legendEntries  = {{Tr("Category 1"), red}, {Tr("Category 2"), orange}, {Tr("Category 3"), blue}};
         s.legendX        = 20.0f;
         s.legendY        = 30.0f;
         diagram->SetStyle(s);
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
-            std::ostringstream ss;
-            ss << e.sourceId << " -> " << e.targetId << "  weight: " << e.weight;
-            statusLabel->SetText(ss.str());
+            statusLabel->SetText(TrF("{0} -> {1}  weight: {2}", e.sourceId, e.targetId, e.weight));
         };
 
         DemoKit::AddFixed(tab, diagram);
@@ -242,17 +239,17 @@ namespace UltraCanvas {
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
         auto tab = MakeTabPage("ArcDirTab", "ArcDirDesc",
-                "Directed flow: hover a node to focus its connections (others fade to gray). Click empty space to reset. Apex shows each link's share of total flow.");
+                Tr("Directed flow: hover a node to focus its connections (others fade to gray). Click empty space to reset. Apex shows each link's share of total flow."));
 
         auto diagram = std::make_shared<UltraCanvasArcDiagram>(
                 "ArcDir", 10, 34, 990, 654);
 
-        struct FlowNode { const char* id; const char* label; float size; Color color; };
+        struct FlowNode { const char* id; std::string label; float size; Color color; };
         FlowNode fnodes[] = {
-                {"home",    "Home Page",      20.0f, Color( 80,140,210,230)},
-                {"fleet",   "The Fleet",      28.0f, Color( 30, 30, 30,240)},
-                {"special", "Special Forces", 22.0f, Color(180, 50, 50,230)},
-                {"train",   "Training",        8.0f, Color(180, 80, 80,200)},
+                {"home",    Tr("Home Page"),      20.0f, Color( 80,140,210,230)},
+                {"fleet",   Tr("The Fleet"),      28.0f, Color( 30, 30, 30,240)},
+                {"special", Tr("Special Forces"), 22.0f, Color(180, 50, 50,230)},
+                {"train",   Tr("Training"),        8.0f, Color(180, 80, 80,200)},
                 {"weNavy",  "We Are Navy",     8.0f, Color( 60, 60, 60,200)},
                 {"marco",   "San Marco Briga.",18.0f, Color( 40,120, 40,230)},
         };
@@ -323,9 +320,8 @@ namespace UltraCanvas {
         diagram->SetStyle(s);
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
-            std::ostringstream ss;
-            ss << e.sourceId << " -> " << e.targetId << "  flow: " << static_cast<int>(e.weight);
-            statusLabel->SetText(ss.str());
+            statusLabel->SetText(TrF("{0} -> {1}  flow: {2}", e.sourceId, e.targetId,
+                                     static_cast<int>(e.weight)));
         };
 
         DemoKit::AddFixed(tab, diagram);
@@ -340,7 +336,7 @@ namespace UltraCanvas {
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
         auto tab = MakeTabPage("ArcGenomTab", "ArcGenomDesc",
-                "RNA base pairs: known (above) and novel (below) connections, colored by statistical significance (P-value).");
+                Tr("RNA base pairs: known (above) and novel (below) connections, colored by statistical significance (P-value)."));
 
         auto diagram = std::make_shared<UltraCanvasArcDiagram>(
                 "ArcGenom", 10, 34, 990, 654);
@@ -413,18 +409,19 @@ namespace UltraCanvas {
         s.marginV          = 50.0f;
         s.showLegend       = true;
         s.legendEntries    = {
-                {"Known: [0.1e-06]",      darkBlue},
-                {"Known: (1e-06,1e-05]",  lightBlue},
-                {"Known: (1e-05,0.0001]", amber},
-                {"Known: (0.0001,0.001]", red},
+                {Tr("Known: [0.1e-06]"),      darkBlue},
+                {Tr("Known: (1e-06,1e-05]"),  lightBlue},
+                {Tr("Known: (1e-05,0.0001]"), amber},
+                {Tr("Known: (0.0001,0.001]"), red},
         };
         s.legendX = 20.0f;
         s.legendY = 10.0f;
         diagram->SetStyle(s);
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
-            std::string side = (e.side == ArcEdgeType::AboveBaseline) ? "known" : "novel";
-            statusLabel->SetText(e.sourceId + " - " + e.targetId + "  (" + side + " base pair)");
+            statusLabel->SetText(e.side == ArcEdgeType::AboveBaseline
+                                     ? TrF("{0} - {1}  (known base pair)", e.sourceId, e.targetId)
+                                     : TrF("{0} - {1}  (novel base pair)", e.sourceId, e.targetId));
         };
 
         DemoKit::AddFixed(tab, diagram);
@@ -437,9 +434,9 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateArcDiagramExamples()
     {
-        auto page = DemoKit::CreatePage("ArcDiagramExamples", "Arc Diagram",
-                "Nodes on a baseline, edges as cubic Bezier arcs. Above = forward, below = back or "
-                "novel. Width + opacity encode weight.");
+        auto page = DemoKit::CreatePage("ArcDiagramExamples", Tr("Arc Diagram"),
+                Tr("Nodes on a baseline, edges as cubic Bezier arcs. Above = forward, below = back or "
+                "novel. Width + opacity encode weight."));
         // The tabs fill the area, as the diagrams did before.
         page->SetFillsArea(true);
 
@@ -447,7 +444,7 @@ namespace UltraCanvas {
         DemoKit::Add(page, card, 1);
         card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        auto statusLabel = DemoKit::CreateCaption("ArcStatus", "Click a node or arc to inspect.");
+        auto statusLabel = DemoKit::CreateCaption("ArcStatus", Tr("Click a node or arc to inspect."));
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(6.0f);
@@ -460,10 +457,10 @@ namespace UltraCanvas {
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetTabMaxWidth(300);
 
-        tabs->AddTab("Character co-occurrence",   MakeFriendsTab(statusLabel));
-        tabs->AddTab("Canonical reference",        MakeCanonicalTab(statusLabel));
-        tabs->AddTab("Directed flow (Navy)",       MakeDirectedTab(statusLabel));
-        tabs->AddTab("RNA base pairs (genomics)",  MakeGenomicsTab(statusLabel));
+        tabs->AddTab(Tr("Character co-occurrence"),   MakeFriendsTab(statusLabel));
+        tabs->AddTab(Tr("Canonical reference"),        MakeCanonicalTab(statusLabel));
+        tabs->AddTab(Tr("Directed flow (Navy)"),       MakeDirectedTab(statusLabel));
+        tabs->AddTab(Tr("RNA base pairs (genomics)"),  MakeGenomicsTab(statusLabel));
 
         DemoKit::Add(card, tabs, 1);
         // From nothing, not from the diagrams' height: the tabs take the

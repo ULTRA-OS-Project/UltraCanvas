@@ -1,0 +1,19 @@
+{
+  "@language": "zh-Hant",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "標題色彩",
+  "Edit Title": "編輯標題",
+  "The title is in the video": "標題已放入影片",
+  "The title is unchanged": "標題未變更",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "標題已清空：它會保留原本的文字（若要移除，請在其軌道上刪除該標題）",
+  "Title Alignment": "標題對齊",
+  "Title Bold": "標題粗體",
+  "Title Font": "標題字型",
+  "Title Italic": "標題斜體",
+  "Title Letter Spacing": "標題字元間距",
+  "Title Line Spacing": "標題行距",
+  "Title Size": "標題大小",
+  "Title Strikethrough": "標題刪除線",
+  "Title Underline": "標題底線",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "正在影格上輸入標題：按 Escape、Ctrl+Enter 或在外部按一下即可將其放入影片"
+}

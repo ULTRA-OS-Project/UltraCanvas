@@ -1,7 +1,10 @@
 // core/UltraCanvasTextFormatBar.cpp
 // The text formatting bar: see include/UltraCanvasTextFormatBar.h.
+// Version: 1.1.0 - letter spacing to and from the selected words (TextFormatCharDelta,
+//                  TextFormatAtCaret); HasKeyboardFocus; the Font list made again when the
+//                  fonts change (GetFontSetGeneration)
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextFormatBar.h"
@@ -15,6 +18,7 @@
 #include "UltraCanvasSeparator.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasUtils.h"           // NormalizePath
+#include "UltraCanvasWindow.h"          // GetFocusedElement
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
@@ -41,6 +45,10 @@ RichCharFormatDelta TextFormatCharDelta(TextFormatAttribute attribute, const Tex
         case TextFormatAttribute::Italic: d.setItalic = true; d.italic = f.italic; break;
         case TextFormatAttribute::Underline: d.setUnderline = true; d.underline = f.underline; break;
         case TextFormatAttribute::Strikethrough: d.setStrikethrough = true; d.strikethrough = f.strikethrough; break;
+        case TextFormatAttribute::LetterSpacing:
+            d.setLetterSpacing = true;
+            d.letterSpacingPt = f.letterSpacing * pointsPerUnit;
+            break;
         default: break;
     }
     return d;
@@ -55,14 +63,23 @@ TextFormat TextFormatAtCaret(const RichCharFormatState& state, const TextFormat&
     if (state.italic == Tri::On) f.italic = true;
     if (state.underline != Tri::Mixed) f.underline = state.underline == Tri::On;
     if (state.strikethrough != Tri::Mixed) f.strikethrough = state.strikethrough == Tri::On;
+    if (!state.letterSpacingMixed && state.letterSpacingPt && pointsPerUnit > 0.0f)
+        f.letterSpacing = *state.letterSpacingPt / pointsPerUnit;
     return f;
 }
 
 // ===== THE BAR =====
 
+bool UltraCanvasTextFormatBar::HasKeyboardFocus() const {
+    UltraCanvasWindowBase* win = GetWindow();
+    UltraCanvasUIElement* focused = win ? win->GetFocusedElement() : nullptr;
+    return focused && focused != this && focused->IsDescendantOf(this);
+}
+
 UltraCanvasTextFormatBar::UltraCanvasTextFormatBar(const std::string& identifier, float height)
     : UltraCanvasContainer(identifier, 0, 0, 0, height) {
     Build(height);
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasTextFormatBar::~UltraCanvasTextFormatBar() {
@@ -70,6 +87,7 @@ UltraCanvasTextFormatBar::~UltraCanvasTextFormatBar() {
 }
 
 void UltraCanvasTextFormatBar::Build(float height) {
+    fontGeneration = GetFontSetGeneration();   // the list below is made from these fonts
     layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     SetPadding(0, 8);
@@ -217,6 +235,7 @@ void UltraCanvasTextFormatBar::Build(float height) {
 }
 
 void UltraCanvasTextFormatBar::RefreshFonts() {
+    fontGeneration = GetFontSetGeneration();
     families = GetInstalledFontFamilies();
     // The generic names first: a text that names one finds it.
     for (const char* generic : { "Monospace", "Serif", "Sans" }) {
@@ -277,6 +296,23 @@ void UltraCanvasTextFormatBar::ShowFormat() {
     if (lineSpacingBox) lineSpacingBox->SetValue(format.lineSpacing);
     if (letterSpacingBox) letterSpacingBox->SetValue(format.letterSpacing);
     showing = false;
+}
+
+void UltraCanvasTextFormatBar::InvalidateLayout() {
+    UltraCanvasContainer::InvalidateLayout();
+    // The fonts changed since the list was made: the list again - after the
+    // window's pass over its elements, not inside it.
+    if (!fontBox || fontRefreshQueued || fontGeneration == GetFontSetGeneration()) return;
+    fontRefreshQueued = true;
+    std::weak_ptr<bool> token = alive;
+    auto refresh = [this, token]() {
+        auto still = token.lock();
+        if (!still || !*still) return;
+        fontRefreshQueued = false;
+        RefreshFonts();
+    };
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(refresh);
+    else refresh();
 }
 
 void UltraCanvasTextFormatBar::Changed(TextFormatAttribute attribute) {

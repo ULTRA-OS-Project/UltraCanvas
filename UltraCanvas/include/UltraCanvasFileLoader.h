@@ -4,6 +4,11 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.13.0 - GetSpeechTranscriber
+// Version: 1.12.0 - GetImageTextRecognizer (a recognizer that wraps the one before it)
+// Version: 1.11.0 - ExtractText: the words in a document, PDF, spreadsheet, picture (text
+//                   recognition) or recording (speech to text); the two recognition hooks
+// Version: 1.10.0 - ShowSaveSettingsDialog takes the type size of the window it is opened from
 // Version: 1.9.0 - SaveFile: bytes to a local file, LoadFile's counterpart
 // Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
 // Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
@@ -16,13 +21,14 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasModalDialog.h"   // FileFilter, DialogResult, UltraCanvasWindowBase
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasFileSaveSettings.h"
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>
@@ -328,6 +334,91 @@ namespace UltraCanvas {
                                                const VectorStorage::VectorDocument& document,
                                                bool withBitmaps = true);
 
+        // ===== TEXT FROM A FILE =====
+        // The words in a file, as plain text a person can paste: a word
+        // processor document or a deck (LoadTextDocument, then its plain
+        // text), a PDF (the text of every page; a scanned PDF without any is
+        // read by text recognition, page by page), a spreadsheet (every sheet,
+        // tab-separated, each under its name when there are several), a text
+        // or code file (as it is), a picture (text recognition) and a sound or
+        // a video (speech to text).
+        //
+        // Text recognition and speech to text are not part of the core: a
+        // plugin or the application installs them. The OCR plugin's
+        // RegisterOCRTextRecognition() installs Tesseract
+        // (UltraCanvasOCRPlugin.h); an application with a speech-to-text
+        // engine (UltraAI's ISpeechToText, a local one) installs it with
+        // SetSpeechTranscriber. Without them a picture, a scanned PDF and a
+        // recording have no text to give, and CanExtractText says so first.
+        //
+        // ExtractText takes as long as the file needs - recognition and
+        // transcription can take seconds - so call it off the UI thread
+        // (std::async) and show the result when it is done. It holds no lock
+        // while it reads, and both hooks are called on the thread that called
+        // ExtractText, so they must be callable from any thread.
+        enum class TextExtractionMethod {
+            NoText,          // no words to read in this type of file
+            PlainText,       // a text or code file, as it is
+            Document,        // a word processor document or a deck
+            PDF,             // the PDF's own text (recognition for a scanned one)
+            Spreadsheet,     // every sheet, tab-separated
+            Recognition,     // a picture: text recognition (OCR)
+            Transcription    // a sound or a video: speech to text
+        };
+        struct TextExtractionResult {
+            std::string text;
+            TextExtractionMethod method = TextExtractionMethod::NoText;
+            std::string error;      // why there is no text; empty when it was read
+            bool Ok() const { return error.empty(); }
+        };
+        // A picture for the text recognizer: a file, or (path empty) pixels -
+        // a scanned PDF's page, 1, 3 or 4 bytes per pixel.
+        struct TextRecognitionImage {
+            std::string path;
+            const uint8_t* pixels = nullptr;
+            int width = 0;
+            int height = 0;
+            int bytesPerPixel = 0;
+            int bytesPerLine = 0;
+        };
+        // Both hooks give the text and true, or false and why not in `error`.
+        // Text that is empty is no error: the picture holds none.
+        using ImageTextRecognizer =
+                std::function<bool(const TextRecognitionImage& image, std::string& text, std::string& error)>;
+        using SpeechTranscriber =
+                std::function<bool(const std::string& path, std::string& text, std::string& error)>;
+        // Installs (or, with nullptr, removes) the hook.
+        static void SetImageTextRecognizer(ImageTextRecognizer recognizer);
+        // The recognizer installed now (empty when none): one installed
+        // after it can keep it as its fallback - UltraAI's
+        // (RegisterUltraAITextRecognition) hands a picture to Tesseract when
+        // no AI provider reads text.
+        static ImageTextRecognizer GetImageTextRecognizer();
+        // ... and the speech transcriber installed now, for the same use:
+        // UltraAI's (RegisterUltraAISpeechTranscription) keeps it as its
+        // fallback when no UltraAI provider transcribes.
+        static SpeechTranscriber GetSpeechTranscriber();
+        static void SetSpeechTranscriber(SpeechTranscriber transcriber);
+        static bool HasImageTextRecognizer();
+        static bool HasSpeechTranscriber();
+
+        // How `filePath` would be read, by its type (its extension, or for a
+        // file of an unknown type whether it reads as UTF-8 text), whether or
+        // not this build can: a picture is Recognition with or without a
+        // recognizer installed.
+        static TextExtractionMethod GetTextExtractionMethod(const std::string& filePath);
+        // ... and whether it can: Recognition needs the recognizer,
+        // Transcription the transcriber, a PDF the PDF engine; NoText never.
+        static bool CanExtractText(const std::string& filePath);
+        // Reads the text (see above). `password` opens a password-protected
+        // .docx, .pptx, .xlsx or PDF. A file with no words in it gives an
+        // empty text and no error.
+        static TextExtractionResult ExtractText(const std::string& filePath,
+                                                const std::string& password = std::string());
+        // Why CanExtractText is false, in a sentence for the user ("Speech to
+        // text is not available ..."); "" when it is true.
+        static std::string WhyNoTextExtraction(const std::string& filePath);
+
         // ===== SUPPORTED FORMAT INVENTORY =====
         // Runtime snapshot of every file format this build can load and/or
         // save, per media category, including the library or plugin providing
@@ -411,13 +502,19 @@ namespace UltraCanvas {
                                                               const FileSaveImageSize&)> onClosed);
         // The same for a picture that may be a drawing (FileSavePicture::
         // drawing): its Size row opens on the size it is drawn at and says
-        // that a drawing is drawn sharp at whatever size is set.
+        // that a drawing is drawn sharp at whatever size is set. A picture
+        // without a size (FileSavePicture()) gives the settings alone.
+        // `fontSize` draws the dialog - captions, controls, buttons - at the
+        // type size of the window it is opened from (a settings window's
+        // SettingsPageKit::kTextFontSize), with its rows and columns scaled
+        // to match; 0 keeps the dialog's own.
         static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
                                            const FileSavePicture& picture,
                                            const FileSaveImageSize& size,
                                            UltraCanvasWindowBase* parent,
                                            std::function<void(DialogResult,
-                                                              const FileSaveImageSize&)> onClosed);
+                                                              const FileSaveImageSize&)> onClosed,
+                                           float fontSize = 0.0f);
 
         // The image writer's options (UCImageRaster::Save, ExportVImage) for
         // `path`: its format from the extension, and that format's save

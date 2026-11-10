@@ -25,13 +25,14 @@ import time
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
 from . import __version__
 from .catalog import CatalogError, CatalogSource, Fetcher, decimal, discounted, http_fetch, normalize_code
 from .config import Settings
 from .licence import LicenceKey
+from .pages import LOGO_DARK, LOGO_LIGHT, STATIC_DIR, STYLESHEET, page, receipt_html, receipt_text, wants_html
 from .skrill import STATUS_NAMES, STATUS_PROCESSED, checkout_fields, checkout_page, verify_status
 from .store import Order, Store
 
@@ -46,12 +47,7 @@ def _today() -> str:
     return time.strftime("%Y-%m-%d", time.gmtime())
 
 
-def _page(title: str, body: str) -> str:
-    return (
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        f"<title>{html.escape(title)}</title>\n<style>body{{font-family:sans-serif;max-width:36em;margin:3em auto;padding:0 1em;color:#1f2937}}</style>\n"
-        f"</head>\n<body>\n<h1>{html.escape(title)}</h1>\n{body}\n</body>\n</html>\n"
-    )
+_page = page
 
 
 def create_app(settings: Settings | None = None, fetcher: Fetcher = http_fetch) -> FastAPI:
@@ -125,11 +121,24 @@ def create_app(settings: Settings | None = None, fetcher: Fetcher = http_fetch) 
         return {**order.public(), "secret": order.secret, "checkout_url": f"{settings.public_base_url}/pay/{order.id}",
                 "environment": settings.environment}
 
+    # The look of the pages: the stylesheet and the mark, from the package,
+    # cached for a day (a new version of the service changes the file names
+    # it links when it changes them).
+    @app.get("/pay/static/style.css")
+    async def stylesheet() -> Response:
+        return Response(STYLESHEET, media_type="text/css", headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.get("/pay/static/{name}")
+    async def static_file(name: str) -> FileResponse:
+        if name not in (LOGO_LIGHT, LOGO_DARK):
+            raise error(404, "no_such_file", "No such file")
+        return FileResponse(STATIC_DIR / name, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/pay/{order_id}", response_class=HTMLResponse)
     async def pay(order_id: str) -> str:
         order = order_or_404(order_id)
         if order.status == "paid":
-            return _page("Already paid", "<p>This purchase is paid. UltraStore picks the licence up on its own.</p>")
+            return _page("Already paid", f"<p>{html.escape(order.app_name)} is paid for. UltraStore picks the licence up on its own; you can close this page.</p>")
         fields = checkout_fields(pay_to_email=settings.skrill_pay_to_email, base_url=settings.public_base_url, order_id=order.id,
                                  amount=order.amount, currency=order.currency, app_name=order.app_name, app_id=order.app)
         return checkout_page(settings.skrill_pay_url, fields, order.app_name, order.amount, order.currency)
@@ -170,33 +179,34 @@ def create_app(settings: Settings | None = None, fetcher: Fetcher = http_fetch) 
     async def returned(order_id: str) -> str:
         order = order_or_404(order_id)
         if order.status == "paid":
-            return _page("Thank you", f"<p>{html.escape(order.app_name)} is yours. UltraStore picks the licence up on its own; you can close this page.</p>")
-        return _page("Thank you", "<p>Skrill is confirming the payment. UltraStore shows the purchase as soon as the confirmation arrives; you can close this page.</p>")
+            return _page("Thank you", f"<p class=\"ok\">{html.escape(order.app_name)} is yours.</p>"
+                         f"<p>Receipt no. {order.receipt_no}, {html.escape(order.amount)} {html.escape(order.currency)}. "
+                         "UltraStore picks the licence up on its own; you can close this page.</p>")
+        return _page("Thank you", f"<p>Skrill is confirming the payment for {html.escape(order.app_name)}.</p>"
+                     "<p>UltraStore shows the purchase as soon as the confirmation arrives; you can close this page.</p>")
 
     @app.get("/pay/{order_id}/cancel", response_class=HTMLResponse)
     async def cancelled(order_id: str) -> str:
         order = order_or_404(order_id)
         if order.status == "open":
             store.set_status(order.id, "cancelled", note="the buyer came back by cancel_url")
-        return _page("Nothing was charged", "<p>The purchase was cancelled. You can close this page and try again from UltraStore.</p>")
+        return _page("Nothing was charged", f"<p>The purchase of {html.escape(order.app_name)} was cancelled.</p>"
+                     "<p>You can close this page and try again from UltraStore.</p>")
 
     # ----- the store asks -----
     @app.get("/v1/orders/{order_id}")
     async def order_status(order_id: str, secret: str) -> dict[str, Any]:
         return order_or_404(order_id, secret).public()
 
-    @app.get("/v1/orders/{order_id}/receipt", response_class=PlainTextResponse)
-    async def receipt(order_id: str, secret: str) -> str:
+    @app.get("/v1/orders/{order_id}/receipt")
+    async def receipt(order_id: str, secret: str, accept: str | None = Header(default=None)) -> Response:
+        # A page for a browser (the store's Receipt button opens one), text for everything else.
         order = order_or_404(order_id, secret)
         if order.status != "paid":
             raise error(409, "not_paid", "The order is not paid")
-        lines = [f"UltraStore receipt no. {order.receipt_no}", f"Date: {order.paid_at}", f"Order: {order.id}", "",
-                 f"{order.app_name} ({order.app})", f"List price: {order.list_price} {order.currency}"]
-        if order.code_applied:
-            lines.append(f"Code {order.code} applied")
-        lines += [f"Paid: {order.amount} {order.currency}", f"Skrill transaction: {order.skrill_transaction}", f"Licence: {order.licence_id}", "",
-                  "Thank you for buying through UltraStore."]
-        return "\n".join(lines) + "\n"
+        if wants_html(accept):
+            return HTMLResponse(receipt_html(order))
+        return PlainTextResponse(receipt_text(order))
 
     @app.post("/v1/orders/{order_id}/download")
     async def download(order_id: str, secret: str, file: str) -> dict[str, Any]:

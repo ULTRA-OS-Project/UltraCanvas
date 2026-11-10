@@ -677,8 +677,10 @@ run in CI:
   catalogues are in sync with the sources; every other language's file
   parses, has no key the source lacks (stale), repeats no entry of a set
   below it with the same translation (§4), names in `@bases` only base
-  sets that exist, and reports its untranslated count and the collisions
-  between its base sets; a
+  sets that exist, and reports the collisions between its base sets; the
+  standard set is translated whole in every language (an entry a language
+  lacks fails, a regional variant counting its parent's - added
+  2026-11-04, so a feature's new standard texts arrive translated); a
   placeholder `{0}` present in the source and missing in a translation is
   an error; a plural entry has every category its language's rule needs.
   Like `check_locale_numbers.py` it has a baseline for what it finds on
@@ -697,6 +699,8 @@ run in CI:
 | `UltraCanvasDialogManager::Show*`, `UltraCanvasAlert::Show*` | message, title, button labels |
 | `SetText`, `SetTitle`, `SetWindowTitle`, `SetTooltip`, `SetPlaceholder`, `SetStatus` | the text |
 | `AddColumn`, `TreeNodeData`, `AddTab`, `FormLayout::AddRow` | the header / label |
+| The settings page kit: `MakePage`, `MakeButton`, `MakeText`, `MakeLabel`, `MakeChoice`, `MakeCheckbox`, `MakeLabelledRow`, `MakeSliderRow`, `AddNote`, `AddTreeNode` | the text after the id (the second argument; `MakePage`'s title and caption; `AddNote`'s and `AddTreeNode`'s third) |
+| A dropdown's `AddItem`, `AddCustomButton`, `AddFilter`, `SetFilterEmptyAction`, `SetOpenPathMenuItemVisible`, `MakeFolderNodeData` | the shown text (a dropdown item's value stays) |
 
 - **`translate_catalogue.py`** drafts a language with UltraAI (the
   framework's own LLM module, any configured provider): every untranslated

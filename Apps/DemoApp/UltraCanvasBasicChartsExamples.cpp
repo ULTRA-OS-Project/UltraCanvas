@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
 // Implementation of all chart component example creators with interactive controls
+// Version: 1.3.0 - the Line Chart page ends with a control chart card
 // Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): each chart in a
 //                  card with its buttons and switches in a wrapping row below,
 //                  the descriptions sized to fit
@@ -46,32 +47,32 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Create revenue data
         revenueData = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> revenue = {
-                ChartDataPoint(1, 85000, 0, "Q1 2023", 85000),
-                ChartDataPoint(2, 92000, 0, "Q2 2023", 92000),
-                ChartDataPoint(3, 78000, 0, "Q3 2023", 78000),
-                ChartDataPoint(4, 105000, 0, "Q4 2023", 105000),
-                ChartDataPoint(5, 98000, 0, "Q1 2024", 98000),
-                ChartDataPoint(6, 112000, 0, "Q2 2024", 112000),
-                ChartDataPoint(7, 125000, 0, "Q3 2024", 125000),
-                ChartDataPoint(8, 138000, 0, "Q4 2024", 138000)
+                ChartDataPoint(1, 85000, 0, Tr("Q1 2023"), 85000),
+                ChartDataPoint(2, 92000, 0, Tr("Q2 2023"), 92000),
+                ChartDataPoint(3, 78000, 0, Tr("Q3 2023"), 78000),
+                ChartDataPoint(4, 105000, 0, Tr("Q4 2023"), 105000),
+                ChartDataPoint(5, 98000, 0, Tr("Q1 2024"), 98000),
+                ChartDataPoint(6, 112000, 0, Tr("Q2 2024"), 112000),
+                ChartDataPoint(7, 125000, 0, Tr("Q3 2024"), 125000),
+                ChartDataPoint(8, 138000, 0, Tr("Q4 2024"), 138000)
         };
         revenueData->LoadFromArray(revenue);
 
         // Create sales data for line chart (monthly sales over 12 months)
         salesData = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> sales = {
-                ChartDataPoint(1, 45000, 0, "Jan", 45000),
-                ChartDataPoint(2, 52000, 0, "Feb", 52000),
-                ChartDataPoint(3, 48000, 0, "Mar", 48000),
-                ChartDataPoint(4, 61000, 0, "Apr", 61000),
-                ChartDataPoint(5, 55000, 0, "May", 55000),
-                ChartDataPoint(6, 67000, 0, "Jun", 67000),
-                ChartDataPoint(7, 71000, 0, "Jul", 71000),
-                ChartDataPoint(8, 69000, 0, "Aug", 69000),
-                ChartDataPoint(9, 58000, 0, "Sep", 58000),
-                ChartDataPoint(10, 63000, 0, "Oct", 63000),
-                ChartDataPoint(11, 72000, 0, "Nov", 72000),
-                ChartDataPoint(12, 78000, 0, "Dec", 78000)
+                ChartDataPoint(1, 45000, 0, TrC("month-short", "Jan"), 45000),
+                ChartDataPoint(2, 52000, 0, TrC("month-short", "Feb"), 52000),
+                ChartDataPoint(3, 48000, 0, TrC("month-short", "Mar"), 48000),
+                ChartDataPoint(4, 61000, 0, TrC("month-short", "Apr"), 61000),
+                ChartDataPoint(5, 55000, 0, TrC("month-short", "May"), 55000),
+                ChartDataPoint(6, 67000, 0, TrC("month-short", "Jun"), 67000),
+                ChartDataPoint(7, 71000, 0, TrC("month-short", "Jul"), 71000),
+                ChartDataPoint(8, 69000, 0, TrC("month-short", "Aug"), 69000),
+                ChartDataPoint(9, 58000, 0, TrC("month-short", "Sep"), 58000),
+                ChartDataPoint(10, 63000, 0, TrC("month-short", "Oct"), 63000),
+                ChartDataPoint(11, 72000, 0, TrC("month-short", "Nov"), 72000),
+                ChartDataPoint(12, 78000, 0, TrC("month-short", "Dec"), 78000)
         };
         salesData->LoadFromArray(sales);
 
@@ -83,24 +84,24 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         std::vector<ChartDataPoint> randomPoints;
         for (int i = 1; i <= 10; ++i) {
             double value = valueDist(gen);
-            randomPoints.emplace_back(i, value, 0, "Point " + std::to_string(i), value);
+            randomPoints.emplace_back(i, value, 0, TrF("Point {0}", i), value);
         }
         randomData->LoadFromArray(randomPoints);
 
-        auto container = DemoKit::CreatePage("LineChartExamples", "Line Chart Example",
-                "Visualizes trends over time with smooth lines and data points.");
+        auto container = DemoKit::CreatePage("LineChartExamples", Tr("Line Chart Example"),
+                Tr("Visualizes trends over time with smooth lines and data points."));
         auto card = DemoKit::AddCard(container, "LineChartCard");
 
         DemoKit::AddText(card, "LineChartDescription",
-                "Perfect for showing continuous data changes like sales, temperature, or stock prices.\n"
-                "Features: Interactive zooming, panning, tooltips, and customizable appearance.");
+                Tr("Perfect for showing continuous data changes like sales, temperature, or stock prices.\n"
+                "Features: Interactive zooming, panning, tooltips, and customizable appearance."));
 
         // Create line chart
         std::shared_ptr<UltraCanvasLineChartElement> lineChart =
                 CreateLineChartElement("salesLineChart", 0, 0, 600, 400);
 
         lineChart->SetDataSource(salesData);
-        lineChart->SetChartTitle("Monthly Sales Trend");
+        lineChart->SetChartTitle(Tr("Monthly Sales Trend"));
         lineChart->SetLineColor(Color(0, 102, 204, 255));       // Blue line
         lineChart->SetLineWidth(3.0f);
         lineChart->SetShowDataPoints(chartControl.showPoints);
@@ -122,10 +123,10 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Load Revenue button
         auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue",
                                                                   0, 0, buttonWidth, buttonHeight);
-        btnLoadRevenue->SetText("Load Revenue");
+        btnLoadRevenue->SetText(Tr("Load Revenue"));
         btnLoadRevenue->onClick = [lineChart, revenueData]() {
             lineChart->SetDataSource(revenueData);
-            lineChart->SetChartTitle("Quarterly Revenue");
+            lineChart->SetChartTitle(Tr("Quarterly Revenue"));
             //lineChart->Invalidate();
         };
         DemoKit::AddFixed(controls, btnLoadRevenue);
@@ -133,10 +134,10 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Load Sales button
         auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales",
                                                                 0, 0, buttonWidth, buttonHeight);
-        btnLoadSales->SetText("Load Sales");
+        btnLoadSales->SetText(Tr("Load Sales"));
         btnLoadSales->onClick = [lineChart, salesData]() {
             lineChart->SetDataSource(salesData);
-            lineChart->SetChartTitle("Monthly Sales Trend");
+            lineChart->SetChartTitle(Tr("Monthly Sales Trend"));
             //lineChart->Invalidate();
         };
         DemoKit::AddFixed(controls, btnLoadSales);
@@ -144,7 +145,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Load Random button
         auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom",
                                                                  0, 0, buttonWidth, buttonHeight);
-        btnLoadRandom->SetText("Load Random");
+        btnLoadRandom->SetText(Tr("Load Random"));
         btnLoadRandom->onClick = [lineChart]() {
             // Generate new random data
             auto newRandomData = std::make_shared<ChartDataVector>();
@@ -154,18 +155,18 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
             std::vector<ChartDataPoint> randomPoints;
             for (int i = 1; i <= 12; ++i) {
                 double value = valueDist(gen);
-                randomPoints.emplace_back(i, value, 0, "Pt" + std::to_string(i), value);
+                randomPoints.emplace_back(i, value, 0, TrF("Pt{0}", i), value);
             }
             newRandomData->LoadFromArray(randomPoints);
             lineChart->SetDataSource(newRandomData);
-            lineChart->SetChartTitle("Random Data");
+            lineChart->SetChartTitle(Tr("Random Data"));
             //lineChart->Invalidate();
         };
         DemoKit::AddFixed(controls, btnLoadRandom);
 
         // Data Points switch
         auto swPoints = UltraCanvasSwitch::Create("swTogglePoints",
-                                                  0, 0, "Points", chartControl.showPoints);
+                                                  0, 0, Tr("Points"), chartControl.showPoints);
         swPoints->onStateChanged = [lineChart](CheckedState, CheckedState newState) {
             chartControl.showPoints = (newState == CheckedState::Checked);
             lineChart->SetShowDataPoints(chartControl.showPoints);
@@ -174,7 +175,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         // Smoothing switch
         auto swSmoothing = UltraCanvasSwitch::Create("swToggleSmoothing",
-                                                     0, 0, "Smooth", chartControl.smoothingEnabled);
+                                                     0, 0, Tr("Smooth"), chartControl.smoothingEnabled);
         swSmoothing->onStateChanged = [lineChart](CheckedState, CheckedState newState) {
             chartControl.smoothingEnabled = (newState == CheckedState::Checked);
             lineChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
@@ -183,12 +184,15 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         // Value Labels switch
         auto swValueLabels = UltraCanvasSwitch::Create("swToggleValueLabels",
-                                                       0, 0, "Labels", chartControl.valueLabelsEnabled);
+                                                       0, 0, Tr("Labels"), chartControl.valueLabelsEnabled);
         swValueLabels->onStateChanged = [lineChart](CheckedState, CheckedState newState) {
             chartControl.valueLabelsEnabled = (newState == CheckedState::Checked);
             lineChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
         };
         DemoKit::Add(controls, swValueLabels);
+
+        // The engine line chart as a control chart (UltraCanvasControlChartExamples.cpp).
+        AddControlChartCard(container);
 
         return container;
     }
@@ -212,16 +216,16 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
             double marketingSpend = xDist(gen);
             double sales = marketingSpend * 3.2 + 15000 + noise(gen);  // Correlation with noise
             correlation.emplace_back(marketingSpend, sales, 0,
-                                     "Point " + std::to_string(i + 1), sales);
+                                     TrF("Point {0}", i + 1), sales);
         }
         correlationData->LoadFromArray(correlation);
 
-        auto container = DemoKit::CreatePage("ScatterPlotExamples", "Scatter Plot Example",
-                "Shows relationships between two continuous variables.");
+        auto container = DemoKit::CreatePage("ScatterPlotExamples", Tr("Scatter Plot Example"),
+                Tr("Shows relationships between two continuous variables."));
         DemoKit::AddText(container, "ScatterPlotDescription",
-                "The 2D plot fits a least-squares correlation line with r / r-squared readout; "
+                Tr("The 2D plot fits a least-squares correlation line with r / r-squared readout; "
                 "the 3D plot shows an (x, y, z) cloud with its principal-axis correlation line.\n"
-                "Features: Point shapes, per-point colors, tooltips - drag the 3D plot to orbit, wheel to zoom.");
+                "Features: Point shapes, per-point colors, tooltips - drag the 3D plot to orbit, wheel to zoom."));
 
         // The two plots side by side; each card is at least as wide as its
         // 540 px plot, so they move under each other in a narrow window.
@@ -236,7 +240,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         // Configure Scatter Plot
         scatterPlot->SetDataSource(correlationData);
-        scatterPlot->SetChartTitle("Marketing Spend vs Sales");
+        scatterPlot->SetChartTitle(Tr("Marketing Spend vs Sales"));
         scatterPlot->SetPointColor(Color(255, 140, 0, 255));    // Dark orange
         scatterPlot->SetPointSize(8.0f);
         scatterPlot->SetPointShape(UltraCanvasScatterPlotElement::PointShape::Circle);
@@ -264,8 +268,8 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
                 ChartDataPoint p(t * 0.9 + spread(gen),
                                  t * 0.7 + spread(gen),
                                  t * 1.1 + spread(gen),
-                                 outlier ? "Outlier " + std::to_string(i + 1)
-                                         : "Inlier " + std::to_string(i + 1));
+                                 outlier ? TrF("Outlier {0}", i + 1)
+                                         : TrF("Inlier {0}", i + 1));
                 p.color = outlier ? Color(220, 60, 60, 255) : Color(0, 102, 204, 255);
                 cloud.push_back(p);
             }
@@ -274,7 +278,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         auto scatterPlot3D = CreateScatterPlot3DElement("scatter3D", 0, 0, 540, 420);
         scatterPlot3D->SetDataSource(scatter3DData);
-        scatterPlot3D->SetChartTitle("3D Correlation Cloud");
+        scatterPlot3D->SetChartTitle(Tr("3D Correlation Cloud"));
         scatterPlot3D->SetPointSize(4.5);
         scatterPlot3D->SetAxisTitles("X", "Y", "Z");
         scatterPlot3D->SetShowCorrelationLine(true);
@@ -289,7 +293,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Cycle Scatter Plot Shapes button
         auto btnCycleShapes = std::make_shared<UltraCanvasButton>("btnCycleShapes",
                                                                   0, 0, buttonWidth, buttonHeight);
-        btnCycleShapes->SetText("Cycle Scatter Shapes");
+        btnCycleShapes->SetText(Tr("Cycle Scatter Shapes"));
 
         // Track current shape
         std::vector<UltraCanvasScatterPlotElement::PointShape> shapes = {
@@ -308,7 +312,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         // Toggle the 2D correlation line
         auto swTrend = UltraCanvasSwitch::Create("swToggleTrend", 0, 0,
-                                                 "Correlation Line", scatterPlot->GetShowTrendLine());
+                                                 Tr("Correlation Line"), scatterPlot->GetShowTrendLine());
         swTrend->onStateChanged = [scatterPlot](CheckedState, CheckedState newState) {
             bool show = (newState == CheckedState::Checked);
             scatterPlot->SetShowTrendLine(show);
@@ -319,7 +323,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Reset the 3D camera
         auto btnResetView = std::make_shared<UltraCanvasButton>("btnResetView3D",
                                                                 0, 0, buttonWidth, buttonHeight);
-        btnResetView->SetText("Reset 3D View");
+        btnResetView->SetText(Tr("Reset 3D View"));
         btnResetView->SetOnClick([scatterPlot3D]() {
             scatterPlot3D->ViewIsometric();
         });
@@ -335,42 +339,42 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         revenueData = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> revenue = {
-                ChartDataPoint(1, 85000, 0, "Q1 2023", 85000),
-                ChartDataPoint(2, 92000, 0, "Q2 2023", 92000),
-                ChartDataPoint(3, 78000, 0, "Q3 2023", 78000),
-                ChartDataPoint(4, 105000, 0, "Q4 2023", 105000),
-                ChartDataPoint(5, 98000, 0, "Q1 2024", 98000),
-                ChartDataPoint(6, 112000, 0, "Q2 2024", 112000),
-                ChartDataPoint(7, 125000, 0, "Q3 2024", 125000),
-                ChartDataPoint(8, 138000, 0, "Q4 2024", 138000)
+                ChartDataPoint(1, 85000, 0, Tr("Q1 2023"), 85000),
+                ChartDataPoint(2, 92000, 0, Tr("Q2 2023"), 92000),
+                ChartDataPoint(3, 78000, 0, Tr("Q3 2023"), 78000),
+                ChartDataPoint(4, 105000, 0, Tr("Q4 2023"), 105000),
+                ChartDataPoint(5, 98000, 0, Tr("Q1 2024"), 98000),
+                ChartDataPoint(6, 112000, 0, Tr("Q2 2024"), 112000),
+                ChartDataPoint(7, 125000, 0, Tr("Q3 2024"), 125000),
+                ChartDataPoint(8, 138000, 0, Tr("Q4 2024"), 138000)
         };
         revenueData->LoadFromArray(revenue);
 
         // Create sales data
         salesData = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> sales = {
-                ChartDataPoint(1, 45000, 0, "Jan", 45000),
-                ChartDataPoint(2, 52000, 0, "Feb", 52000),
-                ChartDataPoint(3, 48000, 0, "Mar", 48000),
-                ChartDataPoint(4, 61000, 0, "Apr", 61000),
-                ChartDataPoint(5, 55000, 0, "May", 55000),
-                ChartDataPoint(6, 67000, 0, "Jun", 67000),
-                ChartDataPoint(7, 71000, 0, "Jul", 71000),
-                ChartDataPoint(8, 69000, 0, "Aug", 69000),
-                ChartDataPoint(9, 58000, 0, "Sep", 58000),
-                ChartDataPoint(10, 63000, 0, "Oct", 63000),
-                ChartDataPoint(11, 72000, 0, "Nov", 72000),
-                ChartDataPoint(12, 78000, 0, "Dec", 78000)
+                ChartDataPoint(1, 45000, 0, TrC("month-short", "Jan"), 45000),
+                ChartDataPoint(2, 52000, 0, TrC("month-short", "Feb"), 52000),
+                ChartDataPoint(3, 48000, 0, TrC("month-short", "Mar"), 48000),
+                ChartDataPoint(4, 61000, 0, TrC("month-short", "Apr"), 61000),
+                ChartDataPoint(5, 55000, 0, TrC("month-short", "May"), 55000),
+                ChartDataPoint(6, 67000, 0, TrC("month-short", "Jun"), 67000),
+                ChartDataPoint(7, 71000, 0, TrC("month-short", "Jul"), 71000),
+                ChartDataPoint(8, 69000, 0, TrC("month-short", "Aug"), 69000),
+                ChartDataPoint(9, 58000, 0, TrC("month-short", "Sep"), 58000),
+                ChartDataPoint(10, 63000, 0, TrC("month-short", "Oct"), 63000),
+                ChartDataPoint(11, 72000, 0, TrC("month-short", "Nov"), 72000),
+                ChartDataPoint(12, 78000, 0, TrC("month-short", "Dec"), 78000)
         };
         salesData->LoadFromArray(sales);
 
-        auto container = DemoKit::CreatePage("AreaChartExamples", "Area Chart Example",
-                "Emphasizes magnitude of change over time with filled areas.");
+        auto container = DemoKit::CreatePage("AreaChartExamples", Tr("Area Chart Example"),
+                Tr("Emphasizes magnitude of change over time with filled areas."));
         auto card = DemoKit::AddCard(container, "AreaChartCard");
 
         DemoKit::AddText(card, "AreaChartDescription",
-                "Perfect for showing cumulative values, trends, and volume data like revenue or resource usage.\n"
-                "Features: Gradient fills, transparency, smooth curves, data points, zoom, and pan capabilities.");
+                Tr("Perfect for showing cumulative values, trends, and volume data like revenue or resource usage.\n"
+                "Features: Gradient fills, transparency, smooth curves, data points, zoom, and pan capabilities."));
 
         // Create area chart
         std::shared_ptr<UltraCanvasAreaChartElement> areaChart =
@@ -378,7 +382,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         // Configure Area Chart
         areaChart->SetDataSource(revenueData);
-        areaChart->SetChartTitle("Quarterly Revenue Growth");
+        areaChart->SetChartTitle(Tr("Quarterly Revenue Growth"));
         areaChart->SetFillColor(Color(0, 150, 136, 120));        // Teal with transparency
         areaChart->SetLineColor(Color(0, 150, 136, 255));        // Solid teal line
         areaChart->SetLineWidth(3.0f);
@@ -406,10 +410,10 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Load Revenue button
         auto btnLoadRevenue = std::make_shared<UltraCanvasButton>("btnLoadRevenue",
                                                                   0, 0, buttonWidth, buttonHeight);
-        btnLoadRevenue->SetText("Load Revenue");
+        btnLoadRevenue->SetText(Tr("Load Revenue"));
         btnLoadRevenue->SetOnClick([areaChart, revenueData]() {
             areaChart->SetDataSource(revenueData);
-            areaChart->SetChartTitle("Quarterly Revenue Growth");
+            areaChart->SetChartTitle(Tr("Quarterly Revenue Growth"));
             //areaChart->Invalidate();
         });
         DemoKit::AddFixed(controls, btnLoadRevenue);
@@ -417,10 +421,10 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Load Sales button
         auto btnLoadSales = std::make_shared<UltraCanvasButton>("btnLoadSales",
                                                                 0, 0, buttonWidth, buttonHeight);
-        btnLoadSales->SetText("Load Sales");
+        btnLoadSales->SetText(Tr("Load Sales"));
         btnLoadSales->SetOnClick([areaChart, salesData]() {
             areaChart->SetDataSource(salesData);
-            areaChart->SetChartTitle("Monthly Sales Volume");
+            areaChart->SetChartTitle(Tr("Monthly Sales Volume"));
             //areaChart->Invalidate();
         });
         DemoKit::AddFixed(controls, btnLoadSales);
@@ -428,7 +432,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
         // Load Random button
         auto btnLoadRandom = std::make_shared<UltraCanvasButton>("btnLoadRandom",
                                                                  0, 0, buttonWidth, buttonHeight);
-        btnLoadRandom->SetText("Load Random");
+        btnLoadRandom->SetText(Tr("Load Random"));
         btnLoadRandom->SetOnClick([areaChart]() {
             // Generate new random data
             auto newRandomData = std::make_shared<ChartDataVector>();
@@ -438,18 +442,18 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
             std::vector<ChartDataPoint> randomPoints;
             for (int i = 1; i <= 10; ++i) {
                 double value = valueDist(gen);
-                randomPoints.emplace_back(i, value, 0, "Period " + std::to_string(i), value);
+                randomPoints.emplace_back(i, value, 0, TrF("Period {0}", i), value);
             }
             newRandomData->LoadFromArray(randomPoints);
             areaChart->SetDataSource(newRandomData);
-            areaChart->SetChartTitle("Random Data Volume");
+            areaChart->SetChartTitle(Tr("Random Data Volume"));
             //areaChart->Invalidate();
         });
         DemoKit::AddFixed(controls, btnLoadRandom);
 
         // Data Points switch
         auto swPoints = UltraCanvasSwitch::Create("swTogglePoints",
-                                                  0, 0, "Points", chartControl.showPoints);
+                                                  0, 0, Tr("Points"), chartControl.showPoints);
         swPoints->onStateChanged = [areaChart](CheckedState, CheckedState newState) {
             chartControl.showPoints = (newState == CheckedState::Checked);
             areaChart->SetShowDataPoints(chartControl.showPoints);
@@ -458,7 +462,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         // Smoothing switch
         auto swSmoothing = UltraCanvasSwitch::Create("swToggleSmoothing",
-                                                     0, 0, "Smooth", chartControl.smoothingEnabled);
+                                                     0, 0, Tr("Smooth"), chartControl.smoothingEnabled);
         swSmoothing->onStateChanged = [areaChart](CheckedState, CheckedState newState) {
             chartControl.smoothingEnabled = (newState == CheckedState::Checked);
             areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
@@ -467,7 +471,7 @@ static std::shared_ptr<UltraCanvasContainer> AddChartControlsRow(
 
         // Value Labels switch
         auto swValueLabels = UltraCanvasSwitch::Create("swToggleValueLabels",
-                                                       0, 0, "Labels", chartControl.valueLabelsEnabled);
+                                                       0, 0, Tr("Labels"), chartControl.valueLabelsEnabled);
         swValueLabels->onStateChanged = [areaChart](CheckedState, CheckedState newState) {
             chartControl.valueLabelsEnabled = (newState == CheckedState::Checked);
             areaChart->SetShowValueLabels(chartControl.valueLabelsEnabled);

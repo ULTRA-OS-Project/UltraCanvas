@@ -1,13 +1,17 @@
 // core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp
 // The list model and row painter for a clipboard history. See
 // include/UltraCanvasClipboardHistoryView.h.
+// Version: 1.3.0 - every text through Tr (UltraLocalisation): sections, sizes, ages, the
+//                  description line, the action tooltips, an image's and files' titles
 // Version: 1.2.0 - the Save as action (ClipboardRowStyle::saveAction)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistoryView.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -33,7 +37,23 @@ std::string TwoDigits(int value) {
     return (value < 10 ? "0" : "") + std::to_string(value);
 }
 
-const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+// The month's short name, in the person's language.
+std::string ShortMonth(int month) {
+    switch (month) {
+        case 0: return TrC("month-short", "Jan");
+        case 1: return TrC("month-short", "Feb");
+        case 2: return TrC("month-short", "Mar");
+        case 3: return TrC("month-short", "Apr");
+        case 4: return TrC("month-short", "May");
+        case 5: return TrC("month-short", "Jun");
+        case 6: return TrC("month-short", "Jul");
+        case 7: return TrC("month-short", "Aug");
+        case 8: return TrC("month-short", "Sep");
+        case 9: return TrC("month-short", "Oct");
+        case 10: return TrC("month-short", "Nov");
+        default: return TrC("month-short", "Dec");
+    }
+}
 
 size_t CountCodePoints(const std::string& text) {
     size_t count = 0;
@@ -110,11 +130,11 @@ void ClipboardHistoryListModel::SetEntries(std::vector<ClipboardHistoryEntry> en
     const int64_t startOfYesterday = startOfToday - 86400000;
 
     auto sectionOf = [&](const ClipboardHistoryEntry& entry) -> std::string {
-        if (entry.pinned) return "PINNED";
-        if (sections == Sections::PinnedAndRecent) return "RECENT";
-        if (entry.lastUsedAt >= startOfToday) return "TODAY";
-        if (entry.lastUsedAt >= startOfYesterday) return "YESTERDAY";
-        return "EARLIER";
+        if (entry.pinned) return Tr("PINNED");
+        if (sections == Sections::PinnedAndRecent) return Tr("RECENT");
+        if (entry.lastUsedAt >= startOfToday) return Tr("TODAY");
+        if (entry.lastUsedAt >= startOfYesterday) return Tr("YESTERDAY");
+        return Tr("EARLIER");
     };
     std::string current;
     size_t headerIndex = 0;
@@ -139,7 +159,7 @@ void ClipboardHistoryListModel::SetEntries(std::vector<ClipboardHistoryEntry> en
 ListDataValue ClipboardHistoryListModel::GetData(const ListIndex& index, ListDataRole role) const {
     const ClipboardHistoryRow* row = GetRow(index.row);
     if (!row) return std::monostate{};
-    if (role == ListDataRole::DisplayRole) return row->header ? row->headerText : row->entry.title;
+    if (role == ListDataRole::DisplayRole) return row->header ? row->headerText : ClipboardEntryDisplayTitle(row->entry);
     if (role == ListDataRole::ToolTipRole && !row->header) {
         std::string text = row->entry.preview.empty() ? row->entry.title : row->entry.preview;
         if (text.size() > 600) {
@@ -218,29 +238,32 @@ ClipboardRowStyle ClipboardRowStyle::Dark() {
 
 // ===== DESCRIPTIONS =====
 std::string FormatClipboardSize(uint64_t bytes) {
-    if (bytes < 1024) return std::to_string(bytes) + " bytes";
-    if (bytes < 1024 * 1024) return std::to_string((bytes + 512) / 1024) + " KB";
+    if (bytes < 1024) return TrF("{0} bytes", bytes);
+    if (bytes < 1024 * 1024) return TrF("{0} KB", (bytes + 512) / 1024);
     const uint64_t tenths = (bytes * 10 + 524288) / 1048576;
-    if (tenths >= 100) return std::to_string(tenths / 10) + " MB";
-    return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10) + " MB";
+    if (tenths >= 100) return TrF("{0} MB", tenths / 10);
+    // locale-ok: the decimal point is the English one; the size's number formatting is phase L6
+    return TrF("{0} MB", std::to_string(tenths / 10) + "." + std::to_string(tenths % 10));
 }
 
 std::string FormatClipboardAge(int64_t whenMs, int64_t nowMs) {
     const int64_t seconds = std::max<int64_t>(0, (nowMs - whenMs) / 1000);
-    if (seconds < 60) return "just now";
-    if (seconds < 3600) return std::to_string(seconds / 60) + " min ago";
+    if (seconds < 60) return Tr("just now");
+    if (seconds < 3600) return TrF("{0} min ago", seconds / 60);
     const std::tm when = LocalTime(whenMs);
     const std::tm now = LocalTime(nowMs);
     const std::string clock = TwoDigits(when.tm_hour) + ":" + TwoDigits(when.tm_min);
-    if (seconds < 6 * 3600) return std::to_string(seconds / 3600) + " h ago";
-    if (when.tm_year == now.tm_year && when.tm_yday == now.tm_yday) return "today " + clock;
+    if (seconds < 6 * 3600) return TrF("{0} h ago", seconds / 3600);
+    if (when.tm_year == now.tm_year && when.tm_yday == now.tm_yday) return TrF("today {0}", clock);
     std::tm yesterday = now;
     yesterday.tm_mday -= 1;
     std::mktime(&yesterday);
-    if (when.tm_year == yesterday.tm_year && when.tm_yday == yesterday.tm_yday) return "yesterday " + clock;
-    std::string date = std::to_string(when.tm_mday) + " " + kMonths[std::clamp(when.tm_mon, 0, 11)];
-    if (when.tm_year != now.tm_year) date += " " + std::to_string(when.tm_year + 1900);
-    return date;
+    if (when.tm_year == yesterday.tm_year && when.tm_yday == yesterday.tm_yday) return TrF("yesterday {0}", clock);
+    const std::string month = ShortMonth(std::clamp(when.tm_mon, 0, 11));
+    if (when.tm_year != now.tm_year)
+        return LocalisationDetail::Substitute(TrC("day, month and year", "{0} {1} {2}"),
+                                              {std::to_string(when.tm_mday), month, std::to_string(when.tm_year + 1900)});
+    return LocalisationDetail::Substitute(TrC("day and month", "{0} {1}"), {std::to_string(when.tm_mday), month});
 }
 
 bool ParseClipboardColour(const std::string& text, Color& colour) {
@@ -302,6 +325,47 @@ bool ParseClipboardColour(const std::string& text, Color& colour) {
     return false;
 }
 
+std::string ClipboardEntryKindLabel(ClipboardEntryKind kind) {
+    switch (kind) {
+        case ClipboardEntryKind::Text: return Tr("Text");
+        case ClipboardEntryKind::Code: return Tr("Code");
+        case ClipboardEntryKind::RichText: return Tr("Formatted text");
+        case ClipboardEntryKind::Link: return Tr("Link");
+        case ClipboardEntryKind::Colour: return Tr("Colour");
+        case ClipboardEntryKind::Image: return Tr("Image");
+        case ClipboardEntryKind::Files: return Tr("Files");
+    }
+    return Tr("Text");
+}
+
+std::string ClipboardEntryDisplayTitle(const ClipboardHistoryEntry& entry) {
+    // An image's title is stored as the English "Image"; copied files' as
+    // "a, b and 2 more" - both read again here, in the person's language,
+    // from the files the entry lists (its preview, one path a line).
+    if (entry.kind == ClipboardEntryKind::Image && entry.title == "Image") return Tr("Image");
+    if (entry.kind == ClipboardEntryKind::Files && entry.fileCount >= 1) {
+        std::vector<std::string> names;
+        size_t start = 0;
+        while (start < entry.preview.size() && names.size() < 2) {
+            size_t end = entry.preview.find('\n', start);
+            if (end == std::string::npos) end = entry.preview.size();
+            const std::string path = entry.preview.substr(start, end - start);
+            if (!path.empty()) {
+                std::string name = PathToUtf8(PathFromUtf8(path).filename());
+                if (name.empty()) name = path;   // a folder written with a trailing slash
+                names.push_back(name);
+            }
+            start = end + 1;
+        }
+        if (names.empty()) return entry.title;
+        std::string title = names[0];
+        if (names.size() >= 2) title += ", " + names[1];
+        if (entry.fileCount > 2) title += " " + TrN("and {n} more", "and {n} more", entry.fileCount - 2);
+        return title;
+    }
+    return entry.title;
+}
+
 std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t nowMs, bool compact) {
     const char* dot = " \xC2\xB7 ";   // ·
     std::string meta;
@@ -312,20 +376,20 @@ std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t n
     };
     switch (entry.kind) {
         case ClipboardEntryKind::Image:
-            add("Image");
+            add(Tr("Image"));
             if (entry.width > 0) add(std::to_string(entry.width) + " \xC3\x97 " + std::to_string(entry.height));
             if (!compact) add(FormatClipboardSize(entry.sizeBytes));
             break;
         case ClipboardEntryKind::Files:
-            add(std::to_string(entry.fileCount) + (entry.fileCount == 1 ? " file" : " files"));
-            if (entry.cut) add("cut");
+            add(TrN("{n} file", "{n} files", entry.fileCount));
+            if (entry.cut) add(TrC("files that were cut", "cut"));
             break;
         case ClipboardEntryKind::Link:
-            add("Link");
+            add(Tr("Link"));
             add(Host(entry.title));
             break;
         case ClipboardEntryKind::Colour: {
-            add("Colour");
+            add(Tr("Colour"));
             Color c;
             if (!compact && !entry.title.empty() && entry.title[0] == '#' && ParseClipboardColour(entry.title, c)) {
                 add("rgb(" + std::to_string(c.r) + ", " + std::to_string(c.g) + ", " + std::to_string(c.b) + ")");
@@ -333,12 +397,15 @@ std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t n
             break;
         }
         default: {
-            add(ClipboardEntryKindName(entry.kind));
+            add(ClipboardEntryKindLabel(entry.kind));
             if (!compact) {
-                add(std::to_string(entry.lineCount) + (entry.lineCount == 1 ? " line" : " lines"));
+                add(TrN("{n} line", "{n} lines", entry.lineCount));
                 if (entry.sizeBytes <= entry.preview.size()) {
                     const size_t characters = CountCodePoints(entry.preview);
-                    add(WithThousands(characters) + (characters == 1 ? " character" : " characters"));
+                    // TrN counts; the number itself keeps its thousands separators.
+                    add(LocalisationDetail::Substitute(
+                            TrN("{0} character", "{0} characters", static_cast<long long>(characters)),
+                            {WithThousands(characters)}));
                 } else {
                     add(FormatClipboardSize(entry.sizeBytes));
                 }
@@ -414,10 +481,10 @@ bool ClipboardHistoryRowDelegate::IsShowingCopied() const {
 
 std::string ClipboardHistoryRowDelegate::ActionTooltip(ClipboardRowAction action) {
     switch (action) {
-        case ClipboardRowAction::Copy: return "Copy  (Enter)";
-        case ClipboardRowAction::Edit: return "Edit  (F2)";
-        case ClipboardRowAction::SaveAs: return "Save as  (Ctrl+S)";
-        case ClipboardRowAction::Delete: return "Delete  (Del)";
+        case ClipboardRowAction::Copy: return Tr("Copy") + "  (Enter)";
+        case ClipboardRowAction::Edit: return Tr("Edit") + "  (F2)";
+        case ClipboardRowAction::SaveAs: return Tr("Save as") + "  (Ctrl+S)";
+        case ClipboardRowAction::Delete: return Tr("Delete") + "  (Del)";
         default: return "";
     }
 }
@@ -566,17 +633,18 @@ void ClipboardHistoryRowDelegate::PaintActions(IRenderContext* ctx, const Clipbo
         }
     }
     if (copied && !style.compact) {
-        const double w = 62, h = 22;
+        auto layout = ctx->CreateTextLayout(Tr("Copied"), false);
+        FontStyle copiedFont;
+        copiedFont.fontSize = 8.5f;
+        copiedFont.fontWeight = FontWeight::Bold;
+        if (layout) layout->SetFontStyle(copiedFont);
+        // As wide as the word needs in the person's language, 62 at least.
+        const double w = std::max(62.0, layout ? layout->GetLayoutSize().width + 20.0 : 62.0), h = 22;
         // Beside the icons, or at the row's right edge when they are left of the text.
         const double pillX = style.actionsLeftOfText ? r.x + r.width - style.padding - w : left - w - 10;
         const Rect2Dd pill(pillX, r.y + (r.height - h) / 2.0, w, h);
         ctx->DrawFilledRectangle(pill, style.copiedBackground, 0.0f, Colors::Transparent, static_cast<float>(h / 2));
-        auto layout = ctx->CreateTextLayout("Copied", false);
         if (layout) {
-            FontStyle font;
-            font.fontSize = 8.5f;
-            font.fontWeight = FontWeight::Bold;
-            layout->SetFontStyle(font);
             const Size2Dd size = layout->GetLayoutSize();
             ctx->SetTextPaint(style.copiedColor);
             ctx->DrawTextLayout(*layout, Point2Dd(pill.x + (w - size.width) / 2, pill.y + (h - size.height) / 2));
@@ -633,9 +701,9 @@ void ClipboardHistoryRowDelegate::RenderItem(IRenderContext* ctx, const IListMod
         }
     }
     const double half = rect.height / 2.0;
-    std::string title = entry.title;
+    std::string title = ClipboardEntryDisplayTitle(entry);
     std::replace(title.begin(), title.end(), '\n', ' ');
-    PaintText(ctx, title.empty() ? ClipboardEntryKindName(entry.kind) : title,
+    PaintText(ctx, title.empty() ? ClipboardEntryKindLabel(entry.kind) : title,
               Rect2Dd(titleX, rect.y + half - (style.compact ? 18 : 22), textRight - titleX, style.compact ? 18 : 22),
               style.titleSize, FontWeight::Normal, selectedLight ? style.selectedTitleColor : style.titleColor,
               entry.kind == ClipboardEntryKind::Code);

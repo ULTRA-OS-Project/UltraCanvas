@@ -1,5 +1,8 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.12.0 - 2026-11-10 - ApplyTheme: the tree follows the theme (rows, lines, the +/- box, the check
+//                   flags, the floating buttons, the scrollbar); SetSelectionTextColor: the text of a
+//                   selected row (the theme's text on the accent)
 // Version: 1.11.0 - 2026-11-01 - SetExpandButtonColors: the +/- box's fill, border and symbol,
 //                  so a dark theme gets a box it can read (the symbol was always black)
 // Version: 1.10.0 - 2026-11-01 - GetNodeAtY is public: the row under a point, for a drop
@@ -29,7 +32,7 @@
 //                  into the removed subtree
 // Version: 1.0.0 - the tree view: rows with icons and text, expanders, check flags, lines
 //                  (the numbers before 1.6.0 were given afterwards, from the framework changelog)
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -335,6 +338,10 @@ private:
     // the row: white on the selection background, the selection colour on
     // any other row.
     Color focusRingColor = Colors::Transparent;
+    // The text of a selected row. Transparent (the default) keeps the row's
+    // own text colour, as before; the theme sets the colour that reads on
+    // the accent (ThemeRoles::onAccent).
+    Color selectionTextColor = Colors::Transparent;
 
     // The node currently highlighted as a drag-and-drop target, if any.
     TreeNode* dropTargetNode = nullptr;
@@ -607,6 +614,10 @@ public:
 
     // ===== COLOR PROPERTIES =====
     void SetSelectionColor(const Color &color) { selectionColor = color; }
+    // The text of a selected row; Colors::Transparent keeps the row's own
+    // text colour (a node's own colour wins either way)
+    void SetSelectionTextColor(const Color &color) { selectionTextColor = color; RequestRedraw(); }
+    Color GetSelectionTextColor() const { return selectionTextColor; }
     void SetHoverColor(const Color &color) { hoverColor = color; }
     // The focus ring's colour; Colors::Transparent restores the automatic
     // choice (white on a selected row, the selection colour elsewhere).
@@ -617,6 +628,10 @@ public:
     const Color& GetFocusRingColor() const { return focusRingColor; }
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
+    Color GetSelectionColor() const { return selectionColor; }
+    Color GetHoverColor() const { return hoverColor; }
+    Color GetLineColor() const { return lineColor; }
+    Color GetTextColor() const { return textColor; }
     void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
     // The +/- box whole: its fill, its border and the + / - (TreeExpanderStyle::Box).
     void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol) {
@@ -680,6 +695,18 @@ public:
 
     void SetScrollToTopButtonStyle(const TreeScrollToTopStyle& style);
     const TreeScrollToTopStyle& GetScrollToTopButtonStyle() const { return scrollToTopStyle; }
+
+    // The theme's roles onto the tree's colours: the well behind the rows
+    // with the control border round it, ink for the labels at the body size,
+    // the accent for the selection, the hover fill, the control border for
+    // the lines, the raised surface for the +/- box with ink in it, muted
+    // ink for a chevron, the well and the accent for the check flags, the
+    // accent for a drop target and the loading bar; the floating buttons in
+    // muted ink with the panel for their arrow; the scrollbar from
+    // ScrollbarStyle::FromTheme. The tree has no style struct, so a colour
+    // set by hand does not stop the following: an application that styles
+    // the tree itself calls SetFollowTheme(false)
+    void ApplyTheme(const UltraCanvasTheme& theme) override;
 
     // True while the button is actually on screen (feature enabled, view scrolled
     // down AND enough rows hidden). Useful for tests and for callers that draw
@@ -778,7 +805,13 @@ protected:
 
     // Read-only access for subclass renderers.
     int   GetTextPadding() const { return textPadding; }
-    Color GetTextColor()   const { return textColor; }
+    // The colour a node's label takes: the node's own, else the selection
+    // text colour on a selected row, else the tree's text colour
+    Color NodeTextColor(const TreeNode* node) const {
+        if (node->data.textColor != Colors::Black) return node->data.textColor;
+        if (node->selected && selectionTextColor.a > 0) return selectionTextColor;
+        return textColor;
+    }
     Color GetExpandButtonColor() const { return expandButtonColor; }
     Color GetExpandButtonBorderColor() const { return expandButtonBorderColor; }
     Color GetExpandButtonSymbolColor() const { return expandButtonSymbolColor; }

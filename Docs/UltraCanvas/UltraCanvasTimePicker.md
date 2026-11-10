@@ -11,6 +11,7 @@
 - [Key API](#key-api)
 - [The clock-face dial (`TimePickerPopupStyle::Clock`)](#the-clock-face-dial-timepickerpopupstyleclock)
 - [Keyboard & Mouse](#keyboard--mouse)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -24,7 +25,7 @@ fields are built from `UltraCanvasSpinner`, so hour/minute selection reuses the
 same arrow-driven control.
 
 **File Location**: `include/UltraCanvasTimePicker.h`
-**Version**: 1.1.0
+**Version**: 1.2.0 - `TimePickerStyle::FromTheme`, `ApplyTheme`: the picker and the clock view follow the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -189,6 +190,29 @@ replaces the spinner panel with `UltraCanvasTimeClockView`, a round dial:
 | `Enter` | Commit typed text |
 | `Esc` | Close popup / cancel edit |
 | Mouse wheel over field | Nudge the time by the minute step |
+
+## Following the theme
+
+`TimePickerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink and the caret in ink,
+faint ink for the hint, muted ink for the glyph and the separators; the
+raised popup with a hairline and the accent for its footer; the clock's
+header and selection in the accent with text on it, its numbers in ink,
+its dial in the pressed fill unless the theme names
+`time-picker.clock-face`; the interface font at the body size (the clock
+header's size stays the style's). Under the theme policy a new picker or
+clock view follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both. `SetStyle`
+reaches the field's editor and an open clock view.
+
+```cpp
+auto at = std::make_shared<UltraCanvasTimePicker>("at");
+TimePickerStyle big = at->GetStyle();
+big.clockHeaderFontSize = 32;
+at->SetStyle(TimePickerStyle::FromTheme(UltraCanvasTheme::Current(), big));
+at->SetFollowTheme(true);
+```
 
 ## Notes
 

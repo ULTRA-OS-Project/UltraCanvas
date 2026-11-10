@@ -87,6 +87,10 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.25.0 - text shown in the text view or the Details panel can be copied: a press
+//                   there gives the widget the keyboard, and Ctrl+C / Ctrl+Insert copy the
+//                   selection, Ctrl+A selects all; a right-click opens Copy / Select All
+//
 // Version: 1.24.0 - OpenFileWhenShown / OpenFolderWhenShown / SetFilesWhenShown: a turning
 //                   ring and the file's name while a file is on its way, never "No media";
 //                   onCurrentFileChanged; MediaSurface::SetEmptyText
@@ -860,6 +864,18 @@ private:
     // (focus is nowhere, or on a display view that would swallow the key).
     bool HandleViewerKey(const UCEvent& event);
     bool HandleFilteredKey(const UCEvent& event);
+    // The display-only text area under a window point - the open Details
+    // panel's text, else the shown text view or note - or null. A press there
+    // gives the widget the keyboard focus (those areas never take it), so
+    // Ctrl+C copies the text selected with the mouse instead of reaching
+    // whatever held the focus before (in UltraFiler the file display, which
+    // would copy the files).
+    UltraCanvasTextArea* SelectableTextAt(const Point2Di& windowPoint) const;
+    // Ctrl+C / Ctrl+Insert / Ctrl+A for the display-only text areas: copy the
+    // selection (the Details panel's first, then the text view's) or select
+    // all of the area last pressed in. False when the key is none of those or
+    // there is nothing to copy, so the key goes on as before.
+    bool HandleTextCopyKey(const UCEvent& event);
     void InstallKeyFilter();
     void RemoveKeyFilter();
     std::string KeyFilterId() const;
@@ -943,6 +959,8 @@ private:
     // and the palette (UltraCanvasColorSwatchBar).
     std::shared_ptr<UltraCanvasUIElement>    detailsView;
     std::shared_ptr<UltraCanvasUIElement>    detailsText;
+    // The display-only text area the mouse last went down in (Ctrl+A target).
+    UltraCanvasTextArea*                     lastPressedText = nullptr;
     std::shared_ptr<UltraCanvasUIElement>    detailsPaletteCaption;
     std::shared_ptr<UltraCanvasUIElement>    detailsPalette;
     std::string detailsMarkdown;   // what detailsText shows for the current file

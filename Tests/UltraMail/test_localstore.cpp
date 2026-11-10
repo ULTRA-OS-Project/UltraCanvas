@@ -3,6 +3,8 @@
 // schema/migrations, accounts, folders, message upserts, the needs-answer
 // eligibility rules, flag updates, and the per-account status rollup that
 // drives the info-tile bar.
+// Version: 0.6.0 - the inbox keeps its role after ClearAccountMail; Open repairs
+//                  a store where it lost it
 // Version: 0.5.0 - the protocol of the incoming server (schema 12)
 // Version: 0.4.0 - the verified sender domain with the verdict; ListStaleVerdicts
 // Version: 0.3.0 - WeighSentRecipients
@@ -698,4 +700,59 @@ TEST(weigh_sent_recipients_reads_the_sent_folders_recent_mail_first) {
     REQUIRE(near(w["old@example.com"], 0.25));     // 4 x 1/16
     REQUIRE(near(w["future@example.com"], 1.0));
     REQUIRE(w["old@example.com"] < w["max@example.com"]);
+}
+
+// A server changed in an account's settings drops its downloaded mail and
+// folders (ClearAccountMail); the next inbox sync records INBOX's UID state
+// before any folder list. That row is the inbox: the account bar counts it.
+TEST(inbox_row_made_by_uid_state_is_the_inbox) {
+    LocalStore s = FreshStore("uidstate-inbox");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    REQUIRE(s.ClearAccountMail("erika").success);
+    REQUIRE(s.SetFolderUidState("erika", "INBOX", 7, 10).success);
+    REQUIRE(s.SetFolderUidState("erika", "Archive", 8, 10).success);
+    std::vector<Folder> folders;
+    REQUIRE(s.ListFolders("erika", folders).success);
+    for (const auto& f : folders)
+        REQUIRE(f.role == (f.name == "INBOX" ? FolderRole::Inbox : FolderRole::Normal));
+
+    REQUIRE(s.UpsertMessage(Incoming("erika", 1, "boss@x.com", {"erika@example.com"})).success);
+    REQUIRE_EQ(UnreadFor(s, "erika"), 1);
+    REQUIRE_EQ(NeedsFor(s, "erika"), 1);
+}
+
+// A store an older version left with an INBOX row without the inbox role:
+// opening it gives the row its role back and works out again which inbox
+// mail waits for a reply, keeping the user's own marks.
+TEST(open_repairs_inbox_without_role) {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "ultramail_inbox_repair";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const std::string db = UltraCanvas::PathToUtf8(dir / "mail.db");
+    {
+        LocalStore s;
+        REQUIRE(s.Open("umtest-repair-1", db).success);
+        Account a; a.accountId = "erika"; a.email = "erika@example.com"; a.shortName = "erika";
+        REQUIRE(s.UpsertAccount(a).success);
+        Folder f; f.accountId = "erika"; f.name = "INBOX"; f.role = FolderRole::Normal;
+        REQUIRE(s.UpsertFolder(f).success);
+        REQUIRE(s.UpsertMessage(Incoming("erika", 1, "boss@x.com", {"erika@example.com"})).success);
+        MessageEnvelope answered = Incoming("erika", 2, "ann@x.com", {"Erika@Example.com"});
+        answered.flags = Flag_Answered;
+        REQUIRE(s.UpsertMessage(answered).success);
+        REQUIRE(s.UpsertMessage(Incoming("erika", 3, "list@x.com", {"other@x.com"})).success);
+        REQUIRE(s.UpsertMessage(Incoming("erika", 4, "carl@x.com", {"erika@example.com"})).success);
+        REQUIRE(s.SetNeedsAnswer("erika", "INBOX", 4, false).success);   // the user's "no"
+        REQUIRE_EQ(UnreadFor(s, "erika"), 0);   // the broken state: nothing counted
+        REQUIRE_EQ(NeedsFor(s, "erika"), 0);
+    }
+    LocalStore s;
+    REQUIRE(s.Open("umtest-repair-2", db).success);
+    REQUIRE_EQ(UnreadFor(s, "erika"), 4);   // all four unseen (2 is only \Answered)
+    REQUIRE_EQ(NeedsFor(s, "erika"), 1);    // only 1: 2 answered, 3 not to her, 4 marked no
+    std::vector<MessageEnvelope> waiting;
+    REQUIRE(s.ListNeedsAnswer("erika", waiting).success);
+    REQUIRE_EQ(waiting.size(), std::size_t(1));
+    REQUIRE_EQ(waiting[0].uid, int64_t(1));
 }

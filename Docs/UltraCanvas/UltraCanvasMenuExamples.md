@@ -18,6 +18,7 @@
 - [Menu Styling](#menu-styling)
   - [MenuStyle Structure](#menustyle-structure)
   - [The Panel](#the-panel)
+  - [Its Own Window](#its-own-window)
   - [Pre-built Themes](#pre-built-themes)
 - [Core Methods](#core-methods)
   - [Construction and Initialization](#construction-and-initialization)
@@ -50,8 +51,8 @@
 
 **UltraCanvasMenu** is a comprehensive menu component in the UltraCanvas framework that provides flexible menu functionality including menu bars, popup context menus, and hierarchical submenu support. It offers rich styling options, keyboard navigation, scrolling for long menus, and cross-platform compatibility.
 
-**Version:** 1.5.0 - `MenuStyle::FromTheme`  
-**Last Modified:** 2026-10-10  
+**Version:** 1.6.0 - a popup menu is shown in a window of its own, above every other window  
+**Last Modified:** 2026-11-09  
 **Author:** UltraCanvas Framework
 
 ## Features
@@ -320,6 +321,28 @@ shadow takes no clicks. The window blends every popup over its content with
 its alpha, which is what lets the panel's corners show the window behind
 them. A menubar has no panel: no padding, inset, radius or shadow - its
 items run edge to edge and only their highlight is rounded.
+
+### Its Own Window
+
+A popup menu or submenu is shown in a window of its own (`WindowType::Popup`),
+above every other window, like every popup - see
+`UltraCanvasWindowBase::SetPopupsInOwnWindows`. Composited onto the window it
+was opened in, a menu was covered by any window above that one: the menus of
+UltraDesktop's bars, whose window is kept below all others, opened under the
+applications' windows. The menu stays that window's in every other way - it is
+laid out and drawn there, keeps the keyboard there, and a click in its own
+window reaches it as a click in that window, at the same place - so nothing
+about building or handling a menu changes.
+
+The menu's window is cut to the panel's outline (transparent outside it on
+macOS and Wayland), so the rounded corners show whatever is beneath. It has no
+drop shadow of its own - macOS and a compositing window manager give a popup
+window one - and it does not fade in: `enableAnimations` shows it in full at
+once. It closes on a click outside it, as before, and also when the focus
+leaves the application, since it would otherwise float above other programs'
+windows. In the browser and on Android, and with
+`SetPopupsInOwnWindows(false)`, the menu is composited onto its window as
+described above.
 
 To get the earlier square look back, take the panel's decoration off:
 
@@ -787,7 +810,9 @@ menu->SetStyle(style);
 ```
 
 The whole panel fades - background, border, shadow and entries together -
-over the window content beneath it. The menu opens its popup at opacity 0 and
+over the window content beneath it. A menu shown in a window of its own (see
+*Its Own Window*) does not fade: it appears in full once its opacity is above
+0. The menu opens its popup at opacity 0 and
 steps it to 1 about every frame with `UltraCanvasWindowBase::SetPopupOpacity`
 (see Display Control), so a step only composites the window again and does
 not repaint the menu. The menu bar does not animate, and closing is

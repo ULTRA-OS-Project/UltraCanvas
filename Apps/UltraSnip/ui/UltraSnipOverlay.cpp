@@ -1,5 +1,9 @@
 // Apps/UltraSnip/ui/UltraSnipOverlay.cpp
 // See the header.
+// Version: 0.4.0 - Window mode: the desktop darkened, the window under the pointer in full
+//                  colour (no tint), lit as soon as the overlay opens under the pointer
+// Version: 0.3.0 - SetMode while open; onReleased, for the bar kept above it
+// Version: 0.2.0 - the texts go through Tr (UltraLocalisation)
 // Version: 0.1.1 - the frozen screen shown from its pixels (UCImage::FromBgra), no PNG round trip
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -11,6 +15,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -21,10 +26,12 @@ namespace UltraSnip {
 
 namespace {
 const Color kDim(0, 0, 0, 110);
+// Window mode: the desktop darker still, so the window under the pointer -
+// in its own colours, untinted - is plainly the one a click takes
+const Color kWindowDim(0, 0, 0, 170);
 const Color kFrame(255, 255, 255, 255);
 const Color kFrameShadow(0, 0, 0, 160);
 const Color kCrosshair(255, 255, 255, 150);
-const Color kWindowHighlight(60, 140, 255, 90);
 const Color kWindowFrame(80, 160, 255, 255);
 const Color kPillBackground(20, 20, 20, 210);
 const Color kPillText(255, 255, 255, 255);
@@ -68,6 +75,20 @@ void UltraSnipSelectionElement::SelectCurrent() {
     Finish(Rect2Df(0, 0, GetWidth(), GetHeight()));
 }
 
+void UltraSnipSelectionElement::SetMode(SnipMode mode) {
+    mode_ = mode;
+    hoverWindow_ = mode_ == SnipMode::Window && pointerKnown_ && !dragging_ ? WindowUnder(current_) : -1;
+    RequestRedraw();
+}
+
+void UltraSnipSelectionElement::SetPointer(const Point2Di& point) {
+    if (done_ || dragging_ || pointerKnown_) return;   // a real movement already said where it is
+    pointerKnown_ = true;
+    current_ = point;
+    if (mode_ == SnipMode::Window) hoverWindow_ = WindowUnder(current_);
+    RequestRedraw();
+}
+
 bool UltraSnipSelectionElement::OnEvent(const UCEvent& event) {
     if (done_) return false;
     switch (event.type) {
@@ -82,6 +103,7 @@ bool UltraSnipSelectionElement::OnEvent(const UCEvent& event) {
             anchor_ = current_ = event.pointer;
             RequestRedraw();
             return true;
+        case UCEventType::MouseEnter:   // the overlay opens under the pointer: light its window at once
         case UCEventType::MouseMove:
             pointerKnown_ = true;
             current_ = event.pointer;
@@ -118,7 +140,7 @@ bool UltraSnipSelectionElement::OnEvent(const UCEvent& event) {
 
 void UltraSnipSelectionElement::DrawDim(IRenderContext* ctx, const Rect2Df& hole) {
     const float w = GetWidth(), h = GetHeight();
-    ctx->SetFillPaint(kDim);
+    ctx->SetFillPaint(mode_ == SnipMode::Window ? kWindowDim : kDim);
     if (hole.width <= 0 || hole.height <= 0) {
         ctx->FillRectangle(Rect2Dd(0, 0, w, h));
         return;
@@ -165,10 +187,6 @@ void UltraSnipSelectionElement::Render(IRenderContext* ctx, const Rect2Df&) {
         ctx->SetStrokeWidth(3.0);
         ctx->SetStrokePaint(kFrameShadow);
         ctx->DrawRectangle(Rect2Dd(hole.x - 1, hole.y - 1, hole.width + 2, hole.height + 2));
-        if (window) {
-            ctx->SetFillPaint(kWindowHighlight);
-            ctx->FillRectangle(Rect2Dd(hole.x, hole.y, hole.width, hole.height));
-        }
         ctx->SetStrokeWidth(1.5);
         ctx->SetStrokePaint(window ? kWindowFrame : kFrame);
         ctx->DrawRectangle(Rect2Dd(hole.x, hole.y, hole.width, hole.height));
@@ -188,10 +206,10 @@ void UltraSnipSelectionElement::Render(IRenderContext* ctx, const Rect2Df&) {
         ctx->DrawLine(Point2Dd(0, current_.y + 0.5), Point2Dd(w, current_.y + 0.5));
     }
 
-    const char* hint = mode_ == SnipMode::Window
-                           ? "Click a window, or drag an area  \xC2\xB7  Enter: the window under the pointer  \xC2\xB7  Esc: cancel"
-                           : "Drag an area  \xC2\xB7  Enter: the whole screen  \xC2\xB7  Esc: cancel";
-    DrawPill(ctx, hint, w / 2, 16, true);
+    const std::string hint = mode_ == SnipMode::Window
+                           ? Tr("Click a window, or drag an area  \xC2\xB7  Enter: the window under the pointer  \xC2\xB7  Esc: cancel")
+                           : Tr("Drag an area  \xC2\xB7  Enter: the whole screen  \xC2\xB7  Esc: cancel");
+    DrawPill(ctx, hint, w / 2, hintTop_, true);
     ctx->PopState();
 }
 
@@ -210,7 +228,7 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
                             std::string* error) {
     Close();
     if (!shot.IsValid()) {
-        if (error) *error = "There is no screen picture to choose from.";
+        if (error) *error = Tr("There is no screen picture to choose from.");
         return false;
     }
     // The capture as the picture the image element shows: its B G R x rows
@@ -218,7 +236,7 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
     std::shared_ptr<UCImage> picture =
         UCImage::FromBgra(shot.pixels.data(), shot.width, shot.height, shot.stride, /*opaque=*/true);
     if (!picture) {
-        if (error) *error = "The screen picture could not be prepared.";
+        if (error) *error = Tr("The screen picture could not be prepared.");
         return false;
     }
 
@@ -237,7 +255,7 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
     config.backgroundColor = Colors::Black;
     window_ = CreateWindow(config);
     if (!window_) {
-        if (error) *error = "The selection window could not be opened.";
+        if (error) *error = Tr("The selection window could not be opened.");
         return false;
     }
     shotX_ = shot.x;
@@ -301,6 +319,18 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
         }
         return false;
     }, {UCEventType::KeyDown});
+    // Ahead of the marquee, which then has the release as well
+    window_->InstallEventFilter("snip-overlay-release", [this](const UCEvent&) {
+        if (open_ && onReleased) onReleased();
+        return false;
+    }, {UCEventType::MouseUp});
+    // The overlay opens under the pointer, which has not moved: the window
+    // is told where it is when it appears (its enter event), and the
+    // marquee lights the window under it from that
+    window_->InstallEventFilter("snip-overlay-enter", [this](const UCEvent& event) {
+        if (event.type == UCEventType::MouseEnter && marquee_) marquee_->SetPointer(event.pointerWindow);
+        return false;
+    }, {UCEventType::MouseEnter});
     window_->Show();
     window_->RaiseAndFocus();
     return true;
@@ -321,6 +351,14 @@ void UltraSnipOverlay::Finish(bool selected, const Rect2Di& area) {
     } else if (onCancelled) {
         onCancelled();
     }
+}
+
+void UltraSnipOverlay::SetMode(SnipMode mode) {
+    if (marquee_) marquee_->SetMode(mode);
+}
+
+void UltraSnipOverlay::SetHintTop(float top) {
+    if (marquee_) marquee_->SetHintTop(top);
 }
 
 void UltraSnipOverlay::Close() {

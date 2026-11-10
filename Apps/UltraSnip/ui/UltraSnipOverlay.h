@@ -37,10 +37,15 @@ class UltraSnipSelectionElement : public UltraCanvas::UltraCanvasUIElement {
 public:
     explicit UltraSnipSelectionElement(const std::string& identifier);
 
-    void SetMode(SnipMode mode) { mode_ = mode; RequestRedraw(); }
+    // Changed while open (the bar's shape choice): switched to Window, the
+    // window under the pointer is lit at once
+    void SetMode(SnipMode mode);
     void SetWindows(std::vector<OverlayWindow> windows) { windows_ = std::move(windows); }
     // Logical to physical pixels, for the size label
     void SetScale(float scale) { scale_ = scale; }
+    // Where the hint line starts from the top (logical); lower while the
+    // bar sits over the top of the screen
+    void SetHintTop(float top) { hintTop_ = top; RequestRedraw(); }
 
     // A selection: the rectangle in the element's (logical) coordinates
     std::function<void(const UltraCanvas::Rect2Df&)> onSelected;
@@ -48,6 +53,10 @@ public:
 
     // Enter: the window under the pointer (Window mode) or the whole screen
     void SelectCurrent();
+    // Where the pointer is, in the element's coordinates, before it has
+    // moved: the overlay opens under a resting pointer, and the window under
+    // it is lit at once rather than at the first movement
+    void SetPointer(const UltraCanvas::Point2Di& point);
 
     void Render(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Rect2Df& dirtyRect) override;
     bool OnEvent(const UltraCanvas::UCEvent& event) override;
@@ -61,6 +70,7 @@ private:
     SnipMode mode_ = SnipMode::Rectangle;
     std::vector<OverlayWindow> windows_;
     float scale_ = 1.0f;
+    float hintTop_ = 16.0f;
     bool dragging_ = false;
     bool pointerKnown_ = false;
     UltraCanvas::Point2Di anchor_;
@@ -80,11 +90,17 @@ public:
     bool Open(const UltraCanvas::DesktopScreenImage& shot, SnipMode mode,
               const std::vector<SnipWindowBounds>& windows, std::string* error = nullptr);
     void Close();
+    // The shape the marquee takes while it is open (the bar's choice changed)
+    void SetMode(SnipMode mode);
+    void SetHintTop(float top);
     bool IsOpen() const { return window_ != nullptr && open_; }
 
     // The chosen rectangle in screen pixels (as ListScreens counts them)
     std::function<void(const UltraCanvas::Rect2Di&)> onSelected;
     std::function<void()> onCancelled;
+    // A button went up over the overlay and it is still open: a window kept
+    // above it (the bar) raises itself again, as the click raised the overlay
+    std::function<void()> onReleased;
 
 private:
     void Finish(bool selected, const UltraCanvas::Rect2Di& area);

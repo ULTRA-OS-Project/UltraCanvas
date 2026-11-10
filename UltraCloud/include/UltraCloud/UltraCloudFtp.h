@@ -12,8 +12,11 @@
 //
 // Share links are not FTP's to give - there is no request that mints one -
 // so CreateShareLink answers Unsupported.
+// Version: 0.2.0 - the server as a form asks for it (FtpServer, FtpServerOf,
+//                  FtpServerUrl, FtpDefaultPort); a scheme the provider does
+//                  not speak is refused at Verify (FtpSchemeKnown)
 // Version: 0.1.0
-// Last Modified: 2026-09-17
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -50,6 +53,42 @@ FtpTransport FtpTransportFor(const std::string& serverUrl);
 // .org", or "files.example.org/srv/pub" when the account is rooted in a
 // subdirectory. Everything a path is then hung off.
 std::string FtpHostAndBase(const std::string& serverUrl);
+
+// ---- The server as a form asks for it -----------------------------------------
+// A server URL taken apart for a dialog that asks for the protocol, the host
+// and the port each on its own, and put back together from what was typed:
+//
+//   sftp://files.example.org:2222/srv/pub
+//   scheme "sftp", host "files.example.org", port 2222, base "srv/pub"
+//
+// The scheme is one of the four above, "ftp" for a URL that carries none; the
+// host is a name, an IPv4 address or an IPv6 address in brackets; the port is
+// 0 when the URL names none, which means the scheme's own; the base is the
+// folder the account is rooted in, "" at the top level.
+struct FtpServer {
+    std::string scheme = "ftp";
+    std::string host;
+    int port = 0;
+    std::string base;
+};
+
+// The port a scheme speaks on when the URL names none: 21 for ftp:// and
+// ftpes://, 990 for ftps://, 22 for sftp://.
+int FtpDefaultPort(const std::string& scheme);
+
+// Whether `serverUrl` asks for a protocol this provider speaks - ftp://,
+// ftps://, ftpes:// or sftp://, or no scheme at all. An https:// address
+// pasted from the browser's bar is the usual way it does not, and it used to
+// be tried as plain FTP on port 21 without a word; Verify refuses it instead.
+bool FtpSchemeKnown(const std::string& serverUrl);
+
+FtpServer FtpServerOf(const std::string& serverUrl);
+
+// The URL that stores `server`: "sftp://files.example.org:2222/srv/pub". A
+// port that is the scheme's own is left out, so a server added through the
+// form keeps the id of one added as "sftp://files.example.org" on the command
+// line (MakeAccountId reads the host as it stands in the URL).
+std::string FtpServerUrl(const FtpServer& server);
 
 // The URL of `path` on `account`, percent-encoded segment by segment.
 //

@@ -3,6 +3,16 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.0.1 - Curves counts its histogram backdrop with UltraCanvasHistogramModel, as the
+//                  image viewer's Curves dialog does; the RGB backdrop adds the three channels
+// Version: 2.0.0 - images in tabs: one window holds several, each with its own paint surface
+//                  under the tab strip; New, Open, Paste as New Image, "Open in new tab" on a
+//                  drop and a second start's files add a tab instead of a window; File > Close
+//                  Tab (Ctrl+W), Ctrl+Tab / Ctrl+Shift+Tab; closing the window or a tab asks
+//                  about the unsaved images in it
+// Version: 1.11.0 - selected words take a letter spacing of their own (the text bar's, while
+//                  typing); a size typed into the text bar (or a font looked up by its letters)
+//                  no longer runs the window's shortcuts - Ctrl+A finished the text
 // Version: 1.10.0 - the text bar (UltraCanvasTextFormatBar) under the toolbar with the Text
 //                  tool, in place of the Text card: strikethrough, line spacing (per paragraph,
 //                  of its largest letters) and letter spacing besides the font, size, style
@@ -59,7 +69,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -340,18 +350,14 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     window->AddChild(body);
 
     BuildToolPalette();
-
-    surface = CreatePaintSurface("up-surface");
-    surface->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    body->AddChild(surface);
-
+    BuildDocumentTabs();
     BuildRightPanel();
     BuildMagnifier();
     BuildStatusBar();
 
     // ----- tool context -----
+    // The surface is the active tab's: SwitchToTab points it at another.
     toolContext.getDocument = [this]() { return document; };
-    toolContext.surface = surface.get();
     toolContext.options = &toolOptions;
     toolContext.foreground = [this]() { return foreground; };
     toolContext.background = [this]() { return background; };
@@ -368,81 +374,70 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     toolContext.askRasterize = [this](const std::string& action) { AskRasterize(action); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
 
-    // ----- surface -> tool -----
-    surface->onToolPress = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnPress(toolContext, e); };
-    surface->onToolDrag = [this](const PaintPointerEvent& e) {
-        pointerX = e.x; pointerY = e.y; pointerInside = e.insideImage;
-        if (auto* t = ActiveTool()) t->OnDrag(toolContext, e);
-        UpdateStatus();
-        UpdateMagnifier(e.x, e.y, e.view);
-    };
-    surface->onToolRelease = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, e); };
-    surface->onToolHover = [this](const PaintPointerEvent& e) {
-        pointerX = e.x; pointerY = e.y; pointerInside = e.insideImage;
-        if (auto* t = ActiveTool()) t->OnHover(toolContext, e);
-        UpdateStatus();
-        UpdateMagnifier(e.x, e.y, e.view);
-    };
-    surface->onToolDoubleClick = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, e); };
-    surface->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
-    surface->onDrawOverlay = [this](IRenderContext* ctx, const PaintViewTransform& v) {
-        if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
-        DrawTextBoxes(ctx, v);
-    };
-    surface->onViewChanged = [this]() {
-        UpdateStatus();
-        PlaceTextEditor();   // the text being typed stays on its box
-        // The glass magnifies the view's own zoom, so it follows a zoom change.
-        if (magnifier && magnifier->IsVisible() && pointerInside)
-            magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
-    };
-    surface->onFilesDropped = [this](const std::vector<std::string>& files) { HandleDroppedFiles(files); };
-
     InstallShortcuts();
 
     window->onWindowClosing = [this]() -> bool {
         CommitTextEdit();
-        if (!document || !document->IsModified()) {
+        const int unsaved = UnsavedTabCount();
+        if (unsaved == 0) {
             if (auto dlg = settingsDialog.lock()) dlg->Close();
             return true;
         }
-        ConfirmDiscard("The image has unsaved changes. Close anyway?", [this]() {
-            document->SetModified(false);
+        ConfirmDiscard(TrN("{n} image in this window has unsaved changes. Close anyway?",
+                           "{n} images in this window have unsaved changes. Close anyway?", unsaved),
+                       [this]() {
+            for (const auto& tab : documentTabs) if (tab->document) tab->document->SetModified(false);
             window->Close();   // comes back through here, and closes the settings window
         });
         return false;
     };
+    // The window used last is the one a second start's files open in.
+    UltraPaintWindow* self = this;
+    window->onWindowFocus = [self]() {
+        auto& windows = OpenWindows();
+        auto it = std::find_if(windows.begin(), windows.end(),
+                               [self](const std::shared_ptr<UltraPaintWindow>& w) { return w.get() == self; });
+        if (it != windows.end() && it + 1 != windows.end()) std::rotate(it, it + 1, windows.end());
+    };
 
-    // ----- first document -----
-    if (!paths.empty() && (NeedsImportDialog(paths.front()) ||
-                           UCRasterDocument::IsPasswordProtected(paths.front()))) {
-        // Vector artwork needs a raster size, and a 3D model a view as well,
-        // before either becomes an image; the dialog that asks waits for
-        // Show() — this is also the path a file dropped on the application's
-        // icon takes, since the shell starts us with it on the command line.
-        // So does a password-protected document's question for its password.
-        pendingImport = paths.front();
-        NewImage(lastNewImage);
-    } else if (!paths.empty()) {
-        OpenFile(paths.front());
-        if (!document) NewImage(lastNewImage);
-    } else {
-        NewImage(lastNewImage);
-    }
+    // ----- the first documents -----
+    NewImage(lastNewImage);
     SelectTool(PaintToolId::Brush);
+    OpenPaths(paths);
     return true;
+}
+
+void UltraPaintWindow::OpenPaths(const std::vector<std::string>& paths) {
+    for (const auto& path : paths) {
+        if (NeedsImportDialog(path) || UCRasterDocument::IsPasswordProtected(path)) {
+            // Vector artwork needs a raster size, and a 3D model a view as
+            // well, before either becomes an image; the dialog that asks waits
+            // until the window is on screen - this is also the path a file
+            // dropped on the application's icon takes, since the shell starts
+            // us with it on the command line. So does a password-protected
+            // document's question for its password.
+            pendingImports.push_back(path);
+            continue;
+        }
+        OpenFile(path);
+    }
+    if (shown) RunPendingImports();
+}
+
+void UltraPaintWindow::RunPendingImports() {
+    if (pendingImports.empty()) return;
+    std::vector<std::string> paths;
+    paths.swap(pendingImports);
+    // Whatever each asks - the import dialog, a protected file's password -
+    // is asked once the editor has drawn, not over a window with nothing in
+    // it. Each opens in a tab of its own.
+    for (const auto& path : paths) AfterNextDraw([this, path]() { ImportFile(path, false); });
 }
 
 void UltraPaintWindow::Show() {
     if (window) window->Show();
-    if (!pendingImport.empty()) {
-        const std::string path = pendingImport;
-        pendingImport.clear();
-        // Whatever it asks - the import dialog, a protected file's password
-        // - is asked once the editor has drawn, not over a window with
-        // nothing in it.
-        AfterNextDraw([this, path]() { ImportFile(path, false); });
-    }
+    shown = true;
+    RunPendingImports();
 }
 
 // ===========================================================================
@@ -465,18 +460,25 @@ void UltraPaintWindow::BringForward() {
 }
 
 std::shared_ptr<UltraPaintWindow> UltraPaintWindow::OpenWindow(const std::vector<std::string>& paths) {
+    // Every path gets a tab of this one window. This is what a selection
+    // dropped on the application's icon in a dock or taskbar looks like: the
+    // desktop expands the launcher's "Exec=UltraPaint %F" with every dropped
+    // path at once.
     auto editor = std::make_shared<UltraPaintWindow>();
     if (!editor->Initialize(paths)) return nullptr;
     OpenWindows().push_back(editor);
     UltraPaintWindow* raw = editor.get();
     editor->window->onWindowClosed = [raw]() { RetireWindow(raw); };
     editor->Show();
+    return editor;
+}
 
-    // A window holds one image, so the rest of a multi-file open each get one
-    // of their own. This is what a selection dropped on the application's icon
-    // in a dock or taskbar looks like: the desktop expands the launcher's
-    // "Exec=UltraPaint %F" with every dropped path at once.
-    for (size_t i = 1; i < paths.size(); ++i) OpenWindow({ paths[i] });
+std::shared_ptr<UltraPaintWindow> UltraPaintWindow::OpenInRunningWindow(const std::vector<std::string>& paths) {
+    auto& windows = OpenWindows();
+    if (windows.empty()) return OpenWindow(paths);
+    // The registry keeps the window focused last at its end.
+    std::shared_ptr<UltraPaintWindow> editor = windows.back();
+    editor->OpenPaths(paths);
     return editor;
 }
 
@@ -539,6 +541,10 @@ void UltraPaintWindow::BuildMenuBar() {
             M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
             M::ActionWithShortcut("Export with Options...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
             M::Action("Password Protection...", MenuIconPath("password.svg"), [this]() { CmdPassword(); }),
+            M::Separator(),
+            M::ActionWithShortcut(Tr("Close Tab"), "Ctrl+W", [this]() { CmdCloseTab(); }),
+            M::ActionWithShortcut(Tr("Next Tab"), "Ctrl+Tab", [this]() { CmdNextTab(1); }),
+            M::ActionWithShortcut(Tr("Previous Tab"), "Ctrl+Shift+Tab", [this]() { CmdNextTab(-1); }),
             M::Separator(),
             M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
         })
@@ -938,6 +944,19 @@ void UltraPaintWindow::InstallShortcuts() {
     window->InstallEventFilter("up-shortcuts", [this](const UCEvent& e) -> bool {
         if (e.type != UCEventType::KeyDown) return false;
         if (window->GetActivePopupElement()) return false;
+        // A control of the text bar has the keyboard (a size typed, a font
+        // looked up by its first letters): the keys are its, and the text
+        // being typed stays open. Escape gives the keys back to the text;
+        // the file commands still work.
+        if (textBar && textBar->IsVisible() && textBar->HasKeyboardFocus() &&
+            !(e.ctrl && (e.virtualKey == UCKeys::S || e.virtualKey == UCKeys::O || e.virtualKey == UCKeys::N ||
+                         e.virtualKey == UCKeys::E || e.virtualKey == UCKeys::Q))) {
+            if (e.virtualKey == UCKeys::Escape && IsEditingText() && textEditor) {
+                textEditor->SetFocus(true);
+                return true;
+            }
+            return false;
+        }
         // Typing on the canvas: Escape, or Ctrl+Enter, finishes the text
         // (Enter starts a new line in it).
         if (IsEditingText() && (e.virtualKey == UCKeys::Escape ||
@@ -963,6 +982,8 @@ void UltraPaintWindow::InstallShortcuts() {
                 case UCKeys::S: if (e.shift) CmdSaveAs(); else CmdSave(); return true;
                 case UCKeys::E: CmdExport(); return true;
                 case UCKeys::Q: CmdQuit(); return true;
+                case UCKeys::W: CmdCloseTab(); return true;
+                case UCKeys::Tab: CmdNextTab(e.shift ? -1 : 1); return true;
                 case UCKeys::Z: if (e.shift) CmdRedo(); else CmdUndo(); return true;
                 case UCKeys::Y: CmdRedo(); return true;
                 case UCKeys::X: if (e.shift) CmdCropToSelection(); else CmdCut(); return true;
@@ -1018,29 +1039,307 @@ void UltraPaintWindow::InstallShortcuts() {
 // DOCUMENT
 // ===========================================================================
 
+// ----- documents in tabs ---------------------------------------------------
+
+void UltraPaintWindow::BuildDocumentTabs() {
+    // The middle of the body: the strip of tabs over the pages that hold
+    // the tabs' surfaces. The strip shows nothing but the tabs; each page is
+    // laid out by the pages container, which shows the active one.
+    canvasColumn = std::make_shared<UltraCanvasContainer>("up-canvas-column", 0, 0, 0, 0);
+    canvasColumn->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    canvasColumn->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    body->AddChild(canvasColumn);
+
+    tabStrip = std::make_shared<UltraCanvasTabbedContainer>("up-tabs");
+    tabStrip->SetTabStyle(TabStyle::Flat);
+    tabStrip->SetTabPosition(TabPosition::Top);
+    tabStrip->SetCloseMode(TabCloseMode::Closable);
+    tabStrip->SetShowNewTabButton(true);
+    tabStrip->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
+    tabStrip->SetOverflowDropdownPosition(OverflowDropdownPosition::Left);
+    tabStrip->SetTabMaxWidth(220);
+    tabStrip->SetAllowTabReordering(true);
+    tabStrip->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tabStrip->size.height = CSSLayout::Dimension::Px(static_cast<float>(tabStrip->GetTabHeight()));
+    canvasColumn->AddChild(tabStrip);
+
+    tabPages = std::make_shared<UltraCanvasContainer>("up-tab-pages", 0, 0, 0, 0);
+    tabPages->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    tabPages->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    canvasColumn->AddChild(tabPages);
+    tabStrip->SetContentHost(tabPages);
+
+    tabStrip->onTabChange = [this](int, int newIndex) {
+        if (closingTab) return;   // RemoveTabNow picks the tab on show itself
+        SwitchToTab(newIndex);
+    };
+    tabStrip->onTabClose = [this](int index) {
+        if (closingTab) return true;   // RemoveTabNow is taking it away
+        CloseTab(index);
+        return false;                  // CloseTab removes it once it may go
+    };
+    tabStrip->onNewTabRequest = [this]() { CmdNew(); };
+    tabStrip->onTabReorder = [this](int from, int to) {
+        const int count = static_cast<int>(documentTabs.size());
+        if (from < 0 || from >= count || to < 0 || to >= count) return;
+        auto moved = documentTabs[from];
+        documentTabs.erase(documentTabs.begin() + from);
+        documentTabs.insert(documentTabs.begin() + to, moved);
+        activeTab = tabStrip->GetActiveTab();
+    };
+}
+
+void UltraPaintWindow::WireSurface(const std::shared_ptr<UltraCanvasPaintSurface>& s) {
+    // Only the active tab's surface is on show, so whichever reports is the
+    // one `surface` names.
+    s->onToolPress = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnPress(toolContext, e); };
+    s->onToolDrag = [this](const PaintPointerEvent& e) {
+        pointerX = e.x; pointerY = e.y; pointerInside = e.insideImage;
+        if (auto* t = ActiveTool()) t->OnDrag(toolContext, e);
+        UpdateStatus();
+        UpdateMagnifier(e.x, e.y, e.view);
+    };
+    s->onToolRelease = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, e); };
+    s->onToolHover = [this](const PaintPointerEvent& e) {
+        pointerX = e.x; pointerY = e.y; pointerInside = e.insideImage;
+        if (auto* t = ActiveTool()) t->OnHover(toolContext, e);
+        UpdateStatus();
+        UpdateMagnifier(e.x, e.y, e.view);
+    };
+    s->onToolDoubleClick = [this](const PaintPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, e); };
+    s->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
+    s->onDrawOverlay = [this](IRenderContext* ctx, const PaintViewTransform& v) {
+        if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
+        DrawTextBoxes(ctx, v);
+    };
+    s->onViewChanged = [this]() {
+        UpdateStatus();
+        PlaceTextEditor();   // the text being typed stays on its box
+        // The glass magnifies the view's own zoom, so it follows a zoom change.
+        if (magnifier && magnifier->IsVisible() && pointerInside && surface)
+            magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, pointerX, pointerY);
+    };
+    s->onFilesDropped = [this](const std::vector<std::string>& files) { HandleDroppedFiles(files); };
+}
+
+void UltraPaintWindow::AddDocumentTab(std::shared_ptr<UCRasterDocument> doc) {
+    if (!doc || !tabStrip) return;
+    auto tab = std::make_shared<DocumentTab>();
+    tab->surface = CreatePaintSurface("up-surface-" + std::to_string(++surfaceSerial));
+    tab->surface->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    WireSurface(tab->surface);
+    if (doc->GetFilePath().empty()) {
+        // The lowest number no open tab has: "Untitled", "Untitled 2", ...
+        int n = 1;
+        auto taken = [this](int k) {
+            return std::any_of(documentTabs.begin(), documentTabs.end(),
+                               [k](const std::shared_ptr<DocumentTab>& t) {
+                                   return t->untitledNumber == k && t->document &&
+                                          t->document->GetFilePath().empty();
+                               });
+        };
+        while (taken(n)) ++n;
+        tab->untitledNumber = n;
+    }
+    documentTabs.push_back(tab);
+    const int index = tabStrip->AddTab(Tr("Untitled"), tab->surface);
+    // The first tab is made active by AddTab itself, without a change to
+    // report; any later one is switched to here (onTabChange does the rest).
+    if (tabStrip->GetActiveTab() != index) tabStrip->SetActiveTab(index);
+    else SwitchToTab(index);
+    SetDocument(std::move(doc), std::string());
+    UpdateTabCaption(index);
+}
+
+void UltraPaintWindow::ShowInTab(std::shared_ptr<UCRasterDocument> doc) {
+    if (!doc) return;
+    if (activeTab >= 0 && activeTab < static_cast<int>(documentTabs.size()) &&
+        IsPristine(*documentTabs[activeTab])) {
+        if (!doc->GetFilePath().empty()) documentTabs[activeTab]->untitledNumber = 0;
+        SetDocument(std::move(doc), std::string());
+        return;
+    }
+    AddDocumentTab(std::move(doc));
+}
+
+bool UltraPaintWindow::IsPristine(const DocumentTab& tab) const {
+    const auto& d = tab.document;
+    return d && d->GetFilePath().empty() && !d->IsModified() && !d->CanUndo() && !d->CanRedo();
+}
+
+int UltraPaintWindow::UnsavedTabCount() const {
+    int unsaved = 0;
+    for (const auto& tab : documentTabs) if (tab->document && tab->document->IsModified()) ++unsaved;
+    return unsaved;
+}
+
+int UltraPaintWindow::TabIndexOf(const UCRasterDocument* doc) const {
+    for (size_t i = 0; i < documentTabs.size(); ++i)
+        if (documentTabs[i]->document.get() == doc) return static_cast<int>(i);
+    return -1;
+}
+
+void UltraPaintWindow::SwitchToTab(int index) {
+    if (index < 0 || index >= static_cast<int>(documentTabs.size())) return;
+    const bool same = index == activeTab && surface == documentTabs[index]->surface;
+    if (same) return;
+    // What is under way on the image being left is finished there: a text
+    // being typed goes into its layer, the tool lets go of what it holds.
+    CommitTextEdit();
+    if (auto* t = ActiveTool()) if (surface) t->Deactivate(toolContext);
+    renamingLayer = -1;
+    activeTab = index;
+    const auto& tab = documentTabs[index];
+    surface = tab->surface;
+    document = tab->document;
+    toolContext.surface = surface.get();
+    pointerInside = false;
+    if (magnifier) magnifier->SetDocument(document);
+    if (auto* t = ActiveTool()) {
+        t->Activate(toolContext);
+        surface->SetToolCursor(t->Cursor());
+        surface->SetCursorRadius(t->CursorRadius(toolContext));
+        surface->SetCursorSquare(t->CursorSquare(toolContext));
+    }
+    if (!document) return;   // AddDocumentTab's SetDocument follows
+    RebuildLayerPanel();
+    RebuildToolOptions();
+    UpdateUndoButtons();
+    UpdateTitle();
+    UpdateStatus();
+    UpdateMagnifierVisibility();
+#ifdef HAS_LIBVIPS
+    SchedulePreviewRefresh();
+#endif
+    surface->Refresh();
+}
+
+void UltraPaintWindow::UpdateTabCaption(int index) {
+    if (!tabStrip || index < 0 || index >= static_cast<int>(documentTabs.size())) return;
+    const auto& tab = documentTabs[index];
+    if (!tab->document) return;
+    const std::string& path = tab->document->GetFilePath();
+    std::string caption;
+    if (!path.empty()) caption = FileNameOf(path);
+    else if (tab->untitledNumber > 1) caption = TrF("Untitled {0}", std::to_string(tab->untitledNumber));
+    else caption = Tr("Untitled");
+    if (tabStrip->GetTabTitle(index) != caption) tabStrip->SetTabTitle(index, caption);
+    tabStrip->SetTabTooltip(index, path.empty() ? caption : path);
+    const bool modified = tab->document->IsModified();
+    if (tabStrip->IsTabShowMarker(index) != modified) {
+        tabStrip->SetTabShowMarker(index, modified);
+        tabStrip->RequestRedraw();
+    }
+}
+
+void UltraPaintWindow::CloseTab(int index) {
+    if (index < 0 || index >= static_cast<int>(documentTabs.size())) return;
+    if (index == activeTab) CommitTextEdit();
+    auto doc = documentTabs[index]->document;
+    if (!doc || !doc->IsModified()) { RemoveTabNow(index); return; }
+    if (index != activeTab && tabStrip) tabStrip->SetActiveTab(index);   // the image the question is about
+    const std::string name = tabStrip ? tabStrip->GetTabTitle(index) : std::string();
+    std::weak_ptr<bool> alive = lifeToken;
+    std::weak_ptr<UCRasterDocument> weakDoc = doc;
+    ConfirmDiscard(TrF("{0} has unsaved changes. Close it anyway?", name), [this, alive, weakDoc]() {
+        if (alive.expired()) return;
+        auto d = weakDoc.lock();
+        const int at = d ? TabIndexOf(d.get()) : -1;   // the tabs may have moved meanwhile
+        if (at >= 0) RemoveTabNow(at);
+    });
+}
+
+void UltraPaintWindow::RemoveTabNow(int index) {
+    if (index < 0 || index >= static_cast<int>(documentTabs.size()) || !tabStrip) return;
+    auto tab = documentTabs[index];
+    // The image on show stays on show when another tab closes.
+    std::shared_ptr<UCRasterDocument> keep = tab->document == document ? nullptr : document;
+    if (!keep) {
+        CommitTextEdit();
+        if (auto* t = ActiveTool()) if (surface) t->Deactivate(toolContext);
+        // Nothing points at the closing image while the next is chosen.
+        document = nullptr;
+        surface = nullptr;
+        toolContext.surface = nullptr;
+        activeTab = -1;
+        if (magnifier) magnifier->SetDocument(nullptr);
+    }
+    if (tab->document && tab->listener) tab->document->RemoveListener(tab->listener);
+    tab->listener = 0;
+    if (tab->surface) tab->surface->SetDocument(nullptr);
+    documentTabs.erase(documentTabs.begin() + index);
+    if (keep) activeTab = TabIndexOf(keep.get());
+    closingTab = true;
+    tabStrip->RemoveTab(index);
+    closingTab = false;
+    if (documentTabs.empty()) {
+        // The window stays, with a blank canvas.
+        NewImage(lastNewImage);
+        return;
+    }
+    // The strip keeps its active index where it was, which after a removal
+    // can name another image: it is told which one is on show.
+    const int last = static_cast<int>(documentTabs.size()) - 1;
+    const int target = keep ? activeTab : std::clamp(tabStrip->GetActiveTab(), 0, last);
+    tabStrip->SetActiveTab(target);   // SwitchToTab through onTabChange
+}
+
+void UltraPaintWindow::CmdCloseTab() {
+    if (activeTab >= 0) CloseTab(activeTab);
+}
+
+void UltraPaintWindow::CmdNextTab(int delta) {
+    const int count = static_cast<int>(documentTabs.size());
+    if (count < 2 || !tabStrip) return;
+    tabStrip->SetActiveTab(((activeTab + delta) % count + count) % count);
+}
+
 void UltraPaintWindow::SetDocument(std::shared_ptr<UCRasterDocument> doc, const std::string& title) {
     (void)title;
+    if (!doc) return;
+    if (activeTab < 0 || activeTab >= static_cast<int>(documentTabs.size())) {
+        AddDocumentTab(std::move(doc));   // comes back here with its tab
+        return;
+    }
     CommitTextEdit();
-    if (document && documentListener) document->RemoveListener(documentListener);
-    document = std::move(doc);
+    auto& tab = *documentTabs[activeTab];
+    if (tab.document && tab.listener) tab.document->RemoveListener(tab.listener);
+    tab.listener = 0;
+    tab.document = std::move(doc);
+    document = tab.document;
     renamingLayer = -1;
     // The window's own listener beside the surfaces' (the editing view and
-    // the magnifying glass each add theirs in SetDocument): the panels and
-    // the title follow the document without chaining behind anyone's slot.
+    // the magnifying glass each add theirs in SetDocument): the panels, the
+    // title and the tab follow the document without chaining behind anyone's
+    // slot. Every tab's document keeps its listener while it is open - a
+    // background tab's caption still follows - but only the active one moves
+    // the panels.
+    UCRasterDocument* raw = tab.document.get();
     UCRasterDocument::Listener l;
+    l.stateChanged = [this, raw]() {
+        UpdateTabCaption(TabIndexOf(raw));
+        if (raw != document.get()) return;
+        UpdateUndoButtons();
+        UpdateTitle();
 #ifdef HAS_LIBVIPS
-    // An open adjustment follows the image: a pasted layer, an undo, another
-    // image altogether.
-    l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); SchedulePreviewRefresh(); };
-    l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); SchedulePreviewRefresh(); };
-#else
-    l.stateChanged = [this]() { UpdateUndoButtons(); UpdateTitle(); };
-    l.structureChanged = [this]() { ScheduleLayerPanelRebuild(); UpdateStatus(); };
+        // An open adjustment follows the image: a pasted layer, an undo,
+        // another image altogether.
+        SchedulePreviewRefresh();
 #endif
-    documentListener = document->AddListener(std::move(l));
+    };
+    l.structureChanged = [this, raw]() {
+        if (raw != document.get()) return;
+        ScheduleLayerPanelRebuild();
+        UpdateStatus();
+#ifdef HAS_LIBVIPS
+        SchedulePreviewRefresh();
+#endif
+    };
+    tab.listener = tab.document->AddListener(std::move(l));
     surface->SetDocument(document);
     if (magnifier) magnifier->SetDocument(document);
     surface->ZoomToFit();
+    UpdateTabCaption(activeTab);   // before the title, which shows it
     RebuildLayerPanel();
     UpdateUndoButtons();
     UpdateTitle();
@@ -1060,7 +1359,9 @@ void UltraPaintWindow::NewImage(const UltraPaintNewImageResult& r) {
         case 4: bg = background; break;
         default: break;
     }
-    SetDocument(std::make_shared<UCRasterDocument>(r.width, r.height, bg), "Untitled");
+    // A new image always gets a tab of its own; the window's first is made
+    // here too.
+    AddDocumentTab(std::make_shared<UCRasterDocument>(r.width, r.height, bg));
     if (statusHint) statusHint->SetText("New " + std::to_string(r.width) + " x " + std::to_string(r.height) + " image");
 }
 
@@ -1128,7 +1429,7 @@ bool UltraPaintWindow::LoadIntoWindow(const std::string& path) {
         UltraCanvasDialogManager::ShowError("Could not open " + path + "\n" + ShortError(error), "Open", nullptr, window.get());
         return false;
     }
-    SetDocument(doc, FileNameOf(path));
+    ShowInTab(doc);
     if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
     return true;
 }
@@ -1162,7 +1463,7 @@ void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
     std::vector<ModelViewAction> actions;
     if (fromDrop && document && document->IsValid()) {
         actions.push_back(ModelViewAction{"merge", "Merge image", false});
-        actions.push_back(ModelViewAction{"window", "Open new window", true});
+        actions.push_back(ModelViewAction{"tab", Tr("Open in new tab"), true});
     } else {
         actions.push_back(ModelViewAction{"open", "Open", true});
     }
@@ -1192,7 +1493,7 @@ void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
 
         UltraPaintImportResult result;
         if (view.actionId == "merge")       result.action = UltraPaintImportResult::Action::Merge;
-        else if (view.actionId == "window") result.action = UltraPaintImportResult::Action::NewWindow;
+        else if (view.actionId == "tab")    result.action = UltraPaintImportResult::Action::NewTab;
         else                                result.action = UltraPaintImportResult::Action::Open;
         ApplyImport(path, result, incoming);
 
@@ -1246,7 +1547,7 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         request.naturalWidth = preloaded->GetWidth();
         request.naturalHeight = preloaded->GetHeight();
         if (!fromDrop) {
-            SetDocument(preloaded, FileNameOf(path));
+            ShowInTab(preloaded);
             if (statusHint) statusHint->SetText("Opened " + FileNameOf(path) + " (password-protected)");
             return;
         }
@@ -1287,7 +1588,7 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         request.naturalHeight = preloaded->GetHeight();
         if (!fromDrop) {
             // Opening a bitmap from the File menu asks nothing.
-            SetDocument(preloaded, FileNameOf(path));
+            ShowInTab(preloaded);
             if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
             return;
         }
@@ -1424,19 +1725,12 @@ void UltraPaintWindow::ApplyLoaded(const std::string& path, const UltraPaintImpo
         case UltraPaintImportResult::Action::Merge:
             MergeDocument(incoming, path, result.scaleToFit);
             break;
-        case UltraPaintImportResult::Action::NewWindow: {
-            auto editor = OpenWindow({});
-            if (!editor) {
-                UltraCanvasDialogManager::ShowError("Could not open another UltraPaint window",
-                                                    "New Window", nullptr, window.get());
-                return;
-            }
-            editor->SetDocument(incoming, FileNameOf(path));
-            if (editor->statusHint) editor->statusHint->SetText("Opened " + FileNameOf(path));
+        case UltraPaintImportResult::Action::NewTab:
+            AddDocumentTab(incoming);
+            if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
             break;
-        }
         case UltraPaintImportResult::Action::Open:
-            SetDocument(incoming, FileNameOf(path));
+            ShowInTab(incoming);
             if (statusHint) statusHint->SetText("Opened " + FileNameOf(path));
             break;
         default:
@@ -1650,7 +1944,12 @@ void UltraPaintWindow::ConfirmDiscard(const std::string& question, const std::fu
 
 void UltraPaintWindow::UpdateTitle() {
     if (!window) return;
-    std::string t = document ? FileNameOf(document->GetFilePath()) : "Untitled";
+    // The active tab's caption ("Untitled 2" before it has a file), brought
+    // up to date first: a Save As names the file.
+    UpdateTabCaption(activeTab);
+    std::string t = (tabStrip && activeTab >= 0) ? tabStrip->GetTabTitle(activeTab) : std::string();
+    if (t.empty()) t = document ? FileNameOf(document->GetFilePath()) : Tr("Untitled");
+    if (t.empty()) t = Tr("Untitled");
     if (document && document->IsModified()) t = "*" + t;
     window->SetWindowTitle(t + " - UltraPaint " ULTRAPAINT_VERSION);
 }
@@ -1751,7 +2050,7 @@ void UltraPaintWindow::BuildMagnifier() {
         if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
     };
     magnifierFrame->AddChild(magnifier);
-    body->AddChild(magnifierFrame);
+    tabPages->AddChild(magnifierFrame);
     ApplySettings();
 }
 
@@ -1807,11 +2106,11 @@ void UltraPaintWindow::UpdateMagnifierVisibility() {
         magnifier->SetLoupeView(surface->GetZoom() * settings.magnifierFactor, ix, iy);
         PlaceMagnifier(magnifierCorner);
     }
-    body->RequestRedraw();
+    tabPages->RequestRedraw();
 }
 
 Rect2Df UltraPaintWindow::MagnifierRectForCorner(int corner) const {
-    const Rect2Df s = surface->GetBounds();   // in the body, where the frame lives
+    const Rect2Df s = surface->GetBounds();   // in the tab pages, where the frame lives
     const float size = static_cast<float>(std::clamp(settings.magnifierSize,
             UltraPaintSettings::kMinMagnifierSize, UltraPaintSettings::kMaxMagnifierSize));
     const float x = (corner % 2 == 0) ? s.x + kMagnifierMargin : s.x + s.width - size - kMagnifierMargin;
@@ -1826,7 +2125,7 @@ void UltraPaintWindow::PlaceMagnifier(int corner) {
     magnifierFrame->layoutItem.position->left = CSSLayout::Dimension::Px(r.x);
     magnifierFrame->layoutItem.position->top  = CSSLayout::Dimension::Px(r.y);
     magnifierFrame->InvalidateLayout();
-    body->RequestRedraw();
+    tabPages->RequestRedraw();
 }
 
 void UltraPaintWindow::UpdateMagnifier(double imageX, double imageY, const Point2Di& view) {
@@ -2107,7 +2406,6 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
         host->SetZIndex(OverlayZOrder::Overlays);
         host->SetBackgroundColor(Colors::Transparent);
         host->SetMouseCursor(UCMouseCursor::Arrow);
-        host->passTo = surface.get();
         host->onPressOutside = [this]() { CommitTextEdit(); };
         host->SetVisible(false);
         textEditor = std::make_shared<UltraCanvasRichTextEdit>("up-text-editor", 0, 0, 10, 10);
@@ -2123,9 +2421,11 @@ void UltraPaintWindow::OpenTextSession(int layerIndex, double x, double y, doubl
             if (surface && std::fabs(surface->GetZoom() - zoom) > 1e-4) surface->SetZoom(zoom);
         };
         host->AddChild(textEditor);
-        body->AddChild(host);
+        tabPages->AddChild(host);
         textEditorHost = host;
     }
+    // Over the active tab's surface, which gets the moves and the wheel.
+    static_cast<TextEditorHost*>(textEditorHost.get())->passTo = surface.get();
 
     textSession = std::move(session);
     PrepareTextLayerEditor(*textEditor, textSession->content, surface->GetZoom());
@@ -2174,8 +2474,8 @@ void UltraPaintWindow::PlaceTextEditor() {
     textEditor->size.width = CSSLayout::Dimension::Px(static_cast<float>(c.width * zoom));
     textEditor->size.height = CSSLayout::Dimension::Px(static_cast<float>(std::ceil(lines * zoom) + 2.0));
     textEditorHost->InvalidateLayout();
-    body->InvalidateLayout();
-    body->RequestRedraw();
+    tabPages->InvalidateLayout();
+    tabPages->RequestRedraw();
     surface->Refresh();
 }
 
@@ -2190,7 +2490,7 @@ void UltraPaintWindow::CommitTextEdit() {
     if (!document) return;
     document->SetInPlaceEditLayer(nullptr);
     surface->Refresh();
-    body->RequestRedraw();
+    tabPages->RequestRedraw();
     if (!words) return;
 
     const int index = session->layer ? LayerIndexOf(*document, session->layer) : -1;
@@ -2253,11 +2553,21 @@ void UltraPaintWindow::ApplyTextOption(const std::string& option) {
         else if (lines) {
             textSession->lineSpacing = toolOptions.textLineSpacing;
             StampTextLineSpacing();
+        } else if (tracking && textEditor->HasSelection()) {
+            // The selected words, as runs of their own.
+            RichCharFormatDelta spacing;
+            spacing.setLetterSpacing = true;
+            spacing.letterSpacingPt = toolOptions.textLetterSpacing * kTextPointsPerPixel;
+            textEditor->ApplyCharFormat(spacing);
         } else if (tracking) {
+            // Nothing selected: the whole text, its words' own spacing too.
             textSession->content.letterSpacingPx = toolOptions.textLetterSpacing;
             RichTextEditStyle style = textEditor->GetStyle();
             style.letterSpacing = toolOptions.textLetterSpacing;
             textEditor->SetStyle(style);
+            if (auto words = textEditor->GetDocument())
+                for (auto& block : words->blocks)
+                    for (auto& run : block.runs) run.letterSpacingPt.reset();
             textEditor->InvalidateDocument();
         } else {
             textEditor->ApplyCharFormat(delta);
@@ -2280,7 +2590,11 @@ void UltraPaintWindow::ApplyTextOption(const std::string& option) {
     editor.SetDocument(words);
     editor.SelectAll();
     if (align) editor.SetAlignment(AlignOption(toolOptions.textAlign));
-    else if (tracking) content.letterSpacingPx = toolOptions.textLetterSpacing;
+    else if (tracking) {
+        content.letterSpacingPx = toolOptions.textLetterSpacing;
+        for (auto& block : words->blocks)
+            for (auto& run : block.runs) run.letterSpacingPt.reset();
+    }
     else if (!lines) editor.ApplyCharFormat(delta);
     // The default the runs without their own fall back on follows too.
     if (option == "font") content.fontFamily = toolOptions.textFont;
@@ -2482,11 +2796,8 @@ void UltraPaintWindow::CmdRasterizeLayer() {
 void UltraPaintWindow::CmdNew() {
     CommitTextEdit();
     auto dlg = std::make_shared<UltraPaintNewImageDialog>(lastNewImage);
-    dlg->onAccept = [this](const UltraPaintNewImageResult& r) {
-        auto go = [this, r]() { NewImage(r); };
-        if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and start a new image?", go);
-        else go();
-    };
+    // The new image gets a tab of its own: nothing open is touched.
+    dlg->onAccept = [this](const UltraPaintNewImageResult& r) { NewImage(r); };
     ShowDialog(dlg);
 }
 
@@ -2526,9 +2837,9 @@ void UltraPaintWindow::CmdOpen() {
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
-        auto go = [this, path]() { OpenFile(path); };
-        if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and open " + FileNameOf(path) + "?", go);
-        else go();
+        // In a tab of its own (or in place of a blank canvas nobody has
+        // touched): nothing open is touched.
+        OpenFile(path);
     });
 }
 
@@ -2542,7 +2853,7 @@ void UltraPaintWindow::CmdImport() {
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
         // The same question a dropped file asks: merge it into this image, or
-        // give it a window of its own.
+        // give it a tab of its own.
         ImportFile(path, true);
     });
 }
@@ -2676,7 +2987,7 @@ void UltraPaintWindow::CmdQuit() {
     // stake — not only this one's.
     int unsaved = 0;
     for (const auto& editor : OpenWindows()) {
-        if (editor && editor->document && editor->document->IsModified()) ++unsaved;
+        if (editor) unsaved += editor->UnsavedTabCount();
     }
     auto go = []() { if (auto* app = UltraCanvasApplication::GetInstance()) app->RequestExit(); };
     if (unsaved == 0) { go(); return; }
@@ -2912,16 +3223,13 @@ void UltraPaintWindow::CmdPasteAsNew() {
             fromFile->SetFilePath("");
             fromFile->ClearHistory();
             fromFile->SetModified(true);
-            auto go = [this, fromFile, file]() {
-                SetDocument(fromFile, "Untitled");
-                if (statusHint) {
-                    statusHint->SetText("Pasted " + FileNameOf(file) + " as a new image, " +
-                                        std::to_string(fromFile->GetWidth()) + " x " +
-                                        std::to_string(fromFile->GetHeight()) + " pixels");
-                }
-            };
-            if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
-            else go();
+            // A new image, in a tab of its own.
+            AddDocumentTab(fromFile);
+            if (statusHint) {
+                statusHint->SetText("Pasted " + FileNameOf(file) + " as a new image, " +
+                                    std::to_string(fromFile->GetWidth()) + " x " +
+                                    std::to_string(fromFile->GetHeight()) + " pixels");
+            }
         });
         return;   // LoadDocumentAsking says why when it cannot
     }
@@ -2937,21 +3245,18 @@ void UltraPaintWindow::CmdPasteAsNew() {
 
 void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img, const std::string& what) {
     if (!img || !img->IsValid()) return;
-    auto go = [this, img, what]() {
-        auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
-        doc->GetLayer(0)->CopyFrom(*img, 0, 0);
-        doc->InvalidateComposite();
-        doc->ClearHistory();
-        doc->SetModified(true);
-        SetDocument(doc, "Untitled");
-        if (statusHint) {
-            statusHint->SetText("Pasted " + (what.empty() ? std::string() : what + " ") + "as a new image, " +
-                                std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) +
-                                " pixels");
-        }
-    };
-    if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and paste as a new image?", go);
-    else go();
+    // A new image, in a tab of its own.
+    auto doc = std::make_shared<UCRasterDocument>(img->GetWidth(), img->GetHeight(), RasterPixel(0, 0, 0, 0));
+    doc->GetLayer(0)->CopyFrom(*img, 0, 0);
+    doc->InvalidateComposite();
+    doc->ClearHistory();
+    doc->SetModified(true);
+    AddDocumentTab(doc);
+    if (statusHint) {
+        statusHint->SetText("Pasted " + (what.empty() ? std::string() : what + " ") + "as a new image, " +
+                            std::to_string(img->GetWidth()) + " x " + std::to_string(img->GetHeight()) +
+                            " pixels");
+    }
 }
 
 // ===========================================================================
@@ -3266,26 +3571,15 @@ void UltraPaintWindow::CmdCurves() {
     if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
     auto dlg = std::make_shared<UltraCanvasCurvesDialog>(ToneCurveSet());
     // histogram backdrop from the layer - again whenever the layer the
-    // curves work on changes while the dialog is open
+    // curves work on changes while the dialog is open. The layer is straight
+    // RGBA8 without row padding; transparent pixels have no colour and are
+    // left out, as the image viewer's Curves dialog leaves them out.
     std::weak_ptr<UltraCanvasCurvesDialog> weakDlg = dlg;
     previewSourceChanged = [weakDlg](const UCRasterLayer& source) {
         auto curves = weakDlg.lock();
         if (!curves) return;
-        std::vector<uint32_t> bins[4];
-        for (auto& b : bins) b.assign(256, 0);
-        for (int y = 0; y < source.GetHeight(); ++y) {
-            const uint8_t* row = source.Row(y);
-            for (int x = 0; x < source.GetWidth(); ++x) {
-                const uint8_t* p = row + static_cast<size_t>(x) * 4;
-                if (!p[3]) continue;
-                ++bins[1][p[0]]; ++bins[2][p[1]]; ++bins[3][p[2]];
-                ++bins[0][(p[0] + p[1] + p[2]) / 3];
-            }
-        }
-        curves->SetHistogram(ToneCurveChannel::RGB, bins[0]);
-        curves->SetHistogram(ToneCurveChannel::Red, bins[1]);
-        curves->SetHistogram(ToneCurveChannel::Green, bins[2]);
-        curves->SetHistogram(ToneCurveChannel::Blue, bins[3]);
+        curves->SetHistograms(ComputeImageHistogram(source.Data(), source.GetWidth(), source.GetHeight(),
+                                                    source.GetWidth() * 4, HistogramPixelFormat::RGBA8));
     };
     BeginPreview();
     auto opFor = [](const ToneCurveSet& set) {

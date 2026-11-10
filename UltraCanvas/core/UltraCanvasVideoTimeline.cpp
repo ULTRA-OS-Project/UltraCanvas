@@ -4,14 +4,17 @@
 // drag feedback, readouts), hit testing and the interactions that turn into
 // reported changes. The model operations it previews with live in
 // UltraCanvasVideoTimelineModel.cpp.
+// Version: 1.5.0 - MakeVideoTimelineDescriptor / RegisterVideoTimelineElement ("video-timeline")
+// Version: 1.4.0 - filmstrips cover the whole clip at any zoom: time-aligned slots, asked for in chunks, only those in view
 // Version: 1.3.0 - the close-gap button in each gap of a free track
 // Version: 1.2.0 - the application's drop feedback, ring and marker in one (SetDropFeedback); DragLeave clears both
 // Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimeline.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasElementPlugins.h"
 
 #include <algorithm>
 #include <cmath>
@@ -147,6 +150,9 @@ VideoTimelineStyle VideoTimelineStyle::DarkPalette() {
 VideoTimelineStyle VideoTimelineStyle::FromTheme(const UltraCanvasTheme& t) {
     VideoTimelineStyle s = t.dark ? DarkPalette() : LightPalette();
     const ThemeRoles& r = t.roles;
+    // the theme's fonts; the sizes are pixels of the design
+    s.fontFamily = t.fonts.ui.fontFamily;
+    s.monoFamily = t.fonts.mono.fontFamily;
     s.background = r.panel;
     s.lane = r.well;
     s.laneAlternate = r.well;
@@ -199,6 +205,7 @@ VideoTimelineStyle VideoTimelineStyle::FromTheme(const UltraCanvasTheme& t) {
 UltraCanvasVideoTimeline::UltraCanvasVideoTimeline(const std::string& id, int x, int y, int w, int h)
     : UltraCanvasUIElement(id, x, y, w, h) {
     SetMouseCursor(UCMouseCursor::Default);
+    ApplyThemeIfFollowing();
 }
 
 void UltraCanvasVideoTimeline::SetModel(const TimelineModel& m) {
@@ -279,6 +286,7 @@ void UltraCanvasVideoTimeline::SetShowGapButtons(bool on) {
 }
 
 void UltraCanvasVideoTimeline::SetStyle(const VideoTimelineStyle& s) {
+    StyleSetByHand();
     style = s;
     RequestRedraw();
 }
@@ -1031,21 +1039,56 @@ void UltraCanvasVideoTimeline::DrawFilmstrip(IRenderContext* ctx, const Timeline
     const int height = static_cast<int>(std::lround(content.height));
     if (height < 4 || clip.source.empty()) return;
     const int frameW = std::max(8, static_cast<int>(std::lround(height * 16.0 / 9.0)));
-    int frames = clip.kind == TimelineClipKind::Image ? 1 : static_cast<int>(std::ceil(content.width / frameW));
-    frames = std::clamp(frames, 1, 200);
-    if (clip.kind != TimelineClipKind::Image) frames = ((frames + 3) / 4) * 4;   // fewer distinct requests across zooms
-    const std::vector<UCPixmapPtr>* strip = Filmstrip(clip, frames, height);
-    if (!strip || strip->empty()) return;
-    float x = content.x;
-    for (size_t i = 0; i < strip->size() && x < content.x + content.width; ++i) {
-        const UCPixmapPtr& pix = (*strip)[i];
-        if (pix && pix->IsValid()) ctx->DrawPixmap(*pix, Rect2Dd(x, content.y, frameW, height), ImageFitMode::Cover);
-        x += frameW;
-        if (clip.kind == TimelineClipKind::Image) {   // one photo, repeated along the clip
-            while (x < content.x + content.width && pix && pix->IsValid()) {
-                ctx->DrawPixmap(*pix, Rect2Dd(x, content.y, frameW, height), ImageFitMode::Cover);
-                x += frameW;
-            }
+
+    if (clip.kind == TimelineClipKind::Image) {   // one photo, repeated along the clip
+        const std::vector<UCPixmapPtr>* strip = Filmstrip(clip.source, clip.sourceIn, clip.SourceOut(), 1, height);
+        if (!strip || strip->empty() || !strip->front() || !strip->front()->IsValid()) return;
+        for (float x = content.x; x < content.x + content.width; x += frameW)
+            ctx->DrawPixmap(*strip->front(), Rect2Dd(x, content.y, frameW, height), ImageFitMode::Cover);
+        return;
+    }
+
+    // A video: slots of about one frame's width, each showing the picture at
+    // its own moment, so a picture always sits where its time is on the
+    // ruler. The slot length in source seconds steps by a factor of root 2
+    // (the slots stretch a little between steps), so a zoom inside one step
+    // and every scroll reuse what was decoded. Only the slots in view are
+    // asked for, in chunks of kChunk aligned to the clip's start: a long clip
+    // zoomed in is covered to its end without decoding all of it.
+    constexpr int kChunk = 8;
+    const double speed = clip.speed > 0.0 ? clip.speed : 1.0;
+    const double sourceLength = clip.SourceOut() - clip.sourceIn;
+    const double rawSlot = frameW / pixelsPerSecond * speed;
+    if (!(rawSlot > 0.0) || !(sourceLength > 0.0)) return;
+    const double slotSeconds = std::pow(2.0, std::round(std::log2(rawSlot) * 2.0) / 2.0);
+    const double slotW = slotSeconds / speed * pixelsPerSecond;
+    if (slotW < 1.0) return;
+    const int slots = std::max(1, static_cast<int>(std::ceil(sourceLength / slotSeconds)));
+
+    const Rect2Df lanes = LanesRect();
+    const double viewLeft = std::max<double>(content.x, lanes.x);
+    const double viewRight = std::min<double>(content.x + content.width, lanes.x + lanes.width);
+    if (viewRight <= viewLeft) return;
+    const int first = std::clamp(static_cast<int>(std::floor((viewLeft - content.x) / slotW)), 0, slots - 1);
+    const int last = std::clamp(static_cast<int>(std::floor((viewRight - content.x) / slotW)), 0, slots - 1);
+
+    const double latest = std::max(clip.sourceIn, clip.SourceOut() - 0.05);   // the very last frame often cannot be read
+    for (int chunk = first / kChunk; chunk <= last / kChunk; ++chunk) {
+        const int s0 = chunk * kChunk;
+        const int s1 = std::min(slots - 1, s0 + kChunk - 1);
+        const int count = s1 - s0 + 1;
+        // the provider spreads `count` pictures evenly from `in` to `out`,
+        // both included: the first and the last slot's middles
+        const double in = std::min(latest, clip.sourceIn + (s0 + 0.5) * slotSeconds);
+        const double out = std::min(latest, clip.sourceIn + (s1 + 0.5) * slotSeconds);
+        const std::vector<UCPixmapPtr>* strip = Filmstrip(clip.source, in, out, count, height);
+        if (!strip) continue;
+        for (int i = 0; i < count && static_cast<size_t>(i) < strip->size(); ++i) {
+            const int slot = s0 + i;
+            if (slot < first || slot > last) continue;
+            const UCPixmapPtr& pix = (*strip)[static_cast<size_t>(i)];
+            if (pix && pix->IsValid())
+                ctx->DrawPixmap(*pix, Rect2Dd(content.x + slot * slotW, content.y, slotW, height), ImageFitMode::Cover);
         }
     }
 }
@@ -1241,14 +1284,18 @@ void UltraCanvasVideoTimeline::DrawScrollbar(IRenderContext* ctx, const Rect2Df&
 // CACHES
 // ============================================================================
 
-const std::vector<UCPixmapPtr>* UltraCanvasVideoTimeline::Filmstrip(const TimelineClip& clip, int frames, int height) {
-    const FilmstripKey key{clip.source, clip.sourceIn, clip.SourceOut(), frames, height};
+const std::vector<UCPixmapPtr>* UltraCanvasVideoTimeline::Filmstrip(const std::string& source, double in, double out,
+                                                                    int frames, int height) {
+    const FilmstripKey key{source, in, out, frames, height};
     auto found = filmstrips.find(key);
     if (found != filmstrips.end()) return &found->second;
     if (!thumbnailProvider || filmstripsPending.count(key)) return nullptr;
+    // a long session of zooming leaves strips no zoom shows any more: past a
+    // bound, start over (what is in view is asked for again at once)
+    if (filmstrips.size() >= kMaxFilmstrips) filmstrips.clear();
     filmstripsPending.insert(key);
     std::weak_ptr<bool> alive = aliveToken;
-    thumbnailProvider(clip.source, clip.sourceIn, clip.SourceOut(), frames, height,
+    thumbnailProvider(source, in, out, frames, height,
                       [this, alive, key](std::vector<UCPixmapPtr> pixmaps) {
                           if (alive.expired()) return;
                           filmstripsPending.erase(key);
@@ -2112,6 +2159,24 @@ double UltraCanvasVideoTimeline::DropTime(const TimelineTrack& track, double sec
 
 std::shared_ptr<UltraCanvasVideoTimeline> CreateVideoTimeline(const std::string& id, int x, int y, int w, int h) {
     return std::make_shared<UltraCanvasVideoTimeline>(id, x, y, w, h);
+}
+
+UCElementDescriptor MakeVideoTimelineDescriptor() {
+    UCElementDescriptor descriptor;
+    descriptor.typeName = "video-timeline";
+    descriptor.category = UCPluginCategory::Widget;
+    descriptor.displayName = "Video Timeline";
+    descriptor.description = "Media timeline editor: clips on tracks under a time ruler, with a playhead";
+    descriptor.version = "1.6.0";
+    descriptor.docPath = "Docs/UltraCanvas/UltraCanvasVideoTimeline.md";
+    descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+        return std::static_pointer_cast<UltraCanvasUIElement>(CreateVideoTimeline(id, x, y, w, h));
+    };
+    return descriptor;
+}
+
+void RegisterVideoTimelineElement() {
+    UltraCanvasElementRegistry::Register(MakeVideoTimelineDescriptor());
 }
 
 } // namespace UltraCanvas

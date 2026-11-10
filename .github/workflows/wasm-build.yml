@@ -135,8 +135,10 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install host tools
-        # A stalled mirror is retried by scripts/ci-apt.sh; this is the backstop.
-        timeout-minutes: 20
+        # A stalled mirror is retried by scripts/ci-apt.sh; this is the
+        # backstop, long enough for one that crawls (15-27 min on a bad day,
+        # as the Build rows allow). The job has 120.
+        timeout-minutes: 45
         run: |
           # deb-src entries for the fontconfig / pixman / cairo / pango
           # source packages the sysroot script fetches with apt-get source.
@@ -385,8 +387,28 @@ jobs:
           name: wasm-demo-baseline
           path: pages
 
+      # The packages the last run on main downloaded, as the Build workflow's
+      # Linux rows keep theirs: on 2026-11-04 the Azure mirror served this
+      # step at a few kilobytes per second and the 20 minutes it had ran out
+      # on package 130 of the list, before anything was built or tested.
+      # ci-apt.sh retries a download that stops dead, and waits out one that
+      # trickles on purpose; with the .deb files restored, apt fetches only
+      # what changed. The runner image differs from the Build rows' (24.04,
+      # not 22.04), so the cache is this job's own.
+      - name: Restore the apt package cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-dbadmin-browser-
+          restore-keys: apt-debs-dbadmin-browser-
+
+      - name: Put the cached packages in apt's cache
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install what the relay builds with
-        timeout-minutes: 20
+        # A mirror that crawls still finishes (15-27 min on a bad day, against
+        # about 3 normally), as the Build rows allow; the job has 60.
+        timeout-minutes: 45
         run: |
           scripts/ci-apt.sh update
           scripts/ci-apt.sh install --no-install-recommends \
@@ -421,3 +443,15 @@ jobs:
           name: dbadmin-browser-e2e
           path: e2e-out
           if-no-files-found: ignore
+
+      - name: Keep the downloaded packages (main)
+        if: github.ref == 'refs/heads/main'
+        id: apt-keep
+        run: echo "hash=$(scripts/ci-apt.sh cache-out "${{ runner.temp }}/apt-debs")" >> "$GITHUB_OUTPUT"
+
+      - name: Save the apt package cache (main)
+        if: github.ref == 'refs/heads/main' && steps.apt-keep.outputs.hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-dbadmin-browser-${{ steps.apt-keep.outputs.hash }}

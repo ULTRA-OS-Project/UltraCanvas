@@ -1,5 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.13.0 - FromTheme sets the interface font at the body size; a SetStyle by hand stops the following;
+//                  a new button that follows by default takes the theme in its constructor
 // Version: 2.12.0 - ButtonStyle::wrap / SetWrap: the text on several lines (a tile's name under its icon)
 // Version: 2.11.0 - GetIconImage: the icon the button shows, for a menu entry standing in for it
 // Version: 2.10.2 - that layout is an UltraCanvasTextLayoutCache, the label's pattern too
@@ -11,7 +13,7 @@
 // Version: 2.7.1 - GetIconWidth / GetIconHeight
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -347,6 +349,8 @@ namespace UltraCanvas {
         // Right (secondary) mouse button pressed over the button; args are window-relative
         // coordinates, suitable for popping up a context menu there.
         std::function<void(int windowX, int windowY)> onContextMenu;
+        // The pointer comes over the button / goes off it. A toggle button
+        // that is on reports it too; a push button held down does not.
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
 
@@ -368,7 +372,7 @@ namespace UltraCanvas {
         // switches between Ghost and Selected with this alone
         void SetThemeVariant(ButtonVariant variant) {
             themeVariant = variant;
-            if (GetFollowTheme()) ApplyTheme(UltraCanvasTheme::Current());
+            ApplyThemeIfFollowing();
         }
         ButtonVariant GetThemeVariant() const { return themeVariant; }
         bool AcceptsFocus() const override { return canAcceptFocus; }

@@ -1,3 +1,42 @@
+#### 2026-11-09 *0.8.15*
+- **Several drawings in one window, in tabs.** A tab strip over the canvas
+  holds one drawing per tab, each with its own page, view, selection, undo
+  history, icon mode and file. New, New Icon, the strip's **+**, Open, a
+  file dropped on the canvas, more files on the command line and the files a
+  second start hands over all open a tab instead of a window; Open takes the
+  place of an untouched new drawing, and a drawing open already comes
+  forward. File > Close Tab (Ctrl+W, or the tab's x) asks first for an
+  unsaved drawing, Ctrl+Tab / Ctrl+Shift+Tab move between tabs, a dot on a
+  tab marks unsaved changes, and closing the window or quitting asks once for
+  all of them. New and Open no longer ask to discard the drawing shown, since
+  it stays open. File > New Window still opens another window.
+
+#### 2026-11-05 *0.8.14*
+- **ArtCreator takes the Image base set.** Its catalogue names `Image` under
+  `@bases`, as the localisation proposal's Appendix B assigns it, so a text
+  of image editing it shows comes in the shared Image vocabulary of every
+  language rather than a wording of its own.
+
+#### 2026-11-05 *0.8.13*
+- **The Text tool in every language.** ArtCreator's own catalogue
+  (`media/locale/<lang>/ArtCreator.json`) now exists in all thirty
+  languages: the Text tool's status-line hints and its undo steps ("Undo
+  Text Bold", "Undo Letter Spacing" ...) showed in English whatever the
+  language.
+
+#### 2026-11-04 *0.8.12*
+- **Selected words take a letter spacing and a colour of their own.** While a
+  text is typed on the page, the text bar's letter spacing and the fill colour
+  (picked in the colour panel) go to the selected words only, as the font, the
+  size and bold already did; with nothing selected they still change the whole
+  text. The drawing keeps both per word, and the colour panel shows the colour
+  of the words at the caret.
+- **A size typed into the text bar no longer changes the whole text.** Typing
+  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
+  finished the text first, so the size went to all of it. The keys now stay in
+  the field, Escape there gives them back to the text, and the selected words
+  take the size.
+
 #### 2026-11-03 *0.8.11*
 - **Text is typed on the page, not in a window.** The Text tool's click
   puts a caret where the text starts, and the words appear there as they

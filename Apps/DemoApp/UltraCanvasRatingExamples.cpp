@@ -27,9 +27,9 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRatingExamples() {
-        auto page = DemoKit::CreatePage("RatingExamples", "Rating Examples",
-                "Click to set a score, hover to preview. Half ratings, alternate symbols, a "
-                "read-only display, and a custom rating drawn from SVG files (on / off / half).");
+        auto page = DemoKit::CreatePage("RatingExamples", Tr("Rating Examples"),
+                Tr("Click to set a score, hover to preview. Half ratings, alternate symbols, a "
+                "read-only display, and a custom rating drawn from SVG files (on / off / half)."));
 
         // A rating beside its live readout; the readout is as wide as its text.
         auto readout = [](const std::shared_ptr<UltraCanvasContainer>& row,
@@ -45,25 +45,25 @@ namespace UltraCanvas {
         auto cards = DemoKit::AddRow(page, "RatingCards");
 
         // ===== 1. STARS (whole) =====
-        auto card1 = DemoKit::AddCard(cards, "RtL1", "Stars (whole steps):");
+        auto card1 = DemoKit::AddCard(cards, "RtL1", Tr("Stars (whole steps):"));
         auto row1 = DemoKit::AddRow(card1, "RtRow1");
         auto r1 = CreateRating("Rt1", 0, 0, 200, 36, 5, 3);
         r1->SetSymbolSize(32);
         DemoKit::AddFixed(row1, r1);
-        auto v1 = readout(row1, "RtV1", "Rating: 3");
-        r1->onRatingChanged = [v1](float v) { v1->SetText("Rating: " + std::to_string((int)v)); };
+        auto v1 = readout(row1, "RtV1", TrF("Rating: {0}", 3));
+        r1->onRatingChanged = [v1](float v) { v1->SetText(TrF("Rating: {0}", (int)v)); };
 
         // ===== 2. STARS (half) =====
-        auto card2 = DemoKit::AddCard(cards, "RtL2", "Stars (half steps):");
+        auto card2 = DemoKit::AddCard(cards, "RtL2", Tr("Stars (half steps):"));
         auto row2 = DemoKit::AddRow(card2, "RtRow2");
         auto r2 = CreateHalfRating("Rt2", 0, 0, 200, 36, 5, 3.5f);
         r2->SetSymbolSize(32);
         DemoKit::AddFixed(row2, r2);
-        auto v2 = readout(row2, "RtV2", "Rating: 3.5");
-        r2->onRatingChanged = [v2](float v) { v2->SetText("Rating: " + FormatScore(v)); };
+        auto v2 = readout(row2, "RtV2", TrF("Rating: {0}", FormatScore(3.5f)));
+        r2->onRatingChanged = [v2](float v) { v2->SetText(TrF("Rating: {0}", FormatScore(v))); };
 
         // ===== 3. ALTERNATE SYMBOLS =====
-        auto card3 = DemoKit::AddCard(cards, "RtL3", "Circle and Square symbols:");
+        auto card3 = DemoKit::AddCard(cards, "RtL3", Tr("Circle and Square symbols:"));
         auto row3 = DemoKit::AddRow(card3, "RtRow3");
         auto r3 = CreateHalfRating("Rt3", 0, 0, 200, 36, 5, 4);
         r3->SetSymbol(RatingSymbol::Circle);
@@ -78,14 +78,14 @@ namespace UltraCanvas {
         DemoKit::AddFixed(row3, r3b);
 
         // ===== 4. READ-ONLY DISPLAY =====
-        auto card4 = DemoKit::AddCard(cards, "RtL4", "Read-only display (3.5 / 5):");
+        auto card4 = DemoKit::AddCard(cards, "RtL4", Tr("Read-only display (3.5 / 5):"));
         auto r4 = CreateHalfRating("Rt4", 0, 0, 200, 36, 5, 3.5f);
         r4->SetSymbolSize(28);
         r4->SetReadOnly(true);
         DemoKit::AddFixed(card4, r4);
 
         // ===== 5. CUSTOM VECTOR (SVG) SYMBOLS =====
-        auto card5 = DemoKit::AddCard(cards, "RtL5", "Custom vector hearts (SVG on / off / half):");
+        auto card5 = DemoKit::AddCard(cards, "RtL5", Tr("Custom vector hearts (SVG on / off / half):"));
         auto row5 = DemoKit::AddRow(card5, "RtRow5");
         auto r5 = CreateHalfRating("Rt5", 0, 0, 240, 40, 5, 2.5f);
         r5->SetSymbolSize(34);
@@ -95,16 +95,16 @@ namespace UltraCanvas {
                              iconDir + "rating-heart-half.svg");
         r5->SetAllowHalf(true);
         DemoKit::AddFixed(row5, r5);
-        auto v5 = readout(row5, "RtV5", "Rating: 2.5");
-        r5->onRatingChanged = [v5](float v) { v5->SetText("Rating: " + FormatScore(v)); };
+        auto v5 = readout(row5, "RtV5", TrF("Rating: {0}", FormatScore(2.5f)));
+        r5->onRatingChanged = [v5](float v) { v5->SetText(TrF("Rating: {0}", FormatScore(v))); };
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(page, "RatingInstructions", "API", {
-                "CreateRating / CreateHalfRating(id, x, y, w, h, maxRating, value)",
-                "SetSymbol(Star | Circle | Square); SetColors(on, off); SetReadOnly(bool)",
-                "SetCustomSymbols(onPath, offPath, halfPath) - vector/image files per state "
-                "(if no half file is given, half is synthesised by clipping 'on' over 'off')",
-                "Keyboard: Left/Right adjust, Home/End clear/max; onRatingChanged / onHoverChanged"});
+        DemoKit::AddNotes(page, "RatingInstructions", Tr("API"), {
+                Tr("CreateRating / CreateHalfRating(id, x, y, w, h, maxRating, value)"),
+                Tr("SetSymbol(Star | Circle | Square); SetColors(on, off); SetReadOnly(bool)"),
+                Tr("SetCustomSymbols(onPath, offPath, halfPath) - vector/image files per state "
+                "(if no half file is given, half is synthesised by clipping 'on' over 'off')"),
+                Tr("Keyboard: Left/Right adjust, Home/End clear/max; onRatingChanged / onHoverChanged")});
 
         return page;
     }

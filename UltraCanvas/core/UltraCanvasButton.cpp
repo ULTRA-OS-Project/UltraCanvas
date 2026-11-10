@@ -15,7 +15,7 @@
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
 //                  centred half a pixel off was resampled and blurred
 // Version: 2.7.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -47,6 +47,7 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(identifier, x, y, w, h), text(buttonText) {
         SetMouseCursor(UCMouseCursor::Hand);
         SetPadding(4,8,4,8);
+        ApplyThemeIfFollowing();
     }
 
 // ===== SPLIT BUTTON METHODS =====
@@ -365,6 +366,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::SetStyle(const ButtonStyle& newStyle) {
+        StyleSetByHand();
         style = newStyle;
         InvalidateLayout();
         RequestRedraw();
@@ -1289,6 +1291,12 @@ namespace UltraCanvas {
                 if (!IsPressed()) {
                     SetHovered(true);
                     if (onHoverEnter) onHoverEnter();
+                } else if (canToggled && onHoverEnter) {
+                    // A toggle that is on stays pressed between clicks: the
+                    // pointer coming over it is a hover like any other (a
+                    // taskbar's button of the active window shows its
+                    // previews). A push button held down is not.
+                    onHoverEnter();
                 }
                 return true;
 
@@ -1325,6 +1333,12 @@ namespace UltraCanvas {
     ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base, ButtonVariant variant) {
         ButtonStyle s = base;
         const ThemeRoles& r = theme.roles;
+        // the interface font at the body size; the weight stays the style's
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
         s.focusedColor = r.focus;
         s.disabledTextColor = r.inkFaint;
         switch (variant) {

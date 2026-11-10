@@ -1,11 +1,18 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.9.0 - WindowType::Popup: override-redirect, _NET_WM_WINDOW_TYPE_POPUP_MENU, takes
+//                  the pointer, mapped raised; SetNativeWindowShape (the shape extension)
+// Version: 1.8.0 - WindowType::Tooltip: override-redirect, _NET_WM_WINDOW_TYPE_TOOLTIP, an
+//                  empty input shape (the pointer passes through), raised as it is mapped
+// Version: 1.7.0 - RaiseAndFocus raises the window itself as well (XRaiseWindow): with
+//                  no window manager the _NET_ACTIVE_WINDOW request alone raised nothing
+// Version: 1.6.0 - WindowType::SessionLock: fullscreen, above, undecorated (not enforced)
 // Version: 1.5.0 - WindowConfig::alwaysOnTop: _NET_WM_STATE_ABOVE on any window type
 // Version: 1.4.0 - WindowType::Desktop covers config.desktopArea when given
 // Version: 1.3.0 - WindowType::Notification: EWMH notification type, above,
 //                  sticky, out of taskbars, input hint off
 // Version: 1.2.0 - per-monitor HiDPI: physical surface/window, hybrid DPI detect
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -22,6 +29,7 @@
 #include <cmath>
 #include <X11/Xresource.h>
 #include <X11/extensions/Xrandr.h>
+#include <X11/extensions/shape.h>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -161,6 +169,28 @@ namespace UltraCanvas {
 //        unsigned long valueMask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask | CWBackingStore;
         unsigned long valueMask = CWColormap | CWEventMask | CWBackingStore;
 
+        // The tooltip's own window: override-redirect, so no window manager
+        // frames, places or focuses it - it is put exactly where asked, and
+        // mapped raised it is above every managed window, the desktop's
+        // windows included. It needs no keys, focus or pointer events: only
+        // exposure and its size.
+        if (config_.type == WindowType::Tooltip) {
+            attrs.override_redirect = True;
+            attrs.save_under = True;
+            attrs.event_mask = ExposureMask | StructureNotifyMask;
+            valueMask |= CWOverrideRedirect | CWSaveUnder;
+        }
+        // A popup's own window: the same, but it takes the pointer, which the
+        // application hands to the window the popup belongs to. The keys stay
+        // with that window, which keeps the focus.
+        if (config_.type == WindowType::Popup) {
+            attrs.override_redirect = True;
+            attrs.save_under = True;
+            attrs.event_mask = ExposureMask | StructureNotifyMask | ButtonPressMask | ButtonReleaseMask |
+                               PointerMotionMask | EnterWindowMask | LeaveWindowMask;
+            valueMask |= CWOverrideRedirect | CWSaveUnder;
+        }
+
         // Seed the device scale for the monitor this window opens on. X11 window
         // sizes/positions are in PHYSICAL px, so the client area must be created
         // at logical × deviceScale to appear the correct size on a HiDPI display.
@@ -286,11 +316,51 @@ namespace UltraCanvas {
             }
         }
 
+        // The tooltip's own window: typed for a compositing manager (which
+        // may give it a shadow), and with an empty input shape, so the pointer
+        // goes through it to the window beneath - a tooltip that came under
+        // the pointer would otherwise take it from the element it describes.
+        if (config_.type == WindowType::Tooltip) {
+            Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+            Atom tooltipTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
+            XChangeProperty(display, xWindow, windowTypeAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&tooltipTypeAtom), 1);
+            int shapeEvent = 0, shapeError = 0;
+            if (XShapeQueryExtension(display, &shapeEvent, &shapeError)) {
+                XShapeCombineRectangles(display, xWindow, ShapeInput, 0, 0, nullptr, 0, ShapeSet, Unsorted);
+            }
+            XWMHints* wmHints = XAllocWMHints();
+            if (wmHints) {
+                wmHints->flags = InputHint;
+                wmHints->input = False;
+                XSetWMHints(display, xWindow, wmHints);
+                XFree(wmHints);
+            }
+        }
+
+        // A popup's own window: typed for a compositing manager.
+        if (config_.type == WindowType::Popup) {
+            Atom windowTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE", False);
+            Atom popupTypeAtom = XInternAtom(display, "_NET_WM_WINDOW_TYPE_POPUP_MENU", False);
+            XChangeProperty(display, xWindow, windowTypeAtom, XA_ATOM, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&popupTypeAtom), 1);
+            XWMHints* wmHints = XAllocWMHints();
+            if (wmHints) {
+                wmHints->flags = InputHint;
+                wmHints->input = False;
+                XSetWMHints(display, xWindow, wmHints);
+                XFree(wmHints);
+            }
+        }
+
         // Kept above the other windows (_NET_WM_STATE_ABOVE, set before the
         // map so the manager applies it as the window appears): a recording
         // bar, a floating palette. A notification has it already, with its
         // other states; a desktop window is kept below by its type.
-        if (config_.alwaysOnTop && config_.type != WindowType::Notification && config_.type != WindowType::Desktop) {
+        if ((config_.alwaysOnTop || config_.type == WindowType::SessionLock) &&
+            config_.type != WindowType::Notification && config_.type != WindowType::Desktop) {
             Atom stateAtom = XInternAtom(display, "_NET_WM_STATE", False);
             Atom above = XInternAtom(display, "_NET_WM_STATE_ABOVE", False);
             XChangeProperty(display, xWindow, stateAtom, XA_ATOM, 32, PropModeAppend,
@@ -299,7 +369,7 @@ namespace UltraCanvas {
 
         // Apply borderless style if requested (remove window decorations)
         if (config_.type == WindowType::Borderless || config_.type == WindowType::Desktop ||
-            config_.type == WindowType::Notification) {
+            config_.type == WindowType::Notification || config_.type == WindowType::SessionLock) {
             struct {
                 unsigned long flags;
                 unsigned long functions;
@@ -942,10 +1012,17 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas Linux: Showing window..." << std::endl;
         auto application = UltraCanvasApplication::GetInstance();
 
-        XMapWindow(application->GetDisplay(), xWindow);
+        // The tooltip's own window is unmanaged: mapped where it was in the
+        // stack it could come up under a window raised since; raised, it is
+        // above them all.
+        if (config_.type == WindowType::Tooltip || config_.type == WindowType::Popup) {
+            XMapRaised(application->GetDisplay(), xWindow);
+        } else {
+            XMapWindow(application->GetDisplay(), xWindow);
+        }
         XFlush(application->GetDisplay());
 
-        if (config_.type == WindowType::Fullscreen) {
+        if (config_.type == WindowType::Fullscreen || config_.type == WindowType::SessionLock) {
             SetFullscreen(true);
         }
 
@@ -1117,6 +1194,13 @@ namespace UltraCanvas {
             return;
         }
 
+        // Raised by the window itself as well: with no window manager (a
+        // kiosk, a test display) the request below goes nowhere, and a
+        // window keeps the place in the stack it was created in - under
+        // every window made after it, mapped or not. A manager receives
+        // this as a restack request and honours it as it chooses.
+        XRaiseWindow(display, xWindow);
+
         Atom net_active = XInternAtom(display, "_NET_ACTIVE_WINDOW", False);
 
         XEvent event;
@@ -1274,6 +1358,32 @@ namespace UltraCanvas {
         width = mons[chosen].width;
         height = mons[chosen].height;
         XRRFreeMonitors(mons);
+    }
+
+    void UltraCanvasLinuxWindow::SetNativeWindowShape(const std::vector<Rect2Di>& physicalRects) {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (xWindow == 0 || !app || !app->GetDisplay()) return;
+        Display* display = app->GetDisplay();
+        int shapeEvent = 0, shapeError = 0;
+        if (!XShapeQueryExtension(display, &shapeEvent, &shapeError)) return;
+        if (physicalRects.empty()) {
+            // The whole window again
+            XShapeCombineMask(display, xWindow, ShapeBounding, 0, 0, None, ShapeSet);
+        } else {
+            std::vector<XRectangle> rects;
+            rects.reserve(physicalRects.size());
+            for (const auto& r : physicalRects) {
+                XRectangle xr;
+                xr.x = static_cast<short>(r.x);
+                xr.y = static_cast<short>(r.y);
+                xr.width = static_cast<unsigned short>(std::max(0, r.width));
+                xr.height = static_cast<unsigned short>(std::max(0, r.height));
+                rects.push_back(xr);
+            }
+            XShapeCombineRectangles(display, xWindow, ShapeBounding, 0, 0, rects.data(),
+                                    static_cast<int>(rects.size()), ShapeSet, Unsorted);
+        }
+        XFlush(display);
     }
 
     void UltraCanvasLinuxWindow::SetTransientParent(UltraCanvasWindowBase* parent) {

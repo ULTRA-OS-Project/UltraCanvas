@@ -1,0 +1,22 @@
+{
+  "@language": "th",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "เพิ่มข้อความแล้ว: คลิกด้วยเครื่องมือข้อความ หรือดับเบิลคลิก เพื่อแก้ไข",
+  "Changed the text": "เปลี่ยนข้อความแล้ว",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "คลิกบนหน้าแล้วพิมพ์ หรือคลิกข้อความเพื่อแก้ไข แถบด้านบนใช้ตั้งค่าแบบอักษร ขนาด สไตล์ การจัดแนว และระยะห่าง กด Escape, Ctrl+Enter หรือคลิกด้านนอกเพื่อเสร็จสิ้น",
+  "Delete Text": "ลบข้อความ",
+  "Edit Text": "แก้ไขข้อความ",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "กำลังแก้ไขข้อความ: Enter ขึ้นบรรทัดใหม่ กด Escape, Ctrl+Enter หรือคลิกด้านนอกเพื่อเสร็จสิ้น",
+  "Letter Spacing": "ระยะห่างตัวอักษร",
+  "Line Spacing": "ระยะห่างบรรทัด",
+  "Nothing was typed": "ไม่ได้พิมพ์อะไร",
+  "Text Alignment": "การจัดแนวข้อความ",
+  "Text Bold": "ตัวหนาของข้อความ",
+  "Text Font": "แบบอักษรของข้อความ",
+  "Text Italic": "ตัวเอียงของข้อความ",
+  "Text Size": "ขนาดข้อความ",
+  "Text Strikethrough": "ขีดทับข้อความ",
+  "Text Underline": "ขีดเส้นใต้ข้อความ",
+  "The text was emptied, so it was deleted": "ข้อความว่างเปล่า จึงลบทิ้งแล้ว",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "กำลังพิมพ์ข้อความใหม่: Enter ขึ้นบรรทัดใหม่ กด Escape, Ctrl+Enter หรือคลิกด้านนอกเพื่อเสร็จสิ้น"
+}

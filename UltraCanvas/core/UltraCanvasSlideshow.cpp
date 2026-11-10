@@ -1,13 +1,15 @@
 // core/UltraCanvasSlideshow.cpp
 // Timed image slideshow with selectable info-panel layouts and indicator styles.
+// Version: 1.6.0 - Make/Register descriptor: "slideshow" in the element registry, bundled or as a runtime module
 // Version: 1.5.1 - the slide counter is centred on its capitals, not its line box
 // Version: 1.5.0 - a picture saved over shows its new content: the drawn
 //                  paths go to an UltraCanvasImageFileWatch, checked on its
 //                  worker, never on the paint path
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlideshow.h"
+#include "UltraCanvasElementPlugins.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
 #include <algorithm>
@@ -1149,6 +1151,25 @@ namespace UltraCanvas {
                 break;
         }
         return UltraCanvasContainer::OnEvent(event);
+    }
+
+
+    UCElementDescriptor MakeSlideshowDescriptor() {
+        UCElementDescriptor descriptor;
+        descriptor.typeName = "slideshow";
+        descriptor.category = UCPluginCategory::Widget;
+        descriptor.displayName = "Slideshow";
+        descriptor.description = "Pictures one at a time, with transitions, a counter and autoplay";
+        descriptor.docPath = "Docs/UltraCanvas/UltraCanvasSlideshowExamples.md";
+        descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+            return std::static_pointer_cast<UltraCanvasUIElement>(
+                std::make_shared<UltraCanvasSlideshow>(id, x, y, w, h));
+        };
+        return descriptor;
+    }
+
+    void RegisterSlideshowElement() {
+        UltraCanvasElementRegistry::Register(MakeSlideshowDescriptor());
     }
 
 } // namespace UltraCanvas

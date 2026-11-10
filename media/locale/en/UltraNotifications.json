@@ -1,0 +1,10 @@
+{
+  "@language": "en",
+  "@inherited": [
+    "Quit"
+  ],
+  "1 unread notification": "1 unread notification",
+  "No unread notifications": "No unread notifications",
+  "Stop UltraNotifications running in the background (Ctrl+Q)": "Stop UltraNotifications running in the background (Ctrl+Q)",
+  "{0} unread notifications": "{0} unread notifications"
+}

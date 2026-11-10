@@ -3,8 +3,9 @@
 // Runs inside android_native_app_glue's android_main thread: the framework's
 // blocking Run() loop is hosted there and CollectAndProcessNativeEvents pumps
 // the glue's ALooper (activity commands + input queue).
+// Version: 1.0.1 - firstTapLogged
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -51,6 +52,9 @@ namespace UltraCanvas {
         int lastTapY = 0;
         int64_t doubleClickTimeMs = 300;
         int doubleClickDistance = 30;   // physical px; generous for fingers
+        // The first tap is logged once (tag UltraCanvas) with the element it
+        // landed on, so a test injecting a tap can tell what it hit.
+        bool firstTapLogged = false;
 
     public:
         UltraCanvasAndroidApplication();

@@ -1,0 +1,22 @@
+{
+  "@language": "zh-Hant",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "已新增文字：使用文字工具按一下它或按兩下它即可編輯",
+  "Changed the text": "已變更文字",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "在頁面上按一下並輸入，或按一下文字加以編輯；上方的列可設定其字型、大小、樣式、對齊和間距。按 Escape、Ctrl+Enter 或在外部按一下即可完成",
+  "Delete Text": "刪除文字",
+  "Edit Text": "編輯文字",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "正在編輯文字：按 Enter 換行；按 Escape、Ctrl+Enter 或在外部按一下即可完成",
+  "Letter Spacing": "字元間距",
+  "Line Spacing": "行距",
+  "Nothing was typed": "未輸入任何內容",
+  "Text Alignment": "文字對齊",
+  "Text Bold": "文字粗體",
+  "Text Font": "文字字型",
+  "Text Italic": "文字斜體",
+  "Text Size": "文字大小",
+  "Text Strikethrough": "文字刪除線",
+  "Text Underline": "文字底線",
+  "The text was emptied, so it was deleted": "文字已清空，因此已將其刪除",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "正在輸入新文字：按 Enter 換行；按 Escape、Ctrl+Enter 或在外部按一下即可完成"
+}

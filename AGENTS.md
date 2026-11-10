@@ -602,10 +602,12 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
+| `Docs/UltraAIServerAdmin/CHANGELOG.md` | UltraAI ServerAdmin — the model server's admin tool |
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
 | `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
+| `Docs/UltraNotifications/CHANGELOG.md` | UltraNotifications — the notifications after their pop-up |
 | `Docs/UltraSnip/CHANGELOG.md` | UltraSnip — screenshots and screen recordings |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
@@ -806,10 +808,21 @@ and never introduce a new literal copy of one:
    `TrF`), never a bare literal in a label, a menu or a dialog — then run
    `python3 scripts/extract_ui_strings.py` so the English catalogues under
    `media/locale/en/` carry the key, and `python3
-   scripts/check_locale_catalogues.py`; CI runs that too. A word every
+   scripts/check_locale_catalogues.py`; CI runs that too. **A text that lands
+   in the standard set (`media/locale/en/Standard.json`) brings its
+   translations with it:** the check fails on a standard entry any language
+   lacks (a regional variant such as `pt-BR` counts its parent's), because
+   that text would show in English to everyone using that language, in
+   every application - draft them with `scripts/translate_catalogue.py`
+   (marked `machine draft … reviewed by -` like the rest). A word every
    application has is in `Standard.json` or a base set already (the
    proposal's appendices): an application's own catalogue holds only what
-   is its own. **A catalogue under `media/locale/en/` that conflicts in a
+   is its own. The demo app is the one place a bare literal is right:
+   `DemoApp` is in `SKIP_APPS` of `scripts/extract_ui_strings.py`, so its
+   pages have no catalogue and wrap nothing - a demo page is example code a
+   developer reads beside its document, in English, not a product a person
+   runs in their language - and a review that finds no `Tr` there has found
+   nothing. **A catalogue under `media/locale/en/` that conflicts in a
    merge is never merged by hand:** whichever branch merges second merges
    the base and runs `python3 scripts/extract_ui_strings.py` - it rebuilds a
    conflicted catalogue from both sides git keeps (its `@bases` and other

@@ -370,7 +370,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
     auto root = std::make_shared<UltraCanvasContainer>("GLZarchTab", 0, 0, 1004, 692);
 
     auto title = MakeTabText("GLZarchTitle",
-            "Zarch — a low-poly hover-ship simulation over scrolling biome terrain",
+            Tr("Zarch — a low-poly hover-ship simulation over scrolling biome terrain"),
             14, true, Color(40, 40, 120, 255));
     PlaceAcross(*title, 16, 8, 16);
     root->AddChild(title);
@@ -643,17 +643,17 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
     panel->SetPadding(10.0f);
     MakePanelColumn(*panel);
 
-    DemoKit::Add(panel, MakeTabText("ZarchCtrlTitle", "Flight", 13, true));
+    DemoKit::Add(panel, MakeTabText("ZarchCtrlTitle", Tr("Flight"), 13, true));
 
-    auto runBtn = MakeTextButton("ZarchRunBtn", "Pause", 130, 30);
+    auto runBtn = MakeTextButton("ZarchRunBtn", Tr("Pause"), 130, 30);
     runBtn->onClick = [runBtn = runBtn.get(), state]() {
         state->running = !state->running;
-        runBtn->SetText(state->running ? "Pause" : "Resume");
+        runBtn->SetText(state->running ? Tr("Pause") : Tr("Resume"));
     };
     DemoKit::Add(panel, runBtn);
     runBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
-    DemoKit::Add(panel, MakeTabText("ZarchSpeedLabel", "Flight Speed", 11, false));
+    DemoKit::Add(panel, MakeTabText("ZarchSpeedLabel", Tr("Flight Speed"), 11, false));
 
     auto speedSlider = std::make_shared<UltraCanvasSlider>("ZarchSpeedSlider", 0, 0, 270, 24);
     speedSlider->SetRange(0.0f, 12.0f);
@@ -663,7 +663,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
 
     auto info = demoui::MakeScrollingText("ZarchInfo", 0, 0, 270, 400, 11.0f,
                                           Color(60, 60, 60, 255));
-    info.SetText(
+    info.SetText(Tr(
         "A miniature homage to Zarch (1987).\n\n"
         "Drag the mouse to steer the ship\n"
         "left and right; release to let it\n"
@@ -683,7 +683,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
         "Click the icon in the canvas corner or\n"
         "double-click the canvas to maximize it;\n"
         "Esc or another double-click restores."
-    );
+    ));
     AddFillingRest(panel, info.View);
 
     root->AddChild(panel);

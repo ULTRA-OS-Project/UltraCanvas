@@ -1,5 +1,8 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.18.0 - the SetStyle rule and the constructor tail of an area that follows by default
+// Version: 3.17.0 - a read-only or display-only area opens a Copy / Select All menu on a
+//                 right-click (ShowReadOnlyContextMenu, SetReadOnlyContextMenu)
 // Version: 3.16.0 - SetShowHiddenCharacters: spaces, tabs, no-break and zero-width
 //                 characters and line ends drawn as faint marks (hiddenCharacterColor),
 //                 their name and code in a tooltip over each. HandleMarkdownHover takes the
@@ -18,7 +21,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-28
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -772,7 +775,7 @@ namespace UltraCanvas {
         std::string_view GetLineContentView(int lineIndex) const;
 
         // Style access
-        void SetStyle(const TextAreaStyle& newStyle) { style = newStyle; }
+        void SetStyle(const TextAreaStyle& newStyle) { StyleSetByHand(); style = newStyle; }
         TextAreaStyle& GetStyle() { return style; }
         const TextAreaStyle& GetStyle() const { return style; }
 
@@ -916,6 +919,21 @@ namespace UltraCanvas {
         // Returns false when it does not, so the caller can fall through to its
         // normal handling. Called from HandleMouseDown for right-clicks.
         bool ShowSpellSuggestionMenu(const UCEvent& event);
+
+        // Opens the read-only context menu - Copy (Ctrl+C, dimmed without a
+        // selection) and Select All (Ctrl+A) - at the click. Called from
+        // HandleMouseDown for a right-click on a read-only or display-only
+        // area that neither the host (onContextMenu) nor the spell checker
+        // took, so text a viewer shows can be copied even though a
+        // display-only area never gets the keys. Returns false in hex mode,
+        // whose selection is its own. See SetReadOnlyContextMenu.
+        bool ShowReadOnlyContextMenu(const UCEvent& event);
+
+        // Whether a right-click on a read-only area opens the Copy / Select
+        // All menu above (on by default). Off leaves the right-click to the
+        // host's own handling, as before the menu existed.
+        void SetReadOnlyContextMenu(bool enabled) { readOnlyContextMenu = enabled; }
+        bool GetReadOnlyContextMenu() const { return readOnlyContextMenu; }
 
         // Callbacks
         TextChangedCallback onTextChanged;
@@ -1263,6 +1281,9 @@ namespace UltraCanvas {
         SpellCheckOptions spellOptions;
         // Held so the popup outlives the click that opened it.
         std::shared_ptr<UltraCanvasMenu> spellSuggestionMenu;
+        // The read-only Copy / Select All menu, held the same way.
+        std::shared_ptr<UltraCanvasMenu> readOnlyMenu;
+        bool readOnlyContextMenu = true;
         // The destructor clears this so a queued repaint that outlives the
         // element becomes a no-op instead of a dangling call.
         std::shared_ptr<std::atomic<bool>> spellAlive =

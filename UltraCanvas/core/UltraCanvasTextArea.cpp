@@ -1,5 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.13.0 - a right-click on a read-only or display-only area the host and the
+//                 spell checker leave alone opens Copy / Select All
 // Version: 3.12.1 - Markdown tables: the grid in the border colour on pixel centres, the
 //                 header fill meeting the rule under it
 // Version: 3.12.0 - hidden characters: spaces, tabs, no-break and zero-width
@@ -23,7 +25,7 @@
 //                 says "Remote image:" / "Missing image:" instead of "🌐" / "⚠"
 // Version: 3.7.3 - style.scrollbarWidth / scrollbarCornerRadius / scrollbarThumbInset
 //                 replace the fixed 15px square scrollbar
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -42,6 +44,8 @@
 #include "UltraCanvasTheme.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasMenu.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <sstream>
 #include <cmath>
@@ -90,6 +94,7 @@ namespace UltraCanvas {
         if (style.highlightSyntax) {
             syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
         }
+        ApplyThemeIfFollowing();
     }
 
 // Destructor
@@ -1038,6 +1043,35 @@ namespace UltraCanvas {
         SetClipboardText(selectedText);
     }
 
+    bool UltraCanvasTextArea::ShowReadOnlyContextMenu(const UCEvent& event) {
+        if (!readOnlyContextMenu || !(isReadOnly || displayOnly)) return false;
+        if (editingMode == TextAreaEditingMode::Hex) return false;
+        auto window = GetWindow();
+        if (!window) return false;
+
+        readOnlyMenu = std::make_shared<UltraCanvasMenu>("TextAreaReadOnlyMenu", 0, 0, 180, 0);
+        readOnlyMenu->SetMenuType(MenuType::PopupMenu);
+
+        // The area owns the menu; a weak capture keeps a click on an item that
+        // outlives a destroyed area harmless.
+        std::weak_ptr<UltraCanvasTextArea> weakSelf =
+            std::static_pointer_cast<UltraCanvasTextArea>(shared_from_this());
+
+        MenuItemData copy = MenuItemData::ActionWithShortcut(Tr("Copy"), "Ctrl+C", [weakSelf]() {
+            if (auto self = weakSelf.lock()) self->CopySelection();
+        });
+        copy.enabled = HasSelection();
+        readOnlyMenu->AddItem(std::move(copy));
+        MenuItemData all = MenuItemData::ActionWithShortcut(Tr("Select All"), "Ctrl+A", [weakSelf]() {
+            if (auto self = weakSelf.lock()) self->SelectAll();
+        });
+        all.enabled = !textContent.empty();
+        readOnlyMenu->AddItem(std::move(all));
+
+        readOnlyMenu->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
+        return true;
+    }
+
     void UltraCanvasTextArea::CutSelection() {
         if (!HasSelection() || isReadOnly) return;
 
@@ -1704,7 +1738,8 @@ namespace UltraCanvas {
             }
 
             const bool handled = (onContextMenu && onContextMenu(event)) ||
-                                 ShowSpellSuggestionMenu(event);
+                                 ShowSpellSuggestionMenu(event) ||
+                                 ShowReadOnlyContextMenu(event);
             if (handled) {
                 // Safe now that the menu is built: an action that works at the
                 // caret - Paste above all - acts where the user clicked.

@@ -5,7 +5,7 @@
 // ui-reuse-exempt: UltraCanvasTimecodeField is the timecode input itself - four segments, no caret.
 // Version: 1.0.1 - the digits are centred on their capitals, not their line box
 // Version: 1.0.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasEvent.h"
@@ -75,6 +75,8 @@ TimecodeFieldStyle TimecodeFieldStyle::DarkPalette() {
 TimecodeFieldStyle TimecodeFieldStyle::FromTheme(const UltraCanvasTheme& t) {
     TimecodeFieldStyle s;
     const ThemeRoles& r = t.roles;
+    // the theme's monospace font; the sizes are pixels of the design
+    s.fontFamily = t.fonts.mono.fontFamily;
     s.background = r.well;
     s.border = r.lineStrong;
     s.borderFocused = r.focus;
@@ -90,6 +92,7 @@ TimecodeFieldStyle TimecodeFieldStyle::FromTheme(const UltraCanvasTheme& t) {
 UltraCanvasTimecodeField::UltraCanvasTimecodeField(const std::string& id, int x, int y, int w, int h)
     : UltraCanvasUIElement(id, x, y, w, h) {
     SetMouseCursor(UCMouseCursor::Default);
+    ApplyThemeIfFollowing();
 }
 
 // ---- value ----
@@ -137,6 +140,7 @@ void UltraCanvasTimecodeField::SetReadout(bool r) {
 }
 
 void UltraCanvasTimecodeField::SetStyle(const TimecodeFieldStyle& s) {
+    StyleSetByHand();
     style = s;
     RequestRedraw();
 }

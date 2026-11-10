@@ -539,6 +539,11 @@ The dropdown uses the window's popup system for proper z-order:
 - `CloseDropdown()` closes it with `UltraCanvasWindowBase::ClosePopup()`; the
   window also closes it on Escape or a click outside, and `onDropdownClosed`
   fires in every case
+- The list is shown in a window of its own, above every other window, like
+  every popup (`UltraCanvasWindowBase::SetPopupsInOwnWindows`): no other
+  window covers it. It still belongs to the dropdown's window - clicks in it
+  reach the list as there - and it closes, too, when the focus leaves the
+  application
 
 `OpenDropdown()` does nothing until the dropdown is in a window and has items.
 

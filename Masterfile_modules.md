@@ -491,8 +491,31 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `ElevatedDeleteResult` (Completed with per-entry failures / Declined /
     Failed / Unavailable).
   `UltraCanvasFilerWidget` offers it from its delete-problem dialog wherever
-  the host wired the helper. See
-  `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+  the host wired the helper - for `FileRemovalProblem::NotPermitted` only.
+  See `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+
+- **UltraCanvasFileRemoval** (`UltraCanvasFileRemoval.h`) — deleting for
+  good, and why it failed in terms of the user's next step. On Windows
+  "access denied" means four things and only one is about permission: a
+  read-only file or FOLDER (lifted, put back if the delete still fails), an
+  entry already deleted that a program still holds ("delete pending" -
+  counted as removed, its folder waited for about two seconds), a file mapped
+  into a process (a running program, a picture libvips memory-mapped -
+  `InUse`, no administrator gets past it) and the access list
+  (`NotPermitted`). Where available (Windows 10 1809+, NTFS) the delete uses
+  POSIX semantics, so a held file's name goes at once. Public surface:
+  - `RemoveFileSystemEntry(path, ec, &problem)` — one file, link or empty
+    folder.
+  - `RemoveFileSystemTree(path, ec, &problem, &stoppedAt)` — `remove_all`
+    with the reason and the entry that refused.
+  - `FileSystemEntryIsDeletePending(path)`, `ClassifyFileRemovalError(ec)`,
+    `FileRemovalProblem` (`NoProblem`, `InUse`, `NotPermitted`, `NotEmpty`,
+    `Other`).
+  Core and the std::filesystem backend in `core/UltraCanvasFileRemoval.cpp`,
+  Windows in `OS/MSWindows/UltraCanvasWindowsFileRemoval.cpp`,
+  `Tests/FileRemovalTest.cpp`. `UltraCanvasFilerWidget`'s delete and the
+  elevated helper remove through it. See
+  `Docs/UltraCanvas/UltraCanvasFileRemoval.md`.
 
 - **UltraCanvasCoderModuleRepair** (`UltraCanvasCoderModuleRepair.h`) —
   repairs an installed Windows package whose ImageMagick coder carries a
@@ -545,7 +568,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
   / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
   `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
-  settings window set the style; it and UltraSnip's are built on the kit.
+  settings window set the style; it, UltraSnip's and UOS-Settings (a main
+  window with the logo above its tree, through `SettingsWindowOptions`) are
+  built on the kit; the demo's *Widgets > Settings Window* page shows it.
   Core in `core/UltraCanvasSettingsPageKit.cpp`. See
   `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
 
@@ -560,7 +585,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraNotifications, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -838,6 +863,38 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ParseGtkFontName`, `ParseKdeFontEntry`, `ReadIniValue`), tested without
   a desktop. See `Docs/UltraCanvas/UltraCanvasSystemFont.md`.
 
+  The rest of the desktop's look is `UltraCanvasApplication::GetHostAppearance()`
+  (`UltraCanvasHostAppearance.h`, header-only and pure: `HostAppearance` -
+  dark, high contrast, reduced motion, the accent, the two fonts, the text
+  scale, the source - `DefaultHostAppearance`, `ApplyHostAppearanceOverride`
+  for `ULTRACANVAS_HOST_APPEARANCE`, `HostAppearanceReport`, `ColorFromHex`,
+  the Windows raw-value conversions), filled by `DetectHostAppearanceNative`:
+  the registry, the metrics and DWM on Windows
+  (`OS/MSWindows/UltraCanvasWindowsHostAppearance.cpp`), AppKit on macOS
+  (`OS/MacOS/UltraCanvasMacOSHostAppearance.mm`), on Linux and the BSDs the
+  portal's colour scheme, GSettings, the XSETTINGS manager's property (X11),
+  `kdeglobals` and `settings.ini` (`OS/Linux/UltraCanvasLinuxHostAppearance.cpp`,
+  the pure readers `HostAppearanceLinux` in the header, the session helpers
+  `UltraCanvasLinuxDesktop.h`), the browser's media queries in WebAssembly,
+  the default with the font detectors' fonts on Android. The platforms'
+  change events (`WM_SETTINGCHANGE` and its kin, KVO on
+  `effectiveAppearance`, XSETTINGS' `PropertyNotify` and the config folders
+  watched by `UltraCanvasLinuxHostAppearanceWatch`, the media queries'
+  `change`) call `ScheduleHostAppearanceRefresh`, one read per burst, and
+  `AddHostAppearanceHandler` hears a difference; the system fonts are the
+  value's. `HostAppearanceTest` covers the pure half,
+  `LinuxHostAppearanceTest` the Linux detector against a made-up config
+  home. `UltraCanvasTheme::FromHost` builds the theme the desktop asks for
+  from it - Light or Dark, the high-contrast presets, the accent derived
+  into the five accent roles (`DeriveAccent`), the fonts and text roles
+  (`ThemeFonts`, `ThemeTextRole`) - and the application's theme policy
+  (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with
+  `SetThemeProvider`) applies it in `Initialize` and on every host change,
+  a window built with the default background taking the theme's ground.
+  Phases T1 to T3 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
+  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
+  `Docs/UltraCanvas/UltraCanvasTheme.md`.
+
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
   `EmojiSettings::Load` / `Save` on `Emoji.conf` in the UltraCanvas settings
@@ -985,6 +1042,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     (Windows `ExitWindowsEx`; Linux logind over the system bus);
     `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
     logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `CanOpenDisplaySettings` / `OpenDisplaySettings` - the system's own
+    display settings (`ms-settings:display`; System Settings > Displays;
+    the desktop's display tool on Linux).
   - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
     volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
     loudspeaker through the sound server (libpulse loaded at run time:
@@ -1077,7 +1137,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`; its text in the person's language
+    (`Tr`), with `ClipboardEntryKindLabel` / `ClipboardEntryDisplayTitle` for
+    what is stored in English.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from
@@ -1553,20 +1615,39 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. Agents
+(`UltraAIAgent.h`: `Agent` with `AddTool` / `RemoveTool` / `Run` /
+`RunAsync` / `Cancel` / `History` / `SetHistory` / `ClearHistory`,
+`CreateAgent`, `AgentOptions` (`canUseTool`, `afterToolCall`, `maxTurns`,
+`stream`), `ToolArguments`, `ToolResult`, `ToolPermission`,
+`MakeSubagentTool`) run the model ↔ tool loop over any `ITextLLM`;
+`Docs/Modules/UltraAI/Agents.md`. Batches (`UltraAIBatch.h`:
+`ITextBatch` with `Submit` / `Get` / `Cancel` / `Results`,
+`CreateTextBatch`, `CreateSequentialTextBatch`, `RunBatch`,
+`ValidateBatchItems`, `IsFinished`; `CreateAnthropicTextBatch`,
+`CreateOpenAITextBatch`) send many chat requests as one job at about half
+the price; `Docs/Modules/UltraAI/Batches.md`. The local runtime
 (`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
 `AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
-`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
-engine and a model on demand and supervises the engine as a loopback
-process shared between applications; the `local` provider
+`GetSettings` / `SetSettings`, `RefreshGallery`; topics: `ListTopics` /
+`ModelForTopic` / `GetTopicPreferences` / `SetTopicPreferences` /
+`SetTopicModel` / `NewModels` / `MarkModelsSeen` / `ApplyTopicUpdates`)
+downloads an inference engine and a model on demand and supervises the
+engine as a loopback process shared between applications, and keeps which
+model the user wants for each topic (chat, code, translation, ...) from
+the model server's `topics.json`; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
 chat and embeddings through it; the module's one library that draws,
 `UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
 `UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
 dialog an application shows when a service needs a model that is not on
-this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`. The model server
+those catalogues and topics come from is `Server/UltraAIModelServer`
+(FastAPI on SQLite), managed with UltraAI ServerAdmin
+(`Apps/UltraAIServerAdmin`, `ModelServerClient.h`: the admin API's client;
+`Docs/UltraAIServerAdmin/README.md`).
 
 ### **3. FileLoader**
 
@@ -1614,6 +1695,19 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 `SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
+The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
+password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
+documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
+recognition), spreadsheets (every sheet, tab-separated), text files, pictures
+(text recognition) and recordings (speech to text);
+`GetTextExtractionMethod` / `CanExtractText` / `WhyNoTextExtraction` say how
+and whether. Text recognition and speech to text are hooks:
+`SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
+installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
+UltraAI's `ISpeechToText`: `RegisterUltraAISpeechTranscription()` in
+`UltraAI_UI`, a video's sound taken out with VideoFX; `GetSpeechTranscriber`
+for the one before). UltraClipboard's *Extract text* uses it.
 
 ### **4. Plug-ins for File Types**
 
@@ -2909,7 +3003,10 @@ languages under `media/locale/<lang>/`. The localisation editor
 in the core, with `LocalisationWorkspace` as its model) shows every set an
 application's texts come from in one grid and merges them; UOS-Settings
 hosts it under Language > Translations, `ShowLocalisationEditorDialog`
-opens it on the running application. See
+opens it on the running application. The DemoApp page *ULTRA OS modules >
+Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) shows
+the four calls live in a picked language, with the layer that answered
+each, and the catalogue files of the three layers. See
 `Docs/Modules/UltraLocalisation/README.md` and
 `Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
 

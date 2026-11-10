@@ -17,6 +17,13 @@ folder but en, every <Set>.json and base/<Base>.json:
   end;
 - "@bases" names base sets that exist.
 
+And every language translates every entry of the English standard set
+(media/locale/en/Standard.json): a key it lacks would show in English to
+everyone using it. A regional variant counts what its parent language has
+(pt-BR takes pt's), as the runtime's fallback walk does. A pull request
+that adds a Tr() text to the standard set brings its translations with it
+- scripts/translate_catalogue.py drafts them.
+
 And the English catalogues are in sync with the sources
 (extract_ui_strings.py --check). A collision between two of an
 application's base sets - one key, two translations - is reported, not
@@ -186,6 +193,26 @@ def main():
                         notes.append("%s: %r differs between base sets %s and %s (the first named wins)"
                                      % (path.relative_to(ROOT).as_posix(), key, seen[key][0], b))
                     seen.setdefault(key, (b, value))
+
+    # Every language translates the whole standard set: an English entry a
+    # language lacks shows in English to every person using it, in every
+    # application. A regional variant (pt-BR) holds only what differs, so
+    # what its parent (pt) has counts for it, as the runtime's fallback
+    # walk reads it.
+    en_standard = sources.get("Standard", {})
+    for folder in sorted(LOCALE.iterdir()) if LOCALE.exists() else []:
+        if not folder.is_dir() or folder.name == "en":
+            continue
+        path = folder / "Standard.json"
+        have = set()
+        parts = folder.name.split("-")
+        for depth in range(len(parts), 0, -1):
+            tag_file = LOCALE / "-".join(parts[:depth]) / "Standard.json"
+            if tag_file.exists():
+                have |= set(entries_of(read(tag_file, []) or {}))
+        for key in en_standard:
+            if key not in have:
+                findings.append(Finding(path, "untranslated: %r is in the English standard set" % key))
 
     if not args.no_sync and not args.update_baseline:
         sync = subprocess.run([sys.executable, str(ROOT / "scripts" / "extract_ui_strings.py"), "--check"],
