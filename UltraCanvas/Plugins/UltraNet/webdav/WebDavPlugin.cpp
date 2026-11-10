@@ -14,6 +14,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetFtp.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginGuard.h"
@@ -84,7 +85,9 @@ std::string ToHttpUrl(const std::string& url) {
     return url;
 }
 
-void ApplyCommon(CURL* h, const UltraNetFileShareOptions& o) {
+void ApplyCommon(CURL* h, const std::string& url, const UltraNetFileShareOptions& o) {
+    // The proxy setting (the operating system's by default).
+    ultranet_curlproxy::ApplyFor(h, url, /*tunnel=*/false);
     if (!o.credentials.username.empty()) {
         curl_easy_setopt(h, CURLOPT_HTTPAUTH, CURLAUTH_BASIC | CURLAUTH_DIGEST);
         curl_easy_setopt(h, CURLOPT_USERNAME, o.credentials.username.c_str());
@@ -256,7 +259,7 @@ public:
                              static_cast<long>(std::strlen(kBody)));
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
-            ApplyCommon(h.get(), opt);
+            ApplyCommon(h.get(), listUrl, opt);
 
             UltraNetResult r = Run(h.get(), listUrl);
             // PROPFIND returns 207 Multi-Status on success; map that to ok.
@@ -285,7 +288,7 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_URL, u.c_str());
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteFile);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, fp);
-            ApplyCommon(h.get(), opt);
+            ApplyCommon(h.get(), u, opt);
             UltraNetResult r = Run(h.get(), u);
             std::fclose(fp);
             return r;
@@ -313,7 +316,7 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_READDATA, fp);
             curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
                              static_cast<curl_off_t>(size > 0 ? size : 0));
-            ApplyCommon(h.get(), opt);
+            ApplyCommon(h.get(), u, opt);
             UltraNetResult r = Run(h.get(), u);
             std::fclose(fp);
             return r;
@@ -361,7 +364,7 @@ private:
         curl_easy_setopt(h.get(), CURLOPT_URL, u.c_str());
         curl_easy_setopt(h.get(), CURLOPT_CUSTOMREQUEST, method);
         curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
-        ApplyCommon(h.get(), opt);
+        ApplyCommon(h.get(), u, opt);
         return Run(h.get(), u);
     }
 
@@ -384,7 +387,7 @@ private:
         curl_easy_setopt(h.get(), CURLOPT_CUSTOMREQUEST, method);
         curl_easy_setopt(h.get(), CURLOPT_HTTPHEADER, hdrs);
         curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
-        ApplyCommon(h.get(), opt);
+        ApplyCommon(h.get(), srcUrl, opt);
         return Run(h.get(), srcUrl);
     }
 };

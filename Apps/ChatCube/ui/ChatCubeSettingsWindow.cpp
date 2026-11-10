@@ -13,8 +13,10 @@
 // sidebar), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.2.0 - Networks > Proxy: the proxy Matrix, Telegram and the relay are
+//                  reached through, shared by every ULTRA OS application
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettingsWindow.h"
@@ -28,6 +30,7 @@
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTreeView.h"
@@ -73,6 +76,7 @@ constexpr const char* kPageTyping      = "messages/typing";
 constexpr const char* kPageNetworks    = "networks";
 constexpr const char* kPageAccounts    = "networks/accounts";
 constexpr const char* kPageLocal       = "networks/local";
+constexpr const char* kPageProxy       = "networks/proxy";
 constexpr const char* kPageExtras      = "extras";
 constexpr const char* kPageDataFolder  = "extras/data";
 constexpr const char* kPageAbout       = "extras/about";
@@ -705,6 +709,7 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     AddTreeNode(d, "settings", kPageNetworks, "Networks");
     AddTreeNode(d, kPageNetworks, kPageAccounts, "Accounts");
     AddTreeNode(d, kPageNetworks, kPageLocal, "Local network");
+    AddTreeNode(d, kPageNetworks, kPageProxy, "Proxy");
     AddTreeNode(d, "settings", kPageExtras, "Extras");
     AddTreeNode(d, kPageExtras, kPageDataFolder, "Data folder");
     AddTreeNode(d, kPageExtras, kPageAbout, "About");
@@ -724,6 +729,7 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     AddPage(d, kPageTyping, BuildTypingPage(d));
     AddPage(d, kPageAccounts, BuildAccountsPage(d));
     AddPage(d, kPageLocal, BuildLocalNetworkPage(d));
+    AddPage(d, kPageProxy, MakeProxySettingsPage("cc-set-proxy", d->window.get()));
     AddPage(d, kPageDataFolder, BuildDataFolderPage(d));
     AddPage(d, kPageAbout, BuildAboutPage(d));
     AddPage(d, kPageStart, BuildStartPage());

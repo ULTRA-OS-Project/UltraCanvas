@@ -55,6 +55,7 @@
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetCurlTls.h>
 
 #include "ImapParse.h"
@@ -164,6 +165,9 @@ bool ParseServerBase(const std::string& serverUrl, std::string& outBase, bool& o
 constexpr const char* kPluginVersion = "0.2.0";
 
 UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+    // The proxy setting (the operating system's by default); an HTTP proxy
+    // carries the mail connection as a CONNECT tunnel.
+    ultranet_curlproxy::ApplyFor(h, opt.serverUrl, /*tunnel=*/true);
     ultranet_curldebug::EnableIfRequested(h);
     // STARTTLS here is CURLUSESSL_TRY (below): an upgrade if the server offers one.
     ultranet_curlmailauth::RecordContext(std::string("UltraNet IMAP plug-in ") + kPluginVersion,

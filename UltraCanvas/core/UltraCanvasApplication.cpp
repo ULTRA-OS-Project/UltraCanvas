@@ -66,6 +66,7 @@
 #include "UltraCanvasSettingsFolder.h"
 #include "UltraCanvasSystemLanguage.h"
 #include "UltraLocalisation/UltraLocalisation.h"
+#include "UltraCanvasProxySettings.h"     // UseSharedProxySettings
 
 #if !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
@@ -1319,6 +1320,11 @@ namespace UltraCanvas {
 
         UCImage::InitializeImageSubsysterm(appName.c_str());
         endStep("image subsystem");
+
+        // Every connection follows the proxy settings shared by all
+        // UltraCanvas applications (Proxy.conf; the system's proxy until one
+        // is chosen) - read when the first connection is made, not here.
+        UseSharedProxySettings();
 
         // The translation catalogues (UltraLocalisation): the shipped tree
         // under media/locale/, the person's overrides and Language.conf in

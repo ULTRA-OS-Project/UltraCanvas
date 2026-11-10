@@ -7,6 +7,8 @@
 // caption, the controls, and at the foot of the page, in its own tinted
 // block, the notes that explain the setting. A page's "Restore defaults"
 // button sits at the left end of the bottom bar, opposite Close.
+// Version: 0.4.0 - Services > Proxy: the proxy the cloud providers are reached through,
+//                  shared by every ULTRA OS application (MakeProxySettingsPage)
 // Version: 0.3.0 - the Model topics page
 // Version: 0.2.0 - the Local models page; the local provider's models in the endpoint editor
 // Version: 0.1.0
@@ -28,6 +30,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
@@ -70,6 +73,7 @@ namespace {
     constexpr const char* kPageLocalAndCloud    = "services/local-and-cloud";
     constexpr const char* kPageLocalModels      = "services/local-models";
     constexpr const char* kPageTopics           = "services/topics";
+    constexpr const char* kPageProxy            = "services/proxy";
     constexpr const char* kPageAccounts         = "accounts";
     constexpr const char* kPageEndpointEditor   = "accounts/editor";
     constexpr const char* kPageStart            = "start";
@@ -814,6 +818,7 @@ namespace {
         AddTreeNode(d, kPageServices, kPageLocalModels, "Local models");
         AddTreeNode(d, kPageServices, kPageTopics, "Model topics");
         AddTreeNode(d, kPageServices, kPageLocalAndCloud, "Local & cloud");
+        AddTreeNode(d, kPageServices, kPageProxy, "Proxy");
         AddTreeNode(d, "settings", kPageAccounts, "Accounts");
         // Accounts' children — "New endpoint" plus one node per endpoint — are
         // built dynamically (and rebuilt after every Save/Delete). No selection
@@ -843,6 +848,9 @@ namespace {
             if (d->topics) d->topics->RestoreDefaults();
         }};
         AddPage(d, kPageLocalAndCloud, BuildLocalAndCloudPage(d));
+        // Every provider is reached over UltraNet, so through this proxy; a
+        // local model on this machine never is.
+        AddPage(d, kPageProxy, MakeProxySettingsPage("uai-set-proxy", d->window.get()));
         AddPage(d, kPageEndpointEditor, BuildEndpointEditorPage(d));
         AddPage(d, kPageStart, BuildStartPage(d));
 

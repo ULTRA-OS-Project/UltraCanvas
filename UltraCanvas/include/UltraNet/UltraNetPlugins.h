@@ -3,6 +3,8 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.5.4 - host ABI 4: UltraNet_ResolveProxy / UltraNet_DescribeProxy, so a
+//                  plug-in's own libcurl handles follow the proxy setting
 // Version: 0.5.3 - UltraNetMailMessage::rawMessage: a message sent exactly as it is
 // Version: 0.5.2 - ISshTunnelPlugin; UltraNetRemoteOptions moved to UltraNetSsh.h, with the host key
 // Version: 0.5.1 - IServiceDiscoveryPlugin (mDNS / DNS-SD advertising)
@@ -677,7 +679,9 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 //        format), UltraNet_SseStreamAsync / CancelRequest / IsRequestActive
 //        (the JMAP plug-in's push). The shim refuses an older host: a plug-in
 //        built from this tree calls them.
-constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 3;
+// ABI 4: + UltraNet_ResolveProxy / UltraNet_DescribeProxy: the proxy every
+//        libcurl handle a plug-in opens connects through (UltraNetCurlProxy.h).
+constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 4;
 
 struct UltraNetUrlComponents;
 struct UltraNetMimeBuildInput;
@@ -709,6 +713,11 @@ struct UltraNetPluginHost {
                                      std::function<void(const UltraNetResult&)> onComplete);
     UltraNetResult (*CancelRequest)(UltraNetHandle handle);
     bool           (*IsRequestActive)(UltraNetHandle handle);
+
+    // ---- ABI 4 ----------------------------------------------------------
+    UltraNetProxyConfig (*ResolveProxy)(const std::string& url,
+                                        const UltraNetProxyConfig& requested);
+    std::string    (*DescribeProxy)(const UltraNetProxyConfig& proxy);
 };
 
 // The table this host hands to every plug-in it loads - for tests, and for a

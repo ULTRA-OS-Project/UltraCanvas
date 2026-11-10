@@ -4,6 +4,7 @@
 //
 // Built with hidden visibility (the plug-in CMakeLists set it on this file):
 // the definitions are the plug-in's own and never interpose on the host's.
+// Version: 0.3.0 - ABI 4: the proxy resolver
 // Version: 0.2.0 - ABI 3: the mail-message builder, SSE streaming, cancel
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -102,4 +103,17 @@ UltraNetResult UltraNet_CancelRequest(UltraNetHandle handle) {
 
 bool UltraNet_IsRequestActive(UltraNetHandle handle) {
     return g_host && g_host->IsRequestActive(handle);
+}
+
+// ---- ABI 4 ------------------------------------------------------------------
+
+UltraNetProxyConfig UltraNet_ResolveProxy(const std::string& url,
+                                          const UltraNetProxyConfig& requested) {
+    // Without a host, connect directly - never through whatever libcurl
+    // would read from the environment.
+    return g_host ? g_host->ResolveProxy(url, requested) : UltraNetProxyConfig();
+}
+
+std::string UltraNet_DescribeProxy(const UltraNetProxyConfig& proxy) {
+    return g_host ? g_host->DescribeProxy(proxy) : std::string();
 }

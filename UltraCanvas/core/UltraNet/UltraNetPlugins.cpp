@@ -174,6 +174,9 @@ static const UltraNetPluginHost g_pluginHost = {
     &UltraNet_SseStreamAsync,
     &UltraNet_CancelRequest,
     &UltraNet_IsRequestActive,
+    // ABI 4
+    &UltraNet_ResolveProxy,
+    &UltraNet_DescribeProxy,
 };
 
 const UltraNetPluginHost* UltraNet_GetPluginHost() {

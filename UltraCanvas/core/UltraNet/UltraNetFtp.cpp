@@ -15,6 +15,7 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.9.1 - FTP and SFTP through the proxy setting (UltraNetCurlProxy.h)
 // Version: 0.9.0 - an FTP change uses the connection kept open: its commands go
 //                  after libcurl's change of folder (CURLOPT_POSTQUOTE) and
 //                  name the entry within it, not on a connection of its own;
@@ -36,6 +37,7 @@
 
 #include "UltraNet/UltraNetFtp.h"
 #include "UltraNet/UltraNetCurlError.h"   // error buffer detail + diagnostics chain
+#include "UltraNet/UltraNetCurlProxy.h"   // the proxy setting on every handle
 #include "UltraNetHttpEasy.h"   // MapCurlError (private helpers)
 #include "UltraNetFtpQuote.h"   // the text of DELE / RNFR-RNTO / MKD / RMD
 #include "UltraNetFtpLog.h"     // the session log
@@ -255,7 +257,11 @@ Transcript MakeTranscript(const UltraNetFtpOptions& opt, const std::string& url)
 int ReportTransferProgress(void* userdata, curl_off_t dltotal, curl_off_t dlnow,
                            curl_off_t ultotal, curl_off_t ulnow);
 
-void ApplyCommonOptions(CURL* h, const UltraNetFtpOptions& opt) {
+void ApplyCommonOptions(CURL* h, const std::string& url, const UltraNetFtpOptions& opt) {
+    // The proxy setting (the operating system's by default): an HTTP proxy
+    // as a CONNECT tunnel for the control and the data connections, a SOCKS
+    // proxy as it is. SFTP goes the same way.
+    ultranet_curlproxy::ApplyFor(h, url, /*tunnel=*/true);
     if (!opt.credentials.username.empty()) {
         curl_easy_setopt(h, CURLOPT_USERNAME, opt.credentials.username.c_str());
         curl_easy_setopt(h, CURLOPT_PASSWORD, opt.credentials.password.c_str());
@@ -829,7 +835,7 @@ UltraNetResult UltraNet_FtpDownload(const std::string& url,
         curl_easy_setopt(h.get(), CURLOPT_RESUME_FROM_LARGE,
                          static_cast<curl_off_t>(opt.resumeOffset));
     }
-    ApplyCommonOptions(h.get(), opt);
+    ApplyCommonOptions(h.get(), url, opt);
     ApplyProgressCallback(h.get());
 
     CURLcode rc = CURLE_OK;
@@ -874,7 +880,7 @@ UltraNetResult UltraNet_FtpUpload(const std::string& localPath,
     curl_easy_setopt(h.get(), CURLOPT_READDATA, fp);
     curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
                      static_cast<curl_off_t>(size > 0 ? size : 0));
-    ApplyCommonOptions(h.get(), opt);
+    ApplyCommonOptions(h.get(), url, opt);
     ApplyProgressCallback(h.get());
 
     CURLcode rc = CURLE_OK;
@@ -938,7 +944,7 @@ UltraNetResult UltraNet_FtpListDirectory(const std::string& url,
         curl_easy_setopt(h.get(), CURLOPT_DIRLISTONLY, dirListOnly ? 1L : 0L);
         curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
         curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
-        ApplyCommonOptions(h.get(), opt);
+        ApplyCommonOptions(h.get(), listUrl, opt);
         return Perform(h.get(), listUrl, opt, log, &rc);
     };
 
@@ -1070,7 +1076,7 @@ UltraNetResult RunQuote(const std::string& url, ultranet_internal::ftpquote::Ver
     // login each time, and one a server that takes one connection at a time
     // refused. SFTP's commands carry full paths and go first.
     curl_easy_setopt(h.get(), plan.afterFolderChange ? CURLOPT_POSTQUOTE : CURLOPT_QUOTE, cmds);
-    ApplyCommonOptions(h.get(), opt);
+    ApplyCommonOptions(h.get(), plan.parentUrl, opt);
 
     CURLcode rc = CURLE_OK;
     UltraNetResult r = Perform(h.get(), plan.parentUrl, opt, log, &rc);

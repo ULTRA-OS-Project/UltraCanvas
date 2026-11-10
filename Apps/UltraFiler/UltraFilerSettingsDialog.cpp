@@ -45,6 +45,7 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.21.0 - Extras > Proxy: the proxy every ULTRA OS application connects through (MakeProxySettingsPage)
 // Version: 1.20.2 - the texts left in English go through Tr too: captions, tooltips, the cache figures (counts through TrN), the TAR labels; the conflict choices get ids that do not change with the language
 // Version: 1.20.1 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.20.0 - the interface strings go through Tr (UltraLocalisation); "Translate UltraFiler..." on the start page opens the localisation editor
@@ -73,6 +74,7 @@
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasSlider.h"
@@ -131,6 +133,7 @@ namespace {
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "extras/history-favorites";
     constexpr const char* kPageCache = "extras/cache";
+    constexpr const char* kPageProxy = "extras/proxy";
     constexpr const char* kPageArchives = "archives";
     constexpr const char* kPageTar = "archives/tar";
     // The page shown while nothing is selected - the window opens with every
@@ -2586,6 +2589,7 @@ namespace {
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, Tr("Open prompt"));
         AddTreeNode(d, kPageExtras, kPageLists, Tr("History & Favorites"));
         AddTreeNode(d, kPageExtras, kPageCache, Tr("Cache"));
+        AddTreeNode(d, kPageExtras, kPageProxy, Tr("Proxy"));
 
         // ----- pages -----
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
@@ -2611,6 +2615,9 @@ namespace {
         AddPage(d, kPageLists, BuildListsPage(d));
         AddPage(d, kPageTar, BuildTarPage(d));
         AddPage(d, kPageCache, BuildCachePage(d));
+        // The proxy every ULTRA OS application connects through: FTP, SFTP,
+        // WebDAV and the cloud drives go through it.
+        AddPage(d, kPageProxy, MakeProxySettingsPage("ufl-set-proxy", d->window.get()));
         AddPage(d, kPageStart, BuildStartPage(d));
 
         // Nothing is selected while every section is closed, so the page

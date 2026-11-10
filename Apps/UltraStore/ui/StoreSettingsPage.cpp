@@ -2,6 +2,8 @@
 // The Settings page: the channel, the texts' language, the servers, the keys
 // the user trusts beside the compiled-in ones, and what the store knows
 // about this machine, its folder and the catalog it has.
+// Version: 0.3.0 - Proxy settings: the shared dialog, for the proxy the catalog,
+//                  the downloads and the purchases go through
 // Version: 0.2.0 - the announced keys in the catalog state
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -10,6 +12,7 @@
 #include "StoreTheme.h"
 
 #include "UltraCanvasAppSettings.h"
+#include "UltraCanvasProxySettingsDialog.h"
 
 #include <algorithm>
 #include <cctype>
@@ -125,6 +128,10 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
     auto refresh = Theme::Button("usS.refresh", "Refresh catalog now", 150);
     refresh->onClick = [this]() { RefreshCatalog(); };
     buttons->AddChild(refresh);
+    // The proxy every ULTRA OS application connects through
+    auto proxy = Theme::Button("usS.proxy", "Proxy settings", 130);
+    proxy->onClick = [this]() { ShowProxySettingsDialog(window_.get()); };
+    buttons->AddChild(proxy);
     catalog->AddChild(buttons);
     scroll->AddChild(catalog);
 

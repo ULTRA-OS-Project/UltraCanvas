@@ -26,6 +26,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
@@ -216,6 +217,7 @@ public:
                 UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
 
             curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), url, /*tunnel=*/true);   // the proxy setting
             curl_easy_setopt(h.get(), CURLOPT_HTTP_VERSION,
                              (long)CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE);
             curl_easy_setopt(h.get(), CURLOPT_POST, 1L);

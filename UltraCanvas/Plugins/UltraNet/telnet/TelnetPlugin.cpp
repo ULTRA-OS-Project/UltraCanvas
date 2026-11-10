@@ -13,6 +13,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
@@ -147,6 +148,7 @@ public:
             UploadCursor cursor{body.data(), body.size()};
 
             curl_easy_setopt(h.get(), CURLOPT_URL,           s->url.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), s->url, /*tunnel=*/true);   // the proxy setting
             curl_easy_setopt(h.get(), CURLOPT_UPLOAD,        1L);
             curl_easy_setopt(h.get(), CURLOPT_READFUNCTION,  &ReadCallback);
             curl_easy_setopt(h.get(), CURLOPT_READDATA,      &cursor);

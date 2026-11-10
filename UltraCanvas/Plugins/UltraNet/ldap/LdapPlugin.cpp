@@ -17,6 +17,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
@@ -160,6 +161,7 @@ public:
 
             std::string body;
             curl_easy_setopt(h.get(), CURLOPT_URL, full.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), full, /*tunnel=*/true);   // the proxy setting
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
             curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
