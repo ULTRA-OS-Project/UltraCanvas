@@ -17,6 +17,7 @@
 #include "UltraCanvasDataFolder.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasTextUtils.h"
 #include "UltraCanvasUtils.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -185,9 +186,12 @@ std::string MinOsOf(const Target& target) {
     return {};
 }
 
+// The catalog's price is dot-decimal whatever the desktop's locale.
 double PriceNumber(const Pricing& pricing) {
     if (pricing.model == PricingModel::Free || pricing.price.empty()) return 0.0;
-    return std::atof(pricing.price.c_str());
+    double value = 0.0;
+    UltraCanvas::TryParseFloat(pricing.price, value);
+    return value;
 }
 
 } // namespace
