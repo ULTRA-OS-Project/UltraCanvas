@@ -11,6 +11,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetPlugins.h"
+#include "UltraNet/UltraNetSocket.h"   // UltraNet_TcpOpen, UltraNet_SocketDetach (host ABI 4)
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 #include "UltraNet/UltraNetMime.h"
@@ -177,6 +178,8 @@ static const UltraNetPluginHost g_pluginHost = {
     // ABI 4
     &UltraNet_ResolveProxy,
     &UltraNet_DescribeProxy,
+    &UltraNet_TcpOpen,
+    &UltraNet_SocketDetach,
 };
 
 const UltraNetPluginHost* UltraNet_GetPluginHost() {

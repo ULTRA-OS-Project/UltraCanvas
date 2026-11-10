@@ -367,11 +367,25 @@ CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
 
 Every connection UltraNet makes through libcurl - the HTTP verbs (sync,
 async, SSE), WebSocket, FTP / FTPS / SFTP, and the IMAP, SMTP, POP3,
-WebDAV, LDAP, Telnet and gRPC plug-ins - asks `UltraNet_ResolveProxy(url,
-requested)` which proxy to use and hands the answer to libcurl
-(`UltraNet/UltraNetCurlProxy.h`; a plug-in reaches the resolver through its
-host table, ABI 4). Raw sockets (`UltraNetSocket.h`), the SSH plug-in
-(libssh) and the UDP protocols do not go through a proxy.
+WebDAV, LDAP, Telnet, RTSP and gRPC plug-ins - asks
+`UltraNet_ResolveProxy(url, requested)` which proxy to use and hands the
+answer to libcurl (`UltraNet/UltraNetCurlProxy.h`; a plug-in reaches the
+resolver through its host table, ABI 4).
+
+A raw TCP connection (`UltraNetSocket.h`) goes through a proxy only when
+asked - `UltraNetSocketOptions::proxy`, or `useProxySetting` for the
+module-wide setting - because a raw socket is mostly a device or a peer on
+the local network (ChatCube's LAN peers stay direct). UltraNet then speaks
+the proxy's handshake itself: SOCKS 5 (with its user name and password, the
+name sent for the proxy to look up unless `remoteDns` is off), SOCKS 4 / 4a,
+or an HTTP `CONNECT` tunnel with Basic sign-in; `UltraNet_TcpOpen` says why
+one failed (`AuthenticationRequired` for a proxy that asks for a sign-in).
+The SSH plug-in follows the setting that way: libssh cannot talk to a proxy,
+so the connection is made by UltraNet and handed over
+(`UltraNet_SocketDetach`, libssh's `SSH_OPTIONS_FD`); known_hosts is still
+looked up by the server's name. RTMP goes through libcurl's librtmp support,
+which the libcurl built here does not have; the UDP protocols (CoAP, SNMP,
+SIP, RTP, mDNS) never go through a proxy.
 
 The setting is `UltraNetConfig::proxy` (`UltraNet_SetGlobalProxy`), or a
 request's own `UltraNetHttpOptions::proxy`:

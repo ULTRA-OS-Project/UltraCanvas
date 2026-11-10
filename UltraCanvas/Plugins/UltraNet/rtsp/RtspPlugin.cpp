@@ -9,6 +9,7 @@
 // Apps can OpenStream to learn what tracks the server offers (the SDP
 // is left in the response body), pick a transport, and hand the actual
 // playback off to a media library.
+// Version: 0.1.3 - DESCRIBE through the proxy setting (UltraNetCurlProxy.h)
 // Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
 //                  exception becomes a PluginError result or an invalid
 //                  handle, never ends the process
@@ -17,6 +18,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
@@ -91,6 +93,8 @@ public:
 
             std::string sdp;
             curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
+            // The proxy setting: an HTTP proxy as a CONNECT tunnel, SOCKS as it is.
+            ultranet_curlproxy::ApplyFor(h.get(), url, /*tunnel=*/true);
             curl_easy_setopt(h.get(), CURLOPT_RTSP_REQUEST, (long)CURL_RTSPREQ_DESCRIBE);
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &sdp);

@@ -1769,8 +1769,13 @@ future.
   `UltraNetFtpLogLine` steps, commands with the password masked, replies with
   their codes, the error with libcurl's number); connections kept open
   between calls on one thread, closed by `UltraNet_FtpCloseIdleConnections`
-- `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
-  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
+- `UltraNet_TcpConnect`, `UltraNet_TcpOpen` (the same with the reason it
+  failed), `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
+  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`,
+  `UltraNet_SocketDetach` (the OS socket handed to a library that runs its
+  own protocol); a TCP connection through a proxy when asked
+  (`UltraNetSocketOptions::proxy` / `useProxySetting`: SOCKS 5, 4 / 4a, HTTP
+  CONNECT)
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
   `UltraNet_OAuth2GenerateState`, `UltraNet_OAuth2BuildAuthUrl`,
   `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,

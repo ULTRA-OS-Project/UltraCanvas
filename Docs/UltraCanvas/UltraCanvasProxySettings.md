@@ -11,8 +11,10 @@ host and a port, the hosts reached directly, and a sign-in.
 for it.
 
 UltraNet follows the setting on every connection it makes through libcurl -
-HTTP and HTTPS (and so every UltraAI provider), WebSocket, FTP / SFTP, and
-the IMAP, SMTP, POP3, WebDAV, LDAP, Telnet and gRPC plug-ins. How UltraNet
+HTTP and HTTPS (and so every UltraAI provider), WebSocket, FTP / SFTP, the
+IMAP, SMTP, POP3, WebDAV, LDAP, Telnet, RTSP and gRPC plug-ins, and SSH
+(the SSH plug-in is handed a connection made through the proxy); UltraClaude
+passes it to the `claude` CLI in its environment. How UltraNet
 decides, and what "the operating system's proxy" is on each platform, is
 the UltraNet module's *Proxies* section (`Docs/Modules/UltraNet/README.md`).
 

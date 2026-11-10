@@ -14,6 +14,7 @@
 #include <UltraNet/UltraNetHttp.h>
 #include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include <UltraNet/UltraNetSocket.h>
 #include <UltraNet/UltraNetSse.h>
 #include <UltraNet/UltraNetUrl.h>
 
@@ -116,4 +117,14 @@ UltraNetProxyConfig UltraNet_ResolveProxy(const std::string& url,
 
 std::string UltraNet_DescribeProxy(const UltraNetProxyConfig& proxy) {
     return g_host ? g_host->DescribeProxy(proxy) : std::string();
+}
+
+UltraNetResult UltraNet_TcpOpen(const std::string& host, int port,
+                                const UltraNetSocketOptions& options, UltraNetHandle& outHandle) {
+    outHandle = UltraNetInvalidHandle;
+    return g_host ? g_host->TcpOpen(host, port, options, outHandle) : NoHost();
+}
+
+std::intptr_t UltraNet_SocketDetach(UltraNetHandle handle) {
+    return g_host ? g_host->SocketDetach(handle) : -1;
 }

@@ -45,3 +45,17 @@
   `MakeProxySettingsPage` is its page for a settings window. Docs:
   `Docs/UltraCanvas/UltraCanvasProxySettings.md`, the UltraNet module's
   *Proxies*. Tests: `ProxySettingsTest`, `UltraNetTests` (`test_proxy.cpp`).
+- **A raw TCP connection can go through a proxy, and SSH and RTSP follow the
+  setting.** `UltraNetSocketOptions::proxy` (or `useProxySetting`, the
+  module-wide setting) connects through SOCKS 5 - with its user name and
+  password, the name looked up by the proxy - SOCKS 4 / 4a, or an HTTP
+  `CONNECT` tunnel with Basic sign-in, the handshakes spoken by UltraNet;
+  off by default, since a raw socket is mostly a peer on the local network.
+  `UltraNet_TcpOpen` says why a connection failed; `UltraNet_SocketDetach`
+  hands the operating-system socket to a library that runs its own protocol.
+  The SSH plug-in uses both: libssh is given a connection made through the
+  proxy, so SSH tunnels and shells (UltraDBAdmin's tunnels among them) go
+  where the setting says. The RTSP plug-in's DESCRIBE goes through it as
+  well. Tests: seven loopback handshakes in `UltraNetTests`
+  (`test_proxy.cpp`), and the SSH tunnel tests passed against an sshd
+  reached through a SOCKS 5 proxy.

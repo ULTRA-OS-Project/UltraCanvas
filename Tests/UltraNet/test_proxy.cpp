@@ -242,3 +242,209 @@ TEST(proxy_http_request_goes_through_the_proxy) {
     REQUIRE_EQ(proxy.requestLine, std::string("GET http://only-the-proxy-knows.invalid/path HTTP/1.1"));
 }
 #endif
+
+// ---- Raw TCP through a proxy (UltraNet_TcpOpen) -------------------------------
+#if !defined(_WIN32)
+#include <UltraNet/UltraNetSocket.h>
+#include <functional>
+
+namespace {
+
+// A server on 127.0.0.1 that runs `script` on the one connection it accepts.
+struct ScriptedServer {
+    int listener = -1;
+    int port = 0;
+    std::thread worker;
+
+    bool Start(std::function<void(int)> script) {
+        listener = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (listener < 0) return false;
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (::bind(listener, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0) return false;
+        socklen_t len = sizeof addr;
+        if (::getsockname(listener, reinterpret_cast<sockaddr*>(&addr), &len) != 0) return false;
+        port = ntohs(addr.sin_port);
+        if (::listen(listener, 1) != 0) return false;
+        worker = std::thread([this, script]() {
+            const int c = ::accept(listener, nullptr, nullptr);
+            if (c < 0) return;
+            script(c);
+            ::close(c);
+        });
+        return true;
+    }
+    void Join() { if (worker.joinable()) worker.join(); }
+    ~ScriptedServer() {
+        if (listener >= 0) ::shutdown(listener, SHUT_RDWR);
+        Join();
+        if (listener >= 0) ::close(listener);
+    }
+};
+
+std::string ReadN(int fd, std::size_t n) {
+    std::string out;
+    char buf[512];
+    while (out.size() < n) {
+        const ssize_t got = ::recv(fd, buf, std::min(sizeof buf, n - out.size()), 0);
+        if (got <= 0) break;
+        out.append(buf, static_cast<std::size_t>(got));
+    }
+    return out;
+}
+
+std::string ReadUntil(int fd, const std::string& end) {
+    std::string out;
+    char c;
+    while (out.size() < 8192 && (out.size() < end.size() || out.compare(out.size() - end.size(), end.size(), end) != 0)) {
+        if (::recv(fd, &c, 1, 0) != 1) break;
+        out += c;
+    }
+    return out;
+}
+
+void SendText(int fd, const std::string& s) { ::send(fd, s.data(), s.size(), 0); }
+
+std::string ReceiveText(UltraNetHandle h) {
+    std::vector<uint8_t> data;
+    UltraNet_TcpReceive(h, data, 64, 5000);
+    return std::string(data.begin(), data.end());
+}
+
+UltraNetSocketOptions Through(UltraNetProxyType type, int port) {
+    UltraNetSocketOptions o;
+    o.connectTimeoutMs = 5000;
+    o.proxy = Manual(type, "127.0.0.1", port);
+    return o;
+}
+
+} // namespace
+
+TEST(proxy_tcp_socks5_by_name) {
+    std::string request;
+    ScriptedServer socks;
+    REQUIRE(socks.Start([&](int c) {
+        if (ReadN(c, 3) != std::string("\x05\x01\x00", 3)) return;
+        SendText(c, std::string("\x05\x00", 2));
+        request = ReadN(c, 4 + 1 + 14 + 2);           // name "target.invalid"
+        SendText(c, std::string("\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00", 10));
+        if (ReadN(c, 4) == "ping") SendText(c, "pong");
+    }));
+    UltraNetHandle h = UltraNetInvalidHandle;
+    const UltraNetResult r = UltraNet_TcpOpen("target.invalid", 4242, Through(UltraNetProxyType::Socks5, socks.port), h);
+    REQUIRE(r.success);
+    int sent = 0;
+    UltraNet_TcpSend(h, std::vector<uint8_t>{'p', 'i', 'n', 'g'}, sent);
+    REQUIRE_EQ(ReceiveText(h), std::string("pong"));
+    UltraNet_SocketClose(h);
+    socks.Join();
+    // CONNECT, a domain name (the proxy looks it up), port 4242
+    REQUIRE_EQ(request, std::string("\x05\x01\x00\x03\x0etarget.invalid\x10\x92", 21));
+}
+
+TEST(proxy_tcp_socks5_signs_in) {
+    std::string signIn;
+    ScriptedServer socks;
+    REQUIRE(socks.Start([&](int c) {
+        if (ReadN(c, 4) != std::string("\x05\x02\x00\x02", 4)) return;
+        SendText(c, std::string("\x05\x02", 2));
+        signIn = ReadN(c, 1 + 1 + 5 + 1 + 6);
+        SendText(c, std::string("\x01\x00", 2));
+        ReadN(c, 4 + 4 + 2);                            // an IPv4 literal
+        SendText(c, std::string("\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00", 10));
+        SendText(c, "ok");
+    }));
+    UltraNetSocketOptions o = Through(UltraNetProxyType::Socks5, socks.port);
+    o.proxy.credentials.username = "erika";
+    o.proxy.credentials.password = "secret";
+    UltraNetHandle h = UltraNetInvalidHandle;
+    REQUIRE(UltraNet_TcpOpen("192.0.2.7", 22, o, h).success);
+    REQUIRE_EQ(ReceiveText(h), std::string("ok"));
+    UltraNet_SocketClose(h);
+    socks.Join();
+    REQUIRE_EQ(signIn, std::string("\x01\x05" "erika" "\x06" "secret"));
+}
+
+TEST(proxy_tcp_socks5_refused_sign_in) {
+    ScriptedServer socks;
+    REQUIRE(socks.Start([&](int c) {
+        ReadN(c, 3);
+        SendText(c, std::string("\x05\xFF", 2));
+    }));
+    UltraNetHandle h = UltraNetInvalidHandle;
+    const UltraNetResult r = UltraNet_TcpOpen("target.invalid", 80, Through(UltraNetProxyType::Socks5, socks.port), h);
+    REQUIRE(!r.success);
+    REQUIRE(r.code == UltraNetResultCode::AuthenticationRequired);
+    REQUIRE(h == UltraNetInvalidHandle);
+}
+
+TEST(proxy_tcp_socks4a) {
+    std::string request;
+    ScriptedServer socks;
+    REQUIRE(socks.Start([&](int c) {
+        request = ReadN(c, 8 + 1 + 15);                 // no user id, "target.invalid\0"
+        SendText(c, std::string("\x00\x5A\x00\x00\x00\x00\x00\x00", 8));
+        SendText(c, "hi");
+    }));
+    UltraNetHandle h = UltraNetInvalidHandle;
+    REQUIRE(UltraNet_TcpOpen("target.invalid", 80, Through(UltraNetProxyType::Socks4, socks.port), h).success);
+    REQUIRE_EQ(ReceiveText(h), std::string("hi"));
+    UltraNet_SocketClose(h);
+    socks.Join();
+    REQUIRE_EQ(request, std::string("\x04\x01\x00\x50\x00\x00\x00\x01\x00target.invalid\x00", 24));
+}
+
+TEST(proxy_tcp_http_connect) {
+    std::string request;
+    ScriptedServer proxy;
+    REQUIRE(proxy.Start([&](int c) {
+        request = ReadUntil(c, "\r\n\r\n");
+        // The server's first bytes right behind the answer: none may be lost.
+        SendText(c, "HTTP/1.1 200 Connection established\r\n\r\nSSH-2.0-test\r\n");
+    }));
+    UltraNetSocketOptions o = Through(UltraNetProxyType::Http, proxy.port);
+    o.proxy.credentials.username = "erika";
+    o.proxy.credentials.password = "pw";
+    UltraNetHandle h = UltraNetInvalidHandle;
+    REQUIRE(UltraNet_TcpOpen("target.invalid", 22, o, h).success);
+    REQUIRE_EQ(ReceiveText(h), std::string("SSH-2.0-test\r\n"));
+    UltraNet_SocketClose(h);
+    proxy.Join();
+    REQUIRE(request.rfind("CONNECT target.invalid:22 HTTP/1.1\r\n", 0) == 0);
+    REQUIRE(request.find("Proxy-Authorization: Basic ZXJpa2E6cHc=\r\n") != std::string::npos);
+}
+
+TEST(proxy_tcp_http_connect_407) {
+    ScriptedServer proxy;
+    REQUIRE(proxy.Start([&](int c) {
+        ReadUntil(c, "\r\n\r\n");
+        SendText(c, "HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n");
+    }));
+    UltraNetHandle h = UltraNetInvalidHandle;
+    const UltraNetResult r = UltraNet_TcpOpen("target.invalid", 22, Through(UltraNetProxyType::Http, proxy.port), h);
+    REQUIRE(!r.success);
+    REQUIRE(r.code == UltraNetResultCode::AuthenticationRequired);
+}
+
+TEST(proxy_tcp_direct_by_default_and_detach) {
+    GlobalProxyGuard guard;
+    // A setting that would fail if used: a raw socket does not use it unless asked.
+    UltraNet_SetGlobalProxy(Manual(UltraNetProxyType::Socks5, "127.0.0.1", 1));
+    ScriptedServer server;
+    REQUIRE(server.Start([&](int c) { SendText(c, "direct"); }));
+    UltraNetSocketOptions o;
+    o.connectTimeoutMs = 5000;
+    UltraNetHandle h = UltraNetInvalidHandle;
+    REQUIRE(UltraNet_TcpOpen("127.0.0.1", server.port, o, h).success);
+    const std::intptr_t fd = UltraNet_SocketDetach(h);
+    REQUIRE(fd >= 0);
+    std::vector<uint8_t> data;
+    REQUIRE(!UltraNet_TcpReceive(h, data, 16, 100).success);   // no longer UltraNet's
+    char buf[16] = {};
+    const ssize_t n = ::recv(static_cast<int>(fd), buf, sizeof buf, 0);
+    REQUIRE_EQ(std::string(buf, n > 0 ? static_cast<std::size_t>(n) : 0), std::string("direct"));
+    ::close(static_cast<int>(fd));
+    server.Join();
+}
+#endif

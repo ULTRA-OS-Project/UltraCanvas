@@ -146,6 +146,8 @@ TEST(plugin_host_table_serves_every_core_function) {
     // ABI 4
     REQUIRE(host->ResolveProxy != nullptr);
     REQUIRE(host->DescribeProxy != nullptr);
+    REQUIRE(host->TcpOpen != nullptr);
+    REQUIRE(host->SocketDetach != nullptr);
 
     // The slots are the real functions, not stand-ins.
     UltraNetUrlComponents url;
