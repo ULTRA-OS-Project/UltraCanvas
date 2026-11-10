@@ -8,6 +8,11 @@
 // exist ends it with status 1, as llama-server does; an alias "crash-me"
 // ends it with status 2 before listening, for the restart-marking test.
 //
+// Started as whisper-server (--inference-path, --language), it answers a
+// multipart POST on that path as whisper.cpp's server does: {"text": ...}
+// naming the language, translate flag and file it was given, or
+// verbose_json with a segment and its words.
+//
 // One request per connection, single threaded: enough for a test, and
 // what libcurl's "Connection: close" handling expects.
 
@@ -109,7 +114,7 @@ void Respond(SocketHandle s, int status, const std::string& body) {
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string host = "127.0.0.1", apiKeyFile, model, alias = "fake";
+    std::string host = "127.0.0.1", apiKeyFile, model, alias = "fake", inferencePath, language = "en";
     int port = 0;
     for (int i = 1; i + 1 < argc; ++i) {
         const std::string a = argv[i];
@@ -118,6 +123,8 @@ int main(int argc, char** argv) {
         else if (a == "--api-key-file") apiKeyFile = argv[++i];
         else if (a == "--model") model = argv[++i];
         else if (a == "--alias") alias = argv[++i];
+        else if (a == "--inference-path") inferencePath = argv[++i];
+        else if (a == "--language") language = argv[++i];
     }
     if (alias == "crash-me") {
         std::fprintf(stderr, "fake engine: asked to crash\n");
@@ -169,6 +176,34 @@ int main(int argc, char** argv) {
                 Respond(client, 200, R"({"status":"ok"})");
             } else if (!apiKey.empty() && req.Header("authorization") != "Bearer " + apiKey) {
                 Respond(client, 401, R"({"error":{"message":"Invalid API Key","type":"authentication_error","code":401}})");
+            } else if (!inferencePath.empty() && req.path == inferencePath && req.method == "POST") {
+                // A form field's value, or "" when the form has none.
+                auto field = [&req](const std::string& name) -> std::string {
+                    const std::string marker = "name=\"" + name + "\"\r\n\r\n";
+                    const size_t at = req.body.find(marker);
+                    if (at == std::string::npos) return {};
+                    const size_t start = at + marker.size();
+                    return req.body.substr(start, req.body.find("\r\n", start) - start);
+                };
+                const std::string fileMarker = "name=\"file\"; filename=\"";
+                const size_t named = req.body.find(fileMarker);
+                std::string file = "(none)";
+                if (named != std::string::npos) {
+                    const size_t start = named + fileMarker.size();
+                    file = req.body.substr(start, req.body.find('"', start) - start);
+                }
+                const std::string lang = field("language").empty() ? language : field("language");
+                const std::string text = "heard " + file + " lang=" + lang + " translate=" +
+                                         (field("translate").empty() ? "false" : field("translate"));
+                json reply = {{"text", text}};
+                if (field("response_format") == "verbose_json") {
+                    reply["language"] = lang;
+                    reply["duration"] = 2.0;
+                    reply["segments"] = json::array({{{"id", 0}, {"text", text}, {"start", 0.0}, {"end", 2.0},
+                                                      {"words", json::array({{{"word", "heard"}, {"start", 0.0},
+                                                                              {"end", 0.5}, {"probability", 0.9}}})}}});
+                }
+                Respond(client, 200, reply.dump());
             } else if (req.path == "/v1/models") {
                 json models = {{"object", "list"}, {"data", json::array({{{"id", alias}, {"object", "model"}}})}};
                 Respond(client, 200, models.dump());

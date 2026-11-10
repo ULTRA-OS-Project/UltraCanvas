@@ -7,7 +7,10 @@
 // (Ensure under each download policy, the shared record, a second Ensure
 // finding the running engine, idle stop, the restart marker after two
 // failed starts); and the `local` provider talking to the fake engine over
-// real loopback HTTP; the topics (the built-in document, the resolution
+// real loopback HTTP, for chat, embeddings and speech to text (the fake
+// engine started as whisper-server: its command line, translation, the
+// segments; a speech model whose engine has no build here not offered);
+// the topics (the built-in document, the resolution
 // of a topic's model, the preferences, new models and the installs the
 // topic settings call for).
 //
@@ -173,23 +176,38 @@ void TestBuiltinData() {
     const EngineInfo* llama = gallery.Find("llama-server");
     EXPECT_TRUE(llama != nullptr);
     EXPECT_TRUE(llama->bundles.size() >= 8);
-    for (const auto& b : llama->bundles) {
-        EXPECT_EQ(b.sha256.size(), size_t(64));
-        EXPECT_TRUE(b.sizeBytes > 1000000);
-        EXPECT_TRUE(b.url.rfind("https://", 0) == 0);
+    for (const EngineInfo& engine : gallery.engines) {
+        for (const auto& b : engine.bundles) {
+            EXPECT_EQ(b.sha256.size(), size_t(64));
+            EXPECT_TRUE(b.sizeBytes > 1000000);
+            EXPECT_TRUE(b.url.rfind("https://", 0) == 0);
+        }
+    }
+    // whisper.cpp's server: the CPU builds upstream publishes (none for
+    // macOS or Windows on ARM).
+    const EngineInfo* whisper = gallery.Find("whisper-server");
+    EXPECT_TRUE(whisper != nullptr);
+    EXPECT_TRUE(std::find(whisper->serves.begin(), whisper->serves.end(), "speechtotext") != whisper->serves.end());
+    for (const char* platform : {"linux-x64", "linux-arm64", "win-x64"}) {
+        EXPECT_TRUE(std::any_of(whisper->bundles.begin(), whisper->bundles.end(), [&](const EngineBundleInfo& b) {
+            return b.platform == platform && b.accelerator == "cpu";
+        }));
     }
     Catalogue catalogue;
     EXPECT_TRUE(ParseCatalogue(BuiltinCatalogueJson(), catalogue, error));
     EXPECT_TRUE(catalogue.models.size() >= 4);
-    bool chat = false, embed = false;
+    bool chat = false, embed = false, speech = false;
     for (const auto& m : catalogue.models) {
         EXPECT_TRUE(!m.files.empty());
         EXPECT_TRUE(!m.license.empty());
-        EXPECT_TRUE(gallery.Find(m.engineId) != nullptr);
+        const EngineInfo* engine = gallery.Find(m.engineId);
+        EXPECT_TRUE(engine != nullptr);
+        EXPECT_TRUE(std::find(engine->serves.begin(), engine->serves.end(), m.capability) != engine->serves.end());
         if (m.capability == "textllm") chat = true;
         if (m.capability == "embeddings") embed = true;
+        if (m.capability == "speechtotext") speech = m.engineId == "whisper-server";
     }
-    EXPECT_TRUE(chat && embed);
+    EXPECT_TRUE(chat && embed && speech);
 
     // A bad document says what is wrong.
     EXPECT_TRUE(!ParseGallery("{\"formatVersion\": 2}", gallery, error));
@@ -322,6 +340,31 @@ void TestFitAndBundles() {
     EXPECT_TRUE(std::find(embedArgs.begin(), embedArgs.end(), "--embeddings") != embedArgs.end());
     EXPECT_TRUE(std::find(embedArgs.begin(), embedArgs.end(), "999") == embedArgs.end());
 
+    // whisper-server: no key, the OpenAI audio API's path, any language;
+    // none of llama-server's options.
+    EngineInfo whisper;
+    whisper.id = "whisper-server";
+    LocalModelInfo speech;
+    speech.id = "whisper-small";
+    speech.capability = "speechtotext";
+    speech.primaryFile = "/models/whisper-small/ggml-small.bin";
+    const std::vector<std::string> whisperArgs = BuildEngineArgs(whisper, speech, "cpu", 4322, "/root/runtime.key", linuxGpu);
+    auto hasIn = [](const std::vector<std::string>& list, const std::string& a, const std::string& b) {
+        for (size_t i = 0; i + 1 < list.size(); ++i) {
+            if (list[i] == a && list[i + 1] == b) return true;
+        }
+        return false;
+    };
+    EXPECT_TRUE(hasIn(whisperArgs, "--host", "127.0.0.1"));
+    EXPECT_TRUE(hasIn(whisperArgs, "--port", "4322"));
+    EXPECT_TRUE(hasIn(whisperArgs, "--model", "/models/whisper-small/ggml-small.bin"));
+    EXPECT_TRUE(hasIn(whisperArgs, "--inference-path", "/v1/audio/transcriptions"));
+    EXPECT_TRUE(hasIn(whisperArgs, "--language", "auto"));
+    EXPECT_TRUE(hasIn(whisperArgs, "--threads", "6"));
+    for (const char* llamaOnly : {"--api-key-file", "--alias", "--n-gpu-layers", "--embeddings"}) {
+        EXPECT_TRUE(std::find(whisperArgs.begin(), whisperArgs.end(), llamaOnly) == whisperArgs.end());
+    }
+
     EXPECT_EQ(ModelFolderName("hf:org/repo:file.gguf"), std::string("hf_org_repo_file.gguf"));
     EXPECT_EQ(ModelFolderName("qwen3-4b-q4"), std::string("qwen3-4b-q4"));
 }
@@ -409,7 +452,9 @@ void TestInstall() {
     LocalModelInfo tiny;
     EXPECT_TRUE(rt.FindModel("tiny", tiny));
     EXPECT_TRUE(!tiny.installed);
-    EXPECT_TRUE(tiny.fit == ModelFit::Recommended);
+    // It fits the GPU, but the test gallery has a CPU build only: it runs on
+    // the CPU - unless the engine is an override, which may use the GPU.
+    EXPECT_TRUE(tiny.fit == (fx.haveArchives ? ModelFit::RunsOnCpu : ModelFit::Recommended));
     LocalModelInfo huge;
     EXPECT_TRUE(rt.FindModel("huge", huge));
     EXPECT_TRUE(huge.fit == ModelFit::TooLarge);
@@ -688,6 +733,127 @@ void TestLocalProvider() {
 #endif
 }
 
+// Speech to text on the local runtime: a whisper-server (the fake engine)
+// for this platform and one built only for another; a speech model on each.
+std::string SpeechGalleryJson() {
+    const std::string zeros(64, '0');
+    return R"({"formatVersion": 1, "published": "2026-11-10", "engines": [
+      {"id": "whisper-server", "version": "test", "license": "MIT", "executable": "whisper-server",
+       "serves": ["speechtotext"], "bundles": [{"platform": ")" + HardwareProfile::CurrentPlatform() +
+           R"(", "accel": "cpu", "url": "test://whisper.zip", "sha256": ")" + zeros + R"(", "size": 1}]},
+      {"id": "elsewhere-server", "version": "test", "license": "MIT", "executable": "elsewhere-server",
+       "serves": ["speechtotext"], "bundles": [{"platform": "linux-riscv", "accel": "cpu",
+           "url": "test://elsewhere.zip", "sha256": ")" + zeros + R"(", "size": 1}]}]})";
+}
+
+std::string SpeechCatalogueJson(const std::string& modelUrl, const std::string& sha, uint64_t size) {
+    auto model = [&](const std::string& id, const std::string& engine) {
+        return R"({"id": ")" + id + R"(", "displayName": ")" + id + R"(", "capability": "speechtotext",
+                   "engine": ")" + engine + R"(", "license": "MIT",
+                   "files": [{"name": "ggml-tiny.bin", "url": ")" + modelUrl + R"(", "sha256": ")" + sha +
+               R"(", "size": )" + std::to_string(size) + R"(}],
+                   "requires": {"memoryBytes": 1000000}, "tags": ["recommended"]})";
+    };
+    return R"({"formatVersion": 1, "published": "2026-11-10", "models": [)" +
+           model("elsewhere-whisper", "elsewhere-server") + ", " + model("tiny-whisper", "whisper-server") + "]}";
+}
+
+void TestLocalSpeech() {
+    Fixture fx("speech");
+    LocalRuntimeOptions options = fx.Options(true);
+    options.galleryJson   = SpeechGalleryJson();
+    options.catalogueJson = SpeechCatalogueJson("test://model", fx.modelSha, fx.modelSize);
+    options.engineOverrides.clear();
+    {
+        // The model whose engine has no build here is not offered (it stays
+        // known by its id); the other runs on the CPU whatever the GPU, as
+        // its engine has CPU builds only.
+        LocalRuntime gallery(options);
+        const std::vector<LocalModelInfo> offered = gallery.ListModels("speechtotext");
+        EXPECT_EQ(offered.size(), size_t(1));
+        EXPECT_EQ(offered.front().id, std::string("tiny-whisper"));
+        EXPECT_TRUE(offered.front().fit == ModelFit::RunsOnCpu);
+        EXPECT_EQ(gallery.Recommend("speechtotext").id, std::string("tiny-whisper"));
+        LocalModelInfo elsewhere;
+        EXPECT_TRUE(gallery.FindModel("elsewhere-whisper", elsewhere));
+    }
+    // From here the engine is the fake one.
+    options.engineOverrides["whisper-server"] = g_fakeEngine;
+    LocalRuntime rt(options);
+
+    // A user's own whisper model is served by whisper-server.
+    std::string added;
+    EXPECT_TRUE(rt.AddModelFile(PathToUtf8(fx.modelSource), "speechtotext", "Mine", added).IsOk());
+    LocalModelInfo mine;
+    EXPECT_TRUE(rt.FindModel(added, mine));
+    EXPECT_EQ(mine.engineId, std::string("whisper-server"));
+    EXPECT_TRUE(rt.ForgetModel(added).IsOk());
+    EXPECT_TRUE(!rt.AddModelFile(PathToUtf8(fx.modelSource), "imagegen", "", added).IsOk());
+
+#ifdef ULTRAAI_HAS_ULTRANET
+    LocalRuntimeSettings s = rt.GetSettings();
+    s.policy = DownloadPolicy::Automatic;
+    rt.SetSettings(s);
+    SpeechToTextConfig cfg;
+    cfg.providerId = "local";
+    Error error;
+    auto stt = CreateLocalSpeechToText(cfg, &error, &rt, std::make_shared<UltraNetTransport>());
+    EXPECT_TRUE(stt != nullptr);
+    const STTProviderCapabilities caps = stt->GetCapabilities();
+    EXPECT_EQ(caps.providerId, std::string("local"));
+    EXPECT_EQ(caps.maxFileSizeBytes, 0);
+    EXPECT_TRUE(std::find(caps.supportedEncodings.begin(), caps.supportedEncodings.end(), AudioEncoding::Ogg) !=
+                caps.supportedEncodings.end());
+    EXPECT_TRUE(std::find(caps.supportedEncodings.begin(), caps.supportedEncodings.end(), AudioEncoding::Opus) ==
+                caps.supportedEncodings.end());
+    EXPECT_EQ(caps.models.size(), size_t(1));
+    EXPECT_TRUE(caps.models.front().runsLocally && caps.models.front().supportsTranslation);
+    EXPECT_TRUE(caps.models.front().displayName.find("not installed") != std::string::npos);
+
+    // The first call downloads the model and starts the engine; the server
+    // is asked on its inference path, in any language.
+    TranscribeRequest req;
+    req.audio.bytes = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V', 'E'};
+    req.audio.mimeType = "audio/wav";
+    req.audio.filename = "memo.wav";
+    req.segmentTimestamps = false;
+    TranscribeResponse resp = stt->Transcribe(req);
+    EXPECT_TRUE(resp.error.IsOk());
+    EXPECT_EQ(resp.text, std::string("heard memo.wav lang=auto translate=false"));
+    const std::vector<RunningEngineInfo> running = rt.ListRunning();
+    EXPECT_EQ(running.size(), size_t(1));
+    EXPECT_EQ(running.front().engineId, std::string("whisper-server"));
+    EXPECT_EQ(running.front().modelId, std::string("tiny-whisper"));
+
+    // Translation is whisper's own flag on the same path; the language goes
+    // as its primary subtag.
+    req.language = "de-CH";
+    req.translateToEnglish = true;
+    resp = stt->Transcribe(req);
+    EXPECT_TRUE(resp.error.IsOk());
+    EXPECT_EQ(resp.text, std::string("heard memo.wav lang=de translate=true"));
+
+    // Segments; the words only when asked for.
+    req.translateToEnglish = false;
+    req.segmentTimestamps = true;
+    resp = stt->Transcribe(req);
+    EXPECT_EQ(resp.segments.size(), size_t(1));
+    EXPECT_TRUE(resp.segments.front().endSec == 2.0);
+    EXPECT_TRUE(resp.segments.front().words.empty());
+    req.wordTimestamps = true;
+    resp = stt->Transcribe(req);
+    EXPECT_EQ(resp.segments.front().words.size(), size_t(1));
+    EXPECT_TRUE(resp.segments.front().words.front().confidence == 0.9);
+
+    bool sawError = false;
+    EXPECT_TRUE(stt->StartLiveTranscribe(req, [&sawError](const StreamingTranscriptEvent& ev) {
+        sawError = ev.kind == StreamingTranscriptKind::Error;
+    }) == nullptr);
+    EXPECT_TRUE(sawError);
+    rt.StopAll();
+#endif
+}
+
 // With ULTRAAI_TEST_LIVE_GALLERY=1: install the built-in gallery's CPU
 // bundle for this platform over the real network (UltraNet, the hash, the
 // archive) and run the real llama-server once with --version. Skipped
@@ -745,6 +911,9 @@ void TestRegistration() {
     EXPECT_EQ(ResolveProviderId("textllm", {"mock", "qwen", "local", "llama-cpp"}), std::string("local"));
     EXPECT_EQ(ResolveProviderId("embeddings", {"openai", "local"}), std::string("local"));
     EXPECT_EQ(ResolveProviderId("translator", {"mock", "local"}), std::string("local"));
+    const std::vector<std::string> speech = ListSpeechToTextProviders();
+    EXPECT_TRUE(std::find(speech.begin(), speech.end(), "local") != speech.end());
+    EXPECT_EQ(ResolveProviderId("speechtotext", {"openai", "whisper-cpp", "local"}), std::string("local"));
 }
 
 // ----- topics -----
@@ -908,6 +1077,7 @@ int main(int argc, char** argv) {
     TestTopics();
     TestEnsureAndSupervision();
     TestLocalProvider();
+    TestLocalSpeech();
     TestLiveEngineInstall();
 
     std::error_code ec;

@@ -191,7 +191,7 @@ def test_engines_and_import(tmp_path):
     assert c.get("/gallery/index.json").json()["engines"] == []
     docs = {n: json.loads((SEED_DIR / f"{n}.json").read_text()) for n in ("index", "catalogue", "topics")}
     r = c.post("/v1/admin/import", headers=auth(), json={**docs, "publish": False})
-    assert r.json() == {"engines": 1, "models": 6, "topics": 6}
+    assert r.json() == {"engines": 2, "models": 9, "topics": 7}   # llama-server and whisper-server
     # Imported as drafts: nothing offered yet, and the topics list none.
     assert c.get("/gallery/catalogue.json").json()["models"] == []
     assert all(t["models"] == [] for t in c.get("/gallery/topics.json").json()["topics"])

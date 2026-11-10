@@ -1,7 +1,8 @@
 // Apps/UltraAIApp/UltraAILocalModelsPage.cpp
 // The settings window's "Local models" page (UltraAILocalModelsPage.h).
+// Version: 0.1.1 - speech-to-text models: labelled, added as a whisper .bin
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 
 #include "UltraAILocalModelsPage.h"
@@ -59,6 +60,7 @@ std::string AcceleratorLabel(const std::string& id) {
 std::string CapabilityLabel(const std::string& capability) {
     if (capability == "textllm")    return "Chat";
     if (capability == "embeddings") return "Embeddings";
+    if (capability == "speechtotext") return "Speech to text";
     return capability;
 }
 
@@ -652,18 +654,23 @@ void UltraAILocalModelsPage::OnAddFile() {
     opts.SetTitle("Add a model file")
         .SetParentWindow(parent_)
         .AddFilter("GGUF models", std::vector<std::string>{"gguf"})
+        .AddFilter("Whisper models", std::vector<std::string>{"bin"})
         .AddFilter("All files", "*");
     UltraCanvasFileLoader::OpenFileDialog(
         opts, [this, alive = alive_](DialogResult result, const std::string& path) {
             if (!alive->load()) return;
             if (result != DialogResult::OK || path.empty()) return;
-            // An embedding model is told apart by its name; everything else
-            // is a chat model. The user corrects it with Forget and a second
-            // add under the other service when the guess is wrong.
+            // A whisper.cpp model (a ggml .bin) and an embedding model are
+            // told apart by their names; everything else is a chat model. The
+            // user corrects it with Forget and a second add under the other
+            // service when the guess is wrong.
             std::string lower = path;
             std::transform(lower.begin(), lower.end(), lower.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            const std::string capability = lower.find("embed") != std::string::npos ? "embeddings" : "textllm";
+            const bool bin = lower.size() > 4 && lower.compare(lower.size() - 4, 4, ".bin") == 0;
+            const std::string capability = bin || lower.find("whisper") != std::string::npos ? "speechtotext"
+                                         : lower.find("embed") != std::string::npos           ? "embeddings"
+                                                                                              : "textllm";
             std::string id;
             const Error error = LocalRuntime::Instance().AddModelFile(path, capability, "", id);
             SetStatus(error.IsOk() ? "Added " + path + " as a " + CapabilityLabel(capability) + " model."
@@ -675,7 +682,8 @@ void UltraAILocalModelsPage::OnAddFile() {
 void UltraAILocalModelsPage::OnAddHuggingFace() {
     UltraCanvasDialogManager::ShowInputDialog(
         "The repository and the GGUF file in it, as \"organisation/repository:file.gguf\". "
-        "Add \"embeddings\" after a space for an embedding model.",
+        "Add \"embeddings\" after a space for an embedding model. A whisper.cpp model "
+        "(\"ggerganov/whisper.cpp:ggml-medium.bin\") is a speech-to-text model.",
         "Add a model from Hugging Face", "", InputType::Text,
         [this, alive = alive_](DialogResult result, const std::string& text) {
             if (!alive->load()) return;
@@ -686,6 +694,7 @@ void UltraAILocalModelsPage::OnAddHuggingFace() {
                 if (spec.substr(space + 1).find("embed") != std::string::npos) capability = "embeddings";
                 spec = spec.substr(0, space);
             }
+            if (spec.size() > 4 && spec.compare(spec.size() - 4, 4, ".bin") == 0) capability = "speechtotext";
             const size_t colon = spec.find(':');
             if (colon == std::string::npos) {
                 SetStatus("Write it as organisation/repository:file.gguf");
