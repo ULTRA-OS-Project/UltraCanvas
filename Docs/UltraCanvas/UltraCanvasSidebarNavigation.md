@@ -8,6 +8,7 @@
 - [Keyboard and mouse](#keyboard-and-mouse)
 - [Compact mode](#compact-mode)
 - [Key API](#key-api)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -22,7 +23,7 @@ Installed / Updates, a mail client's folders, a settings window's pages.
 Self-rendered (no child widgets), like `UltraCanvasToolbar` and the chips.
 
 **File Location**: `include/UltraCanvasSidebarNavigation.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `SidebarStyle::FromTheme`, `ApplyTheme`: the sidebar follows the theme
 **Author**: UltraCanvas Framework
 
 ---
@@ -114,6 +115,26 @@ selected, the indicator bar, the badge), the row heights and paddings, the
 icon size, the corner radius, the expanded and compact widths and the item /
 section / badge fonts; `SidebarStyle::Default()` is a light grey column with a
 blue indicator bar at the selected item.
+
+## Following the theme
+
+`SidebarStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (heights, paddings,
+widths, the fonts' weights): the panel for the column, ink for the items at
+the body size and faint ink disabled, muted ink for a section at the caption
+size, the hover fill, the soft accent with ink for the selected item and the
+accent for its bar, the accent with text on it for a badge, the focus ring.
+Under the theme policy a new sidebar follows the theme by itself
+(`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto nav = std::make_shared<UltraCanvasSidebarNavigation>("nav", 220, 400);
+SidebarStyle narrow = nav->GetStyle();
+narrow.expandedWidth = 180;
+nav->SetStyle(SidebarStyle::FromTheme(UltraCanvasTheme::Current(), narrow));
+nav->SetFollowTheme(true);
+```
 
 ## Notes
 

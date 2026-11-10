@@ -17,6 +17,8 @@
 //
 // Self-rendered (no child widgets), like UltraCanvasToolbar and the chips.
 //
+// Version: 1.1.0 - SidebarStyle::FromTheme, ApplyTheme: the sidebar follows the theme; a SetStyle by hand stops
+//                  the following
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -77,6 +79,15 @@ namespace UltraCanvas {
         FontStyle badgeFont;                     // bold 11 by default
 
         static SidebarStyle Default();
+        // The theme's roles over a base's own shape (heights, paddings,
+        // widths, the fonts' weights): the panel for the column, ink for
+        // the items at the body size and faint ink disabled, muted ink for
+        // a section at the caption size, the hover fill, the soft accent
+        // with ink for the selected item and the accent for its bar, the
+        // accent with text on it for a badge at the caption size, the focus ring
+        static SidebarStyle FromTheme(const UltraCanvasTheme& theme, const SidebarStyle& base);
+        static SidebarStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+        static SidebarStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
     class UltraCanvasSidebarNavigation : public UltraCanvasUIElement {
@@ -133,6 +144,7 @@ namespace UltraCanvas {
 
         // ----- look -----
         void SetStyle(const SidebarStyle& newStyle);
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(SidebarStyle::FromTheme(theme, style)); }
         const SidebarStyle& GetStyle() const { return style; }
         SidebarStyle& GetStyle() { return style; }
 

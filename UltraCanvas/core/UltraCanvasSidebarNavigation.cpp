@@ -26,6 +26,7 @@ namespace UltraCanvas {
         // In a window's row the column keeps its width; the page beside it gives way.
         layoutItem.SetFlexShrink(0);
         mouseCursor = UCMouseCursor::Default;
+        ApplyThemeIfFollowing();
     }
 
     // ----- sections and items -----
@@ -195,6 +196,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSidebarNavigation::SetStyle(const SidebarStyle& newStyle) {
+        StyleSetByHand();
         style = newStyle;
         SetWidth(PreferredWidth());
         InvalidateLayout();
@@ -478,4 +480,29 @@ namespace UltraCanvas {
         }
     }
 
+
+// ===== THE THEME =====
+    SidebarStyle SidebarStyle::FromTheme(const UltraCanvasTheme& theme, const SidebarStyle& base) {
+        SidebarStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body), caption = theme.Font(ThemeTextRole::Caption);
+        s.itemFont.fontFamily = body.fontFamily;
+        s.itemFont.fontSize = body.fontSize;
+        s.sectionFont.fontFamily = caption.fontFamily;
+        s.sectionFont.fontSize = caption.fontSize;
+        s.badgeFont.fontFamily = caption.fontFamily;
+        s.badgeFont.fontSize = caption.fontSize;
+        s.backgroundColor = r.panel;
+        s.textColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        s.sectionTextColor = r.inkMuted;
+        s.hoverBackgroundColor = r.hover;
+        s.selectedBackgroundColor = r.accentSoft;
+        s.selectedTextColor = r.ink;
+        s.indicatorColor = r.accent;
+        s.badgeBackgroundColor = r.accent;
+        s.badgeTextColor = r.onAccent;
+        s.focusColor = r.focus;
+        return s;
+    }
 } // namespace UltraCanvas

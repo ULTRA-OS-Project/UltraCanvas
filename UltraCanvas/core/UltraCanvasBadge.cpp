@@ -1,7 +1,7 @@
 // core/UltraCanvasBadge.cpp
 // Platform-independent badge (count / status / overlay) implementation.
 // Version: 1.1.0 - honour BadgeStyle::cornerRadius (pill when negative).
-// Last Modified: 2026-09-04
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBadge.h"
@@ -16,6 +16,7 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
         if (w <= 0 || h <= 0) SetBounds(GetX(), GetY(), style.minWidth, style.height);
+        ApplyThemeIfFollowing();
     }
 
     bool UltraCanvasBadge::IsBadgeVisible() const {
@@ -36,7 +37,7 @@ namespace UltraCanvas {
     Color UltraCanvasBadge::VariantColor() const {
         if (hasCustomColor) return customColor;
         switch (variant) {
-            case BadgeVariant::Primary: return Color(0, 120, 215, 255);
+            case BadgeVariant::Primary: return style.primaryColor;
             case BadgeVariant::Successful: return Color(40, 167, 69, 255);
             case BadgeVariant::Warning: return Color(255, 193, 7, 255);
             case BadgeVariant::Danger:  return Color(220, 53, 69, 255);
@@ -209,4 +210,16 @@ namespace UltraCanvas {
         return false;
     }
 
+
+// ===== THE THEME =====
+    BadgeStyle BadgeStyle::FromTheme(const UltraCanvasTheme& theme, const BadgeStyle& base) {
+        BadgeStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle caption = theme.Font(ThemeTextRole::Caption);
+        s.fontFamily = caption.fontFamily;
+        s.fontSize = static_cast<float>(caption.fontSize);
+        s.primaryColor = r.accent;
+        s.overlayRingColor = r.panel;
+        return s;
+    }
 } // namespace UltraCanvas
