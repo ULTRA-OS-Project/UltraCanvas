@@ -391,14 +391,19 @@ int main() {
         const ModalDialogStyle dlg = ModalDialogStyle::FromTheme(t);
         CHECK(Near(dlg.messageFontSize, body, 1e-6) && Near(dlg.detailsFontSize, caption, 1e-6) && dlg.buttonFontSize == 0.0f,
               "a dialog: the message at the body size, the details at the caption size, the buttons' left alone");
+#if UC_TEST_HAS_ALBUM   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
         AlbumConfig keep;
         keep.titleFontSize = 20;
         const AlbumConfig a = AlbumConfig::FromTheme(t, keep);
         CHECK(a.fontFamily == "Noto Sans" && a.titleFontSize == 20, "an album: the interface font, its own sizes");
+#endif
         const TimecodeFieldStyle tc = TimecodeFieldStyle::FromTheme(t);
+        CHECK(tc.fontFamily == "Fira Code" && tc.fontSize == 12.0f, "the timecode field: the theme's monospace family, the design's pixel size");
+#if UC_TEST_HAS_VIDEO_TIMELINE
         const VideoTimelineStyle vt = VideoTimelineStyle::FromTheme(t);
-        CHECK(tc.fontFamily == "Fira Code" && tc.fontSize == 12.0f && vt.fontFamily == "Noto Sans" && vt.monoFamily == "Fira Code" && vt.labelSize == 12.0f,
-              "the timecode field and the timeline: the theme's families, the design's pixel sizes");
+        CHECK(vt.fontFamily == "Noto Sans" && vt.monoFamily == "Fira Code" && vt.labelSize == 12.0f,
+              "the timeline: the theme's families, the design's pixel sizes");
+#endif
     }
 
 
