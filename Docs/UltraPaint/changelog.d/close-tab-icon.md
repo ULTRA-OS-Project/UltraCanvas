@@ -1,0 +1,1 @@
+- **File ▸ Close Tab has an icon** (`media/icons/ultrapaint/16/close-tab.svg`, a tab with a cross, in the line style of the rest of the menu).
