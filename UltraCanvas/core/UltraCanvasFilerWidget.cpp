@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.45.0 - a copy keeps the original's dates: CopyFileTimes after each
+//                  file (both the copy_file and the chunked path) and after
+//                  each folder's contents - paste, drop, Duplicate, a move
+//                  between drives
 // Version: 1.44.0 - Refresh in the context menu (onRefreshRequested): the
 //                  folder on display, or the one folder right-clicked, read
 //                  again
@@ -155,6 +159,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir - the context menu's icons
 #include "UltraCanvasTrash.h"
+#include "UltraCanvasFileTimes.h"   // CopyFileTimes: a copy keeps the original's dates
 #include "UltraCanvasSyntaxTokenizer.h"   // which extensions are source text
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
@@ -8807,6 +8812,9 @@ namespace UltraCanvas {
         if (sizeEc || bytes <= kFileOpChunkThreshold) {
             fs::copy_file(UltraCanvas::PathFromUtf8(from), UltraCanvas::PathFromUtf8(to), fs::copy_options::overwrite_existing, ec);
             if (ec) return false;
+            // The copy keeps the original's dates: copy_file leaves the creation
+            // date at "now" everywhere and the modification date too off Windows.
+            CopyFileTimes(from, to);
             credit.Step(1 + bytes, {});
             return true;
         }
@@ -8856,6 +8864,8 @@ namespace UltraCanvas {
         const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(from), pec);
         if (!pec) fs::permissions(UltraCanvas::PathFromUtf8(to), st.permissions(),
                                   fs::perm_options::replace, pec);
+        // ...and its dates, as the small-file path does.
+        CopyFileTimes(from, to);
         return true;
     }
 
@@ -8895,6 +8905,9 @@ namespace UltraCanvas {
             std::error_code pec;
             fs::permissions(target, st.permissions(),
                             fs::perm_options::replace, pec);
+            // Its dates last of all: writing the children into the copy just
+            // made its modification date "now".
+            CopyFileTimes(from, to);
             return true;
         }
         if (fs::is_regular_file(st))

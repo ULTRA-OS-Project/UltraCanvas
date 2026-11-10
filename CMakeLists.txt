@@ -511,6 +511,14 @@ if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK ON)
 endif()
 
+# Which platforms can give a copy its original's dates (UltraCanvasFileTimes:
+# SetFileTime on Windows, setattrlist + utimensat on macOS, utimensat on Linux
+# and the BSDs). Elsewhere the core file copies the modification date through
+# std::filesystem.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_FILE_TIMES ON)
+endif()
+
 # A build machine's private OAuth settings (the sign-in service UltraNet is
 # built with), kept out of the repository - see cmake/oauth.local.cmake.example.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")

@@ -488,6 +488,40 @@ if(ULTRACANVAS_HAS_NATIVE_TRASH AND UNIX AND NOT APPLE)
     message(STATUS "    Test registered: TrashTest")
 endif()
 
+# ===== FILE TIMES TEST =====
+# CopyFileTimes (UltraCanvasFileTimes.h): a copy given the original's dates, a
+# file and a folder, in a private temporary folder. Built from the core file
+# plus this platform's backend - or the core file's std::filesystem fallback
+# where there is none - so each CI row tests what its library ships.
+message(STATUS "  Building FileTimesTest...")
+set(_file_times_test_sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileTimesTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasFileTimes.cpp)
+if(ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+    if(WIN32)
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFileTimes.cpp)
+    elseif(APPLE)
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MacOS/UltraCanvasMacOSFileTimes.cpp)
+    else()
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFileTimes.cpp)
+    endif()
+endif()
+add_executable(FileTimesTest ${_file_times_test_sources})
+target_include_directories(FileTimesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FileTimesTest PRIVATE cxx_std_20)
+if(ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+    target_compile_definitions(FileTimesTest PRIVATE ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+endif()
+set_target_properties(FileTimesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FileTimesTest COMMAND FileTimesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FileTimesTest")
+
 # ===== PORTABLE DEVICES TEST =====
 # The platform-independent half of UltraCanvasPortableDevices - its path rules
 # and what a build without a backend answers - from the core file alone, with

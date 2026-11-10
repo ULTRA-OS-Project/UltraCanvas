@@ -545,6 +545,17 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+- **UltraCanvasFileTimes** (`UltraCanvasFileTimes.h`) — gives a copy its
+  original's dates. `CopyFileTimes(from, to)` (files or folders; true when at
+  least the modification date was set), `CanCopyCreationTime()`. Backends:
+  `OS/MSWindows/UltraCanvasWindowsFileTimes.cpp` (GetFileTime / SetFileTime:
+  created, modified, accessed), `OS/MacOS/UltraCanvasMacOSFileTimes.cpp`
+  (utimensat, then setattrlist `ATTR_CMN_CRTIME`), and
+  `OS/Linux/UltraCanvasLinuxFileTimes.cpp` (utimensat: modified and accessed -
+  the kernel keeps the creation date to itself). Android and WebAssembly copy
+  the modification date through `std::filesystem` in
+  `core/UltraCanvasFileTimes.cpp` (`ULTRACANVAS_HAS_NATIVE_FILE_TIMES` unset).
+  `UltraCanvasFilerWidget` calls it after every file and folder it copies.
 
 - **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
   copy of an application per user. `InstanceLock::Acquire(path)` answers

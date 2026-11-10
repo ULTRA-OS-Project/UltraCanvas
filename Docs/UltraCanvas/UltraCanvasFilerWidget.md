@@ -492,6 +492,15 @@ Notes:
 - **Paste** is enabled while the filer clipboard holds entries (shared between
   all filer instances) or the system clipboard offers files, an image or text —
   see [Clipboard interop](#clipboard-interop-with-other-programs).
+- **A copy keeps the original's dates.** Every file and folder a paste, a
+  drop, a *Duplicate* or a move between drives writes gets the original's
+  modification and access dates and, on Windows and macOS, its creation date
+  (`CopyFileTimes`, `UltraCanvasFileTimes.h`); a folder's are set after its
+  contents, which would otherwise make it "modified now". Linux and the BSDs
+  give a program no way to set a creation date, so there a copy is created
+  when it was made, as with `cp -p`. A move within a drive is a rename and
+  never touched the dates. A new file made from a template is new, and is
+  dated so.
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
