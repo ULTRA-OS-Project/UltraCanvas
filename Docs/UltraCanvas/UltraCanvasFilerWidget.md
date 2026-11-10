@@ -1205,10 +1205,15 @@ also toggled by Display > Info-Bar) describes the current selection:
   - **bitmaps**: pixel dimensions (`1920 × 1080 px`), parsed from the file
     header for PNG / JPEG / GIF / BMP / WebP / TIFF / QOI / ICO (other formats
     fall back to the shared `UCImage` cache);
-  - **audio / video**: play length and codec (`3:45 · H.264`), parsed from the
-    container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 / M4A / MOV / AVI /
-    MKV / WebM / WMV — no decoding, only a few bounded reads. When nothing can
-    be probed the entry's `info` value (e.g. from `infoProvider`) is shown.
+  - **audio / video**: play length and codec (`3:45 · AAC LC`), and for a
+    film its picture size as shown between them (`1:23 · 1920 × 1080 · H.264`;
+    a phone's portrait clip upright, an anamorphic one at its display width),
+    parsed from the container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 /
+    M4A / MOV / AVI / MKV / WebM / WMV — no decoding, only a few bounded reads.
+    MP4 / MOV / 3GP, Matroska / WebM and AVI are read by `ReadVideoFileInfo`
+    (`UltraCanvasVideoFileInfo.h`), the reader the media viewer's Details
+    use, so the two never disagree about a file. When nothing can be probed
+    the entry's `info` value (e.g. from `infoProvider`) is shown.
 - **Single folder** — recursive file / folder counts and total size (capped at
   50 000 entries for safety; a `≥` prefix marks a capped result).
 - **Multiple items** — item counts and the summed size of the selection
