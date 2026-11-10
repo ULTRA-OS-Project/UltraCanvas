@@ -4,6 +4,8 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.5.0 - "a/b" and "a_b" get directories of their own; the escapes;
+//                  MigrateBodyCache from both earlier layouts
 // Version: 0.4.0 - case twins get body directories of their own (CacheDirectoryOf);
 //                  MigrateBodyCache
 // Version: 0.3.0 - a folder's bodies go without its case twin's
@@ -383,9 +385,28 @@ TEST(cache_directory_of_a_folder) {
     REQUIRE_EQ(FolderOfCacheDirectory("work~1"), std::string("work"));
     REQUIRE_EQ(FolderOfCacheDirectory("a~~b~3"), std::string("a~b"));
     REQUIRE_EQ(FolderOfCacheDirectory("Sent Items"), std::string("Sent Items"));
+    REQUIRE_EQ(FolderOfCacheDirectory("[Gmail]_Bin"), std::string("[Gmail]/Bin"));
+
+    // '/' is '_' as it always was; a literal '_', and '\' and ':' that were
+    // '_' as well, are escapes of their own - and so are the characters
+    // Windows refuses in a name.
+    REQUIRE_EQ(CacheDirectoryOf("A/B"), std::string("A_B"));
+    REQUIRE_EQ(CacheDirectoryOf("A_B"), std::string("A~uB"));
+    REQUIRE_EQ(CacheDirectoryOf("A\\B"), std::string("A~rB"));
+    REQUIRE_EQ(CacheDirectoryOf("A:B"), std::string("A~kB"));
+    REQUIRE_EQ(CacheDirectoryOf("What?"), std::string("What~q"));
+    REQUIRE_EQ(CacheDirectoryOf("A*B\"<C>|D"), std::string("A~sB~w~lC~g~pD"));
+    REQUIRE_EQ(CacheDirectoryOf(""), std::string("INBOX"));
+    REQUIRE_EQ(FolderOfCacheDirectory("A~uB"), std::string("A_B"));
+    REQUIRE_EQ(FolderOfCacheDirectory("A_B"), std::string("A/B"));
 
     const std::vector<std::string> twins = { "work", "Work", "WORK", "wORK", "WoRk",
-                                             "work~1", "Work~1", "inbox", "Inbox", "INBOX" };
+                                             "work~1", "Work~1", "inbox", "Inbox", "INBOX",
+                                             "a/b", "a_b", "a\\b", "a:b", "A/b", "A_B", "a~ub",
+                                             "a~b", "a~~b", "a__b", "a/_b", "a_/b", "What?" };
+    // Every name reads back from its directory, and no two share one.
+    for (const std::string& name : twins)
+        REQUIRE_EQ(FolderOfCacheDirectory(CacheDirectoryOf(name)), name);
     for (std::size_t i = 0; i < twins.size(); ++i)
         for (std::size_t j = i + 1; j < twins.size(); ++j)
             REQUIRE(!SameDirectoryNoCase(CacheDirectoryOf(twins[i]), CacheDirectoryOf(twins[j])));
@@ -424,6 +445,44 @@ TEST(migrate_body_cache_moves_an_earlier_layout_once) {
 // shared one directory - here a link makes it so. "work" moves out only what
 // is its own; what both had under one number is deleted, to be downloaded
 // again; "Work"'s bodies stay where they are.
+// The first layout wrote "a/b" and "a_b" both as "a_b": one directory on
+// every file system. Each takes out its own bodies ("a/b" to "a_b~3", "a_b"
+// to "a~ub~3"), and one both numbered alike is deleted, to be downloaded
+// again. A directory of the second layout (the case mask, '_' as itself)
+// moves too; one that layout shared, and that is now another folder's own
+// ("a_b~3"), is left to that folder.
+TEST(migrate_body_cache_splits_a_and_a_underscore_b) {
+    Fixture fx("migrate-underscore");
+    for (const char* name : { "a/b", "a_b", "my_box" }) {
+        Folder f; f.accountId = "erika"; f.name = name;
+        REQUIRE(fx.store.UpsertFolder(f).success);
+    }
+    auto message = [&](const char* folder, int64_t uid) {
+        MessageEnvelope m; m.accountId = "erika"; m.folder = folder; m.uid = uid; m.fromAddr = "a@x.com";
+        REQUIRE(fx.store.UpsertMessage(m).success);
+    };
+    message("a/b", 1); message("a_b", 2); message("a/b", 5); message("a_b", 5); message("my_box", 8);
+    const fs::path account = UltraCanvas::PathFromUtf8(fx.emlDir) / "erika";
+    fs::create_directories(account / "a_b");
+    for (const char* file : { "1.eml", "2.eml", "5.eml" }) std::ofstream(account / "a_b" / file) << "raw";
+    fs::create_directories(account / "my_box~5");               // the second layout's
+    std::ofstream(account / "my_box~5" / "8.eml") << "raw";
+
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 3);
+    auto cached = [&](const char* folder, int64_t uid) {
+        return fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", folder, uid)));
+    };
+    REQUIRE(cached("a/b", 1));             // moved to "a_b~3"
+    REQUIRE(cached("a_b", 2));             // moved to "a~ub~3"
+    REQUIRE(!fs::exists(account / "a_b"));
+    REQUIRE(!cached("a_b", 1));
+    REQUIRE(!cached("a/b", 2));
+    REQUIRE(!cached("a/b", 5));            // whose? nobody's for sure
+    REQUIRE(!cached("a_b", 5));
+    REQUIRE(cached("my_box", 8));          // "my_box~5" -> "my~ubox~5"
+    REQUIRE(!fs::exists(account / "my_box~5"));
+}
+
 TEST(migrate_body_cache_splits_a_directory_case_twins_shared) {
     Fixture fx("migrate-twins");
     for (const char* name : { "Work", "work" }) {

@@ -9,6 +9,9 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.7.0 - CacheDirectoryOf escapes '_', '\', ':' and the characters
+//                  Windows refuses, so "a/b" and "a_b" no longer share a
+//                  directory; MigrateBodyCache moves both earlier layouts
 // Version: 0.6.0 - CacheDirectoryOf / FolderOfCacheDirectory / MigrateBodyCache:
 //                  folders whose names differ only in case no longer share a
 //                  body directory on Windows and macOS
@@ -266,23 +269,30 @@ private:
 std::string CachedBodyPath(const std::string& emlDir, const std::string& accountId,
                            const std::string& folder, int64_t uid);
 
-// The directory a folder's bodies are cached in: its name with '/', '\' and
-// ':' as '_' - unchanged for a name in title case ("Sent Items", "INBOX",
-// "[Gmail]_All Mail"); any other casing gets "~" and a hex mask of the letters
-// that differ from it ("work" -> "work~1"), and a '~' of the name is doubled.
-// Two folders whose names differ only in case never share a directory, also
-// where the file system ignores case (Windows, macOS).
+// The directory a folder's bodies are cached in, one per folder name, also
+// where the file system ignores case (Windows, macOS):
+//   - '/' as '_' ("[Gmail]/All Mail" -> "[Gmail]_All Mail");
+//   - '~', a literal '_', '\', ':' and the characters Windows refuses in a
+//     name as a '~' and a letter: ~~ ~u ~r ~k, and * ~s, ? ~q, " ~w, < ~l,
+//     > ~g, | ~p ("a_b" -> "a~ub");
+//   - a name not in title case followed by '~' and a hex mask of the letters
+//     whose case differs from it ("work" -> "work~1").
+// A name in title case with none of those characters is its own directory
+// ("Sent Items", "INBOX", "INBOX.Drafts"); an empty name is INBOX's.
 std::string CacheDirectoryOf(const std::string& folder);
-// The folder name a cache directory reads as, its case mask left out
-// ("work~1" -> "work", "a~~b" -> "a~b") - for reading a name back from the
+// The folder name a cache directory reads as: '_' as '/', the escapes undone,
+// the case mask left out ("work~1" -> "work", "a~ub" -> "a_b",
+// "[Gmail]_Bin" -> "[Gmail]/Bin") - for reading a name back from the
 // directory alone, as EmailCleaner does.
 std::string FolderOfCacheDirectory(const std::string& directory);
-// Moves the body directories an earlier version made (the plain name, which
-// case twins shared) to CacheDirectoryOf's, for every folder `store` knows,
-// once per `emlDir` (a ".layout-2" file marks it done; a move that fails is
-// tried again at the next call). From a directory twins shared, each takes
-// only its own bodies, and one both had under the same number is deleted - to
-// be downloaded again. Returns how many folders were moved.
+// Moves the body directories earlier versions made - the name with '/', '\'
+// and ':' as '_' (which "a/b" and "a_b", and case twins, shared), and that
+// with only the case mask - to CacheDirectoryOf's, for every folder `store`
+// knows, once per `emlDir` (a ".layout-3" file marks it done; a move that
+// fails is tried again at the next call). From a directory two folders
+// shared, each takes only its own bodies, and one both had under the same
+// number is deleted - to be downloaded again. Returns how many directories
+// were moved.
 int MigrateBodyCache(const std::string& emlDir, const LocalStore& store);
 
 } // namespace UltraMail
