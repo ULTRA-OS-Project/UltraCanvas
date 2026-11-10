@@ -62,8 +62,8 @@ void BuildLayerCompositor(UltraCanvasCompositorDiagram& d) {
     // Layer template - the dominant card with preview at the bottom.
     CompositorNodeTemplate layer;
     layer.id = "layer";
-    layer.category = "Compositor";
-    layer.title = "Layer";
+    layer.category = Tr("Compositor");
+    layer.title = Tr("Layer");
     layer.headerColor = Color(126, 86, 56, 255);     // warm brown
     layer.bodyColor   = Color(45, 45, 50, 245);
     layer.borderColor = Color(20, 20, 20, 255);
@@ -76,12 +76,12 @@ void BuildLayerCompositor(UltraCanvasCompositorDiagram& d) {
         CompositorSocketSpec s; s.id = id; s.label = label; s.type = t;
         layer.outputs.push_back(s);
     };
-    addOut("out",            "Output",          SocketDataType::Image);
-    addOut("out_nofilters",  "Without filters", SocketDataType::Image);
-    addOut("out_raw",        "Raw",             SocketDataType::Image);
-    addOut("canvas_pos",     "Canvas Position", SocketDataType::Vector);
-    addOut("center_pos",     "Center Position", SocketDataType::Vector);
-    addOut("size",           "Size",            SocketDataType::Vector);
+    addOut("out",            Tr("Output"),          SocketDataType::Image);
+    addOut("out_nofilters",  Tr("Without filters"), SocketDataType::Image);
+    addOut("out_raw",        Tr("Raw"),             SocketDataType::Image);
+    addOut("canvas_pos",     Tr("Canvas Position"), SocketDataType::Vector);
+    addOut("center_pos",     Tr("Center Position"), SocketDataType::Vector);
+    addOut("size",           Tr("Size"),            SocketDataType::Vector);
 
     auto addParam = [&](const std::string& id, const std::string& label,
                          SocketDataType inT, ParamWidgetKind w, ParamValueKind k) {
@@ -90,32 +90,33 @@ void BuildLayerCompositor(UltraCanvasCompositorDiagram& d) {
         p.widget = w; p.valueKind = k;
         layer.params.push_back(p);
     };
-    addParam("opacity",    "Opacity",       SocketDataType::Scalar,  ParamWidgetKind::NumberInput, ParamValueKind::Number);
+    addParam("opacity",    Tr("Opacity"),       SocketDataType::Scalar,  ParamWidgetKind::NumberInput, ParamValueKind::Number);
     layer.params.back().defaultNumber = 1.0;
-    addParam("visible",    "Is visible",    SocketDataType::Boolean, ParamWidgetKind::Checkbox,    ParamValueKind::Boolean);
+    addParam("visible",    Tr("Is visible"),    SocketDataType::Boolean, ParamWidgetKind::Checkbox,    ParamValueKind::Boolean);
     layer.params.back().defaultBool = true;
-    addParam("blend",      "Blend mode",    SocketDataType::Color,   ParamWidgetKind::Dropdown,    ParamValueKind::Unset);
-    layer.params.back().choices = {"Normal", "Multiply", "Screen", "Overlay", "Soft Light", "Hard Light"};
+    addParam("blend",      Tr("Blend mode"),    SocketDataType::Color,   ParamWidgetKind::Dropdown,    ParamValueKind::Unset);
+    layer.params.back().choices = {Tr("Normal"), Tr("Multiply"), Tr("Screen"), Tr("Overlay"),
+                                    Tr("Soft Light"), Tr("Hard Light")};
 
     auto addIn = [&](const std::string& id, const std::string& label, SocketDataType t) {
         CompositorSocketSpec s; s.id = id; s.label = label; s.type = t;
         s.maxConnections = 1;
         layer.inputs.push_back(s);
     };
-    addIn("bg",           "Background", SocketDataType::Image);
-    addIn("mask",         "Mask",       SocketDataType::Image);
+    addIn("bg",           Tr("Background"), SocketDataType::Image);
+    addIn("mask",         Tr("Mask"),       SocketDataType::Image);
 
-    addParam("mask_vis",   "Mask is visible", SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
+    addParam("mask_vis",   Tr("Mask is visible"), SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
     layer.params.back().defaultBool = true;
-    addIn("filters",      "Filters",    SocketDataType::Data);
+    addIn("filters",      Tr("Filters"),    SocketDataType::Data);
 
     d.RegisterTemplate(layer);
 
     // Output template - small, just one input + preview
     CompositorNodeTemplate out;
     out.id = "output";
-    out.category = "Compositor";
-    out.title = "Output";
+    out.category = Tr("Compositor");
+    out.title = Tr("Output");
     out.headerColor = Color(60, 140, 80, 255);       // green
     out.bodyColor   = Color(45, 45, 50, 245);
     out.borderColor = Color(60, 200, 80, 255);
@@ -125,7 +126,7 @@ void BuildLayerCompositor(UltraCanvasCompositorDiagram& d) {
     out.hasPreview = true;
     out.previewHeight = 140.0;
     {
-        CompositorSocketSpec s; s.id = "bg"; s.label = "Background"; s.type = SocketDataType::Image;
+        CompositorSocketSpec s; s.id = "bg"; s.label = Tr("Background"); s.type = SocketDataType::Image;
         s.maxConnections = 1;
         out.inputs.push_back(s);
     }
@@ -152,8 +153,8 @@ void BuildBrushEditor(UltraCanvasCompositorDiagram& d) {
     // Ellipse: smallish shape generator with several inputs+widgets.
     CompositorNodeTemplate ellipse;
     ellipse.id = "ellipse";
-    ellipse.category = "Shapes";
-    ellipse.title = "Ellipse";
+    ellipse.category = Tr("Shapes");
+    ellipse.title = Tr("Ellipse");
     ellipse.headerColor = Color(110, 50, 150, 255);  // purple
     ellipse.bodyColor   = Color(45, 50, 65, 245);
     ellipse.borderColor = Color(140, 200, 140, 255); // greenish border
@@ -162,7 +163,7 @@ void BuildBrushEditor(UltraCanvasCompositorDiagram& d) {
     ellipse.defaultWidth = 240.0;
     {
         CompositorSocketSpec s;
-        s.id = "out"; s.label = "Output"; s.type = SocketDataType::Vector;
+        s.id = "out"; s.label = Tr("Output"); s.type = SocketDataType::Vector;
         ellipse.outputs.push_back(s);
     }
     auto addP = [&](CompositorNodeTemplate& t,
@@ -175,22 +176,22 @@ void BuildBrushEditor(UltraCanvasCompositorDiagram& d) {
         p.defaultNumber = def;
         t.params.push_back(p);
     };
-    addP(ellipse, "pos_x",   "Position",     SocketDataType::Vector, ParamWidgetKind::NumberInput, ParamValueKind::Number, 0);
+    addP(ellipse, "pos_x",   Tr("Position"),     SocketDataType::Vector, ParamWidgetKind::NumberInput, ParamValueKind::Number, 0);
     addP(ellipse, "pos_y",   "",             SocketDataType::Vector, ParamWidgetKind::NumberInput, ParamValueKind::Number, 0);
-    addP(ellipse, "rad_x",   "Radius",       SocketDataType::Vector, ParamWidgetKind::NumberInput, ParamValueKind::Number, 1);
+    addP(ellipse, "rad_x",   Tr("Radius"),       SocketDataType::Vector, ParamWidgetKind::NumberInput, ParamValueKind::Number, 1);
     addP(ellipse, "rad_y",   "",             SocketDataType::Vector, ParamWidgetKind::NumberInput, ParamValueKind::Number, 1);
-    addP(ellipse, "stroke",  "Stroke color", SocketDataType::Color,  ParamWidgetKind::ColorSwatch, ParamValueKind::Color);
+    addP(ellipse, "stroke",  Tr("Stroke color"), SocketDataType::Color,  ParamWidgetKind::ColorSwatch, ParamValueKind::Color);
     ellipse.params.back().defaultColor = Color(20, 20, 20, 255);
-    addP(ellipse, "fill",    "Fill color",   SocketDataType::Color,  ParamWidgetKind::ColorSwatch, ParamValueKind::Color);
+    addP(ellipse, "fill",    Tr("Fill color"),   SocketDataType::Color,  ParamWidgetKind::ColorSwatch, ParamValueKind::Color);
     ellipse.params.back().defaultColor = Color(40, 40, 40, 255);
-    addP(ellipse, "swidth",  "Stroke width", SocketDataType::Scalar, ParamWidgetKind::NumberInput, ParamValueKind::Number, 1);
+    addP(ellipse, "swidth",  Tr("Stroke width"), SocketDataType::Scalar, ParamWidgetKind::NumberInput, ParamValueKind::Number, 1);
     d.RegisterTemplate(ellipse);
 
     // Brush Output: big multi-input/checkbox node.
     CompositorNodeTemplate brush;
     brush.id = "brush_output";
-    brush.category = "Brush";
-    brush.title = "Brush Output";
+    brush.category = Tr("Brush");
+    brush.title = Tr("Brush Output");
     brush.headerColor = Color(20, 110, 130, 255);    // dark teal
     brush.bodyColor   = Color(45, 50, 60, 245);
     brush.borderColor = Color(20, 20, 20, 255);
@@ -199,45 +200,45 @@ void BuildBrushEditor(UltraCanvasCompositorDiagram& d) {
     brush.hasPreview = true;
     brush.previewHeight = 90.0;
     {
-        CompositorParamSpec p; p.id = "name"; p.label = "Name";
+        CompositorParamSpec p; p.id = "name"; p.label = Tr("Name");
         p.widget = ParamWidgetKind::TextInput; p.valueKind = ParamValueKind::Text;
-        p.defaultText = "Basic";
+        p.defaultText = Tr("Basic");
         brush.params.push_back(p);
     }
     auto addBrushIn = [&](const std::string& id, const std::string& label, SocketDataType t) {
         CompositorSocketSpec s; s.id = id; s.label = label; s.type = t; s.maxConnections = 1;
         brush.inputs.push_back(s);
     };
-    addBrushIn("shape",     "Shape",     SocketDataType::Vector);
-    addBrushIn("stroke",    "Stroke",    SocketDataType::Color);
-    addBrushIn("fill",      "Fill",      SocketDataType::Color);
-    addBrushIn("content",   "Content",   SocketDataType::Image);
-    addBrushIn("transform", "Transform", SocketDataType::Matrix);
-    addP(brush, "blend",     "Blend mode",       SocketDataType::Trigger, ParamWidgetKind::Dropdown, ParamValueKind::Unset);
-    brush.params.back().choices = {"Normal", "Multiply", "Screen", "Overlay"};
-    addP(brush, "stampblend","Stamp Blend Mode", SocketDataType::Trigger, ParamWidgetKind::Dropdown, ParamValueKind::Unset);
-    brush.params.back().choices = {"Normal", "Multiply", "Screen"};
-    addP(brush, "custom_blender",    "Use Custom Stamp Blender",  SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
-    addP(brush, "reuse_stamps",      "Can Reuse Stamps",          SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
+    addBrushIn("shape",     Tr("Shape"),     SocketDataType::Vector);
+    addBrushIn("stroke",    Tr("Stroke"),    SocketDataType::Color);
+    addBrushIn("fill",      Tr("Fill"),      SocketDataType::Color);
+    addBrushIn("content",   Tr("Content"),   SocketDataType::Image);
+    addBrushIn("transform", Tr("Transform"), SocketDataType::Matrix);
+    addP(brush, "blend",     Tr("Blend mode"),       SocketDataType::Trigger, ParamWidgetKind::Dropdown, ParamValueKind::Unset);
+    brush.params.back().choices = {Tr("Normal"), Tr("Multiply"), Tr("Screen"), Tr("Overlay")};
+    addP(brush, "stampblend",Tr("Stamp Blend Mode"), SocketDataType::Trigger, ParamWidgetKind::Dropdown, ParamValueKind::Unset);
+    brush.params.back().choices = {Tr("Normal"), Tr("Multiply"), Tr("Screen")};
+    addP(brush, "custom_blender",    Tr("Use Custom Stamp Blender"),  SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
+    addP(brush, "reuse_stamps",      Tr("Can Reuse Stamps"),          SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
     brush.params.back().defaultBool = true;
-    addBrushIn("pressure",  "Pressure",  SocketDataType::Scalar);
-    addBrushIn("spacing",   "Spacing",   SocketDataType::Scalar);
-    addP(brush, "fit_size",          "Fit to stroke size",        SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
+    addBrushIn("pressure",  Tr("Pressure"),  SocketDataType::Scalar);
+    addBrushIn("spacing",   Tr("Spacing"),   SocketDataType::Scalar);
+    addP(brush, "fit_size",          Tr("Fit to stroke size"),        SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
     brush.params.back().defaultBool = true;
-    addP(brush, "auto_position",     "Auto Position",             SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
+    addP(brush, "auto_position",     Tr("Auto Position"),             SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
     brush.params.back().defaultBool = true;
-    addP(brush, "stacking",          "Allow sample stacking",     SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
-    addP(brush, "always_clear",      "Always Clear",              SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
-    addP(brush, "snap_pixels",       "Snap to Pixels",            SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
-    addBrushIn("tags",      "Tags",     SocketDataType::List);
-    addBrushIn("previous",  "Previous", SocketDataType::Trigger);
+    addP(brush, "stacking",          Tr("Allow sample stacking"),     SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
+    addP(brush, "always_clear",      Tr("Always Clear"),              SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
+    addP(brush, "snap_pixels",       Tr("Snap to Pixels"),            SocketDataType::Boolean, ParamWidgetKind::Checkbox, ParamValueKind::Boolean);
+    addBrushIn("tags",      Tr("Tags"),     SocketDataType::List);
+    addBrushIn("previous",  Tr("Previous"), SocketDataType::Trigger);
     d.RegisterTemplate(brush);
 
     // Pointer Info: read-only reference node, outputs only.
     CompositorNodeTemplate pinfo;
     pinfo.id = "pointer_info";
-    pinfo.category = "Input";
-    pinfo.title = "Pointer Info";
+    pinfo.category = Tr("Input");
+    pinfo.title = Tr("Pointer Info");
     pinfo.headerColor = Color(70, 70, 80, 255);
     pinfo.bodyColor   = Color(45, 45, 50, 245);
     pinfo.borderColor = Color(20, 20, 20, 255);
@@ -247,34 +248,34 @@ void BuildBrushEditor(UltraCanvasCompositorDiagram& d) {
         CompositorSocketSpec s; s.id = id; s.label = label; s.type = t;
         pinfo.outputs.push_back(s);
     };
-    addPInfoOut("lbtn",     "Is Left Button Pressed",  SocketDataType::Boolean);
-    addPInfoOut("rbtn",     "Is Right Button Pressed", SocketDataType::Boolean);
-    addPInfoOut("pos",      "Position on Canvas",      SocketDataType::Vector);
-    addPInfoOut("pressure", "Pressure",                SocketDataType::Scalar);
-    addPInfoOut("twist",    "Twist",                   SocketDataType::Scalar);
-    addPInfoOut("tilt",     "Tilt",                    SocketDataType::Scalar);
-    addPInfoOut("movement", "Movement Direction",      SocketDataType::Vector);
-    addPInfoOut("rotation", "Rotation",                SocketDataType::Scalar);
+    addPInfoOut("lbtn",     Tr("Is Left Button Pressed"),  SocketDataType::Boolean);
+    addPInfoOut("rbtn",     Tr("Is Right Button Pressed"), SocketDataType::Boolean);
+    addPInfoOut("pos",      Tr("Position on Canvas"),      SocketDataType::Vector);
+    addPInfoOut("pressure", Tr("Pressure"),                SocketDataType::Scalar);
+    addPInfoOut("twist",    Tr("Twist"),                   SocketDataType::Scalar);
+    addPInfoOut("tilt",     Tr("Tilt"),                    SocketDataType::Scalar);
+    addPInfoOut("movement", Tr("Movement Direction"),      SocketDataType::Vector);
+    addPInfoOut("rotation", Tr("Rotation"),                SocketDataType::Scalar);
     d.RegisterTemplate(pinfo);
 
     // Blackboard Variable Value: dropdown + scalar output.
     CompositorNodeTemplate bb;
     bb.id = "blackboard";
-    bb.category = "Variables";
-    bb.title = "Blackboard Variable Value";
+    bb.category = Tr("Variables");
+    bb.title = Tr("Blackboard Variable Value");
     bb.headerColor = Color(70, 70, 80, 255);
     bb.bodyColor   = Color(45, 45, 50, 245);
     bb.borderColor = Color(20, 20, 20, 255);
     bb.cornerRadius = 6.0;
     bb.defaultWidth = 220.0;
     {
-        CompositorParamSpec p; p.id = "var"; p.label = "Variable Name";
+        CompositorParamSpec p; p.id = "var"; p.label = Tr("Variable Name");
         p.widget = ParamWidgetKind::Dropdown; p.valueKind = ParamValueKind::Unset;
         p.choices = {"SPACING", "PRESSURE_FALLOFF", "STAMP_RATE"};
         bb.params.push_back(p);
     }
     {
-        CompositorSocketSpec s; s.id = "value"; s.label = "Value"; s.type = SocketDataType::Scalar;
+        CompositorSocketSpec s; s.id = "value"; s.label = Tr("Value"); s.type = SocketDataType::Scalar;
         bb.outputs.push_back(s);
     }
     d.RegisterTemplate(bb);
@@ -312,7 +313,7 @@ void BuildMusicKPI(UltraCanvasCompositorDiagram& d) {
                          const Color& accent) {
         t.id = id;
         t.title = title;
-        t.category = "KPI";
+        t.category = Tr("KPI");
         t.headerColor = Color(255, 255, 255, 255);
         t.headerTextColor = Color(35, 45, 80, 255);
         t.bodyColor = Color(255, 255, 255, 255);
@@ -322,7 +323,8 @@ void BuildMusicKPI(UltraCanvasCompositorDiagram& d) {
         t.defaultWidth = 230.0;
     };
     auto addLine = [](CompositorNodeTemplate& t, const std::string& label) {
-        CompositorParamSpec p; p.id = label + std::to_string(t.params.size());
+        // The id by position: the label is translated, an id is not
+        CompositorParamSpec p; p.id = "line" + std::to_string(t.params.size());
         p.label = label;
         p.widget = ParamWidgetKind::NoWidget;
         p.hasInputSocket = false;
@@ -340,45 +342,45 @@ void BuildMusicKPI(UltraCanvasCompositorDiagram& d) {
 
     // Project / Epic card templates (no metric values, just title + meta).
     CompositorNodeTemplate proj;
-    whiteCard(proj, "kpi_project", "Project", Color(180, 195, 225, 255));
-    addLine(proj, "Asana (Project)");
-    addLine(proj, "6 issues  -  67% done");
+    whiteCard(proj, "kpi_project", Tr("Project"), Color(180, 195, 225, 255));
+    addLine(proj, TrF("{0} (Project)", "Asana"));
+    addLine(proj, Tr("6 issues  -  67% done"));
     addOut(proj, SocketDataType::Data);
     d.RegisterTemplate(proj);
 
     CompositorNodeTemplate epic;
-    whiteCard(epic, "kpi_epic", "Epic", Color(180, 195, 225, 255));
-    addLine(epic, "Jira (Epic)");
-    addLine(epic, "4 issues  -  50% done");
+    whiteCard(epic, "kpi_epic", Tr("Epic"), Color(180, 195, 225, 255));
+    addLine(epic, TrF("{0} (Epic)", "Jira"));
+    addLine(epic, Tr("4 issues  -  50% done"));
     addOut(epic, SocketDataType::Data);
     d.RegisterTemplate(epic);
 
     // Metric (Input)
     CompositorNodeTemplate metricIn;
-    whiteCard(metricIn, "kpi_metric_in", "Metric", Color(160, 200, 230, 255));
-    addLine(metricIn, "Metric (Input)  -  Sum");
-    addLine(metricIn, "7d:  -    6w:  -    12m:  - ");
+    whiteCard(metricIn, "kpi_metric_in", Tr("Metric"), Color(160, 200, 230, 255));
+    addLine(metricIn, Tr("Metric (Input)  -  Sum"));
+    addLine(metricIn, Tr("7d:  -    6w:  -    12m:  - "));
     addIn(metricIn, SocketDataType::Data);
     addOut(metricIn, SocketDataType::Scalar);
     d.RegisterTemplate(metricIn);
 
     // Metric (North Star)
     CompositorNodeTemplate northStar;
-    whiteCard(northStar, "kpi_north", "North Star", Color(80, 180, 130, 255));
+    whiteCard(northStar, "kpi_north", Tr("North Star"), Color(80, 180, 130, 255));
     northStar.borderWidth = 2.0;
-    addLine(northStar, "Metric (North Star)  -  Sum");
-    addLine(northStar, "7d: 4.41K mins (0.43%)");
-    addLine(northStar, "6w: 26.15K mins (2.57%)");
-    addLine(northStar, "12m: 198.31K mins (38.59%)");
+    addLine(northStar, Tr("Metric (North Star)  -  Sum"));
+    addLine(northStar, Tr("7d: 4.41K mins (0.43%)"));
+    addLine(northStar, Tr("6w: 26.15K mins (2.57%)"));
+    addLine(northStar, Tr("12m: 198.31K mins (38.59%)"));
     addIn(northStar, SocketDataType::Scalar);
     addOut(northStar, SocketDataType::Scalar);
     d.RegisterTemplate(northStar);
 
     // Metric (KPI)
     CompositorNodeTemplate kpiCard;
-    whiteCard(kpiCard, "kpi_metric_kpi", "KPI", Color(180, 195, 225, 255));
-    addLine(kpiCard, "Metric (KPI)  -  Sum");
-    addLine(kpiCard, "7d:  -    6w:  -    12m:  - ");
+    whiteCard(kpiCard, "kpi_metric_kpi", Tr("KPI"), Color(180, 195, 225, 255));
+    addLine(kpiCard, Tr("Metric (KPI)  -  Sum"));
+    addLine(kpiCard, Tr("7d:  -    6w:  -    12m:  - "));
     addIn(kpiCard, SocketDataType::Scalar);
     d.RegisterTemplate(kpiCard);
 
@@ -391,22 +393,22 @@ void BuildMusicKPI(UltraCanvasCompositorDiagram& d) {
         if (n) n->titleOverride = title;
     };
 
-    addMetric("camp",    "kpi_project",    "New marketing campaign",  60, 60);
-    addMetric("social",  "kpi_epic",       "Social notifications",    60, 220);
-    addMetric("timed",   "kpi_epic",       "Time-based notifications",60, 360);
-    addMetric("ai",      "kpi_epic",       "AI model for songs",      60, 500);
-    addMetric("share",   "kpi_epic",       "Sharing prompts",         60, 660);
+    addMetric("camp",    "kpi_project",    Tr("New marketing campaign"),  60, 60);
+    addMetric("social",  "kpi_epic",       Tr("Social notifications"),    60, 220);
+    addMetric("timed",   "kpi_epic",       Tr("Time-based notifications"),60, 360);
+    addMetric("ai",      "kpi_epic",       Tr("AI model for songs"),      60, 500);
+    addMetric("share",   "kpi_epic",       Tr("Sharing prompts"),         60, 660);
 
-    addMetric("trial",     "kpi_metric_in",  "Premium trial users",      360, 60);
-    addMetric("sessions",  "kpi_metric_in",  "Avg. sessions per week",   360, 220);
-    addMetric("duration",  "kpi_metric_in",  "Average session duration", 360, 380);
-    addMetric("shares",    "kpi_metric_in",  "Avg. shares per session",  360, 540);
+    addMetric("trial",     "kpi_metric_in",  Tr("Premium trial users"),      360, 60);
+    addMetric("sessions",  "kpi_metric_in",  Tr("Avg. sessions per week"),   360, 220);
+    addMetric("duration",  "kpi_metric_in",  Tr("Average session duration"), 360, 380);
+    addMetric("shares",    "kpi_metric_in",  Tr("Avg. shares per session"),  360, 540);
 
-    addMetric("northstar", "kpi_north",      "Time spent listening",     680, 320);
+    addMetric("northstar", "kpi_north",      Tr("Time spent listening"),     680, 320);
 
-    addMetric("arr",       "kpi_metric_kpi", "ARR",                      1000, 100);
-    addMetric("ret",       "kpi_metric_kpi", "Monthly retention",        1000, 320);
-    addMetric("subs",      "kpi_metric_kpi", "Monthly premium subs",     1000, 540);
+    addMetric("arr",       "kpi_metric_kpi", Tr("ARR"),                      1000, 100);
+    addMetric("ret",       "kpi_metric_kpi", Tr("Monthly retention"),        1000, 320);
+    addMetric("subs",      "kpi_metric_kpi", Tr("Monthly premium subs"),     1000, 540);
 
     // Links with correlation labels.
     Color GREEN = Color(80, 180, 130, 230);
@@ -462,7 +464,7 @@ void BuildPortfolioTree(UltraCanvasCompositorDiagram& d) {
                          const std::string& title, double width) {
         t.id = id;
         t.title = title;
-        t.category = "Portfolio";
+        t.category = Tr("Portfolio");
         t.headerColor = Color(255, 255, 255, 255);
         t.headerTextColor = Color(35, 40, 60, 255);
         t.bodyColor = Color(255, 255, 255, 255);
@@ -488,37 +490,37 @@ void BuildPortfolioTree(UltraCanvasCompositorDiagram& d) {
     };
 
     CompositorNodeTemplate portfolio;
-    plainCard(portfolio, "p_portfolio", "Portfolio", 220);
-    bullet(portfolio, "contains campaigns");
-    bullet(portfolio, "optional");
-    bullet(portfolio, "may contain various ad types");
-    bullet(portfolio, "may assign budget");
+    plainCard(portfolio, "p_portfolio", Tr("Portfolio"), 220);
+    bullet(portfolio, Tr("contains campaigns"));
+    bullet(portfolio, Tr("optional"));
+    bullet(portfolio, Tr("may contain various ad types"));
+    bullet(portfolio, Tr("may assign budget"));
     addOut(portfolio);
     d.RegisterTemplate(portfolio);
 
     CompositorNodeTemplate campaign;
-    plainCard(campaign, "p_campaign", "Campaign", 220);
-    bullet(campaign, "contains ad groups");
-    bullet(campaign, "may contain one ad type");
-    bullet(campaign, "may assign negative targets");
-    bullet(campaign, "may assign budget");
+    plainCard(campaign, "p_campaign", Tr("Campaign"), 220);
+    bullet(campaign, Tr("contains ad groups"));
+    bullet(campaign, Tr("may contain one ad type"));
+    bullet(campaign, Tr("may assign negative targets"));
+    bullet(campaign, Tr("may assign budget"));
     addIn(campaign);
     addOut(campaign);
     d.RegisterTemplate(campaign);
 
     CompositorNodeTemplate adgroup;
-    plainCard(adgroup, "p_adgroup", "Ad Group", 220);
-    bullet(adgroup, "contains ads");
-    bullet(adgroup, "may contain one ad type");
-    bullet(adgroup, "may assign targets");
-    bullet(adgroup, "may assign negative targets");
+    plainCard(adgroup, "p_adgroup", Tr("Ad Group"), 220);
+    bullet(adgroup, Tr("contains ads"));
+    bullet(adgroup, Tr("may contain one ad type"));
+    bullet(adgroup, Tr("may assign targets"));
+    bullet(adgroup, Tr("may assign negative targets"));
     addIn(adgroup);
     addOut(adgroup);
     d.RegisterTemplate(adgroup);
 
     CompositorNodeTemplate ad;
-    plainCard(ad, "p_ad", "Ad", 220);
-    bullet(ad, "Format depends on ad type");
+    plainCard(ad, "p_ad", Tr("Ad"), 220);
+    bullet(ad, Tr("Format depends on ad type"));
     addIn(ad);
     d.RegisterTemplate(ad);
 
@@ -570,7 +572,7 @@ void BuildOrmModeler(UltraCanvasCompositorDiagram& d) {
                     const std::string& title) {
         t.id = id;
         t.title = title;
-        t.category = "ORM";
+        t.category = Tr("ORM");
         t.headerColor = Color(80, 80, 95, 255);
         t.headerTextColor = Color(245, 245, 250, 255);
         t.bodyColor = Color(60, 60, 75, 240);
@@ -595,7 +597,7 @@ void BuildOrmModeler(UltraCanvasCompositorDiagram& d) {
     };
 
     CompositorNodeTemplate addr;
-    card(addr, "orm_address", "Create Address");
+    card(addr, "orm_address", Tr("Create Address"));
     addField(addr, "S", "id", true, SocketDataType::String);
     addField(addr, "S", "street", false, SocketDataType::String);
     addField(addr, "S", "city",   false, SocketDataType::String);
@@ -604,7 +606,7 @@ void BuildOrmModeler(UltraCanvasCompositorDiagram& d) {
     d.RegisterTemplate(addr);
 
     CompositorNodeTemplate contact;
-    card(contact, "orm_contact", "Create Contact Details");
+    card(contact, "orm_contact", Tr("Create Contact Details"));
     addField(contact, "S[]", "email", false, SocketDataType::List);
     addField(contact, "S[]", "cell",  false, SocketDataType::List);
     addField(contact, "S[]", "tell",  false, SocketDataType::List);
@@ -615,7 +617,7 @@ void BuildOrmModeler(UltraCanvasCompositorDiagram& d) {
     d.RegisterTemplate(contact);
 
     CompositorNodeTemplate user;
-    card(user, "orm_user", "Create User");
+    card(user, "orm_user", Tr("Create User"));
     addField(user, "S",  "name",    true,  SocketDataType::String);
     addField(user, "S",  "surname", false, SocketDataType::String);
     addField(user, "S",  "middle",  false, SocketDataType::String);
@@ -625,13 +627,13 @@ void BuildOrmModeler(UltraCanvasCompositorDiagram& d) {
     d.RegisterTemplate(user);
 
     CompositorNodeTemplate orgtype;
-    card(orgtype, "orm_orgtype", "Create Organization Type");
+    card(orgtype, "orm_orgtype", Tr("Create Organization Type"));
     addField(orgtype, "S", "name",         true,  SocketDataType::String);
     addField(orgtype, "O", "organization", false, SocketDataType::Custom);
     d.RegisterTemplate(orgtype);
 
     CompositorNodeTemplate org;
-    card(org, "orm_org", "Create Organization");
+    card(org, "orm_org", Tr("Create Organization"));
     addField(org, "S",  "name",           true,  SocketDataType::String);
     addField(org, "S",  "desc",           false, SocketDataType::String);
     addField(org, "S",  "vat",            false, SocketDataType::String);
@@ -639,7 +641,7 @@ void BuildOrmModeler(UltraCanvasCompositorDiagram& d) {
     d.RegisterTemplate(org);
 
     CompositorNodeTemplate orgprof;
-    card(orgprof, "orm_orgprof", "Create Organization Profile");
+    card(orgprof, "orm_orgprof", Tr("Create Organization Profile"));
     addField(orgprof, "U",  "user",  false, SocketDataType::Custom);
     addField(orgprof, "O",  "org",   false, SocketDataType::Custom);
     addField(orgprof, "O",  "type",  false, SocketDataType::Custom);
@@ -703,7 +705,7 @@ void BuildLogicDiagram(UltraCanvasCompositorDiagram& d) {
         CompositorNodeTemplate t;
         t.id = id;
         t.title = subtitle;
-        t.category = "Logic";
+        t.category = Tr("Logic");
         t.headerColor = headerCol;
         t.headerTextColor = FB_TEXT;
         t.bodyColor = FB_BODY;
@@ -766,7 +768,7 @@ void BuildLogicDiagram(UltraCanvasCompositorDiagram& d) {
         CompositorNodeTemplate t;
         t.id = "fb_const";
         t.title = "C";
-        t.category = "Logic";
+        t.category = Tr("Logic");
         t.headerColor = CST_BODY;
         t.headerTextColor = FB_TEXT;
         t.bodyColor = CST_BODY;
@@ -781,8 +783,8 @@ void BuildLogicDiagram(UltraCanvasCompositorDiagram& d) {
     {
         CompositorNodeTemplate t;
         t.id = "fb_input";
-        t.title = "Input";
-        t.category = "Logic";
+        t.title = Tr("Input");
+        t.category = Tr("Logic");
         t.headerColor = IO_BODY;
         t.headerTextColor = FB_TEXT;
         t.bodyColor = IO_BODY;
@@ -797,8 +799,8 @@ void BuildLogicDiagram(UltraCanvasCompositorDiagram& d) {
     {
         CompositorNodeTemplate t;
         t.id = "fb_status";
-        t.title = "Status";
-        t.category = "Logic";
+        t.title = Tr("Status");
+        t.category = Tr("Logic");
         t.headerColor = IO_BODY;
         t.headerTextColor = FB_TEXT;
         t.bodyColor = IO_BODY;
@@ -824,7 +826,7 @@ void BuildLogicDiagram(UltraCanvasCompositorDiagram& d) {
         CompositorNodeTemplate t;
         t.id = "fb_memo";
         t.title = "Merker";
-        t.category = "Logic";
+        t.category = Tr("Logic");
         t.headerColor = IO_BODY;
         t.headerTextColor = FB_TEXT;
         t.bodyColor = IO_BODY;
@@ -1076,7 +1078,7 @@ void BuildMarketingFunnel(UltraCanvasCompositorDiagram& d) {
         CompositorNodeTemplate t;
         t.id = id;
         t.title = stage;
-        t.category = "Funnel";
+        t.category = Tr("Funnel");
         t.headerColor = header;
         t.headerTextColor = Color(255, 255, 255, 255);
         t.bodyColor = Color(255, 255, 255, 255);
@@ -1123,9 +1125,9 @@ void BuildMarketingFunnel(UltraCanvasCompositorDiagram& d) {
         d.RegisterTemplate(t);
     };
 
-    mkCard("funn_exec", "Execution",   STAGE_EXEC);
-    mkCard("funn_intg", "Integration", STAGE_INTG);
-    mkCard("funn_prep", "Preparation", STAGE_PREP);
+    mkCard("funn_exec", Tr("Execution"),   STAGE_EXEC);
+    mkCard("funn_intg", Tr("Integration"), STAGE_INTG);
+    mkCard("funn_prep", Tr("Preparation"), STAGE_PREP);
 
     // Helper to place + set the per-node params.
     auto place = [&](const std::string& id, const std::string& tmpl,
@@ -1168,12 +1170,12 @@ void BuildMarketingFunnel(UltraCanvasCompositorDiagram& d) {
         l.labelTextColor = Color(80, 90, 110, 255);
         d.AddLink(l);
     };
-    linkLabeled("f1", "n_email", "n_stats", "Accepted: 200");
-    linkLabeled("f2", "n_email", "n_mail2", "Opened: 500");
-    linkLabeled("f3", "n_stats", "n_intg",  "Submitted: 110");
-    linkLabeled("f4", "n_mail2", "n_sms",   "Accepted: 40");
-    linkLabeled("f5", "n_intg",  "n_prep",  "Visited: 60");
-    linkLabeled("f6", "n_sms",   "n_prep",  "Accepted: 6");
+    linkLabeled("f1", "n_email", "n_stats", Tr("Accepted: 200"));
+    linkLabeled("f2", "n_email", "n_mail2", Tr("Opened: 500"));
+    linkLabeled("f3", "n_stats", "n_intg",  Tr("Submitted: 110"));
+    linkLabeled("f4", "n_mail2", "n_sms",   Tr("Accepted: 40"));
+    linkLabeled("f5", "n_intg",  "n_prep",  Tr("Visited: 60"));
+    linkLabeled("f6", "n_sms",   "n_prep",  Tr("Accepted: 6"));
 
     d.SetHistoryRecording(true);
     d.FitView(40.0);
@@ -1188,11 +1190,11 @@ void BuildSubgraphScene(UltraCanvasCompositorDiagram& d) {
     d.ClearHistory();
     d.SetHistoryRecording(false);
 
-    d.RegisterDefaultGroupTemplate("group", "Group");
+    d.RegisterDefaultGroupTemplate("group", Tr("Group"));
 
     CompositorNodeTemplate node;
     node.id = "process";
-    node.title = "Process";
+    node.title = Tr("Process");
     node.headerColor = Color(60, 100, 160, 255);
     node.bodyColor   = Color(45, 50, 60, 240);
     node.borderColor = Color(20, 20, 20, 255);
@@ -1222,7 +1224,7 @@ void BuildSubgraphScene(UltraCanvasCompositorDiagram& d) {
     // Form a group around src/blur/tone.
     d.Group("preprocess", "group", {"src", "blur", "tone"});
     auto* g = d.GetNode("preprocess");
-    if (g) g->titleOverride = "Preprocess";
+    if (g) g->titleOverride = Tr("Preprocess");
 
     // Bottom group with two more nodes.
     d.AddNode("scale",  "process", 100, 450);
@@ -1230,7 +1232,7 @@ void BuildSubgraphScene(UltraCanvasCompositorDiagram& d) {
     d.AddLink("g3", "scale", "out", "output", "in");
     d.Group("postprocess", "group", {"scale", "output"});
     auto* g2 = d.GetNode("postprocess");
-    if (g2) g2->titleOverride = "Postprocess";
+    if (g2) g2->titleOverride = Tr("Postprocess");
 
     // Link from a child in the first group to a child in the second.
     d.AddLink("g4", "tone", "out", "scale", "in");
@@ -1254,7 +1256,7 @@ void BuildVisualScripting(UltraCanvasCompositorDiagram& d) {
                       const std::string& title, const Color& header) {
         t.id = id;
         t.title = title;
-        t.category = "Scripting";
+        t.category = Tr("Scripting");
         t.headerColor = header;
         t.bodyColor = Color(45, 45, 55, 245);
         t.borderColor = Color(20, 20, 20, 255);
@@ -1274,27 +1276,27 @@ void BuildVisualScripting(UltraCanvasCompositorDiagram& d) {
     d.RegisterTemplate(onStart);
 
     CompositorNodeTemplate branch;
-    common(branch, "branch", "Branch", Color(160, 80, 60, 255));
+    common(branch, "branch", Tr("Branch"), Color(160, 80, 60, 255));
     {
         CompositorSocketSpec s; s.id = "exec_in"; s.label = "exec"; exec(s); s.maxConnections = 1;
         branch.inputs.push_back(s);
     }
     {
-        CompositorParamSpec p; p.id = "cond"; p.label = "Condition";
+        CompositorParamSpec p; p.id = "cond"; p.label = Tr("Condition");
         p.hasInputSocket = true; p.inputType = SocketDataType::Boolean;
         p.widget = ParamWidgetKind::Checkbox; p.valueKind = ParamValueKind::Boolean;
         branch.params.push_back(p);
     }
     {
-        CompositorSocketSpec s; s.id = "true";  s.label = "True";  exec(s);
+        CompositorSocketSpec s; s.id = "true";  s.label = Tr("True");  exec(s);
         branch.outputs.push_back(s);
-        s.id = "false"; s.label = "False"; exec(s);
+        s.id = "false"; s.label = Tr("False"); exec(s);
         branch.outputs.push_back(s);
     }
     d.RegisterTemplate(branch);
 
     CompositorNodeTemplate compare;
-    common(compare, "compare", "Compare", Color(60, 140, 80, 255));
+    common(compare, "compare", Tr("Compare"), Color(60, 140, 80, 255));
     {
         CompositorSocketSpec s; s.id = "a"; s.label = "A"; s.type = SocketDataType::Scalar; s.maxConnections = 1;
         compare.inputs.push_back(s);
@@ -1302,7 +1304,7 @@ void BuildVisualScripting(UltraCanvasCompositorDiagram& d) {
         compare.inputs.push_back(s);
     }
     {
-        CompositorParamSpec p; p.id = "op"; p.label = "Op";
+        CompositorParamSpec p; p.id = "op"; p.label = Tr("Op");
         p.widget = ParamWidgetKind::Dropdown; p.valueKind = ParamValueKind::Unset;
         p.choices = {">", ">=", "==", "<=", "<", "!="};
         p.hasInputSocket = false;
@@ -1316,16 +1318,16 @@ void BuildVisualScripting(UltraCanvasCompositorDiagram& d) {
     d.RegisterTemplate(compare);
 
     CompositorNodeTemplate print;
-    common(print, "print", "Print", Color(60, 60, 60, 255));
+    common(print, "print", Tr("Print"), Color(60, 60, 60, 255));
     {
         CompositorSocketSpec s; s.id = "exec_in"; s.label = "exec"; exec(s); s.maxConnections = 1;
         print.inputs.push_back(s);
     }
     {
-        CompositorParamSpec p; p.id = "msg"; p.label = "Message";
+        CompositorParamSpec p; p.id = "msg"; p.label = Tr("Message");
         p.hasInputSocket = true; p.inputType = SocketDataType::String;
         p.widget = ParamWidgetKind::TextInput; p.valueKind = ParamValueKind::Text;
-        p.defaultText = "Hello";
+        p.defaultText = Tr("Hello");
         print.params.push_back(p);
     }
     {
@@ -1336,9 +1338,9 @@ void BuildVisualScripting(UltraCanvasCompositorDiagram& d) {
 
     // A small scalar source so we can feed Compare without a popup editor.
     CompositorNodeTemplate scalar;
-    common(scalar, "scalar", "Scalar", Color(60, 120, 160, 255));
+    common(scalar, "scalar", Tr("Scalar"), Color(60, 120, 160, 255));
     {
-        CompositorParamSpec p; p.id = "value"; p.label = "Value";
+        CompositorParamSpec p; p.id = "value"; p.label = Tr("Value");
         p.widget = ParamWidgetKind::Slider; p.valueKind = ParamValueKind::Number;
         p.numMin = 0; p.numMax = 100; p.numStep = 1; p.defaultNumber = 50;
         scalar.params.push_back(p);
@@ -1364,8 +1366,8 @@ void BuildVisualScripting(UltraCanvasCompositorDiagram& d) {
     d.AddLink("v5", "branch1","true",   "printT",  "exec_in");
     d.AddLink("v6", "branch1","false",  "printF",  "exec_in");
     // Set messages.
-    d.SetParamText("printT", "msg", "A is greater");
-    d.SetParamText("printF", "msg", "A is not greater");
+    d.SetParamText("printT", "msg", Tr("A is greater"));
+    d.SetParamText("printF", "msg", Tr("A is not greater"));
 
     d.SetHistoryRecording(true);
     d.FitView(40.0);
@@ -1386,7 +1388,7 @@ void BuildPlayground(UltraCanvasCompositorDiagram& d) {
         CompositorNodeTemplate t;
         t.id = id;
         t.title = title;
-        t.category = "Demo";
+        t.category = Tr("Demo");
         t.headerColor = header;
         t.bodyColor = Color(45, 45, 55, 245);
         t.borderColor = Color(20, 20, 20, 255);
@@ -1400,18 +1402,18 @@ void BuildPlayground(UltraCanvasCompositorDiagram& d) {
             t.outputs.push_back(s);
         }
         {
-            CompositorParamSpec p; p.id = "v"; p.label = "Strength";
+            CompositorParamSpec p; p.id = "v"; p.label = Tr("Strength");
             p.widget = ParamWidgetKind::Slider; p.valueKind = ParamValueKind::Number;
             p.numMin = 0; p.numMax = 1; p.numStep = 0.05; p.defaultNumber = 0.5;
             t.params.push_back(p);
         }
         d.RegisterTemplate(t);
     };
-    mk("pg_src",  "Source",  Color(80, 130, 200, 255), SocketDataType::Image);
-    mk("pg_blur", "Blur",    Color(120, 80, 200, 255), SocketDataType::Image);
-    mk("pg_tint", "Tint",    Color(200, 100, 80, 255), SocketDataType::Image);
-    mk("pg_out",  "Output",  Color(60, 160, 100, 255), SocketDataType::Image);
-    d.RegisterDefaultGroupTemplate("group", "Group");
+    mk("pg_src",  Tr("Source"),  Color(80, 130, 200, 255), SocketDataType::Image);
+    mk("pg_blur", Tr("Blur"),    Color(120, 80, 200, 255), SocketDataType::Image);
+    mk("pg_tint", Tr("Tint"),    Color(200, 100, 80, 255), SocketDataType::Image);
+    mk("pg_out",  Tr("Output"),  Color(60, 160, 100, 255), SocketDataType::Image);
+    d.RegisterDefaultGroupTemplate("group", Tr("Group"));
 
     // Drop a couple of nodes so the canvas isn't empty.
     d.AddNode("p_src",  "pg_src",  100, 200);
@@ -1533,18 +1535,18 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
                     state1->diagram->RequestRedraw();
                 }
                 if (state1->statusLabel) {
-                    state1->statusLabel->SetText("Sub-scenario: " + text);
+                    state1->statusLabel->SetText(TrF("Sub-scenario: {0}", text));
                 }
             });
         DemoKit::Add(subBar1, b);
     };
-    subBtn("sub_layer", "Layer Compositor", BuildLayerCompositor);
-    subBtn("sub_brush", "Brush Editor",     BuildBrushEditor);
-    subBtn("sub_kpi",   "Music KPI",        BuildMusicKPI);
-    subBtn("sub_port",  "Portfolio Tree",   BuildPortfolioTree);
-    subBtn("sub_orm",   "ORM Modeler",      BuildOrmModeler);
-    subBtn("sub_logic", "Logic Diagram",    BuildLogicDiagram);
-    subBtn("sub_funn",  "Marketing Funnel", BuildMarketingFunnel);
+    subBtn("sub_layer", Tr("Layer Compositor"), BuildLayerCompositor);
+    subBtn("sub_brush", Tr("Brush Editor"),     BuildBrushEditor);
+    subBtn("sub_kpi",   Tr("Music KPI"),        BuildMusicKPI);
+    subBtn("sub_port",  Tr("Portfolio Tree"),   BuildPortfolioTree);
+    subBtn("sub_orm",   Tr("ORM Modeler"),      BuildOrmModeler);
+    subBtn("sub_logic", Tr("Logic Diagram"),    BuildLogicDiagram);
+    subBtn("sub_funn",  Tr("Marketing Funnel"), BuildMarketingFunnel);
 
     addFlex(tab1, subBar1, 0);
     addDiagram(tab1, diag1);
@@ -1580,10 +1582,10 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     diag4->SetAlignmentGuidesEnabled(true);
     addDiagram(tab4, diag4);
 
-    tabs->AddTab("Recreate Images", tab1);
-    tabs->AddTab("Subgraph / Groups", tab2);
-    tabs->AddTab("Visual Scripting", tab3);
-    tabs->AddTab("Feature Playground", tab4);
+    tabs->AddTab(Tr("Recreate Images"), tab1);
+    tabs->AddTab(Tr("Subgraph / Groups"), tab2);
+    tabs->AddTab(Tr("Visual Scripting"), tab3);
+    tabs->AddTab(Tr("Feature Playground"), tab4);
     tabs->SetActiveTab(0);
 
     DemoKit::Add(card, tabs, 1);
@@ -1596,11 +1598,11 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
         if (newIdx >= 0 && newIdx < (int)diags.size()) {
             *activeDiagram = diags[newIdx];
             if (statusLabel) {
-                const char* names[] = {
-                    "Recreate Images", "Subgraph / Groups",
-                    "Visual Scripting", "Feature Playground"
+                const std::string names[] = {
+                    Tr("Recreate Images"), Tr("Subgraph / Groups"),
+                    Tr("Visual Scripting"), Tr("Feature Playground")
                 };
-                statusLabel->SetText(std::string("Tab: ") + names[newIdx]);
+                statusLabel->SetText(TrF("Tab: {0}", names[newIdx]));
             }
         }
     };
@@ -1622,25 +1624,25 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     Color tog(80, 110, 80, 255);     // toggles
     Color destr(190, 90, 90, 255);   // destructive
 
-    addBtn("bUndo", "Undo", B_W, act, [activeDiagram]() {
+    addBtn("bUndo", Tr("Undo"), B_W, act, [activeDiagram]() {
         if (*activeDiagram) (*activeDiagram)->Undo();
     });
-    addBtn("bRedo", "Redo", B_W, act, [activeDiagram]() {
+    addBtn("bRedo", Tr("Redo"), B_W, act, [activeDiagram]() {
         if (*activeDiagram) (*activeDiagram)->Redo();
     });
-    addBtn("bCut",  "Cut", B_W, act, [activeDiagram]() {
+    addBtn("bCut",  Tr("Cut"), B_W, act, [activeDiagram]() {
         if (*activeDiagram) (*activeDiagram)->Cut();
     });
-    addBtn("bCopy", "Copy", B_W, act, [activeDiagram]() {
+    addBtn("bCopy", Tr("Copy"), B_W, act, [activeDiagram]() {
         if (*activeDiagram) (*activeDiagram)->Copy();
     });
-    addBtn("bPaste","Paste",B_W, act, [activeDiagram]() {
+    addBtn("bPaste",Tr("Paste"),B_W, act, [activeDiagram]() {
         if (*activeDiagram) (*activeDiagram)->Paste();
     });
-    addBtn("bDup",  "Duplicate", B_W + 16, act, [activeDiagram]() {
+    addBtn("bDup",  Tr("Duplicate"), B_W + 16, act, [activeDiagram]() {
         if (*activeDiagram) (*activeDiagram)->Duplicate();
     });
-    addBtn("bGroup", "Group", B_W, act, [activeDiagram]() {
+    addBtn("bGroup", Tr("Group"), B_W, act, [activeDiagram]() {
         if (!*activeDiagram) return;
         auto sel = (*activeDiagram)->GetSelectedNodeIds();
         if (sel.empty()) return;
@@ -1650,32 +1652,32 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
             if ((*activeDiagram)->GetTemplate(tid)) { tmplId = tid; break; }
         }
         if (tmplId.empty()) {
-            (*activeDiagram)->RegisterDefaultGroupTemplate("group", "Group");
+            (*activeDiagram)->RegisterDefaultGroupTemplate("group", Tr("Group"));
             tmplId = "group";
         }
         (*activeDiagram)->Group("", tmplId, sel);
     });
-    addBtn("bUngroup", "Ungroup", B_W + 6, act, [activeDiagram]() {
+    addBtn("bUngroup", Tr("Ungroup"), B_W + 6, act, [activeDiagram]() {
         if (!*activeDiagram) return;
         auto sel = (*activeDiagram)->GetSelectedNodeIds();
         for (const auto& id : sel) (*activeDiagram)->Ungroup(id);
     });
-    addBtn("bDel", "Delete", B_W, destr, [activeDiagram]() {
+    addBtn("bDel", Tr("Delete"), B_W, destr, [activeDiagram]() {
         if (*activeDiagram) (*activeDiagram)->DeleteSelected();
     });
-    addBtn("bFit", "Fit View", B_W + 4, act, [activeDiagram]() {
+    addBtn("bFit", Tr("Fit View"), B_W + 4, act, [activeDiagram]() {
         if (*activeDiagram) (*activeDiagram)->FitView(40.0);
     });
 
     // Save / Load: the dialogs and the read go through the FileLoader, as
     // every user file does; it has no writer for this JSON, so the text is
     // written with OpenFileUtf8 (the path is UTF-8 throughout).
-    addBtn("bSave", "Save", B_W, act, [activeDiagram, statusLabel]() {
+    addBtn("bSave", Tr("Save"), B_W, act, [activeDiagram, statusLabel]() {
         auto diagram = *activeDiagram;
         if (!diagram) return;
         FileDialogOptions opts;
-        opts.SetTitle("Save graph")
-            .AddFilter("Compositor graph (JSON)", std::vector<std::string>{ "json" })
+        opts.SetTitle(Tr("Save graph"))
+            .AddFilter(Tr("Compositor graph (JSON)"), std::vector<std::string>{ "json" })
             .SetDefaultFileName("graph.json")
             .SetDefaultExtension("json");
         std::weak_ptr<UltraCanvasLabel> sl = statusLabel;
@@ -1687,21 +1689,21 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
                 saved = std::fwrite(json.data(), 1, json.size(), f) == json.size();
                 saved = (std::fclose(f) == 0) && saved;
             }
-            if (auto s = sl.lock()) s->SetText((saved ? "Saved " : "Could not write ") + path);
+            if (auto s = sl.lock()) s->SetText(saved ? TrF("Saved {0}", path) : TrF("Could not write {0}", path));
         });
     });
-    addBtn("bLoad", "Load", B_W, act, [activeDiagram, statusLabel]() {
+    addBtn("bLoad", Tr("Load"), B_W, act, [activeDiagram, statusLabel]() {
         auto diagram = *activeDiagram;
         if (!diagram) return;
         FileDialogOptions opts;
-        opts.SetTitle("Open graph")
-            .AddFilter("Compositor graph (JSON)", std::vector<std::string>{ "json" });
+        opts.SetTitle(Tr("Open graph"))
+            .AddFilter(Tr("Compositor graph (JSON)"), std::vector<std::string>{ "json" });
         std::weak_ptr<UltraCanvasLabel> sl = statusLabel;
         UltraCanvasFileLoader::OpenFileDialog(opts, [diagram, sl](DialogResult r, const std::string& path) {
             if (r != DialogResult::OK || path.empty()) return;
             const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path);
             if (!file.success) {
-                if (auto s = sl.lock()) s->SetText("Could not open " + path + ": " + file.error);
+                if (auto s = sl.lock()) s->SetText(TrF("Could not open {0}: {1}", path, file.error));
                 return;
             }
             // Templates are the application's, not the file's: the file
@@ -1709,38 +1711,38 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
             diagram->FromJson(std::string(file.bytes.begin(), file.bytes.end()));
             diagram->FitView(40.0);
             if (auto s = sl.lock()) {
-                s->SetText("Loaded " + PathToUtf8(PathFromUtf8(path).filename()) + " - " +
-                           std::to_string(diagram->GetAllNodeIds().size()) + " node(s)");
+                s->SetText(LocalisationDetail::Substitute(
+                    TrN("Loaded {0} - {n} node", "Loaded {0} - {n} nodes",
+                        static_cast<long long>(diagram->GetAllNodeIds().size())),
+                    {PathToUtf8(PathFromUtf8(path).filename())}));
             }
         });
     });
 
     // Toggles
-    addBtn("tMini", "Minimap", TOG_W, tog, [activeDiagram, statusLabel]() {
+    addBtn("tMini", Tr("Minimap"), TOG_W, tog, [activeDiagram, statusLabel]() {
         if (!*activeDiagram) return;
         auto cfg = (*activeDiagram)->GetMinimapConfig();
         (*activeDiagram)->SetMinimapVisible(!cfg.visible);
-        if (statusLabel) statusLabel->SetText(std::string("Minimap: ") +
-            (!cfg.visible ? "on" : "off"));
+        if (statusLabel) statusLabel->SetText(!cfg.visible ? Tr("Minimap: on") : Tr("Minimap: off"));
     });
-    addBtn("tCtrl", "Controls", TOG_W, tog, [activeDiagram, statusLabel]() {
+    addBtn("tCtrl", Tr("Controls"), TOG_W, tog, [activeDiagram, statusLabel]() {
         if (!*activeDiagram) return;
         auto cfg = (*activeDiagram)->GetControlsConfig();
         (*activeDiagram)->SetControlsVisible(!cfg.visible);
-        if (statusLabel) statusLabel->SetText(std::string("Controls: ") +
-            (!cfg.visible ? "on" : "off"));
+        if (statusLabel) statusLabel->SetText(!cfg.visible ? Tr("Controls: on") : Tr("Controls: off"));
     });
-    addBtn("tSnap", "Snap", B_W, tog, [activeDiagram, statusLabel]() {
+    addBtn("tSnap", Tr("Snap"), B_W, tog, [activeDiagram, statusLabel]() {
         if (!*activeDiagram) return;
         bool now = !(*activeDiagram)->IsSnapToGridEnabled();
         (*activeDiagram)->SetSnapToGrid(now);
-        if (statusLabel) statusLabel->SetText(std::string("Snap: ") + (now ? "on" : "off"));
+        if (statusLabel) statusLabel->SetText(now ? Tr("Snap: on") : Tr("Snap: off"));
     });
-    addBtn("tAlign", "Align Lines", TOG_W + 12, tog, [activeDiagram, statusLabel]() {
+    addBtn("tAlign", Tr("Align Lines"), TOG_W + 12, tog, [activeDiagram, statusLabel]() {
         if (!*activeDiagram) return;
         bool now = !(*activeDiagram)->IsAlignmentGuidesEnabled();
         (*activeDiagram)->SetAlignmentGuidesEnabled(now);
-        if (statusLabel) statusLabel->SetText(std::string("Alignment guides: ") + (now ? "on" : "off"));
+        if (statusLabel) statusLabel->SetText(now ? Tr("Alignment guides: on") : Tr("Alignment guides: off"));
     });
 
     DemoKit::Add(card, buttonBar);
@@ -1751,37 +1753,35 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
         d->onSelectionChange = [sl](const std::vector<std::string>& nodes,
                                      const std::vector<std::string>& links) {
             if (auto s = sl.lock()) {
-                std::ostringstream os;
-                os << "Selection: " << nodes.size() << " node(s), "
-                   << links.size() << " link(s)";
-                s->SetText(os.str());
+                s->SetText(TrF("Selection: {0}, {1}",
+                               TrN("{n} node", "{n} nodes", static_cast<long long>(nodes.size())),
+                               TrN("{n} link", "{n} links", static_cast<long long>(links.size()))));
             }
         };
         d->onHistoryChange = [sl, d = d.get()]() {
             if (auto s = sl.lock()) {
-                std::ostringstream os;
-                os << "History: undo " << d->GetUndoStackSize()
-                   << " | redo " << d->GetRedoStackSize();
-                s->SetText(os.str());
+                s->SetText(TrF("History: undo {0} | redo {1}",
+                               d->GetUndoStackSize(), d->GetRedoStackSize()));
             }
         };
         d->onNodeDoubleClick = [sl](const std::string& nodeId) {
-            if (auto s = sl.lock()) s->SetText("Double-clicked node: " + nodeId);
+            if (auto s = sl.lock()) s->SetText(TrF("Double-clicked node: {0}", nodeId));
         };
         d->onConnectionRejected = [sl](const CompositorSocketSpec& src,
                                          const CompositorSocketSpec& dst) {
             if (auto s = sl.lock()) {
-                s->SetText("Connection rejected: socket types incompatible (" +
-                           src.label + " -> " + dst.label + ")");
+                s->SetText(TrF("Connection rejected: socket types incompatible ({0} -> {1})",
+                               src.label, dst.label));
             }
         };
         d->onPaletteRequested = [sl, d = d.get()](double wx, double wy) {
             if (auto s = sl.lock()) {
-                std::ostringstream os;
                 auto ids = d->SearchTemplates("");
-                os << "Palette requested at (" << (int)wx << ", " << (int)wy
-                   << ") - " << ids.size() << " templates available";
-                s->SetText(os.str());
+                s->SetText(LocalisationDetail::Substitute(
+                    TrN("Palette requested at ({0}, {1}) - {n} template available",
+                        "Palette requested at ({0}, {1}) - {n} templates available",
+                        static_cast<long long>(ids.size())),
+                    {std::to_string(static_cast<int>(wx)), std::to_string(static_cast<int>(wy))}));
             }
         };
     }
