@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.9.0 - the input elements: checkbox, radio, segmented control, spinner, stepper, rating, the date and time pickers
 // Version: 1.8.0 - following by default (SetFollowThemeByDefault), the SetStyle rule, fonts by role in the readers
 // Version: 1.7.0 - fonts and text roles, the high-contrast presets, DeriveAccent and FromHost
 // Version: 1.6.0 - the contrast the presets keep
@@ -18,6 +19,14 @@
 #include "UltraCanvasHostAppearance.h"
 #include "UltraCanvasAlbum.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
+#include "UltraCanvasDatePicker.h"
+#include "UltraCanvasRadio.h"
+#include "UltraCanvasRating.h"
+#include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasSpinner.h"
+#include "UltraCanvasStepper.h"
+#include "UltraCanvasTimePicker.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
@@ -231,6 +240,80 @@ int main() {
           && Near(dialogStyle.messageFontSize, own.FontSize(ThemeTextRole::Body), 1e-6) && dialogStyle.buttonFontSize == 19.f,
           "modal dialog: the message in ink at the body size, the details muted; the base's button size stays");
 
+    std::printf("FromTheme for the input elements\n");
+    {
+        const double bodySize = own.FontSize(ThemeTextRole::Body);
+        CheckboxVisualStyle cbBase;
+        cbBase.boxSize = 20;
+        cbBase.base.textSpacing = 9;
+        const CheckboxVisualStyle cb = CheckboxVisualStyle::FromTheme(own, cbBase);
+        CHECK(Same(cb.boxColor, r.well) && Same(cb.boxBorderColor, r.lineStrong) && Same(cb.boxHoverColor, r.hover) && Same(cb.boxPressedColor, r.pressed)
+              && Same(cb.boxDisabledColor, r.panel) && Same(cb.boxBorderDisabledColor, r.line), "checkbox: the well with the control border, hover, pressed, the panel disabled");
+        CHECK(Same(cb.checkmarkColor, r.accent) && Same(cb.checkmarkHoverColor, r.accent) && Same(cb.checkmarkDisabledColor, r.inkFaint)
+              && Same(cb.base.textColor, r.ink) && Same(cb.base.textDisabledColor, r.inkFaint) && Same(cb.base.focusRingColor, r.focus.WithAlpha(128)),
+              "checkbox: the mark in the accent, the label in ink, the focus ring");
+        CHECK(cb.base.fontFamily == own.fonts.ui.fontFamily && Near(cb.base.fontSize, bodySize, 1e-6) && cb.boxSize == 20 && cb.base.textSpacing == 9,
+              "checkbox: the body font; the base's box size and spacing stay");
+        UltraCanvasTheme marked = own;
+        marked.SetRole("checkbox.mark", Color(1, 2, 3));
+        marked.SetRole("radio.dot", Color(4, 5, 6));
+        CHECK(Same(CheckboxVisualStyle::FromTheme(marked).checkmarkColor, Color(1, 2, 3)) && Same(RadioVisualStyle::FromTheme(marked).innerDotColor, Color(4, 5, 6)),
+              "the element roles checkbox.mark and radio.dot are honoured");
+        const RadioVisualStyle rd = RadioVisualStyle::FromTheme(own);
+        CHECK(Same(rd.outerColor, r.well) && Same(rd.outerBorderColor, r.lineStrong) && Same(rd.outerHoverColor, r.hover) && Same(rd.outerDisabledColor, r.panel)
+              && Same(rd.innerDotColor, r.accent) && Same(rd.innerDotDisabledColor, r.inkFaint) && Same(rd.base.textColor, r.ink),
+              "radio: the ring from the well, the dot in the accent, the label in ink");
+        const SegmentedControlStyle sg = SegmentedControlStyle::FromTheme(own);
+        CHECK(Same(sg.normalColor, r.raised) && Same(sg.selectedColor, r.accent) && Same(sg.hoverColor, r.hover) && Same(sg.disabledColor, r.panel)
+              && Same(sg.normalTextColor, r.ink) && Same(sg.selectedTextColor, r.onAccent) && Same(sg.disabledTextColor, r.inkFaint)
+              && Same(sg.borderColor, r.lineStrong) && Same(sg.separatorColor, r.line) && Near(sg.fontSize, bodySize, 1e-6),
+              "segmented control: raised segments, the selected one in the accent, the body font");
+        const SpinnerVisualStyle sp = SpinnerVisualStyle::FromTheme(own);
+        CHECK(Same(sp.backgroundColor, r.well) && Same(sp.borderColor, r.lineStrong) && Same(sp.focusBorderColor, r.focus) && Same(sp.textColor, r.ink)
+              && Same(sp.caretColor, r.ink) && Same(sp.disabledBackgroundColor, r.panel) && Same(sp.disabledTextColor, r.inkFaint),
+              "spinner: the field from the well, the focus ring, ink");
+        CHECK(Same(sp.buttonColor, r.raised) && Same(sp.buttonHoverColor, r.hover) && Same(sp.buttonPressedColor, r.pressed) && Same(sp.buttonBorderColor, r.line)
+              && Same(sp.glyphColor, r.inkMuted) && Same(sp.glyphDisabledColor, r.inkFaint) && Near(sp.fontStyle.fontSize, bodySize, 1e-9),
+              "spinner: raised step buttons with muted glyphs, the body font");
+        const StepperStyle st = StepperStyle::FromTheme(own);
+        CHECK(Same(st.completedColor, r.accent) && Same(st.activeColor, r.accent) && Same(st.upcomingColor, r.lineStrong) && Same(st.errorColor, r.danger)
+              && Same(st.markerBackground, r.raised) && Same(st.completedGlyphColor, r.onAccent) && Same(st.upcomingGlyphColor, r.inkMuted)
+              && Same(st.connectorColor, r.line) && Same(st.connectorCompletedColor, r.accent), "stepper: markers and connectors from the accent, danger for an error");
+        CHECK(Same(st.titleColor, r.ink) && Same(st.activeTitleColor, r.accent) && Same(st.descriptionColor, r.inkMuted) && Same(st.disabledTextColor, r.inkFaint)
+              && Near(st.titleFontSize, bodySize, 1e-6) && Near(st.descriptionFontSize, own.FontSize(ThemeTextRole::Caption), 1e-6)
+              && Same(st.errorGlyphColor, StepperStyle().errorGlyphColor), "stepper: titles at the body size, descriptions at the caption size, the error glyph its own");
+        RatingStyle rtBase;
+        rtBase.symbolSize = 40;
+        const RatingStyle rt = RatingStyle::FromTheme(own, rtBase);
+        CHECK(Same(rt.offColor, r.lineStrong) && Same(rt.onColor, RatingStyle().onColor) && Same(rt.hoverColor, RatingStyle().hoverColor) && rt.symbolSize == 40
+              && Near(rt.fontStyle.fontSize, bodySize, 1e-9), "rating: empty symbols from the control border, the amber kept, the base's size");
+        UltraCanvasTheme starred = own;
+        starred.SetRole("rating.on", Color(7, 8, 9));
+        CHECK(Same(RatingStyle::FromTheme(starred).onColor, Color(7, 8, 9)), "the element role rating.on is honoured");
+        const CalendarStyle cal = CalendarStyle::FromTheme(own);
+        CHECK(Same(cal.backgroundColor, r.raised) && Same(cal.borderColor, r.line) && Same(cal.headerTextColor, r.ink) && Same(cal.navArrowColor, r.inkMuted)
+              && Same(cal.weekdayTextColor, r.inkMuted) && Same(cal.cellTextColor, r.ink) && Same(cal.adjacentMonthColor, r.inkFaint) && Same(cal.hoverColor, r.hover),
+              "calendar: the raised panel, ink for the cells, muted and faint ink around them");
+        CHECK(Same(cal.selectedColor, r.accent) && Same(cal.selectedTextColor, r.onAccent) && Same(cal.todayBorderColor, r.accent) && Same(cal.focusBorderColor, r.focus)
+              && Same(cal.rangeFillColor, r.accentSoft) && Same(cal.blockedStrikeColor, r.danger.WithAlpha(200)) && Same(cal.footerTextColor, r.accent)
+              && Same(cal.weekendTextColor, CalendarStyle().weekendTextColor) && Near(cal.fontSize, bodySize, 1e-6) && Near(cal.headerFontSize, bodySize, 1e-6),
+              "calendar: the selection, today and the footer from the accent, the weekend colour kept, the body font");
+        DatePickerStyle dpBase;
+        dpBase.calendarStyle.cellWidth = 50;
+        const DatePickerStyle dp = DatePickerStyle::FromTheme(own, dpBase);
+        CHECK(Same(dp.backgroundColor, r.well) && Same(dp.borderColor, r.lineStrong) && Same(dp.focusBorderColor, r.focus) && Same(dp.textColor, r.ink)
+              && Same(dp.placeholderColor, r.inkFaint) && Same(dp.iconColor, r.inkMuted) && Same(dp.caretColor, r.ink) && Same(dp.disabledColor, r.panel)
+              && Same(dp.calendarStyle.selectedColor, r.accent) && dp.calendarStyle.cellWidth == 50 && Near(dp.fontSize, bodySize, 1e-6),
+              "date picker: the field from the well, its calendar from the theme over the base's metrics");
+        const TimePickerStyle tp = TimePickerStyle::FromTheme(own);
+        CHECK(Same(tp.backgroundColor, r.well) && Same(tp.borderColor, r.lineStrong) && Same(tp.textColor, r.ink) && Same(tp.popupBackgroundColor, r.raised)
+              && Same(tp.popupBorderColor, r.line) && Same(tp.separatorTextColor, r.inkMuted) && Same(tp.footerTextColor, r.accent),
+              "time picker: the field from the well, the popup raised with a hairline");
+        CHECK(Same(tp.clockHeaderColor, r.accent) && Same(tp.clockHeaderTextColor, r.onAccent) && Same(tp.clockFaceColor, r.pressed) && Same(tp.clockNumberColor, r.ink)
+              && Same(tp.clockSelectionColor, r.accent) && Same(tp.clockSelectionTextColor, r.onAccent) && tp.clockHeaderFontSize == TimePickerStyle().clockHeaderFontSize
+              && Near(tp.fontSize, bodySize, 1e-6), "time picker: the clock's header and selection in the accent, its face the pressed fill, the header size kept");
+    }
+
     std::printf("Menu and tooltip from the roles\n");
     const MenuStyle menu = MenuStyle::FromTheme(own);
     CHECK(Same(menu.backgroundColor, r.raised) && Same(menu.borderColor, r.line) && Same(menu.hoverColor, r.hover) && Same(menu.textColor, r.ink) &&
@@ -327,6 +410,29 @@ int main() {
         CHECK(Same(freshInput->GetStyle().backgroundColor, dark.roles.well) && Same(freshSlider->GetStyle().activeTrackColor, dark.roles.accent)
               && Same(freshSwitch->GetVisualStyle().trackOnColor, dark.roles.accent) && Same(freshPick->GetStyle().normalColor, dark.roles.raised),
               "a new text input, slider, switch and dropdown are styled from the theme");
+        auto freshBox = std::make_shared<UltraCanvasCheckbox>("fresh-box", "Box");
+        auto freshRadio = std::make_shared<UltraCanvasRadio>("fresh-radio", 0, 0, 100, 24, "Radio");
+        auto freshSeg = std::make_shared<UltraCanvasSegmentedControl>("fresh-seg", 0, 0, 200, 24);
+        auto freshSpin = std::make_shared<UltraCanvasSpinner>("fresh-spin", 0, 0, 100, 24);
+        auto freshStep = std::make_shared<UltraCanvasStepper>("fresh-step", 0, 0, 300, 60);
+        auto freshStars = std::make_shared<UltraCanvasRating>("fresh-stars", 0, 0, 160, 32);
+        auto freshCal = std::make_shared<UltraCanvasCalendarView>("fresh-cal");
+        auto freshDate = std::make_shared<UltraCanvasDatePicker>("fresh-date");
+        auto freshTime = std::make_shared<UltraCanvasTimePicker>("fresh-time");
+        auto freshClock = std::make_shared<UltraCanvasTimeClockView>("fresh-clock", 0, 0, 200, 200);
+        CHECK(freshBox->GetFollowTheme() && Same(freshBox->GetVisualStyle().boxColor, dark.roles.well) && Same(freshRadio->GetVisualStyle().innerDotColor, dark.roles.accent)
+              && Same(freshSeg->GetStyle().selectedColor, dark.roles.accent) && Same(freshSpin->GetStyle().backgroundColor, dark.roles.well)
+              && Same(freshStep->GetStyle().activeColor, dark.roles.accent) && Same(freshStars->GetStyle().offColor, dark.roles.lineStrong),
+              "a new checkbox, radio, segmented control, spinner, stepper and rating are styled from the theme");
+        CHECK(freshCal->GetFollowTheme() && Same(freshCal->GetStyle().cellTextColor, dark.roles.ink) && Same(freshDate->GetStyle().backgroundColor, dark.roles.well)
+              && Same(freshDate->GetCalendar()->GetStyle().selectedColor, dark.roles.accent) && Same(freshTime->GetStyle().clockHeaderColor, dark.roles.accent)
+              && Same(freshClock->GetStyle().clockNumberColor, dark.roles.ink), "so are a new calendar, date picker (its calendar with it), time picker and clock view");
+        freshBox->SetVisualStyle(CheckboxVisualStyle());
+        freshSeg->SetStyle(SegmentedControlStyle());
+        freshSpin->SetStyle(SpinnerVisualStyle());
+        freshDate->SetStyle(DatePickerStyle());
+        CHECK(!freshBox->GetFollowTheme() && !freshSeg->GetFollowTheme() && !freshSpin->GetFollowTheme() && !freshDate->GetFollowTheme(),
+              "a hand-set style stops their following too");
         // a style set by hand stops the following; the look is kept
         ButtonStyle own;
         own.normalColor = ownRest;
