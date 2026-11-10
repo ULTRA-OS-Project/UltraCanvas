@@ -20,7 +20,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.12.0 - the badge, card, chip and tag input, collapsible panel, sidebar, busy indicator, auto-complete, new-document dialog and reference point picker read the theme, the spell-check and clipboard row styles too (T4, fifth part)
+**Version:** 1.13.0 - the media elements and the viewers read the theme: the audio and video players and recorders, the video tile, the slideshow, the font viewer and the curve editor (T4, sixth and last part)
 **Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
@@ -36,8 +36,10 @@ filer widget - and the containers and pickers - the container's
 scrollbars, group box, breadcrumb, pagination, the colour picker, swatch
 bar and palette manager, the rich text edit - and the badge, card, chip
 and tag input, collapsible panel, sidebar, busy indicator, auto-complete,
-new-document dialog and reference point picker - through a `FromTheme` on
-their style struct and an `ApplyTheme` on the element; the tabbed
+new-document dialog and reference point picker - and the media elements
+and viewers - the audio and video players and recorders, the video tile,
+the slideshow, the font viewer and the curve editor - through a
+`FromTheme` on their style struct and an `ApplyTheme` on the element; the tabbed
 container, the text area and the tree view through `ApplyTheme` alone;
 the spell check's marks and the clipboard history's rows through a
 `FromTheme` their host applies; the menu
@@ -47,8 +49,9 @@ dark menu or tooltip agrees with the rest of a dark window. Under the
 policy (`FollowHost`, the default, `Light` or `Dark`) every new element
 follows the theme: it is styled from the current theme as it is built and
 again on every change. Styled by hand (`SetStyle`) it keeps its look, as
-before. The readers set their fonts by role as well as their colours; the
-media elements and the viewers are the rest of T4.
+before. The readers set their fonts by role as well as their colours.
+Every style struct with colours now reads the theme: T4 of the proposal is
+complete.
 
 ## The roles
 
@@ -239,8 +242,14 @@ border), a columns tree's section header (`columns-tree.group-header`,
 `filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`),
 the colour picker's markers (`color-picker.marker`,
 `color-picker.marker-outline`, white and black), the rich text edit's
-paper (`rich-text.page`, the well) and the busy indicator's second arc
-(`busy-indicator.second-arc`, its orange).
+paper (`rich-text.page`, the well), the busy indicator's second arc
+(`busy-indicator.second-arc`, its orange), the recorder's pulse
+(`audio-recorder.pulse`, its red), the video player's, recorder's and
+tile's dark stages and bars (`video-player.stage`,
+`video-player.control-bar`, `video-recorder.stage`,
+`video-recorder.control-bar`, `video-tile.stage`, `video-tile.caption`),
+the slideshow's stage (`slideshow.stage`, its black) and the curve
+editor's identity line (`curve-editor.diagonal`, its red).
 
 ```cpp
 UltraCanvasTheme brand = UltraCanvasTheme::Light();
@@ -282,9 +291,10 @@ stepper's titles too; a heading label, a card's title and the
 new-document dialog's title at `Heading`; the tooltip, a slider's value,
 a dialog's details, a stepper's descriptions, a list's header, the
 filer's small text, the palette manager, the badge, the collapsible
-panel's detail and the sidebar's sections and badges at `Caption`, the
-dialog's message at `Body`, the tab titles at `Caption`; the rich text
-edit keeps the document's fonts; the album, the timecode field and
+panel's detail, the sidebar's sections and badges, the video tile's
+caption and the font viewer's captions at `Caption`, the dialog's message
+at `Body`, the tab titles at `Caption`; the rich text edit keeps the
+document's fonts, the slideshow its display sizes; the album, the timecode field and
 the timeline take the families only (their sizes are pixels of a design).
 The style struct's own literal stays the default of an element styled by
 hand, as the colour defaults do. The text area keeps its font: it is the

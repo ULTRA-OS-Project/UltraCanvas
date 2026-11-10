@@ -18,6 +18,7 @@ Cross-platform audio **playback** and **recording** for UltraCanvas.
 - [Visual elements](#visual-elements)
   - [`UltraCanvasAudioPlayerElement`](#ultracanvasaudioplayerelement)
   - [`UltraCanvasAudioRecorderElement`](#ultracanvasaudiorecorderelement)
+  - [Following the theme](#following-the-theme)
 - [Build](#build)
 - [Architecture notes](#architecture-notes)
 
@@ -317,6 +318,28 @@ useful for "record → review → save" flows.
 
 Factories: `CreateAudioRecorder`, `CreateCompactAudioRecorder`,
 `CreateAudioRecorderWithPlayback`.
+
+### Following the theme
+
+`AudioPlayerStyle::FromTheme` and `AudioRecorderStyle::FromTheme` put the
+framework theme's roles (`UltraCanvasTheme.md`) over a base style's shape
+and flags: the panel bar with a hairline, the pressed fill for the track
+and the accent for its fill, the raised surface with the control border for
+the knob, ink, the icons in muted ink and the accent hovered; danger for the
+record button (its pulse keeps its red unless the theme names
+`audio-recorder.pulse`), the pressed fill behind the level meter whose
+green, amber and red keep their meaning, faint ink disabled. Under the
+theme policy a new bar follows the theme by itself (`ApplyTheme`); a
+`SetStyle` by hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasAudioPlayerElement>("player", 0, 0, 480, 48);
+AudioPlayerStyle compact = bar->GetStyle();
+compact.compact = true;
+bar->SetStyle(AudioPlayerStyle::FromTheme(UltraCanvasTheme::Current(), compact));
+bar->SetFollowTheme(true);
+AudioRecorderStyle recorder = AudioRecorderStyle::FromTheme();   // the current theme over the default shape
+```
 
 ## Build
 

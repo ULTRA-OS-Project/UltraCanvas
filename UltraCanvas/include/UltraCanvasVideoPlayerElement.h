@@ -1,7 +1,9 @@
 // include/UltraCanvasVideoPlayerElement.h
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
+// Version: 0.2.0 - VideoPlayerStyle::FromTheme, ApplyTheme: the player takes the theme's accent; a SetStyle by
+//                  hand stops the following
 // Version: 0.1.6
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-10
 // V0.1.6: VideoPlayerStyle::showSafeArea draws a dashed title-safe guide
 //   (safeAreaInset of the picture in from each edge, safeAreaColor) over it;
 //   zoomReferenceHeight makes a Pixels zoom relative to a picture of that
@@ -63,6 +65,15 @@ struct VideoPlayerStyle {
     bool  autoHideControls = true;     // fade the bar out while playing + idle
     bool  showControls = true;
     int   targetFps = 30;              // frame-pull / redraw cadence
+
+    // A player is a dark stage with a translucent bar whatever the window:
+    // the theme gives it the accent for the progress fill and the hovered
+    // icons; the stage and the bar are the element roles
+    // "video-player.stage" and "video-player.control-bar" where a theme
+    // names them, else the base's own
+    static VideoPlayerStyle FromTheme(const UltraCanvasTheme& theme, const VideoPlayerStyle& base);
+    static VideoPlayerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, VideoPlayerStyle()); }
+    static VideoPlayerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== VIDEO PLAYER UI ELEMENT =====
@@ -95,6 +106,7 @@ public:
 
     // ===== STYLE =====
     void SetStyle(const VideoPlayerStyle& s);
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(VideoPlayerStyle::FromTheme(theme, style)); }
     const VideoPlayerStyle& GetStyle() const { return style; }
 
     // ===== ACCESS =====

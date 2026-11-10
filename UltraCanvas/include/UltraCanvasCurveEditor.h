@@ -9,6 +9,8 @@
 // The element is framework-wide, not viewer-specific: the media viewer's Curves
 // dialog is one caller, a paint tool or a colour ramp editor is the next.
 //
+// Version: 1.2.0 - CurveEditorStyle::FromTheme, ApplyTheme: the editor follows the theme; a SetStyle by hand stops
+//                  the following
 // Version: 1.1.0 - SetHistograms takes an ImageHistogram (UltraCanvasHistogramModel)
 // Version: 1.0.0
 // Last Modified: 2026-11-10
@@ -48,6 +50,15 @@ struct CurveEditorStyle {
 
     static CurveEditorStyle Default() { return CurveEditorStyle(); }
     static CurveEditorStyle Dark();
+    // The theme's roles over a base's own metrics: the well with the
+    // control border and hairline grid, the curve in ink with raised points
+    // outlined in ink, the accent for the selected point and the focus
+    // ring, faint ink at the base's alpha for the histogram; the identity
+    // line keeps its red unless a theme names "curve-editor.diagonal".
+    // Without a base: Dark() or Default() by the theme's flag
+    static CurveEditorStyle FromTheme(const UltraCanvasTheme& theme, const CurveEditorStyle& base);
+    static CurveEditorStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, theme.dark ? Dark() : Default()); }
+    static CurveEditorStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== THE CURVE EDITING ELEMENT =====
@@ -113,7 +124,8 @@ public:
 
     // ===== STYLE =====
     const CurveEditorStyle& GetStyle() const { return style; }
-    void SetStyle(const CurveEditorStyle& s) { style = s; RequestRedraw(); }
+    void SetStyle(const CurveEditorStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(CurveEditorStyle::FromTheme(theme, style)); }
 
     // ===== CALLBACKS =====
     // Fired for every change while editing (live preview), including each step
