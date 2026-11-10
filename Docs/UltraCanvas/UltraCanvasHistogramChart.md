@@ -32,7 +32,10 @@ every channel shown, with their share of the pixels, and draws a thin rule
 through the level. In `Combined`, the legend switches a channel off and on.
 
 The counting lives in a UI-free model, `UltraCanvasHistogramModel.h`, which a
-program can use without drawing anything.
+program can use without drawing anything. It is part of the core library, not
+of the charts, so it is there in a build without them: the Curves dialog
+counts its histogram backdrop with it too (see
+[UltraCanvasCurveEditor.md](UltraCanvasCurveEditor.md#filling-the-histogram)).
 
 ## Quick start
 
@@ -65,6 +68,8 @@ ARGB32 (un-premultiplied first, so a half-transparent red counts as red), its
 opaque XRGB32, or plain RGBA8 and RGB8 bytes:
 
 ```cpp
+#include "UltraCanvasHistogramModel.h"
+
 std::vector<uint8_t> rgba(640 * 480 * 4);                // from a camera, a decoder, ...
 ImageHistogram counts = ComputeImageHistogram(rgba.data(), 640, 480, 640 * 4,
                                               HistogramPixelFormat::RGBA8);
@@ -74,6 +79,18 @@ HistogramStatistics luma = counts.Statistics(HistogramChannel::Luminosity);
 // luma.shadowsClipped and luma.highlightsClipped (shares of the pixels at 0 and 255)
 int fifth = counts.Percentile(HistogramChannel::Luminosity, 0.05);
 histogram->SetHistogram(counts);
+```
+
+A large picture can be counted a strip of rows at a time, the strips added
+with `Add`; `RgbTotal()` gives red, green and blue added level by level, the
+values a curve applied to all three channels maps:
+
+```cpp
+ImageHistogram whole;
+for (int top = 0; top < 480; top += 120)
+    whole.Add(ComputeImageHistogram(rgba.data() + top * 640 * 4, 640, 120, 640 * 4,
+                                    HistogramPixelFormat::RGBA8));
+std::array<uint64_t, 256> allChannels = whole.RgbTotal();
 ```
 
 ## Appearance and interaction
@@ -101,7 +118,9 @@ pointer.
 ## Tests
 
 `Tests/HistogramModelTest.cpp` counts every pixel layout, premultiplied and
-transparent pixels, luminosity, statistics and percentiles.
+transparent pixels, luminosity, statistics and percentiles, adding strips and
+the red-green-blue total. `Tests/CurveHistogramTest.cpp` fills the Curves
+backdrop from it.
 `Tests/HistogramChartRenderTest.cpp` draws Combined and each channel, the
 logarithmic scale, the hover read-out and the legend, and counts a decoded
 picture through `SetImage`.

@@ -766,4 +766,7 @@ compare against the original); *Cancel*, or closing the window, restores the
 curves the viewer had. The button is there only for bitmap images (see
 [Tools per kind of file](#tools-per-kind-of-file)); browsing on to a file the
 curves do not apply to leaves an open dialog without a histogram rather than
-with the previous picture's.
+with the previous picture's. The histogram is the picture's own, in sRGB at
+8 bits a channel (the levels the curves map), counted by
+`UltraCanvasHistogramModel` as UltraPaint counts its Curves histogram;
+transparent pixels are left out.

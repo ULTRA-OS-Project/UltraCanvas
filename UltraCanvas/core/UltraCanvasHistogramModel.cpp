@@ -1,10 +1,11 @@
-// Plugins/Charts/Engine/Charts/UltraCanvasHistogramModel.cpp
+// core/UltraCanvasHistogramModel.cpp
 // The UI-free model of the image histogram.
+// Version: 1.1.0 - moved to the core library; Add, RgbTotal
 // Version: 1.0.0
 // Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
-#include "Plugins/Charts/Engine/Charts/UltraCanvasHistogramModel.h"
+#include "UltraCanvasHistogramModel.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -63,6 +64,20 @@ HistogramStatistics ImageHistogram::Statistics(HistogramChannel channel) const {
     s.shadowsClipped = static_cast<double>(b[0]) / count;
     s.highlightsClipped = static_cast<double>(b[255]) / count;
     return s;
+}
+
+ImageHistogram& ImageHistogram::Add(const ImageHistogram& other) {
+    for (size_t c = 0; c < bins.size(); ++c)
+        for (size_t level = 0; level < 256; ++level) bins[c][level] += other.bins[c][level];
+    pixelCount += other.pixelCount;
+    return *this;
+}
+
+std::array<uint64_t, 256> ImageHistogram::RgbTotal() const {
+    std::array<uint64_t, 256> total{};
+    for (size_t level = 0; level < 256; ++level)
+        total[level] = bins[0][level] + bins[1][level] + bins[2][level];
+    return total;
 }
 
 ImageHistogram ComputeImageHistogram(const uint8_t* pixels, int width, int height, int strideBytes,

@@ -19,7 +19,7 @@
 #pragma once
 
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
-#include "Plugins/Charts/Engine/Charts/UltraCanvasHistogramModel.h"
+#include "UltraCanvasHistogramModel.h"
 #include <functional>
 #include <memory>
 #include <string>

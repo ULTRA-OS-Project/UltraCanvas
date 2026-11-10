@@ -1,4 +1,4 @@
-// include/Plugins/Charts/Engine/Charts/UltraCanvasHistogramModel.h
+// include/UltraCanvasHistogramModel.h
 // The UI-free model of the image histogram: how many pixels of a picture
 // have each of the 256 levels of red, green, blue and luminosity, and the
 // statistics a photo editor shows beside it.
@@ -10,8 +10,13 @@
 // Luminosity is Rec. 601 luma (0.299 R + 0.587 G + 0.114 B), the weighting
 // photo editors' luminosity histograms use.
 //
+// It lives in the core library, not with the charts, because more than the
+// chart counts pixels with it: the Curves dialog's histogram backdrop
+// (UltraCanvasCurveEditor::SetHistograms), filled by the media viewer and by
+// UltraPaint, uses it too, and the core builds without the charts.
 // UltraCanvasHistogramChart draws it. Guide: Docs/UltraCanvas/UltraCanvasHistogramChart.md
 //
+// Version: 1.1.0 - moved to the core library; Add, RgbTotal
 // Version: 1.0.0
 // Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
@@ -61,6 +66,14 @@ struct ImageHistogram {
     // The level below which `fraction` (0..1) of the pixels lie.
     int Percentile(HistogramChannel channel, double fraction) const;
     HistogramStatistics Statistics(HistogramChannel channel) const;
+
+    // Adds another histogram's counts to this one - a picture counted a
+    // strip at a time.
+    ImageHistogram& Add(const ImageHistogram& other);
+    // Red, green and blue added level by level: how many channel values of
+    // all three sit at each level - the levels a curve applied to all three
+    // channels at once (the Curves dialog's RGB curve) works on.
+    std::array<uint64_t, 256> RgbTotal() const;
 };
 
 // The luminosity level of a colour: Rec. 601 luma, rounded.

@@ -1,6 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.23.1 - the Curves dialog's histogram is counted by UltraCanvasHistogramModel, as
+//                   UltraPaint's is; transparent pixels are left out
 // Version: 1.23.0 - copying text: a press in the text view or the Details panel focuses
 //                   the widget; Ctrl+C / Ctrl+Insert copy the selection (by key code, not
 //                   the character Ctrl turns into a control code), Ctrl+A selects all
@@ -51,7 +53,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -4048,10 +4050,7 @@ void UltraCanvasMediaViewer::ResetAdjustments() {
 void UltraCanvasMediaViewer::FillCurveHistograms(UltraCanvasCurvesDialog& dialog) const {
     // The previous picture's histogram goes first: a file the curves do not
     // apply to (a drawing, a video, a PDF) gets none rather than a stale one.
-    for (ToneCurveChannel channel : { ToneCurveChannel::RGB, ToneCurveChannel::Red,
-                                      ToneCurveChannel::Green, ToneCurveChannel::Blue }) {
-        dialog.SetHistogram(channel, {});
-    }
+    dialog.SetHistograms(ImageHistogram());
     if (!tools.colour) return;
 #ifdef HAS_LIBVIPS
     if (!surface) return;
@@ -4061,27 +4060,31 @@ void UltraCanvasMediaViewer::FillCurveHistograms(UltraCanvasCurvesDialog& dialog
         vips::VImage v = img->GetVImage();
         PixelFX::PFXImage p(v);
         // Histograms describe the tones the curve maps, so they are taken in
-        // sRGB — the space the lookup tables are applied in.
-        p = PixelFX::Colour::ToSrgb(p);
-        PixelFX::PFXImage hist = PixelFX::Colour::HistFind(p);
-        if (hist.bands() <= 0) return;
-
-        std::vector<uint32_t> master(256, 0), red(256, 0), green(256, 0), blue(256, 0);
-        for (int level = 0; level < 256; ++level) {
-            std::vector<double> counts = PixelFX::Arithmetic::GetPoint(hist, level, 0);
-            if (counts.empty()) continue;
-            double r = counts[0];
-            double g = counts.size() > 1 ? counts[1] : counts[0];
-            double b = counts.size() > 2 ? counts[2] : counts[0];
-            red[level]    = static_cast<uint32_t>(std::max(0.0, r));
-            green[level]  = static_cast<uint32_t>(std::max(0.0, g));
-            blue[level]   = static_cast<uint32_t>(std::max(0.0, b));
-            master[level] = red[level] + green[level] + blue[level];
+        // sRGB, 8 bits a channel - the space and the levels the lookup tables
+        // are applied in.
+        p = PixelFX::Conversion::CastUchar(PixelFX::Colour::ToSrgb(p));
+        HistogramPixelFormat format;
+        if (p.Bands() >= 4) {
+            p = PixelFX::Colour::ExtractBand(p, 0, 4);       // red, green, blue, alpha
+            format = HistogramPixelFormat::RGBA8;
+        } else if (p.Bands() == 3) {
+            format = HistogramPixelFormat::RGB8;
+        } else {
+            return;
         }
-        dialog.SetHistogram(ToneCurveChannel::RGB,   master);
-        dialog.SetHistogram(ToneCurveChannel::Red,   red);
-        dialog.SetHistogram(ToneCurveChannel::Green, green);
-        dialog.SetHistogram(ToneCurveChannel::Blue,  blue);
+        // Counted by UltraCanvasHistogramModel - the counting UltraPaint's
+        // Curves dialog uses too - a strip of rows at a time, so a large
+        // photograph is never copied out whole.
+        const int width = p.Width(), height = p.Height(), bytesPerPixel = p.Bands();
+        constexpr int kStripRows = 256;
+        ImageHistogram histogram;
+        for (int top = 0; top < height; top += kStripRows) {
+            const int rows = std::min(kStripRows, height - top);
+            const std::vector<uint8_t> strip =
+                PixelFX::Conversion::ToMemory(PixelFX::Conversion::ExtractArea(p, 0, top, width, rows));
+            histogram.Add(ComputeImageHistogram(strip.data(), width, rows, width * bytesPerPixel, format));
+        }
+        dialog.SetHistograms(histogram);
     } catch (...) {
         // A colourspace the histogram pass cannot handle simply leaves the
         // curve grid without its backdrop.

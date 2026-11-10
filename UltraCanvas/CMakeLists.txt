@@ -673,6 +673,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # Tone curve model + interactive curve editor (Curves dialog, image tools)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToneCurve.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCurveEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHistogramModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCurvesDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasMetadataDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasModelViewDialog.cpp
@@ -951,7 +952,6 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasHistogramModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp

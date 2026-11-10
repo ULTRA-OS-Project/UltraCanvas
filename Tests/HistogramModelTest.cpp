@@ -1,13 +1,14 @@
 // Tests/HistogramModelTest.cpp
 // Unit tests for the image histogram model: counting each pixel layout,
 // premultiplied alpha, transparent pixels, luminosity, the statistics and the
-// percentiles. UI-free.
+// percentiles, adding counts and the red-green-blue total. UI-free.
 //
+// Version: 1.1.0 - Add, RgbTotal; the model is in the core library
 // Version: 1.0.0
 // Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
-#include "Plugins/Charts/Engine/Charts/UltraCanvasHistogramModel.h"
+#include "UltraCanvasHistogramModel.h"
 
 #include <cmath>
 #include <cstdint>
@@ -114,6 +115,24 @@ static void TestStatistics() {
     CHECK(none.count == 0 && none.mean == 0.0, "an empty histogram has empty statistics");
 }
 
+static void TestAddAndTotal() {
+    std::printf("\n[Adding counts, the red-green-blue total]\n");
+    const uint8_t top[6] = {10, 20, 30, 10, 10, 10};
+    const uint8_t bottom[3] = {30, 20, 10};
+    ImageHistogram whole = ComputeImageHistogram(top, 2, 1, 6, HistogramPixelFormat::RGB8);
+    whole.Add(ComputeImageHistogram(bottom, 1, 1, 3, HistogramPixelFormat::RGB8));
+    const uint8_t together[9] = {10, 20, 30, 10, 10, 10, 30, 20, 10};
+    const ImageHistogram once = ComputeImageHistogram(together, 3, 1, 9, HistogramPixelFormat::RGB8);
+    CHECK(whole.pixelCount == 3 && whole.bins == once.bins,
+          "two strips added count the same as the picture counted at once");
+    const std::array<uint64_t, 256> total = whole.RgbTotal();
+    CHECK(total[10] == 5 && total[20] == 2 && total[30] == 2,
+          "RgbTotal: every red, green and blue value at its level (5 tens, 2 twenties, 2 thirties)");
+    uint64_t sum = 0;
+    for (uint64_t n : total) sum += n;
+    CHECK(sum == 3 * whole.pixelCount, "three values a pixel");
+}
+
 int main() {
     std::printf("====================================\n");
     std::printf("  UltraCanvas Histogram Model\n");
@@ -121,6 +140,7 @@ int main() {
     TestLayouts();
     TestLuminosity();
     TestStatistics();
+    TestAddAndTotal();
     std::printf("\n====================================\n");
     if (g_failures == 0) {
         std::printf("All tests passed.\n");

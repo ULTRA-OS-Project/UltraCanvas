@@ -4259,7 +4259,7 @@ message(STATUS "    Test registered: ControlLimitsTest")
 message(STATUS "  Building HistogramModelTest...")
 add_executable(HistogramModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/HistogramModelTest.cpp
-    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasHistogramModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasHistogramModel.cpp
 )
 target_include_directories(HistogramModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(HistogramModelTest PRIVATE cxx_std_20)
@@ -6066,6 +6066,28 @@ if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
     message(STATUS "    Test registered: EngineLineChartTest")
 else()
     message(STATUS "  EngineLineChartTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== CURVE HISTOGRAM TEST =====
+# The Curves dialog's histogram backdrop filled from UltraCanvasHistogramModel
+# (UltraCanvasCurveEditor::SetHistograms) - what the image viewer and
+# UltraPaint both do. Needs the library, not the charts.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building CurveHistogramTest...")
+    add_executable(CurveHistogramTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CurveHistogramTest.cpp
+    )
+    target_include_directories(CurveHistogramTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CurveHistogramTest PRIVATE cxx_std_20)
+    target_link_libraries(CurveHistogramTest PRIVATE UltraCanvas)
+    set_target_properties(CurveHistogramTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CurveHistogramTest COMMAND CurveHistogramTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CurveHistogramTest")
+else()
+    message(STATUS "  CurveHistogramTest skipped (UltraCanvas not present)")
 endif()
 
 # ===== HISTOGRAM CHART RENDER TEST =====
