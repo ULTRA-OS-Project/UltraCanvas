@@ -427,6 +427,11 @@ UltraCloud::ShowAddAccountDialog(window, cloud, [](const Account& added) { ... }
 UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
         [](const std::string& id) { return id == "ftp"; },
         "Add an FTP / SFTP drive");
+// A stored account in the same form, to be changed: filled in, the provider
+// fixed, the password kept unless a new one is typed. False when there is no
+// such account (or its provider is not in this build).
+UltraCloud::ShowEditAccountDialog(window, cloud, accountId,
+        [](const Account& saved) { /* re-read the list */ }, "Configure drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
     InsertIntoBody(pick.entry.name + ": " + pick.link.url);
 });
@@ -476,7 +481,7 @@ the `CloudService&` forms leave keeping the service alive to the caller.
 | `UltraCloudWebDav.h` | `WebDavProvider` (with `Delete` and `Rename`: DELETE and MOVE) and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink`, `WebDavErrorMessage` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (over a shared or a caller-kept service, with an optional provider filter, title and `AddAccountWatch`), `ShowEditAccountDialog` (a stored account in the same form, its password kept unless a new one is typed; an OAuth account saved as it is or signed in again), `ShowCloudLinkPicker` (over a shared or a caller-kept service) (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

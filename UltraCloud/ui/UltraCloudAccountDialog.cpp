@@ -1,4 +1,8 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
+// Version: 0.9.0 - ShowEditAccountDialog: the same form over a stored account,
+//                  filled in, the provider fixed; an empty password keeps the
+//                  stored one, and an OAuth account is saved as it is or
+//                  signed in again
 // Version: 0.8.2 - the FTP provider asks for the protocol, the server and the
 //                  port each on its own; the private key is chosen with a
 //                  file dialog; a refusal is shown whole, on two lines; the
@@ -14,7 +18,7 @@
 // Version: 0.7.1 - a private key row for SFTP
 // Version: 0.7.0 - the shared_ptr form: the sign-in thread holds the service
 //                  until it ends
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 #include "UltraCloudUiStyle.h"
@@ -41,6 +45,7 @@
 #include <atomic>
 #include <cctype>
 #include <filesystem>
+#include <iterator>   // std::size
 #include <memory>
 #include <string>
 #include <string_view>
@@ -195,6 +200,11 @@ struct Form {
     UltraCanvasLabel*     status      = nullptr;
     UltraCanvasButton*    addBtn      = nullptr;
     FormRow serverRow, protocolRow, hostRow, userRow, passwordRow, keyRow, publicRow;
+    // Editing a stored account (ShowEditAccountDialog) rather than adding
+    // one; `signInAgain` is the OAuth account's "sign in again" box, null
+    // for any other.
+    bool editing = false;
+    UltraCanvasCheckbox*  signInAgain = nullptr;
 
     std::shared_ptr<ICloudProvider> ChosenProvider() const {
         const int idx = provider ? provider->GetSelectedIndex() : -1;
@@ -221,6 +231,15 @@ void ApplyProvider(const Form& form) {
     form.passwordRow.SetVisible(!caps.needsOAuth && id != "memory");
     form.keyRow.SetVisible(ftp && scheme == "sftp");
     if (ftp) form.port->SetPlaceholder(std::to_string(FtpDefaultPort(scheme)));
+    // An OAuth account being edited is saved as it stands unless the box
+    // asks for a new sign-in - renaming a drive should not need the browser.
+    if (form.editing && caps.needsOAuth &&
+        !(form.signInAgain && form.signInAgain->IsChecked())) {
+        form.addBtn->SetText(Tr("Save"));
+        form.hint->SetText(Tr("Saved without signing in. Tick \"Sign in again\" when the account "
+                              "no longer signs in - after its password was changed, for example."));
+        return;
+    }
     if (caps.needsOAuth) {
         form.addBtn->SetText(Tr("Sign in in browser"));
         form.hint->SetText(CanSignIn(id)
@@ -231,7 +250,7 @@ void ApplyProvider(const Form& form) {
                   "Docs/Modules/UltraCloud/README.md).",
                   p->DisplayName(), id));
     } else {
-        form.addBtn->SetText(Tr("Add account"));
+        form.addBtn->SetText(form.editing ? Tr("Save") : Tr("Add account"));
         form.hint->SetText(id == "nextcloud"
             ? Tr("Nextcloud: create an app password under Settings → Security and use it here.")
             : id == "webdav" ? Tr("Links need a public URL that serves the same folder as the DAV root.")
@@ -253,13 +272,22 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
                          std::move(providerFilter), title, std::move(watch));
 }
 
-void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService> service,
-                          std::function<void(const Account&)> onAdded,
-                          std::function<bool(const std::string& providerId)> providerFilter,
-                          const std::string& title, AddAccountWatch watch) {
+namespace {
+
+// The dialog both public forms show: empty for a new account, or filled in
+// from `existing` - its provider fixed - for ShowEditAccountDialog.
+// `storedKeyFile` is the stored private key's path, the one part of the
+// stored secrets the form shows; the password stays in the store.
+void ShowAccountForm(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService> service,
+                     std::function<void(const Account&)> onAdded,
+                     std::function<bool(const std::string& providerId)> providerFilter,
+                     const std::string& title, AddAccountWatch watch,
+                     const Account* existing, const std::string& storedKeyFile) {
     if (!service) return;
     DialogConfig config;
-    config.title      = title.empty() ? Tr("Add cloud account") : title;
+    config.title      = !title.empty() ? title
+                      : existing       ? Tr("Account settings")
+                                       : Tr("Add cloud account");
     config.width      = 520;
     // Tall enough for the provider that needs every row: an SFTP server's
     // eight captioned rows (8x32: provider, name, protocol, server and port,
@@ -309,16 +337,25 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
     // The caller's filter narrows the list; an empty result would leave a
     // dialog with nothing to choose, so in that case the unfiltered list is
     // offered rather than an unusable form.
-    form->providers = OrderedProviders();
-    if (providerFilter) {
-        std::vector<std::shared_ptr<ICloudProvider>> kept;
-        for (const auto& p : form->providers)
-            if (providerFilter(p->Id())) kept.push_back(p);
-        if (!kept.empty()) form->providers = std::move(kept);
+    form->editing = existing != nullptr;
+    if (existing) {
+        // The provider is what the account is: another one would be another
+        // account, which is what adding one is for. The caller made sure it
+        // is registered.
+        if (auto p = GetProvider(existing->providerId)) form->providers.push_back(p);
+    } else {
+        form->providers = OrderedProviders();
+        if (providerFilter) {
+            std::vector<std::shared_ptr<ICloudProvider>> kept;
+            for (const auto& p : form->providers)
+                if (providerFilter(p->Id())) kept.push_back(p);
+            if (!kept.empty()) form->providers = std::move(kept);
+        }
     }
     auto provider = CreateDropdown("cloudAccProvider", 0, 0, 0, UiStyle::kControlHeight);
     for (const auto& p : form->providers) provider->AddItem(p->DisplayName(), p->Id());
     if (!form->providers.empty()) provider->SetSelectedIndex(0, /*runNotifications=*/false);
+    if (existing) provider->SetDisabled(true);
     addRow("cloudAccProvider", Tr("Provider"), provider);
     form->provider = provider.get();
 
@@ -410,6 +447,42 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
     AddFormWideRow(grid, makeDefault);
     form->makeDefault = makeDefault.get();
 
+    if (existing) {
+        // What is stored, in the fields it was typed into.
+        name->SetText(existing->displayName);
+        user->SetText(existing->username);
+        publicUrl->SetText(existing->publicBaseUrl);
+        if (!existing->remoteFolder.empty()) folder->SetText(existing->remoteFolder);
+        if (existing->providerId == "ftp") {
+            // The one URL the account stores, back in its three fields.
+            const FtpServer where = FtpServerOf(existing->serverUrl);
+            for (std::size_t i = 0; i < std::size(kFtpSchemes); ++i)
+                if (where.scheme == kFtpSchemes[i])
+                    protocol->SetSelectedIndex(static_cast<int>(i), /*runNotifications=*/false);
+            host->SetText(where.base.empty() ? where.host : where.host + "/" + where.base);
+            if (where.port > 0) port->SetText(std::to_string(where.port));
+        } else {
+            server->SetText(existing->serverUrl);
+        }
+        keyFile->SetText(storedKeyFile);
+        password->SetPlaceholder(Tr("unchanged - type a new one to replace it"));
+        makeDefault->SetChecked(existing->isDefault);
+        // The store keeps one default and moves it only to another account
+        // marked default: unticking this one could not take it away.
+        makeDefault->SetDisabled(existing->isDefault);
+
+        // An OAuth account has no password to type again: a sign-in that no
+        // longer works is mended by signing in again, which the box asks for.
+        const std::shared_ptr<ICloudProvider> chosen = form->ChosenProvider();
+        if (chosen && chosen->Capabilities().needsOAuth) {
+            auto again = UltraCanvasCheckbox::CreateCheckbox(
+                "cloudAccSignInAgain", 0, 0, 300, 26, Tr("Sign in again"), false);
+            AddFormWideRow(grid, again);
+            form->signInAgain = again.get();
+            again->onStateChanged = [form](CheckedState, CheckedState) { ApplyProvider(*form); };
+        }
+    }
+
     // Its text follows the provider (ApplyProvider).
     auto hint = CreateLabel("cloudAccHint", 0, 0, 0, 36, "");
     hint->SetWrap(TextWrap::WrapWord);
@@ -463,7 +536,11 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
     // given up on.
     auto gaveUp = std::make_shared<std::atomic<bool>>(false);
 
-    addBtn->onClick = [form, weak, dlg, service, watch, added, gaveUp]() {
+    // Kept by a stored account's form: what it is saved under, whatever is
+    // changed - the folders opened on it, and pinned, keep their paths.
+    const std::string accountId = existing ? existing->accountId : std::string();
+
+    addBtn->onClick = [form, weak, dlg, service, watch, added, gaveUp, accountId]() {
         const std::shared_ptr<ICloudProvider> chosenProvider = form->ChosenProvider();
         if (!chosenProvider) return;
         UltraCanvasLabel* status = form->status;
@@ -474,6 +551,7 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
         const bool ftp = chosenProvider->Id() == "ftp";
         const std::string scheme = SchemeSelected(form->protocol);
         Account a;
+        a.accountId     = accountId;
         a.providerId    = chosenProvider->Id();
         a.displayName   = form->name->GetText();
         a.serverUrl     = form->server->GetText();
@@ -518,30 +596,60 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
             status->SetText(Tr("The sign-in service is off and no OAuth client id is configured for this provider.")); return;
         }
 
+        // A stored account keeps what the form does not replace: an OAuth
+        // one its sign-in unless asked to sign in again, any other its
+        // password when the field is left empty. Read from the store on the
+        // thread below, so the dialog never holds a password it was not
+        // typed.
+        const bool oauth = caps.needsOAuth;
+        const bool keepSignIn = form->editing && oauth &&
+                                !(form->signInAgain && form->signInAgain->IsChecked());
+        const bool keepPassword = form->editing && !oauth && c.password.empty();
+        // Signed in afresh, the account takes the user the service names.
+        if (form->editing && oauth && !keepSignIn) a.username.clear();
+
         status->SetTextColor(Color(60, 60, 60, 255));
-        status->SetText(caps.needsOAuth ? Tr("Waiting for the browser sign-in…")
-                                        : TrF("Signing in at {0}…", a.serverUrl));
+        status->SetText(keepSignIn       ? Tr("Saving…")
+                        : caps.needsOAuth ? Tr("Waiting for the browser sign-in…")
+                                          : TrF("Signing in at {0}…", a.serverUrl));
         form->addBtn->SetDisabled(true);
 
         // Verify + store off the UI thread; report back on it. OAuth providers
         // open the consent page in the system browser and wait for the
         // loopback redirect.
-        const bool oauth = caps.needsOAuth;
         // The thread holds the service until the sign-in has ended: a sign-in
         // can wait minutes on the browser, and the dialog - or the window that
         // opened it - can be gone long before. It reaches the widgets through
         // `form`, whose pointers are good for as long as the dialog is, which
         // `weak` says on the UI thread before any of them is touched.
-        std::thread([weak, dlg, form, added, a, c, oauth, service, watch, gaveUp]() mutable {
+        std::thread([weak, dlg, form, added, a, c, oauth, keepSignIn, keepPassword, service,
+                     watch, gaveUp]() mutable {
             std::function<bool()> previousCancel = SetThreadSignInCancel(
                     [gaveUp, hostCancelled = watch.cancelled]() {
                         return gaveUp->load() || (hostCancelled && hostCancelled());
                     });
-            if (watch.onBegin) watch.onBegin(a);
-            Result r = oauth
-                ? service->SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
-                : service->AddAccount(a, c, /*verify=*/true);
-            if (watch.onEnd) watch.onEnd(a, r);
+            if (keepSignIn || keepPassword) {
+                Credentials stored;
+                service->Secrets().Retrieve(a.accountId, stored);
+                if (keepSignIn) {
+                    stored.username = a.username;
+                    c = stored;
+                } else {
+                    c.password = stored.password;
+                }
+            }
+            Result r = Result::Ok();
+            if (keepSignIn) {
+                // Nothing to sign in with: the tokens it has are stored again
+                // beside the changed name, folder or default.
+                r = service->AddAccount(a, c, /*verify=*/false);
+            } else {
+                if (watch.onBegin) watch.onBegin(a);
+                r = oauth
+                    ? service->SignInAccount(a, [](const std::string& url) { UltraCanvas::OpenURL(url); })
+                    : service->AddAccount(a, c, /*verify=*/true);
+                if (watch.onEnd) watch.onEnd(a, r);
+            }
             SetThreadSignInCancel(std::move(previousCancel));
             auto* app = UltraCanvasApplicationBase::GetCurrent();
             auto finish = [weak, dlg, form, added, a, r]() {
@@ -574,6 +682,44 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSe
             gaveUp->store(true);   // the close box: as Cancel
         },
         parent);
+}
+
+} // namespace
+
+void ShowAddAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService> service,
+                          std::function<void(const Account&)> onAdded,
+                          std::function<bool(const std::string& providerId)> providerFilter,
+                          const std::string& title, AddAccountWatch watch) {
+    ShowAccountForm(parent, std::move(service), std::move(onAdded), std::move(providerFilter),
+                    title, std::move(watch), nullptr, std::string());
+}
+
+bool ShowEditAccountDialog(UltraCanvasWindowBase* parent, std::shared_ptr<CloudService> service,
+                           const std::string& accountId,
+                           std::function<void(const Account&)> onSaved,
+                           const std::string& title, AddAccountWatch watch) {
+    if (!service) return false;
+    Account account;
+    if (!service->Accounts().Get(accountId, account)) return false;
+    if (!GetProvider(account.providerId)) return false;
+    // The key file's path is the one stored secret the form shows; the
+    // password stays in the store, and an empty field keeps it.
+    Credentials stored;
+    service->Secrets().Retrieve(accountId, stored);
+    const std::string keyFile = stored.privateKeyFile;
+    ShowAccountForm(parent, std::move(service), std::move(onSaved), {}, title, std::move(watch),
+                    &account, keyFile);
+    return true;
+}
+
+bool ShowEditAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
+                           const std::string& accountId,
+                           std::function<void(const Account&)> onSaved,
+                           const std::string& title, AddAccountWatch watch) {
+    // Not owned, as in the reference form of ShowAddAccountDialog.
+    std::shared_ptr<CloudService> unowned(std::shared_ptr<CloudService>(), &service);
+    return ShowEditAccountDialog(parent, std::move(unowned), accountId, std::move(onSaved),
+                                 title, std::move(watch));
 }
 
 } // namespace UltraCloud
