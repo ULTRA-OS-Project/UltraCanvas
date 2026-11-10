@@ -1,3 +1,38 @@
+#### 2026-11-10 *0.9.517*
+- **Every element follows the theme by default (T4 of the host theme
+  proposal, first part).** Under the theme policy (`FollowHost`, the
+  default, `Light` or `Dark`) `Initialize` turns on
+  `UltraCanvasUIElement::SetFollowThemeByDefault`, and every element with an
+  `ApplyTheme` - the button, label, dropdown, slider, switch, text input,
+  text area, toolbar, split pane, tabbed container, text format bar, menu,
+  album, modal and file dialog, timecode field, video timeline - takes the
+  current theme at the end of its constructor and again on every change,
+  so a window built after start-up is light or dark with the desktop
+  without the application opting in element by element. A style set by
+  hand (`SetStyle`, `SetConfig`, `SetAppearance`, `SetVisualStyle`) stops the
+  following for that element, so it keeps its look as before; `SetStyle`
+  then `SetFollowTheme(true)` keeps both. The `FromTheme` readers set their
+  fonts by role as well as their colours: the body size for the button,
+  label, dropdown, text input, menu and switch, the heading size for a
+  heading label, the caption size for the tooltip, a slider's value, a
+  dialog's details and the tab titles, the theme's families alone for the
+  album, the timecode field and the timeline. `UltraCanvasThemeTest`
+  covers the default, the rule and the fonts.
+
+#### 2026-11-10 *0.9.516*
+- **DemoApp's pages go through `Tr`.** Every text a person reads on the
+  ~160 element pages - page titles and descriptions, card texts and notes,
+  buttons, labels, dropdown and menu items, tabs, tooltips, chart titles,
+  axis and series names, generic sample labels, status lines and read-outs -
+  now goes through `Tr` / `TrF` / `TrN` / `TrC`, and sentences once glued from
+  English pieces with `+`, `ostringstream` or `snprintf` are one translatable
+  sentence each. `media/locale/en/UltraCanvasDemo.json` grows to 7,357 texts.
+  Left as they are on purpose: element ids, code samples and parser input
+  (Mermaid, PlantUML, ReqIF, JSON), proper names in sample data, format
+  strings, units, and every string the code compares or looks up (where a
+  label doubled as a key, the key is now separate). Static text tables are
+  built at runtime so `Tr` sees the language in use. The translations follow.
+
 #### 2026-11-10 *0.9.515*
 - **The clipboard history's rows in the person's language.** Everything
   `UltraCanvasClipboardHistoryView` paints goes through `Tr`: the section

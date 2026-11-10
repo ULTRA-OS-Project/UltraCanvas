@@ -335,7 +335,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     auto root = std::make_shared<UltraCanvasContainer>("GLModelsTab", 0, 0, 1004, 692);
 
     auto title = MakeTabText("GLModelsTitle",
-            "Complex 3D Models — every format the framework reads, in the GL surface",
+            Tr("Complex 3D Models — every format the framework reads, in the GL surface"),
             14, true, Color(40, 40, 120, 255));
     PlaceAcross(*title, 16, 8, 16);
     root->AddChild(title);
@@ -344,9 +344,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     // The three procedural OBJs this tab has always carried. Their triangle
     // counts are in the labels because they are generated to a known size.
     state->catalog = {
-        {"Torus Knot (11,520 tris)", "media/3D/torusknot.obj", Color(230, 120, 60, 255)},
-        {"Spring Coil (9,216 tris)", "media/3D/spring.obj",   Color(120, 200, 130, 255)},
-        {"Ico Sphere (1,280 tris)",  "media/3D/icosphere.obj", Color(120, 160, 230, 255)},
+        {Tr("Torus Knot (11,520 tris)"), "media/3D/torusknot.obj", Color(230, 120, 60, 255)},
+        {Tr("Spring Coil (9,216 tris)"), "media/3D/spring.obj",   Color(120, 200, 130, 255)},
+        {Tr("Ico Sphere (1,280 tris)"),  "media/3D/icosphere.obj", Color(120, 160, 230, 255)},
     };
 
     // Small samples in other formats, added only where this build can actually
@@ -356,15 +356,15 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     // format added to the plugin later appears here without editing this list
     // twice. Deliberately the small files: the same aircraft also ships as an
     // 18 MB .blend and a 6.9 MB VRML, which are no better to look at.
-    struct FormatSample { const char* label; const char* file; Color color; };
-    static const FormatSample kFormatSamples[] = {
-        {"STEP — machined pin (B-rep, tessellated)", "media/3D/STEP/Pin.step",
+    struct FormatSample { std::string label; const char* file; Color color; };
+    const FormatSample kFormatSamples[] = {
+        {Tr("STEP — machined pin (B-rep, tessellated)"), "media/3D/STEP/Pin.step",
          Color(200, 200, 210, 255)},
-        {"MilkShape 3D — aircraft (.ms3d)", "media/3D/MS3D/E-45-Aircraft.ms3d",
+        {Tr("MilkShape 3D — aircraft (.ms3d)"), "media/3D/MS3D/E-45-Aircraft.ms3d",
          Color(210, 170, 90, 255)},
-        {"COLLADA — aircraft (.dae)", "media/3D/COLLADA/E-45-Aircraft.dae",
+        {Tr("COLLADA — aircraft (.dae)"), "media/3D/COLLADA/E-45-Aircraft.dae",
          Color(150, 190, 210, 255)},
-        {"3D Studio — aircraft (.3ds)", "media/3D/3DS/E-45-Aircraft.3ds",
+        {Tr("3D Studio — aircraft (.3ds)"), "media/3D/3DS/E-45-Aircraft.3ds",
          Color(190, 150, 190, 255)},
     };
     for (const FormatSample& sample : kFormatSamples) {
@@ -481,7 +481,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     panel->SetPadding(10.0f);
     MakePanelColumn(*panel);
 
-    DemoKit::Add(panel, MakeTabText("ModelCtrlTitle", "Model", 13, true));
+    DemoKit::Add(panel, MakeTabText("ModelCtrlTitle", Tr("Model"), 13, true));
 
     auto modelDrop = std::make_shared<UltraCanvasDropdown>("ModelDropdown", 0, 0, 270, 28);
     for (const auto& e : state->catalog) modelDrop->AddItem(e.label);
@@ -497,22 +497,22 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     // The two toggles side by side; the second wraps under the first when
     // their texts no longer fit the panel's width.
     auto buttonRow = DemoKit::AddRow(panel, "ModelButtons", 10);
-    auto rotBtn = MakeTextButton("AutoRotateBtn", "Pause Spin", 130, 30);
+    auto rotBtn = MakeTextButton("AutoRotateBtn", Tr("Pause Spin"), 130, 30);
     rotBtn->onClick = [rotBtn = rotBtn.get(), state]() {
         state->autoRotate = !state->autoRotate;
-        rotBtn->SetText(state->autoRotate ? "Pause Spin" : "Resume Spin");
+        rotBtn->SetText(state->autoRotate ? Tr("Pause Spin") : Tr("Resume Spin"));
     };
     DemoKit::Add(buttonRow, rotBtn);
 
-    auto wireBtn = MakeTextButton("WireframeBtn", "Wireframe", 130, 30);
+    auto wireBtn = MakeTextButton("WireframeBtn", Tr("Wireframe"), 130, 30);
     wireBtn->onClick = [wireBtn = wireBtn.get(), state, surface]() {
         state->wireframe = !state->wireframe;
-        wireBtn->SetText(state->wireframe ? "Solid" : "Wireframe");
+        wireBtn->SetText(state->wireframe ? Tr("Solid") : Tr("Wireframe"));
         surface->RequestRender();
     };
     DemoKit::Add(buttonRow, wireBtn);
 
-    DemoKit::Add(panel, MakeTabText("SpinSpeedLabel", "Spin Speed", 11, false));
+    DemoKit::Add(panel, MakeTabText("SpinSpeedLabel", Tr("Spin Speed"), 11, false));
 
     auto speedSlider = std::make_shared<UltraCanvasSlider>("SpinSpeedSlider", 0, 0, 270, 24);
     speedSlider->SetRange(0.0f, 2.5f);
@@ -525,7 +525,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     // the 3D Model Formats page and the maximize control.
     auto info = demoui::MakeScrollingText("ModelInfo", 0, 0, 270, 360, 11.0f,
                                           Color(60, 60, 60, 255));
-    info.SetText(
+    info.SetText(Tr(
         "Real meshes are streamed from\n"
         "media/3D/ into the GL surface\n"
         "and shaded with a two-light Phong\n"
@@ -548,7 +548,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
         "for what each file actually carried.\n\n"
         "Click the icon in the canvas corner or\n"
         "double-click the canvas to maximize it;\n"
-        "Esc or another double-click restores."
+        "Esc or another double-click restores.")
     );
     AddFillingRest(panel, info.View);
 

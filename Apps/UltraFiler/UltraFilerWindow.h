@@ -81,7 +81,9 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
-// Version: 1.35.0 - OpenRemoteFile, OpenRemoteCopy
+// Version: 1.36.0 - OpenRemoteFile, OpenRemoteCopy
+// Version: 1.35.0 - VolumeDisplayName, RefreshPathBars, pathBarVolumeNamesApplied: the path
+//                  bar names a drive by its volume (Display > Path bar)
 // Version: 1.34.0 - ConfirmRemoveRemoteDrive, ConfigureRemoteDrive,
 //                  RefreshFolderEverywhere, ShowRemoteFileError
 // Version: 1.33.0 - PreviewPanePath: the file shown or on its way
@@ -110,7 +112,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -808,6 +810,13 @@ private:
     // too, and the tree keeps "Computer" selected while it is up.
     void BuildComputerPage();
     void SetComputerPageVisible(bool visible);
+    // What a drive is called on the path bar (Display > Path bar): the label
+    // its tree row has, from the last drive listing ("My Passport Ultra
+    // (D:)"); empty for a root that listing did not have.
+    std::string VolumeDisplayName(const std::string& root) const;
+    // Rebuild the path bars - the main one and the split view's two - for
+    // the folders they show.
+    void RefreshPathBars();
     // What the Computer page shows: everything (the tree's Computer row, the
     // breadcrumb, Up), or one section - the tree's Cloud Storage, Remote
     // Drives or RAM Discs row. Opens the page if it is not up.
@@ -1528,6 +1537,9 @@ private:
     // Display > Home folder mode, mirrored for the probe worker: `settings`
     // belongs to the UI thread, the "has subfolders?" probe does not.
     std::atomic<bool> curatedHomeActive{false};
+    // Display > Path bar as last applied: ApplySettings rebuilds the path
+    // bars only when it moved.
+    bool pathBarVolumeNamesApplied = true;
     // Display > Files > Show hidden files as it was last pushed to the folder
     // displays, so ApplySettings only pushes it when it actually changed and
     // a display revealed by hand stays revealed. Starts at the shipped

@@ -6,7 +6,7 @@
 //                  SetInputType(Search) shows the clear button
 // Version: 1.10.0 - TextInputStyle::FromTheme
 // Version: 1.9.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-10
 // V1.9.0: An input method's composition is drawn in the line at the caret,
 //   underlined, with the caret inside it; the scroll keeps that caret in view.
 //   Composing over a selection replaces the selection; committed text, an
@@ -94,6 +94,7 @@ namespace UltraCanvas {
         textWidthCache.clear();
         lastMeasuredFont.clear();
         SetMouseCursor(UCMouseCursor::Text);
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasTextInput::~UltraCanvasTextInput() {
@@ -606,6 +607,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::SetStyle(const TextInputStyle& inputStyle) {
+        StyleSetByHand();
         style = inputStyle;
         FontChanged();
     }
@@ -2024,6 +2026,9 @@ namespace UltraCanvas {
     TextInputStyle TextInputStyle::FromTheme(const UltraCanvasTheme& theme, const TextInputStyle& base) {
         TextInputStyle s = base;
         const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
         s.backgroundColor = r.well;
         s.borderColor = r.lineStrong;
         s.focusBorderColor = r.focus;

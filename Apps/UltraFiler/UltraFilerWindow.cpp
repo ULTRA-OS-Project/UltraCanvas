@@ -65,6 +65,10 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.44.0 - a file on a drive with no preview is fetched and opened in its
+//                  program (OpenRemoteFile); programs and launchers are refused
+// Version: 1.43.1 - Display > Path bar: the path bar names a drive by its volume, as the
+//                  tree does ("My Passport Ultra (D:)"), or by its letter alone
 // Version: 1.43.0 - a drive's row under Remote Drives takes Delete (the drive
 //                  is forgotten, its files are not touched) and Configure
 //                  drive; Refresh on every folder row of the tree and in the
@@ -121,7 +125,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -1914,6 +1918,11 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
+    // Display > Path bar: the strips are rebuilt only when the choice moved.
+    if (pathBarVolumeNamesApplied != settings.pathBarVolumeNames) {
+        pathBarVolumeNamesApplied = settings.pathBarVolumeNames;
+        RefreshPathBars();
+    }
     // Display > Ignored files: the clutter no display lists - the built-in
     // patterns still ticked plus the user's own, confined to the home folder
     // or loose in every folder. The widget ignores a call that changes
@@ -5249,6 +5258,10 @@ void UltraFilerWindow::ApplyDriveLists(const std::vector<UltraFilerRamDisks::Ram
 
     if (!added && !renamed && gone.empty()) return;   // nothing moved: nothing to repaint
 
+    // The path bar names a drive the way its tree row does (Display > Path
+    // bar): a volume's name that has just arrived goes there too.
+    if (renamed && settings.pathBarVolumeNames) RefreshPathBars();
+
     if (added) {
         // The new rows need the configured drive background, and a volume can
         // carry a cloud folder with it (a Google Drive that mounts as its own
@@ -7923,7 +7936,37 @@ void UltraFilerWindow::FillFolderBreadcrumb(
     // place the tree's Computer entry opens - rather than the drive root,
     // which the node next to it already is.
     options.onComputerClick = [this]() { SetComputerPageVisible(true); };
+    // Display > Path bar: a drive by its volume's name, as the tree calls it
+    // ("My Passport Ultra (D:)"). The name comes from the last drive listing,
+    // which read it off the UI thread; until that has answered, and for a
+    // volume with no name, the strip keeps the letter.
+    if (settings.pathBarVolumeNames)
+        options.driveLabel = [this](const std::string& root) { return VolumeDisplayName(root); };
     BuildFolderBreadcrumb(crumb, path, std::move(onNavigate), options);
+}
+
+std::string UltraFilerWindow::VolumeDisplayName(const std::string& root) const {
+    // Drive letters compare without case ("d:\\" is "D:\\"), and a root with
+    // or without its trailing separator is the same root.
+    auto key = [](std::string p) {
+        while (p.size() > 1 && (p.back() == '\\' || p.back() == '/')) p.pop_back();
+        std::transform(p.begin(), p.end(), p.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return p;
+    };
+    const std::string wanted = key(root);
+    for (const MountedVolume& volume : knownVolumes)
+        if (key(volume.path) == wanted) return DriveNodeLabel(volume);
+    return {};
+}
+
+void UltraFilerWindow::RefreshPathBars() {
+    // The main strip describes the active tab's folder - or "Computer"
+    // while that page is up, which names no drive - and the split view has
+    // a strip over each pane.
+    if (!computerShown && filer && !filer->GetPath().empty())
+        RebuildBreadcrumb(filer->GetPath());
+    RefreshPaneBreadcrumbs();
 }
 
 std::string UltraFilerWindow::TabTitleFor(const std::string& path) const {

@@ -529,13 +529,18 @@ shows first - each ticked one that is not running yet is started:
 | ChatCube | `--minimized` | messages arrive; its window is on the taskbar |
 | UltraMail | `--minimized` | new mail is fetched and counted on the mail icon |
 | UltraClipboard | `--background` | no window; opens at once from the clipboard panel |
-| UltraNotifications | `--background` | no window; counts the unread on the bell, opens at once |
+| UltraNotifications (ticked by default) | `--background` | no window; counts the unread on the bell, opens at once |
 | Sticker board | - | the desktop's own board: its window and file thumbnails are made, not shown, so the first click shows it at once |
 
 A minimized program that is running already is left alone, since a second
 start of these single-copy programs would only bring their window forward; a
 second `--background` start reaches the running copy, which takes it as
 nothing to do. Ticking one in the menu starts it at once as well.
+
+UltraNotifications is ticked from the start, so the bell counts from the
+first sign-in; the others are off until ticked. A settings file from before
+that default gets UltraNotifications added once (`startupDefaults` in the
+file records it), and unticking it afterwards holds.
 
 ## How the mail count gets there
 

@@ -20,12 +20,12 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateButtonExamples() {
-            auto page = DemoKit::CreatePage("ButtonExamples", "UltraCanvas Button Component Showcase",
-                    "Demonstrating all button styles, states, and the new split button feature");
+            auto page = DemoKit::CreatePage("ButtonExamples", Tr("UltraCanvas Button Component Showcase"),
+                    Tr("Demonstrating all button styles, states, and the new split button feature"));
 
             // Status label for button feedback. At least two lines tall, as
             // most messages are, so a click does not move the buttons below.
-            auto statusLabel = DemoKit::AddText(page, "StatusLabel", "Click any button to see feedback here");
+            auto statusLabel = DemoKit::AddText(page, "StatusLabel", Tr("Click any button to see feedback here"));
             statusLabel->SetFontSize(11);
             statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
             statusLabel->SetBorders(1.0f);
@@ -38,177 +38,177 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 1: BASIC BUTTON STYLES
             // ========================================
-            auto section1 = DemoKit::AddCard(page, "Section1", "Basic Button Styles");
+            auto section1 = DemoKit::AddCard(page, "Section1", Tr("Basic Button Styles"));
             auto row1 = DemoKit::AddRow(section1, "Section1Row", 10);
 
             // Standard Button
-            auto standardBtn = CreateButton("StandardButton", 0, 0, 120, 35, "Standard");
+            auto standardBtn = CreateButton("StandardButton", 0, 0, 120, 35, Tr("Standard"));
             standardBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Standard button clicked\nDefault style with hover and press effects");
+                statusLabel->SetText(Tr("Standard button clicked\nDefault style with hover and press effects"));
             };
             DemoKit::AddFixed(row1, standardBtn);
 
             // Primary Style Button
-            auto primaryBtn = CreateButton("PrimaryButton", 0, 0, 120, 35, "Primary");
+            auto primaryBtn = CreateButton("PrimaryButton", 0, 0, 120, 35, Tr("Primary"));
             primaryBtn->SetStyle(ButtonStyles::PrimaryStyle());
             primaryBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Primary button clicked\nUsing PrimaryStyle() - blue theme");
+                statusLabel->SetText(Tr("Primary button clicked\nUsing PrimaryStyle() - blue theme"));
             };
             DemoKit::AddFixed(row1, primaryBtn);
 
             // Secondary Style Button
-            auto secondaryBtn = CreateButton("SecondaryButton", 0, 0, 120, 35, "Secondary");
+            auto secondaryBtn = CreateButton("SecondaryButton", 0, 0, 120, 35, Tr("Secondary"));
             secondaryBtn->SetStyle(ButtonStyles::SecondaryStyle());
             secondaryBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Secondary button clicked\nUsing SecondaryStyle() - bordered");
+                statusLabel->SetText(Tr("Secondary button clicked\nUsing SecondaryStyle() - bordered"));
             };
             DemoKit::AddFixed(row1, secondaryBtn);
 
             // Danger Style Button
-            auto dangerBtn = CreateButton("DangerButton", 0, 0, 120, 35, "Danger");
+            auto dangerBtn = CreateButton("DangerButton", 0, 0, 120, 35, Tr("Danger"));
             dangerBtn->SetStyle(ButtonStyles::DangerStyle());
             dangerBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Danger button clicked\nUsing DangerStyle() - red theme");
+                statusLabel->SetText(Tr("Danger button clicked\nUsing DangerStyle() - red theme"));
             };
             DemoKit::AddFixed(row1, dangerBtn);
 
             // Success Style Button
-            auto successBtn = CreateButton("SuccessButton", 0, 0, 120, 35, "Success");
+            auto successBtn = CreateButton("SuccessButton", 0, 0, 120, 35, Tr("Success"));
             successBtn->SetStyle(ButtonStyles::SuccessStyle());
             successBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Success button clicked\nUsing SuccessStyle() - green theme");
+                statusLabel->SetText(Tr("Success button clicked\nUsing SuccessStyle() - green theme"));
             };
             DemoKit::AddFixed(row1, successBtn);
 
             // ========================================
             // SECTION 2: BUTTON STATES
             // ========================================
-            auto section2 = DemoKit::AddCard(page, "Section2", "Button States");
+            auto section2 = DemoKit::AddCard(page, "Section2", Tr("Button States"));
             auto row2 = DemoKit::AddRow(section2, "Section2Row", 10);
 
             // Normal State
-            auto normalBtn = CreateButton("NormalBtn", 0, 0, 120, 35, "Normal");
+            auto normalBtn = CreateButton("NormalBtn", 0, 0, 120, 35, Tr("Normal"));
             normalBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Normal state button\nEnabled and ready for interaction");
+                statusLabel->SetText(Tr("Normal state button\nEnabled and ready for interaction"));
             };
             DemoKit::AddFixed(row2, normalBtn);
 
             // Disabled State
-            auto disabledBtn = CreateButton("DisabledBtn", 0, 0, 120, 35, "Disabled");
+            auto disabledBtn = CreateButton("DisabledBtn", 0, 0, 120, 35, Tr("Disabled"));
             disabledBtn->SetDisabled(true);
             DemoKit::AddFixed(row2, disabledBtn);
 
             // Focused State (simulated)
-            auto focusedBtn = CreateButton("FocusedBtn", 0, 0, 120, 35, "Focused");
+            auto focusedBtn = CreateButton("FocusedBtn", 0, 0, 120, 35, Tr("Focused"));
             focusedBtn->SetFocus(true);
             focusedBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Focused button clicked\nShows focus ring when selected");
+                statusLabel->SetText(Tr("Focused button clicked\nShows focus ring when selected"));
             };
             DemoKit::AddFixed(row2, focusedBtn);
 
             // ========================================
             // SECTION 3: ICONS & TEXT
             // ========================================
-            auto section3 = DemoKit::AddCard(page, "Section3", "Icons & Text");
+            auto section3 = DemoKit::AddCard(page, "Section3", Tr("Icons & Text"));
             auto row3 = DemoKit::AddRow(section3, "Section3Row", 10);
 
             // Text Only
-            auto textOnlyBtn = CreateButton("TextOnly", 0, 0, 100, 35, "Text Only");
+            auto textOnlyBtn = CreateButton("TextOnly", 0, 0, 100, 35, Tr("Text Only"));
             textOnlyBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Text-only button clicked");
+                statusLabel->SetText(Tr("Text-only button clicked"));
             };
             DemoKit::AddFixed(row3, textOnlyBtn);
 
             // Icon Left
-            auto iconLeftBtn = CreateButton("IconLeft", 0, 0, 120, 35, "Save");
+            auto iconLeftBtn = CreateButton("IconLeft", 0, 0, 120, 35, Tr("Save"));
             iconLeftBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/save.png"));
             iconLeftBtn->SetIconPosition(ButtonIconPosition::Left);
             iconLeftBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Save button clicked\nIcon positioned on the left");
+                statusLabel->SetText(Tr("Save button clicked\nIcon positioned on the left"));
             };
             DemoKit::AddFixed(row3, iconLeftBtn);
 
             // Icon Right
-            auto iconRightBtn = CreateButton("IconRight", 0, 0, 120, 35, "Next");
+            auto iconRightBtn = CreateButton("IconRight", 0, 0, 120, 35, Tr("Next"));
             iconRightBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/arrow-chevron-right.png"));
             iconRightBtn->SetIconPosition(ButtonIconPosition::Right);
             iconRightBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Next button clicked\nIcon positioned on the right");
+                statusLabel->SetText(Tr("Next button clicked\nIcon positioned on the right"));
             };
             DemoKit::AddFixed(row3, iconRightBtn);
 
             // Icon Only
-//            auto iconOnlyBtn = CreateButton("IconOnly", 0, 0, 40, 35, "");
+//            auto iconOnlyBtn = CreateButton("IconOnly", 0, 0, 40, 35, Tr(""));
 //            iconOnlyBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
 //            iconOnlyBtn->SetStyle(ButtonStyles::IconOnlyStyle());
 ////            iconOnlyBtn->SetTooltip("Settings");
 //            iconOnlyBtn->onClick = [statusLabel]() {
-//                statusLabel->SetText("Settings button clicked\nIcon-only button with tooltip");
+//                statusLabel->SetText(Tr("Settings button clicked\nIcon-only button with tooltip"));
 //            };
 //            DemoKit::AddFixed(row3, iconOnlyBtn);
 
             // Icon Top
-            auto iconTopBtn = CreateButton("IconTop", 0, 0, 80, 62, "Upload");
+            auto iconTopBtn = CreateButton("IconTop", 0, 0, 80, 62, Tr("Upload"));
             iconTopBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/upload.png"));
             iconTopBtn->SetIconPosition(ButtonIconPosition::Top);
             iconTopBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Upload button clicked\nIcon positioned above text");
+                statusLabel->SetText(Tr("Upload button clicked\nIcon positioned above text"));
             };
             DemoKit::AddFixed(row3, iconTopBtn);
 
             // Icon Bottom
-            auto iconBottomBtn = CreateButton("IconBottom", 0, 0, 100, 62, "Download");
+            auto iconBottomBtn = CreateButton("IconBottom", 0, 0, 100, 62, Tr("Download"));
             iconBottomBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/download_34px.png"));
             iconBottomBtn->SetIconPosition(ButtonIconPosition::Bottom);
             iconBottomBtn->SetIconSize(41,34);
             iconBottomBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Download button clicked\nIcon positioned below text");
+                statusLabel->SetText(Tr("Download button clicked\nIcon positioned below text"));
             };
             DemoKit::AddFixed(row3, iconBottomBtn);
 
-            auto iconRightBtn2 = CreateButton("IconRight", 0, 0, 260, 35, "Continue with UltraCanvas");
+            auto iconRightBtn2 = CreateButton("IconRight", 0, 0, 260, 35, Tr("Continue with UltraCanvas"));
             iconRightBtn2->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/ultracanvas_20px.png"));
             iconRightBtn2->SetIconSize(20, 20);
             iconRightBtn2->SetIconPosition(ButtonIconPosition::Left);
             iconRightBtn2->SetColors(Colors::White, Color(240, 240, 240, 255), Colors::Gray, Colors::LightGray);
             iconRightBtn2->onClick = [statusLabel]() {
-                statusLabel->SetText("Continue with UltraCanvas button clicked\nIcon positioned on the right");
+                statusLabel->SetText(Tr("Continue with UltraCanvas button clicked\nIcon positioned on the right"));
             };
             DemoKit::AddFixed(row3, iconRightBtn2);
 
             // ========================================
             // SECTION 4: SPLIT BUTTONS (NEW FEATURE)
             // ========================================
-            auto section4 = DemoKit::AddCard(page, "Section4", "Split Buttons - New Feature!");
+            auto section4 = DemoKit::AddCard(page, "Section4", Tr("Split Buttons - New Feature!"));
             auto row4 = DemoKit::AddRow(section4, "Section4Row", 10);
 
             // Basic Split Button
-            auto splitBtn = CreateButton("SplitButton", 0, 0, 130, 35, "Action");
+            auto splitBtn = CreateButton("SplitButton", 0, 0, 130, 35, Tr("Action"));
             splitBtn->SetSplitEnabled(true);
             // The arrow is the framework's dropdown icon, not a "▼" glyph,
             // which the bundled UI font does not have.
             splitBtn->SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/dropdown.svg"));
             splitBtn->SetSplitSecondaryIconSize(12, 8);
             splitBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Split button primary clicked\nMain action executed");
+                statusLabel->SetText(Tr("Split button primary clicked\nMain action executed"));
             };
             splitBtn->onSecondaryClick = [statusLabel]() {
-                statusLabel->SetText("Split button secondary clicked\nShow dropdown menu here");
+                statusLabel->SetText(Tr("Split button secondary clicked\nShow dropdown menu here"));
             };
             DemoKit::AddFixed(row4, splitBtn);
 
             // Badge Style (Sponsors)
-            auto sponsorBtn = CreateButton("SponsorButton", 0, 0, 140, 35, "Sponsors");
+            auto sponsorBtn = CreateButton("SponsorButton", 0, 0, 140, 35, Tr("Sponsors"));
             sponsorBtn->SetStyle(ButtonStyles::BadgeButtonStyle());
             sponsorBtn->SetSplitSecondaryText("31");
             sponsorBtn->SetSplitColors(
                     Color(52, 152, 219, 255), Colors::White, Colors::LightGray, Colors::Gray
             );
             sponsorBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Sponsors button clicked\nNavigate to sponsors page");
+                statusLabel->SetText(Tr("Sponsors button clicked\nNavigate to sponsors page"));
             };
             sponsorBtn->onSecondaryClick = [statusLabel]() {
-                statusLabel->SetText("Sponsor count clicked\nShow sponsor list (31 sponsors)");
+                statusLabel->SetText(Tr("Sponsor count clicked\nShow sponsor list (31 sponsors)"));
             };
             DemoKit::AddFixed(row4, sponsorBtn);
 
@@ -224,10 +224,10 @@ namespace UltraCanvas {
                     Color(249, 104, 84, 255), Colors::White, Colors::LightGray, Colors::Gray
             );
             patreonBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Patreon button clicked\nOpen Patreon page");
+                statusLabel->SetText(Tr("Patreon button clicked\nOpen Patreon page"));
             };
             patreonBtn->onSecondaryClick = [statusLabel]() {
-                statusLabel->SetText("Patron count clicked\nShow patron list (122 patrons)");
+                statusLabel->SetText(Tr("Patron count clicked\nShow patron list (122 patrons)"));
             };
             DemoKit::AddFixed(row4, patreonBtn);
 
@@ -239,10 +239,10 @@ namespace UltraCanvas {
                     Color(255, 193, 7, 255), Colors::Black, Colors::LightGray, Colors::Gray
             );
             liberapayBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Liberapay button clicked\nOpen Liberapay page");
+                statusLabel->SetText(Tr("Liberapay button clicked\nOpen Liberapay page"));
             };
             liberapayBtn->onSecondaryClick = [statusLabel]() {
-                statusLabel->SetText("Liberapay count clicked\nShow supporters (5)");
+                statusLabel->SetText(Tr("Liberapay count clicked\nShow supporters (5)"));
             };
             DemoKit::AddFixed(row4, liberapayBtn);
 
@@ -258,10 +258,10 @@ namespace UltraCanvas {
                     Color(0, 112, 186, 255), Colors::White, Colors::LightGray, Colors::Gray
             );
             paypalBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("PayPal button clicked\nOpen PayPal donation page");
+                statusLabel->SetText(Tr("PayPal button clicked\nOpen PayPal donation page"));
             };
             paypalBtn->onSecondaryClick = [statusLabel]() {
-                statusLabel->SetText("PayPal count clicked\nShow donors (297)");
+                statusLabel->SetText(Tr("PayPal count clicked\nShow donors (297)"));
             };
             DemoKit::AddFixed(row4, paypalBtn);
 
@@ -269,14 +269,14 @@ namespace UltraCanvas {
             // a line of their own
             auto row4b = DemoKit::AddRow(section4, "Section4Row2", 10);
 
-            auto counterBtn = CreateButton("CounterButton", 0, 0, 130, 35, "Likes");
+            auto counterBtn = CreateButton("CounterButton", 0, 0, 130, 35, Tr("Likes"));
             counterBtn->SetStyle(ButtonStyles::CounterButtonStyle());
             counterBtn->SetSplitSecondaryText("1.2k");
             counterBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Like button clicked\nAdded your like!");
+                statusLabel->SetText(Tr("Like button clicked\nAdded your like!"));
             };
             counterBtn->onSecondaryClick = [statusLabel]() {
-                statusLabel->SetText("Like count clicked\nShow who liked (1,200 users)");
+                statusLabel->SetText(Tr("Like count clicked\nShow who liked (1,200 users)"));
             };
             DemoKit::AddFixed(row4b, counterBtn);
 
@@ -288,25 +288,25 @@ namespace UltraCanvas {
         auto menuIcon = [](const char* name) {
             return NormalizePath(GetResourcesDir() + "media/icons/menu/" + name + ".svg");
         };
-        vertSplitMenu->AddItem(MenuItemData::Action("New file", menuIcon("new"), []() {
+        vertSplitMenu->AddItem(MenuItemData::Action(Tr("New file"), menuIcon("new"), []() {
         }));
 
-        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", menuIcon("folder"), []() {
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut(Tr("Open..."), "Ctrl+O", menuIcon("folder"), []() {
               debugOutput << "Open file" << std::endl;
         }));
 
-        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("Save", "Ctrl+S", menuIcon("save"), []() {
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut(Tr("Save"), "Ctrl+S", menuIcon("save"), []() {
               debugOutput << "Save file" << std::endl;
         }));
-        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", menuIcon("save"), []() {
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut(Tr("Save As..."), "Ctrl+Shift+S", menuIcon("save"), []() {
               debugOutput << "Save as" << std::endl;
           }));
-        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("Exit", "Alt+F4", menuIcon("exit"), []() {
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut(Tr("Exit"), "Alt+F4", menuIcon("exit"), []() {
             debugOutput << "Exit application" << std::endl;
         }));
 
         // Vertical Split Button
-            auto vertSplitBtn = CreateButton("VertSplitButton", 0, 0, 100, 50, "File");
+            auto vertSplitBtn = CreateButton("VertSplitButton", 0, 0, 100, 50, Tr("File"));
             vertSplitBtn->SetSplitEnabled(true);
             vertSplitBtn->SetSplitHorizontal(false); // Vertical
             vertSplitBtn->SetSplitRatio(0.6);
@@ -315,7 +315,7 @@ namespace UltraCanvas {
             vertSplitBtn->SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/dropdown.svg"));
             vertSplitBtn->SetSplitSecondaryIconSize(12, 8);
             vertSplitBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("File action clicked\nOpen file dialog");
+                statusLabel->SetText(Tr("File action clicked\nOpen file dialog"));
             };
             vertSplitBtn->onSecondaryClick = [page = page.get(), vertSplitMenu]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
@@ -327,27 +327,27 @@ namespace UltraCanvas {
             // ========================================
             // SECTION 5: CUSTOM STYLING
             // ========================================
-            auto section5 = DemoKit::AddCard(page, "Section5", "Custom Styling");
+            auto section5 = DemoKit::AddCard(page, "Section5", Tr("Custom Styling"));
             auto row5 = DemoKit::AddRow(section5, "Section5Row", 10);
 
             // Flat Button
-            auto flatBtn = CreateButton("FlatButton", 0, 0, 100, 35, "Flat");
+            auto flatBtn = CreateButton("FlatButton", 0, 0, 100, 35, Tr("Flat"));
             flatBtn->SetStyle(ButtonStyles::FlatStyle());
             flatBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Flat button clicked\nNo background, minimal style");
+                statusLabel->SetText(Tr("Flat button clicked\nNo background, minimal style"));
             };
             DemoKit::AddFixed(row5, flatBtn);
 
             // Rounded Button
-            auto roundedBtn = CreateButton("RoundedButton", 0, 0, 100, 35, "Rounded");
+            auto roundedBtn = CreateButton("RoundedButton", 0, 0, 100, 35, Tr("Rounded"));
             roundedBtn->SetCornerRadius(18.0f);
             roundedBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Rounded button clicked\nCustom corner radius applied");
+                statusLabel->SetText(Tr("Rounded button clicked\nCustom corner radius applied"));
             };
             DemoKit::AddFixed(row5, roundedBtn);
 
             // Custom Colors
-            auto customColorBtn = CreateButton("CustomColor", 0, 0, 120, 35, "Custom");
+            auto customColorBtn = CreateButton("CustomColor", 0, 0, 120, 35, Tr("Custom"));
             customColorBtn->SetColors(
                     Color(255, 215, 0, 255),   // Gold normal
                     Color(255, 200, 0, 255),   // Gold hover
@@ -361,39 +361,39 @@ namespace UltraCanvas {
                     Color(150, 150, 150, 255)  // Gray disabled
             );
             customColorBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Custom colored button clicked\nGold theme with dark text");
+                statusLabel->SetText(Tr("Custom colored button clicked\nGold theme with dark text"));
             };
             DemoKit::AddFixed(row5, customColorBtn);
 
             // Shadow Button
-            auto shadowBtn = CreateButton("ShadowButton", 0, 0, 120, 38, "Shadow");
+            auto shadowBtn = CreateButton("ShadowButton", 0, 0, 120, 38, Tr("Shadow"));
             shadowBtn->SetShadow(true, Color(0, 0, 0, 128), Point2Di(3, 3));
             shadowBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Shadow button clicked\nCustom shadow effect applied");
+                statusLabel->SetText(Tr("Shadow button clicked\nCustom shadow effect applied"));
             };
             DemoKit::AddFixed(row5, shadowBtn);
 
             // Large Button
-            auto largeBtn = CreateButton("LargeButton", 0, 0, 150, 50, "Large");
+            auto largeBtn = CreateButton("LargeButton", 0, 0, 150, 50, Tr("Large"));
             largeBtn->SetFont("Sans", 16, FontWeight::Bold);
             largeBtn->SetPadding(10, 20, 10, 20);
             largeBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Large button clicked\nCustom size and padding");
+                statusLabel->SetText(Tr("Large button clicked\nCustom size and padding"));
             };
             DemoKit::AddFixed(row5, largeBtn);
 
             // ========================================
             // SECTION 6: INTERACTIVE EXAMPLES
             // ========================================
-            auto section6 = DemoKit::AddCard(page, "Section6", "Interactive Examples");
+            auto section6 = DemoKit::AddCard(page, "Section6", Tr("Interactive Examples"));
             auto row6 = DemoKit::AddRow(section6, "Section6Row", 10);
 
             // Toggle Example
-            auto toggleBtn = CreateButton("ToggleButton", 0, 0, 120, 35, "Toggle: OFF");
+            auto toggleBtn = CreateButton("ToggleButton", 0, 0, 120, 35, Tr("Toggle: OFF"));
             auto toggleState = std::make_shared<bool>(false);
             toggleBtn->onClick = [toggleBtn = toggleBtn.get(), toggleState, statusLabel]() {
                 *toggleState = !*toggleState;
-                toggleBtn->SetText(*toggleState ? "Toggle: ON" : "Toggle: OFF");
+                toggleBtn->SetText(*toggleState ? Tr("Toggle: ON") : Tr("Toggle: OFF"));
                 toggleBtn->SetColors(
                         *toggleState ? Color(100, 200, 100, 255) : Colors::ButtonFace,
                         *toggleState ? Color(80, 180, 80, 255) : Colors::SelectionHover,
@@ -401,60 +401,58 @@ namespace UltraCanvas {
                         Colors::LightGray
                 );
                 statusLabel->SetText(*toggleState ?
-                                     "Toggle switched ON\nState persists until clicked again" :
-                                     "Toggle switched OFF\nClick to enable");
+                                     Tr("Toggle switched ON\nState persists until clicked again") :
+                                     Tr("Toggle switched OFF\nClick to enable"));
             };
             DemoKit::AddFixed(row6, toggleBtn);
 
             // Counter Example
-            auto counterExampleBtn = CreateButton("CounterExample", 0, 0, 140, 35, "Clicks: 0");
+            auto counterExampleBtn = CreateButton("CounterExample", 0, 0, 140, 35, Tr("Clicks: 0"));
             auto clickCount = std::make_shared<int>(0);
             counterExampleBtn->SetSplitEnabled(true);
             counterExampleBtn->SetSplitRatio(0);
-            counterExampleBtn->SetSplitSecondaryText("Reset");
+            counterExampleBtn->SetSplitSecondaryText(Tr("Reset"));
             counterExampleBtn->onClick = [counterExampleBtn = counterExampleBtn.get(), clickCount, statusLabel]() {
                 (*clickCount)++;
-                std::ostringstream text;
-                text << "Clicks: " << *clickCount;
-                counterExampleBtn->SetText(text.str());
+                counterExampleBtn->SetText(TrF("Clicks: {0}", *clickCount));
 
-                std::ostringstream status;
-                status << "Button clicked " << *clickCount << " times\nSecondary button resets counter";
-                statusLabel->SetText(status.str());
+                statusLabel->SetText(TrN("Button clicked {n} time\nSecondary button resets counter",
+                                         "Button clicked {n} times\nSecondary button resets counter",
+                                         *clickCount));
             };
             counterExampleBtn->onSecondaryClick = [counterExampleBtn = counterExampleBtn.get(), clickCount, statusLabel]() {
                 *clickCount = 0;
-                counterExampleBtn->SetText("Clicks: 0");
-                statusLabel->SetText("Counter reset to 0");
+                counterExampleBtn->SetText(TrF("Clicks: {0}", 0));
+                statusLabel->SetText(Tr("Counter reset to 0"));
             };
             DemoKit::AddFixed(row6, counterExampleBtn);
 
             // Multi-Action Button
-            auto multiBtn = CreateButton("MultiAction", 0, 0, 170, 35, "Save");
+            auto multiBtn = CreateButton("MultiAction", 0, 0, 170, 35, Tr("Save"));
             multiBtn->SetSplitEnabled(true);
             multiBtn->SetSplitRatio(0);
 //            multiBtn->SetSplitSecondaryText("");
             multiBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/save.png"));
             multiBtn->SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
             multiBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Quick save executed\nFile saved with default settings");
+                statusLabel->SetText(Tr("Quick save executed\nFile saved with default settings"));
             };
             multiBtn->onSecondaryClick = [statusLabel]() {
-                statusLabel->SetText("Save options clicked\nWould show: Save As, Save Copy, Export...");
+                statusLabel->SetText(Tr("Save options clicked\nWould show: Save As, Save Copy, Export..."));
             };
             DemoKit::AddFixed(row6, multiBtn);
 
             // ========================================
             // SECTION 7: BUTTON BUILDER EXAMPLE
             // ========================================
-            auto section7 = DemoKit::AddCard(page, "Section7", "Button Builder Pattern");
+            auto section7 = DemoKit::AddCard(page, "Section7", Tr("Button Builder Pattern"));
             auto row7 = DemoKit::AddRow(section7, "Section7Row", 10);
 
             // Create button using builder pattern
             auto builderBtn = ButtonBuilder("BuilderButton")
                     .SetStyle(ButtonStyles::PrimaryStyle())
                     .SetSize(240, 40)
-                    .SetText("Built with Builder")
+                    .SetText(Tr("Built with Builder"))
                     .SetIcon(NormalizePath(GetResourcesDir() + "media/icons/build.png"))
                     .SetIconSpacing(6)
                     .SetSplitEnabled(true)
@@ -463,12 +461,12 @@ namespace UltraCanvas {
 //                    .SetSplitSecondaryText("→")
                     .SetSplitRatio(0.8)
                     .SetCornerRadius(8.0f)
-                    .SetTooltip("This button was created using the Builder pattern")
+                    .SetTooltip(Tr("This button was created using the Builder pattern"))
                     .OnClick([statusLabel]() {
-                        statusLabel->SetText("Builder pattern button clicked\nCreated with fluent interface");
+                        statusLabel->SetText(Tr("Builder pattern button clicked\nCreated with fluent interface"));
                     })
                     .OnSecondaryClick([statusLabel]() {
-                        statusLabel->SetText("Builder button arrow clicked\nWould navigate forward");
+                        statusLabel->SetText(Tr("Builder button arrow clicked\nWould navigate forward"));
                     })
                     .Build();
             DemoKit::AddFixed(row7, builderBtn);
@@ -476,7 +474,7 @@ namespace UltraCanvas {
             // Another builder example - complex configuration
             auto complexBuilderBtn = ButtonBuilder("ComplexBuilder")
                     .SetSize(180, 40)
-                    .SetText("Complex")
+                    .SetText(Tr("Complex"))
                     .SetSplitEnabled(true)
                     .SetSplitSecondaryText("99+")
                     .SetSplitRatio(0)
@@ -487,10 +485,10 @@ namespace UltraCanvas {
                     .SetFont("Sans", 14, FontWeight::Bold)
                     .SetShadow(true)
                     .OnClick([statusLabel]() {
-                        statusLabel->SetText("Complex builder button clicked\nPrimary action with custom styling");
+                        statusLabel->SetText(Tr("Complex builder button clicked\nPrimary action with custom styling"));
                     })
                     .OnSecondaryClick([statusLabel]() {
-                        statusLabel->SetText("Badge clicked\n99+ notifications");
+                        statusLabel->SetText(Tr("Badge clicked\n99+ notifications"));
                     })
                     .Build();
             DemoKit::AddFixed(row7, complexBuilderBtn);

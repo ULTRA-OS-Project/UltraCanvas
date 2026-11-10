@@ -2,13 +2,14 @@
 // Tooltip style and structured tooltip content types.
 // Shared by UltraCanvasTooltipManager (rendering) and UltraCanvasUIElement
 // (per-element tooltip storage) — keep this header lightweight.
+// Version: 1.4.0 - FromTheme sets the interface font at the caption size, the title at the body size
 // Version: 1.3.1 - TooltipContent builds its blocks through Block(): no missing-field-
 //                 initializers warning in every file that includes this header
 // Version: 1.3.0 - TooltipStyle::FromTheme
 // Version: 1.2.0 - offsetX / offsetY are the gap right of and above the pointer
 //                 (12 / 20 px; the tooltip sits above-right of it)
 // Version: 1.1.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -126,10 +127,16 @@ namespace UltraCanvas {
         }
 
         // Preset: the theme's roles - the raised surface for the panel,
-        // a hairline, ink and muted ink - over Dark() or Light()
+        // a hairline, ink and muted ink - and its interface font at the
+        // caption size over Dark() or Light()
         static TooltipStyle FromTheme(const UltraCanvasTheme& theme, const TooltipStyle& base) {
             TooltipStyle s = base;
             const ThemeRoles& r = theme.roles;
+            // the caption size for the text, the body size for a title
+            const FontStyle caption = theme.Font(ThemeTextRole::Caption);
+            s.fontFamily = caption.fontFamily;
+            s.fontSize = static_cast<float>(caption.fontSize);
+            s.titleFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
             s.backgroundColor = r.raised.WithAlpha(s.backgroundColor.a);
             s.borderColor = r.line;
             s.textColor = r.ink;

@@ -9,9 +9,10 @@
 // frame past the rate) shows a danger border until it is corrected. It is an
 // input element in its own right - four segments, no caret - so it owns its
 // entry buffer; it is not built over the text input.
+// Version: 1.2.0 - FromTheme takes the theme's monospace family; the SetStyle rule and the constructor tail
 // Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
