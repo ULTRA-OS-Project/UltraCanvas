@@ -58,37 +58,37 @@ namespace UltraCanvas {
         // length reads the headcount and the scale colours it, which would be
         // lost against saturated per-cell colours.
         CircularRing exec;
-        exec.label = "Executive";
+        exec.label = Tr("Executive");
         exec.textStyle = CircularTextStyle::Horizontal;
         exec.valueType = ValueVisualizationType::Bars;
         const Color execBg(238, 241, 248, 255);
         const Color execFg(35, 40, 60, 255);
         exec.cells = {
-            MakeCell("CEO",  96.0, execBg, execFg),
-            MakeCell("CTO",  72.0, execBg, execFg),
-            MakeCell("CFO",  48.0, execBg, execFg),
-            MakeCell("COO",  61.0, execBg, execFg)
+            MakeCell(Tr("CEO"),  96.0, execBg, execFg),
+            MakeCell(Tr("CTO"),  72.0, execBg, execFg),
+            MakeCell(Tr("CFO"),  48.0, execBg, execFg),
+            MakeCell(Tr("COO"),  61.0, execBg, execFg)
         };
         chart->AddRing(exec);
 
         CircularRing depts;
-        depts.label = "Departments";
+        depts.label = Tr("Departments");
         depts.textStyle = CircularTextStyle::Circular;
         depts.valueType = ValueVisualizationType::CircularBar;
         depts.cells = {
-            MakeCell("Eng",   85.0, Color(100, 149, 237, 255)),
-            MakeCell("Mktg",  78.0, Color(255,  99,  71, 255)),
-            MakeCell("Sales", 82.0, Color( 60, 179, 113, 255)),
-            MakeCell("HR",    75.0, Color(219, 112, 147, 255)),
-            MakeCell("Fin",   80.0, Color(218, 165,  32, 255)),
-            MakeCell("Ops",   77.0, Color(147, 112, 219, 255)),
-            MakeCell("Legal", 70.0, Color(128, 128, 128, 255)),
-            MakeCell("IT",    73.0, Color( 32, 178, 170, 255))
+            MakeCell(Tr("Eng"),   85.0, Color(100, 149, 237, 255)),
+            MakeCell(Tr("Mktg"),  78.0, Color(255,  99,  71, 255)),
+            MakeCell(Tr("Sales"), 82.0, Color( 60, 179, 113, 255)),
+            MakeCell(Tr("HR"),    75.0, Color(219, 112, 147, 255)),
+            MakeCell(Tr("Fin"),   80.0, Color(218, 165,  32, 255)),
+            MakeCell(Tr("Ops"),   77.0, Color(147, 112, 219, 255)),
+            MakeCell(Tr("Legal"), 70.0, Color(128, 128, 128, 255)),
+            MakeCell(Tr("IT"),    73.0, Color( 32, 178, 170, 255))
         };
         chart->AddRing(depts);
 
         CircularRing teams;
-        teams.label = "Teams";
+        teams.label = Tr("Teams");
         teams.textStyle = CircularTextStyle::StarStyle;
         // A line track reads the ring as a closed series rather than as
         // independent cells, which suits per-team scores.
@@ -96,15 +96,15 @@ namespace UltraCanvas {
         teams.valueColor = Color(30, 60, 200, 255);
         teams.decorativeType = DecorativeRingType::ColorHighlight;
         teams.decorativeColor = Color(90, 90, 100, 190);
-        const char* names[] = {"Frontend", "Backend", "DevOps", "QA", "UI/UX",
-                               "Content", "SEO", "Social", "Accounts", "BizDev"};
+        const std::string names[] = {Tr("Frontend"), Tr("Backend"), Tr("DevOps"), Tr("QA"), Tr("UI/UX"),
+                               Tr("Content"), Tr("SEO"), Tr("Social"), Tr("Accounts"), Tr("BizDev")};
         const double scores[] = {88, 92, 85, 78, 83, 70, 75, 73, 80, 77};
         for (int i = 0; i < 10; ++i) {
             CircularCell cell = MakeCell(names[i], scores[i],
                                          Color(232, 238, 250, 255),
                                          Color(45, 45, 60, 255));
             // Grouping marks the two halves of the org that report separately.
-            cell.groupName = (i < 5) ? "Product" : "Growth";
+            cell.groupName = (i < 5) ? Tr("Product") : Tr("Growth");
             teams.cells.push_back(cell);
         }
         chart->AddRing(teams);
@@ -120,27 +120,27 @@ namespace UltraCanvas {
     // Partial sweep: two levels across 270 degrees, leaving a deliberate gap.
     static void BuildTechEcosystemRings(std::shared_ptr<UltraCanvasCircularInfoGraphic> chart) {
         CircularRing core;
-        core.label = "Core Technologies";
+        core.label = Tr("Core Technologies");
         core.textStyle = CircularTextStyle::Radial;
         core.valueType = ValueVisualizationType::Bars;
         core.valueColor = Color(25, 60, 180, 255);
         core.cells = {
-            MakeCell("Cloud",      95.0, Color( 25,  25, 112, 255)),
-            MakeCell("AI/ML",      88.0, Color(128,   0, 128, 255)),
-            MakeCell("Blockchain", 72.0, Color(184, 134,  11, 255)),
-            MakeCell("IoT",        85.0, Color(  0, 128,   0, 255)),
-            MakeCell("5G",         78.0, Color(220,  20,  60, 255))
+            MakeCell(Tr("Cloud"),      95.0, Color( 25,  25, 112, 255)),
+            MakeCell(Tr("AI/ML"),      88.0, Color(128,   0, 128, 255)),
+            MakeCell(Tr("Blockchain"), 72.0, Color(184, 134,  11, 255)),
+            MakeCell(Tr("IoT"),        85.0, Color(  0, 128,   0, 255)),
+            MakeCell(Tr("5G"),         78.0, Color(220,  20,  60, 255))
         };
         chart->AddRing(core);
 
         CircularRing apps;
-        apps.label = "Applications";
+        apps.label = Tr("Applications");
         apps.textStyle = CircularTextStyle::StarStyle;
         apps.valueType = ValueVisualizationType::CircularBar;
         apps.decorativeType = DecorativeRingType::Pattern;
         apps.decorativeColor = Color(150, 160, 175, 160);
-        const char* names[] = {"FinTech", "HealthTech", "EdTech", "RetailTech",
-                               "AutoTech", "AgriTech", "GovTech"};
+        const std::string names[] = {Tr("FinTech"), Tr("HealthTech"), Tr("EdTech"), Tr("RetailTech"),
+                               Tr("AutoTech"), Tr("AgriTech"), Tr("GovTech")};
         const double adoption[] = {92, 89, 84, 87, 81, 76, 79};
         for (int i = 0; i < 7; ++i) {
             apps.cells.push_back(MakeCell(names[i], adoption[i],
@@ -163,13 +163,13 @@ namespace UltraCanvas {
     static void BuildGenomicTrackRings(std::shared_ptr<UltraCanvasCircularInfoGraphic> chart) {
         // Track 1 (innermost): chromosome-style ideogram bands.
         CircularRing ideogram;
-        ideogram.label = "Segments";
+        ideogram.label = Tr("Segments");
         ideogram.textStyle = CircularTextStyle::Circular;
         ideogram.borderColor = Color(255, 255, 255, 200);
         ideogram.borderWidth = 1.0f;
         for (int i = 0; i < 12; ++i) {
             uint8_t shade = static_cast<uint8_t>(60 + ((i * 37) % 150));
-            CircularCell cell = MakeCell("S" + std::to_string(i + 1), 0.0,
+            CircularCell cell = MakeCell(TrF("S{0}", i + 1), 0.0,
                                          Color(shade, shade, static_cast<uint8_t>(shade + 40), 255));
             ideogram.cells.push_back(cell);
         }
@@ -177,7 +177,7 @@ namespace UltraCanvas {
 
         // Track 2: coverage as a closed line series.
         CircularRing coverage;
-        coverage.label = "Coverage";
+        coverage.label = Tr("Coverage");
         coverage.textStyle = CircularTextStyle::Horizontal;
         coverage.valueType = ValueVisualizationType::CircularLine;
         coverage.valueColor = Color(200, 40, 60, 255);
@@ -192,7 +192,7 @@ namespace UltraCanvas {
 
         // Track 3 (outermost): per-bin density as progress arcs.
         CircularRing density;
-        density.label = "Density";
+        density.label = Tr("Density");
         density.textStyle = CircularTextStyle::Horizontal;
         density.valueType = ValueVisualizationType::CircularBar;
         density.decorativeType = DecorativeRingType::Gradient;
@@ -327,25 +327,25 @@ namespace UltraCanvas {
             DemoKit::AddFixed(panel, slider);
         };
 
-        addHeader("SweepHeader", "Sweep Angle (degrees):");
+        addHeader("SweepHeader", Tr("Sweep Angle (degrees):"));
         addSlider("Sweep", 90.0f, 360.0f, 5.0f, defaults.sweepAngle,
                   [chart](float value) { chart->SetTotalAngle(value); });
 
-        addHeader("RotateHeader", "Rotation (degrees):");
+        addHeader("RotateHeader", Tr("Rotation (degrees):"));
         addSlider("Rotate", -180.0f, 180.0f, 5.0f, defaults.rotation,
                   [chart](float value) { chart->SetAngleOffset(value); });
 
         // SetRadiusRange would pin explicit pixel radii; the fraction keeps the
         // chart auto-fitting to whatever the tab gives it.
-        addHeader("HoleHeader", "Centre Hole:");
+        addHeader("HoleHeader", Tr("Centre Hole:"));
         addSlider("Hole", 0.05f, 0.6f, 0.01f, defaults.innerFraction,
                   [chart](float value) { chart->SetInnerRadiusFraction(value); });
 
-        addHeader("RingGapHeader", "Ring Gap (px):");
+        addHeader("RingGapHeader", Tr("Ring Gap (px):"));
         addSlider("RingGap", 0.0f, 12.0f, 0.5f, defaults.ringGap,
                   [chart](float value) { chart->SetRingSpacing(value); });
 
-        addHeader("CellGapHeader", "Cell Gap (degrees):");
+        addHeader("CellGapHeader", Tr("Cell Gap (degrees):"));
         addSlider("CellGap", 0.0f, 6.0f, 0.25f, defaults.cellGap,
                   [chart](float value) { chart->SetCellSpacingAngle(value); });
 
@@ -357,14 +357,14 @@ namespace UltraCanvas {
             originalStyles->push_back(ring ? ring->textStyle : CircularTextStyle::Horizontal);
         }
 
-        addHeader("TextHeader", "Cell Text Style:");
+        addHeader("TextHeader", Tr("Cell Text Style:"));
         auto textDropdown = std::make_shared<UltraCanvasDropdown>(
             idPrefix + "TextStyle", kCircularControlWidth, 24);
-        textDropdown->AddItem("Per-ring (authored)");
-        textDropdown->AddItem("Horizontal");
-        textDropdown->AddItem("Circular");
-        textDropdown->AddItem("Radial");
-        textDropdown->AddItem("Star (outboard)");
+        textDropdown->AddItem(Tr("Per-ring (authored)"));
+        textDropdown->AddItem(Tr("Horizontal"));
+        textDropdown->AddItem(Tr("Circular"));
+        textDropdown->AddItem(Tr("Radial"));
+        textDropdown->AddItem(Tr("Star (outboard)"));
         textDropdown->SetSelectedIndex(0);
         textDropdown->onSelectionChanged = [chart, originalStyles](int index, const DropdownItem&) {
             for (size_t r = 0; r < chart->GetRingCount(); ++r) {
@@ -384,13 +384,13 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(panel, textDropdown);
 
-        addHeader("ConnHeader", "Connection Routing:");
+        addHeader("ConnHeader", Tr("Connection Routing:"));
         auto connDropdown = std::make_shared<UltraCanvasDropdown>(
             idPrefix + "ConnType", kCircularControlWidth, 24);
-        connDropdown->AddItem("Through Centre");
-        connDropdown->AddItem("Direct Curve");
-        connDropdown->AddItem("Around Outside");
-        connDropdown->AddItem("Hidden");
+        connDropdown->AddItem(Tr("Through Centre"));
+        connDropdown->AddItem(Tr("Direct Curve"));
+        connDropdown->AddItem(Tr("Around Outside"));
+        connDropdown->AddItem(Tr("Hidden"));
         connDropdown->SetSelectedIndex(defaults.connectionIndex);
         connDropdown->onSelectionChanged = [chart](int index, const DropdownItem&) {
             ConnectionLineType type;
@@ -406,7 +406,7 @@ namespace UltraCanvas {
 
         auto groupCheckbox = std::make_shared<UltraCanvasCheckbox>(
             idPrefix + "Groups", kCircularControlWidth, 24);
-        groupCheckbox->SetText("Show Group Outlines");
+        groupCheckbox->SetText(Tr("Show Group Outlines"));
         groupCheckbox->SetChecked(false);
         groupCheckbox->onStateChanged = [chart](CheckedState, CheckedState newState) {
             chart->SetShowGroupOutlines(newState == CheckedState::Checked);
@@ -415,7 +415,7 @@ namespace UltraCanvas {
 
         auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>(
             idPrefix + "Hover", kCircularControlWidth, 24);
-        hoverCheckbox->SetText("Hover Highlight");
+        hoverCheckbox->SetText(Tr("Hover Highlight"));
         hoverCheckbox->SetChecked(true);
         hoverCheckbox->onStateChanged = [chart](CheckedState, CheckedState newState) {
             chart->SetHoverHighlightEnabled(newState == CheckedState::Checked);
@@ -423,8 +423,8 @@ namespace UltraCanvas {
         DemoKit::AddFixed(panel, hoverCheckbox);
 
         DemoKit::AddCaption(panel, idPrefix + "Hint",
-            "Hover a cell for its value and group. Sweep below 360 leaves a "
-            "gap: clicks in that gap are ignored, not misrouted.");
+            Tr("Hover a cell for its value and group. Sweep below 360 leaves a "
+            "gap: clicks in that gap are ignored, not misrouted."));
 
         return panel;
     }
@@ -471,13 +471,13 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeCorporateTab() {
         auto chart = CreateCircularInfoGraphic("CorporateCircular", 0, 0, 0, 0);
         BuildCorporateRings(chart);
-        chart->SetCenterText("Org");
+        chart->SetCenterText(Tr("Org"));
         chart->SetTooltipsEnabled(true);
 
         return MakeCircularTab(
             "CiCorp",
-            "Three rings, one per org level: horizontal labels with radial bars, circular labels with "
-            "progress arcs, and star labels over a closed line track. Connections route through the centre.",
+            Tr("Three rings, one per org level: horizontal labels with radial bars, circular labels with "
+            "progress arcs, and star labels over a closed line track. Connections route through the centre."),
             chart, CircularPanelDefaults{});
     }
 
@@ -493,8 +493,8 @@ namespace UltraCanvas {
         defaults.connectionIndex = 1;   // Direct Curve
         return MakeCircularTab(
             "CiTech",
-            "A 270-degree sweep leaves a quadrant open: radial labels inside, star labels with leader lines "
-            "outside, and connections drawn as direct curves rather than through the hole.",
+            Tr("A 270-degree sweep leaves a quadrant open: radial labels inside, star labels with leader lines "
+            "outside, and connections drawn as direct curves rather than through the hole."),
             chart, defaults);
     }
 
@@ -510,8 +510,8 @@ namespace UltraCanvas {
         defaults.cellGap       = 0.0f;
         return MakeCircularTab(
             "CiTrack",
-            "Circos-style stacked tracks: a categorical ideogram, a 36-bin coverage line, a density arc "
-            "track, and weighted links between segments whose thickness follows the link value.",
+            Tr("Circos-style stacked tracks: a categorical ideogram, a 36-bin coverage line, a density arc "
+            "track, and weighted links between segments whose thickness follows the link value."),
             chart, defaults);
     }
 
@@ -530,8 +530,8 @@ namespace UltraCanvas {
         defaults.connectionIndex = 2;   // Around Outside
         return MakeCircularTab(
             "CiMandala",
-            "Five rings of 8 to 24 cells with roughly a third of them punched out, hue cycling by ring and "
-            "position, and connections routed around the outside of the outermost ring.",
+            Tr("Five rings of 8 to 24 cells with roughly a third of them punched out, hue cycling by ring and "
+            "position, and connections routed around the outside of the outermost ring."),
             chart, defaults);
     }
 
@@ -539,10 +539,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCircularInfoGraphicExamples() {
         auto page = DemoKit::CreatePage("CircularInfoContainer",
-            "Circular Info Graphic Examples - Multi-Ring Cell Layouts",
-            "Concentric rings of individually styled cells. Each ring picks its own text style (horizontal, glyph-by-glyph "
+            Tr("Circular Info Graphic Examples - Multi-Ring Cell Layouts"),
+            Tr("Concentric rings of individually styled cells. Each ring picks its own text style (horizontal, glyph-by-glyph "
             "circular, radial, or star-style with leader lines) and its own value track (radial bars, progress arcs, or a "
-            "closed line series). Connections link cells across rings, through the centre, directly, or around the outside.");
+            "closed line series). Connections link cells across rings, through the centre, directly, or around the outside."));
         // The page is the display area's height and the tabs take what the
         // title and description leave, so a window resize propagates down
         // through Measure/Arrange to each chart.
@@ -557,10 +557,10 @@ namespace UltraCanvas {
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        tabs->AddTab("Corporate Hierarchy",       MakeCorporateTab());
-        tabs->AddTab("Technology Ecosystem",      MakeTechEcosystemTab());
-        tabs->AddTab("Multi-Track Genomic Style", MakeGenomicTrackTab());
-        tabs->AddTab("Decorative Mandala",        MakeMandalaTab());
+        tabs->AddTab(Tr("Corporate Hierarchy"),       MakeCorporateTab());
+        tabs->AddTab(Tr("Technology Ecosystem"),      MakeTechEcosystemTab());
+        tabs->AddTab(Tr("Multi-Track Genomic Style"), MakeGenomicTrackTab());
+        tabs->AddTab(Tr("Decorative Mandala"),        MakeMandalaTab());
 
         DemoKit::Add(card, tabs, 1);
 

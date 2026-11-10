@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.9.0 - RichTextEditStyle::FromTheme, ApplyTheme: the edit follows the theme (its chrome and inks;
+//                  the document's fonts stay); a SetStyle by hand stops the following
 // Version: 1.8.0 - a run's own letter spacing (RichTextRun::letterSpacingPt) is drawn
 // Version: 1.7.0 - RichTextEditStyle::letterSpacing: the whole text tracked wider or tighter
 // Version: 1.6.0 - spell marks move with an edit instead of vanishing below the caret;
@@ -124,6 +126,19 @@ struct RichTextEditStyle {
     Color fontNoticeColor = Color(255, 244, 214);
     Color fontNoticeBorderColor = Color(230, 180, 80);
     Color fontNoticeTextColor = Color(110, 70, 0);
+
+    // The theme's roles over a base's own typography and metrics: the well
+    // for the text and the page (the element role "rich-text.page" where a
+    // theme wants paper of another colour), the panel for the desk, ink and
+    // the caret in ink, the soft accent for the selection, the accent for
+    // links, muted ink for quotes and list markers, the panel with hairlines
+    // for code, control-border rules and table grids, hairline guides; the
+    // comment, tracked-change and font-notice colours keep their own
+    // meaning. The document's fonts (baseFont, codeFontFamily) are the
+    // document's: they stay
+    static RichTextEditStyle FromTheme(const UltraCanvasTheme& theme, const RichTextEditStyle& base);
+    static RichTextEditStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, RichTextEditStyle()); }
+    static RichTextEditStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // A clickable region inside a rendered block (hyperlinks today).
@@ -241,6 +256,7 @@ public:
     const RichTextEditStyle& GetStyle() const { return style; }
     RichTextEditStyle& GetStyleMutable() { return style; }
     void SetStyle(const RichTextEditStyle& s);
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(RichTextEditStyle::FromTheme(theme, style)); }
 
     // ===== EDITING (also the toolbar surface) =====
     void InsertText(const std::string& utf8);

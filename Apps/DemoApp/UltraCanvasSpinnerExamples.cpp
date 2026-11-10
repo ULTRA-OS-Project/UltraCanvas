@@ -19,9 +19,9 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSpinnerExamples() {
-        auto container = DemoKit::CreatePage("SpinnerExamples", "Spinner / SpinBox Examples",
-                "Select a value with the up/down (or left/right) arrow buttons, the "
-                "keyboard arrow keys, the mouse wheel, or by typing into the field.");
+        auto container = DemoKit::CreatePage("SpinnerExamples", Tr("Spinner / SpinBox Examples"),
+                Tr("Select a value with the up/down (or left/right) arrow buttons, the "
+                "keyboard arrow keys, the mouse wheel, or by typing into the field."));
 
         // All spinners share one width so they line up; each value label is
         // as tall as the spinner beside it and vertically centred.
@@ -48,59 +48,59 @@ namespace UltraCanvas {
         };
 
         // ===== 1. INTEGER SPINNER (vertical up/down buttons) =====
-        auto intRow = addSection("IntSpinLabel", "Integer (0–100, step 5):");
+        auto intRow = addSection("IntSpinLabel", Tr("Integer (0–100, step 5):"));
 
         auto intSpin = CreateIntSpinner("IntSpinner", 0, 0, spinW, spinH, 0, 100, 20, 5);
         DemoKit::AddFixed(intRow, intSpin);
 
-        auto intValue = makeValueLabel(intRow, "IntSpinValue", "Value: 20");
+        auto intValue = makeValueLabel(intRow, "IntSpinValue", Tr("Value: 20"));
         intSpin->onValueChanged = [intValue](double v) {
-            intValue->SetText("Value: " + std::to_string(static_cast<int>(v)));
+            intValue->SetText(TrF("Value: {0}", static_cast<int>(v)));
         };
 
         // ===== 2. DECIMAL SPINNER with suffix =====
-        auto decRow = addSection("DecSpinLabel", "Decimal (0.0–5.0, step 0.25, 2 dp):");
+        auto decRow = addSection("DecSpinLabel", Tr("Decimal (0.0–5.0, step 0.25, 2 dp):"));
 
         auto decSpin = CreateDecimalSpinner("DecSpinner", 0, 0, spinW, spinH, 0.0, 5.0, 1.5, 0.25, 2);
         decSpin->SetSuffix(" s");
         DemoKit::AddFixed(decRow, decSpin);
 
-        auto decValue = makeValueLabel(decRow, "DecSpinValue", "Duration: 1.50 s");
+        auto decValue = makeValueLabel(decRow, "DecSpinValue", Tr("Duration: 1.50 s"));
         decSpin->onValueChanged = [decValue](double v) {
             std::ostringstream oss;
-            oss << "Duration: " << std::fixed << std::setprecision(2) << v << " s";
-            decValue->SetText(oss.str());
+            oss << std::fixed << std::setprecision(2) << v;
+            decValue->SetText(TrF("Duration: {0} s", oss.str()));
         };
 
         // ===== 3. LIST SPINNER (cycle arbitrary values) =====
-        auto listRow = addSection("ListSpinLabel", "List (cycle string values, wraps):");
+        auto listRow = addSection("ListSpinLabel", Tr("List (cycle string values, wraps):"));
 
         auto listSpin = CreateListSpinner("ListSpinner", 0, 0, spinW, spinH,
-                                          {"Small", "Medium", "Large", "X-Large"});
+                                          {Tr("Small"), Tr("Medium"), Tr("Large"), Tr("X-Large")});
         listSpin->SetWrap(true);
         listSpin->SetTextAlignment(TextAlignment::Center);
         // Combobox-style: clicking the field opens a dropdown of every size.
         listSpin->SetDropdownEnabled(true);
         DemoKit::AddFixed(listRow, listSpin);
 
-        auto listValue = makeValueLabel(listRow, "ListSpinValue", "Size: Small");
+        auto listValue = makeValueLabel(listRow, "ListSpinValue", TrF("Size: {0}", Tr("Small")));
         listSpin->onSelectionChanged = [listValue](int, const std::string& text) {
-            listValue->SetText("Size: " + text);
+            listValue->SetText(TrF("Size: {0}", text));
         };
 
         // ===== 4. HORIZONTAL STEPPER  [−] value [+] =====
-        auto stepRow = addSection("StepSpinLabel", "Horizontal stepper (quantity 1–99):");
+        auto stepRow = addSection("StepSpinLabel", Tr("Horizontal stepper (quantity 1–99):"));
 
         auto stepper = CreateStepper("QtyStepper", 0, 0, spinW, spinH, 1, 99, 1, 1);
         DemoKit::AddFixed(stepRow, stepper);
 
-        auto stepValue = makeValueLabel(stepRow, "StepSpinValue", "Quantity: 1");
+        auto stepValue = makeValueLabel(stepRow, "StepSpinValue", TrF("Quantity: {0}", 1));
         stepper->onValueChanged = [stepValue](double v) {
-            stepValue->SetText("Quantity: " + std::to_string(static_cast<int>(v)));
+            stepValue->SetText(TrF("Quantity: {0}", static_cast<int>(v)));
         };
 
         // ===== 5. CHEVRON GLYPH + prefix, wrapping angle =====
-        auto angleRow = addSection("AngleSpinLabel", "Angle (0–359°, wraps, chevron glyph):");
+        auto angleRow = addSection("AngleSpinLabel", Tr("Angle (0–359°, wraps, chevron glyph):"));
 
         auto angleSpin = CreateIntSpinner("AngleSpinner", 0, 0, spinW, spinH, 0, 359, 90, 15);
         angleSpin->SetWrap(true);
@@ -108,13 +108,13 @@ namespace UltraCanvas {
         angleSpin->SetButtonGlyph(SpinnerButtonGlyph::Chevron);
         DemoKit::AddFixed(angleRow, angleSpin);
 
-        auto angleValue = makeValueLabel(angleRow, "AngleSpinValue", "Angle: 90\xC2\xB0");
+        auto angleValue = makeValueLabel(angleRow, "AngleSpinValue", TrF("Angle: {0}\xC2\xB0", 90));
         angleSpin->onValueChanged = [angleValue](double v) {
-            angleValue->SetText("Angle: " + std::to_string(static_cast<int>(v)) + "\xC2\xB0");
+            angleValue->SetText(TrF("Angle: {0}\xC2\xB0", static_cast<int>(v)));
         };
 
         // ===== 6. CUSTOM FORMATTER (months) =====
-        auto monthRow = addSection("MonthSpinLabel", "Custom formatter (month names):");
+        auto monthRow = addSection("MonthSpinLabel", Tr("Custom formatter (month names):"));
 
         auto monthSpin = CreateIntSpinner("MonthSpinner", 0, 0, spinW, spinH, 1, 12, 7, 1);
         monthSpin->SetWrap(true);
@@ -123,28 +123,28 @@ namespace UltraCanvas {
         // Non-editable, so offer the dropdown as the way to pick a month.
         monthSpin->SetDropdownEnabled(true);
         monthSpin->SetFormatter([](double v) {
-            static const char* names[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+            const std::string names[] = {Tr("Jan"), Tr("Feb"), Tr("Mar"), Tr("Apr"), Tr("May"), Tr("Jun"),
+                                         Tr("Jul"), Tr("Aug"), Tr("Sep"), Tr("Oct"), Tr("Nov"), Tr("Dec")};
             int idx = static_cast<int>(v) - 1;
             if (idx < 0 || idx > 11) return std::string("--");
-            return std::string(names[idx]);
+            return names[idx];
         });
         DemoKit::AddFixed(monthRow, monthSpin);
 
-        auto monthValue = makeValueLabel(monthRow, "MonthSpinValue", "Month #7");
+        auto monthValue = makeValueLabel(monthRow, "MonthSpinValue", TrF("Month #{0}", 7));
         monthSpin->onValueChanged = [monthValue](double v) {
-            monthValue->SetText("Month #" + std::to_string(static_cast<int>(v)));
+            monthValue->SetText(TrF("Month #{0}", static_cast<int>(v)));
         };
 
         // ===== INSTRUCTIONS =====
-        DemoKit::AddNotes(container, "SpinnerInstructions", "Interaction", {
-                "Click the arrow buttons, or press Up/Down (Left/Right) to step",
-                "PageUp / PageDown step by the page amount; Home / End jump to min / max",
-                "Scroll the mouse wheel over a spinner to change its value",
-                "Type directly into an editable field (the current value is selected, so "
-                "typing replaces it), then press Enter to commit (Esc to cancel)",
-                "The Size and Month spinners have a value dropdown \xE2\x80\x93 click the "
-                "field to pick from the full list"});
+        DemoKit::AddNotes(container, "SpinnerInstructions", Tr("Interaction"), {
+                Tr("Click the arrow buttons, or press Up/Down (Left/Right) to step"),
+                Tr("PageUp / PageDown step by the page amount; Home / End jump to min / max"),
+                Tr("Scroll the mouse wheel over a spinner to change its value"),
+                Tr("Type directly into an editable field (the current value is selected, so "
+                "typing replaces it), then press Enter to commit (Esc to cancel)"),
+                Tr("The Size and Month spinners have a value dropdown \xE2\x80\x93 click the "
+                "field to pick from the full list")});
 
         return container;
     }

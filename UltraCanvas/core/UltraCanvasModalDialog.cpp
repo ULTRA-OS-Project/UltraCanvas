@@ -5,7 +5,7 @@
 // Version: 3.9.1 - a dialog without a parent is not placed by the tooltip's window
 // Version: 3.9.0 - ModalDialogStyle::FromTheme, ApplyTheme
 // Version: 3.8.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -76,6 +76,9 @@ namespace UltraCanvas {
         if (dialogConfig.dialogType != DialogType::Custom) {
             BuildDialogLayout();
         }
+        // A dialog that follows by default takes the theme once its
+        // sections and buttons exist (a file dialog again after its browser)
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasModalDialog::BuildDialogLayout() {
@@ -506,6 +509,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::SetStyle(const ModalDialogStyle& dialogStyle) {
+        StyleSetByHand();
         style = dialogStyle;
 
         // Apply style to components
@@ -1610,6 +1614,7 @@ namespace UltraCanvas {
         SyncFolderTree();
         SetNameText(fileConfig.defaultFileName);
         ApplyFileDialogLook(UltraCanvasTheme::Current());
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasFileDialog::BuildFileInterface() {
@@ -3314,6 +3319,10 @@ namespace UltraCanvas {
         ModalDialogStyle s = base;
         s.messageTextColor = theme.roles.ink;
         s.detailsTextColor = theme.roles.inkMuted;
+        // the message at the body size, the details at the caption size;
+        // the buttons' size stays the style's (0: the button's own)
+        s.messageFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+        s.detailsFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
         return s;
     }
 

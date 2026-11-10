@@ -46,143 +46,142 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGroupBoxExamples() {
-        auto page = DemoKit::CreatePage("GroupBoxExamples", "UltraCanvas Group Box Showcase",
-                "Titled containers that frame child elements: framed, header and flat "
-                "styles, title alignment, checkable and collapsible behaviour");
+        auto page = DemoKit::CreatePage("GroupBoxExamples", Tr("UltraCanvas Group Box Showcase"),
+                Tr("Titled containers that frame child elements: framed, header and flat "
+                "styles, title alignment, checkable and collapsible behaviour"));
 
         // Status label for interaction feedback.
         auto statusLabel = DemoKit::AddText(page, "GroupBoxStatus",
-                "Toggle the checkable group's checkbox, or click the collapsible group's title.");
+                Tr("Toggle the checkable group's checkbox, or click the collapsible group's title."));
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
         statusLabel->SetBorders(1.0f, Color(220, 220, 220, 255));
         statusLabel->SetPadding(6.0f);
 
-        auto stylesCard = DemoKit::AddCard(page, "GroupBoxStylesCard", "Frame styles and title alignment");
+        auto stylesCard = DemoKit::AddCard(page, "GroupBoxStylesCard", Tr("Frame styles and title alignment"));
         auto stylesRow = DemoKit::AddRow(stylesCard, "GroupBoxStylesRow", 20);
 
         // ===== 1. FRAMED — TITLE LEFT (default) =====
         {
-            auto gb = CreateDemoBox("gbFramedLeft", "Framed (title left)");
-            gb->AddChild(ContentLabel("gbFL1", "Classic fieldset frame."));
-            gb->AddChild(ContentLabel("gbFL2", "Caption sits in the top border."));
-            gb->AddChild(ContentLabel("gbFL3", "Default title alignment: left."));
+            auto gb = CreateDemoBox("gbFramedLeft", Tr("Framed (title left)"));
+            gb->AddChild(ContentLabel("gbFL1", Tr("Classic fieldset frame.")));
+            gb->AddChild(ContentLabel("gbFL2", Tr("Caption sits in the top border.")));
+            gb->AddChild(ContentLabel("gbFL3", Tr("Default title alignment: left.")));
             DemoKit::Add(stylesRow, gb, 1);
         }
 
         // ===== 2. FRAMED — TITLE CENTER =====
         {
-            auto gb = CreateDemoBox("gbFramedCenter", "Framed (title center)");
+            auto gb = CreateDemoBox("gbFramedCenter", Tr("Framed (title center)"));
             gb->SetTitleAlignment(GroupBoxTitleAlignment::Center);
             gb->SetBorderColor(Color(120, 140, 200, 255));
-            gb->AddChild(ContentLabel("gbFC1", "Same frame, centered caption."));
-            gb->AddChild(ContentLabel("gbFC2", "Border gap follows the title."));
+            gb->AddChild(ContentLabel("gbFC1", Tr("Same frame, centered caption.")));
+            gb->AddChild(ContentLabel("gbFC2", Tr("Border gap follows the title.")));
             DemoKit::Add(stylesRow, gb, 1);
         }
 
         // ===== 3. FRAMED — TITLE RIGHT =====
         {
-            auto gb = CreateDemoBox("gbFramedRight", "Framed (title right)");
+            auto gb = CreateDemoBox("gbFramedRight", Tr("Framed (title right)"));
             gb->SetTitleAlignment(GroupBoxTitleAlignment::Right);
             gb->SetCornerRadius(10.0f);
             gb->SetGroupBackgroundColor(Color(252, 252, 250, 255));
-            gb->AddChild(ContentLabel("gbFR1", "Rounded corners (radius 10)."));
-            gb->AddChild(ContentLabel("gbFR2", "Right-aligned caption."));
-            gb->AddChild(ContentLabel("gbFR3", "Light filled background."));
+            gb->AddChild(ContentLabel("gbFR1", Tr("Rounded corners (radius 10).")));
+            gb->AddChild(ContentLabel("gbFR2", Tr("Right-aligned caption.")));
+            gb->AddChild(ContentLabel("gbFR3", Tr("Light filled background.")));
             DemoKit::Add(stylesRow, gb, 1);
         }
 
         // ===== 4. HEADER STYLE =====
         {
-            auto gb = CreateDemoBox("gbHeader", "Header style");
+            auto gb = CreateDemoBox("gbHeader", Tr("Header style"));
             gb->SetFrameStyle(GroupBoxFrameStyle::Header);
             GroupBoxVisualStyle st = gb->GetVisualStyle();
             st.headerBackgroundColor = Color(235, 238, 245, 255);
             st.showHeaderSeparator = true;
             gb->SetVisualStyle(st);
-            gb->AddChild(ContentLabel("gbH1", "Caption in a header strip."));
-            gb->AddChild(ContentLabel("gbH2", "Full border + separator line."));
+            gb->AddChild(ContentLabel("gbH1", Tr("Caption in a header strip.")));
+            gb->AddChild(ContentLabel("gbH2", Tr("Full border + separator line.")));
             DemoKit::Add(stylesRow, gb, 1);
         }
 
         // ===== 5. FLAT STYLE =====
         {
-            auto gb = CreateDemoBox("gbFlat", "Flat style");
+            auto gb = CreateDemoBox("gbFlat", Tr("Flat style"));
             gb->SetFrameStyle(GroupBoxFrameStyle::Flat);
             gb->SetGroupBackgroundColor(Color(248, 248, 248, 255));
-            gb->AddChild(ContentLabel("gbFlat1", "No border, just a caption strip."));
-            gb->AddChild(ContentLabel("gbFlat2", "Optional separator under title."));
+            gb->AddChild(ContentLabel("gbFlat1", Tr("No border, just a caption strip.")));
+            gb->AddChild(ContentLabel("gbFlat2", Tr("Optional separator under title.")));
             DemoKit::Add(stylesRow, gb, 1);
         }
 
         // ===== 6. CARD PRESET + INFO ICON =====
         {
-            auto gb = CreateDemoBox("gbCard", "GROUPBOX");
+            auto gb = CreateDemoBox("gbCard", Tr("GROUPBOX"));
             gb->SetFrameStyle(GroupBoxFrameStyle::Header);
             gb->SetVisualStyle(GroupBoxVisualStyle::Card());
             // Info icon on the right reveals help text on hover.
-            gb->SetHelpText("This card uses the GroupBoxVisualStyle::Card() preset:\n"
-                            "filled rounded background, bold header and a separator.");
-            gb->AddChild(ContentLabel("gbCard1", "iOS-like grouped card preset."));
-            gb->AddChild(ContentLabel("gbCard2", "Hover the info icon for help."));
+            gb->SetHelpText(Tr("This card uses the GroupBoxVisualStyle::Card() preset:\n"
+                            "filled rounded background, bold header and a separator."));
+            gb->AddChild(ContentLabel("gbCard1", Tr("iOS-like grouped card preset.")));
+            gb->AddChild(ContentLabel("gbCard2", Tr("Hover the info icon for help.")));
             DemoKit::Add(stylesRow, gb, 1);
         }
 
         auto behaviourCard = DemoKit::AddCard(page, "GroupBoxBehaviourCard",
-                "Checkable, switch and collapsible groups");
+                Tr("Checkable, switch and collapsible groups"));
         auto behaviourRow = DemoKit::AddRow(behaviourCard, "GroupBoxBehaviourRow", 20);
 
         // ===== 7. CHECKABLE — CHECKBOX ACTIVATOR (left) =====
         {
-            auto gb = CreateDemoBox("gbCheckable", "Checkable (checkbox, left)");
+            auto gb = CreateDemoBox("gbCheckable", Tr("Checkable (checkbox, left)"));
             gb->SetCheckable(true);
             gb->SetChecked(true);
             // Built with their text only, so each is as wide as its label.
-            auto cb1 = std::make_shared<UltraCanvasCheckbox>("gbChkA", "Enable notifications");
-            auto cb2 = std::make_shared<UltraCanvasCheckbox>("gbChkB", "Play sound");
+            auto cb1 = std::make_shared<UltraCanvasCheckbox>("gbChkA", Tr("Enable notifications"));
+            auto cb2 = std::make_shared<UltraCanvasCheckbox>("gbChkB", Tr("Play sound"));
             cb1->SetMargin(2.0f);
             cb2->SetMargin(2.0f);
             gb->AddChild(cb1);
             gb->AddChild(cb2);
             gb->onCheckedChanged = [statusLabel](bool checked) {
-                std::ostringstream oss;
-                oss << "Checkbox group " << (checked ? "enabled" : "disabled")
-                    << " — its contents are " << (checked ? "active." : "greyed out.");
-                statusLabel->SetText(oss.str());
+                statusLabel->SetText(checked
+                        ? Tr("Checkbox group enabled — its contents are active.")
+                        : Tr("Checkbox group disabled — its contents are greyed out."));
             };
             DemoKit::Add(behaviourRow, gb, 1);
         }
 
         // ===== 8. ACTIVATED BY A SWITCH (right) + INFO ICON =====
         {
-            auto gb = CreateDemoBox("gbSwitch", "Settings");
+            auto gb = CreateDemoBox("gbSwitch", Tr("Settings"));
             gb->SetFrameStyle(GroupBoxFrameStyle::Header);
             // Switch-style activator on the RIGHT side of the title bar.
             gb->EnableActivatorSwitch(GroupBoxIndicatorSide::Right);
             gb->SetChecked(true);
             // Info icon on the LEFT (so it doesn't collide with the switch).
             gb->SetInfoIconSide(GroupBoxIndicatorSide::Left);
-            gb->SetHelpText("Toggle the switch on the right to enable or disable\n"
-                            "this section. The contents grey out when off.");
-            gb->AddChild(ContentLabel("gbSw1", "Private account"));
-            gb->AddChild(ContentLabel("gbSw2", "Show activity status"));
+            gb->SetHelpText(Tr("Toggle the switch on the right to enable or disable\n"
+                            "this section. The contents grey out when off."));
+            gb->AddChild(ContentLabel("gbSw1", Tr("Private account")));
+            gb->AddChild(ContentLabel("gbSw2", Tr("Show activity status")));
             gb->onCheckedChanged = [statusLabel](bool on) {
-                statusLabel->SetText(on ? "Switch ON — settings enabled."
-                                        : "Switch OFF — settings disabled.");
+                statusLabel->SetText(on ? Tr("Switch ON — settings enabled.")
+                                        : Tr("Switch OFF — settings disabled."));
             };
             DemoKit::Add(behaviourRow, gb, 1);
         }
 
         // ===== 9. COLLAPSIBLE =====
         {
-            auto gb = CreateDemoBox("gbCollapsible", "Collapsible group");
+            auto gb = CreateDemoBox("gbCollapsible", Tr("Collapsible group"));
             gb->SetCollapsible(true);
-            gb->AddChild(ContentLabel("gbCol1", "Click the title to collapse."));
-            gb->AddChild(ContentLabel("gbCol2", "The arrow shows the state."));
-            gb->AddChild(ContentLabel("gbCol3", "Content hides when collapsed."));
+            gb->AddChild(ContentLabel("gbCol1", Tr("Click the title to collapse.")));
+            gb->AddChild(ContentLabel("gbCol2", Tr("The arrow shows the state.")));
+            gb->AddChild(ContentLabel("gbCol3", Tr("Content hides when collapsed.")));
             gb->onCollapsedChanged = [statusLabel](bool collapsed) {
-                statusLabel->SetText(collapsed ? "Collapsible group collapsed."
-                                               : "Collapsible group expanded.");
+                statusLabel->SetText(collapsed ? Tr("Collapsible group collapsed.")
+                                               : Tr("Collapsible group expanded."));
             };
             // At the top of the row, so a collapsed box shrinks to its title
             // instead of being stretched to its neighbours' height.

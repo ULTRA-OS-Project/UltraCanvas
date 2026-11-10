@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
 // Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
 //                  from the host at start and on every host change, a window's ground from it
 // Version: 1.16.0 - GetHostAppearance: the desktop's look (dark, contrast, accent, fonts,
@@ -16,7 +17,7 @@
 // Version: 1.8.0 - keys aimed at a blocked window go to the modal
 // Version: 1.7.0 - a theme change reaches every window
 // Version: 1.6.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -514,7 +515,10 @@ namespace UltraCanvas {
         // with the host's fonts; Own leaves the theme to the application,
         // with the provider - a function from the host to the application's
         // theme, UltraVideo's ThemeFor is one - called at start and on every
-        // change when it gave one. An application that calls
+        // change when it gave one. Under FollowHost, Light and Dark the
+        // elements follow the theme by default
+        // (UltraCanvasUIElement::SetFollowThemeByDefault); an Own
+        // application sets that itself. An application that calls
         // UltraCanvasTheme::SetCurrent itself under another policy has taken
         // over: the policy does not put its theme back over it.
         void SetThemePolicy(ThemePolicy policy);

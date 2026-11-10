@@ -65,6 +65,10 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.44.0 - a file on a drive with no preview is fetched and opened in its
+//                  program (OpenRemoteFile); programs and launchers are refused
+// Version: 1.43.1 - Display > Path bar: the path bar names a drive by its volume, as the
+//                  tree does ("My Passport Ultra (D:)"), or by its letter alone
 // Version: 1.43.0 - a drive's row under Remote Drives takes Delete (the drive
 //                  is forgotten, its files are not touched) and Configure
 //                  drive; Refresh on every folder row of the tree and in the
@@ -121,7 +125,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -151,6 +155,7 @@
 #include "UltraFilerRamDiskDialog.h"
 #include "UltraFilerLocations.h"           // Extras > Open location
 #include "UltraFilerRamDisks.h"
+#include "UltraFilerRemoteCache.h"      // RemotePreviewCacheKey: an open copy's folder
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 // UltraCloudUI's shared "add account" dialog - the same one UltraMail uses
 // for "Attach cloud link". Its include directory comes with the target.
@@ -1913,6 +1918,11 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
+    // Display > Path bar: the strips are rebuilt only when the choice moved.
+    if (pathBarVolumeNamesApplied != settings.pathBarVolumeNames) {
+        pathBarVolumeNamesApplied = settings.pathBarVolumeNames;
+        RefreshPathBars();
+    }
     // Display > Ignored files: the clutter no display lists - the built-in
     // patterns still ticked plus the user's own, confined to the home folder
     // or loose in every folder. The widget ignores a call that changes
@@ -3436,6 +3446,116 @@ void UltraFilerWindow::ShowRemoteFileError(const std::string& path, const std::s
     });
 }
 
+namespace {
+
+// Whether a file of this name starts something when the system "opens" it:
+// a program, a script, an installer, a shortcut. A file fetched from a drive
+// is not started on a double-click - on Windows the system's opener runs
+// such a file, whatever server it came from.
+bool IsProgramOrLauncherName(const std::string& name) {
+    std::string ext;
+    const auto dot = name.find_last_of('.');
+    if (dot != std::string::npos && dot + 1 < name.size()) ext = name.substr(dot + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    static const char* const kLaunching[] = {
+        "exe", "com", "bat", "cmd", "msi", "msp", "scr", "pif", "cpl", "lnk", "url",
+        "js", "jse", "vbs", "vbe", "wsf", "wsh", "ps1", "psm1", "hta", "reg", "inf",
+        "scf", "jar", "app", "desktop", "sh", "bash", "zsh", "csh", "command", "run",
+        "appimage", "webloc", "workflow", "pkg", "dmg", "deb", "rpm"};
+    for (const char* launching : kLaunching)
+        if (ext == launching) return true;
+    return false;
+}
+
+} // namespace
+
+void UltraFilerWindow::OpenRemoteFile(const FilerEntry& entry) {
+    if (!window || !remoteDrives || entry.isDirectory || !IsRemoteFilerPath(entry.path)) return;
+    const std::string name = entry.name.empty() ? RemoteFilerName(entry.path) : entry.name;
+    if (entry.category == FilerFileCategory::Executable || entry.isShortcut ||
+        IsProgramOrLauncherName(name)) {
+        UltraCanvasAlert::Info(
+                TrF("\"{0}\" is a program, a script or a launcher. UltraFiler does not start one "
+                    "straight from a drive: copy it to this computer first, and start it "
+                    "there if you trust it.", name),
+                Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    const std::string root = UltraFilerRemoteDrives::OpenCopyDirectory();
+    if (root.empty()) {
+        UltraCanvasAlert::Error(Tr("There is no folder to fetch the file into: the cache "
+                                   "folder cannot be written."),
+                                Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    if (!remoteOpenCopiesSwept) {
+        remoteOpenCopiesSwept = true;
+        UltraFilerRemoteDrives::SweepOpenCopies();
+    }
+    // One folder per file and version - a file replaced on the server has
+    // another size or date, and so another folder.
+    const fs::path folder = PathFromUtf8(root) /
+            PathFromUtf8(RemotePreviewCacheKey(entry.path, entry.size, entry.modifiedTime));
+    const std::string folderUtf8 = PathToUtf8(folder);
+    if (remoteOpensWaiting.count(folderUtf8)) {
+        if (statusLabel)
+            statusLabel->SetText(TrF("\"{0}\" is still being fetched from the drive", name));
+        return;
+    }
+    // Fetched before, completely - the marker is written once it was - and
+    // unchanged on the server since: that copy is opened again, with what
+    // was changed in it since.
+    std::error_code ec;
+    if (fs::exists(folder / ".complete", ec)) {
+        for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->path().filename() == ".complete") continue;
+            std::error_code fec;
+            if (!it->is_regular_file(fec) || fec) continue;
+            OpenRemoteCopy(PathToUtf8(it->path()), name);
+            return;
+        }
+    }
+    // Anything else in it is what a fetch that did not finish left.
+    fs::remove_all(folder, ec);
+    fs::create_directories(folder, ec);
+    if (ec) {
+        UltraCanvasAlert::Error(TrF("The folder to fetch \"{0}\" into cannot be made: {1}",
+                                    name, ec.message()),
+                                Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    // A download like any other: in the queue, on the status line with its
+    // progress, and asked about if the window is closed before it is in.
+    std::string savedAs, error;
+    if (!remoteDrives->Download(entry.path, folderUtf8, savedAs, error)) {
+        UltraCanvasAlert::Error(error, Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    remoteOpensWaiting[folderUtf8] = RemoteOpenWaiting{entry.path, savedAs};
+    if (statusLabel)
+        statusLabel->SetText(TrF("Fetching \"{0}\" from the drive to open it…", name));
+}
+
+void UltraFilerWindow::OpenRemoteCopy(const std::string& localFile, const std::string& name) {
+    if (!window) return;
+    std::string error;
+    window->ShowBusyPointer(UltraCanvasWindowBase::kBusyPointerDelayMs,
+                            UltraCanvasWindowBase::kBusyPointerHoldMs);
+    if (!FileAssociations::OpenWithDefaultApplication({localFile}, error)) {
+        window->HideBusyPointer();
+        UltraCanvasAlert::Error(error.empty() ? TrF("No program on this computer opens \"{0}\".", name)
+                                              : error,
+                                Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    // Said, because nothing else says it: the program shows a file of the
+    // same name, and saving in it writes to this computer only.
+    if (statusLabel)
+        statusLabel->SetText(TrF("Opened a copy of \"{0}\" - changes to it are not saved to "
+                                 "the drive", name));
+}
+
 void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
     if (!widget) return;
     // Recognising a remote path costs a string comparison and is asked before
@@ -4428,7 +4548,34 @@ void UltraFilerWindow::BuildFolderTree() {
     // marked out of date in the cache (Stale), so refreshing it shows what it
     // held while the server is asked again, ahead of transfers still waiting.
     remoteDrives->onOperationFinished = [this](const std::string& folderPath,
-                                               const std::string& message) {
+                                               const std::string& message,
+                                               RemoteFailure failure) {
+        // A file fetched to be opened (OpenRemoteFile): opened now, or the
+        // reason it could not be fetched said in a dialog - the user asked
+        // for it with a double-click and is waiting. Its folder is a cache
+        // folder, not work done anywhere, so the History hears nothing.
+        if (auto waiting = remoteOpensWaiting.find(folderPath);
+            waiting != remoteOpensWaiting.end()) {
+            const RemoteOpenWaiting opened = waiting->second;
+            remoteOpensWaiting.erase(waiting);
+            const std::string name = RemoteFilerName(opened.remoteFile);
+            if (!message.empty()) {
+                // Asked about once more: this is a new request, whatever was
+                // said about the same file before.
+                if (remoteFileAlertPath == opened.remoteFile) remoteFileAlertPath.clear();
+                ShowRemoteFileError(opened.remoteFile, message,
+                                    failure == RemoteFailure::NotFound ? RemoteFailure::NotFound
+                                                                       : RemoteFailure::Lasting);
+                return;
+            }
+            // Complete: the marker says so, and the copy is opened again
+            // from here next time rather than fetched.
+            if (std::FILE* marker = OpenFileUtf8(
+                        PathToUtf8(PathFromUtf8(folderPath) / ".complete"), "wb"))
+                std::fclose(marker);
+            OpenRemoteCopy(opened.localFile, name);
+            return;
+        }
         if (IsRemoteFilerPath(folderPath)) {
             RefreshRemoteFolderDisplays(folderPath);
             // The folder was marked out of date when the change finished, so
@@ -5110,6 +5257,10 @@ void UltraFilerWindow::ApplyDriveLists(const std::vector<UltraFilerRamDisks::Ram
     }
 
     if (!added && !renamed && gone.empty()) return;   // nothing moved: nothing to repaint
+
+    // The path bar names a drive the way its tree row does (Display > Path
+    // bar): a volume's name that has just arrived goes there too.
+    if (renamed && settings.pathBarVolumeNames) RefreshPathBars();
 
     if (added) {
         // The new rows need the configured drive background, and a volume can
@@ -6473,6 +6624,21 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
             if (tab->filer) tab->filer->OpenEntryWithOS(entry);
             return;
         }
+        // A file on a drive: none of the rules below apply, since each reads
+        // the local disk - and the system's opener, handed a drive's path,
+        // found nothing and did nothing. A picture, a drawing, a PDF or a
+        // model is shown in the preview, as before; anything else is fetched
+        // and opened with the program this system opens its type with.
+        if (IsRemoteFilerPath(entry.path)) {
+            if (!CanShowInDetailView(entry)) {
+                OpenRemoteFile(entry);
+            } else if (!previewEnabled) {
+                SetPreviewEnabled(true);
+            } else {
+                UpdatePreviewPane();
+            }
+            return;
+        }
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
         // Windows executables, installers and program shortcuts go to the
         // UltraWin emulation layer, not to the host's file associations
@@ -7770,7 +7936,37 @@ void UltraFilerWindow::FillFolderBreadcrumb(
     // place the tree's Computer entry opens - rather than the drive root,
     // which the node next to it already is.
     options.onComputerClick = [this]() { SetComputerPageVisible(true); };
+    // Display > Path bar: a drive by its volume's name, as the tree calls it
+    // ("My Passport Ultra (D:)"). The name comes from the last drive listing,
+    // which read it off the UI thread; until that has answered, and for a
+    // volume with no name, the strip keeps the letter.
+    if (settings.pathBarVolumeNames)
+        options.driveLabel = [this](const std::string& root) { return VolumeDisplayName(root); };
     BuildFolderBreadcrumb(crumb, path, std::move(onNavigate), options);
+}
+
+std::string UltraFilerWindow::VolumeDisplayName(const std::string& root) const {
+    // Drive letters compare without case ("d:\\" is "D:\\"), and a root with
+    // or without its trailing separator is the same root.
+    auto key = [](std::string p) {
+        while (p.size() > 1 && (p.back() == '\\' || p.back() == '/')) p.pop_back();
+        std::transform(p.begin(), p.end(), p.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return p;
+    };
+    const std::string wanted = key(root);
+    for (const MountedVolume& volume : knownVolumes)
+        if (key(volume.path) == wanted) return DriveNodeLabel(volume);
+    return {};
+}
+
+void UltraFilerWindow::RefreshPathBars() {
+    // The main strip describes the active tab's folder - or "Computer"
+    // while that page is up, which names no drive - and the split view has
+    // a strip over each pane.
+    if (!computerShown && filer && !filer->GetPath().empty())
+        RebuildBreadcrumb(filer->GetPath());
+    RefreshPaneBreadcrumbs();
 }
 
 std::string UltraFilerWindow::TabTitleFor(const std::string& path) const {

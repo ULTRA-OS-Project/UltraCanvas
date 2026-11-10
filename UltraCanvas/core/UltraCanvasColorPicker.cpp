@@ -13,7 +13,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -66,6 +66,7 @@ namespace UltraCanvas {
             : UltraCanvasContainer(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
         previousColor = GetColor();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasColorPicker::~UltraCanvasColorPicker() {
@@ -2226,4 +2227,25 @@ namespace UltraCanvas {
         return true;
     }
 
+
+// ===== THE THEME =====
+    ColorPickerStyle ColorPickerStyle::FromTheme(const UltraCanvasTheme& theme, const ColorPickerStyle& base) {
+        ColorPickerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.backgroundColor = r.panel;
+        s.panelColor = r.raised;
+        s.borderColor = r.line;
+        s.textColor = r.ink;
+        s.mutedTextColor = r.inkMuted;
+        s.fieldColor = r.well;
+        s.fieldBorderColor = r.lineStrong;
+        s.accentColor = r.accent;
+        // the element's own roles: the markers keep their contrast pair unless a theme names another
+        s.markerColor = theme.Role("color-picker.marker", base.markerColor);
+        s.markerOutline = theme.Role("color-picker.marker-outline", base.markerOutline);
+        return s;
+    }
 } // namespace UltraCanvas

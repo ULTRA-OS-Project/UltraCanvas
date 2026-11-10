@@ -37,8 +37,8 @@
 namespace UltraCanvas {
  
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDiagramExamples() {
-    auto page = DemoKit::CreatePage("DiagramEditor", "HVAC System Block Diagram",
-            "Automotive climate control: refrigerant cycle (top), airflow path (bottom), control modules (left).");
+    auto page = DemoKit::CreatePage("DiagramEditor", Tr("HVAC System Block Diagram"),
+            Tr("Automotive climate control: refrigerant cycle (top), airflow path (bottom), control modules (left)."));
     auto card = DemoKit::AddCard(page, "DiagramCard");
  
     // -------------------------------------------------------------------------
@@ -93,52 +93,52 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     // -------------------------------------------------------------------------
  
     // ===== Refrigerant cycle (closed loop, top) ==============================
-    diagram->AddNode("compressor", BlockShape::Rectangle, "Compressor", 200, 80, 120, 60);
+    diagram->AddNode("compressor", BlockShape::Rectangle, Tr("Compressor"), 200, 80, 120, 60);
     diagram->SetNodeColor("compressor", coolFill, coolBorder);
     diagram->SetNodeTextColor("compressor", textColor);
  
-    diagram->AddNode("condenser", BlockShape::Rectangle, "Condenser", 540, 80, 120, 60);
+    diagram->AddNode("condenser", BlockShape::Rectangle, Tr("Condenser"), 540, 80, 120, 60);
     diagram->SetNodeColor("condenser", coolFill, coolBorder);
     diagram->SetNodeTextColor("condenser", textColor);
  
-    diagram->AddNode("expansion", BlockShape::Rectangle, "Expansion Valve", 540, 200, 120, 60);
+    diagram->AddNode("expansion", BlockShape::Rectangle, Tr("Expansion Valve"), 540, 200, 120, 60);
     diagram->SetNodeColor("expansion", coolFill, coolBorder);
     diagram->SetNodeTextColor("expansion", textColor);
  
-    diagram->AddNode("evaporator", BlockShape::Rectangle, "Evaporator", 200, 200, 120, 60);
+    diagram->AddNode("evaporator", BlockShape::Rectangle, Tr("Evaporator"), 200, 200, 120, 60);
     diagram->SetNodeColor("evaporator", coolFill, coolBorder);
     diagram->SetNodeTextColor("evaporator", textColor);
  
     // ===== Control modules (left column, gray) ===============================
-    diagram->AddNode("drive_clutch", BlockShape::Rectangle, "Drive Clutch", 40, 80, 120, 60);
+    diagram->AddNode("drive_clutch", BlockShape::Rectangle, Tr("Drive Clutch"), 40, 80, 120, 60);
     diagram->SetNodeColor("drive_clutch", ctrlFill, ctrlBorder);
     diagram->SetNodeTextColor("drive_clutch", textColor);
  
-    diagram->AddNode("comp_control", BlockShape::Rectangle, "Comp Control", 40, 200, 120, 60);
+    diagram->AddNode("comp_control", BlockShape::Rectangle, Tr("Comp Control"), 40, 200, 120, 60);
     diagram->SetNodeColor("comp_control", ctrlFill, ctrlBorder);
     diagram->SetNodeTextColor("comp_control", textColor);
  
-    diagram->AddNode("blower_ctrl", BlockShape::Rectangle, "Blower Ctrl", 40, 380, 120, 60);
+    diagram->AddNode("blower_ctrl", BlockShape::Rectangle, Tr("Blower Ctrl"), 40, 380, 120, 60);
     diagram->SetNodeColor("blower_ctrl", ctrlFill, ctrlBorder);
     diagram->SetNodeTextColor("blower_ctrl", textColor);
  
     // ===== Airflow / heating row (bottom) ====================================
-    diagram->AddNode("blower", BlockShape::Rectangle, "Blower", 200, 380, 120, 60);
+    diagram->AddNode("blower", BlockShape::Rectangle, Tr("Blower"), 200, 380, 120, 60);
     diagram->SetNodeColor("blower", airFill, airBorder);
     diagram->SetNodeTextColor("blower", textColor);
  
     // Evaporator already exists in the cycle; airflow re-enters it from below.
     // We route Blower -> Evaporator -> (cycle handles cooling) -> Heater Core.
  
-    diagram->AddNode("heater", BlockShape::Rectangle, "Heater Core", 380, 380, 120, 60);
+    diagram->AddNode("heater", BlockShape::Rectangle, Tr("Heater Core"), 380, 380, 120, 60);
     diagram->SetNodeColor("heater", airFill, airBorder);
     diagram->SetNodeTextColor("heater", textColor);
  
-    diagram->AddNode("air_mix", BlockShape::Rectangle, "Air Mix Door", 380, 460, 120, 50);
+    diagram->AddNode("air_mix", BlockShape::Rectangle, Tr("Air Mix Door"), 380, 460, 120, 50);
     diagram->SetNodeColor("air_mix", airFill, airBorder);
     diagram->SetNodeTextColor("air_mix", textColor);
  
-    diagram->AddNode("mode_door", BlockShape::Rectangle, "Mode Door", 560, 380, 120, 60);
+    diagram->AddNode("mode_door", BlockShape::Rectangle, Tr("Mode Door"), 560, 380, 120, 60);
     diagram->SetNodeColor("mode_door", airFill, airBorder);
     diagram->SetNodeTextColor("mode_door", textColor);
  
@@ -234,35 +234,35 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     auto buttonRow = DemoKit::AddRow(card, "DiagramButtons", 10);
  
     auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", 0, 0, 0, 32);
-    btnSelect->SetText("Select");
+    btnSelect->SetText(Tr("Select"));
     btnSelect->SetOnClick([diagram]() {
         diagram->SetEditMode(UltraCanvasBlockDiagram::EditMode::Select);
     });
     DemoKit::Add(buttonRow, btnSelect);
  
     auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", 0, 0, 0, 32);
-    btnConnect->SetText("Connect");
+    btnConnect->SetText(Tr("Connect"));
     btnConnect->SetOnClick([diagram]() {
         diagram->SetEditMode(UltraCanvasBlockDiagram::EditMode::CreateConnection);
     });
     DemoKit::Add(buttonRow, btnConnect);
  
     auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", 0, 0, 0, 32);
-    btnZoomIn->SetText("Zoom +");
+    btnZoomIn->SetText(Tr("Zoom +"));
     btnZoomIn->SetOnClick([diagram]() {
         diagram->SetZoomLevel(diagram->GetZoomLevel() * 1.2f);
     });
     DemoKit::Add(buttonRow, btnZoomIn);
  
     auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", 0, 0, 0, 32);
-    btnZoomOut->SetText("Zoom -");
+    btnZoomOut->SetText(Tr("Zoom -"));
     btnZoomOut->SetOnClick([diagram]() {
         diagram->SetZoomLevel(diagram->GetZoomLevel() * 0.8f);
     });
     DemoKit::Add(buttonRow, btnZoomOut);
  
     auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 0, 0, 0, 32);
-    btnReset->SetText("Reset");
+    btnReset->SetText(Tr("Reset"));
     btnReset->SetOnClick([diagram, initialLayout]() {
         diagram->SetZoomLevel(1.0f);
         diagram->SetPanOffset(0, 0);
@@ -274,7 +274,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     DemoKit::Add(buttonRow, btnReset);
  
     auto chkGrid = std::make_shared<UltraCanvasCheckbox>("chkGrid", 0, 0, 0, 22);
-    chkGrid->SetText("Show Grid");
+    chkGrid->SetText(Tr("Show Grid"));
     chkGrid->SetChecked(true);
     chkGrid->onStateChanged = [diagram](CheckedState oldState, CheckedState newState) {
         bool visible = (newState == CheckedState::Checked);

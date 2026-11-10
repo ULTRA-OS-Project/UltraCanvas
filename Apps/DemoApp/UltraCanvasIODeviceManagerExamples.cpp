@@ -21,12 +21,12 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateIODeviceManagerExamples() {
         auto page = DemoKit::CreatePage(
-                "IODevPage", "IODeviceManager - DeviceExplorer",
-                "The devices connected to this computer as IODeviceManager finds them: printers "
+                "IODevPage", Tr("IODeviceManager - DeviceExplorer"),
+                Tr("The devices connected to this computer as IODeviceManager finds them: printers "
                 "(CUPS, the Windows spooler, IPP), scanners (SANE, eSCL) and cameras (V4L2). This is "
                 "the DeviceExplorer application's own panel. Pick a device for everything its backend "
                 "reports; a printer is asked for its status and ink or toner. DeviceExplorer only looks: "
-                "it never configures a device or prints.");
+                "it never configures a device or prints."));
         // The tree and the property list scroll themselves: the page is the
         // area's height, not its content's.
         page->SetFillsArea(true);
@@ -42,8 +42,8 @@ namespace UltraCanvas {
         panel->Start();
 
         DemoKit::AddCaption(page, "IODevNote",
-                "Source: Apps/DeviceExplorer/ui (the panel, the model and the printer query). "
-                "Leaving the page stops the scan and the hot-plug watcher.");
+                Tr("Source: Apps/DeviceExplorer/ui (the panel, the model and the printer query). "
+                "Leaving the page stops the scan and the hot-plug watcher."));
         return page;
     }
 

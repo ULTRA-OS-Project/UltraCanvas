@@ -24,8 +24,8 @@ namespace UltraCanvas {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfaceExamples() {
     auto page = DemoKit::CreatePage("GLSurfaceExamples",
-            "OpenGL 3D Showcase — Hardware-Accelerated Rendering",
-            "Real OpenGL 3.3 Core rendering composited into UltraCanvas — models, shaders, and a Zarch-style simulation");
+            Tr("OpenGL 3D Showcase — Hardware-Accelerated Rendering"),
+            Tr("Real OpenGL 3.3 Core rendering composited into UltraCanvas — models, shaders, and a Zarch-style simulation"));
     auto card = DemoKit::AddCard(page, "GLSurfaceCard");
 
     // Sized so the per-tab content area (width × height-tabHeight) comfortably
@@ -37,9 +37,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GLShowcaseTabs", 0, 0, 1004, 726);
     tabs->SetTabHeight(34);
     tabs->SetTabMinWidth(150);
-    tabs->AddTab("3D Models", CreateGLModelsTab());
-    tabs->AddTab("Shaders", CreateGLShaderTab());
-    tabs->AddTab("Zarch", CreateGLZarchTab());
+    tabs->AddTab(Tr("3D Models"), CreateGLModelsTab());
+    tabs->AddTab(Tr("Shaders"), CreateGLShaderTab());
+    tabs->AddTab(Tr("Zarch"), CreateGLZarchTab());
     tabs->SetActiveTab(0);
     DemoKit::AddFixed(card, tabs);
 
@@ -56,18 +56,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
 namespace UltraCanvas {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfaceExamples() {
-    auto page = DemoKit::CreatePage("GLSurfaceExamples", "OpenGL Surface Examples", "");
+    auto page = DemoKit::CreatePage("GLSurfaceExamples", Tr("OpenGL Surface Examples"), "");
 
     // Tinted red: the feature is missing from this build.
-    auto card = DemoKit::AddCard(page, "GLSurfacePlaceholder", "OpenGL Surface Support - NOT AVAILABLE");
+    auto card = DemoKit::AddCard(page, "GLSurfacePlaceholder", Tr("OpenGL Surface Support - NOT AVAILABLE"));
     card->SetBackgroundColor(Color(255, 200, 200, 100));
-    DemoKit::AddText(card, "GLSurfacePlaceholderText", "This build was compiled without OpenGL support.");
-    DemoKit::AddText(card, "GLSurfacePlaceholderHow", "To enable OpenGL surface support:");
+    DemoKit::AddText(card, "GLSurfacePlaceholderText", Tr("This build was compiled without OpenGL support."));
+    DemoKit::AddText(card, "GLSurfacePlaceholderHow", Tr("To enable OpenGL surface support:"));
     DemoKit::Add(card, DemoKit::CreateBullets("GLSurfacePlaceholderSteps", {
-        "Rebuild with -DULTRACANVAS_ENABLE_GL=ON",
-        "Ensure OpenGL development libraries are installed",
-        "On Linux: libgl-dev, libegl-dev",
-        "On macOS: OpenGL framework (included with Xcode)"}));
+        Tr("Rebuild with -DULTRACANVAS_ENABLE_GL=ON"),
+        Tr("Ensure OpenGL development libraries are installed"),
+        Tr("On Linux: libgl-dev, libegl-dev"),
+        Tr("On macOS: OpenGL framework (included with Xcode)")}));
 
     return page;
 }

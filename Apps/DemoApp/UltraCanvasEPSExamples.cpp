@@ -22,12 +22,12 @@ namespace UltraCanvas {
 // ===== EPS VECTOR EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateEPSVectorExamples() {
         auto page = DemoKit::CreatePage("EPSExamples",
-                "EPS (PostScript) Graphics Demo - Click to Open in the Media Viewer",
-                "EPS files are PostScript programs, interpreted by the plugin's built-in interpreter.\nClick a drawing to open it in the media viewer; zoom there. Press ESC to close.");
+                Tr("EPS (PostScript) Graphics Demo - Click to Open in the Media Viewer"),
+                Tr("EPS files are PostScript programs, interpreted by the plugin's built-in interpreter.\nClick a drawing to open it in the media viewer; zoom there. Press ESC to close."));
 
         // Status label for feedback; the tiles write to it while they load,
         // and it goes in at the bottom of the page.
-        auto statusLabel = DemoKit::CreateText("EPSStatus", "Ready. Click on an EPS file to view.");
+        auto statusLabel = DemoKit::CreateText("EPSStatus", Tr("Ready. Click on an EPS file to view."));
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
@@ -41,9 +41,9 @@ namespace UltraCanvas {
             auto element = std::make_shared<UltraCanvasEPSElement>(id + "El", 0, 0, 280, 220);
             std::string path = NormalizePath(GetResourcesDir() + "media/vector/EPS/" + fileName);
             if (element->LoadFromFile(path)) {
-                statusLabel->SetText("Loaded: " + path);
+                statusLabel->SetText(TrF("Loaded: {0}", path));
             } else {
-                statusLabel->SetText("Failed to load " + path + ": " + element->GetLastError());
+                statusLabel->SetText(TrF("Failed to load {0}: {1}", path, element->GetLastError()));
             }
             DemoKit::AddFixed(tile, element);
 
@@ -57,7 +57,7 @@ namespace UltraCanvas {
                 switch (event.type) {
                     case UCEventType::MouseUp:
                         ShowInMediaViewer(path);
-                        statusLabel->SetText("Opened in the media viewer: " + path);
+                        statusLabel->SetText(TrF("Opened in the media viewer: {0}", path));
                         return true;
                     case UCEventType::MouseEnter:
                         tile->SetBordersColor(Color(0, 122, 204, 255));
@@ -76,15 +76,15 @@ namespace UltraCanvas {
         makeTile("EPSContainer2", "gears.eps");
 
         // ===== INFO PANEL =====
-        DemoKit::AddNotes(tiles, "InfoPanel", "EPS Plugin Features", {
-                "PostScript interpreter (level 1/2 core)",
-                "Procedures, loops, dictionaries",
-                "Paths, arcs, beziers, clipping",
-                "Gray / RGB / CMYK / HSB color",
-                "Dashes, caps, joins, transforms",
-                "Sampled images (hex data)",
-                "Text via mapped system fonts",
-                "DOS EPS binary preview headers"});
+        DemoKit::AddNotes(tiles, "InfoPanel", Tr("EPS Plugin Features"), {
+                Tr("PostScript interpreter (level 1/2 core)"),
+                Tr("Procedures, loops, dictionaries"),
+                Tr("Paths, arcs, beziers, clipping"),
+                Tr("Gray / RGB / CMYK / HSB color"),
+                Tr("Dashes, caps, joins, transforms"),
+                Tr("Sampled images (hex data)"),
+                Tr("Text via mapped system fonts"),
+                Tr("DOS EPS binary preview headers")});
 
         DemoKit::Add(page, statusLabel);
 

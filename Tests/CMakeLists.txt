@@ -1694,8 +1694,9 @@ if(TARGET UltraCanvas)
     target_link_libraries(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_LIBRARY})
     target_compile_features(UltraCanvasThemeTest PRIVATE cxx_std_20)
     get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
-    # The timeline's and the album's FromTheme only with them compiled in.
-    foreach(uc_pair IN ITEMS VideoTimeline:VIDEO_TIMELINE Album:ALBUM)
+    # The timeline's, the album's and the palette manager's FromTheme only
+    # with them compiled in (a lean core builds them as runtime modules).
+    foreach(uc_pair IN ITEMS VideoTimeline:VIDEO_TIMELINE Album:ALBUM ColorPaletteManager:COLOR_PALETTE_MANAGER)
         string(REPLACE ":" ";" uc_pair "${uc_pair}")
         list(GET uc_pair 0 uc_key)
         list(GET uc_pair 1 uc_macro)
@@ -7274,6 +7275,31 @@ if(TARGET UltraAI_UI)
     message(STATUS "    Test registered: UltraAITextRecognitionTest")
 else()
     message(STATUS "  UltraAITextRecognitionTest skipped (UltraAI_UI not in the build)")
+endif()
+
+# ===== ULTRAAI SPEECH TRANSCRIPTION =====
+# UltraAI as FileLoader's speech transcriber (UltraAISpeechTranscription.h):
+# a generated WAV, sent as it is or as an MP3 VideoFX makes, to stand-in
+# providers. Headless.
+if(TARGET UltraAI_UI)
+    message(STATUS "  Building UltraAISpeechTranscriptionTest...")
+    add_executable(UltraAISpeechTranscriptionTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraAISpeechTranscriptionTest.cpp
+    )
+    target_include_directories(UltraAISpeechTranscriptionTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(UltraAISpeechTranscriptionTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraAISpeechTranscriptionTest PRIVATE UltraAI_UI UltraAI_Core UltraCanvas)
+    if(TARGET VideoFX)
+        target_compile_definitions(UltraAISpeechTranscriptionTest PRIVATE UC_TEST_HAS_VIDEOFX=1)
+    endif()
+    set_target_properties(UltraAISpeechTranscriptionTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAISpeechTranscriptionTest COMMAND UltraAISpeechTranscriptionTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraAISpeechTranscriptionTest")
+else()
+    message(STATUS "  UltraAISpeechTranscriptionTest skipped (UltraAI_UI not in the build)")
 endif()
 
 # ===== TAB PILL STYLE SCREENSHOT TEST =====
