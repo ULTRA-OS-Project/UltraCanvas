@@ -20,7 +20,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.9.0 - the input elements read the theme: checkbox, radio, segmented control, spinner, stepper, rating, the calendar and the date and time pickers (T4, second part)
+**Version:** 1.10.0 - the list elements read the theme: the scrollbar, list view, tree view, columns tree view and filer widget (T4, third part)
 **Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
@@ -31,9 +31,10 @@ in place. Every panel element reads it: the button, label, dropdown,
 slider, switch, text input, toolbar, split pane and album, and the input
 elements - checkbox, radio, segmented control, spinner, stepper, rating,
 the calendar view and the date, date range and time pickers with the
-clock view - through a `FromTheme` on their style struct and an
-`ApplyTheme` on the element; the tabbed container and the text area
-through `ApplyTheme` alone; the menu
+clock view - and the lists - the scrollbar, list view, columns tree view
+and filer widget - through a `FromTheme` on their style struct and an
+`ApplyTheme` on the element; the tabbed container, the text area and the
+tree view through `ApplyTheme` alone; the menu
 and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
 which put the roles over their own `Dark()` and `Light()` presets, so a
 dark menu or tooltip agrees with the rest of a dark window. Under the
@@ -41,8 +42,8 @@ policy (`FollowHost`, the default, `Light` or `Dark`) every new element
 follows the theme: it is styled from the current theme as it is built and
 again on every change. Styled by hand (`SetStyle`) it keeps its look, as
 before. The readers set their fonts by role as well as their colours; the
-lists, the containers and pickers, the viewers and the media elements
-are the rest of T4.
+containers and pickers, the viewers and the media elements are the rest
+of T4.
 
 ## The roles
 
@@ -224,8 +225,13 @@ checkbox's mark and the radio's dot (`checkbox.mark`, `radio.dot`, the
 accent), a filled rating symbol with its hover and outline (`rating.on`,
 `rating.hover`, `rating.border`, the amber the struct defaults to on any
 window), a stepper's error glyph (`stepper.on-error`, white), the
-calendar's weekends (`calendar.weekend`, its red) and the clock's dial
-(`time-picker.clock-face`, the pressed fill).
+calendar's weekends (`calendar.weekend`, its red), the clock's dial
+(`time-picker.clock-face`, the pressed fill), a scrollbar's track and
+thumb (`scrollbar.track`, `scrollbar.thumb`, the panel and the control
+border), a columns tree's section header (`columns-tree.group-header`,
+`columns-tree.on-group-header`, its black bar) and the filer's overlays
+(`filer.icon-menu`, `filer.on-icon-menu`, `filer.icon-menu-done`,
+`filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`).
 
 ```cpp
 UltraCanvasTheme brand = UltraCanvasTheme::Light();
@@ -258,11 +264,12 @@ theme.fonts.scale = 1.25;                                        // Body is then
 
 Every `FromTheme` reader sets its style's family and size from `Font(role)`
 by the role its text plays: the button, label, dropdown, text input, menu,
-switch, checkbox, radio, segmented control, spinner, rating, calendar
-and the date and time pickers at `Body`, a stepper's titles too; a
-heading label at `Heading`; the tooltip, a slider's value, a dialog's
-details and a stepper's descriptions at `Caption`, the dialog's message
-at `Body`, the tab titles at `Caption`; the album, the timecode field and
+switch, checkbox, radio, segmented control, spinner, rating, calendar,
+the date and time pickers, the list's rows, the tree and the filer at
+`Body`, a stepper's titles too; a heading label at `Heading`; the
+tooltip, a slider's value, a dialog's details, a stepper's descriptions,
+a list's header and the filer's small text at `Caption`, the dialog's
+message at `Body`, the tab titles at `Caption`; the album, the timecode field and
 the timeline take the families only (their sizes are pixels of a design).
 The style struct's own literal stays the default of an element styled by
 hand, as the colour defaults do. The text area keeps its font: it is the
