@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -36,13 +37,35 @@ CATALOG = {
 }
 
 
-@pytest.fixture
-def service(tmp_path):
+def database_urls() -> list[str]:
+    """SQLite always (tests and development), and PostgreSQL when the
+    environment names one: ULTRASTORE_PAY_TEST_PG_URL=postgresql://... -
+    the production engine, so the whole purchase runs on it too."""
+    urls = ["sqlite"]
+    if os.environ.get("ULTRASTORE_PAY_TEST_PG_URL"):
+        urls.append("postgresql")
+    return urls
+
+
+def database_url(kind: str, tmp_path) -> str:
+    if kind == "postgresql":
+        url = os.environ["ULTRASTORE_PAY_TEST_PG_URL"]
+        # A fresh schema per test: the tables are dropped first.
+        import psycopg
+        with psycopg.connect(url, autocommit=True) as db:
+            db.execute("DROP TABLE IF EXISTS orders")
+            db.execute("DROP TABLE IF EXISTS meta")
+        return url
+    return "sqlite:///" + str(tmp_path / "pay.sqlite3")
+
+
+@pytest.fixture(params=database_urls())
+def service(request, tmp_path):
     signing = Ed25519PrivateKey.generate()
     body = json.dumps(CATALOG).encode()
     files = {"https://store.example/v1/catalog.json": body,
              "https://store.example/v1/catalog.json.sig": signing.sign(body).hex().encode() + b"\n"}
-    settings = Settings(database=str(tmp_path / "pay.sqlite3"), public_base_url="https://pay.example", skrill_pay_to_email="shop@example.org",
+    settings = Settings(database=database_url(request.param, tmp_path), public_base_url="https://pay.example", skrill_pay_to_email="shop@example.org",
                         skrill_secret_word="word", skrill_merchant_id="12345", catalog_url="https://store.example/v1",
                         catalog_keys=[signing.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()], admin_token="admin-token",
                         restricted_secret="nginx-secret", restricted_base_url="https://store.example/v1")

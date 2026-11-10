@@ -85,9 +85,29 @@ the service's licence key (`ULTRASTORE_PAY_LICENCE_SEED`, or one made on
 the first start and kept in the database). The public half is
 `GET /v1/keys`; an app verifies a licence offline with it.
 
+## The database
+
+**PostgreSQL in production; SQLite for tests and development only.**
+`ULTRASTORE_PAY_DB` is a URL: `postgresql://user:password@host:5432/db`
+(psycopg 3, installed with the `postgres` extra) or `sqlite:///path` (a
+bare path means the same). `db.py` hides the two engines behind one small
+interface - the placeholder style, the serial type, how a row is read -
+and `store.py` writes one SQL dialect against it; nothing else in the
+service knows which engine runs. The tests run on SQLite always and on
+PostgreSQL too when `ULTRASTORE_PAY_TEST_PG_URL` names one, which CI does
+with a PostgreSQL service container, so the production engine runs the
+whole purchase on every change. The service makes its tables on the first
+start; the database and its user are made beforehand:
+
+```
+sudo -u postgres createuser --pwprompt ultrastore_pay
+sudo -u postgres createdb --owner ultrastore_pay ultrastore_pay
+```
+
 ## Settings
 
-From the environment (`deploy/ultrastore-pay.env.example`): the Skrill
+From the environment (`deploy/ultrastore-pay.env.example`): the database
+URL (`ULTRASTORE_PAY_DB`, *The database*), the Skrill
 merchant account (`ULTRASTORE_SKRILL_PAY_TO_EMAIL`, `_SECRET_WORD`,
 `_MERCHANT_ID`, `_API_PASSWORD`), the public base URL
 (`ULTRASTORE_PAYMENT_BASE_URL`, where Skrill posts the status report),
@@ -103,9 +123,10 @@ the host when a test endpoint is given.
 ## Running
 
 ```
-python3 -m venv .venv && .venv/bin/pip install -e '.[test]'
-.venv/bin/python -m pytest -q
-ULTRASTORE_PAYMENT_BASE_URL=https://store.example ... .venv/bin/ultrastore-pay
+python3 -m venv .venv && .venv/bin/pip install -e '.[test,postgres]'
+.venv/bin/python -m pytest -q                                   # on SQLite
+ULTRASTORE_PAY_TEST_PG_URL=postgresql://... .venv/bin/python -m pytest -q   # and on PostgreSQL
+ULTRASTORE_PAY_DB=postgresql://... ULTRASTORE_PAYMENT_BASE_URL=https://store.example ... .venv/bin/ultrastore-pay
 ```
 
 `deploy/`: the systemd unit, the nginx site (the publish folder as the

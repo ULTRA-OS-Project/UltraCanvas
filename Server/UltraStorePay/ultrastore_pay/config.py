@@ -16,7 +16,9 @@ def _list(name: str) -> list[str]:
 
 @dataclass
 class Settings:
-    database: str = "ultrastore-pay.sqlite3"
+    # A URL: postgresql://user:password@host/db in production, sqlite:///path
+    # (or a bare path) for tests and development only (db.py).
+    database: str = "sqlite:///ultrastore-pay.sqlite3"
     host: str = "127.0.0.1"
     port: int = 8791
     # Where this service is reached from the internet: Skrill posts the
