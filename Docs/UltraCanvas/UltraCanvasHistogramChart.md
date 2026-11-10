@@ -110,10 +110,11 @@ The chart's title, theme, legend position and tooltips are the engine's
 
 ## Demo
 
-**Charts > Histogram Chart** shows a sample picture's histogram beside the
-picture, with a choice of picture (or "Open a picture..."), of channels, the
-logarithmic scale, each shown channel's statistics and the level under the
-pointer.
+**Charts > Histogram Chart** shows a picture on the left - `artist.jpg` from
+`media/images` to start with - and its histogram on the right. Underneath are
+the choice of picture (or **Open a picture**, through the file loader), of
+channels and of the logarithmic scale, each shown channel's statistics and the
+level under the pointer.
 
 ## Tests
 

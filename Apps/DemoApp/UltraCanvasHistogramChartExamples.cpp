@@ -1,9 +1,11 @@
 // Apps/DemoApp/UltraCanvasHistogramChartExamples.cpp
-// Charts > Histogram Chart: a picture's histogram (UltraCanvasHistogramChart)
-// beside the picture - Combined (red, green and blue overlaid) or one
+// Charts > Histogram Chart: a picture on the left and its histogram
+// (UltraCanvasHistogramChart) on the right - Combined (red, green and blue overlaid) or one
 // channel, linear or logarithmic, with each channel's statistics and the
 // level under the pointer read out. Sample pictures ship in media/images;
 // "Open a picture" loads any other through UltraCanvasFileLoader.
+// Version: 1.1.0 - the picture (artist.jpg to start with) on the left, the histogram on the
+//                  right, the options, statistics and read-out underneath
 // Version: 1.0.0
 // Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
@@ -52,8 +54,8 @@ void ShowStatistics(HistogramDemoState& state) {
     for (HistogramChannel c : state.chart->ShownChannels()) {
         const HistogramStatistics s = h.Statistics(c);
         text += "\n" + std::string(names[static_cast<int>(c)]) + ": mean " + Fixed(s.mean, 1) + ", median " +
-                std::to_string(s.median) + ", std dev " + Fixed(s.standardDeviation, 1) + ", clipped " +
-                Fixed(s.shadowsClipped * 100.0, 2) + " % / " + Fixed(s.highlightsClipped * 100.0, 2) + " %";
+                std::to_string(s.median) + ", std dev " + Fixed(s.standardDeviation, 1) + "\n    clipped: " +
+                Fixed(s.shadowsClipped * 100.0, 2) + " % at 0, " + Fixed(s.highlightsClipped * 100.0, 2) + " % at 255";
     }
     state.statistics->SetText(text);
 }
@@ -71,36 +73,41 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHistogra
                                     "How many pixels of a picture have each of the 256 levels: red, green and "
                                     "blue together, or one channel at a time. Hover the chart for a level's "
                                     "counts.");
-    auto row = DemoKit::AddRow(page, "histogramContent");
-
-    auto card = DemoKit::AddCard(row, "histogramChartCard");
     auto state = std::make_shared<HistogramDemoState>();
-    state->chart = CreateHistogramChart("histogramChart", 0, 0, 640, 340);
-    state->chart->SetChartTitle("Histogram");
-    DemoKit::AddFixed(card, state->chart);
-    state->picture = CreateImageElement("histogramPicture", 640, 260);
-    state->picture->SetFitMode(ImageFitMode::Contain);
-    DemoKit::AddFixed(card, state->picture);
 
-    auto sidebar = DemoKit::AddCard(row, "histogramSidebar", "", "", 260);
-    auto addCaption = [&](const std::string& id, const std::string& text) {
-        DemoKit::AddCaption(sidebar, id, text)->SetFontWeight(FontWeight::Bold);
+    // ----- the picture on the left, its histogram on the right -----
+    auto row = DemoKit::AddRow(page, "histogramContent");
+    auto pictureCard = DemoKit::AddCard(row, "histogramPictureCard", "Picture", "", 370);
+    state->picture = CreateImageElement("histogramPicture", 340, 400);
+    state->picture->SetFitMode(ImageFitMode::Contain);
+    DemoKit::AddFixed(pictureCard, state->picture);
+
+    auto chartCard = DemoKit::AddCard(row, "histogramChartCard", "Histogram", "", 590);
+    state->chart = CreateHistogramChart("histogramChart", 0, 0, 560, 400);
+    DemoKit::AddFixed(chartCard, state->chart);
+
+    // ----- the controls and the read-outs underneath -----
+    auto controlsRow = DemoKit::AddRow(page, "histogramControlsRow");
+    auto controls = DemoKit::AddCard(controlsRow, "histogramControls", "Options", "", 260);
+    auto addCaption = [](const std::shared_ptr<UltraCanvasContainer>& card, const std::string& id,
+                         const std::string& text) {
+        DemoKit::AddCaption(card, id, text)->SetFontWeight(FontWeight::Bold);
     };
 
-    addCaption("histogramPictureCaption", "Picture");
+    addCaption(controls, "histogramPictureCaption", "Picture");
     auto pictures = std::make_shared<UltraCanvasDropdown>("histogramPictureChoice", 0, 0, 220, 28);
     const std::string mediaRoot = NormalizePath(GetResourcesDir() + "media/images/");
+    pictures->AddItem("Artist", mediaRoot + "artist.jpg");
     pictures->AddItem("Landscape", mediaRoot + "landscape.jpg");
     pictures->AddItem("Portrait", mediaRoot + "portrait.jpg");
     pictures->AddItem("Photo", mediaRoot + "sample_photo.jpg");
     pictures->AddItem("Dice", mediaRoot + "dice.jpg");
-    pictures->AddItem("Artist", mediaRoot + "artist.jpg");
     pictures->SetSelectedIndex(0);
-    DemoKit::AddStretched(sidebar, pictures);
-    auto open = std::make_shared<UltraCanvasButton>("histogramOpen", 0, 0, 220, 28, "Open a picture...");
-    DemoKit::AddStretched(sidebar, open);
+    DemoKit::AddStretched(controls, pictures);
+    auto open = std::make_shared<UltraCanvasButton>("histogramOpen", 0, 0, 220, 28, "Open a picture");
+    DemoKit::AddStretched(controls, open);
 
-    addCaption("histogramDisplayCaption", "Channels");
+    addCaption(controls, "histogramDisplayCaption", "Channels");
     auto channels = std::make_shared<UltraCanvasDropdown>("histogramDisplay", 0, 0, 220, 28);
     channels->AddItem("Combined (red, green, blue)", "combined");
     channels->AddItem("Red", "red");
@@ -108,15 +115,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHistogra
     channels->AddItem("Blue", "blue");
     channels->AddItem("Luminosity", "luminosity");
     channels->SetSelectedIndex(0);
-    DemoKit::AddStretched(sidebar, channels);
+    DemoKit::AddStretched(controls, channels);
     auto logarithmic = UltraCanvasSwitch::Create("histogramLog", 0, 0, "Logarithmic scale", false);
-    DemoKit::Add(sidebar, logarithmic);
+    DemoKit::Add(controls, logarithmic);
 
-    addCaption("histogramStatisticsCaption", "Statistics");
-    state->statistics = DemoKit::AddCaption(sidebar, "histogramStatistics", "");
+    auto statisticsCard = DemoKit::AddCard(controlsRow, "histogramStatisticsCard", "Statistics", "", 360);
+    state->statistics = DemoKit::AddCaption(statisticsCard, "histogramStatistics", "");
     state->statistics->SetTextColor(DemoKit::BodyText());
-    addCaption("histogramReadoutCaption", "Under the pointer");
-    state->readout = DemoKit::AddCaption(sidebar, "histogramReadout", "Hover the chart.");
+
+    auto readoutCard = DemoKit::AddCard(controlsRow, "histogramReadoutCard", "Under the pointer", "", 220);
+    state->readout = DemoKit::AddCaption(readoutCard, "histogramReadout", "Hover the chart.");
     state->readout->SetTextColor(DemoKit::BodyText());
 
     pictures->onSelectionChanged = [state](int, const DropdownItem& item) {
@@ -148,7 +156,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHistogra
         s->readout->SetText(level < 0 ? std::string("Hover the chart.") : s->chart->DescribeLevel(level));
     };
 
-    ShowImage(*state, UCImage::Get(mediaRoot + "landscape.jpg"));
+    ShowImage(*state, UCImage::Get(mediaRoot + "artist.jpg"));
     return page;
 }
 
