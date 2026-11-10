@@ -182,12 +182,15 @@ namespace UltraCanvas {
             Color color;
             if (isTree) {
                 text = node->data.text;
-                color = node->data.textColor != Colors::Black ? node->data.textColor : GetTextColor();
+                color = NodeTextColor(node);
             } else {
                 const TreeCellData *cell = node->data.GetCell(col.id);
                 if (!cell || cell->text.empty()) continue;
                 text = cell->text;
-                color = cell->textColor != Colors::Transparent ? cell->textColor : col.textColor;
+                // the cell's own colour, else the selection text colour on a
+                // selected row, else the column's
+                color = cell->textColor != Colors::Transparent ? cell->textColor
+                      : (node->selected && GetSelectionTextColor().a > 0 ? GetSelectionTextColor() : col.textColor);
             }
 
             // Optional accent fill behind the cell (e.g. the Type column).

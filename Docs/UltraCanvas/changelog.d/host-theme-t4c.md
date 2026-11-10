@@ -14,5 +14,8 @@
   (the black bar), `filer.icon-menu`, `filer.on-icon-menu`,
   `filer.icon-menu-done`, `filer.extension-bar`, `filer.extension-tag` and
   `filer.on-extension-tag` (the dark overlays). The bars an element owns take
-  their owner's style, so they follow through the owner.
+  their owner's style, so they follow through the owner. The tree view gains
+  `SetSelectionTextColor`: the text of a selected row, which the theme sets
+  to the colour that reads on the accent (it was the row's own text colour,
+  black on the blue, before); a node or cell coloured by hand keeps it.
   `UltraCanvasThemeTest` covers every mapping and the following by default.

@@ -1387,12 +1387,13 @@ namespace UltraCanvas {
             // a focused row is told from one that is merely selected, and a
             // selected tree that lost the focus shows no ring. Drawn over the
             // background and under the lines, icon and label. The automatic
-            // colour contrasts with the row it sits on: white on the selection
-            // background (the text there is black, so the blue would vanish),
+            // colour contrasts with the row it sits on: the selection text
+            // colour (white when none is set) on the selection background,
             // the selection colour on any other row.
             if (node == focusedNode && IsFocused()) {
+                const Color onSelection = selectionTextColor.a > 0 ? selectionTextColor : Colors::White;
                 const Color ring = focusRingColor.a > 0 ? focusRingColor
-                                 : (bgColor == selectionColor ? Colors::White : selectionColor);
+                                 : (bgColor == selectionColor ? onSelection : selectionColor);
                 ctx->PushState();
                 ctx->SetLineDash(UCDashPattern({2.0, 2.0}));
                 ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 2, nodeY + 1, nodeWidth - 4, rowHeight - 2),
@@ -1680,7 +1681,7 @@ namespace UltraCanvas {
                                               int textX, int nodeWidth, int sbWidth,
                                               const Rect2Di &contentRect) {
         // Classic mode: single text run + optional right icon.
-        Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
+        Color nodeTextColor = NodeTextColor(node);
         ctx->SetFontSize(fontSize);
         ctx->SetTextPaint(nodeTextColor);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
@@ -2213,6 +2214,7 @@ namespace UltraCanvas {
         SetBordersColor(r.lineStrong);
         fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
         selectionColor = r.accent;
+        selectionTextColor = r.onAccent;
         hoverColor = r.hover;
         lineColor = r.lineStrong;
         textColor = r.ink;

@@ -806,6 +806,7 @@ if (int need = tree->GetRequiredWidth(); need > 0)
 ```cpp
 void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
+void SetSelectionTextColor(const Color& color);
 void SetHoverColor(const Color& color);
 void SetFocusRingColor(const Color& color);
 void SetLoadingBarColor(const Color& color);
@@ -818,6 +819,12 @@ void SetCheckboxColors(const Color& background, const Color& border, const Color
 ```
 Sets various color properties for the tree view. `SetBackgroundColor` is
 inherited from `UltraCanvasUIElement`.
+
+`SetSelectionTextColor` is the text of a selected row (every cell of it in
+Columns mode); `Colors::Transparent`, the default, keeps the row's own text
+colour, and a node or cell coloured by hand keeps its colour either way. The
+theme sets the colour that reads on the accent (`onAccent`), so a light
+accent on a dark window does not get white text.
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
 (default `#E0E0E0`). `SetExpandButtonColors` sets the fill, the 1 px border

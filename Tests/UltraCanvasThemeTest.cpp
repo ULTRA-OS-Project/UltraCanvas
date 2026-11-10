@@ -490,8 +490,11 @@ int main() {
         auto freshCols = std::make_shared<UltraCanvasColumnsTreeView>("fresh-cols", 0, 0, 200, 100);
         CHECK(freshBar->GetFollowTheme() && Same(freshBar->GetStyle().trackBorderColor, dark.roles.line) && Same(freshList->GetStyle().backgroundColor, dark.roles.well)
               && Same(freshTree->GetTextColor(), dark.roles.ink) && Same(freshTree->GetSelectionColor(), dark.roles.accent)
-              && Same(freshTree->GetVerticalScrollbarStyle().trackBorderColor, dark.roles.line),
-              "a new scrollbar, list view and tree view are styled from the theme, the tree's scrollbar with it");
+              && Same(freshTree->GetSelectionTextColor(), dark.roles.onAccent) && Same(freshTree->GetVerticalScrollbarStyle().trackBorderColor, dark.roles.line),
+              "a new scrollbar, list view and tree view are styled from the theme, the tree's selected text on the accent, its scrollbar with it");
+        UltraCanvasUIElement::SetFollowThemeByDefault(false);
+        CHECK(UltraCanvasTreeView("plain").GetSelectionTextColor().a == 0, "a tree that does not follow keeps the row's own text colour on a selected row");
+        UltraCanvasUIElement::SetFollowThemeByDefault(true);
         CHECK(Same(freshCols->GetColumnStyle().headerBackground, dark.roles.panel) && Same(freshCols->GetTextColor(), dark.roles.ink),
               "a new columns tree view: its columns and its tree part");
         freshBar->SetStyle(ScrollbarStyle::Modern());
