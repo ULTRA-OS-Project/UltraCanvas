@@ -1,0 +1,19 @@
+{
+  "@language": "ko",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "제목 색",
+  "Edit Title": "제목 편집",
+  "The title is in the video": "제목을 동영상에 넣었습니다",
+  "The title is unchanged": "제목이 변경되지 않았습니다",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "제목이 비었습니다: 원래 텍스트는 유지됩니다(제거하려면 트랙에서 제목을 삭제하십시오)",
+  "Title Alignment": "제목 정렬",
+  "Title Bold": "제목 굵게",
+  "Title Font": "제목 글꼴",
+  "Title Italic": "제목 기울임꼴",
+  "Title Letter Spacing": "제목 자간",
+  "Title Line Spacing": "제목 줄 간격",
+  "Title Size": "제목 크기",
+  "Title Strikethrough": "제목 취소선",
+  "Title Underline": "제목 밑줄",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "프레임에 제목 입력 중: Escape, Ctrl+Enter 또는 바깥쪽을 클릭하면 동영상에 넣습니다"
+}

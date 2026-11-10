@@ -45,6 +45,9 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.14.0 - CaptureWindowImage (a taskbar's window previews);
+//                   DesktopWindowInfo::appUserModelId (Windows' application
+//                   identity: Store applications' icons and names, grouping)
 // Version: 1.13.0 - CaptureScreenArea (one rectangle of the screen, for a
 //                   screenshot tool and a screen recorder), DesktopScreenImage::x / y,
 //                   DefaultRecordingPath
@@ -55,6 +58,7 @@
 // Version: 1.9.0 - CloseWindow shows a minimized window before asking it to close
 // Version: 1.8.0 - FindProgram / LaunchProgram find a sibling application's
 //                  bundle on macOS
+// Version: 1.8.0 - OpenDisplaySettings, CanOpenDisplaySettings
 // Version: 1.7.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
 //                  SetAudioOutputVolume, SetAudioOutputMuted); a tray icon's
 //                  menu as data (DesktopTrayMenuItem, ActivateMenuItem);
@@ -93,6 +97,13 @@ namespace UltraCanvas {
         std::string appName;            // WM_CLASS instance, e.g. "ultrafiler"
         std::string iconFile;           // the app's icon, resolved from appClass through the
                                         // icon themes; "" when none is installed
+        // Windows: the AppUserModelID the window or its process carries -
+        // what Explorer's taskbar groups and draws a window by. A Store
+        // application's "PackageFamilyName!App" (Calculator, Settings,
+        // WhatsApp), or the ID a desktop program set for itself; "" where
+        // there is none and on other systems. UCDesktopEntry::appUserModelId
+        // names the same application in ListApplications.
+        std::string appUserModelId;
         int  virtualDesktop = -1;       // 0-based; -1 = on every desktop
         int  processId = 0;             // _NET_WM_PID, 0 when the window does not say
         bool active = false;            // the focused window
@@ -329,6 +340,18 @@ namespace UltraCanvas {
         // rectangle wholly off the screen among them); `out` is then empty.
         static bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out,
                                       std::string* error = nullptr);
+        // A small picture of one window of ListWindows, for a taskbar's
+        // preview: no larger than `maxWidth` x `maxHeight` (the window's own
+        // proportions kept; never enlarged), the same pixel layout as
+        // CaptureScreenImage. Windows draws the window itself
+        // (PrintWindow), and a Wayland compositor copies it
+        // (ext-image-copy-capture-v1, where it offers that), so a covered
+        // window shows its own content; X11 copies the window's rectangle of
+        // the screen, which shows whatever lies on top of it; macOS has none
+        // yet. A minimized window has no picture.
+        // False with the reason; `out` is then empty.
+        static bool CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
+                                       std::string* error = nullptr);
         // "<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png" - the
         // user's Pictures folder through GetWellKnownUserFolders, the home
         // directory when there is none. Only names the file; CaptureScreen
@@ -438,6 +461,18 @@ namespace UltraCanvas {
         // CanLockSession() is false where this backend has no such call.
         static bool CanLockSession();
         static bool LockSession(std::string* error = nullptr);
+
+        // ===== THE DISPLAYS =====
+        // Open the system's own display settings - resolution, arrangement,
+        // which monitor is the primary - what a desktop's "Display
+        // settings" does: Windows' Settings > Display, macOS's System
+        // Settings > Displays, on Linux the desktop's display tool that is
+        // installed (GNOME's or Plasma's settings, xfce4-display-settings,
+        // wdisplays on Wayland, arandr on X11, ...). Does not wait for it.
+        // False with the reason in `error`; CanOpenDisplaySettings() is
+        // false where there is nothing to open.
+        static bool CanOpenDisplaySettings();
+        static bool OpenDisplaySettings(std::string* error = nullptr);
 
         // ===== THE LOUDSPEAKER =====
         // The default output's volume and mute, through the sound server

@@ -4,12 +4,14 @@
 // UltraCanvasVectorCanvas) with the Vector plugin's converters for the
 // file formats.
 // One ArtCreator per user: a second start hands its drawings to the running
-// copy, which opens each in a window of its own (UltraCanvasSingleInstance.h);
+// copy, which opens each in a tab of the window used last (UltraCanvasSingleInstance.h);
 // --help and --version print and quit without asking it.
+// Version: 1.2.0 - a second start's drawings open as tabs of the window used last, and the
+//                  command line's drawings as tabs of one window (OpenInRunningWindow)
 // Version: 1.1.0 - one ArtCreator per user: a second start's drawings open in
 //                  the running copy, a start without drawings brings it forward
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -138,11 +140,11 @@ int main(int argc, char* argv[]) {
         // start-up, and a start made meanwhile is still answered.
         //
         // A later start's drawings open here as that start would have opened
-        // them: each in a new window (OpenWindow gives every path one), never
-        // in place of a drawing open now, so nothing unsaved is touched. The
-        // first of them comes to the front.
+        // them: each in a tab of its own, in the window used last (a new one
+        // when none is open), never in place of a drawing open now, so
+        // nothing unsaved is touched. That window comes to the front.
         instance.ListenOpen([](const std::vector<std::string>& paths) {
-            const std::shared_ptr<ArtCreatorWindow> opened = ArtCreatorWindow::OpenWindow(paths);
+            const std::shared_ptr<ArtCreatorWindow> opened = ArtCreatorWindow::OpenInRunningWindow(paths);
             if (opened) opened->BringForward();
             else UltraCanvasSingleInstance::BringToFront();
         });

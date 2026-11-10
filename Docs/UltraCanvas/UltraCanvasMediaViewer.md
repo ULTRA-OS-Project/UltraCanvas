@@ -585,6 +585,16 @@ browse, Space toggles the slideshow; the widget claims the window keyboard
 focus when attached (`SetGrabFocusOnAttach(false)` opts out) and filters the
 window's key events so browsing works while a display view holds the focus.
 
+Text the viewer shows - a text, source or Markdown file, a note, the Details
+panel - is selected with the mouse and copied. Those areas are display-only
+and never take the focus, so a press in one gives the focus to the widget
+itself: from then on Ctrl+C (or Ctrl+Insert, Cmd+C on macOS) copies the
+selection - the Details panel's first, then the text view's - and Ctrl+A
+selects all of the area last pressed in. Embedded in a host such as
+UltraFiler, this is what keeps Ctrl+C from reaching the file display (which
+would copy the files) after text was selected in the preview. A right-click
+on the text opens Copy / Select All (`UltraCanvasTextArea`'s read-only menu).
+
 ## Video preview behaviour
 
 What happens when a video becomes the shown item (`SetVideoPreviewMode`):

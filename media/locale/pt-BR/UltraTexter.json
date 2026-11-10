@@ -17,7 +17,6 @@
   "Close Tab": "Fechar aba",
   "Columns and Sections": "Colunas e seções",
   "Could not read the image file.": "Não foi possível ler o arquivo de imagem.",
-  "Crash Recovery": "Recuperação após falhas",
   "Cut (Ctrl+X)": "Recortar (Ctrl+X)",
   "Decrease Font Size": "Diminuir tamanho da fonte",
   "Decrease Font Size (Ctrl+-)": "Diminuir tamanho da fonte (Ctrl+-)",
@@ -39,10 +38,6 @@
   },
   "File Type / Syntax Mode": "Tipo de arquivo / modo de sintaxe",
   "Find Next (Enter)": "Localizar próxima (Enter)",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Foi encontrado {n} arquivo salvo automaticamente de uma sessão anterior.\n\nDeseja recuperá-lo?",
-    "other": "Foram encontrados {n} arquivos salvos automaticamente de uma sessão anterior.\n\nDeseja recuperá-los?"
-  },
   "Go to First Match": "Ir para a primeira ocorrência",
   "Hex/Binary": "Hex/binário",
   "Hyperlink ([title](url))": "Hiperlink ([título](url))",

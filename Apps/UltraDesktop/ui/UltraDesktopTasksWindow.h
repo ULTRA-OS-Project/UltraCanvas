@@ -35,6 +35,11 @@ public:
     void Open();
     void Raise();
     bool IsOpen() const { return open_; }
+    // A window of another program: not the desktop's own (its window, its
+    // dialogs, panels and Sticker board), and not one that keeps out of
+    // taskbars. The Task Manager lists these; a desktop icon dragged over
+    // one leaves the desktop as a file drag.
+    static bool Listed(const UltraCanvas::DesktopWindowInfo& w);
 
 private:
     void RebuildWindowList();
@@ -43,7 +48,6 @@ private:
                                                                        const std::string& text,
                                                                        const std::string& tooltip);
     static void ShowAndBringOnScreen(uint64_t id);
-    static bool Listed(const UltraCanvas::DesktopWindowInfo& w);
     // Asks first: the program is ended without being asked to close.
     void KillTask(uint64_t id, const std::string& title);
 

@@ -32,6 +32,7 @@
   "Copied to the clipboard.": "Copied to the clipboard.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Copy: the picture to the clipboard (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Drag an area on the screen now, or choose a delay and click Start.",
   "Edit in UltraPaint: open the saved picture there": "Edit in UltraPaint: open the saved picture there",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Every change applies straight away and is saved; there is nothing to confirm.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.",
@@ -50,7 +51,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.",
   "MP4 video": "MP4 video",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 with H.264 (.mp4)  -  plays everywhere",
-  "No delay": "No delay",
+  "No delay: the screen is taken at once": "No delay: the screen is taken at once",
   "No other type in this build": "No other type in this build",
   "No recording on this build: {0}": "No recording on this build: {0}",
   "not copied": "not copied",
@@ -121,7 +122,7 @@
   "UltraSnip - Settings": "UltraSnip - Settings",
   "Video: a recording of the area": "Video: a recording of the area",
   "Videos - the recording's container, its frame rate and its folder.": "Videos - the recording's container, its frame rate and its folder.",
-  "Wait before the screen is taken, so a menu can be opened first": "Wait before the screen is taken, so a menu can be opened first",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Wait {0} seconds before the screen is taken, so a menu can be opened first",
   "WebM video": "WebM video",
   "WebM with VP9 (.webm)  -  the web's own": "WebM with VP9 (.webm)  -  the web's own",
   "What happens to a picture the moment it is taken:": "What happens to a picture the moment it is taken:",
@@ -133,6 +134,6 @@
   "Write every picture to the folder below": "Write every picture to the folder below",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} recorded",
-  "{0} s delay": "{0} s delay",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

@@ -268,6 +268,7 @@ if(ANDROID)
     # stop this configure, and the Android store is a later milestone.
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
@@ -349,6 +350,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
@@ -356,6 +358,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
     set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
+    set(BUILD_ULTRANOTIFICATIONS OFF CACHE BOOL "Build the UltraNotifications application")
     set(BUILD_ULTRASNIP OFF CACHE BOOL "Build the UltraSnip application")
     set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
@@ -517,6 +520,33 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
 endif()
 
 add_subdirectory(UltraCanvas)
+
+# An application that uses a selectable widget's typed API (its class, its
+# Create function, its style) needs that widget compiled into the core: a
+# runtime module (ULTRACANVAS_WIDGETS, UltraCanvas/CMakeLists.txt "WIDGET
+# SYSTEM") is reached only by name. Stops the configure, naming the widgets
+# and the way out, when an application that is built would not link.
+function(ultracanvas_require_widgets build_flag app_name)
+    if(NOT ${build_flag})
+        return()
+    endif()
+    get_property(compiled_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    set(missing "")
+    foreach(widget IN LISTS ARGN)
+        if(NOT widget IN_LIST compiled_in)
+            list(APPEND missing ${widget})
+        endif()
+    endforeach()
+    if(missing)
+        string(REPLACE ";" ", " missing_text "${missing}")
+        message(FATAL_ERROR "${app_name} needs ${missing_text} compiled into the core: add "
+            "them to ULTRACANVAS_WIDGETS (or use 'all'), or configure with -D${build_flag}=OFF")
+    endif()
+endfunction()
+ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
+    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+ultracanvas_require_widgets(BUILD_ULTRAPAINT_APP UltraPaint ColorPaletteManager)
+ultracanvas_require_widgets(BUILD_ARTCREATOR_APP ArtCreator ColorPaletteManager VectorCanvas)
 
 # ===== WEBASSEMBLY DEMOS =====
 # The browser validation apps under UltraCanvas/OS/WASM/demo/ (wasm-demo and
@@ -762,6 +792,16 @@ if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
 endif()
 
+# ===== ULTRANOTIFICATIONS =====
+# The notifications of ULTRA OS after their toast has gone: every
+# notification, chat message and mail on the UltraMessage feed, to read,
+# search, open and dismiss (UltraCanvasMessageCenter). UltraDesktop's bell
+# opens it and shows its unread count.
+option(BUILD_ULTRANOTIFICATIONS "Build the UltraNotifications application" ON)
+if(BUILD_ULTRANOTIFICATIONS)
+    add_subdirectory(Apps/UltraNotifications)
+endif()
+
 # ===== ULTRASNIP =====
 # The screenshot and screen-recording tool of ULTRA OS: a rectangle, a window
 # or the whole screen as a picture (clipboard, Pictures/Screenshots) or as a
@@ -801,6 +841,8 @@ endif()
 # element: media bin, viewer with scrubbing, inspector, timeline, undo,
 # .ultravideo projects, export (Docs/Research/UltraVideoDesignProposal.md).
 option(BUILD_ULTRAVIDEO "Build the UltraVideo application" ON)
+# UltraVideo uses the video timeline's and the album's typed API.
+ultracanvas_require_widgets(BUILD_ULTRAVIDEO UltraVideo VideoTimeline Album)
 if(BUILD_ULTRAVIDEO)
     message(STATUS "")
     message(STATUS "── Building UltraVideo ──")
@@ -893,6 +935,18 @@ if(BUILD_ULTRASTOREADMIN AND TARGET UltraStoreCore)
     add_subdirectory(Apps/UltraStoreAdmin)
 endif()
 
+# ===== ULTRAAI SERVERADMIN =====
+# The super administrator's tool for an UltraAI model server
+# (Server/UltraAIModelServer): which models UltraAI clients may install, their
+# files, the topics, the accounts (Docs/UltraAIServerAdmin/README.md). On the
+# shared core's UltraNet and UltraCrypt.
+option(BUILD_ULTRAAISERVERADMIN "Build the UltraAI ServerAdmin application" ON)
+if(BUILD_ULTRAAISERVERADMIN AND TARGET UltraNet AND TARGET UltraCrypt)
+    message(STATUS "")
+    message(STATUS "── Building UltraAI ServerAdmin ──")
+    add_subdirectory(Apps/UltraAIServerAdmin)
+endif()
+
 # ===== ANCHORPOINT =====
 # Peer-to-peer file sharing with no server file storage. Apps/AnchorPoint is
 # also its own CMake project (core + CLI build without the framework); here it
@@ -929,6 +983,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp
+            Apps/DemoApp/UltraCanvasSettingsPageKitExamples.cpp
             Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp
             Apps/DemoApp/UltraCanvasVectorCanvasExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
@@ -998,6 +1053,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
             Apps/DemoApp/UltraCanvasTernaryChartExamples.cpp
+            Apps/DemoApp/UltraCanvasControlChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasPerformanceMatrixExamples.cpp
             Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
@@ -2228,6 +2284,7 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsDialog.cpp
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
+        Apps/UltraAIApp/UltraAITopicsPage.cpp
         Apps/UltraAIApp/UltraAISettingsWidgets.cpp
         Apps/UltraAIApp/UltraAILocalModelsPage.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
@@ -2879,7 +2936,8 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraSnip UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
+            UltraClipboard UltraNotifications UltraSnip UltraAuthenticator UltraPassword UltraVideo
+            UltraDBAdmin)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()

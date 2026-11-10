@@ -1,0 +1,15 @@
+{
+  "@language": "hu",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Kattintson és gépeljen, vagy húzzon egy keretet, amelyen belül a sorok tördelődnek; kattintson egy szövegre a szerkesztéséhez. A fenti sáv állítja be a betűtípust, a méretet, a stílust, az igazítást és a térközöket; a szín az előtérszín. Az Escape vagy egy kívülre kattintás befejezi",
+  "Letter Spacing": "Betűköz",
+  "Line Spacing": "Sorköz",
+  "Text Alignment": "Szöveg igazítása",
+  "Text Bold": "Félkövér szöveg",
+  "Text Colour": "Szöveg színe",
+  "Text Font": "Szöveg betűtípusa",
+  "Text Italic": "Dőlt szöveg",
+  "Text Size": "Szöveg mérete",
+  "Text Strikethrough": "Áthúzott szöveg",
+  "Text Underline": "Aláhúzott szöveg"
+}

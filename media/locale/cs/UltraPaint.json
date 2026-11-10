@@ -1,0 +1,15 @@
+{
+  "@language": "cs",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Klikněte a pište, nebo tažením nakreslete rámeček, v němž se budou řádky zalamovat; klikněte na text a upravte ho. Lišta nahoře nastavuje písmo, velikost, styl, zarovnání a mezery; barvou je barva popředí. Escape nebo kliknutí mimo psaní ukončí",
+  "Letter Spacing": "Prostrkání",
+  "Line Spacing": "Řádkování",
+  "Text Alignment": "Zarovnání textu",
+  "Text Bold": "Tučné písmo textu",
+  "Text Colour": "Barva textu",
+  "Text Font": "Písmo textu",
+  "Text Italic": "Kurzíva textu",
+  "Text Size": "Velikost textu",
+  "Text Strikethrough": "Přeškrtnutí textu",
+  "Text Underline": "Podtržení textu"
+}

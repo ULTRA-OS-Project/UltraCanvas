@@ -24,6 +24,7 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.6.3 - CaptureWindowImage: the window's rectangle of the screen
 // Version: 1.6.2 - KillProcess moved to UltraCanvasLinuxDesktopShellSession.cpp,
 //                  shared with the Wayland backend
 // Version: 1.6.1 - the procfs and sysfs probes moved to
@@ -700,6 +701,36 @@ bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& 
     std::lock_guard<std::mutex> lock(g_queryMutex);
     const int area[4] = {x, y, width, height};
     return CaptureScreenLocked(out, error, area);
+}
+
+bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {
+    // X11 keeps no picture of a covered window without a compositor, so the
+    // window's rectangle of the screen it is: what lies on top shows too.
+    // GetWindowBounds' rectangle is the client area, without the frame.
+    {
+        std::lock_guard<std::mutex> lock(g_queryMutex);
+        Display* d = QueryDisplay();
+        if (!d || id == 0) {
+            error = "No window to capture.";
+            return false;
+        }
+        ScopedErrorHandler guard;
+        XWindowAttributes attributes;
+        if (!XGetWindowAttributes(d, static_cast<Window>(id), &attributes)) {
+            error = "The window is gone.";
+            return false;
+        }
+        if (attributes.map_state != IsViewable) {
+            error = "The window is minimized or hidden.";
+            return false;
+        }
+    }
+    int x = 0, y = 0, width = 0, height = 0;
+    if (!GetWindowBounds(id, x, y, width, height) || width <= 0 || height <= 0) {
+        error = "The window is gone.";
+        return false;
+    }
+    return CaptureScreenArea(x, y, width, height, out, error);
 }
 
 bool CaptureScreen(const std::string& pngPath, std::string& error) {

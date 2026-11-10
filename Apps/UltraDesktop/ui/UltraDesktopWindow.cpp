@@ -2,6 +2,10 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.7.1 - the panels get the desktop window as their parent (placed on Wayland)
+// Version: 0.7.0 - the running apps grouped: one button per application with
+//                  the count of its windows, their pictures on a short rest
+//                  of the pointer (ShowPreviews), the group's own menu
 // Version: 0.5.2 - the screenshot button opens UltraSnip: a click snips an area, the
 //                  right click offers a window, the screen and a recording;
 //                  Super+Shift+S from any window; TakeScreenshot stays the fallback
@@ -32,15 +36,20 @@
 #include "UltraDesktopCategoryBoard.h"
 #include "UltraDesktopClipboardPanel.h"
 #include "UltraDesktopClockPanel.h"
+#include "UltraDesktopDesktopIcons.h"
+#include "UltraDesktopPanelTheme.h"
 #include "UltraDesktopStickerboard.h"
 #include "UltraDesktopTasksWindow.h"
 #include "UltraDesktopVolumePanel.h"
 #include "UltraDesktopWifiPanel.h"
 #include "UltraDesktopBluetoothPanel.h"
 #include "UltraDesktopDevicePanel.h"
+#include "UltraDesktopWindowPreviews.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasAudioDevices.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasHardwareInfo.h"
 #include "UltraCanvasRemovableDrives.h"
 #include "UltraCanvasVideoDevices.h"
@@ -52,6 +61,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMenu.h"
@@ -95,7 +105,6 @@ constexpr int   kBarIcon        = 24;
 constexpr int   kLogoButtonWide = 64;
 constexpr int   kLogoWidth      = 384;
 constexpr int   kLogoHeight     = 200;
-const char* const kLogoForDarkBar = "ultraos-logo-dark.png";   // UOS-Settings shows ultraos-logo-light.png
 constexpr int   kInfoButton     = 36;   // the info panel's items, fourteen of them
 constexpr int   kInfoIcon       = 20;
 // Below this height the info panel's items are smaller, and what still does
@@ -106,9 +115,10 @@ constexpr int   kInfoIconCompact   = 18;
 // The services that fold first, least used first. Webcam and microphone
 // come late: their red dot says a device is on, and that must stay seen.
 const char* const kInfoFoldOrder[] = {"keyboard", "vpn", "usb", "upload", "tasks", "download", "lan",
-                                      "mail", "battery", "bluetooth", "webcam", "mic", "speaker", "wifi"};
+                                      "mail", "notifications", "battery", "bluetooth", "webcam", "mic", "speaker", "wifi"};
 constexpr int   kClockHeight    = 68;   // the face (48) over the date line
 constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
+constexpr int   kDigitalClockHeight = 30;   // the digital clock's time line
 constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
 // The desktop's own picture, and the framework's for a package without it.
 const char* const kDefaultWallpaper  = "media/images/desktop/ULTRA OS A.avif";
@@ -123,17 +133,37 @@ constexpr unsigned kStartupProgramsDelayMs = 3000;   // "start with the desktop"
 constexpr unsigned kAppListPreloadDelayMs = 5000;    // the Apps window's list, read ahead
 constexpr uint64_t kActivityBytesPerPoll = 4096;   // below this a link is idle
 
-const Color kBarColor      (74, 74, 74, 255);
-const Color kBarInsetColor (20, 20, 20, 255);    // the carved-in groups
-const Color kBarHover      (110, 110, 110, 255);
-const Color kBarActive     (150, 150, 150, 255); // the active app / current desktop
 const Color kMarkerOn      (220, 30, 30, 255);   // red: a device is on
 const Color kMarkerActive  (240, 200, 0, 255);   // yellow: activity
 const Color kMarkerCount   (90, 90, 90, 255);    // grey pill for counts
 const Color kMarkerSaved   (60, 170, 90, 255);   // green: the screenshot landed
-const Color kClockFace     (236, 236, 240, 255); // the gauge draws dark hands: a light face
+const Color kMarkerLinkUp  (60, 170, 90, 255);   // green: Wi-Fi joined
 
 const char* const kRunningPrefix = "win:";
+// The Sticker board's category for files dropped on the wallpaper.
+const char* const kUnsortedCategory = "Unsorted";
+constexpr int   kDesktopIconTicks = 8;   // the Desktop folder looked at every 2 s
+// The pointer rests this long on an application's button before its
+// windows' pictures open, and the pictures stay this long after it left
+// both the button and them (time to cross the gap between the two).
+constexpr unsigned kPreviewOpenMs = 400;
+constexpr unsigned kPreviewCloseMs = 450;
+
+std::string LowerAscii(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+// The windows of one application share a button: Windows' AppUserModelID
+// when the window carries one (every Explorer window, a Store application's
+// frames), else the application's class (WM_CLASS on X11, the program on
+// Windows), else the window alone.
+std::string RunningGroupKey(const DesktopWindowInfo& w) {
+    if (!w.appUserModelId.empty()) return "aumid:" + LowerAscii(w.appUserModelId);
+    if (!w.appClass.empty()) return "class:" + LowerAscii(w.appClass);
+    return "window:" + std::to_string(w.id);
+}
 const char* const kTrayPrefix = "tray:";
 
 // The window's native handle as the id the desktop shell module takes: an
@@ -156,6 +186,42 @@ std::string Shorten(const std::string& text, size_t max) {
 
 } // namespace
 
+// ===== THE THEME =====
+
+// The bars' colours. Dark: light icons on dark grey, the running
+// applications and the organiser carved in near black, the clock white on
+// black. Light: dark icons on light grey, the carved-in groups a shade
+// lighter still, the clock black on white.
+struct BarPalette {
+    Color bar;          // the bars' ground
+    Color inset;        // the carved-in groups (running applications, organiser)
+    Color hover;
+    Color active;       // the active application / the current desktop
+    Color ink;          // the icons (drawn as masks) and the text
+    Color separator;
+    Color clockBack;
+    Color clockInk;
+    Color clockTicks;
+    const char* logo;   // the ULTRA OS logo drawn for this ground
+};
+
+namespace {
+const BarPalette kDarkBars{
+    Color(74, 74, 74, 255),    Color(20, 20, 20, 255),    Color(110, 110, 110, 255),
+    Color(150, 150, 150, 255), Color(255, 255, 255, 255), Color(120, 120, 120, 255),
+    Color(0, 0, 0, 255),       Color(255, 255, 255, 255), Color(255, 255, 255, 140),
+    "ultraos-logo-dark.png"};
+const BarPalette kLightBars{
+    Color(218, 218, 222, 255), Color(244, 244, 246, 255), Color(196, 196, 202, 255),
+    Color(170, 176, 190, 255), Color(32, 32, 36, 255),    Color(160, 160, 166, 255),
+    Color(250, 250, 250, 255), Color(20, 20, 20, 255),    Color(20, 20, 20, 140),
+    "ultraos-logo-light.png"};
+} // namespace
+
+const BarPalette& UltraDesktopWindow::Bars() const {
+    return settings_.theme == "light" ? kLightBars : kDarkBars;
+}
+
 // ===== LIFETIME =====
 
 UltraDesktopWindow::UltraDesktopWindow() = default;
@@ -171,6 +237,8 @@ UltraDesktopWindow::~UltraDesktopWindow() {
     lockShortcut_.Stop();
     snipShortcut_.Stop();
     clipboardShortcut_.Stop();
+    StopPreviewTimers();
+    previews_.reset();
     clipboardPanel_.reset();
     clockPanel_.reset();
     volumePanel_.reset();
@@ -287,7 +355,8 @@ void UltraDesktopWindow::BuildLayout() {
         window_->RemoveChild(root_);
         root_.reset();
     }
-    runningItems_.clear();
+    HidePreviews();
+    runningGroups_.clear();
     runningTitles_.clear();
     // The tray icons live on the info panel, which is built anew.
     trayIcons_.clear();
@@ -298,8 +367,9 @@ void UltraDesktopWindow::BuildLayout() {
     organiser_.reset();
     info_.reset();
     clock_.reset();
+    clockTime_.reset();
     clockDate_.reset();
-    clockMinute_ = -1;
+    clockStamp_.clear();
     windowsDirty_.store(true);
     haveLastActivity_ = false;
 
@@ -314,8 +384,14 @@ void UltraDesktopWindow::BuildLayout() {
         }
     }
 
+    // The panels the bars open follow the bars' theme from their next opening.
+    SetPanelTheme(settings_.theme);
+    if (clockPanel_ && clockPanel_->IsOpen()) clockPanel_->Close();
+    if (volumePanel_ && volumePanel_->IsOpen()) volumePanel_->Close();
+    if (wifiPanel_ && wifiPanel_->IsOpen()) wifiPanel_->Close();
+
     root_ = CreateContainer("Desktop", 0, 0, 0, 0);
-    root_->SetBackgroundColor(kBarInsetColor);
+    root_->SetBackgroundColor(Bars().inset);
 
     const TaskbarEdge edge = settings_.taskbarEdge;
     auto taskbar  = BuildTaskbar(edge == TaskbarEdge::Left);
@@ -388,11 +464,11 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     auto group = std::make_shared<UltraCanvasToolbar>(id, 0, 0, 0, 0);
     group->SetOrientation(vertical ? ToolbarOrientation::Vertical : ToolbarOrientation::Horizontal);
     ToolbarAppearance look = ToolbarAppearance::Flat();
-    look.backgroundColor = inset ? kBarInsetColor : kBarColor;
-    look.foregroundColor = Colors::White;
-    look.hoverBackgroundColor = kBarHover;
-    look.activeBackgroundColor = kBarActive;
-    look.separatorColor = Color(120, 120, 120, 255);
+    look.backgroundColor = inset ? Bars().inset : Bars().bar;
+    look.foregroundColor = Bars().ink;
+    look.hoverBackgroundColor = Bars().hover;
+    look.activeBackgroundColor = Bars().active;
+    look.separatorColor = Bars().separator;
     look.iconSize = ToolbarIconSize::Large;
     look.showIconLabels = false;
     look.centerIcons = true;
@@ -401,6 +477,7 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     group->SetPadding(6, 4);
     group->layoutItem.SetFlexShrink(0.0f);
     group->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    InstallBarMenu(group);
     return group;
 }
 
@@ -436,11 +513,11 @@ void UltraDesktopWindow::StyleBarButton(const std::shared_ptr<UltraCanvasButton>
     if (!button) return;
     ButtonStyle style = button->GetStyle();
     style.normalColor = Colors::Transparent;
-    style.hoverColor = kBarHover;
-    style.pressedColor = kBarActive;
-    style.normalTextColor = Colors::White;
-    style.hoverTextColor = Colors::White;
-    style.pressedTextColor = Colors::White;
+    style.hoverColor = Bars().hover;
+    style.pressedColor = Bars().active;
+    style.normalTextColor = Bars().ink;
+    style.hoverTextColor = Bars().ink;
+    style.pressedTextColor = Bars().ink;
     style.borderWidth = 0;
     style.cornerRadius = 8;
     style.fontSize = 15;
@@ -472,7 +549,7 @@ std::shared_ptr<UltraCanvasButton> UltraDesktopWindow::AddBarToggle(
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vertical) {
     auto bar = CreateContainer("Taskbar", 0, 0, 0, 0);
-    bar->SetBackgroundColor(kBarColor);
+    bar->SetBackgroundColor(Bars().bar);
     if (vertical) {
         bar->SetElementSize(CSSLayout::Dimension::Px(kBarThickness), CSSLayout::Dimension::Auto());
         bar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -485,9 +562,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     // 1. System: ULTRA OS settings and the app starter.
     auto system = MakeGroup("Taskbar.System", vertical, false);
     // The ULTRA OS logo in its own colours, wider than the other items: it
-    // is twice as wide as it is high. The variant drawn for a dark ground
-    // (the bar is dark grey).
-    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(kLogoForDarkBar),
+    // is twice as wide as it is high. The variant drawn for the theme's
+    // ground.
+    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(Bars().logo),
                                        [this]() { OpenSystemSettings(); });
     settingsButton->SetUseIconAsMask(false);
     const int logoBox = vertical ? kBarThickness - 4 : kLogoButtonWide;
@@ -502,7 +579,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     // The two waves mirror each other, so the running apps sit in a band
     // that narrows the same way at both ends; each wave starts 4 px past
     // the icon before it (TuckAgainstWave).
-    auto wave1 = CreateWaveSeparator("Taskbar.Wave1", vertical, kBarColor, kBarInsetColor, kWaveLength);
+    auto wave1 = CreateWaveSeparator("Taskbar.Wave1", vertical, Bars().bar, Bars().inset, kWaveLength);
     wave1->SetFlipped(true);
     TuckAgainstWave(system, wave1, vertical, true);
     bar->AddChild(wave1);
@@ -514,7 +591,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     running_->EnableItemReordering(true);
     bar->AddChild(running_);
 
-    auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength);
+    auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, Bars().inset, Bars().bar, kWaveLength);
     bar->AddChild(wave2);
 
     // 3. Pinned: the RAM disc (when there is one - Windows has none of its
@@ -561,61 +638,141 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 // ===== THE CLOCK =====
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildClock() {
+    // White on black (black on white in the light theme), at the top of the
+    // right bar, in the display type the person chose on its right-click
+    // menu (DesktopSettings::clockStyle).
+    const std::string& style = settings_.clockStyle;
+    const bool analog = style == "analog" || style == "analog-date";
+    const bool withDate = style == "analog-date" || style == "digital-date";
+    const int height = analog ? (withDate ? kClockHeight : kClockFaceBox - 14)
+                              : (withDate ? kDigitalClockHeight + 14 : kDigitalClockHeight);
+
     auto clock = CreateContainer("Clock", 0, 0, 0, 0);
-    clock->SetBackgroundColor(kBarColor);
-    clock->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Px(kClockHeight));
+    clock->SetBackgroundColor(Bars().clockBack);
+    clock->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Px(height));
     clock->layoutItem.SetFlexShrink(0.0f);
     clock->SetTooltip(TodayInWords());
 
-    // The gauge element's analog clock, which ticks on a timer of its own.
-    // Its face sits at the top of its box, the value zone below it empty:
-    // the date goes there. A click opens the clock panel.
-    clock_ = CreateGaugeDiagramElement("ClockFace", 0, 0, static_cast<float>(kInfoPanelWidth),
-                                       static_cast<float>(kClockFaceBox));
-    clock_->SetMode(GaugeMode::AnalogClock);
-    clock_->SetShowLabels(false);
-    clock_->SetBackgroundColor(kClockFace);
-    if (!clock_->layoutItem.position) clock_->layoutItem.position = CSSLayout::Position();
-    clock_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
-    clock_->layoutItem.position->top = CSSLayout::Dimension::Px(0);
-    clock_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
-    clock_->SetElementSize(Size2Df(static_cast<float>(kInfoPanelWidth), static_cast<float>(kClockFaceBox)));
-    const auto openPanel = [this](const UCEvent& event) {
-        if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
+    // A left click opens the clock panel; a right click offers the display
+    // types.
+    const auto onClick = [this](const UCEvent& event) {
+        if (event.type != UCEventType::MouseDown) return false;
+        if (event.button == UCMouseButton::Left) {
             OpenClockPanel();
+            return true;
+        }
+        if (event.button == UCMouseButton::Right) {
+            ShowClockMenu(event.pointerWindow.x, event.pointerWindow.y);
             return true;
         }
         return false;
     };
-    clock_->SetEventCallback(openPanel);
-    clock->AddChild(clock_);
+    const auto place = [](UltraCanvasUIElement& element, float top, float elementHeight) {
+        if (!element.layoutItem.position) element.layoutItem.position = CSSLayout::Position();
+        element.layoutItem.position->left = CSSLayout::Dimension::Px(0);
+        element.layoutItem.position->top = CSSLayout::Dimension::Px(top);
+        element.layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        element.SetElementSize(Size2Df(static_cast<float>(kInfoPanelWidth), elementHeight));
+    };
 
-    clockDate_ = CreateLabel("ClockDate", 0, 0, static_cast<float>(kInfoPanelWidth), 16, TodayShort());
-    clockDate_->SetFontSize(9.0f);
-    clockDate_->SetTextColor(Colors::White);
-    clockDate_->SetAlignment(TextAlignment::Center);
-    if (!clockDate_->layoutItem.position) clockDate_->layoutItem.position = CSSLayout::Position();
-    clockDate_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
-    clockDate_->layoutItem.position->top = CSSLayout::Dimension::Px(50);
-    clockDate_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
-    clockDate_->SetElementSize(Size2Df(static_cast<float>(kInfoPanelWidth), 16));
-    clockDate_->SetEventCallback(openPanel);
-    clock->AddChild(clockDate_);
+    float dateTop = 0;
+    if (analog) {
+        // The gauge element's analog clock, which ticks on a timer of its
+        // own: its face at the top of its box, the value zone below empty -
+        // the date goes there.
+        clock_ = CreateGaugeDiagramElement("ClockFace", 0, 0, static_cast<float>(kInfoPanelWidth),
+                                           static_cast<float>(kClockFaceBox));
+        clock_->SetMode(GaugeMode::AnalogClock);
+        clock_->SetShowLabels(false);
+        clock_->SetBackgroundColor(Bars().clockBack);
+        clock_->SetClockHandColor(Bars().clockInk);
+        clock_->SetClockTickColor(Bars().clockTicks);
+        place(*clock_, 0, static_cast<float>(kClockFaceBox));
+        clock_->SetEventCallback(onClick);
+        clock->AddChild(clock_);
+        dateTop = 50;
+    } else {
+        const bool seconds = style == "digital-seconds";
+        clockTime_ = CreateLabel("ClockTime", 0, 0, static_cast<float>(kInfoPanelWidth),
+                                 static_cast<float>(kDigitalClockHeight), TimeNow(seconds));
+        // As large as fits the bar's 48 px: "21:50" at 13 px bold,
+        // "21:50:33" at 9.5.
+        clockTime_->SetFontSize(seconds ? 9.5f : 13.0f);
+        clockTime_->SetFontWeight(FontWeight::Bold);
+        clockTime_->SetPadding(0);
+        clockTime_->SetTextColor(Bars().clockInk);
+        clockTime_->SetAlignment(TextAlignment::Center);
+        place(*clockTime_, 0, static_cast<float>(kDigitalClockHeight));
+        clockTime_->SetEventCallback(onClick);
+        clock->AddChild(clockTime_);
+        dateTop = static_cast<float>(kDigitalClockHeight) - 4;
+    }
+
+    if (withDate) {
+        clockDate_ = CreateLabel("ClockDate", 0, 0, static_cast<float>(kInfoPanelWidth), 16, TodayShort());
+        clockDate_->SetFontSize(9.0f);
+        clockDate_->SetPadding(0);
+        clockDate_->SetTextColor(Bars().clockInk);
+        clockDate_->SetAlignment(TextAlignment::Center);
+        place(*clockDate_, dateTop, 16);
+        clockDate_->SetEventCallback(onClick);
+        clock->AddChild(clockDate_);
+    }
+    clockStamp_.clear();
     UpdateClock();
     return clock;
 }
 
-// The words change once a minute; the face redraws itself every second.
+// The words change once a minute (the digital clock with seconds once a
+// second); the analog face redraws itself every second.
 void UltraDesktopWindow::UpdateClock() {
-    if (!clock_ || !clockDate_) return;
-    const std::string time = TimeNow();
-    const int minute = std::stoi(time.substr(0, 2)) * 60 + std::stoi(time.substr(3, 2));
-    if (minute == clockMinute_) return;
-    clockMinute_ = minute;
-    const std::string words = TodayInWords() + ", " + time;
-    clock_->SetTooltip(words);
-    clockDate_->SetTooltip(words);
-    clockDate_->SetText(TodayShort());
+    if (!clock_ && !clockTime_) return;
+    const bool seconds = settings_.clockStyle == "digital-seconds";
+    const std::string stamp = TimeNow(seconds);
+    if (stamp == clockStamp_) return;
+    clockStamp_ = stamp;
+    const std::string words = TodayInWords() + ", " + TimeNow();
+    if (clock_) clock_->SetTooltip(words);
+    if (clockTime_) {
+        clockTime_->SetText(stamp);
+        clockTime_->SetTooltip(words);
+    }
+    if (clockDate_) {
+        clockDate_->SetTooltip(words);
+        clockDate_->SetText(TodayShort());
+    }
+}
+
+void UltraDesktopWindow::ShowClockMenu(int windowX, int windowY) {
+    if (!window_) return;
+    struct Choice {
+        const char* style;
+        const char* label;
+    };
+    static const Choice kChoices[] = {
+        {"analog-date", "Analog clock with the date"},
+        {"analog", "Analog clock"},
+        {"digital-date", "Digital clock with the date"},
+        {"digital", "Digital clock"},
+        {"digital-seconds", "Digital clock with seconds"},
+    };
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("ClockMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Clock"));
+    for (const Choice& choice : kChoices) {
+        const std::string style = choice.style;
+        popupMenu_->AddItem(MenuItemData::Radio(choice.label, 1, settings_.clockStyle == style, [this, style]() {
+            if (settings_.clockStyle == style) return;
+            settings_.clockStyle = style;
+            SaveSettings();
+            BuildLayout();
+            RefreshDesktops();
+        }));
+    }
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Calendar and clock...", [this]() { OpenClockPanel(); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
 void UltraDesktopWindow::OpenClockPanel() {
@@ -625,9 +782,12 @@ void UltraDesktopWindow::OpenClockPanel() {
         clockPanel_->Close();
         return;
     }
-    // Beside the right bar, level with the clock.
-    const Rect2Df bounds = clock_ ? clock_->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    // Beside the right bar, level with the clock at its top.
+    UltraCanvasUIElement* face = clock_ ? static_cast<UltraCanvasUIElement*>(clock_.get())
+                                        : static_cast<UltraCanvasUIElement*>(clockTime_.get());
+    const Rect2Df bounds = face ? face->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     clockPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    clockPanel_->SetParentWindow(window_.get());
     clockPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y));
 }
 
@@ -645,6 +805,7 @@ void UltraDesktopWindow::OpenVolumePanel() {
     auto speaker = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("speaker"));
     const Rect2Df bounds = speaker ? speaker->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     volumePanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    volumePanel_->SetParentWindow(window_.get());
     volumePanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 60));
 }
 
@@ -662,6 +823,12 @@ void UltraDesktopWindow::StartStartupPrograms() {
     };
     for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
         if (!settings_.StartsWithDesktop(program.program)) continue;
+        if (program.builtIn) {
+            // The desktop's own Sticker board: its window made and its
+            // thumbnails drawn now, shown on the first click.
+            if (std::string(program.program) == "StickerBoard") PrepareCategoryBoard();
+            continue;
+        }
         const std::string name = lower(program.program);
         bool running = false;
         for (const DesktopWindowInfo& w : windows) {
@@ -669,7 +836,10 @@ void UltraDesktopWindow::StartStartupPrograms() {
         }
         if (running) continue;
         std::string error;
-        if (!UltraCanvasDesktopShell::LaunchProgram(program.program, {"--minimized"}, &error)) {
+        // A program started without a window (--background) has none to
+        // find above: starting it again only reaches the running copy, which
+        // takes a background start as nothing to do.
+        if (!UltraCanvasDesktopShell::LaunchProgram(program.program, {program.arguments}, &error)) {
             debugOutput << "UltraDesktop: " << program.program << " did not start with the desktop: " << error
                         << std::endl;
         }
@@ -887,6 +1057,7 @@ void UltraDesktopWindow::OpenWifiPanel() {
     }
     const Rect2Df bounds = info_->GetWidget("wifi") ? info_->GetWidget("wifi")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     wifiPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    wifiPanel_->SetParentWindow(window_.get());
     wifiPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
 }
 
@@ -913,6 +1084,7 @@ void UltraDesktopWindow::ShowBluetoothPanel() {
     const Rect2Df bounds =
         info_->GetWidget("bluetooth") ? info_->GetWidget("bluetooth")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     bluetoothPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    bluetoothPanel_->SetParentWindow(window_.get());
     bluetoothPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
 }
 
@@ -961,6 +1133,7 @@ void UltraDesktopWindow::OpenDevicePanel(const std::string& device) {
     const Rect2Df bounds =
         info_->GetWidget(device) ? info_->GetWidget(device)->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     panel->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    panel->SetParentWindow(window_.get());
     panel->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 120));
 }
 
@@ -1046,12 +1219,12 @@ void UltraDesktopWindow::ShowPinnedMenu(const UCDesktopEntry& entry, int windowX
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     auto bar = CreateContainer("RightBar", 0, 0, 0, 0);
-    bar->SetBackgroundColor(kBarColor);
+    bar->SetBackgroundColor(Bars().bar);
     bar->SetElementSize(CSSLayout::Dimension::Px(kInfoPanelWidth), CSSLayout::Dimension::Auto());
     bar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     bar->layoutItem.SetFlexShrink(0.0f);
 
-    // The clock first, where the eye looks for it.
+    // The clock at the top of the bar, above the organiser.
     bar->AddChild(BuildClock());
 
     // The desktop organiser: virtual desktops, then the board, clipboard, screenshot.
@@ -1095,7 +1268,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     // As on the taskbar, the wave starts 4 px past the organiser's last
     // icon; the info panel below is anchored to the bar's foot, so the
     // space on that side is its own stretch.
-    auto wave = CreateWaveSeparator("RightBar.Wave", true, kBarInsetColor, kBarColor, kWaveLength);
+    auto wave = CreateWaveSeparator("RightBar.Wave", true, Bars().inset, Bars().bar, kWaveLength);
     TuckAgainstWave(organiser_, wave, true, true);
     bar->AddChild(wave);
 
@@ -1117,6 +1290,8 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     info_->SetPadding(4, 4);
     info_->AddStretch(1.0f);
     AddBarButton(info_, "mail",      "Email",        IconPath("mail.svg"),      [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraMail"); });
+    AddBarButton(info_, "notifications", Tr("Notifications"), IconPath("notifications.svg"),
+                 [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNotifications"); });
     AddBarButton(info_, "upload",    "Upload",       IconPath("upload.svg"),    [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     AddBarButton(info_, "download",  "Download",     IconPath("download.svg"),  [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     AddBarButton(info_, "lan",       "Internet / LAN", IconPath("lan.svg"),     [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
@@ -1143,7 +1318,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
 
 std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     auto area = CreateContainer("WorkArea", 0, 0, 0, 0);
-    area->SetBackgroundColor(kBarInsetColor);
+    area->SetBackgroundColor(Bars().inset);
     area->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     // The wallpaper fills the area; application windows float above the
@@ -1151,9 +1326,53 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     wallpaper_ = std::make_shared<UltraCanvasImageElement>("Wallpaper", 0, 0, 0, 0);
     wallpaper_->SetFitMode(ImageFitMode::Cover);
     LoadWallpaper(*wallpaper_);
+    // A right click on the wallpaper: the desktop's menu, on the release, so
+    // the menu does not take that release as a pick.
+    wallpaper_->SetEventCallback([this, pending = false](const UCEvent& event) mutable {
+        // Files dropped on the wallpaper: the Sticker board or the Desktop
+        // folder, as the desktop's menu says (DropFiles).
+        if (event.type == UCEventType::DragEnter || event.type == UCEventType::DragOver) return true;
+        if (event.type == UCEventType::Drop) {
+            if (event.droppedFiles.empty()) return false;
+            DropFiles(event.droppedFiles, event.pointer);
+            return true;
+        }
+        // A left press between the desktop icons: a rubber band selects them
+        // (with Ctrl, adds to the selection); a plain click clears it.
+        if (event.button == UCMouseButton::Left && event.type == UCEventType::MouseDown && desktopIcons_ &&
+            desktopIcons_->IsVisible()) {
+            desktopIcons_->BeginRubberBand(event.pointer, event.ctrl);
+            return true;
+        }
+        if (event.button != UCMouseButton::Right) return false;
+        if (event.type == UCEventType::MouseDown) {
+            pending = true;
+            return true;
+        }
+        if (event.type == UCEventType::MouseUp && pending) {
+            pending = false;
+            ShowDesktopMenu(event.pointerWindow.x, event.pointerWindow.y);
+            return true;
+        }
+        return false;
+    });
     wallpaper_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     wallpaper_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     area->AddChild(wallpaper_);
+
+    // The desktop icons lie over the wallpaper, under the notes, pinned to
+    // every edge of the area; they show while dropped files go to the
+    // Desktop folder.
+    desktopIcons_ = std::make_shared<UltraDesktopDesktopIcons>("DesktopIcons", this);
+    if (!desktopIcons_->layoutItem.position) desktopIcons_->layoutItem.position = CSSLayout::Position();
+    desktopIcons_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
+    desktopIcons_->layoutItem.position->top = CSSLayout::Dimension::Px(0);
+    desktopIcons_->layoutItem.position->right = CSSLayout::Dimension::Px(0);
+    desktopIcons_->layoutItem.position->bottom = CSSLayout::Dimension::Px(0);
+    desktopIcons_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+    desktopIcons_->SetVisible(settings_.dropFilesOn == "desktop");
+    area->AddChild(desktopIcons_);
+    if (settings_.dropFilesOn == "desktop") desktopIcons_->Refresh(true);
 
     // The Stickerboard lies over the wallpaper, out of the flow, pinned to
     // every edge of the area.
@@ -1179,6 +1398,207 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
         }
     }
     return area;
+}
+
+// ===== THE DESKTOP'S MENUS =====
+
+std::vector<MenuItemData> UltraDesktopWindow::TaskbarEdgeItems() {
+    struct Choice {
+        TaskbarEdge edge;
+        const char* label;
+    };
+    static const Choice kChoices[] = {
+        {TaskbarEdge::Left, "Taskbar on the left"},
+        {TaskbarEdge::Top, "Taskbar at the top"},
+        {TaskbarEdge::Bottom, "Taskbar at the bottom"},
+    };
+    std::vector<MenuItemData> items;
+    for (const Choice& choice : kChoices) {
+        const TaskbarEdge edge = choice.edge;
+        items.push_back(MenuItemData::Radio(Tr(choice.label), 2, settings_.taskbarEdge == edge,
+                                            [this, edge]() { SetTaskbarEdge(edge); }));
+    }
+    return items;
+}
+
+std::vector<MenuItemData> UltraDesktopWindow::ThemeItems() {
+    std::vector<MenuItemData> items;
+    items.push_back(MenuItemData::Radio(Tr("Dark"), 3, settings_.theme != "light",
+                                        [this]() { SetTheme("dark"); }));
+    items.push_back(MenuItemData::Radio(Tr("Light"), 3, settings_.theme == "light",
+                                        [this]() { SetTheme("light"); }));
+    return items;
+}
+
+void UltraDesktopWindow::ShowDesktopMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("DesktopMenu", 0, 0, 260, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Change wallpaper..."), [this]() { ChooseWallpaper(); }));
+    if (!settings_.wallpaper.empty()) {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Default wallpaper"), [this]() { SetWallpaper(""); }));
+    }
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
+    {
+        std::vector<MenuItemData> drop;
+        drop.push_back(MenuItemData::Radio(Tr("Drop on sticker board"), 4, settings_.dropFilesOn != "desktop",
+                                           [this]() { SetDropTarget("board"); }));
+        drop.push_back(MenuItemData::Radio(Tr("Drop on desktop"), 4, settings_.dropFilesOn == "desktop",
+                                           [this]() { SetDropTarget("desktop"); }));
+        popupMenu_->AddItem(MenuItemData::Submenu(Tr("Drop files"), drop));
+    }
+    if (settings_.dropFilesOn == "desktop" && desktopIcons_) {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Arrange icons"), [this]() {
+            if (desktopIcons_) desktopIcons_->ArrangeIcons();
+        }));
+    }
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Checkbox(Tr("Notes on the wallpaper"), settings_.stickerboardVisible,
+                                               [this](bool on) {
+        ToggleStickerboard(on);
+        if (organiser_) {
+            if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("stickerboard"))) {
+                toggle->SetPressed(on);
+            }
+        }
+    }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    if (UltraCanvasDesktopShell::CanOpenDisplaySettings()) {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Display settings..."), [this]() { OpenDisplaySettings(); }));
+    }
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Desktop settings..."), [this]() { OpenSystemSettings(); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::ShowBarMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("BarMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header(Tr("Taskbar")));
+    for (MenuItemData& item : TaskbarEdgeItems()) popupMenu_->AddItem(item);
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Desktop settings..."), [this]() { OpenSystemSettings(); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+// A right click on a bar's group: the item's own menu when it has one (a
+// running or pinned application, the screenshot, the clipboard, a tray
+// icon), else the bar's.
+void UltraDesktopWindow::InstallBarMenu(const std::shared_ptr<UltraCanvasToolbar>& group) {
+    if (!group) return;
+    group->SetOnContextMenu([this, bar = group.get()](const Point2Di& at, const std::string& itemId) {
+        if (!itemId.empty()) {
+            auto button = std::dynamic_pointer_cast<UltraCanvasButton>(bar->GetWidget(itemId));
+            if (button && button->onContextMenu) {
+                // A copy: the menu may rebuild the bar, and the button with it.
+                auto handler = button->onContextMenu;
+                handler(at.x, at.y);
+                return;
+            }
+        }
+        ShowBarMenu(at.x, at.y);
+    });
+}
+
+void UltraDesktopWindow::SetDropTarget(const std::string& target) {
+    if (!DesktopSettings::IsDropTarget(target) || settings_.dropFilesOn == target) return;
+    settings_.dropFilesOn = target;
+    SaveSettings();
+    if (desktopIcons_) {
+        desktopIcons_->SetVisible(target == "desktop");
+        if (target == "desktop") desktopIcons_->Refresh(true);
+        if (workArea_) workArea_->InvalidateLayout();
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void UltraDesktopWindow::NoteIconDragStart() {
+    otherWindowRects_.clear();
+    const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
+    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+        if (!UltraDesktopTasksWindow::Listed(w) || w.minimized) continue;
+        if (w.virtualDesktop >= 0 && current >= 0 && w.virtualDesktop != current) continue;
+        int x = 0, y = 0, width = 0, height = 0;
+        if (!UltraCanvasDesktopShell::GetWindowBounds(w.id, x, y, width, height)) continue;
+        if (width > 0 && height > 0) otherWindowRects_.emplace_back(x, y, width, height);
+    }
+}
+
+bool UltraDesktopWindow::PointOverOtherWindow(const Point2Di& windowPoint) const {
+    if (otherWindowRects_.empty()) return false;
+    const int x = ScreenX(static_cast<float>(windowPoint.x));
+    const int y = ScreenY(static_cast<float>(windowPoint.y));
+    for (const Rect2Di& rect : otherWindowRects_) {
+        if (rect.Contains(x, y)) return true;
+    }
+    return false;
+}
+
+void UltraDesktopWindow::DropFiles(const std::vector<std::string>& files, const Point2Df& at) {
+    if (files.empty()) return;
+    if (settings_.dropFilesOn == "desktop" && desktopIcons_) {
+        std::string error;
+        if (!desktopIcons_->TakeFiles(files, at, error)) {
+            UltraCanvasAlert::Error(Tr("Not every file could be put on the desktop: ") + error, "UltraDesktop",
+                                    nullptr, window_.get());
+        }
+        return;
+    }
+    // The Sticker board, in its "Unsorted" category; it shows, so the files
+    // are seen to have landed.
+    PrepareCategoryBoard();
+    if (!categoryBoard_) return;
+    categoryBoard_->AddFilesToCategory(files, kUnsortedCategory);
+    if (!settings_.categoryBoard.visible) ToggleCategoryBoard(true);
+}
+
+void UltraDesktopWindow::SetTaskbarEdge(TaskbarEdge edge) {
+    if (settings_.taskbarEdge == edge) return;
+    settings_.taskbarEdge = edge;
+    ApplySettings();
+}
+
+void UltraDesktopWindow::SetTheme(const std::string& theme) {
+    if (!DesktopSettings::IsTheme(theme) || settings_.theme == theme) return;
+    settings_.theme = theme;
+    SaveSettings();
+    BuildLayout();
+    RefreshDesktops();
+}
+
+void UltraDesktopWindow::ChooseWallpaper() {
+    FileDialogOptions options;
+    options.title = Tr("Choose a wallpaper");
+    options.parentWindow = window_.get();
+    const std::string current = WallpaperPath();
+    if (!current.empty()) options.initialDirectory = PathToUtf8(PathFromUtf8(current).parent_path());
+    UltraCanvasFileLoader::AddLoadTypes(options, Tr("Pictures"), {MediaFormatCategory::Bitmap});
+    UltraCanvasFileLoader::OpenFileDialog(options, [this](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty()) return;
+        SetWallpaper(path);
+    });
+}
+
+void UltraDesktopWindow::SetWallpaper(const std::string& path) {
+    settings_.wallpaper = path;
+    SaveSettings();
+    if (wallpaper_) LoadWallpaper(*wallpaper_);
+    for (const auto& wallpaper : screenWallpapers_) {
+        if (wallpaper) LoadWallpaper(*wallpaper);
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void UltraDesktopWindow::OpenDisplaySettings() {
+    std::string error;
+    if (UltraCanvasDesktopShell::OpenDisplaySettings(&error)) return;
+    debugOutput << "UltraDesktop: display settings: " << error << std::endl;
+    UltraCanvasAlert::Error(Tr("The display settings could not be opened: ") + error, "UltraDesktop", nullptr,
+                            window_.get());
 }
 
 // ===== WHAT THE BARS DO =====
@@ -1328,6 +1748,19 @@ void UltraDesktopWindow::ToggleCategoryBoard(bool visible) {
 // back above it, so the board is second from the top and the application
 // stays where the person was working.
 void UltraDesktopWindow::ShowCategoryBoard() {
+    PrepareCategoryBoard();
+    if (!boardWindow_) return;
+    PlaceCategoryBoard();
+    boardWindow_->Show();
+    boardWindow_->RaiseAndFocus();
+    // The application in front before the click goes back above the board.
+    if (lastPasteWindow_ != 0) UltraCanvasDesktopShell::ActivateWindow(lastPasteWindow_);
+}
+
+// The board's window and its cards, not shown: on the first click, or
+// beforehand when "Start with the desktop" names the Sticker board, so the
+// click shows it with its thumbnails already made.
+void UltraDesktopWindow::PrepareCategoryBoard() {
     if (!window_ || !workArea_) return;
     if (!boardWindow_) {
         WindowConfig config;
@@ -1370,12 +1803,8 @@ void UltraDesktopWindow::ShowCategoryBoard() {
                 }
             }
         };
+        PlaceCategoryBoard();
     }
-    PlaceCategoryBoard();
-    boardWindow_->Show();
-    boardWindow_->RaiseAndFocus();
-    // The application in front before the click goes back above the board.
-    if (lastPasteWindow_ != 0) UltraCanvasDesktopShell::ActivateWindow(lastPasteWindow_);
 }
 
 // Over the work area, in screen pixels; again whenever the bars move (a
@@ -1506,17 +1935,29 @@ void UltraDesktopWindow::CheckSettingsFile() {
     }
     // Only what UOS-Settings edits; the notes and the Stickerboard switch are
     // this process's and the copy in memory is the current one.
+    // The Sticker board's card display and hover preview: the board takes
+    // them as they are, nothing else needs to be rebuilt.
+    if (written.categoryBoard.display != settings_.categoryBoard.display ||
+        written.categoryBoard.hoverPreview != settings_.categoryBoard.hoverPreview) {
+        settings_.categoryBoard.display = written.categoryBoard.display;
+        settings_.categoryBoard.hoverPreview = written.categoryBoard.hoverPreview;
+        if (categoryBoard_) categoryBoard_->ApplyDisplaySettings(settings_.categoryBoard);
+    }
     const bool changed = written.taskbarEdge != settings_.taskbarEdge ||
                          written.wallpaper != settings_.wallpaper ||
                          written.ramDiscPath != settings_.ramDiscPath ||
                          written.filerProgram != settings_.filerProgram ||
-                         written.virtualDesktops != settings_.virtualDesktops;
+                         written.virtualDesktops != settings_.virtualDesktops ||
+                         written.theme != settings_.theme ||
+                         written.dropFilesOn != settings_.dropFilesOn;
     if (!changed) return;
     settings_.taskbarEdge = written.taskbarEdge;
     settings_.wallpaper = written.wallpaper;
     settings_.ramDiscPath = written.ramDiscPath;
     settings_.filerProgram = written.filerProgram;
     settings_.virtualDesktops = written.virtualDesktops;
+    settings_.theme = written.theme;
+    settings_.dropFilesOn = written.dropFilesOn;
     // Written back with the notes as they are now, should a note have
     // changed between UOS-Settings reading the file and writing it.
     ApplySettings();
@@ -1592,6 +2033,10 @@ void UltraDesktopWindow::OnTimer() {
     if (trayDirty_.exchange(false)) RefreshTray();
     FitInfoPanel();
     if (boardWindow_ && settings_.categoryBoard.visible) PlaceCategoryBoard();
+    if (desktopIcons_ && settings_.dropFilesOn == "desktop" && ++desktopIconTicks_ >= kDesktopIconTicks) {
+        desktopIconTicks_ = 0;
+        desktopIcons_->Refresh();
+    }
     UpdateClock();
 
     bool apply = false;
@@ -1648,15 +2093,14 @@ void UltraDesktopWindow::RefreshDesktops() {
     }
 }
 
-std::string UltraDesktopWindow::RunningItemId(uint64_t windowId) const {
-    return kRunningPrefix + std::to_string(windowId);
-}
-
 void UltraDesktopWindow::RefreshWindows() {
     if (!running_) return;
     const std::vector<DesktopWindowInfo> windows = UltraCanvasDesktopShell::ListWindows();
 
-    std::map<uint64_t, const DesktopWindowInfo*> wanted;
+    // The windows the bar shows, by application, in ListWindows' order.
+    std::vector<std::string> order;
+    std::map<std::string, std::vector<const DesktopWindowInfo*>> wanted;
+    runningTitles_.clear();
     for (const DesktopWindowInfo& w : windows) {
         // Where a paste from the clipboard panel goes when it is opened from
         // the bar: clicking the bar does not change it.
@@ -1664,74 +2108,286 @@ void UltraDesktopWindow::RefreshWindows() {
         if (w.skipTaskbar) continue;
         if (w.appClass == "UltraDesktop") continue;   // ourselves, whatever the manager says
         if (currentDesktop_ >= 0 && w.virtualDesktop >= 0 && w.virtualDesktop != currentDesktop_) continue;
-        wanted[w.id] = &w;
+        const std::string key = RunningGroupKey(w);
+        auto& members = wanted[key];
+        if (members.empty()) order.push_back(key);
+        members.push_back(&w);
+        runningTitles_[w.id] = w.title;
     }
 
-    // Gone windows leave the bar.
-    for (auto it = runningItems_.begin(); it != runningItems_.end();) {
+    // Applications whose last window went leave the bar.
+    for (auto it = runningGroups_.begin(); it != runningGroups_.end();) {
         if (wanted.count(it->first) == 0) {
-            running_->RemoveItem(it->second);
-            runningTitles_.erase(it->first);
-            it = runningItems_.erase(it);
+            running_->RemoveItem(it->second.itemId);
+            if (hoveredGroup_ == it->first) hoveredGroup_.clear();
+            it = runningGroups_.erase(it);
         } else {
             ++it;
         }
     }
 
-    // New windows join it, next to their application's other windows when
-    // it has any, at the end otherwise. Existing ones only update.
-    for (const DesktopWindowInfo& w : windows) {
-        auto found = wanted.find(w.id);
-        if (found == wanted.end()) continue;
-        const std::string itemId = RunningItemId(w.id);
-        auto existing = runningItems_.find(w.id);
+    // New applications join at the end; the others keep their place (the
+    // person may have dragged them) and only update.
+    for (const std::string& key : order) {
+        const std::vector<const DesktopWindowInfo*>& members = wanted[key];
+        const DesktopWindowInfo& first = *members.front();
+        auto existing = runningGroups_.find(key);
+        const bool added = existing == runningGroups_.end();
+        RunningGroup& group = runningGroups_[key];
+        std::vector<RunningWindow> now;
+        bool active = false;
+        for (const DesktopWindowInfo* w : members) {
+            now.push_back({w->id, w->title, w->iconFile, w->active, w->minimized});
+            if (w->active && !w->minimized) active = true;
+        }
+        std::string iconFile;
+        for (const DesktopWindowInfo* w : members) {
+            if (!w->iconFile.empty()) {
+                iconFile = w->iconFile;
+                break;
+            }
+        }
         std::shared_ptr<UltraCanvasButton> button;
-        if (existing == runningItems_.end()) {
-            std::string text;
-            if (w.iconFile.empty()) {
-                const std::string& source = !w.appClass.empty() ? w.appClass : w.title;
-                if (!source.empty()) text = source.substr(0, 1);
-                std::transform(text.begin(), text.end(), text.begin(),
+        if (added) {
+            group.itemId = kRunningPrefix + std::to_string(++nextRunningItem_);
+            group.name = !first.appClass.empty() ? first.appClass : first.title;
+            if (!group.name.empty()) {
+                group.letter = group.name.substr(0, 1);
+                std::transform(group.letter.begin(), group.letter.end(), group.letter.begin(),
                                [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
             }
-            const uint64_t id = w.id;
-            button = AddBarToggle(running_, itemId, w.title, w.iconFile, text, [this, id](bool on) {
-                if (on) UltraCanvasDesktopShell::ActivateWindow(id);
-                else UltraCanvasDesktopShell::MinimizeWindow(id);
-            });
+            button = AddBarToggle(running_, group.itemId, first.title, iconFile,
+                                  iconFile.empty() ? group.letter : std::string(),
+                                  [this, key](bool on) { OnRunningToggled(key, on); });
             // The application's own icon in its own colours, as the pins
             // and the tray show it; only the bar's glyphs and the letter
             // fallback are tinted through the mask.
-            button->SetUseIconAsMask(w.iconFile.empty());
-            button->onContextMenu = [this, id](int x, int y) { ShowWindowMenu(id, x, y); };
-            runningItems_[w.id] = itemId;
-
-            // Group with the same application's windows.
-            int place = -1;
-            const auto order = running_->GetItemOrder();
-            for (size_t i = 0; i < order.size(); ++i) {
-                for (const auto& [otherId, otherItem] : runningItems_) {
-                    if (otherItem != order[i] || otherId == w.id) continue;
-                    const auto other = wanted.find(otherId);
-                    if (other != wanted.end() && other->second->appClass == w.appClass) place = static_cast<int>(i);
-                }
-            }
-            if (place >= 0) {
-                const int from = running_->GetItemIndex(itemId);
-                if (from > place + 1) running_->MoveItem(from, place + 1);
-            }
+            button->SetUseIconAsMask(iconFile.empty());
+            button->onContextMenu = [this, key](int x, int y) {
+                HidePreviews();
+                auto it = runningGroups_.find(key);
+                if (it == runningGroups_.end()) return;
+                if (it->second.windows.size() == 1) ShowWindowMenu(it->second.windows.front().id, x, y);
+                else ShowGroupMenu(key, x, y);
+            };
+            button->onHoverEnter = [this, key]() { HoverRunning(key); };
+            button->onHoverLeave = [this, key]() { UnhoverRunning(key); };
         } else {
-            button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(itemId));
+            button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(group.itemId));
         }
+
+        // The windows keep the order they came in, not the stacking order,
+        // so the pictures do not change places each time one is raised.
+        if (!added) {
+            std::map<uint64_t, size_t> before;
+            for (size_t i = 0; i < group.windows.size(); ++i) before[group.windows[i].id] = i;
+            std::stable_sort(now.begin(), now.end(), [&before](const RunningWindow& a, const RunningWindow& b) {
+                const auto ia = before.find(a.id);
+                const auto ib = before.find(b.id);
+                const size_t pa = ia == before.end() ? SIZE_MAX : ia->second;
+                const size_t pb = ib == before.end() ? SIZE_MAX : ib->second;
+                return pa < pb;
+            });
+        }
+        // An open strip of pictures whose windows changed is out of date.
+        if (previews_ && previews_->IsOpenFor(key)) {
+            std::vector<uint64_t> ids;
+            for (const RunningWindow& w : now) ids.push_back(w.id);
+            if (ids != previews_->WindowIds()) HidePreviews();
+        }
+        group.windows = std::move(now);
+        group.active = active;
         if (!button) continue;
-        if (runningTitles_[w.id] != w.title) {
-            runningTitles_[w.id] = w.title;
-            button->SetTooltip(w.title.empty() ? w.appClass : w.title);
+
+        const int count = static_cast<int>(group.windows.size());
+        // Several windows: the pictures say which; a tooltip would only sit
+        // under them.
+        const std::string tooltip = count == 1 ? (first.title.empty() ? group.name : first.title) : std::string();
+        if (added || button->GetTooltip() != tooltip) button->SetTooltip(tooltip);
+        const int badge = count > 1 ? count : 0;
+        if (badge != group.badge) {
+            group.badge = badge;
+            if (badge > 0) running_->SetItemBadgeCount(group.itemId, badge);
+            else running_->ClearItemBadge(group.itemId);
         }
-        button->SetPressed(w.active && !w.minimized);
+        button->SetPressed(active);
     }
     running_->InvalidateLayout();
     running_->RequestRedraw();
+}
+
+void UltraDesktopWindow::OnRunningToggled(const std::string& key, bool on) {
+    auto it = runningGroups_.find(key);
+    if (it == runningGroups_.end()) return;
+    const RunningGroup& group = it->second;
+    if (group.windows.size() == 1) {
+        HidePreviews();
+        const uint64_t id = group.windows.front().id;
+        if (on) UltraCanvasDesktopShell::ActivateWindow(id);
+        else UltraCanvasDesktopShell::MinimizeWindow(id);
+        return;
+    }
+    // Several windows: the click does not pick one, the pictures do. The
+    // button keeps showing whether one of them has the focus.
+    if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(running_->GetWidget(group.itemId))) {
+        button->SetPressed(group.active);
+    }
+    if (previews_ && previews_->IsOpenFor(key)) {
+        HidePreviews();
+    } else {
+        StopPreviewTimers();
+        ShowPreviews(key);
+    }
+}
+
+void UltraDesktopWindow::HoverRunning(const std::string& key) {
+    hoveredGroup_ = key;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    if (previewCloseTimer_) {
+        app->StopTimer(previewCloseTimer_);
+        previewCloseTimer_ = 0;
+    }
+    auto it = runningGroups_.find(key);
+    const bool several = it != runningGroups_.end() && it->second.windows.size() > 1;
+    if (previews_ && previews_->IsOpen()) {
+        // Along the bar from one application to the next: the pictures
+        // follow at once.
+        if (previews_->IsOpenFor(key)) return;
+        if (several) ShowPreviews(key);
+        else HidePreviews();
+        return;
+    }
+    if (!several) return;
+    if (previewOpenTimer_) app->StopTimer(previewOpenTimer_);
+    previewOpenTimer_ = app->StartTimer(kPreviewOpenMs, false, [this, key](TimerId) {
+        previewOpenTimer_ = 0;
+        if (hoveredGroup_ == key) ShowPreviews(key);
+    });
+}
+
+void UltraDesktopWindow::UnhoverRunning(const std::string& key) {
+    if (hoveredGroup_ == key) hoveredGroup_.clear();
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (app && previewOpenTimer_) {
+        app->StopTimer(previewOpenTimer_);
+        previewOpenTimer_ = 0;
+    }
+    if (previews_ && previews_->IsOpen()) SchedulePreviewsClose();
+}
+
+void UltraDesktopWindow::SchedulePreviewsClose() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    if (previewCloseTimer_) app->StopTimer(previewCloseTimer_);
+    previewCloseTimer_ = app->StartTimer(kPreviewCloseMs, false, [this](TimerId) {
+        previewCloseTimer_ = 0;
+        // Back on the button in the meantime: it stays.
+        if (previews_ && !hoveredGroup_.empty() && previews_->IsOpenFor(hoveredGroup_)) return;
+        HidePreviews();
+    });
+}
+
+void UltraDesktopWindow::StopPreviewTimers() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    if (previewOpenTimer_) app->StopTimer(previewOpenTimer_);
+    if (previewCloseTimer_) app->StopTimer(previewCloseTimer_);
+    previewOpenTimer_ = 0;
+    previewCloseTimer_ = 0;
+}
+
+void UltraDesktopWindow::HidePreviews() {
+    StopPreviewTimers();
+    if (previews_) previews_->Close();
+}
+
+void UltraDesktopWindow::ShowPreviews(const std::string& key) {
+    if (!window_ || !running_) return;
+    auto it = runningGroups_.find(key);
+    if (it == runningGroups_.end()) return;
+    const RunningGroup& group = it->second;
+    auto button = running_->GetWidget(group.itemId);
+    if (!button) return;
+    if (!previews_) {
+        previews_ = std::make_shared<UltraDesktopWindowPreviews>();
+        previews_->onChoose = [](uint64_t id) { UltraCanvasDesktopShell::ActivateWindow(id); };
+        previews_->onCloseWindow = [this](uint64_t id) {
+            UltraCanvasDesktopShell::CloseWindow(id);
+            windowsDirty_.store(true);
+        };
+        previews_->onPointerInside = [this]() {
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (app && previewCloseTimer_) {
+                app->StopTimer(previewCloseTimer_);
+                previewCloseTimer_ = 0;
+            }
+        };
+        previews_->onPointerOutside = [this]() { SchedulePreviewsClose(); };
+    }
+    std::vector<WindowPreviewItem> items;
+    for (const RunningWindow& w : group.windows) {
+        WindowPreviewItem item;
+        item.id = w.id;
+        item.title = w.title;
+        item.iconFile = w.iconFile;
+        item.letter = group.letter;
+        item.active = w.active;
+        item.minimized = w.minimized;
+        items.push_back(std::move(item));
+    }
+    // Beside the bar's button, on the side away from the screen's edge.
+    const Rect2Df bounds = button->GetBoundsInWindow();
+    const int left = ScreenX(bounds.x);
+    const int top = ScreenY(bounds.y);
+    const int right = ScreenX(bounds.x + bounds.width);
+    const int bottom = ScreenY(bounds.y + bounds.height);
+    PreviewSide side = PreviewSide::Right;
+    if (settings_.taskbarEdge == TaskbarEdge::Top) side = PreviewSide::Down;
+    else if (settings_.taskbarEdge == TaskbarEdge::Bottom) side = PreviewSide::Up;
+    const float scale = window_->LogicalToPhysical(1000) / 1000.0f;
+    previews_->Show(key, items, left, top, right - left, bottom - top, side, area_.x, area_.y, area_.width,
+                    area_.height, scale);
+}
+
+void UltraDesktopWindow::ShowGroupMenu(const std::string& key, int windowX, int windowY) {
+    if (!window_) return;
+    auto it = runningGroups_.find(key);
+    if (it == runningGroups_.end()) return;
+    const RunningGroup& group = it->second;
+    std::vector<uint64_t> ids;
+    for (const RunningWindow& w : group.windows) ids.push_back(w.id);
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("GroupMenu", 0, 0, 260, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    if (!group.name.empty()) popupMenu_->AddItem(MenuItemData::Header(Shorten(group.name, 40)));
+    for (const RunningWindow& w : group.windows) {
+        const uint64_t id = w.id;
+        const std::string title = w.title.empty() ? group.name : w.title;
+        popupMenu_->AddItem(MenuItemData::Action(Shorten(title, 40),
+                                                 [id]() { UltraCanvasDesktopShell::ActivateWindow(id); }));
+    }
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Minimize all"), [ids]() {
+        for (const uint64_t id : ids) UltraCanvasDesktopShell::MinimizeWindow(id);
+    }));
+    // Its application, when one is installed under its class: pinned from here.
+    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+        if (w.id != ids.front()) continue;
+        if (const UCDesktopEntry* entry = UltraCanvasDesktopShell::MatchApplication(w, Applications())) {
+            const UCDesktopEntry application = *entry;
+            const bool pinned = IsPinned(application);
+            popupMenu_->AddItem(MenuItemData::Action(pinned ? Tr("Unpin from taskbar") : Tr("Pin to taskbar"),
+                                                     [this, application, pinned]() { SetPinned(application, !pinned); }));
+        }
+        break;
+    }
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action(TrF("Close all {0} windows", ids.size()), [this, ids]() {
+        for (const uint64_t id : ids) UltraCanvasDesktopShell::CloseWindow(id);
+        windowsDirty_.store(true);
+    }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
 void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
@@ -1770,10 +2426,15 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
         tooltip("upload", "Upload: " + FormatFileSize(static_cast<size_t>(up)) + "/s");
     }
 
-    // Links: a red marker means the link is down, none means fine.
+    // Links: a red marker means the link is down, none means fine; Wi-Fi
+    // shows green while it is joined, so a glance tells it from "off".
     marker("lan", !now.lanConnected && !now.wifiConnected && !now.internetInterfaceUp, kMarkerOn);
     tooltip("lan", now.lanConnected ? "LAN: connected" : now.internetInterfaceUp ? "Internet: connected" : "Internet / LAN: no link");
-    marker("wifi", now.wifiPresent && !now.wifiConnected, kMarkerOn);
+    if (now.wifiPresent && now.wifiConnected) {
+        info_->SetItemBadgeDot("wifi", kMarkerLinkUp);
+    } else {
+        marker("wifi", now.wifiPresent, kMarkerOn);
+    }
     tooltip("wifi", !now.wifiPresent ? "Wi-Fi: no adapter"
             : now.wifiConnected ? ("Wi-Fi: " + (now.wifiSsid.empty() ? std::string("connected") : now.wifiSsid))
                                 : "Wi-Fi: not connected");
@@ -1816,6 +2477,19 @@ void UltraDesktopWindow::ApplyNotices() {
         if (mail.updatedUnixSeconds == 0) button->SetTooltip("Email");
         else if (!mail.text.empty()) button->SetTooltip("Email: " + mail.text);
         else button->SetTooltip("Email: " + std::to_string(mail.count) + " unread");
+    }
+    // UltraNotifications publishes its unread count while it runs (in the
+    // background when "Start with the desktop" names it).
+    const DesktopNotice notifications = UltraCanvasDesktopShell::ReadNotice("UltraNotifications");
+    if (notifications.updatedUnixSeconds > 0 && notifications.count > 0) {
+        info_->SetItemBadgeCount("notifications", notifications.count, kMarkerCount);
+    } else {
+        info_->ClearItemBadge("notifications");
+    }
+    if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("notifications"))) {
+        button->SetTooltip(notifications.updatedUnixSeconds > 0 && !notifications.text.empty()
+                               ? TrF("Notifications: {0}", notifications.text)
+                               : Tr("Notifications"));
     }
 }
 
@@ -1909,11 +2583,13 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
     popupMenu_->AddItem(MenuItemData::Action("ULTRA OS settings", [this]() { OpenSystemSettings(); }));
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
     // The programs that start with the desktop, in the background.
     std::vector<MenuItemData> startup;
     for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
         const std::string name = program.program;
-        startup.push_back(MenuItemData::Checkbox(name, settings_.StartsWithDesktop(name), [this, name](bool on) {
+        startup.push_back(MenuItemData::Checkbox(program.name, settings_.StartsWithDesktop(name), [this, name](bool on) {
             settings_.SetStartsWithDesktop(name, on);
             SaveSettings();
             // Now as well, not only from the next start.
@@ -2009,7 +2685,7 @@ std::shared_ptr<UltraCanvasWindow> UltraDesktopWindow::CreateDesktopWindow(const
     config.type = WindowType::Desktop;
     config.width = 1280;    // replaced by the screen size for a desktop window
     config.height = 800;
-    config.backgroundColor = kBarInsetColor;
+    config.backgroundColor = Bars().inset;
     if (oneOfSeveral) config.desktopArea = Rect2Di(area.x, area.y, area.width, area.height);
     return CreateWindow(config);
 }
@@ -2097,7 +2773,7 @@ void UltraDesktopWindow::OpenScreenWindow(size_t index, bool report) {
     config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
     config.type = WindowType::Desktop;
     config.desktopArea = Rect2Di(screen.x, screen.y, screen.width, screen.height);
-    config.backgroundColor = kBarInsetColor;
+    config.backgroundColor = Bars().inset;
     auto window = CreateWindow(config);
     if (!window) {
         // Tried again at every check; said once.
@@ -2540,6 +3216,7 @@ void UltraDesktopWindow::ToggleClipboardPanel(bool besideButton) {
     }
     // On the desktop's own monitor: beside the button, or centred for Super+V.
     clipboardPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    clipboardPanel_->SetParentWindow(window_.get());
     if (besideButton && clipboardButton_) {
         const Rect2Df bounds = clipboardButton_->GetBoundsInWindow();
         clipboardPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 8), std::move(target));

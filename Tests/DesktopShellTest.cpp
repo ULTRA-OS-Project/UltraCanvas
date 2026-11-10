@@ -35,8 +35,12 @@
 // the layer shell and its reserved edges shrink the compositor's workspace,
 // read back through swaymsg where the compositor is sway; the virtual
 // desktops are read (ext-workspace where the compositor has it, one desktop
-// where not) and a window's RaiseAndFocus (xdg-activation) makes it the
-// active one. Without a Wayland display the section is skipped
+// where not), a window's RaiseAndFocus (xdg-activation) makes it the
+// active one, a SessionLock window locks the session (ext-session-lock)
+// and unlocks it when closed, a child of a toplevel is an xdg_popup put
+// where asked and a child of a layer-shell desktop a panel beside it, a
+// file drag starts (or says why not) and a GL surface gets a context from
+// EGL on the compositor's connection. Without a Wayland display the section is skipped
 // (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 fails it instead); the window list's
 // checks are skipped under a compositor without the manager (weston).
 //
@@ -68,6 +72,8 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.11.0 - the session lock, a popup and a panel placed by their parent,
+//                   a file drag and a GL surface on Wayland
 // Version: 1.10.0 - the portals (--portals, a fake portal of this test's own), the
 //                   virtual desktops and RaiseAndFocus on Wayland
 // Version: 1.9.0 - the Wayland backend under a compositor: the window list, the
@@ -80,7 +86,7 @@
 // Version: 1.5.0 - ListScreens, Microsoft Store applications, the Win key's tap
 // Version: 1.4.0 - instead of Explorer, the shell guard, the tray host
 // Version: 1.3.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShell.h"
@@ -147,6 +153,10 @@
 #  if defined(DESKTOPSHELLTEST_HAVE_GIO)
 #    include <gio/gio.h>
 #    include <cairo/cairo.h>
+#  endif
+#  if defined(ULTRACANVAS_ENABLE_GL)
+#    include "UltraCanvasGLSurface.h"
+#    include <GL/gl.h>
 #  endif
 #  include <csignal>
 #  include <fcntl.h>
@@ -657,6 +667,213 @@ int WaylandTwoWindowsChild(const std::string& title) {
     SetEnv("ULTRACANVAS_CLOSE_AFTER_MS", "60000");
     app.Run();
     return 0;
+}
+
+// --wayland-lock <title>: a SessionLock window; "locked=1" once the
+// compositor granted the lock (then the window closes, which unlocks, and
+// the program ends), "locked=0" when it refused, "locked=timeout" after
+// ten seconds of neither.
+int WaylandLockChild(const std::string& title) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("DesktopShellTest")) return 2;
+    WindowConfig config;
+    config.title = title;
+    config.type = WindowType::SessionLock;
+    auto window = CreateWindow(config);
+    if (!window) return 3;
+    window->Show();
+    const auto started = std::chrono::steady_clock::now();
+    app.StartTimer(100, true, [&](TimerId id) {
+        const char* verdict = nullptr;
+        if (app.IsSessionLocked()) verdict = "locked=1";
+        else if (app.IsSessionLockRefused()) verdict = "locked=0";
+        else if (std::chrono::steady_clock::now() - started > std::chrono::seconds(10)) verdict = "locked=timeout";
+        if (!verdict) return;
+        std::printf("%s\n", verdict);
+        std::fflush(stdout);
+        app.StopTimer(id);
+        window->Close();
+    });
+    app.Run();
+    return 0;
+}
+
+// --wayland-popup <title>: a toplevel, and a borderless child of it asked
+// for at 40,30 inside it; a second and a half later "popup=<x>,<y> <w>x<h>"
+// as the compositor placed and sized it, then both close.
+int WaylandPopupChild(const std::string& title) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("DesktopShellTest")) return 2;
+    WindowConfig config;
+    config.title = title;
+    config.width = 320;
+    config.height = 200;
+    auto parent = CreateWindow(config);
+    if (!parent) return 3;
+    parent->Show();
+    WindowConfig child;
+    child.title = title + " popup";
+    child.type = WindowType::Borderless;
+    child.width = 100;
+    child.height = 80;
+    child.parentWindow = parent.get();
+    auto popup = CreateWindow(child);
+    if (!popup) return 3;
+    int px = 0, py = 0;
+    parent->GetWindowPosition(px, py);
+    popup->SetWindowPosition(px + 40, py + 30);
+    popup->Show();
+    app.StartTimer(1500, false, [&](TimerId) {
+        int x = 0, y = 0;
+        popup->GetWindowPosition(x, y);
+        std::printf("popup=%d,%d %dx%d\n", x - px, y - py, popup->GetConfig().width, popup->GetConfig().height);
+        std::fflush(stdout);
+        popup->Close();
+        parent->Close();
+    });
+    SetEnv("ULTRACANVAS_CLOSE_AFTER_MS", "60000");
+    app.Run();
+    return 0;
+}
+
+// --wayland-panel <title>: a Desktop window and a borderless child of it at
+// 100,50 (a panel beside a bar); "panel=<w>x<h>" with the child's size once
+// configured, then both close.
+int WaylandPanelChild(const std::string& title) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("DesktopShellTest")) return 2;
+    WindowConfig config;
+    config.title = title;
+    config.type = WindowType::Desktop;
+    auto desktop = CreateWindow(config);
+    if (!desktop) return 3;
+    desktop->Show();
+    WindowConfig child;
+    child.title = title + " panel";
+    child.type = WindowType::Borderless;
+    child.width = 300;
+    child.height = 200;
+    child.parentWindow = desktop.get();
+    auto panel = CreateWindow(child);
+    if (!panel) return 3;
+    panel->SetWindowPosition(100, 50);
+    panel->Show();
+    app.StartTimer(1500, false, [&](TimerId) {
+        std::printf("panel=%dx%d\n", panel->GetConfig().width, panel->GetConfig().height);
+        std::fflush(stdout);
+        panel->Close();
+        desktop->Close();
+    });
+    SetEnv("ULTRACANVAS_CLOSE_AFTER_MS", "60000");
+    app.Run();
+    return 0;
+}
+
+// --wayland-drag <title>: a window that starts a file drag of this program
+// a second after it is up: "drag=no-serial" where the compositor gave the
+// program no input to drag from (a seat without devices), "drag=cancelled"
+// or "drag=accepted" as the compositor answered it, "drag=timeout" when it
+// did not within five seconds.
+int WaylandDragChild(const std::string& title) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("DesktopShellTest")) return 2;
+    WindowConfig config;
+    config.title = title;
+    config.width = 320;
+    config.height = 200;
+    auto window = CreateWindow(config);
+    if (!window) return 3;
+    window->Show();
+    std::string verdict;
+    char self[4096];
+    const ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+    const std::string program = n > 0 ? std::string(self, static_cast<size_t>(n)) : "/bin/true";
+    app.StartTimer(1000, false, [&](TimerId) {
+        const bool started = window->StartNativeFileDrag({program}, [&](bool accepted, bool) {
+            verdict = accepted ? "drag=accepted" : "drag=cancelled";
+        });
+        if (!started) verdict = "drag=no-serial";
+    });
+    app.StartTimer(6000, false, [&](TimerId) {
+        if (verdict.empty()) verdict = "drag=timeout";
+    });
+    app.StartTimer(100, true, [&](TimerId id) {
+        if (verdict.empty()) return;
+        std::printf("%s\n", verdict.c_str());
+        std::fflush(stdout);
+        app.StopTimer(id);
+        window->Close();
+    });
+    SetEnv("ULTRACANVAS_CLOSE_AFTER_MS", "60000");
+    app.Run();
+    return 0;
+}
+
+#if defined(ULTRACANVAS_ENABLE_GL)
+// --wayland-gl <title>: a window with a GL surface; "gl=<renderer>" once
+// its context is up and a frame drawn, "gl=none" when the surface got no
+// context within five seconds.
+class ProbeGLSurface : public UltraCanvasGLSurface {
+public:
+    using UltraCanvasGLSurface::UltraCanvasGLSurface;
+    std::string renderer;
+    int frames = 0;
+    void OnGLInit() override {
+        const GLubyte* name = glGetString(GL_RENDERER);
+        renderer = name ? reinterpret_cast<const char*>(name) : "?";
+    }
+    void OnGLRender(const RenderSurfaceInfo&) override {
+        glClearColor(0.2f, 0.4f, 0.6f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ++frames;
+    }
+};
+
+int WaylandGLChild(const std::string& title) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("DesktopShellTest")) return 2;
+    WindowConfig config;
+    config.title = title;
+    config.width = 320;
+    config.height = 200;
+    auto window = CreateWindow(config);
+    if (!window) return 3;
+    auto surface = std::make_shared<ProbeGLSurface>("gl", 10, 10, 200, 150);
+    window->AddChild(surface);
+    window->Show();
+    const auto started = std::chrono::steady_clock::now();
+    app.StartTimer(100, true, [&](TimerId id) {
+        std::string verdict;
+        if (surface->frames > 0 && !surface->renderer.empty()) verdict = "gl=" + surface->renderer;
+        else if (std::chrono::steady_clock::now() - started > std::chrono::seconds(5)) verdict = "gl=none";
+        if (verdict.empty()) return;
+        std::printf("%s\n", verdict.c_str());
+        std::fflush(stdout);
+        app.StopTimer(id);
+        window->Close();
+    });
+    SetEnv("ULTRACANVAS_CLOSE_AFTER_MS", "60000");
+    app.Run();
+    return 0;
+}
+#endif
+
+// The first line starting with `prefix` a child wrote to `output`, once
+// it has written one (the framework's own notes go to the same stream).
+std::string FirstLine(const fs::path& output, int ms, const std::string& prefix) {
+    std::string found;
+    WaitUntil([&]() {
+        std::ifstream in(output);
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.rfind(prefix, 0) == 0) {
+                found = line;
+                return true;
+            }
+        }
+        return false;
+    }, ms);
+    return found;
 }
 
 // This test again with `arguments`, its output to `output` (a file). The
@@ -1368,6 +1585,13 @@ int main(int argc, char** argv) {
     if (argc == 3 && std::strcmp(argv[1], "--wayland-window") == 0) return WaylandWindowChild(argv[2], false);
     if (argc == 3 && std::strcmp(argv[1], "--wayland-desktop") == 0) return WaylandWindowChild(argv[2], true);
     if (argc == 3 && std::strcmp(argv[1], "--wayland-two-windows") == 0) return WaylandTwoWindowsChild(argv[2]);
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-lock") == 0) return WaylandLockChild(argv[2]);
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-popup") == 0) return WaylandPopupChild(argv[2]);
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-panel") == 0) return WaylandPanelChild(argv[2]);
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-drag") == 0) return WaylandDragChild(argv[2]);
+#if defined(ULTRACANVAS_ENABLE_GL)
+    if (argc == 3 && std::strcmp(argv[1], "--wayland-gl") == 0) return WaylandGLChild(argv[2]);
+#endif
 #if defined(DESKTOPSHELLTEST_HAVE_GIO)
     // The portals, under a session bus of their own (CTest's
     // DesktopShellPortalTest runs it through dbus-run-session), and the
@@ -2328,6 +2552,62 @@ int main(int argc, char** argv) {
             std::printf("  (ext-workspace: %s)\n", switched ? "the compositor has it, the current desktop was activated again"
                                                               : "not on this compositor, one desktop");
             Check(!UltraCanvasDesktopShell::SetCurrentVirtualDesktop(desktops + 5), "a desktop past the last is refused");
+
+            // ----- the session lock -----
+            {
+                const pid_t lock = SpawnSelf({"--wayland-lock", "DesktopShellTest Lock"}, scratch / "lock.out");
+                const std::string verdict = FirstLine(scratch / "lock.out", 15000, "locked=");
+                const int exit = WaitChild(lock, 10000);
+                if (exit < 0) EndChild(lock);
+                Check(verdict == "locked=1" && exit == 0,
+                      "a SessionLock window locks the session and closing it unlocks (" + verdict + ", exit " +
+                          std::to_string(exit) + ")");
+            }
+
+            // ----- a popup placed by its toplevel parent -----
+            {
+                const pid_t child = SpawnSelf({"--wayland-popup", "DesktopShellTest Popup"}, scratch / "popup.out");
+                const std::string verdict = FirstLine(scratch / "popup.out", 15000, "popup=");
+                const int exit = WaitChild(child, 10000);
+                if (exit < 0) EndChild(child);
+                Check(verdict == "popup=40,30 100x80" && exit == 0,
+                      "a child of a toplevel is an xdg_popup placed and sized as asked (" + verdict + ")");
+            }
+
+            // ----- a panel placed by its layer-shell desktop -----
+            {
+                const pid_t child = SpawnSelf({"--wayland-panel", "DesktopShellTest Panel"}, scratch / "panel.out");
+                const std::string verdict = FirstLine(scratch / "panel.out", 15000, "panel=");
+                const int exit = WaitChild(child, 10000);
+                if (exit < 0) EndChild(child);
+                Check(verdict == "panel=300x200" && exit == 0,
+                      "a child of a layer-shell desktop is a panel on the layer shell at its size (" + verdict + ")");
+            }
+
+            // ----- a file drag -----
+            {
+                const pid_t child = SpawnSelf({"--wayland-drag", "DesktopShellTest Drag"}, scratch / "drag.out");
+                const std::string verdict = FirstLine(scratch / "drag.out", 15000, "drag=");
+                const int exit = WaitChild(child, 10000);
+                if (exit < 0) EndChild(child);
+                // Without a button held the compositor cannot take a drag:
+                // a seat without devices gives no serial, a serial not from
+                // a press is answered with a cancel.
+                Check((verdict == "drag=no-serial" || verdict == "drag=cancelled" || verdict == "drag=accepted") && exit == 0,
+                      "a file drag is started, or refused with the reason (" + verdict + ")");
+            }
+
+#if defined(ULTRACANVAS_ENABLE_GL)
+            // ----- a GL surface -----
+            {
+                const pid_t child = SpawnSelf({"--wayland-gl", "DesktopShellTest GL"}, scratch / "gl.out");
+                const std::string verdict = FirstLine(scratch / "gl.out", 15000, "gl=");
+                const int exit = WaitChild(child, 10000);
+                if (exit < 0) EndChild(child);
+                Check(verdict.rfind("gl=", 0) == 0 && verdict != "gl=none" && exit == 0,
+                      "a GL surface gets a context from EGL on Wayland and draws (" + verdict + ")");
+            }
+#endif
             FinishesWithin([&monitor]() { monitor.Stop(); }, 5000, "the monitor stops within seconds");
             Check(!monitor.IsRunning(), "and is stopped");
 

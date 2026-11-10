@@ -1,14 +1,16 @@
 // Apps/UltraVideo/UltraVideoDialogs.cpp
 // The export dialog and the unsaved-changes question (UltraVideoDialogs.h).
+// Version: 0.4.0 - the output folder starts where the last export went (settings.json "export.folder")
 // Version: 0.3.0 - no palette parameter: the dialogs follow the theme (surface, message, buttons, captions)
 // Version: 0.2.0 - Browse offers the presets' types under FileLoader's names, and a type picked there picks its preset
 // Version: 0.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 #include "UltraVideoDialogs.h"
 #include "UltraVideoFormats.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasAppSettings.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
@@ -54,9 +56,33 @@ std::vector<Preset> Presets() {
     return presets;
 }
 
+constexpr const char* kExportFolderKey = "export.folder";
+
+// The folder the last export went to, when it is still there
+fs::path LastExportFolder() {
+    UltraCanvasAppSettings settings("UltraVideo");
+    settings.Load();
+    const std::string saved = settings.GetString(kExportFolderKey, "");
+    if (saved.empty()) return {};
+    const fs::path folder = PathFromUtf8(saved);
+    std::error_code ec;
+    return fs::is_directory(folder, ec) ? folder : fs::path{};
+}
+
+void RememberExportFolder(const std::string& outputPath) {
+    const fs::path folder = PathFromUtf8(outputPath).parent_path();
+    if (folder.empty()) return;
+    UltraCanvasAppSettings settings("UltraVideo");
+    settings.Load();
+    settings.Set(kExportFolderKey, PathToUtf8(folder));
+    settings.Save();
+}
+
+// The project's name in the folder the last export went to, else the
+// project's own folder, else the working folder
 std::string DefaultOutput(const Document& doc, const char* extension) {
-    fs::path folder;
-    if (!doc.path.empty()) folder = PathFromUtf8(doc.path).parent_path();
+    fs::path folder = LastExportFolder();
+    if (folder.empty() && !doc.path.empty()) folder = PathFromUtf8(doc.path).parent_path();
     if (folder.empty()) {
         std::error_code ec;
         folder = fs::current_path(ec);
@@ -178,6 +204,7 @@ void ShowExportDialog(UltraCanvasWindow* parent, const Document& doc,
             UltraCanvasAlert::Error("Choose where to save the video first.", "Export", nullptr, parent);
             return;
         }
+        RememberExportFolder(state->outputPath);
         if (onExport) onExport(*state);
     });
 }

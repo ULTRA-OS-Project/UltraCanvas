@@ -1,3 +1,31 @@
+#### 2026-11-06 *1.107.6*
+- **A failed cloud operation or listing says why in your language.** A
+  download, upload, delete or rename that fails on a remote drive, and a
+  folder that cannot be listed, used to show only the provider's English
+  text ("cannot list this folder: 530 Login incorrect"). They now lead with
+  a sentence in the reader's language picked by the failure's kind -
+  sign-in refused, server unreachable, not found, the server's error with
+  its HTTP status, rate limited - through UltraCloud's `DescribeResult`,
+  and keep the provider's own words in brackets, since "550 Permission
+  denied" still tells the user what to change
+  (`UltraFilerRemoteDrives.cpp` 1.14.2).
+
+#### 2026-11-06 *1.107.5*
+- **Text selected in the preview pane can be copied.** Ctrl+C after
+  selecting text in a previewed text file or in the Details panel copied the
+  selected files instead (the file display still held the keyboard). A press
+  in the text now moves the keyboard to the preview, so Ctrl+C copies the
+  text, Ctrl+A selects all of it, and a right-click opens Copy / Select All.
+
+#### 2026-11-05 *1.107.4*
+- **The folder tree drops a folder deleted in the file pane, even when the
+  delete stopped at a locked file first.** Windows kept such a folder listed
+  until the program holding the file let go. The tree looked at the folder
+  the moment the delete reported, saw it still there, and kept its row. The
+  tree now also follows what a pane's folder watch sees change on disk. A
+  folder that goes later, or that another program deletes or creates in a
+  folder a pane shows, is brought in line as soon as the pane re-lists it.
+
 #### 2026-11-04 *1.107.3*
 - **UltraFiler in every language.** The settings window's last English
   texts - the folder tree's colours and width, the file-operation and

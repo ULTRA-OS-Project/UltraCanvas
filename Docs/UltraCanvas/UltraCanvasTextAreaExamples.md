@@ -472,6 +472,18 @@ viewer->SetDisplayOnly(true);          // read-only AND not focusable
 viewer->SetText(logContents);
 ```
 
+A display-only area never gets the copy keys, so a right-click on it - and on
+any read-only area - opens a small menu of its own: **Copy** (Ctrl+C, dimmed
+without a selection) and **Select All** (Ctrl+A). It opens only when neither
+`onContextMenu` nor the spell checker took the click, so a host with a menu of
+its own keeps it. A host that drives a display-only area's keys (as
+`UltraCanvasMediaViewer` does) calls `CopySelection()` / `SelectAll()` itself.
+
+```cpp
+viewer->SetReadOnlyContextMenu(false); // right-click does nothing, as before
+bool on = viewer->GetReadOnlyContextMenu();
+```
+
 #### SetWordWrap
 ```cpp
 void SetWordWrap(bool wrap);

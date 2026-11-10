@@ -1,5 +1,8 @@
 // OS/Linux/Wayland/UltraCanvasWaylandApplication.cpp
 // The Wayland windowing backend's application. See the header.
+// Version: 0.5.0 - the session lock (ext-session-lock-v1); xdg_wm_base at
+//                  version 3 for popups that move
+// Version: 0.4.0 - DetectHostAppearanceNative (LinuxHostAppearance) and the config folders' watch
 // Version: 0.3.0 - xdg-activation (RaiseAndFocus); the keyboard window
 // Version: 0.2.0 - the layer shell global; FindOutputAt
 // Version: 0.1.0
@@ -10,6 +13,7 @@
 #include "UltraCanvasWaylandWindow.h"
 #include "../UltraCanvasLinuxAccessibility.h"
 #include "../UltraCanvasLinuxFonts.h"
+#include "../UltraCanvasLinuxHostAppearance.h"
 #include "../UltraCanvasLinuxKeys.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
@@ -18,6 +22,7 @@
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
+#include "ext-session-lock-v1-client-protocol.h"
 
 #include <wayland-cursor.h>
 #include <linux/input-event-codes.h>
@@ -109,6 +114,10 @@ namespace UltraCanvas {
         static void OutputDescription(void* data, wl_output* output, const char* description) {
             if (auto* o = Output(data, output)) o->description = description ? description : "";
         }
+
+        // ----- the session lock -----
+        static void SessionLocked(void* data, ext_session_lock_v1*) { App(data)->HandleSessionLocked(); }
+        static void SessionLockFinished(void* data, ext_session_lock_v1*) { App(data)->HandleSessionLockFinished(); }
 
         // ----- seat -----
         static void SeatCapabilities(void* data, wl_seat*, uint32_t capabilities) {
@@ -387,6 +396,8 @@ namespace UltraCanvas {
         }
         InitializeWakeUp();
         LinuxAccessibility::Start();
+        // The desktop's look changes through the files the desktops write.
+        hostAppearanceWatch.Start([this]() { ScheduleHostAppearanceRefresh(); });
 
         initialized = true;
         running = false;
@@ -439,7 +450,10 @@ namespace UltraCanvas {
             outputs.push_back(output);
             wl_output_add_listener(outputs.back().output, &kOutputListener, this);
         } else if (what == xdg_wm_base_interface.name) {
-            xdgWmBase = static_cast<xdg_wm_base*>(bind(&xdg_wm_base_interface, 2));
+            // Version 3 for xdg_popup.reposition (a panel that moves); the
+            // compositor's version where lower.
+            xdgWmBaseVersion = std::min<uint32_t>(version, 3);
+            xdgWmBase = static_cast<xdg_wm_base*>(bind(&xdg_wm_base_interface, 3));
             xdg_wm_base_add_listener(xdgWmBase, &kWmBaseListener, this);
         } else if (what == zxdg_decoration_manager_v1_interface.name) {
             decorationManager = static_cast<zxdg_decoration_manager_v1*>(bind(&zxdg_decoration_manager_v1_interface, 1));
@@ -448,6 +462,8 @@ namespace UltraCanvas {
             layerShell = static_cast<zwlr_layer_shell_v1*>(bind(&zwlr_layer_shell_v1_interface, 4));
         } else if (what == xdg_activation_v1_interface.name) {
             activation = static_cast<xdg_activation_v1*>(bind(&xdg_activation_v1_interface, 1));
+        } else if (what == ext_session_lock_manager_v1_interface.name) {
+            sessionLockManager = static_cast<ext_session_lock_manager_v1*>(bind(&ext_session_lock_manager_v1_interface, 1));
         } else if (what == wl_data_device_manager_interface.name) {
             dataDeviceManager = static_cast<wl_data_device_manager*>(bind(&wl_data_device_manager_interface, 3));
             UpdateSeatDevices();
@@ -496,6 +512,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWaylandApplication::ShutdownNative() {
+        hostAppearanceWatch.Stop();
         LinuxAccessibility::Stop();
         StopKeyRepeat();
         ShutdownWakeUp();
@@ -520,6 +537,14 @@ namespace UltraCanvas {
         if (decorationManager) { zxdg_decoration_manager_v1_destroy(decorationManager); decorationManager = nullptr; }
         if (layerShell) { zwlr_layer_shell_v1_destroy(layerShell); layerShell = nullptr; }
         if (activation) { xdg_activation_v1_destroy(activation); activation = nullptr; }
+        if (sessionLock) {
+            // Ending with the lock held: the compositor unlocks (as a locker
+            // that died would make it do), so the user is never left out.
+            if (sessionLocked) ext_session_lock_v1_unlock_and_destroy(sessionLock);
+            else ext_session_lock_v1_destroy(sessionLock);
+            sessionLock = nullptr;
+        }
+        if (sessionLockManager) { ext_session_lock_manager_v1_destroy(sessionLockManager); sessionLockManager = nullptr; }
         if (xdgWmBase) { xdg_wm_base_destroy(xdgWmBase); xdgWmBase = nullptr; }
         if (shm) { wl_shm_destroy(shm); shm = nullptr; }
         if (compositor) { wl_compositor_destroy(compositor); compositor = nullptr; }
@@ -769,6 +794,55 @@ namespace UltraCanvas {
         if (lastClickWindow == window) lastClickWindow = nullptr;
     }
 
+    // ===== THE SESSION LOCK =====
+    namespace {
+        const ext_session_lock_v1_listener kSessionLockListener = {
+                WaylandListeners::SessionLocked,
+                WaylandListeners::SessionLockFinished,
+        };
+    }
+
+    ext_session_lock_v1* UltraCanvasWaylandApplication::AcquireSessionLock() {
+        if (!sessionLockManager) return nullptr;
+        if (!sessionLock) {
+            sessionLock = ext_session_lock_manager_v1_lock(sessionLockManager);
+            if (!sessionLock) return nullptr;
+            sessionLocked = false;
+            sessionLockFinished = false;
+            ext_session_lock_v1_add_listener(sessionLock, &kSessionLockListener, this);
+        }
+        ++sessionLockWindows;
+        return sessionLock;
+    }
+
+    void UltraCanvasWaylandApplication::ReleaseSessionLock() {
+        if (sessionLockWindows > 0) --sessionLockWindows;
+        if (sessionLockWindows > 0 || !sessionLock) return;
+        // The last lock window went: unlock. A lock the compositor never
+        // granted (or finished) is only destroyed.
+        if (sessionLocked && !sessionLockFinished) ext_session_lock_v1_unlock_and_destroy(sessionLock);
+        else ext_session_lock_v1_destroy(sessionLock);
+        sessionLock = nullptr;
+        sessionLocked = false;
+        sessionLockFinished = false;
+        Flush();
+    }
+
+    void UltraCanvasWaylandApplication::HandleSessionLocked() {
+        sessionLocked = true;
+    }
+
+    void UltraCanvasWaylandApplication::HandleSessionLockFinished() {
+        // Refused, or taken over: the lock windows are asked to close, which
+        // releases the lock object.
+        sessionLockFinished = true;
+        sessionLocked = false;
+        for (auto& w : windows) {
+            if (w->GetConfig().type != WindowType::SessionLock) continue;
+            PushEvent(MakeEvent(static_cast<UltraCanvasWaylandWindow*>(w.get()), UCEventType::WindowCloseRequest));
+        }
+    }
+
     // ===== OUTPUTS =====
     const WaylandOutput* UltraCanvasWaylandApplication::FindOutput(wl_output* output) const {
         for (const auto& o : outputs) {
@@ -820,6 +894,10 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasWaylandApplication::DetectMonospacedFontStyleNative() {
         return LinuxFonts::DetectMonospacedFontStyle();
+    }
+
+    HostAppearance UltraCanvasWaylandApplication::DetectHostAppearanceNative() {
+        return LinuxHostAppearance::Detect(nullptr);
     }
 
     void UltraCanvasWaylandApplication::LoadBundledFontsNative() {

@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "Скопировано в буфер обмена.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Копировать: изображение в буфер обмена (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Выделите область  ·  Enter: весь экран  ·  Esc: отмена",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Выделите область на экране сейчас или выберите задержку и нажмите «Пуск».",
   "Edit in UltraPaint: open the saved picture there": "Изменить в UltraPaint: открыть там сохранённое изображение",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Каждое изменение применяется сразу и сохраняется; подтверждать ничего не нужно.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Все тексты, которые показывает UltraSnip, в одной таблице вместе с наборами, из которых они взяты: собственный набор, базовые наборы «Изображение» и «Видео» и стандартный набор. Изменение сохраняется в папку настроек и появится при следующем запуске UltraSnip.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Чем больше кадров в секунду, тем плавнее запись и тем больше файл; 20 достаточно для пошаговой демонстрации, 30 — для движения. Запись пишется по ходу, поэтому даже запись, прерванная сбоем, воспроизводится до последних секунд.",
   "MP4 video": "Видео MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 с H.264 (.mp4)  -  воспроизводится везде",
-  "No delay": "Без задержки",
+  "No delay: the screen is taken at once": "Без задержки: экран снимается сразу",
   "No other type in this build": "В этой сборке нет других типов",
   "No recording on this build: {0}": "Запись недоступна в этой сборке: {0}",
   "not copied": "не скопировано",
@@ -105,7 +106,7 @@
   "UltraSnip - Settings": "UltraSnip - Настройки",
   "Video: a recording of the area": "Видео: запись области",
   "Videos - the recording's container, its frame rate and its folder.": "Видео - контейнер записи, её частота кадров и папка.",
-  "Wait before the screen is taken, so a menu can be opened first": "Подождать перед снимком экрана, чтобы сначала можно было открыть меню",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Подождать {0} с перед снимком экрана, чтобы сначала открыть меню",
   "WebM video": "Видео WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM с VP9 (.webm)  -  родной формат веба",
   "What happens to a picture the moment it is taken:": "Что происходит с изображением сразу после снимка:",
@@ -117,6 +118,6 @@
   "Write every picture to the folder below": "Сохранять каждое изображение в папку ниже",
   "{0} fps": "{0} кадр/с",
   "{0} recorded": "Записано: {0}",
-  "{0} s delay": "Задержка {0} с",
+  "{0} s": "{0} с",
   "{0} × {1} px": "{0} × {1} px"
 }

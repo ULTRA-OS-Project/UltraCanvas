@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "Copiat în clipboard.",
   "Copy: the picture to the clipboard (Ctrl+C)": "Copiere: imaginea în clipboard (Ctrl+C)",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "Trageți o zonă  ·  Enter: tot ecranul  ·  Esc: anulare",
+  "Drag an area on the screen now, or choose a delay and click Start.": "Trageți acum o zonă pe ecran sau alegeți o întârziere și faceți clic pe Pornire.",
   "Edit in UltraPaint: open the saved picture there": "Editare în UltraPaint: deschide acolo imaginea salvată",
   "Every change applies straight away and is saved; there is nothing to confirm.": "Fiecare modificare se aplică imediat și se salvează; nu este nimic de confirmat.",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "Toate textele afișate de UltraSnip, într-un tabel cu seturile din care provin: setul său propriu, seturile de bază Imagine și Video și setul standard. O modificare se salvează în dosarul de setări și apare la următoarea pornire a UltraSnip.",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "Mai multe cadre pe secundă înseamnă o înregistrare mai fluidă și un fișier mai mare; 20 sunt suficiente pentru o prezentare, 30 pentru mișcare. Înregistrarea se scrie pe măsură ce are loc, așa că una întreruptă de o blocare se poate reda totuși până la ultimele secunde.",
   "MP4 video": "Video MP4",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "MP4 cu H.264 (.mp4)  -  rulează oriunde",
-  "No delay": "Fără întârziere",
+  "No delay: the screen is taken at once": "Fără întârziere: ecranul este capturat imediat",
   "No other type in this build": "Niciun alt tip în această versiune",
   "No recording on this build: {0}": "Înregistrarea nu este disponibilă în această versiune: {0}",
   "not copied": "necopiat",
@@ -105,7 +106,7 @@
   "UltraSnip - Settings": "UltraSnip - Setări",
   "Video: a recording of the area": "Video: o înregistrare a zonei",
   "Videos - the recording's container, its frame rate and its folder.": "Videoclipuri - containerul înregistrării, rata de cadre și dosarul.",
-  "Wait before the screen is taken, so a menu can be opened first": "Așteaptă înainte de capturarea ecranului, ca să poată fi deschis mai întâi un meniu",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "Așteaptă {0} secunde înainte de capturarea ecranului, ca să poată fi deschis întâi un meniu",
   "WebM video": "Video WebM",
   "WebM with VP9 (.webm)  -  the web's own": "WebM cu VP9 (.webm)  -  formatul propriu al webului",
   "What happens to a picture the moment it is taken:": "Ce se întâmplă cu o imagine în momentul în care este capturată:",
@@ -117,6 +118,6 @@
   "Write every picture to the folder below": "Scrie fiecare imagine în dosarul de mai jos",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} înregistrat",
-  "{0} s delay": "Întârziere {0} s",
+  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

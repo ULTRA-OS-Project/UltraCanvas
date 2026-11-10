@@ -1,0 +1,19 @@
+{
+  "@language": "uk",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Колір титру",
+  "Edit Title": "Редагування титру",
+  "The title is in the video": "Титр додано у відео",
+  "The title is unchanged": "Титр не змінено",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Титр став порожнім: його текст збережено (щоб прибрати титр, видаліть його на його доріжці)",
+  "Title Alignment": "Вирівнювання титру",
+  "Title Bold": "Титр: жирний",
+  "Title Font": "Шрифт титру",
+  "Title Italic": "Титр: курсив",
+  "Title Letter Spacing": "Міжлітерний інтервал титру",
+  "Title Line Spacing": "Міжрядковий інтервал титру",
+  "Title Size": "Розмір титру",
+  "Title Strikethrough": "Титр: закреслений",
+  "Title Underline": "Титр: підкреслений",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Введення титру на кадрі: Escape, Ctrl+Enter або клацання поза ним додають його у відео"
+}

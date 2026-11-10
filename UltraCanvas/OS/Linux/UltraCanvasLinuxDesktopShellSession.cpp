@@ -22,6 +22,7 @@
 // Also the end of a program (KillProcess: SIGTERM, SIGKILL two seconds
 // later), which no window system is needed for and both the X11 and the
 // Wayland backend share.
+// Version: 1.2.0 - OpenDisplaySettings: the desktop's display tool that is installed
 // Version: 1.1.0 - KillProcess, shared by the X11 and Wayland backends
 // Version: 1.0.0
 // Last Modified: 2026-11-03
@@ -38,6 +39,7 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 
 namespace UltraCanvas {
@@ -204,6 +206,74 @@ bool LockSession(std::string& error) {
     g_object_unref(bus);
     if (!ok) error = "No screen locker answered (logind: " + logindError + "; screensaver: " + saverError + ").";
     return ok;
+}
+
+// ===== THE DISPLAYS =====
+
+namespace {
+
+struct DisplayTool {
+    const char* program;
+    std::vector<std::string> arguments;
+    const char* desktop;   // the XDG_CURRENT_DESKTOP it belongs to, tried first there; "" any
+    bool x11Only;          // an xrandr front end: no use in a Wayland session
+};
+
+// The display tools of the common desktops, then the stand-alone ones.
+const std::vector<DisplayTool>& DisplayTools() {
+    static const std::vector<DisplayTool> tools = {
+        {"gnome-control-center", {"display"}, "GNOME", false},
+        {"systemsettings", {"kcm_kscreen"}, "KDE", false},
+        {"kcmshell6", {"kcm_kscreen"}, "KDE", false},
+        {"kcmshell5", {"kcm_kscreen"}, "KDE", false},
+        {"xfce4-display-settings", {}, "XFCE", false},
+        {"cinnamon-settings", {"display"}, "X-Cinnamon", false},
+        {"mate-display-properties", {}, "MATE", false},
+        {"lxqt-config-monitor", {}, "LXQt", false},
+        {"budgie-control-center", {"display"}, "Budgie", false},
+        {"wdisplays", {}, "", false},
+        {"nwg-displays", {}, "", false},
+        {"arandr", {}, "", true},
+        {"lxrandr", {}, "", true},
+    };
+    return tools;
+}
+
+// The tools in the order to try them: the session's own desktop's first.
+std::vector<const DisplayTool*> DisplayToolsInOrder() {
+    const char* current = std::getenv("XDG_CURRENT_DESKTOP");
+    const std::string desktops = current ? current : "";
+    const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+    const bool wayland = waylandDisplay && *waylandDisplay;
+    std::vector<const DisplayTool*> own, others;
+    for (const DisplayTool& tool : DisplayTools()) {
+        if (wayland && tool.x11Only) continue;
+        const bool mine = *tool.desktop && desktops.find(tool.desktop) != std::string::npos;
+        (mine ? own : others).push_back(&tool);
+    }
+    own.insert(own.end(), others.begin(), others.end());
+    return own;
+}
+
+} // namespace
+
+bool CanOpenDisplaySettings() {
+    for (const DisplayTool* tool : DisplayToolsInOrder()) {
+        if (!UltraCanvasDesktopShell::FindProgram(tool->program).empty()) return true;
+    }
+    return false;
+}
+
+bool OpenDisplaySettings(std::string& error) {
+    for (const DisplayTool* tool : DisplayToolsInOrder()) {
+        if (UltraCanvasDesktopShell::FindProgram(tool->program).empty()) continue;
+        if (UltraCanvasDesktopShell::LaunchProgram(tool->program, tool->arguments, &error)) return true;
+    }
+    if (error.empty()) {
+        error = "No display settings tool is installed (for example gnome-control-center, "
+                "xfce4-display-settings, wdisplays or arandr).";
+    }
+    return false;
 }
 
 // ===== THE END OF A PROGRAM =====

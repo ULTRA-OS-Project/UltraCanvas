@@ -1,7 +1,6 @@
 {
   "@language": "th",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "เพิ่มบัญชี",
   "App password": "รหัสผ่านสำหรับแอป",
   "Attach file": "แนบไฟล์",
   "Attachment": "ไฟล์แนบ",
@@ -44,7 +43,6 @@
   "Search messages": "ค้นหาข้อความ",
   "Sending": "กำลังส่ง",
   "Sent": "ส่งแล้ว",
-  "Server": "เซิร์ฟเวอร์",
   "Sign out": "ออกจากระบบ",
   "Sign-in": "ลงชื่อเข้าใช้",
   "Spam": "สแปม",

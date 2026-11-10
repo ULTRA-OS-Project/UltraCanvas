@@ -1,0 +1,22 @@
+{
+  "@language": "fi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Teksti lisätty: muokkaa sitä napsauttamalla sitä tekstityökalulla tai kaksoisnapsauttamalla sitä",
+  "Changed the text": "Tekstiä muutettu",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Napsauta sivua ja kirjoita, tai muokkaa tekstiä napsauttamalla sitä; yläpuolen palkki asettaa sen fontin, koon, tyylin, tasauksen ja välit. Escape, Ctrl+Enter tai napsautus muualle lopettaa",
+  "Delete Text": "Tekstin poisto",
+  "Edit Text": "Tekstin muokkaus",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Tekstiä muokataan: Enter aloittaa uuden rivin; Escape, Ctrl+Enter tai napsautus muualle lopettaa",
+  "Letter Spacing": "Merkkiväli",
+  "Line Spacing": "Riviväli",
+  "Nothing was typed": "Mitään ei kirjoitettu",
+  "Text Alignment": "Tekstin tasaus",
+  "Text Bold": "Tekstin lihavointi",
+  "Text Font": "Tekstin fontti",
+  "Text Italic": "Tekstin kursivointi",
+  "Text Size": "Tekstin koko",
+  "Text Strikethrough": "Tekstin yliviivaus",
+  "Text Underline": "Tekstin alleviivaus",
+  "The text was emptied, so it was deleted": "Teksti tyhjennettiin, joten se poistettiin",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Uutta tekstiä kirjoitetaan: Enter aloittaa uuden rivin; Escape, Ctrl+Enter tai napsautus muualle lopettaa"
+}

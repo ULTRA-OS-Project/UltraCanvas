@@ -1,0 +1,15 @@
+{
+  "@language": "sv",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Klicka och skriv, eller dra upp en ruta som raderna ska radbrytas i; klicka på en text för att redigera den. Fältet ovanför ställer in teckensnitt, storlek, stil, justering och avstånd; färgen är förgrundsfärgen. Escape eller ett klick utanför avslutar",
+  "Letter Spacing": "Teckenavstånd",
+  "Line Spacing": "Radavstånd",
+  "Text Alignment": "Textjustering",
+  "Text Bold": "Fet text",
+  "Text Colour": "Textfärg",
+  "Text Font": "Textens teckensnitt",
+  "Text Italic": "Kursiv text",
+  "Text Size": "Textstorlek",
+  "Text Strikethrough": "Genomstruken text",
+  "Text Underline": "Understruken text"
+}

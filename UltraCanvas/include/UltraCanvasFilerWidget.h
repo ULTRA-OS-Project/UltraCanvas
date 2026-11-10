@@ -104,6 +104,10 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.47.1 - Includes UltraCanvasDialogTypes.h, not UltraCanvasModalDialog.h:
+//                  the two headers no longer include each other
+// Version: 1.47.0 - onFolderChangedOnDisk: the folder watch's re-listings, for a
+//                  host's folder tree
 // Version: 1.46.3 - Refresh() moves up to the nearest existing folder when the
 //                  shown one was deleted (not when its volume went)
 // Version: 1.46.2 - a delete, a move and a folder rename hold folder watches off
@@ -152,7 +156,7 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -187,12 +191,13 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include "UltraCanvasModalDialog.h"   // DialogType, DialogButtonRole (the operation dialogs)
+#include "UltraCanvasDialogTypes.h"   // DialogType, DialogButtonRole (the operation dialogs), FileFilter
 
 namespace UltraCanvas {
 
     class UltraCanvasProgressDialog;   // compress / extract progress window
     class UltraCanvasModalDialog;
+    struct ModalDialogStyle;
 
 
     class UltraCanvasMenu;
@@ -889,7 +894,7 @@ namespace UltraCanvas {
         // way it enters a folder). The filter survives SetPath(), rescans and
         // the name filter (both apply), so a dialog sets it once and
         // navigates. A dialog hands over the FileFilter its dropdown picked
-        // (UltraCanvasModalDialog.h) through the second overload.
+        // (UltraCanvasDialogTypes.h) through the second overload.
         void SetFileTypeFilter(const std::vector<std::string>& extensions,
                                FilerTypeFilterMode mode = FilerTypeFilterMode::Hide);
         void SetFileTypeFilter(const FileFilter& filter,
@@ -1828,6 +1833,18 @@ namespace UltraCanvas {
         // it. A file-list display (ShowFileList) only reports changes whose
         // folder is known, since its entries span many folders.
         std::function<void(const std::string& folderPath)> onFolderModified;
+        // After the folder watch noticed the shown folder change on disk and
+        // the display re-listed it: what the widget's own operations do not
+        // report through onFolderModified. Another program created, deleted
+        // or renamed something in it; an entry this widget deleted while a
+        // program still held it went at last (Windows keeps such an entry
+        // listed, as "delete pending", until the program lets go); or the
+        // folder itself was deleted, in which case the display has already
+        // moved up and the argument is the folder that went. A host's folder
+        // tree re-syncs that folder's rows from it - without it, a subfolder
+        // deleted that way stayed in the tree. Not fired for navigation, a
+        // sort or a plain Refresh().
+        std::function<void(const std::string& folderPath)> onFolderChangedOnDisk;
         // A copy or move has ended - walked to its end, or cancelled part-way
         // - with what arrived where (see FilerTransferResult). For a
         // confirmation on the host's status line; the widget shows nothing

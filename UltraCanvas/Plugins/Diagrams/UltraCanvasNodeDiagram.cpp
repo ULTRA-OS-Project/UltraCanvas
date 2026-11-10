@@ -1353,14 +1353,14 @@ void UltraCanvasNodeDiagram::SuggestNodeSizeForLabel(const std::string& label,
 // band - the font that fits the band, or the node whose band holds the text.
 // =============================================================================
 
-// Text is measured at zoom 1 and drawn at the view's zoom, where the font's
-// hinting rounds every glyph to a device pixel: at a small size a name
-// comes out a few units wider than measured. The room a node grows for its
-// text allows for that, and the drawing lets that much run into the
-// padding before it shortens the text.
-static constexpr double kTextDriftFactor = 0.05;
-static constexpr double kTextDriftPixels = 2.0;
-static double WithTextDrift(double width) { return width * (1.0 + kTextDriftFactor) + kTextDriftPixels; }
+// A text is measured in whole pixels and the room for it computed in
+// fractions, so an exact fit can come out a hundredth short and a label the
+// arithmetic says fits is shortened. One pixel of slack on both sides of the
+// comparison: the room a node grows for its text is a pixel more than the
+// text, and the drawing lets a text run a pixel past its room before it
+// shortens it. (Measured against the backend: text drawn under a zoom is the
+// unscaled measurement times the zoom, see Tests/TextMeasureZoomTest.cpp.)
+static constexpr double kTextSlack = 1.0;
 
 void UltraCanvasNodeDiagram::LabelBandForShape(NodeShape shape, double width, double height,
                                                double textHeight,
@@ -1415,7 +1415,7 @@ void UltraCanvasNodeDiagram::LabelBandForShape(NodeShape shape, double width, do
 
 void UltraCanvasNodeDiagram::NodeSizeForText(NodeShape shape, double textWidth, double textHeight,
                                              double& outWidth, double& outHeight) const {
-    const double bw = WithTextDrift(textWidth) + 2.0 * std::max(0.0, labelFit.paddingX);
+    const double bw = textWidth + kTextSlack + 2.0 * std::max(0.0, labelFit.paddingX);
     const double bh = textHeight + 2.0 * std::max(0.0, labelFit.paddingY);
     double side = std::max(bw, bh);
     switch (shape) {
@@ -1496,7 +1496,7 @@ int UltraCanvasNodeDiagram::GrowNodesForLabels(IRenderContext* ctx) {
             const Size2Di dim = measure(node.label, fontSize, FontWeight::Bold);
             NodeSizeForText(node.shape, dim.width, dim.height, needW, needH);
         }
-        if (needW <= node.width + 0.5 && needH <= node.height + 0.5) continue;
+        if (needW <= node.width + 0.01 && needH <= node.height + 0.01) continue;
 
         const double cx = node.x + node.width  * 0.5;
         const double cy = node.y + node.height * 0.5;
@@ -1647,7 +1647,7 @@ double UltraCanvasNodeDiagram::FitCardFontWith(
 // text area's left edge and padding depend on the height, so two rounds.
 void UltraCanvasNodeDiagram::CardSizeForText(const NodeDiagramNode& node, const Size2Di& labelDim,
                                              const Size2Di& subDim, double& outWidth, double& outHeight) const {
-    const double textW = WithTextDrift(std::max(labelDim.width, subDim.width));
+    const double textW = std::max(labelDim.width, subDim.width) + kTextSlack;
     const double textH = labelDim.height + subDim.height;
     double height = node.height;
     double width = node.width;
@@ -3251,8 +3251,7 @@ void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiag
             return ctx->GetTextLineDimensions(text);
         }, labelDim, subDim);
 
-        // Shortened only past the drift the growth allowed for.
-        const double fitWidth = maxWidth + (WithTextDrift(maxWidth) - maxWidth);
+        const double fitWidth = maxWidth + kTextSlack;
         ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
         ctx->SetFontSize(cardFont);
         const std::string label = FitTextToWidth(ctx, node.label, fitWidth);
@@ -3336,8 +3335,8 @@ double UltraCanvasNodeDiagram::FitLabelFont(IRenderContext* ctx, const NodeDiagr
     // the rule, in the growing modes a frame at most, until the node grows.
     double bandW = 0.0, bandH = 0.0;
     LabelBandForShape(node.shape, node.width, node.height, outDim.height, bandW, bandH);
-    if (outDim.width > WithTextDrift(bandW)) {
-        outText = FitTextToWidth(ctx, node.label, WithTextDrift(bandW));
+    if (outDim.width > bandW + kTextSlack) {
+        outText = FitTextToWidth(ctx, node.label, bandW + kTextSlack);
         outDim = ctx->GetTextLineDimensions(outText);
     }
     return fontSize;

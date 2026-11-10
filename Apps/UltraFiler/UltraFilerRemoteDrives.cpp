@@ -1,4 +1,7 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+// Version: 1.14.2 - a failed cloud operation or listing is described in the
+//                   reader's language by its result code (UltraCloud's
+//                   DescribeResult), the provider's own words in brackets
 // Version: 1.14.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.14.0 - a changed folder is marked Stale, not dropped, so the display
 //                   keeps its files while it is fetched again; listings the
@@ -40,6 +43,7 @@
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
+#include "UltraCloudResultText.h"      // DescribeResult (UltraCloudUI)
 #include <UltraCloud/UltraCloudAccounts.h>
 #include <UltraCloud/UltraCloudHttp.h>   // RateLimitPolicy
 #include <UltraCloud/UltraCloudLog.h>
@@ -182,6 +186,15 @@ std::string UploadedName(const std::string& localFile, const std::string& remote
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 // UltraCloud's class of a failure, in the words the connection log shows,
 // with the number it has in the module - the error code a bug report quotes.
+// What a person reads about a failed cloud call: a sentence in their language
+// by the result's code, and the provider's own words in brackets where it
+// gave any - "550 Permission denied" tells the user what to change, so it
+// stays, as it came.
+std::string CloudFailureText(const UltraCloud::Result& r) {
+    const std::string sentence = UltraCloud::DescribeResult(r);
+    return r.message.empty() ? sentence : sentence + " (" + r.message + ")";
+}
+
 std::string DescribeResultCode(UltraCloud::ResultCode code) {
     std::string words;
     switch (code) {
@@ -1285,11 +1298,9 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
     }
 
     std::lock_guard<std::mutex> lk(mutex_);
-    // The provider's own words where there are any: "550 Permission denied"
-    // tells the user what to change, "the operation failed" tells them nothing.
-    lastOperationError_ = r.IsOk() ? std::string()
-                        : r.message.empty() ? "the server refused this"
-                                            : r.message;
+    // A sentence in the reader's language, the provider's own words beside
+    // it: "550 Permission denied" tells the user what to change.
+    lastOperationError_ = r.IsOk() ? std::string() : CloudFailureText(r);
     outcome.failed = !r.IsOk();
     outcome.message = lastOperationError_;
     if (outcome.failed) {
@@ -2302,11 +2313,10 @@ bool UltraFilerRemoteDrives::FetchListing(const std::string& path, bool isPrefet
             impl_->ServiceFor(accountId)->List(accountId, remotePath, entries);
 
     if (!r.IsOk()) {
-        // The provider's own words: "530 Login incorrect" tells the user what
-        // to change, where "could not list" tells them nothing.
+        // The reason in the reader's language, the provider's own words
+        // ("530 Login incorrect") beside it.
         outcome.failed = true;
-        outcome.message = r.message.empty() ? "cannot list this folder"
-                                            : "cannot list this folder: " + r.message;
+        outcome.message = CloudFailureText(r);
         outcome.category = DescribeResultCode(r.code);
         outcome.diagnostics = r.diagnostics;
         if (!recordFailure) return false;

@@ -154,6 +154,20 @@ Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::use of undeclared identifie
 Docs/UltraCanvas/UltraCanvasContourChartProposal.md::cannot initialize a parameter of type 'SurfaceLegendMode' with an rvalue of type 'ContourLegendMode'
 Docs/UltraCanvas/UltraCanvasContourChartProposal.md::prose names `SetLevelMode(`, which no header declares
 # signature Docs/UltraCanvas/UltraCanvasContourChartProposal.md: d5232e57ede1e939d1028a14064072545c36d161cd6c9991fbcb9e5c865abb98
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'AppendPoint' is not a member of UltraCanvasEngineLineChart
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::CUSUM' does not exist (no member named 'CUSUM' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlChartKind::EWMA' does not exist (no member named 'EWMA' in 'ControlChartKind')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::cusumH' does not exist (no member named 'cusumH' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::cusumK' does not exist (no member named 'cusumK' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::ewmaL' does not exist (no member named 'ewmaL' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::ewmaLambda' does not exist (no member named 'ewmaLambda' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::fixedCentre' does not exist (no member named 'fixedCentre' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'ControlOptions::fixedSigma' does not exist (no member named 'fixedSigma' in 'ControlOptions')
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'PaneGap' is not a member of UltraCanvasEngineLineChart
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::'SetVisibleWindow' is not a member of UltraCanvasEngineLineChart
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::signature differs: `size_t ValueAxisOfPane(size_t pane) const` - the header has: static size_t ValueAxisOfPane(size_t pane) { return pane == 0 ? 0 : pane + 1; }
+Docs/UltraCanvas/UltraCanvasControlChartProposal.md::signature differs: `std::string ControlRuleDescription(ControlRuleSet set, int rule)` - the header has: std::string ControlRuleDescription(ControlRuleSet set, int rule, int sameSideRun = 0); | std::string ControlRuleDescription(int rule, int sameSideRun = 8);
+# signature Docs/UltraCanvas/UltraCanvasControlChartProposal.md: 53a1befd26396fdad09889da416b04cdb51a2b6c23e9e97db793ddf642c4b355
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no matching member function for call to 'AddAttribute'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ExportImage' in 'UltraCanvasERDiagram'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ExportSql' in 'UltraCanvasERDiagram'
@@ -199,16 +213,8 @@ Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `std::string
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void SetDataSource(std::shared_ptr<IGitGraphDataSource> source)` - the header has: void   SetDataSource(std::shared_ptr<IGitGraphDataSource> source, size_t chunkSize = 500);
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void ZoomToFit()` - the header has: void  ZoomToFit(double padding = 24.0);
 # signature Docs/UltraCanvas/UltraCanvasGitGraphProposal.md: 4a0a3d2cd5f81d79a7735ab7c28815e75824b2a239ccee0979f76892ee0fdcfd
-Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'Font' is not a member of UltraCanvasTheme
-Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'FontSize' is not a member of UltraCanvasTheme
-Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'FromHost' is not a member of UltraCanvasTheme
-Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'SetThemePolicy' is not a member of UltraCanvasApplicationBase
-Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'SetThemeProvider' is not a member of UltraCanvasApplicationBase
-Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::'UltraCanvasTheme::fonts' does not exist (no member named 'fonts' in 'UltraCanvasTheme')
-Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `DarkHighContrast(`, which no header declares
-Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `LightHighContrast(`, which no header declares
 Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `SetFollowThemeByDefault(`, which no header declares
-# signature Docs/UltraCanvas/UltraCanvasHostThemeProposal.md: d6c7a70b74fffa2b92d4b39b2efb44051271e844a8676a89ac2e3f179ae34cc3
+# signature Docs/UltraCanvas/UltraCanvasHostThemeProposal.md: e02bb4799e81a52aab2ebec660eea4dd0a4e9ed69b3fa48de943a98b7c031571
 Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'DiagonalIsoPriority' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
 Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ExportImportancePerformanceJson' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
 Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ImportImportancePerformanceFactorsCsv' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function

@@ -4,10 +4,16 @@
 // --edit ID (an entry's edit dialog at once). When UltraClipboard is already
 // running, the request goes to it and this start quits
 // (UltraCanvasSingleInstance.h).
-// Version: 0.4.0 - UltraAI reads the words in a picture when one of its vision providers
+//
+// --background starts it with no window (UltraDesktop's "start with the
+// desktop"): it records and keeps the history open, and the next start shows
+// the window at once. Closing the window then hides it; Quit in the More
+// menu ends the program. A --background start while one runs changes nothing.
+// Version: 0.5.0 - UltraAI reads the words in a picture when one of its vision providers
 //                  reads text; the OCR plugin otherwise
-// Version: 0.3.0 - text recognition: the OCR plugin reads the words in a picture
+// Version: 0.4.0 - text recognition: the OCR plugin reads the words in a picture
 //                  for Extract text (UltraCanvasFileLoader::ExtractText)
+// Version: 0.3.0 - --background
 // Version: 0.2.0 - the framework's single-instance helper: two starts at the
 //                  same moment no longer both stay, and a copy that does not
 //                  answer is reported instead of joined by a second one
@@ -56,6 +62,7 @@ void PrintUsage(const char* prog) {
               << "Usage: " << prog << " [options]\n"
               << "  --search TEXT  start with this search\n"
               << "  --edit ID      open the edit dialog of entry ID\n"
+              << "  --background   start without a window, ready for the next start\n"
               << "  -h, --help     show this message\n"
               << "  -v, --version  show version\n";
 }
@@ -65,6 +72,7 @@ void PrintUsage(const char* prog) {
 int main(int argc, char* argv[]) {
     std::string search;
     int64_t editId = 0;
+    bool background = false;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         if (a == "-h" || a == "--help") {
@@ -77,6 +85,10 @@ int main(int argc, char* argv[]) {
         }
         if (a == "--search" && i + 1 < argc) {
             search = argv[++i];
+            continue;
+        }
+        if (a == "--background") {
+            background = true;
             continue;
         }
         if (a == "--edit" && i + 1 < argc) {
@@ -103,9 +115,11 @@ int main(int argc, char* argv[]) {
     JSONValue request = JSONValue::MakeObject();
     if (!search.empty()) request.Set("search", search);
     if (editId != 0) request.Set("editId", editId);
+    if (background) request.Set("background", true);
     const UltraCanvasSingleInstance::Start start = instance.Claim(request);
     if (start == UltraCanvasSingleInstance::Start::HandedOff) {
-        std::cout << "UltraClipboard is already running: brought it forward.\n";
+        std::cout << (background ? "UltraClipboard is already running.\n"
+                                 : "UltraClipboard is already running: brought it forward.\n");
         return EXIT_SUCCESS;
     }
     try {
@@ -127,9 +141,13 @@ int main(int argc, char* argv[]) {
             std::cerr << "Failed to create the main window\n";
             return EXIT_FAILURE;
         }
-        window->Show();
+        if (background) window->SetKeepRunning(true);
+        else window->Show();
         UltraClipboard::UltraClipboardWindow* shown = window.get();
         instance.Listen([shown](const JSONValue& request) {
+            // Another background start (the desktop starting again): it
+            // is running, which is all that one wanted.
+            if (request.Get("background").GetBoolean()) return;
             shown->Present(request.Get("search").GetString(), request.Get("editId").GetInteger());
         });
         app.Run();

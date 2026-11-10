@@ -1,14 +1,16 @@
 // core/UltraCanvasColorPaletteManager.cpp
 // The palette rows under a colour picker, the palette manager (the gallery),
 // the palette-entry editor and the palette creator.
+// Version: 1.2.0 - Make/Register descriptor: "color-palette-manager" in the element registry, bundled or as a runtime module
 // Version: 1.1.0 - popups with a title bar to drag them by; the palette
 //                  creator and the user's own palettes; the hovered swatch
 //                  floods the rows; fuller presets
 // Version: 1.0.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPaletteManager.h"
+#include "UltraCanvasElementPlugins.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -1364,6 +1366,25 @@ bool UltraCanvasColorPaletteManager::ParsePalettes(const std::string& text, std:
     if (parsed.empty()) return false;
     out = std::move(parsed);
     return true;
+}
+
+
+UCElementDescriptor MakeColorPaletteManagerDescriptor() {
+    UCElementDescriptor descriptor;
+    descriptor.typeName = "color-palette-manager";
+    descriptor.category = UCPluginCategory::Widget;
+    descriptor.displayName = "Colour Palette Manager";
+    descriptor.description = "Palette rows of swatches under a colour picker, with presets and an entry editor";
+    descriptor.docPath = "Docs/UltraCanvas/UltraCanvasColorPaletteManager.md";
+    descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+        return std::static_pointer_cast<UltraCanvasUIElement>(
+            std::make_shared<UltraCanvasColorPaletteManager>(id, x, y, w, h));
+    };
+    return descriptor;
+}
+
+void RegisterColorPaletteManagerElement() {
+    UltraCanvasElementRegistry::Register(MakeColorPaletteManagerDescriptor());
 }
 
 } // namespace UltraCanvas

@@ -16,6 +16,7 @@
   "Copied to the clipboard.": "已复制到剪贴板。",
   "Copy: the picture to the clipboard (Ctrl+C)": "复制：将图片复制到剪贴板（Ctrl+C）",
   "Drag an area  ·  Enter: the whole screen  ·  Esc: cancel": "拖出区域  ·  Enter：整个屏幕  ·  Esc：取消",
+  "Drag an area on the screen now, or choose a delay and click Start.": "现在在屏幕上拖出一个区域，或选择延迟后点击“开始”。",
   "Edit in UltraPaint: open the saved picture there": "在 UltraPaint 中编辑：在其中打开已保存的图片",
   "Every change applies straight away and is saved; there is nothing to confirm.": "所有更改都会立即生效并保存，无需确认。",
   "Every text UltraSnip shows, in one grid with the sets it comes from: its own set, the Image and Video base sets and the standard set. A change is saved into the settings folder and shows the next time UltraSnip starts.": "以一个表格列出 UltraSnip 显示的所有文本及其所属的文本集：其自身的文本集、图像和视频基础集以及标准集。更改会保存到设置文件夹，并在下次启动 UltraSnip 时显示。",
@@ -34,7 +35,7 @@
   "More frames a second make a smoother recording and a larger file; 20 is enough for a walk-through, 30 for motion. The recording is written as it goes, so one cut short by a crash still plays up to its last seconds.": "每秒帧数越多，录制越流畅，文件也越大；演示操作用 20 即可，动态画面用 30。录制时边录边写入，因此即使因崩溃而中断，录像仍可播放到最后几秒。",
   "MP4 video": "MP4 视频",
   "MP4 with H.264 (.mp4)  -  plays everywhere": "采用 H.264 的 MP4（.mp4）  -  随处可播放",
-  "No delay": "无延迟",
+  "No delay: the screen is taken at once": "不延迟：立即截取屏幕",
   "No other type in this build": "此版本没有其他格式",
   "No recording on this build: {0}": "此版本无法录制：{0}",
   "not copied": "未复制",
@@ -105,7 +106,7 @@
   "UltraSnip - Settings": "UltraSnip - 设置",
   "Video: a recording of the area": "视频：录制该区域",
   "Videos - the recording's container, its frame rate and its folder.": "视频 - 录像的容器格式、帧率和文件夹。",
-  "Wait before the screen is taken, so a menu can be opened first": "截取屏幕前等待，以便先打开菜单",
+  "Wait {0} seconds before the screen is taken, so a menu can be opened first": "截取屏幕前等待 {0} 秒，以便先打开菜单",
   "WebM video": "WebM 视频",
   "WebM with VP9 (.webm)  -  the web's own": "采用 VP9 的 WebM（.webm）  -  网络原生格式",
   "What happens to a picture the moment it is taken:": "图片截取后立即执行的操作：",
@@ -117,6 +118,6 @@
   "Write every picture to the folder below": "将每张图片写入下方文件夹",
   "{0} fps": "{0} fps",
   "{0} recorded": "已录制 {0}",
-  "{0} s delay": "延迟 {0} 秒",
+  "{0} s": "{0} 秒",
   "{0} × {1} px": "{0} × {1} px"
 }

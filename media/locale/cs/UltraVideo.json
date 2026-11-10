@@ -1,0 +1,19 @@
+{
+  "@language": "cs",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Barva titulku",
+  "Edit Title": "Úprava titulku",
+  "The title is in the video": "Titulek je ve videu",
+  "The title is unchanged": "Titulek se nezměnil",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Titulek byl vyprázdněn: ponechává si svůj text (chcete-li ho odebrat, odstraňte titulek v jeho stopě)",
+  "Title Alignment": "Zarovnání titulku",
+  "Title Bold": "Tučné písmo titulku",
+  "Title Font": "Písmo titulku",
+  "Title Italic": "Kurzíva titulku",
+  "Title Letter Spacing": "Prostrkání titulku",
+  "Title Line Spacing": "Řádkování titulku",
+  "Title Size": "Velikost titulku",
+  "Title Strikethrough": "Přeškrtnutí titulku",
+  "Title Underline": "Podtržení titulku",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Psaní titulku na snímek: Escape, Ctrl+Enter nebo kliknutí mimo ho vloží do videa"
+}

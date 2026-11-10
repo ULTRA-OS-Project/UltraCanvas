@@ -3,13 +3,15 @@
 // points that have none, the reading direction's label edges, the ticks,
 // validation and the shipped samples. UI-free.
 //
+// Version: 1.3.0 - the USDA classes against the Soil Survey Manual's own wording, at
+//   every whole percent (boundaries included), and edgeLean
 // Version: 1.2.0 - Phase 3: the zoom - spans, the mapping both ways, ticks over
 //   the visible range, validation of minimums, minimums in the JSON
 // Version: 1.1.0 - Phase 2: the USDA outlines against the class rules on a
 //   grid, ties on shared edges, the De Finetti curve, bubble sizes, the JSON
 //   round trip of every sample and its refusals, the CSV both ways
 // Version: 1.0.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.h"
@@ -20,6 +22,7 @@
 #include <set>
 #include <algorithm>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -115,53 +118,134 @@ static void TestSamples() {
           "a share reads as a percentage with one decimal");
 }
 
-// The USDA texture class of (clay, sand, silt), straight from the class
-// rules - the reference the derived outlines are checked against.
-static std::string UsdaRule(double clay, double sand, double silt) {
-    if (sand >= 85 && silt + 1.5 * clay <= 15) return "sand";
-    if (sand >= 70 && sand <= 91 && silt + 1.5 * clay >= 15 && silt + 2 * clay <= 30) return "loamy-sand";
-    if ((clay >= 7 && clay <= 20 && sand >= 52 && silt + 2 * clay >= 30) ||
-        (clay <= 7 && silt <= 50 && silt + 2 * clay >= 30)) return "sandy-loam";
-    if (clay >= 7 && clay <= 27 && silt >= 28 && silt <= 50 && sand <= 52) return "loam";
-    if ((silt >= 50 && clay >= 12 && clay <= 27) || (silt >= 50 && silt <= 80 && clay <= 12)) return "silt-loam";
-    if (silt >= 80 && clay <= 12) return "silt";
-    if (clay >= 20 && clay <= 35 && silt <= 28 && sand >= 45) return "sandy-clay-loam";
-    if (clay >= 27 && clay <= 40 && sand >= 20 && sand <= 45) return "clay-loam";
-    if (clay >= 27 && clay <= 40 && sand <= 20) return "silty-clay-loam";
-    if (clay >= 35 && sand >= 45) return "sandy-clay";
-    if (clay >= 40 && silt >= 40) return "silty-clay";
-    if (clay >= 40 && sand <= 45 && silt <= 40) return "clay";
-    return "";
+// The USDA texture classes a composition (percent) meets, transcribed
+// word for word from the Soil Survey Manual (USDA Handbook 18, 2017,
+// chapter 3, "Definitions of Soil Texture Classes and Subclasses", pp.
+// 122-124) - "more than", "or more", "less than" and "or less" kept exactly.
+// The manual's classes do not overlap, so a composition meets exactly one.
+static std::vector<std::string> UsdaClasses(double clay, double sand, double silt) {
+    std::vector<std::string> met;
+    // Sands: more than 85 percent sand, silt + 1.5 clay less than 15.
+    if (sand > 85 && silt + 1.5 * clay < 15) met.push_back("sand");
+    // Loamy sands: between 70 and 90 percent sand, silt + 1.5 clay 15 or
+    // more, silt + 2 clay less than 30.
+    if (sand >= 70 && sand <= 90 && silt + 1.5 * clay >= 15 && silt + 2 * clay < 30) met.push_back("loamy-sand");
+    // Sandy loams: 7 to less than 20 percent clay, more than 52 percent sand,
+    // silt + 2 clay 30 or more; OR less than 7 percent clay, less than 50
+    // percent silt, silt + 2 clay 30 or more.
+    if ((clay >= 7 && clay < 20 && sand > 52 && silt + 2 * clay >= 30) ||
+        (clay < 7 && silt < 50 && silt + 2 * clay >= 30)) met.push_back("sandy-loam");
+    // Loam: 7 to less than 27 percent clay, 28 to less than 50 percent silt,
+    // 52 percent or less sand.
+    if (clay >= 7 && clay < 27 && silt >= 28 && silt < 50 && sand <= 52) met.push_back("loam");
+    // Silt loam: 50 percent or more silt and 12 to less than 27 percent clay;
+    // OR 50 to less than 80 percent silt and less than 12 percent clay.
+    if ((silt >= 50 && clay >= 12 && clay < 27) || (silt >= 50 && silt < 80 && clay < 12)) met.push_back("silt-loam");
+    // Silt: 80 percent or more silt and less than 12 percent clay.
+    if (silt >= 80 && clay < 12) met.push_back("silt");
+    // Sandy clay loam: 20 to less than 35 percent clay, less than 28 percent
+    // silt, more than 45 percent sand.
+    if (clay >= 20 && clay < 35 && silt < 28 && sand > 45) met.push_back("sandy-clay-loam");
+    // Clay loam: 27 to less than 40 percent clay, more than 20 to 45 percent sand.
+    if (clay >= 27 && clay < 40 && sand > 20 && sand <= 45) met.push_back("clay-loam");
+    // Silty clay loam: 27 to less than 40 percent clay, 20 percent or less sand.
+    if (clay >= 27 && clay < 40 && sand <= 20) met.push_back("silty-clay-loam");
+    // Sandy clay: 35 percent or more clay, more than 45 percent sand.
+    if (clay >= 35 && sand > 45) met.push_back("sandy-clay");
+    // Silty clay: 40 percent or more clay, 40 percent or more silt.
+    if (clay >= 40 && silt >= 40) met.push_back("silty-clay");
+    // Clay: 40 percent or more clay, 45 percent or less sand, less than 40
+    // percent silt.
+    if (clay >= 40 && sand <= 45 && silt < 40) met.push_back("clay");
+    return met;
 }
 
 static void TestSoilTexture() {
     std::printf("\n[USDA soil texture classes]\n");
     const TernaryModel soil = TernarySamples::SoilTexture();
     CHECK(soil.regions.size() == 12 && soil.Validate().empty(), "twelve valid classes");
-    // A grid offset by a quarter percent never lands on a class boundary,
-    // so every point has exactly one class by the rules.
-    int checked = 0, agree = 0, unclassified = 0;
+    // A grid offset by a quarter percent never lands on a class boundary:
+    // the outlines themselves against the manual.
+    int checked = 0, agree = 0, unclassified = 0, ambiguous = 0;
     for (double clay = 0.25; clay < 100.0; clay += 0.5) {
         for (double sand = 0.25; clay + sand < 100.0; sand += 0.5) {
             const double silt = 100.0 - clay - sand;
-            const std::string rule = UsdaRule(clay, sand, silt);
+            const std::vector<std::string> rule = UsdaClasses(clay, sand, silt);
             const int region = soil.RegionOf(clay, sand, silt);
             ++checked;
+            if (rule.size() != 1) ++ambiguous;
             if (region < 0) { ++unclassified; continue; }
-            if (soil.regions[static_cast<size_t>(region)].id == rule) ++agree;
+            if (rule.size() == 1 && soil.regions[static_cast<size_t>(region)].id == rule.front()) ++agree;
         }
     }
     std::printf("    (%d grid points, %d agree, %d unclassified)\n", checked, agree, unclassified);
+    CHECK(ambiguous == 0, "the manual's definitions give every grid point exactly one class");
     CHECK(unclassified == 0, "the outlines cover the whole triangle");
-    CHECK(agree == checked, "every grid point gets the class the USDA rules give it");
+    CHECK(agree == checked, "every grid point gets the class the manual gives it");
 
-    // Ties: a point on an edge two classes share goes to the one listed first.
-    const int onEdge = soil.RegionOf(7.0, 48.0, 45.0);   // sandy loam | loam, at clay 7 %
-    CHECK(onEdge >= 0 && soil.regions[static_cast<size_t>(onEdge)].id == "sandy-loam",
-          "a point on the sandy loam / loam edge goes to sandy loam, listed first");
+    // Every whole percent - where lab results land, and where the class
+    // boundaries lie: a point on a boundary gets the class the manual's
+    // "or more" / "less than" give it (edgeLean), including the corners
+    // where three or four classes meet and the triangle's rim.
+    int whole = 0, wholeAgree = 0, wholeAmbiguous = 0;
+    std::string firstMiss;
+    for (int clay = 0; clay <= 100; ++clay) {
+        for (int sand = 0; clay + sand <= 100; ++sand) {
+            const int silt = 100 - clay - sand;
+            const std::vector<std::string> rule = UsdaClasses(clay, sand, silt);
+            const int region = soil.RegionOf(clay, sand, silt);
+            ++whole;
+            if (rule.size() != 1) { ++wholeAmbiguous; continue; }
+            if (region >= 0 && soil.regions[static_cast<size_t>(region)].id == rule.front()) {
+                ++wholeAgree;
+            } else if (firstMiss.empty()) {
+                firstMiss = "clay " + std::to_string(clay) + ", sand " + std::to_string(sand) + ", silt " +
+                            std::to_string(silt) + ": manual " + rule.front() + ", model " +
+                            (region >= 0 ? soil.regions[static_cast<size_t>(region)].id : std::string("none"));
+            }
+        }
+    }
+    std::printf("    (%d whole-percent compositions, %d agree%s%s)\n", whole, wholeAgree,
+                firstMiss.empty() ? "" : "; first miss: ", firstMiss.c_str());
+    CHECK(wholeAmbiguous == 0, "the manual gives every whole-percent composition exactly one class");
+    CHECK(wholeAgree == whole, "every whole-percent composition gets the manual's class, boundaries included");
+
+    // Spot checks on the boundaries, word for word.
+    auto classOf = [&soil](double clay, double sand, double silt) {
+        const int r = soil.RegionOf(clay, sand, silt);
+        return r >= 0 ? soil.regions[static_cast<size_t>(r)].id : std::string("none");
+    };
+    CHECK(classOf(7, 48, 45) == "loam", "clay 7 %: loam (\"7 to less than 27 percent clay\"), not sandy loam");
+    CHECK(classOf(20, 60, 20) == "sandy-clay-loam", "clay 20 %: sandy clay loam, not sandy loam");
+    CHECK(classOf(15, 52, 33) == "loam", "sand 52 %: loam (\"52 percent or less sand\")");
+    CHECK(classOf(10, 40, 50) == "silt-loam", "silt 50 %: silt loam (\"50 percent or more silt\")");
+    CHECK(classOf(0, 85, 15) == "loamy-sand", "silt + 1.5 clay = 15: loamy sand (\"15 or more\")");
+    CHECK(classOf(40, 0, 60) == "silty-clay" && classOf(27, 0, 73) == "silty-clay-loam" &&
+              classOf(12, 0, 88) == "silt-loam" && classOf(60, 0, 40) == "silty-clay",
+          "and on the sand = 0 rim, where the listing order decides");
     CHECK(soil.RegionOf(0, 0, 0) == -1, "a point with no shares has no class");
     CHECK(soil.RegionOf(60, 400, 340) == soil.RegionOf(7.5, 50, 42.5), "amounts in any unit classify by their shares");
     CHECK(soil.regions[static_cast<size_t>(soil.RegionOf(100, 0, 0))].id == "clay", "pure clay is clay");
+
+    // Without a lean, a point on a shared edge goes to the region listed first.
+    TernaryModel halves;
+    halves.axes[0] = TernaryAxis("A");
+    halves.axes[1] = TernaryAxis("B");
+    halves.axes[2] = TernaryAxis("C");
+    TernaryRegion left, right;
+    left.id = "left";
+    right.id = "right";
+    left.outline = {TernaryComposition(1, 0, 0), TernaryComposition(0, 1, 0), TernaryComposition(0, 0.5, 0.5)};
+    right.outline = {TernaryComposition(1, 0, 0), TernaryComposition(0, 0.5, 0.5), TernaryComposition(0, 0, 1)};
+    halves.regions = {left, right};
+    const TernaryPoint onSplit(0.5, 0.25, 0.25);
+    CHECK(halves.RegionOf(onSplit) == 0, "no lean: the region listed first takes the shared edge");
+    halves.edgeLean = {0.0, -1.0, 1.0};
+    CHECK(halves.RegionOf(onSplit) == 1, "a lean towards C gives it to the region on C's side");
+    CHECK(halves.RegionOf(0.5, 0.4, 0.1) == 0, "and leaves points off the edge where they are");
+    CHECK(halves.Validate().empty(), "a lean that adds up to 0 is valid");
+    halves.edgeLean = {1.0, 0.0, 0.0};
+    CHECK(!halves.Validate().empty(), "one that does not is refused");
 }
 
 static void TestDeFinetti() {
@@ -216,7 +300,8 @@ static bool SameModel(const TernaryModel& x, const TernaryModel& y) {
         return Near(p.a, q.a, 1e-9) && Near(p.b, q.b, 1e-9) && Near(p.c, q.c, 1e-9);
     };
     if (x.title != y.title || x.subtitle != y.subtitle || x.reading != y.reading ||
-        x.series.size() != y.series.size() || x.regions.size() != y.regions.size() || x.curves.size() != y.curves.size()) {
+        x.series.size() != y.series.size() || x.regions.size() != y.regions.size() || x.curves.size() != y.curves.size() ||
+        x.edgeLean != y.edgeLean) {
         return false;
     }
     for (int i = 0; i < 3; ++i) {
@@ -290,6 +375,14 @@ static void TestJson() {
           "a point without three parts is refused");
     CHECK(refuses(head + R"("series":[{"name":"S","points":[{"parts":[0,0,0],"label":"Zero"}]}]})", "Zero"),
           "a model that does not validate is refused");
+    CHECK(refuses(head + R"("edgeLean":[1,2]})", "edgeLean"), "an edge lean that is not three numbers is refused");
+    CHECK(refuses(head + R"("edgeLean":[1,1,1]})", "edge lean"), "and one that does not add up to 0");
+    TernaryModel leaned;
+    std::string leanError;
+    CHECK(ImportTernaryJson(ExportTernaryJson(TernarySamples::SoilTexture()), leaned, &leanError) &&
+              leaned.edgeLean == TernarySamples::SoilTexture().edgeLean &&
+              ExportTernaryJson(TernarySamples::ThreePartyVotes()).find("edgeLean") == std::string::npos,
+          "the USDA preset's lean is saved and read back; a model without one writes none");
 }
 
 static void TestCsv() {

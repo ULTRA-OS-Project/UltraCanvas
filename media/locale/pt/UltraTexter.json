@@ -38,7 +38,6 @@
   "Comment:": "Comentário:",
   "Copy (Ctrl+C)": "Copiar (Ctrl+C)",
   "Could not read the image file.": "Não foi possível ler o ficheiro de imagem.",
-  "Crash Recovery": "Recuperação após falha",
   "Cut (Ctrl+X)": "Cortar (Ctrl+X)",
   "Decrease Font Size": "Diminuir tamanho do tipo de letra",
   "Decrease Font Size (Ctrl+-)": "Diminuir tamanho do tipo de letra (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "Localizar anterior",
   "Find Previous (Shift+Enter)": "Localizar anterior (Shift+Enter)",
   "Find what:": "Localizar:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Foi encontrado {n} ficheiro guardado automaticamente numa sessão anterior.\n\nQuer recuperá-lo?",
-    "other": "Foram encontrados {n} ficheiros guardados automaticamente numa sessão anterior.\n\nQuer recuperá-los?"
-  },
   "GB18030 (Chinese)": "GB18030 (chinês)",
   "GB2312 (Chinese Simplified)": "GB2312 (chinês simplificado)",
   "GBK (Chinese Simplified)": "GBK (chinês simplificado)",

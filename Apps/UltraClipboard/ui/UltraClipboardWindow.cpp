@@ -1,8 +1,10 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
-// Version: 0.1.8 - Extract text says which UltraAI provider read a picture
-// Version: 0.1.7 - every text through Tr (UltraLocalisation)
-// Version: 0.1.6 - Extract text
+// Version: 0.2.3 - Extract text says which UltraAI provider read a picture
+// Version: 0.2.2 - every text through Tr (UltraLocalisation)
+// Version: 0.2.1 - Extract text
+// Version: 0.2.0 - SetKeepRunning: the window hides on close, Present shows
+//                  it again, Quit in the More menu
 // Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -317,6 +319,13 @@ bool UltraClipboardWindow::Create(const std::string& search, int64_t editId) {
                                [this](const UCEvent& event) { return OnPointerMoved(event); },
                                {UCEventType::MouseMove});
     window->onWindowClosing = [this]() {
+        if (keepRunning_) {
+            // In the background: the window goes, the program and its
+            // history stay for the next start.
+            window_->Hide();
+            shown_ = false;
+            return false;
+        }
         app_.RequestExit();
         return true;
     };
@@ -349,6 +358,7 @@ bool UltraClipboardWindow::Create(const std::string& search, int64_t editId) {
 void UltraClipboardWindow::Show() {
     if (!window_) return;
     window_->Show();
+    shown_ = true;
     search_->SetFocus(true);
     if (pendingEdit_ != 0) {
         // Once the window is on the screen, so the dialog has a parent to sit on.
@@ -363,6 +373,12 @@ void UltraClipboardWindow::Show() {
 
 void UltraClipboardWindow::Present(const std::string& search, int64_t editId) {
     if (!window_) return;
+    if (!shown_) {
+        // Started in the background, or closed since: on the screen again,
+        // with what the history holds now.
+        Reload();
+        Show();
+    }
     if (window_->IsMinimized()) window_->Restore();
     // A dialog that is open keeps what is typed in it: it comes forward, and
     // the request waits for the user to finish there.
@@ -604,6 +620,10 @@ bool UltraClipboardWindow::OnKey(const UCEvent& event) {
         return event.ctrl && (event.character == c || event.character == c - 'a' + 'A' ||
                               event.virtualKey == static_cast<UCKeys>(UCKeys::A + (c - 'a')));
     };
+    if (keepRunning_ && letter('q')) {
+        app_.RequestExit();
+        return true;
+    }
     switch (event.virtualKey) {
         case UCKeys::Escape:
             if (previewId_ != 0) {
@@ -1184,6 +1204,11 @@ void UltraClipboardWindow::ShowMoreMenu() {
     menu_->AddItem(MenuItemData::Action(Tr("Settings\xE2\x80\xA6"), [this]() { OpenSettings(); }));
     menu_->AddItem(MenuItemData::Separator());
     menu_->AddItem(MenuItemData::Action(Tr("Clear history\xE2\x80\xA6"), [this]() { ConfirmClear(); }));
+    if (keepRunning_) {
+        // Closing only hides the window while it runs in the background.
+        menu_->AddItem(MenuItemData::Separator());
+        menu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Quit"), "Ctrl+Q", [this]() { app_.RequestExit(); }));
+    }
     const Rect2Df bounds = moreButton_->GetBoundsInWindow();
     PopupElementSettings settings;
     menu_->OpenMenu(Point2Di(static_cast<int>(bounds.x + bounds.width) - 260,

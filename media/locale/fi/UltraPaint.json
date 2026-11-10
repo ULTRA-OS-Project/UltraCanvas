@@ -1,0 +1,15 @@
+{
+  "@language": "fi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Napsauta ja kirjoita, tai vedä ruutu, jonka sisälle rivit rivitetään; muokkaa tekstiä napsauttamalla sitä. Yläpuolen palkki asettaa fontin, koon, tyylin, tasauksen ja välit; väri on edustaväri. Escape tai napsautus muualle lopettaa",
+  "Letter Spacing": "Merkkiväli",
+  "Line Spacing": "Riviväli",
+  "Text Alignment": "Tekstin tasaus",
+  "Text Bold": "Tekstin lihavointi",
+  "Text Colour": "Tekstin väri",
+  "Text Font": "Tekstin fontti",
+  "Text Italic": "Tekstin kursivointi",
+  "Text Size": "Tekstin koko",
+  "Text Strikethrough": "Tekstin yliviivaus",
+  "Text Underline": "Tekstin alleviivaus"
+}

@@ -1,0 +1,22 @@
+{
+  "@language": "da",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Teksten er tilføjet: klik på den med tekstværktøjet, eller dobbeltklik på den, for at redigere den",
+  "Changed the text": "Teksten er ændret",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Klik på siden, og skriv, eller klik på en tekst for at redigere den; bjælken ovenover indstiller dens skrifttype, størrelse, typografi, justering og afstand. Escape, Ctrl+Enter eller et klik udenfor afslutter",
+  "Delete Text": "Slet tekst",
+  "Edit Text": "Redigér tekst",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Redigerer teksten: Enter starter en ny linje; Escape, Ctrl+Enter eller et klik udenfor afslutter",
+  "Letter Spacing": "Tegnafstand",
+  "Line Spacing": "Linjeafstand",
+  "Nothing was typed": "Der blev ikke skrevet noget",
+  "Text Alignment": "Tekstjustering",
+  "Text Bold": "Fed tekst",
+  "Text Font": "Tekstens skrifttype",
+  "Text Italic": "Kursiv tekst",
+  "Text Size": "Tekststørrelse",
+  "Text Strikethrough": "Gennemstreget tekst",
+  "Text Underline": "Understreget tekst",
+  "The text was emptied, so it was deleted": "Teksten blev tømt, så den blev slettet",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Skriver en ny tekst: Enter starter en ny linje; Escape, Ctrl+Enter eller et klik udenfor afslutter"
+}

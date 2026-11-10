@@ -229,15 +229,28 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
   category later, double-click its title.
 - **Change the look:** the picker in the board's bar offers **Sticky notes**,
   **Poster**, **Schematic** and **Dark**.
+- **Open, copy or delete a file:** right-click its card. **Copy** puts the
+  file on the clipboard, to paste in the file manager; **Delete** moves it to
+  the trash after asking; **Remove from the board** only takes the card
+  away. **Move to** sends it to another category, as dragging does.
+- **Choose how cards look:** right-click anywhere on the board, then
+  **Display**: **Text only**, **Thumbnail and text** (the picture with the
+  name under it, the usual one) or **Thumbnail and text in a row**.
+- **See a file larger:** rest the pointer on its card for two seconds and a
+  bigger preview opens beside it. Its size is **Display ▸ Mouse hover
+  preview**: **Small**, **Medium** or **Large**. Both choices are also on
+  the **Desktop** page of the settings.
 - **Move or resize the board:** drag it by its title; resize it by the grip
   (◢) in its bottom-right corner.
 
-The board, its look, its place and its size are kept.
+The board, its look, how cards are shown and the preview size are kept.
 
 ### 4.8 The clock
 
 The clock at the top of the right bar shows the time on a small analog face
 and the date under it; rest the pointer on it for the whole date and time.
+Right-click it to show it as an analog or a digital clock, with or without
+the date.
 Click it for the clock panel: the time large, on a face and in figures,
 today written out, and this month's calendar with today marked. You can page
 through other months; nothing is chosen there. Escape, or a click anywhere
@@ -317,6 +330,55 @@ The Task Manager icon at the foot of the info panel opens it.
 - **Hardware** shows the machine: CPU load and temperature, memory, storage
   and the network interfaces.
 
+### 4.13 The desktop's menus
+
+Right-click the **wallpaper** for the desktop's menu:
+
+- **Change wallpaper...** picks a picture; **Default wallpaper** goes back
+  to ULTRA OS's own picture.
+- **Theme**: **Dark** (light icons on dark grey bars) or **Light** (dark
+  icons on light grey bars). The panels the bars open - the clock, the
+  loudspeaker, Wi-Fi, Bluetooth, the devices, the clipboard and the window
+  pictures - follow it.
+- **Taskbar position**: on the left, at the top or at the bottom.
+- **Drop files**: where files you drag onto the wallpaper go.
+  - **Drop on sticker board** (the default): they join the Sticker board's
+    **Unsorted** category, which is added when the board has none, and the
+    board opens to show them.
+  - **Drop on desktop**: they are moved into your Desktop folder (copied,
+    when they come from another drive) and appear where you dropped them as
+    icons on the wallpaper. The wallpaper shows the Desktop folder's files as
+    icons while this is chosen: click one to select it, **Ctrl+click** to add
+    or remove one, **Shift+click** to add one, or draw a box on the
+    wallpaper around several (with Ctrl held, they are added). Double-click
+    to open, drag to move the selected icons together (they stay there), or
+    drag them onto another program's window - a file manager, a mail, an
+    editor - to hand the files to it. Right-click for **Open**, **Show in
+    the file manager**, **Delete**, **Select all** and **Arrange icons**,
+    for all the selected icons. Once you have clicked an icon or the
+    wallpaper, the keyboard works on them too: **Delete** deletes the
+    selected icons (after asking), **Ctrl+A** selects them all, **Enter**
+    opens them, **F2** renames the selected icon (its name becomes a text
+    field with the name before the extension chosen; **Enter** or a click
+    elsewhere renames the file, **Escape** keeps the old name - also
+    **Rename** on its menu), and **Escape** clears the selection (or, during
+    a drag or while drawing a box, puts things back as they were). A file saved to the Desktop
+    folder by another program appears within two seconds.
+- **Arrange icons** (with **Drop on desktop**) puts the icons back on the
+  grid, in name order.
+- **Notes on the wallpaper** shows or hides the notes.
+- **Display settings...** opens the system's own display settings - the
+  resolution, how the monitors are arranged, which one is the main one.
+  On Linux it is your desktop's display tool (GNOME's or Plasma's settings,
+  xfce4-display-settings, wdisplays, arandr, ...); where none is installed,
+  the entry is left out.
+- **Desktop settings...** opens UOS-Settings.
+
+Right-click the **taskbar or the right bar** where a button has no menu of
+its own - between the buttons, on the Applications button, a virtual
+desktop or a service icon - to move the taskbar to another edge or change
+the theme. The ⚙ button's menu has **Taskbar position** and **Theme** too.
+
 ## 5. Settings
 
 UltraDesktop's settings are the **Desktop** page of **UOS-Settings**. Click
@@ -326,6 +388,8 @@ settings**.
 | Setting | What it does |
 |---|---|
 | **Taskbar** | **Left**, **Top** or **Bottom** edge. |
+| **Theme** | **Dark** or **Light** bars. |
+| **Dropped files** | **Sticker board (Unsorted)** or **Desktop (as icons)**: where files dragged onto the wallpaper go (section 4.13). |
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
@@ -465,7 +529,12 @@ at sign-in.
 | Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
 | Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
 | Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
-| Clock | click | the clock panel |
+| Clock | click / right-click | the clock panel / analog or digital, with or without the date |
+| Wallpaper | right-click / drop files | wallpaper, theme, taskbar position, drop files, notes, display settings, desktop settings / onto the Sticker board's Unsorted category, or onto the desktop |
+| Desktop icon | click / Ctrl+click / Shift+click / double-click / drag / right-click | select / add or remove / add / open / move, or onto another program's window to give it the files / Open, Show in the file manager, Delete, Select all, Arrange icons |
+| Wallpaper, with desktop icons | drag / Ctrl+drag | select the icons in the box / add them |
+| Desktop icons (after a click on them or the wallpaper) | Delete / Ctrl+A / Enter / F2 / Escape | delete the selected (asked first) / select all / open the selected / rename the selected icon / clear the selection, or cancel a drag or a box |
+| The bars, between the buttons | right-click | taskbar position, theme |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
 | Applications tile | click / right-click | start it / pin or unpin |
@@ -475,6 +544,7 @@ at sign-in.
 | Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
+| Sticker board | right-click a card / rest the pointer on it for two seconds / Delete | Open, Copy, Delete, Move to, Display / a larger preview / the selected card's file to the trash, or the note deleted (asked first) |
 | A notification | click / × | its default action / dismiss |
 
 ## 8. Troubleshooting

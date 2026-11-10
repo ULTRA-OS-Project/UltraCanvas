@@ -1,0 +1,20 @@
+{
+  "@language": "pt-BR",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.": "Um aplicativo usa uma alteração na próxima vez que é iniciado. A linha de comando (--lang) e a variável ULTRACANVAS_LANG substituem esta configuração por uma inicialização.",
+  "Appearance": "Aparência",
+  "Choose a wallpaper": "Escolha um papel de parede",
+  "Could not write {0}.": "Não foi possível gravar {0}.",
+  "Every set an application's texts come from in one grid - its own set, the base sets it takes and the standard set - for any application and any language. A save goes into the source tree when the catalogues are writable, else into the UltraCanvas settings folder, where a running application picks it up; the status line says where.": "Todos os conjuntos de onde vêm os textos de um aplicativo em uma única grade - o próprio conjunto, os conjuntos base que ele usa e o conjunto padrão - para qualquer aplicativo e qualquer idioma. Um salvamento vai para a árvore de código-fonte quando os catálogos são graváveis; caso contrário, para a pasta de configurações do UltraCanvas, onde um aplicativo em execução o carrega; a linha de status indica onde.",
+  "File dialogs": "Caixas de diálogo de arquivo",
+  "Last used folder": "Última pasta usada",
+  "Registrations": "Registros",
+  "Saved.": "Salvo.",
+  "Saved. Applications started from now on use this language.": "Salvo. Os aplicativos iniciados a partir de agora usam este idioma.",
+  "The language every application shows its menus, buttons and messages in. \"System\" follows the computer's own language setting; a language is offered here when a translation of the standard set ships for it.": "O idioma em que cada aplicativo mostra menus, botões e mensagens. \"Sistema\" segue a configuração de idioma do próprio computador; um idioma é oferecido aqui quando uma tradução do conjunto padrão é distribuída para ele.",
+  "The languages come from media/locale/ in the applications' resources and from locale/ in the UltraCanvas settings folder, where a translator puts a draft to see it in the real window.": "Os idiomas vêm de media/locale/ nos recursos dos aplicativos e de locale/ na pasta de configurações do UltraCanvas, onde um tradutor coloca um rascunho para vê-lo na janela real.",
+  "The translator's name goes into the catalogues the localisation editor saves, so a draft says who reviewed it.": "O nome do tradutor entra nos catálogos que o editor de localização salva, para que um rascunho diga quem o revisou.",
+  "Trusted certificates": "Certificados confiáveis",
+  "ULTRA OS A (the default picture)": "ULTRA OS A (a imagem padrão)",
+  "Your name, for the catalogues you edit": "Seu nome, para os catálogos que você editar"
+}

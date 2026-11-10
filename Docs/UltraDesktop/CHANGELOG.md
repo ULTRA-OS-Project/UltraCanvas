@@ -1,3 +1,139 @@
+#### 2026-11-09 *0.4.15*
+- **The desktop has a right-click menu.** A right click on the wallpaper
+  offers *Change wallpaper...* (any picture this build reads, through
+  FileLoader's Open dialog), *Default wallpaper*, *Theme*, *Taskbar
+  position*, *Notes on the wallpaper*, *Display settings...* - the system's
+  own: Settings > Display on Windows, System Settings > Displays on macOS,
+  the desktop's display tool on Linux (GNOME's or Plasma's settings,
+  xfce4-display-settings, wdisplays, arandr, ...) - and *Desktop
+  settings...* (UOS-Settings).
+- **The bars have one too.** A right click on the taskbar or the right bar
+  where the button under the pointer has no menu of its own - between the
+  buttons, the Applications button, a virtual desktop, a service icon -
+  moves the taskbar to the left, the top or the bottom, or changes the
+  theme. The ULTRA OS settings button's menu has *Taskbar position* and
+  *Theme* as submenus.
+- **A light theme.** `theme` in `desktop.json` is `dark` (the default) or
+  `light`: dark icons on light grey bars, the carved-in groups near white,
+  the clock black on white and the ULTRA OS logo in its variant for a light
+  ground. Chosen on the menus above or on UOS-Settings' Desktop page, and
+  followed within a second when UOS-Settings changes it.
+- **The clock is at the top of the right bar again**, above the virtual
+  desktops, as it was before 0.4.10; its display types and panel are as
+  they were.
+- **Files can be dropped on the wallpaper.** Where they go is chosen on the
+  desktop's right-click menu, *Drop files*, or on UOS-Settings' Desktop page
+  (`dropFilesOn` in `desktop.json`):
+  - *Drop on sticker board* (the default): into the Sticker board's
+    **Unsorted** category, added when the board has none, and the board
+    shows.
+  - *Drop on desktop*: moved into the Desktop folder (copied from another
+    drive; a taken name becomes `name (2).ext`), and the wallpaper shows the
+    Desktop folder as icons - the file's thumbnail or the system's icon over
+    its name. A dropped file lies where it was dropped; a double click opens
+    it, a drag moves it (kept in `desktopIcons`), a right click offers
+    *Open*, *Show in the file manager*, *Delete* and *Arrange icons*. A file
+    another program saves to the Desktop appears within two seconds.
+- **Notes on the wallpaper show again.** The notes and their "+" button were
+  placed on the notes layer but never added to it, so none was drawn while
+  the notes were switched on.
+- **Several desktop icons at once.** Ctrl+click adds or removes an icon,
+  Shift+click adds one, and a box drawn on the wallpaper selects the icons it
+  touches (with Ctrl, adds them). The selected icons open, move and are
+  deleted together, and *Select all* is on their menu.
+- **Desktop icons can be dragged out to other programs.** Dragged over
+  another program's window, the selected files continue as a native file
+  drag, which a file manager, a mail or an editor takes.
+- **The panels follow the light theme.** The clock, loudspeaker, Wi-Fi,
+  Bluetooth, device and clipboard panels and the window pictures are near
+  white with dark text in the light theme.
+- **The desktop's menu works on the wallpaper while desktop icons show.**
+- **The desktop icons answer the keyboard**, after a click on an icon or
+  the wallpaper: Delete (after the question), Ctrl+A, Enter, and Escape,
+  which clears the selection or puts a drag or a rubber band back.
+- **F2 renames a desktop icon** (also *Rename* on its menu): its name
+  becomes a text field with the part before the extension chosen; Enter or a
+  click elsewhere renames the file, which keeps its place, and Escape keeps
+  the old name. The icons are a little wider, so a name like
+  `groceries.txt` is no longer cut at both ends.
+- **Sticker board: the Delete key asks first, and does what the card's
+  menu's *Delete* does** - a file's card moves the file to the trash, a note
+  is deleted - as the Delete key does on the desktop icons. It took the card
+  off the board without a question. *Remove from the board* is still on the
+  menu; the note's *Delete* asks too.
+
+#### 2026-11-09 *0.4.14*
+- **The bars' menus are no longer covered by other windows.** Every context
+  menu of the bars - the running and pinned applications, the clock, the
+  screenshot and clipboard buttons, the tray icons - was drawn inside the
+  desktop window, which is kept below every other window, so the part of a
+  menu beside a bar went under whatever application was open there. Menus,
+  and every other popup, now have a window of their own above everything
+  (the framework's `WindowType::Popup`, see its changelog).
+
+#### 2026-11-09 *0.4.13*
+- **The bars' tooltips are no longer covered by other windows.** The bars
+  live in the desktop window, which is kept below every other window, and a
+  tooltip was drawn inside it: one that rose above the taskbar, or out of the
+  right bar, went under whatever application was open there. Tooltips now
+  have a window of their own above everything (the framework's
+  `WindowType::Tooltip`, see its changelog), so every icon's tooltip is seen
+  in full wherever the windows are.
+
+#### 2026-11-06 *0.4.12*
+- **Sticker board: a context menu, three card displays and a hover
+  preview.** A right click on a file's card offers *Open*, *Copy* (the file
+  onto the clipboard, for the file manager), *Delete* (into the trash, after
+  a question), *Remove from the board* and *Move to* another category; on a
+  note, *Open*, *Copy* its text and *Delete*. *Display* in the same menu shows
+  the cards as *Text only*, *Thumbnail and text* (the name centred under the
+  picture - the default) or *Thumbnail and text in a row*, and sets the size
+  of the *Mouse hover preview*: resting the pointer on a file's card for two
+  seconds opens a larger picture of it beside the card (*Small*, *Medium*,
+  *Large*). Both are kept in `desktop.json` (`categoryBoard.display`,
+  `categoryBoard.hoverPreview`) and follow a change UOS-Settings makes.
+
+#### 2026-11-06 *0.4.11*
+- **More can start with the desktop, unseen.** *Start with the desktop*
+  (the settings button's right-click menu, UOS-Settings > Desktop) now also
+  offers UltraClipboard and UltraNotifications, which start with no window
+  (`--background`) and open at once when asked for, and the desktop's own
+  Sticker board, whose window and file thumbnails are made in the
+  background so the first click shows it at once.
+- **A bell for the notifications.** The right bar has a bell that opens
+  UltraNotifications, the new program that keeps every notification after
+  its pop-up has gone, and shows its unread count while it runs.
+
+#### 2026-11-06 *0.4.10*
+- **The clock is at the foot of the right bar, white on black, in a
+  display type of the person's choosing.** It was at the top, dark hands on
+  a light grey face. A right click on it now offers *Analog clock with the
+  date* (the default), *Analog clock*, *Digital clock with the date*,
+  *Digital clock* and *Digital clock with seconds*; the choice is kept in the
+  settings (`clockStyle`). A left click still opens the clock panel.
+- **An application's windows share one taskbar button, with their
+  pictures on hover.** Three Explorer windows were three buttons; now they
+  are one, with a count. Resting the pointer on it opens a strip of the
+  windows - icon, title and a picture of each, the active one framed, a
+  minimized one shown by its icon - and a click on a picture brings that
+  window forward; its × closes it. The strip opens beside the bar on the
+  left, above it at the bottom and below it at the top, follows the pointer
+  along the bar and does not take the keyboard focus. The button's
+  right-click menu lists the windows with *Minimize all* and *Close all
+  windows*. A single window behaves as before.
+- **Windows: Calculator, Settings, WhatsApp and other Store applications
+  show their own icon** on the taskbar instead of a letter ("A", "W"): the
+  icon now comes from the application identity Windows gives the window,
+  through the shell's Applications folder.
+- **On Wayland the window pictures come from the compositor** where it
+  offers window capture (`ext-image-copy-capture-v1`: sway 1.11, labwc,
+  river, niri and others), so a covered window shows its own content.
+- **The Wi-Fi icon shows a green dot while Wi-Fi is joined.** A joined
+  Wi-Fi had no dot, and on Windows the icon showed the red "not joined"
+  dot even while the Wi-Fi panel said "Connected to …" (the framework read
+  every Wi-Fi adapter as not joined; fixed there). Red still means an
+  adapter that is on but not joined; no dot, no adapter.
+
 #### 2026-11-02 *0.4.9*
 - **The wallpaper comes up from the disk cache.** The desktop's wallpaper
   is decoded and fitted to the monitor once; the fitted picture is kept in

@@ -1,7 +1,6 @@
 {
   "@language": "tr",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "Hesap ekle",
   "App password": "Uygulama parolası",
   "Attach file": "Dosya ekle",
   "Attachment": "Ek",
@@ -44,7 +43,6 @@
   "Search messages": "İletilerde ara",
   "Sending": "Gönderiliyor",
   "Sent": "Gönderilmiş",
-  "Server": "Sunucu",
   "Sign out": "Oturumu kapat",
   "Sign-in": "Oturum açma",
   "Spam": "İstenmeyen",
