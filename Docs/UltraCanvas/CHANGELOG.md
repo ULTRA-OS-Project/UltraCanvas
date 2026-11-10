@@ -1,3 +1,27 @@
+#### 2026-11-10 *0.9.519*
+- **CI taps and types in the Android demo.** The emulator smoke test now
+  taps the demo's tree filter field and types a word into it, after the
+  first-frame checks and before the rotation. The backend logs the first tap
+  with the element it landed on (`first tap: X,Y px -> x,y, element '...'`),
+  and the demo logs where the field is and every change to its text, so a
+  touch that lands in the wrong place, or a key that never reaches the
+  focused field, fails the job. The rotation check now looks only at frames
+  logged after the turn, as the on-screen keyboard can resize the window
+  first.
+- **Android: launch arguments.** An app's `ultracanvas_app_main` now gets
+  the launching intent's `ultracanvas.args` string extra, split on
+  whitespace, as its command line
+  (`am start -e ultracanvas.args "--no-about" ...`); the smoke test starts
+  the demo with `--no-about`, so its About window does not cover the field.
+- **Android: the system bars no longer cover the app.** NativeActivity's
+  surface spans the whole window, and the window the whole display, so the
+  status bar was drawn over the app's top rows and the navigation bar over
+  its bottom ones - a tap there went to the bar. The new tap step caught it:
+  the demo's tree filter sits 6 px from the top, under the 24 px status bar
+  at 160 dpi. `UltraCanvasActivity` now runs in sticky immersive mode (both
+  bars hidden, shown over the app for a moment on a swipe from the edge),
+  applied again whenever the window regains focus.
+
 #### 2026-11-10 *0.9.518*
 - **`FolderBreadcrumbOptions::driveLabel`: a folder strip can name its drives.**
   `BuildFolderBreadcrumb` called a drive by its letter ("D:") or root path,
