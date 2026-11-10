@@ -1,5 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
+// Version: 1.9.0 - BreadcrumbStyle::FromTheme, ApplyTheme: the breadcrumb follows the theme; a SetStyle by hand
+//                  stops the following
 // Version: 1.8.0 - FolderBreadcrumbOptions::driveLabel: what a drive is called on the
 //                  strip ("My Passport Ultra (D:)" for "D:")
 // Version: 1.7.0 - drop-downs open anchored to their crumb (SlotRectInWindow)
@@ -225,6 +227,16 @@ namespace UltraCanvas {
         static BreadcrumbStyle Default();
         static BreadcrumbStyle Compact();
         static BreadcrumbStyle Pills();
+        // The theme's roles over a base's own shape (the item and separator
+        // styles, paddings, sizes, flags) and its fills: a filled strip
+        // takes the panel with a hairline, a transparent one stays so; the
+        // items in muted ink, the accent hovered, ink for the current one on
+        // the soft accent when it is filled, the hover and pressed fills,
+        // faint ink disabled and for the separator; the level badge in the
+        // accent with text on it; the interface font at the body size
+        static BreadcrumbStyle FromTheme(const UltraCanvasTheme& theme, const BreadcrumbStyle& base);
+        static BreadcrumbStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+        static BreadcrumbStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         static BreadcrumbStyle FileExplorer();
         static BreadcrumbStyle WebDocs();
         static BreadcrumbStyle Arrow();
@@ -360,6 +372,7 @@ namespace UltraCanvas {
 
         // ===== STYLE =====
         void SetStyle(const BreadcrumbStyle& newStyle);
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(BreadcrumbStyle::FromTheme(theme, style)); }
         const BreadcrumbStyle& GetStyle() const { return style; }
         BreadcrumbStyle& GetStyle() { return style; }
 

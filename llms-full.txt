@@ -15606,6 +15606,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBreadcrumbExamples.md
   - [BreadcrumbOverflowMode](#breadcrumboverflowmode)
   - [BreadcrumbItemStyle](#breadcrumbitemstyle)
 - [Style Presets](#style-presets)
+- [Following the theme](#following-the-theme)
 - [Events and Callbacks](#events-and-callbacks)
 - [Builder Pattern](#builder-pattern)
 - [Usage Examples](#usage-examples)
@@ -15626,7 +15627,7 @@ FILE: Docs/UltraCanvas/UltraCanvasBreadcrumbExamples.md
 
 **UltraCanvasBreadcrumb** is a hierarchical navigation control that renders a path of clickable segments separated by configurable separators. It supports per-item icons, per-item dropdown menus, several built-in style presets, and four different overflow strategies (clip, collapse, ellipsize, shrink-text) for narrow containers.
 
-**Version:** 1.0.1
+**Version:** 1.1.0 - `BreadcrumbStyle::FromTheme`, `ApplyTheme`: the breadcrumb follows the theme
 **Header:** `include/UltraCanvasBreadcrumb.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -15964,6 +15965,25 @@ BreadcrumbStyle::WebDocs();
 BreadcrumbStyle::Arrow();          // interlocking arrow segments
 BreadcrumbStyle::Parallelogram();  // interlocking slanted segments
 BreadcrumbStyle::Steps();          // Arrow segments + round numbered indicators
+```
+
+## Following the theme
+
+`BreadcrumbStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (the item and separator
+styles, paddings, sizes, flags): a filled strip takes the panel with a
+hairline, a transparent one stays so; the items in muted ink, the accent
+hovered, ink for the current one on the soft accent when it is filled, the
+hover and pressed fills, faint ink disabled and for the separator, the
+level badge in the accent with text on it, the interface font at the body
+size. Under the theme policy a new breadcrumb follows the theme by itself
+(`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto trail = std::make_shared<UltraCanvasBreadcrumb>("trail", 400, 28);
+trail->SetStyle(BreadcrumbStyle::FromTheme(UltraCanvasTheme::Current(), BreadcrumbStyle::Pills()));   // the roles over the Pills shape
+trail->SetFollowTheme(true);
 ```
 
 ## Events and Callbacks
@@ -21757,6 +21777,7 @@ FILE: Docs/UltraCanvas/UltraCanvasColorPaletteManager.md
 - [The palettes](#the-palettes)
 - [Selection and popups](#selection-and-popups)
 - [Style](#style)
+- [Following the theme](#following-the-theme)
 - [Callbacks](#callbacks)
 
 ## Overview
@@ -21806,7 +21827,7 @@ It is built from framework elements only: the rows are
 
 **File Location**: `include/UltraCanvasColorPaletteManager.h`
 **Implementation**: `core/UltraCanvasColorPaletteManager.cpp`
-**Version**: 1.1.0
+**Version**: 1.2.0 - `ColorPaletteManagerStyle::FromTheme`, `ApplyTheme`: the manager follows the theme
 **Author**: UltraCanvas Framework
 
 ## Quick Start
@@ -21935,6 +21956,26 @@ has), the gaps, the micro buttons' size and colours, the popups' colours and
 corner radius, the accent of the gallery's add buttons, and the entry
 editor's picker style and scale.
 
+## Following the theme
+
+`ColorPaletteManagerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: hairlines round the
+swatches, faint ink hovered, the accent selected; the raised surface with
+the hover fill and a hairline for the micro buttons, ink on them; the
+accent and its hover; the raised popups with a hairline, the panel for a
+card, ink and muted ink; the caption size; the entry editor's picker from
+`ColorPickerStyle::FromTheme`. Under the theme policy a new manager follows
+the theme by itself (`ApplyTheme`); a `SetManagerStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto manager = std::make_shared<UltraCanvasColorPaletteManager>("palettes", 260, 120);
+ColorPaletteManagerStyle large = manager->GetManagerStyle();
+large.swatchSize = 20;
+manager->SetManagerStyle(ColorPaletteManagerStyle::FromTheme(UltraCanvasTheme::Current(), large));
+manager->SetFollowTheme(true);
+```
+
 ## Callbacks
 
 ```cpp
@@ -21958,6 +21999,7 @@ FILE: Docs/UltraCanvas/UltraCanvasColorPicker.md
 - [Overview](#overview)
 - [Features](#features)
 - [Class Definition](#class-definition)
+- [Following the theme](#following-the-theme)
 - [Basic Usage](#basic-usage)
   - [Presentation variants](#presentation-variants)
   - [Light and dark styles](#light-and-dark-styles)
@@ -21979,8 +22021,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.8.0
-**Last Modified**: 2026-10-16
+**Version**: 1.9.0 - `ColorPickerStyle::FromTheme`, `ApplyTheme`: the picker follows the theme
+**Last Modified**: 2026-11-10
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -22176,6 +22218,27 @@ namespace UltraCanvas {
         std::function<void(bool foreground)> onScreenColorPick; // host override
     };
 }
+```
+
+## Following the theme
+
+`ColorPickerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics and scale: the panel
+for the surface, the raised surface for its panels with a hairline, the
+well with the control border for the fields, ink and muted ink, the
+accent; the markers keep their white and black unless the theme names
+`color-picker.marker` and `color-picker.marker-outline`; the interface
+font at the body size. Without a base it starts from `Dark()` or `Light()`
+by the theme's flag, as the menu does. Under the theme policy a new picker
+follows the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops
+that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto picker = std::make_shared<UltraCanvasColorPicker>("picker", 260, 320);
+ColorPickerStyle small = picker->GetStyle();
+small.uiScale = 0.8f;
+picker->SetStyle(ColorPickerStyle::FromTheme(UltraCanvasTheme::Current(), small));
+picker->SetFollowTheme(true);
 ```
 
 ## Basic Usage
@@ -22415,7 +22478,7 @@ colours nobody can reach.
 
 **File Location**: `include/UltraCanvasColorSwatchBar.h`
 **Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
-**Version**: 1.2.0
+**Version**: 1.3.0 - `ColorSwatchBarStyle::FromTheme`, `ApplyTheme`: the bar follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -22568,6 +22631,24 @@ uses it for its palette rows.
 
 The background is transparent by default — set `style.background` when the strip
 needs to read as a bar of its own.
+
+## Following the theme
+
+`ColorSwatchBarStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: a filled bar takes the
+panel, a transparent one stays so; the control border round a swatch, muted
+ink hovered, the accent selected; the checkerboard and the auto swatch keep
+their own greys. Under the theme policy a new bar follows the theme by
+itself (`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasColorSwatchBar>("swatches", 300, 28);
+ColorSwatchBarStyle roomy = bar->GetStyle();
+roomy.spacing = 6;
+bar->SetStyle(ColorSwatchBarStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+bar->SetFollowTheme(true);
+```
 
 ## Callbacks
 
@@ -40951,6 +41032,7 @@ FILE: Docs/UltraCanvas/UltraCanvasGroupBoxExamples.md
   - [Factory Functions](#factory-functions)
   - [Key Methods](#key-methods)
   - [Callbacks](#callbacks)
+- [Following the theme](#following-the-theme)
 - [Usage Examples](#usage-examples)
   - [Basic framed group](#basic-framed-group)
   - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
@@ -40968,7 +41050,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.3.0
+**Version:** 1.4.0 - `GroupBoxVisualStyle::FromTheme`, `ApplyTheme`: the group box follows the theme
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -41065,6 +41147,26 @@ bool IsCollapsed() const;
 std::function<void(bool)> onCheckedChanged;     // new checked state
 std::function<void(bool)> onCollapsedChanged;   // new collapsed state
 std::function<void()>     onCloseClicked;       // the close button was clicked
+```
+
+## Following the theme
+
+`GroupBoxVisualStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (widths, radius,
+indents, padding, the caption's weight) and its fills: a filled frame or
+header takes the raised surface and the panel, a transparent one stays
+transparent; the frame in a hairline, the caption in ink at the body size,
+faint ink disabled; the activator's track in the accent and the control
+border with the raised surface for its knob; the info and close icons in
+muted ink, the accent and ink when hovered. Under the theme policy a new
+group box follows the theme by itself (`ApplyTheme`, its scrollbars with
+it); a `SetVisualStyle` by hand stops that, `SetFollowTheme(true)` after it
+keeps both.
+
+```cpp
+auto section = std::make_shared<UltraCanvasGroupBox>("section", 300, 200, "Messages");
+section->SetVisualStyle(GroupBoxVisualStyle::FromTheme(UltraCanvasTheme::Current(), GroupBoxVisualStyle::SectionCard()));   // the roles over the card
+section->SetFollowTheme(true);
 ```
 
 ## Usage Examples
@@ -57249,6 +57351,7 @@ FILE: Docs/UltraCanvas/UltraCanvasPagination.md
 - [Windowing](#windowing)
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
+- [Following the theme](#following-the-theme)
 - [Keyboard](#keyboard)
 - [Notes](#notes)
 
@@ -57260,7 +57363,7 @@ with ellipsis (…) gaps for large page counts, Next/Last controls, and an
 optional "page info" readout.
 
 **File Location**: `include/UltraCanvasPagination.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `PaginationStyle::FromTheme`, `ApplyTheme`: the pagination follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -57366,6 +57469,25 @@ float GetPreferredWidth() const;
 
 // Callback
 std::function<void(int page)> onPageChanged;
+```
+
+## Following the theme
+
+`PaginationStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the raised surface
+for a cell with the control border, the hover and pressed fills, ink; the
+accent with text on it for the current page; the panel and faint ink for a
+disabled end; muted ink for the chevrons and the info text, faint ink for
+an ellipsis; the interface font at the body size. Under the theme policy a
+new pagination follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto pages = std::make_shared<UltraCanvasPagination>("pages", 400, 32);
+PaginationStyle round = pages->GetStyle();
+round.cornerRadius = 16;
+pages->SetStyle(PaginationStyle::FromTheme(UltraCanvasTheme::Current(), round));
+pages->SetFollowTheme(true);
 ```
 
 ## Keyboard
@@ -64568,6 +64690,7 @@ state of the selection** rather than two asterisks in a buffer.
   - [Check lists](#check-lists)
   - [Formulas](#formulas)
   - [Structure](#structure)
+- [Following the theme](#following-the-theme)
 - [Keyboard](#keyboard)
 - [Autoformat as you type](#autoformat-as-you-type)
 - [Input methods](#input-methods)
@@ -65168,6 +65291,29 @@ alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
+
+## Following the theme
+
+`RichTextEditStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's typography and metrics: the
+well for the text and the page (the element role `rich-text.page` where a
+theme wants paper of another colour, white on a dark window say), the
+panel for the desk, ink and the caret in ink, the soft accent for the
+selection, the accent for links, muted ink for quotes and list markers,
+the panel with hairlines for code, control-border rules and table grids,
+hairline guides. The comment, tracked-change and font-notice colours keep
+their own meaning, and the document's fonts (`baseFont`, `codeFontFamily`)
+are the document's: they stay. Under the theme policy a new edit follows
+the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto edit = std::make_shared<UltraCanvasRichTextEdit>("edit", 600, 400);
+RichTextEditStyle serif = edit->GetStyle();
+serif.baseFont.fontFamily = "Georgia";
+edit->SetStyle(RichTextEditStyle::FromTheme(UltraCanvasTheme::Current(), serif));   // the roles over the document's font
+edit->SetFollowTheme(true);
+```
 
 ## Keyboard
 
@@ -78278,7 +78424,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.10.0 - the list elements read the theme: the scrollbar, list view, tree view, columns tree view and filer widget (T4, third part)
+**Version:** 1.11.0 - the containers and pickers read the theme: container, group box, breadcrumb, pagination, the colour picker, swatch bar and palette manager, the rich text edit (T4, fourth part)
 **Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
@@ -78289,10 +78435,13 @@ in place. Every panel element reads it: the button, label, dropdown,
 slider, switch, text input, toolbar, split pane and album, and the input
 elements - checkbox, radio, segmented control, spinner, stepper, rating,
 the calendar view and the date, date range and time pickers with the
-clock view - and the lists - the scrollbar, list view, columns tree view
-and filer widget - through a `FromTheme` on their style struct and an
-`ApplyTheme` on the element; the tabbed container, the text area and the
-tree view through `ApplyTheme` alone; the menu
+clock view - the lists - the scrollbar, list view, columns tree view and
+filer widget - and the containers and pickers - the container's
+scrollbars, group box, breadcrumb, pagination, the colour picker, swatch
+bar and palette manager, the rich text edit - through a `FromTheme` on
+their style struct and an `ApplyTheme` on the element; the tabbed
+container, the text area and the tree view through `ApplyTheme` alone;
+the menu
 and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
 which put the roles over their own `Dark()` and `Light()` presets, so a
 dark menu or tooltip agrees with the rest of a dark window. Under the
@@ -78300,8 +78449,7 @@ policy (`FollowHost`, the default, `Light` or `Dark`) every new element
 follows the theme: it is styled from the current theme as it is built and
 again on every change. Styled by hand (`SetStyle`) it keeps its look, as
 before. The readers set their fonts by role as well as their colours; the
-containers and pickers, the viewers and the media elements are the rest
-of T4.
+viewers and the media elements are the rest of T4.
 
 ## The roles
 
@@ -78487,9 +78635,12 @@ calendar's weekends (`calendar.weekend`, its red), the clock's dial
 (`time-picker.clock-face`, the pressed fill), a scrollbar's track and
 thumb (`scrollbar.track`, `scrollbar.thumb`, the panel and the control
 border), a columns tree's section header (`columns-tree.group-header`,
-`columns-tree.on-group-header`, its black bar) and the filer's overlays
+`columns-tree.on-group-header`, its black bar), the filer's overlays
 (`filer.icon-menu`, `filer.on-icon-menu`, `filer.icon-menu-done`,
-`filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`).
+`filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`),
+the colour picker's markers (`color-picker.marker`,
+`color-picker.marker-outline`, white and black) and the rich text edit's
+paper (`rich-text.page`, the well).
 
 ```cpp
 UltraCanvasTheme brand = UltraCanvasTheme::Light();
@@ -78523,11 +78674,13 @@ theme.fonts.scale = 1.25;                                        // Body is then
 Every `FromTheme` reader sets its style's family and size from `Font(role)`
 by the role its text plays: the button, label, dropdown, text input, menu,
 switch, checkbox, radio, segmented control, spinner, rating, calendar,
-the date and time pickers, the list's rows, the tree and the filer at
+the date and time pickers, the list's rows, the tree, the filer, a group
+box's caption, the breadcrumb, the pagination and the colour picker at
 `Body`, a stepper's titles too; a heading label at `Heading`; the
 tooltip, a slider's value, a dialog's details, a stepper's descriptions,
-a list's header and the filer's small text at `Caption`, the dialog's
-message at `Body`, the tab titles at `Caption`; the album, the timecode field and
+a list's header, the filer's small text and the palette manager at
+`Caption`, the dialog's message at `Body`, the tab titles at `Caption`;
+the rich text edit keeps the document's fonts; the album, the timecode field and
 the timeline take the families only (their sizes are pixels of a design).
 The style struct's own literal stays the default of an element styled by
 hand, as the colour defaults do. The text area keeps its font: it is the

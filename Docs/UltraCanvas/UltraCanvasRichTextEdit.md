@@ -32,6 +32,7 @@ state of the selection** rather than two asterisks in a buffer.
   - [Check lists](#check-lists)
   - [Formulas](#formulas)
   - [Structure](#structure)
+- [Following the theme](#following-the-theme)
 - [Keyboard](#keyboard)
 - [Autoformat as you type](#autoformat-as-you-type)
 - [Input methods](#input-methods)
@@ -632,6 +633,29 @@ alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
+
+## Following the theme
+
+`RichTextEditStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's typography and metrics: the
+well for the text and the page (the element role `rich-text.page` where a
+theme wants paper of another colour, white on a dark window say), the
+panel for the desk, ink and the caret in ink, the soft accent for the
+selection, the accent for links, muted ink for quotes and list markers,
+the panel with hairlines for code, control-border rules and table grids,
+hairline guides. The comment, tracked-change and font-notice colours keep
+their own meaning, and the document's fonts (`baseFont`, `codeFontFamily`)
+are the document's: they stay. Under the theme policy a new edit follows
+the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto edit = std::make_shared<UltraCanvasRichTextEdit>("edit", 600, 400);
+RichTextEditStyle serif = edit->GetStyle();
+serif.baseFont.fontFamily = "Georgia";
+edit->SetStyle(RichTextEditStyle::FromTheme(UltraCanvasTheme::Current(), serif));   // the roles over the document's font
+edit->SetFollowTheme(true);
+```
 
 ## Keyboard
 

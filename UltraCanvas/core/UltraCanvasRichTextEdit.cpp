@@ -12,7 +12,7 @@
 // Version: 1.3.0 - the font report and its notice: the fonts the document needs that the
 //                  computer lacks, each a link to its download page
 // Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
@@ -145,6 +145,7 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
     // Typing gets a word processor's corrections (smart quotes, dashes,
     // lists from "1. "...); SetAutoFormatEnabled(false) turns them off.
     editor.SetAutoFormatEnabled(true);
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasRichTextEdit::~UltraCanvasRichTextEdit() {
@@ -221,6 +222,7 @@ void UltraCanvasRichTextEdit::SetPageView(bool enabled) {
 }
 
 void UltraCanvasRichTextEdit::SetStyle(const RichTextEditStyle& s) {
+    StyleSetByHand();
     style = s;
     InvalidateDocument();
 }
@@ -5581,4 +5583,32 @@ void UltraCanvasRichTextEdit::EndPrintLayout() {
     InvalidateDocument();
 }
 
+
+// ===== THE THEME =====
+RichTextEditStyle RichTextEditStyle::FromTheme(const UltraCanvasTheme& theme, const RichTextEditStyle& base) {
+    RichTextEditStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.textColor = r.ink;
+    s.backgroundColor = r.well;
+    s.selectionColor = r.accentSoft;
+    s.cursorColor = r.ink;
+    s.linkColor = r.accent;
+    s.quoteBarColor = r.lineStrong;
+    s.quoteTextColor = r.inkMuted;
+    s.codeTextColor = r.ink;
+    s.codeBackgroundColor = r.panel;
+    s.codeBorderColor = r.line;
+    s.ruleColor = r.lineStrong;
+    s.pageBreakColor = r.inkFaint;
+    s.listMarkerColor = r.inkMuted;
+    s.tableBorderColor = r.lineStrong;
+    s.tableGuideColor = r.line;
+    s.imagePlaceholderColor = r.inkFaint;
+    s.borderColor = r.lineStrong;
+    s.deskColor = r.panel;
+    // the element's own role: paper of another colour than the well
+    s.pageColor = theme.Role("rich-text.page", r.well);
+    s.pageMarginGuideColor = r.line;
+    return s;
+}
 } // namespace UltraCanvas

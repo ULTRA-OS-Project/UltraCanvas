@@ -10,6 +10,7 @@
 - [The palettes](#the-palettes)
 - [Selection and popups](#selection-and-popups)
 - [Style](#style)
+- [Following the theme](#following-the-theme)
 - [Callbacks](#callbacks)
 
 ## Overview
@@ -59,7 +60,7 @@ It is built from framework elements only: the rows are
 
 **File Location**: `include/UltraCanvasColorPaletteManager.h`
 **Implementation**: `core/UltraCanvasColorPaletteManager.cpp`
-**Version**: 1.1.0
+**Version**: 1.2.0 - `ColorPaletteManagerStyle::FromTheme`, `ApplyTheme`: the manager follows the theme
 **Author**: UltraCanvas Framework
 
 ## Quick Start
@@ -187,6 +188,26 @@ palettes->SetManagerStyle(s);
 has), the gaps, the micro buttons' size and colours, the popups' colours and
 corner radius, the accent of the gallery's add buttons, and the entry
 editor's picker style and scale.
+
+## Following the theme
+
+`ColorPaletteManagerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: hairlines round the
+swatches, faint ink hovered, the accent selected; the raised surface with
+the hover fill and a hairline for the micro buttons, ink on them; the
+accent and its hover; the raised popups with a hairline, the panel for a
+card, ink and muted ink; the caption size; the entry editor's picker from
+`ColorPickerStyle::FromTheme`. Under the theme policy a new manager follows
+the theme by itself (`ApplyTheme`); a `SetManagerStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto manager = std::make_shared<UltraCanvasColorPaletteManager>("palettes", 260, 120);
+ColorPaletteManagerStyle large = manager->GetManagerStyle();
+large.swatchSize = 20;
+manager->SetManagerStyle(ColorPaletteManagerStyle::FromTheme(UltraCanvasTheme::Current(), large));
+manager->SetFollowTheme(true);
+```
 
 ## Callbacks
 
