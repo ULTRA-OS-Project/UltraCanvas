@@ -38,7 +38,6 @@
   "Comment:": "Σχόλιο:",
   "Copy (Ctrl+C)": "Αντιγραφή (Ctrl+C)",
   "Could not read the image file.": "Δεν ήταν δυνατή η ανάγνωση του αρχείου εικόνας.",
-  "Crash Recovery": "Ανάκτηση μετά από κατάρρευση",
   "Cut (Ctrl+X)": "Αποκοπή (Ctrl+X)",
   "Decrease Font Size": "Μείωση μεγέθους γραμματοσειράς",
   "Decrease Font Size (Ctrl+-)": "Μείωση μεγέθους γραμματοσειράς (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "Εύρεση προηγούμενου",
   "Find Previous (Shift+Enter)": "Εύρεση προηγούμενου (Shift+Enter)",
   "Find what:": "Εύρεση του:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Βρέθηκε {n} αρχείο αυτόματης αποθήκευσης από προηγούμενη συνεδρία.\n\nΘέλετε να το ανακτήσετε;",
-    "other": "Βρέθηκαν {n} αρχεία αυτόματης αποθήκευσης από προηγούμενη συνεδρία.\n\nΘέλετε να τα ανακτήσετε;"
-  },
   "GB18030 (Chinese)": "GB18030 (Κινεζικά)",
   "GB2312 (Chinese Simplified)": "GB2312 (Κινεζικά απλοποιημένα)",
   "GBK (Chinese Simplified)": "GBK (Κινεζικά απλοποιημένα)",
@@ -219,6 +214,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Κυριλλικά)",
   "Windows-1252 (Western)": "Windows-1252 (Δυτικοευρωπαϊκά)",
   "Word Wrap": "Αναδίπλωση λέξεων",
-  "Zoom Level": "Επίπεδο ζουμ",
-  "{0} bytes": "{0} byte"
+  "Zoom Level": "Επίπεδο ζουμ"
 }

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStoreAdmin - Sales</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 60px; box-sizing: border-box">
+<a href="AdminDashboard.dc.html" aria-label="UltraStoreAdmin overview" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 30px; height: 30px; border-radius: 8px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.02em">UltraStoreAdmin</span>
+</a>
+<span style="display: inline-flex; align-items: center; gap: 8px; color: #475569; font-size: 13px"><span style="font-weight: 600; color: #0f172a">ULTRA OS Store</span>· store.ultraos.eu/v1</span>
+<span style="flex: 1 1 auto"></span>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">Payment service: synced 14:05</span>
+<a href="AdminPublish.dc.html" style="display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Publish…</a>
+<button type="button" aria-label="Account: Alex" style="width: 36px; height: 36px; border-radius: 999px; border: 0; background: #0f172a; color: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">AK</button>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: flex-start">
+
+<nav aria-label="Admin" style="flex: 1 1 220px; max-width: 260px; min-width: 0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Store</span>
+<a href="AdminDashboard.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Overview</a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Apps and components</a>
+<a href="AdminSales.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #dbeafe; color: #1d4ed8; font-weight: 700">Sales</a>
+<a href="AdminFinance.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Finance</a>
+<a href="#affiliates" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Affiliates and codes</a>
+<a href="AdminPublish.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Publish</a>
+<a href="#keys" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Keys</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Settings</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Apps</span>
+<a href="AdminAppEditor.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo</a>
+<a href="#app-ultrapaint" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/451050dafeeb42579ba048b1a08f78fa" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraPaint</a>
+<a href="#app-artcreator" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 22px; height: 22px; border-radius: 6px">ArtCreator</a>
+<a href="#app-ultrafiler" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0339854b95aaa1785eff13f10f2fce1c" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraFiler</a>
+<a href="#app-ultramail" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/bafbc6e21d0bfb6f2d3d60d6d272ad66" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraMail</a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #1d4ed8; font-weight: 600; font-size: 13px">All 24 apps</a>
+</div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Sales</h1>
+<span style="color: #64748b">The ledger: paid orders pulled from the payment service, plus sales recorded by hand, each with the partners' credits.</span>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.7"></path><path d="M20 4v5h-5"></path></svg>Sync sales</button>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Export CSV</button>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>Record a sale by hand</button>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 16px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="s-from" style="font-size: 12px; font-weight: 600; color: #475569">From</label><input id="s-from" type="date" value="2026-10-06" style="height: 38px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="s-to" style="font-size: 12px; font-weight: 600; color: #475569">To</label><input id="s-to" type="date" value="2026-11-05" style="height: 38px; padding: 0 10px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"></div>
+<div style="display: flex; gap: 4px; align-self: flex-end">
+<button type="button" style="height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; font-size: 13px; font-weight: 600; color: #334155; cursor: pointer">7 d</button>
+<button type="button" aria-pressed="true" style="height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid #0f172a; background: #0f172a; font: inherit; font-size: 13px; font-weight: 600; color: #ffffff; cursor: pointer">30 d</button>
+<button type="button" style="height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; font-size: 13px; font-weight: 600; color: #334155; cursor: pointer">Quarter</button>
+<button type="button" style="height: 38px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; font-size: 13px; font-weight: 600; color: #334155; cursor: pointer">Year</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="s-app" style="font-size: 12px; font-weight: 600; color: #475569">App</label><select id="s-app" style="height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>All apps</option><option>UltraVideo</option><option>UltraFIBU</option><option>ArtCreator</option><option>UltraPress</option></select></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="s-code" style="font-size: 12px; font-weight: 600; color: #475569">Code or partner</label><select id="s-code" style="height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>Any</option><option>With a code</option><option>Without a code</option><option>ANNA-20 · Anna</option><option>SUPER-10 · Super Partner</option><option>LAUNCH-15 · discount only</option></select></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="s-src" style="font-size: 12px; font-weight: 600; color: #475569">Source</label><select id="s-src" style="height: 38px; padding: 0 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>Synced and manual</option><option>Synced from payment service</option><option>Recorded by hand</option></select></div>
+<span style="flex: 1 1 auto"></span>
+<span style="font-size: 13px; color: #64748b; align-self: center">141 orders match</span>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Gross, list price</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">4,612.40 EUR</span></div>
+<div style="flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Discounts by code</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">−393.80 EUR</span></div>
+<div style="flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Paid</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">4,218.60 EUR</span></div>
+<div style="flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Partner credits</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">−612.40 EUR</span></div>
+<div style="flex: 1 1 160px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; box-sizing: border-box; border-radius: 16px; background: #0f172a; color: #ffffff"><span style="font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em">Net to the store</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">3,606.20 EUR</span></div>
+</div>
+
+<section aria-label="Ledger" style="display: flex; flex-direction: column; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0; overflow: hidden">
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1000px">
+<thead><tr style="color: #64748b; text-align: left; background: #f8fafc">
+<th scope="col" style="font-weight: 600; padding: 10px 16px; border-bottom: 1px solid #e2e8f0">Receipt</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Paid at</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">App</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Code</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: right">List</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: right">Paid</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Credits</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Licence</th>
+<th scope="col" style="font-weight: 600; padding: 10px 16px; border-bottom: 1px solid #e2e8f0">Source</th>
+</tr></thead>
+<tbody>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-0141" style="text-decoration: none; font-weight: 600">2026-0141</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">5 Nov, 14:02</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo 0.7.0</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="font-family: ui-monospace, monospace; font-size: 12px; font-weight: 600">ANNA-20</span> <span style="color: #64748b">· Anna, 20%</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b">29.90</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700">23.92 EUR</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #475569">Anna 4.78 · Super 1.20</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">issued</span></td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569">Synced</td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-0140" style="text-decoration: none; font-weight: 600">2026-0140</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">5 Nov, 11:48</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/c5402e04d2949ef467a6e80deabd4144" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraFIBU 0.24.5</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b">39.90</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700">39.90 EUR</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">issued</span></td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569">Synced</td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-0139" style="text-decoration: none; font-weight: 600">2026-0139</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">5 Nov, 09:15</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo 0.7.0</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b">29.90</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700">29.90 EUR</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">issued</span></td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569">Synced</td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-0138" style="text-decoration: none; font-weight: 600">2026-0138</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">4 Nov, 17:31</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 22px; height: 22px; border-radius: 6px">ArtCreator 0.7.3</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="font-family: ui-monospace, monospace; font-size: 12px; font-weight: 600">SUPER-10</span> <span style="color: #64748b">· Super Partner, 10%</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b">24.90</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700">22.41 EUR</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #475569">Super 2.24</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">issued</span></td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569">Synced</td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-0137" style="text-decoration: none; font-weight: 600">2026-0137</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">4 Nov, 10:02</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/9f46fbb5f61e6ff5f3160c323225c3d3" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraPress 0.8.2 · yearly</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b">19.90</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700">19.90 EUR</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">issued</span></td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569">Synced</td>
+</tr>
+<tr style="background: #fffbeb">
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-m-0012" style="text-decoration: none; font-weight: 600">manual-0012</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">3 Nov, 16:20</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo 0.7.0</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="font-family: ui-monospace, monospace; font-size: 12px; font-weight: 600">ANNA-20</span> <span style="color: #64748b">· Anna, 20%</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b">29.90</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700">23.92 EUR</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #475569">Anna 4.78 · Super 1.20</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 700">by hand</span></td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #92400e; font-weight: 600">Recorded by Alex</td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-0136" style="text-decoration: none; font-weight: 600">2026-0136</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">3 Nov, 08:44</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/c5402e04d2949ef467a6e80deabd4144" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraFIBU 0.24.5</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="font-family: ui-monospace, monospace; font-size: 12px; font-weight: 600">LAUNCH-15</span> <span style="color: #64748b">· discount, 15%</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b">39.90</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700">33.92 EUR</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">issued</span></td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569">Synced</td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-0135" style="text-decoration: none; font-weight: 600">2026-0135</a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">2 Nov, 21:10</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo 0.7.0</span></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; color: #64748b">29.90</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700">29.90 EUR</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9; color: #64748b">—</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700">refunded</span></td>
+<td style="padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #475569">Synced</td>
+</tr>
+<tr>
+<td style="padding: 10px 16px; font-family: ui-monospace, monospace; font-size: 12px"><a href="#r-0134" style="text-decoration: none; font-weight: 600">2026-0134</a></td>
+<td style="padding: 10px 12px">2 Nov, 13:27</td>
+<td style="padding: 10px 12px"><span style="display: flex; align-items: center; gap: 8px"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 22px; height: 22px; border-radius: 6px">ArtCreator 0.7.3</span></td>
+<td style="padding: 10px 12px; color: #64748b">—</td>
+<td style="padding: 10px 12px; text-align: right; color: #64748b">24.90</td>
+<td style="padding: 10px 12px; text-align: right; font-weight: 700">24.90 EUR</td>
+<td style="padding: 10px 12px; color: #64748b">—</td>
+<td style="padding: 10px 12px"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700">issued</span></td>
+<td style="padding: 10px 16px; color: #475569">Synced</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-top: 1px solid #f1f5f9; font-size: 13px; color: #64748b; flex-wrap: wrap">
+<span>Showing 1 to 9 of 141 · a sale from the payment service is read once and never changed here; a refund marks the row</span>
+<div style="display: flex; gap: 6px">
+<button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; color: #334155; cursor: pointer">Previous</button>
+<button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; color: #334155; cursor: pointer">Next</button>
+</div>
+</div>
+</section>
+
+<section aria-labelledby="manual-title" style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h2 id="manual-title" style="margin: 0; font-size: 16px; font-weight: 700">Record a sale by hand</h2>
+<p style="margin: 0; font-size: 13px; color: #64748b">For a sale made outside the payment service. The partners' credits are worked out from the code the same way: the partner's share, then the recruiter's recruit share, one level up and no further.</p>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end">
+<div style="flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px"><label for="m-code" style="font-size: 12px; font-weight: 600; color: #475569">Code <span style="font-weight: 400">or none</span></label><input id="m-code" type="text" value="ANNA-20" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-family: ui-monospace, monospace; color: #0f172a"></div>
+<div style="flex: 1 1 220px; display: flex; flex-direction: column; gap: 6px"><label for="m-app" style="font-size: 12px; font-weight: 600; color: #475569">App</label><select id="m-app" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>UltraVideo · org.ultraos.ultravideo</option><option>UltraFIBU · org.ultraos.ultrafibu</option><option>ArtCreator · org.ultraos.artcreator</option></select></div>
+<div style="flex: 1 1 120px; display: flex; flex-direction: column; gap: 6px"><label for="m-amount" style="font-size: 12px; font-weight: 600; color: #475569">Amount paid</label><input id="m-amount" type="text" value="23.92" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a; text-align: right"></div>
+<div style="flex: 0 1 100px; display: flex; flex-direction: column; gap: 6px"><label for="m-ccy" style="font-size: 12px; font-weight: 600; color: #475569">Currency</label><select id="m-ccy" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>EUR</option><option>USD</option></select></div>
+<div style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 6px"><label for="m-at" style="font-size: 12px; font-weight: 600; color: #475569">Paid at</label><input id="m-at" type="datetime-local" value="2026-11-05T14:30" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"></div>
+<span style="flex: 1 1 200px; font-size: 13px; color: #475569; padding-bottom: 10px">Credits: Anna 4.78 EUR, Super Partner 1.20 EUR</span>
+<button type="button" style="height: 40px; padding: 0 18px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Record</button>
+</div>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1460}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

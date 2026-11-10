@@ -1,4 +1,5 @@
 // Apps/EmailCleaner/ui/EmailCleanerApp.cpp
+// Version: 0.5.1 - the own accounts' body cache moved to the case-safe layout (MigrateBodyCache)
 // Version: 0.5.0 - UltraMail's mail read with its storage key (encrypted at rest)
 // Version: 0.4.0 - the Contacts page: the address book against the mail sent
 // Version: 0.3.0 - own accounts beside UltraMail's
@@ -93,7 +94,8 @@ bool EmailCleanerApp::Initialize(const std::string& dataDir,
 
     // EmailCleaner's own accounts. A failure here costs only the accounts
     // added in EmailCleaner; UltraMail's still load.
-    ownAccounts_.Open(dataDir);
+    if (ownAccounts_.Open(dataDir))
+        UltraMail::MigrateBodyCache(ownAccounts_.MailCacheDir(), ownAccounts_.Store());
 
     // Bring up UltraNet's plug-in registry so the IMAP DSO loads. Without it
     // no account — UltraMail's or EmailCleaner's own — can reach its server.

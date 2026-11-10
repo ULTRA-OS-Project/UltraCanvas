@@ -1,8 +1,12 @@
 // include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
+// Version: 2.5.1 - on macOS too
+// Version: 2.5.0 - the tooltip is shown in a window of its own (WindowType::Tooltip), above
+//                  every other window: SetUseOwnWindow / GetUseOwnWindow, GetTooltipWindow,
+//                  ForgetWindow, WindowScaleChanged
 // Version: 1.2.0 - SetStyle is the style every tooltip shown without one takes; GetStyle
 // Version: 2.1.1
-// Last Modified: 2026-04-27
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -43,6 +47,17 @@ namespace UltraCanvas {
 
         // Global state
         static bool enabled;
+
+        // Its own window (see SetUseOwnWindow): the window, the window it was
+        // made for, and whether the tooltip on screen is in it
+        static std::shared_ptr<UltraCanvasWindowBase> ownWindow;
+        static UltraCanvasWindowBase* ownWindowTarget;
+        static bool useOwnWindow;
+        static bool shownInOwnWindow;
+        // The pointer, in the coordinates of the window the tooltip belongs
+        // to, and where the own window goes, in native screen coordinates
+        static Point2Di cursorPosition;
+        static Point2Di screenPosition;
 
     public:
         // ===== CORE FUNCTIONALITY =====
@@ -134,6 +149,36 @@ namespace UltraCanvas {
 
         static void UpdateTooltipPosition(const Point2Di& position);
 
+        // ===== ITS OWN WINDOW =====
+
+        // The tooltip is shown in a window of its own (WindowType::Tooltip):
+        // above every other window, never focused, the pointer passing
+        // through it, and free to reach past the edge of the window it
+        // belongs to. Drawn inside that window instead, it was covered by any
+        // window above it - every tooltip of a desktop's bars, which live in
+        // a window kept below all others - and stopped at its edges. On by
+        // default where the platform can place such a window (X11, Wayland,
+        // Windows, macOS); elsewhere (the browser, Android), when it is
+        // turned off, or when the window cannot be made, the tooltip is drawn
+        // inside the window it belongs to, as before.
+        static void SetUseOwnWindow(bool use);
+        static bool GetUseOwnWindow();
+
+        // The window the tooltip on screen is shown in: its own, or nullptr
+        // while it is drawn inside the window it belongs to, or none is shown
+        static UltraCanvasWindowBase* GetTooltipWindow();
+
+        // A window is closing (UltraCanvasApplication calls this): a tooltip
+        // of that window goes, and with it the tooltip's own window; and when
+        // it is the tooltip's own window, the manager lets go of it.
+        static void ForgetWindow(UltraCanvasWindowBase* win);
+
+        // A window moved to a monitor of another scale (its
+        // HandleDeviceScaleChange calls this): the tooltip's own window draws
+        // it again at the new scale; any other hides the tooltip, whose
+        // surface was made for the old one.
+        static void WindowScaleChanged(UltraCanvasWindowBase* win);
+
     private:
         static Rect2Di screenBounds;
 
@@ -143,5 +188,19 @@ namespace UltraCanvas {
         static void CancelHideTimer();
 
         static void CalculateTooltipLayout();
+
+        // The own window: whether this build can show one; showing the
+        // tooltip in it (false: it could not be, draw it in the window it
+        // belongs to); placing it on the screen; and closing it
+        static bool OwnWindowAvailable();
+        static bool ShowInOwnWindow();
+        static void PlaceOnScreen();
+        static void CloseOwnWindow();
+        // The window the tooltip is drawn into: its own, or the one it
+        // belongs to
+        static UltraCanvasWindowBase* RenderHost();
+        // A tooltip already on screen took new content, a new style or a new
+        // place: its window is told to draw it again
+        static void RefreshShown();
     };
 } // namespace UltraCanvas

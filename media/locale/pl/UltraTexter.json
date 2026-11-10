@@ -38,7 +38,6 @@
   "Comment:": "Komentarz:",
   "Copy (Ctrl+C)": "Kopiuj (Ctrl+C)",
   "Could not read the image file.": "Nie można odczytać pliku obrazu.",
-  "Crash Recovery": "Odzyskiwanie po awarii",
   "Cut (Ctrl+X)": "Wytnij (Ctrl+X)",
   "Decrease Font Size": "Zmniejsz rozmiar czcionki",
   "Decrease Font Size (Ctrl+-)": "Zmniejsz rozmiar czcionki (Ctrl+-)",
@@ -72,11 +71,6 @@
   "Find Previous": "Znajdź poprzedni",
   "Find Previous (Shift+Enter)": "Znajdź poprzedni (Shift+Enter)",
   "Find what:": "Znajdź:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Znaleziono {n} automatycznie zapisany plik z poprzedniej sesji.\n\nCzy chcesz go odzyskać?",
-    "few": "Znaleziono {n} automatycznie zapisane pliki z poprzedniej sesji.\n\nCzy chcesz je odzyskać?",
-    "many": "Znaleziono {n} automatycznie zapisanych plików z poprzedniej sesji.\n\nCzy chcesz je odzyskać?"
-  },
   "GB18030 (Chinese)": "GB18030 (chiński)",
   "GB2312 (Chinese Simplified)": "GB2312 (chiński uproszczony)",
   "GBK (Chinese Simplified)": "GBK (chiński uproszczony)",
@@ -221,6 +215,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (cyrylica)",
   "Windows-1252 (Western)": "Windows-1252 (zachodnioeuropejski)",
   "Word Wrap": "Zawijanie wierszy",
-  "Zoom Level": "Poziom powiększenia",
-  "{0} bytes": "{0} bajtów"
+  "Zoom Level": "Poziom powiększenia"
 }

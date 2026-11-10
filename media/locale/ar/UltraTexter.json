@@ -38,7 +38,6 @@
   "Comment:": "التعليق:",
   "Copy (Ctrl+C)": "نسخ (Ctrl+C)",
   "Could not read the image file.": "تعذّرت قراءة ملف الصورة.",
-  "Crash Recovery": "الاسترداد بعد الأعطال",
   "Cut (Ctrl+X)": "قص (Ctrl+X)",
   "Decrease Font Size": "تصغير حجم الخط",
   "Decrease Font Size (Ctrl+-)": "تصغير حجم الخط (Ctrl+-)",
@@ -75,14 +74,6 @@
   "Find Previous": "بحث عن السابق",
   "Find Previous (Shift+Enter)": "بحث عن السابق (Shift+Enter)",
   "Find what:": "البحث عن:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "zero": "تم العثور على {n} ملف محفوظ تلقائيًا من جلسة سابقة.\n\nهل تريد استردادها؟",
-    "one": "تم العثور على {n} ملف محفوظ تلقائيًا من جلسة سابقة.\n\nهل تريد استرداده؟",
-    "two": "تم العثور على {n} ملفين محفوظين تلقائيًا من جلسة سابقة.\n\nهل تريد استردادهما؟",
-    "few": "تم العثور على {n} ملفات محفوظة تلقائيًا من جلسة سابقة.\n\nهل تريد استردادها؟",
-    "many": "تم العثور على {n} ملفًا محفوظًا تلقائيًا من جلسة سابقة.\n\nهل تريد استردادها؟",
-    "other": "تم العثور على {n} ملف محفوظ تلقائيًا من جلسة سابقة.\n\nهل تريد استردادها؟"
-  },
   "GB18030 (Chinese)": "GB18030 (الصينية)",
   "GB2312 (Chinese Simplified)": "GB2312 (الصينية المبسطة)",
   "GBK (Chinese Simplified)": "GBK (الصينية المبسطة)",
@@ -227,6 +218,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (السيريلية)",
   "Windows-1252 (Western)": "Windows-1252 (الغربية)",
   "Word Wrap": "التفاف الكلمات",
-  "Zoom Level": "مستوى التكبير",
-  "{0} bytes": "{0} بايت"
+  "Zoom Level": "مستوى التكبير"
 }

@@ -1,7 +1,6 @@
 {
   "@language": "hu",
   "@translated-by": "machine draft 2026-11-03, reviewed by -",
-  "Add account": "Fiók hozzáadása",
   "App password": "Alkalmazásjelszó",
   "Attach file": "Fájl csatolása",
   "Attachment": "Melléklet",
@@ -44,7 +43,6 @@
   "Search messages": "Keresés az üzenetekben",
   "Sending": "Küldés folyamatban",
   "Sent": "Elküldött üzenetek",
-  "Server": "Kiszolgáló",
   "Sign out": "Kijelentkezés",
   "Sign-in": "Bejelentkezés",
   "Spam": "Levélszemét",

@@ -1,14 +1,17 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.9.1 - The dialog enums and FileFilter moved to UltraCanvasDialogTypes.h
+//                  (included here), so UltraCanvasFilerWidget.h no longer includes this header
 // Version: 3.9.0 - ModalDialogStyle::FromTheme; ApplyTheme colours the dialog's surface, message
 //                  and footer buttons (by role) from the theme, so a dialog can follow it
 // Version: 3.8.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasDialogTypes.h"   // DialogType, DialogButton(s), DialogResult, FileFilter, ...
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextInput.h"
@@ -32,157 +35,6 @@ namespace UltraCanvas {
 
 // Forward declarations
     class UltraCanvasWindowBase;
-
-// ===== DIALOG TYPES =====
-    enum class DialogType {
-        Information,
-        Successful,   // "Success" is an X11 macro (#define Success 0), so we spell it out
-        Question,
-        Warning,
-        Error,
-        Custom
-    };
-
-// ===== DIALOG BUTTONS =====
-    enum class DialogButton {
-        NoneButton = 0,
-        OK = 1,
-        Cancel = 2,
-        Yes = 4,
-        No = 8,
-        Apply = 16,
-        Close = 32,
-        Help = 64,
-        Retry = 128,
-        Ignore = 256,
-        Abort = 512
-    };
-
-// Button combinations
-    enum class DialogButtons {
-        NoButtons = 0,
-        OK = static_cast<int>(DialogButton::OK),
-        OKCancel = static_cast<int>(DialogButton::OK) | static_cast<int>(DialogButton::Cancel),
-        YesNo = static_cast<int>(DialogButton::Yes) | static_cast<int>(DialogButton::No),
-        YesNoCancel = static_cast<int>(DialogButton::Yes) | static_cast<int>(DialogButton::No) | static_cast<int>(DialogButton::Cancel),
-        RetryCancel = static_cast<int>(DialogButton::Retry) | static_cast<int>(DialogButton::Cancel),
-        AbortRetryIgnore = static_cast<int>(DialogButton::Abort) | static_cast<int>(DialogButton::Retry) | static_cast<int>(DialogButton::Ignore)
-    };
-
-// ===== CUSTOM BUTTON ROLES =====
-    // What a custom button (AddCustomButton) is to the dialog beyond its
-    // label. Default is the button Return activates and the one drawn in the
-    // accent colour; Destructive is drawn red, so an answer that cannot be
-    // undone (Delete permanently, Replace a folder) looks different from the
-    // one beside it; Cancel is the button Escape and the close box map to.
-    // A button can be Default and Destructive at once: DestructiveDefault.
-    enum class DialogButtonRole {
-        Normal,
-        Default,
-        Destructive,
-        DestructiveDefault,
-        Cancel
-    };
-
-// ===== DIALOG RESULT =====
-    enum class DialogResult {
-        NoResult,  // Changed from None to avoid X11 macro conflict
-        OK,
-        Cancel,
-        Yes,
-        No,
-        Apply,
-        Close,
-        Help,
-        Retry,
-        Ignore,
-        Abort
-    };
-
-// ===== DIALOG ANIMATION =====
-    enum class DialogAnimation {
-        NoAnimation,
-        Fade,
-        Scale,
-        Slide,
-        Bounce
-    };
-
-// ===== DIALOG POSITION =====
-    enum class DialogPosition {
-        Center,
-        CenterParent,
-        TopLeft,
-        TopCenter,
-        TopRight,
-        MiddleLeft,
-        MiddleRight,
-        BottomLeft,
-        BottomCenter,
-        BottomRight,
-        Custom
-    };
-
-// ===== INPUT DIALOG TYPES =====
-    enum class InputType {
-        Text,
-        Password,
-        Number,
-        Email,
-        URL
-    };
-
-// ===== FILE DIALOG TYPE =====
-    enum class FileDialogType {
-        Open,
-        Save,
-        OpenMultiple,
-        SelectFolder
-    };
-
-// ===== FILE FILTER STRUCTURE =====
-    struct FileFilter {
-        std::string description;
-        std::vector<std::string> extensions;
-
-        FileFilter() = default;
-
-        FileFilter(const std::string& desc, const std::vector<std::string>& exts)
-                : description(desc), extensions(exts) {}
-
-        FileFilter(const std::string& desc, const std::string& ext)
-                : description(desc), extensions({ext}) {}
-
-        // Convert to display string: "Text Files (*.txt, *.log)"
-        std::string ToDisplayString() const {
-            std::string result = description + " (";
-            for (size_t i = 0; i < extensions.size(); i++) {
-                if (i > 0) result += ", ";
-                result += "*." + extensions[i];
-            }
-            result += ")";
-            return result;
-        }
-
-        // Check if a filename matches this filter
-        bool Matches(const std::string& filename) const {
-            for (const std::string& ext : extensions) {
-                if (ext == "*") return true;
-
-                size_t dotPos = filename.find_last_of('.');
-                if (dotPos != std::string::npos && dotPos < filename.length() - 1) {
-                    std::string fileExt = filename.substr(dotPos + 1);
-                    // Case-insensitive comparison
-                    std::string lowerFileExt = fileExt;
-                    std::string lowerExt = ext;
-                    std::transform(lowerFileExt.begin(), lowerFileExt.end(), lowerFileExt.begin(), ::tolower);
-                    std::transform(lowerExt.begin(), lowerExt.end(), lowerExt.begin(), ::tolower);
-                    if (lowerFileExt == lowerExt) return true;
-                }
-            }
-            return false;
-        }
-    };
 
 // ===== SAVE NAMES =====
     // The name a Save dialog hands back when `type` is the file type chosen
@@ -677,7 +529,7 @@ namespace UltraCanvas {
 // ===== DIALOG MANAGER =====
     class UltraCanvasInputDialog;
     class UltraCanvasFileDialog;
-    class UltraCanvasFilerWidget;   // UltraCanvasFilerWidget.h includes this header
+    class UltraCanvasFilerWidget;
     class UltraCanvasSegmentedControl;
     class UltraCanvasFileDragIcon;
     class UltraCanvasBreadcrumb;

@@ -38,7 +38,6 @@
   "Comment:": "Kommentar:",
   "Copy (Ctrl+C)": "Kopieren (Ctrl+C)",
   "Could not read the image file.": "Die Bilddatei konnte nicht gelesen werden.",
-  "Crash Recovery": "Wiederherstellung nach Absturz",
   "Cut (Ctrl+X)": "Ausschneiden (Ctrl+X)",
   "Decrease Font Size": "Schriftgröße verkleinern",
   "Decrease Font Size (Ctrl+-)": "Schriftgröße verkleinern (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "Rückwärts suchen",
   "Find Previous (Shift+Enter)": "Rückwärts suchen (Shift+Enter)",
   "Find what:": "Suchen nach:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Es wurde {n} automatisch gespeicherte Datei aus einer früheren Sitzung gefunden.\n\nMöchten Sie sie wiederherstellen?",
-    "other": "Es wurden {n} automatisch gespeicherte Dateien aus einer früheren Sitzung gefunden.\n\nMöchten Sie sie wiederherstellen?"
-  },
   "GB18030 (Chinese)": "GB18030 (Chinesisch)",
   "GB2312 (Chinese Simplified)": "GB2312 (Chinesisch, vereinfacht)",
   "GBK (Chinese Simplified)": "GBK (Chinesisch, vereinfacht)",
@@ -219,6 +214,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Kyrillisch)",
   "Windows-1252 (Western)": "Windows-1252 (Westeuropäisch)",
   "Word Wrap": "Zeilenumbruch",
-  "Zoom Level": "Zoomstufe",
-  "{0} bytes": "{0} Bytes"
+  "Zoom Level": "Zoomstufe"
 }

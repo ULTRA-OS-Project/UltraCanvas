@@ -38,7 +38,6 @@
   "Comment:": "Komentář:",
   "Copy (Ctrl+C)": "Kopírovat (Ctrl+C)",
   "Could not read the image file.": "Soubor obrázku nelze přečíst.",
-  "Crash Recovery": "Obnovení po pádu",
   "Cut (Ctrl+X)": "Vyjmout (Ctrl+X)",
   "Decrease Font Size": "Zmenšit velikost písma",
   "Decrease Font Size (Ctrl+-)": "Zmenšit velikost písma (Ctrl+-)",
@@ -72,11 +71,6 @@
   "Find Previous": "Najít předchozí",
   "Find Previous (Shift+Enter)": "Najít předchozí (Shift+Enter)",
   "Find what:": "Najít:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Byl nalezen {n} automaticky uložený soubor z předchozí relace.\n\nChcete ho obnovit?",
-    "few": "Byly nalezeny {n} automaticky uložené soubory z předchozí relace.\n\nChcete je obnovit?",
-    "other": "Bylo nalezeno {n} automaticky uložených souborů z předchozí relace.\n\nChcete je obnovit?"
-  },
   "GB18030 (Chinese)": "GB18030 (čínština)",
   "GB2312 (Chinese Simplified)": "GB2312 (zjednodušená čínština)",
   "GBK (Chinese Simplified)": "GBK (zjednodušená čínština)",
@@ -221,6 +215,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (cyrilice)",
   "Windows-1252 (Western)": "Windows-1252 (západoevropské)",
   "Word Wrap": "Zalamování řádků",
-  "Zoom Level": "Úroveň přiblížení",
-  "{0} bytes": "{0} bajtů"
+  "Zoom Level": "Úroveň přiblížení"
 }

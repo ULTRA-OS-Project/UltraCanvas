@@ -65,6 +65,17 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.43.0 - a drive's row under Remote Drives takes Delete (the drive
+//                  is forgotten, its files are not touched) and Configure
+//                  drive; Refresh on every folder row of the tree and in the
+//                  folder display's menu, asking a drive's server again; a
+//                  file on a drive that is gone, or refused, is said in a
+//                  dialog
+// Version: 1.42.7 - the tree's Cloud Storage, Remote Drives and RAM Discs rows open the
+//                  Computer page with only that section (they did nothing)
+// Version: 1.42.6 - the Computer page has a Remote Drives and a RAM Discs section,
+//                  each with the same cards as Drives, shown while it has one
+// Version: 1.42.5 - a drive letter shows its volume's name, as Explorer does ("My Passport Ultra (D:)"), in the tree and on the Computer page
 // Version: 1.42.4 - the folder tree follows what a display's folder watch saw
 //                  change on disk (onFolderChangedOnDisk), so a folder deleted
 //                  after a locked file in it was let go leaves the tree
@@ -110,7 +121,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -2555,10 +2566,14 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
         else if (filer) {
             // On a remote folder, Refresh has to mean "ask the server again":
             // re-reading a cache that is already answering would repaint the
-            // same listing and look like the button does nothing.
-            if (remoteDrives && IsRemoteFilerPath(filer->GetPath()))
-                remoteDrives->Invalidate(filer->GetPath());
-            filer->Refresh();
+            // same listing and look like the button does nothing. The same
+            // Refresh as the context menus' - the files stay on screen while
+            // the server is asked, and the tree's rows follow the answer.
+            if (remoteDrives && IsRemoteFilerPath(filer->GetPath()) &&
+                !filer->IsShowingFileList())
+                RefreshFolderEverywhere(filer->GetPath());
+            else
+                filer->Refresh();
         }
     });
     row->AddChild(backButton);
@@ -2938,6 +2953,17 @@ void UltraFilerWindow::RefreshRamDiskNodes() {
 }
 
 void UltraFilerWindow::ApplyRamDiskList(const std::vector<UltraFilerRamDisks::RamDisc>& discs) {
+    // The Computer page's RAM disc cards follow the same list.
+    const bool ramChanged = [&]() {
+        if (discs.size() != knownRamDiscs.size()) return true;
+        for (size_t i = 0; i < discs.size(); ++i)
+            if (discs[i].mountPath != knownRamDiscs[i].mountPath ||
+                discs[i].name != knownRamDiscs[i].name)
+                return true;
+        return false;
+    }();
+    knownRamDiscs = discs;
+    if (ramChanged && computerShown) RefreshComputerPage();
     if (!folderTree) return;
     TreeNode* section = folderTree->FindNode(kRamNodeId);
     if (!section) return;
@@ -3188,6 +3214,226 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     ScheduleTreeFit();
     // A display on a drive that has just gone loses its log button.
     UpdateConnectionLogButton();
+    // A drive added or removed has its card on the Computer page.
+    if (computerShown) RefreshComputerPage();
+}
+
+void UltraFilerWindow::ConfirmRemoveRemoteDrive(const std::string& rootPath) {
+    if (!window || !remoteDrives) return;
+    const std::string accountId = RemoteFilerAccountId(rootPath);
+    RemoteDrive drive;
+    if (accountId.empty() || !remoteDrives->Find(accountId, drive) || drive.isDevice) return;
+    const std::string name = drive.displayName;
+    // Transfers to or from it that have not finished: one waiting its turn is
+    // dropped with the drive, so the question says so rather than letting an
+    // upload vanish unannounced.
+    long long transfers = 0;
+    for (const RemoteTransfer& t : remoteDrives->PendingTransfers())
+        if (t.accountId == accountId) ++transfers;
+
+    DialogConfig cfg;
+    cfg.title = Tr("Delete drive");
+    cfg.dialogType = DialogType::Warning;
+    cfg.message = TrF("Delete the drive \"{0}\" from UltraFiler?", name);
+    std::string details = Tr("The files on the server are not touched. UltraFiler forgets the "
+                             "drive's settings and its saved password; add the drive again to "
+                             "reach the files.");
+    if (transfers > 0)
+        details += "\n" + TrN("{n} transfer to or from this drive has not finished; one still "
+                              "waiting to start is dropped.",
+                              "{n} transfers to or from this drive have not finished; those "
+                              "still waiting to start are dropped.", transfers);
+    cfg.details = details;
+    cfg.buttons = DialogButtons::NoButtons;   // the answers are added below
+    cfg.width = 520;
+    cfg.height = transfers > 0 ? 220 : 190;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+    if (!dialog) return;   // no dialogs: nothing is deleted unasked
+    dialog->AddCustomButton(Tr("Delete"), DialogResult::Yes,
+                            DialogButtonRole::DestructiveDefault);
+    dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->onResult = [this, accountId, name](DialogResult result) {
+        if (result != DialogResult::Yes || !remoteDrives) return;
+        // Displays leave the drive first: one still on it would go on asking
+        // for a drive that is no longer there.
+        const std::string home = UserHomeDir();
+        for (FilerTabState* state : FolderDisplayStates()) {
+            if (!state->filer || state->filer->IsShowingFileList()) continue;
+            if (RemoteFilerAccountId(state->filer->GetPath()) != accountId) continue;
+            if (!home.empty()) state->filer->SetPath(home);
+        }
+        // Uploads that waited for a listing of one of its folders: there is
+        // nowhere left for them to go.
+        uploadsAwaitingListing.erase(
+                std::remove_if(uploadsAwaitingListing.begin(), uploadsAwaitingListing.end(),
+                               [&accountId](const UploadsAwaitingListing& u) {
+                                   return RemoteFilerAccountId(u.folder) == accountId;
+                               }),
+                uploadsAwaitingListing.end());
+        std::string error;
+        const bool removed = remoteDrives->RemoveDrive(accountId, error);
+        // The rows as the list now stands, whichever way it went.
+        RefreshRemoteDriveNodes();
+        if (!removed) {
+            UltraCanvasAlert::Error(error, Tr("Delete drive"), nullptr, window.get());
+            return;
+        }
+        UpdateStatusBar();
+        if (statusLabel) statusLabel->SetText(TrF("Drive \"{0}\" deleted from UltraFiler", name));
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, window.get());
+}
+
+void UltraFilerWindow::ConfigureRemoteDrive(const std::string& rootPath) {
+#ifndef ULTRAFILER_HAS_ULTRACLOUD
+    (void)rootPath;
+    UltraCanvasAlert::Info(Tr("This build of UltraFiler was made without "
+                           "UltraCloud, so it cannot carry FTP or cloud drives."),
+                           Tr("Configure drive"), nullptr, window.get());
+#else
+    if (!window || !remoteDrives) return;
+    const std::string accountId = RemoteFilerAccountId(rootPath);
+    if (accountId.empty()) return;
+    std::string error;
+    // Opens the account store if a failure at start-up left it shut, as the
+    // "+ Drive" menu does before its dialog.
+    if (!remoteDrives->Reload(error)) {
+        UltraCanvasAlert::Error(error, Tr("Configure drive"), nullptr, window.get());
+        return;
+    }
+    std::shared_ptr<UltraCloud::CloudService> service = remoteDrives->Service();
+    if (!service) {
+        UltraCanvasAlert::Error(Tr("The drive list is not available."),
+                                Tr("Configure drive"), nullptr, window.get());
+        return;
+    }
+    // A sign-in from this dialog is a session of the connection log like one
+    // from the add dialog, so a refused new password can be read step by step.
+    std::shared_ptr<RemoteSignInLog> signInLog = remoteDrives->MakeSignInLog(Tr("Configure drive"));
+    UltraCloud::AddAccountWatch watch;
+    watch.onBegin = [signInLog](const UltraCloud::Account& account) {
+        signInLog->Begin(account.providerId, account.displayName, account.serverUrl);
+    };
+    watch.onEnd = [signInLog](const UltraCloud::Account&, const UltraCloud::Result& result) {
+        signInLog->End(result);
+    };
+    watch.cancelled = [signInLog]() { return signInLog->Cancelled(); };
+    const bool shown = UltraCloud::ShowEditAccountDialog(
+            window.get(), service, accountId,
+            [this, accountId](const UltraCloud::Account& saved) {
+                if (!remoteDrives) return;
+                std::string reloadError;
+                if (!remoteDrives->Reload(reloadError)) {
+                    UltraCanvasAlert::Error(reloadError, Tr("Configure drive"),
+                                            nullptr, window.get());
+                    return;
+                }
+                // What the old server, user or password answered - a listing,
+                // a refused sign-in - is no answer for the new ones.
+                remoteDrives->InvalidateDrive(accountId);
+                RefreshRemoteDriveNodes();
+                // Every display on the drive reads it again, now with the
+                // settings that were just saved; its tab takes the new name.
+                for (FilerTabState* state : FolderDisplayStates()) {
+                    if (!state->filer || state->filer->IsShowingFileList()) continue;
+                    if (RemoteFilerAccountId(state->filer->GetPath()) != accountId) continue;
+                    state->filer->Refresh();
+                    const int index = TabIndexOf(state);
+                    if (index >= 0 && tabbedContainer)
+                        tabbedContainer->SetTabTitle(index, TabTitleFor(state->filer->GetPath()));
+                }
+                lastRemoteOperationError.clear();
+                UpdateStatusBar();
+                if (statusLabel)
+                    statusLabel->SetText(TrF("Drive \"{0}\" saved", saved.displayName));
+            },
+            Tr("Configure drive"), std::move(watch));
+    if (!shown) {
+        UltraCanvasAlert::Error(Tr("This drive's settings cannot be read - its account is "
+                                   "no longer in the drive list, or this build does not "
+                                   "know its kind of server."),
+                                Tr("Configure drive"), nullptr, window.get());
+    }
+#endif
+}
+
+void UltraFilerWindow::RefreshFolderEverywhere(const std::string& folder) {
+    if (folder.empty()) return;
+    if (IsRemoteFilerPath(folder)) {
+        if (!remoteDrives) return;
+        // Asked of the server again, ahead of what is queued. The displays
+        // and the tree keep what they show meanwhile, with the loading bar
+        // sliding along, and onListingArrived brings both in line with the
+        // answer - files added or deleted from another device among it.
+        remoteDrives->RefreshFolder(folder);
+        RefreshRemoteFolderDisplays(folder);
+        LoadRemoteTreeChildren(folder, /*listingReady=*/false);
+        UpdateStatusBar();
+        return;
+    }
+    // A computer of the Network section: its shares, listed again.
+    if (IsNetworkServerPath(folder)) {
+        QueueNetworkShares(folder);
+        return;
+    }
+    // A folder on this computer: its rows in the tree, and every display
+    // showing it (the same pass as for a drive's folder, which compares
+    // paths and nothing more).
+    RefreshTreeFolder(folder);
+    RefreshRemoteFolderDisplays(folder);
+}
+
+void UltraFilerWindow::ShowRemoteFileError(const std::string& path, const std::string& why,
+                                           RemoteFailure failure) {
+    if (!window || path.empty()) return;
+    if (failure != RemoteFailure::NotFound && failure != RemoteFailure::Lasting) return;
+    // Once for this selection: the pane is brought up to date again and
+    // again while the same file stays selected.
+    if (remoteFileAlertPath == path) return;
+    remoteFileAlertPath = path;
+    const std::string name = RemoteFilerName(path);
+    AlertOptions alert;
+    alert.severity = AlertSeverity::Error;
+    alert.parent = window.get();
+    if (failure == RemoteFailure::NotFound) {
+        alert.title = Tr("File not found");
+        alert.message = TrF("\"{0}\" is no longer on the drive.", name);
+        alert.details = Tr("It was deleted, moved or renamed since the folder was listed - "
+                           "from another device, perhaps. The folder is read again.");
+    } else {
+        alert.title = Tr("Cannot open the file");
+        alert.message = TrF("\"{0}\" could not be fetched from the drive.", name);
+        alert.details = why.empty() ? std::string() : why + "\n";
+        alert.details += Tr("Every step of the connection, with the error codes, is in "
+                            "the connection log - the round network button in the bottom-left "
+                            "corner of the folder display.");
+    }
+    if (failure == RemoteFailure::NotFound && !why.empty())
+        alert.details = why + "\n" + alert.details;
+    // A file that is gone: the listing that still shows it is out of date,
+    // and is read again so the file leaves the display rather than inviting
+    // another click. Revalidate, not RefreshFolder: the failure just recorded
+    // stays, so the selection still on the file does not fetch it again.
+    const std::string folder =
+            failure == RemoteFailure::NotFound ? RemoteFilerParent(path) : std::string();
+    auto show = [this, alert, folder]() {
+        if (!folder.empty() && remoteDrives) {
+            remoteDrives->Revalidate(folder);
+            RefreshRemoteFolderDisplays(folder);
+            LoadRemoteTreeChildren(folder, /*listingReady=*/false);
+        }
+        UltraCanvasAlert::Show(alert);
+    };
+    // After the event being handled - a click, a key - has run its course:
+    // this runs in the middle of a selection change, and neither a display
+    // read again nor a dialog taking the input belongs there.
+    UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) { show(); return; }
+    auto alive = probeAlive;
+    app->PostToUIThread([alive, show]() {
+        if (!alive->load()) return;   // the window closed meanwhile
+        show();
+    });
 }
 
 void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
@@ -4113,6 +4359,10 @@ void UltraFilerWindow::BuildFolderTree() {
     knownVolumes = ListMountedVolumes();
     for (const MountedVolume& volume : knownVolumes)
         AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
+    // The volumes' own names ("My Passport Ultra (D:)") come from a
+    // listing off the UI thread, since reading them touches each disk; the
+    // rows above show the letters until it answers.
+    RefreshDriveNodes();
 
     if (root) root->Expand();
     ApplyTreeColors();
@@ -4240,7 +4490,22 @@ void UltraFilerWindow::BuildFolderTree() {
         // "Computer" is not a folder: it opens the page of the machine's
         // places - Home, the cloud folders, the drives with their sizes.
         if (node->data.nodeId == kComputerNodeId) {
-            SetComputerPageVisible(true);
+            ShowComputerSection(ComputerSection::All);
+            return;
+        }
+        // The section headers under it are not folders either: each opens
+        // the page with only its own part - the cloud folders, the remote
+        // drives' cards, the RAM discs' cards. They used to do nothing.
+        if (node->data.nodeId == kCloudNodeId) {
+            ShowComputerSection(ComputerSection::Cloud);
+            return;
+        }
+        if (node->data.nodeId == kRemoteNodeId) {
+            ShowComputerSection(ComputerSection::Remote);
+            return;
+        }
+        if (node->data.nodeId == kRamNodeId) {
+            ShowComputerSection(ComputerSection::Ram);
             return;
         }
         // "Network" looks again for the computers on the network.
@@ -4767,6 +5032,13 @@ void UltraFilerWindow::RefreshDriveNodes() {
             // shows it.
             if (UltraFilerRamDisks::Available()) discs = UltraFilerRamDisks::List();
             volumes = ListMountedVolumes();
+            // A drive letter with the volume's own name, as Explorer shows
+            // it: "My Passport Ultra (D:)". Read here because it touches the
+            // disk; empty on Linux and macOS, where the label is the name.
+            for (MountedVolume& volume : volumes) {
+                const std::string name = ReadVolumeName(volume.path);
+                if (!name.empty()) volume.label = name + " (" + volume.label + ")";
+            }
         } catch (const std::exception&) {
             // An exception leaving a std::thread ends the process; a listing
             // that failed is a listing with nothing new to show.
@@ -4818,13 +5090,26 @@ void UltraFilerWindow::ApplyDriveLists(const std::vector<UltraFilerRamDisks::Ram
     // drive row, which would collapse a subtree the user has open just
     // because a stick was plugged in somewhere else.
     bool added = false;
+    bool renamed = false;
     for (const MountedVolume& volume : volumes) {
-        if (folderTree->FindNode(volume.path)) continue;
+        if (TreeNode* node = folderTree->FindNode(volume.path)) {
+            // Already there: the first fill names a drive by its letter
+            // alone, and this pass brings the volume's name ("My Passport
+            // Ultra (D:)") - or a name the user changed since.
+            const std::string label = DriveNodeLabel(volume);
+            if (std::find(treeDriveNodeIds.begin(), treeDriveNodeIds.end(), volume.path) !=
+                    treeDriveNodeIds.end() &&
+                node->data.text != label) {
+                node->data.text = label;
+                renamed = true;
+            }
+            continue;
+        }
         AddTreeDriveNode(volume.path, DriveNodeLabel(volume));
         added = true;
     }
 
-    if (!added && gone.empty()) return;   // nothing moved: nothing to repaint
+    if (!added && !renamed && gone.empty()) return;   // nothing moved: nothing to repaint
 
     if (added) {
         // The new rows need the configured drive background, and a volume can
@@ -5728,6 +6013,13 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
              node->parent->data.nodeId == kCloudNodeId ||
              node->parent->data.nodeId == kRemoteNodeId ||
              node->parent->data.nodeId == kRamNodeId);
+    // ... except a remote drive's own row, where Delete means the drive, not
+    // what is on it: UltraFiler forgets the drive's settings and password,
+    // and the server keeps every file. It is the one way to be rid of a
+    // drive that can no longer sign in, and Configure drive beside it the
+    // way to mend one.
+    const bool isRemoteDriveRow = isTopLevelRoot &&
+            node->parent->data.nodeId == kRemoteNodeId && IsRemoteFilerPath(target);
     // A RAM disc's own row - whichever section it sits in - is the one place
     // it can be ejected from. The list is asked as well as the section: the
     // disc's path can already have had a row elsewhere (a volume on macOS,
@@ -5752,10 +6044,11 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     copyItem.enabled = isFolder;
 
-    MenuItemData deleteItem = MenuItemData::Action(Tr("Delete"), [this, target]() {
-        ConfirmDeleteTreeFolder(target);
+    MenuItemData deleteItem = MenuItemData::Action(Tr("Delete"), [this, target, isRemoteDriveRow]() {
+        if (isRemoteDriveRow) ConfirmRemoveRemoteDrive(target);
+        else ConfirmDeleteTreeFolder(target);
     });
-    deleteItem.enabled = isFolder && !isTopLevelRoot;
+    deleteItem.enabled = isFolder && (!isTopLevelRoot || isRemoteDriveRow);
 
     // Paste needs a target folder under the cursor - and files to paste.
     MenuItemData pasteItem = MenuItemData::Action(Tr("Paste"), [this, target]() {
@@ -5807,6 +6100,18 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
     unpinItem.enabled = isPinnedEntry;
 
+    // The folder read again, with its rows below it - on a drive, asked of
+    // the server again, which is the only way to see what another device
+    // changed there.
+    MenuItemData refreshItem = MenuItemData::Action(Tr("Refresh"), [this, target]() {
+        RefreshFolderEverywhere(target);
+    });
+    refreshItem.enabled = isFolder;
+
+    MenuItemData configureDrive = MenuItemData::Action(Tr("Configure drive"), [this, target]() {
+        ConfigureRemoteDrive(target);
+    });
+
     // The drive rows follow the machine on their own (RefreshDriveNodes, run
     // from the volume monitor); this is the manual way to the same pass, for a
     // mount the platform reports through a channel nothing listens on.
@@ -5820,7 +6125,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
 
     MenuStyle style = MenuStyle::Default();
     style.font.fontSize = kUiFontSize;
-    treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 160, 0);
+    treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 180, 0);
     treeContextMenu->SetMenuType(MenuType::PopupMenu);
     treeContextMenu->SetStyle(style);
     treeContextMenu->AddItem(copyItem);
@@ -5830,6 +6135,9 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     treeContextMenu->AddItem(pinSubmenu);
     treeContextMenu->AddItem(unpinItem);
     treeContextMenu->AddItem(MenuItemData::Separator());
+    treeContextMenu->AddItem(refreshItem);
+    // Only on a remote drive's row, as Eject below is only on a RAM disc's.
+    if (isRemoteDriveRow) treeContextMenu->AddItem(configureDrive);
     // Only on a RAM disc's row: on any other row it could only be disabled,
     // and a disabled Eject on every folder suggests folders can be ejected.
     if (isRamDisc) treeContextMenu->AddItem(ejectRamDisk);
@@ -6277,6 +6585,14 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     // The context menu's Settings item opens the same settings window as the
     // navigation row's gear button.
     tab->filer->onSettings = [this]() { OpenSettingsDialog(); };
+    // The menu's Refresh does what the tree's does: the folder right-clicked,
+    // or the one shown, read again - asked of the server again on a drive -
+    // with its rows in the tree and every display showing it. Search results
+    // are listed again as they stand.
+    tab->filer->onRefreshRequested = [this, display = tab->filer.get()](const std::string& folder) {
+        if (display->IsShowingFileList()) { display->Refresh(); return; }
+        RefreshFolderEverywhere(folder);
+    };
     // The gear beside the hidden-items notice's "Show hidden files": the
     // settings that decided what this folder holds back - Display > Home
     // folder in the home folder (curation and hidden files), Display >
@@ -6959,7 +7275,8 @@ void UltraFilerWindow::BuildComputerPage() {
         heading->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return heading;
     };
-    computerPane->AddChild(makeHeading("ufl-computer-folders-heading", "Folders"));
+    computerFoldersHeading = makeHeading("ufl-computer-folders-heading", Tr("Folders"));
+    computerPane->AddChild(computerFoldersHeading);
 
     // Home and the cloud folders as folder tiles - the file display's own,
     // so they carry the folder icons, open on a double-click and offer the
@@ -7029,17 +7346,39 @@ void UltraFilerWindow::BuildComputerPage() {
     };
     computerPane->AddChild(computerFolders);
 
-    computerPane->AddChild(makeHeading("ufl-computer-drives-heading", "Drives"));
-
-    // The drive cards, wrapping into rows; RebuildComputerDriveCards fills
-    // it. It never scrolls by itself - the page does.
-    computerDriveRow = MakeLayoutBox("ufl-computer-drives");
-    computerDriveRow->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
-                            .SetFlexGap(12)
-                            .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-    computerDriveRow->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The card rows, wrapping into as many lines as they need;
+    // RebuildComputerDriveCards fills them. None scrolls by itself - the
+    // page does. The drives (and the phones and cameras) first, then the
+    // remote drives and the RAM discs, each under a heading of its own that
+    // shows only while the section has a card - the names the tree gives
+    // the same sections.
+    auto makeCardRow = [](const std::string& id) {
+        auto row = MakeLayoutBox(id);
+        row->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
+                   .SetFlexGap(12)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return row;
+    };
+    computerDrivesHeading = makeHeading("ufl-computer-drives-heading", Tr("Drives"));
+    computerPane->AddChild(computerDrivesHeading);
+    computerDriveRow = makeCardRow("ufl-computer-drives");
     computerPane->AddChild(computerDriveRow);
+
+    computerRemoteHeading = makeHeading("ufl-computer-remote-heading", Tr("Remote Drives"));
+    computerRemoteHeading->SetVisible(false);
+    computerPane->AddChild(computerRemoteHeading);
+    computerRemoteRow = makeCardRow("ufl-computer-remote");
+    computerRemoteRow->SetVisible(false);
+    computerPane->AddChild(computerRemoteRow);
+
+    computerRamHeading = makeHeading("ufl-computer-ram-heading", Tr("RAM Discs"));
+    computerRamHeading->SetVisible(false);
+    computerPane->AddChild(computerRamHeading);
+    computerRamRow = makeCardRow("ufl-computer-ram");
+    computerRamRow->SetVisible(false);
+    computerPane->AddChild(computerRamRow);
 
     computerPane->SetVisible(false);   // the tree's Computer entry turns it on
 }
@@ -7071,6 +7410,8 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
             syncingTree = false;
         }
     } else {
+        // The next way in - the breadcrumb, the Up button - shows it all.
+        computerSection = ComputerSection::All;
         computerPane->SetVisible(false);
         tabContentHost->SetVisible(true);
         // Back to the active tab's folder: the strip, the tree and the
@@ -7089,6 +7430,22 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
     UpdatePreviewPane();
 }
 
+void UltraFilerWindow::ShowComputerSection(ComputerSection section) {
+    computerSection = section;
+    if (computerShown) RefreshComputerPage();
+    else SetComputerPageVisible(true);   // selects the tree's Computer row
+    // The tree keeps the row that was picked: a section header, not Computer.
+    const char* nodeId = section == ComputerSection::Cloud  ? kCloudNodeId
+                       : section == ComputerSection::Remote ? kRemoteNodeId
+                       : section == ComputerSection::Ram    ? kRamNodeId
+                                                            : kComputerNodeId;
+    if (TreeNode* node = folderTree ? folderTree->FindNode(nodeId) : nullptr) {
+        syncingTree = true;
+        folderTree->SelectNode(node);
+        syncingTree = false;
+    }
+}
+
 void UltraFilerWindow::RefreshComputerPage() {
     RefreshComputerFolders();
     // The volumes as last listed (the start-up fill, then every drive pass):
@@ -7105,7 +7462,10 @@ std::vector<std::string> UltraFilerWindow::ComputerPageFolderPaths() const {
     std::vector<std::string> paths;
     const std::string home = UserHomeDir();
     std::error_code ec;
-    if (!home.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(home), ec) && !ec) paths.push_back(home);
+    // Home is a place on this computer, not cloud storage.
+    if (computerSection != ComputerSection::Cloud &&
+        !home.empty() && fs::is_directory(UltraCanvas::PathFromUtf8(home), ec) && !ec)
+        paths.push_back(home);
     // The cloud folders are the ones the tree's Cloud Storage section holds:
     // found once, off the UI thread, by QueueCloudStorageDiscovery.
     if (TreeNode* cloud = folderTree ? folderTree->FindNode(kCloudNodeId) : nullptr) {
@@ -7118,18 +7478,30 @@ std::vector<std::string> UltraFilerWindow::ComputerPageFolderPaths() const {
 void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume>& volumes) {
     if (!computerDriveRow) return;
     computerDriveRow->ClearChildren();
+    if (computerRemoteRow) computerRemoteRow->ClearChildren();
+    if (computerRamRow) computerRamRow->ClearChildren();
     computerDriveCards.clear();
 
     // One card per volume, then one per connected phone or camera - the same
     // card, so a phone shows its used and free space like a drive does (the
-    // sizes come in from QueueVolumeSpaceQuery, which asks the device).
+    // sizes come in from QueueVolumeSpaceQuery, which asks the device). The
+    // configured remote drives and the RAM discs get the same card in a
+    // section of their own.
     struct CardSource {
         std::string path, label, icon;
         std::string under;   // the line at the foot of the card
+        UltraCanvasContainer* row = nullptr;
     };
     std::vector<CardSource> sources;
-    for (const MountedVolume& volume : volumes)
-        sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path});
+    // A RAM disc that is also a mounted volume (ImDisk's drive letter,
+    // macOS) is a RAM disc on this page, as in the tree - not a drive.
+    std::set<std::string> ramPaths;
+    for (const auto& disc : knownRamDiscs) ramPaths.insert(disc.mountPath);
+    for (const MountedVolume& volume : volumes) {
+        if (ramPaths.count(volume.path)) continue;
+        sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path,
+                           computerDriveRow.get()});
+    }
     if (remoteDrives) {
         for (const RemoteDrive& d : remoteDrives->Drives()) {
             if (!d.isDevice) continue;
@@ -7137,9 +7509,61 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
             // mounted: a phone has no path worth reading.
             std::string under = DeviceKindWord(d.deviceKind);
             if (!d.serverUrl.empty()) under += " - " + d.serverUrl;   // the manufacturer
-            sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under});
+            sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under,
+                               computerDriveRow.get()});
+        }
+        // The FTP servers and cloud accounts: the server under the name, or
+        // for an account signed into through the browser, the provider.
+        if (computerRemoteRow) {
+            for (const RemoteDrive& d : remoteDrives->Drives()) {
+                if (d.isDevice) continue;
+                sources.push_back({d.rootPath, d.displayName, "cloud.svg",
+                                   d.serverUrl.empty() ? d.providerId : d.serverUrl,
+                                   computerRemoteRow.get()});
+            }
         }
     }
+    if (computerRamRow) {
+        for (const auto& disc : knownRamDiscs) {
+            // The Windows fallback without ImDisk is a folder on the disk:
+            // said under the name, as the tree says it after it.
+            std::string under = disc.mountPath;
+            if (!disc.trueRam) under += " - " + Tr("on disk");
+            sources.push_back({disc.mountPath, disc.name, "drive.png", under,
+                               computerRamRow.get()});
+        }
+    }
+
+    // Opened from a section of the tree, the page shows that section alone
+    // (ShowComputerSection): only its cards are made, so the status line
+    // counts what is shown.
+    const bool all = computerSection == ComputerSection::All;
+    UltraCanvasContainer* onlyRow =
+            computerSection == ComputerSection::Remote ? computerRemoteRow.get()
+          : computerSection == ComputerSection::Ram    ? computerRamRow.get()
+                                                       : nullptr;
+    if (!all)
+        sources.erase(std::remove_if(sources.begin(), sources.end(),
+                                     [onlyRow](const CardSource& c) { return c.row != onlyRow; }),
+                      sources.end());
+
+    bool anyRemote = false, anyRam = false;
+    for (const CardSource& source : sources) {
+        if (source.row == computerRemoteRow.get()) anyRemote = true;
+        if (source.row == computerRamRow.get()) anyRam = true;
+    }
+    const bool foldersShown = all || computerSection == ComputerSection::Cloud;
+    if (computerFoldersHeading) {
+        computerFoldersHeading->SetText(all ? Tr("Folders") : Tr("Cloud Storage"));
+        computerFoldersHeading->SetVisible(foldersShown);
+    }
+    if (computerFolders) computerFolders->SetVisible(foldersShown);
+    if (computerDrivesHeading) computerDrivesHeading->SetVisible(all);
+    computerDriveRow->SetVisible(all);
+    if (computerRemoteHeading) computerRemoteHeading->SetVisible(anyRemote);
+    if (computerRemoteRow) computerRemoteRow->SetVisible(anyRemote);
+    if (computerRamHeading) computerRamHeading->SetVisible(anyRam);
+    if (computerRamRow) computerRamRow->SetVisible(anyRam);
 
     int index = 0;
     for (const CardSource& source : sources) {
@@ -7203,7 +7627,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         mount->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         card->AddChild(mount);
 
-        computerDriveRow->AddChild(card);
+        source.row->AddChild(card);
         computerDriveCards.push_back({path, pie, usage, space});
 
         // What is already known about the volume goes up at once; the fresh
@@ -7216,6 +7640,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
     }
 
     computerDriveRow->RequestRedraw();
+    if (computerPane) computerPane->InvalidateLayout();
 }
 
 void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
@@ -7279,7 +7704,16 @@ void UltraFilerWindow::QueueVolumeSpaceQuery() {
         spaces.reserve(paths.size());
         for (const auto& [path, deviceId] : paths) {
             if (deviceId.empty()) {
-                spaces.push_back(QueryVolumeSpace(path));
+                if (IsRemoteFilerPath(path)) {
+                    // An FTP server or a cloud account: UltraCloud does not
+                    // say how full one is, and the address is no path the
+                    // filesystem can measure.
+                    VolumeSpace unknown;
+                    unknown.path = path;
+                    spaces.push_back(unknown);
+                } else {
+                    spaces.push_back(QueryVolumeSpace(path));
+                }
                 continue;
             }
             VolumeSpace space;
@@ -8415,16 +8849,22 @@ void UltraFilerWindow::UpdatePreviewPane() {
                 mediaPath = e->path;
         }
     }
+    // The file whose failure was put in a dialog stays the one asked about
+    // only while it stays selected: choosing it again asks again.
+    if (const FilerEntry* e = SingleSelectedEntry(); !e || e->path != remoteFileAlertPath)
+        remoteFileAlertPath.clear();
     if (!mediaPath.empty() && IsRemoteFilerPath(mediaPath)) {
         // The viewer reads files, and this one is on a server: ask for the
         // local copy. Ready shows it; anything else shows nothing yet, and
         // onPreviewCopyReady comes back here once the copy is in.
         const FilerEntry* e = SingleSelectedEntry();
         std::string copy, why;
+        RemoteFailure failure = RemoteFailure::NoFailure;
         const auto state = remoteDrives && e
-                ? remoteDrives->RequestPreviewCopy(*e, copy, why)
+                ? remoteDrives->RequestPreviewCopy(*e, copy, why, &failure)
                 : UltraFilerRemoteDrives::PreviewCopy::Failed;
         const std::string name = RemoteFilerName(mediaPath);
+        const std::string remoteFile = mediaPath;
         mediaPath.clear();
         switch (state) {
             case UltraFilerRemoteDrives::PreviewCopy::Ready:
@@ -8450,8 +8890,14 @@ void UltraFilerWindow::UpdatePreviewPane() {
                                   "copy it to this computer to open it", name);
                 break;
             case UltraFilerRemoteDrives::PreviewCopy::Failed:
-                previewNote = "No preview of " + name + (why.empty() ? std::string()
-                                                                     : ": " + why);
+                previewNote = why.empty() ? TrF("No preview of {0}", name)
+                                          : TrF("No preview of {0}: {1}", name, why);
+                // A file deleted on the drive since its folder was listed, a
+                // refused sign-in, a refusal: not something to leave on the
+                // status line, where a click that did nothing goes unread.
+                // The network or a busy service, which may answer the next
+                // time, stays there.
+                ShowRemoteFileError(remoteFile, why, failure);
                 break;
         }
     }

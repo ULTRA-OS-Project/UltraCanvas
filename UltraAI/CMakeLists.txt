@@ -62,6 +62,8 @@ set(ULTRAAI_PUBLIC_HEADERS
     include/UltraAIVideoGen.h
     include/UltraAIMusicGen.h
     include/UltraAICodeAssist.h
+    include/UltraAIAgent.h
+    include/UltraAIBatch.h
 )
 
 # ===== Core static library =====
@@ -72,6 +74,8 @@ add_library(UltraAI_Core STATIC
     src/CapabilityFactories.cpp
     src/Routing.cpp
     src/TextLLMTranslator.cpp
+    src/Agent.cpp
+    src/Batch.cpp
 )
 add_library(UltraAI::Core ALIAS UltraAI_Core)
 

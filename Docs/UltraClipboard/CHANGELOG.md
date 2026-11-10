@@ -1,3 +1,42 @@
+#### 2026-11-10 *0.1.8*
+- **Extract text: the words in an image or in copied files, as real text.**
+  The row menu has *Extract text* (also Ctrl+T) on an image and on copied
+  files that hold words. An image - a screenshot, a photographed page - is
+  read by text recognition (Tesseract, through the OCR plugin, in every
+  language installed); copied files are read by type: a word processor
+  document or a deck, a PDF (text recognition for a scanned one), a
+  spreadsheet (every sheet, tab-separated), a text or code file. A recording
+  or a video is read when a speech-to-text engine is installed; until then
+  the menu says that speech to text is not available. The reading runs in the
+  background with *Reading the text…* in the status bar; the text arrives as
+  a new text entry at the top, already on the clipboard, ready to paste or to
+  edit. Several files give one text, each under its name (framework changelog:
+  `extract-text`).
+- **UltraClipboard can be translated.** Every text in its window, menus,
+  dialogs and messages goes through `Tr` (UltraLocalisation): the English
+  catalogue is `media/locale/en/UltraClipboard.json` (126 entries; *Copy*,
+  *Delete*, *Settings*, *Cancel* and the other common words come from the
+  standard set, so they already show in every language it has). Counts are
+  plurals (`TrN`): "1 entry", "2 entries", and the forms a language with more
+  than two has. No translation of the application's own entries ships yet;
+  a translator adds `media/locale/<lang>/UltraClipboard.json`. The entry
+  rows' tooltips and meta line come from the framework's clipboard history
+  view and are not covered here.
+- **Extract text uses UltraAI when it can.** A picture is read by an UltraAI
+  vision provider that reads text, when one is set up - a model on this
+  computer, or a cloud service you chose in UltraAI - instead of the built-in
+  OCR, which stays the fallback (no provider, offline, an error). The status
+  bar then says which provider read it ("read by ..."). In a build with
+  UltraAI's UI library (UltraAI changelog: `text-recognition`).
+
+#### 2026-11-06 *0.1.7*
+- **Start without a window.** `UltraClipboard --background` (UltraDesktop's
+  *Start with the desktop*) starts it with the history open and no window;
+  the next start - the clipboard panel's *Open UltraClipboard*, the
+  Applications window - shows the window at once. While it runs this way,
+  closing the window only hides it, and *Quit* in the More menu (Ctrl+Q)
+  ends the program. A background start while it runs changes nothing.
+
 #### 2026-10-20 *0.1.6*
 - **Code is recognised by its language.** A copy is a *Code* entry also when
   its language can be named although it has no brackets or semicolons - a

@@ -9,6 +9,7 @@
 //
 // The raster twin is UltraCanvasPaintSurface; the read-only viewer is
 // UltraCanvasVectorElement. This one edits.
+// Version: 1.3.0 - Make/Register descriptor: "vector-canvas" in the element registry, bundled or as a runtime module
 // Version: 1.2.0 - ZoomToPageWidth: the page's width across the canvas area, the view's
 //                  vertical position kept
 // Version: 1.1.1 - the frame measures the lines' width (VectorEdit::PaintBounds), once per
@@ -19,7 +20,7 @@
 //                  onRotationCenterChanged; a moved centre stays while the same objects stay
 //                  selected
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -375,5 +376,14 @@ inline std::shared_ptr<UltraCanvasVectorCanvas> CreateVectorCanvas(
         const std::string& id, float x, float y, float w, float h) {
     return std::make_shared<UltraCanvasVectorCanvas>(id, x, y, w, h);
 }
+
+
+// The element in the element registry (UltraCanvasElementPlugins.h) as
+// "vector-canvas" (category Widget): compiled into the core by default, or the
+// ultracanvas-widget-vector-canvas runtime module when ULTRACANVAS_WIDGETS leaves
+// VectorCanvas out.
+struct UCElementDescriptor;
+UCElementDescriptor MakeVectorCanvasDescriptor();
+void RegisterVectorCanvasElement();
 
 } // namespace UltraCanvas

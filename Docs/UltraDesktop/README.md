@@ -33,15 +33,15 @@ system.
 │ ⋮⋮ │                                                              │30Oct│  and date
 │╲   │                                                              │ 1  │  desktop
 │ ╲  │                                                              │ 2  │  organiser
-│ ▣  │                                                              │ 3  │
-│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
-│ ▣  │            (application windows float above)                 │ 🗒 │  notes
-│ ▣  │                                                              │ 📋 │  clipboard
-│  ╲ │                                                              │ 📷 │  screenshot
-│   ╲│                                                              │╱   │
-│ ▤  │                                                              │ ✉14│  info panel
-│ 📁 │                                                              │ ⇧⇩ │  (devices and
-│ 🎨 │                                                              │ 🔊 │   services)
+│ ▣  │                     wallpaper                                │ 3  │
+│ ▣  │            (application windows float above)                 │ 📌 │  Sticker board
+│ ▣  │                                                              │ 🗒 │  notes
+│  ╲ │                                                              │ 📋 │  clipboard
+│   ╲│                                                              │ 📷 │  screenshot
+│ ▤  │                                                              │╱   │
+│ 📁 │                                                              │ ✉14│  info panel
+│ 🎨 │                                                              │ ⇧⇩ │  (devices and
+│    │                                                              │ 🔊 │   services)
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -58,15 +58,36 @@ organiser.
 1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
    *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
-2. **Running applications** — one button per open window on the current
-   desktop, with the application's own icon (resolved from its desktop
-   entry; the first letter of its class when it has none). The active
-   window's button is highlighted. A click activates the window or minimizes
-   it if it already is active; a right-click offers *Activate*, *Minimize*,
-   *Move to desktop …* and *Close window*. Drag a button to reorder; when
-   the group is full it scrolls with the mouse wheel. New windows join next
-   to their application's other windows. *Pin to taskbar* on the menu pins
-   the window's application.
+2. **Running applications** — one button per application with open
+   windows on the current desktop, with the application's own icon
+   (resolved from its desktop entry, on Windows a Store application's tile
+   icon from the shell; the first letter of its class when it has none).
+   An application's windows share its button - by their class on X11, on
+   Windows by the application identity the shell gives them
+   (`appUserModelId`: every Explorer window is Explorer's), else by their
+   program - and a count on the button says how many there are. The button
+   is highlighted while one of its windows is active.
+   - **One window:** a click activates it, or minimizes it if it already is
+     active; a right-click offers *Activate*, *Minimize*, *Move to desktop
+     …*, *Pin to taskbar* and *Close window*.
+   - **Several windows:** rest the pointer on the button and their pictures
+     open beside it (above it with the taskbar at the bottom, below it at
+     the top) - one tile per window with its icon, title and a picture of
+     the window, the active one framed, a minimized one showing its icon.
+     A click on a tile brings that window forward, its **×** asks it to
+     close. The pictures follow the pointer along the bar to the next
+     application and close shortly after it leaves both. A click on the
+     button opens or closes them at once. A right-click lists the windows,
+     with *Minimize all*, *Pin to taskbar* and *Close all windows*. On
+     Windows each window draws its own picture and on Wayland the
+     compositor copies it, so a covered window shows its own content; on
+     X11 the picture is the window's place on the screen, which shows
+     whatever lies on top of it there. A Wayland compositor without window
+     capture (`ext-image-copy-capture-v1`) gives no picture: the tile shows
+     the application's icon.
+
+   Drag a button to reorder; when the group is full it scrolls with the
+   mouse wheel. New applications join at the end.
 3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
    by default, in the file manager), *UltraFiler*, and the applications the
    user pinned - from a running window's menu or a tile's in the
@@ -103,12 +124,18 @@ the right-hand monitor the primary.
 
 ### Right bar
 
-- **Clock**: the framework's gauge element in its analog clock mode
+- **Clock**, at the top of the bar, white on black (black on white in the
+  light theme): by default the
+  framework's gauge element in its analog clock mode
   ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
   which ticks on its own, over the date ("30 Oct"); the tooltip has the
-  whole date and time. A click opens the clock panel beside the bar: the
-  time large as an analog face and in figures (the gauge's digital clock),
-  today in words, and the month on the calendar view with today marked.
+  whole date and time. A right click chooses how it shows: *Analog clock
+  with the date*, *Analog clock*, *Digital clock with the date*, *Digital
+  clock* (21:50) or *Digital clock with seconds* (21:50:52), kept as
+  `clockStyle` in the settings. A click opens the clock panel beside the
+  bar: the time large as an analog face and in figures (the gauge's digital
+  clock), today in words, and the month on the calendar view with today
+  marked.
 - **Desktop organiser**: the virtual desktops as numbered toggles — as many
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
@@ -141,23 +168,25 @@ the right-hand monitor the primary.
   the clipboard, so it can still be pasted. Without a history (a build
   without SQLite) the button shows a menu of this session's last fifteen
   copies, as before.
-- **Info panel**, anchored to the bottom: Email, Upload, Download,
+- **Info panel**, anchored to the bottom: Email, Notifications, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
   Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
   high the icons are smaller, and those that still do not fit fold into a
   chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
-  upload, Task Manager, download, LAN, email - so the webcam's and
+  upload, Task Manager, download, LAN, email, notifications - so the webcam's and
   microphone's in-use dots stay in sight. The markers:
 
   | Marker | Meaning | On |
   |---|---|---|
   | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
+  | green dot | a link is up | Wi-Fi joined |
   | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
-  | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
+  | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
-  opens what the icon is about: Email starts UltraMail, the traffic, LAN and
+  opens what the icon is about: Email starts UltraMail, the bell
+  UltraNotifications (every notification after its pop-up has gone), the traffic, LAN and
   VPN icons UltraNetMonitor, Wi-Fi and Bluetooth their panels (below), USB,
   keyboard, webcam, microphone and battery a panel saying what is attached
   or in use with a button on to Device Explorer or the Task Manager, the
@@ -211,6 +240,75 @@ the right-hand monitor the primary.
   on a 900 px screen — the panel scrolls rather than losing its last items:
   a chevron over the edge marks where the icons continue, a click on it
   scrolls a page, and so does the wheel over the panel.
+
+### Theme and context menus
+
+The bars come in two themes, kept as `theme` in the settings: **dark**
+(light icons on dark grey, the running applications and the organiser
+carved in near black, the clock white on black - the default) and
+**light** (dark icons on light grey, the carved-in groups near white, the
+clock black on white, the ULTRA OS logo in its variant for a light ground).
+The panels the bars open follow the theme - the clock, loudspeaker, Wi-Fi,
+Bluetooth, device and clipboard panels and the window pictures
+(`UltraDesktopPanelTheme`): dark grey with light text, or near white with
+dark text. A panel open when the theme changes closes, and opens in the new
+colours.
+
+- **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
+  with every picture type this build reads, through FileLoader), *Default
+  wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
+  position* (*on the left*, *at the top*, *at the bottom*), *Drop files*
+  (*Drop on sticker board*, *Drop on desktop*; below), *Arrange icons* (with
+  the desktop icons), *Notes on the wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
+  *Display settings...* opens the system's own
+  (`UltraCanvasDesktopShell::OpenDisplaySettings`): Settings > Display on
+  Windows, System Settings > Displays on macOS, and on Linux the first
+  display tool installed - the session's own desktop's first
+  (`XDG_CURRENT_DESKTOP`): GNOME's, Plasma's, Xfce's, Cinnamon's, MATE's,
+  LXQt's or Budgie's settings, then wdisplays, nwg-displays, and on X11
+  arandr and lxrandr. Where there is none the entry is left out.
+- **The bars** (right click on a group, where the button under the pointer
+  has no menu of its own - between buttons, the Applications button, a
+  virtual desktop, a service icon): the taskbar's edge, the theme and
+  *Desktop settings...*. The ⚙ button's menu has *Taskbar position* and
+  *Theme* as submenus.
+
+**Files dropped on the wallpaper** go where `dropFilesOn` says:
+
+- `board` (the default): onto the Sticker board, into its **Unsorted**
+  category (added at the end when the board has none; a file already on the
+  board moves there), and the board shows.
+- `desktop`: into the Desktop folder (the platform's own - the known folder
+  on Windows, xdg-user-dirs on Linux - else `~/Desktop`, made when missing),
+  moved, or copied when it is on another drive; a name already taken becomes
+  `name (2).ext`. The wallpaper then shows the Desktop folder's entries
+  (hidden ones left out) as icons - the file's picture (a photo's or
+  document's thumbnail, else the system's icon for its type) over its name -
+  in an `UltraDesktopDesktopIcons` layer under the notes. A dropped file lies
+  where it was dropped; others fill a grid column by column from the top
+  left. A click selects; Ctrl+click adds or removes an icon, Shift+click adds
+  one, and a rubber band drawn on the wallpaper selects the icons it touches
+  (Ctrl adds them; a plain click on the wallpaper clears the selection). A
+  double click opens the selection with the default applications. A drag
+  moves the selected icons together (kept in `desktopIcons` by the entries'
+  names) until the pointer is over another program's window (the windows
+  the Task Manager lists, read when the drag starts): the icons go back and
+  the files continue as a native file drag (XDND on X11, OLE on Windows),
+  which that program takes; one that moved them makes their icons go. A
+  right click offers, for the whole selection, *Open*, *Show in the file
+  manager*, *Rename* (one icon), *Delete* (into the trash, after one
+  question), *Select all* and *Arrange icons*. After a click on an icon or the wallpaper between them the
+  layer has the keyboard: Delete deletes the selection (after the question),
+  Ctrl+A selects every icon, Enter opens the selection, F2 renames the
+  selected icon (also *Rename* on its menu: a text field over its name with
+  the name before the extension chosen; Enter or a click elsewhere renames
+  the file and the icon keeps its place, Escape keeps the name; a name
+  already on the desktop, or one with a slash, is refused), Escape ends a
+  drag or a rubber band where it started, else clears the selection. The folder is looked at every two seconds,
+  so a file another program saves there appears too.
+
+A change is saved at once and the bars are rebuilt in place; one made in
+UOS-Settings is followed within a second.
 
 ### Windows the desktop opens
 
@@ -272,7 +370,7 @@ the right-hand monitor the primary.
   after asking, for one that does not close. The desktop's own windows (the
   Task Manager itself, its dialogs, the Sticker board) are not listed - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
-- **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
+- **Settings**: the desktop's settings - the taskbar's edge, the theme, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
   desktops - are the *Desktop* page of UOS-Settings. They live in the
   desktop's settings file; the desktop checks it once a second and rebuilds
@@ -294,7 +392,20 @@ the right-hand monitor the primary.
   scrolls to it when the board is too wide to show them all, and lets you
   type its name (double-click a category's title to rename it later). The
   picker in the bar switches the display style: *Sticky notes*, *Poster*,
-  *Schematic* or *Dark*. The board and its style are kept.
+  *Schematic* or *Dark*. A right click on a card offers *Open*, *Copy* (the
+  file onto the clipboard, as the file manager copies it), *Delete* (into the
+  trash, after a question), *Remove from the board* and *Move to* another
+  category; on a note, *Open*, *Copy* its text and *Delete* it (after a
+  question). The Delete key does what *Delete* does, after the same question,
+  as on the desktop icons; *Remove from the board* takes a card off without
+  touching its file. *Display*,
+  in the same menu (anywhere on the board), shows the cards as *Text only*,
+  *Thumbnail and text* (the picture with the name centred under it - the
+  default) or *Thumbnail and text in a row*, and sets the size of the *Mouse
+  hover preview* (*Small*, *Medium*, *Large*): resting the pointer on a
+  file's card for two seconds opens a larger picture of it beside the card.
+  The *Desktop* page of UOS-Settings has the same two choices. The board,
+  its style and its display are kept.
 - **Notes** (the note button below it): free sticky notes over the
   wallpaper. *+* in the corner adds one; each note is edited in place,
   dragged by its top bar, cycled through six paper colours and closed with
@@ -368,9 +479,14 @@ earlier versions kept under `~/.config` is moved on the first start):
   "ramDiscPath": "/dev/shm",
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
+  "clockStyle": "analog-date",
+  "theme": "dark",
+  "dropFilesOn": "board",
+  "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
-  "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
+  "categoryBoard": { "visible": false, "design": "stickynotes", "display": "thumbnail", "hoverPreview": "medium",
+                     "x": 320, "y": 60, "width": 780, "height": 460,
                      "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } },
   "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ],
   "startWithDesktop": [ "ChatCube", "UltraMail" ]
@@ -385,25 +501,41 @@ RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
-`stickynotes`, `poster`, `schematic`, `dark`. `visible`, `x`, `y`, `width`
+`stickynotes`, `poster`, `schematic`, `dark`; `display` one of `text`,
+`thumbnail` (the default) and `row`; `hoverPreview` one of `small`, `medium`
+(the default) and `large`. `visible`, `x`, `y`, `width`
 and `height` are kept for older versions and no longer used: the board fills
 the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
+`dropFilesOn` is `board` (the default) or `desktop`; `desktopIcons` keeps the
+desktop icons' places in the work area by name, and forgets one whose entry
+has gone. `theme` is `dark` (the default) or `light`; `clockStyle` one of
+`analog-date` (the default), `analog`, `digital-date`, `digital` and
+`digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`
 and `UltraMail` are the ones it offers; empty (the default), none.
 
 ## Programs that start with the desktop
 
-ChatCube and UltraMail can start with the desktop, so messages arrive and
-mail is counted on the mail icon without opening them first. Tick them in
-UOS-Settings > Desktop > *Start with the desktop*, or on the settings
-button's right-click menu (*Start with the desktop*). Three seconds after the
-desktop starts - so it shows first - each ticked program that is not
-running yet is started with `--minimized`: its window goes to the taskbar
-and it works in the background. One that is running already is left alone,
-since a second start of these single-copy programs would only bring their
-window forward. Ticking one in the menu starts it at once as well.
+Some programs can start with the desktop, unseen, so they are at work or
+ready before they are asked for. Tick them in UOS-Settings > Desktop >
+*Start with the desktop*, or on the settings button's right-click menu
+(*Start with the desktop*). Three seconds after the desktop starts - so it
+shows first - each ticked one that is not running yet is started:
+
+| Program | Started with | What it does in the background |
+|---|---|---|
+| ChatCube | `--minimized` | messages arrive; its window is on the taskbar |
+| UltraMail | `--minimized` | new mail is fetched and counted on the mail icon |
+| UltraClipboard | `--background` | no window; opens at once from the clipboard panel |
+| UltraNotifications | `--background` | no window; counts the unread on the bell, opens at once |
+| Sticker board | - | the desktop's own board: its window and file thumbnails are made, not shown, so the first click shows it at once |
+
+A minimized program that is running already is left alone, since a second
+start of these single-copy programs would only bring their window forward; a
+second `--background` start reaches the running copy, which takes it as
+nothing to do. Ticking one in the menu starts it at once as well.
 
 ## How the mail count gets there
 

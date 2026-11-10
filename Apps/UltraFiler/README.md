@@ -147,10 +147,15 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   Right-clicking the folder tree opens its context menu: **Copy** /
   **Delete** (with confirmation) / **Paste** act on the folder under the
   cursor — Paste only when a folder is under the cursor and the clipboard
-  holds files, Delete never on the top-level roots — a **Pin** submenu whose
+  holds files, Delete never on the top-level roots but a remote drive's
+  row, where it deletes the drive from UltraFiler (see *Remote drives* below)
+  — a **Pin** submenu whose
   **To Treeview** / **To Favorites** flags directly toggle where that folder
   is pinned, and **Unpin** (pinned entries only) removes the bookmark
-  without touching the folder. The pins survive restarts — they are stored
+  without touching the folder. **Refresh** reads the folder under the
+  cursor again, with its rows in the tree and every display showing it; on a
+  remote drive that means asking the server again. A remote drive's row also
+  has **Configure drive**. The pins survive restarts — they are stored
   next to the settings as `favorites.txt` — and *Settings ▸ Clear Favorites*
   empties them (History and Favorites are separate stores).
 - **Command bar:** the **New folder ▾** split button — its primary section
@@ -280,6 +285,36 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   - **Remote drive rows say what they are.** An FTP-family drive's row in
     the tree starts with its protocol, taken from the server address:
     `FTP: Backup NAS`, `FTPS: …`, `FTPES: …` or `SFTP: …`.
+  - **A drive can be changed or deleted, signed in or not.** *Configure
+    drive* in a drive row's context menu opens the add-drive form filled in
+    with the drive's settings - the kind of server fixed, the password field
+    empty, which keeps the saved password unless a new one is typed. Saving
+    signs in with what the form holds and keeps it only if the server
+    accepts it, so a password changed on the server (or a moved server, a
+    new port) is mended there; a cloud drive is saved without signing in
+    unless *Sign in again* is ticked. The drive keeps its place - open
+    folders and pins on it still work - and is read again with the new
+    settings. *Delete* on the same row, after a question, removes the drive
+    from UltraFiler: its settings and saved password go, the files on the
+    server are not touched, a display on it moves to Home, and an upload or
+    download still waiting for it is dropped (the question counts them).
+    Both work on a drive that can no longer sign in, which is when they are
+    needed.
+  - **Refresh asks the server again.** A drive's folders are shown from a
+    cache, so leaving a folder and coming back shows what it held when it
+    was fetched. *Refresh* - the toolbar button, a folder row's context menu
+    in the tree, or the folder display's context menu (the folder shown, or
+    the folder right-clicked) - fetches it again, ahead of anything queued,
+    while the files it showed stay on screen: a file added or deleted from
+    another device appears or goes.
+  - **A file that is gone says so.** Selecting a picture, drawing, PDF or
+    model on a drive fetches it for the preview; when the server answers that
+    the file is no longer there - deleted from another device since the
+    folder was listed - a dialog says so and the folder is read again, so
+    the file leaves the display. A refused sign-in or another refusal that
+    will not pass by itself is a dialog too, pointing to the connection log;
+    a network that does not answer, or a service that asks to wait, stays a
+    note on the status line.
   - **FTP drives work ahead and remember.** Opening a folder on an FTP / SFTP
     drive (*+ Drive*) also fetches its first 24 visible subfolders in the
     background, one level deep. These fetches wait behind anything you ask
@@ -291,8 +326,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     from that file shows at once and is checked with the server in the
     background when it is opened; a remembered folder is not fetched ahead
     again. Cloud drives (Nextcloud, Dropbox, …) do neither, because
-    their providers limit API calls. The toolbar's *Refresh* on a remote
-    folder still asks the server directly.
+    their providers limit API calls. *Refresh* on a remote folder still asks
+    the server directly.
   - **One login per burst.** The drive's requests run one after another on
     one connection: a folder and the subfolders fetched ahead after it are
     one login, not one each, and a server that has refused `MLSD` (vsftpd

@@ -47,6 +47,7 @@ debounce for you, because how long to wait is the caller's decision.
 |---|---|
 | `ListMountedVolumes()` | Every volume mounted right now, system root first, the rest sorted by path. Each is a `MountedVolume { path, label, isSystemRoot }`. |
 | `ListVolumeRoots()` | The same list, mount points only — the shape a caller that just navigates wants. |
+| `ReadVolumeName(path)` | The name a drive letter's volume carries (`"My Passport Ultra"`), shown as Explorer does: `"My Passport Ultra (D:)"`. Empty when it has none, for a network drive, and on Linux and macOS (`label` already is the name there). Reads the medium, so call it off the UI thread — `ListMountedVolumes()` deliberately does not. |
 | `ListGvfsVolumes()` | The places a Linux desktop mounted through GVFS — a phone (MTP), a camera (gphoto2), an iPhone (AFC), a network share or server (SMB, SFTP, FTP, WebDAV, NFS, AFP) — each with a readable label. Part of `ListMountedVolumes()`; empty on Windows and macOS. See [GVFS places](#gvfs-places). |
 | `GvfsVolumeLabel(name)` | The label one GVFS mount name gets (`"mtp:host=Google_Pixel_8"` → `"Google Pixel 8"`); empty for a name that is not listed. For tests. |
 | `Start(onChanged)` | Report mounts and unmounts until `Stop()`. Uses the platform's notification where there is one and a polling thread where there is not, so it only fails on a missing callback. |

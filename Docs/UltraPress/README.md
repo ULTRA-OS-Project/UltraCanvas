@@ -52,8 +52,13 @@ the site's name follows file by file. **Host…** opens UltraCloud's
 add-account dialog, limited to the web hosts - FTP / FTPS / SFTP, WebDAV,
 Nextcloud - and the host added becomes the site's (`hosting` in
 `site.json`, with the dialog's upload folder as the site's root on the
-host). Without a host of its own the site publishes to the default host;
-without any, Publish opens the dialog.
+host). An FTP / SFTP host is asked for its protocol, its name or address
+and its port (empty: the protocol's own), and its private key is chosen
+with a file dialog. The sign-in is reported on the console as it happens -
+where, as whom, the session's steps, how it ended and the transport's
+diagnostics - the way `ultrapress hosts add` reports one, so a host that
+refused can be read step by step. Without a host of its own the site
+publishes to the default host; without any, Publish opens the dialog.
 
 The left column lists the pages and the current page's blocks: select one,
 move it with the arrows, remove it, or add one after the selection from
@@ -107,6 +112,7 @@ ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the ren
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to
 ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
+ultrapress hosts add ftp --server sftp://my.example --port 2222 --user me       # on a port that is not the protocol's own
 ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
 ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
 ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
@@ -261,9 +267,14 @@ MKCOL, outermost first). A site names its host and the folder on it in
 "hosting": { "account": "ftp-me-my-example", "path": "/public_html" }
 ```
 
-`ultrapress hosts use` writes it; the window's Host… button does the same.
-An `sftp://` host signs in with a password or a private key (`--key`, or
-the dialog's *Private key* row; the password is then the key's passphrase).
+`ultrapress hosts use` writes it; the window's Host… button does the same,
+from the protocol, server and port it asks for (`FtpServerUrl`); on the
+command line the port is `--port`, or part of the URL (`sftp://my.example:2222`),
+the two storing the same host. A server URL that is not FTP - `https://`,
+from the browser's bar - is refused before anything is sent, by `hosts add`
+and by the provider. An `sftp://` host signs in with a
+password or a private key (`--key`, or the dialog's *Private key* row and
+its *Choose* button; the password is then the key's passphrase).
 The window's Publish prunes; the command line prunes with `--prune`.
 
 **Text in place.** Click a piece of text on the page - a title, a

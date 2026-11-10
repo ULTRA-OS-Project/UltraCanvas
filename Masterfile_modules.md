@@ -568,7 +568,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
   / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
   `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
-  settings window set the style; it and UltraSnip's are built on the kit.
+  settings window set the style; it, UltraSnip's and UOS-Settings (a main
+  window with the logo above its tree, through `SettingsWindowOptions`) are
+  built on the kit; the demo's *Widgets > Settings Window* page shows it.
   Core in `core/UltraCanvasSettingsPageKit.cpp`. See
   `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
 
@@ -583,7 +585,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraNotifications, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -882,8 +884,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `AddHostAppearanceHandler` hears a difference; the system fonts are the
   value's. `HostAppearanceTest` covers the pure half,
   `LinuxHostAppearanceTest` the Linux detector against a made-up config
-  home. Phases T1 and T2 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
-  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md`.
+  home. `UltraCanvasTheme::FromHost` builds the theme the desktop asks for
+  from it - Light or Dark, the high-contrast presets, the accent derived
+  into the five accent roles (`DeriveAccent`), the fonts and text roles
+  (`ThemeFonts`, `ThemeTextRole`) - and the application's theme policy
+  (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with
+  `SetThemeProvider`) applies it in `Initialize` and on every host change,
+  a window built with the default background taking the theme's ground.
+  Phases T1 to T3 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
+  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
+  `Docs/UltraCanvas/UltraCanvasTheme.md`.
 
   Emoji come from a bundled font the emoji setting picks
   (`UltraCanvasEmojiSettings.h`: `EmojiStyle` Colour / Monochrome / System,
@@ -1032,6 +1042,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     (Windows `ExitWindowsEx`; Linux logind over the system bus);
     `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
     logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `CanOpenDisplaySettings` / `OpenDisplaySettings` - the system's own
+    display settings (`ms-settings:display`; System Settings > Displays;
+    the desktop's display tool on Linux).
   - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
     volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
     loudspeaker through the sound server (libpulse loaded at run time:
@@ -1124,7 +1137,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`; its text in the person's language
+    (`Tr`), with `ClipboardEntryKindLabel` / `ClipboardEntryDisplayTitle` for
+    what is stored in English.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from
@@ -1600,20 +1615,39 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. Agents
+(`UltraAIAgent.h`: `Agent` with `AddTool` / `RemoveTool` / `Run` /
+`RunAsync` / `Cancel` / `History` / `SetHistory` / `ClearHistory`,
+`CreateAgent`, `AgentOptions` (`canUseTool`, `afterToolCall`, `maxTurns`,
+`stream`), `ToolArguments`, `ToolResult`, `ToolPermission`,
+`MakeSubagentTool`) run the model ↔ tool loop over any `ITextLLM`;
+`Docs/Modules/UltraAI/Agents.md`. Batches (`UltraAIBatch.h`:
+`ITextBatch` with `Submit` / `Get` / `Cancel` / `Results`,
+`CreateTextBatch`, `CreateSequentialTextBatch`, `RunBatch`,
+`ValidateBatchItems`, `IsFinished`; `CreateAnthropicTextBatch`,
+`CreateOpenAITextBatch`) send many chat requests as one job at about half
+the price; `Docs/Modules/UltraAI/Batches.md`. The local runtime
 (`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
 `AddHuggingFaceModel`, `Ensure` / `Touch` / `StopIdle` / `StopAll`,
-`GetSettings` / `SetSettings`, `RefreshGallery`) downloads an inference
-engine and a model on demand and supervises the engine as a loopback
-process shared between applications; the `local` provider
+`GetSettings` / `SetSettings`, `RefreshGallery`; topics: `ListTopics` /
+`ModelForTopic` / `GetTopicPreferences` / `SetTopicPreferences` /
+`SetTopicModel` / `NewModels` / `MarkModelsSeen` / `ApplyTopicUpdates`)
+downloads an inference engine and a model on demand and supervises the
+engine as a loopback process shared between applications, and keeps which
+model the user wants for each topic (chat, code, translation, ...) from
+the model server's `topics.json`; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
 chat and embeddings through it; the module's one library that draws,
 `UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
 `UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
 dialog an application shows when a service needs a model that is not on
-this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`. The model server
+those catalogues and topics come from is `Server/UltraAIModelServer`
+(FastAPI on SQLite), managed with UltraAI ServerAdmin
+(`Apps/UltraAIServerAdmin`, `ModelServerClient.h`: the admin API's client;
+`Docs/UltraAIServerAdmin/README.md`).
 
 ### **3. FileLoader**
 
@@ -1661,6 +1695,17 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 `SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
+The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
+password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
+documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
+recognition), spreadsheets (every sheet, tab-separated), text files, pictures
+(text recognition) and recordings (speech to text);
+`GetTextExtractionMethod` / `CanExtractText` / `WhyNoTextExtraction` say how
+and whether. Text recognition and speech to text are hooks:
+`SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
+installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
+UltraAI's `ISpeechToText`). UltraClipboard's *Extract text* uses it.
 
 ### **4. Plug-ins for File Types**
 

@@ -38,7 +38,6 @@
   "Comment:": "ข้อคิดเห็น:",
   "Copy (Ctrl+C)": "คัดลอก (Ctrl+C)",
   "Could not read the image file.": "ไม่สามารถอ่านไฟล์รูปภาพได้",
-  "Crash Recovery": "การกู้คืนเมื่อโปรแกรมขัดข้อง",
   "Cut (Ctrl+X)": "ตัด (Ctrl+X)",
   "Decrease Font Size": "ลดขนาดแบบอักษร",
   "Decrease Font Size (Ctrl+-)": "ลดขนาดแบบอักษร (Ctrl+-)",
@@ -70,9 +69,6 @@
   "Find Previous": "ค้นหาก่อนหน้า",
   "Find Previous (Shift+Enter)": "ค้นหาก่อนหน้า (Shift+Enter)",
   "Find what:": "ค้นหาคำว่า:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "other": "พบไฟล์ที่บันทึกอัตโนมัติ {n} ไฟล์จากเซสชันก่อนหน้า\n\nคุณต้องการกู้คืนหรือไม่"
-  },
   "GB18030 (Chinese)": "GB18030 (จีน)",
   "GB2312 (Chinese Simplified)": "GB2312 (จีนตัวย่อ)",
   "GBK (Chinese Simplified)": "GBK (จีนตัวย่อ)",
@@ -217,6 +213,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (ซีริลลิก)",
   "Windows-1252 (Western)": "Windows-1252 (ตะวันตก)",
   "Word Wrap": "ตัดคำอัตโนมัติ",
-  "Zoom Level": "ระดับการซูม",
-  "{0} bytes": "{0} ไบต์"
+  "Zoom Level": "ระดับการซูม"
 }

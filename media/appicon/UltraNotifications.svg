@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>UltraNotifications</title>
+  <desc>A white bell with a red unread dot on an amber tile: the notifications mark.</desc>
+  <rect x="16" y="16" width="224" height="224" rx="48" ry="48" fill="#d97706"/>
+  <path d="M128 58 C96 58 78 82 78 112 V146 L62 170 H194 L178 146 V112 C178 82 160 58 128 58 Z"
+        fill="#ffffff"/>
+  <path d="M108 182 A20 20 0 0 0 148 182 Z" fill="#ffffff"/>
+  <rect x="120" y="44" width="16" height="18" rx="8" fill="#ffffff"/>
+  <circle cx="182" cy="74" r="22" fill="#ef4444" stroke="#ffffff" stroke-width="8"/>
+</svg>

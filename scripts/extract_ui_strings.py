@@ -5,7 +5,8 @@ Docs/UltraCanvas/UltraCanvasLocalisationProposal.md §8. Every call of
 Tr("..."), TrC("ctx", "..."), TrN("one", "many", n) and TrF("...", ...)
 with a literal is a key:
 
-- the framework's (UltraCanvas/{include,core,libspecific,OS,Plugins}) go
+- the framework's (UltraCanvas/{include,core,libspecific,OS,Plugins}),
+  and UltraCloud/ui's shared dialogs, go
   into media/locale/en/Standard.json, which is maintained as well as
   generated: a key the sources use is added, nothing is ever removed, so
   the curated vocabulary (the proposal's Appendix A) stays for the
@@ -43,8 +44,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCALE = ROOT / "media" / "locale"
+# The framework, and the modules' shared dialogs every application that uses
+# the module shows (UltraCloud's account and picker dialogs: UltraFiler,
+# UltraPress): their texts are the standard set's.
 FRAMEWORK_DIRS = ["UltraCanvas/include", "UltraCanvas/core", "UltraCanvas/libspecific", "UltraCanvas/OS",
-                  "UltraCanvas/Plugins"]
+                  "UltraCanvas/Plugins", "UltraCloud/ui"]
 SKIP_APPS = {"CSSLayoutTests"}
 LIT = r'"((?:[^"\\\n]|\\.)*)"'
 SITE = re.compile(r"(?<![A-Za-z0-9_:])(Tr|TrC|TrN|TrF)\s*\(")

@@ -38,7 +38,6 @@
   "Comment:": "註解：",
   "Copy (Ctrl+C)": "複製 (Ctrl+C)",
   "Could not read the image file.": "無法讀取影像檔案。",
-  "Crash Recovery": "當機復原",
   "Cut (Ctrl+X)": "剪下 (Ctrl+X)",
   "Decrease Font Size": "縮小字型",
   "Decrease Font Size (Ctrl+-)": "縮小字型 (Ctrl+-)",
@@ -70,9 +69,6 @@
   "Find Previous": "找上一個",
   "Find Previous (Shift+Enter)": "找上一個 (Shift+Enter)",
   "Find what:": "尋找目標：",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "other": "找到上次工作階段自動儲存的 {n} 個檔案。\n\n要復原這些檔案嗎？"
-  },
   "GB18030 (Chinese)": "GB18030（中文）",
   "GB2312 (Chinese Simplified)": "GB2312（簡體中文）",
   "GBK (Chinese Simplified)": "GBK（簡體中文）",
@@ -217,6 +213,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251（斯拉夫文）",
   "Windows-1252 (Western)": "Windows-1252（西歐語系）",
   "Word Wrap": "自動換行",
-  "Zoom Level": "縮放比例",
-  "{0} bytes": "{0} 位元組"
+  "Zoom Level": "縮放比例"
 }

@@ -5,9 +5,15 @@
 // the tools and every command (file, edit, image, layer, select, adjust,
 // filter, view).
 //
-// The editor is multi-window: the class also holds the registry of open
-// windows, so File > New Window and "Open new window" on a dropped image add
-// to it and the application exits with the last of them.
+// The editor is multi-document: each window holds its images in tabs (an
+// UltraCanvasTabbedContainer over the canvas, one paint surface per tab), so
+// File > New, Open, "Open in new tab" on a dropped image and the files a
+// second start hands over add a tab rather than a window. The class also
+// holds the registry of open windows - File > New Window still opens one -
+// and the application exits with the last of them.
+// Version: 2.0.0 - images in tabs: DocumentTab (document + its own surface), the tab strip
+//                  over the canvas, AddDocumentTab / SwitchToTab / CloseTab, OpenPaths,
+//                  OpenInRunningWindow; New, Open and a new image go to a tab
 // Version: 1.9.0 - the user's own palettes kept (picker.userpalettes); a hovered palette
 //                  swatch floods the picker
 // Version: 1.8.5 - DropPasswords forgets its passwords when the desktop session locks
@@ -45,7 +51,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -53,6 +59,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasColorPicker.h"
@@ -86,20 +93,24 @@ public:
     UltraPaintWindow();
     ~UltraPaintWindow();
 
-    // Creates the window; opens `paths[0]` when given, else a blank canvas.
-    // Further paths are not this window's — OpenWindow() gives each of them
-    // one of its own.
+    // Creates the window with a tab for each of `paths`, or one blank canvas
+    // when there are none.
     bool Initialize(const std::vector<std::string>& paths);
     void Show();
 
     // Creates, registers and shows a further editor window on `paths` (empty:
-    // a blank canvas). A window holds one image, so a second and further path
-    // — a selection dropped on the application's icon, or a command line of
-    // them — each get a window too; the returned one is the first. The windows
-    // own themselves — the registry drops one when it closes, and the
-    // application exits with the last of them — so the pointer may be ignored.
+    // a blank canvas), each path in a tab of its own - a selection dropped on
+    // the application's icon, or a command line of them. The windows own
+    // themselves - the registry drops one when it closes, and the application
+    // exits with the last of them - so the pointer may be ignored.
     static std::shared_ptr<UltraPaintWindow> OpenWindow(const std::vector<std::string>& paths);
+    // What a second start hands over: `paths` open as tabs of the window used
+    // last (a window of their own when none is open), which comes forward.
+    static std::shared_ptr<UltraPaintWindow> OpenInRunningWindow(const std::vector<std::string>& paths);
     static int WindowCount();
+    // Opens each of `paths` in a tab of this window: the first may take the
+    // place of a blank canvas nobody has touched, the others get new tabs.
+    void OpenPaths(const std::vector<std::string>& paths);
     // Restores the window when minimised and raises it with the keyboard
     // focus: what a file a second start handed over opened in comes forward.
     void BringForward();
@@ -131,7 +142,45 @@ private:
     std::string ToolIconPath(const std::string& file) const;
     std::string TexterIconPath(const std::string& file) const;
 
-    // ----- document -----
+    // ----- documents in tabs -----
+    // One open image: its document and the surface that shows it (each tab
+    // keeps its own zoom and scroll). `document` and `surface` below are the
+    // active tab's.
+    struct DocumentTab {
+        std::shared_ptr<UCRasterDocument> document;
+        std::shared_ptr<UltraCanvasPaintSurface> surface;
+        UCRasterDocument::ListenerId listener = 0;   // the window's, on this document
+        int untitledNumber = 0;                     // "Untitled 2" until it has a file
+    };
+    // The strip of tabs over the canvas and the container their surfaces
+    // live in (the tab strip shows the active one); the magnifying glass and
+    // the text editor lie over the surfaces in that same container.
+    void BuildDocumentTabs();
+    // A new tab on `doc`, made the active one.
+    void AddDocumentTab(std::shared_ptr<UCRasterDocument> doc);
+    // `doc` in a tab: in place of the active tab's when that is a blank
+    // canvas nobody has touched (what the window starts with), else a new one.
+    void ShowInTab(std::shared_ptr<UCRasterDocument> doc);
+    // Makes tab `index` the active one: the panels, the title, the tools and
+    // the glass follow its document.
+    void SwitchToTab(int index);
+    // Closes tab `index`, asking first when its image has unsaved changes.
+    // The last tab closing leaves a blank canvas in its place.
+    void CloseTab(int index);
+    void RemoveTabNow(int index);
+    // The surfaces' callbacks to the tools, the status line and the glass.
+    void WireSurface(const std::shared_ptr<UltraCanvasPaintSurface>& s);
+    // The tab's caption: the file's name, or "Untitled N"; a dot marks
+    // unsaved changes, and the tooltip is the full path.
+    void UpdateTabCaption(int index);
+    int TabIndexOf(const UCRasterDocument* doc) const;
+    // A blank canvas nobody has touched: no file, no changes, no history.
+    bool IsPristine(const DocumentTab& tab) const;
+    int UnsavedTabCount() const;
+    void CmdCloseTab();
+    void CmdNextTab(int delta);
+
+    // Replaces the active tab's document with `doc`.
     void SetDocument(std::shared_ptr<UCRasterDocument> doc, const std::string& title);
     void NewImage(const UltraPaintNewImageResult& r);
     void OpenFile(const std::string& path);
@@ -143,8 +192,8 @@ private:
     // Files dropped on the canvas: asks once what to do with them, then does
     // it to all of them.
     void HandleDroppedFiles(const std::vector<std::string>& files);
-    // Asks what to do with `path` — open it here, open a new window for it,
-    // or merge it into the open image — and carries the answer out.
+    // Asks what to do with `path` — open it, open it in a new tab, or merge
+    // it into the open image — and carries the answer out.
     // `fromDrop` decides which of those the dialog offers; `alsoFiles` are the
     // rest of a multi-file drop, which follow the same answer.
     // `preloaded`: the file already read (a password-protected *.ucd, opened
@@ -411,7 +460,14 @@ private:
     std::shared_ptr<UltraCanvasToolbar>        toolbar;
     std::shared_ptr<UltraCanvasContainer>      body;          // palette | surface | right panel
     std::shared_ptr<UltraCanvasToolbar>        palette;
-    std::shared_ptr<UltraCanvasPaintSurface>   surface;
+    std::shared_ptr<UltraCanvasContainer>      canvasColumn;  // the tab strip over the pages
+    std::shared_ptr<UltraCanvasTabbedContainer> tabStrip;
+    std::shared_ptr<UltraCanvasContainer>      tabPages;      // the tabs' surfaces, the glass, the text editor
+    std::vector<std::shared_ptr<DocumentTab>>  documentTabs;  // in the strip's order
+    int activeTab = -1;
+    int surfaceSerial = 0;                                    // names each tab's surface
+    bool closingTab = false;                                  // RemoveTab asks onTabClose again
+    std::shared_ptr<UltraCanvasPaintSurface>   surface;       // the active tab's
     std::shared_ptr<UltraCanvasContainer>      rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>    colorPicker;
     std::shared_ptr<UltraCanvasColorPaletteManager> palettes;   // the palette rows under the picker
@@ -440,8 +496,7 @@ private:
 
     UltraPaintSettings settings;
 
-    std::shared_ptr<UCRasterDocument> document;
-    UCRasterDocument::ListenerId documentListener = 0;   // the panels' and title's
+    std::shared_ptr<UCRasterDocument> document;          // the active tab's
     std::vector<std::unique_ptr<PaintTool>> tools;
     PaintToolOptions toolOptions;
     PaintToolContext toolContext;
@@ -495,9 +550,11 @@ private:
     std::weak_ptr<UltraCanvasWindow> activeDialog;
 
     UltraPaintNewImageResult lastNewImage;
-    // A command-line vector drawing: its size dialog waits until the window
-    // is on screen rather than opening behind it.
-    std::string pendingImport;
+    // Command-line vector drawings (and protected files): their questions
+    // wait until the window is on screen rather than opening behind it.
+    std::vector<std::string> pendingImports;
+    bool shown = false;
+    void RunPendingImports();
     double pointerX = 0, pointerY = 0;
     bool pointerInside = false;
     bool layerPanelRebuildPending = false;

@@ -1,11 +1,14 @@
 // UltraCloud/providers/UltraCloudFtp.cpp
+// Version: 0.8.0 - FtpServerOf / FtpServerUrl / FtpDefaultPort for a form that
+//                  asks for the protocol, the host and the port; Verify
+//                  refuses a scheme the provider does not speak
 // Version: 0.7.0 - a download continues a partial copy (SetThreadDownloadContinues)
 // Version: 0.6.0 - partialUploadsRemain; an upload reports when the server
 //                  created the file, or refused to (internal::UploadReport)
 // Version: 0.5.0 - a transfer called off is Cancelled, not a server refusal
 // Version: 0.4.0 - SFTP with a private key (Credentials::privateKeyFile)
 // Version: 0.2.0 - a failure carries UltraNet's diagnostics
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudFtp.h>
 
@@ -76,6 +79,75 @@ std::string FtpHostAndBase(const std::string& serverUrl) {
     if (sep != std::string::npos) s.erase(0, sep + 3);
     while (!s.empty() && s.back() == '/') s.pop_back();
     return s;
+}
+
+int FtpDefaultPort(const std::string& scheme) {
+    const std::string s = Lower(scheme);
+    if (s == "sftp") return 22;
+    if (s == "ftps") return 990;
+    return 21;   // "ftp", "ftpes", and anything else
+}
+
+namespace {
+
+bool IsFtpScheme(const std::string& scheme) {
+    return scheme == "ftp" || scheme == "ftps" || scheme == "ftpes" || scheme == "sftp";
+}
+
+} // namespace
+
+bool FtpSchemeKnown(const std::string& serverUrl) {
+    const std::string scheme = SchemeOf(serverUrl);
+    return scheme.empty() || IsFtpScheme(scheme);
+}
+
+FtpServer FtpServerOf(const std::string& serverUrl) {
+    FtpServer server;
+    const std::string scheme = SchemeOf(serverUrl);
+    server.scheme = IsFtpScheme(scheme) ? scheme : "ftp";
+
+    std::string rest = serverUrl;
+    if (const std::string::size_type sep = rest.find("://"); sep != std::string::npos)
+        rest.erase(0, sep + 3);
+    // The authority up to the first '/', the base folder after it.
+    std::string authority = rest;
+    if (const std::string::size_type slash = rest.find('/'); slash != std::string::npos) {
+        authority = rest.substr(0, slash);
+        server.base = rest.substr(slash + 1);
+        while (!server.base.empty() && server.base.back() == '/') server.base.pop_back();
+    }
+    // The port after the last ':' - unless that ':' sits inside an IPv6
+    // address's brackets, where every ':' is the address's own.
+    const std::string::size_type colon = authority.rfind(':');
+    const std::string::size_type bracket = authority.rfind(']');
+    if (colon != std::string::npos && (bracket == std::string::npos || colon > bracket)) {
+        const std::string digits = authority.substr(colon + 1);
+        bool numeric = !digits.empty() && digits.size() <= 5;
+        int port = 0;
+        for (const char c : digits) {
+            if (c < '0' || c > '9') { numeric = false; break; }
+            port = port * 10 + (c - '0');
+        }
+        if (numeric && port >= 1 && port <= 65535) {
+            server.port = port;
+            authority.erase(colon);
+        }
+    }
+    server.host = authority;
+    return server;
+}
+
+std::string FtpServerUrl(const FtpServer& server) {
+    const std::string lowered = Lower(server.scheme);
+    const std::string scheme = IsFtpScheme(lowered) ? lowered : "ftp";
+    std::string url = scheme + "://" + server.host;
+    if (server.port > 0 && server.port != FtpDefaultPort(scheme))
+        url += ":" + std::to_string(server.port);
+    std::string base = server.base;
+    while (!base.empty() && base.front() == '/') base.erase(0, 1);
+    while (!base.empty() && base.back() == '/') base.pop_back();
+    if (!base.empty()) url += "/" + base;
+    return url;
 }
 
 std::string FtpUrl(const Account& account, const std::string& path, bool directory) {
@@ -222,6 +294,15 @@ UltraNetFtpOptions FtpProvider::OptionsFor(const Account& account,
 Result FtpProvider::Verify(const Account& account, const Credentials& credentials) {
     if (account.serverUrl.empty())
         return Result::Error(ResultCode::InvalidArgument, "no server URL configured");
+    // A scheme this provider does not speak - https://, pasted from the
+    // browser's address bar - used to be tried as plain FTP on port 21, and
+    // what came back was a web server's silence. Said before anything is
+    // sent, in words that name the mistake.
+    if (!FtpSchemeKnown(account.serverUrl))
+        return Result::Error(ResultCode::InvalidArgument,
+                             "the server URL starts with " + SchemeOf(account.serverUrl) +
+                             "://, which is not FTP: it has to start with ftp://, ftps://, "
+                             "ftpes:// or sftp://");
     if (!ops_.list)
         return Result::Error(ResultCode::Unsupported, "no FTP listing function");
 

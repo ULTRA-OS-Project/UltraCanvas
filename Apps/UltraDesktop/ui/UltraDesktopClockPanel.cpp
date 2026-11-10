@@ -4,6 +4,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopClockPanel.h"
+#include "UltraDesktopPanelTheme.h"
 
 #include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 #include "UltraCanvasContainer.h"
@@ -22,8 +23,6 @@ namespace {
 
 constexpr int kPanelWidth = 320;
 constexpr int kPanelHeight = 600;
-const Color kText(242, 242, 242);
-const Color kMuted(160, 160, 160);
 const Color kFace(236, 236, 240);
 
 const char* const kDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
@@ -72,7 +71,7 @@ void UltraDesktopClockPanel::Build(UltraCanvasWindow& window) {
     auto face = CreateGaugeDiagramElement("clock.face", 0, 0, kPanelWidth - 24, 250);
     face->SetMode(GaugeMode::AnalogClock);
     face->SetBackgroundColor(kFace);
-    face->SetTextColor(kText);
+    face->SetTextColor(PanelColors().text);
     face->SetShowLabels(true);
     face->layoutItem.SetFlexShrink(0.0f);
     face->SetElementSize(Size2Df(static_cast<float>(kPanelWidth - 24), 250));
@@ -85,14 +84,14 @@ void UltraDesktopClockPanel::Build(UltraCanvasWindow& window) {
     digits->SetDigitalFontFamily("DSEG7 Classic,DSEG7 Modern,Digital-7,Monospace");
     digits->SetGaugeColor(Color(120, 220, 160, 255));
     digits->SetBackgroundColor(Color(20, 20, 20, 255));
-    digits->SetTextColor(kText);
+    digits->SetTextColor(PanelColors().text);
     digits->layoutItem.SetFlexShrink(0.0f);
     digits->SetElementSize(Size2Df(static_cast<float>(kPanelWidth - 24), 72));
     window.AddChild(digits);
 
     auto today = CreateLabel("clock.today", 0, 0, kPanelWidth - 24, 24, TodayInWords());
     today->SetFontSize(12.0f);
-    today->SetTextColor(kText);
+    today->SetTextColor(PanelColors().text);
     today->SetAlignment(TextAlignment::Center);
     today->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(today);
@@ -111,7 +110,7 @@ void UltraDesktopClockPanel::Build(UltraCanvasWindow& window) {
 
     auto hint = CreateLabel("clock.hint", 0, 0, kPanelWidth - 24, 18, "Escape closes");
     hint->SetFontSize(8.5f);
-    hint->SetTextColor(kMuted);
+    hint->SetTextColor(PanelColors().muted);
     hint->SetAlignment(TextAlignment::Right);
     hint->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(hint);

@@ -38,7 +38,6 @@
   "Comment:": "Kommentti:",
   "Copy (Ctrl+C)": "Kopioi (Ctrl+C)",
   "Could not read the image file.": "Kuvatiedostoa ei voitu lukea.",
-  "Crash Recovery": "Palautus kaatumisen jälkeen",
   "Cut (Ctrl+X)": "Leikkaa (Ctrl+X)",
   "Decrease Font Size": "Pienennä fonttikokoa",
   "Decrease Font Size (Ctrl+-)": "Pienennä fonttikokoa (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "Etsi edellinen",
   "Find Previous (Shift+Enter)": "Etsi edellinen (Shift+Enter)",
   "Find what:": "Etsittävä:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Edellisestä istunnosta löytyi {n} automaattisesti tallennettu tiedosto.\n\nHaluatko palauttaa sen?",
-    "other": "Edellisestä istunnosta löytyi {n} automaattisesti tallennettua tiedostoa.\n\nHaluatko palauttaa ne?"
-  },
   "GB18030 (Chinese)": "GB18030 (kiina)",
   "GB2312 (Chinese Simplified)": "GB2312 (yksinkertaistettu kiina)",
   "GBK (Chinese Simplified)": "GBK (yksinkertaistettu kiina)",
@@ -219,6 +214,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (kyrillinen)",
   "Windows-1252 (Western)": "Windows-1252 (länsieurooppalainen)",
   "Word Wrap": "Rivitys",
-  "Zoom Level": "Zoomaustaso",
-  "{0} bytes": "{0} tavua"
+  "Zoom Level": "Zoomaustaso"
 }

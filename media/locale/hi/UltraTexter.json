@@ -38,7 +38,6 @@
   "Comment:": "टिप्पणी:",
   "Copy (Ctrl+C)": "कॉपी करें (Ctrl+C)",
   "Could not read the image file.": "छवि फ़ाइल पढ़ी नहीं जा सकी।",
-  "Crash Recovery": "क्रैश रिकवरी",
   "Cut (Ctrl+X)": "काटें (Ctrl+X)",
   "Decrease Font Size": "फ़ॉन्ट आकार घटाएँ",
   "Decrease Font Size (Ctrl+-)": "फ़ॉन्ट आकार घटाएँ (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "पिछला ढूँढें",
   "Find Previous (Shift+Enter)": "पिछला ढूँढें (Shift+Enter)",
   "Find what:": "क्या ढूँढें:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "पिछले सत्र की {n} स्वतः सहेजी गई फ़ाइल मिली।\n\nक्या आप उसे पुनर्प्राप्त करना चाहते हैं?",
-    "other": "पिछले सत्र की {n} स्वतः सहेजी गई फ़ाइलें मिलीं।\n\nक्या आप उन्हें पुनर्प्राप्त करना चाहते हैं?"
-  },
   "GB18030 (Chinese)": "GB18030 (चीनी)",
   "GB2312 (Chinese Simplified)": "GB2312 (सरलीकृत चीनी)",
   "GBK (Chinese Simplified)": "GBK (सरलीकृत चीनी)",
@@ -219,6 +214,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (सिरिलिक)",
   "Windows-1252 (Western)": "Windows-1252 (पश्चिमी)",
   "Word Wrap": "शब्द रैप",
-  "Zoom Level": "ज़ूम स्तर",
-  "{0} bytes": "{0} बाइट"
+  "Zoom Level": "ज़ूम स्तर"
 }

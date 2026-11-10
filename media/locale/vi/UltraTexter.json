@@ -38,7 +38,6 @@
   "Comment:": "Chú thích:",
   "Copy (Ctrl+C)": "Sao chép (Ctrl+C)",
   "Could not read the image file.": "Không thể đọc tệp hình ảnh.",
-  "Crash Recovery": "Khôi phục sau sự cố",
   "Cut (Ctrl+X)": "Cắt (Ctrl+X)",
   "Decrease Font Size": "Giảm cỡ phông chữ",
   "Decrease Font Size (Ctrl+-)": "Giảm cỡ phông chữ (Ctrl+-)",
@@ -70,9 +69,6 @@
   "Find Previous": "Tìm lùi",
   "Find Previous (Shift+Enter)": "Tìm lùi (Shift+Enter)",
   "Find what:": "Tìm nội dung:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "other": "Đã tìm thấy {n} tệp được tự động lưu từ phiên trước.\n\nBạn có muốn khôi phục không?"
-  },
   "GB18030 (Chinese)": "GB18030 (Tiếng Trung)",
   "GB2312 (Chinese Simplified)": "GB2312 (Tiếng Trung giản thể)",
   "GBK (Chinese Simplified)": "GBK (Tiếng Trung giản thể)",
@@ -217,6 +213,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Kirin)",
   "Windows-1252 (Western)": "Windows-1252 (Phương Tây)",
   "Word Wrap": "Tự động xuống dòng",
-  "Zoom Level": "Mức thu phóng",
-  "{0} bytes": "{0} byte"
+  "Zoom Level": "Mức thu phóng"
 }

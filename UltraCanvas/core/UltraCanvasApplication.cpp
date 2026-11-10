@@ -1,5 +1,12 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.19.0 - the pointer over a popup's own window is the pointer over the window the
+//                  popup belongs to, at the popup's place in it; a popup's window is no
+//                  application window either
+// Version: 1.18.1 - a closing window takes its tooltip and the tooltip's own window with it;
+//                  the tooltip's window (WindowType::Tooltip) is no application window
+// Version: 1.18.0 - the theme policy: FromHost at start and on every host change, a provider for
+//                  an Own application, a window's ground from the policy's theme
 // Version: 1.17.0 - GetHostAppearance / RefreshHostAppearance / the handlers; the system fonts
 //                  served from the host appearance; the start-up report names the host's look
 // Version: 1.16.0 - SetSystemFontStyle / SetDefaultMonospacedFontStyle pin the system fonts
@@ -36,7 +43,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -1164,6 +1171,8 @@ namespace UltraCanvas {
         hostAppearance_ = std::move(fresh);
         if (first) return;   // nothing changed from anyone's point of view: nobody had read it
         debugOutput << "UltraCanvas: host appearance changed: " << HostAppearanceReport(hostAppearance_.value()) << std::endl;
+        // The theme first, so a handler sees the look the host asked for.
+        ApplyThemePolicy();
         // A copy: a handler may add or remove handlers.
         const auto handlers = hostAppearanceHandlers_;
         for (const auto& [id, handler] : handlers) {
@@ -1179,6 +1188,52 @@ namespace UltraCanvas {
             hostAppearanceRefreshPending_ = false;
             RefreshHostAppearance();
         });
+    }
+
+    // ===== THE THEME POLICY =====
+
+    void UltraCanvasApplicationBase::SetThemePolicy(ThemePolicy policy) {
+        themePolicy_ = policy;
+        if (themePolicyApplied_) ApplyThemePolicy();
+    }
+
+    void UltraCanvasApplicationBase::SetThemeProvider(std::function<UltraCanvasTheme(const HostAppearance&)> provider) {
+        themeProvider_ = std::move(provider);
+        if (themePolicyApplied_ && themePolicy_ == ThemePolicy::Own) ApplyThemePolicy();
+    }
+
+    bool UltraCanvasApplicationBase::ThemeIsFromPolicy() const {
+        return !policyThemeName_.empty() && UltraCanvasTheme::Current().name == policyThemeName_;
+    }
+
+    void UltraCanvasApplicationBase::ApplyThemePolicy() {
+        // The application set a theme of its own since the policy last set
+        // one: it has taken over, whatever the policy says.
+        if (themePolicyApplied_ && !policyThemeName_.empty() && !ThemeIsFromPolicy()) {
+            policyThemeName_.clear();
+            return;
+        }
+        const HostAppearance& host = GetHostAppearance();
+        UltraCanvasTheme theme;
+        switch (themePolicy_) {
+            case ThemePolicy::FollowHost:
+                theme = UltraCanvasTheme::FromHost(host);
+                break;
+            case ThemePolicy::Light:
+            case ThemePolicy::Dark: {
+                HostAppearance fixed = host;
+                fixed.dark = themePolicy_ == ThemePolicy::Dark;
+                theme = UltraCanvasTheme::FromHost(fixed);
+                break;
+            }
+            case ThemePolicy::Own:
+                if (!themeProvider_) { themePolicyApplied_ = true; return; }
+                theme = themeProvider_(host);
+                break;
+        }
+        themePolicyApplied_ = true;
+        policyThemeName_ = theme.name;
+        UltraCanvasTheme::SetCurrent(theme);
     }
 
     int UltraCanvasApplicationBase::AddHostAppearanceHandler(HostAppearanceHandler handler) {
@@ -1215,6 +1270,17 @@ namespace UltraCanvas {
         cachedMonospacedFontStyle_ = style;
     }
 
+    namespace {
+        // The window was configured with the framework's default background
+        // (WindowConfig::backgroundColor untouched): the theme's ground is
+        // its colour while the policy's theme is in force.
+        bool UsesDefaultBackground(const UltraCanvasWindowBase& window) {
+            const Color& c = window.GetConfig().backgroundColor;
+            return c.r == Colors::WindowBackground.r && c.g == Colors::WindowBackground.g
+                && c.b == Colors::WindowBackground.b && c.a == Colors::WindowBackground.a;
+        }
+    }
+
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;
 
@@ -1225,6 +1291,10 @@ namespace UltraCanvas {
                 UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme(theme, UltraCanvasTooltipManager::GetStyle()));
                 for (auto& window : windows) {
                     if (!window) continue;
+                    // A window built with the default background shows the
+                    // theme's ground while the policy's theme is in force,
+                    // so a dark theme is not a dark panel on a light window.
+                    if (ThemeIsFromPolicy() && UsesDefaultBackground(*window)) window->SetBackgroundColor(theme.roles.ground);
                     window->OnThemeChanged(theme);
                     window->RequestRedraw();
                 }
@@ -1280,6 +1350,13 @@ namespace UltraCanvas {
             // The host's look, read once the bundled fonts are registered (a
             // platform's font detector may answer one of them), reported.
             debugOutput << "UltraCanvas: host appearance " << HostAppearanceReport(GetHostAppearance()) << std::endl;
+            // The theme the policy asks for, before the first window.
+            ApplyThemePolicy();
+            debugOutput << "UltraCanvas: theme " << UltraCanvasTheme::Current().name << " ("
+                        << (themePolicy_ == ThemePolicy::FollowHost ? "follows the host"
+                            : themePolicy_ == ThemePolicy::Light ? "light" : themePolicy_ == ThemePolicy::Dark ? "dark" : "the application's own")
+                        << "), font " << UltraCanvasTheme::Current().fonts.ui.fontFamily << " "
+                        << UltraCanvasTheme::Current().FontSize(ThemeTextRole::Body) << std::endl;
             endStep("bundled and system fonts");
 
             if (!InitializeClipboard()) {
@@ -1514,6 +1591,9 @@ namespace UltraCanvas {
     void UltraCanvasApplicationBase::RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window) {
         if (window && window->GetNativeHandle() != 0) {
             windows.push_back(window);
+            if (ThemeIsFromPolicy() && UsesDefaultBackground(*window)) {
+                window->SetBackgroundColor(UltraCanvasTheme::Current().roles.ground);
+            }
             debugOutput << "UltraCanvas: Window registered with Native ID: " << window->GetNativeHandle() << std::endl;
 
             // Auto-register modal windows
@@ -1525,6 +1605,9 @@ namespace UltraCanvas {
 
     void UltraCanvasApplicationBase::CleanupWindowReferences(UltraCanvasWindowBase* win) {
         UnregisterModalWindow(win);
+        // A tooltip of the window goes with it, and so does the tooltip's own
+        // window, which would otherwise outlive it and keep Run() going.
+        UltraCanvasTooltipManager::ForgetWindow(win);
         // Called from PerformClose() while the window is still alive, so the weak_ptrs
         // can still be locked and compared here.
         windowFocusHistory.Remove(win);
@@ -1693,6 +1776,8 @@ namespace UltraCanvas {
             if (!other || other.get() == window) continue;
             const WindowState state = other->GetState();
             if (state == WindowState::Closing || state == WindowState::Closed) continue;
+            // A tooltip's or a popup's window is not one of the application's windows
+            if (other->GetConfig().type == WindowType::Tooltip || other->GetConfig().type == WindowType::Popup) continue;
             // Up the parent chain, comparing pointers first: a parent that is
             // no longer registered is gone, and is not read.
             bool goesWithIt = false;
@@ -1806,8 +1891,9 @@ namespace UltraCanvas {
                 state == WindowState::Hidden) {
                 return false;
             }
-            // Popup windows (menus, dropdowns) are transient — never jump targets.
-            if (w->GetConfig().type == WindowType::Popup) return false;
+            // Popup windows (menus, dropdowns) and the tooltip's window are
+            // transient — never jump targets.
+            if (w->GetConfig().type == WindowType::Popup || w->GetConfig().type == WindowType::Tooltip) return false;
             return w->IsWindowVisible() || state == WindowState::Minimized;
         };
 
@@ -1876,6 +1962,34 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasApplicationBase::DispatchEvent(const UCEvent& event) {
+        // A popup's own window (WindowType::Popup) only shows the popup: the
+        // pointer over it is over the window the popup belongs to, at the
+        // popup's place there, and everything below - the global handlers,
+        // finding the element, hover, capture, a click outside, a modal
+        // dialog - goes on as for a popup composited onto that window.
+        if (event.IsMouseEvent() || event.IsDragEvent() || event.IsTouchEvent() ||
+            event.type == UCEventType::MouseWheelHorizontal ||
+            event.type == UCEventType::MouseEnter || event.type == UCEventType::MouseLeave) {
+            UltraCanvasWindowBase* host = nullptr;
+            if (auto tw = event.targetWindow.lock()) host = tw.get();
+            else if (event.nativeWindowHandle != 0) host = FindWindow(event.nativeWindowHandle);
+            if (host && host->IsPopupHost()) {
+                UltraCanvasWindowBase* owner = host->GetPopupHostOwner();
+                UltraCanvasUIElement* popup = host->GetHostedPopup();
+                auto ownerPtr = owner ? owner->GetWindowWeakPtr().lock() : nullptr;
+                if (!ownerPtr || !popup) return;
+                UCEvent forwarded = event;
+                const Point2Df at = popup->GetPositionInWindow();
+                forwarded.pointerWindow.x += static_cast<int>(std::lround(at.x));
+                forwarded.pointerWindow.y += static_cast<int>(std::lround(at.y));
+                forwarded.pointer = forwarded.pointerWindow;
+                forwarded.targetWindow = ownerPtr;
+                forwarded.nativeWindowHandle = owner->GetNativeHandle();
+                DispatchEvent(forwarded);
+                return;
+            }
+        }
+
         // Update modifier states and key pressed status
         if (event.type == UCEventType::KeyDown || event.type == UCEventType::KeyUp) {
             shiftHeld = event.shift;

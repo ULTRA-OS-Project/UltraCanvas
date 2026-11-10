@@ -35,10 +35,6 @@
   "an entry": "un elemento",
   "An upload is still running — quit anyway?": "Un caricamento è ancora in corso — uscire comunque?",
   "An upload is still waiting — quit anyway?": "Un caricamento è ancora in attesa — uscire comunque?",
-  "and {n} more": {
-    "one": "e {n} altro",
-    "other": "e altri {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Qualsiasi altro file, quando questo sistema ha un programma registrato per quel tipo di file:",
   "Applied to {n} item.": {
     "one": "Applicato a {n} elemento.",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} icona",
     "other": "{n} icone"
-  },
-  "{n} line": {
-    "one": "{n} riga",
-    "other": "{n} righe"
   },
   "{n} result": {
     "one": "{n} risultato",

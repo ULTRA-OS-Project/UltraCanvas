@@ -52,6 +52,11 @@ does and what a command does never differ.
 
 ## The window
 
+How the window looks is drawn in the store's
+[`design/README.md`](../UltraStore/design/README.md): Overview, the apps
+table with *Add an app or a component*, an app's form, Sales, Finance and
+Publish.
+
 `ultrastoreadmin` alone, or `ultrastoreadmin --store <dir>` alone, opens
 the window on the store (the default store is
 `<data folder>/UltraStoreAdmin`, created on the first start). A sidebar
@@ -229,3 +234,7 @@ Hello.
    *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
    sales into the ledger, the catalog naming the service from the
    `payment.*` settings.
+6. **The marketplace** (the store's README, *The operator tier*): `submit`
+   sends a release to the operator's service signed with this backend's
+   key; the notices banner and the *Terms* page read from it; `publish`
+   stays for a private or test catalog.

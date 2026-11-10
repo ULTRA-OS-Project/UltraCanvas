@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Operations - Reports</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-wrap: wrap; align-items: stretch">
+
+<nav aria-label="Operations" style="flex: 1 1 220px; max-width: 250px; min-width: 0; background: #0f172a; color: #e2e8f0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<a href="SuperDashboard.dc.html" aria-label="UltraStore Operations" style="display: flex; align-items: center; gap: 10px; padding: 0 8px; text-decoration: none; color: #ffffff">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 32px; height: 32px; border-radius: 9px">
+<span style="display: flex; flex-direction: column; line-height: 1.15"><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 16px; letter-spacing: -0.02em">UltraStore</span><span style="font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #93c5fd">Operations</span></span>
+</a>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="SuperDashboard.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Dashboard</a>
+<a href="SuperMerchants.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Merchants</a>
+<a href="SuperReview.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500"><span style="flex: 1 1 auto">App review</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #2563eb; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">7</span></a>
+<a href="SuperReports.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #1e3a8a; color: #ffffff; font-weight: 700"><span style="flex: 1 1 auto">Reports</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">12</span></a>
+<a href="SuperTerms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Terms and notices</a>
+<a href="#users" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Users</a>
+<a href="#payouts" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Payouts</a>
+<a href="#audit" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Audit log</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Settings</a>
+</div>
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; background: #1e293b; font-size: 12px; color: #94a3b8">
+<span style="font-weight: 700; color: #e2e8f0">store.ultraos.eu</span>
+<span>Reports come from the store's app pages, the merchant backend and mail</span>
+<span>Signed in as Alex, operator</span>
+</div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Reports</h1>
+<span style="color: #64748b">What users and merchants report about apps and merchants, and what the operator did about it.</span>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<button type="button" style="height: 38px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Export</button>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>Open a report from mail</button>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<button type="button" aria-pressed="true" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #0f172a; background: #0f172a; color: #ffffff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Open 12</button>
+<button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Urgent 2</button>
+<button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Mine 4</button>
+<button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Waiting on merchant 3</button>
+<button type="button" aria-pressed="false" style="height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Resolved 30 d · 58</button>
+<span style="width: 1px; height: 24px; background: #e2e8f0; margin: 0 4px"></span>
+<label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #475569">About <select style="height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; color: #0f172a"><option>Apps and merchants</option><option>An app</option><option>A merchant</option></select></label>
+<label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #475569">Kind <select style="height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; color: #0f172a"><option>Any</option><option>Harmful software</option><option>Misleading listing</option><option>Support or refund</option><option>Intellectual property</option><option>Licence circumvention</option><option>Content and age rating</option><option>Other</option></select></label>
+<label style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #475569">By <select style="height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; color: #0f172a"><option>Users and merchants</option><option>A user</option><option>A merchant</option><option>The scanner</option></select></label>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-label="Open reports" style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0; overflow: hidden">
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 520px">
+<thead><tr style="color: #64748b; text-align: left; background: #f8fafc">
+<th scope="col" style="font-weight: 600; padding: 10px 12px 10px 16px; border-bottom: 1px solid #e2e8f0">#</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Report</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">About</th>
+<th scope="col" style="font-weight: 600; padding: 10px 12px; border-bottom: 1px solid #e2e8f0">Age</th>
+<th scope="col" style="font-weight: 600; padding: 10px 16px 10px 12px; border-bottom: 1px solid #e2e8f0">State</th>
+</tr></thead>
+<tbody>
+<tr style="background: #eff6ff; border-left: 3px solid #2563eb">
+<td style="padding: 10px 12px 10px 13px; border-bottom: 1px solid #f1f5f9; font-weight: 700">1042</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><a href="#rep-1042" aria-current="true" style="text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column"><span style="font-weight: 700">Possible malware</span><span style="color: #64748b">by a user · 4 on this app</span></span></a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Bitfalke Downloader 2.1</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">2 h</td>
+<td style="padding: 10px 16px 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700">urgent · Mia</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 12px 10px 16px; border-bottom: 1px solid #f1f5f9; font-weight: 700">1041</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><a href="#rep-1041" style="text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column"><span style="font-weight: 600">Licence check bypass sold on a forum</span><span style="color: #64748b">by merchant Nordlicht Software</span></span></a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Fjordplan (their own)</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">5 h</td>
+<td style="padding: 10px 16px 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700">urgent · unassigned</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 12px 10px 16px; border-bottom: 1px solid #f1f5f9; font-weight: 700">1040</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><a href="#rep-1040" style="text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column"><span style="font-weight: 600">Screenshots show features the app lacks</span><span style="color: #64748b">by a user · misleading listing</span></span></a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Kaito Shell 0.8</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">1 d</td>
+<td style="padding: 10px 16px 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 700">open</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 12px 10px 16px; border-bottom: 1px solid #f1f5f9; font-weight: 700">1039</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><a href="#rep-1039" style="text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column"><span style="font-weight: 600">Icon copies a registered trademark</span><span style="color: #64748b">by merchant Cloverleaf Software</span></span></a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Clover Notes (Greyhat Labs)</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">1 d</td>
+<td style="padding: 10px 16px 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">waiting on merchant · 3 d left</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 12px 10px 16px; border-bottom: 1px solid #f1f5f9; font-weight: 700">1038</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><a href="#rep-1038" style="text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column"><span style="font-weight: 600">Merchant does not answer support mail</span><span style="color: #64748b">by a user · 3rd such report</span></span></a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Bitfalke GmbH</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">2 d</td>
+<td style="padding: 10px 16px 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700">Mia · warning issued</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 12px 10px 16px; border-bottom: 1px solid #f1f5f9; font-weight: 700">1036</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><a href="#rep-1036" style="text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column"><span style="font-weight: 600">Crashes on start on Raspberry Pi</span><span style="color: #64748b">by a user · 6 on this release</span></span></a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Ledgerly 3.1.2</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">3 d</td>
+<td style="padding: 10px 16px 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">waiting on merchant · fix in review</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 12px 10px 16px; border-bottom: 1px solid #f1f5f9; font-weight: 700">1035</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9"><a href="#rep-1035" style="text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column"><span style="font-weight: 600">Rated PEGI 3, contains gambling</span><span style="color: #64748b">by a user · content and age rating</span></span></a></td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">Lucky Dice (Appsmith Ltd)</td>
+<td style="padding: 10px 12px; border-bottom: 1px solid #f1f5f9">4 d</td>
+<td style="padding: 10px 16px 10px 12px; border-bottom: 1px solid #f1f5f9"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 700">Alex</span></td>
+</tr>
+<tr>
+<td style="padding: 10px 12px 10px 16px; font-weight: 700">1034</td>
+<td style="padding: 10px 12px"><a href="#rep-1034" style="text-decoration: none; color: #0f172a"><span style="display: flex; flex-direction: column"><span style="font-weight: 600">Refund refused after 3 days</span><span style="color: #64748b">by a user · support or refund</span></span></a></td>
+<td style="padding: 10px 12px">Kaito Tools</td>
+<td style="padding: 10px 12px">5 d</td>
+<td style="padding: 10px 16px 10px 12px"><span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 700">open</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div style="padding: 10px 16px; border-top: 1px solid #f1f5f9; font-size: 13px; color: #64748b">8 of 12 · a report's reporter stays private to the operator; the merchant sees the report, never who made it</div>
+</section>
+
+<section aria-labelledby="rep-title" style="flex: 1 1 440px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 22px 24px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 12px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: 0.08em">Urgent · harmful software</span>
+<h2 id="rep-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">#1042 · Possible malware in Bitfalke Downloader 2.1</h2>
+<span style="font-size: 13px; color: #64748b">Filed 5 Nov 12:04 from the store's app page · assigned to Mia · 4 reports on this app since 2.1 shipped</span>
+</div>
+<label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #475569">Assigned to <select style="height: 34px; padding: 0 10px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; color: #0f172a"><option>Mia</option><option>Alex</option><option>Unassigned</option></select></label>
+</div>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; font-size: 13px">
+<div style="display: flex; flex-direction: column"><dt style="color: #64748b">About</dt><dd style="margin: 0; font-weight: 600"><a href="SuperMerchantDetail.dc.html" style="text-decoration: none">Bitfalke Downloader 2.1 · Bitfalke GmbH</a></dd></div>
+<div style="display: flex; flex-direction: column"><dt style="color: #64748b">Reporter</dt><dd style="margin: 0; font-weight: 600">user u-48b1 · Austria · bought 2.0 on 3 Sep · 2 earlier reports, both upheld</dd></div>
+<div style="display: flex; flex-direction: column"><dt style="color: #64748b">Listing now</dt><dd style="margin: 0; font-weight: 600; color: #991b1b">withdrawn since 10:30 by Mia · 3,120 installs keep updating</dd></div>
+<div style="display: flex; flex-direction: column"><dt style="color: #64748b">Merchant told</dt><dd style="margin: 0; font-weight: 600">10:31 · answer due 10 Nov · no answer yet</dd></div>
+</dl>
+<blockquote style="margin: 0; padding: 12px 14px; border-radius: 10px; background: #f8fafc; border-left: 3px solid #cbd5e1; font-size: 14px; color: #334155">After updating to 2.1 the app starts a second process "bfupd" at login that talks to 185.x.x.x every 10 minutes, even with auto-update off. UltraNetMonitor shows it. 2.0 did not do this. Log attached.</blockquote>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<a href="#att-1" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 8px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-size: 13px; font-weight: 600"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l5 5v13H6z"></path><path d="M14 3v5h5"></path></svg>netmonitor-2026-11-05.log · 14 kB</a>
+<a href="#att-2" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 8px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-size: 13px; font-weight: 600"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M3 14l5-4 4 3 4-5 5 6"></path></svg>screenshot.png</a>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h3 style="margin: 0; font-size: 16px; font-weight: 700">What the operator found</h3>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+<li style="display: flex; align-items: flex-start; gap: 8px; color: #991b1b"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="flex: 0 0 auto; margin-top: 2px"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg><span>Rescan of the 2.1 package: a second executable <span style="font-family: ui-monospace, monospace">bfupd</span> not present in 2.0, not named in the listing, no network use declared in the privacy policy</span></li>
+<li style="display: flex; align-items: flex-start; gap: 8px; color: #166534"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg><span>3 malware engines: no known signature · the behaviour, not a signature, is the issue</span></li>
+<li style="display: flex; align-items: flex-start; gap: 8px; color: #92400e"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; margin-top: 2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg><span>Related: #1037 (duplicate, closed), #1033 and #1029 support reports on the same merchant, warning 2 of 3 issued today</span></li>
+</ul>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="rep-note" style="font-size: 13px; font-weight: 600; color: #334155">Note for the file</label><textarea id="rep-note" rows="2" style="padding: 10px 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a; resize: vertical">Reproduced on a clean Linux VM: bfupd starts at login and posts the machine id. Waiting for the merchant's statement until 10 Nov; if none, suspend under §9.1.</textarea></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 2px solid #2563eb">
+<h3 style="margin: 0; font-size: 16px; font-weight: 700">Act</h3>
+<div style="display: flex; flex-wrap: wrap; gap: 8px">
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Ask the reporter</button>
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Ask the merchant, new deadline</button>
+<button type="button" disabled style="height: 40px; padding: 0 14px; border-radius: 999px; border: 0; background: #e2e8f0; color: #64748b; font: inherit; font-weight: 600; cursor: not-allowed">Withdraw the app · done</button>
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #fcd34d; background: #fef3c7; color: #92400e; font: inherit; font-weight: 700; cursor: pointer">Warn the merchant</button>
+<a href="SuperMerchantDetail.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; background: #b91c1c; color: #ffffff; text-decoration: none; font-weight: 700">Suspend the merchant…</a>
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #fecaca; background: #ffffff; color: #b91c1c; font: inherit; font-weight: 600; cursor: pointer">Remove the app and refund 2.1 buyers…</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 6px; border-top: 1px solid #f1f5f9">
+<span style="font-size: 13px; color: #64748b; flex: 1 1 200px">Closing tells the reporter the outcome in one line, never the merchant's name of the person who reported.</span>
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Dismiss</button>
+<button type="button" style="height: 40px; padding: 0 18px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; cursor: pointer">Resolve as upheld</button>
+</div>
+</div>
+
+</section>
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1620}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

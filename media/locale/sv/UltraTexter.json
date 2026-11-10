@@ -38,7 +38,6 @@
   "Comment:": "Kommentar:",
   "Copy (Ctrl+C)": "Kopiera (Ctrl+C)",
   "Could not read the image file.": "Det gick inte att läsa bildfilen.",
-  "Crash Recovery": "Återställning efter krasch",
   "Cut (Ctrl+X)": "Klipp ut (Ctrl+X)",
   "Decrease Font Size": "Minska teckenstorlek",
   "Decrease Font Size (Ctrl+-)": "Minska teckenstorlek (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "Sök föregående",
   "Find Previous (Shift+Enter)": "Sök föregående (Shift+Enter)",
   "Find what:": "Sök efter:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Hittade {n} automatiskt sparad fil från en tidigare session.\n\nVill du återställa den?",
-    "other": "Hittade {n} automatiskt sparade filer från en tidigare session.\n\nVill du återställa dem?"
-  },
   "GB18030 (Chinese)": "GB18030 (kinesiska)",
   "GB2312 (Chinese Simplified)": "GB2312 (förenklad kinesiska)",
   "GBK (Chinese Simplified)": "GBK (förenklad kinesiska)",
@@ -219,6 +214,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (kyrilliska)",
   "Windows-1252 (Western)": "Windows-1252 (västeuropeiska)",
   "Word Wrap": "Radbrytning",
-  "Zoom Level": "Zoomnivå",
-  "{0} bytes": "{0} byte"
+  "Zoom Level": "Zoomnivå"
 }

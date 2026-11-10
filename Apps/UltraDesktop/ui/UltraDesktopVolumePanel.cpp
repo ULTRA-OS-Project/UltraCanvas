@@ -4,6 +4,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopVolumePanel.h"
+#include "UltraDesktopPanelTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasContainer.h"
@@ -23,8 +24,6 @@ namespace UltraDesktop {
 namespace {
 constexpr int kPanelWidth = 300;
 constexpr int kPanelHeight = 150;
-const Color kText(242, 242, 242);
-const Color kMuted(160, 160, 160);
 } // namespace
 
 UltraDesktopVolumePanel::UltraDesktopVolumePanel(std::function<void()> onChanged)
@@ -43,13 +42,13 @@ void UltraDesktopVolumePanel::Build(UltraCanvasWindow& window) {
     auto title = CreateLabel("vol.title", 0, 0, kPanelWidth - 28, 22, "Loudspeaker");
     title->SetFontSize(11.5f);
     title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(kText);
+    title->SetTextColor(PanelColors().text);
     title->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(title);
 
     device_ = CreateLabel("vol.device", 0, 0, kPanelWidth - 28, 18, "");
     device_->SetFontSize(9.5f);
-    device_->SetTextColor(kMuted);
+    device_->SetTextColor(PanelColors().muted);
     device_->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(device_);
 
@@ -88,7 +87,7 @@ void UltraDesktopVolumePanel::Build(UltraCanvasWindow& window) {
 
     status_ = CreateLabel("vol.status", 0, 0, kPanelWidth - 28, 34, "");
     status_->SetFontSize(9.0f);
-    status_->SetTextColor(kMuted);
+    status_->SetTextColor(PanelColors().muted);
     status_->layoutItem.SetFlexGrow(1.0f);
     window.AddChild(status_);
 

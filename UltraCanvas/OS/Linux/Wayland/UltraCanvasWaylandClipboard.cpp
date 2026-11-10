@@ -1,11 +1,14 @@
 // OS/Linux/Wayland/UltraCanvasWaylandClipboard.cpp
 // The clipboard on Wayland. See the header.
+// Version: 0.2.0 - drag and drop: file drags out, drops in
 // Version: 0.1.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWaylandClipboard.h"
 #include "UltraCanvasWaylandApplication.h"
+#include "UltraCanvasWaylandWindow.h"
+#include "UltraCanvasEvent.h"
 #include "../UltraCanvasLinuxUriList.h"
 #include "UltraCanvasDebug.h"
 
@@ -60,23 +63,80 @@ namespace UltraCanvas {
 
         // wl_data_device
         static void DeviceDataOffer(void* data, wl_data_device*, wl_data_offer* offer);
-        static void DeviceEnter(void* data, wl_data_device*, uint32_t, wl_surface*, wl_fixed_t, wl_fixed_t, wl_data_offer* offer) {
-            // A drag over one of our windows: not taken yet (phase 1); the
-            // offer is kept until the drag leaves so it can be destroyed.
+        static void DeviceEnter(void* data, wl_data_device*, uint32_t serial, wl_surface* surface, wl_fixed_t x,
+                                wl_fixed_t y, wl_data_offer* offer) {
+            // A drag over one of our windows: files are taken (text/uri-list,
+            // copied unless the source insists on a move), anything else is
+            // declined; the window hears of it as on X11.
             auto* self = Self(data);
-            if (auto* taken = self->TakeOffer(offer)) {
-                self->dragOffer.reset(taken);
-            }
-        }
-        static void DeviceLeave(void* data, wl_data_device*) {
-            auto* self = Self(data);
+            auto* app = UltraCanvasWaylandApplication::GetInstance();
             if (self->dragOffer) {
                 wl_data_offer_destroy(self->dragOffer->offer);
                 self->dragOffer.reset();
             }
+            if (auto* taken = self->TakeOffer(offer)) self->dragOffer.reset(taken);
+            self->dragWindow = app && surface ? static_cast<UltraCanvasWaylandWindow*>(
+                                                    app->FindWindow(reinterpret_cast<NativeWindowHandle>(surface)))
+                                              : nullptr;
+            self->dragX = wl_fixed_to_double(x);
+            self->dragY = wl_fixed_to_double(y);
+            self->dragOfferHasFiles = false;
+            if (self->dragOffer) {
+                const auto& types = self->dragOffer->mimeTypes;
+                self->dragOfferHasFiles = std::find(types.begin(), types.end(), kUriList) != types.end();
+                wl_data_offer_accept(self->dragOffer->offer, serial, self->dragOfferHasFiles ? kUriList : nullptr);
+                if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(self->dragOffer->offer)) >= 3) {
+                    wl_data_offer_set_actions(self->dragOffer->offer,
+                                              WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY | WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE,
+                                              WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY);
+                }
+            }
+            if (self->dragWindow && self->dragOfferHasFiles) {
+                self->DeliverDragEvent(static_cast<int>(UCEventType::DragEnter), false, {});
+            }
         }
-        static void DeviceMotion(void*, wl_data_device*, uint32_t, wl_fixed_t, wl_fixed_t) {}
-        static void DeviceDrop(void*, wl_data_device*) {}
+        static void DeviceLeave(void* data, wl_data_device*) {
+            auto* self = Self(data);
+            if (self->dragWindow && self->dragOfferHasFiles) {
+                self->DeliverDragEvent(static_cast<int>(UCEventType::DragLeave), false, {});
+            }
+            if (self->dragOffer) {
+                wl_data_offer_destroy(self->dragOffer->offer);
+                self->dragOffer.reset();
+            }
+            self->dragWindow = nullptr;
+            self->dragOfferHasFiles = false;
+        }
+        static void DeviceMotion(void* data, wl_data_device*, uint32_t, wl_fixed_t x, wl_fixed_t y) {
+            auto* self = Self(data);
+            self->dragX = wl_fixed_to_double(x);
+            self->dragY = wl_fixed_to_double(y);
+            if (self->dragWindow && self->dragOfferHasFiles) {
+                self->DeliverDragEvent(static_cast<int>(UCEventType::DragOver), false, {});
+            }
+        }
+        static void DeviceDrop(void* data, wl_data_device*) {
+            auto* self = Self(data);
+            std::vector<std::string> files;
+            if (self->dragOffer && self->dragOfferHasFiles) {
+                std::vector<uint8_t> bytes;
+                if (self->ReadOffer(self->dragOffer.get(), kUriList, bytes) && !bytes.empty()) {
+                    files = LinuxUriList::ParsePaths(std::string(bytes.begin(), bytes.end()));
+                }
+                if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(self->dragOffer->offer)) >= 3) {
+                    wl_data_offer_finish(self->dragOffer->offer);
+                }
+            }
+            if (self->dragWindow && !files.empty()) {
+                self->DeliverDragEvent(static_cast<int>(UCEventType::Drop), true, files);
+            }
+            if (self->dragOffer) {
+                wl_data_offer_destroy(self->dragOffer->offer);
+                self->dragOffer.reset();
+            }
+            self->dragWindow = nullptr;
+            self->dragOfferHasFiles = false;
+        }
         static void DeviceSelection(void* data, wl_data_device*, wl_data_offer* offer) {
             auto* self = Self(data);
             if (self->selection) {
@@ -90,27 +150,61 @@ namespace UltraCanvas {
         }
 
         // wl_data_source
-        static void SourceTarget(void*, wl_data_source*, const char*) {}
+        static void SourceTarget(void* data, wl_data_source* source, const char* mime) {
+            auto* self = Self(data);
+            if (source == self->dragSource) self->dragAccepted = mime != nullptr;
+        }
         static void SourceSend(void* data, wl_data_source* source, const char* mime, int32_t fd) {
             auto* self = Self(data);
             if (source == self->source && mime) {
                 self->Send(mime, fd);
+            } else if (source == self->dragSource && mime && std::string(mime) == kUriList) {
+                // The drag's files, to the target
+                const std::string& list = self->dragUriList;
+                fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+                size_t written = 0;
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(UltraCanvasWaylandClipboard::kWriteTimeoutMs);
+                while (written < list.size()) {
+                    pollfd pfd{ fd, POLLOUT, 0 };
+                    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+                    if (left.count() <= 0 || poll(&pfd, 1, static_cast<int>(left.count())) <= 0) break;
+                    if (pfd.revents & (POLLERR | POLLHUP)) break;
+                    const ssize_t n = write(fd, list.data() + written, list.size() - written);
+                    if (n < 0) {
+                        if (errno == EAGAIN || errno == EINTR) continue;
+                        break;
+                    }
+                    written += static_cast<size_t>(n);
+                }
+                close(fd);
             } else {
                 close(fd);
             }
         }
         static void SourceCancelled(void* data, wl_data_source* source) {
-            // Another program took the clipboard: the source is done with.
+            // The clipboard: another program took it, the source is done
+            // with. A drag: dropped nowhere, or declined.
             auto* self = Self(data);
             if (source == self->source) {
                 self->DropSource();
+            } else if (source == self->dragSource) {
+                self->EndDrag(false);
             } else {
                 wl_data_source_destroy(source);
             }
         }
-        static void SourceDndDropPerformed(void*, wl_data_source*) {}
-        static void SourceDndFinished(void*, wl_data_source*) {}
-        static void SourceAction(void*, wl_data_source*, uint32_t) {}
+        static void SourceDndDropPerformed(void* data, wl_data_source* source) {
+            auto* self = Self(data);
+            if (source == self->dragSource) self->dragDropped = true;
+        }
+        static void SourceDndFinished(void* data, wl_data_source* source) {
+            auto* self = Self(data);
+            if (source == self->dragSource) self->EndDrag(true);
+        }
+        static void SourceAction(void* data, wl_data_source* source, uint32_t action) {
+            auto* self = Self(data);
+            if (source == self->dragSource) self->dragAction = action;
+        }
     };
 
     namespace {
@@ -146,6 +240,12 @@ namespace UltraCanvas {
     }
 
     // ===== LIFETIME =====
+    namespace {
+        UltraCanvasWaylandClipboard* g_current = nullptr;
+    }
+
+    UltraCanvasWaylandClipboard* UltraCanvasWaylandClipboard::Current() { return g_current; }
+
     UltraCanvasWaylandClipboard::UltraCanvasWaylandClipboard() = default;
 
     UltraCanvasWaylandClipboard::~UltraCanvasWaylandClipboard() {
@@ -166,10 +266,13 @@ namespace UltraCanvas {
             // The current selection, if there is one, arrives with this
             wl_display_roundtrip(app->GetDisplay());
         }
+        g_current = this;
         return true;
     }
 
     void UltraCanvasWaylandClipboard::Shutdown() {
+        if (g_current == this) g_current = nullptr;
+        if (dragSource) EndDrag(false);
         DropSource();
         if (selection) {
             wl_data_offer_destroy(selection->offer);
@@ -275,11 +378,17 @@ namespace UltraCanvas {
             }
             return false;
         }
+        if (!selection || !Has(mimeType)) return false;
+        return ReadOffer(selection.get(), mimeType, out);
+    }
+
+    bool UltraCanvasWaylandClipboard::ReadOffer(DataOffer* offer, const std::string& mimeType, std::vector<uint8_t>& out) {
+        out.clear();
         auto* app = UltraCanvasWaylandApplication::GetInstance();
-        if (!app || !selection || !Has(mimeType)) return false;
+        if (!app || !offer || !offer->offer) return false;
         int fds[2];
         if (pipe2(fds, O_CLOEXEC) != 0) return false;
-        wl_data_offer_receive(selection->offer, mimeType.c_str(), fds[1]);
+        wl_data_offer_receive(offer->offer, mimeType.c_str(), fds[1]);
         close(fds[1]);
         app->Flush();
         fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL) | O_NONBLOCK);
@@ -307,10 +416,78 @@ namespace UltraCanvas {
         }
         close(fds[0]);
         if (!complete) {
-            debugOutput << "UltraCanvas Wayland: reading " << mimeType << " from the clipboard timed out" << std::endl;
+            debugOutput << "UltraCanvas Wayland: reading " << mimeType << " from the other program timed out" << std::endl;
             out.clear();
         }
         return complete;
+    }
+
+    // ===== DRAG AND DROP =====
+    bool UltraCanvasWaylandClipboard::StartFileDrag(UltraCanvasWaylandWindow* origin,
+                                                    const std::vector<std::string>& filePaths,
+                                                    std::function<void(bool, bool)> onFinished) {
+        auto* app = UltraCanvasWaylandApplication::GetInstance();
+        if (!app || !device || !app->GetDataDeviceManager() || !origin || !origin->GetSurface() || filePaths.empty()) {
+            return false;
+        }
+        if (app->GetLastInputSerial() == 0) {
+            debugOutput << "UltraCanvas Wayland: no button press to start a drag from" << std::endl;
+            return false;
+        }
+        if (dragSource) EndDrag(false);
+        dragSource = wl_data_device_manager_create_data_source(app->GetDataDeviceManager());
+        if (!dragSource) return false;
+        wl_data_source_add_listener(dragSource, &kSourceListener, this);
+        dragUriList.clear();
+        for (const std::string& path : filePaths) dragUriList += LinuxUriList::EncodeFileUri(path) + "\r\n";
+        dragFinished = std::move(onFinished);
+        dragAccepted = dragDropped = false;
+        dragAction = 0;
+        wl_data_source_offer(dragSource, kUriList);
+        if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(dragSource)) >= 3) {
+            wl_data_source_set_actions(dragSource, WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY | WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE);
+        }
+        // No icon surface: the pointer alone shows the drag (an icon of the
+        // file would be a surface of its own, a later refinement).
+        wl_data_device_start_drag(device, dragSource, origin->GetSurface(), nullptr, app->GetLastInputSerial());
+        app->Flush();
+        return true;
+    }
+
+    void UltraCanvasWaylandClipboard::EndDrag(bool finished) {
+        if (!dragSource) return;
+        wl_data_source_destroy(dragSource);
+        dragSource = nullptr;
+        dragUriList.clear();
+        auto callback = std::move(dragFinished);
+        dragFinished = nullptr;
+        const bool accepted = finished && dragAccepted && dragDropped;
+        const bool moved = accepted && dragAction == WL_DATA_DEVICE_MANAGER_DND_ACTION_MOVE;
+        if (callback) callback(accepted, moved);
+    }
+
+    void UltraCanvasWaylandClipboard::DeliverDragEvent(int type, bool withFiles, const std::vector<std::string>& files) {
+        auto* app = UltraCanvasWaylandApplication::GetInstance();
+        if (!app || !dragWindow) return;
+        UCEvent event;
+        event.type = static_cast<UCEventType>(type);
+        event.timestamp = std::chrono::steady_clock::now();
+        event.nativeWindowHandle = reinterpret_cast<NativeWindowHandle>(dragWindow->GetSurface());
+        event.targetWindow = dragWindow->GetWindowWeakPtr();
+        // The data device's coordinates are the surface's logical ones.
+        event.pointerWindow = Point2Di{ static_cast<int>(dragX), static_cast<int>(dragY) };
+        event.pointer = event.pointerWindow;
+        event.dragMimeType = kUriList;
+        if (withFiles) {
+            event.droppedFiles = files;
+            std::string joined;
+            for (const auto& path : files) {
+                if (!joined.empty()) joined += "\n";
+                joined += path;
+            }
+            event.dragData = joined;
+        }
+        app->PushEvent(event);
     }
 
     bool UltraCanvasWaylandClipboard::ReadFirst(const std::vector<std::string>& mimeTypes, std::vector<uint8_t>& out,

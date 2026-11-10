@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.44 - an earlier version's body directories moved to the case-safe layout at start
 // Version: 0.9.43 - a sent message is reported in a popup window or in the status
 //                  bar (Settings > Handling > Email send notification)
 // Version: 0.9.42 - Import: .eml, .emlx and Outlook .msg files into the folder on show
@@ -274,6 +275,11 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     cacheDir_ = dataDir + "/cache";
     attachmentDir_ = cacheDir_ + "/attachments";   // pruned by FinishStartup
     mailDir_  = dataDir + "/mail";
+    // An earlier version's body directories to their present names (once):
+    // before anything reads or writes a body.
+    step.emplace("Body cache layout", 0);
+    if (const int moved = MigrateBodyCache(mailDir_, store_); moved > 0)
+        Trace::Line(std::to_string(moved) + " folder(s) of cached mail moved to the new layout");
     // App-wide view preferences (e.g. the reading pane). A missing file keeps
     // the defaults; it is written the first time the user changes a setting.
     prefsPath_ = dataDir + "/preferences.ini";

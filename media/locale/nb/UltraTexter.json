@@ -38,7 +38,6 @@
   "Comment:": "Kommentar:",
   "Copy (Ctrl+C)": "Kopier (Ctrl+C)",
   "Could not read the image file.": "Kunne ikke lese bildefilen.",
-  "Crash Recovery": "Gjenoppretting etter krasj",
   "Cut (Ctrl+X)": "Klipp ut (Ctrl+X)",
   "Decrease Font Size": "Reduser skriftstørrelse",
   "Decrease Font Size (Ctrl+-)": "Reduser skriftstørrelse (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "Finn forrige",
   "Find Previous (Shift+Enter)": "Finn forrige (Shift+Enter)",
   "Find what:": "Finn:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Fant {n} automatisk lagret fil fra en tidligere økt.\n\nVil du gjenopprette den?",
-    "other": "Fant {n} automatisk lagrede filer fra en tidligere økt.\n\nVil du gjenopprette dem?"
-  },
   "GB18030 (Chinese)": "GB18030 (kinesisk)",
   "GB2312 (Chinese Simplified)": "GB2312 (forenklet kinesisk)",
   "GBK (Chinese Simplified)": "GBK (forenklet kinesisk)",
@@ -219,6 +214,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (kyrillisk)",
   "Windows-1252 (Western)": "Windows-1252 (vesteuropeisk)",
   "Word Wrap": "Tekstbryting",
-  "Zoom Level": "Zoomnivå",
-  "{0} bytes": "{0} byte"
+  "Zoom Level": "Zoomnivå"
 }

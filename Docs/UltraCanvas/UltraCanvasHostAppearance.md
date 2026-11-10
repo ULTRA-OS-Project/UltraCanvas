@@ -10,10 +10,10 @@ the platform once, keeps it, and reads it again when the host says it
 changed, so an application that asks hears about a switch to dark while it
 runs. It is phase T1 of
 [`UltraCanvasHostThemeProposal.md`](UltraCanvasHostThemeProposal.md): the
-reading, with T2 the Linux, BSD and WebAssembly backends. The theme built
-from it (`FromHost`, the policy) is T3, and until then the value is there
-for an application's own handler and for the system fonts, which now come
-from it.
+reading, with T2 the Linux, BSD and WebAssembly backends; T3 builds the
+theme from it (`UltraCanvasTheme::FromHost`, the application's theme
+policy - [`UltraCanvasTheme.md`](UltraCanvasTheme.md)). The system fonts
+come from it too.
 
 - Header: `UltraCanvas/include/UltraCanvasHostAppearance.h` (header-only, pure)
 - Application: `GetHostAppearance`, `RefreshHostAppearance`, `ScheduleHostAppearanceRefresh`, `AddHostAppearanceHandler` / `RemoveHostAppearanceHandler` (`UltraCanvasApplication.h`)
@@ -82,10 +82,11 @@ app->RemoveHostAppearanceHandler(handler);
 ```
 
 A handler runs on the UI thread after the value changed, with the new
-value. Until T3 nothing in the framework acts on the change by itself: the
-theme stays what the application set. An application that wants to follow
-today installs a handler and calls `UltraCanvasTheme::SetCurrent` with
-`Dark()` or `Light()`, as UltraVideo's `ThemeFor` does.
+value - after the theme policy has applied the change
+([`UltraCanvasTheme.md`](UltraCanvasTheme.md), *The policy*): under the
+default `FollowHost` the theme is `FromHost(host)` again, so an element
+that follows the theme has re-styled by the time the handler runs, and a
+hand-painted panel reads the new roles from `UltraCanvasTheme::Current()`.
 
 ## What each platform reads
 

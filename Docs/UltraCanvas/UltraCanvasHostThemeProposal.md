@@ -1,13 +1,17 @@
 # UltraCanvasHostAppearance — Following the Host's Look Proposal
 
-Status: **T1 and T2 implemented** (T1, 2026-11-04: `HostAppearance`, the
+Status: **T1, T2 and T3 implemented** (T1, 2026-11-04: `HostAppearance`, the
 Windows and macOS backends with their change events, the system fonts
 served from it, `ULTRACANVAS_HOST_APPEARANCE`, `HostAppearanceTest`; T2,
 2026-11-06: the Linux backend - the portal, GSettings, XSETTINGS with its
 `PropertyNotify`, `kdeglobals` and `settings.ini`, the config folders
 watched - for X11 and Wayland, and WebAssembly's media queries -
-[`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md)); **T3 to
-T6 proposed.** The companion document
+[`UltraCanvasHostAppearance.md`](UltraCanvasHostAppearance.md); T3,
+2026-11-06: `ThemeFonts` and the text roles, `FromHost` with the accent
+derivation and the two high-contrast presets, the theme policy in
+`Initialize` and on every host change, a window's ground from the theme -
+[`UltraCanvasTheme.md`](UltraCanvasTheme.md)); **T4 to T6 proposed.** The
+companion document
 [`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md)
 covers the language half of the same job and shares §6 (the settings file
 and the watcher) with this one.
@@ -320,7 +324,7 @@ decides, as it does on any platform where a person set `look=dark`.
 |---|---|---|
 | **T1** | **Done** (`UltraCanvasHostAppearance.md`): `HostAppearance`, the pure readers and `HostAppearanceTest`; the Windows (registry, metrics, `WM_SETTINGCHANGE`) and macOS (AppKit, KVO) backends; `GetSystemFontStyle` served from it; the `ULTRACANVAS_HOST_APPEARANCE` override. The two font detectors stay as the fonts' source under `DetectHostAppearanceNative`, so the platforms without a backend are untouched | 4 days |
 | **T2** | **Done**: the Linux backend - the portal's colour scheme over the session bus, the XSETTINGS decoder and the manager's `PropertyNotify`, GSettings through GIO, `kdeglobals` and `settings.ini` readers, the config folders watched with `UltraCanvasFolderWatcher` - shared by X11 and Wayland (the BSDs with them); WebAssembly's media queries and their change events; `LinuxHostAppearanceTest`. GSettings' `changed` signal is not pumped: dconf's file under `~/.config/dconf` is watched instead, which covers the portal on GNOME too | 3-4 days |
-| **T3** | `ThemeFonts`, `ThemeTextRole`, `FromHost` with the accent derivation and the two high-contrast presets, `ThemePolicy` / `SetThemeProvider` in `Initialize()`, the window clear colour, `UltraCanvasThemeTest` extended (accent derivation contrast, high contrast at 7:1); `UltraCanvasTheme.md` | 3 days |
+| **T3** | **Done**: `ThemeFonts`, `ThemeTextRole`, `FromHost` with the accent derivation and the two high-contrast presets, `ThemePolicy` / `SetThemeProvider` in `Initialize()` and on every host change, the window clear colour (a window built with the default background takes the policy's ground), `UltraCanvasThemeTest` extended (accent derivation contrast over fourteen accents, high contrast at 7:1, the roles' sizes); `UltraCanvasTheme.md`. `Appearance.conf` stays T5. An application that sets its own theme is left alone by the policy, so the four that do need no change yet | 3 days |
 | **T4** | `FromTheme` + `ApplyTheme` for the 42 remaining style structs, with fonts by role in all 69; `SetFollowThemeByDefault` and the `SetStyle` rule; the catalogue doc rows | 8-10 days (the bulk; splits by element group into 4-5 PRs) |
 | **T5** | `Appearance.conf`, the settings watcher, UOS-Settings > Appearance > Look, DemoApp's theme page | 3 days |
 | **T6** | The applications: the hand-painted-surface review and the dark/light/14 pt run, one PR each; UltraVideo and UltraPress to `Own` with their providers; Texter's dark mode retired onto the policy | ½ day each, ~15 days for 30 |

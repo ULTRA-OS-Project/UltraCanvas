@@ -1,3 +1,639 @@
+#### 2026-11-10 *0.9.515*
+- **The clipboard history's rows in the person's language.** Everything
+  `UltraCanvasClipboardHistoryView` paints goes through `Tr`: the section
+  headers (*PINNED*, *TODAY* ...), the meta line (`DescribeClipboardEntry`:
+  the kind, "2 lines", "29 characters", "4 files", *cut*), sizes
+  (`FormatClipboardSize`), ages (`FormatClipboardAge`: "just now", "5 min
+  ago", "today 09:41", the date with the standard set's short month names),
+  the action tooltips and the *Copied* pill, which now grows to fit its
+  word. Titles are stored in the history in English and searched that way,
+  so they are translated where they are shown: `ClipboardEntryDisplayTitle`
+  makes an image's "Image" and copied files' "a, b and 2 more" again, and
+  `ClipboardEntryKindLabel` is the kind's name to show (`ClipboardEntryKindName`
+  stays the English one search matches). UltraDesktop's quick panel and
+  UltraClipboard both draw with it. View 1.3.0.
+- **`UltraCanvasFileLoader::ExtractText`'s messages are translated** -
+  `WhyNoTextExtraction`'s reasons and every error (FileLoaderText 1.1.0).
+- **The standard set gains 38 entries, drafted in all 29 languages.** For
+  the five that UltraFiler, UltraSnip or UltraTexter had already translated
+  (*Save as*, "{n} line", "and {n} more", "{0} bytes", *The picture could not
+  be read.*) the standard set takes the application's translation, and the
+  application's copy goes; the Text base set's *Code* likewise. The rest are
+  machine drafts awaiting review, as the files' `@translated-by` already say.
+- **OCR: the language data is read by its UTF-8 name.** Tesseract opened
+  `<dataPath>/<lang>.traineddata` with `fopen`, which takes the name in the
+  ANSI code page on Windows, so a data folder under a Thai or emoji user
+  name or install path failed to load. With Tesseract 5 the engine now hands
+  `Init` a `FileReader` that opens the files through `OpenFileUtf8`
+  (Tesseract 4, which no Windows build uses, keeps its own reader).
+  `FileLoaderExtractTextTest` recognises with the data copied into a folder
+  with a Thai name.
+- **`UltraCanvasFileLoader::ExtractText`: the words in a file as plain
+  text.** A word processor document or a deck (through `LoadTextDocument`), a
+  PDF (every page's text; a scanned PDF without any is rendered at 300 DPI and
+  read by text recognition), a spreadsheet (every sheet, tab-separated, under
+  its name when there are several), a text, Markdown, CSV or code file (as it
+  is, also of a type the inventory does not know when it reads as UTF-8), a
+  picture (text recognition, on white where it is transparent) and a sound or
+  a video (speech to text). `GetTextExtractionMethod`, `CanExtractText` and
+  `WhyNoTextExtraction` say how a file would be read, whether this build can,
+  and why not in a sentence for the user. Text recognition and speech to text
+  are hooks the core calls on the caller's thread:
+  `SetImageTextRecognizer` / `SetSpeechTranscriber` (and `Has...`). New
+  source `core/UltraCanvasFileLoaderText.cpp`; FileLoader 1.11.0.
+- **OCR plugin 0.2.0: Tesseract as FileLoader's text recognizer.**
+  `RegisterOCRTextRecognition(languages)` installs it - every language
+  installed when none are given, English when none is, the first alone when
+  the languages sit in different folders - one engine shared by every call,
+  one at a time. `UltraCanvasOCR::RecognizeRaw` reads pixels already in
+  memory (1, 3 or 4 bytes a pixel). UltraClipboard's *Extract text* is the
+  first user. `Docs/Modules/FileLoader/README.md`, *Text From Any File*.
+- **`UltraCanvasFileLoader::GetImageTextRecognizer`**: the text recognizer
+  installed now, so one installed after it keeps it as its fallback - UltraAI's
+  (`RegisterUltraAITextRecognition`, UltraAI changelog) hands a picture to the
+  OCR plugin's Tesseract when no AI provider reads text. FileLoader 1.12.0.
+- **OCR: `RecognizeFile` reads any picture, by a UTF-8 name.** It went
+  through Leptonica's `pixRead(path.c_str())`, which takes the name in the
+  ANSI code page on Windows (a folder with a Thai or emoji name failed) and
+  reads no WebP, HEIC, AVIF or JPEG XL. `UltraCanvasOCR::RecognizeFile`
+  decodes with libvips now - every type the image pipeline reads, UTF-8
+  names on every platform - and the Tesseract engine's own reader, the
+  fallback, reads the bytes through `OpenFileUtf8` and decodes them from
+  memory. A picture with transparency is flattened onto white: libvips'
+  `flatten()` defaults to black, so dark text on a transparent screenshot
+  came out black on black; 16-bit pictures are scaled to 8 bits instead of
+  clipped. OCR plugin 0.2.1.
+- **Linux CI builds the OCR plugin.** The Linux rows install Tesseract,
+  Leptonica and the English data (`libtesseract-dev libleptonica-dev
+  tesseract-ocr-eng`), as the cloud session hook now does too: Linux had
+  never compiled the plugin, and `FileLoaderExtractTextTest`'s real-OCR
+  checks ran nowhere in CI. Ubuntu 22.04 ships Tesseract 4.1, the oldest
+  the plugin now meets.
+
+#### 2026-11-10 *0.9.514*
+- **One histogram count for every Curves dialog.** `UltraCanvasCurveEditor` and
+  `UltraCanvasCurvesDialog` take `SetHistograms(const ImageHistogram&)`: Red,
+  Green and Blue from their channels, RGB from the three added level by level
+  (`ImageHistogram::RgbTotal`), transparent pixels left out. The image viewer
+  (`UltraCanvasMediaViewer`) now counts its Curves histogram with
+  `UltraCanvasHistogramModel` instead of `HistFind` - still in sRGB at 8 bits a
+  channel, a strip of rows at a time - and no longer counts fully transparent
+  pixels. `UltraCanvasHistogramModel` is in the core library (`core/`), so a
+  build without the charts has it; `ImageHistogram::Add` sums strips. Test:
+  `CurveHistogramTest`. Guide: `UltraCanvasCurveEditor.md`.
+- **Histogram chart.** `UltraCanvasHistogramChart` (chart engine) shows a
+  picture's histogram: how many pixels have each of the 256 levels, for red,
+  green and blue overlaid (`HistogramDisplay::Combined`) or for one channel -
+  red, green, blue or luminosity - on a linear or logarithmic scale, with the
+  level under the pointer read out and, in Combined, the legend switching a
+  channel off. `SetImage` counts a decoded picture; the UI-free
+  `UltraCanvasHistogramModel.h` (core library) counts any pixel buffer (premultiplied ARGB32,
+  XRGB32, RGBA8, RGB8) and gives each channel's mean, median, standard
+  deviation, range, clipping and percentiles. Demo: **Charts > Histogram
+  Chart**. Tests: `HistogramModelTest`, `HistogramChartRenderTest`. Guide:
+  `UltraCanvasHistogramChart.md`.
+
+#### 2026-11-10 *0.9.513*
+- **UltraCanvasFilerWidget: Refresh in the context menu.** The file menu
+  gains *Refresh* (after *New*, with `media/icons/menu/refresh.svg`): the one
+  folder entry it was opened on, or the folder on display, read again. A host
+  that answers remote folders from a cache sets the new `onRefreshRequested`
+  and is handed that folder to refresh itself - UltraFiler asks the server
+  again and brings its tree in line; without the hook the display re-reads
+  its folder (`Refresh()`).
+- **UltraCloudUI: `ShowEditAccountDialog`.** A stored account in the
+  add-account form, to be changed: every field filled in from the store, the
+  provider shown but fixed, an FTP server's URL back in its protocol, server
+  and port fields, and the password field empty - an empty one keeps the
+  stored password. Saving signs in and stores only what the provider accepts,
+  under the account's own id; an OAuth account is saved as it is unless
+  *Sign in again* is ticked. Over a shared or a caller-kept service, like
+  `ShowAddAccountDialog`; false when the account or its provider is not
+  there. Its five new texts are in the standard set, drafted in every
+  language.
+
+#### 2026-11-10 *0.9.512*
+- `scripts/check_doc_examples.py` (1.10.0) compiles a doc's examples
+  against UltraAI's public headers (`UltraAI/include`) too, and knows
+  their names when checking prose, so `Docs/Modules/UltraAI/*.md` can be
+  checked on demand.
+- **macOS builds no longer download gumbo from codeberg.org.** MuPDF was its
+  only user, and vcpkg's gumbo port fetches its source from Codeberg, which
+  on 2026-11-09 sent nothing for half an hour, run after run: every macOS
+  build that had to fetch the sources timed out on it, on `main` and on every
+  pull request. The mupdf overlay port (`MacOS/deps/ports/mupdf`, port-version
+  2) now builds MuPDF's own gumbo submodule, fetched from GitHub at the
+  commit MuPDF 1.28.5 records, like its other four submodules
+  (`USE_SYSTEM_GUMBO=no`), and no longer depends on vcpkg's gumbo.
+- **`ReadVolumeName(path)`: a drive letter's own volume name.** The name a
+  Windows volume carries ("My Passport Ultra"), for showing a drive as
+  Explorer does. It reads the medium, so it is a call of its own for a
+  worker thread, not part of `ListMountedVolumes()`; empty for a network
+  drive, a drive with no medium, and on Linux and macOS, where
+  `MountedVolume::label` already is the name (`UltraCanvasVolumeMonitor.h`
+  1.2.0).
+- **An external USB disk or stick was listed as a portable device too.**
+  Windows exposes a mass-storage drive through Windows Portable Devices as
+  well as with its drive letter, so `UltraCanvasPortableDevices::List()`
+  returned it next to the phones and cameras. The WPD backend now leaves out
+  a device whose id is a USBSTOR / `STORAGE#Volume` one or whose protocol is
+  `MSC:` - it is a drive, and the volume list already has it
+  (`UltraCanvasWindowsPortableDevices.cpp` 1.2.0).
+
+#### 2026-11-09 *0.9.511*
+- **`UltraCanvasDesktopShell::OpenDisplaySettings` and
+  `CanOpenDisplaySettings`** open the system's own display settings, what a
+  desktop's "Display settings" does: `ms-settings:display` on Windows, System
+  Settings > Displays on macOS, and on Linux (X11 and Wayland alike) the
+  first display tool installed, the session's own desktop's first
+  (`XDG_CURRENT_DESKTOP`): `gnome-control-center display`, `systemsettings`
+  / `kcmshell6` / `kcmshell5 kcm_kscreen`, `xfce4-display-settings`,
+  `cinnamon-settings display`, `mate-display-properties`,
+  `lxqt-config-monitor`, `budgie-control-center display`, then `wdisplays`,
+  `nwg-displays`, and outside Wayland `arandr` and `lxrandr`. UltraDesktop's
+  desktop menu uses it.
+- **`UltraCanvasImageElement::LoadFromPixmap`** shows a picture that is
+  already drawn - a file's icon (`LoadHostFileIconPixmap`) or thumbnail
+  (`RenderFileThumbnail`) - fitted to the box like a loaded image. UltraDesktop's
+  desktop icons use it.
+- **`UltraCanvasKanbanBoardElement::onDeleteKey`**: the application decides
+  what the Delete key does to the selected card (returning true, the board
+  removes nothing itself). UltraDesktop's Sticker board asks first and
+  deletes the card's file or note.
+
+#### 2026-11-09 *0.9.510*
+- **CI builds the widget and chart modules.** A new workflow,
+  `.github/workflows/element-modules.yml`, configures the lean build (no
+  widget and no selectable chart compiled in) on ubuntu-24.04. It builds the
+  core and every `ultracanvas-widget-*` and `ultracanvas-chart-*` module, and
+  runs `ElementModulesTest`, `UltraCanvasThemeTest` and `VectorEditTest`
+  against them. It also checks that the configure refuses ArtCreator when its
+  widgets are left out. `build.yml` compiles every widget in, so before this
+  the modules were never built in CI. The chart modules' missing framework
+  headers id went unseen that way.
+- **macOS CI: a source download that runs out of time no longer fails the
+  build.** When the step that prefetches vcpkg's source archives hit its 30
+  minutes, GitHub stopped only the step's shell. vcpkg went on running and
+  kept its lock, so the next step, the libraries' build, failed at once with
+  "failed to take lock". That happened even when every library it needed was
+  in the binary cache. On 2026-11-09 `codeberg.org` sent nothing for
+  `gumbo`'s source, run after run, and both macOS rows went red on `main`
+  and on every pull request. A new step after the fetch stops the leftover
+  vcpkg, so the build runs from the binary cache.
+
+#### 2026-11-09 *0.9.509*
+- **macOS: screen positions are top-left, and popups and tooltips have windows
+  of their own there too.** The macOS backend gave and took window positions
+  in Cocoa's coordinates, which run up from the bottom of the primary screen,
+  while every helper that places a window - `CenterOnParent`, the clamp that
+  keeps a window grown to its content on its monitor, a toast's corner, a
+  viewer opened over its host - works in top-left coordinates as X11 and
+  Windows give them. Only what is symmetric top to bottom, centring, came out
+  right; a toast meant for the top right of the screen went to the bottom.
+  Popups and the tooltip, placed below and above the pointer, could not be
+  given windows of their own on macOS for the same reason.
+  - `SetWindowPosition`, `GetWindowPosition`, `GetScreenBounds`, the new
+    `GetContentScreenOrigin` override (below the title bar), a window's
+    create-time `config.x` / `config.y` and its moves (`onWindowMove`) are in
+    top-left screen coordinates: points, x right and y down from the top of
+    the primary screen, a screen above it at negative y. A window without a
+    position opens where it always did. `SetWindowSize` keeps the window's
+    top-left corner where it was, as on the other platforms (Cocoa keeps the
+    bottom-left one). An event's `pointerGlobal` is flipped about the primary
+    screen too, not the one with the key window.
+  - `WindowType::Popup` and `WindowType::Tooltip` on macOS: a borderless
+    window that never becomes key (ordered front with `orderFrontRegardless`,
+    so the window the popup or tooltip belongs to keeps the keys), at the
+    pop-up menu level, out of the window cycle and Mission Control and shown
+    over a full-screen window, transparent where nothing is drawn - a menu's
+    rounded corners show what is beneath, no outline needs cutting - and with
+    the system's shadow, which follows what is drawn. A popup's window takes
+    the first click (`acceptsFirstMouse:`); a tooltip's lets the pointer
+    through.
+  - `UltraCanvasWindowBase::SetPopupsInOwnWindows` and
+    `UltraCanvasTooltipManager::SetUseOwnWindow` are on by default on macOS
+    now; only the browser, Android and iOS draw popups and tooltips inside
+    their window.
+
+#### 2026-11-09 *0.9.508*
+- **Slideshow, Album, ColorPaletteManager and VectorCanvas can be runtime
+  modules too.** They join VideoTimeline in `ULTRACANVAS_WIDGETS`, registered
+  as `"slideshow"`, `"album"`, `"color-palette-manager"` and
+  `"vector-canvas"`. They are still compiled in by default. Left out, each is
+  built as `ultracanvas-widget-<name>`. A widget can now name several anchors
+  (`_ANCHORS`): functions, member functions or `&typeid(Class)` for the core
+  objects its module needs, which `UltraCanvas_RegisterSelectedWidgets()`
+  keeps in a static host. `ultracanvas_require_widgets` stops the configure
+  when DemoApp, UltraVideo, UltraPaint or ArtCreator would be built without a
+  widget it uses. `VideoTimelinePluginTest` is now `ElementModulesTest`,
+  covering every selectable widget and the chart module.
+- **Chart runtime modules could never be loaded.** They were compiled without
+  `generated/include`, so they reported their framework headers as `unknown`
+  and the loader refused them. They now carry the build's id, and
+  `ElementModulesTest` loads `ultracanvas-chart-parallel-coordinate`.
+
+#### 2026-11-09 *0.9.507*
+- **Every popup is shown in a window of its own, above every other window.**
+  A popup - a menu or submenu, a dropdown's list, an autocomplete list, a
+  date, time or colour picker, anything opened with `OpenPopup` - was
+  composited onto the window it was opened in, so any window above that one
+  covered it. On UltraDesktop every context menu of the bars went under
+  whatever application was open beside them, since the bars live in the
+  desktop window, which is kept below all others. Each popup now has a window
+  of its own, `WindowType::Popup`, placed where the popup is, above every
+  other window; the popup stays its window's in every other way.
+  - The popup is still laid out and drawn in the window it belongs to, which
+    keeps the focus and the keys. The pointer over its own window is handed
+    to that window, at the popup's place there, before anything else sees it
+    - global handlers, hover, capture, a click outside, a modal dialog - so
+    menus, dropdowns and the rest work unchanged.
+    `UltraCanvasWindowBase::FindElementAtPoint` also finds a popup that
+    reaches past the window's edge.
+  - `WindowType::Popup` (unused until now) is a popup's own window: on X11
+    override-redirect, typed `_NET_WM_WINDOW_TYPE_POPUP_MENU`, mapped raised;
+    on Windows `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, shown
+    without activation and answering `WM_MOUSEACTIVATE` with
+    `MA_NOACTIVATE`; on Wayland a popup of the window it belongs to, or
+    beside a layer-shell desktop a surface on the overlay layer that never
+    takes the keys.
+  - The window is cut to the popup's opaque pixels
+    (`UltraCanvasWindowBase::SetNativeWindowShape`: the X11 shape extension,
+    a window region on Windows; Wayland's surfaces carry their alpha), so a
+    menu's rounded corners show what is beneath. It has no soft drop shadow of
+    its own and does not fade in (a menu with `enableAnimations` appears in
+    full); a compositing window manager gives popup windows a shadow.
+  - The window follows the popup: made as it opens (on the next turn of the
+    loop when it opens while the windows are being drawn), placed, sized and
+    shown as it is laid out and drawn, moved when the window it belongs to
+    moves, hidden as it closes and closed on the next turn of the loop. The
+    caret of a field in a popup is drawn in the popup's window, and the
+    window shows the pointer its owner shows.
+  - A popup that closes on a click outside it also closes when the focus
+    leaves the application, as it would otherwise float above other
+    programs' windows; focus moving to another window of the application (a
+    dialog the popup opened) leaves it open.
+  - A popup's window is no application window: closed with the window it
+    belongs to, skipped by `ClosingEndsApplication`, the accessibility tree,
+    the placement of a dialog without a parent and single-instance raising,
+    as `JumpToLastWindow` already skipped it.
+  - `UltraCanvasWindowBase::SetPopupsInOwnWindows(false)` composites popups
+    onto their window as before, and so does every platform that cannot place
+    such a window (macOS, the browser, Android) and any popup whose window
+    cannot be made. `GetPopupWindow(popup)` says where a popup is shown.
+  - `UltraCanvasCaret::Composite` takes an offset, for a caret drawn in a
+    popup's own window.
+  - `PopupOwnWindowTest` (X11, under Xvfb) covers a window with another,
+    opens a menu in the first and reads the screen back: the menu is on top,
+    cut to its rounded outline, a click in its window runs the item under it,
+    a click outside and focus leaving the application close it, a popup past
+    the window's edge takes clicks there, and its window closes with the
+    window it belongs to. `CaretStackingTest` and `TextMetricsScreenshotTest`,
+    which read a menu back from the window's own surface, composite it there.
+
+#### 2026-11-09 *0.9.506*
+- **`UltraCanvasDialogTypes.h`: `UltraCanvasModalDialog.h` and
+  `UltraCanvasFilerWidget.h` no longer include each other.** The dialog
+  enums (`DialogType`, `DialogButton(s)`, `DialogButtonRole`, `DialogResult`,
+  `DialogAnimation`, `DialogPosition`, `InputType`, `FileDialogType`) and
+  `FileFilter` moved into the new header, which the dialog header includes, so
+  every user sees the same names. The Filer header includes only that one, so
+  it no longer pulls in the whole dialog system.
+- **Widgets can be runtime modules: `ULTRACANVAS_WIDGETS`, VideoTimeline
+  first.** The widget counterpart of `ULTRACANVAS_CHARTS`. A selectable widget
+  is compiled into the core when named in `ULTRACANVAS_WIDGETS` (`all`, the
+  default, so nothing changes for an existing build). One left out is built as
+  its own module, `ultracanvas-widget-<name>` in `<build>/Plugins/Elements`,
+  which registers through the element plugin loader. The video timeline is
+  registered as `"video-timeline"` (`MakeVideoTimelineDescriptor`,
+  `RegisterVideoTimelineElement`). `UltraCanvas_RegisterSelectedWidgets()`
+  registers the widgets compiled in. In a static core it also keeps the core
+  objects the modules need, so a host loading a widget module calls it at
+  startup. UltraVideo and DemoApp use the timeline's typed API, so configuring
+  them with the timeline left out stops with an error. `VideoTimelinePluginTest`
+  creates the timeline by name in both builds.
+
+#### 2026-11-09 *0.9.505*
+- **Tooltips are shown in a window of their own, above every other window.**
+  `UltraCanvasTooltipManager` drew the tooltip into the window it belongs to
+  while that window composited its frame, so any window above that one
+  covered it, and it stopped at that window's edges. It showed worst on
+  UltraDesktop: the bars live in the desktop window, which is kept below all
+  others, so a tooltip of the taskbar or the right bar went under whatever
+  application was open there. The tooltip now has a window of its own - the
+  new `WindowType::Tooltip` - placed on the screen above and to the right of
+  the pointer with the monitor's room, not the window's, so it also reaches
+  past the edge of a small window or a bar.
+  - `WindowType::Tooltip`: above every other window, never focused, and the
+    pointer passes through it to the element it describes. On X11 an
+    override-redirect window typed `_NET_WM_WINDOW_TYPE_TOOLTIP` with an empty
+    input shape (the X11 build now links `xext`), mapped raised; on Windows
+    `WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE`, layered and
+    `WS_EX_TRANSPARENT`, shown without activation; on Wayland a popup of the
+    window the tooltip belongs to with no input region, or, beside a desktop
+    on the layer shell, a surface on the overlay layer that never takes the
+    keys.
+  - The window is opaque, so in it the tooltip has square corners and no soft
+    shadow of its own (a compositing window manager gives a tooltip window
+    one).
+  - It is no application window: a closing window takes its tooltip and the
+    tooltip's window with it (`UltraCanvasTooltipManager::ForgetWindow`, from
+    `CleanupWindowReferences`), and it is never counted by
+    `ClosingEndsApplication`, jumped to, reported to assistive technology,
+    used to place a parentless dialog or brought to the front for a second
+    instance.
+  - `UltraCanvasTooltipManager::SetUseOwnWindow(false)` draws the tooltip
+    inside its window as before; so does every platform that cannot place
+    such a window (macOS, the browser, Android) and any case where the window
+    cannot be made. `GetTooltipWindow()` says where the tooltip on screen is.
+  - A window moving to a monitor of another scale no longer hides the tooltip
+    when the window is the tooltip's own: it is drawn again at the new scale
+    (`WindowScaleChanged`). While the tooltip is in its own window, a caret
+    blink in the window below no longer composites that window in full.
+  - `TooltipOwnWindowTest` (X11, under Xvfb) covers a window with another,
+    shows a tooltip of the first and reads the screen: the tooltip is on top,
+    outside its window, lets the pointer through, follows the pointer, is
+    reused when shown again, and closes with its window.
+
+#### 2026-11-07 *0.9.504*
+- **`UltraCanvasSegmentedControl::SetSegmentTooltip`: each segment its own
+  tooltip.** The tooltip shows while the pointer is over that segment and
+  switches, where it is up or about to be, as the pointer moves to the next;
+  a segment without one shows the control's own (`SetTooltip`). Changing the
+  control's tooltip from `onSegmentHover` did not do this - the manager read
+  the text once, as the pointer came in, so every segment showed the first
+  one's.
+- **Linux: `RaiseAndFocus` raises the window itself as well (`XRaiseWindow`).**
+  It only asked the window manager (`_NET_ACTIVE_WINDOW`), so with none - a
+  kiosk, a test display - nothing was raised, and a window stayed under every
+  window created after it however often it was shown or raised.
+
+#### 2026-11-07 *0.9.503*
+- **`UltraCanvasSettingsPageKit` 1.1.0: a window of any shape, and its demo
+  page.** `SettingsWindowOptions` gives `Create` the window's size, the
+  tree's width (for a long page list), an element above the tree (a logo),
+  whether it is a dialog of a parent or an application's own main window,
+  and the Close label; `Finish(startPage, show)` can leave the showing to
+  the caller. UOS-Settings is the third window built on the kit, as a main
+  window with the ULTRA OS logo above its tree, with nothing changed on
+  screen; UltraPress and UltraFIBU have no settings window to move. The demo
+  app's *Widgets > Settings Window* page opens a sample window of three
+  pages that uses every control the kit makes.
+
+#### 2026-11-06 *0.9.502*
+- **Kanban board: a card's picture beside its text, a context menu, hover and
+  a larger preview.** `KanbanBoardStyle::cardImagePlacement`
+  (`KanbanCardImagePlacement::Top` / `Left`) puts a card's picture in a band
+  above the title or in a square at its left with the text beside it;
+  `centerCardTitle` centres the title. `onContextMenu(cardId, columnId,
+  windowPos)` runs on a right click (the card is selected first),
+  `onCardHoverChanged(cardId)` names the card under the pointer, and
+  `ShowCardPreview(cardId, picture, size)` / `HideCardPreview()` draw a
+  larger picture of a card beside it over the board, gone by itself when the
+  pointer leaves the card, a button is pressed, the board scrolls or a drag
+  starts. `GetCardBounds(cardId)` gives a card's laid-out rectangle.
+  `KanbanFileDropTest` covers all of it.
+
+#### 2026-11-06 *0.9.501*
+- **UltraCloud's add-account dialog asks an FTP / SFTP server for its
+  protocol, its name and its port, each on its own.** The one *Server URL*
+  field took whatever was pasted into it - an `https://` address from the
+  browser's bar, which is no FTP at all - and tried it as plain FTP on port
+  21 without a word; the port had no place but a `host:port` nobody was
+  told about. The FTP provider now shows a *Protocol* menu (SFTP, FTP with
+  TLS, FTP over TLS, plain FTP, each with its port named), a *Server* field
+  for the name or address and a *Port* field beside it, empty for the
+  protocol's own; a URL typed into the server field is refused with the
+  reason. The three are stored as the one URL the command line takes
+  (`FtpServerUrl`: `sftp://files.example.org:2222`, the protocol's own port
+  left out, so an account keeps its id). The *Private key* row, shown for
+  SFTP only, has a *Choose* button that opens the file dialog in `~/.ssh`
+  with hidden files shown; a `~/` typed into it is expanded. The status
+  line wraps onto two lines, so a server's refusal is read whole, and a
+  refusal is said by its result code (`DescribeResult`). The callbacks the
+  widgets hold reach the other widgets through plain pointers - the dialog
+  owns them all and outlives every callback - where the provider menu's own
+  callback used to hold a `shared_ptr` to the menu, a cycle that kept the
+  menu alive. The new texts (the protocol menu, the server and port rows, their
+  messages) go through `Tr` into the standard set, drafted in all thirty
+  languages; the rest keep the wording and translations of the dialog's
+  earlier `Tr` conversion (`UltraCloudAccountDialog.cpp` 0.8.2).
+- **The FTP provider refuses a scheme it does not speak.** `Verify` answers
+  `InvalidArgument` - "the server URL starts with https://, which is not
+  FTP: it has to start with ftp://, ftps://, ftpes:// or sftp://" - before
+  anything is sent, so `ultrapress hosts add` and UltraFiler's "+ Drive" say
+  so too. `FtpServer`, `FtpServerOf`, `FtpServerUrl`, `FtpDefaultPort` and
+  `FtpSchemeKnown` in `UltraCloudFtp.h` (0.2.0) are the pure helpers behind
+  the form, tested in `Tests/UltraCloud/test_ftp.cpp`.
+
+#### 2026-11-06 *0.9.500*
+- **The Wayland desktop shell's remaining pieces: panels and popups placed
+  by their parent, drag and drop, the session lock, GL surfaces, and the
+  Wayland build in CI** (`Docs/UltraCanvas/WaylandDesktopShellProposal.md`,
+  sections 4.6 to 4.10). In a build with `ULTRACANVAS_WAYLAND=ON`:
+  - A window with `parentWindow` of type Popup, Borderless, Tool or
+    Notification is placed where `config.x` / `config.y` say, relative to
+    its parent: a child of a layer-shell desktop as a layer surface of its
+    own on the top layer (keyboard focus on demand, so a panel takes the
+    keys when clicked and loses them - a blur - when the desktop is), a
+    child of a toplevel as an `xdg_popup` with a positioner, made on Show
+    and repositioned through xdg_wm_base 3. UltraDesktop's popup panels and
+    clipboard panel get the desktop window as their parent in a Wayland
+    build (`SetParentWindow`), so they open beside their bars instead of
+    being tiled as toplevels.
+  - File drags out of a window (`StartNativeFileDrag`: a `wl_data_source`
+    with `text/uri-list`, copy and move, the target's answer to the
+    callback) and drops in (`DragEnter` / `DragOver` / `DragLeave` / `Drop`
+    with the paths, as XDnD on X11); a save drag has no Wayland form and
+    answers false.
+  - `WindowType::SessionLock`, the lock screen a program draws: an
+    `ext-session-lock-v1` lock surface on Wayland (the application holds
+    the one lock, taken with the first such window and released with the
+    last; a compositor that refuses closes them), a fullscreen window kept
+    above elsewhere.
+  - GL surfaces on Wayland: the EGL context manager opens its display on
+    the Wayland connection, else Mesa's surfaceless platform; GLX is left
+    out of a Wayland build and `ULTRACANVAS_ENABLE_GL` is no longer forced
+    off.
+  - `.github/workflows/wayland-build.yml`: the framework, DesktopShellTest
+    and UltraDesktop built with `ULTRACANVAS_WAYLAND=ON` on ubuntu-24.04,
+    DesktopShellPortalTest under a session bus, DesktopShellTest under sway
+    headless with a virtual keyboard, and a screenshot of UltraDesktop under
+    sway as an artifact.
+  - DesktopShellTest's Wayland section checks each: the lock granted and
+    released, a popup placed at 40,30 as asked, a panel at its size, a drag
+    started or refused with the compositor's reason, a GL surface drawn
+    with the renderer EGL gave it.
+
+#### 2026-11-06 *0.9.499*
+- **UltraCanvasToolbar: a click on an item's badge reaches the item.** The
+  badge `SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot` puts in an
+  item's corner took the click and the hover itself and did nothing with
+  them, so on a small bar button - UltraDesktop's mail icon with its unread
+  count - a good part of the button did not respond. The badge is no
+  longer interactive; a host that gives it an `onClick` of its own sets it
+  interactive again.
+
+#### 2026-11-06 *0.9.498*
+- **The UltraDBAdmin end-to-end job keeps its packages between runs.** On
+  2026-11-04 the Azure Ubuntu mirror served the job's package install at a
+  few kilobytes per second and its 20 minutes ran out on package 130 of the
+  list, before anything was built or tested; the re-run passed in 17
+  minutes. `ci-apt.sh` retries a download that stops dead and waits out one
+  that trickles on purpose, so the job now does what the Build workflow's
+  Linux rows do: the .deb files of the last run on `main` are restored into
+  apt's cache first (its own cache, as its runner image is Ubuntu 24.04, not
+  the rows' 22.04) and saved again on `main`, and the step has the rows' 45
+  minutes within the job's 60.
+- `AGENTS.md` says why the demo app's pages keep bare literals: `DemoApp`
+  is skipped by the string extraction on purpose, so a review that finds no
+  `Tr` there has found nothing.
+
+#### 2026-11-06 *0.9.497*
+- **UltraCloud's dialogs are translated.** The "Attach cloud link" picker
+  (`UltraCloudPickerDialog.cpp` 0.4.0) - its title, account and folder
+  rows, buttons, column headers and the status lines (now whole sentences
+  with the name as `{0}`) - adds 10 standard-set texts.
+- **The "Add cloud account" dialog is translated.** Every text a
+  person reads in it - the title, the row captions, the placeholders, the
+  default-account checkbox, the buttons, the per-provider hint and the
+  status messages - goes through `Tr` / `TrF`
+  (`UltraCloudAccountDialog.cpp` 0.8.0), and the OAuth hint is one sentence
+  with the provider's name as `{0}` instead of an English possessive. The
+  dialog is shown by UltraFiler and UltraPress, so its 25 texts are in the
+  standard set, drafted in all thirty languages: `extract_ui_strings.py`
+  now scans `UltraCloud/ui` with the framework. The default upload folder
+  (`/Shared from ULTRA OS`) stays the same in every language - it is a
+  folder name on the server.
+- **A failed cloud call says why in the reader's language.** The service's
+  own error text is technical English built in about ninety places (often
+  the network library's message passed on), so it cannot be a translation
+  key; the new `UltraCloud/ui/UltraCloudResultText.h` gives
+  `DescribeResult` - one translated sentence per result code (not found,
+  sign-in refused, server unreachable, HTTP error with its status, rate
+  limit, ...) - and `ResultDetail`, the technical message. Both dialogs show
+  the sentence and keep the detail as the status line's tooltip; the
+  applications that show cloud results can call the same pair.
+- **Control charts on the engine line chart.** `ComputeControlChart`
+  (`UltraCanvasControlLimits.h`, UI-free) computes the centre line, control
+  limits and Western Electric run-rule signals of an X-bar-R or I-MR chart,
+  with sigma estimated within subgroups; `ShowControlChart` draws a result on
+  an `UltraCanvasEngineLineChart`: the statistic over its range, limits with
+  their values in a column past the plot ("UCL = ..."), flagged points as red diamonds with the rule in their
+  tooltip, optional A / B / C zones and sigma lines. `FindRuleViolations` runs
+  the rules against limits from elsewhere. The demo's Charts > Line Chart page
+  ends with a control chart card. Guide: `UltraCanvasControlLimits.md`.
+- **The engine line chart gained general options.** Per series: a line shape
+  (`shape`), markers (`showMarkers`), a legend entry (`inLegend`) and
+  interactivity (`interactive`); per point: a look (`pointStyles`: colour,
+  marker, hollow, size, always shown) and a tooltip note (`pointNotes`).
+  `SetPanes` stacks panes, each with its own value axis, grid and title, the
+  series naming their pane; `ValueAxisOfPane` gives the axis index limiters
+  and highlights take, and `EngineLinePane::rangeIncludes` keeps limits in
+  view. A chart that uses none of them draws as before.
+- **Chart engine:** `SetExtraGridAxes` rules further axes (a grid in every
+  pane); a limiter outside its axis's band is no longer drawn across a
+  neighbouring pane; a limiter's caption is anchored half its width in from
+  the line's end, so it sits beside the line instead of across it, and
+  `ChartLimiter::captionPlacement` can pin it above the line's end
+  (`AboveEnd`) or put it past the plot's edge in reserved room (`BeyondEnd`);
+  new read accessors `GetLimiters`, `GetHighlights` and `HitRegionAt`.
+- **Tests:** `ControlLimitsTest` (the constants against the published tables,
+  hand-checked limits, within-subgroup sigma on a shifted process, every rule
+  on its minimal pattern and a near miss) and `EngineLineChartTest` (the first
+  test of the engine line chart: each new option, panes, and both control
+  chart kinds drawn).
+- **Control charts, Phase 2: X-bar-S, the attribute charts, Nelson rules,
+  stages and capability.** `ComputeControlChart` adds X-bar-S (unequal
+  subgroups too: the pooled standard deviation, limits for each subgroup's
+  own size), the p, np, c and u charts (limits per lot where the sizes vary),
+  the Nelson rules (`ControlRuleSet::Nelson`; the run length a setting; the
+  whole set on the dispersion pane with `rulesOnDispersion`), stages (each
+  with its own limits, no rule or moving range across a boundary), excluded
+  points (plotted and checked, left out of the limits), `baselineCount`
+  (limits from a stage's first points), notes, and specification limits with
+  Cp, Cpk, Pp and Ppk. New factors `ControlA3`, `ControlSigmaLowerFactor`
+  and `ControlSigmaUpperFactor`; `ControlC4` for any n >= 2.
+- **`ShowControlChart` draws limits that change** as stepped lines with the
+  last point's values in the caption column, zones under them as bands, a
+  named divider at each stage, excluded points hollow, notes in the tooltips
+  and specification limits in their own colour.
+- **The engine line chart** fills between two series (`AddSeriesBand`),
+  reports clicks on points (`onPointClick`) and can leave a series' line out
+  (`drawLine = false`).
+- **Chart engine:** the captions past the plot's edge are spread apart where
+  they would overprint, and an `AboveEnd` caption on a vertical line sits
+  beside it, inside the plot.
+- **Demo:** the Line Chart page's control chart card adds a p chart of failed
+  inspections and a c chart of paint defects, the Nelson rules, the late
+  change as a new stage, specification limits with the capability in the
+  summary, and a click that excludes a point from the limits.
+- **The ternary chart's USDA soil classes now match the Soil Survey Manual on
+  the class boundaries.** A composition exactly on a boundary went to the
+  class listed first, so 258 of the 5,151 whole-percent compositions - where
+  lab results land - got another class than the manual gives: 7 % clay with
+  48 % sand was sandy loam instead of loam, 50 % sand and 50 % silt sandy loam
+  instead of silt loam. The manual (USDA Handbook 18, 2017, chapter 3) gives
+  every boundary to the finer side, and the new `TernaryModel::edgeLean` says
+  which side of a shared edge a point on it belongs to; the USDA preset leans
+  that way and lists its silty classes so the rim matches too. The lean is
+  saved in the JSON. `TernaryModelTest` now checks the classes against the
+  manual's wording, transcribed word for word, at every whole percent.
+
+#### 2026-11-06 *0.9.496*
+- **UltraCanvasDesktopShell: `CaptureWindowImage` and
+  `DesktopWindowInfo::appUserModelId`.** `CaptureWindowImage(id, maxWidth,
+  maxHeight, image)` gives a small picture of one window for a taskbar's
+  previews - on Windows drawn by the window itself (`PrintWindow` with the
+  full content) and on Wayland copied by the compositor
+  (`ext-image-copy-capture-v1`, where it offers it: wlroots 0.19 and later,
+  niri and others), so a covered window shows its own content; on X11 the
+  window's rectangle of the screen. On Windows `ListWindows` now reads each
+  window's AppUserModelID (the window's own, else its process's): a
+  taskbar groups an application's windows by it, `MatchApplication` finds
+  a Store application's entry by it, and a Store application's window or a
+  frame whose program is not known yet - Calculator, Settings, WhatsApp -
+  takes the tile icon and the name the shell's Applications folder gives
+  it instead of showing a letter.
+- **UltraCanvasButton: a toggle that is on reports the hover.**
+  `onHoverEnter` was skipped while the button was pressed, so a toggle
+  button that is on - a taskbar's button of the active window - never said
+  the pointer had come over it. A push button held down still does not.
+- **UltraCanvasGaugeDiagramElement: an analog clock on a dark face.**
+  `SetClockHandColor` (the hour and minute hands and the hub) and
+  `SetClockTickColor` (the ticks, the rim and the hour numbers) colour what
+  `AnalogClock` drew in fixed dark greys, so a black face can take white
+  hands. The defaults are the colours it had. Doc:
+  `Docs/UltraCanvas/UltraCanvasGaugeExamples.md`.
+- **UltraCanvasHardwareInfo on Windows: a joined Wi-Fi adapter reads as
+  joined.** The WLAN service's record for an adapter was looked up under
+  its GUID wrapped in a second pair of braces, so none was found, and every
+  Wi-Fi adapter came back with an empty record saying "not joined" - no
+  SSID, no signal - while it was online. The record is now found with
+  braces and case aside; joined or not comes from the WLAN enumeration's
+  state, which needs no location access, and an adapter WLAN does not
+  report takes its link state. `UltraCanvasDesktopShell::ReadDeviceActivity`
+  (`wifiConnected`, `wifiSsid`) reads from it, and so does UltraDesktop's
+  Wi-Fi marker.
+
+#### 2026-11-06 *0.9.495*
+- **The theme follows the desktop (T3 of the host theme proposal).**
+  `UltraCanvasTheme` gains the font half of a look - `fonts.ui`,
+  `fonts.mono`, the host's text scale, and a size per text role (Body,
+  Caption, Small, Heading, Title, Mono) - and two high-contrast presets,
+  black on white and white on black with every ink at 7:1.
+  `UltraCanvasTheme::FromHost` builds the theme a desktop asks for from the
+  host appearance: Light or Dark, the high-contrast variant, the desktop's
+  accent derived into the five accent roles with the readability the test
+  enforces (text on the accent at 4.5:1, 7:1 for high contrast, the focus
+  ring 3:1 on the ground), its fonts. The application's theme policy
+  (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with a
+  provider) applies it in `Initialize` before the first window and again
+  on every host change, so switching the desktop to dark re-styles every
+  element that follows the theme and every window built with the default
+  background takes the theme's ground; an application that sets its own
+  theme is left alone. `UltraCanvasThemeTest` covers the sizes, the
+  presets, the derivation over fourteen accents and `FromHost`.
+
 #### 2026-11-06 *0.9.494*
 - **Text in the media viewer can be copied.** The text view (text, source,
   Markdown files and notes) and the Details panel are display-only text

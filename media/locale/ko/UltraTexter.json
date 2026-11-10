@@ -38,7 +38,6 @@
   "Comment:": "메모:",
   "Copy (Ctrl+C)": "복사 (Ctrl+C)",
   "Could not read the image file.": "이미지 파일을 읽을 수 없습니다.",
-  "Crash Recovery": "충돌 복구",
   "Cut (Ctrl+X)": "잘라내기 (Ctrl+X)",
   "Decrease Font Size": "글꼴 크기 줄이기",
   "Decrease Font Size (Ctrl+-)": "글꼴 크기 줄이기 (Ctrl+-)",
@@ -70,9 +69,6 @@
   "Find Previous": "이전 찾기",
   "Find Previous (Shift+Enter)": "이전 찾기 (Shift+Enter)",
   "Find what:": "찾을 내용:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "other": "이전 세션에서 자동 저장된 파일 {n}개를 찾았습니다.\n\n복구하시겠습니까?"
-  },
   "GB18030 (Chinese)": "GB18030 (중국어)",
   "GB2312 (Chinese Simplified)": "GB2312 (중국어 간체)",
   "GBK (Chinese Simplified)": "GBK (중국어 간체)",
@@ -217,6 +213,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (키릴 문자)",
   "Windows-1252 (Western)": "Windows-1252 (서유럽어)",
   "Word Wrap": "자동 줄 바꿈",
-  "Zoom Level": "확대/축소 수준",
-  "{0} bytes": "{0}바이트"
+  "Zoom Level": "확대/축소 수준"
 }

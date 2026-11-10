@@ -38,7 +38,6 @@
   "Comment:": "הערה:",
   "Copy (Ctrl+C)": "העתקה (Ctrl+C)",
   "Could not read the image file.": "לא ניתן היה לקרוא את קובץ התמונה.",
-  "Crash Recovery": "שחזור לאחר קריסה",
   "Cut (Ctrl+X)": "גזירה (Ctrl+X)",
   "Decrease Font Size": "הקטנת גודל הגופן",
   "Decrease Font Size (Ctrl+-)": "הקטנת גודל הגופן (Ctrl+-)",
@@ -73,12 +72,6 @@
   "Find Previous": "חיפוש הקודם",
   "Find Previous (Shift+Enter)": "חיפוש הקודם (Shift+Enter)",
   "Find what:": "חיפוש של:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "נמצא {n} קובץ שנשמר אוטומטית מהפעלה קודמת.\n\nלשחזר אותו?",
-    "two": "נמצאו {n} קבצים שנשמרו אוטומטית מהפעלה קודמת.\n\nלשחזר אותם?",
-    "many": "נמצאו {n} קבצים שנשמרו אוטומטית מהפעלה קודמת.\n\nלשחזר אותם?",
-    "other": "נמצאו {n} קבצים שנשמרו אוטומטית מהפעלה קודמת.\n\nלשחזר אותם?"
-  },
   "GB18030 (Chinese)": "GB18030 (סינית)",
   "GB2312 (Chinese Simplified)": "GB2312 (סינית פשוטה)",
   "GBK (Chinese Simplified)": "GBK (סינית פשוטה)",
@@ -223,6 +216,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (קירילית)",
   "Windows-1252 (Western)": "Windows-1252 (מערבית)",
   "Word Wrap": "גלישת מילים",
-  "Zoom Level": "רמת זום",
-  "{0} bytes": "{0} בייטים"
+  "Zoom Level": "רמת זום"
 }

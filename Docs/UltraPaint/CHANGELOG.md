@@ -1,3 +1,25 @@
+#### 2026-11-10 *0.2.35*
+- **Curves shows the same histogram as the image viewer.** The backdrop is
+  counted by the framework's `UltraCanvasHistogramModel`, as the viewer's Curves
+  dialog counts it. The RGB backdrop now adds the red, green and blue values
+  level by level - the values the RGB curve maps - instead of counting each
+  pixel's average of the three. Transparent pixels are still left out.
+
+#### 2026-11-09 *0.2.34*
+- **Images in tabs.** A window holds several images, one tab each, in a strip
+  over the canvas (`UltraCanvasTabbedContainer`); each tab has its own paint
+  surface and keeps its zoom and scroll. *File ▸ New*, *Open*, *Paste as New
+  Image*, the strip's **+** and *Open in new tab* on a dropped image (in place
+  of *Open new window*) add a tab instead of replacing the image or opening a
+  window, so none of them asks to discard changes any more; the blank canvas a
+  window starts with is replaced by the first image opened while nobody has
+  touched it. Several files on the command line, and the files a second start
+  hands over, open as tabs of the window used last. A dot marks a tab with
+  unsaved changes; *File ▸ Close Tab* (`Ctrl+W`) and the tab's **×** ask before
+  closing one, closing the window asks once about all of them, and
+  `Ctrl+Tab` / `Ctrl+Shift+Tab` move between tabs. *File ▸ New Window* still
+  opens a second window.
+
 #### 2026-11-05 *0.2.33*
 - **UltraPaint takes the Image base set.** Its catalogue names `Image` under
   `@bases`, as the localisation proposal's Appendix B assigns it, so a text

@@ -2,10 +2,11 @@
 // The interactive curve editor element. The curve model it edits lives in
 // core/UltraCanvasToneCurve.cpp.
 // See include/UltraCanvasCurveEditor.h for the API and the interaction rules.
+// Version: 1.1.0 - SetHistograms (UltraCanvasHistogramModel)
 // Version: 1.0.1 - a press of a button other than left or right leaves the
 //                  focus where it is and goes on to the elements around
 // Version: 1.0.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCurveEditor.h"
@@ -94,6 +95,26 @@ void UltraCanvasCurveEditor::SetHistogram(ToneCurveChannel channel,
             dst[target] += bins[i];
         }
     }
+    RequestRedraw();
+}
+
+void UltraCanvasCurveEditor::SetHistograms(const ImageHistogram& histogram) {
+    if (histogram.Empty()) {
+        ClearHistograms();
+        return;
+    }
+    // The editor keeps 32-bit counts; a picture of more than four billion
+    // values at one level is drawn as full height either way.
+    auto toBins = [](const std::array<uint64_t, 256>& counts) {
+        std::vector<uint32_t> out(256);
+        for (size_t level = 0; level < 256; ++level)
+            out[level] = static_cast<uint32_t>(std::min<uint64_t>(counts[level], UINT32_MAX));
+        return out;
+    };
+    histograms[static_cast<int>(ToneCurveChannel::RGB)]   = toBins(histogram.RgbTotal());
+    histograms[static_cast<int>(ToneCurveChannel::Red)]   = toBins(histogram.Bins(HistogramChannel::Red));
+    histograms[static_cast<int>(ToneCurveChannel::Green)] = toBins(histogram.Bins(HistogramChannel::Green));
+    histograms[static_cast<int>(ToneCurveChannel::Blue)]  = toBins(histogram.Bins(HistogramChannel::Blue));
     RequestRedraw();
 }
 

@@ -38,7 +38,6 @@
   "Comment:": "Yorum:",
   "Copy (Ctrl+C)": "Kopyala (Ctrl+C)",
   "Could not read the image file.": "Görüntü dosyası okunamadı.",
-  "Crash Recovery": "Çökme Kurtarma",
   "Cut (Ctrl+X)": "Kes (Ctrl+X)",
   "Decrease Font Size": "Yazı Tipi Boyutunu Küçült",
   "Decrease Font Size (Ctrl+-)": "Yazı Tipi Boyutunu Küçült (Ctrl+-)",
@@ -71,10 +70,6 @@
   "Find Previous": "Öncekini Bul",
   "Find Previous (Shift+Enter)": "Öncekini Bul (Shift+Enter)",
   "Find what:": "Aranan:",
-  "Found {n} autosaved file from a previous session.\n\nWould you like to recover it?": {
-    "one": "Önceki bir oturumdan otomatik kaydedilmiş {n} dosya bulundu.\n\nBu dosyayı kurtarmak istiyor musunuz?",
-    "other": "Önceki bir oturumdan otomatik kaydedilmiş {n} dosya bulundu.\n\nBu dosyaları kurtarmak istiyor musunuz?"
-  },
   "GB18030 (Chinese)": "GB18030 (Çince)",
   "GB2312 (Chinese Simplified)": "GB2312 (Basitleştirilmiş Çince)",
   "GBK (Chinese Simplified)": "GBK (Basitleştirilmiş Çince)",
@@ -219,6 +214,5 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Kiril)",
   "Windows-1252 (Western)": "Windows-1252 (Batı Avrupa)",
   "Word Wrap": "Sözcük Kaydırma",
-  "Zoom Level": "Yakınlaştırma Düzeyi",
-  "{0} bytes": "{0} bayt"
+  "Zoom Level": "Yakınlaştırma Düzeyi"
 }
