@@ -1,12 +1,18 @@
 # MuPDF is not in vcpkg. Built the way Homebrew's formula builds it on macOS:
 # a shared libmupdf against the system (here: vcpkg's) freetype, harfbuzz,
-# gumbo, libjpeg, openjpeg, jbig2dec, zlib and brotli, keeping the forks MuPDF
-# needs (lcms2mt), its own extract and cmark-gfm, and MuJS. No OCR, barcode or
-# libarchive support: the apps do not use them through MuPDF.
+# libjpeg, openjpeg, jbig2dec, zlib and brotli, keeping the forks MuPDF needs
+# (lcms2mt), its own extract and cmark-gfm, MuJS, and its own copy of the
+# gumbo HTML parser. No OCR, barcode or libarchive support: the apps do not
+# use them through MuPDF.
 #
 # The source comes from git at the release's commit, not from mupdf.com's
-# tarball, so it is pinned without a download hash; the four submodules are
+# tarball, so it is pinned without a download hash; the five submodules are
 # fetched at the commits the release records for them.
+#
+# gumbo is MuPDF's submodule (Artifex's fork on GitHub), not vcpkg's gumbo
+# port: that one downloads from codeberg.org, which on 2026-11-09 sent
+# nothing for half an hour, run after run, and every macOS build that had
+# to fetch the sources timed out on it. MuPDF is gumbo's only user here.
 vcpkg_from_git(
     OUT_SOURCE_PATH SOURCE_PATH
     URL https://github.com/ArtifexSoftware/mupdf
@@ -16,7 +22,8 @@ foreach(sub IN ITEMS
         "lcms2|thirdparty-lcms2|d69c64417c4a33a4629957fc0e08f4f4c5abcc3d"
         "extract|extract|8750ac39c30a0d65119b426b5a491c5b8e8bf674"
         "mujs|mujs|2c61a7bed7e7625c03c6e82e644a711ac4471c1e"
-        "cmark-gfm|thirdparty-cmark-gfm|74e0f5b6b62bbdd1e262c92f4bb2c6c871c6307e")
+        "cmark-gfm|thirdparty-cmark-gfm|74e0f5b6b62bbdd1e262c92f4bb2c6c871c6307e"
+        "gumbo-parser|thirdparty-gumbo-parser|61bd4e736c3b342e592f65be0d65ec6a0acd8dcb")
     string(REPLACE "|" ";" sub "${sub}")
     list(GET sub 0 dir)
     list(GET sub 1 repo)
@@ -56,7 +63,7 @@ set(ENV{PKG_CONFIG_PATH} "${CURRENT_INSTALLED_DIR}/lib/pkgconfig:${CURRENT_INSTA
 set(ENV{PKG_CONFIG_LIBDIR} "${CURRENT_INSTALLED_DIR}/lib/pkgconfig:${CURRENT_INSTALLED_DIR}/share/pkgconfig")
 set(sys_args "")
 foreach(lib IN ITEMS
-        "FREETYPE|freetype2" "GUMBO|gumbo" "HARFBUZZ|harfbuzz" "LIBJPEG|libjpeg"
+        "FREETYPE|freetype2" "HARFBUZZ|harfbuzz" "LIBJPEG|libjpeg"
         "OPENJPEG|libopenjp2" "ZLIB|zlib" "BROTLI|libbrotlidec libbrotlienc")
     string(REPLACE "|" ";" lib "${lib}")
     list(GET lib 0 name)
@@ -91,6 +98,7 @@ vcpkg_execute_required_process(
         "prefix=${CURRENT_PACKAGES_DIR}"
         USE_SYSTEM_LIBS=yes
         USE_SYSTEM_JBIG2DEC=yes
+        USE_SYSTEM_GUMBO=no
         "SYS_JBIG2DEC_CFLAGS=-I${CURRENT_INSTALLED_DIR}/include"
         "SYS_JBIG2DEC_LIBS=-L${CURRENT_INSTALLED_DIR}/lib -ljbig2dec"
         ${sys_args}

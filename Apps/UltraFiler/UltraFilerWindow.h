@@ -796,6 +796,11 @@ private:
     // too, and the tree keeps "Computer" selected while it is up.
     void BuildComputerPage();
     void SetComputerPageVisible(bool visible);
+    // What the Computer page shows: everything (the tree's Computer row, the
+    // breadcrumb, Up), or one section - the tree's Cloud Storage, Remote
+    // Drives or RAM Discs row. Opens the page if it is not up.
+    enum class ComputerSection { All, Cloud, Remote, Ram };
+    void ShowComputerSection(ComputerSection section);
     // Re-lists the page's folders (Home, then the Cloud Storage folders the
     // tree found) and rebuilds the drive cards from what is mounted right
     // now; the sizes come in afterwards (QueueVolumeSpaceQuery).
@@ -1241,7 +1246,16 @@ private:
     };
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders
+    std::shared_ptr<UltraCanvasLabel>           computerFoldersHeading;
+    std::shared_ptr<UltraCanvasLabel>           computerDrivesHeading;
     std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
+    ComputerSection computerSection = ComputerSection::All;
+    // The Remote Drives and RAM Discs sections under it: a heading and a row
+    // of cards each, hidden while the section has no card.
+    std::shared_ptr<UltraCanvasLabel>           computerRemoteHeading;
+    std::shared_ptr<UltraCanvasContainer>       computerRemoteRow;
+    std::shared_ptr<UltraCanvasLabel>           computerRamHeading;
+    std::shared_ptr<UltraCanvasContainer>       computerRamRow;
     std::vector<ComputerDriveCard>              computerDriveCards;
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
     std::shared_ptr<UltraCanvasButton>          addDriveButton;  // "+ Drive" in the navigation row
@@ -1411,6 +1425,8 @@ private:
     std::vector<std::string> treeDeviceNodeIds;
     // Node ids (the mount paths) of the "RAM Discs" rows.
     std::vector<std::string> treeRamDiskNodeIds;
+    // The RAM discs as last listed (ApplyRamDiskList), for the Computer page.
+    std::vector<UltraFilerRamDisks::RamDisc> knownRamDiscs;
     // The start-up probe (StartRamDiskProbe) and what it answered. Both
     // flags are written on the UI thread only, by the callback it posts.
     std::thread ramDiskProbeWorker;
