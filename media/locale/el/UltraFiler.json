@@ -35,10 +35,6 @@
   "an entry": "μιας καταχώρισης",
   "An upload is still running — quit anyway?": "Μια μεταφόρτωση εκτελείται ακόμη — έξοδος ούτως ή άλλως;",
   "An upload is still waiting — quit anyway?": "Μια μεταφόρτωση περιμένει ακόμη — έξοδος ούτως ή άλλως;",
-  "and {n} more": {
-    "one": "και {n} ακόμη",
-    "other": "και {n} ακόμη"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Οποιοδήποτε άλλο αρχείο, όταν αυτό το σύστημα έχει καταχωρημένο πρόγραμμα για αυτό το είδος αρχείου:",
   "Applied to {n} item.": {
     "one": "Εφαρμόστηκε σε {n} στοιχείο.",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} εικονίδιο",
     "other": "{n} εικονίδια"
-  },
-  "{n} line": {
-    "one": "{n} γραμμή",
-    "other": "{n} γραμμές"
   },
   "{n} result": {
     "one": "{n} αποτέλεσμα",

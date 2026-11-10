@@ -35,10 +35,6 @@
   "an entry": "una entrada",
   "An upload is still running — quit anyway?": "Una pujada encara està en curs — voleu sortir igualment?",
   "An upload is still waiting — quit anyway?": "Una pujada encara està en espera — voleu sortir igualment?",
-  "and {n} more": {
-    "one": "i {n} més",
-    "other": "i {n} més"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Qualsevol altre fitxer, quan aquest sistema té un programa registrat per a aquest tipus de fitxer:",
   "Applied to {n} item.": {
     "one": "S'ha aplicat a {n} element.",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} icona",
     "other": "{n} icones"
-  },
-  "{n} line": {
-    "one": "{n} línia",
-    "other": "{n} línies"
   },
   "{n} result": {
     "one": "{n} resultat",

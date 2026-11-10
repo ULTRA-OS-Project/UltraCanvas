@@ -1,10 +1,15 @@
 // UltraAI/adapters/anthropic/src/AnthropicTextLLM.cpp
 // Anthropic (Claude) ITextLLM adapter: Messages API serialization, response
 // parsing, SSE stream-event assembly, token counting, error mapping.
+// Version: 0.3.0 - API version 2026-10-21: no sampling fields, no document in an
+//                  assistant turn; claude-opus-5-5 by default and the current
+//                  models; forced tool choice as auto + an instruction where the
+//                  model refuses it; server-side refusal fallbacks by default
+//                  (not in a batch's requests)
 // Version: 0.2.0 - Message Batches (ITextBatch); the results of one turn's
 //                 tool calls go back in one user message
 // Version: 0.1.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 
 #include "UltraAIAnthropicTextLLM.h"
@@ -18,6 +23,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <future>
 #include <map>
@@ -34,8 +40,31 @@ namespace {
 using nlohmann::json;
 
 constexpr const char* kDefaultBaseUrl  = "https://api.anthropic.com";
-constexpr const char* kDefaultModel    = "claude-opus-5";
-constexpr const char* kApiVersion      = "2023-06-01";
+constexpr const char* kDefaultModel    = "claude-opus-5-5";
+constexpr const char* kApiVersion      = "2026-10-21";
+constexpr const char* kFallbackBeta    = "server-side-fallback-2026-07-01";
+
+// The sampling fields API version 2026-10-21 rejects on every model.
+bool IsSamplingField(const std::string& key) {
+    return key == "temperature" || key == "top_p" || key == "top_k";
+}
+
+// Models that return a 400 for a forced tool_choice ("any" / "tool").
+bool RejectsForcedToolChoice(const std::string& model) {
+    for (const char* id : {"claude-fable-5-1", "claude-mythos-5-1", "claude-opus-5-5", "claude-sonnet-5-5"}) {
+        if (model.rfind(id, 0) == 0) return true;
+    }
+    return false;
+}
+
+// Models that take the server-side refusal fallback ("fallbacks": "default").
+bool TakesRefusalFallback(const std::string& model) {
+    // Not Claude Haiku 5.5: its refusals have no server-side fallback.
+    for (const char* id : {"claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"}) {
+        if (model == id) return true;
+    }
+    return false;
+}
 constexpr int32_t     kDefaultMaxTokens = 16000;
 
 // ---------------------------------------------------------------------
@@ -126,6 +155,7 @@ json MessageContentToJson(const Message& m) {
 void ApplyOptions(json& body, const OptionsMap& options) {
     for (const auto& [key, value] : options) {
         if (key == "anthropic-beta") continue;
+        if (IsSamplingField(key)) continue;   // a 400 on API version 2026-10-21
         if (const auto* b = std::get_if<bool>(&value))          body[key] = *b;
         else if (const auto* i = std::get_if<int64_t>(&value))  body[key] = *i;
         else if (const auto* d = std::get_if<double>(&value))   body[key] = *d;
@@ -180,8 +210,25 @@ json BuildRequestBody(const ChatRequest& request, const TextLLMConfig& config) {
                 lastWasToolResults = true;
                 continue;
             }
-            case Role::User:
-            case Role::Assistant: {
+            case Role::Assistant:
+                // A document directly in an assistant turn is a 400 on
+                // 2026-10-21: it goes to the user, just before the turn.
+                if (std::any_of(m.parts.begin(), m.parts.end(),
+                                [](const ContentPart& p) { return std::holds_alternative<FilePart>(p); })) {
+                    json documents = json::array();
+                    Message rest = m;
+                    rest.parts.clear();
+                    for (const auto& part : m.parts) {
+                        if (std::holds_alternative<FilePart>(part)) documents.push_back(ContentPartToJson(part));
+                        else rest.parts.push_back(part);
+                    }
+                    messages.push_back(json{{"role", "user"}, {"content", std::move(documents)}});
+                    json content = MessageContentToJson(rest);
+                    if (!content.empty()) messages.push_back(json{{"role", "assistant"}, {"content", std::move(content)}});
+                    break;
+                }
+                [[fallthrough]];
+            case Role::User: {
                 json content = MessageContentToJson(m);
                 // Plain single-text messages serialize as a bare string.
                 if (content.size() == 1 && m.parts.empty() && m.toolCalls.empty()) {
@@ -201,11 +248,10 @@ json BuildRequestBody(const ChatRequest& request, const TextLLMConfig& config) {
     body["messages"] = std::move(messages);
 
     const auto& s = request.sampling;
-    if (s.temperature)      body["temperature"] = *s.temperature;
-    if (s.topP)             body["top_p"]       = *s.topP;
     if (!s.stopSequences.empty()) body["stop_sequences"] = s.stopSequences;
-    // presence/frequency penalties and seed have no Messages API equivalent
-    // and are intentionally dropped.
+    // temperature and top_p are a 400 on API version 2026-10-21 (every model
+    // samples with its defaults), presence/frequency penalties and seed have
+    // no Messages API equivalent: all are intentionally dropped.
 
     if (!request.tools.empty()) {
         json tools = json::array();
@@ -217,14 +263,25 @@ json BuildRequestBody(const ChatRequest& request, const TextLLMConfig& config) {
                                  {"input_schema", std::move(schema)}});
         }
         body["tools"] = std::move(tools);
+        // A model that refuses a forced choice gets auto and an instruction
+        // naming the tool instead.
+        const bool forcedRefused = RejectsForcedToolChoice(body["model"].get<std::string>());
+        std::string toolInstruction;
         switch (request.toolChoice) {
             case ToolChoice::Auto:     break;   // API default
             case ToolChoice::NoTool:     body["tool_choice"] = {{"type", "none"}}; break;
-            case ToolChoice::Required: body["tool_choice"] = {{"type", "any"}}; break;
-            case ToolChoice::Specific:
-                body["tool_choice"] = {{"type", "tool"},
-                                       {"name", request.forcedToolName}};
+            case ToolChoice::Required:
+                if (forcedRefused) toolInstruction = "Answer by calling one of the provided tools.";
+                else body["tool_choice"] = {{"type", "any"}};
                 break;
+            case ToolChoice::Specific:
+                if (forcedRefused) toolInstruction = "Answer by calling the tool \"" + request.forcedToolName + "\".";
+                else body["tool_choice"] = {{"type", "tool"}, {"name", request.forcedToolName}};
+                break;
+        }
+        if (!toolInstruction.empty()) {
+            std::string system = body.value("system", std::string());
+            body["system"] = system.empty() ? toolInstruction : system + "\n\n" + toolInstruction;
         }
     }
 
@@ -242,6 +299,11 @@ json BuildRequestBody(const ChatRequest& request, const TextLLMConfig& config) {
 
     ApplyOptions(body, config.providerOptions);
     ApplyOptions(body, request.options);
+    // Server-side refusal fallbacks by default, where the model takes them
+    // (BuildTransport adds the beta); a configured "fallbacks" replaces it.
+    if (!body.contains("fallbacks") && TakesRefusalFallback(body["model"].get<std::string>())) {
+        body["fallbacks"] = "default";
+    }
     return body;
 }
 
@@ -346,9 +408,9 @@ public:
                 m.supportsJsonSchema = true;
             caps.models.push_back(std::move(m));
         };
-        add("claude-opus-5",    "Claude Opus 5",    1000000, 128000);
-        add("claude-sonnet-5",  "Claude Sonnet 5",  1000000, 128000);
-        add("claude-haiku-4-5", "Claude Haiku 4.5",  200000,  64000);
+        add("claude-opus-5-5",   "Claude Opus 5.5",   1000000, 128000);
+        add("claude-sonnet-5-5", "Claude Sonnet 5.5", 1000000, 128000);
+        add("claude-haiku-5-5",  "Claude Haiku 5.5",  1000000, 128000);
         return caps;
     }
 
@@ -430,6 +492,7 @@ public:
         req.messages = messages;
         json body = BuildRequestBody(req, config_);
         body.erase("max_tokens");
+        body.erase("fallbacks");   // a generation setting: token counting takes none
 
         TransportRequest net;
         Error err;
@@ -569,6 +632,12 @@ private:
             std::string reqBeta = FindOptionString(*requestOptions, "anthropic-beta");
             if (!reqBeta.empty()) beta = reqBeta;
         }
+        // The refusal fallback BuildRequestBody asked for ("default") needs
+        // its beta; a configured array form brings its own.
+        if (body.contains("fallbacks") && body["fallbacks"] == "default" &&
+            beta.find(kFallbackBeta) == std::string::npos) {
+            beta = beta.empty() ? std::string(kFallbackBeta) : beta + "," + kFallbackBeta;
+        }
         if (!beta.empty()) net.headers.push_back({"anthropic-beta", beta});
         net.body = body.dump();
         return true;
@@ -613,6 +682,13 @@ public:
         std::string beta;
         for (const auto& item : items) {
             json params = BuildRequestBody(item.request, config_);
+            // The refusal fallback BuildRequestBody adds by default needs a
+            // beta header no batch request carries: a batch goes without it,
+            // unless the caller configured "fallbacks" (and its beta) itself.
+            if (config_.providerOptions.find("fallbacks") == config_.providerOptions.end() &&
+                item.request.options.find("fallbacks") == item.request.options.end()) {
+                params.erase("fallbacks");
+            }
             requests.push_back(json{{"custom_id", item.customId}, {"params", std::move(params)}});
             const std::string b = FindOptionString(item.request.options, "anthropic-beta");
             if (!b.empty()) beta = b;

@@ -35,9 +35,6 @@
   "an entry": "một mục",
   "An upload is still running — quit anyway?": "Một lượt tải lên vẫn đang chạy — vẫn thoát?",
   "An upload is still waiting — quit anyway?": "Một lượt tải lên vẫn đang chờ — vẫn thoát?",
-  "and {n} more": {
-    "other": "và {n} mục khác"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Mọi tệp khác, khi hệ thống này có chương trình được đăng ký cho loại tệp đó:",
   "Applied to {n} item.": {
     "other": "Đã áp dụng cho {n} mục."
@@ -447,9 +444,6 @@
   },
   "{n} icon": {
     "other": "{n} biểu tượng"
-  },
-  "{n} line": {
-    "other": "{n} dòng"
   },
   "{n} result": {
     "other": "{n} kết quả"

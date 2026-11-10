@@ -35,10 +35,6 @@
   "an entry": "et element",
   "An upload is still running — quit anyway?": "En upload kører stadig — afslut alligevel?",
   "An upload is still waiting — quit anyway?": "En upload venter stadig — afslut alligevel?",
-  "and {n} more": {
-    "one": "og {n} mere",
-    "other": "og {n} mere"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Enhver anden fil, når dette system har et program registreret til den type fil:",
   "Applied to {n} item.": {
     "one": "Anvendt på {n} element.",
@@ -462,10 +458,6 @@
   "{n} icon": {
     "one": "{n} ikon",
     "other": "{n} ikoner"
-  },
-  "{n} line": {
-    "one": "{n} linje",
-    "other": "{n} linjer"
   },
   "{n} result": {
     "one": "{n} resultat",

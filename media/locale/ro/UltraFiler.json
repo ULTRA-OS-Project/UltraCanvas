@@ -35,11 +35,6 @@
   "an entry": "o intrare",
   "An upload is still running — quit anyway?": "O încărcare este încă în curs — ieșiți oricum?",
   "An upload is still waiting — quit anyway?": "O încărcare este încă în așteptare — ieșiți oricum?",
-  "and {n} more": {
-    "one": "și încă {n}",
-    "few": "și încă {n}",
-    "other": "și încă {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Orice alt fișier, când acest sistem are un program înregistrat pentru acel tip de fișier:",
   "Applied to {n} item.": {
     "one": "Aplicat pentru {n} element.",
@@ -477,11 +472,6 @@
     "one": "{n} pictogramă",
     "few": "{n} pictograme",
     "other": "{n} de pictograme"
-  },
-  "{n} line": {
-    "one": "{n} rând",
-    "few": "{n} rânduri",
-    "other": "{n} de rânduri"
   },
   "{n} result": {
     "one": "{n} rezultat",

@@ -420,12 +420,39 @@ void TestAnthropicGroupsToolResults() {
 
 } // namespace
 
+// API version 2026-10-21 in a batch: no sampling fields, and no refusal
+// fallback - it needs a beta header no batch request carries - unless the
+// caller configured one.
+void TestAnthropicBatchCurrentApi() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    transport->ScriptResponse(JsonResponse(200, AnthropicBatchObject("in_progress", 1, 0, 0, 0)));
+    transport->ScriptResponse(JsonResponse(200, AnthropicBatchObject("in_progress", 1, 0, 0, 0)));
+    auto batch = CreateAnthropicTextBatch(KeyConfig(), nullptr, transport);
+    std::vector<BatchRequestItem> items = {Item("a", "Hello")};
+    items[0].request.model = "claude-opus-5-5";
+    items[0].request.sampling.temperature = 0.2;
+    batch->Submit(items);
+    const auto& sent = transport->Requests();
+    EXPECT_EQ(FindHeader(sent[0], "anthropic-version"), "2026-10-21");
+    json params = json::parse(sent[0].body)["requests"][0]["params"];
+    EXPECT_TRUE(!params.contains("fallbacks"));
+    EXPECT_TRUE(!params.contains("temperature"));
+
+    items[0].request.options["fallbacks"] = std::string(R"([{"model":"claude-opus-5"}])");
+    items[0].request.options["anthropic-beta"] = std::string("server-side-fallback-2026-06-01");
+    batch->Submit(items);
+    params = json::parse(sent[1].body)["requests"][0]["params"];
+    EXPECT_EQ(params["fallbacks"][0]["model"], "claude-opus-5");
+    EXPECT_EQ(FindHeader(sent[1], "anthropic-beta"), "server-side-fallback-2026-06-01");
+}
+
 int main() {
     TestValidation();
     TestSequentialBatch();
     TestSequentialCancel();
     TestCreateTextBatchChoosesFallback();
     TestAnthropicBatch();
+    TestAnthropicBatchCurrentApi();
     TestOpenAIBatch();
     TestAnthropicGroupsToolResults();
     std::cout << "ultraai batch tests passed" << std::endl;

@@ -1,11 +1,13 @@
 // UltraAI/adapters/anthropic/include/UltraAIAnthropicTextLLM.h
 // Anthropic (Claude) ITextLLM adapter over the Messages API
-// (POST {baseUrl}/v1/messages, anthropic-version 2023-06-01).
+// (POST {baseUrl}/v1/messages, anthropic-version 2026-10-21).
 // Network I/O goes through the UltraAI transport seam: production wiring
 // uses UltraNetTransport, unit tests inject a ScriptedTransport.
+// Version: 0.3.0 - API version 2026-10-21, claude-opus-5-5 by default, refusal
+//                  fallbacks by default; sampling fields are not sent
 // Version: 0.2.0 - CreateAnthropicTextBatch
 // Version: 0.1.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 #pragma once
 
@@ -25,12 +27,24 @@ namespace UltraAI {
 //       an unresolvable key surfaces ErrorCode::AuthenticationFailed.
 //   baseUrl       — default "https://api.anthropic.com".
 //   defaultModel  — used when ChatRequest::model is empty
-//                   (default "claude-opus-5").
+//                   (default "claude-opus-5-5").
 //   timeoutMs     — per-request transport timeout.
 //   providerOptions / ChatRequest::options — passed through as top-level
 //       Messages API fields (values that parse as JSON are embedded as
 //       JSON, so e.g. {"thinking", "{\"type\":\"adaptive\"}"} works); the
 //       key "anthropic-beta" becomes the beta header instead.
+//       temperature / top_p / top_k are never sent, from the options or from
+//       ChatRequest::sampling: API version 2026-10-21 rejects them on every
+//       model, which samples with its defaults.
+//   Refusal fallbacks: on Claude Fable 5.1, Opus 5.5, Opus 5 and Sonnet 5.5
+//       the request carries "fallbacks": "default" (beta
+//       server-side-fallback-2026-07-01), so a refusal is re-run on another
+//       model in the same call; a "fallbacks" option replaces it.
+//   ToolChoice::Required / Specific: models that refuse a forced choice
+//       (Fable 5.1, Mythos 5.1, Opus 5.5, Sonnet 5.5) get "auto" and a system
+//       instruction to call the tool(s) instead.
+//   A FilePart in an assistant message is sent as a user message just before
+//       that turn (a document in an assistant turn is a 400).
 //
 // `transport` is the network seam. Pass nullptr to use the production
 // UltraNetTransport (requires a build with ULTRAAI_USE_ULTRANET=ON;

@@ -1,6 +1,8 @@
 # UltraAI/ui/CMakeLists.txt
 # UltraAI_UI: the module's one library that draws - the "Get a local model"
-# dialog every application shows the same way. It needs the local runtime
+# dialog every application shows the same way - and its one bridge into the
+# UltraCanvas core: UltraAI as FileLoader's text recognizer
+# (UltraAITextRecognition.h). It needs the local runtime
 # and the UltraCanvas core, so it is built in-tree only; the dashboard and
 # Texter link it by this name.
 
@@ -15,13 +17,18 @@ endif()
 
 add_library(UltraAI_UI STATIC
     src/LocalModelDialog.cpp
+    # UltraAI as UltraCanvasFileLoader's text recognizer (OCR through a
+    # vision provider, the framework's own as the fallback).
+    src/TextRecognition.cpp
 )
 add_library(UltraAI::UI ALIAS UltraAI_UI)
 
 target_include_directories(UltraAI_UI PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
+# UltraAI_Core: the text recognizer walks the provider registry and the
+# default route (CreateVisionAnalyzer, ResolveProviderOrder).
 target_link_libraries(UltraAI_UI
-    PUBLIC UltraAI UltraAI_Runtime ${ULTRACANVAS_LIBRARY}
+    PUBLIC UltraAI UltraAI_Runtime UltraAI_Core ${ULTRACANVAS_LIBRARY}
 )
 target_compile_features(UltraAI_UI PUBLIC cxx_std_20)

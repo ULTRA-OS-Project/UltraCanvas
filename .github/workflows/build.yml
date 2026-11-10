@@ -741,6 +741,12 @@ jobs:
           # SpellCheckerTest exercises none of the Hunspell path. The en_US
           # dictionary is what the test and the text widgets load by default.
           scripts/ci-apt.sh install libhunspell-dev hunspell-en-us
+          # The OCR plugin is built only where configure finds Tesseract and
+          # Leptonica; without them Linux never compiled it, and
+          # FileLoaderExtractTextTest's real-OCR check (UltraClipboard's
+          # Extract text) ran on no row. tesseract-ocr-eng is the English
+          # data that check reads media/images/OCR-demo.png with.
+          scripts/ci-apt.sh install libtesseract-dev libleptonica-dev tesseract-ocr-eng
           # IODeviceManager's optional backends are compiled only when configure
           # finds their library; without these CI never builds them and a
           # compile error in one goes unseen. libudev: the hot-plug watcher

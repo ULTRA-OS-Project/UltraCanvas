@@ -7227,6 +7227,55 @@ else()
     message(STATUS "  FileLoaderTypeListsTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FILE LOADER: EXTRACT TEXT =====
+# UltraCanvasFileLoader::ExtractText: text files, a DOCX, an XLSX, a PDF, a
+# picture and a recording through the two recognition hooks - and Tesseract
+# itself where the OCR plugin is built. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FileLoaderExtractTextTest...")
+    add_executable(FileLoaderExtractTextTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FileLoaderExtractTextTest.cpp
+    )
+    target_include_directories(FileLoaderExtractTextTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FileLoaderExtractTextTest PRIVATE cxx_std_20)
+    if(TARGET UltraCanvasOCRPlugin)
+        target_link_libraries(FileLoaderExtractTextTest PRIVATE UltraCanvasOCRPlugin)
+    endif()
+    target_link_libraries(FileLoaderExtractTextTest PRIVATE UltraCanvas)
+    target_compile_definitions(FileLoaderExtractTextTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    set_target_properties(FileLoaderExtractTextTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FileLoaderExtractTextTest COMMAND FileLoaderExtractTextTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FileLoaderExtractTextTest")
+else()
+    message(STATUS "  FileLoaderExtractTextTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ULTRAAI TEXT RECOGNITION =====
+# UltraAI in front of FileLoader's text recognizer (UltraAITextRecognition.h):
+# a vision provider that reads text is used, the built-in OCR otherwise - with
+# stand-in providers, so no model and no network. Headless.
+if(TARGET UltraAI_UI)
+    message(STATUS "  Building UltraAITextRecognitionTest...")
+    add_executable(UltraAITextRecognitionTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraAITextRecognitionTest.cpp
+    )
+    target_include_directories(UltraAITextRecognitionTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(UltraAITextRecognitionTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraAITextRecognitionTest PRIVATE UltraAI_UI UltraAI_Core UltraCanvas)
+    set_target_properties(UltraAITextRecognitionTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAITextRecognitionTest COMMAND UltraAITextRecognitionTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraAITextRecognitionTest")
+else()
+    message(STATUS "  UltraAITextRecognitionTest skipped (UltraAI_UI not in the build)")
+endif()
+
 # ===== TAB PILL STYLE SCREENSHOT TEST =====
 # TabStyle::Pill read back from composited pixels: a one-pixel accent outline
 # round the open capsule, none round an inactive tab. It is also the

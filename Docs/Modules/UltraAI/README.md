@@ -53,6 +53,29 @@ Anthropic's Message Batches and OpenAI's Batch API. Every other provider
 gets the same interface over one request at a time. See
 [`../Docs/Modules/UltraAI/Batches.md`](Batches.md).
 
+### Text recognition for UltraCanvas applications
+
+`UltraAI::RegisterUltraAITextRecognition()` (`ui/include/UltraAITextRecognition.h`,
+in `UltraAI_UI`) puts UltraAI in front of UltraCanvas's text recognizer: when a
+vision provider on the default route - the one chosen for `"visionanalyzer"`,
+then the providers on this computer, a cloud one only when chosen or allowed,
+never `mock` - declares `VisionTask::Ocr` on one of its models, it reads the
+words in pictures and scanned PDF pages (`UltraCanvasFileLoader::ExtractText`)
+instead of the OCR plugin's Tesseract. With no such provider, or when it
+fails, the recognizer installed before it reads the picture, so register the
+framework's first. `FindOcrProvider` says which provider would read now, and
+`LastTextRecognitionProvider` which one read the last picture. UltraClipboard's
+*Extract text* uses it.
+
+The one vision provider that reads text today is `anthropic`
+(`CreateAnthropicVisionAnalyzer`, `adapters/anthropic`): OCR through Claude
+(`claude-opus-5-5` by default, low effort, the transcription as structured
+output, server-side refusal fallbacks on). It is a cloud provider, so the
+default route uses it only once chosen - `ULTRAAI_DEFAULT_VISIONANALYZER=anthropic`,
+`SetDefaultProvider("visionanalyzer", "anthropic")` or the dashboard's
+settings - with its key in UltraVault under `ai.anthropic.api_key` (or in the
+config). Pictures over 3.75 MB of PNG are halved until they fit.
+
 ---
 
 ## Adapters
@@ -60,7 +83,7 @@ gets the same interface over one request at a time. See
 | Adapter | Capabilities | Where the model runs | CMake option |
 |---|---|---|---|
 | `mock` | all ten | in-process | `ULTRAAI_ADAPTER_MOCK` (ON) |
-| `anthropic` | `ITextLLM`, `ITextBatch` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
+| `anthropic` | `ITextLLM`, `ITextBatch`, `IVisionAnalyzer` (OCR) | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
 | `openai` | `ITextLLM`, `IEmbeddings`, `ITextBatch` (hosted API) | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
@@ -125,7 +148,7 @@ UltraAI/
 │   └── UltraAIBatch.h             # batches: native (anthropic, openai) or one at a time
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
-├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
