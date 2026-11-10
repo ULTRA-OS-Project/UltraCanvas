@@ -196,17 +196,132 @@ bool SameNameNoCase(const std::string& a, const std::string& b) {
     return true;
 }
 
-bool IsAsciiLetter(unsigned char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+// ---- Letter case beyond ASCII ----------------------------------------------
+// The simple one-to-one case pairs of the scripts a folder name is likely to
+// be in - Latin (Latin-1, Extended-A, -B and Additional), Greek, Cyrillic,
+// Armenian, Georgian and fullwidth Latin - the pairs a file system that ignores
+// case (NTFS's upcase table, APFS) folds alike. Letters with more than two
+// forms (dotless i, long s, final sigma, the sharp s) are left out: they are
+// not a pair.
+struct CaseRange {
+    char32_t first, last;   // the upper-case letters of the range
+    int32_t  delta;         // lower = upper + delta; 0: alternating pairs
+    bool     oddUpper;      // alternating pairs: the upper case is the odd one
+};
+constexpr CaseRange kCaseRanges[] = {
+    { 0x0041, 0x005A, 32, false },  { 0x00C0, 0x00D6, 32, false },
+    { 0x00D8, 0x00DE, 32, false },  { 0x0100, 0x012F, 0, false },
+    { 0x0132, 0x0137, 0, false },   { 0x0139, 0x0148, 0, true },
+    { 0x014A, 0x0177, 0, false },   { 0x0179, 0x017E, 0, true },
+    { 0x0182, 0x0185, 0, false },   { 0x01A0, 0x01A5, 0, false },
+    { 0x01CD, 0x01DC, 0, true },    { 0x01DE, 0x01EF, 0, false },
+    { 0x01F8, 0x021F, 0, false },   { 0x0222, 0x0233, 0, false },
+    { 0x0246, 0x024F, 0, false },
+    { 0x0386, 0x0386, 38, false },  { 0x0388, 0x038A, 37, false },
+    { 0x038C, 0x038C, 64, false },  { 0x038E, 0x038F, 63, false },
+    { 0x0391, 0x03A1, 32, false },  { 0x03A3, 0x03AB, 32, false },
+    { 0x03D8, 0x03EF, 0, false },
+    { 0x0400, 0x040F, 80, false },  { 0x0410, 0x042F, 32, false },
+    { 0x0460, 0x0481, 0, false },   { 0x048A, 0x04BF, 0, false },
+    { 0x04C0, 0x04C0, 15, false },  { 0x04C1, 0x04CE, 0, true },
+    { 0x04D0, 0x052F, 0, false },
+    { 0x0531, 0x0556, 48, false },
+    { 0x10A0, 0x10C5, 7264, false },
+    { 0x1E00, 0x1E95, 0, false },   { 0x1EA0, 0x1EFF, 0, false },
+    { 0xFF21, 0xFF3A, 32, false },
+};
 
-// The casing a name's directory is plain in: each word's first letter upper
-// case and the rest lower ("Sent Items", "[Gmail]_All Mail", "INBOX.Drafts"),
-// a leading "inbox" level as INBOX. A word starts after anything but a letter,
-// a digit or a byte of a multi-byte character. One fixed form per spelling:
-// of two names that differ only in case, at most one is in it.
-std::string TitleCase(const std::string& name) {
-    std::string out = name;
+// The upper and the lower case of `cp`; both `cp` itself for a character
+// without case (or one left out above).
+void CaseForms(char32_t cp, char32_t& upper, char32_t& lower) {
+    upper = lower = cp;
+    if (cp == 0x00FF || cp == 0x0178) { upper = 0x0178; lower = 0x00FF; return; }   // ÿ Ÿ
+    for (const CaseRange& r : kCaseRanges) {
+        if (r.delta != 0) {
+            if (cp >= r.first && cp <= r.last) { upper = cp; lower = cp + static_cast<char32_t>(r.delta); return; }
+            const char32_t lo = r.first + static_cast<char32_t>(r.delta), hi = r.last + static_cast<char32_t>(r.delta);
+            if (cp >= lo && cp <= hi) { upper = cp - static_cast<char32_t>(r.delta); lower = cp; return; }
+            continue;
+        }
+        if (cp < r.first || cp > r.last) continue;
+        const bool odd = (cp & 1u) != 0;
+        if (odd == r.oddUpper) { upper = cp; lower = cp + 1; } else { upper = cp - 1; lower = cp; }
+        if (upper < r.first || lower > r.last) { upper = lower = cp; }   // the range's loose end
+        return;
+    }
+}
+
+// The code points of `s` with where each starts; a byte that is not valid
+// UTF-8 stands for itself (and has no case).
+struct CodePoint { char32_t cp; std::size_t at; };
+std::vector<CodePoint> DecodeUtf8(const std::string& s) {
+    std::vector<CodePoint> out;
+    for (std::size_t i = 0; i < s.size();) {
+        const auto b = static_cast<unsigned char>(s[i]);
+        int extra = b >= 0xF0 && b < 0xF8 ? 3 : b >= 0xE0 ? 2 : b >= 0xC2 && b < 0xE0 ? 1 : 0;
+        if (b >= 0xF8) extra = 0;
+        char32_t cp = extra == 3 ? (b & 0x07u) : extra == 2 ? (b & 0x0Fu) : extra == 1 ? (b & 0x1Fu) : b;
+        bool ok = b < 0x80 || extra > 0;
+        for (int k = 1; ok && k <= extra; ++k) {
+            const unsigned char c = i + static_cast<std::size_t>(k) < s.size()
+                ? static_cast<unsigned char>(s[i + static_cast<std::size_t>(k)])
+                : static_cast<unsigned char>(0);
+            if ((c & 0xC0u) != 0x80u) { ok = false; break; }
+            cp = (cp << 6) | (c & 0x3Fu);
+        }
+        if (!ok) { out.push_back({ static_cast<char32_t>(0xDC00u + b), i }); ++i; continue; }   // a lone byte
+        out.push_back({ cp, i });
+        i += 1 + static_cast<std::size_t>(extra);
+    }
+    return out;
+}
+
+// Which letters of `name` differ from its title case - each word's first
+// letter upper case and the rest lower ("Sent Items", "[Gmail]/All Mail",
+// "Über", "Входящие"), a leading "inbox" level as INBOX - one bit each in
+// letter order, four to a hex digit, lowest first; "" when none does. A word
+// starts after anything that is neither a letter nor a digit. Of two names
+// that differ only in case, at most one is in title case, and the two masks
+// differ.
+std::string CaseMask(const std::string& name) {
+    const std::vector<CodePoint> cps = DecodeUtf8(name);
+    // The leading "inbox" level reads as INBOX.
+    std::size_t inboxEnd = 0;
+    if (name.size() >= 5 && SameNameNoCase(name.substr(0, 5), "INBOX") &&
+        (name.size() == 5 || !(std::isalnum(static_cast<unsigned char>(name[5])) ||
+                               static_cast<unsigned char>(name[5]) >= 0x80)))
+        inboxEnd = 5;
+    std::string mask;
+    int nibble = 0, bit = 0;
     bool wordStart = true;
-    for (char& ch : out) {
+    for (const CodePoint& c : cps) {
+        char32_t upper, lower;
+        CaseForms(c.cp, upper, lower);
+        if (upper == lower) {   // no case: a digit or another letter keeps the word going
+            wordStart = c.cp < 0x80 ? !std::isdigit(static_cast<int>(c.cp)) : false;
+            if (c.cp >= 0xDC00 && c.cp <= 0xDCFF) wordStart = false;
+            continue;
+        }
+        const char32_t title = (c.at < inboxEnd || wordStart) ? upper : lower;
+        wordStart = false;
+        if (c.cp != title) nibble |= 1 << bit;
+        if (++bit == 4) {
+            mask.push_back("0123456789abcdef"[nibble]);
+            nibble = 0; bit = 0;
+        }
+    }
+    if (bit > 0) mask.push_back("0123456789abcdef"[nibble]);
+    while (!mask.empty() && mask.back() == '0') mask.pop_back();
+    return mask;
+}
+
+// The mask the second layout used: ASCII letters only, a byte outside ASCII
+// neither a letter nor a word break.
+bool IsAsciiLetter(unsigned char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+std::string AsciiCaseMask(const std::string& name) {
+    std::string title = name;
+    bool wordStart = true;
+    for (char& ch : title) {
         const auto c = static_cast<unsigned char>(ch);
         if (IsAsciiLetter(c)) {
             ch = static_cast<char>(wordStart ? std::toupper(c) : std::tolower(c));
@@ -215,18 +330,11 @@ std::string TitleCase(const std::string& name) {
             wordStart = !(std::isdigit(c) || c >= 0x80);
         }
     }
-    if (out.size() >= 5 && SameNameNoCase(out.substr(0, 5), "INBOX") &&
-        (out.size() == 5 || !(std::isalnum(static_cast<unsigned char>(out[5])) ||
-                              static_cast<unsigned char>(out[5]) >= 0x80)))
+    if (title.size() >= 5 && SameNameNoCase(title.substr(0, 5), "INBOX") &&
+        (title.size() == 5 || !(std::isalnum(static_cast<unsigned char>(title[5])) ||
+                                static_cast<unsigned char>(title[5]) >= 0x80)))
         for (std::size_t i = 0; i < 5; ++i)
-            out[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[i])));
-    return out;
-}
-
-// Which letters of `name` differ from its title case, one bit each in letter
-// order, four to a hex digit, lowest first; "" when none does.
-std::string CaseMask(const std::string& name) {
-    const std::string title = TitleCase(name);
+            title[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[i])));
     std::string mask;
     int nibble = 0, bit = 0;
     for (std::size_t i = 0; i < name.size(); ++i) {
@@ -262,7 +370,7 @@ std::string Layout2CacheDirectory(const std::string& folder) {
         out.push_back(c);
         if (c == '~') out.push_back('~');
     }
-    const std::string mask = CaseMask(name);
+    const std::string mask = AsciiCaseMask(name);
     if (!mask.empty()) out += "~" + mask;
     return out;
 }

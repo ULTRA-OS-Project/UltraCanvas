@@ -4,6 +4,7 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.6.0 - letters outside ASCII in the case mask ("Über" / "über")
 // Version: 0.5.0 - "a/b" and "a_b" get directories of their own; the escapes;
 //                  MigrateBodyCache from both earlier layouts
 // Version: 0.4.0 - case twins get body directories of their own (CacheDirectoryOf);
@@ -397,13 +398,28 @@ TEST(cache_directory_of_a_folder) {
     REQUIRE_EQ(CacheDirectoryOf("What?"), std::string("What~q"));
     REQUIRE_EQ(CacheDirectoryOf("A*B\"<C>|D"), std::string("A~sB~w~lC~g~pD"));
     REQUIRE_EQ(CacheDirectoryOf(""), std::string("INBOX"));
+    // Letters outside ASCII count as letters: "über" and "Über" were one
+    // directory on Windows and macOS.
+    REQUIRE_EQ(CacheDirectoryOf("\xc3\x9c" "ber"), std::string("\xc3\x9c" "ber"));             // Über
+    REQUIRE_EQ(CacheDirectoryOf("\xc3\xbc" "ber"), std::string("\xc3\xbc" "ber~1"));           // über
+    REQUIRE_EQ(CacheDirectoryOf("\xc3\x9c" "BER"), std::string("\xc3\x9c" "BER~e"));           // ÜBER
+    REQUIRE_EQ(CacheDirectoryOf("Entw\xc3\xbc" "rfe"), std::string("Entw\xc3\xbc" "rfe"));     // Entwürfe
+    REQUIRE_EQ(CacheDirectoryOf("ENTW\xc3\x9c" "RFE"), std::string("ENTW\xc3\x9c" "RFE~ef"));  // its Ü a letter of the mask
+    REQUIRE_EQ(CacheDirectoryOf("\xd0\x92\xd1\x85\xd0\xbe\xd0\xb4"),                      // Вход
+               std::string("\xd0\x92\xd1\x85\xd0\xbe\xd0\xb4"));
+    REQUIRE_EQ(CacheDirectoryOf("\xd0\xb2\xd1\x85\xd0\xbe\xd0\xb4"),                      // вход
+               std::string("\xd0\xb2\xd1\x85\xd0\xbe\xd0\xb4~1"));
+    REQUIRE_EQ(CacheDirectoryOf("\xce\x91\xce\xb8"), std::string("\xce\x91\xce\xb8"));     // Αθ
+    REQUIRE_EQ(CacheDirectoryOf("\xce\xb1\xce\x98"), std::string("\xce\xb1\xce\x98~3"));   // αΘ
+    REQUIRE_EQ(CacheDirectoryOf("\xe5\x8f\x97\xe4\xbf\xa1"), std::string("\xe5\x8f\x97\xe4\xbf\xa1"));   // no case
     REQUIRE_EQ(FolderOfCacheDirectory("A~uB"), std::string("A_B"));
     REQUIRE_EQ(FolderOfCacheDirectory("A_B"), std::string("A/B"));
 
     const std::vector<std::string> twins = { "work", "Work", "WORK", "wORK", "WoRk",
                                              "work~1", "Work~1", "inbox", "Inbox", "INBOX",
                                              "a/b", "a_b", "a\\b", "a:b", "A/b", "A_B", "a~ub",
-                                             "a~b", "a~~b", "a__b", "a/_b", "a_/b", "What?" };
+                                             "a~b", "a~~b", "a__b", "a/_b", "a_/b", "What?",
+                                             "\xc3\x9c" "ber", "\xc3\xbc" "ber", "\xc3\x9c" "BER" };
     // Every name reads back from its directory, and no two share one.
     for (const std::string& name : twins)
         REQUIRE_EQ(FolderOfCacheDirectory(CacheDirectoryOf(name)), name);
@@ -481,6 +497,22 @@ TEST(migrate_body_cache_splits_a_and_a_underscore_b) {
     REQUIRE(!cached("a_b", 5));
     REQUIRE(cached("my_box", 8));          // "my_box~5" -> "my~ubox~5"
     REQUIRE(!fs::exists(account / "my_box~5"));
+}
+
+// "über" was cached as "über" by both earlier layouts (their mask knew ASCII
+// letters only): its bodies move to "über~1".
+TEST(migrate_body_cache_moves_a_name_with_a_letter_outside_ascii) {
+    Fixture fx("migrate-umlaut");
+    const std::string ueber = "\xc3\xbc" "ber";
+    Folder f; f.accountId = "erika"; f.name = ueber;
+    REQUIRE(fx.store.UpsertFolder(f).success);
+    const fs::path account = UltraCanvas::PathFromUtf8(fx.emlDir) / "erika";
+    fs::create_directories(account / UltraCanvas::PathFromUtf8(ueber));
+    std::ofstream(account / UltraCanvas::PathFromUtf8(ueber) / "3.eml") << "raw";
+
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 1);
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", ueber, 3))));
+    REQUIRE(!fs::exists(account / UltraCanvas::PathFromUtf8(ueber)));
 }
 
 TEST(migrate_body_cache_splits_a_directory_case_twins_shared) {
