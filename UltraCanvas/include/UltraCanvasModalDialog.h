@@ -1,10 +1,12 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.10.0 - FromTheme sets the message and details sizes; the SetStyle rule; a dialog that follows
+//                   by default takes the theme once built (a file dialog again after its browser)
 // Version: 3.9.0 - ModalDialogStyle::FromTheme; ApplyTheme colours the dialog's surface, message
 //                  and footer buttons (by role) from the theme, so a dialog can follow it
 // Version: 3.8.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 

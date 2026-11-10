@@ -9,7 +9,7 @@
 // Version: 1.2.0 - the application's drop feedback, ring and marker in one (SetDropFeedback); DragLeave clears both
 // Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimeline.h"
 #include "UltraCanvasEvent.h"
@@ -148,6 +148,9 @@ VideoTimelineStyle VideoTimelineStyle::DarkPalette() {
 VideoTimelineStyle VideoTimelineStyle::FromTheme(const UltraCanvasTheme& t) {
     VideoTimelineStyle s = t.dark ? DarkPalette() : LightPalette();
     const ThemeRoles& r = t.roles;
+    // the theme's fonts; the sizes are pixels of the design
+    s.fontFamily = t.fonts.ui.fontFamily;
+    s.monoFamily = t.fonts.mono.fontFamily;
     s.background = r.panel;
     s.lane = r.well;
     s.laneAlternate = r.well;
@@ -200,6 +203,7 @@ VideoTimelineStyle VideoTimelineStyle::FromTheme(const UltraCanvasTheme& t) {
 UltraCanvasVideoTimeline::UltraCanvasVideoTimeline(const std::string& id, int x, int y, int w, int h)
     : UltraCanvasUIElement(id, x, y, w, h) {
     SetMouseCursor(UCMouseCursor::Default);
+    ApplyThemeIfFollowing();
 }
 
 void UltraCanvasVideoTimeline::SetModel(const TimelineModel& m) {
@@ -280,6 +284,7 @@ void UltraCanvasVideoTimeline::SetShowGapButtons(bool on) {
 }
 
 void UltraCanvasVideoTimeline::SetStyle(const VideoTimelineStyle& s) {
+    StyleSetByHand();
     style = s;
     RequestRedraw();
 }

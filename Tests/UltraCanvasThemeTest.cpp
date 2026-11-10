@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.8.0 - following by default (SetFollowThemeByDefault), the SetStyle rule, fonts by role in the readers
 // Version: 1.7.0 - fonts and text roles, the high-contrast presets, DeriveAccent and FromHost
 // Version: 1.6.0 - the contrast the presets keep
 // Version: 1.5.0 - the modal dialog style
@@ -11,7 +12,7 @@
 // Version: 1.2.0 - the slider's and the switch's element roles
 // Version: 1.1.0 - every FromTheme, the change handlers, elements that
 //                  follow the theme through a container
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
 #include "UltraCanvasHostAppearance.h"
@@ -211,10 +212,11 @@ int main() {
           Same(album.selectionColor, r.accent) && album.mode == AlbumMode::UserEdit, "album: panel, raised tiles, hairlines, captions, accent; the base's mode");
 
     ModalDialogStyle dialogBase;
-    dialogBase.messageFontSize = 19.f;
+    dialogBase.buttonFontSize = 19.f;
     const ModalDialogStyle dialogStyle = ModalDialogStyle::FromTheme(own, dialogBase);
-    CHECK(Same(dialogStyle.messageTextColor, r.ink) && Same(dialogStyle.detailsTextColor, r.inkMuted) && dialogStyle.messageFontSize == 19.f,
-          "modal dialog: the message in ink, the details muted; the base's sizes stay");
+    CHECK(Same(dialogStyle.messageTextColor, r.ink) && Same(dialogStyle.detailsTextColor, r.inkMuted)
+          && Near(dialogStyle.messageFontSize, own.FontSize(ThemeTextRole::Body), 1e-6) && dialogStyle.buttonFontSize == 19.f,
+          "modal dialog: the message in ink at the body size, the details muted; the base's button size stays");
 
     std::printf("Menu and tooltip from the roles\n");
     const MenuStyle menu = MenuStyle::FromTheme(own);
@@ -288,6 +290,103 @@ int main() {
     CHECK(Same(follower->GetStyle().normalColor, dark.roles.raised) && Same(text->GetStyle().textColor, light.roles.ink),
           "SetFollowTheme(false) stops the re-styling");
     panel->ClearChildren();
+
+    std::printf("following by default\n");
+    {
+        CHECK(!UltraCanvasUIElement::FollowThemeByDefault(), "the default is off until a policy sets it");
+        UltraCanvasTheme::SetCurrent(dark);
+        UltraCanvasUIElement::SetFollowThemeByDefault(true);
+        auto fresh = std::make_shared<UltraCanvasButton>("fresh", 0, 0, 80, 24, "Fresh");
+        CHECK(fresh->GetFollowTheme() && Same(fresh->GetStyle().normalColor, dark.roles.raised) && Same(fresh->GetStyle().normalTextColor, dark.roles.ink),
+              "a new element follows and is styled from the current theme at once");
+        CHECK(fresh->GetStyle().fontFamily == dark.fonts.ui.fontFamily && Near(fresh->GetStyle().fontSize, dark.FontSize(ThemeTextRole::Body), 1e-6),
+              "with the theme's interface font at the body size");
+        auto freshText = std::make_shared<UltraCanvasLabel>("fresh-text", 0, 0, 80, 24, "Text");
+        CHECK(freshText->GetFollowTheme() && Same(freshText->GetStyle().textColor, dark.roles.ink)
+              && Near(freshText->GetStyle().fontStyle.fontSize, dark.FontSize(ThemeTextRole::Body), 1e-9), "a new label too");
+        auto freshMenu = std::make_shared<UltraCanvasMenu>("fresh-menu");
+        CHECK(freshMenu->GetFollowTheme() && Same(freshMenu->GetStyle().backgroundColor, dark.roles.raised)
+              && Near(freshMenu->GetStyle().font.fontSize, dark.FontSize(ThemeTextRole::Body), 1e-9), "a new menu: Dark() with the roles and the body font");
+        auto freshInput = std::make_shared<UltraCanvasTextInput>("fresh-input", 0, 0, 120, 24);
+        auto freshSlider = std::make_shared<UltraCanvasSlider>("fresh-slider", 0, 0, 120, 24);
+        auto freshSwitch = std::make_shared<UltraCanvasSwitch>("fresh-switch", 0, 0, 120, 24, "On");
+        auto freshPick = std::make_shared<UltraCanvasDropdown>("fresh-pick", 0, 0, 120, 24);
+        CHECK(Same(freshInput->GetStyle().backgroundColor, dark.roles.well) && Same(freshSlider->GetStyle().activeTrackColor, dark.roles.accent)
+              && Same(freshSwitch->GetVisualStyle().trackOnColor, dark.roles.accent) && Same(freshPick->GetStyle().normalColor, dark.roles.raised),
+              "a new text input, slider, switch and dropdown are styled from the theme");
+        // a style set by hand stops the following; the look is kept
+        ButtonStyle own;
+        own.normalColor = ownRest;
+        fresh->SetStyle(own);
+        CHECK(!fresh->GetFollowTheme() && Same(fresh->GetStyle().normalColor, ownRest), "SetStyle by hand stops the following");
+        UltraCanvasTheme::SetCurrent(light);
+        fresh->OnThemeChanged(light);
+        CHECK(Same(fresh->GetStyle().normalColor, ownRest), "and the element keeps its look through a change");
+        fresh->SetFollowTheme(true);
+        CHECK(fresh->GetFollowTheme() && Same(fresh->GetStyle().normalColor, light.roles.raised),
+              "SetStyle then SetFollowTheme(true): the roles over the given style, following again");
+        fresh->SetThemeVariant(ButtonVariant::Ghost);
+        CHECK(fresh->GetFollowTheme() && fresh->GetStyle().normalColor.a == 0 && Same(fresh->GetStyle().hoverColor, light.roles.hover),
+              "SetThemeVariant re-styles without stopping the following");
+        UltraCanvasTheme::SetCurrent(dark);
+        fresh->OnThemeChanged(dark);
+        CHECK(Same(fresh->GetStyle().hoverColor, dark.roles.hover), "the theme's own SetStyle keeps the following: the next change reaches it");
+        freshText->SetStyle(freshText->GetStyle());
+        CHECK(!freshText->GetFollowTheme(), "a label's SetStyle by hand stops its following");
+        freshMenu->SetStyle(MenuStyle::Default());
+        freshInput->SetStyle(TextInputStyle::Default());
+        freshSlider->SetStyle(SliderVisualStyle());
+        freshSwitch->SetVisualStyle(SwitchVisualStyle());
+        freshPick->SetStyle(DropdownStyle());
+        CHECK(!freshMenu->GetFollowTheme() && !freshInput->GetFollowTheme() && !freshSlider->GetFollowTheme()
+              && !freshSwitch->GetFollowTheme() && !freshPick->GetFollowTheme(), "so does a menu's, a text input's, a slider's, a switch's and a dropdown's");
+        UltraCanvasUIElement::SetFollowThemeByDefault(false);
+        auto later = std::make_shared<UltraCanvasButton>("later", 0, 0, 80, 24, "Later");
+        CHECK(!later->GetFollowTheme() && !Same(later->GetStyle().normalColor, dark.roles.raised), "the default off again: a new element does not follow");
+        UltraCanvasTheme::SetCurrent(light);
+    }
+
+    std::printf("fonts by role in the readers\n");
+    {
+        UltraCanvasTheme t = UltraCanvasTheme::Light();
+        t.fonts.ui.fontFamily = "Noto Sans";
+        t.fonts.ui.fontSize = 10;
+        t.fonts.mono.fontFamily = "Fira Code";
+        t.fonts.scale = 1.25;
+        const double body = t.FontSize(ThemeTextRole::Body), caption = t.FontSize(ThemeTextRole::Caption), heading = t.FontSize(ThemeTextRole::Heading);
+        ButtonStyle bold;
+        bold.fontWeight = FontWeight::Bold;
+        const ButtonStyle b = ButtonStyle::FromTheme(t, bold);
+        CHECK(b.fontFamily == "Noto Sans" && Near(b.fontSize, body, 1e-6) && b.fontStyle.fontFamily == "Noto Sans" && Near(b.fontStyle.fontSize, body, 1e-9)
+              && b.fontWeight == FontWeight::Bold, "a button: the interface font at the body size (12.5), its weight kept");
+        CHECK(Near(LabelStyle::FromTheme(t, LabelStyle(), LabelVariant::Body).fontStyle.fontSize, body, 1e-9)
+              && Near(LabelStyle::FromTheme(t, LabelStyle(), LabelVariant::Heading).fontStyle.fontSize, heading, 1e-9)
+              && LabelStyle::FromTheme(t, LabelStyle(), LabelVariant::Muted).fontStyle.fontFamily == "Noto Sans",
+              "a label: the body size, a heading the heading size");
+        const DropdownStyle d = DropdownStyle::FromTheme(t);
+        CHECK(d.fontFamily == "Noto Sans" && Near(d.fontSize, body, 1e-6), "a dropdown: the body size");
+        const TextInputStyle i = TextInputStyle::FromTheme(t);
+        CHECK(i.fontStyle.fontFamily == "Noto Sans" && Near(i.fontStyle.fontSize, body, 1e-9), "a text input: the body size");
+        const MenuStyle m = MenuStyle::FromTheme(t);
+        CHECK(m.font.fontFamily == "Noto Sans" && Near(m.font.fontSize, body, 1e-9), "a menu: the body size");
+        const TooltipStyle tip = TooltipStyle::FromTheme(t);
+        CHECK(tip.fontFamily == "Noto Sans" && Near(tip.fontSize, caption, 1e-6) && Near(tip.titleFontSize, body, 1e-6),
+              "a tooltip: the caption size, its title the body size");
+        const SwitchVisualStyle sw = SwitchVisualStyle::FromTheme(t);
+        CHECK(sw.base.fontFamily == "Noto Sans" && Near(sw.base.fontSize, body, 1e-6), "a switch's label: the body size");
+        CHECK(Near(SliderVisualStyle::FromTheme(t).fontStyle.fontSize, caption, 1e-9), "a slider's value: the caption size");
+        const ModalDialogStyle dlg = ModalDialogStyle::FromTheme(t);
+        CHECK(Near(dlg.messageFontSize, body, 1e-6) && Near(dlg.detailsFontSize, caption, 1e-6) && dlg.buttonFontSize == 0.0f,
+              "a dialog: the message at the body size, the details at the caption size, the buttons' left alone");
+        AlbumConfig keep;
+        keep.titleFontSize = 20;
+        const AlbumConfig a = AlbumConfig::FromTheme(t, keep);
+        CHECK(a.fontFamily == "Noto Sans" && a.titleFontSize == 20, "an album: the interface font, its own sizes");
+        const TimecodeFieldStyle tc = TimecodeFieldStyle::FromTheme(t);
+        const VideoTimelineStyle vt = VideoTimelineStyle::FromTheme(t);
+        CHECK(tc.fontFamily == "Fira Code" && tc.fontSize == 12.0f && vt.fontFamily == "Noto Sans" && vt.monoFamily == "Fira Code" && vt.labelSize == 12.0f,
+              "the timecode field and the timeline: the theme's families, the design's pixel sizes");
+    }
 
 
     std::printf("Fonts and text roles\n");

@@ -20,8 +20,8 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.7.0 - fonts and text roles, the high-contrast presets, the theme from the host and the policy (T3 of the host theme proposal)
-**Last Modified:** 2026-10-12
+**Version:** 1.8.0 - following by default under a policy, the `SetStyle` rule, fonts by role in the readers (T4 of the host theme proposal, first part)
+**Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
 ## Status
@@ -33,9 +33,12 @@ slider, switch, text input, toolbar, split pane and album through a
 tabbed container and the text area through `ApplyTheme` alone; the menu
 and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
 which put the roles over their own `Dark()` and `Light()` presets, so a
-dark menu or tooltip agrees with the rest of a dark window. An element
-follows the theme only when asked (`SetFollowTheme`); styled by hand it
-keeps its look, as before.
+dark menu or tooltip agrees with the rest of a dark window. Under the
+policy (`FollowHost`, the default, `Light` or `Dark`) every new element
+follows the theme: it is styled from the current theme as it is built and
+again on every change. Styled by hand (`SetStyle`) it keeps its look, as
+before. The readers set their fonts by role as well as their colours; the
+42 style structs without a `FromTheme` are the rest of T4.
 
 ## The roles
 
@@ -158,17 +161,39 @@ menu->SetStyle(MenuStyle::FromTheme());                     // Dark() or Light()
 UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme());
 ```
 
-An element asked to **follow the theme** styles itself from the current
+An element that **follows the theme** styles itself from the current
 theme at once and again whenever it changes: `ApplyTheme` puts the theme's
-colours over the element's own style (`FromTheme(theme, GetStyle())`), so
-a radius, a font or a toolbar's icon size set before survive a switch. A
-container passes a change on to its children, a window to its whole tree.
+colours and fonts over the element's own style
+(`FromTheme(theme, GetStyle())`), so a radius or a toolbar's icon size set
+before survive a switch. A container passes a change on to its children, a
+window to its whole tree.
+
+Whether a new element follows is the application-wide default,
+`UltraCanvasUIElement::SetFollowThemeByDefault`: the policy turns it on
+(`FollowHost`, `Light`, `Dark`) in `Initialize`, so every element built
+after it takes the theme at the end of its constructor; an `Own`
+application turns it on itself when its theme is in place. A style **set by
+hand** (`SetStyle`, a dialog's too; `SetConfig` on an album, `SetAppearance`
+on a toolbar, `SetVisualStyle` on a switch) stops the following for that
+element, so it keeps its look through every change, as before; an element
+that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
+which puts the roles over the given style and follows on from there. A
+setter that changes one thing (`SetTextColor`, `SetFont`) does not stop
+the following: the next theme change puts the theme's value back, so a
+colour an application means to keep goes through `SetStyle`, or is set
+again from its own change handler.
 
 ```cpp
+UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
 input->SetFollowTheme(true);                                // styled now, and on every change
 panel->SetFollowTheme(true);
 button->SetFollowTheme(false);                              // keeps the look it has
 bool follows = input->GetFollowTheme();
+bool byDefault = UltraCanvasUIElement::FollowThemeByDefault();
+ButtonStyle own = button->GetStyle();
+own.cornerRadius = 10;
+button->SetStyle(own);                                      // styled by hand: follows no more
+button->SetFollowTheme(true);                               // the roles over the hand-set style, following again
 ```
 
 `SetCurrent` calls every **change handler** after the switch. The
@@ -210,9 +235,15 @@ theme.fonts.ui.fontSize = 9;
 theme.fonts.scale = 1.25;                                        // Body is then 11.25
 ```
 
-A `FromTheme` reader sets its style's family and size from `Font(role)`
-as it gains fonts by role (T4 of the proposal); until then the sizes are
-there for an application's own text.
+Every `FromTheme` reader sets its style's family and size from `Font(role)`
+by the role its text plays: the button, label, dropdown, text input, menu
+and switch at `Body`; a heading label at `Heading`; the tooltip, a
+slider's value and a dialog's details at `Caption`, the dialog's message
+at `Body`, the tab titles at `Caption`; the album, the timecode field and
+the timeline take the families only (their sizes are pixels of a design).
+The style struct's own literal stays the default of an element styled by
+hand, as the colour defaults do. The text area keeps its font: it is the
+document's, not the window's.
 
 ## The theme from the host
 

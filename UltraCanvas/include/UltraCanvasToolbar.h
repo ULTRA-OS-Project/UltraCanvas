@@ -29,6 +29,7 @@
 // fills it from a ToolbarLayout - groups of command ids - and a command
 // registry, and RefreshCommandStates re-reads each command's enabled, checked
 // and label state into its button.
+// Version: 1.15.0 - the SetAppearance rule and the constructor tail of a bar that follows by default
 // Version: 1.14.0 - RefreshCommandStates: a folded group of check commands shows the
 //                   checked one, pressed
 // Version: 1.13.0 - SetOnContextMenu: a right click on the bar or an item, with the item's id
@@ -41,7 +42,7 @@
 // Version: 1.9.0 - ToolbarAppearance::IconPixelSize(); buttons use it
 // Version: 1.8.0 - AddToolGroup: several tools sharing one slot, with a fold-out bar
 // Version: 1.7.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
