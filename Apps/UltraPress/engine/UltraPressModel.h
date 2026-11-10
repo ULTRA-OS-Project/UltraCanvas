@@ -4,6 +4,7 @@
 // ordered tree of blocks. Everything here is data; the renderers (the HTML
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
+// Version: 0.9.0 - pages and menus edited: UniqueSlug, AddPage, RenamePage, MovePage, RemovePage, PageInMenu, SetPageInMenu
 // Version: 0.8.3 - IsSiteAddress: what the site's url has to be
 // Version: 0.8.2 - SitePathText: '\' becomes '/' on Windows only
 // Version: 0.7.1 - Hosting's comment names the data folder the hosts live in
@@ -176,6 +177,34 @@ std::vector<const Page*> SortedPages(const Site& site, PageOrder order,
 
 // A slug: lower-case ASCII letters, digits and hyphens, from any title.
 std::string MakeSlug(const std::string& title);
+
+// ----- Pages and menus, edited ---------------------------------------------------
+// What the window does to the page list and the menus; the rules live here
+// so the command line and the tests do the same.
+// A slug the site does not have yet: MakeSlug(title), with -2, -3, ...
+// appended while it is taken.
+std::string UniqueSlug(const Site& site, const std::string& title);
+// Adds a page titled `title` - a heading and a text block, dated today,
+// published - after the others, and puts it into the "main" menu (made when
+// the site has none). Returns its slug.
+std::string AddPage(Site& site, const std::string& title);
+// Retitles the page, and every menu item that still carried its old title;
+// false for a slug the site does not have.
+bool RenamePage(Site& site, const std::string& slug, const std::string& title);
+// Moves the page `delta` places in the stored page list; the top-level items
+// of every menu that name pages are then put into the order the list shows
+// (SortedPages, Stored: pinned first; an item with an outside address keeps
+// its place). False when it cannot move.
+bool MovePage(Site& site, const std::string& slug, int delta);
+// Removes the page and every menu item naming it, at any depth (the item's
+// children move up into its place). False for the front page ("home", which
+// the site is addressed by) or a slug the site does not have.
+bool RemovePage(Site& site, const std::string& slug);
+// Whether a top-level item of `menu` names the page; SetPageInMenu puts one
+// in (titled as the page, where the page list shows it; the menu is made
+// when the site has none) or takes it out (its children move up).
+bool PageInMenu(const Site& site, const std::string& menu, const std::string& slug);
+void SetPageInMenu(Site& site, const std::string& menu, const std::string& slug, bool in);
 
 // A path relative to the site or its output as the site, the deploy manifest
 // and the web hold it: '/' between the parts. Windows joins the parts with

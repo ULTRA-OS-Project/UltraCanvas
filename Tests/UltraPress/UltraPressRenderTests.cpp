@@ -4,6 +4,7 @@
 // accordion opens and closes, a form hands its fields to the callback, the
 // theme's colours reach the palette, and the example site renders with no
 // warning but its missing pictures.
+// Version: 0.4.0 - the pages and the menus from the editor
 // Version: 0.3.0 - the start window's page, built without a window
 // Version: 0.2.0
 // Last Modified: 2026-10-20
@@ -600,6 +601,46 @@ static void TestStartWindow() {
     fs::remove_all(dir, ec);
 }
 
+// The pages and the menus from the editor: a page added from the side
+// column and shown with its pane, moved, put into the footer menu, renamed
+// from the pane, removed with the front page shown instead; the side column
+// carries a row per page with up, down and remove (none for the front page)
+// and the add button; the pane the menu boxes.
+static void TestPagesAndMenus() {
+    std::printf("Pages and menus from the editor\n");
+    Site site = CreateStarterSite("Pages", "https://pages.example");
+    EditorWindow editor(site, "");
+    editor.ShowPage("home");
+    const std::string slug = editor.AddPage("Prices");
+    Check(slug == "prices" && editor.CurrentPage() == "prices" && editor.SelectedBlock() == -1 &&
+              editor.CurrentSite().FindPage("prices") && PageInMenu(editor.CurrentSite(), "main", "prices"),
+          "a page added is shown, no block selected, and is in the main menu");
+    Check(editor.AddPage("") != "" && editor.CurrentSite().FindPage(editor.CurrentPage())->title == "New page",
+          "a page added without a title is \"New page\"");
+    editor.ShowPage("prices");
+    Check(editor.RenamePage("Prices and terms") && editor.CurrentSite().FindPage("prices")->title == "Prices and terms" &&
+              editor.CurrentSite().FindMenu("main")->items[2].title == "Prices and terms",
+          "renamed from the pane, the menu entry following");
+    // The list as shown: the pinned front page, About, Prices, New page.
+    Check(editor.MovePage("prices", -1) && editor.CurrentSite().pages[1].slug == "prices" &&
+              editor.CurrentSite().FindMenu("main")->items[1].page == "prices" &&
+              editor.CurrentSite().FindMenu("main")->items[2].page == "about",
+          "moved up above About, the menu following");
+    Check(!editor.MovePage("prices", -1) && editor.CurrentSite().pages[1].slug == "prices",
+          "and not above the pinned front page");
+    Check(editor.MovePage("prices", 2) && editor.CurrentSite().pages.back().slug == "prices" &&
+              editor.CurrentSite().FindMenu("main")->items.back().page == "prices",
+          "moved to the end, two places at once");
+    Check(editor.SetPageInMenu("footer", true) && PageInMenu(editor.CurrentSite(), "footer", "prices"), "put into the footer menu");
+    Check(editor.SetPageInMenu("footer", false) && !PageInMenu(editor.CurrentSite(), "footer", "prices"), "and taken out");
+    Check(!editor.RemovePage("home") && editor.CurrentSite().FindPage("home"), "the front page cannot be removed");
+    Check(editor.RemovePage("prices") && !editor.CurrentSite().FindPage("prices") && editor.CurrentPage() == "home" &&
+              !PageInMenu(editor.CurrentSite(), "main", "prices"),
+          "the page shown removed: the front page is shown, its menu entries gone");
+    Check(!editor.RemovePage("prices"), "a page gone twice is refused");
+    Check(ValidateSite(editor.CurrentSite()).empty(), "the site validates after all of it");
+}
+
 int main() {
     // The preview loads pictures through libvips, which the application
     // initialises at start-up (UltraCanvasApplication::Initialize); a test
@@ -610,6 +651,7 @@ int main() {
     TestPaletteAndExample();
     TestLook();
     TestEditor();
+    TestPagesAndMenus();
     TestStartWindow();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

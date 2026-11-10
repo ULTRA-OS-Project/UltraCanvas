@@ -7,6 +7,7 @@
 // is loaded as a real site. The deploy sends a published folder through a
 // recording uploader and, where UltraCloud is built, through the hosts onto
 // the in-memory provider.
+// Version: 0.9.0 - the pages and the menus as the window edits them
 // Version: 0.8.2 - a '\' in a file name off Windows: deployed, listed and named as itself
 // Version: 0.7.2 - the shadow's picture sizes
 // Version: 0.7.0 - text in a block: paragraphs, locations, block paths
@@ -976,8 +977,112 @@ static void TestBackslashInNames() {
 #endif
 }
 
+// The pages and the menus as the window edits them: a unique slug, a page
+// added into the main menu, renamed with its menu entries, moved with the
+// menus following, removed with every entry naming it, in or out of a menu.
+static void TestPagesAndMenus() {
+    std::printf("Pages and menus edited\n");
+    Site site = CreateStarterSite("Edited", "https://edited.example");
+    const size_t pagesBefore = site.pages.size();
+    Check(UniqueSlug(site, "About") == "about-2" && UniqueSlug(site, "Home") == "home-2" && UniqueSlug(site, "Prices & terms") == "prices-terms",
+          "a unique slug: the title's, or numbered when the site has it");
+    const std::string slug = AddPage(site, "Prices & terms");
+    const Page* prices = site.FindPage(slug);
+    Check(slug == "prices-terms" && prices && prices->title == "Prices & terms" && prices->IsPublished() &&
+              prices->blocks.size() == 2 && prices->blocks[0].type == "heading" && prices->blocks[0].Text("text") == "Prices & terms" &&
+              prices->blocks[1].type == "text" && prices->date.size() == 10 && site.pages.size() == pagesBefore + 1 &&
+              site.pages.back().slug == slug,
+          "a page added: a heading and a text block, dated, last in the list");
+    Check(PageInMenu(site, "main", slug) && site.FindMenu("main")->items.back().page == slug &&
+              site.FindMenu("main")->items.back().title == "Prices & terms" && !PageInMenu(site, "footer", slug),
+          "and in the main menu, last, titled as the page; not in the footer's");
+    Check(AddPage(site, "Prices & terms") == "prices-terms-2" && site.FindMenu("main")->items.size() == 4, "a second page of the title is numbered");
+    Check(ValidateSite(site).empty(), "the site validates with them");
+
+    Check(RenamePage(site, slug, "Prices") && site.FindPage(slug)->title == "Prices" &&
+              site.FindMenu("main")->items[2].title == "Prices" && !RenamePage(site, "nope", "x"),
+          "a rename retitles the page and the menu entry that carried its title");
+    Site renamed = site;
+    renamed.menus[0].items[2].title = "Our prices";
+    RenamePage(renamed, slug, "Fees");
+    Check(renamed.menus[0].items[2].title == "Our prices", "an entry with a title of its own keeps it");
+
+    // The order: home, about, prices, prices-2. Move prices to the front of
+    // the stored list; the list as shown, and so the menus, keep the pinned
+    // front page first.
+    Check(site.FindPage("home")->pinned, "the starter's front page is pinned");
+    Check(MovePage(site, slug, -2) && site.pages[0].slug == slug && site.pages[1].slug == "home" &&
+              site.FindMenu("main")->items[0].page == "home" && site.FindMenu("main")->items[1].page == slug &&
+              site.FindMenu("main")->items[2].page == "about",
+          "a page moved up moves its menu entry with it, after the pinned front page, the others keeping their order");
+    Check(!MovePage(site, slug, -1) && !MovePage(site, "prices-terms-2", 1) && !MovePage(site, "nope", 1) && !MovePage(site, slug, 0),
+          "it cannot move past either end");
+    {
+        Site withUrl = site;
+        withUrl.menus[0].items.insert(withUrl.menus[0].items.begin() + 1, MenuItem{"Blog", "", "https://blog.example", {}});
+        MovePage(withUrl, slug, 3);
+        Check(withUrl.menus[0].items[1].url == "https://blog.example" && withUrl.menus[0].items[4].page == slug,
+              "an entry with an outside address keeps its place while the pages' entries reorder");
+    }
+
+    SetPageInMenu(site, "footer", slug, true);
+    Check(PageInMenu(site, "footer", slug) && site.FindMenu("footer")->items.size() == 3, "a page put into the footer menu");
+    SetPageInMenu(site, "footer", slug, true);
+    Check(site.FindMenu("footer")->items.size() == 3, "once");
+    SetPageInMenu(site, "footer", slug, false);
+    Check(!PageInMenu(site, "footer", slug) && site.FindMenu("footer")->items.size() == 2, "and taken out again");
+    SetPageInMenu(site, "legal", slug, true);
+    Check(site.FindMenu("legal") && site.FindMenu("legal")->items.size() == 1, "a menu the site had not is made");
+    SetPageInMenu(site, "main", "nope", true);
+    Check(site.FindMenu("main")->items.size() == 4, "a page the site has not goes into no menu");
+
+    // Nested: the about entry gets the prices page as a child; removing the
+    // page lifts nothing it did not have, and removing about lifts prices.
+    {
+        Site nested = site;
+        Menu* main = &nested.menus[0];
+        for (MenuItem& item : main->items) {
+            if (item.page == "about") item.children.push_back(MenuItem{"Prices", slug, "", {}});
+        }
+        Check(RemovePage(nested, slug) && !nested.FindPage(slug) && !PageInMenu(nested, "main", slug),
+              "a page removed is gone from the list and the menu");
+        bool childGone = true;
+        for (const MenuItem& item : nested.menus[0].items) {
+            for (const MenuItem& child : item.children) if (child.page == slug) childGone = false;
+        }
+        Check(childGone && nested.FindMenu("legal")->items.empty(), "and from a nested entry and every other menu");
+        Check(ValidateSite(nested).empty(), "nothing in the menus points at it any more");
+    }
+    {
+        Site lifted = site;
+        for (MenuItem& item : lifted.menus[0].items) {
+            if (item.page == "about") item.children.push_back(MenuItem{"Prices", slug, "", {}});
+        }
+        RemovePage(lifted, "about");
+        bool found = false;
+        for (const MenuItem& item : lifted.menus[0].items) if (item.page == slug && item.title == "Prices") found = true;
+        Check(found && lifted.FindMenu("main")->items.size() == 4, "an entry's children move up when it goes");
+    }
+    Check(!RemovePage(site, "home") && site.FindPage("home") && !RemovePage(site, "nope"), "the front page stays");
+
+    // Saved and loaded: the removed page's file is gone, the menus as edited.
+    const fs::path dir = TempDir("pages");
+    std::vector<std::string> errors;
+    Check(SaveSite(UltraCanvas::PathToUtf8(dir), site, errors), "the edited site saves");
+    RemovePage(site, "prices-terms-2");
+    Check(SaveSite(UltraCanvas::PathToUtf8(dir), site, errors) && !fs::exists(dir / "pages" / "prices-terms-2.json"),
+          "a removed page's file is removed on the next save");
+    Site back;
+    Check(LoadSite(UltraCanvas::PathToUtf8(dir), back, errors) && back.pages.size() == 3 && back.pages[0].slug == slug &&
+              back.FindMenu("main")->items[1].page == slug && back.FindMenu("legal") != nullptr,
+          "and the site loads back as edited");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     TestStarterRoundTrip();
+    TestPagesAndMenus();
     TestValidation();
     TestShadowPage();
     TestSitemapAndFeed();

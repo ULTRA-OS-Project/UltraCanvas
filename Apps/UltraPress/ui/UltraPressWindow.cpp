@@ -1,6 +1,7 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
 // Version: 0.8.7 - the host dialog's sign-in reported on the console, step by step
+// Version: 0.9.0 - pages and menus edited from the window
 // Version: 0.8.6 - SetDark writes no file
 // Version: 0.8.4 - the look remembered through UltraPressSettings
 // Version: 0.8.3 - the address checked as typed, said under the field
@@ -357,6 +358,73 @@ void EditorWindow::RemoveBlock(int index) {
     RenderPreview();
     RebuildSide();
     RebuildProperties();
+}
+
+std::string EditorWindow::AddPage(const std::string& title) {
+    const std::string slug = UltraPress::AddPage(site, title.empty() ? std::string("New page") : title);
+    dirty = true;
+    ShowPage(slug);
+    SetStatus("Added " + site.FindPage(slug)->title + " at " + PagePath(*site.FindPage(slug)));
+    return slug;
+}
+
+bool EditorWindow::RenamePage(const std::string& title) {
+    if (!UltraPress::RenamePage(site, current, title)) return false;
+    dirty = true;
+    RenderPreview();   // the header's menu and the page's own title
+    RebuildSide();     // the page list names it
+    return true;
+}
+
+bool EditorWindow::MovePage(const std::string& slug, int delta) {
+    // Within the list as the column shows it - the pinned pages first - so
+    // the arrows do what they look like they do: the page swaps places
+    // with its neighbour on show, and never crosses from the unpinned into
+    // the pinned or back.
+    const std::vector<const Page*> shown = SortedPages(site, PageOrder::Stored);
+    int at = -1;
+    for (size_t i = 0; i < shown.size(); ++i) {
+        if (shown[i]->slug == slug) at = static_cast<int>(i);
+    }
+    const int to = at + delta;
+    if (at < 0 || to < 0 || to >= static_cast<int>(shown.size()) || shown[at]->pinned != shown[to]->pinned) return false;
+    int from = 0, target = 0;
+    for (size_t i = 0; i < site.pages.size(); ++i) {
+        if (site.pages[i].slug == slug) from = static_cast<int>(i);
+        if (site.pages[i].slug == shown[to]->slug) target = static_cast<int>(i);
+    }
+    if (!UltraPress::MovePage(site, slug, target - from)) return false;
+    dirty = true;
+    RenderPreview();   // the menus follow the page list
+    RebuildSide();
+    return true;
+}
+
+bool EditorWindow::RemovePage(const std::string& slug) {
+    const Page* page = site.FindPage(slug);
+    if (!page) return false;
+    const std::string title = page->title;
+    if (!UltraPress::RemovePage(site, slug)) {
+        SetStatus("The front page stays: the site is addressed by it");
+        return false;
+    }
+    dirty = true;
+    if (current == slug) ShowPage(site.FindPage("home") ? "home" : site.pages.empty() ? "" : site.pages.front().slug);
+    else {
+        RenderPreview();
+        RebuildSide();
+    }
+    SetStatus("Removed " + title + " (kept by Save site)");
+    return true;
+}
+
+bool EditorWindow::SetPageInMenu(const std::string& menu, bool in) {
+    if (!site.FindPage(current)) return false;
+    UltraPress::SetPageInMenu(site, menu, current, in);
+    dirty = true;
+    RenderPreview();   // the header's or the footer's menu
+    SetStatus("Unsaved changes");
+    return true;
 }
 
 bool EditorWindow::Save() {
@@ -881,14 +949,38 @@ void EditorWindow::RebuildSide() {
     side->AddChild(Gap(18));
     side->AddChild(SideCaption("PagesTitle", "PAGES", look.accent));
     side->AddChild(Gap(6));
+    // Each page a row: the page, then up, down and remove, as a block's row
+    // has them. The front page has no remove: the site is addressed by it.
     for (const Page* page : SortedPages(site, PageOrder::Stored)) {
-        auto button = SideButton("Page" + page->slug, (page->pinned ? "\xE2\x98\x85 " : "") + page->title +
-                                                           (page->IsPublished() ? "" : " (" + page->status + ")"),
-                                 page->slug == current);
         const std::string slug = page->slug;
+        auto row = CreateContainer("PageRow" + slug);
+        row->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Auto());
+        row->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center).SetFlexGap(2);
+        auto button = SideButton("Page" + slug, (page->pinned ? "\xE2\x98\x85 " : "") + page->title +
+                                                    (page->IsPublished() ? "" : " (" + page->status + ")"),
+                                 slug == current);
+        button->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(30));
+        button->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
         button->onClick = [this, slug]() { Later([this, slug]() { ShowPage(slug); }); };
-        side->AddChild(button);
+        row->AddChild(button);
+        auto up = SmallButton("PageUp" + slug, "\xE2\x96\xB2");
+        up->onClick = [this, slug]() { Later([this, slug]() { MovePage(slug, -1); }); };
+        row->AddChild(up);
+        auto down = SmallButton("PageDown" + slug, "\xE2\x96\xBC");
+        down->onClick = [this, slug]() { Later([this, slug]() { MovePage(slug, 1); }); };
+        row->AddChild(down);
+        if (slug != "home") {
+            auto remove = SmallButton("PageRemove" + slug, "\xE2\x9C\x95");
+            remove->onClick = [this, slug]() { Later([this, slug]() { RemovePage(slug); }); };
+            row->AddChild(remove);
+        }
+        side->AddChild(row);
     }
+    side->AddChild(Gap(4));
+    auto addPage = SideButton("AddPage", "+ Add a page\xE2\x80\xA6", false);
+    addPage->SetFont(kFont, 12);
+    addPage->onClick = [this]() { Later([this]() { AddPage("New page"); }); };
+    side->AddChild(addPage);
 
     const Page* page = CurrentPageMutable();
     if (!page) return;
@@ -1011,9 +1103,16 @@ void EditorWindow::RebuildProperties() {
         properties->AddChild(Gap(10));
         field("PageTitle", "Title");
         input("PageTitle", page->title, [this](const std::string& text) {
-            if (Page* p = CurrentPageMutable()) { p->title = text; dirty = true; }
-            Later([this]() { RenderPreview(); });
+            // Through the model's rename, so a menu entry that carried the
+            // old title follows; the side column is rebuilt after the
+            // callback, since the field being typed into sits in the pane.
+            Later([this, text]() { RenamePage(text); });
         });
+        properties->AddChild(Caption("PageAddress", "At " + PagePath(*page) +
+                                                        (page->slug == "home" ? " - the front page, which the site is addressed by"
+                                                                              : " - the address stays when the title changes"),
+                                     LabelVariant::Muted, 12, false));
+        properties->AddChild(Gap(10));
         field("PageDescription", "Description (search engines and link previews)");
         area("PageDescription", page->seo.description, 80, [this](const std::string& text) {
             if (Page* p = CurrentPageMutable()) { p->seo.description = text; dirty = true; }
@@ -1041,6 +1140,22 @@ void EditorWindow::RebuildProperties() {
             Later([this]() { RebuildSide(); });
         };
         properties->AddChild(pinned);
+        properties->AddChild(Gap(10));
+        // The menus the page is in: the header's and the footer's.
+        field("PageMenus", "In the menus");
+        for (const char* menuName : {"main", "footer"}) {
+            const std::string name = menuName;
+            auto box = UltraCanvasCheckbox::CreateCheckbox("PageMenu" + name, 0, 0, 0, 28,
+                                                           name == "main" ? "The main menu (in the header)" : "The footer menu",
+                                                           PageInMenu(site, name, page->slug));
+            box->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(28));
+            ThemeCheckbox(box);
+            box->onStateChanged = [this, name, raw = box.get()](CheckedState, CheckedState) {
+                const bool in = raw->IsChecked();
+                Later([this, name, in]() { SetPageInMenu(name, in); });
+            };
+            properties->AddChild(box);
+        }
         properties->AddChild(Gap(16));
         properties->AddChild(Caption("PropsHint", "Pick a block on the left to edit its properties.", LabelVariant::Muted, 13, false));
         return;

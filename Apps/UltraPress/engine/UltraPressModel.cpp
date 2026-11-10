@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressModel.cpp
 // The content model: JSON in and out, the site folder, addresses, the page list.
+// Version: 0.9.0 - pages and menus edited
 // Version: 0.8.3 - IsSiteAddress
 // Version: 0.8.2 - SitePathText
 // Version: 0.7.0 - text in a block: paragraphs, locations, block paths
@@ -13,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <cstdlib>
@@ -318,6 +320,14 @@ JSONValue SiteToJson(const Site& site) {
     if (!site.hosting.account.empty()) {
         json.Set("hosting", JSONValue::MakeObject().Set("account", site.hosting.account).Set("path", site.hosting.path));
     }
+    // The pages' order, which their files cannot hold: the slugs as the
+    // list has them. LoadSite puts the pages into it; a page not named
+    // (a file added by hand) comes after, in file order.
+    if (!site.pages.empty()) {
+        JSONValue order = JSONValue::MakeArray();
+        for (const Page& page : site.pages) order.Append(page.slug);
+        json.Set("pages", order);
+    }
     return json;
 }
 
@@ -367,6 +377,8 @@ bool LoadSite(const std::string& directory, Site& site, std::vector<std::string>
     if (!ParseJsonFile(dir / "site.json", json, errors)) return false;
     site = Site();
     SiteFromJson(json, site);
+    std::vector<std::string> order;   // the pages' order, when site.json keeps one
+    for (const JSONValue& slug : json["pages"].GetElements()) order.push_back(slug.GetString());
     if (fs::exists(dir / "theme.json", ec)) {
         if (ParseJsonFile(dir / "theme.json", json, errors)) site.theme = ThemeFromJson(json);
     }
@@ -387,6 +399,15 @@ bool LoadSite(const std::string& directory, Site& site, std::vector<std::string>
         Page page = PageFromJson(json);
         if (page.slug.empty()) page.slug = UltraCanvas::PathToUtf8(file.stem());
         site.pages.push_back(std::move(page));
+    }
+    // Into the order site.json keeps; a page it does not name comes after,
+    // in file order (a stable sort keeps that).
+    if (!order.empty()) {
+        auto rank = [&order](const Page& page) {
+            const auto it = std::find(order.begin(), order.end(), page.slug);
+            return it == order.end() ? order.size() : static_cast<size_t>(it - order.begin());
+        };
+        std::stable_sort(site.pages.begin(), site.pages.end(), [&](const Page& a, const Page& b) { return rank(a) < rank(b); });
     }
     return errors.size() == errorsBefore;
 }
@@ -464,6 +485,166 @@ std::vector<const Page*> SortedPages(const Site& site, PageOrder order,
         return false;
     });
     return pages;
+}
+
+// ----- Pages and menus, edited --------------------------------------------------------
+
+namespace {
+
+// Today as YYYY-MM-DD, the date a page carries.
+std::string Today() {
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char text[16];
+    std::strftime(text, sizeof text, "%Y-%m-%d", &local);   // locale-ok: the numeric date, no names
+    return text;
+}
+
+int PageIndex(const Site& site, const std::string& slug) {
+    for (size_t i = 0; i < site.pages.size(); ++i) {
+        if (site.pages[i].slug == slug) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+Menu* FindMenuMutable(Site& site, const std::string& name) {
+    for (Menu& menu : site.menus) {
+        if (menu.name == name) return &menu;
+    }
+    return nullptr;
+}
+
+// Drops every item naming `slug`, at any depth; an item's children move up
+// into its place.
+void DropFromItems(std::vector<MenuItem>& items, const std::string& slug) {
+    for (size_t i = 0; i < items.size();) {
+        if (items[i].page == slug) {
+            std::vector<MenuItem> children = std::move(items[i].children);
+            items.erase(items.begin() + static_cast<long>(i));
+            items.insert(items.begin() + static_cast<long>(i), children.begin(), children.end());
+            continue;   // the lifted children are looked at too
+        }
+        DropFromItems(items[i].children, slug);
+        ++i;
+    }
+}
+
+// The top-level items of every menu that name pages, in the order the page
+// list shows them (SortedPages, Stored: the pinned pages first, then as
+// stored); the others keep their places.
+void OrderMenusByPages(Site& site) {
+    std::vector<const Page*> shown = SortedPages(site, PageOrder::Stored);
+    auto rank = [&shown](const std::string& slug) -> int {
+        for (size_t i = 0; i < shown.size(); ++i) {
+            if (shown[i]->slug == slug) return static_cast<int>(i);
+        }
+        return -1;
+    };
+    for (Menu& menu : site.menus) {
+        std::vector<size_t> slots;
+        std::vector<MenuItem> pageItems;
+        for (size_t i = 0; i < menu.items.size(); ++i) {
+            if (!menu.items[i].page.empty() && rank(menu.items[i].page) >= 0) {
+                slots.push_back(i);
+                pageItems.push_back(menu.items[i]);
+            }
+        }
+        std::stable_sort(pageItems.begin(), pageItems.end(), [&](const MenuItem& a, const MenuItem& b) {
+            return rank(a.page) < rank(b.page);
+        });
+        for (size_t k = 0; k < slots.size(); ++k) menu.items[slots[k]] = std::move(pageItems[k]);
+    }
+}
+
+void RetitleItems(std::vector<MenuItem>& items, const std::string& slug, const std::string& was, const std::string& title) {
+    for (MenuItem& item : items) {
+        if (item.page == slug && item.title == was) item.title = title;
+        RetitleItems(item.children, slug, was, title);
+    }
+}
+
+} // namespace
+
+std::string UniqueSlug(const Site& site, const std::string& title) {
+    const std::string base = MakeSlug(title);
+    std::string slug = base;
+    for (int n = 2; site.FindPage(slug); ++n) slug = base + "-" + std::to_string(n);
+    return slug;
+}
+
+std::string AddPage(Site& site, const std::string& title) {
+    Page page;
+    page.slug = UniqueSlug(site, title);
+    page.title = title;
+    page.date = Today();
+    Block heading{"heading"};
+    heading.Set("text", UltraCanvas::JSONValue(title));
+    page.blocks.push_back(heading);
+    Block text{"text"};
+    text.Set("text", UltraCanvas::JSONValue("Write the page here."));
+    page.blocks.push_back(text);
+    site.pages.push_back(page);
+    SetPageInMenu(site, "main", page.slug, true);
+    return page.slug;
+}
+
+bool RenamePage(Site& site, const std::string& slug, const std::string& title) {
+    const int index = PageIndex(site, slug);
+    if (index < 0) return false;
+    const std::string was = site.pages[static_cast<size_t>(index)].title;
+    site.pages[static_cast<size_t>(index)].title = title;
+    for (Menu& menu : site.menus) RetitleItems(menu.items, slug, was, title);
+    return true;
+}
+
+bool MovePage(Site& site, const std::string& slug, int delta) {
+    const int index = PageIndex(site, slug);
+    const int target = index + delta;
+    if (index < 0 || target < 0 || target >= static_cast<int>(site.pages.size()) || delta == 0) return false;
+    Page page = std::move(site.pages[static_cast<size_t>(index)]);
+    site.pages.erase(site.pages.begin() + index);
+    site.pages.insert(site.pages.begin() + target, std::move(page));
+    OrderMenusByPages(site);
+    return true;
+}
+
+bool RemovePage(Site& site, const std::string& slug) {
+    const int index = PageIndex(site, slug);
+    if (index < 0 || slug == "home") return false;
+    site.pages.erase(site.pages.begin() + index);
+    for (Menu& menu : site.menus) DropFromItems(menu.items, slug);
+    return true;
+}
+
+bool PageInMenu(const Site& site, const std::string& menu, const std::string& slug) {
+    const Menu* found = site.FindMenu(menu);
+    if (!found) return false;
+    for (const MenuItem& item : found->items) {
+        if (item.page == slug) return true;
+    }
+    return false;
+}
+
+void SetPageInMenu(Site& site, const std::string& menu, const std::string& slug, bool in) {
+    const Page* page = site.FindPage(slug);
+    if (!page) return;
+    Menu* found = FindMenuMutable(site, menu);
+    if (!in) {
+        if (found) DropFromItems(found->items, slug);
+        return;
+    }
+    if (!found) {
+        site.menus.push_back(Menu{menu, {}});
+        found = &site.menus.back();
+    }
+    if (PageInMenu(site, menu, slug)) return;
+    found->items.push_back(MenuItem{page->title, slug, "", {}});
+    OrderMenusByPages(site);
 }
 
 std::string SitePathText(std::string path) {

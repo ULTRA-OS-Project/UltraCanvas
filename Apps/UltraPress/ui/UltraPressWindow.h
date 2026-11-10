@@ -5,6 +5,7 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.9.0 - pages and menus edited from the window: AddPage, RenamePage, MovePage, RemovePage, SetPageInMenu
 // Version: 0.8.6 - SetDark writes no file: the look is saved with the window's size on close
 // Version: 0.8.3 - the address checked as typed (IsSiteAddress), said under the field
 // Version: 0.8.2 - the site's settings in the property pane: ShowSiteSettings, SetSiteProperty
@@ -51,6 +52,23 @@ public:
     // The page shown and edited; -1 selects no block.
     void ShowPage(const std::string& slug);
     void SelectBlock(int index);
+
+    // The pages and the menus, from the side column and the page's pane
+    // (the rules are the model's, UltraPressModel.h): AddPage makes a page
+    // titled `title`, in the main menu, and shows it; RenamePage retitles
+    // the current page (the pane's title field) and the menu items that
+    // carried the old title; MovePage moves it in the page list as the
+    // column shows it (never across the pinned pages), and the menus follow
+    // the list; RemovePage removes it and its menu items and shows the
+    // front page (the front page itself cannot go); SetPageInMenu puts the
+    // current page into the "main" or the "footer" menu, or takes it out.
+    // Each returns false when the model refused, and marks the site dirty
+    // otherwise - nothing is written until Save.
+    std::string AddPage(const std::string& title);
+    bool RenamePage(const std::string& title);
+    bool MovePage(const std::string& slug, int delta);
+    bool RemovePage(const std::string& slug);
+    bool SetPageInMenu(const std::string& menu, bool in);
 
     // Edits, each followed by a re-render and a rebuild of the lists.
     void AddBlock(const std::string& type);

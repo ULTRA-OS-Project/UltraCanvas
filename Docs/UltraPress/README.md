@@ -60,14 +60,23 @@ diagnostics - the way `ultrapress hosts add` reports one, so a host that
 refused can be read step by step. Without a host of its own the site
 publishes to the default host; without any, Publish opens the dialog.
 
-The left column lists the pages and the current page's blocks: select one,
-move it with the arrows, remove it, or add one after the selection from
-the drop-down of every registered type. The right column is the selected
+The left column lists the pages and the current page's blocks. A page row
+has the same arrows and cross as a block's: move it in the list (the
+pinned pages stay first) - the header's and the footer's menus follow the
+list's order - or remove it
+with every menu entry that named it (the front page stays: the site is
+addressed by it); *+ Add a page…* makes a page with a heading and a text
+block, in the main menu, and shows it, its title ready to type in the
+pane. A block: select one, move it with the arrows, remove it, or add
+one after the selection from the drop-down of every registered type. The right column is the selected
 block's properties, generated from the registry - a text input for a
 line, a text area for paragraphs and HTML, a checkbox for a flag, an
 integer for a number, and links, items and lists as JSON applied as soon
-as it parses - or, with no block selected, the page's title, description,
-status and pinning. *Site settings…* in the side column puts the site
+as it parses - or, with no block selected, the page's title (a menu entry
+that carried it follows), its address, description, status, pinning and
+whether it is in the main menu and in the footer menu. Nothing is written
+until *Save site*, so a page removed by mistake comes back by closing
+without saving. *Site settings…* in the side column puts the site
 itself there instead: name, tagline, address, language and owner; the
 address is checked as typed (`IsSiteAddress`: `https://` and a host, no
 trailing slash) and the rule stands under the field, in the error colour,
@@ -146,7 +155,7 @@ takes. Drafts are left out unless `--drafts` is given.
 
 ```
 mysite/
-├── site.json        name, tagline, url, language, languages, owner
+├── site.json        name, tagline, url, language, languages, owner; `pages` is the pages' order, which their files cannot hold
 ├── theme.json       name, colors (name → #rrggbb), fontFamily
 ├── menus.json       {"main": [...], "footer": [...]}; an item has title and page (a slug) or url, and items
 ├── pages/<slug>.json
@@ -206,7 +215,9 @@ against it.
 - `UltraPressModel.h` - `Site`, `Page`, `Block`, `Menu`, `Theme`; JSON in and
   out; `LoadSite` / `SaveSite`; `PagePath`, `PageUrl`, `LinkHref`;
   `SortedPages` (pinned first; stored, alphabetic or most popular) and
-  `MakeSlug`; text in a block: `SplitParagraphs`, `TextLocation` /
+  `MakeSlug`; the pages and menus as the window edits them: `UniqueSlug`,
+  `AddPage`, `RenamePage`, `MovePage`, `RemovePage`, `PageInMenu`,
+  `SetPageInMenu`; text in a block: `SplitParagraphs`, `TextLocation` /
   `SetBlockText` (a property, an item, an item's key, one paragraph) and
   `ResolveBlockPath`.
 - `UltraPressBlocks.h` - the registry and `ValidateSite`.
@@ -301,7 +312,8 @@ writes the folder to upload by other means.
 
 ## Not yet
 
-New pages and menus from the window, undo, the WebAssembly renderer release
+Nested menu entries and entries with an outside address from the window
+(both are read and kept from `menus.json`), undo, the WebAssembly renderer release
 and its reference from the shadow, the newsletter's e-mail mode of the
 emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
