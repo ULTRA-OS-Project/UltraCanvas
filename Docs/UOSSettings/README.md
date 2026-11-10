@@ -76,6 +76,39 @@ one.
 The table has a header and scrolls vertically when there are more
 applications than fit.
 
+### Appearance > Look
+
+The look every UltraCanvas application takes, over what the computer says:
+
+| Row | Choices |
+|---|---|
+| **Look** | *System*, *Light*, *Dark* |
+| **Accent** | *System*, eight named colours, or *Other...* with a `#rrggbb` field |
+| **Font** | *System* or an installed family, each shown in itself; beside it the size, *System* or 8 to 24 pt |
+| **Text scale** | 100 % to 200 %, over the computer's own text scale |
+| **Contrast** | *System*, *High*, *Normal* |
+
+*System* follows the computer - Windows' and macOS' light or dark mode and
+accent, the desktop's theme and fonts on Linux; a choice here comes before
+it for every application. Under the rows a preview strip - a label, a
+button, a field and a dropdown on the panel colour - is styled from the
+theme the choices give, so the page shows the result. Every change is
+written at once to `Appearance.conf` in the settings folder below, through
+`UltraCanvas::AppearanceSettings` (`UltraCanvasAppearanceSettings.h`; the
+file and the watcher are *The setting* in
+[`UltraCanvasTheme.md`](../UltraCanvas/UltraCanvasTheme.md)), and a running
+application follows it within a moment, as it follows a change of the
+desktop. `ULTRACANVAS_HOST_APPEARANCE` still overrules it for one run.
+
+```
+look=dark
+accent=#e95420
+font=system
+fontsize=system
+scale=1.25
+contrast=system
+```
+
 ### Appearance > Emoji
 
 How every application draws emoji - in a mail's subject, a chat message, a
@@ -138,7 +171,8 @@ UOS-Settings and the applications that reach the devices agree on it.
 
 ## Where the settings live
 
-`Emoji.conf` (Appearance > Emoji, one `style=` line) and `FileDialog.conf` in
+`Appearance.conf` (Appearance > Look, six lines), `Emoji.conf` (Appearance >
+Emoji, one `style=` line) and `FileDialog.conf` in
 the UltraCanvas settings folder - `%APPDATA%\UltraCanvas`
 on Windows, `~/Library/Application Support/UltraCanvas` on macOS,
 `$XDG_CONFIG_HOME/UltraCanvas` (or `~/.config/UltraCanvas`) elsewhere. Both

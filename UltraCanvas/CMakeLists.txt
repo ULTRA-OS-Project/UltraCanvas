@@ -762,6 +762,8 @@ set(ULTRACANVAS_CORE_SOURCES
         # by UltraNet), and the dialog that sets it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProxySettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProxySettingsDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAppearanceSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsWatcher.cpp
         # Whether the computer has a font for a text, by script.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontCoverage.cpp
         # A notification's click outside the bus: the Windows backend under
