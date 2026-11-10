@@ -569,7 +569,7 @@ namespace {
     }
 
     void AddTreeNode(DialogState* d, const char* parentId, const char* id,
-                     const char* text) {
+                     const std::string& text) {
         TreeNodeData data;
         data.nodeId = id;
         data.text = text;
