@@ -458,6 +458,35 @@ void TestSettings() {
 
 } // namespace
 
+void TestStartupDefaults() {
+    std::cout << "\nWhat starts with the desktop by default\n";
+    DesktopSettings fresh;
+    Check(fresh.StartsWithDesktop("UltraNotifications"), "a new desktop starts UltraNotifications (the bell counts)");
+    Check(!fresh.StartsWithDesktop("UltraClipboard") && !fresh.StartsWithDesktop("ChatCube"),
+          "and nothing else");
+
+    // A settings file from before the default: given it once.
+    DesktopSettings old;
+    std::string error;
+    Check(old.FromJson(R"({"taskbarEdge":"left","startWithDesktop":["UltraMail"]})", &error),
+          "a settings file from before the default reads" + (error.empty() ? "" : ": " + error));
+    Check(old.StartsWithDesktop("UltraMail") && old.StartsWithDesktop("UltraNotifications"),
+          "it keeps what it had, and gains UltraNotifications once");
+
+    // Unticked afterwards: the choice holds through a save.
+    old.SetStartsWithDesktop("UltraNotifications", false);
+    DesktopSettings reread;
+    Check(reread.FromJson(old.ToJson(), &error), "the settings read back");
+    Check(!reread.StartsWithDesktop("UltraNotifications") && reread.StartsWithDesktop("UltraMail"),
+          "UltraNotifications unticked stays unticked");
+
+    // An empty list written with the default applied means none.
+    DesktopSettings none;
+    Check(none.FromJson(R"({"startWithDesktop":[],"startupDefaults":1})", &error) &&
+              none.startWithDesktop.empty(),
+          "an empty list, the default applied, starts nothing");
+}
+
 int main() {
     std::cout << "UltraDesktopAppCategoriesTest\n";
     TestFreedesktopCategories();
@@ -470,6 +499,7 @@ int main() {
     TestFoldersAndMoves();
     TestMacOSFolders();
     TestSettings();
+    TestStartupDefaults();
     std::cout << (g_failures == 0 ? "All passed\n" : std::to_string(g_failures) + " failed\n");
     return g_failures == 0 ? 0 : 1;
 }
