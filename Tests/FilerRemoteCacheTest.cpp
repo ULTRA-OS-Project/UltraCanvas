@@ -8,9 +8,10 @@
 // holds names a server chose - so a name with a tab or a newline in it must
 // come back as itself, and a damaged file must cost the listing it damaged,
 // never the start-up.
+// Version: 1.2.0 - when a listing is asked for again (RemoteListingOutdated)
 // Version: 1.1.0 - which partial preview copies the cache's sweep removes
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteCache.h"
 
@@ -218,6 +219,24 @@ int main() {
         Check(kRemotePreviewPartialMaxAge == hours(24) &&
               kRemotePreviewPartialMaxBytes == 256ull * 1024 * 1024,
               "a day, and 256 MB");
+    }
+
+    // ---- A listing fetched a while ago is asked for again ----------------
+    {
+        using std::chrono::seconds;
+        const auto now = std::chrono::steady_clock::now();
+        const std::chrono::steady_clock::time_point never{};
+        Check(!RemoteListingOutdated(now - seconds(5), now),
+              "a listing fetched seconds ago stands");
+        Check(!RemoteListingOutdated(now - kRemoteListingFreshFor + seconds(1), now),
+              "one just under the limit stands");
+        Check(RemoteListingOutdated(now - kRemoteListingFreshFor, now),
+              "one at the limit is asked for again");
+        Check(RemoteListingOutdated(now - std::chrono::hours(1), now),
+              "one fetched an hour ago is asked for again");
+        Check(!RemoteListingOutdated(never, now),
+              "one with no fetch time (from the disk cache) is left to its own rule");
+        Check(kRemoteListingFreshFor == seconds(120), "two minutes");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures,

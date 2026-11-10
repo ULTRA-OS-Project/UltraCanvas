@@ -19,8 +19,13 @@
 //
 // Opens a real window, so it runs under Xvfb (xvfb-run -a) and skips itself
 // without a DISPLAY.
+// Version: 1.0.1 - FindEntry puts the sort back after a click that changed it:
+//                  its sweep crosses the details view's column header, and
+//                  each click there re-sorted the display, so whether two
+//                  folders of one date swapped between two searches hung on
+//                  how many clicks the font metrics put on each column
 // Version: 1.0.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -114,15 +119,27 @@ void Frame(const std::shared_ptr<UltraCanvasWindow>& window,
 
 // Where `name` sits in `filer`, in window coordinates: the middle of the
 // points whose click selects it. (-1, -1) when no click does.
+//
+// The sweep crosses the details view's column header too, and a click there
+// sorts the display by that column, or turns its direction round. Left as it
+// fell, the order an entry was found in was not the order the next search
+// or drag met: two folders of the same date swapped places whenever the
+// header took an odd number of clicks on its last column - a matter of font
+// metrics, so it failed on one machine and passed on another. The sort is
+// put back after any click that changed it.
 Point2Di FindEntry(TestApplication& app, const std::shared_ptr<UltraCanvasWindow>& window,
                    UltraCanvasFilerWidget& filer, const std::string& name) {
     const Rect2Df b = filer.GetBoundsInWindow();
+    const FilerSortField sortField = filer.GetSortField();
+    const bool sortAscending = filer.IsSortAscending();
     int minX = 1 << 20, minY = 1 << 20, maxX = -1, maxY = -1;
     for (int y = static_cast<int>(b.y) + 4; y < static_cast<int>(b.y + b.height) - 4; y += 6) {
         for (int x = static_cast<int>(b.x) + 4; x < static_cast<int>(b.x + b.width) - 4; x += 6) {
             filer.ClearSelection();
             Send(app, window, UCEventType::MouseDown, Point2Di(x, y));
             Send(app, window, UCEventType::MouseUp, Point2Di(x, y));
+            if (filer.GetSortField() != sortField || filer.IsSortAscending() != sortAscending)
+                filer.SetSort(sortField, sortAscending);
             const std::vector<FilerEntry> picked = filer.GetSelectedEntries();
             if (picked.size() == 1 && picked.front().name == name) {
                 minX = std::min(minX, x); maxX = std::max(maxX, x);

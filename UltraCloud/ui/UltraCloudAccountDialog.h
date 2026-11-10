@@ -3,11 +3,12 @@
 // password (app password), public URL (WebDAV), upload folder, default flag.
 // Verifies the sign-in through the provider before storing. One dialog for
 // every app that links UltraCloudUI.
+// Version: 0.5.1 - the edit form's "Save without signing in"
 // Version: 0.5.0 - ShowEditAccountDialog: a stored account's settings in the
 //                  same form, its password kept unless a new one is typed
 // Version: 0.4.0 - a shared_ptr form, whose sign-in thread holds the service
 //                  until it ends
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -90,10 +91,12 @@ void ShowAddAccountDialog(UltraCanvas::UltraCanvasWindowBase* parent, CloudServi
 // path.
 //
 // Saving signs in with what the form holds and stores it only if the
-// provider accepts it, as adding does - except for an OAuth account, which
-// has no password to type: it is saved as it is (name, upload folder,
-// default) unless "Sign in again" is ticked, which runs the browser sign-in
-// and stores its new tokens. The account keeps its id whatever is changed,
+// provider accepts it, as adding does. Once such a sign-in has failed, a
+// "Save without signing in" button appears and stores the form as it is, for
+// a server that cannot be reached today. An OAuth account has no password to
+// type: it is saved as it is (name, upload folder, default) unless "Sign in
+// again" is ticked, which runs the browser sign-in and stores its new
+// tokens. The account keeps its id whatever is changed,
 // so what a host keyed by it - an open folder, a pinned one - still finds
 // it. `onSaved` receives the stored account; nothing is called on cancel.
 // `title` and `watch` as for ShowAddAccountDialog (the watch hears only of
