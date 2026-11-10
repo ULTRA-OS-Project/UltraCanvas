@@ -13,6 +13,7 @@ and composite UI elements, all behind a pluggable platform backend.
 - [Public API surface](#public-api-surface)
   - [Frame resource — `UltraCanvasVideo.h`](#frame-resource-—-ultracanvasvideoh)
   - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual-—-ultracanvasvideoplayerh)
+  - [File facts — `UltraCanvasVideoFileInfo.h`](#file-facts-—-ultracanvasvideofileinfoh)
   - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames-—-ultracanvasvideothumbnailh)
   - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
   - [UI elements](#ui-elements)
@@ -84,6 +85,44 @@ Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`.
 Frame access: `GetCurrentFrame()` (thread-safe).
 Callbacks: `onLoaded`, `onPlaybackStateChanged`, `onFrameReady`,
 `onPositionChanged`, `onEnded`, `onError`.
+
+### File facts — `UltraCanvasVideoFileInfo.h`
+
+`ReadVideoFileInfo(path, info)` reads a clip's technical facts from its
+container headers - no decoder, no playback, the same answer on every
+platform (the backend's `VideoStreamInfo` depends on the backend: Media
+Foundation fills only the size and the duration). It reads ISO base media
+(MP4, M4V, MOV, 3GP, fragmented MP4 included), Matroska / WebM and AVI, and
+returns `false` for anything else. `VideoFileInfo` holds the container and
+brand, duration, overall bit rate; the first video track's codec and profile
+(`"High, level 4.1"`, `"Main 10, level 5.1"`), coded and display size, frame
+rate, frame count, bit rate, bit depth and clockwise rotation; the first
+sound track's codec (`"AAC LC"`, `"HE-AAC"`, `"Opus"`, `"AC-3"`), sample
+rate, channels, bit depth (PCM), bit rate and language; the track counts;
+and the file's title, encoder and creation time. A fact the file does not
+state is 0 or empty.
+
+```cpp
+#include "UltraCanvasVideoFileInfo.h"
+using namespace UltraCanvas;
+
+VideoFileInfo info;
+if (ReadVideoFileInfo("clip.mp4", info) && info.hasVideo) {
+    std::string line = std::to_string(info.width) + " x " + std::to_string(info.height) +
+                       ", " + FormatFrameRate(info.frameRate) + " fps, " + info.videoCodec;
+    if (info.hasAudio)
+        line += ", " + info.audioCodec + " " + FormatSampleRate(info.sampleRate) +
+                " " + DescribeAudioChannels(info.channels);
+    // "1920 x 1080, 29.97 fps, H.264, AAC LC 48 kHz Stereo"
+}
+```
+
+The formatting helpers beside it - `FormatBitRate` (`"1.68 Mb/s"`),
+`FormatFrameRate`, `FormatSampleRate`, `DescribeAspectRatio` (`"16:9"`),
+`DescribeAudioChannels` (`"5.1"`), `FormatMediaDuration` (`"1:02:03"`) - are
+dot-decimal whatever the locale. `UltraCanvasMediaViewer` uses it for a
+video's Details panel and status bar, falling back on the player's
+`VideoStreamInfo` for a container it does not read (WMV, MPEG-TS).
 
 ### Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`
 

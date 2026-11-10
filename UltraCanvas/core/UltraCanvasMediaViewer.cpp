@@ -4408,6 +4408,52 @@ void UltraCanvasMediaViewer::UpdateZoomBox() {
     box->SetPlaceholderText(text);
 }
 
+const VideoFileInfo& UltraCanvasMediaViewer::ShownVideoInfo(const std::string& path) {
+    // The headers are read once per file; a file rewritten in place (same
+    // path, new size) is read again.
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+    if (path != videoFileInfoPath || (!ec && size != videoFileInfoSize)) {
+        videoFileInfoPath = path;
+        videoFileInfoSize = ec ? 0 : size;
+        if (!ReadVideoFileInfo(path, videoFileInfo)) videoFileInfo = VideoFileInfo{};
+    }
+    shownVideoInfo = videoFileInfo;
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    // A container the reader does not know (WMV, MPEG-TS, ...), or a fact its
+    // header leaves out: what the playback backend found, once it has the file.
+    if (videoPlayer) {
+        auto* vp = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
+        if (auto p = vp->GetPlayer()) {
+            const VideoStreamInfo& si = p->GetStreamInfo();
+            VideoFileInfo& vi = shownVideoInfo;
+            if (vi.width <= 0 && si.width > 0 && si.height > 0) {
+                vi.width = vi.displayWidth = si.width;
+                vi.height = vi.displayHeight = si.height;
+                vi.hasVideo = true;
+            }
+            if (vi.frameRate <= 0 && si.frameRate > 0) vi.frameRate = si.frameRate;
+            if (vi.duration <= 0 && si.duration > 0) vi.duration = si.duration;
+            if (vi.container.empty() && si.hasAudio) vi.hasAudio = true;
+            if (vi.videoCodec.empty()) {
+                switch (si.codec) {
+                    case VideoCodec::H264:  vi.videoCodec = "H.264"; break;
+                    case VideoCodec::H265:  vi.videoCodec = "H.265"; break;
+                    case VideoCodec::VP8:   vi.videoCodec = "VP8"; break;
+                    case VideoCodec::VP9:   vi.videoCodec = "VP9"; break;
+                    case VideoCodec::AV1:   vi.videoCodec = "AV1"; break;
+                    case VideoCodec::MJPEG: vi.videoCodec = "Motion JPEG"; break;
+                    default: break;
+                }
+            }
+            if (vi.overallBitRate <= 0 && vi.duration > 0 && !ec)
+                vi.overallBitRate = int64_t(double(size) * 8.0 / vi.duration);
+        }
+    }
+#endif
+    return shownVideoInfo;
+}
+
 void UltraCanvasMediaViewer::UpdateInfoBar() {
     UpdateZoomBox();
     if (!infoLabel) return;
@@ -4495,11 +4541,44 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
 
+    if (activeKind == MediaKind::Video) {
+        // What a clip is at a glance: its picture size, frame rate, codec and
+        // sound - the numbers two copies of a film are told apart by.
+        const VideoFileInfo& vi = ShownVideoInfo(path);
+        const char* sep = "   \xC2\xB7   ";
+        std::ostringstream os;
+        os << BaseName(path) << sep << "VIDEO";
+        if (vi.width > 0 && vi.height > 0) {
+            os << sep << vi.width << " x " << vi.height;
+            if (vi.displayWidth > 0 && vi.displayHeight > 0 &&
+                (vi.displayWidth != vi.width || vi.displayHeight != vi.height))
+                os << " (" << vi.displayWidth << " x " << vi.displayHeight << ")";
+        }
+        if (vi.frameRate > 0) os << sep << FormatFrameRate(vi.frameRate) << " fps";
+        if (!vi.videoCodec.empty()) os << sep << vi.videoCodec;
+        if (vi.hasAudio) {
+            std::string audio = vi.audioCodec.empty() ? std::string("audio") : vi.audioCodec;
+            if (vi.sampleRate > 0) audio += " " + FormatSampleRate(vi.sampleRate);
+            const std::string channels = DescribeAudioChannels(vi.channels);
+            if (!channels.empty()) audio += " " + channels;
+            os << sep << audio;
+        } else if (!vi.container.empty()) {
+            os << sep << "no audio";   // the header was read and has no sound track
+        }
+        if (vi.duration > 0) os << sep << FormatMediaDuration(vi.duration);
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << sep << HumanSize(sz);
+        if (vi.rotation) os << sep << vi.rotation << "\xC2\xB0";
+        os << sep << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
+
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
         activeKind == MediaKind::Text || activeKind == MediaKind::Book ||
-        activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
-        std::string kindLabel = activeKind == MediaKind::Video ? "VIDEO"
-                              : activeKind == MediaKind::Audio ? "AUDIO"
+        activeKind == MediaKind::Audio) {
+        std::string kindLabel = activeKind == MediaKind::Audio ? "AUDIO"
                               : activeKind == MediaKind::Model ? "3D MODEL"
                               : activeKind == MediaKind::Book  ? "EBOOK"
                               : activeKind == MediaKind::Text  ? (!webShown ? "TEXT"
@@ -4728,19 +4807,92 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     }
 #endif
 
+    if (activeKind == MediaKind::Video) {
+        const VideoFileInfo& vi = ShownVideoInfo(path);
+        std::ostringstream vos;
+        vos << "Video information\n\n";
+        vos << "File: " << BaseName(path) << "\n";
+        vos << "Path: " << path << "\n";
+        std::error_code vec;
+        auto vsz = fs::file_size(UltraCanvas::PathFromUtf8(path), vec);
+        if (!vec) vos << "Size: " << HumanSize(vsz) << "\n";
+        std::string ext = LowerExt(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return (char)std::toupper(c); });
+        vos << "Type: Video (" << ext << ")\n";
+        if (!vi.container.empty()) {
+            vos << "Container: " << vi.container;
+            if (!vi.brand.empty()) vos << " (brand " << vi.brand << ")";
+            vos << "\n";
+        }
+        if (vi.duration > 0) vos << "Duration: " << FormatMediaDuration(vi.duration, true) << "\n";
+        if (vi.overallBitRate > 0) vos << "Overall bit rate: " << FormatBitRate(vi.overallBitRate) << "\n";
+        if (!vi.title.empty()) vos << "Title: " << vi.title << "\n";
+        if (!vi.encoder.empty()) vos << "Encoder: " << vi.encoder << "\n";
+        if (!vi.creationTime.empty()) vos << "Created: " << vi.creationTime << " UTC\n";
+
+        vos << "\n## Video\n";
+        if (!vi.hasVideo && vi.width <= 0) {
+            vos << "No picture track was found in the file's header.\n";
+        } else {
+            if (!vi.videoCodec.empty()) vos << "Codec: " << vi.videoCodec << "\n";
+            if (!vi.videoProfile.empty()) vos << "Profile: " << vi.videoProfile << "\n";
+            if (vi.width > 0 && vi.height > 0) {
+                vos << "Dimensions: " << vi.width << " x " << vi.height << " px\n";
+                if (vi.displayWidth > 0 && vi.displayHeight > 0 &&
+                    (vi.displayWidth != vi.width || vi.displayHeight != vi.height))
+                    vos << "Display size: " << vi.displayWidth << " x " << vi.displayHeight << " px\n";
+                const std::string aspect = DescribeAspectRatio(
+                        vi.displayWidth > 0 ? vi.displayWidth : vi.width,
+                        vi.displayHeight > 0 ? vi.displayHeight : vi.height);
+                if (!aspect.empty()) vos << "Aspect ratio: " << aspect << "\n";
+            }
+            if (vi.frameRate > 0) vos << "Frame rate: " << FormatFrameRate(vi.frameRate) << " fps\n";
+            if (vi.frameCount > 0) vos << "Frames: " << vi.frameCount << "\n";
+            if (vi.videoBitRate > 0) vos << "Bit rate: " << FormatBitRate(vi.videoBitRate) << "\n";
+            if (vi.bitDepth > 0) vos << "Bit depth: " << vi.bitDepth << " bits\n";
+            if (vi.rotation) vos << "Rotation: " << vi.rotation << "\xC2\xB0 clockwise\n";
+        }
+
+        vos << "\n## Audio\n";
+        if (!vi.hasAudio) {
+            vos << (vi.container.empty() ? "Not known for this kind of file.\n"
+                                         : "No sound track.\n");
+        } else {
+            if (!vi.audioCodec.empty()) vos << "Codec: " << vi.audioCodec << "\n";
+            if (vi.sampleRate > 0) vos << "Sample rate: " << FormatSampleRate(vi.sampleRate) << "\n";
+            if (vi.channels > 0) {
+                vos << "Channels: " << vi.channels;
+                if (vi.channels <= 2 || vi.channels == 6 || vi.channels == 8)
+                    vos << " (" << DescribeAudioChannels(vi.channels) << ")";
+                vos << "\n";
+            }
+            if (vi.bitsPerSample > 0) vos << "Bit depth: " << vi.bitsPerSample << " bits\n";
+            if (vi.audioBitRate > 0) vos << "Bit rate: " << FormatBitRate(vi.audioBitRate) << "\n";
+            if (!vi.audioLanguage.empty()) vos << "Language: " << vi.audioLanguage << "\n";
+        }
+
+        if (vi.videoTracks > 1 || vi.audioTracks > 1 || vi.subtitleTracks > 0) {
+            vos << "\n## Tracks\n";
+            vos << "Video tracks: " << vi.videoTracks << "\n";
+            vos << "Audio tracks: " << vi.audioTracks << "\n";
+            vos << "Subtitle tracks: " << vi.subtitleTracks << "\n";
+        }
+        ShowDetailsText(vos.str());
+        return;
+    }
+
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
-        activeKind == MediaKind::Text || activeKind == MediaKind::Video ||
+        activeKind == MediaKind::Text ||
         activeKind == MediaKind::Audio || activeKind == MediaKind::Vector) {
-        const char* heading = activeKind == MediaKind::Video ? "Video information\n\n"
-                            : activeKind == MediaKind::Audio ? "Audio information\n\n"
+        const char* heading = activeKind == MediaKind::Audio ? "Audio information\n\n"
                             : activeKind == MediaKind::Vector ? "Drawing information\n\n"
                             : activeKind == MediaKind::Model ? "3D model information\n\n"
                             : activeKind == MediaKind::Text  ? (!webShown ? "Text information\n\n"
                                                                 : IsMailMessageFile(path) ? "Message information\n\n"
                                                                 : "Page information\n\n")
                                                              : "Spreadsheet information\n\n";
-        const char* typeName = activeKind == MediaKind::Video ? "Video"
-                             : activeKind == MediaKind::Audio ? "Audio"
+        const char* typeName = activeKind == MediaKind::Audio ? "Audio"
                              : activeKind == MediaKind::Vector ? "Vector drawing"
                              : activeKind == MediaKind::Model ? "3D model"
                              : activeKind == MediaKind::Text  ? (!webShown ? "Text"

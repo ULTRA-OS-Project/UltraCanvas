@@ -1684,6 +1684,25 @@ add_test(NAME VideoTimelineModelTest COMMAND VideoTimelineModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VideoTimelineModelTest")
 
+# ===== VIDEO FILE INFO TEST =====
+# ReadVideoFileInfo (UltraCanvasVideoFileInfo.h): MP4, fragmented MP4, WebM and
+# AVI headers built in memory, read back, and the formatting helpers. The
+# reader has no framework dependency, so the test compiles its source directly
+# and links nothing; it needs no media assets and no display.
+message(STATUS "  Building VideoFileInfoTest...")
+add_executable(VideoFileInfoTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/VideoFileInfoTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasVideoFileInfo.cpp
+)
+target_include_directories(VideoFileInfoTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VideoFileInfoTest PRIVATE cxx_std_20)
+set_target_properties(VideoFileInfoTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VideoFileInfoTest COMMAND VideoFileInfoTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VideoFileInfoTest")
+
 # ===== THEME TEST =====
 # UltraCanvasTheme without a display: the presets, element roles, the
 # current theme, and the timeline's and the timecode field's FromTheme.

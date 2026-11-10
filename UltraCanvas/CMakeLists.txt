@@ -917,6 +917,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimecodeField.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideo.cpp
+        # A clip's technical facts from its container headers (no decoder)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoFileInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoThumbnail.cpp

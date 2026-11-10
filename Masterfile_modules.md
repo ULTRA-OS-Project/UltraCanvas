@@ -2622,7 +2622,10 @@ target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
 
 **Not the player.** Playback, recording and thumbnails for the UI stay in the
 core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
-`UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
+`UltraCanvasVideoThumbnail`, on the platform media frameworks), and so does
+reading a clip's technical facts for display: `ReadVideoFileInfo` /
+`VideoFileInfo` (`UltraCanvasVideoFileInfo.h`) parse MP4 / MOV, Matroska /
+WebM and AVI headers without FFmpeg. VideoFX is
 headless and has no UltraCanvas UI dependency; applications call it from a
 worker thread or through `VideoFXExportJob`. It is a shared library of its
 own (`libVideoFX.so` / `.dylib` / `.dll`, `VIDEOFX_BUILD_SHARED`, default ON

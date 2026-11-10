@@ -133,6 +133,7 @@
 #include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "Models/STL/UltraCanvas3DTypes.h"  // Mesh3D / ModelViewPose for the 3D pane
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasVideoFileInfo.h"  // VideoFileInfo for the Details panel / status bar
 #include "UltraCanvasSessionLock.h"   // ForgetPasswords when the session locks
 #include <string>
 #include <vector>
@@ -797,6 +798,10 @@ private:
     // bitmap, none for anything else.
     MediaAdjustments SurfaceAdjustmentsFor(const std::string& path) const;
     void UpdateInfoBar();
+    // The shown video's technical facts: its headers read once per file
+    // (ReadVideoFileInfo), with what the playback backend reports filling the
+    // gaps of a container that reader does not know (WMV, MPEG-TS).
+    const VideoFileInfo& ShownVideoInfo(const std::string& path);
     // Unlock's question; `note` heads it when it is asked again.
     void AskForPassword(const std::string& note);
     // What a locked PDF shows: a note in the text view.
@@ -1047,6 +1052,11 @@ private:
     // A finished PreviewClip stays muted while it sits paused; the sound comes
     // back when the user resumes it themselves (the video element's onPlay).
     bool videoClipUnmutePending = false;
+    // ShownVideoInfo's last read, and the file (path and size) it is for.
+    VideoFileInfo videoFileInfo;
+    std::string videoFileInfoPath;
+    uintmax_t videoFileInfoSize = 0;
+    VideoFileInfo shownVideoInfo;      // videoFileInfo plus the backend's facts
     MediaTransition transition = MediaTransition::CrossFade;
     int transitionDurationMs = 450;
 
