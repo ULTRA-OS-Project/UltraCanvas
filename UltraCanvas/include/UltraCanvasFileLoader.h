@@ -4,6 +4,7 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.13.0 - GetSpeechTranscriber
 // Version: 1.12.0 - GetImageTextRecognizer (a recognizer that wraps the one before it)
 // Version: 1.11.0 - ExtractText: the words in a document, PDF, spreadsheet, picture (text
 //                   recognition) or recording (speech to text); the two recognition hooks
@@ -393,6 +394,10 @@ namespace UltraCanvas {
         // (RegisterUltraAITextRecognition) hands a picture to Tesseract when
         // no AI provider reads text.
         static ImageTextRecognizer GetImageTextRecognizer();
+        // ... and the speech transcriber installed now, for the same use:
+        // UltraAI's (RegisterUltraAISpeechTranscription) keeps it as its
+        // fallback when no UltraAI provider transcribes.
+        static SpeechTranscriber GetSpeechTranscriber();
         static void SetSpeechTranscriber(SpeechTranscriber transcriber);
         static bool HasImageTextRecognizer();
         static bool HasSpeechTranscriber();
