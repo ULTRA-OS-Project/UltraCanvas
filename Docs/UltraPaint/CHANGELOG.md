@@ -1,3 +1,10 @@
+#### 2026-11-10 *0.2.35*
+- **Curves shows the same histogram as the image viewer.** The backdrop is
+  counted by the framework's `UltraCanvasHistogramModel`, as the viewer's Curves
+  dialog counts it. The RGB backdrop now adds the red, green and blue values
+  level by level - the values the RGB curve maps - instead of counting each
+  pixel's average of the three. Transparent pixels are still left out.
+
 #### 2026-11-09 *0.2.34*
 - **Images in tabs.** A window holds several images, one tab each, in a strip
   over the canvas (`UltraCanvasTabbedContainer`); each tab has its own paint

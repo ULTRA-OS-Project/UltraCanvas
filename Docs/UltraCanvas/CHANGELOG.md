@@ -1,3 +1,26 @@
+#### 2026-11-10 *0.9.514*
+- **One histogram count for every Curves dialog.** `UltraCanvasCurveEditor` and
+  `UltraCanvasCurvesDialog` take `SetHistograms(const ImageHistogram&)`: Red,
+  Green and Blue from their channels, RGB from the three added level by level
+  (`ImageHistogram::RgbTotal`), transparent pixels left out. The image viewer
+  (`UltraCanvasMediaViewer`) now counts its Curves histogram with
+  `UltraCanvasHistogramModel` instead of `HistFind` - still in sRGB at 8 bits a
+  channel, a strip of rows at a time - and no longer counts fully transparent
+  pixels. `UltraCanvasHistogramModel` is in the core library (`core/`), so a
+  build without the charts has it; `ImageHistogram::Add` sums strips. Test:
+  `CurveHistogramTest`. Guide: `UltraCanvasCurveEditor.md`.
+- **Histogram chart.** `UltraCanvasHistogramChart` (chart engine) shows a
+  picture's histogram: how many pixels have each of the 256 levels, for red,
+  green and blue overlaid (`HistogramDisplay::Combined`) or for one channel -
+  red, green, blue or luminosity - on a linear or logarithmic scale, with the
+  level under the pointer read out and, in Combined, the legend switching a
+  channel off. `SetImage` counts a decoded picture; the UI-free
+  `UltraCanvasHistogramModel.h` (core library) counts any pixel buffer (premultiplied ARGB32,
+  XRGB32, RGBA8, RGB8) and gives each channel's mean, median, standard
+  deviation, range, clipping and percentiles. Demo: **Charts > Histogram
+  Chart**. Tests: `HistogramModelTest`, `HistogramChartRenderTest`. Guide:
+  `UltraCanvasHistogramChart.md`.
+
 #### 2026-11-10 *0.9.513*
 - **UltraCanvasFilerWidget: Refresh in the context menu.** The file menu
   gains *Refresh* (after *New*, with `media/icons/menu/refresh.svg`): the one
