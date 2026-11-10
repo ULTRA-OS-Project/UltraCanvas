@@ -1053,6 +1053,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
             Apps/DemoApp/UltraCanvasTernaryChartExamples.cpp
+            Apps/DemoApp/UltraCanvasHistogramChartExamples.cpp
             Apps/DemoApp/UltraCanvasControlChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasPerformanceMatrixExamples.cpp

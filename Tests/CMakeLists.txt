@@ -4253,6 +4253,23 @@ add_test(NAME ControlLimitsTest COMMAND ControlLimitsTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ControlLimitsTest")
 
+# ===== HISTOGRAM MODEL TEST =====
+# The image histogram model: every pixel layout, premultiplied and
+# transparent pixels, luminosity, statistics and percentiles. UI-free.
+message(STATUS "  Building HistogramModelTest...")
+add_executable(HistogramModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/HistogramModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasHistogramModel.cpp
+)
+target_include_directories(HistogramModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(HistogramModelTest PRIVATE cxx_std_20)
+set_target_properties(HistogramModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME HistogramModelTest COMMAND HistogramModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: HistogramModelTest")
+
 # ===== ELEMENT PLUGIN TEST =====
 # The element plugin registry, create-by-name, keyword text dispatch, the named
 # property surface, the ABI handshake, and a real end-to-end DSO load: two test
@@ -6049,6 +6066,29 @@ if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
     message(STATUS "    Test registered: EngineLineChartTest")
 else()
     message(STATUS "  EngineLineChartTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== HISTOGRAM CHART RENDER TEST =====
+# UltraCanvasHistogramChart drawn offscreen: Combined and single channels,
+# the logarithmic scale, the hover read-out, the legend and SetImage on a
+# decoded picture. With ULTRACANVAS_SCREENSHOT_DIR set, each case is written
+# there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building HistogramChartRenderTest...")
+    add_executable(HistogramChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/HistogramChartRenderTest.cpp
+    )
+    target_include_directories(HistogramChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(HistogramChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(HistogramChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(HistogramChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HistogramChartRenderTest COMMAND HistogramChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: HistogramChartRenderTest")
+else()
+    message(STATUS "  HistogramChartRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== BUSY INDICATOR RENDER TEST =====
