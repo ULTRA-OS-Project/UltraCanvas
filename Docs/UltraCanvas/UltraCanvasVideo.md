@@ -18,6 +18,7 @@ and composite UI elements, all behind a pluggable platform backend.
   - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
   - [UI elements](#ui-elements)
   - [Devices — `UltraCanvasVideoDevices.h`](#devices-—-ultracanvasvideodevicesh)
+- [Following the theme](#following-the-theme)
 - [Adding a container or codec](#adding-a-container-or-codec)
 - [Build](#build)
 - [Notes / follow-ups](#notes--follow-ups)
@@ -264,6 +265,31 @@ tile->PushFrame(rgba.data(), 640, 360, 640 * 4, VideoTilePixelFormat::BGRA32);
 
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
 `RequestCameraPermission()`, `GetBackendName()`, `IsAvailable()`.
+
+## Following the theme
+
+A player, a recorder and a tile are a dark stage with a translucent bar
+whatever the window, so `VideoPlayerStyle::FromTheme`,
+`VideoRecorderStyle::FromTheme` and `VideoTileStyle::FromTheme` take from
+the framework theme (`UltraCanvasTheme.md`) only what reads on it: the
+accent for the progress fill and the hovered icons, danger for the record
+button, the caption at the caption size and a hairline where a tile draws
+a border. The stage, the bar and the tile's caption ink are the element
+roles `video-player.stage`, `video-player.control-bar`,
+`video-recorder.stage`, `video-recorder.control-bar`, `video-tile.stage`
+and `video-tile.caption` where a theme names them. Under the theme policy
+a new element follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto player = std::make_shared<UltraCanvasVideoPlayerElement>("player", 0, 0, 640, 400);
+VideoPlayerStyle cover = player->GetStyle();
+cover.videoFit = VideoPlayerFit::Cover;
+player->SetStyle(VideoPlayerStyle::FromTheme(UltraCanvasTheme::Current(), cover));
+player->SetFollowTheme(true);
+auto tile = std::make_shared<UltraCanvasVideoTile>("tile");
+tile->SetStyle(VideoTileStyle::FromTheme());
+```
 
 ## Adding a container or codec
 

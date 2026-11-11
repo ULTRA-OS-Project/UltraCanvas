@@ -2,7 +2,7 @@
 // Composite UI control wrapping UltraCanvasAudioPlayer, built from child widgets
 // (icon buttons, sliders, label) arranged by a flex row layout.
 // Version: 0.3.1
-// Last Modified: 2026-08-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioPlayerElement.h"
@@ -49,6 +49,12 @@ UltraCanvasAudioPlayerElement::UltraCanvasAudioPlayerElement(
     UpdatePlayIcon();
     UpdateMuteIcon();
     SyncTimeAndSeek();
+    ApplyThemeIfFollowing();
+}
+
+void UltraCanvasAudioPlayerElement::ApplyTheme(const UltraCanvasTheme& theme) {
+    UltraCanvasContainer::ApplyTheme(theme);
+    SetStyle(AudioPlayerStyle::FromTheme(theme, style));
 }
 
 UltraCanvasAudioPlayerElement::~UltraCanvasAudioPlayerElement() {
@@ -372,6 +378,7 @@ void UltraCanvasAudioPlayerElement::TogglePlayPause() {
 }
 
 void UltraCanvasAudioPlayerElement::SetStyle(const AudioPlayerStyle& s) {
+    StyleSetByHand();
     style = s;
     ApplyStyleToChildren();
     RequestRedraw();
@@ -405,4 +412,20 @@ void UltraCanvasAudioPlayerElement::Render(IRenderContext* ctx, const Rect2Df& d
     UltraCanvasContainer::Render(ctx, dirtyRect);
 }
 
+
+// ===== THE THEME =====
+AudioPlayerStyle AudioPlayerStyle::FromTheme(const UltraCanvasTheme& theme, const AudioPlayerStyle& base) {
+    AudioPlayerStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.backgroundColor = r.panel;
+    s.borderColor = r.line;
+    s.progressTrackColor = r.pressed;
+    s.progressFillColor = r.accent;
+    s.knobColor = r.raised;
+    s.knobBorderColor = r.lineStrong;
+    s.textColor = r.ink;
+    s.iconColor = r.inkMuted;
+    s.iconHoverColor = r.accent;
+    return s;
+}
 } // namespace UltraCanvas

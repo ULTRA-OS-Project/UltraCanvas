@@ -13,7 +13,7 @@
 // the cells that newly come into view, and changing the size drops the cache
 // rather than showing stale sizes.
 // Version: 1.0.0
-// Last Modified: 2026-09-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFontViewer.h"
@@ -58,9 +58,15 @@ namespace UltraCanvas {
                             RequestRedraw();
                         });
         BuildControls();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasFontViewer::~UltraCanvasFontViewer() = default;
+
+    void UltraCanvasFontViewer::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasContainer::ApplyTheme(theme);
+        SetStyle(FontViewerStyle::FromTheme(theme, style));
+    }
 
     // ===== CHROME =====
 
@@ -123,6 +129,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFontViewer::SetStyle(const FontViewerStyle& s) {
+        StyleSetByHand();
         style = s;
         DropGlyphCache();
         LayoutControls();
@@ -678,4 +685,22 @@ namespace UltraCanvas {
         return false;
     }
 
+
+// ===== THE THEME =====
+    FontViewerStyle FontViewerStyle::FromTheme(const UltraCanvasTheme& theme, const FontViewerStyle& base) {
+        FontViewerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle caption = theme.Font(ThemeTextRole::Caption);
+        s.fontFamily = caption.fontFamily;
+        s.fontSize = static_cast<float>(caption.fontSize);
+        s.background = r.panel;
+        s.cellBackground = r.raised;
+        s.cellBorder = r.line;
+        s.glyphColor = r.ink;
+        s.hoverBackground = r.hover;
+        s.selectedBackground = r.accentSoft;
+        s.selectedBorder = r.accent;
+        s.captionColor = r.inkMuted;
+        return s;
+    }
 } // namespace UltraCanvas

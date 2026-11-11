@@ -1747,9 +1747,9 @@ if(TARGET UltraCanvas)
     target_link_libraries(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_LIBRARY})
     target_compile_features(UltraCanvasThemeTest PRIVATE cxx_std_20)
     get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
-    # The timeline's, the album's and the palette manager's FromTheme only
-    # with them compiled in (a lean core builds them as runtime modules).
-    foreach(uc_pair IN ITEMS VideoTimeline:VIDEO_TIMELINE Album:ALBUM ColorPaletteManager:COLOR_PALETTE_MANAGER)
+    # The timeline's, the album's, the palette manager's and the slideshow's
+    # FromTheme only with them compiled in (a lean core builds them as runtime modules).
+    foreach(uc_pair IN ITEMS VideoTimeline:VIDEO_TIMELINE Album:ALBUM ColorPaletteManager:COLOR_PALETTE_MANAGER Slideshow:SLIDESHOW)
         string(REPLACE ":" ";" uc_pair "${uc_pair}")
         list(GET uc_pair 0 uc_key)
         list(GET uc_pair 1 uc_macro)
