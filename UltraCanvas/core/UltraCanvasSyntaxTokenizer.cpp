@@ -252,6 +252,33 @@ namespace UltraCanvas {
         return line.length();
     }
 
+// A C++ raw string opening at `pos`: [u8|u|U|L]R"delim( - not inside a word
+// (myR"(...)" is an identifier and a string). On a match, `bodyStart` is just
+// past the "(" and `endMarker` is )delim". The delimiter is at most 16
+// characters, none of them a space, ( ) or \.
+    static bool MatchRawStringOpen(const std::string& line, size_t pos,
+                                   size_t& bodyStart, std::string& endMarker) {
+        if (pos > 0) {
+            unsigned char prev = static_cast<unsigned char>(line[pos - 1]);
+            if (std::isalnum(prev) || prev == '_') return false;
+        }
+        size_t i = pos;
+        if (line.compare(i, 2, "u8") == 0) i += 2;
+        else if (i < line.length() && (line[i] == 'u' || line[i] == 'U' || line[i] == 'L')) i += 1;
+        if (line.compare(i, 2, "R\"") != 0) return false;
+        i += 2;
+        size_t delimStart = i;
+        while (i < line.length() && line[i] != '(') {
+            char c = line[i];
+            if (c == ' ' || c == ')' || c == '\\' || c == '\t' || i - delimStart >= 16) return false;
+            i++;
+        }
+        if (i >= line.length()) return false;
+        endMarker = ")" + line.substr(delimStart, i - delimStart) + "\"";
+        bodyStart = i + 1;
+        return true;
+    }
+
 // Does a string opened with `delimiter` and still open at the end of `line`
 // carry on into the next line? Per language: a quote whose strings span lines,
 // or a backslash continuation (an odd run of backslashes ends the line).
@@ -323,6 +350,17 @@ namespace UltraCanvas {
             position = end;
         }
         state.openLongString = -1;
+        if (!state.rawStringEnd.empty()) {
+            size_t endPos = line.find(state.rawStringEnd);
+            if (endPos == std::string::npos) {
+                tokens.push_back({TokenType::String, line, line.length()});
+                return tokens;
+            }
+            size_t end = endPos + state.rawStringEnd.length();
+            tokens.push_back({TokenType::String, line.substr(0, end), end});
+            position = end;
+            state.rawStringEnd.clear();
+        }
         if (state.openString) {
             bool closed = false;
             size_t end = FindStringEnd(line, 0, state.openString, currentRules->hasEscapeSequences, closed);
@@ -359,20 +397,11 @@ namespace UltraCanvas {
 //            token.column = currentColumn;
 //            token.start = position;
 
-            // Try to match single-line comments
+            // Block comments before line comments: in some languages the
+            // block opener starts with the line-comment marker (Lua's --[[
+            // after --, MATLAB's %{ after %), and the line comment would take
+            // it and the rest of the line, leaving the block never opened.
             bool foundComment = false;
-            for (const auto& commentPrefix : currentRules->singleLineComments) {
-                if (line.substr(position, commentPrefix.length()) == commentPrefix) {
-                    token.type = TokenType::Comment;
-                    token.length = line.length() - position;
-                    token.text = line.substr(position);
-                    tokens.push_back(token);
-                    state.lineComment = true;
-                    return tokens; // Rest of line is comment
-                }
-            }
-
-            // Try to match multi-line comment starts
             for (size_t k = 0; k < currentRules->multiLineComments.size(); ++k) {
                 const auto& [startDelim, endDelim] = currentRules->multiLineComments[k];
                 if (line.substr(position, startDelim.length()) == startDelim) {
@@ -401,6 +430,39 @@ namespace UltraCanvas {
             }
 
             if (foundComment) continue;
+
+            // Try to match single-line comments
+            for (const auto& commentPrefix : currentRules->singleLineComments) {
+                if (line.substr(position, commentPrefix.length()) == commentPrefix) {
+                    token.type = TokenType::Comment;
+                    token.length = line.length() - position;
+                    token.text = line.substr(position);
+                    tokens.push_back(token);
+                    state.lineComment = true;
+                    return tokens; // Rest of line is comment
+                }
+            }
+
+            // C++ raw strings: no escapes, and they end at their own marker.
+            if (currentRules->delimitedRawStrings) {
+                size_t bodyStart = 0;
+                std::string endMarker;
+                if (MatchRawStringOpen(line, position, bodyStart, endMarker)) {
+                    size_t endPos = line.find(endMarker, bodyStart);
+                    size_t end = endPos == std::string::npos ? line.length() : endPos + endMarker.length();
+                    token.type = TokenType::String;
+                    token.length = end - position;
+                    token.text = line.substr(position, token.length);
+                    tokens.push_back(token);
+                    if (endPos == std::string::npos) {
+                        state.rawStringEnd = endMarker;
+                        return tokens;
+                    }
+                    currentColumn += token.length;
+                    position = end;
+                    continue;
+                }
+            }
 
             // Strings that may span lines and open with more than one
             // character (""", [[): before the one-character delimiters,
@@ -706,24 +768,24 @@ namespace UltraCanvas {
     std::pair<size_t, TokenType> SyntaxTokenizer::ParseComment(const std::string& text, size_t pos) const {
         if (!currentRules) return {pos, TokenType::Unknown};
 
-        // Check single-line comments
-        for (const auto& commentPrefix : currentRules->singleLineComments) {
-            if (text.substr(pos, commentPrefix.length()) == commentPrefix) {
-                size_t endPos = text.find('\n', pos);
-                if (endPos == std::string::npos) {
-                    endPos = text.length();
-                }
-                return {endPos, TokenType::Comment};
-            }
-        }
-
-        // Check multi-line comments
+        // Check multi-line comments (first: see TokenizeLine)
         for (const auto& [startDelim, endDelim] : currentRules->multiLineComments) {
             if (text.substr(pos, startDelim.length()) == startDelim) {
                 size_t endPos = text.find(endDelim, pos + startDelim.length());
                 if (endPos != std::string::npos) {
                     endPos += endDelim.length();
                 } else {
+                    endPos = text.length();
+                }
+                return {endPos, TokenType::Comment};
+            }
+        }
+
+        // Check single-line comments
+        for (const auto& commentPrefix : currentRules->singleLineComments) {
+            if (text.substr(pos, commentPrefix.length()) == commentPrefix) {
+                size_t endPos = text.find('\n', pos);
+                if (endPos == std::string::npos) {
                     endPos = text.length();
                 }
                 return {endPos, TokenType::Comment};

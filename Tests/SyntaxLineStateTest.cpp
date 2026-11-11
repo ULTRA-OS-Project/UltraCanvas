@@ -11,7 +11,9 @@
 //
 // Also: strings each language lets run across lines (Python's """, the
 // JavaScript template literal, a C string continued with a backslash), and
-// SetLanguageByTag, which names a Markdown fence's language.
+// SetLanguageByTag, which names a Markdown fence's language; block comments
+// whose opener starts with the line-comment marker (Lua's --[[); C++ raw
+// strings, R"delim( ... )delim".
 // Version: 1.1.0
 // Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
@@ -238,6 +240,47 @@ int main() {
         tk.SetLanguageByTag("foo");
         Check(tk.TokenizeLine(std::string("int x = 0;")).empty(),
               "an unknown tag highlights nothing");
+    }
+
+    std::cout << "Block comments that start like a line comment\n";
+    {
+        tk.SetLanguage("Lua");
+        auto t = Highlight(tk, {{"--[[ a block", "local x = 1", "]] return x", "-- a line comment", "return y"}, {}});
+        Expect(t[1], "local x = 1", TokenType::Comment, "Lua: inside --[[ ]]");
+        Expect(t[2], "]]", TokenType::Comment, "Lua: the closing ]]");
+        Expect(t[2], "return", TokenType::Keyword, "Lua: code after the block");
+        Expect(t[3], "-- a line comment", TokenType::Comment, "Lua: -- is still a line comment");
+        Expect(t[4], "return", TokenType::Keyword, "Lua: ...that ends at the line");
+        auto one = Highlight(tk, {{"--[[ inline ]] return z"}, {}});
+        Expect(one[0], "return", TokenType::Keyword, "Lua: --[[ ]] closed on its own line");
+
+        tk.SetLanguage("MATLAB");
+        auto m = Highlight(tk, {{"%{", "x = 1", "%}", "x = 2"}, {}});
+        Expect(m[1], "x = 1", TokenType::Comment, "MATLAB: inside %{ %}");
+        Expect(m[3], "2", TokenType::Number, "MATLAB: code after the block");
+    }
+
+    std::cout << "C++ raw strings\n";
+    {
+        tk.SetLanguage("C++");
+        auto t = Highlight(tk, {{"auto s = R\"(first \"line\"", "return \\n while", ")\" + y; return 0;"}, {}});
+        Expect(t[1], "return \\n while", TokenType::String, "inside a raw string over three lines");
+        Expect(t[2], ")\"", TokenType::String, "the closing )\"");
+        Expect(t[2], "return", TokenType::Keyword, "code after it");
+        auto d = Highlight(tk, {{"auto s = R\"xy(a )\" still )xy\" + z;"}, {}});
+        Expect(d[0], "R\"xy(a )\" still )xy\"", TokenType::String, "a delimiter: )\" does not close R\"xy(");
+        Expect(d[0], "z", TokenType::Identifier, "code after the delimited raw string");
+        auto u8 = Highlight(tk, {{"auto s = u8R\"(x)\"; return s;"}, {}});
+        Expect(u8[0], "u8R\"(x)\"", TokenType::String, "a u8R prefix");
+        Expect(u8[0], "return", TokenType::Keyword, "code after it");
+        auto word = Highlight(tk, {{"myR\"(x)\" + 1"}, {}});
+        Expect(word[0], "myR", TokenType::Identifier, "myR\"...\" is a name and a string, not a raw string");
+        auto esc = Highlight(tk, {{"auto p = R\"(C:\\dir\\)\"; return p;"}, {}});
+        Expect(esc[0], "return", TokenType::Keyword, "a backslash before )\" does not escape it");
+
+        tk.SetLanguage("C");
+        auto c = Highlight(tk, {{"char* s = R\"(not raw in C", "return 0;"}, {}});
+        Expect(c[1], "return", TokenType::Keyword, "C has no raw strings");
     }
 
     std::cout << (g_failures ? "FAILED: " + std::to_string(g_failures) : std::string("PASSED")) << "\n";

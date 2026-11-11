@@ -83,6 +83,10 @@ namespace UltraCanvas {
         std::vector<std::pair<std::string, std::string>> multiLineStrings;
         std::vector<char> multiLineStringDelimiters;
         bool stringLineContinuation = false;
+        //   delimitedRawStrings: C++ raw strings, R"delim( ... )delim" with an
+        //     optional u8 / u / U / L prefix, which end at their own marker
+        //     ")delim\"" and may span lines.
+        bool delimitedRawStrings = false;
 
         bool hasRawStrings = false;
         bool hasEscapeSequences = true;
@@ -665,6 +669,7 @@ namespace UltraCanvas {
         rules.numberSuffixes = {"f", "F", "l", "L", "u", "U", "ul", "UL", "ll", "LL"};
 
         rules.stringLineContinuation = true;
+        rules.delimitedRawStrings = true;
         return rules;
     }
 
