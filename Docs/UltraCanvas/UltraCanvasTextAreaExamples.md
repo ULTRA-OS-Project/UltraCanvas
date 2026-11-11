@@ -895,6 +895,13 @@ A string the language does not let span lines - an unclosed `"` in Java -
 still ends at the line, so a typo colours one line rather than the rest of the
 file.
 
+Letters written directly against a string's opening quote that belong to
+it - `stringPrefixes`: Python's `r`, `b`, `u`, `f` and their pairs (`rb`,
+`fr`, in any case), C and C++'s `L`, `u`, `U`, `u8` - are coloured with the
+string. A prefix never changes where the string ends: in Python a backslash
+keeps a quote from closing even a raw string, so `r"\""` is one string and
+`r"C:\"` is unterminated, as Python reads them.
+
 Block comments are matched before line comments, so a block opener that
 starts with the line-comment marker - Lua's `--[[ … ]]` (at any level,
 `--[==[ … ]==]`), MATLAB's `%{ … %}` - opens the block rather than being read

@@ -14,7 +14,8 @@
 // SetLanguageByTag, which names a Markdown fence's language; block comments
 // whose opener starts with the line-comment marker (Lua's --[[); C++ raw
 // strings, R"delim( ... )delim"; Lua's long brackets at any level,
-// --[==[ ... ]==] and [==[ ... ]==]; and the whole-text Tokenize, which
+// --[==[ ... ]==] and [==[ ... ]==]; string prefixes (Python's r"..", C's
+// L".."), coloured with their string; and the whole-text Tokenize, which
 // must give the same tokens.
 // Version: 1.1.0
 // Last Modified: 2026-11-11
@@ -308,6 +309,45 @@ int main() {
         Expect(half[1], "return", TokenType::Keyword, "--[= without a second [ is a line comment");
         auto index = Highlight(tk, {{"x = a[b] return x"}, {}});
         Expect(index[0], "b", TokenType::Identifier, "a[b] is an index, not a long bracket");
+    }
+
+    std::cout << "String prefixes\n";
+    {
+        tk.SetLanguage("Python");
+        auto r = Highlight(tk, {{"x = r\"\\d+\\.\\w\" + y"}, {}});
+        Expect(r[0], "r\"\\d+\\.\\w\"", TokenType::String, "Python: r\"..\" is one string, prefix included");
+        Expect(r[0], "y", TokenType::Identifier, "Python: code after it");
+        auto q = Highlight(tk, {{"x = r\"\\\"\" + y"}, {}});
+        Expect(q[0], "r\"\\\"\"", TokenType::String, "Python: in a raw string \\\" still does not close it");
+        Expect(q[0], "y", TokenType::Identifier, "Python: ...and the string ends at the next quote");
+        auto open = Highlight(tk, {{"p = r\"C:\\\"", "return p"}, {}});
+        Expect(open[1], "return", TokenType::Keyword, "Python: r\"C:\\\" is unterminated, as Python reads it");
+        auto rb = Highlight(tk, {{"x = Rb'\\x00' + f\"{a}\""}, {}});
+        Expect(rb[0], "Rb'\\x00'", TokenType::String, "Python: Rb'..' in any case");
+        Expect(rb[0], "f\"{a}\"", TokenType::String, "Python: f\"..\"");
+        auto doc = Highlight(tk, {{"pattern = r\"\"\"a", "b\"\"\" + z"}, {}});
+        Expect(doc[0], "r\"\"\"a", TokenType::String, "Python: r\"\"\" opens a long string with its prefix");
+        Expect(doc[1], "b\"\"\"", TokenType::String, "Python: ...closed on the next line");
+        auto word = Highlight(tk, {{"x = name\"s\""}, {}});
+        Expect(word[0], "name", TokenType::Identifier, "Python: a name that is not a prefix stays a name");
+        auto spaced = Highlight(tk, {{"x = r \"s\""}, {}});
+        Expect(spaced[0], "r", TokenType::Identifier, "Python: r then a space then a string is a name");
+
+        auto names = Highlight(tk, {{"e = f + L + u + e1"}, {}});
+        Expect(names[0], "e", TokenType::Identifier, "a variable named e is a name, not a number");
+        Expect(names[0], "f", TokenType::Identifier, "...nor is f");
+        Expect(names[0], "e1", TokenType::Identifier, "...nor e1");
+        auto nums = Highlight(tk, {{"x = 1e5 + 2.5 + .5"}, {}});
+        Expect(nums[0], "1e5", TokenType::Number, "1e5 is still a number");
+        Expect(nums[0], ".5", TokenType::Number, ".5 is still a number");
+
+        tk.SetLanguage("C++");
+        auto cnum = Highlight(tk, {{"float x = 1.5f + L;"}, {}});
+        Expect(cnum[0], "1.5f", TokenType::Number, "C++: 1.5f is a number");
+        Expect(cnum[0], "L", TokenType::Identifier, "C++: a lone L is a name");
+        auto c = Highlight(tk, {{"auto a = L\"wide\"; auto b = u8\"utf\";"}, {}});
+        Expect(c[0], "L\"wide\"", TokenType::String, "C++: L\"..\"");
+        Expect(c[0], "u8\"utf\"", TokenType::String, "C++: u8\"..\"");
     }
 
     std::cout << "Tokenize: the whole text, as the text area sees it\n";

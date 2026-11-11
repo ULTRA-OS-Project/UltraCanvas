@@ -65,7 +65,6 @@ namespace UltraCanvas {
         std::vector<char> stringDelimiters;
         std::vector<char> characterDelimiters;
         char escapeCharacter = '\\';
-        std::string rawStringPrefix;
         std::string preprocessorPrefix = "#";
         std::vector<std::pair<std::string, std::string>> attributeDelimiters;
         std::vector<std::pair<std::string, std::string>> interpolationDelimiters;
@@ -94,8 +93,13 @@ namespace UltraCanvas {
         //     the place of fixed "[[" entries in multiLineStrings and
         //     multiLineComments for line-by-line highlighting.
         bool levelledLongBrackets = false;
+        // Letters written directly before a string's opening quote that are
+        // part of the string - Python's r"..", b"..", f"..", rb"..", C's
+        // L"..", u8"..". Matched in any case. The prefix is coloured with the
+        // string; it changes nothing about where the string ends (a raw
+        // Python string still treats \" as not closing it).
+        std::vector<std::string> stringPrefixes;
 
-        bool hasRawStrings = false;
         bool hasEscapeSequences = true;
         bool hasAttributes = false;
         bool hasStringInterpolation = false;
@@ -673,6 +677,7 @@ namespace UltraCanvas {
 
         rules.stringLineContinuation = true;
         rules.delimitedRawStrings = true;
+        rules.stringPrefixes = {"L", "u", "U", "u8"};
         return rules;
     }
 
@@ -777,8 +782,6 @@ namespace UltraCanvas {
         rules.hasStringInterpolation = true;
         rules.interpolationDelimiters = {{"${", "}"},
                                          {"$",  ""}};
-        rules.hasRawStrings = true;
-        rules.rawStringPrefix = "\"\"\"";
 
         rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
         return rules;
@@ -974,6 +977,7 @@ namespace UltraCanvas {
         rules.numberSuffixes = {"f", "F", "l", "L", "u", "U", "ul", "UL", "ll", "LL"};
 
         rules.stringLineContinuation = true;
+        rules.stringPrefixes = {"L", "u", "U", "u8"};
         return rules;
     }
 
@@ -1175,8 +1179,6 @@ namespace UltraCanvas {
 
         rules.singleLineComments = {"#"};
         rules.stringDelimiters = {'"', '\''};
-        rules.hasRawStrings = true;
-        rules.rawStringPrefix = "r";
         rules.hasAttributes = true;
         rules.attributeDelimiters = {{"@", ""}};
         rules.hasStringInterpolation = true;
@@ -1184,6 +1186,7 @@ namespace UltraCanvas {
 
         rules.multiLineStrings = {{"\"\"\"", "\"\"\""}, {"'''", "'''"}};
         rules.stringLineContinuation = true;
+        rules.stringPrefixes = {"r", "u", "b", "f", "br", "rb", "fr", "rf"};
         return rules;
     }
 
@@ -1331,8 +1334,6 @@ namespace UltraCanvas {
         rules.singleLineComments = {"--"};
         rules.multiLineComments = {{"--[[", "]]"}};       // the whole-text Tokenize only
         rules.stringDelimiters = {'"', '\''};
-        rules.hasRawStrings = true;
-        rules.rawStringPrefix = "[[";
 
         rules.levelledLongBrackets = true;                // --[==[ ]==], [==[ ]==]
         return rules;
@@ -1797,8 +1798,6 @@ namespace UltraCanvas {
         rules.hasAttributes = true;
         rules.attributeDelimiters = {{"#[",  "]"},
                                      {"#![", "]"}};
-        rules.hasRawStrings = true;
-        rules.rawStringPrefix = "r";
 
         rules.multiLineStringDelimiters = {'"'};
         return rules;
@@ -2750,7 +2749,6 @@ namespace UltraCanvas {
             rules.hasFloatNumbers = true;
             rules.hasEscapeSequences = true;
             rules.escapeCharacter = '\\';
-            rules.hasRawStrings = false;
             rules.hasAttributes = false;
             rules.hasStringInterpolation = false;
 

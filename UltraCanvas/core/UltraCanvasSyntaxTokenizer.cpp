@@ -131,6 +131,31 @@ namespace UltraCanvas {
         return backslashes % 2 == 1;
     }
 
+// A string token just added to `tokens` takes in a prefix written directly
+// before its quote (Python's rb, C's u8): the identifier right before it -
+// nothing in between - when the language lists it, in any case.
+    static void AbsorbStringPrefix(std::vector<SyntaxTokenizer::Token>& tokens,
+                                   const SyntaxTokenizationRules& rules) {
+        if (rules.stringPrefixes.empty() || tokens.size() < 2) return;
+        SyntaxTokenizer::Token& prefix = tokens[tokens.size() - 2];
+        if (prefix.type != TokenType::Identifier) return;
+        std::string lower = prefix.text;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        bool listed = false;
+        for (const std::string& p : rules.stringPrefixes) {
+            std::string lp = p;
+            std::transform(lp.begin(), lp.end(), lp.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            if (lp == lower) { listed = true; break; }
+        }
+        if (!listed) return;
+        prefix.type = TokenType::String;
+        prefix.text += tokens.back().text;
+        prefix.length = prefix.text.size();
+        tokens.pop_back();
+    }
+
 // Tokenize a single line with no knowledge of the lines around it
     std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeLine(const std::string& line, int /*lineNumber*/) const {
         if (!currentRules || line.empty()) {
@@ -365,6 +390,7 @@ namespace UltraCanvas {
                 token.length = end - position;
                 token.text = line.substr(position, token.length);
                 tokens.push_back(token);
+                AbsorbStringPrefix(tokens, *currentRules);
                 if (!closed) {
                     state.openLongString = static_cast<int8_t>(k);
                     return tokens;
@@ -385,6 +411,7 @@ namespace UltraCanvas {
                 token.length = end - position;
                 token.text = line.substr(position, token.length);
                 tokens.push_back(token);
+                AbsorbStringPrefix(tokens, *currentRules);
                 if (!closed) {
                     state.openString = line[position];
                     state.openStringSpansLines = StringContinuesPastLine(*currentRules, line, line[position]);
@@ -536,7 +563,11 @@ namespace UltraCanvas {
             return true;
         }
 
-        // Check for decimal/float number
+        // Check for decimal/float number. It starts with a digit or a point
+        // and holds a digit: a lone suffix or exponent letter - a variable
+        // named f, L, u or e - is a name, not a number.
+        if (!IsDigit(text[0]) && text[0] != '.') return false;
+        if (std::none_of(text.begin(), text.end(), [this](char c) { return IsDigit(c); })) return false;
         bool hasDecimalPoint = false;
         bool hasExponent = false;
 
