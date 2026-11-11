@@ -2984,7 +2984,7 @@ mandatory. Built when OpenSSL is found; otherwise every call answers
   `UltraRtc_AddIceCandidate`, `UltraRtc_GetConnectionState`
 - `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
 
-Also: `UltraRtc_IsAvailable`, `UltraRtc_GetLocalDescription`,
+Also: `UltraRtc_IsAvailable`, `UltraRtc_GetVersion`, `UltraRtc_GetLocalDescription`,
 `UltraRtc_GetRemoteDescription`, `UltraRtc_GetIceGatheringState`,
 `UltraRtc_GetSignalingState`, `UltraRtc_DataChannelSendText` /
 `UltraRtc_DataChannelSendBinary`, `UltraRtc_GetDataChannelLabel`,
@@ -3010,7 +3010,10 @@ sink); VP8 video tracks (libvpx through FFmpeg's libavcodec, our own RFC 7741
 payload handlers, key-frame recovery by PLI) with the camera through
 `UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
 `opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
-Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
+Tests in `Tests/UltraRTC`; `UltraRtcApiStatus` there probes every function
+and reports WORKING / IMPLEMENTED / NOT IMPLEMENTED / BROKEN for the build and
+the machine it runs on (`Docs/Modules/UltraRTC/ApiStatus.md`). See
+`Docs/Modules/UltraRTC/README.md`.
 
 ---
 

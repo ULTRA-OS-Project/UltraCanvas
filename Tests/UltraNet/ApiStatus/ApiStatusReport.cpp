@@ -46,6 +46,11 @@ const char* const kAreaOrder[] = {
 
 bool g_networkEnabled = false;
 
+ReportIdentity& Identity() {
+    static ReportIdentity identity;
+    return identity;
+}
+
 bool IsTerminal(std::FILE* stream) {
 #if defined(_WIN32) || defined(_WIN64)
     return _isatty(_fileno(stream)) != 0;
@@ -166,7 +171,7 @@ void RenderText(std::ostream& os, const std::vector<Row>& rows,
 void RenderMarkdown(std::ostream& os, const std::vector<Row>& rows,
                     const Totals& totals,
                     const std::map<std::string, Totals>& perArea) {
-    os << "# UltraNet API status\n\n"
+    os << "# " << Identity().title << "\n\n"
        << "| Status | Meaning |\n|---|---|\n"
        << "| WORKING | Probe drove the real code path and the result matched the API contract |\n"
        << "| IMPLEMENTED | Implementation present and reached, but unverifiable in this environment |\n"
@@ -249,7 +254,16 @@ std::vector<Probe>& Registry() {
     return v;
 }
 
+void SetReportIdentity(ReportIdentity identity) { Identity() = std::move(identity); }
+
 int AreaOrder(const std::string& area) {
+    const std::vector<std::string>& custom = Identity().areaOrder;
+    if (!custom.empty()) {
+        for (std::size_t i = 0; i < custom.size(); ++i) {
+            if (area == custom[i]) return static_cast<int>(i);
+        }
+        return static_cast<int>(custom.size());
+    }
     const int count = static_cast<int>(sizeof kAreaOrder / sizeof kAreaOrder[0]);
     for (int i = 0; i < count; ++i) {
         if (area == kAreaOrder[i]) return i;
@@ -270,7 +284,7 @@ std::string EnvOverride(const char* name) {
 
 int Run(const RunOptions& options) {
     g_networkEnabled = options.allowNetwork ||
-                       EnvOverride("ULTRANET_PROBE_NETWORK") == "1";
+                       EnvOverride(Identity().networkEnvVar.c_str()) == "1";
 
     // Stable sort by area only: within one area the registration order is the
     // static-init order of that area's single translation unit, i.e. the order
