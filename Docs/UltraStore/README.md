@@ -26,6 +26,7 @@ The brief's open questions, answered on 2026-10-24:
 | Signing key | Generated and kept **in the admin backend's database**, the seed sealed with a passphrase (Argon2id, XChaCha20-Poly1305); the public key reaches the store through the repository and the signed catalog: see *Keys*. |
 | UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
 | The services' databases | **PostgreSQL in production, SQLite for tests and development only** (decided 2026-11-10). The payment service and the operator tier's marketplace service run on PostgreSQL; SQLite is what the tests and a developer's machine use, behind the same database layer, and never a production store. The files on a user's or a merchant's own machine (`registry.sqlite`, `admin.sqlite`) are UltraDatabase files, not servers, and stay as they are. |
+| Who checks for updates? | **UltraStore, never the apps** (decided 2026-11-11). ULTRA OS keeps network traffic down, so one program asks the server: the store fetches the one signed catalog and compares it with the registry for every installed app, runtime and library at once (the Updates page, `ultrastore update`). An application installed through the store has no update check, no "check for updates" menu item and no update server of its own, and contacts no server to learn its latest version; it may open UltraStore on its own page for the user to update it. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
 What the brief listed as the first catalog's apps, the final name, the
@@ -475,7 +476,8 @@ The part that turns a plan into installed software, behind the interfaces of
 - **`StoreEngine`** - `Install` resolves, plans against the registry, fetches
   and unpacks each missing step and deletes the download once unpacked;
   `Update` installs the newer release, removes the older app versions and
-  collects; `UpdateAll` does that for every installed app; `Remove` takes
+  collects; `UpdateAll` does that for every installed app (the only update
+  check on the machine: the apps make none of their own, see *Decisions*); `Remove` takes
   every version of an app and collects. Callbacks report each step, the
   bytes of its download and the files of its unpacking.
 

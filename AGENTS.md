@@ -270,6 +270,12 @@ before adding cross-module code.
   the name stay. `PublicHeadersUnusedParamTest` (Tests/CMakeLists.txt)
   includes the framework's public headers with `-Werror=unused-parameter`,
   so a new one fails the build there.
+- **Applications do not check for updates; UltraStore does.** ULTRA OS keeps
+  network traffic down, so the one update check on a machine is the store's:
+  it compares the one signed catalog with everything installed at once
+  (`Docs/UltraStore/README.md`, *Decisions*). An application adds no update
+  check, no "check for updates" item and no update server of its own; at
+  most it opens UltraStore on its page.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.
