@@ -26,7 +26,7 @@ The brief's open questions, answered on 2026-10-24:
 | Signing key | Generated and kept **in the admin backend's database**, the seed sealed with a passphrase (Argon2id, XChaCha20-Poly1305); the public key reaches the store through the repository and the signed catalog: see *Keys*. |
 | UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
 | The services' databases | **PostgreSQL in production, SQLite for tests and development only** (decided 2026-11-10). The payment service and the operator tier's marketplace service run on PostgreSQL; SQLite is what the tests and a developer's machine use, behind the same database layer, and never a production store. The files on a user's or a merchant's own machine (`registry.sqlite`, `admin.sqlite`) are UltraDatabase files, not servers, and stay as they are. |
-| Who checks for updates? | **UltraStore, never the apps** (decided 2026-11-11). ULTRA OS keeps network traffic down, so one program asks the server: the store fetches the one signed catalog and compares it with the registry for every installed app, runtime and library at once (the Updates page, `ultrastore update`). An application installed through the store has no update check, no "check for updates" menu item and no update server of its own, and contacts no server to learn its latest version; it may open UltraStore on its own page for the user to update it. |
+| Who checks for updates? | **One App manager for the whole machine, never the apps** (decided 2026-11-11). ULTRA OS keeps network traffic down, so one program asks the server: it fetches the one signed catalog and compares it with the registry for every installed app, runtime and library at once. An application has no update check, no "check for updates" menu item and no update server of its own, and contacts no server to learn its latest version. **The scheme:** a separate **App manager** application (to be built, on this page's core: `CatalogClient`, `SqliteRegistry`, `StoreEngine`) owns the update check, the updates and the list of what is installed; it is later integrated into the OS manager / settings (UOS-Settings). Until it exists, UltraStore's Updates page and `ultrastore update` do the job with the same engine; the store itself stays the place to discover, buy and install. See *The App manager (later)*. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
 What the brief listed as the first catalog's apps, the final name, the
@@ -477,7 +477,8 @@ The part that turns a plan into installed software, behind the interfaces of
   and unpacks each missing step and deletes the download once unpacked;
   `Update` installs the newer release, removes the older app versions and
   collects; `UpdateAll` does that for every installed app (the only update
-  check on the machine: the apps make none of their own, see *Decisions*); `Remove` takes
+  check on the machine: the apps make none of their own, and the App manager
+  will be its caller, see *Decisions*); `Remove` takes
   every version of an app and collects. Callbacks report each step, the
   bytes of its download and the files of its unpacking.
 
@@ -663,6 +664,38 @@ program, `ultrastore sha256` it, write a catalog.json with
 `python3 -m http.server 8765`, and start
 `ultrastore --catalog catalog.json --root /tmp/store`.
 
+## The App manager (later)
+
+The update scheme decided on 2026-11-11: updating is not each application's
+business and, in the end, not the shop's either. A separate **App manager**
+does it, and that App manager is later integrated into the OS manager /
+settings (UOS-Settings, `Apps/UOSSettings`).
+
+| | Now | With the App manager | In the end |
+|---|---|---|---|
+| Checks for updates, updates, lists and removes what is installed, cleans up | UltraStore (the Updates and Installed pages, `ultrastore update / installed / remove / gc`) | the App manager, a separate application | a page of the OS manager / settings |
+| Discover, app pages, buy, install | UltraStore | UltraStore | UltraStore |
+| An application itself | nothing: no update check | nothing; at most it opens the App manager | the same |
+
+What follows from it, so the step is small when it comes:
+
+- **One engine, several fronts.** The App manager links `ultrastore_core`
+  as the store does and calls the same `CatalogClient`, `SqliteRegistry`
+  and `StoreEngine` on the same store folder (*On disk*), so the store, the
+  App manager and the command line never disagree about what is installed.
+- **Still one check for the machine.** Whichever front runs it, the update
+  check is one fetch of the signed catalog for everything installed; two
+  fronts do not mean two checks (the catalog client's cache serves the
+  second).
+- **Nothing new goes into the store's window for updates.** Its Updates and
+  Installed pages stay until the App manager replaces them; new work on
+  updating (a schedule, notifications, the store's own update) belongs to
+  the App manager.
+
+Open, to be decided when it is built: its name and folder, whether it
+checks on a schedule or only when opened, and whether the store keeps a
+reduced Updates page beside it.
+
 ## The operator tier (later)
 
 Everything above is one publisher running one store: the admin backend
@@ -729,3 +762,7 @@ them, every report about them with the reporter removed, and their standing.
    notices, terms and the audit log; the merchant backend's `submit` and
    its notices banner; the operator's window on the service; the report
    form on the store's app page.
+9. **The App manager** (*The App manager*, later): a separate application
+   on the store's core that owns the update check, the updates and the
+   list of what is installed; then its integration into the OS manager /
+   settings (UOS-Settings).
