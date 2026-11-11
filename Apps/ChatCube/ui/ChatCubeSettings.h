@@ -6,8 +6,9 @@
 // Everything but the look applies at once; the look is read when ChatCube
 // starts, since every element of the window takes its colours as it is built.
 //
+// Version: 0.2.0 - the look is system, light or dark; system follows the desktop
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -20,7 +21,10 @@ enum class DateStyle { DayMonthYear, YearMonthDay, MonthDayYear };
 
 struct Settings {
     // Appearance
-    bool      dark = false;                         // the dark look (from the next start)
+    // The look, from the next start: "system" (the desktop's, light or
+    // dark, and UOS-Settings' Look page over it), "light" or "dark".
+    std::string look = "system";
+    bool DarkFor(bool hostDark) const { return look == "dark" || (look == "system" && hostDark); }
     bool      clock24 = true;                       // 14:05; else 2:05 PM
     DateStyle dateStyle = DateStyle::DayMonthYear;
     // Messages

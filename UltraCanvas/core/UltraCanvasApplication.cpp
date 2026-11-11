@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.22.0 - ApplyThemePolicy logs a theme set after Initialize (a provider, a host change)
 // Version: 1.21.0 - Appearance.conf over the host on every read; the settings watcher re-reads it on a change
 // Version: 1.20.0 - under a policy the elements follow the theme by default (SetFollowThemeByDefault)
 // Version: 1.19.0 - the pointer over a popup's own window is the pointer over the window the
@@ -45,7 +46,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAppearanceSettings.h"
@@ -1267,12 +1268,20 @@ namespace UltraCanvas {
                 theme = themeProvider_(host);
                 break;
         }
+        const bool again = themePolicyApplied_;
         themePolicyApplied_ = true;
         policyThemeName_ = theme.name;
         // Under a policy the elements follow the theme by default, so the
         // whole window takes the look; an Own application decides itself
         if (themePolicy_ != ThemePolicy::Own) UltraCanvasUIElement::SetFollowThemeByDefault(true);
         UltraCanvasTheme::SetCurrent(theme);
+        // Initialize reports the first theme itself; a later one - a
+        // policy or provider set after it, a change of the desktop - here.
+        if (again) {
+            debugOutput << "UltraCanvas: theme " << theme.name << " ("
+                        << (themePolicy_ == ThemePolicy::Own ? "the application's own" : "follows the host")
+                        << "), font " << theme.fonts.ui.fontFamily << " " << theme.fonts.ui.fontSize << std::endl;
+        }
     }
 
     int UltraCanvasApplicationBase::AddHostAppearanceHandler(HostAppearanceHandler handler) {

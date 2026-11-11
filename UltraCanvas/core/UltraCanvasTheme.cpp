@@ -1,10 +1,11 @@
 // core/UltraCanvasTheme.cpp
+// Version: 1.3.0 - TakeHostFonts, FromHost through it
 // Version: 1.3.0 - ThemeFonts and the text roles' sizes; LightHighContrast / DarkHighContrast;
 //                  FromHost with DeriveAccent and the contrast measure (T3 of the host theme proposal)
 // Version: 1.2.0 - Light's lineStrong meets 3:1 on panel and raised (a mid grey, not ButtonShadow)
 // Version: 1.1.0 - change handlers
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
 
@@ -218,14 +219,18 @@ ThemeRoles UltraCanvasTheme::DeriveAccent(ThemeRoles roles, const Color& accent,
     return roles;
 }
 
+void UltraCanvasTheme::TakeHostFonts(const HostAppearance& host) {
+    if (!host.uiFont.fontFamily.empty() && host.uiFont.fontSize > 0) fonts.ui = host.uiFont;
+    if (!host.monoFont.fontFamily.empty() && host.monoFont.fontSize > 0) fonts.mono = host.monoFont;
+    if (host.textScale > 0) fonts.scale = host.textScale;
+}
+
 UltraCanvasTheme UltraCanvasTheme::FromHost(const HostAppearance& host) {
     UltraCanvasTheme t = host.highContrast ? (host.dark ? DarkHighContrast() : LightHighContrast())
                                            : (host.dark ? Dark() : Light());
     t.name = "Host " + t.name;
     if (host.accent) t.roles = DeriveAccent(t.roles, *host.accent, host.dark, host.highContrast ? 7.0 : 4.5);
-    if (!host.uiFont.fontFamily.empty() && host.uiFont.fontSize > 0) t.fonts.ui = host.uiFont;
-    if (!host.monoFont.fontFamily.empty() && host.monoFont.fontSize > 0) t.fonts.mono = host.monoFont;
-    t.fonts.scale = host.textScale > 0 ? host.textScale : 1.0;
+    t.TakeHostFonts(host);
     return t;
 }
 

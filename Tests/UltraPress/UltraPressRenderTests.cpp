@@ -4,9 +4,10 @@
 // accordion opens and closes, a form hands its fields to the callback, the
 // theme's colours reach the palette, and the example site renders with no
 // warning but its missing pictures.
+// Version: 0.4.0 - the look setting is system, light or dark
 // Version: 0.3.0 - the start window's page, built without a window
 // Version: 0.2.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
 #include "UltraPressModel.h"
@@ -278,9 +279,9 @@ static void TestLook() {
     std::printf("The settings\n");
     const std::string settingsDir = UltraCanvas::PathToUtf8(dir / "UltraPress");
     UltraPressSettings s = UltraPressSettings::Load(settingsDir);
-    Check(!s.dark && s.recentSites.empty() && s.windowWidth == 0 && s.windowHeight == 0,
-          "nothing chosen yet: the light look, no sites, no window size");
-    s.dark = true;
+    Check(s.look == "system" && !s.DarkFor(false) && s.DarkFor(true) && s.recentSites.empty() && s.windowWidth == 0 && s.windowHeight == 0,
+          "nothing chosen yet: the desktop's look, no sites, no window size");
+    s.look = "dark";
     s.windowWidth = 1200;
     s.windowHeight = 800;
     s.RememberSite("/sites/one");
@@ -292,7 +293,7 @@ static void TestLook() {
     const auto N = [](const std::string& dir) { return UltraPressSettings::NormalPath(dir); };
     Check(N("/sites/two/") == N("/sites/two") && N("/sites/./two") == N("/sites/two") && N("/sites/two").back() != '/',
           "a folder has one spelling: no trailing separator, no dot parts");
-    Check(back.dark && back.windowWidth == 1200 && back.windowHeight == 800 &&
+    Check(back.look == "dark" && back.DarkFor(false) && back.windowWidth == 1200 && back.windowHeight == 800 &&
               back.recentSites == std::vector<std::string>{N("/sites/two"), N("/sites/one")},
           "and read back: the look, the window's size, the sites last opened first with their spelling normalised");
     back.RememberSite("/sites/one");
@@ -306,8 +307,8 @@ static void TestLook() {
     fs::create_directories(dir / "old", ec);
     WriteTextFile(UltraCanvas::PathToUtf8(dir / "old" / "look"), "dark\n");
     const UltraPressSettings adopted = UltraPressSettings::Load(oldDir);
-    Check(adopted.dark && adopted.recentSites.empty(), "the 0.8 look file is adopted");
-    Check(adopted.Save(oldDir) && !fs::exists(dir / "old" / "look", ec) && UltraPressSettings::Load(oldDir).dark,
+    Check(adopted.look == "dark" && adopted.recentSites.empty(), "the 0.8 look file is adopted");
+    Check(adopted.Save(oldDir) && !fs::exists(dir / "old" / "look", ec) && UltraPressSettings::Load(oldDir).look == "dark",
           "and goes when the settings are first written");
     std::string written;
     Check(UltraCanvas::UltraCanvasAppSettings::AtFile(UltraCanvas::PathToUtf8(dir / "old" / "settings.json")).Load() &&
@@ -320,18 +321,21 @@ static void TestLook() {
           "the program's settings folder is named: " + UltraPressSettings::Directory());
     fs::remove_all(dir, ec);
 
-    // The editor switches the current theme without a window; the look is
-    // the editor's state, and no file is written.
+    // The theme is the application's policy's (ui/main.cpp: ThemeFor over
+    // the settings' look and the desktop); the editor takes the look it is
+    // given without a window, sets no theme itself, and writes no file.
     const std::string before = UltraCanvasTheme::Current().name;
     Site site = CreateStarterSite("Look", "https://look.example");
     EditorWindow editor(site, "");
     Check(!editor.IsDark(), "the editor starts light");
+    UltraCanvasTheme::SetCurrent(ThemeFor(true));
     editor.SetDark(true);
-    Check(editor.IsDark() && UltraCanvasTheme::Current().dark && UltraCanvasTheme::Current().name == "UltraPress dark",
-          "SetDark makes the dark theme current");
+    Check(editor.IsDark() && UltraCanvasTheme::Current().name == "UltraPress dark", "SetDark takes the dark look the theme has");
     editor.SetDark(false);
-    Check(!editor.IsDark() && !UltraCanvasTheme::Current().dark && UltraCanvasTheme::Current().name == "UltraPress light",
-          "and back to the light one: " + before);
+    Check(!editor.IsDark() && UltraCanvasTheme::Current().name == "UltraPress dark",
+          "and the light one: the editor's state, the theme left to the policy");
+    UltraCanvasTheme::SetCurrent(ThemeFor(false));
+    Check(UltraCanvasTheme::Current().name == "UltraPress light", "the light theme again: " + before);
 
     std::printf("The site's settings\n");
     Check(!editor.IsShowingSiteSettings(), "the pane shows the page to start");
