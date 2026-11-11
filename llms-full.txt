@@ -12647,6 +12647,7 @@ Cross-platform audio **playback** and **recording** for UltraCanvas.
 - [Visual elements](#visual-elements)
   - [`UltraCanvasAudioPlayerElement`](#ultracanvasaudioplayerelement)
   - [`UltraCanvasAudioRecorderElement`](#ultracanvasaudiorecorderelement)
+  - [Following the theme](#following-the-theme)
 - [Build](#build)
 - [Architecture notes](#architecture-notes)
 
@@ -12946,6 +12947,28 @@ useful for "record → review → save" flows.
 
 Factories: `CreateAudioRecorder`, `CreateCompactAudioRecorder`,
 `CreateAudioRecorderWithPlayback`.
+
+### Following the theme
+
+`AudioPlayerStyle::FromTheme` and `AudioRecorderStyle::FromTheme` put the
+framework theme's roles (`UltraCanvasTheme.md`) over a base style's shape
+and flags: the panel bar with a hairline, the pressed fill for the track
+and the accent for its fill, the raised surface with the control border for
+the knob, ink, the icons in muted ink and the accent hovered; danger for the
+record button (its pulse keeps its red unless the theme names
+`audio-recorder.pulse`), the pressed fill behind the level meter whose
+green, amber and red keep their meaning, faint ink disabled. Under the
+theme policy a new bar follows the theme by itself (`ApplyTheme`); a
+`SetStyle` by hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasAudioPlayerElement>("player", 0, 0, 480, 48);
+AudioPlayerStyle compact = bar->GetStyle();
+compact.compact = true;
+bar->SetStyle(AudioPlayerStyle::FromTheme(UltraCanvasTheme::Current(), compact));
+bar->SetFollowTheme(true);
+AudioRecorderStyle recorder = AudioRecorderStyle::FromTheme();   // the current theme over the default shape
+```
 
 ## Build
 
@@ -25693,8 +25716,8 @@ three layers, each usable on its own:
 | `UltraCanvasCurveEditor` | The element the user drags points in (grid, histogram backdrop, selection) | `include/UltraCanvasCurveEditor.h`, `core/UltraCanvasCurveEditor.cpp` |
 | `UltraCanvasCurvesDialog` | The window: channel selector, editor, preview toggle, OK / Cancel / Reset | `dialogs/UltraCanvasCurvesDialog.h`, `dialogs/UltraCanvasCurvesDialog.cpp` |
 
-**Version**: 1.0.0
-**Last Modified**: 2026-08-25
+**Version**: 1.1.0 - `CurveEditorStyle::FromTheme`, `ApplyTheme`: the editor follows the theme
+**Last Modified**: 2026-11-10
 **Author**: UltraCanvas Framework
 
 None of the three touches pixels. They produce lookup tables;
@@ -25877,6 +25900,26 @@ thumbnail of its own, so the user judges the edit at full size.
 A host that keeps a pointer to the dialog must clear its callbacks (or close
 it) when the host itself goes away: the window lives in the application's window
 list, not in the host.
+
+## Following the theme
+
+`CurveEditorStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and a hairline grid, the curve in ink with raised points
+outlined in ink, the accent for the selected point and the focus ring,
+faint ink at the base's alpha for the histogram; the identity line keeps
+its red unless the theme names `curve-editor.diagonal`. Without a base it
+starts from `Dark()` or `Default()` by the theme's flag. Under the theme
+policy a new editor follows the theme by itself (`ApplyTheme`); a
+`SetStyle` by hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto curves = std::make_shared<UltraCanvasCurveEditor>("curves", 260, 260);
+CurveEditorStyle fine = curves->GetStyle();
+fine.gridDivisions = 8;
+curves->SetStyle(CurveEditorStyle::FromTheme(UltraCanvasTheme::Current(), fine));
+curves->SetFollowTheme(true);
+```
 
 ## Notes
 
@@ -37972,6 +38015,25 @@ parent — the media viewer's column, say — only ever through the second, and 
 is built at no size and given one later. Re-flowing from `SetBounds()` alone
 leaves such a viewer with the chrome placement it had at a size of zero, which
 is none at all.
+
+## Following the theme
+
+`FontViewerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the panel behind
+raised cells with hairlines, ink for the glyphs, the hover fill, the soft
+accent with the accent round it selected, the captions in muted ink in the
+interface font at the caption size. Under the theme policy a new viewer
+follows the theme by itself (`ApplyTheme`, its scrollbars and its controls
+with it); a `SetStyle` by hand stops that, `SetFollowTheme(true)` after it
+keeps both.
+
+```cpp
+auto glyphs = std::make_shared<UltraCanvasFontViewer>("glyphs", 0, 0, 480, 320);
+FontViewerStyle roomy = glyphs->GetStyle();
+roomy.cellSpacing = 10;
+glyphs->SetStyle(FontViewerStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+glyphs->SetFollowTheme(true);
+```
 
 ## Performance
 
@@ -70676,6 +70738,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSlideshowExamples.md
   - [Overlay Layout with a Scrim](#overlay-layout-with-a-scrim)
   - [Image Fitting and Gap Fill](#image-fitting-and-gap-fill)
   - [Static Text Mode](#static-text-mode)
+- [Following the theme](#following-the-theme)
 - [Best Practices](#best-practices)
 - [See Also](#see-also)
 
@@ -70683,7 +70746,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSlideshowExamples.md
 
 **UltraCanvasSlideshow** is a timed image slideshow element. It cross-fades through a list of slides, each pairing an image with an optional info-panel title and body, and renders everything itself (image layers, info panel, and indicators are painted directly in `Render()` — no child UI elements are created). It offers six transition styles, fourteen info-panel layouts (split and overlay), five image-fit policies, and eight selectable indicator styles, plus autoplay, hover-pause, looping, and arrow-key navigation.
 
-**Version:** 1.0.0
+**Version:** 1.1.0 - `SlideshowConfig::FromTheme`, `SlideshowIndicatorStyle::FromTheme`, `ApplyTheme`: the slideshow follows the theme
 **Header:** `include/UltraCanvasSlideshow.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -71192,6 +71255,27 @@ SlideshowConfig cfg = show->GetConfig();
 cfg.textMode = SlideshowTextMode::Static;
 show->SetConfig(cfg);
 show->SetStaticText("Our Gallery", "A curated selection of recent work.");
+```
+
+## Following the theme
+
+`SlideshowConfig::FromTheme` and `SlideshowIndicatorStyle::FromTheme` put
+the framework theme's roles (`UltraCanvasTheme.md`) over a base's own
+timing, layout and sizes: the panel for the info panel with ink for the
+title and muted ink for the body in the interface font (the display sizes
+stay), the control border for an inactive indicator, the accent active,
+muted ink hovered, ink for the counter; the stage keeps its black unless the
+theme names `slideshow.stage`. Under the theme policy a new slideshow
+follows the theme by itself (`ApplyTheme`); a `SetConfig` or
+`SetIndicatorStyle` by hand stops that, `SetFollowTheme(true)` after it
+keeps both.
+
+```cpp
+auto show = std::make_shared<UltraCanvasSlideshow>("show", 640, 360);
+SlideshowConfig quick = show->GetConfig();
+quick.slideDuration = std::chrono::milliseconds(3000);
+show->SetConfig(SlideshowConfig::FromTheme(UltraCanvasTheme::Current(), quick));
+show->SetFollowTheme(true);
 ```
 
 ## Best Practices
@@ -78936,7 +79020,7 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.12.0 - the badge, card, chip and tag input, collapsible panel, sidebar, busy indicator, auto-complete, new-document dialog and reference point picker read the theme, the spell-check and clipboard row styles too (T4, fifth part)
+**Version:** 1.13.0 - the media elements and the viewers read the theme: the audio and video players and recorders, the video tile, the slideshow, the font viewer and the curve editor (T4, sixth and last part)
 **Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
@@ -78952,8 +79036,10 @@ filer widget - and the containers and pickers - the container's
 scrollbars, group box, breadcrumb, pagination, the colour picker, swatch
 bar and palette manager, the rich text edit - and the badge, card, chip
 and tag input, collapsible panel, sidebar, busy indicator, auto-complete,
-new-document dialog and reference point picker - through a `FromTheme` on
-their style struct and an `ApplyTheme` on the element; the tabbed
+new-document dialog and reference point picker - and the media elements
+and viewers - the audio and video players and recorders, the video tile,
+the slideshow, the font viewer and the curve editor - through a
+`FromTheme` on their style struct and an `ApplyTheme` on the element; the tabbed
 container, the text area and the tree view through `ApplyTheme` alone;
 the spell check's marks and the clipboard history's rows through a
 `FromTheme` their host applies; the menu
@@ -78963,8 +79049,9 @@ dark menu or tooltip agrees with the rest of a dark window. Under the
 policy (`FollowHost`, the default, `Light` or `Dark`) every new element
 follows the theme: it is styled from the current theme as it is built and
 again on every change. Styled by hand (`SetStyle`) it keeps its look, as
-before. The readers set their fonts by role as well as their colours; the
-media elements and the viewers are the rest of T4.
+before. The readers set their fonts by role as well as their colours.
+Every style struct with colours now reads the theme: T4 of the proposal is
+complete.
 
 ## The roles
 
@@ -79155,8 +79242,14 @@ border), a columns tree's section header (`columns-tree.group-header`,
 `filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`),
 the colour picker's markers (`color-picker.marker`,
 `color-picker.marker-outline`, white and black), the rich text edit's
-paper (`rich-text.page`, the well) and the busy indicator's second arc
-(`busy-indicator.second-arc`, its orange).
+paper (`rich-text.page`, the well), the busy indicator's second arc
+(`busy-indicator.second-arc`, its orange), the recorder's pulse
+(`audio-recorder.pulse`, its red), the video player's, recorder's and
+tile's dark stages and bars (`video-player.stage`,
+`video-player.control-bar`, `video-recorder.stage`,
+`video-recorder.control-bar`, `video-tile.stage`, `video-tile.caption`),
+the slideshow's stage (`slideshow.stage`, its black) and the curve
+editor's identity line (`curve-editor.diagonal`, its red).
 
 ```cpp
 UltraCanvasTheme brand = UltraCanvasTheme::Light();
@@ -79198,9 +79291,10 @@ stepper's titles too; a heading label, a card's title and the
 new-document dialog's title at `Heading`; the tooltip, a slider's value,
 a dialog's details, a stepper's descriptions, a list's header, the
 filer's small text, the palette manager, the badge, the collapsible
-panel's detail and the sidebar's sections and badges at `Caption`, the
-dialog's message at `Body`, the tab titles at `Caption`; the rich text
-edit keeps the document's fonts; the album, the timecode field and
+panel's detail, the sidebar's sections and badges, the video tile's
+caption and the font viewer's captions at `Caption`, the dialog's message
+at `Body`, the tab titles at `Caption`; the rich text edit keeps the
+document's fonts, the slideshow its display sizes; the album, the timecode field and
 the timeline take the families only (their sizes are pixels of a design).
 The style struct's own literal stays the default of an element styled by
 hand, as the colour defaults do. The text area keeps its font: it is the
@@ -86487,6 +86581,7 @@ and composite UI elements, all behind a pluggable platform backend.
   - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
   - [UI elements](#ui-elements)
   - [Devices — `UltraCanvasVideoDevices.h`](#devices-—-ultracanvasvideodevicesh)
+- [Following the theme](#following-the-theme)
 - [Adding a container or codec](#adding-a-container-or-codec)
 - [Build](#build)
 - [Notes / follow-ups](#notes--follow-ups)
@@ -86733,6 +86828,31 @@ tile->PushFrame(rgba.data(), 640, 360, 640 * 4, VideoTilePixelFormat::BGRA32);
 
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
 `RequestCameraPermission()`, `GetBackendName()`, `IsAvailable()`.
+
+## Following the theme
+
+A player, a recorder and a tile are a dark stage with a translucent bar
+whatever the window, so `VideoPlayerStyle::FromTheme`,
+`VideoRecorderStyle::FromTheme` and `VideoTileStyle::FromTheme` take from
+the framework theme (`UltraCanvasTheme.md`) only what reads on it: the
+accent for the progress fill and the hovered icons, danger for the record
+button, the caption at the caption size and a hairline where a tile draws
+a border. The stage, the bar and the tile's caption ink are the element
+roles `video-player.stage`, `video-player.control-bar`,
+`video-recorder.stage`, `video-recorder.control-bar`, `video-tile.stage`
+and `video-tile.caption` where a theme names them. Under the theme policy
+a new element follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto player = std::make_shared<UltraCanvasVideoPlayerElement>("player", 0, 0, 640, 400);
+VideoPlayerStyle cover = player->GetStyle();
+cover.videoFit = VideoPlayerFit::Cover;
+player->SetStyle(VideoPlayerStyle::FromTheme(UltraCanvasTheme::Current(), cover));
+player->SetFollowTheme(true);
+auto tile = std::make_shared<UltraCanvasVideoTile>("tile");
+tile->SetStyle(VideoTileStyle::FromTheme());
+```
 
 ## Adding a container or codec
 
