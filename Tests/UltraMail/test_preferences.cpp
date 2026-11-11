@@ -81,6 +81,7 @@ TEST(preferences_round_trip) {
     out.folderTreeContent = FolderTreeContent::CurrentAccount;
     out.accountOrder = { "work", "erika", "club" };
     out.attachmentPlacement = AttachmentPlacement::Right;
+    out.sendNotification = SendNotification::StatusBar;
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -109,6 +110,7 @@ TEST(preferences_round_trip) {
     REQUIRE(in.accountOrder == out.accountOrder);
     REQUIRE(in.attachmentPlacement == AttachmentPlacement::Right);
     REQUIRE(in.AttachmentsRight());
+    REQUIRE(in.sendNotification == SendNotification::StatusBar);
     std::remove(path.c_str());
 }
 
@@ -135,6 +137,7 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.folderTreeContent == FolderTreeContent::AllAccounts);
     REQUIRE(in.accountOrder.empty());                             // the store's order
     REQUIRE(in.attachmentPlacement == AttachmentPlacement::Bottom);  // under the message
+    REQUIRE(in.sendNotification == SendNotification::Popup);         // a popup window
     std::remove(path.c_str());
 }
 

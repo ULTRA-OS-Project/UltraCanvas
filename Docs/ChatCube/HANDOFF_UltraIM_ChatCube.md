@@ -421,7 +421,7 @@ README; confirm exact signatures in the UltraNet master registry.
 | Provider | Bind to | Notes |
 |---|---|---|
 | XMPP | `UltraNet_Tcp*` + `UltraNet_Tls*` (STARTTLS), `UltraNet_DnsResolve(…, SRV)` for `_xmpp-client._tcp` | Or a new UltraNet XMPP plug-in — ask Stefan. |
-| Telegram (TDLib) | **Cannot bind** — TDLib owns its MTProto sockets | Needs an explicit exception from Stefan (decision D6). |
+| Telegram (TDLib) | **Cannot bind** — TDLib owns its MTProto sockets | **Resolved:** shipped as the documented exception (framework 0.9.376) — the one provider outside UltraNet; see D6 in [`ChatCubeDirectPlan.md`](../Research/ChatCubeDirectPlan.md). |
 | WhatsApp Business | `UltraNet_HttpRequestAsync()` (HTTPS REST) | Incoming messages arrive by webhook → need a public endpoint (could be the Relay Server). |
 
 ### 6.4 Everywhere
@@ -522,7 +522,7 @@ Each phase ends with a clean build and a short report to Stefan.
 | D3 | Provider plugins as loadable DSOs (UltraNet-style host table + ABI) or compiled in for v1. | Compiled-in Matrix for v1; design the interface so a DSO host table can follow. | Phase 1 CMake |
 | D4 | UltraIM public surface: `UltraIM_*` free functions (3.4) or a manager class. | Free functions, matching UltraNet/FileLoader/PixelFX. | Phase 1 |
 | D5 | ChatCube Direct encryption: should the Relay Server store only ciphertext? Identity via key pair (challenge-signature login)? | Yes — E2E, server sees ciphertext only; key-pair identity as in `UltraIMLoginType::KeyPair`. | Phase 6 |
-| D6 | Telegram via TDLib bypasses UltraNet (TDLib owns its sockets). Allowed exception? | Allow as a documented exception, or drop Telegram for v1. | Telegram plugin |
+| D6 | Telegram via TDLib bypasses UltraNet (TDLib owns its sockets). Allowed exception? | Allow as a documented exception, or drop Telegram for v1. **Resolved:** the documented exception — the Telegram provider shipped in framework 0.9.376 (D6 in [`ChatCubeDirectPlan.md`](../Research/ChatCubeDirectPlan.md)). | Telegram plugin |
 | D7 | Module location: inside the UltraCanvas repo next to UltraNet, or its own repo. | Next to UltraNet, same build conventions. | Phase 1 |
 
 ---

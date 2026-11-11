@@ -19,8 +19,8 @@ Changelog and version:
 
 | Path | What is in it |
 |---|---|
-| `otp/UltraOtp.*` | The HOTP/TOTP engine: code generation, the time-step counter, parameter bounds. Depends only on UltraCrypt |
-| `otp/OtpAuthUri.*` | The `otpauth://` parser and builder — **the app's untrusted-input boundary**, since a provisioning URI arrives from whatever was pointed at the camera |
+| `UltraCanvas/{include,core}/UltraCrypt/UltraOtp.*` | The HOTP/TOTP engine: code generation, the time-step counter, parameter bounds - and the checking side, `VerifyTotp`, which ChatCube's sign-in uses. Part of the UltraCrypt module since 2026-11 (it was `otp/` here) |
+| `UltraCanvas/{include,core}/UltraCrypt/OtpAuthUri.*` | The `otpauth://` parser and builder — **the app's untrusted-input boundary**, since a provisioning URI arrives from whatever was pointed at the camera |
 | `store/ISecretStore.h` | The Put/Get/Delete/Replace/List interface secrets are read and written through, shaped like UltraVault's so the backend can be swapped |
 | `store/EncryptedFileStore.*` | The vault: XChaCha20-Poly1305 over an Argon2id-derived key, one AEAD blob for the whole file |
 | `AccountStore.*` | The account layer, and the only thing that ever touches a seed. The UI gets accounts and codes, never secrets |

@@ -1,7 +1,9 @@
 // UltraCanvasOCRPlugin.h
 // Optical Character Recognition plugin for UltraCanvas
+// Version: 0.2.0 - RecognizeRaw on the facade; RegisterOCRTextRecognition: Tesseract as
+//                  UltraCanvasFileLoader::ExtractText's text recognizer
 // Version: 0.1.0
-// Last Modified: 2026-05-21
+// Last Modified: 2026-11-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -125,6 +127,10 @@ public:
     OCRResult RecognizeBuffer(const void* data, size_t bytes,
                               const std::string& formatHint = "");
     OCRResult RecognizeImage(const vips::VImage& img);
+    // Pixels already in memory: `height` rows `bytesPerLine` apart, of 1
+    // (grey), 3 (RGB) or 4 (RGBA) bytes a pixel.
+    OCRResult RecognizeRaw(const uint8_t* pixels, int width, int height,
+                           int bytesPerPixel, int bytesPerLine);
 
     std::future<OCRResult> RecognizeFileAsync(const std::string& path);
     std::future<OCRResult> RecognizeImageAsync(const vips::VImage& img);
@@ -185,6 +191,15 @@ private:
     std::unique_ptr<IOCREngine> engine;
     OCRConfig                   config;
 };
+
+// ===== FILE LOADER HOOK =====
+// Installs Tesseract as UltraCanvasFileLoader's text recognizer, so
+// ExtractText reads the words in a picture or a scanned PDF. `languages` are
+// tessdata codes; empty means every language installed (InstalledLanguages,
+// without the helper models), English when none is. One engine serves every
+// call, one at a time, from any thread; it is made at the first one. Call once
+// at start-up; again to change the languages.
+void RegisterOCRTextRecognition(const std::vector<std::string>& languages = {});
 
 // ===== EXPORTERS =====
 std::string OCRResultToHOCR(const OCRResult& result, const Size2Di& imageSize,

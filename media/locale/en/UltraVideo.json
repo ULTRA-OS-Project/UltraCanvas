@@ -1,0 +1,27 @@
+{
+  "@language": "en",
+  "@bases": [
+    "Video",
+    "Audio",
+    "Image"
+  ],
+  "Colour title": "Colour title",
+  "Edit Title": "Edit Title",
+  "fps": "fps",
+  "mono": "mono",
+  "no sound": "no sound",
+  "stereo": "stereo",
+  "The title is in the video": "The title is in the video",
+  "The title is unchanged": "The title is unchanged",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "The title was emptied: it keeps its text (delete the title on its lane to remove it)",
+  "Title Alignment": "Title Alignment",
+  "Title Bold": "Title Bold",
+  "Title Font": "Title Font",
+  "Title Italic": "Title Italic",
+  "Title Letter Spacing": "Title Letter Spacing",
+  "Title Line Spacing": "Title Line Spacing",
+  "Title Size": "Title Size",
+  "Title Strikethrough": "Title Strikethrough",
+  "Title Underline": "Title Underline",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video"
+}

@@ -45,6 +45,24 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.14.0 - CaptureWindowImage (a taskbar's window previews);
+//                   DesktopWindowInfo::appUserModelId (Windows' application
+//                   identity: Store applications' icons and names, grouping)
+// Version: 1.13.0 - CaptureScreenArea (one rectangle of the screen, for a
+//                   screenshot tool and a screen recorder), DesktopScreenImage::x / y,
+//                   DefaultRecordingPath
+// Version: 1.12.0 - DesktopScreenInfo::number (Windows' own display numbers)
+// Version: 1.11.0 - DesktopWindowInfo::maximized
+// Version: 1.10.0 - GetWindowBounds, MoveWindow, BringWindowOnScreen,
+//                   KillWindowProcess; CloseWindow brings the window to the front
+// Version: 1.9.0 - CloseWindow shows a minimized window before asking it to close
+// Version: 1.8.0 - FindProgram / LaunchProgram find a sibling application's
+//                  bundle on macOS
+// Version: 1.8.0 - OpenDisplaySettings, CanOpenDisplaySettings
+// Version: 1.7.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
+//                  SetAudioOutputVolume, SetAudioOutputMuted); a tray icon's
+//                  menu as data (DesktopTrayMenuItem, ActivateMenuItem);
+//                  EndSession and the tray on Linux too
 // Version: 1.6.0 - GetSystemDesktopSwitchUnavailableReason (no switch from an
 //                  MSIX package)
 // Version: 1.5.0 - ListScreens; Microsoft Store applications on Windows;
@@ -79,10 +97,18 @@ namespace UltraCanvas {
         std::string appName;            // WM_CLASS instance, e.g. "ultrafiler"
         std::string iconFile;           // the app's icon, resolved from appClass through the
                                         // icon themes; "" when none is installed
+        // Windows: the AppUserModelID the window or its process carries -
+        // what Explorer's taskbar groups and draws a window by. A Store
+        // application's "PackageFamilyName!App" (Calculator, Settings,
+        // WhatsApp), or the ID a desktop program set for itself; "" where
+        // there is none and on other systems. UCDesktopEntry::appUserModelId
+        // names the same application in ListApplications.
+        std::string appUserModelId;
         int  virtualDesktop = -1;       // 0-based; -1 = on every desktop
         int  processId = 0;             // _NET_WM_PID, 0 when the window does not say
         bool active = false;            // the focused window
         bool minimized = false;
+        bool maximized = false;         // both ways (_NET_WM_STATE_MAXIMIZED_VERT and _HORZ; IsZoomed)
         bool skipTaskbar = false;       // asked to stay out of taskbars: panels, docks,
                                         // the desktop itself, tooltips
     };
@@ -97,6 +123,10 @@ namespace UltraCanvas {
         int  width = 0;
         int  height = 0;
         bool primary = false;
+        // The system's own number for the monitor where it gives one -
+        // Windows: n of its \\.\DISPLAYn device, which its display settings
+        // show in the same way - else 0 (X11 numbers none).
+        int number = 0;
         bool operator==(const DesktopScreenInfo& other) const {
             return x == other.x && y == other.y && width == other.width && height == other.height &&
                    primary == other.primary;
@@ -108,6 +138,8 @@ namespace UltraCanvas {
     // memory order B, G, R, unused - the layout cairo calls RGB24 and the QR
     // scanner calls BGRA32 - so a row can be handed to either without a copy.
     struct DesktopScreenImage {
+        int x = 0;                      // where the image's top-left corner lies on the
+        int y = 0;                      // screen, in the pixels of ListScreens (0,0 for the whole screen on X11)
         int width  = 0;
         int height = 0;
         int stride = 0;                 // bytes between row starts, >= width * 4
@@ -159,9 +191,27 @@ namespace UltraCanvas {
                     // start at all (Windows: the account's own shell setting)
     };
 
+    // ===== AN ENTRY OF A TRAY ICON'S MENU =====
+    // What a program's icon offers on a right click where the program hands
+    // its menu over as data rather than drawing it itself - the
+    // StatusNotifierItem's dbusmenu on Linux. A desktop shows the entries as
+    // a menu of its own and reports the choice with
+    // UltraCanvasTrayHost::ActivateMenuItem. Where the program draws its own
+    // menu (Windows: Click(TrayClick::Right) opens it) the list stays empty.
+    struct DesktopTrayMenuItem {
+        int32_t id = 0;                 // what ActivateMenuItem takes
+        std::string label;              // with the program's "_" mnemonics removed
+        std::string iconFile;           // a PNG; "" when the entry has none
+        bool enabled = true;
+        bool separator = false;         // a line, no label
+        bool checkable = false;         // a check mark or a radio item ...
+        bool checked = false;           // ... and whether it is on
+        std::vector<DesktopTrayMenuItem> children;   // a submenu; empty otherwise
+    };
+
     // ===== AN ICON IN THE NOTIFICATION AREA =====
-    // What a program puts in the system tray (Shell_NotifyIcon on Windows),
-    // as the desktop hosting the tray sees it.
+    // What a program puts in the system tray (Shell_NotifyIcon on Windows, a
+    // StatusNotifierItem on Linux), as the desktop hosting the tray sees it.
     struct DesktopTrayIcon {
         std::string id;                 // stable while the icon exists
         std::string tooltip;            // UTF-8; "" when the program gave none
@@ -173,12 +223,28 @@ namespace UltraCanvas {
         std::string balloonTitle;
         std::string balloonText;
         uint64_t    balloonSerial = 0;
+        // The icon's menu as data, where the program hands it over (Linux);
+        // empty where a right click opens the program's own.
+        std::vector<DesktopTrayMenuItem> menu;
     };
 
     enum class TrayClick { Left, Right, Middle };
 
     // ===== THE END OF THE SESSION =====
     enum class SessionEnd { SignOut, Restart, ShutDown };
+
+    // ===== THE LOUDSPEAKER =====
+    // The volume of the output the sound server plays through by default,
+    // as a desktop's speaker icon shows and sets it. `available` is false
+    // with `error` saying why when no sound server answers; the rest is then
+    // left at its default.
+    struct DesktopAudioOutput {
+        bool available = false;
+        int  volumePercent = 0;         // 0..100 (PulseAudio allows more; shown as it is)
+        bool muted = false;
+        std::string device;             // the output's name, as the sound server gives it
+        std::string error;
+    };
 
     // ===== A COUNT AN APPLICATION PUBLISHES FOR THE DESKTOP =====
     // UltraMail publishes its unread count under "UltraMail"; the desktop
@@ -209,7 +275,28 @@ namespace UltraCanvas {
         static bool ActivateWindow(uint64_t id);
         static bool MinimizeWindow(uint64_t id);
         // Ask the window to close (WM_DELETE_WINDOW through the manager), never kill.
+        // The window is brought to the front - and onto a screen - first: a
+        // program that asks before closing ("Save the changes?") would
+        // otherwise ask behind other windows, or unseen.
         static bool CloseWindow(uint64_t id);
+        // The window's outer rectangle in screen pixels - those of
+        // ListScreens. False when the window is gone.
+        static bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height);
+        // Move the window's top-left corner to (x, y) in screen pixels, its
+        // size kept (through the window manager on X11).
+        static bool MoveWindow(uint64_t id, int x, int y);
+        // A window that is off every screen - its title bar not on one, so
+        // it cannot be taken and moved back - is centred on the screen it
+        // is mostly over, else the primary one. Nothing happens to a window
+        // that is on a screen. True when the window is (now) on one.
+        static bool BringWindowOnScreen(uint64_t id);
+        // End the program the window belongs to, at once - unsaved work in
+        // it is lost - as a task manager's "End task": on Linux SIGTERM,
+        // then SIGKILL after two seconds; on Windows TerminateProcess.
+        // False with the reason (a program of another user or run as
+        // administrator, a window that names no process, the desktop
+        // itself).
+        static bool KillWindowProcess(uint64_t id, std::string* error = nullptr);
 
         // ===== VIRTUAL DESKTOPS =====
         static int  GetVirtualDesktopCount();
@@ -244,11 +331,36 @@ namespace UltraCanvas {
         // be the account's seed in the clear. Nothing is written anywhere.
         // False with the reason in `error`; `out` is then empty.
         static bool CaptureScreenImage(DesktopScreenImage& out, std::string* error = nullptr);
+        // One rectangle of the screen - `x`, `y`, `width`, `height` in the
+        // pixels of ListScreens - as pixels in memory, the same layout as
+        // CaptureScreenImage. The rectangle is clipped to the screen; `out.x`
+        // and `out.y` say where the pixels came from. Cheaper than the whole
+        // screen and a crop, which is what a screen recorder taking twenty
+        // frames a second of one window needs. False with the reason (a
+        // rectangle wholly off the screen among them); `out` is then empty.
+        static bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out,
+                                      std::string* error = nullptr);
+        // A small picture of one window of ListWindows, for a taskbar's
+        // preview: no larger than `maxWidth` x `maxHeight` (the window's own
+        // proportions kept; never enlarged), the same pixel layout as
+        // CaptureScreenImage. Windows draws the window itself
+        // (PrintWindow), and a Wayland compositor copies it
+        // (ext-image-copy-capture-v1, where it offers that), so a covered
+        // window shows its own content; X11 copies the window's rectangle of
+        // the screen, which shows whatever lies on top of it; macOS has none
+        // yet. A minimized window has no picture.
+        // False with the reason; `out` is then empty.
+        static bool CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
+                                       std::string* error = nullptr);
         // "<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png" - the
         // user's Pictures folder through GetWellKnownUserFolders, the home
         // directory when there is none. Only names the file; CaptureScreen
         // creates the directory.
         static std::string DefaultScreenshotPath();
+        // "<Videos>/Screen Recordings/Screen recording 2026-09-29 14.05.31.mp4"
+        // - the user's Videos folder, the home directory when there is none.
+        // Only names the file; the recorder creates the directory.
+        static std::string DefaultRecordingPath();
 
         // ===== DEVICES =====
         // Cheap enough to poll once a second: procfs and sysfs reads, and one
@@ -278,7 +390,10 @@ namespace UltraCanvas {
                                       const std::vector<std::string>& files = {},
                                       std::string* error = nullptr);
         // Start a program by name - "UltraFiler" - looked up next to this
-        // executable first (a build tree, a bundle), then on PATH.
+        // executable first (a build tree, a bundle), then on PATH. On macOS,
+        // where every application is a bundle of its own, the <name>.app
+        // beside this application's bundle and in ~/Applications and
+        // /Applications are tried before PATH.
         static bool LaunchProgram(const std::string& program,
                                   const std::vector<std::string>& arguments = {},
                                   std::string* error = nullptr);
@@ -339,6 +454,35 @@ namespace UltraCanvas {
         // where this backend has no such call.
         static bool CanEndSession();
         static bool EndSession(SessionEnd how, std::string* error = nullptr);
+        // Lock the screen - what a desktop's "Lock screen" and Super+L do.
+        // The session's own locker shows (logind's Lock signal on Linux,
+        // LockWorkStation on Windows); UltraCanvasSessionLock reports it
+        // like any other lock. False with the reason in `error`;
+        // CanLockSession() is false where this backend has no such call.
+        static bool CanLockSession();
+        static bool LockSession(std::string* error = nullptr);
+
+        // ===== THE DISPLAYS =====
+        // Open the system's own display settings - resolution, arrangement,
+        // which monitor is the primary - what a desktop's "Display
+        // settings" does: Windows' Settings > Display, macOS's System
+        // Settings > Displays, on Linux the desktop's display tool that is
+        // installed (GNOME's or Plasma's settings, xfce4-display-settings,
+        // wdisplays on Wayland, arandr on X11, ...). Does not wait for it.
+        // False with the reason in `error`; CanOpenDisplaySettings() is
+        // false where there is nothing to open.
+        static bool CanOpenDisplaySettings();
+        static bool OpenDisplaySettings(std::string* error = nullptr);
+
+        // ===== THE LOUDSPEAKER =====
+        // The default output's volume and mute, through the sound server
+        // (PulseAudio or PipeWire's PulseAudio service on Linux, Core Audio's
+        // endpoint volume on Windows). Cheap enough to read when a panel
+        // opens, not meant to be polled every frame. The setters answer
+        // false with the reason in `error`.
+        static DesktopAudioOutput ReadAudioOutput();
+        static bool SetAudioOutputVolume(int percent, std::string* error = nullptr);
+        static bool SetAudioOutputMuted(bool muted, std::string* error = nullptr);
 
         // ===== NOTICES =====
         // Publish `count` (and an optional line of text) under `application`.
@@ -427,21 +571,26 @@ namespace UltraCanvas {
     // ===== THE NOTIFICATION AREA =====
     // The system tray, for a desktop that is the session's shell: on Windows
     // the window every program's Shell_NotifyIcon talks to (Shell_TrayWnd),
-    // on a thread of its own, so a busy desktop never stalls a program
-    // adding its icon. Starting it asks the programs already running to add
-    // their icons again (TaskbarCreated).
+    // on Linux the StatusNotifierWatcher and host on the session bus that
+    // every program's StatusNotifierItem registers with - each on a thread
+    // of its own, so a busy desktop never stalls a program adding its icon.
+    // Starting it asks the programs already running to add their icons again
+    // (TaskbarCreated; the watcher's name appearing on the bus).
     //
     //   UltraCanvasTrayHost tray;
     //   if (tray.Start([this]() { trayDirty.store(true); })) {   // background thread!
     //       for (const DesktopTrayIcon& icon : tray.ListIcons()) { ... }
     //       tray.Click(icon.id, TrayClick::Right);   // the program opens its menu
+    //       // ... or, when icon.menu is not empty, the desktop draws that
+    //       // menu and reports the choice:
+    //       tray.ActivateMenuItem(icon.id, icon.menu[0].id);
     //   }
     //
     // Only one notification area works at a time, so Start refuses while
-    // another runs - Explorer's taskbar, when the desktop runs beside it -
-    // and wherever the platform has none to host (X11 here; its trays are a
-    // protocol of their own). The callback runs on the host's thread and must
-    // only hand the news over.
+    // another runs - Explorer's taskbar, when the desktop runs beside it;
+    // another StatusNotifierWatcher on Linux - and wherever the platform has
+    // none to host. The callback runs on the host's thread and must only
+    // hand the news over.
     class UltraCanvasTrayHost {
     public:
         using ChangedCallback = std::function<void()>;
@@ -468,6 +617,10 @@ namespace UltraCanvas {
         // system's double-click time are a double click. False when the icon
         // is gone. Any thread.
         bool Click(const std::string& id, TrayClick button);
+        // The choice from an icon's menu (DesktopTrayIcon::menu), handed to
+        // the program. False when the icon or the entry is gone, and where
+        // programs draw their own menus. Any thread.
+        bool ActivateMenuItem(const std::string& id, int32_t itemId);
 
     private:
         std::atomic<bool> running{false};

@@ -64,6 +64,7 @@
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasTextInput.h"
@@ -968,6 +969,38 @@ int main() {
             }
             UltraCanvasFileLoader::ResetSaveSettings("jpg");
             run.dialog->CloseDialog(DialogResult::Cancel);
+
+            // From a settings window: the window's type size (UltraSnip's
+            // File type page), its rows scaled to it, and no wider than the
+            // captions and controls need - at the dialog's own 12 and a fixed
+            // 420 it towered over the 10-point window it came from.
+            {
+                const size_t count = UltraCanvasDialogManager::GetActiveDialogs().size();
+                SettingsPageKit::ShowSaveSettingsDialog("jpg", nullptr);
+                const auto now = UltraCanvasDialogManager::GetActiveDialogs();
+                auto small = now.size() > count ? now.back() : nullptr;
+                TEST("A settings window opens a type's settings in its own type size", small != nullptr);
+                if (small) {
+                    for (int frame = 0; frame < 3; ++frame) small->UpdateAndRender();
+                    auto* box = small->FindChildById("SaveSetting_progressive");
+                    auto* slider = small->FindChildById("SaveSetting_quality");
+                    auto* defaults = small->FindChildById("SaveSettingsDefaults");
+                    const float width = static_cast<float>(small->GetWidth());
+                    TEST("... its rows scaled down with the type", box && box->GetHeight() < 28.0f);
+                    TEST("... as wide as its content, not a fixed 420", width < 420.0f);
+                    TEST("... every control inside the window",
+                         slider && box && slider->GetBoundsInWindow().Right() <= width &&
+                         box->GetBoundsInWindow().Right() <= width);
+                    TEST("... and Defaults as wide as the buttons beside it, at least",
+                         defaults && defaults->GetWidth() >= small->GetStyle().buttonWidth);
+                    if (const char* shotDir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+                        WritePpm(small.get(), static_cast<int>(small->GetWidth()),
+                                 static_cast<int>(small->GetHeight()),
+                                 std::string(shotDir) + "/save-settings-small.ppm");
+                    }
+                    small->CloseDialog(DialogResult::Cancel);
+                }
+            }
 
             // The picture's size given: a Size row first, for this save only.
             auto openSettings = [&](SaveRun& r) -> std::shared_ptr<UltraCanvasModalDialog> {

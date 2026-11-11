@@ -103,27 +103,27 @@ namespace {
         container->SetPadding(10, 12, 10, 12);
 
         // ===== TITLE =====
-        auto title = DemoKit::AddHeading(container, "NetTitle", "UltraNet — Remote Resource Loader");
+        auto title = DemoKit::AddHeading(container, "NetTitle", Tr("UltraNet — Remote Resource Loader"));
         title->SetFontSize(16);
 
         DemoKit::AddText(container, "NetSubtitle",
-                         "Loads a remote image through UltraCanvasFileLoader::LoadFile, "
-                         "which dispatches to UltraNet_HttpGet for http:// and https:// URLs.");
+                         Tr("Loads a remote image through UltraCanvasFileLoader::LoadFile, "
+                         "which dispatches to UltraNet_HttpGet for http:// and https:// URLs."));
 
         // ===== INFO LINE — what's the UltraNet backend doing? =====
         auto backendLabel = DemoKit::AddCaption(container, "NetBackend", "");
         backendLabel->SetFontSize(11);
 #ifdef ULTRACANVAS_HAS_NET
-        backendLabel->SetText("Backend: " + UltraNet_GetBackendInfo());
+        backendLabel->SetText(TrF("Backend: {0}", UltraNet_GetBackendInfo()));
 #else
-        backendLabel->SetText("Backend: UltraNet not compiled in "
-                              "(rebuild with -DULTRACANVAS_ENABLE_NET=ON)");
+        backendLabel->SetText(Tr("Backend: UltraNet not compiled in "
+                              "(rebuild with -DULTRACANVAS_ENABLE_NET=ON)"));
 #endif
 
         // ===== URL INPUT + LOAD BUTTON ROW =====
         auto urlRow = DemoKit::AddRow(container, "NetUrlRow", 10);
         urlRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        DemoKit::Add(urlRow, DemoKit::CreateText("UrlLabel", "URL:"));
+        DemoKit::Add(urlRow, DemoKit::CreateText("UrlLabel", Tr("URL:")));
 
         // The input takes the row's spare width, at least 300 px before the
         // button wraps under it.
@@ -136,7 +136,7 @@ namespace {
 
         // As wide as its text, at least the 100 px it had.
         auto loadButton = std::make_shared<UltraCanvasButton>(
-            "NetLoad", 0, 0, 0, 30, "Load");
+            "NetLoad", 0, 0, 0, 30, Tr("Load"));
         {
             CSSLayout::BoxConstraints limits;
             limits.minWidth = CSSLayout::Dimension::Px(100);
@@ -145,7 +145,7 @@ namespace {
         DemoKit::Add(urlRow, loadButton);
 
         // ===== STATUS LINE =====
-        auto status = DemoKit::AddText(container, "NetStatus", "Ready.");
+        auto status = DemoKit::AddText(container, "NetStatus", Tr("Ready."));
 
         // ===== IMAGE PREVIEW =====
         // Fills the rest of the tab from a zero basis; never squeezed below
@@ -173,11 +173,11 @@ namespace {
             [urlInput, status, preview]() {
                 const std::string url = urlInput->GetText();
                 if (url.empty()) {
-                    status->SetText("Status: please enter a URL.");
+                    status->SetText(Tr("Status: please enter a URL."));
                     status->SetTextColor(Color(180, 100, 0, 255));
                     return;
                 }
-                status->SetText("Status: loading " + url + " ...");
+                status->SetText(TrF("Status: loading {0} ...", url));
                 status->SetTextColor(Color(80, 80, 80, 255));
 
 #ifdef ULTRACANVAS_HAS_NET
@@ -200,41 +200,40 @@ namespace {
                         app->PostToUIThread(
                             [status, preview, r, dt, url]() {
                                 if (r->statusCode <= 0) {
-                                    status->SetText("Status: FAILED — " +
-                                        (r->statusMessage.empty()
-                                            ? std::string{"transport error"}
+                                    status->SetText(TrF("Status: FAILED — {0}",
+                                        r->statusMessage.empty()
+                                            ? Tr("transport error")
                                             : r->statusMessage));
                                     status->SetTextColor(Color(180, 0, 0, 255));
                                     return;
                                 }
                                 if (r->statusCode >= 400) {
-                                    status->SetText("Status: HTTP " +
-                                        std::to_string(r->statusCode));
+                                    status->SetText(TrF("Status: HTTP {0}", r->statusCode));
                                     status->SetTextColor(Color(180, 0, 0, 255));
                                     return;
                                 }
                                 auto img = UCImageRaster::LoadFromMemory(r->body);
                                 if (!img || !img->IsValid()) {
                                     status->SetText(
-                                        "Status: download OK but image decode failed");
+                                        Tr("Status: download OK but image decode failed"));
                                     status->SetTextColor(Color(180, 100, 0, 255));
                                     return;
                                 }
                                 preview->LoadFromImage(img);
-                                std::ostringstream os;
-                                os << "Status: " << r->body.size() << " bytes in "
-                                   << dt << " ms  ·  Content-Type: "
-                                   << (r->contentType.empty()
-                                           ? "(unknown)" : r->contentType)
-                                   << "  ·  Image "
-                                   << img->GetWidth() << "x" << img->GetHeight();
-                                status->SetText(os.str());
+                                status->SetText(LocalisationDetail::Substitute(
+                                    TrN("Status: {n} byte in {0} ms  ·  Content-Type: {1}  ·  Image {2}x{3}",
+                                        "Status: {n} bytes in {0} ms  ·  Content-Type: {1}  ·  Image {2}x{3}",
+                                        static_cast<long long>(r->body.size())),
+                                    {std::to_string(dt),
+                                     r->contentType.empty() ? Tr("(unknown)") : r->contentType,
+                                     std::to_string(img->GetWidth()),
+                                     std::to_string(img->GetHeight())}));
                                 status->SetTextColor(Color(0, 130, 0, 255));
                             });
                     });
 #else
-                status->SetText("Status: UltraNet not compiled in "
-                                "(rebuild with -DULTRACANVAS_ENABLE_NET=ON)");
+                status->SetText(Tr("Status: UltraNet not compiled in "
+                                "(rebuild with -DULTRACANVAS_ENABLE_NET=ON)"));
                 status->SetTextColor(Color(180, 100, 0, 255));
 #endif
             };
@@ -248,9 +247,9 @@ namespace {
 // ===== ULTRANET MODULE DEMO =====
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateNetworkingExamples() {
-    auto root = DemoKit::CreatePage("UltraNetExamples", "Ultra Net",
-            "The Ultra Net module: an overview, its documentation and a live remote-resource "
-            "loader (UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + UCImageRaster::LoadFromMemory).");
+    auto root = DemoKit::CreatePage("UltraNetExamples", Tr("Ultra Net"),
+            Tr("The Ultra Net module: an overview, its documentation and a live remote-resource "
+            "loader (UltraCanvasFileLoader::LoadFile + UltraNet_HttpGet + UCImageRaster::LoadFromMemory)."));
     // The tabs' text areas and the loader size and scroll themselves: the
     // page is the area's height and the tabs' card takes what the title leaves.
     root->SetFillsArea(true);
@@ -266,9 +265,9 @@ UltraCanvasDemoApplication::CreateNetworkingExamples() {
     tabs->SetCloseMode(TabCloseMode::NoClose);
     tabs->SetTabHeight(30);
 
-    tabs->AddTab("Overview", BuildOverviewTab());
-    tabs->AddTab("Details",  BuildDetailsTab());
-    tabs->AddTab("Examples", BuildExamplesTab());
+    tabs->AddTab(Tr("Overview"), BuildOverviewTab());
+    tabs->AddTab(Tr("Details"),  BuildDetailsTab());
+    tabs->AddTab(Tr("Examples"), BuildExamplesTab());
     tabs->SetActiveTab(0);
 
     DemoKit::Add(card, tabs, 1);

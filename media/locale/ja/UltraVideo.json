@@ -1,0 +1,19 @@
+{
+  "@language": "ja",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "タイトルの色",
+  "Edit Title": "タイトルの編集",
+  "The title is in the video": "タイトルをビデオに配置しました",
+  "The title is unchanged": "タイトルは変更されていません",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "タイトルが空になりました: 元のテキストは保持されます (削除するには、トラック上のタイトルを削除してください)",
+  "Title Alignment": "タイトルの配置",
+  "Title Bold": "タイトルの太字",
+  "Title Font": "タイトルのフォント",
+  "Title Italic": "タイトルの斜体",
+  "Title Letter Spacing": "タイトルの文字間隔",
+  "Title Line Spacing": "タイトルの行間",
+  "Title Size": "タイトルのサイズ",
+  "Title Strikethrough": "タイトルの取り消し線",
+  "Title Underline": "タイトルの下線",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "フレーム上でタイトルを入力中: Escape、Ctrl+Enter、または外側をクリックするとビデオに配置します"
+}

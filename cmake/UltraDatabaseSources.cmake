@@ -10,6 +10,7 @@
 # holding core/ and include/). The Postgres and MySQL files are always in the
 # list: without ULTRADATABASE_HAS_POSTGRES / ULTRADATABASE_HAS_MYSQL they
 # compile to the stubs the manager's EnsureBuiltins() links against.
+# Version: 0.4.0 - the encrypting SQLite VFS (UltraDatabaseEncryption.h)
 # Version: 0.3.0 - the relay (UltraDatabaseRelay.h): its wire format, driver and server
 # Version: 0.2.0 - the MySQL / MariaDB driver, the server views
 # Version: 0.1.0
@@ -21,6 +22,7 @@ function(ultradatabase_sources out_var ultracanvas_dir)
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseManager.cpp
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseSqliteSchema.cpp
+        ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseSqliteCipher.cpp
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabasePostgresDriver.cpp
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabasePostgresSql.cpp
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabasePostgresSchema.cpp

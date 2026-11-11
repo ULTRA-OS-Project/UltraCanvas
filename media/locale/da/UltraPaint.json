@@ -1,0 +1,15 @@
+{
+  "@language": "da",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Klik, og skriv, eller træk en boks, som linjerne skal ombrydes i; klik på en tekst for at redigere den. Bjælken ovenover indstiller skrifttype, størrelse, typografi, justering og afstand; farven er forgrundsfarven. Escape eller et klik udenfor afslutter",
+  "Letter Spacing": "Tegnafstand",
+  "Line Spacing": "Linjeafstand",
+  "Text Alignment": "Tekstjustering",
+  "Text Bold": "Fed tekst",
+  "Text Colour": "Tekstfarve",
+  "Text Font": "Tekstens skrifttype",
+  "Text Italic": "Kursiv tekst",
+  "Text Size": "Tekststørrelse",
+  "Text Strikethrough": "Gennemstreget tekst",
+  "Text Underline": "Understreget tekst"
+}

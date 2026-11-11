@@ -1,10 +1,14 @@
 // Apps/EmailCleaner/engine/EmailCleanerIngest.cpp
 // Parsing (over UltraNet's MIME reader), classification and the walk over
 // UltraMail's cached message bodies.
+// Version: 0.3.1 - Sent / Trash by name read past the case mask of a cache directory
+// Version: 0.3.0 - cached messages read through UltraMailStorage (sealed at rest)
 // Version: 0.2.0 - outgoing mail: recipients recorded, not analysed
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerIngest.h"
+#include "UltraMailStorage.h"
+#include "UltraMailSyncEngine.h"   // FolderOfCacheDirectory
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "EmailCleanerMailBackend.h"   // LooksLikeTrash
@@ -122,16 +126,16 @@ void IngestStats::Add(const IngestStats& other) {
     sent        += other.sent;
 }
 
+// A cached message: UltraMail seals its message files at rest
+// (UltraMailStorage.h); opened with the body key the app set, as it is when plain.
 bool ReadFileBytes(const std::string& path, std::string& out) {
-    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
-    if (!in) return false;
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    out = buffer.str();
-    return true;
+    return UltraMail::ReadBodyFile(path, out);
 }
 
-bool LooksLikeTrashDirectory(const std::string& directoryName) {
+bool LooksLikeTrashDirectory(const std::string& cacheDirectory) {
+    // Read as the folder's name: UltraMail marks a name not in title case
+    // with a case mask ("trash~1").
+    const std::string directoryName = UltraMail::FolderOfCacheDirectory(cacheDirectory);
     if (MailBackend::LooksLikeTrash(directoryName)) return true;
     std::string path = directoryName;
     std::replace(path.begin(), path.end(), '_', '/');
@@ -149,7 +153,8 @@ bool LooksLikeSentDirectory(const std::string& directoryName) {
         "verzonden", "verzonden items", "skickat", "skickade objekt"
     };
     // The cache writes "/" in an IMAP path as "_"; a server may also use ".".
-    std::string path = Lower(directoryName);
+    // A name not in title case carries a case mask ("sent items~41"): left out.
+    std::string path = Lower(UltraMail::FolderOfCacheDirectory(directoryName));
     std::replace(path.begin(), path.end(), '_', '/');
     std::replace(path.begin(), path.end(), '.', '/');
     const size_t slash = path.rfind('/');

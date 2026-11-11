@@ -1,5 +1,6 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.13.0 - ButtonStyle::wrap: the text wrapped onto the lines its area holds, from the top
 // Version: 2.12.4 - a split button's two captions are centred on their capitals, not their line box
 // Version: 2.12.3 - SetText fits the width to the new text at once, so a parent
 //                  breaking a row into lines reads the new width
@@ -14,7 +15,7 @@
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
 //                  centred half a pixel off was resampled and blurred
 // Version: 2.7.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -46,6 +47,7 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(identifier, x, y, w, h), text(buttonText) {
         SetMouseCursor(UCMouseCursor::Hand);
         SetPadding(4,8,4,8);
+        ApplyThemeIfFollowing();
     }
 
 // ===== SPLIT BUTTON METHODS =====
@@ -340,6 +342,11 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasButton::SetWrap(TextWrap wrap) {
+        style.wrap = wrap;
+        RequestRedraw();
+    }
+
     void UltraCanvasButton::SetIconSpacing(int spacing) {
         style.iconSpacing = spacing;
         InvalidateLayout();
@@ -359,6 +366,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::SetStyle(const ButtonStyle& newStyle) {
+        StyleSetByHand();
         style = newStyle;
         InvalidateLayout();
         RequestRedraw();
@@ -946,6 +954,19 @@ namespace UltraCanvas {
         const double nudge = GetPrimaryState() == ElementState::Pressed ? 1.0 : 0.0;
         const Rect2Dd rect(textRect.x + nudge, textRect.y + nudge, textRect.width, textRect.height);
 
+        // Wrapped: the lines from the area's top (under a top icon, where a
+        // tile's name starts), as many as the area holds, the last one
+        // shortened at its end. The context's wrap is put back afterwards:
+        // the elements drawn next did not ask for it.
+        if (style.wrap != TextWrap::WrapNone) {
+            const TextWrap previous = ctx->GetTextStyle().wrap;
+            ctx->SetTextWrap(style.wrap);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
+            ctx->DrawTextInRect(drawnText, rect, useMarkup);
+            ctx->SetTextWrap(previous);
+            return;
+        }
+
         // Shortened anywhere but at the end: DrawTextInRect cuts from the
         // right only, so the text goes through a layout of the rectangle's
         // width that cuts where the style says, placed as the alignment says.
@@ -1270,6 +1291,12 @@ namespace UltraCanvas {
                 if (!IsPressed()) {
                     SetHovered(true);
                     if (onHoverEnter) onHoverEnter();
+                } else if (canToggled && onHoverEnter) {
+                    // A toggle that is on stays pressed between clicks: the
+                    // pointer coming over it is a hover like any other (a
+                    // taskbar's button of the active window shows its
+                    // previews). A push button held down is not.
+                    onHoverEnter();
                 }
                 return true;
 
@@ -1306,6 +1333,12 @@ namespace UltraCanvas {
     ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base, ButtonVariant variant) {
         ButtonStyle s = base;
         const ThemeRoles& r = theme.roles;
+        // the interface font at the body size; the weight stays the style's
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
         s.focusedColor = r.focus;
         s.disabledTextColor = r.inkFaint;
         switch (variant) {

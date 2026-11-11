@@ -1,0 +1,15 @@
+{
+  "@language": "pl",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Kliknij i pisz albo przeciągnij ramkę, w której wiersze będą zawijane; kliknij tekst, aby go edytować. Pasek powyżej ustawia czcionkę, rozmiar, styl, wyrównanie i odstępy; kolorem jest kolor pierwszego planu. Escape lub kliknięcie poza nim kończy",
+  "Letter Spacing": "Odstęp między literami",
+  "Line Spacing": "Interlinia",
+  "Text Alignment": "Wyrównanie tekstu",
+  "Text Bold": "Pogrubienie tekstu",
+  "Text Colour": "Kolor tekstu",
+  "Text Font": "Czcionka tekstu",
+  "Text Italic": "Kursywa tekstu",
+  "Text Size": "Rozmiar tekstu",
+  "Text Strikethrough": "Przekreślenie tekstu",
+  "Text Underline": "Podkreślenie tekstu"
+}

@@ -2,8 +2,9 @@
 // The facade: inventory, install jobs, engine supervision and the shared
 // record of running engines (runtime.json), composed from the parts in
 // LocalRuntimeInternal.h.
+// Version: 0.2.0 - topics: topics.json, the topic preferences, new models
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 
 #include "UltraAILocalRuntime.h"
@@ -182,6 +183,8 @@ public:
     mutable std::mutex mutex_;          // guards everything below
     Gallery gallery_;
     Catalogue catalogue_;
+    Topics topics_;
+    TopicPreferences topicPreferences_;
     std::vector<LocalModelInfo> userModels_;
     LocalRuntimeSettings settings_;
     std::map<std::string, std::string> engineOverrides_;
@@ -236,6 +239,7 @@ public:
     void LoadState();
     void SaveUserModels();
     void SaveSettings();
+    void SaveTopicPreferences();
 };
 
 LocalRuntime::Impl::Impl(LocalRuntimeOptions options) : options_(std::move(options)) {
@@ -287,8 +291,29 @@ void LocalRuntime::Impl::LoadState() {
     }
     if (!haveCatalogue) ParseCatalogue(BuiltinCatalogueJson(), catalogue_, error);
 
+    bool haveTopics = false;
+    if (!options_.topicsJson.empty()) {
+        haveTopics = ParseTopics(options_.topicsJson, topics_, error);
+    } else if (ReadWholeFile(paths_.topicsJson, text)) {
+        haveTopics = ParseTopics(text, topics_, error);
+    }
+    if (!haveTopics) ParseTopics(BuiltinTopicsJson(), topics_, error);
+
     if (ReadWholeFile(paths_.userModelsJson, text)) ParseModels(text, userModels_, error);
     if (ReadWholeFile(paths_.settingsJson, text)) ParseSettings(text, settings_);
+
+    // The topic preferences. The first time, every model already in the
+    // catalogue counts as seen: "new" means published after this machine
+    // first looked.
+    bool hadSeenList = false;
+    if (ReadWholeFile(paths_.topicPreferencesJson, text)) {
+        ParseTopicPreferences(text, topicPreferences_, hadSeenList);
+    }
+    if (!hadSeenList) {
+        topicPreferences_.seenModels.clear();
+        for (const auto& m : catalogue_.models) topicPreferences_.seenModels.push_back(m.id);
+        SaveTopicPreferences();
+    }
 
     // Engines the environment points at: ULTRAAI_LOCAL_ENGINE_LLAMA_SERVER.
     for (const EngineInfo& e : gallery_.engines) {
@@ -306,6 +331,11 @@ void LocalRuntime::Impl::SaveUserModels() {
 void LocalRuntime::Impl::SaveSettings() {
     std::string error;
     WriteFileAtomic(paths_.settingsJson, SerializeSettings(settings_), error);
+}
+
+void LocalRuntime::Impl::SaveTopicPreferences() {
+    std::string error;
+    WriteFileAtomic(paths_.topicPreferencesJson, SerializeTopicPreferences(topicPreferences_), error);
 }
 
 // ===== Inventory =====
@@ -1422,6 +1452,14 @@ Error LocalRuntime::RefreshGallery() {
     Catalogue catalogue;
     const bool haveCatalogue = fetchText(catalogueUrl, catalogueText).IsOk() &&
                                ParseCatalogue(catalogueText, catalogue, parseError);
+    // The topics too, when the server publishes them (a plain mirror of
+    // the gallery may not: the built-in or last copy stays then).
+    const std::string topicsUrl = catalogueUrl.substr(0, catalogueUrl.size() - std::string("catalogue.json").size()) +
+                                  "topics.json";
+    std::string topicsText;
+    Topics topics;
+    const bool haveTopics = fetchText(topicsUrl, topicsText).IsOk() &&
+                            ParseTopics(topicsText, topics, parseError);
     std::string writeError;
     std::lock_guard<std::mutex> lock(impl_->mutex_);
     impl_->gallery_ = gallery;
@@ -1429,6 +1467,10 @@ Error LocalRuntime::RefreshGallery() {
     if (haveCatalogue) {
         impl_->catalogue_ = catalogue;
         WriteFileAtomic(impl_->paths_.catalogueJson, catalogueText, writeError);
+    }
+    if (haveTopics) {
+        impl_->topics_ = topics;
+        WriteFileAtomic(impl_->paths_.topicsJson, topicsText, writeError);
     }
     return {};
 }
@@ -1444,4 +1486,125 @@ std::string LocalRuntime::CapabilityOf(const std::string& modelId) const {
     return impl_->FindModelLocked(modelId, model) ? model.capability : std::string();
 }
 
+// ===== Topics =====
+
+std::vector<ModelTopic> LocalRuntime::ListTopics() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    return impl_->topics_.topics;
+}
+
+bool LocalRuntime::FindTopic(const std::string& topicId, ModelTopic& out) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    const ModelTopic* t = impl_->topics_.Find(topicId);
+    if (!t) return false;
+    out = *t;
+    return true;
+}
+
+TopicPreferences LocalRuntime::GetTopicPreferences() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    return impl_->topicPreferences_;
+}
+
+void LocalRuntime::SetTopicPreferences(const TopicPreferences& preferences) {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    impl_->topicPreferences_ = preferences;
+    impl_->SaveTopicPreferences();
+}
+
+void LocalRuntime::SetTopicModel(const std::string& topicId, const std::string& modelId) {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    impl_->topicPreferences_.choices[topicId].modelId = modelId;
+    impl_->SaveTopicPreferences();
+}
+
+std::string LocalRuntime::ModelForTopic(const std::string& topicId) const {
+    ModelTopic topic;
+    TopicChoice choice;
+    bool haveChoice = false;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex_);
+        const ModelTopic* t = impl_->topics_.Find(topicId);
+        if (!t) return {};
+        topic = *t;
+        auto it = impl_->topicPreferences_.choices.find(topicId);
+        if (it != impl_->topicPreferences_.choices.end()) {
+            choice = it->second;
+            haveChoice = true;
+        }
+    }
+    const std::vector<LocalModelInfo> models = ListModels(topic.capability);
+    return ResolveTopicModel(topic, haveChoice ? &choice : nullptr, models,
+                             Recommend(topic.capability).id);
+}
+
+std::vector<LocalModelInfo> LocalRuntime::NewModels() const {
+    std::vector<std::string> seen;
+    std::vector<std::string> catalogueIds;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex_);
+        if (impl_->topicPreferences_.newModels == NewModelPolicy::Ignore) return {};
+        seen = impl_->topicPreferences_.seenModels;
+        for (const auto& m : impl_->catalogue_.models) catalogueIds.push_back(m.id);
+    }
+    std::vector<LocalModelInfo> out;
+    for (const LocalModelInfo& m : ListModels()) {
+        if (m.source != LocalModelSource::Catalogue || m.installed) continue;
+        if (std::find(seen.begin(), seen.end(), m.id) != seen.end()) continue;
+        if (std::find(catalogueIds.begin(), catalogueIds.end(), m.id) == catalogueIds.end()) continue;
+        out.push_back(m);
+    }
+    return out;
+}
+
+void LocalRuntime::MarkModelsSeen(const std::vector<std::string>& modelIds) {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    auto& seen = impl_->topicPreferences_.seenModels;
+    std::vector<std::string> ids = modelIds;
+    if (ids.empty()) {
+        for (const auto& m : impl_->catalogue_.models) ids.push_back(m.id);
+    }
+    for (const auto& id : ids) {
+        if (std::find(seen.begin(), seen.end(), id) == seen.end()) seen.push_back(id);
+    }
+    impl_->SaveTopicPreferences();
+}
+
+std::vector<std::string> LocalRuntime::ApplyTopicUpdates(InstallProgressCallback onProgress) {
+    std::vector<ModelTopic> topics;
+    TopicPreferences prefs;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex_);
+        if (impl_->settings_.policy == DownloadPolicy::Never) return {};
+        topics = impl_->topics_.topics;
+        prefs = impl_->topicPreferences_;
+    }
+    std::vector<std::string> wanted;
+    auto want = [&](const std::string& id) {
+        if (id.empty() || std::find(wanted.begin(), wanted.end(), id) != wanted.end()) return;
+        LocalModelInfo m;
+        if (!FindModel(id, m) || m.installed || m.fit == ModelFit::TooLarge) return;
+        wanted.push_back(id);
+    };
+    for (const ModelTopic& topic : topics) {
+        auto it = prefs.choices.find(topic.id);
+        const bool follows = it == prefs.choices.end() || it->second.modelId.empty();
+        const bool autoInstall = it == prefs.choices.end() || it->second.autoInstall;
+        if (follows && autoInstall) want(ModelForTopic(topic.id));
+    }
+    if (prefs.newModels == NewModelPolicy::Automatic) {
+        for (const LocalModelInfo& m : NewModels()) {
+            for (const ModelTopic& topic : topics) {
+                auto it = prefs.choices.find(topic.id);
+                const bool follows = it == prefs.choices.end() || it->second.modelId.empty();
+                if (follows && topic.ServerDefault() == m.id) want(m.id);
+            }
+        }
+    }
+    std::vector<std::string> jobs;
+    for (const std::string& id : wanted) jobs.push_back(InstallModel(id, onProgress));
+    return jobs;
+}
+
 } // namespace UltraAI
+

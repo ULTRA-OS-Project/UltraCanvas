@@ -15,7 +15,11 @@
 // spreadsheets (ODS / CSV / TSV) through UltraCanvasSpreadsheet, STL 3D models
 // through the OpenGL model viewer (UltraCanvasSTLElement), text / source /
 // markdown files through a read-only UltraCanvasTextArea (syntax highlighting
-// + markdown rendering), e-books (EPUB / FB2 / MOBI / AZW) through
+// + markdown rendering), HTML / XHTML pages - and XML files that hold XHTML -
+// rendered as a browser shows them through UltraCanvasWebView (their source
+// is the Texter's to show, not the viewer's), e-mail messages (.eml, .emlx) as
+// the message - header, body, attachments - and saved web pages (.mht /
+// .mhtml) as the page, from their own parts, in the same view, e-books (EPUB / FB2 / MOBI / AZW) through
 // UltraCanvasEBookViewer (engine registry), vector drawings through
 // UltraCanvasVectorElement (SVG, XAR, EMF, WMF, DXF and the DWG family, read
 // by whichever Vector plugin the application registered - see
@@ -64,13 +68,16 @@
 // view owns the bare arrows itself (spreadsheet cell movement) Alt+Left /
 // Alt+Right still browse.
 //
-// Transparent images draw over a configurable backdrop: either a preset
-// solid colour (default white) or the checkered pattern familiar from image
-// editors (SetTransparentBackground / SetTransparentColor). A file that really
-// has transparency — an alpha channel that is used, or a vector document —
-// also gets a palette strip directly under the picture: greys and colours to
-// click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
-// off, onTransparentBackgroundChanged reports what was picked).
+// Transparent images and drawings draw over a configurable backdrop: by
+// default one chosen for each file so that what it shows stands out (Auto -
+// white under dark artwork, dark grey under light artwork, mid grey under
+// both), or a preset solid colour, or the checkered pattern familiar from
+// image editors (SetTransparentBackground / SetTransparentColor). A file that
+// really has transparency — an alpha channel that is used, or a vector
+// document — also gets a palette strip directly under the picture: the auto
+// swatch, greys and colours to click, plus the checkered swatch for a picture
+// (SetTransparencyPaletteVisible turns it off, onTransparentBackgroundChanged
+// reports what was picked).
 //
 // IsPlayingMedia says whether a shown video or sound is playing, so a host
 // that reopens a file which changed on disk can leave one being played alone.
@@ -80,6 +87,28 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.26.0 - a video's Details panel and info bar carry its technical facts, read
+//                   from the file's headers by ReadVideoFileInfo (ShownVideoInfo): size,
+//                   frame rate, codec and profile, bit rates, the sound's codec, rate and
+//                   channels, rotation, track counts and the file's own tags
+// Version: 1.25.0 - text shown in the text view or the Details panel can be copied: a press
+//                   there gives the widget the keyboard, and Ctrl+C / Ctrl+Insert copy the
+//                   selection, Ctrl+A selects all; a right-click opens Copy / Select All
+//
+// Version: 1.24.0 - OpenFileWhenShown / OpenFolderWhenShown / SetFilesWhenShown: a turning
+//                   ring and the file's name while a file is on its way, never "No media";
+//                   onCurrentFileChanged; MediaSurface::SetEmptyText
+// Version: 1.23.0 - the Details panel is a group box: its title in the caption, a close
+//                   button, smaller text, and a GIF's colour table as swatches
+// Version: 1.22.0 - Outlook .msg messages; a message's attachments open and save
+// Version: 1.21.0 - saved web pages (.mht / .mhtml, IsWebArchiveFile) and Apple Mail .emlx
+// Version: 1.20.0 - e-mail messages (.eml) shown as the message (IsMailMessageFile)
+// Version: 1.19.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
+//                   (webView, IsHtmlFile) instead of as source text
+// Version: 1.18.0 - TransparentImageBackground::Auto, the default: a backdrop picked per
+//                   file to contrast with its content, under a transparent picture and
+//                   behind a drawing in the vector view (which takes the strip's colours
+//                   now too); the zoom box shows the zoom; a drawing in the info bar
 // Version: 1.17.0 - SetSettingsAction: a host's settings, behind a gear at the right
 //                   end of the info bar
 // Version: 1.16.0 - Unlock's passwords are forgotten - and an unlocked file shown locked
@@ -95,7 +124,7 @@
 // Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
 //                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -108,6 +137,7 @@
 #include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "Models/STL/UltraCanvas3DTypes.h"  // Mesh3D / ModelViewPose for the 3D pane
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasVideoFileInfo.h"  // VideoFileInfo for the Details panel / status bar
 #include "UltraCanvasSessionLock.h"   // ForgetPasswords when the session locks
 #include <string>
 #include <vector>
@@ -170,7 +200,12 @@ enum class MediaTransition {
 // transparent pixels. Independent of the surrounding canvas colour.
 enum class TransparentImageBackground {
     SolidColor,   // flat preset colour (default white)
-    Checkered     // light/dark checkerboard, as used by image editors
+    Checkered,    // light/dark checkerboard, as used by image editors
+    // A flat colour chosen for each file from its own pixels: white, mid grey
+    // or dark grey, whichever leaves the most of the artwork clearly visible
+    // (UltraCanvasMediaViewer::ContrastingBackdropFor). The media viewer's
+    // default; a bare surface shows its SetAutoBackdropColor().
+    Auto
 };
 
 // ===== TONE / COLOUR ADJUSTMENTS =====
@@ -299,6 +334,10 @@ public:
     // The preset colour used by TransparentImageBackground::SolidColor.
     void SetTransparentColor(const Color& c) { transparentColor = c; RequestRedraw(); }
     const Color& GetTransparentColor() const { return transparentColor; }
+    // The colour TransparentImageBackground::Auto draws: the viewer works it
+    // out for each picture and sets it here (white until it does).
+    void SetAutoBackdropColor(const Color& c) { autoBackdropColor = c; RequestRedraw(); }
+    const Color& GetAutoBackdropColor() const { return autoBackdropColor; }
 
     // Called when the user navigates by click / arrow (delta -1 == previous,
     // +1 == next) and when the view geometry changes (to refresh the info bar).
@@ -316,6 +355,11 @@ public:
 
     // True when the shown image's header read but its pixels did not decode.
     bool HasDecodeFailure() const;
+
+    // What the surface says when it has no picture ("No media"); empty draws
+    // nothing - the viewer clears it while a file is loading.
+    void SetEmptyText(const std::string& text) { emptyText = text; RequestRedraw(); }
+    const std::string& GetEmptyText() const { return emptyText; }
 
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
@@ -350,6 +394,7 @@ private:
     std::shared_ptr<UCImage>  image;
     std::shared_ptr<UCPixmap> processed;     // colour-adjusted full-res pixmap (or null)
     bool decodeFailureReported = false;      // onDecodeFailed already told for `image`
+    std::string emptyText = "No media";      // drawn with no picture (SetEmptyText)
     MediaAdjustments adjust;
 
     // Frame stepping for animated images (GIF, animated WebP). Plays while
@@ -364,6 +409,7 @@ private:
     // Backdrop under transparent images (see SetTransparentBackground).
     TransparentImageBackground transparentBackground = TransparentImageBackground::SolidColor;
     Color transparentColor = Color(255, 255, 255, 255);
+    Color autoBackdropColor = Color(255, 255, 255, 255);
 
     // View geometry for the current image.
     double zoom = 1.0;        // multiple of the fit scale (1.0 == fit)
@@ -433,6 +479,28 @@ public:
     // the move fail on Windows, where an open handle blocks the rename.
     void CloseFile();
 
+    // ===== OPENING ONCE THE WINDOW SHOWS =====
+    // For a host that shows its window and then opens a file - a viewer
+    // window, an application started with a file. The viewer shows at once
+    // that a file is on its way: a turning ring where the file will show and
+    // the file's name in the info bar (never "No media", which means nothing
+    // was asked for), and onCurrentFileChanged names it so a window title can
+    // follow. The file is opened once a frame of that has been drawn, so the
+    // window appears straight away rather than after the folder has been read
+    // and the file decoded. Any other OpenFolder / OpenFile / SetFiles /
+    // CloseFile before then replaces it. Without a running application (a
+    // test, a tool) they open at once.
+    void OpenFileWhenShown(const std::string& filePath);
+    void OpenFolderWhenShown(const std::string& folderPath, const std::string& selectFile = "");
+    void SetFilesWhenShown(const std::vector<std::string>& files, size_t startIndex = 0);
+    // True from one of those until its file is opened; the path it shows.
+    bool IsLoading() const { return !loadingPath.empty(); }
+    const std::string& GetLoadingPath() const { return loadingPath; }
+
+    // The file on show changed: the path now shown, the one being loaded
+    // (see OpenFileWhenShown), or "" when nothing is. For a window title.
+    std::function<void(const std::string& path)> onCurrentFileChanged;
+
     size_t GetCount() const { return playlist.size(); }
     size_t GetCurrentIndex() const { return currentIndex; }
     std::string GetCurrentPath() const;
@@ -477,13 +545,27 @@ public:
     UltraCanvasMediaSurface* GetSurface() const { return surface.get(); }
 
     // ===== BACKDROP BEHIND TRANSPARENT IMAGES =====
-    // Forwarded to the display surface: what transparent image pixels read
-    // against — a preset solid colour (default white) or the checkered
-    // pattern used by image editors.
+    // What transparent image pixels, and a drawing in the vector view, read
+    // against — Auto (the default: a colour picked for each file, see
+    // ContrastingBackdropFor), a preset solid colour or the checkered pattern
+    // used by image editors. The vector view cannot draw the pattern: while
+    // it is chosen a drawing gets the Auto colour, and the strip offers no
+    // checkered swatch there.
     void SetTransparentBackground(TransparentImageBackground mode);
     TransparentImageBackground GetTransparentBackground() const;
     void SetTransparentColor(const Color& c);
     Color GetTransparentColor() const;
+    // The colour Auto picked for the file on show (white when nothing shown
+    // has transparency, or Auto is not in force).
+    Color GetAutoBackdropColor() const;
+    // The backdrop Auto would pick under `pixels` (straight, not
+    // premultiplied, alpha; fully transparent ones count for nothing): white,
+    // mid grey (153) or dark grey (51) - all in the strip's palette -
+    // whichever gives the most of the artwork a contrast of 4.5:1 or better,
+    // the brighter one on a tie. So black line art gets white, a white logo
+    // dark grey, and artwork in both black and white mid grey. White when
+    // there is nothing visible to judge.
+    static Color ContrastingBackdropFor(const std::vector<Color>& pixels);
     // Forwarded to the display surface: whether fit-to-window enlarges a
     // picture smaller than the pane (the default) or shows it at its own
     // size. See UltraCanvasMediaSurface::SetFitEnlarges.
@@ -632,8 +714,12 @@ public:
     bool AcceptsFocus() const override { return true; }
     void SetWindow(UltraCanvasWindowBase* win) override;
     bool OnEvent(const UCEvent& event) override;
-    // Lays the children out, then fits the Details panel over the active view.
+    // Lays the children out, then fits the Details panel over the active view
+    // (and the loading ring over the middle of the display).
     void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+    // Draws the children; the first frame drawn while a file is loading
+    // (OpenFileWhenShown) sends it on its way.
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
     // Whether a path is a media file this viewer can display.
     static bool IsSupportedMedia(const std::string& path);
@@ -644,13 +730,31 @@ public:
     // picture, a vector drawing or a 3D model from a remote drive to preview
     // it, and not a two-hour video.
     static MediaKind ClassifyFile(const std::string& path);
+    // Whether a file the viewer shows as Text is a page it renders rather
+    // than its source: .html / .htm / .xhtml / .xht / .shtml, and an .xml
+    // whose content is XHTML (an <html> root or the XHTML DOCTYPE - the
+    // start of the file is read for that). Other XML stays source text.
+    static bool IsHtmlFile(const std::string& path);
+    // An e-mail message (.eml, Apple Mail's .emlx, an Outlook .msg) shown as
+    // the message - header, body rendered, attachments listed with Open and
+    // Save - in the same page view. A .msg must be a compound file (another
+    // program's .msg is text). An .eml / .emlx needs UltraNet's MIME reader
+    // (ULTRACANVAS_HAS_NET); without it they are text.
+    static bool IsMailMessageFile(const std::string& path);
+    // A saved web page (.mht / .mhtml) shown as the page it saved, its style
+    // sheets and pictures read from the archive's own parts. False without
+    // UltraNet's MIME reader, as IsMailMessageFile.
+    static bool IsWebArchiveFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
-    // The panel the "Details" button opens over the display area: file facts
-    // and, for images, the file's own metadata (EXIF / IPTC / XMP / ICC /
-    // PNG text), laid out as Markdown tables in a scrollable text area.
-    // Works for every kind of file the viewer shows. Escape closes it. The
-    // text is built on opening and for each file loaded while it is open.
+    // The panel the "Details" button opens over the display area: a group box
+    // whose caption names what is shown ("Image information") and whose close
+    // button (or Escape) closes it. Inside, file facts and, for images, the
+    // file's own metadata (EXIF / IPTC / XMP / ICC / PNG text), laid out as
+    // Markdown tables in a scrollable text area; for a GIF, its colour table
+    // as a block of swatches under them. Works for every kind of file the
+    // viewer shows. The text is built on opening and for each file loaded
+    // while it is open.
     void SetDetailsVisible(bool visible);
     void ToggleDetails() { SetDetailsVisible(!IsDetailsVisible()); }
     bool IsDetailsVisible() const;
@@ -673,6 +777,15 @@ private:
     // Show the backdrop palette for a transparent image (and hide it for
     // everything else), and mark the swatch the current backdrop uses.
     void UpdateTransparencyPalette();
+    // Work out the Auto backdrop for what is on show now (a transparent
+    // picture's pixels, or the drawing in the vector view rasterized small),
+    // when Auto is in force, then ApplyDrawingBackdrop().
+    void RefreshAutoBackdrop();
+    // The vector view's background: the strip's colour, or the Auto one.
+    void ApplyDrawingBackdrop();
+    // The zoom box reads the zoom on show: Fit, the step it is at, or the
+    // percentage between steps; blank where nothing zooms.
+    void UpdateZoomBox();
     // Mark the swatch matching the backdrop the surface is using (none when it
     // is a colour the palette does not hold).
     void SyncBackdropSelection();
@@ -689,6 +802,10 @@ private:
     // bitmap, none for anything else.
     MediaAdjustments SurfaceAdjustmentsFor(const std::string& path) const;
     void UpdateInfoBar();
+    // The shown video's technical facts: its headers read once per file
+    // (ReadVideoFileInfo), with what the playback backend reports filling the
+    // gaps of a container that reader does not know (WMV, MPEG-TS).
+    const VideoFileInfo& ShownVideoInfo(const std::string& path);
     // Unlock's question; `note` heads it when it is asked again.
     void AskForPassword(const std::string& note);
     // What a locked PDF shows: a note in the text view.
@@ -698,8 +815,13 @@ private:
     void ShowNote(const std::string& plain);
     void UpdateDetailedInfo();
     // Hand the Details panel its text: "Title\n\nKey: value" lines (plus any
-    // "## " / "### " headings) converted to Markdown tables.
+    // "## " / "### " headings). The title becomes the panel's caption, the
+    // rest Markdown tables. The palette block is cleared; UpdateDetailedInfo
+    // fills it afterwards for a GIF.
     void ShowDetailsText(const std::string& plain);
+    // The block of swatches under the Details text: `colours` with
+    // `caption` above them, or hidden when `colours` is empty.
+    void ShowDetailsPalette(const std::vector<Color>& colours, const std::string& caption);
     void ApplyAdjustments();          // push `adjustments` to the surface
     // Put every adjustment control back to its default without firing one
     // re-render per control (the callbacks are suppressed while they move).
@@ -751,6 +873,18 @@ private:
     // (focus is nowhere, or on a display view that would swallow the key).
     bool HandleViewerKey(const UCEvent& event);
     bool HandleFilteredKey(const UCEvent& event);
+    // The display-only text area under a window point - the open Details
+    // panel's text, else the shown text view or note - or null. A press there
+    // gives the widget the keyboard focus (those areas never take it), so
+    // Ctrl+C copies the text selected with the mouse instead of reaching
+    // whatever held the focus before (in UltraFiler the file display, which
+    // would copy the files).
+    UltraCanvasTextArea* SelectableTextAt(const Point2Di& windowPoint) const;
+    // Ctrl+C / Ctrl+Insert / Ctrl+A for the display-only text areas: copy the
+    // selection (the Details panel's first, then the text view's) or select
+    // all of the area last pressed in. False when the key is none of those or
+    // there is nothing to copy, so the key goes on as before.
+    bool HandleTextCopyKey(const UCEvent& event);
     void InstallKeyFilter();
     void RemoveKeyFilter();
     std::string KeyFilterId() const;
@@ -758,6 +892,8 @@ private:
     UltraCanvasUIElement* ActiveViewElement() const;
     // True when `element` is one of the display views (not a toolbar control).
     bool IsDisplayView(const UltraCanvasUIElement* element) const;
+    // The HTML page view, or any element of the page built inside it.
+    bool IsInWebView(const UltraCanvasUIElement* element) const;
     // Visible with every ancestor visible (IsVisible() is per-element only).
     bool IsEffectivelyVisible() const;
     // The active view uses the bare arrow keys itself (spreadsheet cells), so
@@ -799,6 +935,21 @@ private:
     // the text view's place (activeKind Text) by ShowNote; `noteShown` says so.
     std::shared_ptr<UltraCanvasUIElement>    noteView;
     bool noteShown = false;
+    // An HTML page (IsHtmlFile) rendered as a browser shows it, local files
+    // only (UltraCanvasWebView). Shown in the text view's place (activeKind
+    // Text); `webShown` says so.
+    std::shared_ptr<UltraCanvasUIElement>    webView;
+    bool webShown = false;
+    // The parts of the saved web page (.mht) on show, which its style sheets
+    // and pictures are answered from (cleared with the page).
+    std::shared_ptr<struct MediaViewerWebArchive> webArchive;
+    // A message's attachment links: Open writes it to a temporary folder and
+    // shows it in attachmentWindow when the viewer shows its kind, else in
+    // the system's application - never a program or script, which is only
+    // offered to be saved; Save asks where (UltraCanvasFileLoader).
+    void OpenAttachment(size_t index);
+    void SaveAttachment(size_t index);
+    std::shared_ptr<class UltraCanvasMediaViewerWindow> attachmentWindow;
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
     std::shared_ptr<UltraCanvasUIElement>    vectorView;    // UltraCanvasVectorElement
@@ -811,10 +962,18 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    pluginView;
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
-    // The Details panel (UltraCanvasTextArea in MarkdownHybrid mode),
-    // positioned absolutely over the display area; see SetDetailsVisible().
+    // The Details panel (UltraCanvasGroupBox), positioned absolutely over the
+    // display area; see SetDetailsVisible(). It holds the text
+    // (UltraCanvasTextArea in MarkdownHybrid mode) and, for a GIF, a caption
+    // and the palette (UltraCanvasColorSwatchBar).
     std::shared_ptr<UltraCanvasUIElement>    detailsView;
-    std::string detailsMarkdown;   // what detailsView shows for the current file
+    std::shared_ptr<UltraCanvasUIElement>    detailsText;
+    // The display-only text area the mouse last went down in (Ctrl+A target).
+    UltraCanvasTextArea*                     lastPressedText = nullptr;
+    std::shared_ptr<UltraCanvasUIElement>    detailsPaletteCaption;
+    std::shared_ptr<UltraCanvasUIElement>    detailsPalette;
+    std::string detailsMarkdown;   // what detailsText shows for the current file
+    std::string detailsPaletteText; // the caption's text with no swatch under the pointer
     MediaKind activeKind = MediaKind::Image;
 
     // Details text for the current UCD container (empty when the current file
@@ -844,6 +1003,24 @@ private:
     // Watched for the user's absence - the session lock, the idle timer -
     // exactly while a password is kept or a file is shown unlocked.
     void UpdateAbsenceWatch();
+
+    // ----- Loading (OpenFileWhenShown) -----
+    // Shows the loading state for `path` and keeps `open` until a frame of it
+    // has been drawn (Render) - or a moment has passed without one.
+    void BeginLoading(const std::string& path, std::function<void()> open);
+    // The loading state goes (the ring stops, "No media" is back): the file
+    // is being opened, or something else replaced it.
+    void EndLoading();
+    void SchedulePendingOpen(unsigned delayMs);
+    void RunPendingOpen(unsigned generation);
+    std::string loadingPath;
+    std::function<void()> pendingOpen;
+    unsigned openGeneration = 0;        // which BeginLoading a scheduled open belongs to
+    bool pendingOpenScheduled = false;  // the after-a-frame open is on its way
+    std::shared_ptr<UltraCanvasUIElement> loadingIndicator;   // UltraCanvasBusyIndicator
+    std::string lastReportedFile;       // what onCurrentFileChanged said last
+    void ReportCurrentFile(const std::string& path);
+
     std::chrono::seconds forgetAfterIdle = kDefaultForgetPasswordsAfterIdle;
     std::chrono::steady_clock::time_point lastActivity = std::chrono::steady_clock::now();   // last key or mouse input
     bool tryingKeptPasswords = false;   // UnlockWithPassword is called by UnlockFromRememberedPasswords
@@ -879,6 +1056,11 @@ private:
     // A finished PreviewClip stays muted while it sits paused; the sound comes
     // back when the user resumes it themselves (the video element's onPlay).
     bool videoClipUnmutePending = false;
+    // ShownVideoInfo's last read, and the file (path and size) it is for.
+    VideoFileInfo videoFileInfo;
+    std::string videoFileInfoPath;
+    uintmax_t videoFileInfoSize = 0;
+    VideoFileInfo shownVideoInfo;      // videoFileInfo plus the backend's facts
     MediaTransition transition = MediaTransition::CrossFade;
     int transitionDurationMs = 450;
 

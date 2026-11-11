@@ -9,6 +9,7 @@
 // importer parses with tinyxml2 and leans on the storage utilities
 // (ParsePathString, ParseColorString, ParseTransformString), and applies
 // <style> sheets through the HTMLReader's CSS parser.
+// Version: 1.6.0 - a <tspan>'s own fill colour: a span of a text in its own colour, both ways
 // Version: 1.5.1 - <style> sheets match through the HTMLReader's selector
 //                  matcher (HTML::MatchingRules over SelectorTraits); the copy
 //                  of it that lived here is gone
@@ -19,7 +20,7 @@
 // Version: 1.2.0 - <style> sheets: class/id/type/descendant selectors cascade
 //                  with presentation attributes and style="" (SVG 2 order)
 // Version: 1.1.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -680,6 +681,12 @@ private:
         if (std::fabs(s.LetterSpacing) > 1e-6f &&
             differs([](const VectorTextStyle& t) { return t.LetterSpacing; }))
             a << " letter-spacing=\"" << Num(s.LetterSpacing) << "\"";
+        // A span's own colour (the text's own is its fill, written with the
+        // element's style).
+        if (base && s.FillColor) {
+            a << " fill=\"" << HexColor(*s.FillColor) << "\"";
+            if (s.FillColor->a < 255) a << " fill-opacity=\"" << Num(s.FillColor->a / 255.0) << "\"";
+        }
     }
 
     void WriteText(std::ostringstream& out, const VectorText& t) {
@@ -2276,6 +2283,17 @@ private:
                 if (const char* txt = child->GetText()) span.Text = txt;
                 span.Style = t->BaseStyle;
                 ApplyTextStyle(child, span.Style);
+                // A tspan's own fill colour (a gradient or "none" stays the
+                // text's).
+                if (auto paint = ParsePaint(Prop(child, "fill"))) {
+                    if (const auto* colour = std::get_if<Color>(&*paint)) {
+                        Color c = *colour;
+                        const std::string alpha = Prop(child, "fill-opacity");
+                        if (!alpha.empty())
+                            c.a = static_cast<uint8_t>(std::lround(std::clamp(ParseOpacity(alpha, 1.0f), 0.0f, 1.0f) * c.a));
+                        span.Style.FillColor = c;
+                    }
+                }
                 if (child->Attribute("x") || child->Attribute("y")) {
                     span.Position = Point2Dd(
                             LengthAttr(child, "x", t->Position.x),

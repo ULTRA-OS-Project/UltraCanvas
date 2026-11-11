@@ -1,9 +1,10 @@
 // VideoFX/core/VideoFXUnavailable.cpp
 // Built instead of the FFmpeg sources when FFmpeg is not found: the API links,
 // VideoFX_IsAvailable() says false, and every operation returns NotAvailable.
+// Version: 0.17.0 - VideoFXFrameRecorder: not available
 // Version: 0.14.0 - VideoFX_GetFileFormats: none; VideoFX_SetPictureReader: nothing to read with
 // Version: 0.12.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -186,5 +187,22 @@ VideoFXResult VideoFX_DetectFaces(const VideoFXFrame& image, std::vector<VideoFX
     return VideoFXResult::Ok;
 }
 VideoFXResult VideoFX_GenerateTestClip(const std::string&, double, int, int, double, bool) { return Unavailable(); }
+
+// The frame recorder: opens nothing, records nothing
+struct VideoFXFrameRecorder::Impl {};
+VideoFXFrameRecorder::VideoFXFrameRecorder() = default;
+VideoFXFrameRecorder::~VideoFXFrameRecorder() = default;
+VideoFXResult VideoFXFrameRecorder::Open(const std::string&, const VideoFXRecorderSettings&) { return Unavailable(); }
+VideoFXResult VideoFXFrameRecorder::PushFrame(const uint8_t*, int, int, int, double, VideoFXPixelLayout) {
+    return Unavailable();
+}
+VideoFXResult VideoFXFrameRecorder::PushFrame(const VideoFXFrame&) { return Unavailable(); }
+VideoFXResult VideoFXFrameRecorder::Close() { return VideoFXResult::Ok; }
+bool VideoFXFrameRecorder::IsOpen() const { return false; }
+int64_t VideoFXFrameRecorder::GetFrameCount() const { return 0; }
+double VideoFXFrameRecorder::GetDuration() const { return 0.0; }
+int VideoFXFrameRecorder::GetWidth() const { return 0; }
+int VideoFXFrameRecorder::GetHeight() const { return 0; }
+std::string VideoFXFrameRecorder::GetEncoderName() const { return ""; }
 
 } // namespace VideoFX

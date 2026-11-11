@@ -2,6 +2,7 @@
 // The Markdown the pages show: one action per numbered step, links that
 // open, the SDK named for real, and the plain-text reduction the report uses;
 // and the words of the Tools step's rows and of what Install will do.
+// Version: 0.2.4 - the SDK linked to its address on start.ultraos.eu, fetched by Download
 // Version: 0.2.3 - InstallPreview with switches off
 // Version: 0.2.2 - the SDK named with the download page, not a release asset link
 // Version: 0.2.1 - no AI assistant: its guide and --assistant none
@@ -35,9 +36,11 @@ std::vector<std::string> NumberedSteps(const std::string& markdown) {
 }
 } // namespace
 
-TEST(PlatformGuide_names_the_real_sdk_archive_and_its_download_page) {
+TEST(PlatformGuide_names_the_real_sdk_archive_and_its_address) {
     const std::string guide = PlatformGuide(Platform::Windows, "0.9.235", "x86_64");
-    REQUIRE(guide.find("`UltraCanvas-SDK-Windows-0.9.235-x86_64.zip` from [the download page](https://ultraos.eu/download-file/)") != std::string::npos);
+    REQUIRE(guide.find("*Download* fetch and unpack the prebuilt SDK "
+                       "[UltraCanvas-SDK-Windows-0.9.235-x86_64.zip]"
+                       "(https://start.ultraos.eu/pub/0.9.235/UltraCanvas-SDK-Windows-0.9.235-x86_64.zip)") != std::string::npos);
     REQUIRE(guide.find("[https://www.msys2.org](https://www.msys2.org)") != std::string::npos);
     REQUIRE(guide.find("`pacman -Syu`") != std::string::npos);
     REQUIRE(PlatformGuide(Platform::Linux, "0.9.235", "arm64").find("UltraCanvas-SDK-Linux-0.9.235-arm64.tar.xz") != std::string::npos);

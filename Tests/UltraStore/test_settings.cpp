@@ -29,6 +29,7 @@ TEST(settings_round_trip_through_the_file) {
     s.windowHeight = 600;
     s.downloadsExpanded = true;
     s.downloadsHeight = 240;
+    s.openOrder = {"o-1", "secret", "org.x.app", "9.90", "EUR", "https://pay.example/pay/o-1", "2026-10-27"};
     {
         auto f = UltraCanvas::UltraCanvasAppSettings::AtFile(file);
         s.WriteTo(f);
@@ -47,6 +48,13 @@ TEST(settings_round_trip_through_the_file) {
     REQUIRE_EQ(back.windowHeight, 600);
     REQUIRE(back.downloadsExpanded);
     REQUIRE_EQ(back.downloadsHeight, 240);
+    REQUIRE_EQ(back.openOrder.orderId, std::string("o-1"));
+    REQUIRE_EQ(back.openOrder.secret, std::string("secret"));
+    REQUIRE_EQ(back.openOrder.checkoutUrl, std::string("https://pay.example/pay/o-1"));
+    REQUIRE_EQ(back.OrderToResume("2026-10-29").orderId, std::string("o-1"));   // two days: still resumed
+    REQUIRE(back.OrderToResume("2026-10-30").Empty());                            // older: dropped
+    REQUIRE(back.OrderToResume("2026-10-26").Empty());                            // a clock set back: dropped
+    REQUIRE(StoreSettings().OrderToResume("2026-10-29").Empty());
     std::error_code ec;
     std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir), ec);
 }

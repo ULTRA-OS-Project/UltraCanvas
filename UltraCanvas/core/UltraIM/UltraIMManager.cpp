@@ -1,8 +1,14 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
+// Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
+// Version: 0.1.2 - UltraIM_ResendAuthCode
+// Version: 0.1.4 - confirming the e-mail and phone; account recovery
+// Version: 0.1.3 - a module is loaded only when UltraIM_PluginAbiVersion answers this host's version
+// Version: 0.1.2 - the account's profile and its sign-in protection
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "UltraIM/UltraIMCore.h"
@@ -49,6 +55,7 @@ struct ManagerState {
     UltraIMConfig config;
     std::map<std::string, ProviderPtr> providers;
     UltraIMDispatcher dispatcher;
+    UltraIMPreviewMaker previewMaker;
     std::map<UltraIMSubscriptionId, std::shared_ptr<UltraIMEventCallback>> subscribers;
     UltraIMSubscriptionId nextSubscriptionId = 1;
     std::set<std::string> loadedModules;     // canonical UTF-8 paths
@@ -150,6 +157,7 @@ UltraIMProviderInfo DescribeProvider(const IUltraIMProviderPlugin& provider) {
     info.localUserId = provider.GetLocalUserId();
     info.authStep = provider.GetAuthStep();
     info.authHint = provider.GetAuthHint();
+    info.authResendHint = provider.GetAuthResendHint();
     info.hasStoredSession = provider.HasStoredSession();
     return info;
 }
@@ -177,9 +185,24 @@ bool IsModuleFile(const fs::path& path) {
 #endif
 }
 
-// Loads one module and calls its entry point. Modules are never unloaded:
-// a provider's code (its vtable, the callbacks it handed out) must outlive
-// every task still queued in the dispatcher.
+// Whether a module built for `moduleVersion` (-1: it does not say) may be
+// called; says why not on stderr. Version 1 modules do not say, and they
+// accepted any host - so the host refuses them, not they the host.
+bool AcceptModuleVersion(const fs::path& path, int moduleVersion) {
+    if (moduleVersion == ULTRAIM_PLUGIN_HOST_ABI_VERSION) return true;
+    if (moduleVersion < 0)
+        std::fprintf(stderr, "[UltraIM] %s does not say which UltraIM it was built for (an old module); "
+                             "skipped - rebuild it\n", UltraCanvas::PathToUtf8(path).c_str());
+    else
+        std::fprintf(stderr, "[UltraIM] %s was built for UltraIM ABI %d, this is %d; skipped - rebuild it\n",
+                     UltraCanvas::PathToUtf8(path).c_str(), moduleVersion, ULTRAIM_PLUGIN_HOST_ABI_VERSION);
+    return false;
+}
+
+// Loads one module and calls its entry point - once it has said it was
+// built for this host's version. Modules are never unloaded: a provider's
+// code (its vtable, the callbacks it handed out) must outlive every task
+// still queued in the dispatcher.
 void LoadModule(const fs::path& path) {
 #if defined(_WIN32)
     HMODULE module = LoadLibraryW(path.c_str());   // path-string-ok: wide path
@@ -188,6 +211,8 @@ void LoadModule(const fs::path& path) {
                      UltraCanvas::PathToUtf8(path).c_str(), GetLastError());
         return;
     }
+    auto version = reinterpret_cast<UltraIM_PluginAbiVersionFn>(
+        reinterpret_cast<void*>(GetProcAddress(module, "UltraIM_PluginAbiVersion")));
     auto init = reinterpret_cast<UltraIM_PluginInitFn>(
         reinterpret_cast<void*>(GetProcAddress(module, "UltraIM_PluginInit")));
 #else
@@ -197,8 +222,10 @@ void LoadModule(const fs::path& path) {
                      UltraCanvas::PathToUtf8(path).c_str(), dlerror());
         return;
     }
+    auto version = reinterpret_cast<UltraIM_PluginAbiVersionFn>(dlsym(module, "UltraIM_PluginAbiVersion"));
     auto init = reinterpret_cast<UltraIM_PluginInitFn>(dlsym(module, "UltraIM_PluginInit"));
 #endif
+    if (!AcceptModuleVersion(path, version ? version() : -1)) return;
     if (!init) {
         std::fprintf(stderr, "[UltraIM] %s has no UltraIM_PluginInit; skipped\n",
                      UltraCanvas::PathToUtf8(path).c_str());
@@ -270,6 +297,49 @@ bool UltraIM_IsInitialized() {
 
 const UltraIMConfig& UltraIM_GetConfig() {
     return State().config;
+}
+
+// ============================================================================
+// PREVIEW PICTURES
+// ============================================================================
+
+void UltraIM_SetPreviewMaker(UltraIMPreviewMaker maker) {
+    std::lock_guard<std::mutex> lock(State().mutex);
+    State().previewMaker = std::move(maker);
+}
+
+std::string UltraIM_MakePreview(const std::string& path, const std::string& mimeType, int maxSide,
+                                int& outWidth, int& outHeight) {
+    outWidth = outHeight = 0;
+    UltraIMPreviewMaker maker;
+    std::string base;
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        maker = State().previewMaker;
+        base = State().config.cacheDirectory.empty() ? State().config.dataDirectory : State().config.cacheDirectory;
+    }
+    if (!maker || path.empty() || maxSide <= 0) return std::string();
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = base.empty() ? fs::temp_directory_path(ec) / "ultraim-previews"
+                                      : UltraCanvas::PathFromUtf8(base) / "previews";
+    fs::create_directories(dir, ec);
+    // Named by the file's path, size and time, so the same file gives the
+    // same preview and a changed one a new one.
+    // (The write time's count is a 128-bit integer under libc++, which
+    // to_string has no overload for: through a fixed width.)
+    const long long stamp = static_cast<long long>(
+        fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec).time_since_epoch().count());
+    const unsigned long long size = static_cast<unsigned long long>(fs::file_size(UltraCanvas::PathFromUtf8(path), ec));
+    std::vector<uint8_t> digest;
+    const std::string key = path + "|" + std::to_string(size) + "|" + std::to_string(stamp) + "|" + std::to_string(maxSide);
+    UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, key.data(), key.size(), digest);
+    const std::string out = UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8(UltraCrypt_ToHex(digest).substr(0, 32) + ".jpg"));
+    if (!maker(path, mimeType, maxSide, out, outWidth, outHeight) || outWidth <= 0 || outHeight <= 0) {
+        fs::remove(UltraCanvas::PathFromUtf8(out), ec);
+        return std::string();
+    }
+    return out;
 }
 
 // ============================================================================
@@ -404,6 +474,16 @@ void UltraIM_SignIn(const std::string& providerId,
         return;
     }
     provider->SignIn(credentials, callback ? callback : [](const UltraIMResult&) {});
+}
+
+void UltraIM_ResendAuthCode(const std::string& providerId, UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    provider->ResendAuthCode(callback ? callback : [](const UltraIMResult&) {});
 }
 
 void UltraIM_SignOut(const std::string& providerId) {
@@ -582,6 +662,14 @@ UltraIMResult UltraIM_SendImage(const std::string& providerId, const std::string
     return provider->SendImage(conversationId, localPath, caption, WithClientId(options));
 }
 
+UltraIMResult UltraIM_SendVideo(const std::string& providerId, const std::string& conversationId,
+                                const std::string& localPath, const std::string& caption,
+                                const UltraIMSendOptions& options) {
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return NotFound(providerId);
+    return provider->SendVideo(conversationId, localPath, caption, WithClientId(options));
+}
+
 UltraIMResult UltraIM_SendSticker(const std::string& providerId, const std::string& conversationId,
                                   const std::string& packId, const std::string& stickerId,
                                   const UltraIMSendOptions& options) {
@@ -595,6 +683,18 @@ UltraIMResult UltraIM_SendVoiceNote(const std::string& providerId, const std::st
     ProviderPtr provider = FindProvider(providerId);
     if (!provider) return NotFound(providerId);
     return provider->SendVoiceNote(conversationId, localPath, WithClientId(options));
+}
+
+void UltraIM_DownloadAttachment(const std::string& providerId, const std::string& conversationId,
+                                const std::string& messageId, UltraIMAttachmentCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMAttachment>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMAttachment());
+        return;
+    }
+    provider->DownloadAttachment(conversationId, messageId,
+                                 callback ? callback : [](const UltraIMResult&, const UltraIMAttachment&) {});
 }
 
 UltraIMResult UltraIM_DeleteMessage(const std::string& providerId, const std::string& conversationId,
@@ -700,6 +800,102 @@ void UltraIM_FetchSharedCredentials(const std::string& providerId, const std::st
     }
     provider->FetchSharedCredentials(forProviderId,
                                      callback ? callback : [](const UltraIMResult&, const UltraIMCredentials&) {});
+}
+
+void UltraIM_FetchAccountProfile(const std::string& providerId, UltraIMAccountProfileCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMAccountProfile>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMAccountProfile());
+        return;
+    }
+    provider->FetchAccountProfile(callback ? callback : [](const UltraIMResult&, const UltraIMAccountProfile&) {});
+}
+
+void UltraIM_UpdateAccountProfile(const std::string& providerId, const UltraIMAccountProfile& profile,
+                                  UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    provider->UpdateAccountProfile(profile, callback ? callback : [](const UltraIMResult&) {});
+}
+
+UltraIMSignInProtection UltraIM_GetSignInProtection(const std::string& providerId) {
+    ProviderPtr provider = FindProvider(providerId);
+    return provider ? provider->GetSignInProtection() : UltraIMSignInProtection::DeviceKey;
+}
+
+UltraIMResult UltraIM_StartAuthenticatorSetup(const std::string& providerId, std::string& outOtpAuthUri) {
+    outOtpAuthUri.clear();
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return NotFound(providerId);
+    return provider->StartAuthenticatorSetup(outOtpAuthUri);
+}
+
+void UltraIM_SetSignInProtection(const std::string& providerId, const UltraIMProtectionChange& change,
+                                 UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    provider->SetSignInProtection(change, callback ? callback : [](const UltraIMResult&) {});
+}
+
+namespace {
+template <typename Call>
+void ForwardResult(const std::string& providerId, UltraIMResultCallback onResult, Call call) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    call(*provider, callback ? callback : [](const UltraIMResult&) {});
+}
+} // namespace
+
+void UltraIM_VerifyContact(const std::string& providerId, UltraIMContactChannel channel, const std::string& code,
+                           UltraIMResultCallback onResult) {
+    ForwardResult(providerId, std::move(onResult), [&](IUltraIMProviderPlugin& p, UltraIMResultCallback cb) {
+        p.VerifyContact(channel, code, std::move(cb));
+    });
+}
+
+void UltraIM_ResendContactCode(const std::string& providerId, UltraIMContactChannel channel,
+                               UltraIMResultCallback onResult) {
+    ForwardResult(providerId, std::move(onResult), [&](IUltraIMProviderPlugin& p, UltraIMResultCallback cb) {
+        p.ResendContactCode(channel, std::move(cb));
+    });
+}
+
+void UltraIM_SetRecoveryEnabled(const std::string& providerId, bool enabled, UltraIMResultCallback onResult) {
+    ForwardResult(providerId, std::move(onResult), [&](IUltraIMProviderPlugin& p, UltraIMResultCallback cb) {
+        p.SetRecoveryEnabled(enabled, std::move(cb));
+    });
+}
+
+void UltraIM_StartRecovery(const std::string& providerId, const std::string& server, const std::string& address,
+                           UltraIMRecoveryChallengeCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMRecoveryChallenge>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMRecoveryChallenge());
+        return;
+    }
+    provider->StartRecovery(server, address,
+                            callback ? callback : [](const UltraIMResult&, const UltraIMRecoveryChallenge&) {});
+}
+
+void UltraIM_FinishRecovery(const std::string& providerId, const UltraIMRecoveryAnswer& answer,
+                            UltraIMResultCallback onResult) {
+    ForwardResult(providerId, std::move(onResult), [&](IUltraIMProviderPlugin& p, UltraIMResultCallback cb) {
+        p.FinishRecovery(answer, std::move(cb));
+    });
 }
 
 // ============================================================================

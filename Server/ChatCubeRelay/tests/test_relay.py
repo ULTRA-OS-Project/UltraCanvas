@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from chatcube_relay.app import create_app
 from chatcube_relay.config import Settings
 from chatcube_relay.identity import login_message, register_message, user_id_for
+from chatcube_relay.store import Store
 
 
 class Person:
@@ -109,6 +110,34 @@ def test_contacts_and_presence(client):
             contacts = client.get("/v1/contacts", headers=alice.auth).json()["contacts"]
             assert contacts[0]["presence"] == "online"
         assert a.receive_json() == {"type": "presence", "from": bob.user_id, "status": "offline"}
+
+
+def test_recovery_email_and_phone_are_the_owners_alone(client):
+    alice = Person(client, "Alice").join()
+    bob = Person(client, "Bob").join()
+    r = client.put("/v1/profile", headers=alice.auth,
+                   json={"email": "alice@example.org", "phone": "+49 151 2345 6789"})
+    assert r.status_code == 200, r.text
+    assert r.json()["email"] == "alice@example.org" and r.json()["phone"] == "+49 151 2345 6789"
+    assert r.json()["display_name"] == "Alice"          # left out: unchanged
+    mine = client.get("/v1/profile", headers=alice.auth).json()
+    assert mine["email"] == "alice@example.org" and mine["user_id"] == alice.user_id
+    # Nobody else is told: not by id, not as a contact.
+    seen = client.get("/v1/users/" + alice.user_id, headers=bob.auth).json()
+    assert "email" not in seen and "phone" not in seen
+    client.put("/v1/contacts/" + alice.user_id, headers=bob.auth)
+    contact = client.get("/v1/contacts", headers=bob.auth).json()["contacts"][0]
+    assert "email" not in contact and "phone" not in contact
+    # A name alone leaves them; "" removes one.
+    r = client.put("/v1/profile", headers=alice.auth, json={"display_name": "Alice B."})
+    assert r.json()["email"] == "alice@example.org" and r.json()["display_name"] == "Alice B."
+    r = client.put("/v1/profile", headers=alice.auth, json={"phone": ""})
+    assert r.json()["phone"] == "" and r.json()["email"] == "alice@example.org"
+    # What is plainly not one is refused.
+    assert client.put("/v1/profile", headers=alice.auth, json={"email": "alice"}).status_code == 422
+    assert client.put("/v1/profile", headers=alice.auth, json={"phone": "0151 2345"}).status_code == 422
+    assert client.put("/v1/profile", headers=alice.auth, json={"phone": "+1 2"}).status_code == 422
+    assert client.get("/v1/profile").status_code == 401
 
 
 def test_offline_queue_is_store_and_forward(client):
@@ -243,3 +272,319 @@ def test_telegram_credentials_come_from_the_environment(monkeypatch):
     assert s.telegram_api_id == 1017053 and s.telegram_api_hash == "0123456789abcdef0123456789abcdef"
     monkeypatch.setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "")
     assert Settings.from_environment().telegram_api_id == 0
+
+
+# ---- confirming the e-mail and phone; account recovery ------------------------
+
+import json
+import os
+import re
+import time as _time
+import urllib.parse
+
+from cryptography.hazmat.primitives.serialization import NoEncryption, PrivateFormat
+
+
+@pytest.fixture
+def recovering(tmp_path):
+    """A relay that offers recovery, its e-mail and SMS going to an outbox file."""
+    outbox = tmp_path / "outbox.jsonl"
+    settings = Settings(database=str(tmp_path / "relay.sqlite3"), outbox=str(outbox),
+                        recovery_key=base64.b64encode(os.urandom(32)).decode())
+    with TestClient(create_app(settings)) as c:
+        c.outbox = outbox
+        yield c
+
+
+def sent(client, channel: str, to: str, count: int = 1, timeout: float = 5.0) -> list[dict]:
+    """The messages to `to` on `channel`, once at least `count` are there
+    (they are sent on a worker thread after the answer)."""
+    deadline = _time.time() + timeout
+    while True:
+        found = []
+        if client.outbox.exists():
+            for line in client.outbox.read_text().splitlines():
+                entry = json.loads(line)
+                if entry["channel"] == channel and entry["to"] == to:
+                    found.append(entry)
+        if len(found) >= count or _time.time() > deadline:
+            return found
+        _time.sleep(0.05)
+
+
+def code_in(entry: dict) -> str:
+    return re.search(r"\b(\d{6})\b", entry.get("subject", "") + " " + entry["text"]).group(1)
+
+
+def link_in(entry: dict) -> str:
+    """The path and query of the link in an e-mail (the test client's host is
+    the relay's own address)."""
+    url = re.search(r"https?://\S+", entry["text"]).group(0)
+    parts = urllib.parse.urlsplit(url)
+    return parts.path + "?" + parts.query
+
+
+def token_of(link: str) -> str:
+    return urllib.parse.parse_qs(urllib.parse.urlsplit(link).query)["token"][0]
+
+
+def secret_of(person: Person) -> str:
+    seed = person.key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+    return base64.b64encode(seed + person.public).decode()
+
+
+def confirmed(client, person: Person, email: str) -> None:
+    """`email` given and confirmed by the link e-mailed to it."""
+    r = client.put("/v1/profile", headers=person.auth, json={"email": email})
+    assert r.status_code == 200 and r.json()["sent"] == ["email"], r.text
+    assert not r.json()["email_verified"]
+    page = client.get(link_in(sent(client, "email", email)[-1]))
+    assert page.status_code == 200 and "is confirmed" in page.text, page.text
+    assert client.get("/v1/profile", headers=person.auth).json()["email_verified"]
+
+
+def with_recovery(client, person: Person, email: str = "erin@example.org") -> None:
+    confirmed(client, person, email)
+    r = client.put("/v1/recovery/escrow", headers=person.auth, json={"secret_key": secret_of(person)})
+    assert r.status_code == 200 and r.json()["recovery_enabled"], r.text
+
+
+def test_an_address_is_confirmed_by_the_link_e_mailed_to_it(recovering):
+    erin = Person(recovering, "Erin").join()
+    r = recovering.put("/v1/profile", headers=erin.auth, json={"email": "erin@example.org"})
+    assert r.json()["sent"] == ["email"] and not r.json()["email_verified"]
+    assert r.json()["recovery_available"] and not r.json()["recovery_enabled"]
+    mail = sent(recovering, "email", "erin@example.org")[-1]
+    assert "confirm" in mail["subject"]
+    link = link_in(mail)
+    assert link.startswith("/confirm-email?token=")
+    # No code to type for the address: the link it is.
+    assert recovering.post("/v1/profile/verify", headers=erin.auth,
+                           json={"channel": "email", "code": "123456"}).status_code == 400
+    # A made-up link confirms nothing.
+    bad = recovering.get("/confirm-email?token=" + "x" * 43)
+    assert bad.status_code == 410 and "does not work" in bad.text
+    assert recovering.get("/confirm-email").status_code == 410
+    page = recovering.get(link)
+    assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
+    assert "is confirmed" in page.text and "erin@example.org" in page.text
+    assert recovering.get("/v1/profile", headers=erin.auth).json()["email_verified"]
+    # The link is good once.
+    assert recovering.get(link).status_code == 410
+    # Changing the address takes the confirmation away and e-mails the new one.
+    r = recovering.put("/v1/profile", headers=erin.auth, json={"email": "erin@example.net"})
+    assert not r.json()["email_verified"] and r.json()["sent"] == ["email"]
+    first = link_in(sent(recovering, "email", "erin@example.net")[-1])
+    # The name alone sends nothing.
+    assert recovering.put("/v1/profile", headers=erin.auth, json={"display_name": "Erin K."}).json()["sent"] == []
+    # Asking again sends a new link, and the earlier one stops working.
+    assert recovering.post("/v1/profile/verify/resend", headers=erin.auth,
+                           json={"channel": "email"}).json()["sent"] == ["email"]
+    second = link_in(sent(recovering, "email", "erin@example.net", 2)[-1])
+    assert second != first and recovering.get(first).status_code == 410
+    # A link for an address since changed confirms nothing.
+    recovering.put("/v1/profile", headers=erin.auth, json={"email": "erin@example.com"})
+    assert recovering.get(second).status_code == 410
+    assert not recovering.get("/v1/profile", headers=erin.auth).json()["email_verified"]
+    # Only so many an hour.
+    for _ in range(5):
+        r = recovering.post("/v1/profile/verify/resend", headers=erin.auth, json={"channel": "email"})
+    assert r.status_code == 429
+
+
+def test_the_pages_escape_what_they_show(recovering):
+    erin = Person(recovering, "<b>Erin</b>").join()
+    recovering.put("/v1/profile", headers=erin.auth, json={"email": "erin@example.org"})
+    page = recovering.get(link_in(sent(recovering, "email", "erin@example.org")[-1]))
+    assert "&lt;b&gt;Erin&lt;/b&gt;" in page.text and "<b>Erin</b>" not in page.text
+
+
+def test_the_phone_is_confirmed_by_a_code(recovering):
+    erin = Person(recovering, "Erin").join()
+    r = recovering.put("/v1/profile", headers=erin.auth, json={"phone": "+49 151 2345 6789"})
+    assert r.json()["sent"] == ["phone"]
+    code = code_in(sent(recovering, "phone", "+4915123456789")[-1])
+    wrong = "000000" if code != "000000" else "111111"
+    assert recovering.post("/v1/profile/verify", headers=erin.auth,
+                           json={"channel": "phone", "code": wrong}).status_code == 400
+    r = recovering.post("/v1/profile/verify", headers=erin.auth, json={"channel": "phone", "code": code})
+    assert r.status_code == 200 and r.json()["phone_verified"]
+    assert recovering.post("/v1/profile/verify", headers=erin.auth,
+                           json={"channel": "phone", "code": code}).status_code == 400
+
+
+def test_recovery_by_the_e_mailed_link_hands_the_key_back(recovering):
+    erin = Person(recovering, "Erin").join()
+    # Not before the address is confirmed, and only Erin's own key.
+    assert recovering.put("/v1/recovery/escrow", headers=erin.auth,
+                          json={"secret_key": secret_of(erin)}).status_code == 409
+    confirmed(recovering, erin, "erin@example.org")
+    mallory = Person(recovering, "Mallory").join()
+    assert recovering.put("/v1/recovery/escrow", headers=erin.auth,
+                          json={"secret_key": secret_of(mallory)}).status_code == 400
+    r = recovering.put("/v1/recovery/escrow", headers=erin.auth, json={"secret_key": secret_of(erin)})
+    assert r.status_code == 200 and r.json()["recovery_enabled"]
+    # The copy at rest is not the key.
+    raw = recovering.app.state.store._db.execute("SELECT sealed FROM escrow").fetchone()[0]
+    assert base64.b64decode(secret_of(erin)) not in bytes(raw)
+
+    # On another computer, by the address written another way.
+    start = recovering.post("/v1/recovery/start", json={"address": " Erin@Example.ORG "})
+    assert start.status_code == 200, start.text
+    rid, poll = start.json()["recovery_id"], start.json()["poll_token"]
+    assert start.json()["expires_in"] == 30 * 60
+    ask = {"recovery_id": rid, "poll_token": poll}
+    # Pending until the link is approved.
+    assert recovering.post("/v1/recovery/poll", json=ask).status_code == 202
+    mail = sent(recovering, "email", "erin@example.org", 2)[-1]
+    assert "recover" in mail["subject"]
+    link = link_in(mail)
+    # Opening the link only asks - as a mail scanner would, twice.
+    for _ in range(2):
+        page = recovering.get(link)
+        assert page.status_code == 200 and 'method="post"' in page.text and "Erin" in page.text
+    assert recovering.post("/v1/recovery/poll", json=ask).status_code == 202
+    # Without the poll token, nobody else gets anything.
+    assert recovering.post("/v1/recovery/poll",
+                           json={"recovery_id": rid, "poll_token": "y" * 43}).status_code == 410
+    # Approved on the page.
+    done = recovering.post("/recover", data={"token": token_of(link)})
+    assert done.status_code == 200 and "on its way" in done.text
+    r = recovering.post("/v1/recovery/poll", json=ask)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["user_id"] == erin.user_id and body["secret_key"] == secret_of(erin)
+    assert body["email"] == "erin@example.org" and body["display_name"] == "Erin"
+    # The owner is told.
+    assert any("recovered" in e["subject"] for e in sent(recovering, "email", "erin@example.org", 3))
+    # And it is spent: the key once, the link once.
+    assert recovering.post("/v1/recovery/poll", json=ask).status_code == 410
+    assert recovering.post("/recover", data={"token": token_of(link)}).status_code == 410
+    assert recovering.get(link).status_code == 410
+
+
+def test_recovery_does_not_tell_whether_an_address_is_known(recovering):
+    erin = Person(recovering, "Erin").join()
+    with_recovery(recovering, erin)
+    known = recovering.post("/v1/recovery/start", json={"address": "erin@example.org"})
+    unknown = recovering.post("/v1/recovery/start", json={"address": "nobody@example.org"})
+    assert known.status_code == unknown.status_code == 200
+    assert set(known.json()) == set(unknown.json())
+    assert known.json()["expires_in"] == unknown.json()["expires_in"]
+    # Nothing goes to an address nobody has; that recovery stays pending until it expires.
+    assert sent(recovering, "email", "nobody@example.org", timeout=0.5) == []
+    assert recovering.post("/v1/recovery/poll", json={
+        "recovery_id": unknown.json()["recovery_id"], "poll_token": unknown.json()["poll_token"]}).status_code == 202
+    # A link does not approve another recovery.
+    link = link_in(sent(recovering, "email", "erin@example.org", 2)[-1])
+    recovering.post("/recover", data={"token": token_of(link)})
+    assert recovering.post("/v1/recovery/poll", json={
+        "recovery_id": unknown.json()["recovery_id"], "poll_token": unknown.json()["poll_token"]}).status_code == 202
+
+
+def test_a_recovery_expires(recovering, monkeypatch):
+    erin = Person(recovering, "Erin").join()
+    with_recovery(recovering, erin)
+    start = recovering.post("/v1/recovery/start", json={"address": "erin@example.org"}).json()
+    link = link_in(sent(recovering, "email", "erin@example.org", 2)[-1])
+    later = _time.time() + 31 * 60
+    monkeypatch.setattr(_time, "time", lambda: later)
+    assert recovering.get(link).status_code == 410
+    assert recovering.post("/recover", data={"token": token_of(link)}).status_code == 410
+    assert recovering.post("/v1/recovery/poll", json={
+        "recovery_id": start["recovery_id"], "poll_token": start["poll_token"]}).status_code == 410
+
+
+def test_starting_recoveries_is_rate_limited(recovering):
+    # Five an hour for one address...
+    for n in range(5):
+        assert recovering.post("/v1/recovery/start", json={"address": "a@example.org"}).status_code == 200
+    assert recovering.post("/v1/recovery/start", json={"address": "a@example.org"}).status_code == 429
+    # ...and more from one network address, which many people may share -
+    # the refused one above was not counted against it.
+    for n in range(25):
+        r = recovering.post("/v1/recovery/start", json={"address": f"p{n}@example.org"})
+        assert r.status_code == 200, (n, r.text)
+    assert recovering.post("/v1/recovery/start", json={"address": "q@example.org"}).status_code == 429
+
+
+def test_approving_takes_the_relay_s_own_page(recovering):
+    erin = Person(recovering, "Erin").join()
+    with_recovery(recovering, erin)
+    start = recovering.post("/v1/recovery/start", json={"address": "erin@example.org"}).json()
+    ask = {"recovery_id": start["recovery_id"], "poll_token": start["poll_token"]}
+    token = token_of(link_in(sent(recovering, "email", "erin@example.org", 2)[-1]))
+    # A form on another site, a sandboxed one ("null"), a browser that says cross-site: refused,
+    # and the link still good.
+    for headers in ({"Origin": "https://evil.example"}, {"Origin": "null"},
+                    {"Sec-Fetch-Site": "cross-site"}, {"Origin": "http://testserver", "Sec-Fetch-Site": "same-site"}):
+        r = recovering.post("/recover", data={"token": token}, headers=headers)
+        assert r.status_code == 403 and "Not approved" in r.text, headers
+    assert recovering.post("/v1/recovery/poll", json=ask).status_code == 202
+    # The relay's own page.
+    r = recovering.post("/recover", data={"token": token},
+                        headers={"Origin": "http://testserver", "Sec-Fetch-Site": "same-origin"})
+    assert r.status_code == 200 and "on its way" in r.text
+    assert recovering.post("/v1/recovery/poll", json=ask).status_code == 200
+
+
+def test_the_public_address_is_an_origin_of_its_own(tmp_path):
+    settings = Settings(database=str(tmp_path / "relay.sqlite3"), outbox=str(tmp_path / "outbox.jsonl"),
+                        recovery_key=base64.b64encode(os.urandom(32)).decode(),
+                        public_url="https://relay.example.org")
+    with TestClient(create_app(settings)) as c:
+        c.outbox = tmp_path / "outbox.jsonl"
+        erin = Person(c, "Erin").join()
+        c.put("/v1/profile", headers=erin.auth, json={"email": "erin@example.org"})
+        link = sent(c, "email", "erin@example.org")[-1]["text"]
+        assert "https://relay.example.org/confirm-email?token=" in link
+        assert c.post("/recover", data={"token": "x" * 43},
+                      headers={"Origin": "https://relay.example.org"}).status_code == 410     # not 403
+
+
+def test_what_cannot_be_used_any_more_is_deleted(tmp_path):
+    path = str(tmp_path / "relay.sqlite3")
+    store = Store(path)
+    long_ago = int(_time.time()) - 2 * 24 * 3600
+    db = store._db
+    db.execute("INSERT INTO users VALUES ('u1', x'00', 'Erin', 1)")
+    store.put_link("live", "confirm", "u1", "e@example.org", 3600)
+    store.put_link("used", "recover", "u1", "e@example.org", 3600, "r-used")
+    store.use_link("used")
+    db.execute("INSERT INTO links(token_digest, purpose, user_id, email, expires_at) "
+               "VALUES ('old', 'confirm', 'u1', 'e@example.org', ?)", (long_ago,))
+    store.start_recovery("r-live", "u1", "poll-live", 3600, "?")
+    db.execute("INSERT INTO recoveries(recovery_id, user_id, poll_digest, expires_at) VALUES ('r-old', 'u1', 'd', ?)",
+               (long_ago,))
+    store.put_code("live", "123456", 600)
+    db.execute("INSERT INTO codes(key, digest, expires_at) VALUES ('old', 'd', ?)", (long_ago,))
+    store.note_send("k")
+    db.execute("INSERT INTO sends(key, at) VALUES ('k', ?)", (long_ago,))
+    db.execute("INSERT INTO sessions VALUES ('old', 'u1', ?)", (long_ago,))
+    store.close()
+    # Opening the relay tidies up what expired while it was down.
+    settings = Settings(database=path)
+    with TestClient(create_app(settings)) as c:
+        live = c.app.state.store
+        assert live.find_link("live", "confirm") is not None
+        assert live.get_recovery("r-live") is not None and live.get_recovery("r-old") is None
+        assert live.count_sends("k", 7 * 24 * 3600) == 1
+        count = lambda table: live._db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        assert (count("links"), count("recoveries"), count("codes"), count("sessions")) == (1, 1, 1, 0)
+        assert live.prune() == {"links": 0, "recoveries": 0, "codes": 0, "sends": 0, "sessions": 0}
+
+
+def test_recovery_turned_off_or_not_offered(recovering, client):
+    erin = Person(recovering, "Erin").join()
+    with_recovery(recovering, erin)
+    r = recovering.delete("/v1/recovery/escrow", headers=erin.auth)
+    assert r.status_code == 200 and not r.json()["recovery_enabled"]
+    start = recovering.post("/v1/recovery/start", json={"address": "erin@example.org"}).json()
+    # Recovery is off: no link goes out - the one e-mail is still the confirmation.
+    assert len(sent(recovering, "email", "erin@example.org", 2, timeout=0.5)) == 1
+    assert recovering.post("/v1/recovery/poll", json={
+        "recovery_id": start["recovery_id"], "poll_token": start["poll_token"]}).status_code == 202
+    # A relay without a recovery key and e-mail offers none.
+    bob = Person(client, "Bob").join()
+    assert client.get("/v1/profile", headers=bob.auth).json()["recovery_available"] is False
+    assert client.post("/v1/recovery/start", json={"address": "bob@example.org"}).status_code == 503

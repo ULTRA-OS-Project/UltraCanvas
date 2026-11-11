@@ -2,6 +2,10 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
+// Version: 0.18.0 - VideoFXOverlay's formatted text (richText, fontFamily, textAlign, lineSpacing,
+//                  letterSpacing), drawn by the host's text renderer
+// Version: 0.17.0 - VideoFXRecorderSettings / VideoFXPixelLayout: frames a program pushes
+//                  one by one (a screen recording) encoded to a file as they come
 // Version: 0.16.1 - keepFacesInView on a video segment reads three frames of the clip
 // Version: 0.16.0 - VideoFXOverlay::effects: an image or video overlay's own look
 // Version: 0.15.0 - keepInView / keepFacesInView on a video segment: the Fill crop
@@ -9,7 +13,7 @@
 // Version: 0.14.0 - VideoFXFileFormat / VideoFXFileKind (VideoFX_GetFileFormats),
 //                  VideoFXPictureReader (VideoFX_SetPictureReader)
 // Version: 0.13.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -250,6 +254,23 @@ struct VideoFXOverlay {
     bool box = false;               // a band behind the text
     uint32_t boxColor = 0x000000;
     double boxOpacity = 0.5;
+
+    // ---- formatted text (VideoFX_SetTextRenderer) ----
+    // What a richer text engine than the backend's text filter sets: the
+    // words with their own fonts, sizes and styles (`richText`, HTML; `text`
+    // stays their plain text), the font of what states none by name, the
+    // lines' alignment, the line spacing and the letter spacing. A text
+    // overlay that names a fontFamily is drawn by the installed text
+    // renderer into a picture laid over the frame (UltraCanvas's, in
+    // VideoFXUltraCanvasText.h - what UltraVideo and an UltraCanvas build
+    // of the `videofx` tool install), so a project renders alike wherever
+    // it does; without a renderer `text` is drawn plain by the backend.
+    std::string richText;
+    int richTextHeight = 0;         // the frame height richText's own sizes were set for (0 = 1080)
+    std::string fontFamily;         // empty: the backend's text filter, in fontPath or the default font
+    int textAlign = 1;              // 0 left, 1 centre, 2 right
+    double lineSpacing = 0.0;       // % of a line's largest letters, baseline to baseline; 0 = the font's own
+    double letterSpacing = 0.0;     // added between letters, a fraction of the output height
 
     // ---- image ----
     std::string imagePath;          // PNG (alpha kept) / JPEG / anything FFmpeg decodes
@@ -653,6 +674,37 @@ struct VideoFXExportSettings {
     static VideoFXExportSettings MasterProRes();                // ProRes 422 + PCM in MOV
     static VideoFXExportSettings AudioOnlyMP3(int64_t bitRate = 192000);
     static VideoFXExportSettings AudioOnlyWAV();
+};
+
+// ============================================================================
+// FRAME RECORDER (VideoFXFrameRecorder)
+// ============================================================================
+// The byte order of a 32-bit pixel in memory. VideoFXFrame is RGBA; what the
+// platforms' screen captures hand over (cairo's RGB24, a Windows DIB) is
+// BGRA, with the fourth byte unused - the recorder takes either as it is, so
+// a frame is never swapped around before it is encoded.
+enum class VideoFXPixelLayout { RGBA, BGRA };
+
+// How a recording is encoded: a live source (a screen, a window, a camera)
+// pushes frames with their wall-clock time, and the recorder writes them as
+// they come - no timeline, no audio, the fastest encoder preset by default,
+// so a capture keeps up with the screen rather than falling behind it.
+struct VideoFXRecorderSettings {
+    // The recording's pixel size; 0 = the first frame's. Made even (H.264's
+    // 4:2:0 needs it): a 321 x 241 source records as 320 x 240, the frames
+    // scaled to fit. Every frame is scaled to this size, so a source whose
+    // size changes still records.
+    int width = 0;
+    int height = 0;
+    double frameRate = 30.0;        // the file's rate; a frame's time rounds to its nearest tick
+    VideoFXContainer container = VideoFXContainer::Auto;    // from the extension
+    VideoFXVideoCodec videoCodec = VideoFXVideoCodec::Auto; // the container's usual one
+    int quality = -1;               // 0..100 as for an export, -1 = the codec's default
+    int64_t videoBitRate = 0;       // bits per second; 0 = quality-driven
+    std::string encoderPreset = "veryfast";   // x264 / x265: speed over size, for a live source
+    double keyframeInterval = 2.0;  // seconds; a recording is scrubbed, so keep them close
+    VideoFXAcceleration acceleration = VideoFXAcceleration::Auto;
+    int threads = 0;                // 0 = automatic
 };
 
 // ============================================================================

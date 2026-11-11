@@ -96,7 +96,10 @@ jobs:
       # bison and flex for the odd generator. ImageMagick: the APK's launcher
       # icons, sized from media/appicon/Demo.png (android-package-apk.sh).
       - name: Install host tools
-        timeout-minutes: 20
+        # A crawling mirror still finishes (15-27 min on a bad day, against a
+        # few normally), as the Build rows allow; scripts/ci-apt.sh retries
+        # one that stops dead. The job has 180.
+        timeout-minutes: 45
         run: |
           scripts/ci-apt.sh update
           scripts/ci-apt.sh install --no-install-recommends \
@@ -315,11 +318,28 @@ jobs:
   # draws nothing, or shows nothing in four minutes. The screenshot and the
   # logcat are kept whatever the outcome. arm64 is not run: GitHub's arm64
   # runners have no KVM, and emulating the whole CPU is too slow for a UI.
+  #
+  # Two displays. The emulator's default (320x640 at 160 dpi, scale 1) and a
+  # phone's (the pixel_6 profile: 1080x2400 at 420 dpi, scale 2.625), where
+  # the smoke test's density checks have something to catch: the frame must
+  # fill the window to the pixel, at the scale the density gives. At 2.625
+  # a logical size scaled back up loses a pixel (1080 -> 411 -> 1079), so a
+  # backend that builds its surface that way fails here and not at 160 dpi.
   emulator:
-    name: android emulator (x86_64)
+    name: android emulator (${{ matrix.label }})
     needs: android
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x86_64
+            profile: ''
+            artifact: android-emulator-smoke
+          - label: x86_64, 420 dpi
+            profile: pixel_6
+            artifact: android-emulator-smoke-420dpi
     steps:
       - uses: actions/checkout@v5
 
@@ -347,6 +367,7 @@ jobs:
           api-level: 30
           arch: x86_64
           target: default
+          profile: ${{ matrix.profile }}
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: scripts/android-emulator-smoke.sh apk/UltraCanvasDemo-x86_64.apk emulator-smoke
@@ -355,7 +376,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: android-emulator-smoke
+          name: ${{ matrix.artifact }}
           path: emulator-smoke/
           if-no-files-found: ignore
           retention-days: 14

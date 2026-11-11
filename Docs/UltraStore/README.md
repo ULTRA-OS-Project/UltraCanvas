@@ -25,6 +25,7 @@ The brief's open questions, answered on 2026-10-24:
 | Translations | Creators supply at least one language; the admin backend translates with the server's local UltraAI into every official language and marks what it translated (`source_language`, `machine_translated`); ULTRA OS apps' own localisation folders get the same. |
 | Signing key | Generated and kept **in the admin backend's database**, the seed sealed with a passphrase (Argon2id, XChaCha20-Poly1305); the public key reaches the store through the repository and the signed catalog: see *Keys*. |
 | UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
+| The services' databases | **PostgreSQL in production, SQLite for tests and development only** (decided 2026-11-10). The payment service and the operator tier's marketplace service run on PostgreSQL; SQLite is what the tests and a developer's machine use, behind the same database layer, and never a production store. The files on a user's or a merchant's own machine (`registry.sqlite`, `admin.sqlite`) are UltraDatabase files, not servers, and stay as they are. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
 What the brief listed as the first catalog's apps, the final name, the
@@ -100,6 +101,8 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
   "sequence": 42,
   "generated": "2026-10-24T12:00:00Z",
   "trusted_keys": ["0415eff8…fba970e", "9c2b…"],
+  "payment_url": "https://store.example",
+  "licence_key": "e52d4fca…40c1ab",
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -165,6 +168,7 @@ Per app, what the admin backend offers and the catalog carries:
 | Age rating | `age_rating` | PEGI-like `3`, `7`, `12`, `16`, `18`; empty for everyone |
 | Account | `requires_account` | the app is useless without its own user account (UltraMail with no mailbox is not that; a service client is) |
 | Source | `open_source`, `source_url` | shown as a badge with the link |
+| Featured | `featured` | the admin's pick: the store's Discover shows the newest featured app as its hero and the featured apps as *Editor's picks* |
 | Links | `homepage`, `support_url`, `privacy_url` | |
 | Search | `categories`, `tags` | categories from the fixed list the store's sidebar shows; tags free-form |
 | Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback; `source_language` names what the creator wrote, `machine_translated` the languages the server's UltraAI added (see *Translations*) |
@@ -181,14 +185,91 @@ publisher's page.
 Decided: the provider is **Paysafe, with Skrill Quick Checkout** as the
 checkout. The buyer pays on Skrill's hosted page (cards, Skrill wallet,
 the local methods Quick Checkout offers), the store never sees a card
-number, and Paysafe's server-to-server status report is what the payment
-service trusts, not the browser's return. The design to come: the payment
-service that holds the merchant credentials (never the store binary),
-opens a Quick Checkout session for an app, a price and the code in force,
-receives the status report, redeems the code (the sale into the ledger
-with its credits, one level up and no further - *Affiliates and codes*),
-issues the licence the app checks and the receipt, and signs the
-short-lived URLs for `restricted/` (*Where the server is reached*).
+number, and Skrill's server-to-server status report is what is trusted,
+not the browser's return.
+
+**The payment service** (`Server/UltraStorePay`, its own README) holds the
+merchant credentials - never the store binary, never the catalog - and
+does the purchase:
+
+| Step | Who | What |
+|---|---|---|
+| 1 | the store | `POST /v1/checkout {app, code}`: an order priced from the same signed catalog the stores read, with the code in force applied the way the store showed it (*Affiliates and codes*) |
+| 2 | the store | opens the order's `checkout_url` in the browser: the Quick Checkout form, submitted to `pay.skrill.com` with the order as `transaction_id` |
+| 3 | Skrill | posts the status report to the service, signed with the secret word (`md5sig`); the service checks the signature, the amount and the currency; status 2 pays the order, issues the licence and numbers the receipt - a repeat changes nothing, a forgery is refused |
+| 4 | the store | polls the order with its secret until it is paid, keeps the licence, and fetches the paid app's package through a signed URL that lives ten minutes (`restricted/`, *Where the server is reached*) |
+| 5 | the admin backend | fetches the sales (`GET /v1/sales?since=`) and records each in its ledger with the partners' credits, one level up and no further |
+
+**The licence** is `ULIC1.<payload>.<signature>`: the licence id, the app,
+the order, the day and what the purchase includes, signed Ed25519 with the
+service's licence key, whose public half is `GET /v1/keys`; an app
+verifies it offline. **The receipt** is numbered per paid order.
+
+**What the purchase includes** is the app's update period as the catalog
+had it when the order was paid (`updates` in the payload: `always`,
+`never` for the bought version only, `until` with `updates_until`). The
+store holds to it: an update to a release dated after the purchase's
+terms is refused by the engine ("not in your purchase"), the card and the
+Updates page show *Buy update* instead of *Update*, and *Update all*
+counts it as "to buy anew"; the new purchase replaces the licence, with
+the terms the catalog has then. The details page's *Bought* badge names
+the terms.
+
+**The licence reaches the app** as a file, `<root>/apps/<id>/licence.ulic`
+(the token, one line), written when the app is installed and when it is
+bought while its trial is installed, removed with the app's folder. The
+app finds it from its own executable and checks it with the licence key it
+compiles in (`Purchase.h`):
+
+```cpp
+#include "Purchase.h"   // Apps/UltraStore/core
+const std::string file = UltraStore::FindLicenceFile(UltraCanvas::PathToUtf8(executable));
+const auto licence = UltraStore::ReadLicenceFile(file, kLicenceKeyHex);
+const bool unlocked = licence && licence.Value().app == "org.example.app";
+```
+
+`FindLicenceFile` looks in the executable's folder and up to three above
+it (the version folder, then `apps/<id>/`); `ReadLicenceFile` fails
+`NotFound` without a file and `SignatureInvalid` for a token another key
+signed. `ultrastore licence <app-id> [--key <hex>]` shows one purchase and,
+with the key, verifies the file the way the app does.
+
+**The catalog names the service**: `payment_url` (the service's base,
+`https://store.example`) and `licence_key` (the public half of its licence
+key, hex) at the top level, from the admin backend's `payment.url` and
+`payment.licence_key` settings; both are optional within schema 2, and a
+catalog without `payment_url` sends *Buy* to the publisher's page as
+before. With them, the store's *Buy* is the five steps above: the order
+asked for with the code in force, the browser opened on the checkout, the
+order polled every five seconds for up to half an hour (the download panel
+shows the wait; *Cancel* leaves the order open on the service and nothing
+is installed), the licence verified against `licence_key` and kept in the
+registry (`licences` in `registry.sqlite`: the app, the licence, the
+order and its secret, the amount, the receipt number), and the app's
+restricted package fetched through the signed URL whenever it is
+installed or updated. The order is remembered in the settings until it is
+over: a store closed during the payment asks the service about it at the
+next start (within two days) and, if it is paid meanwhile, keeps the
+licence; if it is still open, the browser opens on the checkout again and
+the wait resumes. A bought app shows a *Bought* badge, *Install*
+instead of *Buy*, and on its details page the receipt number, the day and
+a *Receipt* button that opens the receipt in the browser, as a page in
+the look of the service's other pages (the service's README, *The
+pages*).
+`ultrastore buy <catalog.json> <app-id> [--code <CODE>]` does the same from
+the command line, and `ultrastore licences` lists what was bought.
+
+A paid app's **trial** installs the same package, so an app with a trial
+keeps its package public (the licence gates what the trial lacks) and only
+an app without one puts its package under `restricted/` (`package add
+--access`); a restricted package with a trial would make *Try* fail with
+"buy it first".
+
+On the admin's side, `sale sync` pulls the paid orders from the service
+(`GET /v1/sales?since=`, the `payment.token` setting or
+`ULTRASTORE_PAY_ADMIN_TOKEN` as the bearer token) and records each once in
+the ledger with the partners' credits; the sequence it reached is kept in
+`payment.sales_seq`, so a repeat records nothing twice.
 
 ### Translations
 
@@ -238,10 +319,12 @@ something off the price. The scheme is decided as follows.
   registers the scheme (`MimeType=x-scheme-handler/ultrastore`), and a
   second start hands the link to the running copy. The partner's QR code
   encodes `https://<catalog base>/go/<CODE>`, a page the publish folder
-  carries (`go/<CODE>.html`: what the code gives and the `ultrastore://`
+  carries (`go/<CODE>/index.html`, so the extension-less link is served by
+  any static web server: what the code gives and the `ultrastore://`
   link), so a phone that scans it lands somewhere useful; a future partner
-  scans `https://<catalog base>/join/<affiliate>` and names the recruiter
-  when the admin signs them up.
+  scans `https://<catalog base>/join/<affiliate>` (`join/<affiliate>/index.html`:
+  who invites, what a partner earns, the id to name) and names the
+  recruiter when the admin signs them up.
 - **A partner may use their own code.** Nothing distinguishes a partner's
   purchase from any other, and the share they earn on it is theirs by the
   same rule; the admin backend does not try to tell them apart.
@@ -290,6 +373,33 @@ the admin backend until it exists: `GenerateSigningKey`, `PublicKeyOfSeed`,
   the catalog is what an attacker with the key controls. The announced
   keys live in the cache folder beside the catalog they came from, with the
   same trust as the settings file next to it.
+- **Two signing roles once the operator tier is built** (*The operator
+  tier*). Today one key does everything, because one publisher is the
+  operator. In the marketplace the roles split, and the store must not
+  confuse them:
+  - **The operator's key signs the catalog.** It is the only kind of key
+    the store trusts for `catalog.json.sig`: compiled in, announced in
+    `trusted_keys`, rotated and retired as above. A merchant's key never
+    appears in `trusted_keys` and never signs a public catalog; a catalog
+    signed with one is refused like any unknown key.
+  - **A merchant's key signs submissions.** The pair the admin backend
+    generates (*Who generates the production pair*) stays on the
+    merchant's machine and signs what `submit` sends to the marketplace
+    service: the component object, the package hashes, the media. The
+    service checks the signature against the public half the merchant
+    registered when the shop was verified, keeps it on the submission, and
+    the review reads it as proof of who sent the build. The merchant's
+    `publish` still signs that merchant's own private or test catalog with
+    the same key; such a catalog is trusted only by a store whose settings
+    name the key, never by the public store.
+  - **The packages carry no signature of their own**, in either role: a
+    package is what its SHA-256 in the signed catalog says it is, and the
+    catalog's signature covers the hash. A merchant's signature on a
+    submission proves origin to the operator; the operator's signature on
+    the catalog proves the result to the store.
+  - A merchant's key is retired at the service (the operator marks it,
+    the merchant registers a new public half); nothing in the store
+    changes, since the store never trusted it.
 
 ### Resolver (`PackageResolver`)
 
@@ -437,23 +547,39 @@ server's document root until then.
 
 ## The window
 
+How the window and the web shop look is drawn in
+[`design/README.md`](design/README.md): the Discover page, an app's page,
+the category browser and the phone views, with every colour, size and font.
+
 `ultrastore` started plainly (or with `--catalog`, `--root`, `--channel`)
-opens the window; `Apps/UltraStore/ui/`. A sidebar
-(`UltraCanvasSidebarNavigation`) selects the page, the download queue sits
-in a collapsible panel along the bottom (`UltraCanvasCollapsiblePanel`),
-a status line under it. Every operation goes through the core - the same
-`StoreEngine`, `CatalogClient`, `PackageResolver` the command line uses -
-so the window and the command line never disagree; the pages are
-`StoreQuery::ListApps` with four filters.
+opens the window; `Apps/UltraStore/ui/`. It follows the UltraStore shop
+design (the canvas *UltraStore Shop Design*, 2026-11-05): a white ground,
+ink text, the UltraStore blue of the app icon as the one accent, Manrope
+for display text over Inter for body text (both in `media/fonts`), 20 px
+card corners, pill buttons and chips (`StoreTheme.h`). A header carries
+the wordmark (the way home), the sections as pills - Discover, Categories,
+Installed, Updates with its count - the search pill, Refresh and Settings
+(where the design has *Sign in*: the store has no accounts). The download
+queue sits in a collapsible panel along the bottom
+(`UltraCanvasCollapsiblePanel`), a status line under it. Every operation
+goes through the core - the same `StoreEngine`, `CatalogClient`,
+`PackageResolver` the command line uses - so the window and the command
+line never disagree; the pages are `StoreQuery::ListApps` with its filters.
 
 | Page | Shows | Does |
 |---|---|---|
-| Discover | every app of the catalog as a card (`UltraCanvasCard`): icon, publisher, summary, its state (installed version, update available, not for this system, price) | search over name, id, publisher, summary, tags and categories; Install / Try, Buy… (the publisher's page, until payment lands), Open, Update, Remove, Details; Refresh fetches the catalog |
-| Categories | the catalog's categories as a single-select chip group (`UltraCanvasChipGroup`) over the same cards | |
-| Installed | the installed apps, then the runtimes and libraries under them | Open, Remove, Reload, Clean up (the garbage collector) |
-| Updates | the installed apps a newer release has a package for; the count as the sidebar's badge | Update one, Update all |
-| Details | one app: icon, name, publisher, licence, id, state, the badges (price, age rating, open source, needs an account, update period, deprecated / withdrawn, translated automatically), the description, the screenshots side by side, the release's notes and what it needs, the package for this machine, the links (homepage, support, privacy, source) | the same actions; Back |
+| Discover | the featured app as a hero (the admin's newest `featured` pick this machine can install, else the newest release), the categories as pills, *Editor's picks* as cards (the `featured` apps, when there are any), *New and updated* as a numbered list in two columns, *Free essentials* as cards, the four reasons for the store, the partner / discount code; text in the header's search pill turns the page into the results, as cards | Install / Try free / Buy, Open, Update, Remove on each card or row; a card, a row or the hero opens the app page; a category pill opens Categories on it |
+| Categories | the filters on the left - the catalog's categories as chips (`UltraCanvasChipGroup`), All / Free / Paid, open source only, hide installed - the heading with the count and the sort order (newest release, name, price), and the cards in a wrapping grid | the same actions; the design's *Runs on* filter is not there: a native store resolves every app for this machine |
+| Installed | the installed apps as cards, then the runtimes and libraries under them | Open, Remove, Reload, Clean up (the garbage collector) |
+| Updates | the installed apps a newer release has a package for; the count in the header pill | Update one, Update all |
+| App page | the shop's app page: the breadcrumb (the section it came from, the category, the name), the icon, the name, the summary, the publisher (a link when the catalog has their page), the facts as pills (the trial, open source and the licence, the systems, the age rating, the account, the update period, a purchase, a code in force), the actions, what this machine downloads (the plan: the layers already there, the ones added, the bytes); the screenshots side by side; *About this app*; *What's new* with the release notes and the version history; *What it installs* step by step with the sizes; the information column (publisher, licence, price, trial, updates, languages, age rating, the links); *More from* the publisher | the same actions; the breadcrumb is the way back |
 | Settings | channel, the texts' language, the servers, the keys trusted beside the compiled-in ones, fetch at start; this machine, the store folder, the settings file, the catalog's state, what is installed | Save, Revert, Refresh catalog now, Clean up, Reload installed |
+
+Not in the window, of the design: *Sign in* (no accounts), the share and
+wish-list buttons of the app page, and the footer's links (for publishers,
+support, privacy, terms: the catalog carries no store-wide pages). The
+phone artboards are a web shop's; the admin and operator artboards belong
+to UltraStoreAdmin and to a proposal.
 
 What is shown follows the admin backend's settings (`StoreQuery`): a
 *listed* app always; an *unlisted* one when it is installed or searched for
@@ -485,10 +611,12 @@ instead of the servers' (no signature check, Refresh does nothing), with
 against a catalog served from `python3 -m http.server`, and how a creator
 previews an entry before it is published.
 
-**Nothing configured yet.** Until the admin backend publishes the first
-catalog, no server and no key are compiled in (`Apps/UltraStore/keys/`,
-`ULTRASTORE_SERVERS`), and Discover says so and points at Settings, where a
-server and a key are entered by hand.
+**What a build trusts.** The production server is the default of
+`ULTRASTORE_SERVERS` (`https://store.ultraos.eu/v1`) and its signing key's
+public half is `Apps/UltraStore/keys/publish.pub`, so a store built from
+the repository finds the catalog with nothing entered. A build with both
+emptied (`-DULTRASTORE_SERVERS=""`, no `.pub`) has Discover say so and
+point at Settings, where a server and a key are entered by hand.
 
 ## The command line
 
@@ -505,6 +633,10 @@ ultrastore update <catalog.json> [<app-id>] [--root <dir>]
 ultrastore remove <app-id> [--root <dir>]
 ultrastore installed [--root <dir>]
 ultrastore gc [--root <dir>]
+ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]   through the payment service
+ultrastore licences [--root <dir>]                        the apps bought here
+ultrastore licence <app-id> [--root <dir>] [--key <hex>]    one purchase's terms; with the key, the licence file verified
+ultrastore code [<CODE> | clear] [--cache <dir>]          the code in force
 ultrastore --version | --help
 ```
 
@@ -529,6 +661,38 @@ program, `ultrastore sha256` it, write a catalog.json with
 `python3 -m http.server 8765`, and start
 `ultrastore --catalog catalog.json --root /tmp/store`.
 
+## The operator tier (later)
+
+Everything above is one publisher running one store: the admin backend
+generates and signs the catalog, and `admin.sqlite` is the whole truth. A
+**marketplace** - other publishers (merchants) opening shops in UltraStore,
+the ULTRA OS Project running it as the operator - needs records that belong
+to no merchant: who the merchants are and where they stand with the terms,
+what they submitted and what the review found, what users and merchants
+report, the notices sent and the audit of every operator action. None of
+that can live in a merchant's `admin.sqlite`, and the operator's own copy of
+it would be one more merchant store. The design for that tier is drawn in
+[`design/README.md`](design/README.md) (the `Super*` pages); this section
+settles where its data lives, so the pages are not drawn against nothing.
+
+| Question | Decision |
+|---|---|
+| Where do the operator's records live? | **In a marketplace service, `Server/UltraStoreMarket`, beside the payment service**: one HTTPS service the operator runs, its own database on **PostgreSQL in production, SQLite for tests and development only** (decided 2026-11-10; the payment service works that way, with one database layer hiding the two engines). It holds the merchants, the submissions, the reports, the notices and the audit log, and nothing a merchant's `admin.sqlite` already holds. The operator's window (the `Super*` pages) is a client of this service, as the merchant's window is a client of `UltraStoreAdminCore`: the window and a command line never disagree. |
+| Who generates and signs the catalog? | **The operator, from the approved submissions.** The public catalog stays one signed `catalog.json` with the store's `trusted_keys`, generated by the service's publish from what the review released, signed with the operator's key (*Keys*). A merchant's `UltraStoreAdmin` keeps `admin.sqlite` as its working copy and its own `publish` for a private or test catalog, and gains `submit`: it sends a release - the component object `PutComponent` reads back, the packages into the operator's package store under their hash, the media - signed with the merchant's key, so the submission proves who sent it. The merchant's key is the one *Keys* already describes; it signs submissions now, not the public catalog. |
+| What is a submission? | **A row the review works on**: the signed component object as sent, the package hashes, the automatic checks' results (signature, SHA-256, the scans, the entry found, the smoke run, the listing's pictures and texts, the merchant's standing), the reviewer's checklist, the decision with its message, and the catalog sequence that released it. A resubmission is a new row that names the one it answers, so the review picks up where it left off. Nothing is edited in place: a decision is appended. |
+| Where do reports come from, and who sees the reporter? | **Three doors into one table**: the store's app page (`POST /v1/reports`, the licence or the install id as the reporter when there is one, else anonymous), the merchant backend (a merchant reporting another's app or a problem with their own), and the operator entering one from mail. A report names its target (an app, a release, a merchant), its kind, the text and attachments, and gets a state, an assignee and the operator's findings. **The reporter is visible to the operator only**: the merchant sees the report, never who filed it, and the reporter learns the outcome in one line. |
+| How do notices reach a merchant, and how is a warning counted? | **Written once, delivered twice**: a notice (announcement, reminder, information request, warning, suspension) is a row with its recipients; it goes out by mail, and the merchant backend fetches it (`GET /v1/notices` with the merchant's key) and shows it as a banner until acknowledged. A warning is a notice that names a clause and counts as a strike; strikes expire and add up to a suspension by the **enforcement policy**, which is a settings record of the service (expiry, strikes before a suspension, its length, the answer deadlines, the clauses that suspend at once), not a constant. A suspension is a state on the merchant or the app with its scope, clause, start, end and the row that lifted it; the publish reads it and leaves the listing out. |
+| What is the audit log? | **Append-only, hash-chained, never edited**: every operator action - verify, release, request changes, reject, warn, suspend, reinstate, withdraw, dismiss, resolve, a policy or terms change - is one row with the actor, the target, the clause, what was before and after, the row it acted on, and the hash of the row before it, so a gap or an edit shows. The dashboard's *Operator actions* and a merchant's *History* are views of it. |
+| Which terms did a merchant accept? | **A versions table and an acceptances table.** A terms version has its text, what changed, and the date it comes into force; an acceptance names the merchant, the version, the person who accepted and when. A merchant not on the version in force by its date is paused by the publish, the way a suspension is, until an acceptance arrives. The merchant backend's *Terms* page reads both through the service. |
+| Does the store binary change? | **Little.** It reads the same signed catalog; it gains the report form on the app page and, with an account, the reporter's identity; a withdrawn or suspended app is simply absent from the next catalog, and an installed copy keeps updating or not as the catalog says (`visibility: hidden` already covers "served for updates only"). |
+
+What the operator never holds: a merchant's sales ledger and partners (those
+stay in the merchant's `admin.sqlite`, fed by the payment service as today),
+a merchant's signing seed, and the payment credentials (the payment service's).
+What the operator holds and the merchant can always read back through the
+service: their own submissions with every decision, every notice sent to
+them, every report about them with the reporter removed, and their standing.
+
 ## Milestones
 
 1. **0.1.0** core and command line (this page).
@@ -546,6 +710,20 @@ program, `ultrastore sha256` it, write a catalog.json with
 6. **Affiliates and codes** (*Affiliates and codes*): discount and
    affiliate codes in the catalog, QR codes and links, two-tier partners in
    the admin backend with the sales ledger and the report.
-7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout, the
-   payment service, the redemption of the codes, the licence, the receipt,
-   the signed URLs for `restricted/`.
+7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout. The
+   payment service (`Server/UltraStorePay`): the checkout, the status
+   report, the licence, the receipt, the signed URLs for `restricted/`, the
+   sales for the admin backend; the store's *Buy* through it, the licence
+   in the registry and on the details page, the restricted package through
+   the signed URL, `ultrastore buy` and `licences`; the admin's `sale
+   sync`; the catalog naming the service (`payment_url`, `licence_key`).
+   After the purchase: the update period in the licence and held to by the
+   store (*Buy update*), the licence file for the app (`FindLicenceFile`,
+   `ReadLicenceFile`, `ultrastore licence`), the open order resumed at
+   the next start. Next: a run against the Skrill sandbox once the
+   credentials are in the environment.
+8. **The operator tier** (*The operator tier*, later): the marketplace
+   service `Server/UltraStoreMarket` with merchants, submissions, reports,
+   notices, terms and the audit log; the merchant backend's `submit` and
+   its notices banner; the operator's window on the service; the report
+   form on the store's app page.

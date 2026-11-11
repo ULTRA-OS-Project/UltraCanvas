@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailSettingsDialog.cpp
 // UltraMail settings window - the same window as UltraFiler's settings: the
-// settings-page tree on the left, its sections (Mail, Reading, Privacy, Display)
+// settings-page tree on the left, its sections (Mail, Reading, Privacy, Display,
+// Handling, Warnings)
 // closed when the window opens, so it opens on the start page that says what
 // they hold.
 // Pages: Mail > New mail (how often every account is checked for new mail),
@@ -17,7 +18,9 @@
 // Privacy > Sender icons (whether the known senders' icons are downloaded),
 // Display > Links (a link's address in the status bar or in a tooltip) and
 // Display > Notifications (a notification on screen when new mail arrives),
-// Display > Treeview (the folder tree lists the current account or all) and
+// Display > Treeview (the folder tree lists the current account or all),
+// Handling > Email send notification (a sent message reported in a popup
+// window or in the status bar) and
 // Warnings > Spam/scam warnings (which kinds of warning the content scan gives)
 // and Warnings > Trusted & blocked (the sender menu's lists).
 //
@@ -26,6 +29,11 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.18.0 - Mail > Proxy: the proxy the mail servers are reached through,
+//                  shared by every ULTRA OS application (MakeProxySettingsPage)
+// Version: 1.17.0 - Handling > Email send notification: a popup window or the
+//                   status bar
+// Version: 1.16.0 - Privacy > Primary Password: set, change and remove it
 // Version: 1.15.0 - Reading > Attachments: at the bottom or on the right side
 // Version: 1.14.0 - the sections in the tree carry icons (media/icons/ultramail/
 //                   section-*)
@@ -50,7 +58,7 @@
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -61,6 +69,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasTreeView.h"
@@ -106,6 +115,7 @@ namespace {
     constexpr const char* kPageMail        = "mail";
     constexpr const char* kPageNewMail     = "mail/new-mail";
     constexpr const char* kPageConnection  = "mail/connection";
+    constexpr const char* kPageProxy       = "mail/proxy";
     constexpr const char* kPageReading     = "reading";
     constexpr const char* kPageLayout      = "reading/layout";
     constexpr const char* kPageMessages    = "reading/messages";
@@ -114,10 +124,13 @@ namespace {
     constexpr const char* kPagePrivacy     = "privacy";
     constexpr const char* kPageImages      = "privacy/images";
     constexpr const char* kPageSenderIcons = "privacy/sender-icons";
+    constexpr const char* kPagePrimaryPassword = "privacy/primary-password";
     constexpr const char* kPageDisplay     = "display";
     constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageNotify      = "display/notifications";
     constexpr const char* kPageTreeview    = "display/treeview";
+    constexpr const char* kPageHandling    = "handling";
+    constexpr const char* kPageSendNotify  = "handling/send-notification";
     constexpr const char* kPageWarnings    = "warnings";
     constexpr const char* kPageScamWarnings = "warnings/spam-scam";
     constexpr const char* kPageSenderLists  = "warnings/senders";
@@ -196,6 +209,12 @@ namespace {
         std::shared_ptr<UltraCanvasCheckbox> senderIconsBox;
         std::shared_ptr<UltraCanvasCheckbox> siteIconsBox;
 
+        // Privacy > Primary Password
+        std::shared_ptr<UltraCanvasLabel>  primaryStateLabel;
+        std::shared_ptr<UltraCanvasButton> primarySetButton;
+        std::shared_ptr<UltraCanvasButton> primaryChangeButton;
+        std::shared_ptr<UltraCanvasButton> primaryRemoveButton;
+
         // Display > Links
         std::shared_ptr<UltraCanvasRadio> linksStatusRadio;
         std::shared_ptr<UltraCanvasRadio> linksTooltipRadio;
@@ -208,6 +227,11 @@ namespace {
         std::shared_ptr<UltraCanvasRadio> treeCurrentRadio;
         std::shared_ptr<UltraCanvasRadio> treeAllRadio;
         UltraCanvasRadioGroup             treeContentGroup;
+
+        // Handling > Email send notification
+        std::shared_ptr<UltraCanvasRadio> sendPopupRadio;
+        std::shared_ptr<UltraCanvasRadio> sendStatusRadio;
+        UltraCanvasRadioGroup             sendNotifyGroup;
 
         // Warnings > Spam/scam warnings: one box per kind, with the option it sets
         std::vector<std::pair<bool ThreatScanOptions::*,
@@ -222,6 +246,7 @@ namespace {
     };
 
     std::shared_ptr<DialogState> g_dialog;
+    SettingsDialog::SecurityHooks g_security;
 
     void ApplyAndSave(DialogState* d) {
         if (d->syncing) return;
@@ -454,6 +479,9 @@ namespace {
             d->treeContentGroup.SelectButton(
                 p.folderTreeContent == FolderTreeContent::CurrentAccount ? d->treeCurrentRadio
                                                                          : d->treeAllRadio);
+        if (d->sendPopupRadio)
+            d->sendNotifyGroup.SelectButton(p.sendNotification == SendNotification::StatusBar
+                                            ? d->sendStatusRadio : d->sendPopupRadio);
         for (const auto& [option, box] : d->warningBoxes)
             if (box) box->SetChecked(p.scamWarnings.*option);
         if (d->trustedSendersInput)
@@ -955,6 +983,69 @@ namespace {
         return parts.page;
     }
 
+    // ===== PRIVACY > PRIMARY PASSWORD =====
+    void SyncPrimaryPassword(DialogState* d) {
+        if (!d->primaryStateLabel) return;
+        const bool available = static_cast<bool>(g_security.hasPrimaryPassword);
+        const bool set = available && g_security.hasPrimaryPassword();
+        d->primaryStateLabel->SetText(!available ? "This build has no credential vault to protect."
+                                      : set     ? "A Primary Password is set: UltraMail asks for it at every start."
+                                                : "No Primary Password is set: UltraMail starts without asking.");
+        if (d->primarySetButton)    d->primarySetButton->SetVisible(available && !set);
+        if (d->primaryChangeButton) d->primaryChangeButton->SetVisible(set);
+        if (d->primaryRemoveButton) d->primaryRemoveButton->SetVisible(set);
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildPrimaryPasswordPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-primary", "Primary Password",
+                "A password only you know, asked for when UltraMail starts:");
+
+        d->primaryStateLabel = MakeText("um-set-primary-state", "");
+        d->primaryStateLabel->SetFontWeight(FontWeight::Bold);
+        parts.body->AddChild(d->primaryStateLabel);
+
+        auto row = std::make_shared<UltraCanvasContainer>("um-set-primary-buttons");
+        row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.height = CSSLayout::Dimension::Px(28);
+        // The flows ask in dialogs of their own over this window, and the page
+        // shows the state again when they are over.
+        auto run = [d](const std::function<void(UltraCanvasWindowBase*, std::function<void()>)>& flow) {
+            if (!flow) return;
+            flow(d->window.get(), [d]() {
+                if (g_dialog.get() == d && !d->closed) SyncPrimaryPassword(d);
+            });
+        };
+        d->primarySetButton = MakeButton("um-set-primary-set", "Set a Primary Password...", 200,
+                                         [run]() { run(g_security.setPrimaryPassword); });
+        d->primaryChangeButton = MakeButton("um-set-primary-change", "Change...", 110,
+                                            [run]() { run(g_security.changePrimaryPassword); });
+        d->primaryRemoveButton = MakeButton("um-set-primary-remove", "Remove...", 110,
+                                            [run]() { run(g_security.removePrimaryPassword); });
+        row->AddChild(d->primarySetButton);
+        row->AddChild(d->primaryChangeButton);
+        row->AddChild(d->primaryRemoveButton);
+        parts.body->AddChild(row);
+        SyncPrimaryPassword(d);
+
+        AddNote(parts, "um-set-primary-note1",
+                "What it protects: the passwords of your mail accounts, and the key the "
+                "mail stored on this computer is encrypted with - the mailbox, the address "
+                "book, the outbox and every downloaded message. Without it nobody can read "
+                "them, not even someone who copies the whole data folder.");
+        AddNote(parts, "um-set-primary-note2",
+                "Without a Primary Password that key is kept beside the vault, so UltraMail "
+                "starts without asking: the encryption then protects copies of the mail "
+                "files - a backup, a disk taken out - but not this computer account, whose "
+                "programs can open the key as UltraMail does.");
+        AddNote(parts, "um-set-primary-note3",
+                "It is not stored anywhere. Forgotten, it cannot be recovered: the mail kept "
+                "on this computer has to be downloaded again from the mail servers, and the "
+                "mail passwords entered again. Mail that is only on this computer - the "
+                "outbox - is lost.");
+        return parts.page;
+    }
+
     // ===== DISPLAY > LINKS =====
     std::shared_ptr<UltraCanvasContainer> BuildLinksPage(DialogState* d) {
         PageParts parts = MakePage("um-set-page-links", "Links",
@@ -1075,6 +1166,49 @@ namespace {
         AddNote(parts, "um-set-notify-note3",
                 "Mail you have already read elsewhere, and the first download of "
                 "a new account, raise no notification.");
+        return parts.page;
+    }
+
+    // ===== HANDLING > EMAIL SEND NOTIFICATION =====
+    std::shared_ptr<UltraCanvasContainer> BuildSendNotificationPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-send-notify", "Email send notification",
+                "When a message has been sent successfully:");
+
+        const bool statusBar = d->prefs->sendNotification == SendNotification::StatusBar;
+        d->sendPopupRadio = MakeChoice("um-set-send-popup",
+                "Show in popup window", !statusBar);
+        d->sendStatusRadio = MakeChoice("um-set-send-status",
+                "Display success in status bar", statusBar);
+        d->sendNotifyGroup.AddRadioButton(d->sendPopupRadio);
+        d->sendNotifyGroup.AddRadioButton(d->sendStatusRadio);
+        d->sendNotifyGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->sendNotification = selected == d->sendStatusRadio
+                                         ? SendNotification::StatusBar
+                                         : SendNotification::Popup;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->sendPopupRadio);
+        parts.body->AddChild(d->sendStatusRadio);
+
+        d->resets[kPageSendNotify] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->sendNotification = SendNotification::Popup;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-send-notify-note1",
+                "In a popup window, \"Message sent to ...\" names the recipients "
+                "and stays on the screen until you choose OK.");
+        AddNote(parts, "um-set-send-notify-note2",
+                "In the status bar, the same words appear at the bottom of the "
+                "main window and nothing has to be closed - the next thing "
+                "UltraMail does, such as checking for new mail, replaces them.");
+        AddNote(parts, "um-set-send-notify-note3",
+                "A message that could not be sent is always reported in a "
+                "window, whatever is set here: it stays in the outbox, and the "
+                "window offers to try again.");
         return parts.page;
     }
 
@@ -1225,12 +1359,16 @@ namespace {
         AddNote(parts, "um-set-start-note2",
                 "Privacy - when pictures on the web are downloaded (always, only "
                 "from websites and senders you trust and your contacts, or never "
-                "by themselves), and whether the known senders' icons are fetched.");
+                "by themselves), whether the known senders' icons are fetched, and "
+                "a Primary Password asked for at every start.");
         AddNote(parts, "um-set-start-note3",
                 "Display - whether a link's address is shown in the status bar or "
                 "as a tooltip, whether new mail shows a notification on the "
                 "screen, and whether the folder tree lists the current account "
                 "or all of them.");
+        AddNote(parts, "um-set-start-note6",
+                "Handling - whether a message that has been sent is reported in a "
+                "popup window or in the status bar.");
         AddNote(parts, "um-set-start-note5",
                 "Warnings - which kinds of spam and scam UltraMail warns about: "
                 "phishing, romance scams, advance-fee letters, letters in an "
@@ -1328,6 +1466,7 @@ namespace {
         AddTreeNode(d, "settings", kPageMail, "Mail", "section-mail");
         AddTreeNode(d, kPageMail, kPageNewMail, "New mail");
         AddTreeNode(d, kPageMail, kPageConnection, "Connection");
+        AddTreeNode(d, kPageMail, kPageProxy, "Proxy");
         AddTreeNode(d, "settings", kPageReading, "Reading", "section-reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
@@ -1336,10 +1475,13 @@ namespace {
         AddTreeNode(d, "settings", kPagePrivacy, "Privacy", "section-privacy");
         AddTreeNode(d, kPagePrivacy, kPageImages, "Images");
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
+        AddTreeNode(d, kPagePrivacy, kPagePrimaryPassword, "Primary Password");
         AddTreeNode(d, "settings", kPageDisplay, "Display", "section-display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
+        AddTreeNode(d, "settings", kPageHandling, "Handling", "section-handling");
+        AddTreeNode(d, kPageHandling, kPageSendNotify, "Email send notification");
         AddTreeNode(d, "settings", kPageWarnings, "Warnings", "section-warnings");
         AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
         // The page's title is "Trusted and blocked senders"; the tree has
@@ -1358,15 +1500,20 @@ namespace {
 
         AddPage(d, kPageNewMail, BuildNewMailPage(d));
         AddPage(d, kPageConnection, BuildConnectionPage(d));
+        // IMAP, SMTP, JMAP and the sign-in go through it; an HTTP proxy
+        // carries the mail connections as a CONNECT tunnel.
+        AddPage(d, kPageProxy, MakeProxySettingsPage("um-set-proxy", d->window.get()));
         AddPage(d, kPageLayout, BuildLayoutPage(d));
         AddPage(d, kPageMessages, BuildMessagesPage(d));
         AddPage(d, kPageWaiting, BuildWaitingPage(d));
         AddPage(d, kPageAttachments, BuildAttachmentsPage(d));
         AddPage(d, kPageImages, BuildImagesPage(d));
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
+        AddPage(d, kPagePrimaryPassword, BuildPrimaryPasswordPage(d));
         AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageNotify, BuildNotificationsPage(d));
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
+        AddPage(d, kPageSendNotify, BuildSendNotificationPage(d));
         AddPage(d, kPageScamWarnings, BuildScamWarningsPage(d));
         AddPage(d, kPageSenderLists, BuildSenderListsPage(d));
         AddPage(d, kPageStart, BuildStartPage());
@@ -1423,10 +1570,13 @@ namespace {
 
 } // namespace
 
+void SettingsDialog::SetSecurityHooks(SecurityHooks hooks) { g_security = std::move(hooks); }
+
 void SettingsDialog::Show(UltraCanvasWindowBase* parent, Preferences* prefs,
                           std::function<void()> onChanged) {
     if (g_dialog && g_dialog->window && !g_dialog->closed) {
         SyncControls(g_dialog.get());
+        SyncPrimaryPassword(g_dialog.get());
         g_dialog->window->Show();
         return;
     }
@@ -1463,6 +1613,7 @@ void SettingsDialog::SyncWithPreferences() {
 
 void SettingsDialog::Shutdown() {
     g_dialog.reset();
+    g_security = SecurityHooks{};   // they hold the application
 }
 
 } // namespace UltraMail

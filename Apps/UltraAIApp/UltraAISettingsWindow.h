@@ -14,8 +14,9 @@
 // service when nothing local is available; off by default), and
 // Accounts > Endpoints (opens the endpoint editor: providers, base URLs,
 // models and API keys).
+// Version: 0.2.0 - the Model topics page
 // Version: 0.1.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 #pragma once
 
@@ -29,7 +30,7 @@ class UltraAISettingsWindow {
 public:
     // Which page the window opens on. Default opens on the start page, which
     // says what the sections hold.
-    enum class Page { Default, DefaultProviders, LocalModels, LocalAndCloud, Endpoints };
+    enum class Page { Default, DefaultProviders, LocalModels, Topics, LocalAndCloud, Endpoints };
 
     // Opens the settings window (or raises it, on `page`, when already open).
     static void Show(UltraCanvas::UltraCanvasWindowBase* parent,

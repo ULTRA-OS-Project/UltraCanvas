@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Operations - Dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-wrap: wrap; align-items: stretch">
+
+<nav aria-label="Operations" style="flex: 1 1 220px; max-width: 250px; min-width: 0; background: #0f172a; color: #e2e8f0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<a href="SuperDashboard.dc.html" aria-label="UltraStore Operations" style="display: flex; align-items: center; gap: 10px; padding: 0 8px; text-decoration: none; color: #ffffff">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 32px; height: 32px; border-radius: 9px">
+<span style="display: flex; flex-direction: column; line-height: 1.15"><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 16px; letter-spacing: -0.02em">UltraStore</span><span style="font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #93c5fd">Operations</span></span>
+</a>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="SuperDashboard.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #1e3a8a; color: #ffffff; font-weight: 700">Dashboard</a>
+<a href="SuperMerchants.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Merchants</a>
+<a href="SuperReview.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500"><span style="flex: 1 1 auto">App review</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #2563eb; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">7</span></a>
+<a href="SuperReports.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500"><span style="flex: 1 1 auto">Reports</span><span style="min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">12</span></a>
+<a href="SuperTerms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Terms and notices</a>
+<a href="#users" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Users</a>
+<a href="#payouts" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Payouts</a>
+<a href="#audit" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Audit log</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #cbd5e1; font-weight: 500">Settings</a>
+</div>
+<div style="margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 12px; background: #1e293b; font-size: 12px; color: #94a3b8">
+<span style="font-weight: 700; color: #e2e8f0">store.ultraos.eu</span>
+<span>Catalog sequence 42 · 38 merchants · 112 apps live</span>
+<span>Signed in as Alex, operator</span>
+</div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Dashboard</h1>
+<span style="color: #64748b">Thursday 5 November 2026 · what needs an operator today</span>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<form role="search" style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; background: #ffffff; border: 1px solid #cbd5e1">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="ops-search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Find a merchant, app, user or report</label>
+<input id="ops-search" type="search" placeholder="Merchant, app, user, report #" style="width: 240px; border: 0; background: transparent; font: inherit; color: #0f172a; outline: none">
+</form>
+<a href="SuperReview.dc.html" style="display: inline-flex; align-items: center; height: 38px; padding: 0 16px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Start reviewing</a>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<a href="SuperMerchants.dc.html" style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Merchants</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">38</span><span style="font-size: 13px; color: #475569">3 awaiting verification · 2 suspended</span></a>
+<a href="SuperReview.dc.html" style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Awaiting review</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">7</span><span style="font-size: 13px; color: #b45309; font-weight: 600">oldest waiting 3 days, target is 2</span></a>
+<a href="SuperReports.dc.html" style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Open reports</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">12</span><span style="font-size: 13px; color: #b91c1c; font-weight: 600">2 urgent: possible malware</span></a>
+<a href="SuperTerms.dc.html" style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><span style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em">Not on terms 3.1</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">5</span><span style="font-size: 13px; color: #475569">deadline 30 Nov, then listing pauses</span></a>
+<div style="flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; box-sizing: border-box; border-radius: 16px; background: #0f172a; color: #ffffff"><span style="font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em">Sales, all merchants, 30 d</span><span style="font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">41,380 EUR</span><span style="font-size: 13px; color: #94a3b8">operator fee 15% · 6,207 EUR</span></div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="q-title" style="flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+<h2 id="q-title" style="margin: 0; font-size: 16px; font-weight: 700">Review queue</h2>
+<a href="SuperReview.dc.html" style="font-size: 13px; font-weight: 600; text-decoration: none">All 7</a>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; font-size: 13px">
+<li style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f1f5f9"><img src="/_blob/2a23005da8e1e896df09b451fcedae79" alt="" style="width: 36px; height: 36px; border-radius: 9px"><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><a href="SuperReview.dc.html" style="font-weight: 600; color: #0f172a; text-decoration: none">UltraSnip 0.3.0 · new release</a><span style="color: #64748b">ULTRA OS Project · waiting 3 d · scans passed</span></span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">over target</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f1f5f9"><span style="width: 36px; height: 36px; border-radius: 9px; background: #7c3aed; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><a href="#sub-2" style="font-weight: 600; color: #0f172a; text-decoration: none">Notenkiste 1.0.0 · new app</a><span style="color: #64748b">Pixelwerk Studio · waiting 2 d · 1 check failed</span></span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700">check failed</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f1f5f9"><span style="width: 36px; height: 36px; border-radius: 9px; background: #0f766e; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><a href="#sub-3" style="font-weight: 600; color: #0f172a; text-decoration: none">Fjordplan 2.4.1 · update</a><span style="color: #64748b">Nordlicht Software · waiting 1 d · scans passed</span></span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700">ready</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 10px 0"><span style="width: 36px; height: 36px; border-radius: 9px; background: #b45309; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><a href="#sub-4" style="font-weight: 600; color: #0f172a; text-decoration: none">Kaito Shell 0.9.0 · new app</a><span style="color: #64748b">Kaito Tools · waiting 6 h · age rating missing</span></span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 700">needs info</span></li>
+</ul>
+</section>
+
+<section aria-labelledby="r-title" style="flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+<h2 id="r-title" style="margin: 0; font-size: 16px; font-weight: 700">Reports, urgent first</h2>
+<a href="SuperReports.dc.html" style="font-size: 13px; font-weight: 600; text-decoration: none">All 12</a>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; font-size: 13px">
+<li style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f1f5f9"><span style="width: 36px; height: 36px; border-radius: 9px; background: #fee2e2; color: #991b1b; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"></path><path d="M12 10v4"></path><path d="M12 17.5h.01"></path></svg></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><a href="SuperReports.dc.html" style="font-weight: 600; color: #0f172a; text-decoration: none">#1042 · Possible malware in Bitfalke Downloader 2.1</a><span style="color: #64748b">by a user · 4 reports on this app · 2 h ago</span></span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700">urgent</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f1f5f9"><span style="width: 36px; height: 36px; border-radius: 9px; background: #fee2e2; color: #991b1b; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"></path><path d="M12 10v4"></path><path d="M12 17.5h.01"></path></svg></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><a href="#rep-1041" style="font-weight: 600; color: #0f172a; text-decoration: none">#1041 · Licence check bypass sold on a forum</a><span style="color: #64748b">by merchant Nordlicht Software · about their own app · 5 h ago</span></span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 12px; font-weight: 700">urgent</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f1f5f9"><span style="width: 36px; height: 36px; border-radius: 9px; background: #f1f5f9; color: #475569; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"></path></svg></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><a href="#rep-1040" style="font-weight: 600; color: #0f172a; text-decoration: none">#1040 · Screenshots show features the app lacks</a><span style="color: #64748b">by a user · Kaito Tools · misleading listing · 1 d ago</span></span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 700">open</span></li>
+<li style="display: flex; align-items: center; gap: 12px; padding: 10px 0"><span style="width: 36px; height: 36px; border-radius: 9px; background: #f1f5f9; color: #475569; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H8l-4 4z"></path></svg></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column"><a href="#rep-1038" style="font-weight: 600; color: #0f172a; text-decoration: none">#1038 · Merchant does not answer support mail</a><span style="color: #64748b">by a user · Bitfalke GmbH · 3rd such report · 2 d ago</span></span><span style="display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700">assigned: Mia</span></li>
+</ul>
+</section>
+
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="c-title" style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="c-title" style="margin: 0; font-size: 16px; font-weight: 700">Compliance</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+<li style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #fef3c7; color: #92400e"><span style="flex: 1 1 auto"><span style="font-weight: 700">5 merchants</span> have not accepted terms 3.1 (payment and refunds)</span><a href="SuperTerms.dc.html" style="color: inherit; font-weight: 700; text-decoration: none; white-space: nowrap">Remind</a></li>
+<li style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #fef3c7; color: #92400e"><span style="flex: 1 1 auto"><span style="font-weight: 700">2 merchants</span> are missing tax information, payouts on hold</span><a href="SuperMerchants.dc.html" style="color: inherit; font-weight: 700; text-decoration: none; white-space: nowrap">See</a></li>
+<li style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #fee2e2; color: #991b1b"><span style="flex: 1 1 auto"><span style="font-weight: 700">Bitfalke GmbH</span> has 2 warnings in 90 days, a third suspends</span><a href="SuperMerchantDetail.dc.html" style="color: inherit; font-weight: 700; text-decoration: none; white-space: nowrap">File</a></li>
+<li style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #dcfce7; color: #166534"><span style="flex: 1 1 auto"><span style="font-weight: 700">31 merchants</span> fully compliant: terms, tax, support address, privacy policy</span></li>
+</ul>
+</section>
+
+<section aria-labelledby="a-title" style="flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+<h2 id="a-title" style="margin: 0; font-size: 16px; font-weight: 700">Operator actions today</h2>
+<a href="#audit" style="font-size: 13px; font-weight: 600; text-decoration: none">Audit log</a>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; font-size: 13px">
+<li style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9"><span style="flex: 0 0 48px; color: #64748b">14:10</span><span style="flex: 1 1 auto"><span style="font-weight: 600">Mia</span> released Fjordplan 2.4.0 · Nordlicht Software · catalog sequence 42</span></li>
+<li style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9"><span style="flex: 0 0 48px; color: #64748b">11:52</span><span style="flex: 1 1 auto"><span style="font-weight: 600">Alex</span> warned Bitfalke GmbH · unanswered support mail, 2nd warning · merchant notified</span></li>
+<li style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9"><span style="flex: 0 0 48px; color: #64748b">10:30</span><span style="flex: 1 1 auto"><span style="font-weight: 600">Mia</span> withdrew Bitfalke Downloader 2.1 from listing pending report #1042 · installs keep updating</span></li>
+<li style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9"><span style="flex: 0 0 48px; color: #64748b">09:48</span><span style="flex: 1 1 auto"><span style="font-weight: 600">Alex</span> verified merchant OpenSheet e.V. · VAT id checked · shop opened</span></li>
+<li style="display: flex; gap: 12px; padding: 8px 0"><span style="flex: 0 0 48px; color: #64748b">09:05</span><span style="flex: 1 1 auto"><span style="font-weight: 600">Alex</span> dismissed report #1037 · duplicate of #1035</span></li>
+</ul>
+</section>
+
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

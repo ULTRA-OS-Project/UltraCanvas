@@ -4,6 +4,8 @@
 // airbrush, eraser, clone, smudge, dodge, burn), fill, gradient, the lines
 // (line, polyline, arrow, curve), shapes (rectangle, ellipse), text, zoom
 // and pan.
+// Version: 1.3.1 - no UltraCanvasApplication.h: its font list went with the Text tool's options
+// Version: 1.3.0 - the Text tool's options moved to the window's text bar
 // Version: 1.2.1 - the Text tool's Font and Align lists give the keyboard back to the text
 //                  when they close without a choice
 // Version: 1.2.0 - Text types on the canvas into a text layer; painting on a
@@ -11,12 +13,11 @@
 // Version: 1.1.1 - AddCaption: the hints under a tool's options are quiet grey, not bold
 // Version: 1.1.0 - Polyline, Arrow and Curve
 // Version: 1.0.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraPaintTools.h"
 
-#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
@@ -24,6 +25,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1248,8 +1250,9 @@ private:
 class TextTool : public PaintTool {
 public:
     TextTool() : PaintTool(PaintToolId::Text, "Text", "text.svg", 'T',
-                           "Click and type, or drag a box for the lines to wrap in; click a text to edit it. "
-                           "Escape or a click outside finishes") {}
+                           Tr("Click and type, or drag a box for the lines to wrap in; click a text to edit it. "
+                              "The bar above sets font, size, style, alignment and spacing; the colour is the "
+                              "foreground colour. Escape or a click outside finishes")) {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::Text; }
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
         dragging = true;
@@ -1291,51 +1294,9 @@ public:
         rc->DrawRectangle(r);
         rc->SetLineDash(UCDashPattern());
     }
-    void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
-        auto o = ctx.options;
-        auto notify = ctx.textOptionChanged;
-        // A list closed without a choice - Escape, or the item it already
-        // had - keeps the keyboard; while a text is being typed it goes back
-        // there, as it does after a choice.
-        auto done = ctx.textControlDone;
-        auto handBack = [done](UltraCanvasDropdown* list) {
-            if (!list || !done) return;
-            list->onDropdownClosed = [done, list]() { done(*list); };
-        };
-        // Every font the system has, not a short list of our own.
-        std::vector<std::string> families = GetInstalledFontFamilies();
-        if (families.empty()) families = { "Sans", "Serif", "Monospace" };
-        auto current = std::find(families.begin(), families.end(), o->textFont);
-        if (current == families.end()) {
-            families.insert(families.begin(), o->textFont);
-            current = families.begin();
-        }
-        auto* fonts = AddDropdown(panel, "text-font", "Font", families, static_cast<int>(current - families.begin()),
-                                  [o, notify, families](int i) {
-                                      if (i < 0 || i >= static_cast<int>(families.size())) return;
-                                      o->textFont = families[static_cast<size_t>(i)];
-                                      if (notify) notify("font");
-                                  });
-        if (fonts) {
-            DropdownStyle style = fonts->GetStyle();
-            style.maxVisibleItems = 16;
-            fonts->SetStyle(style);
-            fonts->SetTooltip(std::to_string(families.size()) + " fonts installed");
-        }
-        handBack(fonts);
-        AddSliderRow(panel, "text-size", "Size", 4, 400, static_cast<float>(o->textSize), 1, true,
-                     [o, notify](float v) { o->textSize = static_cast<int>(v); if (notify) notify("size"); });
-        AddCheckbox(panel, "text-bold", "Bold", o->textBold,
-                    [o, notify](bool v) { o->textBold = v; if (notify) notify("bold"); });
-        AddCheckbox(panel, "text-italic", "Italic", o->textItalic,
-                    [o, notify](bool v) { o->textItalic = v; if (notify) notify("italic"); });
-        AddCheckbox(panel, "text-underline", "Underline", o->textUnderline,
-                    [o, notify](bool v) { o->textUnderline = v; if (notify) notify("underline"); });
-        handBack(AddDropdown(panel, "text-align", "Align", { "Left", "Centre", "Right" }, o->textAlign,
-                             [o, notify](int i) { o->textAlign = std::clamp(i, 0, 2); if (notify) notify("align"); }));
-        AddCaption(panel, "text-colour", "Colour: the foreground colour");
-        AddCaption(panel, "text-hint", "Editable until merged");
-    }
+    // Its options - font, size, style, alignment and spacing - are on the
+    // window's text bar, which shows while the tool is active; the colour is
+    // the foreground colour. No Tool Options card.
 private:
     bool dragging = false;
     double x0 = 0, y0 = 0, x1 = 0, y1 = 0;

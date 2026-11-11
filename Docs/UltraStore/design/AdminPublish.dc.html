@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStoreAdmin - Publish</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#f8fafc}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 60px; box-sizing: border-box">
+<a href="AdminDashboard.dc.html" aria-label="UltraStoreAdmin overview" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 30px; height: 30px; border-radius: 8px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.02em">UltraStoreAdmin</span>
+</a>
+<span style="display: inline-flex; align-items: center; gap: 8px; color: #475569; font-size: 13px"><span style="font-weight: 600; color: #0f172a">ULTRA OS Store</span>· store.ultraos.eu/v1</span>
+<span style="flex: 1 1 auto"></span>
+<span style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700">4 changes since sequence 42</span>
+<button type="button" aria-label="Account: Alex" style="width: 36px; height: 36px; border-radius: 999px; border: 0; background: #0f172a; color: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">AK</button>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: flex-start">
+
+<nav aria-label="Admin" style="flex: 1 1 220px; max-width: 260px; min-width: 0; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Store</span>
+<a href="AdminDashboard.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Overview</a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Apps and components</a>
+<a href="AdminSales.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Sales</a>
+<a href="AdminFinance.dc.html" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Finance</a>
+<a href="#affiliates" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Affiliates and codes</a>
+<a href="AdminPublish.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; background: #dbeafe; color: #1d4ed8; font-weight: 700">Publish</a>
+<a href="#keys" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Keys</a>
+<a href="#settings" style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155; font-weight: 500">Settings</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<span style="padding: 0 12px 6px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Apps</span>
+<a href="AdminAppEditor.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraVideo</a>
+<a href="#app-ultrapaint" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/451050dafeeb42579ba048b1a08f78fa" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraPaint</a>
+<a href="#app-artcreator" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 22px; height: 22px; border-radius: 6px">ArtCreator</a>
+<a href="#app-ultrafiler" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/0339854b95aaa1785eff13f10f2fce1c" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraFiler</a>
+<a href="#app-ultramail" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #334155"><img src="/_blob/bafbc6e21d0bfb6f2d3d60d6d272ad66" alt="" style="width: 22px; height: 22px; border-radius: 6px">UltraMail</a>
+<a href="AdminApps.dc.html" style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 12px; border-radius: 10px; text-decoration: none; color: #1d4ed8; font-weight: 600; font-size: 13px">All 24 apps</a>
+</div>
+</nav>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-direction: column">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Publish</h1>
+<span style="color: #64748b">Build the catalog with the next sequence, copy the packages and media, sign the exact bytes, verify them back the way the store does, then upload what changed.</span>
+</div>
+
+<ol aria-label="Steps" style="margin: 0; padding: 0; list-style: none; display: flex; gap: 8px; flex-wrap: wrap">
+<li style="flex: 1 1 200px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 13px"><span style="width: 24px; height: 24px; border-radius: 999px; background: #166534; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px">1</span>Check · done, 2 warnings</li>
+<li style="flex: 1 1 200px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: #dbeafe; color: #1e40af; font-weight: 700; font-size: 13px"><span style="width: 24px; height: 24px; border-radius: 999px; background: #1d4ed8; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px">2</span>Sign and publish · sequence 43</li>
+<li style="flex: 1 1 200px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: #f1f5f9; color: #475569; font-weight: 700; font-size: 13px"><span style="width: 24px; height: 24px; border-radius: 999px; background: #cbd5e1; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px">3</span>Upload what changed</li>
+</ol>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<section aria-labelledby="changes-title" style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 22px 24px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="changes-title" style="margin: 0; font-size: 16px; font-weight: 700">Since sequence 42 · 24 Oct 2026</h2>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; font-size: 13px">
+<li style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f5f9"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 24px; height: 24px; border-radius: 6px"><span style="flex: 1 1 auto; min-width: 0"><span style="font-weight: 600">UltraVideo</span> · new package 0.7.0 windows arm64, release 0.8.0-beta.1</span></li>
+<li style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f5f9"><img src="/_blob/0339854b95aaa1785eff13f10f2fce1c" alt="" style="width: 24px; height: 24px; border-radius: 6px"><span style="flex: 1 1 auto; min-width: 0"><span style="font-weight: 600">UltraFiler</span> · release 1.75.0, 4 packages</span></li>
+<li style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f5f9"><img src="/_blob/bafbc6e21d0bfb6f2d3d60d6d272ad66" alt="" style="width: 24px; height: 24px; border-radius: 6px"><span style="flex: 1 1 auto; min-width: 0"><span style="font-weight: 600">UltraMail</span> · release 0.10.59, texts in 3 languages</span></li>
+<li style="display: flex; align-items: center; gap: 10px; padding: 8px 0"><span style="width: 24px; height: 24px; border-radius: 6px; background: #e2e8f0; flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0"><span style="font-weight: 600">Hello</span> · new app, unlisted, no release yet</span></li>
+</ul>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px">
+<li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #fef3c7; color: #92400e; font-size: 13px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; margin-top: 2px"><path d="M12 3l10 18H2z"></path><path d="M12 10v4"></path><path d="M12 17.5h.01"></path></svg><span><span style="font-weight: 700">Hello has no release</span> and is left out of the catalog. <a href="#app-hello" style="color: inherit; font-weight: 600">Add a release</a></span></li>
+<li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #fef3c7; color: #92400e; font-size: 13px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; margin-top: 2px"><path d="M12 3l10 18H2z"></path><path d="M12 10v4"></path><path d="M12 17.5h.01"></path></svg><span><span style="font-weight: 700">UltraPress has no screenshot.</span> The store shows the card without pictures. <a href="#app-ultrapress" style="color: inherit; font-weight: 600">Add one</a></span></li>
+<li style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #dcfce7; color: #166534; font-size: 13px"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg><span>Every id is reverse DNS, every package has a file in the package store, every paid app's trial package is public, the licence key of the payment service is set, 3 codes are in force.</span></li>
+</ul>
+</section>
+
+<section aria-labelledby="sign-title" style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 22px 24px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 2px solid #2563eb">
+<h2 id="sign-title" style="margin: 0; font-size: 16px; font-weight: 700">Sign and publish</h2>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="pub-dir" style="font-size: 13px; font-weight: 600; color: #334155">Publish folder</label><div style="display: flex; gap: 8px"><input id="pub-dir" type="text" value="/srv/store/v1" style="flex: 1 1 auto; min-width: 0; height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-family: ui-monospace, monospace; font-size: 13px; color: #0f172a"><button type="button" style="height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 600; color: #0f172a; cursor: pointer">Choose…</button></div></div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px">
+<div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px"><label for="pub-key" style="font-size: 13px; font-weight: 600; color: #334155">Signing key</label><select id="pub-key" style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>production · 0415eff8…fba970e</option><option>build-server · 9c2b41d0…17ae3c</option></select></div>
+<div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 6px"><label for="pub-pass" style="font-size: 13px; font-weight: 600; color: #334155">Passphrase <span style="color: #64748b; font-weight: 400">never kept</span></label><input id="pub-pass" type="password" value="••••••••••••" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"></div>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-weight: 500"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">Copy the packages and the media into the publish folder</label>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; padding: 12px 14px; border-radius: 10px; background: #f8fafc; font-size: 13px">
+<div style="display: flex; justify-content: space-between; gap: 8px"><dt style="color: #64748b">Next sequence</dt><dd style="margin: 0; font-weight: 700">43</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><dt style="color: #64748b">Schema</dt><dd style="margin: 0; font-weight: 700">2</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><dt style="color: #64748b">Apps in catalog</dt><dd style="margin: 0; font-weight: 700">23 of 24</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><dt style="color: #64748b">Components</dt><dd style="margin: 0; font-weight: 700">3</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><dt style="color: #64748b">Packages</dt><dd style="margin: 0; font-weight: 700">96 · 1.4 GB</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 8px"><dt style="color: #64748b">Trusted keys announced</dt><dd style="margin: 0; font-weight: 700">2</dd></div>
+</dl>
+<div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+<button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Check again</button>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 22px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="14" r="4"></circle><path d="M11 11l9-9"></path><path d="M16 6l3 3"></path></svg>Sign and publish sequence 43</button>
+</div>
+<p style="margin: 0; font-size: 13px; color: #64748b">The sequence is recorded only after the files are in place and verify, so a failed publish leaves the next one at 43. A wrong passphrase stops before anything is written.</p>
+</section>
+
+</div>
+
+<section aria-labelledby="upload-title" style="display: flex; flex-direction: column; gap: 14px; padding: 22px 24px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+<h2 id="upload-title" style="margin: 0; font-size: 16px; font-weight: 700">Upload to the host</h2>
+<span style="font-size: 13px; color: #64748b">Only what changed since the last upload to this server goes up: packages and media first, the signature, catalog.json last.</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end">
+<div style="flex: 2 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 6px"><label for="up-url" style="font-size: 13px; font-weight: 600; color: #334155">Server <span style="color: #64748b; font-weight: 400">sftp, ftps, ftp or https PUT</span></label><input id="up-url" type="text" value="sftp://deploy@store.ultraos.eu/srv/store/v1" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-family: ui-monospace, monospace; font-size: 13px; color: #0f172a"></div>
+<div style="flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; gap: 6px"><label for="up-user" style="font-size: 13px; font-weight: 600; color: #334155">User</label><input id="up-user" type="text" value="deploy" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"></div>
+<div style="flex: 2 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 6px"><label for="up-keyfile" style="font-size: 13px; font-weight: 600; color: #334155">Key file <span style="color: #64748b; font-weight: 400">or a password, asked each time</span></label><input id="up-keyfile" type="text" value="~/.ssh/id_ed25519" style="height: 40px; padding: 0 12px; box-sizing: border-box; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-family: ui-monospace, monospace; font-size: 13px; color: #0f172a"></div>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 40px; font-weight: 500"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">Send every file</label>
+<button type="button" disabled style="height: 40px; padding: 0 18px; border-radius: 999px; border: 0; background: #cbd5e1; color: #475569; font: inherit; font-weight: 700; cursor: not-allowed">Upload · after publish</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px">
+<div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-size: 13px; font-weight: 700; color: #475569">Last upload · 24 Oct 2026, 12:04 · 1 min 38 s</h3>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; font-size: 13px; font-family: ui-monospace, monospace">
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f1f5f9"><span>packages/3f9a…c21e.7z</span><span style="color: #166534; font-weight: 600">sent · 3.2 MB</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f1f5f9"><span>packages/c0e4…77f1.zip</span><span style="color: #166534; font-weight: 600">sent · 6.0 MB</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f1f5f9"><span>media/org.ultraos.ultravideo/shot-3.png</span><span style="color: #166534; font-weight: 600">sent · 412 kB</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f1f5f9"><span>go/ANNA-20/index.html</span><span style="color: #166534; font-weight: 600">sent · 2 kB</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f1f5f9"><span>catalog.json.sig</span><span style="color: #166534; font-weight: 600">sent</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0"><span>catalog.json</span><span style="color: #166534; font-weight: 600">sent last · 184 kB</span></li>
+</ul>
+</div>
+<div style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-size: 13px; font-weight: 700; color: #475569">The server still has</h3>
+<p style="margin: 0; font-size: 13px; color: #475569">2 files gone from the publish folder are named, not deleted: a store half-way through a download needs them.</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; font-size: 13px; font-family: ui-monospace, monospace">
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #f1f5f9"><span>packages/88ab…10cd.7z</span><span style="color: #64748b">UltraVideo 0.6.3</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0"><span>restricted/2e1f…b7a0.zip</span><span style="color: #64748b">UltraFIBU 0.24.4</span></li>
+</ul>
+<button type="button" style="align-self: flex-start; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #fecaca; background: #ffffff; font: inherit; font-weight: 600; color: #b91c1c; cursor: pointer">Delete these on the server…</button>
+</div>
+</div>
+</section>
+
+<section aria-labelledby="hist-title" style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0">
+<h2 id="hist-title" style="margin: 0; font-size: 16px; font-weight: 700">Publish history</h2>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px; min-width: 700px">
+<thead><tr style="color: #64748b; text-align: left"><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0">Sequence</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0">Published</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0">Key</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0">Apps</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0">Warnings</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0">Uploaded</th><th scope="col" style="font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #e2e8f0">By</th></tr></thead>
+<tbody>
+<tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: 700">42</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">24 Oct 2026, 12:00</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">production</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">23</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">1</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; color: #166534; font-weight: 600">12:04, complete</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">Alex</td></tr>
+<tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: 700">41</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">20 Oct 2026, 17:40</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">production</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">23</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">0</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; color: #166534; font-weight: 600">17:47, complete</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">Alex</td></tr>
+<tr><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: 700">40</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">15 Oct 2026, 09:12</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">build-server</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">22</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">2</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9; color: #92400e; font-weight: 600">broke off, resumed 09:30</td><td style="padding: 8px; border-bottom: 1px solid #f1f5f9">CI</td></tr>
+<tr><td style="padding: 8px; font-weight: 700">39</td><td style="padding: 8px">8 Oct 2026, 14:55</td><td style="padding: 8px">production</td><td style="padding: 8px">22</td><td style="padding: 8px">0</td><td style="padding: 8px; color: #166534; font-weight: 600">15:01, complete</td><td style="padding: 8px">Alex</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1480}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

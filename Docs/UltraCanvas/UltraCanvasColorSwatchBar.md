@@ -19,14 +19,16 @@ colours nobody can reach.
 
 **File Location**: `include/UltraCanvasColorSwatchBar.h`
 **Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
-**Version**: 1.2.0
+**Version**: 1.3.0 - `ColorSwatchBarStyle::FromTheme`, `ApplyTheme`: the bar follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
 
 - ✅ Any list of colours (`SetColors`), with ready-made palettes: grayscale,
   colours, or both
-- ✅ Optional leading **checkered** swatch standing for "no colour — show the
+- ✅ Optional leading **auto** swatch (half light, half dark) standing for
+  "whichever colour suits what is shown" — the host decides which
+- ✅ Optional **checkered** swatch standing for "no colour — show the
   transparency pattern"
 - ✅ Swatch size adapts to the element's width **and** height; the row is centred
 - ✅ Hover outline, selected outline, per-swatch tooltip (`#RRGGBB`)
@@ -85,14 +87,28 @@ bar->SetColors({ Colors::White, Color(245, 240, 225, 255), Colors::Black });
 Replacing the palette keeps the selection **only** if the selected colour is in
 the new list; otherwise nothing is marked.
 
+## The auto swatch
+
+```cpp
+bar->SetShowAutoEntry(true);       // first of all, before the checkerboard
+bar->onAutoSelected = [&]() { /* pick a colour that suits the content */ };
+```
+
+The swatch is drawn half `style.autoLight`, half `style.autoDark` and its
+tooltip says *Automatic*; it selects like any other and reports through
+`onAutoSelected`. What colour "auto" turns into is the host's call - the media
+viewer works it out from the shown picture (`ContrastingBackdropFor`).
+
 ## Selection
 
 ```cpp
 void  SelectColor(const Color& c, bool runCallback = false);  // by value, alpha ignored
 void  SelectCheckered(bool runCallback = false);
+void  SelectAuto(bool runCallback = false);
 void  ClearSelection();
 bool  HasColorSelected() const;
 bool  IsCheckeredSelected() const;
+bool  IsAutoSelected() const;
 int   GetSelectedIndex() const;      // -1 == none
 Color GetSelectedColor() const;      // ask HasColorSelected() first
 ```
@@ -157,12 +173,31 @@ uses it for its palette rows.
 The background is transparent by default — set `style.background` when the strip
 needs to read as a bar of its own.
 
+## Following the theme
+
+`ColorSwatchBarStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: a filled bar takes the
+panel, a transparent one stays so; the control border round a swatch, muted
+ink hovered, the accent selected; the checkerboard and the auto swatch keep
+their own greys. Under the theme policy a new bar follows the theme by
+itself (`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasColorSwatchBar>("swatches", 300, 28);
+ColorSwatchBarStyle roomy = bar->GetStyle();
+roomy.spacing = 6;
+bar->SetStyle(ColorSwatchBarStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+bar->SetFollowTheme(true);
+```
+
 ## Callbacks
 
 ```cpp
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+std::function<void()>             onAutoSelected;          // the auto swatch
 // right click with the entry's index and the window position; when set it
 // takes the right click instead of onColorAdjustSelected
 std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;

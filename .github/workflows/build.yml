@@ -347,6 +347,7 @@ jobs:
             ${{ matrix.msys_prefix }}-fmt
             ${{ matrix.msys_prefix }}-imagemagick
             ${{ matrix.msys_prefix }}-libheif
+            ${{ matrix.msys_prefix }}-libjxl
             ${{ matrix.msys_prefix }}-zbar
             ${{ matrix.msys_prefix }}-libsodium
             ${{ matrix.msys_prefix }}-sqlite3
@@ -354,6 +355,7 @@ jobs:
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
             ${{ matrix.msys_prefix }}-openssl
+            ${{ matrix.msys_prefix }}-gpgme
             ${{ matrix.msys_prefix }}-c-ares
             ${{ matrix.msys_prefix }}-leptonica
             ${{ matrix.msys_prefix }}-tesseract-ocr
@@ -430,6 +432,91 @@ jobs:
           path: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
           key: msys2-pkgs-${{ matrix.msystem }}-${{ steps.msys2-deps.outputs.pkg-hash }}
 
+      # libheif without the GPL encoders. MSYS2 builds libheif with plug-in
+      # loading off, so every codec it has is linked into libheif.dll - x265
+      # (HEVC) and x264 (AVC) among them, both GPL. libvips' vips-heif module
+      # and ImageMagick's HEIC coder load that DLL, so every app on the core
+      # would carry GPL code. Here the same libheif release is rebuilt with
+      # MSYS2's options minus x265 and x264, and its libheif.dll replaces
+      # MSYS2's (same version, same exports). HEIC is still written, by
+      # kvazaar (BSD-3-Clause, already a libheif dependency in MSYS2): 4:2:0
+      # only, so a "lossless" HEIC is exact in luma but not in colour. AVIF
+      # (aom, dav1d, SVT-AV1, rav1e) and HEIC reading (libde265) are as
+      # before. FFmpeg still links x264 / x265 for VideoFX, which is GPL on
+      # its own terms (THIRD_PARTY_LICENSES.md) - the core no longer loads
+      # them. The build is cached per MSYSTEM and libheif version.
+      - name: Which libheif to rebuild (Windows)
+        if: runner.os == 'Windows'
+        id: libheif
+        run: |
+          ver=$(pacman -Q "${MINGW_PACKAGE_PREFIX}-libheif" | awk '{print $2}')
+          echo "pkgver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version=${ver%-*}" >> "$GITHUB_OUTPUT"
+          echo "MSYS2 libheif $ver"
+
+      - name: Restore the libheif rebuild (Windows)
+        if: runner.os == 'Windows'
+        id: libheif-cache
+        uses: actions/cache@v5
+        with:
+          path: .libheif-nogpl
+          key: libheif-nogpl-v1-${{ matrix.msystem }}-${{ steps.libheif.outputs.pkgver }}
+
+      - name: Rebuild libheif without x265 and x264 (Windows)
+        if: runner.os == 'Windows' && steps.libheif-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 30
+        env:
+          LIBHEIF_VERSION: ${{ steps.libheif.outputs.version }}
+        run: |
+          set -euo pipefail
+          src="$(cygpath -u "$RUNNER_TEMP")/libheif-src"
+          rm -rf "$src" && mkdir -p "$src"
+          curl -fsSL --retry 5 --retry-all-errors \
+            "https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz" |
+            tar -xz -C "$src"
+          # MSYS2's PKGBUILD options (mingw-w64-libheif), with x265 and x264
+          # off and nothing but the library built.
+          cmake -S "$src/libheif-${LIBHEIF_VERSION}" -B "$src/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DENABLE_PLUGIN_LOADING=OFF \
+            -DWITH_HEADER_COMPRESSION=ON \
+            -DWITH_X265=OFF \
+            -DWITH_X264=OFF \
+            -DWITH_KVAZAAR=ON \
+            -DWITH_DAV1D=ON \
+            -DWITH_RAV1E=ON \
+            -DWITH_SvtEnc=ON \
+            -DWITH_JPEG_DECODER=ON \
+            -DWITH_JPEG_ENCODER=ON \
+            -DWITH_OpenJPEG_DECODER=ON \
+            -DWITH_OpenJPEG_ENCODER=ON \
+            -DWITH_OPENJPH_ENCODER=ON \
+            -DWITH_EXAMPLES=OFF \
+            -DWITH_GDK_PIXBUF=OFF
+          cmake --build "$src/build" --target heif
+          dll=$(find "$src/build" -name 'libheif.dll')
+          test -n "$dll"
+          mkdir -p .libheif-nogpl
+          cp "$dll" .libheif-nogpl/
+
+      - name: Install the libheif rebuild (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          cp -f .libheif-nogpl/libheif.dll "$MINGW_PREFIX/bin/libheif.dll"
+          imports=$(objdump -p "$MINGW_PREFIX/bin/libheif.dll" | awk '/DLL Name:/ {print $3}')
+          echo "$imports"
+          if echo "$imports" | grep -qi 'x26[45]'; then
+            echo "::error::libheif.dll still imports a GPL encoder (x264 / x265)"
+            exit 1
+          fi
+          if ! echo "$imports" | grep -qi 'kvazaar'; then
+            echo "::error::libheif.dll does not import kvazaar - no HEIC encoder"
+            exit 1
+          fi
+
       # ===== macOS: build tools from Homebrew, libraries from vcpkg (shared
       # by the arm64 and x86_64 jobs; Homebrew lives at /opt/homebrew on Apple
       # Silicon and /usr/local on Intel). vcpkg's checkout and binary cache sit
@@ -465,16 +552,28 @@ jobs:
       # pins the vcpkg commit) and saved under a fresh key by every run that
       # built something, so a change rebuilds only the packages it touches;
       # `restore-keys` falls back to the newest cache for this leg.
+      #
+      # The leg is named by its runner AND its architecture, so that no leg's
+      # prefix is the start of another leg's key. Keyed by the runner alone,
+      # the arm64 leg's fallback `vcpkg-macos-15-` was also the start of every
+      # `vcpkg-macos-15-intel-...` key: on 2026-11-10, with no arm64 cache for
+      # a changed MacOS/deps, it restored the Intel leg's x86_64 libraries,
+      # used none of them and built all of them from source (45 minutes, then
+      # the build itself without ccache) - a macOS runner held for two hours
+      # by a job of thirty minutes. The third line reads the caches saved
+      # under that earlier key for the same MacOS/deps; it cannot meet the
+      # other leg, since the content hash follows the runner directly.
       - name: Restore vcpkg binary cache (macOS)
         if: runner.os == 'macOS'
         id: vcpkg-cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.vcpkg/binary-cache
-          key: vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
+          key: vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
           restore-keys: |
+            vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
             vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
-            vcpkg-${{ matrix.os }}-
+            vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-
 
       # vcpkg's asset cache: the source archives and tools its ports download,
       # each kept under its SHA-512 and looked for there before the library's
@@ -513,6 +612,27 @@ jobs:
           mkdir -p .vcpkg/asset-cache
           scripts/macos-deps.sh
           echo "Sources in the asset cache: $(find .vcpkg/asset-cache -type f | wc -l) files, $(du -sh .vcpkg/asset-cache | cut -f1)"
+
+      # A fetch that ran out of its 30 minutes is cut off, but GitHub stops
+      # only the step's shell: vcpkg goes on running and keeps its lock, so
+      # the build below failed at once with "failed to take lock, another
+      # vcpkg may be running" - though it may need no download at all (every
+      # library it needs in the binary cache). On 2026-11-09 one source on
+      # codeberg.org (gumbo) sent nothing for half an hour, run after run,
+      # and turned both macOS rows red on main and on every pull request.
+      # Ending the stalled vcpkg here leaves the build to the binary cache.
+      - name: Stop a source download that ran out of time (macOS)
+        if: always() && runner.os == 'macOS' && steps.vcpkg-fetch.outcome == 'failure'
+        run: |
+          if pgrep -x vcpkg >/dev/null; then
+            echo "::warning::the source download did not finish; stopping the vcpkg still running so the build can take its lock"
+            pkill -TERM -x vcpkg || true
+            for _ in $(seq 1 30); do
+              pgrep -x vcpkg >/dev/null || break
+              sleep 1
+            done
+            pkill -KILL -x vcpkg || true
+          fi
 
       - name: Save vcpkg asset cache (macOS)
         if: runner.os == 'macOS' && steps.vcpkg-fetch.outcome == 'success'
@@ -600,8 +720,30 @@ jobs:
           echo "Building Linux dependencies for $MULTIARCH ($(uname -m))"
           scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
           scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus
+          # libheif's HEVC and AV1 decoders: linked into libheif on
+          # ubuntu-22.04, separate plug-in packages from 24.04 on - installed
+          # wherever apt knows them, so HEIC and AVIF decode on every runner
+          # (ImageFormatsTest insists on it).
+          for p in libheif-plugin-libde265 libheif-plugin-aomdec; do
+            apt-cache show "$p" >/dev/null 2>&1 && scripts/ci-apt.sh install "$p"
+          done
+          # The codecs the libheif built from source below links (see that
+          # step): HEVC and AV1 decoding, AV1 encoding, JPEG and JPEG 2000;
+          # kvazaar for HEIC encoding where apt packages it (jammy's universe
+          # does; the step builds it from source otherwise), never x265.
+          scripts/ci-apt.sh install libde265-dev libaom-dev libdav1d-dev libjpeg-dev libopenjp2-7-dev
+          if apt-cache show libkvazaar-dev >/dev/null 2>&1; then
+            scripts/ci-apt.sh install libkvazaar-dev
+          fi
+          # JPEG XL: ubuntu-22.04 has no libjxl package (its libvips is built
+          # without one). libjxl is built from source below - on the distro's
+          # brotli, so nothing of its own shadows it under /usr/local - and
+          # the framework's own jxlload / jxlsave (VipsJxlPlugin) stand in
+          # for libvips', so JPEG XL reads and writes here as on every other
+          # row.
+          scripts/ci-apt.sh install libbrotli-dev
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
-          scripts/ci-apt.sh install libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+          scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
           scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev
@@ -611,6 +753,12 @@ jobs:
           # SpellCheckerTest exercises none of the Hunspell path. The en_US
           # dictionary is what the test and the text widgets load by default.
           scripts/ci-apt.sh install libhunspell-dev hunspell-en-us
+          # The OCR plugin is built only where configure finds Tesseract and
+          # Leptonica; without them Linux never compiled it, and
+          # FileLoaderExtractTextTest's real-OCR check (UltraClipboard's
+          # Extract text) ran on no row. tesseract-ocr-eng is the English
+          # data that check reads media/images/OCR-demo.png with.
+          scripts/ci-apt.sh install libtesseract-dev libleptonica-dev tesseract-ocr-eng
           # IODeviceManager's optional backends are compiled only when configure
           # finds their library; without these CI never builds them and a
           # compile error in one goes unseen. libudev: the hot-plug watcher
@@ -718,9 +866,11 @@ jobs:
           if [ "$mupdf_downloaded" = true ]; then
             tar xzf "$MUPDF_TAR"
           else
-            rm -rf "$MUPDF_SRC"
-            git clone -q --depth 1 --branch "$MUPDF_VER" https://github.com/ArtifexSoftware/mupdf.git "$MUPDF_SRC"
-            git -C "$MUPDF_SRC" submodule -q update --init --depth 1 \
+            # Network steps retried (scripts/ci-retry.sh); a failed clone's
+            # half-made folder is removed before the next try.
+            scripts/ci-retry.sh --clean "$MUPDF_SRC" -- \
+              git clone -q --depth 1 --branch "$MUPDF_VER" https://github.com/ArtifexSoftware/mupdf.git "$MUPDF_SRC"
+            scripts/ci-retry.sh -- git -C "$MUPDF_SRC" submodule -q update --init --depth 1 \
               thirdparty/jbig2dec thirdparty/mujs thirdparty/gumbo-parser \
               thirdparty/lcms2 thirdparty/zlib thirdparty/extract
           fi
@@ -757,16 +907,28 @@ jobs:
           # /usr so pkg-config + package-linux.sh find/bundle it like a distro lib.
           OPUSENC_VER=0.3
 
-          curl -fsSL "https://github.com/xiph/libopusenc/releases/download/v${OPUSENC_VER}/libopusenc-${OPUSENC_VER}.tar.gz" | tar xz
+          # Downloaded whole under curl's retries, then unpacked: piped into
+          # tar, a dropped connection was a failed step with nothing retried.
+          curl -fsSL --connect-timeout 20 --retry 5 --retry-all-errors --retry-delay 10 \
+            -o "libopusenc-${OPUSENC_VER}.tar.gz" \
+            "https://github.com/xiph/libopusenc/releases/download/v${OPUSENC_VER}/libopusenc-${OPUSENC_VER}.tar.gz"
+          tar xzf "libopusenc-${OPUSENC_VER}.tar.gz"
           ( cd "libopusenc-${OPUSENC_VER}" && ./configure --prefix=/usr && make -j"$(nproc)" && sudo make install )
           # libcurl4-openssl-dev provides the SYSTEM libcurl used for the
           # WebSocket-capability probe. On ubuntu-22.04 that libcurl is 7.81,
           # which predates WebSockets (curl_ws_* arrived in 7.86), so UltraNet
           # falls back to building the vendored third_party/curl (8.21). That
-          # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON).
-          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev
+          # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON), and
+          # libssh2 for SCP / SFTP: UltraStoreAdmin uploads the publish
+          # folder over sftp://, and curl's CMake drops the protocol without
+          # a word when libssh2 is missing (the configure prints which SSH
+          # backend it took; "Verify libcurl selection" insists on one).
+          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev libssh2-1-dev
           # libsodium: cryptographic backend for UltraCrypt
           scripts/ci-apt.sh install libsodium-dev
+          # UltraMail's OpenPGP: GPGME, and GnuPG for its tests (S/MIME uses
+          # libssl-dev, which libcurl4-openssl-dev brings)
+          scripts/ci-apt.sh install libgpgme-dev gnupg libssl-dev
           # UltraDatabase: SQLite is the single-user store, libpq the
           # multi-user one, libmariadb (MariaDB Connector/C) the MySQL /
           # MariaDB driver. All named explicitly rather than relied on from
@@ -787,7 +949,10 @@ jobs:
           # the multiarch libdir so pkg-config + package-linux.sh find/bundle it
           # like a distro lib.
           CARES_VER=1.34.5
-          curl -fsSL "https://github.com/c-ares/c-ares/releases/download/v${CARES_VER}/c-ares-${CARES_VER}.tar.gz" | tar xz
+          curl -fsSL --connect-timeout 20 --retry 5 --retry-all-errors --retry-delay 10 \
+            -o "c-ares-${CARES_VER}.tar.gz" \
+            "https://github.com/c-ares/c-ares/releases/download/v${CARES_VER}/c-ares-${CARES_VER}.tar.gz"
+          tar xzf "c-ares-${CARES_VER}.tar.gz"
           ( cd "c-ares-${CARES_VER}" && ./configure --prefix=/usr --libdir="/usr/lib/$MULTIARCH" && make -j"$(nproc)" && sudo make install )
 
       # ===== Linux: the C++20 compiler =====
@@ -801,20 +966,212 @@ jobs:
       # installed through their maintained llvm.sh so the suite name for this
       # distribution is chosen by upstream rather than hard-coded here.
       #
+      # ===== Linux: libjxl from source (ubuntu-22.04 packages none) =====
+      # Built once per version and runner and cached; installed under
+      # /usr/local, where pkg-config and the loader find it, so the configure
+      # step below sees libjxl and the package-linux.sh closure carries it.
+      # The version is Ubuntu 24.04's (0.7.0), the one the framework and
+      # ImageJxlTest are written against - as MuPDF below is built at 24.04's
+      # version: a newer libjxl encodes a lossy picture differently (0.10.3
+      # put the test's quality-75 picture 47 off where 0.7 puts it 26, the
+      # tolerance being 40), so the packages behave as 24.04 systems do.
+      # Its bundled Little-CMS (a static library inside libjxl.so, nothing
+      # installed) in place of the bundled skcms, whose mirror is not
+      # reachable from everywhere the recipe is run; the distro's Little-CMS
+      # is 2.12 on jammy, older than the 2.13 libjxl asks for.
+      - name: Restore the libjxl build (Linux)
+        if: runner.os == 'Linux'
+        id: libjxl-cache
+        uses: actions/cache@v5
+        with:
+          path: .libjxl
+          key: libjxl-v4-${{ matrix.os }}-0.7.0
+      - name: Build libjxl from source (Linux)
+        if: runner.os == 'Linux' && steps.libjxl-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 40
+        env:
+          LIBJXL_VERSION: 0.7.0
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/libjxl-src"
+          # The clone and its submodules retried (scripts/ci-retry.sh), the
+          # clone into an emptied folder each time.
+          scripts/ci-retry.sh --clean "$src" -- \
+            git clone --depth 1 --branch "v${LIBJXL_VERSION}" https://github.com/libjxl/libjxl.git "$src"
+          scripts/ci-retry.sh -- git -C "$src" submodule update --init --depth 1 \
+            third_party/highway third_party/brotli third_party/lcms
+          # The library and its threads runner only: no tools, no tests, no
+          # plug-ins, no benchmark; highway and Little-CMS bundled (static),
+          # brotli the system's.
+          cmake -S "$src" -B "$src/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DJPEGXL_ENABLE_TOOLS=OFF \
+            -DJPEGXL_ENABLE_DOXYGEN=OFF \
+            -DJPEGXL_ENABLE_MANPAGES=OFF \
+            -DJPEGXL_ENABLE_BENCHMARK=OFF \
+            -DJPEGXL_ENABLE_EXAMPLES=OFF \
+            -DJPEGXL_ENABLE_JNI=OFF \
+            -DJPEGXL_ENABLE_SJPEG=OFF \
+            -DJPEGXL_ENABLE_OPENEXR=OFF \
+            -DJPEGXL_ENABLE_JPEGLI=OFF \
+            -DJPEGXL_ENABLE_PLUGINS=OFF \
+            -DJPEGXL_ENABLE_DEVTOOLS=OFF \
+            -DJPEGXL_ENABLE_SKCMS=OFF \
+            -DJPEGXL_FORCE_SYSTEM_BROTLI=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$src/build" -j"$(nproc)"
+          # Staged under .libjxl (the cache) with the real prefix inside the
+          # .pc and CMake files: a prefix under the checkout would put a
+          # source-tree path into the library's link interface, which CMake
+          # refuses.
+          DESTDIR="$PWD/.libjxl" cmake --install "$src/build"
+          test -f .libjxl/usr/local/lib/pkgconfig/libjxl.pc
+      - name: Install the libjxl build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo cp -a .libjxl/usr/local/. /usr/local/
+          # Only libjxl itself and its threads runner may land in
+          # /usr/local/lib: a bundled brotli there would shadow the distro's
+          # for everything else on the runner (see the apt step).
+          if ls /usr/local/lib/libbrotli*.so* /usr/local/lib/liblcms2*.so* >/dev/null 2>&1; then
+            echo "::error::the libjxl build installed a bundled brotli or Little-CMS"
+            exit 1
+          fi
+          # /usr/local/lib ahead of the distro's libraries for the loader:
+          # ld.so.conf.d is read in name order, and on arm64
+          # aarch64-linux-gnu.conf sorts before libc.conf (which names
+          # /usr/local/lib), so without this the distro's libheif.so.1 and
+          # libjxl.so.0.x would still be the ones loaded.
+          echo /usr/local/lib | sudo tee /etc/ld.so.conf.d/00-usr-local.conf >/dev/null
+          sudo ldconfig
+          pkg-config --modversion libjxl
+
+      # ===== Linux: libheif from source (ubuntu-22.04 packages 1.12, with x265) =====
+      # The same arrangement as the Windows row's rebuild: a current libheif
+      # with its codecs linked in (no plug-in loading), HEIC encoded by
+      # kvazaar (BSD-3-Clause) and never by x265 (GPL), so the core every
+      # application links carries no GPL encoder. Installed under /usr/local,
+      # ahead of the distro's libheif.so.1 on the loader's path, so libvips'
+      # heifload uses it too and the package closure carries it.
+      - name: Restore the libheif build (Linux)
+        if: runner.os == 'Linux'
+        id: libheif-linux-cache
+        uses: actions/cache@v5
+        with:
+          path: .libheif
+          key: libheif-nogpl-v2-${{ matrix.os }}-1.19.8-kvazaar-2.3.1
+      - name: Build libheif from source without x265 (Linux)
+        if: runner.os == 'Linux' && steps.libheif-linux-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 30
+        env:
+          LIBHEIF_VERSION: 1.19.8
+          KVAZAAR_VERSION: 2.3.1
+        run: |
+          set -euo pipefail
+          # Staged under .libheif (the cache) with the real prefix /usr/local
+          # inside the .pc and CMake files (see the libjxl step); what is
+          # staged is put in place at once, so libheif's configure finds the
+          # kvazaar built just before it where its .pc says it is.
+          stage="$PWD/.libheif"
+          src="$RUNNER_TEMP/libheif-src"
+          rm -rf "$src" && mkdir -p "$src"
+          # kvazaar from source where apt has no package for it
+          if ! pkg-config --exists kvazaar; then
+            curl -fsSL --retry 5 --retry-all-errors \
+              "https://github.com/ultravideo/kvazaar/releases/download/v${KVAZAAR_VERSION}/kvazaar-${KVAZAAR_VERSION}.tar.xz" |
+              tar -xJ -C "$src"
+            ( cd "$src/kvazaar-${KVAZAAR_VERSION}" && ./configure --prefix=/usr/local --disable-static && make -j"$(nproc)" && make install DESTDIR="$stage" )
+            sudo cp -a "$stage/usr/local/." /usr/local/
+            sudo ldconfig
+          fi
+          curl -fsSL --retry 5 --retry-all-errors \
+            "https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz" |
+            tar -xz -C "$src"
+          cmake -S "$src/libheif-${LIBHEIF_VERSION}" -B "$src/build" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DENABLE_PLUGIN_LOADING=OFF \
+            -DWITH_HEADER_COMPRESSION=ON \
+            -DWITH_LIBDE265=ON \
+            -DWITH_X265=OFF \
+            -DWITH_AOM_DECODER=ON \
+            -DWITH_AOM_ENCODER=ON \
+            -DWITH_DAV1D=ON \
+            -DWITH_RAV1E=OFF \
+            -DWITH_SvtEnc=OFF \
+            -DWITH_KVAZAAR=ON \
+            -DWITH_JPEG_DECODER=ON \
+            -DWITH_JPEG_ENCODER=ON \
+            -DWITH_OpenJPEG_DECODER=ON \
+            -DWITH_OpenJPEG_ENCODER=ON \
+            -DWITH_OPENJPH_ENCODER=OFF \
+            -DWITH_LIBSHARPYUV=OFF \
+            -DWITH_EXAMPLES=OFF \
+            -DWITH_GDK_PIXBUF=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$src/build" -j"$(nproc)"
+          DESTDIR="$stage" cmake --install "$src/build"
+          test -f .libheif/usr/local/lib/pkgconfig/libheif.pc
+      - name: Install the libheif build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo cp -a .libheif/usr/local/. /usr/local/
+          echo /usr/local/lib | sudo tee /etc/ld.so.conf.d/00-usr-local.conf >/dev/null
+          sudo ldconfig
+          echo "libheif $(pkg-config --modversion libheif) from $(pkg-config --variable=libdir libheif)"
+          lib=$(ldconfig -p | awk '/libheif\.so\.1 /{print $NF; exit}')
+          echo "the loader resolves libheif.so.1 to $lib"
+          case "$lib" in /usr/local/*) ;; *) echo "::error::the distro's libheif still shadows the one built here"; exit 1 ;; esac
+          if ldd "$lib" | grep -qi 'x26[45]'; then
+            echo "::error::libheif still links a GPL encoder (x264 / x265)"; exit 1
+          fi
+          if ! ldd "$lib" | grep -qi kvazaar; then
+            echo "::error::libheif does not link kvazaar - no HEIC encoder"; exit 1
+          fi
+
       # The runner is deliberately NOT moved to ubuntu-24.04, which does ship
       # Clang 16: this leg is pinned to 22.04 for glibc 2.35, which is what
       # makes the portable Linux bundle portable, and 24.04 would raise that
       # floor to 2.39 for everyone who installs it.
       - name: Install Clang (Linux)
         if: runner.os == 'Linux'
-        # Normally 20 s; 2.5 min on the slow mirror day of 2026-10-07.
+        # Normally 20 s; 2.5 min on the slow mirror day of 2026-10-07. Three
+        # attempts at that pace, and their pauses, still fit.
         timeout-minutes: 15
         run: |
           set -euo pipefail
           V="${ULTRACANVAS_CLANG_VERSION}"
-          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh "$V"
+          # apt.llvm.org has short outages: on 2026-11-03 a bare wget of
+          # llvm.sh failed both Linux legs in under a second (exit 4, a
+          # network failure) before anything compiled. So the script is
+          # fetched under curl's own retries, and the whole fetch-and-install
+          # is tried three times - llvm.sh reaches the same host again for
+          # the signing key, the apt index and the packages, and running it a
+          # second time only re-adds the source it already added.
+          installed=false
+          for attempt in 1 2 3; do
+            rm -f /tmp/llvm.sh
+            if curl -fsSL --connect-timeout 20 --retry 5 --retry-all-errors --retry-delay 10 \
+                    -o /tmp/llvm.sh https://apt.llvm.org/llvm.sh &&
+               chmod +x /tmp/llvm.sh &&
+               sudo /tmp/llvm.sh "$V"; then
+              installed=true
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::installing Clang $V from apt.llvm.org failed (attempt $attempt of 3); retrying in $((attempt * 30)) s"
+              sleep $((attempt * 30))
+            fi
+          done
+          if [ "$installed" != true ]; then
+            echo "::error::could not install Clang $V from apt.llvm.org in 3 attempts (the host may be down)."
+            exit 1
+          fi
           # Fail here, loudly, rather than twenty minutes into a compile: if the
           # repository did not carry this version for this distribution or
           # architecture, that is the thing to report, not whatever the build
@@ -860,13 +1217,18 @@ jobs:
           # The Linux arm64 runner image ships a smaller toolset than the
           # x86_64 one and may not preinstall rustup; bootstrap it when it is
           # missing so the Vectorizer gate below can't fail for that reason.
+          # The installer is fetched under curl's retries and run under
+          # scripts/ci-retry.sh, as is the toolchain download: rerunning
+          # either finishes what a failed try started.
           if ! command -v rustup >/dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-              | sh -s -- -y --default-toolchain none --profile minimal
+            curl --proto '=https' --tlsv1.2 -sSf --connect-timeout 20 \
+              --retry 5 --retry-all-errors --retry-delay 10 \
+              -o "$RUNNER_TEMP/rustup-init.sh" https://sh.rustup.rs
+            scripts/ci-retry.sh -- sh "$RUNNER_TEMP/rustup-init.sh" -y --default-toolchain none --profile minimal
             echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
             export PATH="$HOME/.cargo/bin:$PATH"
           fi
-          rustup toolchain install stable --profile minimal
+          scripts/ci-retry.sh -- rustup toolchain install stable --profile minimal
           rustup default stable
           rustc --version
           cargo --version
@@ -949,12 +1311,15 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
+            -DULTRACANVAS_BUILD_HEIF_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_EMOJI_TESTS=ON \
             -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
             -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
+            -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
@@ -988,8 +1353,11 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
+            -DULTRACANVAS_BUILD_HEIF_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
@@ -1102,6 +1470,15 @@ jobs:
               exit 1
             fi
             echo "Confirmed: Linux links the vendored WS-capable libcurl (CURL_OPENSSL_4 version node)."
+            # The vendored libcurl must carry sftp://: UltraStoreAdmin's upload
+            # speaks it, and curl's CMake builds without it silently when
+            # libssh2 is missing (VendoredCurl.cmake prints the backend it took).
+            if ! grep -q "Vendored libcurl: SSH backend = libssh" configure.log; then
+              echo "::error::The vendored third_party/curl was built without an SSH backend (no sftp://); libssh2-1-dev is missing or was not found."
+              grep -i "Vendored libcurl" configure.log || true
+              exit 1
+            fi
+            echo "Confirmed: the vendored libcurl has an SSH backend (sftp://)."
           else
             if grep -q "UltraNet libcurl: VENDORED" configure.log; then
               echo "::error::CI selected the vendored third_party/curl build on ${{ runner.os }}; the platform system libcurl should provide WebSocket support here."
@@ -1513,6 +1890,40 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
 
+      # JPEG XL in the libvips each package ships: vcpkg's, built with its
+      # jpeg-xl feature, on macOS, and MSYS2's on Windows, which has JPEG XL
+      # only through its vips-jxl module and libjxl; on ubuntu-22.04, whose
+      # libvips has none, through the framework's own jxlload / jxlsave on
+      # the libjxl built above. ImageJxlTest exits 0 when libvips has neither
+      # jxlload nor jxlsave, so the step fails unless the checks really ran.
+      # ULTRACANVAS_BUILD_JXL_TESTS builds it without BUILD_TESTS.
+      - name: Run JPEG XL test
+        working-directory: build
+        run: |
+          ctest --output-on-failure --no-tests=error -V -R "^ImageJxlTest$" 2>&1 | tee jxl-test.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if ! grep -q 'All JPEG XL checks passed' jxl-test.log; then
+            echo "::error::ImageJxlTest did not run its checks: this libvips has no JPEG XL"
+            exit 1
+          fi
+
+      # HEIF and AVIF in the libheif each package ships, held to what each
+      # must and must not do (UC_HEIF_EXPECT, see Tests/ImageHeifTest.cpp).
+      # macOS: libde265 and aom only - HEIC read, AVIF read and write, and
+      # no HEIC encoder, since x265 is GPL and libvips is in the core every
+      # app links; the step fails if one turns up. Windows: MSYS2's codecs
+      # with libheif rebuilt without x265 (above), so kvazaar writes HEIC and
+      # both formats read and write.
+      # Linux: the libheif built from source above, held to the same as
+      # Windows (kvazaar, no x265). ULTRACANVAS_BUILD_HEIF_TESTS builds it
+      # without BUILD_TESTS; image-codecs.yml runs it on Ubuntu 24.04's own
+      # libheif with every plug-in installed.
+      - name: Run HEIF/AVIF test
+        working-directory: build
+        env:
+          UC_HEIF_EXPECT: ${{ runner.os == 'macOS' && 'decode=heic,avif encode=avif no-encode=heic no-encoder=x265,x264' || 'decode=heic,avif encode=heic,avif encoder=kvazaar no-encoder=x265,x264' }}
+        run: ctest --output-on-failure --no-tests=error -V -R "^ImageHeifTest$"
+
       # UltraCleaner's engine suite: the path guard, the rule table, the
       # scanner, the remover and the album logic, over temporary trees only
       # (no display, no network, nothing outside the temp folder removed).
@@ -1525,6 +1936,17 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
+
+      # UltraCrypt on the two systems whose trust store is their own: the
+      # certificate check's system roots are Windows' ROOT store and macOS's
+      # anchors there (UltraCryptSystemRoots.cpp), and the suite checks that a
+      # root shipped with the system - Microsoft's on Windows, which no
+      # OpenSSL bundle carries - is trusted through them. Linux runs the suite
+      # in the full pass, where the store is OpenSSL's own. Headless.
+      - name: Run UltraCryptTests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraCryptTests$"
 
       # VideoFX's engine on Windows, on MSYS2's FFmpeg - the one the package
       # ships - and through the Windows file names, cache folder and fonts;
@@ -1598,13 +2020,19 @@ jobs:
       # its icons, the shortcut test reads .lnk files on the system they
       # come from, and the history test keeps UltraFiler's recently-used lists
       # under %APPDATA%, and the retire test stops a display's workers the way
-      # UltraFiler does for a closed tab. ULTRACANVAS_BUILD_FILER_TESTS builds
+      # UltraFiler does for a closed tab. The file-removal test makes each
+      # of the things Windows answers "access denied" for (read-only folders,
+      # delete pending, a mapped file) and checks only a refusal of the
+      # access list is taken for a permission problem; the elevated-operations
+      # test runs the administrator helper's delete on them, and the
+      # vanished-folder test checks a display whose folder is deleted moves up.
+      # ULTRACANVAS_BUILD_FILER_TESTS builds
       # them without the Linux-only BUILD_TESTS; Linux runs them in the full
       # pass.
       - name: Run Filer tests (Windows)
         if: runner.os == 'Windows'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest|FilerRetireTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(FilerFolderPreviewTest|FilerNameEncodingTest|FilerHostIconsTest|FilerShortcutEntryTest|FilerHistoryTest|FilerRetireTest|FileRemovalTest|ElevatedFileOperationsTest|FilerVanishedFolderTest)$"
 
       # The bundled emoji fonts on Windows, where emoji drew as boxes of hex
       # digits: the emoji setting's file under %APPDATA%, the generic font
@@ -1814,6 +2242,20 @@ jobs:
         run: >-
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^SmartHomeWidgets$"
+
+      # The vanished-folder test's second half drives the Filer's folder watch,
+      # which only runs inside the application's timers: a subfolder deleted on
+      # disk is reported through onFolderChangedOnDisk (what UltraFiler's folder
+      # tree re-syncs from), and the shown folder deleted moves the display up.
+      # Without a display that half skips; here it has to run.
+      - name: Run the Filer folder-watch test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^FilerVanishedFolderTest$"
 
       # The demo's layout audit (Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp)
       # opens every page and fails on a label or button narrower than its
@@ -2294,8 +2736,9 @@ jobs:
   # and the six UltraCanvasStart archives to a GitHub release tagged
   # v<version>, where a fixed URL serves them to anyone:
   # https://github.com/<repo>/releases/download/v<version>/<archive>.
-  # UltraCanvasStart's Project page downloads the SDK for its platform from
-  # there (Apps/UltraCanvasStart/engine/StartSdk.cpp names the URL), and
+  # UltraCanvasStart's Framework step links the release page beside the
+  # UltraOS download page (Apps/UltraCanvasStart/engine/StartSdk.cpp; the
+  # publish-sdk-website job below fills that page's server), and
   # UltraCanvasStart itself is what a computer with nothing on it yet
   # downloads first (Docs/GettingStarted.md). The release is created with
   # the version's changelog section as its notes; a re-run of the same
@@ -2307,6 +2750,10 @@ jobs:
     runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     permissions:
       contents: write
+    # The version, for publish-sdk-website below: it reads the same first
+    # line, and the two must not disagree about which archives to send.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -2395,6 +2842,74 @@ jobs:
           gh release upload "$tag" sdk-release/* --repo "${{ github.repository }}" --clobber
           echo "https://github.com/${{ github.repository }}/releases/tag/$tag"
 
+  # ===== THE SDKS ON THE ULTRAOS WEBSITE =====
+  # UltraCanvasStart's Framework step opens https://ultraos.eu/download-file/
+  # (Apps/UltraCanvasStart/engine/StartSdk.cpp) and names the archive for
+  # its version; this job puts the same six archives the release above
+  # carries on the server behind that page, so the page can offer a version
+  # the moment it is released instead of when someone copies it over. Over
+  # SFTP, into <ULTRAOS_SFTP_DIR>/<version>/ with a SHA256SUMS beside them
+  # (scripts/upload-sdk-website.sh, which documents every setting). After
+  # publish-sdk, so the website never has a version the release lacks; a job
+  # of its own, so an unreachable server turns this job red, not the
+  # release, and it can be re-run alone.
+  #
+  # Configured in the repository's Settings -> Secrets and variables ->
+  # Actions: ULTRAOS_SFTP_HOST, ULTRAOS_SFTP_USER, ULTRAOS_SFTP_DIR (and
+  # ULTRAOS_SFTP_PORT when not 22), each a variable or a secret, and the
+  # secrets ULTRAOS_SFTP_KEY and ULTRAOS_SFTP_KNOWN_HOSTS. Until
+  # ULTRAOS_SFTP_HOST is set the job uploads nothing and says so; with it
+  # set, a missing setting fails it. The decision is a step's, not the
+  # job's `if`: a job condition cannot read secrets, and a host kept in one
+  # would skip the job for good. sdk-website-check.yml tests the settings
+  # without a release.
+  publish-sdk-website:
+    name: Upload the SDKs to the UltraOS website
+    needs: publish-sdk
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    # Six archives of a few hundred MB in all; a stalled connection is cut
+    # by ServerAliveInterval, this is the backstop.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ULTRAOS_SFTP_HOST: ${{ vars.ULTRAOS_SFTP_HOST || secrets.ULTRAOS_SFTP_HOST }}
+    steps:
+      - name: Is the website configured?
+        id: configured
+        run: |
+          if [ -n "$ULTRAOS_SFTP_HOST" ]; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ULTRAOS_SFTP_HOST is not set (as a variable or a secret) - the SDKs were not uploaded to the website"
+          fi
+
+      - name: Checkout repository
+        if: steps.configured.outputs.upload == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      - name: Download the SDK artifacts
+        if: steps.configured.outputs.upload == 'true'
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvas-SDK-*
+          path: sdk-release
+          merge-multiple: true
+
+      - name: Upload the SDKs over SFTP
+        if: steps.configured.outputs.upload == 'true'
+        env:
+          VERSION: ${{ needs.publish-sdk.outputs.version }}
+          ULTRAOS_SFTP_PORT: ${{ vars.ULTRAOS_SFTP_PORT || secrets.ULTRAOS_SFTP_PORT }}
+          ULTRAOS_SFTP_USER: ${{ vars.ULTRAOS_SFTP_USER || secrets.ULTRAOS_SFTP_USER }}
+          ULTRAOS_SFTP_DIR: ${{ vars.ULTRAOS_SFTP_DIR || secrets.ULTRAOS_SFTP_DIR }}
+          ULTRAOS_SFTP_KEY: ${{ secrets.ULTRAOS_SFTP_KEY }}
+          ULTRAOS_SFTP_KNOWN_HOSTS: ${{ secrets.ULTRAOS_SFTP_KNOWN_HOSTS }}
+        run: scripts/upload-sdk-website.sh sdk-release "$VERSION"
+
   # ===== ANDROID BACKEND CHECK =====
   # Separate job, not a matrix row (investigation §5): there is no
   # cross-compiled dependency sysroot yet, so a full Android build is not
@@ -2412,18 +2927,36 @@ jobs:
     # The whole job, not only its apt step: without one only GitHub's 6-hour
     # default applied, and on 2026-10-07 a hung apt held PR #720's checks for
     # five hours before it was cancelled by hand. Normally 75 s (5.5 min on a
-    # slow-mirror day); the install step keeps its own 20 minutes inside this,
+    # slow-mirror day); the install step keeps its own 45 minutes inside this,
     # and the NDK syntax check, the slowest of the rest, takes under a minute.
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.sha }}
 
+      # The packages the ubuntu-22.04 build row of the last run on main kept
+      # (it saves them; this job only reads them): the same runner image, and
+      # the row installs this list too, libvips-dev and its dependencies the
+      # bulk of it. On 2026-11-06 the mirror trickled this step past its 20
+      # minutes on PR #1138 while it fetched those; with the .deb files
+      # restored, apt fetches only what changed since.
+      - name: Restore the apt package cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-ubuntu-22.04-
+          restore-keys: apt-debs-ubuntu-22.04-
+
+      - name: Put the cached packages in apt's cache
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install host dependency headers
-        # Normally 20 s; 8 min on a slow mirror day (2026-10-07).
-        timeout-minutes: 20
+        # Normally 20 s; 8 min on a slow mirror day (2026-10-07), past 20 on
+        # 2026-11-06. A mirror that crawls still finishes, as the build rows
+        # and the browser end-to-end job allow (45).
+        timeout-minutes: 45
         run: |
           scripts/ci-apt.sh update
           # libvips-dev: the Android arm requires libvips like every other

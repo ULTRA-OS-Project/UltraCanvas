@@ -21,6 +21,7 @@
   - [BreadcrumbOverflowMode](#breadcrumboverflowmode)
   - [BreadcrumbItemStyle](#breadcrumbitemstyle)
 - [Style Presets](#style-presets)
+- [Following the theme](#following-the-theme)
 - [Events and Callbacks](#events-and-callbacks)
 - [Builder Pattern](#builder-pattern)
 - [Usage Examples](#usage-examples)
@@ -41,7 +42,7 @@
 
 **UltraCanvasBreadcrumb** is a hierarchical navigation control that renders a path of clickable segments separated by configurable separators. It supports per-item icons, per-item dropdown menus, several built-in style presets, and four different overflow strategies (clip, collapse, ellipsize, shrink-text) for narrow containers.
 
-**Version:** 1.0.1
+**Version:** 1.1.0 - `BreadcrumbStyle::FromTheme`, `ApplyTheme`: the breadcrumb follows the theme
 **Header:** `include/UltraCanvasBreadcrumb.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -162,6 +163,12 @@ struct FolderBreadcrumbOptions {
     // machine (UltraFiler's Computer page) opens that instead. The node's
     // dropdown lists the drives either way.
     std::function<void()> onComputerClick;
+    // What a drive or mounted volume is called on the strip - its own node and
+    // its entry in the "Computer" node's list - given its root. Unset, or an
+    // empty answer, keeps the drive letter ("D:") or the root path. Called on
+    // the UI thread, so answer from names already read (ReadVolumeName, off
+    // the UI thread), never by asking the disk.
+    std::function<std::string(const std::string& root)> driveLabel;
 };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node, the
@@ -194,6 +201,19 @@ filer->onPathChanged = [crumb, filer](const std::string& path) {
     BuildFolderBreadcrumb(crumb, path,
                           [filer](const std::string& folder) { filer->SetPath(folder); });
 };
+```
+
+A file manager that has the volumes' own names names its drives by them:
+
+```cpp
+std::map<std::string, std::string> volumeNames;   // "D:\\" -> "My Passport Ultra (D:)", filled off the UI thread
+
+FolderBreadcrumbOptions options;
+options.driveLabel = [&volumeNames](const std::string& root) {
+    auto it = volumeNames.find(root);
+    return it != volumeNames.end() ? it->second : std::string();
+};
+BuildFolderBreadcrumb(crumb, path, onNavigate, options);
 ```
 
 Pair it with `BreadcrumbOverflowMode::Collapse` (plus `keepFirstItemOnCollapse`
@@ -360,6 +380,25 @@ BreadcrumbStyle::WebDocs();
 BreadcrumbStyle::Arrow();          // interlocking arrow segments
 BreadcrumbStyle::Parallelogram();  // interlocking slanted segments
 BreadcrumbStyle::Steps();          // Arrow segments + round numbered indicators
+```
+
+## Following the theme
+
+`BreadcrumbStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (the item and separator
+styles, paddings, sizes, flags): a filled strip takes the panel with a
+hairline, a transparent one stays so; the items in muted ink, the accent
+hovered, ink for the current one on the soft accent when it is filled, the
+hover and pressed fills, faint ink disabled and for the separator, the
+level badge in the accent with text on it, the interface font at the body
+size. Under the theme policy a new breadcrumb follows the theme by itself
+(`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto trail = std::make_shared<UltraCanvasBreadcrumb>("trail", 400, 28);
+trail->SetStyle(BreadcrumbStyle::FromTheme(UltraCanvasTheme::Current(), BreadcrumbStyle::Pills()));   // the roles over the Pills shape
+trail->SetFollowTheme(true);
 ```
 
 ## Events and Callbacks

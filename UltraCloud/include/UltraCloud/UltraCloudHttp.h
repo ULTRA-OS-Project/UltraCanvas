@@ -3,6 +3,7 @@
 // function (UltraNet_HttpRequest by default, a fake in tests), Basic /
 // Bearer auth from the credentials, the HTTP → Result mapping, and the wait
 // and retry when a service limits requests (RateLimitPolicy).
+// Version: 0.6.0 - DownloadToFile hands back the answer's headers (`answered`)
 // Version: 0.5.0 - DownloadToFile: a download goes to disk as it arrives
 // Version: 0.4.0 - a throttled request is sent again after the wait the
 //                  service asks for (RateLimitPolicy, per thread)
@@ -70,8 +71,12 @@ protected:
     // partial copy (SetThreadDownloadContinues), a file already there is
     // continued with a Range request - 206 appends, 200 starts it over, a 416
     // naming its size means it was complete - and a failure leaves it.
+    // `answered`, when given, receives the successful answer's status and
+    // headers (its body went to the file) - where a provider reads the file's
+    // date (Last-Modified, Dropbox-API-Result) to give the local copy.
     Result DownloadToFile(const Credentials& credentials, UltraNetHttpRequest request,
-                          const std::string& localPath, const std::string& what) const;
+                          const std::string& localPath, const std::string& what,
+                          UltraNetResponse* answered = nullptr) const;
     // Map an HTTP outcome onto a Result (2xx → Ok; 429, or a 503 / Google 403
     // that says so → RateLimited; 401/403 → AuthFailed; 404 → NotFound; other
     // 4xx/5xx → Server; transport failure → Network). A refusal's message

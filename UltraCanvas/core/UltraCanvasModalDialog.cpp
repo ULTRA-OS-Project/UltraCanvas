@@ -1,9 +1,11 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.9.2 - nor by a popup's own window
+// Version: 3.9.1 - a dialog without a parent is not placed by the tooltip's window
 // Version: 3.9.0 - ModalDialogStyle::FromTheme, ApplyTheme
 // Version: 3.8.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
@@ -29,6 +31,7 @@
 #include <cmath>
 #include <numeric>
 #include "UltraCanvasDebug.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace UltraCanvas {
 
@@ -58,7 +61,7 @@ namespace UltraCanvas {
             check.align = LabelInlineImageAlign::Middle;
             label.SetText("\xEF\xBF\xBC");   // U+FFFC, the image's place
             label.SetInlineImages({ check });
-            label.SetAccessibleName("Success");
+            label.SetAccessibleName(Tr("Success"));
         }
     }
 
@@ -73,6 +76,9 @@ namespace UltraCanvas {
         if (dialogConfig.dialogType != DialogType::Custom) {
             BuildDialogLayout();
         }
+        // A dialog that follows by default takes the theme once its
+        // sections and buttons exist (a file dialog again after its browser)
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasModalDialog::BuildDialogLayout() {
@@ -249,25 +255,25 @@ namespace UltraCanvas {
         };
 
         if (buttonMask & static_cast<int>(DialogButton::OK)) {
-            addButton(DialogButton::OK, "OK");
+            addButton(DialogButton::OK, Tr("OK"));
         }
         if (buttonMask & static_cast<int>(DialogButton::Cancel)) {
-            addButton(DialogButton::Cancel, "Cancel");
+            addButton(DialogButton::Cancel, Tr("Cancel"));
         }
         if (buttonMask & static_cast<int>(DialogButton::Yes)) {
-            addButton(DialogButton::Yes, "Yes");
+            addButton(DialogButton::Yes, Tr("Yes"));
         }
         if (buttonMask & static_cast<int>(DialogButton::No)) {
-            addButton(DialogButton::No, "No");
+            addButton(DialogButton::No, Tr("No"));
         }
         if (buttonMask & static_cast<int>(DialogButton::Retry)) {
-            addButton(DialogButton::Retry, "Retry");
+            addButton(DialogButton::Retry, Tr("Retry"));
         }
         if (buttonMask & static_cast<int>(DialogButton::Abort)) {
-            addButton(DialogButton::Abort, "Abort");
+            addButton(DialogButton::Abort, Tr("Abort"));
         }
         if (buttonMask & static_cast<int>(DialogButton::Ignore)) {
-            addButton(DialogButton::Ignore, "Ignore");
+            addButton(DialogButton::Ignore, Tr("Ignore"));
         }
 
         AssignButtonMnemonics();
@@ -503,6 +509,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::SetStyle(const ModalDialogStyle& dialogStyle) {
+        StyleSetByHand();
         style = dialogStyle;
 
         // Apply style to components
@@ -556,7 +563,9 @@ namespace UltraCanvas {
             if (!reference) {
                 for (auto& win : app->GetWindows()) {
                     if (win && win.get() != this && win->IsWindowVisible() &&
-                        win->GetConfig().type != WindowType::Dialog) {
+                        win->GetConfig().type != WindowType::Dialog &&
+                        win->GetConfig().type != WindowType::Tooltip &&
+                        win->GetConfig().type != WindowType::Popup) {
                         reference = win.get();
                         break;
                     }
@@ -945,16 +954,16 @@ namespace UltraCanvas {
 
     std::string UltraCanvasModalDialog::GetButtonText(DialogButton button) const {
         switch (button) {
-            case DialogButton::OK:     return "OK";
-            case DialogButton::Cancel: return "Cancel";
-            case DialogButton::Yes:    return "Yes";
-            case DialogButton::No:     return "No";
-            case DialogButton::Apply:  return "Apply";
-            case DialogButton::Close:  return "Close";
-            case DialogButton::Help:   return "Help";
-            case DialogButton::Retry:  return "Retry";
-            case DialogButton::Ignore: return "Ignore";
-            case DialogButton::Abort:  return "Abort";
+            case DialogButton::OK:     return Tr("OK");
+            case DialogButton::Cancel: return Tr("Cancel");
+            case DialogButton::Yes:    return Tr("Yes");
+            case DialogButton::No:     return Tr("No");
+            case DialogButton::Apply:  return Tr("Apply");
+            case DialogButton::Close:  return Tr("Close");
+            case DialogButton::Help:   return Tr("Help");
+            case DialogButton::Retry:  return Tr("Retry");
+            case DialogButton::Ignore: return Tr("Ignore");
+            case DialogButton::Abort:  return Tr("Abort");
             default:                   return "";
         }
     }
@@ -985,19 +994,19 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::ApplyTypeDefaults() {
         switch (dialogConfig.dialogType) {
             case DialogType::Information:
-                if (dialogConfig.title == "Dialog") dialogConfig.title = "Information";
+                if (dialogConfig.title == "Dialog") dialogConfig.title = Tr("Information");
                 break;
             case DialogType::Successful:
-                if (dialogConfig.title == "Dialog") dialogConfig.title = "Success";
+                if (dialogConfig.title == "Dialog") dialogConfig.title = Tr("Success");
                 break;
             case DialogType::Question:
-                if (dialogConfig.title == "Dialog") dialogConfig.title = "Question";
+                if (dialogConfig.title == "Dialog") dialogConfig.title = Tr("Question");
                 break;
             case DialogType::Warning:
-                if (dialogConfig.title == "Dialog") dialogConfig.title = "Warning";
+                if (dialogConfig.title == "Dialog") dialogConfig.title = Tr("Warning");
                 break;
             case DialogType::Error:
-                if (dialogConfig.title == "Dialog") dialogConfig.title = "Error";
+                if (dialogConfig.title == "Dialog") dialogConfig.title = Tr("Error");
                 break;
             default:
                 break;
@@ -1510,7 +1519,7 @@ namespace UltraCanvas {
         // A file dialog without filters lists every file; a folder picker
         // filters nothing.
         if (fileConfig.filters.empty() && fileConfig.dialogType != FileDialogType::SelectFolder) {
-            fileConfig.filters = { FileFilter("All Files", "*") };
+            fileConfig.filters = { FileFilter(Tr("All Files"), "*") };
             fileConfig.selectedFilterIndex = 0;
         }
         // Save opens on the type of the name it suggests: "photo.jpg" with
@@ -1570,8 +1579,8 @@ namespace UltraCanvas {
             okEntry->button->onClick = [this]() { HandleOkButton(); };
             // The button says what it does, as the platforms' own do.
             okEntry->button->SetText(
-                    fileConfig.dialogType == FileDialogType::Save ? "Save" :
-                    fileConfig.dialogType == FileDialogType::SelectFolder ? "Select Folder" : "Open");
+                    fileConfig.dialogType == FileDialogType::Save ? Tr("Save") :
+                    fileConfig.dialogType == FileDialogType::SelectFolder ? Tr("Select Folder") : Tr("Open"));
             SizeButtonToLabel(okEntry->button);
             AssignButtonMnemonics();
         }
@@ -1605,6 +1614,7 @@ namespace UltraCanvas {
         SyncFolderTree();
         SetNameText(fileConfig.defaultFileName);
         ApplyFileDialogLook(UltraCanvasTheme::Current());
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasFileDialog::BuildFileInterface() {
@@ -1629,7 +1639,7 @@ namespace UltraCanvas {
 
         upButton = std::make_shared<UltraCanvasButton>("FileDialogUp", 0, 0, fieldHeight, fieldHeight);
         upButton->SetIcon(FileDialogIconPath("arrow-up.svg"));
-        upButton->SetTooltip("Up one level");
+        upButton->SetTooltip(Tr("Up one level"));
         upButton->layoutItem.SetFlexShrink(0);
         upButton->onClick = [this]() { NavigateToParentDirectory(); };
         pathRow->AddChild(upButton);
@@ -1852,7 +1862,7 @@ namespace UltraCanvas {
                 fileIcon->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconSize));
                 fileIcon->size.height = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconSize));
                 fileIcon->layoutItem.SetFlexShrink(0);
-                fileIcon->SetTooltip("Drag onto a folder to save the file there");
+                fileIcon->SetTooltip(Tr("Drag onto a folder to save the file there"));
                 // The type's logo in the colour the listing gives the type, or
                 // this desktop's icon for it when the listing shows those.
                 fileIcon->SetIconPainter([listing = filerView.get()](
@@ -1879,7 +1889,7 @@ namespace UltraCanvas {
                 iconBlock->AddChild(fileIcon);
 
                 fileIconCaption = std::make_shared<UltraCanvasLabel>(
-                        "FileDialogFileIconCaption", 0, 0, kSaveIconBlockWidth, 14, "Drag to Folder");
+                        "FileDialogFileIconCaption", 0, 0, kSaveIconBlockWidth, 14, Tr("Drag to Folder"));
                 fileIconCaption->SetFontSize(std::max(8.0f, fontSize - 2.0f));
                 fileIconCaption->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
                 fileIconCaption->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSaveIconBlockWidth));
@@ -1894,7 +1904,7 @@ namespace UltraCanvas {
                     saveSettingsButton = std::make_shared<UltraCanvasButton>(
                             "FileDialogSaveSettings", 0, 0, fieldHeight, fieldHeight);
                     saveSettingsButton->SetIcon(FileDialogIconPath("settings.svg"));
-                    saveSettingsButton->SetTooltip("Settings for this type");
+                    saveSettingsButton->SetTooltip(Tr("Settings for this type"));
                     saveSettingsButton->size.width = CSSLayout::Dimension::Px(static_cast<float>(fieldHeight));
                     saveSettingsButton->layoutItem.SetFlexShrink(0);
                     saveSettingsButton->onClick = [this]() { ShowSaveTypeSettings(); };
@@ -2595,7 +2605,7 @@ namespace UltraCanvas {
                 if (!reason.empty()) {
                     UltraCanvasDialogManager::ShowError(
                             "\"" + leaf + "\" cannot be used as a file name: it " + reason + ".",
-                            "Save", nullptr, this);
+                            Tr("Save"), nullptr, this);
                     return;
                 }
             }
@@ -2608,7 +2618,7 @@ namespace UltraCanvas {
                 UltraCanvasDialogManager::ShowInformation(
                         "The folder \"" + PathToUtf8(parent) + "\" does not exist.\n"
                         "Check the path, or choose a folder from the tree.",
-                        "Folder Not Found", nullptr, this);
+                        Tr("Folder Not Found"), nullptr, this);
                 return;
             }
             Accept({target});
@@ -2625,7 +2635,7 @@ namespace UltraCanvas {
         UltraCanvasDialogManager::ShowInformation(
                 "\"" + typed + "\" was not found in\n" + currentDirectory + ".\n\n"
                 "Check the name, or choose a file from the list.",
-                "File Not Found", nullptr, this);
+                Tr("File Not Found"), nullptr, this);
     }
 
     void UltraCanvasFileDialog::Accept(const std::vector<std::string>& files) {
@@ -2642,7 +2652,7 @@ namespace UltraCanvas {
                 const std::string name = PathToUtf8(target.filename());
                 UltraCanvasDialogManager::ShowConfirmation(
                         "\"" + name + "\" already exists.\nDo you want to replace it?",
-                        "Replace File",
+                        Tr("Replace File"),
                         [weak, this, files](bool replace) {
                             if (weak.expired()) return;
                             overwritePromptOpen = false;
@@ -2763,7 +2773,7 @@ namespace UltraCanvas {
                     ? format.name + " settings: the size it is written at"
                     : format.name + " settings: how the file is written");
         } else if (type.empty()) {
-            saveSettingsButton->SetTooltip("Settings: the name has no type to choose settings for");
+            saveSettingsButton->SetTooltip(Tr("Settings: the name has no type to choose settings for"));
         } else {
             saveSettingsButton->SetTooltip("Settings: ." + type + " files have none to choose");
         }
@@ -3190,16 +3200,16 @@ namespace UltraCanvas {
 
     std::string UltraCanvasDialogManager::DialogButtonToString(DialogButton button) {
         switch (button) {
-            case DialogButton::OK:         return "OK";
-            case DialogButton::Cancel:     return "Cancel";
-            case DialogButton::Yes:        return "Yes";
-            case DialogButton::No:         return "No";
-            case DialogButton::Apply:      return "Apply";
-            case DialogButton::Close:      return "Close";
-            case DialogButton::Help:       return "Help";
-            case DialogButton::Retry:      return "Retry";
-            case DialogButton::Ignore:     return "Ignore";
-            case DialogButton::Abort:      return "Abort";
+            case DialogButton::OK:         return Tr("OK");
+            case DialogButton::Cancel:     return Tr("Cancel");
+            case DialogButton::Yes:        return Tr("Yes");
+            case DialogButton::No:         return Tr("No");
+            case DialogButton::Apply:      return Tr("Apply");
+            case DialogButton::Close:      return Tr("Close");
+            case DialogButton::Help:       return Tr("Help");
+            case DialogButton::Retry:      return Tr("Retry");
+            case DialogButton::Ignore:     return Tr("Ignore");
+            case DialogButton::Abort:      return Tr("Abort");
             case DialogButton::NoneButton:
             default:                       return "None";
         }
@@ -3309,6 +3319,10 @@ namespace UltraCanvas {
         ModalDialogStyle s = base;
         s.messageTextColor = theme.roles.ink;
         s.detailsTextColor = theme.roles.inkMuted;
+        // the message at the body size, the details at the caption size;
+        // the buttons' size stays the style's (0: the button's own)
+        s.messageFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+        s.detailsFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
         return s;
     }
 

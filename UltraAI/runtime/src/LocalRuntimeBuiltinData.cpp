@@ -15,8 +15,9 @@
 // hash is recorded in the model's model.json. Pinning the hashes here is
 // the curation step the proposal describes (§6.3); sizes are approximate
 // until then and are corrected from the host at install time.
+// Version: 0.2.0 - the built-in topics
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 
 #include "LocalRuntimeInternal.h"
@@ -146,6 +147,59 @@ const char* BuiltinCatalogueJson() {
       "features": {"contextWindow": 8192, "embeddingDimensions": 768},
       "engineArgs": ["--ctx-size", "8192", "--pooling", "mean"],
       "tags": ["embeddings", "small"]
+    }
+  ]
+})json";
+}
+
+// The topics shipped with the framework: the same document the model server
+// (Server/UltraAIModelServer) is seeded with - its tests compare the two.
+const char* BuiltinTopicsJson() {
+    return R"json({
+  "formatVersion": 1,
+  "published": "2026-11-06",
+  "topics": [
+    {
+      "id": "chat",
+      "name": "General chat",
+      "description": "Conversations, questions and answers, writing help.",
+      "capability": "textllm",
+      "models": [{"id": "qwen3-4b-q4", "default": true}, {"id": "qwen3-8b-q4"}, {"id": "qwen3-1.7b-q8"}, {"id": "gemma-3-4b-it-q4"}]
+    },
+    {
+      "id": "code",
+      "name": "Programming",
+      "description": "Writing, explaining and fixing source code.",
+      "capability": "textllm",
+      "models": [{"id": "qwen3-8b-q4", "default": true}, {"id": "qwen3-4b-q4"}]
+    },
+    {
+      "id": "translation",
+      "name": "Translation",
+      "description": "Translating text between languages.",
+      "capability": "textllm",
+      "models": [{"id": "qwen3-4b-q4", "default": true}, {"id": "qwen3-8b-q4"}, {"id": "qwen3-1.7b-q8"}]
+    },
+    {
+      "id": "summary",
+      "name": "Summaries",
+      "description": "Shortening documents, mails and web pages.",
+      "capability": "textllm",
+      "models": [{"id": "qwen3-1.7b-q8", "default": true}, {"id": "qwen3-4b-q4"}]
+    },
+    {
+      "id": "vision",
+      "name": "Pictures and documents",
+      "description": "Describing pictures and reading scanned pages.",
+      "capability": "textllm",
+      "models": [{"id": "gemma-3-4b-it-q4", "default": true}]
+    },
+    {
+      "id": "search",
+      "name": "Search and similarity",
+      "description": "Embeddings for finding related text.",
+      "capability": "embeddings",
+      "models": [{"id": "qwen3-embedding-0.6b-q8", "default": true}, {"id": "nomic-embed-text-v1.5-q8"}]
     }
   ]
 })json";

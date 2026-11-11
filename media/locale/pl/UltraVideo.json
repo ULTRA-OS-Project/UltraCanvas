@@ -1,0 +1,19 @@
+{
+  "@language": "pl",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Kolor tytułu",
+  "Edit Title": "Edycja tytułu",
+  "The title is in the video": "Tytuł jest w wideo",
+  "The title is unchanged": "Tytuł nie został zmieniony",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Tytuł został opróżniony: zachowuje swój tekst (aby go usunąć, usuń tytuł na jego ścieżce)",
+  "Title Alignment": "Wyrównanie tytułu",
+  "Title Bold": "Pogrubienie tytułu",
+  "Title Font": "Czcionka tytułu",
+  "Title Italic": "Kursywa tytułu",
+  "Title Letter Spacing": "Odstęp między literami tytułu",
+  "Title Line Spacing": "Interlinia tytułu",
+  "Title Size": "Rozmiar tytułu",
+  "Title Strikethrough": "Przekreślenie tytułu",
+  "Title Underline": "Podkreślenie tytułu",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Wpisywanie tytułu na klatce: Escape, Ctrl+Enter lub kliknięcie poza nim umieszcza go w wideo"
+}

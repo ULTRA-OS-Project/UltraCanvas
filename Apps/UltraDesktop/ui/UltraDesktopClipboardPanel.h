@@ -19,6 +19,8 @@
 // Keys: typing searches; Up / Down choose; Enter copies; F2 or Ctrl+E edits
 // (in UltraClipboard); Delete deletes while the search field is empty
 // (Ctrl+Delete always); Escape closes.
+// Version: 0.2.0 - SetParentWindow: the desktop window, which places the panel on Wayland
+// Version: 0.1.1 - SetScreenArea: centred on and kept on the desktop's own monitor
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -34,6 +36,7 @@
 #include <vector>
 
 namespace UltraCanvas {
+    class UltraCanvasWindowBase;
     class UltraCanvasButton;
     class UltraCanvasClipboardHistory;
     class ClipboardHistoryListModel;
@@ -77,6 +80,13 @@ public:
     // newest entries of the kinds it takes come first, under "For <name>",
     // the first of them chosen.
     void Open(int rightX, int topY, Target target = {});
+    // The monitor the panel is centred on and kept on, in screen pixels:
+    // the desktop's own. Unset, the whole screen.
+    void SetScreenArea(int x, int y, int width, int height);
+    // The desktop window the panel belongs to. On Wayland a window is
+    // placed only relative to a parent: the panel becomes a child of the
+    // desktop's layer surface, put where Open says beside its bar.
+    void SetParentWindow(UltraCanvas::UltraCanvasWindowBase* parent) { parent_ = parent; }
     void Close();
     bool IsOpen() const;
     // The history changed (in this process or another): list it again.
@@ -106,6 +116,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> undo_;
     Target target_;
+    int areaX_ = 0, areaY_ = 0, areaW_ = 0, areaH_ = 0;
+    UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;
     int64_t removedId_ = 0;
     UltraCanvas::TimerId undoTimer_ = 0;
     bool open_ = false;

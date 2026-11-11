@@ -6,6 +6,8 @@
 
 #include "DirectStore.h"
 
+#include "DataFormats/UltraCanvasJSON.h"
+
 #include "UltraDatabase/UltraDatabase.h"
 #include "UltraIM/UltraIMCore.h"
 
@@ -39,8 +41,51 @@ const std::vector<UltraDbMigration>& Migrations() {
          "  client_id TEXT NOT NULL, recipient TEXT NOT NULL, conv TEXT NOT NULL,"
          "  body TEXT NOT NULL, ts INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,"
          "  PRIMARY KEY(client_id, recipient));"},
+        {2, "attachments and the parts of files on their way in",
+         "ALTER TABLE messages ADD COLUMN attachment TEXT NOT NULL DEFAULT '';"
+         "ALTER TABLE messages ADD COLUMN file_id TEXT NOT NULL DEFAULT '';"
+         "CREATE INDEX messages_by_file ON messages(file_id);"
+         "CREATE TABLE parts("
+         "  file_id TEXT NOT NULL, seq INTEGER NOT NULL, data TEXT NOT NULL,"
+         "  PRIMARY KEY(file_id, seq));"},
     };
     return steps;
+}
+
+// The attachment as one JSON text in the message's row.
+std::string AttachmentToJson(const UltraIMAttachment& a) {
+    if (a.remoteUrl.empty() && a.localPath.empty() && a.fileName.empty()) return std::string();
+    UltraCanvas::JSONValue o = UltraCanvas::JSONValue::MakeObject();
+    o.Set("local", UltraCanvas::JSONValue(a.localPath));
+    o.Set("thumb", UltraCanvas::JSONValue(a.thumbnailPath));
+    o.Set("file", UltraCanvas::JSONValue(a.remoteUrl));
+    o.Set("name", UltraCanvas::JSONValue(a.fileName));
+    o.Set("mime", UltraCanvas::JSONValue(a.mimeType));
+    o.Set("size", UltraCanvas::JSONValue(a.fileSizeBytes));
+    o.Set("w", UltraCanvas::JSONValue(a.width));
+    o.Set("h", UltraCanvas::JSONValue(a.height));
+    o.Set("ms", UltraCanvas::JSONValue(static_cast<int64_t>(a.durationSeconds * 1000.0)));
+    o.Set("here", UltraCanvas::JSONValue(a.isDownloaded));
+    return UltraCanvas::JSON::Serialize(o);
+}
+
+UltraIMAttachment AttachmentFromJson(const std::string& text) {
+    UltraIMAttachment a;
+    if (text.empty()) return a;
+    UltraCanvas::JSONParseResult parsed;
+    const UltraCanvas::JSONValue o = UltraCanvas::JSON::Parse(text, &parsed);
+    if (!parsed.success || !o.IsObject()) return a;
+    a.localPath = o["local"].GetString();
+    a.thumbnailPath = o["thumb"].GetString();
+    a.remoteUrl = o["file"].GetString();
+    a.fileName = o["name"].GetString();
+    a.mimeType = o["mime"].GetString();
+    a.fileSizeBytes = o["size"].GetInteger(0);
+    a.width = static_cast<int>(o["w"].GetInteger(0));
+    a.height = static_cast<int>(o["h"].GetInteger(0));
+    a.durationSeconds = static_cast<double>(o["ms"].GetInteger(0)) / 1000.0;
+    a.isDownloaded = o["here"].GetBoolean(false);
+    return a;
 }
 
 std::string JoinIds(const std::vector<std::string>& ids) {
@@ -90,12 +135,22 @@ UltraIMMessage MessageFromRow(const UltraDbRow& r, const std::string& providerId
     m.replyTo.messageId = r["reply_to"].AsString();
     m.deliveryStatus = static_cast<UltraIMDeliveryStatus>(r["status"].AsInt());
     m.isOwn = r["own"].AsInt() != 0;
+    m.attachment = AttachmentFromJson(r["attachment"].AsString());
     return m;
 }
 
 std::string Snippet(const UltraIMMessage& m) {
-    if (m.type != UltraIMMessageType::Text) return "[attachment]";
-    std::string s = m.text.substr(0, 80);
+    std::string text = m.text;
+    const std::string named = m.text.empty() ? m.attachment.fileName : m.text;
+    switch (m.type) {
+        case UltraIMMessageType::Image: text = "[photo] " + m.text; break;
+        case UltraIMMessageType::Video: text = "[video] " + named; break;
+        case UltraIMMessageType::File:  text = "[file] " + named; break;
+        case UltraIMMessageType::Audio: text = "[audio] " + named; break;
+        case UltraIMMessageType::Sticker: text = "[sticker]"; break;
+        default: break;
+    }
+    std::string s = text.substr(0, 80);
     std::replace(s.begin(), s.end(), '\n', ' ');
     return s;
 }
@@ -249,10 +304,11 @@ bool Store::AddMessage(const UltraIMMessage& m) {
     std::lock_guard<std::mutex> lock(mutex_);
     UltraDbResult r = UltraDb_Exec(
         connection_,
-        "INSERT OR IGNORE INTO messages(conv, client_id, sender, sender_name, ts, type, text, reply_to, status, own) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT OR IGNORE INTO messages(conv, client_id, sender, sender_name, ts, type, text, reply_to, status, own, "
+        "attachment, file_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         {m.conversationId, m.clientMessageId, m.senderId, m.senderName, m.timestampMs, static_cast<int>(m.type),
-         m.text, m.replyTo.messageId, static_cast<int>(m.deliveryStatus), m.isOwn ? 1 : 0});
+         m.text, m.replyTo.messageId, static_cast<int>(m.deliveryStatus), m.isOwn ? 1 : 0,
+         AttachmentToJson(m.attachment), m.attachment.remoteUrl});
     if (!r || r.affectedRows == 0) return false;
     UltraDb_Exec(connection_,
                  "UPDATE conversations SET last_ts=MAX(last_ts, ?), snippet=?, unread=unread+? WHERE id=?",
@@ -274,6 +330,52 @@ bool Store::UpdateStatus(const std::string& conversationId, const std::string& c
         "((? <> ? AND (status < ? OR status = ?)) OR (? = ? AND status = ?))",
         {value, conversationId, clientId, value, failed, value, failed, value, failed, sending});
     return r && r.affectedRows > 0;
+}
+
+bool Store::UpdateAttachment(const std::string& conversationId, const std::string& clientId,
+                             const UltraIMAttachment& attachment) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDbResult r = UltraDb_Exec(connection_, "UPDATE messages SET attachment=?, file_id=? WHERE conv=? AND client_id=?",
+                                   {AttachmentToJson(attachment), attachment.remoteUrl, conversationId, clientId});
+    return r && r.affectedRows > 0;
+}
+
+bool Store::FindMessageByFile(const std::string& fileId, UltraIMMessage& out) {
+    if (fileId.empty()) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDbResultSet rows;
+    if (!UltraDb_Query(connection_, "SELECT * FROM messages WHERE file_id=? ORDER BY seq DESC LIMIT 1", {fileId}, rows) ||
+        rows.Empty())
+        return false;
+    out = MessageFromRow(rows.Row(0), providerId_);
+    return true;
+}
+
+void Store::AddPart(const std::string& fileId, int seq, const std::string& data) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDb_Exec(connection_, "INSERT OR IGNORE INTO parts(file_id, seq, data) VALUES(?,?,?)", {fileId, seq, data});
+}
+
+int Store::CountParts(const std::string& fileId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDbResultSet rows;
+    if (!UltraDb_Query(connection_, "SELECT COUNT(*) AS n FROM parts WHERE file_id=?", {fileId}, rows) || rows.Empty())
+        return 0;
+    return rows.Row(0)["n"].AsInt();
+}
+
+std::vector<std::string> Store::Parts(const std::string& fileId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::string> out;
+    UltraDbResultSet rows;
+    if (!UltraDb_Query(connection_, "SELECT data FROM parts WHERE file_id=? ORDER BY seq", {fileId}, rows)) return out;
+    for (const auto& r : rows) out.push_back(r["data"].AsString());
+    return out;
+}
+
+void Store::RemoveParts(const std::string& fileId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDb_Exec(connection_, "DELETE FROM parts WHERE file_id=?", {fileId});
 }
 
 bool Store::FindMessage(const std::string& conversationId, const std::string& clientId, UltraIMMessage& out) {

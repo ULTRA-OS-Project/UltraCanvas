@@ -1,11 +1,13 @@
 // VideoFX/include/VideoFX/VideoFX.h
 // Public API of the VideoFX module - video probing, frame extraction, and a
 // segment timeline that is trimmed, filtered, joined and encoded to a file.
+// Version: 0.18.0 - VideoFX_SetTextRenderer / VideoFX_DrawTextOverlays: text overlays drawn by the host
+// Version: 0.17.0 - VideoFXFrameRecorder: frames pushed one by one encoded to a file as they come
 // Version: 0.16.0 - VideoFX_UseProxies scales a Blur's radius to the proxy as it does a Crop
 // Version: 0.14.0 - VideoFX_GetFileFormats: what this build reads and writes;
 //                  VideoFX_SetPictureReader: picture types the host application reads
 // Version: 0.12.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -121,6 +123,29 @@ bool VideoFX_SetDefaultFontPath(const std::string& path);
 
 // The font file that will be used; "" = none found (fontconfig, if any)
 std::string VideoFX_GetDefaultFontPath();
+
+// A text renderer draws a text overlay the host's way: given the overlay and
+// the height of the frame it is drawn for, it fills `picture` (RGBA,
+// straight alpha) with the text as it lies over the frame - its shadow and
+// band too - and returns true; false leaves the overlay to the backend's
+// text filter. It is asked for every text overlay and draws those it wants
+// (UltraCanvas's draws the ones that name a fontFamily - see
+// VideoFXOverlay); what it draws is laid over the frame as a picture, placed
+// and timed as the text overlay was, sized as a share of the frame's height.
+// It runs on the thread that calls VideoFXExportJob::Start, VideoFX_Export,
+// VideoFX_RenderProject or VideoFXPreview::Open - the export's own thread
+// never calls it - so a renderer on a UI toolkit works from the UI thread.
+using VideoFXTextRenderer = std::function<bool(const VideoFXOverlay& overlay, int frameHeight, VideoFXFrame& picture)>;
+
+// Installs a text renderer (an empty one takes it away). Call it once, at
+// the start, before anything renders.
+void VideoFX_SetTextRenderer(VideoFXTextRenderer renderer);
+bool VideoFX_HasTextRenderer();
+
+// The text overlays the renderer draws, turned into picture overlays for a
+// frame `frameHeight` pixels high; the others are left as they are. The
+// calls above do it themselves; a host does it to see what they will render.
+void VideoFX_DrawTextOverlays(std::vector<VideoFXSegment>& segments, int frameHeight);
 
 // Backend diagnostics to stderr: false (default) = errors only
 void VideoFX_SetVerboseLogging(bool verbose);
@@ -372,6 +397,68 @@ VideoFXResult VideoFX_PlanSlideshow(const std::vector<std::string>& imagePaths, 
 VideoFXResult VideoFX_GenerateTestClip(const std::string& outputPath, double seconds,
                                        int width = 640, int height = 360,
                                        double frameRate = 25.0, bool withAudio = true);
+
+// ============================================================================
+// FRAME RECORDER - a live source encoded as its frames arrive
+// ============================================================================
+// A screen or window recording, a camera: the program captures a frame, says
+// when it was taken, and the recorder encodes it into the file at once. The
+// file grows as the recording runs and is complete after Close(); nothing is
+// held back but the encoder's own look-ahead. The frame's time places it:
+// frames are written at the settings' rate, a frame landing on a tick already
+// written is dropped, and a gap (a slow capture) simply shows the last frame
+// longer, so the recording keeps real time however many frames were caught.
+//
+//     VideoFXFrameRecorder recorder;
+//     VideoFXRecorderSettings settings;
+//     settings.frameRate = 20.0;
+//     if (recorder.Open("recording.mp4", settings) != VideoFXResult::Ok) ...
+//     while (recording) {
+//         capture(pixels, width, height, stride);             // BGRA, as the screen gives it
+//         recorder.PushFrame(pixels, width, height, stride, SecondsSinceStart(), VideoFXPixelLayout::BGRA);
+//     }
+//     recorder.Close();
+//
+// One recorder is used from one thread at a time (the capture thread); the
+// calls block for as long as the encoder takes, a few milliseconds a frame
+// with the default preset. No sound: the capture of the microphone or the
+// loudspeaker is the application's, and a later version joins it here.
+class VideoFXFrameRecorder {
+public:
+    VideoFXFrameRecorder();
+    ~VideoFXFrameRecorder();                 // closes an open recording (its result is lost)
+    VideoFXFrameRecorder(const VideoFXFrameRecorder&) = delete;
+    VideoFXFrameRecorder& operator=(const VideoFXFrameRecorder&) = delete;
+
+    // Creates `outputPath` (UTF-8) and opens the encoder - at once with a
+    // size in the settings, else with the first frame. InvalidArgument for
+    // a rate of 0, EncoderNotAvailable / UnsupportedFormat / WriteError as
+    // for an export; a recorder already open is closed first.
+    VideoFXResult Open(const std::string& outputPath, const VideoFXRecorderSettings& settings = {});
+    // One frame: `pixels` holds `height` rows of `width` 32-bit pixels,
+    // `stride` bytes apart, in `layout`; `seconds` is its time since the
+    // recording began (the first frame's time is the file's zero). Ok for a
+    // frame that was dropped as a duplicate of a tick already written.
+    VideoFXResult PushFrame(const uint8_t* pixels, int width, int height, int stride, double seconds,
+                            VideoFXPixelLayout layout = VideoFXPixelLayout::RGBA);
+    // The same for an RGBA VideoFXFrame, at its `timestamp`.
+    VideoFXResult PushFrame(const VideoFXFrame& frame);
+    // Flushes the encoder and finishes the file; the recorder can be opened
+    // again. Ok when nothing was open. A recording with no frame at all is
+    // closed as an empty file - the application deletes what it does not want.
+    VideoFXResult Close();
+
+    bool IsOpen() const;
+    int64_t GetFrameCount() const;           // frames written (duplicates not counted)
+    double GetDuration() const;              // seconds of video written so far
+    int GetWidth() const;                    // the file's size; 0 until known
+    int GetHeight() const;
+    std::string GetEncoderName() const;      // "libx264", "h264_vaapi", ...; "" until open
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
 
 // ============================================================================
 // BACKGROUND EXPORT

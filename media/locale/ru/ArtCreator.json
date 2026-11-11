@@ -1,0 +1,22 @@
+{
+  "@language": "ru",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Текст добавлен: чтобы изменить его, щёлкните его инструментом «Текст» или дважды щёлкните его",
+  "Changed the text": "Текст изменён",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Щёлкните на странице и введите текст или щёлкните текст, чтобы изменить его; панель выше задаёт его шрифт, размер, стиль, выравнивание и интервалы. Escape, Ctrl+Enter или щелчок снаружи завершают ввод",
+  "Delete Text": "Удаление текста",
+  "Edit Text": "Изменение текста",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Изменение текста: Enter начинает новую строку; Escape, Ctrl+Enter или щелчок снаружи завершают ввод",
+  "Letter Spacing": "Межбуквенный интервал",
+  "Line Spacing": "Межстрочный интервал",
+  "Nothing was typed": "Ничего не введено",
+  "Text Alignment": "Выравнивание текста",
+  "Text Bold": "Текст: полужирный",
+  "Text Font": "Шрифт текста",
+  "Text Italic": "Текст: курсив",
+  "Text Size": "Размер текста",
+  "Text Strikethrough": "Текст: зачёркнутый",
+  "Text Underline": "Текст: подчёркнутый",
+  "The text was emptied, so it was deleted": "Текст стал пустым, поэтому он удалён",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Ввод нового текста: Enter начинает новую строку; Escape, Ctrl+Enter или щелчок снаружи завершают ввод"
+}

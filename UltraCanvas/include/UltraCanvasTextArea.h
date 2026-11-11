@@ -1,5 +1,13 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.18.0 - the SetStyle rule and the constructor tail of an area that follows by default
+// Version: 3.17.0 - a read-only or display-only area opens a Copy / Select All menu on a
+//                 right-click (ShowReadOnlyContextMenu, SetReadOnlyContextMenu)
+// Version: 3.16.0 - SetShowHiddenCharacters: spaces, tabs, no-break and zero-width
+//                 characters and line ends drawn as faint marks (hiddenCharacterColor),
+//                 their name and code in a tooltip over each. HandleMarkdownHover takes the
+//                 event, so its tooltips are placed in window coordinates (they were
+//                 drawn up and left of the pointer by the element's offset in the window)
 // Version: 3.15.0 - auto-completion: ShowAutoComplete opens a list of suggestions at the
 //                 caret (it was a placeholder); IsAutoCompleteOpen, GetAutoCompletePrefix
 // Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
@@ -13,7 +21,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-18
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -260,6 +268,9 @@ namespace UltraCanvas {
 
         // Placeholder hint shown when the document is empty
         Color placeholderColor = Color(150, 150, 150, 255);
+
+        // Marks drawn over spaces, tabs and line ends (SetShowHiddenCharacters)
+        Color hiddenCharacterColor = Color(150, 150, 150, 200);
 
         // Line numbers
         bool showLineNumbers;
@@ -740,6 +751,14 @@ namespace UltraCanvas {
         void SetShowLineNumbers(bool show) { style.showLineNumbers = show; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool GetShowLineNumbers() const { return style.showLineNumbers; }
 
+        // Draws the characters that print nothing as faint marks in
+        // style.hiddenCharacterColor: a dot for a space, an arrow for a tab, a
+        // ring for a no-break space, a tick for a zero-width character and a
+        // pilcrow at the end of every line. Display only - the text is unchanged.
+        // Hovering a mark shows the character's name and code in a tooltip.
+        void SetShowHiddenCharacters(bool show) { showHiddenCharacters = show; RequestRedraw(); }
+        bool GetShowHiddenCharacters() const { return showHiddenCharacters; }
+
         void SetTabSize(int size) { tabSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         int GetTabSize() const { return tabSize; }
 
@@ -756,7 +775,7 @@ namespace UltraCanvas {
         std::string_view GetLineContentView(int lineIndex) const;
 
         // Style access
-        void SetStyle(const TextAreaStyle& newStyle) { style = newStyle; }
+        void SetStyle(const TextAreaStyle& newStyle) { StyleSetByHand(); style = newStyle; }
         TextAreaStyle& GetStyle() { return style; }
         const TextAreaStyle& GetStyle() const { return style; }
 
@@ -900,6 +919,21 @@ namespace UltraCanvas {
         // Returns false when it does not, so the caller can fall through to its
         // normal handling. Called from HandleMouseDown for right-clicks.
         bool ShowSpellSuggestionMenu(const UCEvent& event);
+
+        // Opens the read-only context menu - Copy (Ctrl+C, dimmed without a
+        // selection) and Select All (Ctrl+A) - at the click. Called from
+        // HandleMouseDown for a right-click on a read-only or display-only
+        // area that neither the host (onContextMenu) nor the spell checker
+        // took, so text a viewer shows can be copied even though a
+        // display-only area never gets the keys. Returns false in hex mode,
+        // whose selection is its own. See SetReadOnlyContextMenu.
+        bool ShowReadOnlyContextMenu(const UCEvent& event);
+
+        // Whether a right-click on a read-only area opens the Copy / Select
+        // All menu above (on by default). Off leaves the right-click to the
+        // host's own handling, as before the menu existed.
+        void SetReadOnlyContextMenu(bool enabled) { readOnlyContextMenu = enabled; }
+        bool GetReadOnlyContextMenu() const { return readOnlyContextMenu; }
 
         // Callbacks
         TextChangedCallback onTextChanged;
@@ -1145,6 +1179,20 @@ namespace UltraCanvas {
         LineLayoutBase *GetActualLineLayout(int idx);
 
         void RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line);
+        // A character SetShowHiddenCharacters marks, with where it is on screen
+        // (element coordinates; for a line end, where its pilcrow is drawn).
+        struct HiddenCharacterMark {
+            enum class Kind { Space, Tab, NoBreakSpace, ZeroWidth, LineEnd };
+            Kind kind = Kind::Space;
+            char32_t codepoint = 0;
+            Rect2Df bounds;
+        };
+        std::vector<HiddenCharacterMark> FindHiddenCharacters(LineLayoutBase* line, int lineIndex) const;
+        // The SetShowHiddenCharacters marks over one line, drawn after its text.
+        void DrawHiddenCharacters(IRenderContext* ctx, LineLayoutBase* line, int lineIndex);
+        // Shows the name and code of the marked character under the pointer in
+        // a tooltip; true when there is one.
+        bool UpdateHiddenCharacterTooltip(const UCEvent& event);
 
     private:
         // Auto-completion (ShowAutoComplete)
@@ -1233,6 +1281,9 @@ namespace UltraCanvas {
         SpellCheckOptions spellOptions;
         // Held so the popup outlives the click that opened it.
         std::shared_ptr<UltraCanvasMenu> spellSuggestionMenu;
+        // The read-only Copy / Select All menu, held the same way.
+        std::shared_ptr<UltraCanvasMenu> readOnlyMenu;
+        bool readOnlyContextMenu = true;
         // The destructor clears this so a queued repaint that outlives the
         // element becomes a no-op instead of a dangling call.
         std::shared_ptr<std::atomic<bool>> spellAlive =
@@ -1259,6 +1310,8 @@ namespace UltraCanvas {
         std::string placeholderText; // grey hint drawn when the document is empty
         bool wordWrap;
         bool highlightCurrentLine;
+        bool showHiddenCharacters = false;
+        bool hiddenCharacterTooltipShown = false;   // UpdateHiddenCharacterTooltip's, to hide only its own
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).
         int tabSize = 4;
  
@@ -1379,12 +1432,13 @@ namespace UltraCanvas {
         bool HandleMarkdownClick(int mouseX, int mouseY);
 
         /**
-         * @brief Handle hover over markdown elements (updates cursor)
-         * @param mouseX Mouse X coordinate
-         * @param mouseY Mouse Y coordinate
+         * @brief Handle hover over markdown elements (updates cursor, shows
+         *        footnote / abbreviation / anchor tooltips)
+         * @param event The mouse move: its pointer (element coordinates) finds
+         *        the element, its pointerWindow places the tooltip
          * @return true if hovering over a clickable element
          */
-        bool HandleMarkdownHover(int mouseX, int mouseY);
+        bool HandleMarkdownHover(const UCEvent& event);
 
         void SetDocumentFilePath(const std::string& path) { documentFilePath = path; }
         std::string GetDocumentFilePath() const { return documentFilePath; }

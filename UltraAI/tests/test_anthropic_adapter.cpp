@@ -108,14 +108,20 @@ void TestRequestSerialization() {
     EXPECT_EQ(sent.method, std::string("POST"));
     EXPECT_EQ(sent.url, std::string("https://api.anthropic.com/v1/messages"));
     EXPECT_EQ(FindHeader(sent, "x-api-key"), std::string("sk-test-key"));
-    EXPECT_EQ(FindHeader(sent, "anthropic-version"), std::string("2023-06-01"));
+    EXPECT_EQ(FindHeader(sent, "anthropic-version"), std::string("2026-10-21"));
+    // Claude Opus 5 takes the refusal fallback by default, with its beta.
+    EXPECT_EQ(FindHeader(sent, "anthropic-beta"), std::string("server-side-fallback-2026-07-01"));
 
     json body = json::parse(sent.body);
     EXPECT_EQ(body["model"], std::string("claude-opus-5"));
     EXPECT_EQ(body["max_tokens"], 512);
     EXPECT_EQ(body["system"], std::string("Be terse."));
-    EXPECT_EQ(body["temperature"], 0.5);
+    // Sampling fields are a 400 on 2026-10-21: the temperature asked for is
+    // not sent; max_tokens and stop sequences are.
+    EXPECT_TRUE(!body.contains("temperature"));
+    EXPECT_TRUE(!body.contains("top_p"));
     EXPECT_EQ(body["stop_sequences"][0], std::string("END"));
+    EXPECT_EQ(body["fallbacks"], std::string("default"));
 
     // System messages are lifted: the messages array holds user, assistant
     // (tool_use), and the tool result as a user turn.
@@ -170,7 +176,7 @@ void TestToolCallResponse() {
 
     // Default model applies when the request leaves it empty.
     json body = json::parse(transport->Requests()[0].body);
-    EXPECT_EQ(body["model"], std::string("claude-opus-5"));
+    EXPECT_EQ(body["model"], std::string("claude-opus-5-5"));
 }
 
 void TestProviderErrorMapping() {
@@ -323,6 +329,8 @@ void TestCountTokens() {
               std::string("https://api.anthropic.com/v1/messages/count_tokens"));
     json body = json::parse(transport->Requests()[0].body);
     EXPECT_TRUE(!body.contains("max_tokens"));
+    EXPECT_TRUE(!body.contains("fallbacks"));   // a generation setting
+    EXPECT_TRUE(FindHeader(transport->Requests()[0], "anthropic-beta").empty());
 
     // Transport failure falls back to the byte estimate (>= 0, no crash).
     Error netFail; netFail.code = ErrorCode::NetworkError;
@@ -371,12 +379,118 @@ void TestProviderOptionsPassthrough() {
 
     llm->Chat(req);
     const TransportRequest& sent = transport->Requests()[0];
-    EXPECT_EQ(FindHeader(sent, "anthropic-beta"), std::string("compact-2026-01-12"));
+    // The configured beta, then the refusal fallback's (the default model takes it).
+    EXPECT_EQ(FindHeader(sent, "anthropic-beta"),
+              std::string("compact-2026-01-12,server-side-fallback-2026-07-01"));
     json body = json::parse(sent.body);
     EXPECT_EQ(body["thinking"]["type"], std::string("adaptive"));
 }
 
 } // namespace
+
+// Version 2026-10-21 and the current models: forced tool choice where a
+// model refuses it, documents in assistant turns, sampling through the
+// options, a configured fallback, the model list.
+void TestCurrentModelRules() {
+    auto reply = [] {
+        return JsonResponse(200, json{{"id", "msg_x"}, {"model", "claude-opus-5-5"},
+                                      {"content", json::array({json{{"type", "text"}, {"text", "ok"}}})},
+                                      {"stop_reason", "end_turn"}, {"usage", {{"input_tokens", 1}}}});
+    };
+    ToolDefinition tool;
+    tool.name = "lookup";
+    tool.description = "Look it up";
+    tool.parametersJsonSchema = R"({"type":"object"})";
+    Message user; user.role = Role::User; user.text = "go";
+
+    {   // Opus 5.5 refuses a forced choice: auto and an instruction instead.
+        auto transport = std::make_shared<ScriptedTransport>();
+        transport->ScriptResponse(reply());
+        transport->ScriptResponse(reply());
+        auto llm = CreateAnthropicTextLLM(TestConfig(), nullptr, transport);
+        ChatRequest req;
+        req.messages = {user};
+        req.tools = {tool};
+        req.toolChoice = ToolChoice::Specific;
+        req.forcedToolName = "lookup";
+        llm->Chat(req);
+        json body = json::parse(transport->Requests()[0].body);
+        EXPECT_TRUE(!body.contains("tool_choice"));
+        EXPECT_TRUE(body["system"].get<std::string>().find("\"lookup\"") != std::string::npos);
+        req.toolChoice = ToolChoice::Required;
+        llm->Chat(req);
+        body = json::parse(transport->Requests()[1].body);
+        EXPECT_TRUE(!body.contains("tool_choice"));
+        EXPECT_TRUE(body["system"].get<std::string>().find("provided tools") != std::string::npos);
+    }
+    {   // Opus 5 still takes it.
+        auto transport = std::make_shared<ScriptedTransport>();
+        transport->ScriptResponse(reply());
+        auto llm = CreateAnthropicTextLLM(TestConfig(), nullptr, transport);
+        ChatRequest req;
+        req.model = "claude-opus-5";
+        req.messages = {user};
+        req.tools = {tool};
+        req.toolChoice = ToolChoice::Specific;
+        req.forcedToolName = "lookup";
+        llm->Chat(req);
+        json body = json::parse(transport->Requests()[0].body);
+        EXPECT_EQ(body["tool_choice"]["type"], std::string("tool"));
+        EXPECT_TRUE(!body.contains("system"));
+    }
+    {   // A document in an assistant turn goes to the user just before it.
+        auto transport = std::make_shared<ScriptedTransport>();
+        transport->ScriptResponse(reply());
+        auto llm = CreateAnthropicTextLLM(TestConfig(), nullptr, transport);
+        ChatRequest req;
+        Message asst; asst.role = Role::Assistant; asst.text = "Here is the report.";
+        FilePart pdf; pdf.bytes = {'%', 'P', 'D', 'F'}; pdf.mimeType = "application/pdf";
+        asst.parts.push_back(pdf);
+        Message next; next.role = Role::User; next.text = "summarise it";
+        req.messages = {user, asst, next};
+        llm->Chat(req);
+        json body = json::parse(transport->Requests()[0].body);
+        EXPECT_EQ(body["messages"].size(), static_cast<size_t>(4));
+        EXPECT_EQ(body["messages"][1]["role"], std::string("user"));
+        EXPECT_EQ(body["messages"][1]["content"][0]["type"], std::string("document"));
+        EXPECT_EQ(body["messages"][2]["role"], std::string("assistant"));
+        for (const auto& block : body["messages"][2]["content"])
+            EXPECT_TRUE(block["type"] != std::string("document"));
+    }
+    {   // Sampling through the options is dropped too; a configured
+        // fallback replaces the default, and Haiku 5.5 gets none.
+        auto transport = std::make_shared<ScriptedTransport>();
+        transport->ScriptResponse(reply());
+        transport->ScriptResponse(reply());
+        TextLLMConfig cfg = TestConfig();
+        cfg.providerOptions["temperature"] = 0.2;
+        cfg.providerOptions["top_k"] = int64_t(5);
+        cfg.providerOptions["fallbacks"] = std::string(R"([{"model":"claude-opus-5"}])");
+        cfg.providerOptions["anthropic-beta"] = std::string("server-side-fallback-2026-06-01");
+        auto llm = CreateAnthropicTextLLM(cfg, nullptr, transport);
+        ChatRequest req;
+        req.messages = {user};
+        llm->Chat(req);
+        json body = json::parse(transport->Requests()[0].body);
+        EXPECT_TRUE(!body.contains("temperature") && !body.contains("top_k"));
+        EXPECT_EQ(body["fallbacks"][0]["model"], std::string("claude-opus-5"));
+        EXPECT_EQ(FindHeader(transport->Requests()[0], "anthropic-beta"),
+                  std::string("server-side-fallback-2026-06-01"));
+
+        auto plain = CreateAnthropicTextLLM(TestConfig(), nullptr, transport);
+        req.model = "claude-haiku-5-5";
+        plain->Chat(req);
+        body = json::parse(transport->Requests()[1].body);
+        EXPECT_TRUE(!body.contains("fallbacks"));
+        EXPECT_TRUE(FindHeader(transport->Requests()[1], "anthropic-beta").empty());
+    }
+    {   // The model list is the current generation, Opus 5.5 first.
+        auto llm = CreateAnthropicTextLLM(TestConfig(), nullptr, std::make_shared<ScriptedTransport>());
+        const ProviderCapabilities caps = llm->GetCapabilities();
+        EXPECT_EQ(caps.models.front().id, std::string("claude-opus-5-5"));
+        for (const auto& m : caps.models) EXPECT_TRUE(m.id != std::string("claude-haiku-4-5"));
+    }
+}
 
 int main() {
     TestRequestSerialization();
@@ -388,6 +502,7 @@ int main() {
     TestMissingCredentials();
     TestFactoryRegistration();
     TestProviderOptionsPassthrough();
+    TestCurrentModelRules();
     std::cout << "test_anthropic_adapter: all checks passed" << std::endl;
     return 0;
 }

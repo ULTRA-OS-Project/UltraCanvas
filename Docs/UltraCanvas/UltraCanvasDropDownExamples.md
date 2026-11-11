@@ -20,6 +20,7 @@
   - [Styling](#styling)
   - [Event Callbacks](#event-callbacks)
 - [Styles](#styles)
+- [A font list: each font shown in itself](#a-font-list-each-font-shown-in-itself)
 - [Factory Functions](#factory-functions)
   - [CreateDropdown](#createdropdown)
 - [Event Handling](#event-handling)
@@ -197,7 +198,15 @@ const DropdownItem* GetItem(int index) const;
 void SetSelectedIndex(int index, bool runNotifications = true);   // false: no onSelectionChanged
 int GetSelectedIndex() const;
 const DropdownItem* GetSelectedItem() const;
+// What the button reads while nothing is selected (single selection) - a
+// value that is none of the items; empty (a blank button) by default
+void SetPlaceholderText(const std::string& text);
+const std::string& GetPlaceholderText() const;
 ```
+
+`SetSelectedIndex(-1, false)` with a placeholder is how a box shows a value
+between its items: the media viewer's zoom box marks *Fit* or the step it is
+at, and reads `137%` between the steps.
 
 ### Multi-selection
 
@@ -269,6 +278,30 @@ There are no predefined dropdown styles and no builder: start from a default
 `DropdownStyle`, change the fields you need and pass it to `SetStyle()` (see
 *Dropdown with Custom Styling* below). The look of the list scrollbar comes
 from `scrollbarStyle`.
+
+## A font list: each font shown in itself
+
+A row is drawn in its item's `fontFamily` when it has one, so a font picker is
+an ordinary dropdown - no element of its own and no drawing callback:
+
+```cpp
+auto fonts = CreateDropdown("font", 0, 0, 210, 26);
+for (const std::string& family : GetInstalledFontFamilies()) {
+    DropdownItem item(family, family);
+    item.fontFamily = family;      // the row reads "Liberation Serif" in Liberation Serif
+    fonts->AddItem(item);
+}
+```
+
+Loading a font costs a few milliseconds the first time it is drawn (measured:
+2.6 ms on average, 6 ms for a colour emoji font), which for a computer's
+hundreds of fonts would freeze the list for a second or more as it opens. So
+the dropdown prepares these rows itself, lazily: once it is drawn on screen it
+shapes them in small slices on the UI thread's timer (about 6 ms every 15 ms),
+the rows its list opens on - around the selected item - first, then the rest.
+A row not prepared yet when it scrolls into view is shaped as it is drawn, and
+the list only ever draws the rows in view. The closed button keeps the list's
+own font. `UltraCanvasTextFormatBar` builds its Font list this way.
 
 ## Factory Functions
 
@@ -506,6 +539,11 @@ The dropdown uses the window's popup system for proper z-order:
 - `CloseDropdown()` closes it with `UltraCanvasWindowBase::ClosePopup()`; the
   window also closes it on Escape or a click outside, and `onDropdownClosed`
   fires in every case
+- The list is shown in a window of its own, above every other window, like
+  every popup (`UltraCanvasWindowBase::SetPopupsInOwnWindows`): no other
+  window covers it. It still belongs to the dropdown's window - clicks in it
+  reach the list as there - and it closes, too, when the focus leaves the
+  application
 
 `OpenDropdown()` does nothing until the dropdown is in a window and has items.
 

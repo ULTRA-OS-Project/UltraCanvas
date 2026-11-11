@@ -171,7 +171,7 @@ private:
                                fSummary_, fNewLanguage_;
     std::shared_ptr<TextArea> fDescription_;
     std::shared_ptr<Dropdown> fKind_, fPublisher_, fVisibility_, fLifecycle_, fAgeRating_, fPricingModel_, fUpdatePeriod_, fLanguage_;
-    std::shared_ptr<Checkbox> fOpenSource_, fRequiresAccount_;
+    std::shared_ptr<Checkbox> fOpenSource_, fRequiresAccount_, fFeatured_;
     std::shared_ptr<Container> fScreenshots_, fTexts_, fReleases_;
     std::shared_ptr<Label> fMachineNote_;
     // the add-release and add-package editors

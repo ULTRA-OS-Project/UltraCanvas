@@ -8,6 +8,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // Tr for the pages' texts
 #include "UltraCanvasContainer.h"
 #include <functional>
 #include <memory>

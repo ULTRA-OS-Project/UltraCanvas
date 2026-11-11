@@ -27,6 +27,7 @@
 // so a desktop busy drawing never stalls a program's Shell_NotifyIcon. The
 // icons' HICON copies are only ever touched on that thread; the list the
 // desktop reads is guarded by a mutex.
+// Version: 1.0.2 - TrayHostMenuActivate (none: the programs draw their own menus)
 // Version: 1.0.1 - Shell_NotifyIconGetRect's second question is the size,
 //                  not the bottom-right corner
 // Version: 1.0.0
@@ -546,6 +547,10 @@ std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState* state) {
     }
     return icons;
 }
+
+// A Shell_NotifyIcon program draws its own menu on the right click; none
+// hands it over as data.
+bool TrayHostMenuActivate(TrayHostState*, const std::string&, int32_t) { return false; }
 
 bool TrayHostClick(TrayHostState* state, const std::string& id, TrayClick button) {
     if (!state) return false;

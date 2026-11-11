@@ -12,11 +12,12 @@
 // document again, so the inspector never writes the document itself. A
 // slider's edits while it is dragged carry its id as the merge key, so a
 // whole drag is one undo step; its release ends the step (onEditEnd).
+// Version: 0.8.0 - onTitleColour: the window's first say on a title's colour
 // Version: 0.7.0 - an overlay clip's effects; a slider's drag as one undo step
 // Version: 0.6.0 - a clip's Keep faces in shot switch
 // Version: 0.5.0 - no caption or heading vectors: the labels follow the theme
 // Version: 0.4.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,6 +56,10 @@ public:
     std::function<void(const std::string& label, std::function<void(Document&)> edit, const std::string& mergeKey)> onEdit;
     std::function<void()> onEditEnd;       // a slider let go: its drag's undo step is complete
     std::function<void()> onAddMusic;      // the Audio tab's Add song: a file dialog, the window's
+    // A title's colour chosen: the window's first (the words selected in the
+    // title being typed take it). True when it took the colour - no edit of
+    // the title follows.
+    std::function<bool(int title, uint32_t rgb)> onTitleColour;
     // The Project tab's "Preview from proxies": a view setting, not an edit
     // (no undo step), the window's to apply
     std::function<void(bool on)> onUseProxies;

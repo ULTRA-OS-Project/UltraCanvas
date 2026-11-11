@@ -31,7 +31,7 @@ afterwards, as further provider plug-ins of the same framework.
 | D3 | Provider plug-ins | **Loadable modules** (`.so` / `.dll` / `.dylib`) with a host table and ABI version, found in a plug-in directory at run time. |
 | D4 | UltraIM public surface | **`UltraIM_*` free functions**, as UltraNet, FileLoader and PixelFX. |
 | D5 | End-to-end encryption | **From v1.** Key-pair identity; every message is encrypted to its recipient; the relay stores and forwards ciphertext only. |
-| D6 | Telegram through TDLib (its own sockets) | Not needed yet — decided when the Telegram plug-in starts. |
+| D6 | Telegram through TDLib (its own sockets) | **TDLib, with its own sockets.** The Telegram provider (`Plugins/UltraIM/telegram`, framework 0.9.376) loads TDLib's `libtdjson` at run time, and TDLib opens its own MTProto connections, so Telegram is the one provider whose traffic does not go through UltraNet. |
 | D7 | Where the modules live | In this repository, **next to UltraNet**: `UltraCanvas/{include,core}/UltraIM/`, `UltraCanvas/{include,core}/UltraRTC/`, provider plug-ins under `UltraCanvas/Plugins/UltraIM/<name>/`, the app in `Apps/ChatCube/`, the relay in `Server/ChatCubeRelay/`. |
 
 ## 3. Layers
@@ -42,7 +42,7 @@ ChatCube app (Apps/ChatCube)            UltraCanvas UI: contact list, bubbles,
 UltraIM module (UI-free)                 types, provider registry, event bus
   │                                      with an injected dispatcher, DSO host
   ├── Plugins/UltraIM/direct  ── ChatCube Direct provider ─────────────┐
-  └── Plugins/UltraIM/matrix  (later), telegram, xmpp …               │
+  └── Plugins/UltraIM/matrix, telegram  (xmpp … later)                │
                                                                       │
 UltraRTC module (UI-free)  ◄── peers, data channels, audio/video ─────┤
   └── libdatachannel + libjuice + usrsctp + libsrtp (vendored)         │

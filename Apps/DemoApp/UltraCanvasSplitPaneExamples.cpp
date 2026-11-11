@@ -72,18 +72,18 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSplitPaneExamples() {
-        auto root = DemoKit::CreatePage("SplitPaneExamples", "UltraCanvas Split Pane Examples",
-            "Drag the splitter bars to resize panes. Weights are proportional, so resizing the SplitPane "
-            "preserves relative sizes; per-pane min/max sizes clamp the drag.");
+        auto root = DemoKit::CreatePage("SplitPaneExamples", Tr("UltraCanvas Split Pane Examples"),
+            Tr("Drag the splitter bars to resize panes. Weights are proportional, so resizing the SplitPane "
+            "preserves relative sizes; per-pane min/max sizes clamp the drag."));
 
         // ============================================================
         // Section A: Horizontal Split (3 panes, weighted)
         // ============================================================
-        auto cardA = DemoKit::AddCard(root, "SplitCardA", "1. Horizontal Split (3 panes, weights 1 : 2 : 1)",
-            "Three panes side-by-side. Dragging splitter 0 affects only Sidebar+Editor; dragging splitter 1 "
-            "affects only Editor+Inspector. Each pane has a minimum width of 80 px.");
+        auto cardA = DemoKit::AddCard(root, "SplitCardA", Tr("1. Horizontal Split (3 panes, weights 1 : 2 : 1)"),
+            Tr("Three panes side-by-side. Dragging splitter 0 affects only Sidebar+Editor; dragging splitter 1 "
+            "affects only Editor+Inspector. Each pane has a minimum width of 80 px."));
 
-        auto statusA = DemoKit::CreateText("SplitAStatus", "Weights: 1.00 : 2.00 : 1.00");
+        auto statusA = DemoKit::CreateText("SplitAStatus", Tr("Weights: 1.00 : 2.00 : 1.00"));
         statusA->SetFontSize(11);
         statusA->SetTextColor(Color(0, 100, 200, 255));
 
@@ -99,11 +99,11 @@ namespace UltraCanvas {
         splitH->SetPaneMinSize(2, 80);
 
         SetupPane(paneSidebar, Color(225, 235, 250, 255));
-        AddPaneTitle(paneSidebar, "paSidebarTitle", "Sidebar");
+        AddPaneTitle(paneSidebar, "paSidebarTitle", Tr("Sidebar"));
         {
             // At the start of the line, not stretched: as wide as the text,
             // at least the old 130 px; a narrower pane scrolls sideways.
-            const char* names[] = {"Files", "Search", "Git"};
+            const std::string names[] = {Tr("Files"), Tr("Search"), Tr("Git")};
             for (int i = 0; i < 3; ++i) {
                 auto b = MakeSplitButton("paSidebarBtn" + std::to_string(i + 1), names[i], 130, 28);
                 DemoKit::AddFixed(paneSidebar, b);
@@ -112,32 +112,31 @@ namespace UltraCanvas {
         }
 
         SetupPane(paneEditor, Color(252, 252, 252, 255));
-        AddPaneTitle(paneEditor, "paEditorTitle", "Editor");
+        AddPaneTitle(paneEditor, "paEditorTitle", Tr("Editor"));
         AddInfoLabel(paneEditor, "paEditorCode1", "int main() {", 12);
         AddInfoLabel(paneEditor, "paEditorCode2", "    std::cout << \"Hello, SplitPane\\n\";", 12);
         AddInfoLabel(paneEditor, "paEditorCode3", "    return 0;", 12);
         AddInfoLabel(paneEditor, "paEditorCode4", "}", 12);
-        AddInfoLabel(paneEditor, "paEditorHint", "(Drag the splitters at left/right to resize.)", 11)
+        AddInfoLabel(paneEditor, "paEditorHint", Tr("(Drag the splitters at left/right to resize.)"), 11)
                 ->SetMargin(18, 0, 0, 0);
 
         SetupPane(paneInspector, Color(245, 245, 245, 255));
-        AddPaneTitle(paneInspector, "paInspTitle", "Inspector");
-        AddInfoLabel(paneInspector, "paInspRow1", "Type:        Container");
-        AddInfoLabel(paneInspector, "paInspRow2", "Children:    3");
-        AddInfoLabel(paneInspector, "paInspRow3", "Visible:     true");
-        AddInfoLabel(paneInspector, "paInspRow4", "Z-order:     0");
+        AddPaneTitle(paneInspector, "paInspTitle", Tr("Inspector"));
+        AddInfoLabel(paneInspector, "paInspRow1", Tr("Type:        Container"));
+        AddInfoLabel(paneInspector, "paInspRow2", Tr("Children:    3"));
+        AddInfoLabel(paneInspector, "paInspRow3", Tr("Visible:     true"));
+        AddInfoLabel(paneInspector, "paInspRow4", Tr("Z-order:     0"));
 
         // Live weight readout
         auto statusPtr = statusA.get();
         splitH->onWeightsChanged = [statusPtr](const std::vector<double>& weights) {
             std::ostringstream oss;
-            oss << "Weights:";
             oss.setf(std::ios::fixed);
             oss.precision(2);
             for (size_t i = 0; i < weights.size(); ++i) {
-                oss << (i == 0 ? " " : " : ") << weights[i];
+                oss << (i == 0 ? "" : " : ") << weights[i];
             }
-            statusPtr->SetText(oss.str());
+            statusPtr->SetText(TrF("Weights: {0}", oss.str()));
         };
 
         DemoKit::AddStretched(cardA, splitH);
@@ -146,9 +145,9 @@ namespace UltraCanvas {
         // ============================================================
         // Section B: Vertical Split (2 panes)
         // ============================================================
-        auto cardB = DemoKit::AddCard(root, "SplitCardB", "2. Vertical Split (2 panes, weights 3 : 1)",
-            "An editor area on top and a 'terminal' panel below. Drag the horizontal splitter; "
-            "neither pane can shrink below its minimum (100 px / 60 px).");
+        auto cardB = DemoKit::AddCard(root, "SplitCardB", Tr("2. Vertical Split (2 panes, weights 3 : 1)"),
+            Tr("An editor area on top and a 'terminal' panel below. Drag the horizontal splitter; "
+            "neither pane can shrink below its minimum (100 px / 60 px)."));
 
         auto splitV = CreateVerticalSplitPane("SplitPaneB", 0, 0, 960, 280);
         splitV->SetBorders(1, Color(180, 180, 180, 255));
@@ -159,7 +158,7 @@ namespace UltraCanvas {
         splitV->SetPaneMinSize(1, 60);
 
         SetupPane(paneEditorV, Color(252, 252, 252, 255));
-        AddPaneTitle(paneEditorV, "pbEditorTitle", "Editor area");
+        AddPaneTitle(paneEditorV, "pbEditorTitle", Tr("Editor area"));
         AddInfoLabel(paneEditorV, "pbEditorL1", "// Drag the horizontal splitter below.", 12);
         AddInfoLabel(paneEditorV, "pbEditorL2", "for (int i = 0; i < 10; ++i) {", 12);
         AddInfoLabel(paneEditorV, "pbEditorL3", "    std::cout << i << \"\\n\";", 12);
@@ -167,7 +166,7 @@ namespace UltraCanvas {
 
         SetupPane(paneTerm, Color(30, 30, 30, 255));
         {
-            auto title = AddPaneTitle(paneTerm, "pbTermTitle", "Terminal");
+            auto title = AddPaneTitle(paneTerm, "pbTermTitle", Tr("Terminal"));
             title->SetTextColor(Color(220, 220, 220, 255));
             title->SetMargin(0, 0, 4, 0);
 
@@ -184,9 +183,9 @@ namespace UltraCanvas {
         // ============================================================
         // Section C: Nested Splits (VSCode-like)
         // ============================================================
-        auto cardC = DemoKit::AddCard(root, "SplitCardC", "3. Nested Splits (horizontal containing a vertical split)",
-            "Outer horizontal split: left sidebar pane + right pane. The right pane contains a vertical "
-            "split (editor on top, output below). Drag outer/inner splitters independently.");
+        auto cardC = DemoKit::AddCard(root, "SplitCardC", Tr("3. Nested Splits (horizontal containing a vertical split)"),
+            Tr("Outer horizontal split: left sidebar pane + right pane. The right pane contains a vertical "
+            "split (editor on top, output below). Drag outer/inner splitters independently."));
 
         auto outer = CreateHorizontalSplitPane("SplitPaneC", 0, 0, 960, 320);
         outer->SetBorders(1, Color(180, 180, 180, 255));
@@ -197,10 +196,10 @@ namespace UltraCanvas {
         outer->SetPaneMinSize(1, 200);
 
         SetupPane(outerLeft, Color(225, 235, 250, 255));
-        AddPaneTitle(outerLeft, "pcSidebar", "Sidebar");
-        AddInfoLabel(outerLeft, "pcSidebarA", "Project files");
-        AddInfoLabel(outerLeft, "pcSidebarB", "Search");
-        AddInfoLabel(outerLeft, "pcSidebarC", "Source control");
+        AddPaneTitle(outerLeft, "pcSidebar", Tr("Sidebar"));
+        AddInfoLabel(outerLeft, "pcSidebarA", Tr("Project files"));
+        AddInfoLabel(outerLeft, "pcSidebarB", Tr("Search"));
+        AddInfoLabel(outerLeft, "pcSidebarC", Tr("Source control"));
 
         // Build nested vertical split; let a BoxLayout on outerRight stretch it to fill.
         auto inner = CreateVerticalSplitPane("SplitPaneCInner", 0, 0, 100, 100);
@@ -210,13 +209,13 @@ namespace UltraCanvas {
         inner->SetPaneMinSize(1, 60);
 
         SetupPane(innerTop, Color(252, 252, 252, 255));
-        AddPaneTitle(innerTop, "pcInnerEditor", "Editor");
+        AddPaneTitle(innerTop, "pcInnerEditor", Tr("Editor"));
         AddInfoLabel(innerTop, "pcInnerE1", "auto pane = split->AddPane(1.0);", 12);
         AddInfoLabel(innerTop, "pcInnerE2", "pane->SetBackgroundColor(Colors::White);", 12);
         AddInfoLabel(innerTop, "pcInnerE3", "pane->AddChild(makeWidget());", 12);
 
         SetupPane(innerBottom, Color(245, 245, 245, 255));
-        AddPaneTitle(innerBottom, "pcInnerOut", "Output");
+        AddPaneTitle(innerBottom, "pcInnerOut", Tr("Output"));
         AddInfoLabel(innerBottom, "pcInnerO1", "[info] split created with 2 panes");
         AddInfoLabel(innerBottom, "pcInnerO2", "[info] weights normalized");
 
@@ -231,12 +230,12 @@ namespace UltraCanvas {
         // ============================================================
         // Section D: Splitter handles
         // ============================================================
-        auto cardD = DemoKit::AddCard(root, "SplitCardD", "4. Splitter handle (shape and size)",
-            "An optional grab handle sits on the split line. Pick a shape - square, square with rounded "
+        auto cardD = DemoKit::AddCard(root, "SplitCardD", Tr("4. Splitter handle (shape and size)"),
+            Tr("An optional grab handle sits on the split line. Pick a shape - square, square with rounded "
             "edges, round (a circle when square, a capsule when elongated), or an SVG/raster image - and a "
             "size across the line. The splitter strip widens to fit the handle; the split line itself stays "
             "as thin as configured. An image handle with no explicit length takes its proportions from the "
-            "asset. Use the buttons to switch shape and size live.");
+            "asset. Use the buttons to switch shape and size live."));
 
         auto splitHandles = CreateHorizontalSplitPane("SplitPaneD", 0, 0, 960, 200);
         splitHandles->SetBorders(1, Color(180, 180, 180, 255));
@@ -259,18 +258,18 @@ namespace UltraCanvas {
         }
 
         SetupPane(handleLeft, Color(232, 240, 252, 255));
-        AddPaneTitle(handleLeft, "pdLeft", "Left");
-        AddInfoLabel(handleLeft, "pdLeftInfo", "Grab the handle or the line.");
+        AddPaneTitle(handleLeft, "pdLeft", Tr("Left"));
+        AddInfoLabel(handleLeft, "pdLeftInfo", Tr("Grab the handle or the line."));
 
         SetupPane(handleMid, Color(252, 252, 252, 255));
-        AddPaneTitle(handleMid, "pdMid", "Middle");
+        AddPaneTitle(handleMid, "pdMid", Tr("Middle"));
         AddInfoLabel(handleMid, "pdMidInfo1", "handle.shape");
         AddInfoLabel(handleMid, "pdMidInfo2", "handle.crossSize");
         AddInfoLabel(handleMid, "pdMidInfo3", "handle.axisLength");
 
         SetupPane(handleRight, Color(245, 245, 245, 255));
-        AddPaneTitle(handleRight, "pdRight", "Right");
-        AddInfoLabel(handleRight, "pdRightInfo", "Both splitters share one style.");
+        AddPaneTitle(handleRight, "pdRight", Tr("Right"));
+        AddInfoLabel(handleRight, "pdRightInfo", Tr("Both splitters share one style."));
 
         DemoKit::AddStretched(cardD, splitHandles);
 
@@ -287,22 +286,22 @@ namespace UltraCanvas {
             };
 
             struct HandleChoice {
-                const char* text;
+                std::string text;
                 SplitterHandleShape shape;
                 int crossSize;
                 int axisLength;
                 const char* image;   // empty for the drawn shapes
             };
             const HandleChoice choices[] = {
-                { "None",         SplitterHandleShape::NoHandle,      14,  0, "" },
-                { "Square",       SplitterHandleShape::Square,        14, 48, "" },
-                { "Rounded",      SplitterHandleShape::RoundedSquare, 14, 48, "" },
-                { "Capsule",      SplitterHandleShape::Round,         14, 48, "" },
-                { "Circle 16px",  SplitterHandleShape::Round,         16, 16, "" },
-                { "Rounded 20px", SplitterHandleShape::RoundedSquare, 20, 64, "" },
+                { Tr("None"),     SplitterHandleShape::NoHandle,      14,  0, "" },
+                { Tr("Square"),   SplitterHandleShape::Square,        14, 48, "" },
+                { Tr("Rounded"),  SplitterHandleShape::RoundedSquare, 14, 48, "" },
+                { Tr("Capsule"),  SplitterHandleShape::Round,         14, 48, "" },
+                { Tr("Circle 16px"), SplitterHandleShape::Round,         16, 16, "" },
+                { Tr("Rounded 20px"), SplitterHandleShape::RoundedSquare, 20, 64, "" },
                 // Image handle: axisLength 0 lets the 14x48 asset set its own
                 // proportions from the 14 px cross size.
-                { "SVG image",    SplitterHandleShape::Image,         14,  0, "scrollbar-handle-v.svg" },
+                { Tr("SVG image"), SplitterHandleShape::Image,         14,  0, "scrollbar-handle-v.svg" },
             };
 
             auto buttonRow = DemoKit::AddRow(cardD, "pdHandleButtons", 8);
@@ -321,13 +320,13 @@ namespace UltraCanvas {
         // ============================================================
         // Section E: Action icons on the split line
         // ============================================================
-        auto cardE = DemoKit::AddCard(root, "SplitCardE", "5. Action icons on the split line",
-            "Any number of icons can sit on a split line, centred across it and grouped at the middle "
+        auto cardE = DemoKit::AddCard(root, "SplitCardE", Tr("5. Action icons on the split line"),
+            Tr("Any number of icons can sit on a split line, centred across it and grouped at the middle "
             "along it. Each icon has its own tooltip, enabled state and click handler, and clicking one "
             "never starts a drag. Here splitter 0 collapses/restores the sidebar and splitter 1 carries "
-            "three actions. The handle wraps the icon group.");
+            "three actions. The handle wraps the icon group."));
 
-        auto statusE = DemoKit::CreateText("SplitEStatus", "Click an icon on a split line.");
+        auto statusE = DemoKit::CreateText("SplitEStatus", Tr("Click an icon on a split line."));
         statusE->SetFontSize(11);
         statusE->SetTextColor(Color(0, 100, 200, 255));
 
@@ -353,17 +352,17 @@ namespace UltraCanvas {
         }
 
         SetupPane(iconSidebar, Color(232, 240, 252, 255));
-        AddPaneTitle(iconSidebar, "peSidebar", "Sidebar");
-        AddInfoLabel(iconSidebar, "peSidebarInfo", "Collapse me with the icon.");
+        AddPaneTitle(iconSidebar, "peSidebar", Tr("Sidebar"));
+        AddInfoLabel(iconSidebar, "peSidebarInfo", Tr("Collapse me with the icon."));
 
         SetupPane(iconMain, Color(252, 252, 252, 255));
-        AddPaneTitle(iconMain, "peMain", "Main");
+        AddPaneTitle(iconMain, "peMain", Tr("Main"));
         AddInfoLabel(iconMain, "peMainInfo1", "splitIcons->AddSplitterIcon(0, icon);");
         AddInfoLabel(iconMain, "peMainInfo2", "icon.onClick = [](size_t s, size_t i) { ... };");
 
         SetupPane(iconAside, Color(245, 245, 245, 255));
-        AddPaneTitle(iconAside, "peAside", "Aside");
-        AddInfoLabel(iconAside, "peAsideInfo", "Three icons on the right line.");
+        AddPaneTitle(iconAside, "peAside", Tr("Aside"));
+        AddInfoLabel(iconAside, "peAsideInfo", Tr("Three icons on the right line."));
 
         {
             auto* splitPtr = splitIcons.get();
@@ -373,25 +372,25 @@ namespace UltraCanvas {
             SplitPaneIcon collapse;
             collapse.id = "collapse-sidebar";
             collapse.iconPath = SplitIcon("angle-left.svg");
-            collapse.tooltip = "Collapse the sidebar";
+            collapse.tooltip = Tr("Collapse the sidebar");
             collapse.onClick = [splitPtr, statusPtrE](size_t s, size_t i) {
                 splitPtr->SetPaneWeight(0, 0.02);
                 splitPtr->SetSplitterIconVisible(s, i, false);
                 splitPtr->SetSplitterIconVisible(s, i + 1, true);
-                statusPtrE->SetText("Sidebar collapsed.");
+                statusPtrE->SetText(Tr("Sidebar collapsed."));
             };
             splitIcons->AddSplitterIcon(0, collapse);
 
             SplitPaneIcon restore;
             restore.id = "restore-sidebar";
             restore.iconPath = SplitIcon("angle-right.svg");
-            restore.tooltip = "Restore the sidebar";
+            restore.tooltip = Tr("Restore the sidebar");
             restore.visible = false;
             restore.onClick = [splitPtr, statusPtrE](size_t s, size_t i) {
                 splitPtr->SetPaneWeight(0, 1.0);
                 splitPtr->SetSplitterIconVisible(s, i, false);
                 splitPtr->SetSplitterIconVisible(s, i - 1, true);
-                statusPtrE->SetText("Sidebar restored.");
+                statusPtrE->SetText(Tr("Sidebar restored."));
             };
             splitIcons->AddSplitterIcon(0, restore);
 
@@ -399,30 +398,30 @@ namespace UltraCanvas {
             SplitPaneIcon grow;
             grow.id = "grow-aside";
             grow.iconPath = SplitIcon("angle-left.svg");
-            grow.tooltip = "Give the aside more room";
+            grow.tooltip = Tr("Give the aside more room");
             grow.onClick = [splitPtr, statusPtrE](size_t, size_t) {
                 splitPtr->SetPaneWeight(2, splitPtr->GetPaneWeight(2) * 1.4);
-                statusPtrE->SetText("Aside enlarged.");
+                statusPtrE->SetText(Tr("Aside enlarged."));
             };
             splitIcons->AddSplitterIcon(1, grow);
 
             SplitPaneIcon even;
             even.id = "even-panes";
             even.iconPath = SplitIcon("maximise.svg");
-            even.tooltip = "Even out all three panes";
+            even.tooltip = Tr("Even out all three panes");
             even.onClick = [splitPtr, statusPtrE](size_t, size_t) {
                 for (size_t p = 0; p < splitPtr->PaneCount(); ++p) splitPtr->SetPaneWeight(p, 1.0);
-                statusPtrE->SetText("Panes evened out.");
+                statusPtrE->SetText(Tr("Panes evened out."));
             };
             splitIcons->AddSplitterIcon(1, even);
 
             SplitPaneIcon shrink;
             shrink.id = "shrink-aside";
             shrink.iconPath = SplitIcon("angle-right.svg");
-            shrink.tooltip = "Give the aside less room";
+            shrink.tooltip = Tr("Give the aside less room");
             shrink.onClick = [splitPtr, statusPtrE](size_t, size_t) {
                 splitPtr->SetPaneWeight(2, splitPtr->GetPaneWeight(2) / 1.4);
-                statusPtrE->SetText("Aside shrunk.");
+                statusPtrE->SetText(Tr("Aside shrunk."));
             };
             splitIcons->AddSplitterIcon(1, shrink);
 
@@ -440,9 +439,9 @@ namespace UltraCanvas {
         // ============================================================
         // Section F: Vertical split with icons, no handle
         // ============================================================
-        auto cardF = DemoKit::AddCard(root, "SplitCardF", "6. Vertical split: icons without a handle",
-            "The same icons on a horizontal split line, with no handle behind them and the group parked "
-            "at 15% along the line (SplitterIconStyle::position).");
+        auto cardF = DemoKit::AddCard(root, "SplitCardF", Tr("6. Vertical split: icons without a handle"),
+            Tr("The same icons on a horizontal split line, with no handle behind them and the group parked "
+            "at 15% along the line (SplitterIconStyle::position)."));
 
         auto splitVIcons = CreateVerticalSplitPane("SplitPaneF", 0, 0, 960, 200);
         splitVIcons->SetBorders(1, Color(180, 180, 180, 255));
@@ -463,19 +462,19 @@ namespace UltraCanvas {
         }
 
         SetupPane(vTop, Color(252, 252, 252, 255));
-        AddPaneTitle(vTop, "pfTop", "Document");
-        AddInfoLabel(vTop, "pfTopInfo", "The icons below sit directly on the line.");
+        AddPaneTitle(vTop, "pfTop", Tr("Document"));
+        AddInfoLabel(vTop, "pfTopInfo", Tr("The icons below sit directly on the line."));
 
         SetupPane(vBottom, Color(240, 240, 240, 255));
-        AddPaneTitle(vBottom, "pfBottom", "Console");
-        AddInfoLabel(vBottom, "pfBottomInfo", "One splitter, two icons, no handle.");
+        AddPaneTitle(vBottom, "pfBottom", Tr("Console"));
+        AddInfoLabel(vBottom, "pfBottomInfo", Tr("One splitter, two icons, no handle."));
 
         {
             auto* splitPtr = splitVIcons.get();
             SplitPaneIcon up;
             up.id = "console-grow";
             up.iconPath = SplitIcon("arrow-up.svg");
-            up.tooltip = "Grow the console";
+            up.tooltip = Tr("Grow the console");
             up.onClick = [splitPtr](size_t, size_t) {
                 splitPtr->SetPaneWeight(1, splitPtr->GetPaneWeight(1) * 1.5);
             };
@@ -484,7 +483,7 @@ namespace UltraCanvas {
             SplitPaneIcon down;
             down.id = "console-shrink";
             down.iconPath = SplitIcon("arrow-down.svg");
-            down.tooltip = "Shrink the console";
+            down.tooltip = Tr("Shrink the console");
             down.onClick = [splitPtr](size_t, size_t) {
                 splitPtr->SetPaneWeight(1, splitPtr->GetPaneWeight(1) / 1.5);
             };

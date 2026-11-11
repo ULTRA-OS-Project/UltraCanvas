@@ -1,0 +1,22 @@
+{
+  "@language": "el",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Το κείμενο προστέθηκε: για να το επεξεργαστείτε, κάντε κλικ σε αυτό με το εργαλείο «Κείμενο» ή κάντε διπλό κλικ σε αυτό",
+  "Changed the text": "Το κείμενο άλλαξε",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Κάντε κλικ στη σελίδα και πληκτρολογήστε ή κάντε κλικ σε ένα κείμενο για να το επεξεργαστείτε· η γραμμή επάνω ορίζει τη γραμματοσειρά, το μέγεθος, το στυλ, τη στοίχιση και τις αποστάσεις του. Το Escape, το Ctrl+Enter ή ένα κλικ έξω ολοκληρώνει",
+  "Delete Text": "Διαγραφή κειμένου",
+  "Edit Text": "Επεξεργασία κειμένου",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Επεξεργασία του κειμένου: το Enter ξεκινά νέα γραμμή· το Escape, το Ctrl+Enter ή ένα κλικ έξω ολοκληρώνει",
+  "Letter Spacing": "Απόσταση γραμμάτων",
+  "Line Spacing": "Διάστιχο",
+  "Nothing was typed": "Δεν πληκτρολογήθηκε τίποτα",
+  "Text Alignment": "Στοίχιση κειμένου",
+  "Text Bold": "Έντονα κειμένου",
+  "Text Font": "Γραμματοσειρά κειμένου",
+  "Text Italic": "Πλάγια κειμένου",
+  "Text Size": "Μέγεθος κειμένου",
+  "Text Strikethrough": "Διακριτή διαγραφή κειμένου",
+  "Text Underline": "Υπογράμμιση κειμένου",
+  "The text was emptied, so it was deleted": "Το κείμενο άδειασε, οπότε διαγράφηκε",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Πληκτρολόγηση νέου κειμένου: το Enter ξεκινά νέα γραμμή· το Escape, το Ctrl+Enter ή ένα κλικ έξω ολοκληρώνει"
+}

@@ -184,16 +184,16 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
                           std::shared_ptr<UltraCanvasJitterPlotElement> jitter,
                           long uidBase) {
     auto row = AddControlRow(container, "FilterRow" + std::to_string(uidBase));
-    AddControlLabel(row, "FilterLabel" + std::to_string(uidBase), "Filter:");
+    AddControlLabel(row, "FilterLabel" + std::to_string(uidBase), Tr("Filter:"));
     
     auto regionDropdown = std::make_shared<UltraCanvasDropdown>(
         "RegionFilter" + std::to_string(uidBase), 140, 32);
-    regionDropdown->AddItem("All Regions");
-    regionDropdown->AddItem("NorthEast");
-    regionDropdown->AddItem("North");
-    regionDropdown->AddItem("CentralWest");
-    regionDropdown->AddItem("SouthEast");
-    regionDropdown->AddItem("South");
+    regionDropdown->AddItem(Tr("All Regions"));
+    regionDropdown->AddItem(Tr("NorthEast"));
+    regionDropdown->AddItem(Tr("North"));
+    regionDropdown->AddItem(Tr("CentralWest"));
+    regionDropdown->AddItem(Tr("SouthEast"));
+    regionDropdown->AddItem(Tr("South"));
     regionDropdown->SetSelectedIndex(0);
     regionDropdown->onSelectionChanged = [jitter](int index, const DropdownItem& item) {
         std::string region;
@@ -206,7 +206,7 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
     };
     DemoKit::AddFixed(row, regionDropdown);
     
-    AddControlLabel(row, "ScoreLabel" + std::to_string(uidBase), "Min Score:");
+    AddControlLabel(row, "ScoreLabel" + std::to_string(uidBase), Tr("Min Score:"));
     
     auto scoreInput = std::make_shared<UltraCanvasTextInput>(
         "MinScoreFilter" + std::to_string(uidBase), 60, 32);
@@ -214,7 +214,7 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
     scoreInput->SetText("0.0");
     DemoKit::AddFixed(row, scoreInput);
     
-    auto applyBtn = MakeControlButton("ApplyFilter" + std::to_string(uidBase), "Apply", 70);
+    auto applyBtn = MakeControlButton("ApplyFilter" + std::to_string(uidBase), Tr("Apply"), 70);
     applyBtn->SetOnClick([jitter, scoreInput]() {
         std::string text = scoreInput->GetText();
         try {
@@ -226,7 +226,7 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
     });
     DemoKit::Add(row, applyBtn);
     
-    AddControlLabel(row, "QuickLabel" + std::to_string(uidBase), "Quick:");
+    AddControlLabel(row, "QuickLabel" + std::to_string(uidBase), Tr("Quick:"));
     
     auto btnMin3 = MakeControlButton("btnMin3_" + std::to_string(uidBase), "3+", 40);
     btnMin3->SetOnClick([jitter]() { jitter->SetMinScoreFilter(3.0); });
@@ -240,7 +240,7 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
     btnMin5->SetOnClick([jitter]() { jitter->SetMinScoreFilter(5.0); });
     DemoKit::Add(row, btnMin5);
     
-    auto btnClear = MakeControlButton("btnClear_" + std::to_string(uidBase), "Clear", 70);
+    auto btnClear = MakeControlButton("btnClear_" + std::to_string(uidBase), Tr("Clear"), 70);
     btnClear->SetOnClick([jitter, scoreInput, regionDropdown]() {
         jitter->SetMinScoreFilter(0.0);
         jitter->SetRegionFilter("");
@@ -281,8 +281,8 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilClassicJitterTab(
     auto tab = MakeBrazilTab("BrazilClassicTab");
     
     DemoKit::AddCaption(tab, "BrazilDescClassic",
-                        "Educational performance scores grouped by Brazilian states and colored by region. "
-                        "Random Gaussian jitter — black horizontal lines indicate median score per state.");
+                        Tr("Educational performance scores grouped by Brazilian states and colored by region. "
+                        "Random Gaussian jitter — black horizontal lines indicate median score per state."));
     
     auto jitter = CreateJitterPlotElement("brazilScoresClassic", 0, 0, 930, kChartHeight);
     LoadBrazilDataIntoChart(jitter, ds);
@@ -307,7 +307,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilClassicJitterTab(
     jitter->SetShowMedianMarker(true);
     jitter->SetMedianMarkerStyle(Color(0, 0, 0, 255), 2.0f);
     
-    jitter->SetChartTitle("Score");
+    jitter->SetChartTitle(Tr("Score"));
     jitter->SetEnableTooltips(true);
     
     DemoKit::AddStretched(tab, jitter);
@@ -316,9 +316,9 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilClassicJitterTab(
     AddBrazilFilterStrip(tab, jitter, 2110);
     
     DemoKit::AddCaption(tab, "BrazilLegendClassic",
-        "Regions: NorthEast (Emerald) | North (Teal) | Central-West (Orange) | SouthEast (Red/Pink) | South (Blue)\n"
+        Tr("Regions: NorthEast (Emerald) | North (Teal) | Central-West (Orange) | SouthEast (Red/Pink) | South (Blue)\n"
         "Black horizontal lines indicate median score per state.\n"
-        "Total: 27 states with ~700 schools represented.");
+        "Total: 27 states with ~700 schools represented."));
     
     return tab;
 }
@@ -336,8 +336,8 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     auto tab = MakeBrazilTab("BrazilBeeswarmTab");
     
     DemoKit::AddCaption(tab, "BrazilDescBee",
-                        "Beeswarm packing — points are placed with no overlap, revealing exact "
-                        "density of each state's score distribution. Switch method/priority/corral/side below.");
+                        Tr("Beeswarm packing — points are placed with no overlap, revealing exact "
+                        "density of each state's score distribution. Switch method/priority/corral/side below."));
     
     auto jitter = CreateJitterPlotElement("brazilScoresBee", 0, 0, 930, kChartHeight);
     LoadBrazilDataIntoChart(jitter, ds);
@@ -364,20 +364,20 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     jitter->SetShowMedianMarker(true);
     jitter->SetMedianMarkerStyle(Color(0, 0, 0, 255), 2.0f);
     
-    jitter->SetChartTitle("Score");
+    jitter->SetChartTitle(Tr("Score"));
     jitter->SetEnableTooltips(true);
     
     DemoKit::AddStretched(tab, jitter);
     
     // ===== BEESWARM-SPECIFIC INTERACTIVE CONTROLS (row 1) =====
     auto ctrlRow = AddControlRow(tab, "BeeControlRow");
-    AddControlLabel(ctrlRow, "BeeMethodLabel", "Method:");
+    AddControlLabel(ctrlRow, "BeeMethodLabel", Tr("Method:"));
     
     auto methodDropdown = std::make_shared<UltraCanvasDropdown>("BeeMethodDD", 110, 32);
-    methodDropdown->AddItem("Swarm");
-    methodDropdown->AddItem("Center");
-    methodDropdown->AddItem("Hex");
-    methodDropdown->AddItem("Square");
+    methodDropdown->AddItem(Tr("Swarm"));
+    methodDropdown->AddItem(Tr("Center"));
+    methodDropdown->AddItem(Tr("Hex"));
+    methodDropdown->AddItem(Tr("Square"));
     methodDropdown->SetSelectedIndex(0);
     methodDropdown->onSelectionChanged = [jitter](int index, const DropdownItem& item) {
         BeeswarmMethod m = BeeswarmMethod::Swarm;
@@ -388,14 +388,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     };
     DemoKit::AddFixed(ctrlRow, methodDropdown);
     
-    AddControlLabel(ctrlRow, "BeePrioLabel", "Priority:");
+    AddControlLabel(ctrlRow, "BeePrioLabel", Tr("Priority:"));
     
     auto prioDropdown = std::make_shared<UltraCanvasDropdown>("BeePrioDD", 120, 32);
-    prioDropdown->AddItem("Ascending");
-    prioDropdown->AddItem("Descending");
-    prioDropdown->AddItem("Random");
-    prioDropdown->AddItem("Compact");
-    prioDropdown->AddItem("Dense");
+    prioDropdown->AddItem(Tr("Ascending"));
+    prioDropdown->AddItem(Tr("Descending"));
+    prioDropdown->AddItem(Tr("Random"));
+    prioDropdown->AddItem(Tr("Compact"));
+    prioDropdown->AddItem(Tr("Dense"));
     prioDropdown->SetSelectedIndex(0);
     prioDropdown->onSelectionChanged = [jitter](int index, const DropdownItem& item) {
         BeeswarmPriority p = BeeswarmPriority::Ascending;
@@ -407,13 +407,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     };
     DemoKit::AddFixed(ctrlRow, prioDropdown);
     
-    AddControlLabel(ctrlRow, "BeeCorralLabel", "Corral:");
+    AddControlLabel(ctrlRow, "BeeCorralLabel", Tr("Corral:"));
     
     auto corralDropdown = std::make_shared<UltraCanvasDropdown>("BeeCorralDD", 100, 32);
-    corralDropdown->AddItem("None");
-    corralDropdown->AddItem("Open");
-    corralDropdown->AddItem("Wrap");
-    corralDropdown->AddItem("Clamp");
+    corralDropdown->AddItem(Tr("None"));
+    corralDropdown->AddItem(Tr("Open"));
+    corralDropdown->AddItem(Tr("Wrap"));
+    corralDropdown->AddItem(Tr("Clamp"));
     corralDropdown->SetSelectedIndex(3);  // matches Clamp default
     corralDropdown->onSelectionChanged = [jitter](int index, const DropdownItem& item) {
         BeeswarmCorral c = BeeswarmCorral::NoneCorral;
@@ -424,12 +424,12 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     };
     DemoKit::AddFixed(ctrlRow, corralDropdown);
     
-    AddControlLabel(ctrlRow, "BeeSideLabel", "Side:");
+    AddControlLabel(ctrlRow, "BeeSideLabel", Tr("Side:"));
     
     auto sideDropdown = std::make_shared<UltraCanvasDropdown>("BeeSideDD", 90, 32);
-    sideDropdown->AddItem("Both");
-    sideDropdown->AddItem("Left");
-    sideDropdown->AddItem("Right");
+    sideDropdown->AddItem(Tr("Both"));
+    sideDropdown->AddItem(Tr("Left"));
+    sideDropdown->AddItem(Tr("Right"));
     sideDropdown->SetSelectedIndex(0);
     sideDropdown->onSelectionChanged = [jitter](int index, const DropdownItem& item) {
         BeeswarmSide s = BeeswarmSide::Both;
@@ -443,8 +443,8 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     AddBrazilFilterStrip(tab, jitter, 2220);
     
     DemoKit::AddCaption(tab, "BrazilLegendBee",
-        "Beeswarm methods: Swarm (greedy, organic) | Center (symmetric grid) | Hex (hexagonal grid) | Square (square grid). "
-        "Priority controls placement order — try Compact for tightest fit, Dense to fill busy regions first.");
+        Tr("Beeswarm methods: Swarm (greedy, organic) | Center (symmetric grid) | Hex (hexagonal grid) | Square (square grid). "
+        "Priority controls placement order — try Compact for tightest fit, Dense to fill busy regions first."));
     
     return tab;
 }
@@ -454,7 +454,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBrazilSchoolScoresExample() {
-    auto page = DemoKit::CreatePage("BrazilExample", "2009 Ideb Score of Schools in Brazil", "");
+    auto page = DemoKit::CreatePage("BrazilExample", Tr("2009 Ideb Score of Schools in Brazil"), "");
     // The page is the display area's height and the tabs take the rest of
     // it; a tab whose content is taller scrolls.
     page->SetFillsArea(true);
@@ -472,8 +472,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBrazilSc
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
     
-    tabs->AddTab("Classic Jitter",   BuildBrazilClassicJitterTab(ds));
-    tabs->AddTab("Beeswarm Packing", BuildBrazilBeeswarmTab(ds));
+    tabs->AddTab(Tr("Classic Jitter"),   BuildBrazilClassicJitterTab(ds));
+    tabs->AddTab(Tr("Beeswarm Packing"), BuildBrazilBeeswarmTab(ds));
     tabs->SetActiveTab(0);
     
     DemoKit::Add(card, tabs, 1);
@@ -486,12 +486,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBrazilSc
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateContinentsPopulationExample() {
-    auto page = DemoKit::CreatePage("ContinentsExample", "Continental Population Distribution", "");
+    auto page = DemoKit::CreatePage("ContinentsExample", Tr("Continental Population Distribution"), "");
     auto card = DemoKit::AddCard(page, "ContinentsCard");
     
     auto jitter = CreateJitterPlotElement("continents", 0, 0, 700, 500);
     
-    std::vector<std::string> continents = {"Africa", "Americas", "Asia", "Europe", "Oceania"};
+    std::vector<std::string> continents = {Tr("Africa"), Tr("Americas"), Tr("Asia"), Tr("Europe"), Tr("Oceania")};
     jitter->SetCategories(continents);
     
     std::random_device rd;
@@ -505,11 +505,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateContinen
     };
     
     std::map<std::string, ContinentData> contData = {
-        {"Africa",   {45.0, 15.0, 80, Color(100, 150, 250, 180)}},
-        {"Americas", {55.0, 20.0, 70, Color(255, 180, 100, 180)}},
-        {"Asia",     {65.0, 25.0, 90, Color(255, 100, 100, 180)}},
-        {"Europe",   {50.0, 12.0, 75, Color(100, 200, 150, 180)}},
-        {"Oceania",  {30.0, 8.0,  50, Color(200, 150, 255, 180)}}
+        {Tr("Africa"),   {45.0, 15.0, 80, Color(100, 150, 250, 180)}},
+        {Tr("Americas"), {55.0, 20.0, 70, Color(255, 180, 100, 180)}},
+        {Tr("Asia"),     {65.0, 25.0, 90, Color(255, 100, 100, 180)}},
+        {Tr("Europe"),   {50.0, 12.0, 75, Color(100, 200, 150, 180)}},
+        {Tr("Oceania"),  {30.0, 8.0,  50, Color(200, 150, 255, 180)}}
     };
     
     for (const auto& cont : continents) {
@@ -528,7 +528,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateContinen
     jitter->SetPointSize(4.0f);
     jitter->SetPointAlpha(0.6f);
     jitter->SetShowMedianMarker(true);
-    jitter->SetChartTitle("Population (millions)");
+    jitter->SetChartTitle(Tr("Population (millions)"));
     jitter->SetEnableTooltips(true);
     
     DemoKit::AddFixed(card, jitter);
@@ -541,13 +541,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateContinen
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarketCapitalizationExample() {
-    auto page = DemoKit::CreatePage("MarketCapExample", "Market Capitalization Jitter Chart", "");
+    auto page = DemoKit::CreatePage("MarketCapExample", Tr("Market Capitalization Jitter Chart"), "");
     auto card = DemoKit::AddCard(page, "MarketCapCard");
     
     auto jitter = CreateJitterPlotElement("marketCap", 0, 0, 900, 550);
     
     std::vector<std::string> marketTiers = {
-        "1-Nano", "2-Micro", "3-Small", "4-Mid", "5-Large", "6-Mega"
+        Tr("1-Nano"), Tr("2-Micro"), Tr("3-Small"), Tr("4-Mid"), Tr("5-Large"), Tr("6-Mega")
     };
     
     jitter->SetCategories(marketTiers);
@@ -590,14 +590,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarketCa
         jitter->AddCategoryData(marketTiers[tier], marketCaps);
     }
     
-    jitter->SetChartTitle("Market Cap ($");
+    jitter->SetChartTitle(Tr("Market Cap ($"));
     jitter->SetEnableTooltips(true);
     
     DemoKit::AddFixed(card, jitter);
     
     DemoKit::AddCaption(card, "MarketInfo",
-        "Logarithmic Y-axis scale displays data spanning 6 orders of magnitude.\n"
-        "Total: ~900 companies across all market capitalizations.");
+        Tr("Logarithmic Y-axis scale displays data spanning 6 orders of magnitude.\n"
+        "Total: ~900 companies across all market capitalizations."));
     
     return page;
 }
@@ -607,12 +607,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarketCa
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotOverlayExample() {
-    auto page = DemoKit::CreatePage("BoxPlotExample", "Jittered Box Plot - Statistical Distribution", "");
+    auto page = DemoKit::CreatePage("BoxPlotExample", Tr("Jittered Box Plot - Statistical Distribution"), "");
     auto card = DemoKit::AddCard(page, "BoxPlotCard");
     
     auto jitter = CreateJitterPlotElement("boxPlotJitter", 0, 0, 800, 500);
     
-    std::vector<std::string> groups = {"Group A", "Group B", "Group C", "Group D"};
+    std::vector<std::string> groups = {Tr("Group A"), Tr("Group B"), Tr("Group C"), Tr("Group D")};
     jitter->SetCategories(groups);
     jitter->SetHybridMode(JitterHybridMode::JitterBoxPlot);
     
@@ -649,10 +649,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotO
     dataD.push_back(45.0);
     dataD.push_back(2.0);
     
-    jitter->AddCategoryData("Group A", dataA);
-    jitter->AddCategoryData("Group B", dataB);
-    jitter->AddCategoryData("Group C", dataC);
-    jitter->AddCategoryData("Group D", dataD);
+    jitter->AddCategoryData(groups[0], dataA);
+    jitter->AddCategoryData(groups[1], dataB);
+    jitter->AddCategoryData(groups[2], dataC);
+    jitter->AddCategoryData(groups[3], dataD);
     
     jitter->SetBoxPlotSettings(true, true, 0.6f);
     jitter->SetBoxPlotColors(
@@ -664,7 +664,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotO
     jitter->SetJitterAmount(0.15f);
     jitter->SetPointSize(4.0f);
     jitter->SetPointAlpha(0.6f);
-    jitter->SetChartTitle("Data Value");
+    jitter->SetChartTitle(Tr("Data Value"));
     jitter->SetEnableTooltips(true);
     
     DemoKit::AddFixed(card, jitter);
@@ -675,14 +675,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotO
     struct BoxPlotToggles { bool whiskers = true; bool outliers = true; };
     auto boxToggles = std::make_shared<BoxPlotToggles>();
 
-    auto swWhiskers = UltraCanvasSwitch::Create("swWhiskers", 0, 0, "Whiskers", boxToggles->whiskers);
+    auto swWhiskers = UltraCanvasSwitch::Create("swWhiskers", 0, 0, Tr("Whiskers"), boxToggles->whiskers);
     swWhiskers->onStateChanged = [jitter, boxToggles](CheckedState, CheckedState newState) {
         boxToggles->whiskers = (newState == CheckedState::Checked);
         jitter->SetBoxPlotSettings(boxToggles->whiskers, boxToggles->outliers, 0.6f);
     };
     DemoKit::Add(switchRow, swWhiskers);
 
-    auto swOutliers = UltraCanvasSwitch::Create("swOutliers", 0, 0, "Outliers", boxToggles->outliers);
+    auto swOutliers = UltraCanvasSwitch::Create("swOutliers", 0, 0, Tr("Outliers"), boxToggles->outliers);
     swOutliers->onStateChanged = [jitter, boxToggles](CheckedState, CheckedState newState) {
         boxToggles->outliers = (newState == CheckedState::Checked);
         jitter->SetBoxPlotSettings(boxToggles->whiskers, boxToggles->outliers, 0.6f);
@@ -690,8 +690,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotO
     DemoKit::Add(switchRow, swOutliers);
     
     DemoKit::AddCaption(card, "BoxInfo",
-        "Box plot components: IQR box (Q1-Q3), thick median line, whiskers (1.5xIQR), outlier circles.\n"
-        "Jittered points show individual data distribution.");
+        Tr("Box plot components: IQR box (Q1-Q3), thick median line, whiskers (1.5xIQR), outlier circles.\n"
+        "Jittered points show individual data distribution."));
     
     return page;
 }
@@ -701,12 +701,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotO
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScientificCrossMeansExample() {
-    auto page = DemoKit::CreatePage("ScientificExample", "Muscle Contraction Mechanics (Publication Style)", "");
+    auto page = DemoKit::CreatePage("ScientificExample", Tr("Muscle Contraction Mechanics (Publication Style)"), "");
     auto card = DemoKit::AddCard(page, "ScientificCard");
     
     auto jitter = CreateJitterPlotElement("muscleData", 0, 0, 700, 500);
     
-    std::vector<std::string> species = {"Cheetah", "Impala", "Lion", "Zebra"};
+    std::vector<std::string> species = {Tr("Cheetah"), Tr("Impala"), Tr("Lion"), Tr("Zebra")};
     jitter->SetCategories(species);
     jitter->SetHybridMode(JitterHybridMode::JitterBoxPlot);
     
@@ -746,14 +746,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScientif
     jitter->SetJitterAmount(0.08f);
     jitter->SetPointSize(3.5f);
     jitter->SetPointAlpha(0.7f);
-    jitter->SetChartTitle("Peak Power (W/kg)");
+    jitter->SetChartTitle(Tr("Peak Power (W/kg)"));
     jitter->SetEnableTooltips(true);
     
     DemoKit::AddFixed(card, jitter);
     
     DemoKit::AddCaption(card, "SciLegend",
-        "Mean marker: Black cross (+) symbol indicates mean value per species.\n"
-        "Box plot: Light gray IQR box, dark borders, whiskers at 1.5xIQR.");
+        Tr("Mean marker: Black cross (+) symbol indicates mean value per species.\n"
+        "Box plot: Light gray IQR box, dark borders, whiskers at 1.5xIQR."));
     
     return page;
 }
@@ -763,20 +763,23 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScientif
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRaincloudPlotExample() {
-    auto page = DemoKit::CreatePage("RaincloudExample", "Raincloud Plot - Half-Violin + Jitter", "");
+    auto page = DemoKit::CreatePage("RaincloudExample", Tr("Raincloud Plot - Half-Violin + Jitter"), "");
     auto card = DemoKit::AddCard(page, "RaincloudCard");
     
     auto jitter = CreateJitterPlotElement("raincloud", 0, 0, 800, 500);
     
-    std::vector<std::string> groups = {"Control", "Treatment A", "Treatment B"};
+    std::vector<std::string> groups = {Tr("Control"), Tr("Treatment A"), Tr("Treatment B")};
     jitter->SetCategories(groups);
     jitter->SetHybridMode(JitterHybridMode::RaincloudPlot);
     
     std::random_device rd;
     std::mt19937 gen(111);
     
-    for (const auto& group : groups) {
-        double baseMean = (group == "Control") ? 50.0 : (group == "Treatment A") ? 65.0 : 75.0;
+    // Control, Treatment A, Treatment B - by position, the names are translated.
+    const double baseMeans[] = {50.0, 65.0, 75.0};
+    for (size_t g = 0; g < groups.size(); ++g) {
+        const std::string& group = groups[g];
+        double baseMean = baseMeans[g];
         double std = 12.0;
         
         std::normal_distribution<> dist(baseMean, std);
@@ -799,14 +802,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRainclou
     jitter->SetJitterAmount(0.2f);
     jitter->SetPointSize(3.0f);
     jitter->SetPointAlpha(0.6f);
-    jitter->SetChartTitle("Response Value");
+    jitter->SetChartTitle(Tr("Response Value"));
     jitter->SetEnableTooltips(true);
     
     DemoKit::AddFixed(card, jitter);
     
     DemoKit::AddCaption(card, "RaincloudInfo",
-        "Raincloud plot combines half-violin (density) on left with jittered points on right.\n"
-        "Provides both distribution shape and individual data points in one visualization.");
+        Tr("Raincloud plot combines half-violin (density) on left with jittered points on right.\n"
+        "Provides both distribution shape and individual data points in one visualization."));
     
     return page;
 }

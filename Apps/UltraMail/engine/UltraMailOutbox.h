@@ -7,6 +7,9 @@
 // on the server (ServerCopies): it is there on every device until the message
 // has gone out, and is deleted from Drafts once it has - when a copy goes to
 // the Sent folder instead (unless the server files sent mail itself).
+// Version: 0.12.0 - signed and encrypted mail (schema 5): made once at the send, and
+//                  that is what goes to Drafts, out and to Sent - never the plain text
+// Version: 0.11.0 - Open takes the key outbox.db is encrypted with
 // Version: 0.10.0 - Flush with a plug-in per account (PluginResolver): a JMAP
 //                   account sends through the JMAP plug-in, the rest through SMTP
 // Version: 0.9.0 - ServerFolders::mailbox: the copies of a JMAP account go
@@ -24,6 +27,7 @@
 #pragma once
 
 #include "UltraMailComposer.h"
+#include "UltraMailSecureMime.h"
 #include "UltraMailSender.h"
 
 #include <UltraDatabase/UltraDatabaseCore.h>
@@ -55,6 +59,13 @@ struct OutboxItem {
     // Drafts copy is not deleted yet: never sent, and not listed as waiting.
     bool withdrawn = false;
 };
+
+// A draft to be signed and/or encrypted when it is sent (Draft::secureMethod).
+bool IsSecureDraft(const Draft& draft);
+// `item` as it is sent when it is signed and/or encrypted: the message copy
+// (BuildMessageCopy) wrapped by SecureOutgoingMessage. False, with `error`,
+// when it cannot be made.
+bool BuildSecureMessage(const OutboxItem& item, const SecureKeys& keys, std::string& out, std::string& error);
 
 // A new Message-ID for a message from `fromAddr`: "<time.random@domain>".
 std::string NewMessageId(const std::string& fromAddr);
@@ -101,7 +112,8 @@ struct ServerCopies {
 // Persistent queue storage (contacts-style, on its own UltraDatabase connection).
 class OutboxStore {
 public:
-    UltraDbResult Open(const std::string& connectionName, const std::string& databasePath);
+    UltraDbResult Open(const std::string& connectionName, const std::string& databasePath,
+                       std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey = nullptr);
 
     // Mirrors LocalStore / ContactStore, so the UI can tell "the queue is
     // unavailable" from "the queue is empty" and say so.
@@ -147,6 +159,9 @@ private:
 class Outbox {
 public:
     explicit Outbox(OutboxStore& store) : store_(store) {}
+
+    // The keys signed and encrypted messages are made with (UltraMailSecureMime.h).
+    void SetSecureKeys(SecureKeys keys) { secureKeys_ = std::move(keys); }
 
     UltraDbResult Queue(const std::string& accountId, const std::string& serverUrl,
                         const Draft& draft, int64_t& outId) {
@@ -219,7 +234,10 @@ public:
 
 private:
     // Saves `item`'s copy; true when it has one afterwards.
-    bool SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushStats& stats);
+    // `secured`: a signed or encrypted message as it will be sent; required
+    // for one - its plain text never goes to the server.
+    bool SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushStats& stats,
+                       const std::string* secured = nullptr);
     // Deletes `item`'s Drafts copy from its folder (flags it \Deleted, then
     // expunges just that message); true when no copy is left there.
     bool RemoveDraftCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats);
@@ -227,8 +245,10 @@ private:
     // whose copy is gone; the number done.
     int RemoveWithdrawnCopies(const ServerCopies& copies, FlushStats& stats);
     // Files the sent `item` in the Sent folder.
-    void SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats);
+    void SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats,
+                      const std::string* secured = nullptr);
     OutboxStore& store_;
+    SecureKeys   secureKeys_;
 };
 
 // When the outbox tries again by itself, for messages a pass left unsent.

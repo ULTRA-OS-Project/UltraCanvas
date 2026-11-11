@@ -12,6 +12,7 @@
 - [Image Loading Methods](#image-loading-methods)
   - [LoadFromFile](#loadfromfile)
   - [LoadFromImage](#loadfromimage)
+  - [LoadFromPixmap](#loadfrompixmap)
   - [GetLastError](#getlasterror)
 - [Display Properties](#display-properties)
   - [Fit, Position and Repeat](#fit-position-and-repeat)
@@ -144,6 +145,35 @@ returns true and fires `onImageLoaded`; an image whose decode failed returns
 false, fires `onImageLoadFailed` with the reason and shows the error
 placeholder. A null or empty image (`std::make_shared<UCImage>()`) clears the
 element and fires neither.
+
+A picture that exists as pixels rather than as a file - a screen capture, a
+frame a program made - is shown without any encoding or decoding on the way:
+`UCImage::FromBgra(pixels, width, height, stride, opaque)` takes rows of
+32-bit pixels in memory order B, G, R, A (cairo's native layout, what the
+platforms' screen captures hand over; with `opaque` the fourth byte is
+ignored), and `UCImage::FromRgba(pixels, width, height)` takes straight
+R, G, B, A rows of `width * 4` bytes. Both copy the rows, and the image then
+draws, scales, saves and reports transparency like any other.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::vector<uint8_t> rgba; int width; int height; -->
+```cpp
+image->LoadFromImage(UCImage::FromRgba(rgba.data(), width, height));
+```
+
+### LoadFromPixmap
+```cpp
+bool LoadFromPixmap(std::shared_ptr<UCPixmap> pixmap);
+```
+Shows a picture that is already drawn - a file's icon from
+`LoadHostFileIconPixmap`, a thumbnail from `RenderFileThumbnail` - fitted to
+the box like a loaded image, with no copy and no decoding. Returns true and
+fires `onImageLoaded` for a picture; null clears the element and fires
+neither. A later `LoadFromFile` or `LoadFromImage` replaces it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::shared_ptr<UCPixmap> icon; -->
+```cpp
+image->LoadFromPixmap(icon);
+```
 
 ### GetLastError
 ```cpp

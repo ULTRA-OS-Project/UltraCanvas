@@ -55,7 +55,7 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY)
         ${_UV_DIR}
         ${CMAKE_CURRENT_LIST_DIR}/../UltraCanvas/include
     )
-    target_link_libraries(UltraVideoDocumentTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_link_libraries(UltraVideoDocumentTest PRIVATE ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX VideoFXUltraCanvasText)
     target_compile_definitions(UltraVideoDocumentTest PRIVATE
         UC_MEDIA_DIR="${CMAKE_CURRENT_LIST_DIR}/../media")
     target_compile_features(UltraVideoDocumentTest PRIVATE cxx_std_20)

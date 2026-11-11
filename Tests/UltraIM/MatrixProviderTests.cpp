@@ -2,7 +2,8 @@
 // Matrix provider end to end against a real homeserver (Synapse, started by
 // matrix_test_server.py): sign-in, a direct chat (invitation, accepting it by
 // replying, the echo of our own message, receipts, typing, edit, redaction,
-// reply), a group, and a stored session resumed with history paged back -
+// reply), a picture, a video and a file sent and fetched back byte for byte,
+// a group, and a stored session resumed with history paged back -
 // all of it end-to-end encrypted when vodozemac is built in. Then the
 // encryption itself: only ciphertext on the server, a second device that gets
 // the keys from then on and the earlier ones through a key export, signing in
@@ -12,8 +13,10 @@
 // python3), unless ULTRAIM_TEST_MATRIX_REQUIRED is set (CI); the nio part
 // skips without matrix-nio[e2e] in that python, unless
 // ULTRAIM_TEST_MATRIX_NIO_REQUIRED is set.
+// Version: 0.2.2 - the same in a room created unencrypted, so both paths run in one build
+// Version: 0.2.1 - a picture, a video and a file each way
 // Version: 0.2.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "MatrixHttp.h"
@@ -117,6 +120,47 @@ bool WaitConversation(const std::function<void(UltraIMConversationCallback)>& st
     });
     std::unique_lock<std::mutex> lock(mutex);
     cv.wait_for(lock, std::chrono::seconds(30), [&]() { return done; });
+    return ok;
+}
+
+// A file of `size` bytes that is not all the same, under `path`.
+std::vector<uint8_t> WritePattern(const fs::path& path, size_t size, uint8_t seed) {
+    std::vector<uint8_t> bytes(size);
+    for (size_t i = 0; i < size; ++i) bytes[i] = static_cast<uint8_t>((i * 31 + seed) ^ (i >> 3));
+    std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(path), "wb");
+    if (f) {
+        std::fwrite(bytes.data(), 1, bytes.size(), f);
+        std::fclose(f);
+    }
+    return bytes;
+}
+
+std::vector<uint8_t> ReadBytes(const std::string& path) {
+    std::vector<uint8_t> out;
+    std::FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
+    if (!f) return out;
+    uint8_t buffer[4096];
+    size_t n = 0;
+    while ((n = std::fread(buffer, 1, sizeof(buffer), f)) > 0) out.insert(out.end(), buffer, buffer + n);
+    std::fclose(f);
+    return out;
+}
+
+bool WaitAttachment(const std::function<void(UltraIMAttachmentCallback)>& start, UltraIMAttachment& out,
+                    UltraIMResult* result = nullptr, int seconds = 60) {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false, ok = false;
+    start([&](const UltraIMResult& r, const UltraIMAttachment& a) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = a;
+        ok = r.success;
+        if (result) *result = r;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(seconds), [&]() { return done; });
     return ok;
 }
 
@@ -554,6 +598,137 @@ void TestEndToEnd() {
     }));
     CHECK(alice->SetTyping(dm.conversationId, false));
 
+    // A picture, a video and a file: uploaded (as ciphertext in an encrypted
+    // room), the echo pointing at the file sent; Bob gets the picture by
+    // itself, the video and the file when asked for, byte for byte.
+    CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::ImageMessages));
+    const std::vector<uint8_t> pictureBytes = WritePattern(base / "pic.png", 70000, 1);
+    const std::vector<uint8_t> clipBytes = WritePattern(base / "clip.mp4", 200000, 2);
+    const std::vector<uint8_t> notesBytes = WritePattern(base / "notes.pdf", 5000, 3);
+    const std::string picture = UltraCanvas::PathToUtf8(base / "pic.png");
+    const std::string clip = UltraCanvas::PathToUtf8(base / "clip.mp4");
+    const std::string notes = UltraCanvas::PathToUtf8(base / "notes.pdf");
+    UltraIMSendOptions oPic;
+    oPic.clientMessageId = "alice-pic";
+    CHECK(alice->SendImage(dm.conversationId, UltraCanvas::PathToUtf8(base / "missing.png"), "", oPic).code ==
+          UltraIMResultCode::InvalidArgument);
+    CHECK(alice->SendImage(dm.conversationId, picture, "look", oPic));
+    UltraIMEvent picSent, picEcho, picGot, picHere;
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageDelivered && e.message.clientMessageId == "alice-pic" &&
+               e.deliveryStatus == UltraIMDeliveryStatus::Sent;
+    }, &picSent));
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.clientMessageId == "alice-pic";
+    }, &picEcho));
+    CHECK(picEcho.message.type == UltraIMMessageType::Image && picEcho.message.text == "look");
+    CHECK(picEcho.message.attachment.fileName == "pic.png" && picEcho.message.attachment.localPath == picture);
+    CHECK(picEcho.message.attachment.isDownloaded && picEcho.message.attachment.mimeType == "image/png");
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::Image;
+    }, &picGot));
+    CHECK(picGot.message.text == "look" && picGot.message.attachment.fileName == "pic.png");
+    CHECK(picGot.message.attachment.remoteUrl.rfind("mxc://", 0) == 0);
+    CHECK(picGot.message.attachment.fileSizeBytes == static_cast<int64_t>(pictureBytes.size()));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageUpdate && e.message.messageId == picGot.message.messageId &&
+               e.message.attachment.isDownloaded;
+    }, &picHere));
+    CHECK(!picHere.message.attachment.localPath.empty() && ReadBytes(picHere.message.attachment.localPath) == pictureBytes);
+    CHECK(picHere.message.attachment.localPath != picture);     // Bob's copy, in his cache
+
+    CHECK(alice->SendVideo(dm.conversationId, clip, "", UltraIMSendOptions()));
+    UltraIMEvent clipGot;
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::Video;
+    }, &clipGot));
+    CHECK(clipGot.message.attachment.fileName == "clip.mp4" && !clipGot.message.attachment.isDownloaded);
+    CHECK(clipGot.message.text.empty() && clipGot.message.attachment.mimeType == "video/mp4");
+    UltraIMAttachment fetched;
+    UltraIMResult fetchResult;
+    CHECK(!WaitAttachment([&](UltraIMAttachmentCallback cb) { bob->DownloadAttachment(dm.conversationId, helloId, cb); },
+                          fetched, &fetchResult));
+    CHECK(fetchResult.code == UltraIMResultCode::NotFound);     // a text has none
+    CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) {
+        bob->DownloadAttachment(dm.conversationId, clipGot.message.messageId, cb);
+    }, fetched));
+    CHECK(fetched.isDownloaded && ReadBytes(fetched.localPath) == clipBytes && fetched.fileName == "clip.mp4");
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageUpdate && e.message.messageId == clipGot.message.messageId &&
+               e.message.attachment.isDownloaded;
+    }));
+    // Asked again: from disk.
+    UltraIMAttachment fetchedAgain;
+    CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) {
+        bob->DownloadAttachment(dm.conversationId, clipGot.message.messageId, cb);
+    }, fetchedAgain) && fetchedAgain.localPath == fetched.localPath);
+
+    CHECK(bob->SendFile(dm.conversationId, notes, UltraIMSendOptions()));
+    UltraIMEvent notesGot;
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::File;
+    }, &notesGot));
+    CHECK(notesGot.message.attachment.fileName == "notes.pdf" && notesGot.message.attachment.mimeType == "application/pdf");
+    CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) {
+        alice->DownloadAttachment(dm.conversationId, notesGot.message.messageId, cb);
+    }, fetched));
+    CHECK(ReadBytes(fetched.localPath) == notesBytes);
+    // History brings the picture back with its file.
+    {
+        const auto recent = Fetch(*bob, dm.conversationId, 20);
+        int pictures = 0;
+        for (const auto& m : recent) {
+            if (m.type == UltraIMMessageType::Image && m.attachment.isDownloaded) ++pictures;
+        }
+        CHECK(pictures == 1);
+    }
+
+    // The same through a room created unencrypted: the file travels in the
+    // clear and the preview picture rides as thumbnail_url.
+    if (e2ee) {
+        alice->SetCreateEncrypted(false);
+        UltraIMConversation plain;
+        CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->CreateGroup("Plain", {"@bob:localhost"}, cb); },
+                               plain));
+        alice->SetCreateEncrypted(true);
+        CHECK(plain.isGroup && !plain.isEncrypted);
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == plain.conversationId;
+        }));
+        // Bob joins by answering into the room; only then does its timeline reach him.
+        UltraIMSendOptions oJoin;
+        oJoin.clientMessageId = "bob-plain-join";
+        CHECK(bob->SendText(plain.conversationId, "here", oJoin));
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return IsReceived(e, "here") && e.conversationId == plain.conversationId;
+        }));
+        UltraIMSendOptions oPlain;
+        oPlain.clientMessageId = "alice-plain-pic";
+        CHECK(alice->SendImage(plain.conversationId, picture, "in the clear", oPlain));
+        UltraIMEvent plainGot, plainHere;
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.conversationId == plain.conversationId &&
+                   e.message.type == UltraIMMessageType::Image;
+        }, &plainGot));
+        CHECK(plainGot.message.text == "in the clear");
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageUpdate && e.message.messageId == plainGot.message.messageId &&
+                   e.message.attachment.isDownloaded;
+        }, &plainHere));
+        CHECK(ReadBytes(plainHere.message.attachment.localPath) == pictureBytes);
+        CHECK(alice->SendVideo(plain.conversationId, clip, "", UltraIMSendOptions()));
+        UltraIMEvent plainClip;
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.conversationId == plain.conversationId &&
+                   e.message.type == UltraIMMessageType::Video;
+        }, &plainClip));
+        UltraIMAttachment plainFetched;
+        CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) {
+            bob->DownloadAttachment(plain.conversationId, plainClip.message.messageId, cb);
+        }, plainFetched));
+        CHECK(ReadBytes(plainFetched.localPath) == clipBytes);
+    }
+
     // An edit and a redaction reach Bob.
     CHECK(alice->EditMessage(dm.conversationId, helloId, "hello bob!"));
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
@@ -643,7 +818,7 @@ void TestEndToEnd() {
 
     std::vector<UltraIMConversation> list;
     again->FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) { list = l; });
-    CHECK(list.size() == 2);
+    CHECK(list.size() == (e2ee ? 3u : 2u));  // the DM, the Team group and, with E2EE built in, the Plain room
 
     again->Shutdown();
     bob->Shutdown();

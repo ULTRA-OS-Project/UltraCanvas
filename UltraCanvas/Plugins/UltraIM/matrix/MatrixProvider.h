@@ -5,9 +5,15 @@
 // and redactions, read receipts, typing, presence, and history paged back
 // with /messages. End-to-end encrypted rooms are read and written through
 // MatrixCrypto (Olm / Megolm, vodozemac), and new rooms are created
-// encrypted when it is built in.
+// encrypted when it is built in. Pictures, videos and files travel through
+// the content repository: a photo and a video's or a file's preview picture
+// are fetched as the message arrives, the rest when asked for, and a local
+// file is uploaded as a photo, a video or a file - encrypted (AES-256-CTR,
+// the m.file format) in an encrypted room.
+// Version: 0.2.2 - preview pictures sent along; SetCreateEncrypted (tests)
+// Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -43,7 +49,7 @@ public:
 
     std::string GetProviderId() const override { return providerId_; }
     std::string GetDisplayName() const override { return "Matrix"; }
-    std::string GetVersion() const override { return "0.2.0"; }
+    std::string GetVersion() const override { return "0.2.2"; }
     UltraIMCapabilityFlags GetCapabilities() const override;
     UltraIMLoginType GetLoginType() const override { return UltraIMLoginType::UsernamePassword; }
 
@@ -73,6 +79,19 @@ public:
     // In an invitation, sending accepts it first.
     UltraIMResult SendText(const std::string& conversationId, const std::string& text,
                            const UltraIMSendOptions& options) override;
+    // A local file into the content repository (encrypted first in an
+    // encrypted room), then the message that carries it; the outcome as for
+    // a text, the echo's attachment pointing at the file.
+    UltraIMResult SendImage(const std::string& conversationId, const std::string& localPath,
+                            const std::string& caption, const UltraIMSendOptions& options) override;
+    UltraIMResult SendVideo(const std::string& conversationId, const std::string& localPath,
+                            const std::string& caption, const UltraIMSendOptions& options) override;
+    UltraIMResult SendFile(const std::string& conversationId, const std::string& localPath,
+                           const UltraIMSendOptions& options) override;
+    // A video, a file or a voice note fetched (and decrypted) into the cache
+    // directory; a picture comes by itself.
+    void DownloadAttachment(const std::string& conversationId, const std::string& messageId,
+                            UltraIMAttachmentCallback onResult) override;
     UltraIMResult EditMessage(const std::string& conversationId, const std::string& messageId,
                               const std::string& newText) override;
     UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId) override;
@@ -95,6 +114,9 @@ public:
     std::vector<MatrixDeviceInfo> GetDevicesOf(const std::string& userId) const { return crypto_.DevicesOf(userId); }
     // Rounds of the export's passphrase stretching (PBKDF2); fewer in tests.
     void SetKeyExportRounds(uint32_t rounds) { exportRounds_ = rounds; }
+    // Whether new rooms are created encrypted (when encryption is built in);
+    // false makes plain rooms, for a test of the unencrypted paths.
+    void SetCreateEncrypted(bool encrypted) { createEncrypted_ = encrypted; }
 
 private:
     struct Room {
@@ -120,8 +142,35 @@ private:
         std::set<std::string> typing;
     };
 
+    // The files behind a message's attachment: the content's mxc URL and
+    // the preview picture's, each with its encryption (the m.file object:
+    // key, iv, hashes) in an encrypted room.
+    struct Media {
+        std::string url;
+        std::string thumbnailUrl;
+        UltraCanvas::JSONValue file;
+        UltraCanvas::JSONValue thumbnailFile;
+        std::string mimeType;
+        std::string fileName;
+    };
+    // What a download is for.
+    struct MediaUse {
+        std::string roomId;
+        std::string eventId;
+        bool        thumbnail = false;
+    };
+    struct DownloadJob {
+        std::string url;
+        UltraCanvas::JSONValue file;
+        std::string mimeType;
+        std::string fileName;
+    };
+
     // ---- helpers --------------------------------------------------------------
     void Emit(const UltraIMEvent& event);
+    // The MessageDelivered event of our own message.
+    void Delivered(const std::string& conversationId, const std::string& clientId, UltraIMDeliveryStatus status,
+                   const std::string& eventId);
     void SetState(UltraIMConnectionState state, const std::string& error = std::string());
     std::shared_ptr<MatrixHttp> Http() const;
     bool SaveSession(const std::string& url, const std::string& userId, const std::string& deviceId,
@@ -150,6 +199,21 @@ private:
     std::string NameOf(const Room& room, const std::string& userId) const;
 
     void SetDirect(const std::string& userId, const std::string& roomId);
+
+    // ---- media ------------------------------------------------------------------
+    // Where a media file is kept once fetched: the cache directory, named by
+    // its URL's hash, with the extension its type suggests.
+    std::string MediaPath(const std::string& url, const std::string& mimeType, const std::string& fileName) const;
+    // Mutex held: what a message in the timeline should have fetched by itself.
+    void QueueMedia(const UltraIMMessage& message);
+    void QueueDownload(const std::string& url, const Media& media, const MediaUse& use);
+    // Sends the downloads queued (never with the mutex held).
+    void FlushDownloads();
+    void StartDownload(const DownloadJob& job, bool legacyEndpoint);
+    void OnMediaDownloaded(const DownloadJob& job, const MatrixBytes& bytes);
+    void MediaFailed(const std::string& url, const std::string& why);
+    UltraIMResult SendMedia(const std::string& conversationId, const std::string& localPath, const std::string& caption,
+                            UltraIMMessageType type, const UltraIMSendOptions& options);
 
     // ---- encryption -------------------------------------------------------------
     void OpenCrypto(const std::string& userId, const std::string& deviceId);
@@ -190,12 +254,19 @@ private:
     std::map<std::string, std::vector<std::string>> direct_;    // m.direct: user -> rooms
     std::map<std::string, UltraIMPresence> presence_;
     std::map<std::string, std::string> txnToClient_;            // our transaction id -> client message id
+    mutable std::map<std::string, Media> media_;                // event id -> its files (MessageFrom fills it)
+    std::map<std::string, std::string> onDisk_;                 // mxc URL -> the local file (fetched, or ours)
+    std::map<std::string, std::vector<MediaUse>> mediaUses_;    // mxc URL -> who waits for it
+    std::map<std::string, std::vector<UltraIMAttachmentCallback>> mediaWaiters_;
+    std::set<std::string> downloading_;
+    std::vector<DownloadJob> downloadQueue_;
 
     std::thread     syncThread_;
     std::atomic<bool> stopping_{false};
 
     MatrixCrypto    crypto_;
     uint32_t        exportRounds_ = 500000;
+    bool            createEncrypted_ = true;
     // room "|" session id -> events waiting for that key (mutex_)
     std::map<std::string, std::vector<UltraCanvas::JSONValue>> pendingDecrypt_;
 

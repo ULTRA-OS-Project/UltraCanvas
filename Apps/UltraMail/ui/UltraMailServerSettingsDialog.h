@@ -11,6 +11,8 @@
 // display-name row above the servers, and - for a password account - a
 // password row, or - for an OAuth account - a "Sign in again" button - and a
 // Signature row whose "Edit signature…" button opens the signature editor.
+// Version: 0.8.0 - the Security row (summary, "Mail security..." - the security
+//                  dialog) in place of the S/MIME row
 // Version: 0.7.0 - askPassword / initialPassword / keepExisting: an editable
 //                  password field on the setup and server-re-entry pages, so a
 //                  failed sign-in can be fixed in place
@@ -18,6 +20,7 @@
 //                  enter its password again (AccountFields::signedInWithOAuth
 //                  exempts an OAuth2 account)
 // Version: 0.6.0 - the Protocol row: IMAP or JMAP for the incoming server
+// Version: 0.6.0 - the S/MIME row: the account's certificate, Import... and Remove
 // Version: 0.5.0 - the Signature row (account settings page)
 // Version: 0.4.0 - an authentication method per server
 // Author: UltraCanvas Framework / ULTRA OS
@@ -69,6 +72,13 @@ public:
         // and hands the new signature to this callback.
         Signature signature;
         std::function<void(const Signature&)> onSaveSignature;
+        // When set (account settings only), a Security row: the account's
+        // mail security in a few words (`securitySummary`) and a "Mail
+        // security..." button. The caller shows the security dialog over
+        // `page`; it saves on its own Save and hands the row its new summary.
+        std::string securitySummary;
+        std::function<void(UltraCanvas::UltraCanvasWindowBase* page,
+                           std::function<void(const std::string& summary)> done)> onEditSecurity;
     };
 
     // What Save hands back. `settings` is always filled; the rest are only

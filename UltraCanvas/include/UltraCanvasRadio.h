@@ -1,11 +1,13 @@
 // UltraCanvasRadio.h
 // Radio button: circular indicator with center dot, exclusive selection via UltraCanvasRadioGroup.
+// Version: 1.6.0 - RadioVisualStyle::FromTheme, ApplyTheme: the radio follows the theme;
+//                  a SetVisualStyle by hand stops the following
 // Version: 1.5.0 - AddRadioButton adopts a radio that is already checked
 // Version: 1.4.0 - a radio button to screen readers, selected by its action
 // Version: 1.3.0 - the group's onChecked handler holds its radio raw (it kept the radio
 //                 alive forever) and is taken back when the group goes or the radio leaves it
 // Version: 1.2.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -37,6 +39,15 @@ namespace UltraCanvas {
         float boxSize = 16.0f;       // Diameter of outer circle
         float borderWidth = 1.0f;
         float dotInsetRatio = 0.3f;  // Inner dot radius = (boxSize/2) * (1 - 2*dotInsetRatio)
+
+        // The theme's roles: the well for the ring with the control border,
+        // the hover and pressed fills, the panel disabled; the dot in the
+        // accent (the element role "radio.dot" where a theme names it); the
+        // label from LabeledToggleVisualStyle::FromTheme - over a base's own
+        // shape (sizes, the dot's inset), or a default one
+        static RadioVisualStyle FromTheme(const UltraCanvasTheme& theme, const RadioVisualStyle& base);
+        static RadioVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, RadioVisualStyle()); }
+        static RadioVisualStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== RADIO BUTTON =====
@@ -81,9 +92,10 @@ namespace UltraCanvas {
         void SetCheckState(CheckedState state) override;
 
         // ===== APPEARANCE =====
-        void SetVisualStyle(const RadioVisualStyle& s) { visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
+        void SetVisualStyle(const RadioVisualStyle& s) { StyleSetByHand(); visualStyle = s; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         RadioVisualStyle& GetVisualStyle() { return visualStyle; }
         const RadioVisualStyle& GetVisualStyle() const { return visualStyle; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetVisualStyle(RadioVisualStyle::FromTheme(theme, visualStyle)); }
 
         void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; InvalidateLayout(); RequestRedraw(); }
         float GetBoxSize() const { return visualStyle.boxSize; }

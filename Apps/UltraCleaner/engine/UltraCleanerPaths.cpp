@@ -405,6 +405,13 @@ std::vector<std::string> ExpandWildcardDirectories(const std::string& pattern,
     return results;
 }
 
+std::string WithForwardSlashes(std::string path) {
+#if defined(_WIN32) || defined(_WIN64)
+    std::replace(path.begin(), path.end(), '\\', '/');
+#endif
+    return path;
+}
+
 std::string NormalizeForCompare(const std::string& path) {
     std::string out = ToForwardSlashes(path);
 #if defined(_WIN32) || defined(_WIN64) || defined(__APPLE__)

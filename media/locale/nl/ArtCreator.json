@@ -1,0 +1,22 @@
+{
+  "@language": "nl",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Tekst toegevoegd: klik erop met het tekstgereedschap of dubbelklik erop om hem te bewerken",
+  "Changed the text": "Tekst gewijzigd",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Klik op de pagina en typ, of klik op een tekst om die te bewerken; de balk erboven stelt het lettertype, de grootte, de stijl, de uitlijning en de afstand in. Escape, Ctrl+Enter of een klik erbuiten rondt af",
+  "Delete Text": "Tekst verwijderen",
+  "Edit Text": "Tekst bewerken",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "De tekst wordt bewerkt: Enter begint een nieuwe regel; Escape, Ctrl+Enter of een klik erbuiten rondt af",
+  "Letter Spacing": "Letterafstand",
+  "Line Spacing": "Regelafstand",
+  "Nothing was typed": "Er is niets getypt",
+  "Text Alignment": "Tekstuitlijning",
+  "Text Bold": "Tekst vet",
+  "Text Font": "Tekstlettertype",
+  "Text Italic": "Tekst cursief",
+  "Text Size": "Tekstgrootte",
+  "Text Strikethrough": "Tekst doorgehaald",
+  "Text Underline": "Tekst onderstreept",
+  "The text was emptied, so it was deleted": "De tekst is leeggemaakt en daarom verwijderd",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Een nieuwe tekst wordt getypt: Enter begint een nieuwe regel; Escape, Ctrl+Enter of een klik erbuiten rondt af"
+}

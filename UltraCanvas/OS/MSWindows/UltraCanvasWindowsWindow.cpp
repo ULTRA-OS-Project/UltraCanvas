@@ -1,5 +1,12 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.9.0 - WindowType::Popup: a popup's own window - topmost, out of the taskbar, never
+//                  activated, shown without activation; SetNativeWindowShape (a window region)
+// Version: 1.8.0 - WindowType::Tooltip: topmost, out of the taskbar, never activated, and
+//                  layered and transparent to the mouse, which passes through it
+// Version: 1.7.0 - WindowType::SessionLock: a topmost borderless window (not enforced)
+// Version: 1.6.0 - WM_SETTINGCHANGE, WM_THEMECHANGED and the DWM colour change
+//                  schedule a read of the host appearance
 // Version: 1.5.0 - WindowType::Desktop on any monitor (config.desktopArea)
 // Version: 1.4.0 - WindowType::Desktop: undecorated, the primary monitor's
 //                  size, out of the taskbar and Alt+Tab, on every virtual
@@ -10,7 +17,7 @@
 // Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
 // Version: 1.1.1 - window icon pixels converted to straight alpha
 // Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -26,6 +33,9 @@
 // GetProcAddress so no shcore/user32 import lib is required.
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
+#endif
+#ifndef WM_DWMCOLORIZATIONCOLORCHANGED
+#define WM_DWMCOLORIZATIONCOLORCHANGED 0x0320
 #endif
 #ifndef MDT_EFFECTIVE_DPI
 #define MDT_EFFECTIVE_DPI 0
@@ -182,8 +192,11 @@ namespace UltraCanvas {
                 exStyle |= WS_EX_DLGMODALFRAME;
                 break;
             case WindowType::Popup:
-                style = WS_POPUP | WS_BORDER;
-                exStyle |= WS_EX_TOPMOST;
+                // A popup's own window: above everything, out of the taskbar
+                // and Alt+Tab, and never activated - the window the popup
+                // belongs to keeps the keys. The popup draws its own border.
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
                 break;
             case WindowType::Tool:
                 style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME;
@@ -195,11 +208,24 @@ namespace UltraCanvas {
             case WindowType::Fullscreen:
                 style = WS_POPUP;
                 break;
+            case WindowType::SessionLock:
+                // A lock screen this program draws: undecorated and above
+                // everything; Windows does not keep the rest unreachable.
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST;
+                break;
             case WindowType::Notification:
                 // A toast: above everything, out of the taskbar and Alt+Tab,
                 // never activated (shown with SW_SHOWNOACTIVATE below).
                 style = WS_POPUP;
                 exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                break;
+            case WindowType::Tooltip:
+                // The tooltip's own window: a toast's styles, and layered and
+                // transparent, so the mouse goes through it to the window
+                // beneath (made opaque with SetLayeredWindowAttributes below).
+                style = WS_POPUP;
+                exStyle = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT;
                 break;
             case WindowType::Desktop:
                 // The desktop itself: undecorated; a tool window, which keeps
@@ -294,6 +320,12 @@ namespace UltraCanvas {
             DestroyWindow(hwnd);
             hwnd = nullptr;
             return false;
+        }
+
+        // A layered window is not drawn until it is given its alpha: the
+        // tooltip's is opaque; WS_EX_LAYERED is there for WS_EX_TRANSPARENT.
+        if (config_.type == WindowType::Tooltip) {
+            SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
         }
 
         trackingMouseLeave = false;
@@ -551,6 +583,18 @@ namespace UltraCanvas {
                 return 0;
             }
 
+            // The host's look changed - a switch to dark, a new accent, a new
+            // text size or font (WM_SETTINGCHANGE, lParam "ImmersiveColorSet"
+            // or wParam SPI_SETNONCLIENTMETRICS among others), the theme
+            // (WM_THEMECHANGED), the DWM colour. Every top-level window gets
+            // the broadcast; the application reads the host once per burst.
+            case WM_SETTINGCHANGE:
+            case WM_THEMECHANGED:
+            case WM_DWMCOLORIZATIONCOLORCHANGED: {
+                if (auto* app = UltraCanvasWindowsApplication::GetInstance()) app->ScheduleHostAppearanceRefresh();
+                break;
+            }
+
             case WM_CLOSE: {
                 // Don't call DestroyWindow here - let the framework handle it
                 // via WindowCloseRequest event (pushed by ProcessWindowMessage)
@@ -626,6 +670,14 @@ namespace UltraCanvas {
                 return 0;
             }
 
+            case WM_MOUSEACTIVATE:
+                // A click in a popup's own window (an item of a menu) leaves
+                // the window the popup belongs to active, with the keys.
+                if (config_.type == WindowType::Popup || config_.type == WindowType::Tooltip) {
+                    return MA_NOACTIVATE;
+                }
+                break;
+
             case WM_SETCURSOR: {
                 // Handle cursor in client area - prevent Windows from resetting it
                 if (LOWORD(lParam) == HTCLIENT) {
@@ -659,7 +711,13 @@ namespace UltraCanvas {
         // its empty surface - black - until the event loop drew the frame,
         // for as long as anything kept the loop from getting there.
         RenderBeforeShow();
-        ShowWindow(hwnd, config_.type == WindowType::Notification ? SW_SHOWNOACTIVATE : SW_SHOW);
+        const bool noActivate = config_.type == WindowType::Notification || config_.type == WindowType::Tooltip ||
+                                config_.type == WindowType::Popup;
+        ShowWindow(hwnd, noActivate ? SW_SHOWNOACTIVATE : SW_SHOW);
+        // A tooltip or a popup above the topmost windows shown since it last was
+        if (config_.type == WindowType::Tooltip || config_.type == WindowType::Popup) {
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
         UpdateWindow(hwnd);
 
         _windowVisible = true;
@@ -676,6 +734,24 @@ namespace UltraCanvas {
         HandleWindowHidden();
 
         if (onWindowHide) onWindowHide();
+    }
+
+    void UltraCanvasWindowsWindow::SetNativeWindowShape(const std::vector<Rect2Di>& physicalRects) {
+        if (!hwnd) return;
+        if (physicalRects.empty()) {
+            SetWindowRgn(hwnd, nullptr, TRUE);   // the whole window again
+            return;
+        }
+        HRGN region = CreateRectRgn(0, 0, 0, 0);
+        if (!region) return;
+        for (const auto& r : physicalRects) {
+            HRGN part = CreateRectRgn(r.x, r.y, r.x + r.width, r.y + r.height);
+            if (!part) continue;
+            CombineRgn(region, region, part, RGN_OR);
+            DeleteObject(part);
+        }
+        // The window owns the region from here on
+        if (!SetWindowRgn(hwnd, region, TRUE)) DeleteObject(region);
     }
 
     void UltraCanvasWindowsWindow::RaiseAndFocus() {

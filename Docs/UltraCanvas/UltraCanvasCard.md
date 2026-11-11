@@ -7,6 +7,7 @@
 - [Structure](#structure)
 - [States](#states)
 - [Key API](#key-api)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -24,7 +25,7 @@ buttons laid out as a flex column; the card adds the structure, the states and
 the surface.
 
 **File Location**: `include/UltraCanvasCard.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `CardStyle::FromTheme`, `ApplyTheme`: the card follows the theme
 **Author**: UltraCanvas Framework
 
 ---
@@ -107,6 +108,25 @@ std::function<void()> onDoubleClick;
 corner radius, the padding and gaps, the icon size and the title / subtitle
 fonts and colours; `CardStyle::Default()` is white on a light border with a
 14 pt bold title.
+
+## Following the theme
+
+`CardStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (widths, radius, padding,
+gaps, the fonts' weights): the raised surface with the hover fill and the
+soft accent selected, a hairline with the accent to highlight, the title in
+ink at the heading size, the subtitle in muted ink at the body size. Under
+the theme policy a new card follows the theme by itself (`ApplyTheme`, its
+scrollbars with it); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto card = std::make_shared<UltraCanvasCard>("card", 240, 140, "Title", "Subtitle");
+CardStyle square = card->GetStyle();
+square.cornerRadius = 4;
+card->SetStyle(CardStyle::FromTheme(UltraCanvasTheme::Current(), square));
+card->SetFollowTheme(true);
+```
 
 ## Notes
 

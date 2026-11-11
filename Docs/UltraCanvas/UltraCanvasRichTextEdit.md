@@ -32,6 +32,7 @@ state of the selection** rather than two asterisks in a buffer.
   - [Check lists](#check-lists)
   - [Formulas](#formulas)
   - [Structure](#structure)
+- [Following the theme](#following-the-theme)
 - [Keyboard](#keyboard)
 - [Autoformat as you type](#autoformat-as-you-type)
 - [Input methods](#input-methods)
@@ -292,6 +293,33 @@ editor->ToggleCodeBlock("cpp");
 Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
+
+Tracking - extra room between every two letters of the whole text, as a drawing
+program's letter spacing - is part of the element's style, in pixels at 100%
+(ArtCreator sets it for the text typed on its page):
+
+```cpp
+RichTextEditStyle style = editor->GetStyle();
+style.letterSpacing = 1.5f;                     // 0 = the font's own spacing
+editor->SetStyle(style);
+```
+
+Some words can have a letter spacing of their own, over the whole text's - a
+run's `letterSpacingPt`, in points (below 0 sets the letters closer). It is a
+character format like the font or the colour: `ApplyCharFormat` sets it on the
+selection (or arms it for what is typed next), `GetFormatState` reports it, and
+the ODT, DOCX and HTML writers and readers keep it (`fo:letter-spacing`,
+`w:spacing`, CSS `letter-spacing`) - a character style's too:
+
+```cpp
+RichCharFormatDelta wider;
+wider.setLetterSpacing = true;
+wider.letterSpacingPt = 2.0f;                   // std::nullopt: the whole text's again
+editor->ApplyCharFormat(wider);
+const RichCharFormatState now = editor->GetFormatState();
+// now.letterSpacingPt: the selection's, unset when it has none of its own
+// or the selected runs disagree (now.letterSpacingMixed)
+```
 
 ### Named styles
 
@@ -605,6 +633,29 @@ alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
+
+## Following the theme
+
+`RichTextEditStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's typography and metrics: the
+well for the text and the page (the element role `rich-text.page` where a
+theme wants paper of another colour, white on a dark window say), the
+panel for the desk, ink and the caret in ink, the soft accent for the
+selection, the accent for links, muted ink for quotes and list markers,
+the panel with hairlines for code, control-border rules and table grids,
+hairline guides. The comment, tracked-change and font-notice colours keep
+their own meaning, and the document's fonts (`baseFont`, `codeFontFamily`)
+are the document's: they stay. Under the theme policy a new edit follows
+the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto edit = std::make_shared<UltraCanvasRichTextEdit>("edit", 600, 400);
+RichTextEditStyle serif = edit->GetStyle();
+serif.baseFont.fontFamily = "Georgia";
+edit->SetStyle(RichTextEditStyle::FromTheme(UltraCanvasTheme::Current(), serif));   // the roles over the document's font
+edit->SetFollowTheme(true);
+```
 
 ## Keyboard
 

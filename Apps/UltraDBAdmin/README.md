@@ -341,7 +341,7 @@ Apps/UltraDBAdmin/
 ├── relay/                        ultradbadmin-relay, the browser build's server half
 │   ├── main.cpp                  the program: --config, --check, --hash-token, --set-secret, the audit log
 │   ├── RelayConfig               its INI file
-│   ├── RelaySignIn               signing in with an OpenID Connect provider: the redirects, the ID token's checks, tickets
+│   ├── RelaySignIn               signing in with an OpenID Connect provider: the redirects, the ID token's checks (its RS256 / ES256 signature through UltraCrypt), tickets
 │   └── RelayWebSocket            its WebSocket listener (RFC 6455), /health, the sign-in's pages
 ├── web/                          the browser build only
 │   ├── DbAdminRelayWeb           every relay connection through the browser's WebSocket; the relay's address
@@ -460,7 +460,8 @@ connection - the token kept where a password goes, a Browse page and its
 count, the completion catalog, a console script - against a SQLite file the
 relay serves, and on PostgreSQL where `ULTRAFIBU_TEST_PG_*` names a server:
 a read-only grant refusing a change, the server's status, a query stopped
-through the relay. Where the relay has its sign-in (OpenSSL 3): the ID
+through the relay. Where the relay has its sign-in (UltraCrypt with its
+OpenSSL 3 backend, which checks the token's signature): the ID
 token's checks one by one - RS256 and ES256 signatures, a changed token,
 another issuer, another application, several audiences, an expired token,
 another sign-in's nonce, `none` and HS256, a key the provider does not

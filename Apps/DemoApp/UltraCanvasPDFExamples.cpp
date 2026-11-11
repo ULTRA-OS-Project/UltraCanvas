@@ -31,15 +31,15 @@ namespace UltraCanvas {
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamples() {
     // The viewer scrolls its pages itself: the page is the display area's
     // height and the viewer takes what the title, toolbar and status leave.
-    auto root = DemoKit::CreatePage("PDFExamples", "PDF Document Viewer", "");
+    auto root = DemoKit::CreatePage("PDFExamples", Tr("PDF Document Viewer"), "");
     root->SetFillsArea(true);
 
     // ----- Attribution / info line (with a clickable MuPDF link) -----
     auto infoRow = DemoKit::AddRow(root, "PDFInfoRow", 4);
 
     auto info = DemoKit::CreateText("PDFInfo",
-                                    "UltraCanvas support for PDF files is based on the MuPDF "
-                                    "library \xE2\x80\x94");
+                                    Tr("UltraCanvas support for PDF files is based on the MuPDF "
+                                    "library \xE2\x80\x94"));
     info->SetFontSize(11);
     info->SetTextColor(DemoKit::SubtitleText());
     DemoKit::Add(infoRow, info);
@@ -64,63 +64,62 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     std::weak_ptr<UltraCanvasPDFView> viewWeak = view;
 
     // Page indicator (lives in the toolbar) and a status line (below the view).
-    auto pageLabel = DemoKit::CreateText("PDFPageLabel", "Page - / -");
+    auto pageLabel = DemoKit::CreateText("PDFPageLabel", Tr("Page - / -"));
 
     auto statusLabel = DemoKit::CreateText("PDFStatusLabel",
-                         "Mouse-wheel scrolls, Ctrl+wheel zooms (+ / - / 0 / 1 "
+                         Tr("Mouse-wheel scrolls, Ctrl+wheel zooms (+ / - / 0 / 1 "
                          "on the keyboard), F3 finds next, \"Select\" then drag "
                          "to select text, right-click to copy/export or extract "
-                         "an image.");
+                         "an image."));
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(110, 110, 110, 255));
 
     // Zoom level read-out, shown below the view at the right edge.
-    auto zoomLabel = DemoKit::CreateText("PDFZoomLabel", "100%");
+    auto zoomLabel = DemoKit::CreateText("PDFZoomLabel", Tr("100%"));
     zoomLabel->SetFontSize(11);
     zoomLabel->SetTextColor(Color(110, 110, 110, 255));
     zoomLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
 
     // Wire callbacks before loading so the initial page is reflected immediately.
     view->onPageChanged = [pageLabel](int cur, int total) {
-        pageLabel->SetText("Page " + std::to_string(cur) + " / " + std::to_string(total));
+        pageLabel->SetText(TrF("Page {0} / {1}", cur, total));
     };
     view->onSearchResults = [statusLabel](int hits) {
         statusLabel->SetTextColor(Color(110, 110, 110, 255));
-        statusLabel->SetText(hits > 0 ? (std::to_string(hits) + " match(es) found")
-                                      : "No matches found");
+        statusLabel->SetText(hits > 0 ? TrN("{n} match found", "{n} matches found", hits)
+                                      : Tr("No matches found"));
     };
     view->onActiveHitChanged = [statusLabel](int active, int total) {
         if (total > 0) {
             statusLabel->SetTextColor(Color(110, 110, 110, 255));
-            statusLabel->SetText("Match " + std::to_string(active) + " of " +
-                                 std::to_string(total));
+            statusLabel->SetText(TrF("Match {0} of {1}", active, total));
         }
     };
     view->onZoomChanged = [zoomLabel](float percent) {
-        zoomLabel->SetText(std::to_string(static_cast<int>(std::lround(percent))) + "%");
+        zoomLabel->SetText(TrF("{0}%", static_cast<int>(std::lround(percent))));
     };
     view->onImageExtracted = [statusLabel](const std::string& path, bool ok) {
         statusLabel->SetTextColor(ok ? Color(60, 140, 60, 255)
                                      : Color(180, 60, 60, 255));
-        statusLabel->SetText(ok ? ("Image extracted to " + path)
-                                : "Failed to extract image");
+        statusLabel->SetText(ok ? TrF("Image extracted to {0}", path)
+                                : Tr("Failed to extract image"));
     };
     view->onSelectionChanged = [statusLabel](int chars) {
         if (chars > 0) {
             statusLabel->SetTextColor(Color(110, 110, 110, 255));
-            statusLabel->SetText(std::to_string(chars) + " character(s) selected"
-                                 " — Ctrl+C to copy, right-click to export");
+            statusLabel->SetText(TrN("{n} character selected — Ctrl+C to copy, right-click to export",
+                                     "{n} characters selected — Ctrl+C to copy, right-click to export", chars));
         }
     };
     view->onTextExported = [statusLabel](const std::string& path, bool ok) {
         statusLabel->SetTextColor(ok ? Color(60, 140, 60, 255)
                                      : Color(180, 60, 60, 255));
-        statusLabel->SetText(ok ? ("Text exported to " + path)
-                                : "Failed to export text");
+        statusLabel->SetText(ok ? TrF("Text exported to {0}", path)
+                                : Tr("Failed to export text"));
     };
     view->onError = [statusLabel](const std::string& msg) {
         statusLabel->SetTextColor(Color(180, 60, 60, 255));
-        statusLabel->SetText("Error: " + msg);
+        statusLabel->SetText(TrF("Error: {0}", msg));
     };
 
     const std::string pdfPath = NormalizePath(GetResourcesDir() + "media/sample.pdf");
@@ -148,30 +147,30 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         return *btn;
     };
 
-    addToolbarButton("PDFPrev", "Prev", 60, [viewWeak]() {
+    addToolbarButton("PDFPrev", Tr("Prev"), 60, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->GoToPrevPage();
     });
-    addToolbarButton("PDFNext", "Next", 60, [viewWeak]() {
+    addToolbarButton("PDFNext", Tr("Next"), 60, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->GoToNextPage();
     });
-    addToolbarButton("PDFZoomOut", "Zoom -", 70, [viewWeak]() {
+    addToolbarButton("PDFZoomOut", Tr("Zoom -"), 70, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->ZoomOut();
     });
-    addToolbarButton("PDFZoomIn", "Zoom +", 70, [viewWeak]() {
+    addToolbarButton("PDFZoomIn", Tr("Zoom +"), 70, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->ZoomIn();
     });
 
     // Zoom presets: fit-page / fit-width plus a few fixed levels.
     auto zoomDropdown = CreateDropdown("PDFZoomMode", 0, 0, 120, 30);
-    zoomDropdown->AddItem("Fit Page");
-    zoomDropdown->AddItem("Fit Width");
-    zoomDropdown->AddItem("Actual Size");
-    zoomDropdown->AddItem("50%");
-    zoomDropdown->AddItem("75%");
-    zoomDropdown->AddItem("100%");
-    zoomDropdown->AddItem("125%");
-    zoomDropdown->AddItem("150%");
-    zoomDropdown->AddItem("200%");
+    zoomDropdown->AddItem(Tr("Fit Page"));
+    zoomDropdown->AddItem(Tr("Fit Width"));
+    zoomDropdown->AddItem(Tr("Actual Size"));
+    zoomDropdown->AddItem(Tr("50%"));
+    zoomDropdown->AddItem(Tr("75%"));
+    zoomDropdown->AddItem(Tr("100%"));
+    zoomDropdown->AddItem(Tr("125%"));
+    zoomDropdown->AddItem(Tr("150%"));
+    zoomDropdown->AddItem(Tr("200%"));
     zoomDropdown->SetSelectedIndex(0, false);   // Fit Page (the view's default)
     zoomDropdown->onSelectionChanged =
         [viewWeak](int index, const DropdownItem&) {
@@ -193,7 +192,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     DemoKit::Add(toolbar, zoomDropdown);
 
     auto searchInput = CreateTextInput("PDFSearch", 0, 0, 180, 30);
-    searchInput->SetPlaceholder("Search...");
+    searchInput->SetPlaceholder(Tr("Search..."));
     std::weak_ptr<UltraCanvasTextInput> searchWeak = searchInput;
 
     auto doSearch = [viewWeak, searchWeak]() {
@@ -204,22 +203,22 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     searchInput->onEnterPressed = [doSearch](const std::string&) { doSearch(); return true; };
     DemoKit::Add(toolbar, searchInput);
 
-    addToolbarButton("PDFSearchBtn", "Search", 70, doSearch);
+    addToolbarButton("PDFSearchBtn", Tr("Search"), 70, doSearch);
     // Up / down arrows step through the search results. They are icons, not
     // "▲" / "▼" glyphs, which the bundled UI font does not have.
     UltraCanvasButton& prevHit = addToolbarButton("PDFPrevHit", "", 36, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->PrevHit();
     });
     SetFlatButtonIcon(prevHit, "menu/chevron-up.svg", ButtonIconPosition::Center);
-    prevHit.SetTooltip("Previous result");
+    prevHit.SetTooltip(Tr("Previous result"));
     UltraCanvasButton& nextHit = addToolbarButton("PDFNextHit", "", 36, [viewWeak]() {
         if (auto v = viewWeak.lock()) v->NextHit();
     });
     SetFlatButtonIcon(nextHit, "menu/chevron-down.svg", ButtonIconPosition::Center);
-    nextHit.SetTooltip("Next result");
+    nextHit.SetTooltip(Tr("Next result"));
 
     // Text-selection mode toggle (Pan <-> Select) and a Copy button.
-    auto modeBtn = makeToolbarButton("PDFSelectMode", "Select", 80);
+    auto modeBtn = makeToolbarButton("PDFSelectMode", Tr("Select"), 80);
     std::weak_ptr<UltraCanvasButton> modeWeak = modeBtn;
     modeBtn->onClick = [viewWeak, modeWeak]() {
         auto v = viewWeak.lock();
@@ -229,22 +228,22 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
             v->GetMouseMode() == UltraCanvasPDFView::MouseMode::Pan;
         v->SetMouseMode(toSelect ? UltraCanvasPDFView::MouseMode::SelectText
                                  : UltraCanvasPDFView::MouseMode::Pan);
-        b->SetText(toSelect ? "Pan" : "Select");
+        b->SetText(toSelect ? Tr("Pan") : Tr("Select"));
     };
     DemoKit::Add(toolbar, modeBtn);
 
-    addToolbarButton("PDFCopy", "Copy", 60, [viewWeak, statusLabel]() {
+    addToolbarButton("PDFCopy", Tr("Copy"), 60, [viewWeak, statusLabel]() {
         if (auto v = viewWeak.lock()) {
             const bool ok = v->CopySelectionToClipboard();
             statusLabel->SetTextColor(ok ? Color(60, 140, 60, 255)
                                          : Color(110, 110, 110, 255));
-            statusLabel->SetText(ok ? "Selection copied to clipboard"
-                                    : "Nothing selected to copy");
+            statusLabel->SetText(ok ? Tr("Selection copied to clipboard")
+                                    : Tr("Nothing selected to copy"));
         }
     });
 
     // Toggle thumbnail page-number style (caption beneath <-> big overlay).
-    auto numBtn = makeToolbarButton("PDFThumbNum", "#: Under", 100);
+    auto numBtn = makeToolbarButton("PDFThumbNum", Tr("#: Under"), 100);
     std::weak_ptr<UltraCanvasButton> numWeak = numBtn;
     numBtn->onClick = [viewWeak, numWeak]() {
         auto v = viewWeak.lock();
@@ -253,13 +252,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         using TNS = UltraCanvasPDFView::ThumbnailNumberStyle;
         const bool toOverlay = v->GetThumbnailNumberStyle() == TNS::Caption;
         v->SetThumbnailNumberStyle(toOverlay ? TNS::Overlay : TNS::Caption);
-        b->SetText(toOverlay ? "#: On Page" : "#: Under");
+        b->SetText(toOverlay ? Tr("#: On Page") : Tr("#: Under"));
     };
     DemoKit::Add(toolbar, numBtn);
 
     // Toggle the page inventory's width mode: a share of the view's width
     // (the default) <-> a fixed thumbnail width in pixels.
-    auto widthBtn = makeToolbarButton("PDFThumbWidth", "Strip: 25%", 110);
+    auto widthBtn = makeToolbarButton("PDFThumbWidth", Tr("Strip: 25%"), 110);
     std::weak_ptr<UltraCanvasButton> widthWeak = widthBtn;
     widthBtn->onClick = [viewWeak, widthWeak]() {
         auto v = viewWeak.lock();
@@ -269,7 +268,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         const bool toAbsolute = v->GetThumbnailWidthMode() == TWM::Relative;
         if (toAbsolute) v->SetThumbnailWidth(56);          // the Filer's width
         else            v->SetThumbnailWidthFraction(0.25f);
-        b->SetText(toAbsolute ? "Strip: 56px" : "Strip: 25%");
+        b->SetText(toAbsolute ? Tr("Strip: 56px") : Tr("Strip: 25%"));
     };
     DemoKit::Add(toolbar, widthBtn);
 

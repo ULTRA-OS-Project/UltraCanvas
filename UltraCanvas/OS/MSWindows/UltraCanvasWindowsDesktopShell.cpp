@@ -8,7 +8,9 @@
 //     the executable's name ("firefox", "UltraFiler"), the closest Windows
 //     has to WM_CLASS; for a Microsoft Store application it is the program
 //     behind the ApplicationFrameHost frame. The icon is the executable's,
-//     extracted once into a PNG cache.
+//     extracted once into a PNG cache; a Store or packaged application's
+//     (its AppUserModelID, from the window or its process) is the one the
+//     Start menu shows, from the shell's Applications folder.
 //   - Virtual desktops: their order and the current one as Explorer records
 //     them in the registry (VirtualDesktopIDs, CurrentVirtualDesktop - read
 //     by tools such as PowerToys, since Windows has no documented call for
@@ -49,7 +51,18 @@
 //   - The notification area, when the desktop is the shell: Shell_TrayWnd,
 //     the window every program's Shell_NotifyIcon talks to
 //     (UltraCanvasWindowsTrayHost.cpp).
-//   - The end of the session: ExitWindowsEx.
+//   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
+//   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.8.0 - OpenDisplaySettings: Settings > Display (ms-settings:display)
+// Version: 1.7.0 - CaptureWindowImage (PrintWindow with the full content);
+//                  DesktopWindowInfo::appUserModelId from the window or its
+//                  process, and the icon and name of a Store application or a
+//                  frame (Calculator, Settings, WhatsApp) from the shell's
+//                  Applications folder
+// Version: 1.6.0 - CaptureScreenArea: one rectangle of the virtual screen (a BitBlt of
+//                  that much); DesktopScreenImage::x / y carry the virtual screen's origin
+// Version: 1.5.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
+//                  SetAudioOutputVolume, SetAudioOutputMuted)
 // Version: 1.4.0 - no desktop switch from an MSIX package: its registry
 //                  writes are the package's own (UltraCanvasWindowsPackage.h)
 // Version: 1.3.0 - Microsoft Store applications (ListPackagedApplications,
@@ -88,7 +101,9 @@
 #include <windows.h>
 #include <audiopolicy.h>
 #include <dwmapi.h>
+#include <endpointvolume.h>
 #include <mmdeviceapi.h>
+#include <propsys.h>
 #include <objbase.h>
 #include <shellapi.h>
 #include <shlobj.h>     // SHGetKnownFolderItem
@@ -203,6 +218,9 @@ namespace {
         {0x1E87508D, 0x89C2, 0x42F0, {0x8A, 0x7E, 0x64, 0x5A, 0x0F, 0x50, 0xCA, 0x58}};
     const GUID kBhidEnumItems =
         {0x94F60519, 0x2850, 0x4924, {0xAA, 0x5A, 0xD1, 0x5E, 0x84, 0x86, 0x80, 0x39}};
+    // PKEY_Device_FriendlyName, whose header defines it only under INITGUID.
+    const PROPERTYKEY kKeyDeviceFriendlyName =
+        {{0xA45C254E, 0xDF1C, 0x4EFD, {0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0}}, 14};
 
     // ===== THE PNG CACHE FOR ICONS =====
     // The taskbar and the app starter draw image files. An executable's or a
@@ -1180,20 +1198,104 @@ namespace {
     struct ProcessIdentity {
         std::string appClass;   // "firefox"
         std::string iconFile;
+        std::string appUserModelId;
     };
+
+    // PKEY_AppUserModel_ID, {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3} 5: the ID
+    // a window carries for the taskbar (a Store application's frame does).
+    const PROPERTYKEY kKeyAppUserModelId = {
+        {0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}}, 5};
+
+    std::string WindowAppUserModelId(HWND hwnd) {
+        IPropertyStore* store = nullptr;
+        std::string id;
+        if (SUCCEEDED(SHGetPropertyStoreForWindow(hwnd, __uuidof(IPropertyStore), reinterpret_cast<void**>(&store))) &&
+            store) {
+            PROPVARIANT value;
+            PropVariantInit(&value);
+            if (SUCCEEDED(store->GetValue(kKeyAppUserModelId, &value)) && value.vt == VT_LPWSTR && value.pwszVal) {
+                id = Narrow(value.pwszVal);
+            }
+            PropVariantClear(&value);
+            Release(store);
+        }
+        return id;
+    }
+
+    // A packaged process's ID (WhatsApp, Calculator's own process), which a
+    // window need not carry itself. GetApplicationUserModelId is Windows 8's,
+    // looked up so the program still starts where it is missing.
+    std::string ProcessAppUserModelId(DWORD pid) {
+        using GetIdFn = LONG(WINAPI*)(HANDLE, UINT32*, PWSTR);
+        static const GetIdFn getId = reinterpret_cast<GetIdFn>(
+            reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetApplicationUserModelId")));
+        if (!getId || pid == 0) return {};
+        HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (!process) return {};
+        wchar_t buffer[256] = {};
+        UINT32 length = static_cast<UINT32>(std::size(buffer));
+        std::string id;
+        if (getId(process, &length, buffer) == ERROR_SUCCESS) id = Narrow(buffer);
+        CloseHandle(process);
+        return id;
+    }
+
+    // The application the shell's Applications folder lists under an
+    // AppUserModelID: the name and the icon the Start menu shows (a Store
+    // application's tile icon). Remembered for the process, misses too.
+    struct AppsFolderApp {
+        std::string name;
+        std::string iconFile;
+    };
+
+    AppsFolderApp AppsFolderApplication(const std::string& appUserModelId, int size) {
+        static std::mutex mutex;
+        static std::map<std::string, AppsFolderApp> known;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            auto found = known.find(appUserModelId);
+            if (found != known.end()) return found->second;
+        }
+        AppsFolderApp app;
+        IShellItem* item = nullptr;
+        if (SUCCEEDED(SHCreateItemInKnownFolder(kFolderIdAppsFolder, KF_FLAG_DEFAULT, Widen(appUserModelId).c_str(),
+                                                __uuidof(IShellItem), reinterpret_cast<void**>(&item))) &&
+            item) {
+            PWSTR name = nullptr;
+            if (SUCCEEDED(item->GetDisplayName(SIGDN_NORMALDISPLAY, &name)) && name) app.name = Narrow(name);
+            CoTaskMemFree(name);
+            app.iconFile = CachedIconFile("aumid|" + appUserModelId + "|" + std::to_string(size),
+                                          [item, size]() { return ShellItemIconPixmap(item, size); });
+            Release(item);
+        }
+        std::lock_guard<std::mutex> lock(mutex);
+        known[appUserModelId] = app;
+        return app;
+    }
 
     // The program behind a window: its executable's name and icon. For a
     // Store application's frame, the program inside it.
     ProcessIdentity IdentifyProcess(HWND hwnd, DWORD pid, bool frame) {
         ProcessIdentity identity;
         std::wstring exe = ProcessImagePath(pid);
+        DWORD program = pid;
         if (frame) {
             const DWORD hosted = HostedApplicationProcess(hwnd, pid);
-            if (hosted != 0) exe = ProcessImagePath(hosted);
+            if (hosted != 0) {
+                exe = ProcessImagePath(hosted);
+                program = hosted;
+            } else {
+                // Suspended or minimized, the application has no process in
+                // its frame: the frame's own ID still names it below.
+                exe.clear();
+                program = 0;
+            }
         }
-        if (exe.empty()) return identity;
-        identity.appClass = Narrow(StemOf(exe));
-        identity.iconFile = ExecutableIconFile(exe);
+        if (!exe.empty()) {
+            identity.appClass = Narrow(StemOf(exe));
+            identity.iconFile = ExecutableIconFile(exe);
+        }
+        identity.appUserModelId = ProcessAppUserModelId(program);
         return identity;
     }
 } // namespace
@@ -1238,6 +1340,7 @@ std::vector<DesktopWindowInfo> ListWindows() {
         info.title = WindowTitle(hwnd);
         info.skipTaskbar = IsShellWindow(hwnd, className) || !BelongsInTaskbar(hwnd, exStyle);
         info.minimized = IsIconic(hwnd) != FALSE;
+        info.maximized = !info.minimized && IsZoomed(hwnd) != FALSE;
         info.active = hwnd == foreground;
 
         DWORD pid = 0;
@@ -1255,6 +1358,23 @@ std::vector<DesktopWindowInfo> ListWindows() {
         }
         info.appClass = identity.appClass;
         info.iconFile = identity.iconFile;
+        // The AppUserModelID - the window's own, else its process's - names a
+        // Store or packaged application, whose program file has no icon of
+        // its own (Calculator, Settings, WhatsApp): its name and icon are the
+        // Start menu's then.
+        info.appUserModelId = WindowAppUserModelId(hwnd);
+        if (info.appUserModelId.empty()) info.appUserModelId = identity.appUserModelId;
+        if (!info.appUserModelId.empty()) {
+            const bool packaged = info.appUserModelId.find('!') != std::string::npos;
+            const bool frame = className == L"ApplicationFrameWindow";
+            if (packaged || frame || info.iconFile.empty()) {
+                const AppsFolderApp app = AppsFolderApplication(info.appUserModelId, 48);
+                if (!app.iconFile.empty()) info.iconFile = app.iconFile;
+                if ((info.appClass.empty() || frame) && !app.name.empty() && identity.appClass.empty()) {
+                    info.appClass = app.name;
+                }
+            }
+        }
         // WM_CLASS carries an instance name beside the class; the program's
         // name in lower case is what X11 programs put there.
         info.appName = LowerAscii(info.appClass);
@@ -1301,6 +1421,87 @@ bool CloseWindow(uint64_t id) {
     // What the taskbar's "Close window" sends: the program may ask to save,
     // or refuse.
     return PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0) != FALSE;
+}
+
+bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) {
+    const HWND hwnd = ToHwnd(id);
+    if (id == 0 || !IsWindow(hwnd)) return false;
+    RECT rect = {};
+    if (IsIconic(hwnd)) {
+        // Where it will be when restored: the placement, in workspace
+        // coordinates - shifted by the work area's offset on its monitor.
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return false;
+        rect = placement.rcNormalPosition;
+        MONITORINFO info = {};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST), &info)) {
+            OffsetRect(&rect, info.rcWork.left - info.rcMonitor.left, info.rcWork.top - info.rcMonitor.top);
+        }
+    } else if (!GetWindowRect(hwnd, &rect)) {
+        return false;
+    }
+    x = rect.left;
+    y = rect.top;
+    width = rect.right - rect.left;
+    height = rect.bottom - rect.top;
+    return true;
+}
+
+bool MoveWindowTo(uint64_t id, int x, int y) {
+    const HWND hwnd = ToHwnd(id);
+    if (id == 0 || !IsWindow(hwnd)) return false;
+    // A maximized window is maximized on its monitor already; a minimized
+    // one is moved where it will be restored.
+    if (IsZoomed(hwnd)) return true;
+    if (IsIconic(hwnd)) {
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return false;
+        const int w = placement.rcNormalPosition.right - placement.rcNormalPosition.left;
+        const int h = placement.rcNormalPosition.bottom - placement.rcNormalPosition.top;
+        RECT target = {x, y, x + w, y + h};
+        MONITORINFO info = {};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(MonitorFromRect(&target, MONITOR_DEFAULTTONEAREST), &info)) {
+            OffsetRect(&target, info.rcMonitor.left - info.rcWork.left, info.rcMonitor.top - info.rcWork.top);
+        }
+        placement.rcNormalPosition = target;
+        return SetWindowPlacement(hwnd, &placement) != FALSE;
+    }
+    // Asynchronous, as the rest: a hung program cannot hang the desktop.
+    return SetWindowPos(hwnd, nullptr, x, y, 0, 0,
+                        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS) != FALSE;
+}
+
+bool KillProcess(int processId, std::string& error) {
+    if (processId <= 4) {
+        error = processId <= 0 ? "The window does not say which program it belongs to."
+                               : "That is a part of Windows itself.";
+        return false;
+    }
+    if (static_cast<DWORD>(processId) == GetCurrentProcessId()) {
+        error = "That is the desktop itself.";
+        return false;
+    }
+    HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, static_cast<DWORD>(processId));
+    if (!process) {
+        const DWORD code = GetLastError();
+        error = code == ERROR_ACCESS_DENIED
+                    ? "The program runs as administrator (or as another user); the desktop may not end it."
+                    : code == ERROR_INVALID_PARAMETER ? "The program has already ended."
+                                                      : "The program could not be ended (error " + std::to_string(code) + ").";
+        return false;
+    }
+    const BOOL ended = ::TerminateProcess(process, 1);
+    const DWORD code = ended ? 0 : GetLastError();
+    CloseHandle(process);
+    if (!ended) {
+        error = "The program could not be ended (error " + std::to_string(code) + ").";
+        return false;
+    }
+    return true;
 }
 
 // ===== VIRTUAL DESKTOPS =====
@@ -1362,15 +1563,20 @@ bool GetScreenSize(int& width, int& height) {
 
 namespace {
     BOOL CALLBACK CollectMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM param) {
-        MONITORINFO info = {};
+        MONITORINFOEXW info = {};
         info.cbSize = sizeof(info);
-        if (!GetMonitorInfoW(monitor, &info)) return TRUE;
+        if (!GetMonitorInfoW(monitor, reinterpret_cast<MONITORINFO*>(&info))) return TRUE;
         DesktopScreenInfo screen;
         screen.x = info.rcMonitor.left;
         screen.y = info.rcMonitor.top;
         screen.width = info.rcMonitor.right - info.rcMonitor.left;
         screen.height = info.rcMonitor.bottom - info.rcMonitor.top;
         screen.primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+        // "\\.\DISPLAY2" -> 2: the number Windows' display settings show.
+        const std::wstring device = info.szDevice;
+        size_t digits = device.size();
+        while (digits > 0 && iswdigit(device[digits - 1])) --digits;
+        if (digits < device.size()) screen.number = std::stoi(device.substr(digits));
         reinterpret_cast<std::vector<DesktopScreenInfo>*>(param)->push_back(screen);
         return TRUE;
     }
@@ -1429,16 +1635,33 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     return all;
 }
 
-bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
+// `area` nullptr: the whole virtual screen, every monitor, as X11's root
+// window is; else that rectangle of it (screen coordinates, as ListScreens
+// gives them), clipped to the virtual screen.
+bool CaptureScreenPixels(DesktopScreenImage& out, std::string& error, const int* area) {
     out = DesktopScreenImage();
-    // The whole virtual screen, every monitor, as X11's root window is.
-    const int left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    const int top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    const int width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    const int height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-    if (width <= 0 || height <= 0) {
+    const int screenLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int screenTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int screenWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int screenHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    if (screenWidth <= 0 || screenHeight <= 0) {
         error = "Windows reports an empty screen.";
         return false;
+    }
+    int left = screenLeft, top = screenTop, width = screenWidth, height = screenHeight;
+    if (area) {
+        const int l = std::max(screenLeft, area[0]);
+        const int t = std::max(screenTop, area[1]);
+        const int r = std::min(screenLeft + screenWidth, area[0] + area[2]);
+        const int b = std::min(screenTop + screenHeight, area[1] + area[3]);
+        if (r <= l || b <= t) {
+            error = "The area to capture lies off the screen.";
+            return false;
+        }
+        left = l;
+        top = t;
+        width = r - l;
+        height = b - t;
     }
     HDC screen = GetDC(nullptr);
     if (!screen) {
@@ -1472,6 +1695,86 @@ bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
             try {
                 out.pixels.assign(static_cast<const uint8_t*>(bits),
                                   static_cast<const uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+                out.x = left;
+                out.y = top;
+                out.width = width;
+                out.height = height;
+                out.stride = stride;
+                ok = true;
+            } catch (const std::bad_alloc&) {
+                out = DesktopScreenImage();
+                error = "Not enough memory for a " + std::to_string(width) + "x" + std::to_string(height) +
+                        " image.";
+            }
+        }
+        SelectObject(memory, previous);
+    }
+    if (memory) DeleteDC(memory);
+    if (dib) DeleteObject(dib);
+    ReleaseDC(nullptr, screen);
+    return ok;
+}
+
+bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
+    return CaptureScreenPixels(out, error, nullptr);
+}
+
+bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error) {
+    const int area[4] = {x, y, width, height};
+    return CaptureScreenPixels(out, error, area);
+}
+
+bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {
+    const HWND hwnd = ToHwnd(id);
+    if (id == 0 || !IsWindow(hwnd)) {
+        error = "The window is gone.";
+        return false;
+    }
+    if (IsIconic(hwnd)) {
+        error = "The window is minimized.";
+        return false;
+    }
+    RECT rect = {};
+    if (!GetWindowRect(hwnd, &rect) || rect.right <= rect.left || rect.bottom <= rect.top) {
+        error = "The window has no size.";
+        return false;
+    }
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    HDC screen = GetDC(nullptr);
+    if (!screen) {
+        error = "No screen: this program runs without a desktop.";
+        return false;
+    }
+    BITMAPINFO bitmap = {};
+    bitmap.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bitmap.bmiHeader.biWidth = width;
+    bitmap.bmiHeader.biHeight = -height;   // rows top to bottom
+    bitmap.bmiHeader.biPlanes = 1;
+    bitmap.bmiHeader.biBitCount = 32;
+    bitmap.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HBITMAP dib = CreateDIBSection(screen, &bitmap, DIB_RGB_COLORS, &bits, nullptr, 0);
+    HDC memory = dib ? CreateCompatibleDC(screen) : nullptr;
+    bool ok = false;
+    if (!dib || !memory || !bits) {
+        error = "Not enough memory for a " + std::to_string(width) + "x" + std::to_string(height) + " image.";
+    } else {
+        HGDIOBJ previous = SelectObject(memory, dib);
+        // PW_RENDERFULLCONTENT (Windows 8.1): the window draws itself into
+        // the bitmap, DirectX and the browsers' content included, even where
+        // other windows cover it on the screen.
+        constexpr UINT kRenderFullContent = 0x00000002;
+        if (!PrintWindow(hwnd, memory, kRenderFullContent)) {
+            error = "The window did not draw itself.";
+        } else {
+            GdiFlush();
+            const int stride = width * 4;
+            try {
+                out.pixels.assign(static_cast<const uint8_t*>(bits),
+                                  static_cast<const uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+                out.x = rect.left;
+                out.y = rect.top;
                 out.width = width;
                 out.height = height;
                 out.stride = stride;
@@ -1728,6 +2031,116 @@ bool EndSession(SessionEnd how, std::string& error) {
         return false;
     }
     return true;
+}
+
+bool CanLockSession() { return true; }
+
+bool LockSession(std::string& error) {
+    // What Win+L does: the secure desktop shows, and the session reports
+    // WTS_SESSION_LOCK to UltraCanvasSessionLock's listeners.
+    if (!LockWorkStation()) {
+        error = "Windows did not lock the screen (error " + std::to_string(GetLastError()) + ").";
+        return false;
+    }
+    return true;
+}
+
+// ===== THE DISPLAYS =====
+
+bool CanOpenDisplaySettings() { return true; }
+
+bool OpenDisplaySettings(std::string& error) {
+    // Settings > System > Display, where the monitors are arranged and the
+    // main display is chosen.
+    const auto result = reinterpret_cast<INT_PTR>(
+            ::ShellExecuteW(nullptr, L"open", L"ms-settings:display", nullptr, nullptr, SW_SHOWNORMAL));
+    if (result <= 32) {
+        error = "Windows' display settings did not open.";
+        return false;
+    }
+    return true;
+}
+
+// ===== THE LOUDSPEAKER =====
+
+namespace {
+    // The default playback endpoint's volume control, with the endpoint's
+    // name; nullptr with the reason in `error`. The caller releases it.
+    IAudioEndpointVolume* DefaultOutputVolume(std::string& name, std::string& error) {
+        IMMDeviceEnumerator* enumerator = nullptr;
+        if (FAILED(CoCreateInstance(kClsidMMDeviceEnumerator, nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
+                                    reinterpret_cast<void**>(&enumerator)))) {
+            error = "Windows audio is not available.";
+            return nullptr;
+        }
+        IMMDevice* device = nullptr;
+        const HRESULT found = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+        Release(enumerator);
+        if (FAILED(found) || !device) {
+            error = "No loudspeaker is set as the default output.";
+            return nullptr;
+        }
+        IPropertyStore* properties = nullptr;
+        if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, &properties)) && properties) {
+            PROPVARIANT value;
+            PropVariantInit(&value);
+            if (SUCCEEDED(properties->GetValue(kKeyDeviceFriendlyName, &value)) && value.vt == VT_LPWSTR && value.pwszVal) {
+                name = Narrow(value.pwszVal);
+            }
+            PropVariantClear(&value);
+            Release(properties);
+        }
+        IAudioEndpointVolume* volume = nullptr;
+        const HRESULT opened = device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr,
+                                                reinterpret_cast<void**>(&volume));
+        Release(device);
+        if (FAILED(opened) || !volume) {
+            error = "The output's volume control could not be opened.";
+            return nullptr;
+        }
+        return volume;
+    }
+} // namespace
+
+DesktopAudioOutput ReadAudioOutput() {
+    ComScope com;
+    DesktopAudioOutput out;
+    IAudioEndpointVolume* volume = DefaultOutputVolume(out.device, out.error);
+    if (!volume) return out;
+    float level = 0.0f;
+    BOOL muted = FALSE;
+    if (SUCCEEDED(volume->GetMasterVolumeLevelScalar(&level)) && SUCCEEDED(volume->GetMute(&muted))) {
+        out.available = true;
+        out.volumePercent = static_cast<int>(level * 100.0f + 0.5f);
+        out.muted = muted != FALSE;
+    } else {
+        out.error = "The output's volume could not be read.";
+    }
+    Release(volume);
+    return out;
+}
+
+bool SetAudioOutputVolume(int percent, std::string& error) {
+    ComScope com;
+    std::string name;
+    IAudioEndpointVolume* volume = DefaultOutputVolume(name, error);
+    if (!volume) return false;
+    const float level = static_cast<float>(std::clamp(percent, 0, 100)) / 100.0f;
+    const bool ok = SUCCEEDED(volume->SetMasterVolumeLevelScalar(level, nullptr));
+    if (!ok) error = "The output's volume could not be set.";
+    Release(volume);
+    return ok;
+}
+
+bool SetAudioOutputMuted(bool muted, std::string& error) {
+    ComScope com;
+    std::string name;
+    IAudioEndpointVolume* volume = DefaultOutputVolume(name, error);
+    if (!volume) return false;
+    const bool ok = SUCCEEDED(volume->SetMute(muted ? TRUE : FALSE, nullptr));
+    if (!ok) error = "The output could not be muted.";
+    Release(volume);
+    return ok;
 }
 
 // ===== DEVICES =====

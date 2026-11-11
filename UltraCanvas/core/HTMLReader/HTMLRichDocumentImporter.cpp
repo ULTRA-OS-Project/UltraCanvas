@@ -1,11 +1,12 @@
 // core/HTMLReader/HTMLRichDocumentImporter.cpp
 // HTML → UCRichDocument. See the header for what is mapped and what is not.
+// Version: 1.3.0 - letter-spacing: a run's own (RichTextRun::letterSpacingPt), with the fonts
 // Version: 1.2.0 - Word's list paragraphs (mso-list) are list items, their typed
 //                  label the marker; every newline of a <pre> counts (the parser
 //                  drops the one right after the start tag)
 // Version: 1.1.0 - dir="rtl" paragraphs; preAsCodeBlock; skipWordListLabels
 // Version: 1.0.1 - a cell border is the widest of its four sides
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLRichDocumentImporter.h"
@@ -555,6 +556,9 @@ private:
                 && std::fabs(style.fontSizePx - opts_.baseFontSizePx) > 0.5f) {
                 run.fontSizePt = std::round(style.fontSizePx * kPxToPt * 2.0f) / 2.0f;
             }
+            // letter-spacing (normal is 0): to the hundredth of a point.
+            if (std::fabs(style.letterSpacingPx) > 0.005f)
+                run.letterSpacingPt = std::round(style.letterSpacingPx * kPxToPt * 100.0f) / 100.0f;
         }
         if (context.codeBlock) {
             // The block is in the view's code style already.

@@ -12,6 +12,7 @@
 // ULTRASTORE_SERVERS, through the generated UltraStoreBuiltin.h. Until the
 // admin backend publishes the first catalog both are empty, and the window
 // says so on its Discover page.
+// Version: 0.3.0 - the open order
 // Version: 0.2.0 - the code in force
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -46,6 +47,19 @@ struct StoreSettings {
     static constexpr int kCodeDays = 30;
     // The code when it was entered within kCodeDays of today, else "".
     std::string CodeInForce(const std::string& today) const;
+
+    // The purchase the store is waiting on: an order the payment service
+    // made that is neither paid nor over - kept so a store closed during the
+    // payment picks it up again at the next start (within kOrderDays).
+    struct OpenOrder {
+        std::string orderId, secret, app, amount, currency, checkoutUrl;
+        std::string startedAt;   // "YYYY-MM-DD"
+        bool Empty() const { return orderId.empty(); }
+    };
+    OpenOrder openOrder;
+    static constexpr int kOrderDays = 2;
+    // The open order when it was started within kOrderDays of today, else an empty one.
+    OpenOrder OrderToResume(const std::string& today) const;
 
     // The texts' language: the setting, else the system's.
     std::string Language() const;

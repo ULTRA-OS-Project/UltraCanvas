@@ -1,4 +1,7 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
+// Version: 0.6.0 - the mark for the pages under go/
+// Version: 0.5.0 - a restricted package on an app with a trial
+// Version: 0.4.0 - payment_url and licence_key from the settings
 // Version: 0.3.0 - the codes, their landing pages
 // Version: 0.2.0 - trusted_keys from the active keys
 // Version: 0.1.0
@@ -6,6 +9,7 @@
 #include "CatalogPublisher.h"
 
 #include "Affiliates.h"
+#include "PageFrame.h"
 
 #include "KeyVault.h"
 #include "Verifier.h"
@@ -77,6 +81,10 @@ Result<Catalog> BuildCatalog(const AdminDatabase& db, const PublishOptions& opti
     catalog.schema = UltraStore::kSupportedSchema;
     catalog.sequence = options.sequence ? options.sequence : db.Sequence() + 1;
     catalog.generated = options.generatedAt.empty() ? NowIso8601() : options.generatedAt;
+    // The payment service the stores buy through, and its licence key.
+    catalog.paymentUrl = TrimSlash(db.Setting("payment.url"));
+    catalog.licenceKey = db.Setting("payment.licence_key");
+    if (!catalog.paymentUrl.empty() && catalog.licenceKey.empty()) warn.push_back("payment.url is set but payment.licence_key is not: the store cannot verify the licences");
     // Every active key may sign the next catalog (schema 2's trusted_keys):
     // a new key is announced by the first publish after it is made and
     // signs from the next one on; a retired key drops out of the list.
@@ -123,6 +131,10 @@ Result<Catalog> BuildCatalog(const AdminDatabase& db, const PublishOptions& opti
                 p.url = packagesBase + "/" + PublishedPackagePath(file.Value());
                 p.size = file.Value().size;
                 p.format = file.Value().format;
+                if (file.Value().access == "restricted" && c.pricing.trialDays > 0) {
+                    warn.push_back(c.id + " " + r.version + " " + p.target.Describe() + ": restricted package on an app with a " +
+                                   std::to_string(c.pricing.trialDays) + "-day trial: Try installs the same package and will fail without a licence; make it public");
+                }
                 served.push_back(p);
             }
             if (served.empty()) warn.push_back(c.id + " " + r.version + ": no package to serve, left out");
@@ -217,6 +229,8 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
             return true;
         };
         if (!copyPackages(catalog.apps) || !copyPackages(catalog.components)) return R::Failure(ErrorCode::IoError, error);
+        // The mark the pages under go/ show (PageFrame.h), beside them in media/.
+        if (const auto marks = CopyPageMarks(options.outDirUtf8); !marks) return R::Failure(marks.error.code, marks.error.message, marks.error.detail);
         if (!options.mediaRootUtf8.empty()) {
             const fs::path media = UltraCanvas::PathFromUtf8(options.mediaRootUtf8);
             auto copyMedia = [&](const Component& c, const std::string& relative) -> bool {
@@ -236,16 +250,74 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
             }
         }
     }
-    // A landing page per code, go/<CODE>.html: what a partner's QR code and
-    // link open on a phone, with the ultrastore:// link for the store.
-    if (!catalog.codes.empty()) {
-        const std::string catalogBase = TrimSlash(options.catalogBaseUrl.empty() ? db.Setting("catalog.base_url") : options.catalogBaseUrl);
-        fs::create_directories(out / "go", ec);
-        for (const UltraStore::PromoCode& code : catalog.codes) {
-            const fs::path page = out / "go" / UltraCanvas::PathFromUtf8(UltraStore::NormalizeCode(code.code) + ".html");
-            if (!WriteFileAtomically(page, CodeLandingPage(code, catalog.apps, catalogBase), error)) return R::Failure(ErrorCode::IoError, error);
-            ++report.codePages;
+    // The pages beside the catalog, each a folder with an index.html so the
+    // extension-less link (<base>/go/<CODE>, <base>/join/<affiliate>) is
+    // served by every static web server without a rewrite rule:
+    //   go/<CODE>         a code's landing page - what it gives, the apps, the
+    //                     ultrastore:// link that opens the store with it
+    //   join/<affiliate>  a partner's join page - who invites, what a partner
+    //                     earns, the id to name when signing up, the store's
+    //                     contact (store.contact)
+    // The uploader never deletes on the server (a store half-way through a
+    // download needs its file), so a page once published stays reachable.
+    // The database remembers every page ever published (RememberPage), and
+    // each publish writes a page for every one of them: the current page
+    // for a code in the catalog or a partner in the programme, and for the
+    // rest - a code switched off or whose partner was, a partner switched
+    // off, a code or a partner removed outright - a page that says so (no
+    // longer valid, this invitation is closed), which the next upload puts
+    // in place of the stale one.
+    const std::string pagesBase = TrimSlash(options.catalogBaseUrl.empty() ? db.Setting("catalog.base_url") : options.catalogBaseUrl);
+    const std::string storeContact = db.Setting("store.contact");
+    std::vector<PublishedPage> written;
+    auto writePage = [&](const std::string& relative, const std::string& kind, const std::string& html) -> bool {
+        const fs::path folder = out / UltraCanvas::PathFromUtf8(relative);
+        fs::create_directories(folder, ec);
+        if (ec) { error = "cannot create " + UltraCanvas::PathToUtf8(folder) + ": " + ec.message(); return false; }
+        if (!WriteFileAtomically(folder / "index.html", html, error)) return false;
+        written.push_back({relative, kind, ""});
+        return true;
+    };
+    auto alreadyWritten = [&](const std::string& relative) {
+        for (const PublishedPage& w : written) if (w.path == relative) return true;
+        return false;
+    };
+    for (const UltraStore::PromoCode& code : catalog.codes) {
+        if (!writePage("go/" + UltraStore::NormalizeCode(code.code), "code", CodeLandingPage(code, catalog.apps, pagesBase))) return R::Failure(ErrorCode::IoError, error);
+        ++report.codePages;
+    }
+    if (const auto codes = db.Codes(); codes) {
+        for (const CodeRecord& record : codes.Value()) {
+            if (catalog.FindCode(record.code.code) != nullptr) continue;
+            if (!writePage("go/" + UltraStore::NormalizeCode(record.code.code), "code", RetiredCodePage(record.code.code, pagesBase))) return R::Failure(ErrorCode::IoError, error);
+            ++report.retiredPages;
         }
+    }
+    if (const auto affiliates = db.Affiliates(); affiliates) {
+        for (const Affiliate& partner : affiliates.Value()) {
+            if (!writePage("join/" + partner.id, "join", JoinPage(partner, storeContact, pagesBase))) return R::Failure(ErrorCode::IoError, error);
+            if (partner.enabled) ++report.joinPages; else ++report.retiredPages;
+        }
+    }
+    // What was published once and has no record any more: a retired page.
+    const auto remembered = db.PublishedPages();
+    if (!remembered) return R::Failure(remembered.error.code, remembered.error.message, remembered.error.detail);
+    for (const PublishedPage& page : remembered.Value()) {
+        if (alreadyWritten(page.path)) continue;
+        const std::string name = page.path.substr(page.path.rfind('/') + 1);
+        std::string html;
+        if (page.kind == "code") html = RetiredCodePage(name, pagesBase);
+        else if (page.kind == "join") {
+            Affiliate gone;
+            gone.id = name;
+            gone.enabled = false;
+            html = JoinPage(gone, storeContact, pagesBase);
+        } else continue;
+        if (!writePage(page.path, page.kind, html)) return R::Failure(ErrorCode::IoError, error);
+        ++report.retiredPages;
+    }
+    for (const PublishedPage& page : written) {
+        if (const auto r = db.RememberPage(page.path, page.kind); !r) return R::Failure(r.error.code, r.error.message, r.error.detail);
     }
 
     // The catalog and its signature over those exact bytes.

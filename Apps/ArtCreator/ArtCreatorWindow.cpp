@@ -1,7 +1,25 @@
 // Apps/ArtCreator/ArtCreatorWindow.cpp
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
-// and every command.
+// and every command; the drawings' tabs (one canvas, selection and history
+// each).
+// Version: 1.13.0 - several drawings per window, in tabs over the canvas (BuildTabs,
+//                  AddDrawingTab, SwitchToTab): New, Open, a drop, the command line and a
+//                  second start add a tab, Open takes an untouched new drawing's place and
+//                  brings a drawing open already forward; Close Tab asks for an unsaved
+//                  drawing, closing the window or quitting asks once for all of them
+// Version: 1.12.0 - selected words of a text being typed take a letter spacing and a colour of
+//                  their own (the fill colour, picked while words are selected), as they took
+//                  a font, size and style; the drawing keeps both per span. A size typed into
+//                  the text bar (or a font looked up by its letters) no longer runs the
+//                  window's shortcuts - Ctrl+A finished the text, and the size went to all of it
+// Version: 1.11.0 - text is typed on the page (an UltraCanvasRichTextEdit over the canvas, at its
+//                  zoom, in the text's font, colour, alignment and spacing) and edited where it
+//                  lies; the text bar - font, size, bold, italic, underline, strikethrough,
+//                  alignment, line and letter spacing - in the transform bar's place with the
+//                  Text tool; the Text dialog is gone
+// Version: 1.10.1 - Convert to Editable Shapes is Ctrl+Shift+C: the menu showed Ctrl+Shift+S,
+//                  which is Save As
 // Version: 1.10.0 - the right panel's sections are SectionCard group boxes on the
 //                  section page, as UltraPaint's, with a smaller caption; Tool Options,
 //                  Gradient (was Fill) and Line show only while their tool is active; the transform
@@ -35,7 +53,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -51,8 +69,11 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasTextFormatBar.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cmath>
@@ -60,6 +81,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
 #endif
@@ -80,17 +102,10 @@ using namespace VectorStorage;
 using namespace VectorEdit;
 
 namespace {
-    // A menu entry with an icon beside its check box.
-    MenuItemData WithIcon(MenuItemData item, const std::string& iconPath) {
-        item.iconPath = iconPath;
-        return item;
-    }
-
     constexpr float kMenuHeight = 28.0f;
     constexpr float kToolbarHeight = 38.0f;
     constexpr float kPaletteWidth = 48.0f;
-    constexpr float kToolButton = 36.0f;   // a tool's button, square, 4 px around its 28 px icon
-    constexpr float kToolIcon = 28.0f;
+    constexpr float kToolIcon = 28.0f;     // the palette's icons (its buttons: ArtCreatorCommands.cpp)
     constexpr float kRightWidth = 300.0f;
     constexpr float kRightInner = 268.0f;   // what is visible next to the scrollbar, less its gap
     constexpr float kStatusHeight = 24.0f;
@@ -138,7 +153,8 @@ namespace {
     bool FocusIsTextEntry(UltraCanvasWindowBase* win) {
         if (!win) return false;
         UltraCanvasUIElement* f = win->GetFocusedElement();
-        return f && dynamic_cast<UltraCanvasTextInput*>(f) != nullptr;
+        return f && (dynamic_cast<UltraCanvasTextInput*>(f) != nullptr ||
+                     dynamic_cast<UltraCanvasRichTextEdit*>(f) != nullptr);
     }
 
     // ui-reuse-exempt: helper that only sizes framework elements; nothing is painted here.
@@ -206,7 +222,7 @@ namespace {
 // LIFECYCLE
 // ===========================================================================
 
-ArtCreatorWindow::ArtCreatorWindow() : selection(std::make_shared<VectorSelection>()) {}
+ArtCreatorWindow::ArtCreatorWindow() : selection(std::make_shared<VectorSelection>()), history(&noHistory) {}
 ArtCreatorWindow::~ArtCreatorWindow() = default;
 
 std::string ArtCreatorWindow::IconPath(const std::string& file) const {
@@ -243,10 +259,15 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
 
     settings.Load();   // no file yet: the defaults stand
     tools = CreateArtTools();
+    // Every command once; the menus, toolbars and keys are built from them,
+    // in the arrangement the user left (or the program's).
+    RegisterCommands();
+    LoadLayouts();
 
     BuildMenuBar();
     BuildToolbar();
     BuildTransformBar();
+    BuildTextBar();
 
     body = std::make_shared<UltraCanvasContainer>("ac-body", 0, 0, 0, 0);
     body->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -255,100 +276,56 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
 
     BuildToolPalette();
 
-    canvas = CreateVectorCanvas("ac-canvas");
-    canvas->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    canvas->SetSelection(selection);
-    canvas->SetRulerUnit(72.0 / 25.4, "mm");
-    VectorSnapOptions snap;
-    snap.toGuides = true; snap.toGrid = false; snap.toObjects = true; snap.toPage = true;
-    canvas->SetSnapOptions(snap);
-    VectorGridSpec grid;
-    grid.visible = false; grid.spacing = 72.0 / 25.4 * 10; grid.subdivisions = 2;   // 10 mm, 5 mm minor
-    canvas->SetGrid(grid);
-    body->AddChild(canvas);
+    // The middle of the body: the drawings' tabs over their canvases.
+    BuildTabs();
 
     BuildRightPanel();
     BuildStatusBar();
 
     // ----- tool context -----
+    // The drawing's own parts (selection, history, canvas) are the active
+    // tab's: SwitchToTab points the context at them.
     toolContext.getDocument = [this]() { return document; };
     toolContext.activeLayer = [this]() { return ActiveLayer(); };
-    toolContext.selection = selection.get();
-    toolContext.history = &history;
-    toolContext.canvas = canvas.get();
     toolContext.options = &toolOptions;
     toolContext.fillColor = [this]() { return fillColour; };
     toolContext.lineColor = [this]() { return lineColour; };
     toolContext.setStatus = [this](const std::string& s) { if (statusHint) statusHint->SetText(s); };
-    toolContext.requestText = [this](double x, double y) {
-        ArtCreatorTextResult init = lastText;
-        init.text.clear();
-        init.font = toolOptions.textFont; init.size = toolOptions.textSize; init.bold = toolOptions.textBold;
-        auto dlg = std::make_shared<ArtCreatorTextDialog>(init);
-        dlg->onAccept = [this, x, y](const ArtCreatorTextResult& r) {
-            toolOptions.textFont = r.font; toolOptions.textSize = r.size; toolOptions.textBold = r.bold;
-            lastText = r;
-            PlaceText(x, y, r);
-        };
-        ShowDialog(dlg);
-        dlg->FocusText();
+    toolContext.requestText = [this](const Point2Dd& at, const std::shared_ptr<VectorText>& text) {
+        BeginTextEdit(at, text);
     };
     toolContext.selectTool = [this](ArtToolId id) { SelectTool(id); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
     toolContext.lockAspectRatio = lockAspectRatio;
     toolContext.iconPath = [this](const std::string& file) { return IconPath(file); };
-
-    // ----- canvas -> tool -----
-    // In icon mode the pointer goes to the icon's pixel grid first (IconEvent).
-    canvas->onToolPress = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnPress(toolContext, IconEvent(e)); };
-    canvas->onToolDrag = [this](const VectorPointerEvent& e) {
-        pointerX = e.doc.x; pointerY = e.doc.y; pointerInside = true;
-        if (auto* t = ActiveTool()) t->OnDrag(toolContext, IconEvent(e));
-        RefreshTransformBar();   // the selection follows a drag live
-        UpdateStatus();
+    toolContext.setRotationHandleStyle = [this](VectorRotationHandleStyle style) {
+        for (const auto& d : drawings) d->canvas->SetRotationHandleStyle(style);
+        settings.Update([style](ArtCreatorSettings& s) { s.rotationHandle = style; });
     };
-    canvas->onToolRelease = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, IconEvent(e)); };
-    canvas->onToolHover = [this](const VectorPointerEvent& e) {
-        pointerX = e.doc.x; pointerY = e.doc.y; pointerInside = true;
-        if (auto* t = ActiveTool()) t->OnHover(toolContext, IconEvent(e));
-        UpdateStatus();
-    };
-    canvas->onToolDoubleClick = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, IconEvent(e)); };
-    canvas->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
-    canvas->onDrawOverlay = [this](IRenderContext* ctx, const VectorViewTransform& v) {
-        DrawIconOverlay(ctx, v);
-        if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
-    };
-    canvas->onViewChanged = [this]() { UpdateStatus(); };
-    canvas->onFilesDropped = [this](const std::vector<std::string>& files) {
-        if (files.empty()) return;
-        auto go = [this, files]() { OpenFile(files.front()); for (size_t i = 1; i < files.size(); ++i) OpenWindow({files[i]}); };
-        if (modified) ConfirmDiscard("Discard the unsaved changes and open " + FileNameOf(files.front()) + "?", go);
-        else go();
-    };
-
-    // ----- history and selection -----
-    history.onChanged = [this]() { OnDocumentChanged(); };
-    selection->AddListener([this]() { OnSelectionChanged(); });
 
     InstallShortcuts();
 
     window->onWindowClosing = [this]() -> bool {
-        if (!modified) return true;
-        ConfirmDiscard("The drawing has unsaved changes. Close anyway?", [this]() {
-            modified = false;
-            window->Close();
-        });
+        CommitTextEdit();
+        const int unsaved = UnsavedDrawingCount();
+        if (unsaved == 0) return true;
+        ConfirmDiscard(TrN("A drawing in this window has unsaved changes. Close anyway?",
+                           "{n} drawings in this window have unsaved changes. Close anyway?", unsaved),
+                       [this]() {
+                           StoreActiveTab();
+                           for (auto& d : drawings) d->modified = false;
+                           modified = false;
+                           window->Close();
+                       });
         return false;
     };
+    window->onWindowFocus = [this]() { LastFocusedWindow() = this; };
 
-    // ----- first document -----
-    if (!paths.empty() && OpenFile(paths.front())) {
-        // opened
-    } else {
-        NewDrawing(lastPage);
-    }
+    // ----- the first drawings: one tab each -----
+    NewDrawing(lastPage);
+    for (const auto& path : paths) OpenFile(path);
     SelectTool(ArtToolId::Selector);
+    RefreshCommandStates();   // the checks of View, now the canvas is there
     return true;
 }
 
@@ -381,12 +358,28 @@ std::shared_ptr<ArtCreatorWindow> ArtCreatorWindow::OpenWindow(const std::vector
     OpenWindows().push_back(editor);
     ArtCreatorWindow* raw = editor.get();
     editor->window->onWindowClosed = [raw]() { RetireWindow(raw); };
+    LastFocusedWindow() = raw;
     editor->Show();
-    for (size_t i = 1; i < paths.size(); ++i) OpenWindow({ paths[i] });
     return editor;
 }
 
+std::shared_ptr<ArtCreatorWindow> ArtCreatorWindow::OpenInRunningWindow(const std::vector<std::string>& paths) {
+    auto& windows = OpenWindows();
+    std::shared_ptr<ArtCreatorWindow> target;
+    for (const auto& w : windows) if (w && w.get() == LastFocusedWindow()) target = w;
+    if (!target && !windows.empty()) target = windows.back();
+    if (!target) return OpenWindow(paths);
+    for (const auto& path : paths) target->OpenFile(path);
+    return target;
+}
+
+ArtCreatorWindow*& ArtCreatorWindow::LastFocusedWindow() {
+    static ArtCreatorWindow* last = nullptr;
+    return last;
+}
+
 void ArtCreatorWindow::RetireWindow(ArtCreatorWindow* closed) {
+    if (LastFocusedWindow() == closed) LastFocusedWindow() = nullptr;
     auto drop = [closed]() {
         auto& windows = OpenWindows();
         windows.erase(std::remove_if(windows.begin(), windows.end(),
@@ -398,146 +391,310 @@ void ArtCreatorWindow::RetireWindow(ArtCreatorWindow* closed) {
 }
 
 // ===========================================================================
+// TABS: ONE DRAWING EACH
+// ===========================================================================
+
+void ArtCreatorWindow::BuildTabs() {
+    // A column between the palette and the right panel: the tab strip, and
+    // under it the pages - every tab's canvas, of which the active one shows
+    // - with the text editor lying over them while a text is typed.
+    auto column = std::make_shared<UltraCanvasContainer>("ac-documents", 0, 0, 0, 0);
+    column->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    column->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    tabStrip = std::make_shared<UltraCanvasTabbedContainer>("ac-tabs");
+    tabStrip->SetTabStyle(TabStyle::Flat);
+    tabStrip->SetTabPosition(TabPosition::Top);
+    tabStrip->SetCloseMode(TabCloseMode::Closable);
+    tabStrip->SetShowNewTabButton(true);
+    tabStrip->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
+    tabStrip->SetOverflowDropdownPosition(OverflowDropdownPosition::Left);
+    tabStrip->allowTabReordering = true;
+    tabStrip->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tabStrip->size.height = CSSLayout::Dimension::Px(static_cast<float>(tabStrip->GetTabHeight()));
+
+    pages = std::make_shared<UltraCanvasContainer>("ac-pages", 0, 0, 0, 0);
+    pages->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    pages->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    tabStrip->SetContentHost(pages);
+
+    tabStrip->onTabChange = [this](int, int newIndex) { if (!closingTab) SwitchToTab(newIndex); };
+    tabStrip->onTabClose = [this](int index) {
+        // RemoveTab asks this too: a close this window decided on goes ahead.
+        if (closingTab) return true;
+        RequestCloseTab(index);
+        return false;
+    };
+    tabStrip->onNewTabRequest = [this]() { CmdNew(); };
+    tabStrip->onTabReorder = [this](int from, int to) {
+        const int n = static_cast<int>(drawings.size());
+        if (from < 0 || from >= n || to < 0 || to >= n) return;
+        auto moved = std::move(drawings[from]);
+        drawings.erase(drawings.begin() + from);
+        drawings.insert(drawings.begin() + to, std::move(moved));
+        activeDrawing = tabStrip->GetActiveTab();
+    };
+
+    column->AddChild(tabStrip);
+    column->AddChild(pages);
+    body->AddChild(column);
+}
+
+std::shared_ptr<UltraCanvasVectorCanvas> ArtCreatorWindow::CreateTabCanvas() {
+    static int serial = 0;
+    auto c = CreateVectorCanvas("ac-canvas-" + std::to_string(++serial));
+    c->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    c->SetRulerUnit(72.0 / 25.4, "mm");
+    if (canvas) {
+        // A new tab looks as the one beside it does: rulers, guides, grid,
+        // snapping, display quality.
+        c->SetShowRulers(canvas->GetShowRulers());
+        c->SetShowGuides(canvas->GetShowGuides());
+        c->SetDisplayQuality(canvas->GetDisplayQuality());
+        VectorGridSpec grid = iconSize > 0 ? gridBeforeIcon : canvas->GetGrid();
+        c->SetGrid(grid);
+        c->SetSnapOptions(iconSize > 0 ? snapBeforeIcon : canvas->GetSnapOptions());
+    } else {
+        VectorSnapOptions snap;
+        snap.toGuides = true; snap.toGrid = false; snap.toObjects = true; snap.toPage = true;
+        c->SetSnapOptions(snap);
+        VectorGridSpec grid;
+        grid.visible = false; grid.spacing = 72.0 / 25.4 * 10; grid.subdivisions = 2;   // 10 mm, 5 mm minor
+        c->SetGrid(grid);
+    }
+    c->SetRotationHandleStyle(settings.rotationHandle);
+    WireCanvas(c.get());
+    return c;
+}
+
+void ArtCreatorWindow::WireCanvas(UltraCanvasVectorCanvas* c) {
+    // Only the active tab's canvas shows, so only it is handed events; the
+    // handlers work on the window's (the active tab's) members.
+    // In icon mode the pointer goes to the icon's pixel grid first (IconEvent).
+    c->onToolPress = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnPress(toolContext, IconEvent(e)); };
+    c->onToolDrag = [this](const VectorPointerEvent& e) {
+        pointerX = e.doc.x; pointerY = e.doc.y; pointerInside = true;
+        if (auto* t = ActiveTool()) t->OnDrag(toolContext, IconEvent(e));
+        RefreshTransformBar();   // the selection follows a drag live
+        UpdateStatus();
+    };
+    c->onToolRelease = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnRelease(toolContext, IconEvent(e)); };
+    c->onToolHover = [this](const VectorPointerEvent& e) {
+        pointerX = e.doc.x; pointerY = e.doc.y; pointerInside = true;
+        if (auto* t = ActiveTool()) t->OnHover(toolContext, IconEvent(e));
+        UpdateStatus();
+    };
+    c->onToolDoubleClick = [this](const VectorPointerEvent& e) { if (auto* t = ActiveTool()) t->OnDoubleClick(toolContext, IconEvent(e)); };
+    c->onToolKey = [this](const UCEvent& ev) { auto* t = ActiveTool(); return t && t->OnKey(toolContext, ev); };
+    c->onDrawOverlay = [this](IRenderContext* ctx, const VectorViewTransform& v) {
+        DrawIconOverlay(ctx, v);
+        DrawTextEditFrame(ctx);
+        if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
+    };
+    c->onViewChanged = [this]() { UpdateStatus(); PlaceTextEditor(); };
+    c->onHandleModeChanged = [this](VectorHandleMode) { ShowCentreGroup(); };
+    c->onRotationCenterChanged = [this]() { RefreshTransformBar(); };
+    // Dropped drawings open in tabs of their own; nothing open is replaced.
+    c->onFilesDropped = [this](const std::vector<std::string>& files) {
+        for (const auto& f : files) OpenFile(f);
+    };
+}
+
+void ArtCreatorWindow::AddDrawingTab() {
+    CommitTextEdit();
+    auto tab = std::make_unique<DrawingTab>();
+    tab->selection = std::make_shared<VectorSelection>();
+    tab->history = std::make_unique<VectorHistory>();
+    tab->canvas = CreateTabCanvas();
+    tab->canvas->SetSelection(tab->selection);
+    tab->page = lastPage;
+    // "Untitled", "Untitled 2" ...: the lowest number no open new drawing has.
+    for (int n = 1; tab->untitledNumber == 0; ++n) {
+        bool taken = false;
+        for (int i = 0; i < static_cast<int>(drawings.size()); ++i) {
+            const std::string& path = i == activeDrawing ? documentPath : drawings[i]->documentPath;
+            if (path.empty() && drawings[i]->untitledNumber == n) taken = true;
+        }
+        if (!taken) tab->untitledNumber = n;
+    }
+    // Each drawing's notifications reach the window only while it is the
+    // one shown; the others catch up when their tab is chosen.
+    VectorHistory* h = tab->history.get();
+    h->onChanged = [this, h]() { if (h == history) OnDocumentChanged(); };
+    VectorSelection* sel = tab->selection.get();
+    sel->AddListener([this, sel]() { if (sel == selection.get()) OnSelectionChanged(); });
+
+    auto c = tab->canvas;
+    drawings.push_back(std::move(tab));
+    const int index = static_cast<int>(drawings.size()) - 1;
+    tabStrip->AddTab(TabTitle(index), c);
+    tabStrip->SetActiveTab(index);   // SwitchToTab, through onTabChange - or not, for the first
+    if (activeDrawing != index) SwitchToTab(index);
+}
+
+void ArtCreatorWindow::StoreActiveTab() {
+    if (activeDrawing < 0 || activeDrawing >= static_cast<int>(drawings.size())) return;
+    DrawingTab& d = *drawings[activeDrawing];
+    d.document = document;
+    d.documentPath = documentPath;
+    d.modified = modified;
+    d.activeLayerIndex = activeLayerIndex;
+    d.page = lastPage;
+    d.iconSize = iconSize;
+    d.gridBeforeIcon = gridBeforeIcon;
+    d.snapBeforeIcon = snapBeforeIcon;
+    d.iconRaster = iconRaster;
+}
+
+void ArtCreatorWindow::SwitchToTab(int index) {
+    if (index < 0 || index >= static_cast<int>(drawings.size())) return;
+    if (index == activeDrawing && canvas == drawings[index]->canvas) return;
+    if (activeDrawing >= 0) {
+        // What is being typed and what a tool holds belong to the drawing left.
+        CommitTextEdit();
+        if (auto* t = ActiveTool()) t->Deactivate(toolContext);
+        toolIdle = true;
+        StoreActiveTab();
+    }
+
+    activeDrawing = index;
+    DrawingTab& d = *drawings[index];
+    document = d.document;
+    selection = d.selection;
+    history = d.history.get();
+    canvas = d.canvas;
+    documentPath = d.documentPath;
+    modified = d.modified;
+    activeLayerIndex = d.activeLayerIndex;
+    lastPage = d.page;
+    iconSize = d.iconSize;
+    gridBeforeIcon = d.gridBeforeIcon;
+    snapBeforeIcon = d.snapBeforeIcon;
+    iconRaster = d.iconRaster;
+    transformBarIds.clear();
+
+    toolContext.selection = selection.get();
+    toolContext.history = history;
+    toolContext.canvas = canvas.get();
+    toolContext.iconPixel = IconPixel();
+    if (tabStrip && tabStrip->GetActiveTab() != index) tabStrip->SetActiveTab(index);
+
+    if (iconSizeBox) {
+        int boxIndex = 0;
+        const auto& sizes = ArtIconSizes();
+        for (size_t i = 0; i < sizes.size(); ++i) if (sizes[i] == iconSize) boxIndex = static_cast<int>(i) + 1;
+        if (iconSizeBox->GetSelectedIndex() != boxIndex) iconSizeBox->SetSelectedIndex(boxIndex, false);
+    }
+    if (iconPanel) iconPanel->SetVisible(iconSize > 0);
+    // A new tab gets its drawing next: SetDocument finishes the switch.
+    if (document) {
+        if (toolIdle) { toolIdle = false; SelectTool(activeTool); }   // activated again, on this drawing
+        RebuildLayerPanel();
+        OnSelectionChanged();
+        RefreshIconPreview();
+        UpdateTitle();
+        canvas->Refresh();
+    }
+}
+
+bool ArtCreatorWindow::TabModified(int index) const {
+    if (index < 0 || index >= static_cast<int>(drawings.size())) return false;
+    return index == activeDrawing ? modified : drawings[index]->modified;
+}
+
+int ArtCreatorWindow::UnsavedDrawingCount() const {
+    int n = 0;
+    for (int i = 0; i < static_cast<int>(drawings.size()); ++i) if (TabModified(i)) ++n;
+    return n;
+}
+
+std::string ArtCreatorWindow::TabTitle(int index) const {
+    if (index < 0 || index >= static_cast<int>(drawings.size())) return std::string();
+    const DrawingTab& d = *drawings[index];
+    const std::string& path = index == activeDrawing ? documentPath : d.documentPath;
+    if (!path.empty()) return FileNameOf(path);
+    return d.untitledNumber <= 1 ? Tr("Untitled") : TrF("Untitled {0}", d.untitledNumber);
+}
+
+void ArtCreatorWindow::UpdateTabTitle(int index) {
+    if (!tabStrip || index < 0 || index >= tabStrip->GetTabCount()) return;
+    const std::string title = TabTitle(index);
+    if (tabStrip->GetTabTitle(index) != title) tabStrip->SetTabTitle(index, title);
+    const std::string& path = index == activeDrawing ? documentPath : drawings[index]->documentPath;
+    tabStrip->SetTabTooltip(index, path.empty() ? title : path);
+    const bool unsaved = TabModified(index);
+    if (tabStrip->IsTabShowMarker(index) != unsaved) tabStrip->SetTabShowMarker(index, unsaved);
+}
+
+bool ArtCreatorWindow::ActiveTabIsPristine() const {
+    return activeDrawing >= 0 && document && documentPath.empty() && !modified &&
+           history && !history->CanUndo() && !history->CanRedo();
+}
+
+void ArtCreatorWindow::RequestCloseTab(int index) {
+    if (index < 0 || index >= static_cast<int>(drawings.size())) return;
+    if (index == activeDrawing) CommitTextEdit();
+    if (!TabModified(index)) { RemoveDrawingTab(index); return; }
+    DrawingTab* tab = drawings[index].get();
+    ConfirmDiscard(TrF("{0} has unsaved changes. Close it anyway?", TabTitle(index)), [this, tab]() {
+        // The tabs may have moved while the question was open.
+        for (int i = 0; i < static_cast<int>(drawings.size()); ++i)
+            if (drawings[i].get() == tab) { RemoveDrawingTab(i); return; }
+    });
+}
+
+void ArtCreatorWindow::RemoveDrawingTab(int index) {
+    if (index < 0 || index >= static_cast<int>(drawings.size())) return;
+    if (drawings.size() == 1) {
+        // The window keeps a drawing: a new one takes the last one's place.
+        NewDrawing(lastPage, false);
+        drawings[0]->untitledNumber = 1;
+        UpdateTitle();
+        return;
+    }
+    const bool wasActive = index == activeDrawing;
+    if (wasActive) {
+        CommitTextEdit();
+        if (auto* t = ActiveTool()) t->Deactivate(toolContext);
+        toolIdle = true;
+    }
+    // The strip picks the tab shown next as it removes this one (closingTab
+    // keeps its notifications out meanwhile); the window then follows: the
+    // strip's choice when the closed tab was the active one, else the same
+    // drawing as before, wherever it moved.
+    std::unique_ptr<DrawingTab> gone = std::move(drawings[index]);
+    drawings.erase(drawings.begin() + index);
+    if (wasActive) { activeDrawing = -1; canvas.reset(); }
+    else if (activeDrawing > index) --activeDrawing;
+    closingTab = true;
+    tabStrip->RemoveTab(index);
+    closingTab = false;
+    gone->history->onChanged = nullptr;
+    const int last = static_cast<int>(drawings.size()) - 1;
+    if (wasActive) SwitchToTab(std::clamp(tabStrip->GetActiveTab(), 0, last));
+    else if (tabStrip->GetActiveTab() != activeDrawing) tabStrip->SetActiveTab(activeDrawing);
+}
+
+void ArtCreatorWindow::CmdCloseTab() {
+    RequestCloseTab(activeDrawing);
+}
+
+void ArtCreatorWindow::CmdNextTab(int direction) {
+    const int n = static_cast<int>(drawings.size());
+    if (n < 2) return;
+    SwitchToTab(((activeDrawing + direction) % n + n) % n);
+}
+
+// ===========================================================================
 // CONSTRUCTION
 // ===========================================================================
 
 void ArtCreatorWindow::BuildMenuBar() {
-    using M = MenuItemData;
-    menuBar = MenuBuilder("ac-menubar", 0, 0, 0, kMenuHeight)
-        .SetType(MenuType::Menubar)
-        .AddSubmenu("File", {
-            M::ActionWithShortcut("New...", "Ctrl+N", MenuIconPath("new.svg"), [this]() { CmdNew(); }),
-            M::ActionWithShortcut("New Window", "Ctrl+Alt+N", MenuIconPath("new-window.svg"), [this]() { CmdNewWindow(); }),
-            M::Submenu("New Icon", MenuIconPath("new-icon.svg"), [this]() {
-                std::vector<MenuItemData> sizes;
-                for (int n : ArtIconSizes())
-                    sizes.push_back(M::Action(std::to_string(n) + " x " + std::to_string(n) + " px", [this, n]() { CmdNewIcon(n); }));
-                return sizes;
-            }),
-            M::ActionWithShortcut("Open...", "Ctrl+O", MenuIconPath("open.svg"), [this]() { CmdOpen(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Save", "Ctrl+S", MenuIconPath("save.svg"), [this]() { CmdSave(); }),
-            M::ActionWithShortcut("Save As...", "Ctrl+Shift+S", MenuIconPath("save-as.svg"), [this]() { CmdSaveAs(); }),
-            M::ActionWithShortcut("Export...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
-            M::Separator(),
-            M::Action("Document Setup...", MenuIconPath("document-setup.svg"), [this]() { CmdDocumentSetup(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Quit", "Ctrl+Q", MenuIconPath("quit.svg"), [this]() { CmdQuit(); }),
-        })
-        .AddSubmenu("Edit", {
-            M::ActionWithShortcut("Undo", "Ctrl+Z", MenuIconPath("undo.svg"), [this]() { CmdUndo(); }),
-            M::ActionWithShortcut("Redo", "Ctrl+Y", MenuIconPath("redo.svg"), [this]() { CmdRedo(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Cut", "Ctrl+X", MenuIconPath("cut.svg"), [this]() { CmdCut(); }),
-            M::ActionWithShortcut("Copy", "Ctrl+C", MenuIconPath("copy.svg"), [this]() { CmdCopy(); }),
-            M::ActionWithShortcut("Paste", "Ctrl+V", MenuIconPath("paste.svg"), [this]() { CmdPaste(); }),
-            M::ActionWithShortcut("Duplicate", "Ctrl+D", MenuIconPath("duplicate.svg"), [this]() { CmdDuplicate(); }),
-            M::ActionWithShortcut("Delete", "Del", MenuIconPath("delete.svg"), [this]() { CmdDelete(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Select All", "Ctrl+A", MenuIconPath("select-all.svg"), [this]() { CmdSelectAll(); }),
-            M::ActionWithShortcut("Select None", "Ctrl+Shift+A", MenuIconPath("select-none.svg"), [this]() { CmdSelectNone(); }),
-        })
-        .AddSubmenu("Arrange", {
-            M::ActionWithShortcut("Bring to Front", "Ctrl+F", MenuIconPath("to-front.svg"), [this]() { CmdReorder(ZOrderMove::ToFront); }),
-            M::ActionWithShortcut("Bring Forward", "Ctrl+Shift+F", MenuIconPath("forward.svg"), [this]() { CmdReorder(ZOrderMove::Forward); }),
-            M::ActionWithShortcut("Send Backward", "Ctrl+Shift+B", MenuIconPath("backward.svg"), [this]() { CmdReorder(ZOrderMove::Backward); }),
-            M::ActionWithShortcut("Send to Back", "Ctrl+B", MenuIconPath("to-back.svg"), [this]() { CmdReorder(ZOrderMove::ToBack); }),
-            M::Separator(),
-            M::ActionWithShortcut("Group", "Ctrl+G", MenuIconPath("group.svg"), [this]() { CmdGroup(); }),
-            M::ActionWithShortcut("Ungroup", "Ctrl+U", MenuIconPath("ungroup.svg"), [this]() { CmdUngroup(); }),
-            M::Separator(),
-            M::Action("Mirror Horizontally", MenuIconPath("mirror-h.svg"), [this]() { CmdMirror(true); }),
-            M::Action("Mirror Vertically", MenuIconPath("mirror-v.svg"), [this]() { CmdMirror(false); }),
-            M::Separator(),
-            M::Header("Align to selection"),
-            M::Action("Left Edges", MenuIconPath("align-left.svg"), [this]() { CmdAlign(AlignMode::Left, false); }),
-            M::Action("Horizontal Centres", MenuIconPath("align-hcentre.svg"), [this]() { CmdAlign(AlignMode::HorizontalCenter, false); }),
-            M::Action("Right Edges", MenuIconPath("align-right.svg"), [this]() { CmdAlign(AlignMode::Right, false); }),
-            M::Action("Top Edges", MenuIconPath("align-top.svg"), [this]() { CmdAlign(AlignMode::Top, false); }),
-            M::Action("Vertical Centres", MenuIconPath("align-vcentre.svg"), [this]() { CmdAlign(AlignMode::VerticalCenter, false); }),
-            M::Action("Bottom Edges", MenuIconPath("align-bottom.svg"), [this]() { CmdAlign(AlignMode::Bottom, false); }),
-            M::Separator(),
-            M::Header("Align to page"),
-            M::Action("Centre on Page", MenuIconPath("align-page.svg"), [this]() { CmdAlign(AlignMode::HorizontalCenter, true); CmdAlign(AlignMode::VerticalCenter, true); }),
-            M::Separator(),
-            M::Header("Distribute"),
-            M::Action("Horizontal Centres Evenly", MenuIconPath("distribute-h.svg"), [this]() { CmdDistribute(DistributeMode::HorizontalCenters); }),
-            M::Action("Vertical Centres Evenly", MenuIconPath("distribute-v.svg"), [this]() { CmdDistribute(DistributeMode::VerticalCenters); }),
-            M::Action("Equal Horizontal Gaps", MenuIconPath("space-h.svg"), [this]() { CmdDistribute(DistributeMode::HorizontalGaps); }),
-            M::Action("Equal Vertical Gaps", MenuIconPath("space-v.svg"), [this]() { CmdDistribute(DistributeMode::VerticalGaps); }),
-            M::Separator(),
-            M::Header("Combine shapes"),
-            M::Action("Add Shapes", MenuIconPath("combine-add.svg"), [this]() { CmdCombine(CombineOp::Add); }),
-            M::Action("Subtract Shapes", MenuIconPath("combine-subtract.svg"), [this]() { CmdCombine(CombineOp::Subtract); }),
-            M::Action("Intersect Shapes", MenuIconPath("combine-intersect.svg"), [this]() { CmdCombine(CombineOp::Intersect); }),
-            M::Action("Slice Shapes", MenuIconPath("combine-slice.svg"), [this]() { CmdCombine(CombineOp::Slice); }),
-            M::Separator(),
-            M::ActionWithShortcut("Apply ClipView", "Ctrl+K", MenuIconPath("clipview.svg"), [this]() { CmdApplyClipView(); }),
-            M::Action("Remove ClipView, Blend or Mould", MenuIconPath("release.svg"), [this]() { CmdRemoveContainer(); }),
-            M::Separator(),
-            M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", MenuIconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
-            M::ActionWithShortcut("Snap to Pixels", "Ctrl+Shift+P", MenuIconPath("snap-pixels.svg"), [this]() { CmdSnapToPixels(); }),
-        })
-        .AddSubmenu("Object", {
-            M::Action("No Fill", MenuIconPath("no-fill.svg"), [this]() { CmdRemoveFill(); }),
-            M::Action("No Line", MenuIconPath("no-line.svg"), [this]() { CmdRemoveLine(); }),
-            M::Separator(),
-            M::Header("Line width in points"),
-            M::Action("Hairline (0.25 pt)", MenuIconPath("line-hairline.svg"), [this]() { CmdLineWidth(0.25f); }),
-            M::Action("0.5 pt", MenuIconPath("line-05.svg"), [this]() { CmdLineWidth(0.5f); }),
-            M::Action("1 pt", MenuIconPath("line-1.svg"), [this]() { CmdLineWidth(1.0f); }),
-            M::Action("2 pt", MenuIconPath("line-2.svg"), [this]() { CmdLineWidth(2.0f); }),
-            M::Action("4 pt", MenuIconPath("line-4.svg"), [this]() { CmdLineWidth(4.0f); }),
-            M::Action("8 pt", MenuIconPath("line-8.svg"), [this]() { CmdLineWidth(8.0f); }),
-            M::Header("Line width in pixels"),
-            M::Action("1 px", MenuIconPath("line-1.svg"), [this]() { CmdLineWidthPixels(1); }),
-            M::Action("2 px", MenuIconPath("line-2.svg"), [this]() { CmdLineWidthPixels(2); }),
-            M::Action("3 px", MenuIconPath("line-3.svg"), [this]() { CmdLineWidthPixels(3); }),
-            M::Action("4 px", MenuIconPath("line-4.svg"), [this]() { CmdLineWidthPixels(4); }),
-        })
-        .AddSubmenu("Layer", {
-            M::ActionWithShortcut("New Layer", "Ctrl+Shift+N", MenuIconPath("layer-add.svg"), [this]() { CmdLayerAdd(); }),
-            M::Action("Delete Layer", MenuIconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); }),
-            M::Separator(),
-            M::Action("Move Layer Up", MenuIconPath("layer-up.svg"), [this]() { CmdLayerMove(1); }),
-            M::Action("Move Layer Down", MenuIconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); }),
-            M::Separator(),
-            M::Action("Show Layer", MenuIconPath("layer-show.svg"), [this]() { CmdLayerToggle(true); }),
-            M::Action("Hide Layer", MenuIconPath("layer-hide.svg"), [this]() { CmdLayerToggle(false); }),
-        })
-        .AddSubmenu("View", {
-            M::ActionWithShortcut("Zoom In", "+", MenuIconPath("zoom-in.svg"), [this]() { canvas->ZoomIn(); }),
-            M::ActionWithShortcut("Zoom Out", "-", MenuIconPath("zoom-out.svg"), [this]() { canvas->ZoomOut(); }),
-            M::ActionWithShortcut("Fit Page", "Ctrl+0", MenuIconPath("zoom-page.svg"), [this]() { canvas->ZoomToPage(); }),
-            M::Action("Fit Drawing", MenuIconPath("fit-drawing.svg"), [this]() { canvas->ZoomToDrawing(); }),
-            M::Action("Fit Selection", MenuIconPath("fit-selection.svg"), [this]() { canvas->ZoomToSelection(); }),
-            M::ActionWithShortcut("Actual Size", "Ctrl+1", MenuIconPath("zoom-100.svg"), [this]() { canvas->ZoomToActual(); }),
-            M::Separator(),
-            WithIcon(M::Checkbox("Rulers", true, [this](bool on) { canvas->SetShowRulers(on); }), MenuIconPath("rulers.svg")),
-            WithIcon(M::Checkbox("Grid", false, [this](bool on) { VectorGridSpec g = canvas->GetGrid(); g.visible = on; canvas->SetGrid(g); }), MenuIconPath("grid.svg")),
-            WithIcon(M::Checkbox("Guides", true, [this](bool on) { canvas->SetShowGuides(on); }), MenuIconPath("guides.svg")),
-            M::Separator(),
-            WithIcon(M::Checkbox("Snap to Grid", false, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toGrid = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-grid.svg")),
-            WithIcon(M::Checkbox("Snap to Guides", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toGuides = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-guides.svg")),
-            WithIcon(M::Checkbox("Snap to Objects", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toObjects = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-objects.svg")),
-            WithIcon(M::Checkbox("Snap to Page", true, [this](bool on) { VectorSnapOptions s = canvas->GetSnapOptions(); s.toPage = on; canvas->SetSnapOptions(s); }), MenuIconPath("snap-page.svg")),
-            M::Action("Clear Guides", MenuIconPath("clear-guides.svg"), [this]() { canvas->ClearGuides(); }),
-            M::Separator(),
-            M::Submenu("Icon Size", MenuIconPath("new-icon.svg"), [this]() {
-                std::vector<MenuItemData> items;
-                items.push_back(M::Action(iconSize > 0 ? "Off" : "Off (now)", [this]() { SetIconSize(0); }));
-                for (int n : ArtIconSizes()) {
-                    std::string label = std::to_string(n) + " x " + std::to_string(n) + " px";
-                    if (n == iconSize) label += " (now)";
-                    items.push_back(M::Action(label, [this, n]() { SetIconSize(n); }));
-                }
-                return items;
-            }),
-        })
-        .AddSubmenu("Help", {
-            M::Action("About ArtCreator", MenuIconPath("about.svg"), [this]() { CmdAbout(); }),
-        })
-        .Build();
+    // The entries come from the commands, in the menu layout
+    // (ArtCreatorCommands.cpp).
+    menuBar = std::make_shared<UltraCanvasMenu>("ac-menubar", 0, 0, 0, kMenuHeight);
+    menuBar->SetMenuType(MenuType::Menubar);
+    ApplyMenuLayout();
     menuBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     window->AddChild(menuBar);
 }
@@ -550,52 +707,14 @@ void ArtCreatorWindow::BuildToolbar() {
     app.style = ToolbarStyle::Flat;
     app.hoverBackgroundColor = Color(0, 0, 0, 18);
     toolbar->SetAppearance(app);
-    toolbar->AddButton("ac-tb-new", "", SharedIconPath("new.svg"), [this]() { CmdNew(); })->SetTooltip("New drawing (Ctrl+N)");
-    toolbar->AddButton("ac-tb-open", "", SharedIconPath("folder.svg"), [this]() { CmdOpen(); })->SetTooltip("Open (Ctrl+O)");
-    toolbar->AddButton("ac-tb-save", "", SharedIconPath("save.svg"), [this]() { CmdSave(); })->SetTooltip("Save (Ctrl+S)");
-    toolbar->AddSeparator("ac-tb-s1");
-    undoButton = toolbar->AddButton("ac-tb-undo", "", SharedIconPath("undo.svg"), [this]() { CmdUndo(); });
-    undoButton->SetTooltip("Undo (Ctrl+Z)");
-    redoButton = toolbar->AddButton("ac-tb-redo", "", SharedIconPath("redo.svg"), [this]() { CmdRedo(); });
-    redoButton->SetTooltip("Redo (Ctrl+Y)");
-    toolbar->AddSeparator("ac-tb-s2");
-    toolbar->AddButton("ac-tb-zoomout", "", SharedIconPath("zoom-out.svg"), [this]() { canvas->ZoomOut(); })->SetTooltip("Zoom out (-)");
-    toolbar->AddButton("ac-tb-zoomin", "", SharedIconPath("zoom-in.svg"), [this]() { canvas->ZoomIn(); })->SetTooltip("Zoom in (+)");
-    toolbar->AddButton("ac-tb-fit", "", IconPath("zoom-page.svg"), [this]() { canvas->ZoomToPage(); })->SetTooltip("Fit page (Ctrl+0)");
-    toolbar->AddButton("ac-tb-100", "", IconPath("zoom-100.svg"), [this]() { canvas->ZoomToActual(); })->SetTooltip("Actual size (Ctrl+1)");
-    toolbar->AddSeparator("ac-tb-s3");
-    toolbar->AddButton("ac-tb-group", "", IconPath("group.svg"), [this]() { CmdGroup(); })->SetTooltip("Group (Ctrl+G)");
-    toolbar->AddButton("ac-tb-ungroup", "", IconPath("ungroup.svg"), [this]() { CmdUngroup(); })->SetTooltip("Ungroup (Ctrl+U)");
-    toolbar->AddButton("ac-tb-front", "", IconPath("to-front.svg"), [this]() { CmdReorder(ZOrderMove::ToFront); })->SetTooltip("Bring to front (Ctrl+F)");
-    toolbar->AddButton("ac-tb-back", "", IconPath("to-back.svg"), [this]() { CmdReorder(ZOrderMove::ToBack); })->SetTooltip("Send to back (Ctrl+B)");
-    toolbar->AddSeparator("ac-tb-s4");
-    toolbar->AddButton("ac-tb-mirror-h", "", IconPath("mirror-h.svg"), [this]() { CmdMirror(true); })->SetTooltip("Mirror horizontally");
-    toolbar->AddButton("ac-tb-mirror-v", "", IconPath("mirror-v.svg"), [this]() { CmdMirror(false); })->SetTooltip("Mirror vertically");
-    for (auto& c : toolbar->Children()) {
-        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
-            ButtonStyle flat = b->GetStyle();
-            flat.cornerRadius = 6.0f;
-            flat.pressedColor = Color(0, 0, 0, 30);
-            b->SetStyle(flat);
-        }
-    }
-    toolbar->AddSeparator("ac-tb-s5");
-    // Display quality: outlines only, fills and lines, or antialiased.
-    auto qualityCaption = toolbar->AddLabel("ac-tb-quality-caption", "Quality");
-    qualityCaption->SetFontSize(11);
-    qualityCaption->SetElementSize(Size2Df(48, 24));
-    qualitySlider = CreateHorizontalSlider("ac-tb-quality", 0, 0, 90, 24, 0, 2);
-    qualitySlider->SetStep(1);
-    qualitySlider->SetValue(static_cast<float>(VectorDisplayQuality::Normal));
-    qualitySlider->SetValueDisplay(SliderValueDisplay::NoDisplay);
-    qualitySlider->SetTooltip("Display quality: outlines / fills and lines / antialiased");
-    qualitySlider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    qualitySlider->onValueChanging = [this](float v) { SetDisplayQuality(static_cast<int>(std::lround(v))); };
-    qualitySlider->onValueChanged = [this](float v) { SetDisplayQuality(static_cast<int>(std::lround(v))); };
-    toolbar->AddChild(qualitySlider);
-    qualityLabel = toolbar->AddLabel("ac-tb-quality-value", DisplayQualityName(VectorDisplayQuality::Normal));
-    qualityLabel->SetFontSize(11);
-    qualityLabel->SetElementSize(Size2Df(84, 24));
+    // What does not fit a narrow window goes into the chevron's menu.
+    toolbar->SetOverflowMode(ToolbarOverflowMode::Menu);
+    // The buttons come from the commands, in the toolbar's groups; a right
+    // click shows, hides and folds the groups.
+    ApplyToolbarLayout();
+    InstallToolbarContextMenu(*toolbar, toolbarLayout, commands,
+                              [this]() { ApplyToolbarLayout(); SaveLayouts(); },
+                              [this]() { OpenCustomise("t0"); });
     window->AddChild(toolbar);
 }
 
@@ -620,6 +739,8 @@ void ArtCreatorWindow::SetDisplayQuality(int level) {
 namespace {
     constexpr float kTransformBarHeight = 50.0f;
     constexpr float kTransformRowHeight = 21.0f;
+    // Every field of the bar is this wide, in both rows.
+    constexpr float kTransformFieldWidth = 96.0f;
     constexpr double kDegrees = 180.0 / 3.14159265358979323846;
 }
 
@@ -683,10 +804,10 @@ void ArtCreatorWindow::BuildTransformBar() {
             if (syncingTransform) return;
             const bool step = transformStepping;
             transformStepping = false;
-            const size_t before = history.UndoCount();
+            const size_t before = history->UndoCount();
             apply(v, step && transformRunOpen);
             // Open only once a step made an undo step to merge into.
-            if (step && history.UndoCount() > before) transformRunOpen = true;
+            if (step && history->UndoCount() > before) transformRunOpen = true;
         };
         s->onStepsFinished = [this](double) { transformRunOpen = false; };
         r->AddChild(s);
@@ -694,37 +815,39 @@ void ArtCreatorWindow::BuildTransformBar() {
     };
 
     constexpr double kFar = 1.0e6;
-    auto position = column("pos", 113);
+    // A column of a caption (or an icon) and a field: 14 + 3 + the field.
+    constexpr float kColumn = 17 + kTransformFieldWidth;
+    auto position = column("pos", kColumn);
     auto posX = row(position, "x");
     caption(posX, "x", "X");
-    posXBox = field(posX, "x", 96, -kFar, kFar, 2, 1, "Horizontal position of the reference point",
+    posXBox = field(posX, "x", kTransformFieldWidth, -kFar, kFar, 2, 1, "Horizontal position of the reference point",
                     [this](double v, bool merge) { ApplyPosition(true, v, merge); });
     auto posY = row(position, "y");
     caption(posY, "y", "Y");
-    posYBox = field(posY, "y", 96, -kFar, kFar, 2, 1, "Vertical position of the reference point",
+    posYBox = field(posY, "y", kTransformFieldWidth, -kFar, kFar, 2, 1, "Vertical position of the reference point",
                     [this](double v, bool merge) { ApplyPosition(false, v, merge); });
 
-    auto size = column("size", 113);
+    auto size = column("size", kColumn);
     auto sizeW = row(size, "w");
     caption(sizeW, "w", "W");
-    sizeWBox = field(sizeW, "w", 96, 0, kFar, 2, 1, "Width of the selection",
+    sizeWBox = field(sizeW, "w", kTransformFieldWidth, 0, kFar, 2, 1, "Width of the selection",
                      [this](double v, bool merge) { ApplySize(true, v, merge); });
     auto sizeH = row(size, "h");
     caption(sizeH, "h", "H");
-    sizeHBox = field(sizeH, "h", 96, 0, kFar, 2, 1, "Height of the selection",
+    sizeHBox = field(sizeH, "h", kTransformFieldWidth, 0, kFar, 2, 1, "Height of the selection",
                      [this](double v, bool merge) { ApplySize(false, v, merge); });
 
-    auto scale = column("scale", 91);
+    auto scale = column("scale", kColumn);
     auto scaleW = row(scale, "sw");
     caption(scaleW, "sw", "W");
-    scaleWBox = field(scaleW, "sw", 74, 0.1, 100000, 1, 1, "Scale the width by a percentage",
+    scaleWBox = field(scaleW, "sw", kTransformFieldWidth, 0.1, 100000, 1, 1, "Scale the width by a percentage",
                       [this](double v, bool merge) { ApplyScalePercent(true, v, merge); });
     scaleWBox->SetSuffix(" %");
     // Typed, not stepped: no arrows (the keys and the wheel still step by 1).
     scaleWBox->SetLayout(SpinnerLayout::FieldOnly);
     auto scaleH = row(scale, "sh");
     caption(scaleH, "sh", "H");
-    scaleHBox = field(scaleH, "sh", 74, 0.1, 100000, 1, 1, "Scale the height by a percentage",
+    scaleHBox = field(scaleH, "sh", kTransformFieldWidth, 0.1, 100000, 1, 1, "Scale the height by a percentage",
                       [this](double v, bool merge) { ApplyScalePercent(false, v, merge); });
     scaleHBox->SetSuffix(" %");
     scaleHBox->SetLayout(SpinnerLayout::FieldOnly);
@@ -744,19 +867,124 @@ void ArtCreatorWindow::BuildTransformBar() {
     ratioLockButton->onToggle = [this](bool on) { lockAspectRatio = on; toolContext.lockAspectRatio = on; };
     transformBar->AddChild(ratioLockButton);
 
-    auto angles = column("angles", 93);
+    auto angles = column("angles", 19 + kTransformFieldWidth);
     auto rotation = row(angles, "rot");
     icon(rotation, "rot", "rotate.svg");
-    rotationBox = field(rotation, "rot", 74, -3600, 3600, 1, 1, "Rotation, counter-clockwise, about the reference point",
+    rotationBox = field(rotation, "rot", kTransformFieldWidth, -3600, 3600, 1, 1,
+                        "Rotation, counter-clockwise, about the reference point (with the Rotate handles, about the rotation centre)",
                         [this](double v, bool merge) { ApplyRotation(v, merge); });
     rotationBox->SetSuffix("\xC2\xB0");
     auto shear = row(angles, "shear");
     icon(shear, "shear", "shear.svg");
-    shearBox = field(shear, "shear", 74, -89, 89, 1, 1, "Shear: how far the top leans to the right",
+    shearBox = field(shear, "shear", kTransformFieldWidth, -89, 89, 1, 1, "Shear: how far the top leans to the right",
                      [this](double v, bool merge) { ApplyShear(v, merge); });
     shearBox->SetSuffix("\xC2\xB0");
 
+    // The rotation centre, while the Selector shows its Rotate handles: a
+    // button that switches the fields between the centre's place on the
+    // page and how far it lies from the middle of the selection, the two
+    // fields, and a reference point picker that puts it on a corner, an
+    // edge's middle or the middle of the frame. A centre dragged anywhere
+    // else shows there as a ring pointing its way.
+    centreGroup = std::make_shared<UltraCanvasContainer>("ac-tf-centre", 0, 0, 0, kTransformBarHeight - 4);
+    centreGroup->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    centreGroup->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    transformBar->AddChild(centreGroup);
+    centreModeButton = std::make_shared<UltraCanvasButton>("ac-tf-centre-mode", 0, 0, 30, 30, "");
+    centreModeButton->SetIconSize(22, 22);
+    ButtonStyle modeStyle = centreModeButton->GetStyle();
+    modeStyle.cornerRadius = 6.0f;
+    centreModeButton->SetStyle(modeStyle);
+    centreModeButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centreModeButton->onClick = [this]() {
+        const bool relative = !settings.centreRelative;
+        settings.Update([relative](ArtCreatorSettings& s) { s.centreRelative = relative; });
+        ShowCentreMode();
+        RefreshTransformBar();
+    };
+    centreGroup->AddChild(centreModeButton);
+    auto centreColumn = std::make_shared<UltraCanvasContainer>("ac-tf-col-centre", 0, 0, 27 + kTransformFieldWidth, kTransformBarHeight - 4);
+    centreColumn->layout.SetFlexColumn().SetFlexGap(4).SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+    centreColumn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centreGroup->AddChild(centreColumn);
+    const std::pair<std::shared_ptr<UltraCanvasContainer>, float> centreCol(centreColumn, 27 + kTransformFieldWidth);
+    auto centreCaption = [&](const std::shared_ptr<UltraCanvasContainer>& r, const std::string& id) {
+        // Wide enough for "ΔX" in the relative mode.
+        auto l = CreateLabel("ac-tf-cap-" + id, 0, 0, 24, kTransformRowHeight, "");
+        l->SetFontSize(11);
+        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        r->AddChild(l);
+        return l;
+    };
+    auto centreX = row(centreCol, "cx");
+    centreXCaption = centreCaption(centreX, "cx");
+    centreXBox = field(centreX, "cx", kTransformFieldWidth, -kFar, kFar, 2, 1, "",
+                       [this](double v, bool) { ApplyCentre(true, v); });
+    auto centreY = row(centreCol, "cy");
+    centreYCaption = centreCaption(centreY, "cy");
+    centreYBox = field(centreY, "cy", kTransformFieldWidth, -kFar, kFar, 2, 1, "",
+                       [this](double v, bool) { ApplyCentre(false, v); });
+    centrePicker = CreateReferencePointPicker("ac-tf-centre-point", 0, 0, 40, 40);
+    centrePicker->SetTooltip("Put the rotation centre on a corner, the middle of an edge or the middle of the selection");
+    centrePicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centrePicker->onPointChanged = [this](ReferencePoint point) {
+        if (!canvas || selection->Empty()) return;
+        // The middle is the centre's own place: no centre of its own then.
+        if (point == ReferencePoint::Centre) canvas->SetRotationCenter(std::nullopt);
+        else {
+            const Point2Dd f = ReferencePointFraction(point);
+            canvas->SetRotationCenter(canvas->SelectionFramePoint(f.x, f.y));
+        }
+    };
+    centreGroup->AddChild(centrePicker);
+    centreGroup->SetVisible(false);
+    ShowCentreMode();
+
     window->AddChild(transformBar);
+}
+
+void ArtCreatorWindow::ShowCentreMode() {
+    if (!centreModeButton) return;
+    const bool relative = settings.centreRelative;
+    centreModeButton->SetIcon(IconPath(relative ? "rotation-centre-relative.svg" : "rotation-centre.svg"));
+    centreModeButton->SetTooltip(relative
+        ? "Rotation centre from the middle of the selection - click for its place on the page"
+        : "Rotation centre on the page - click for how far it lies from the middle of the selection");
+    centreXCaption->SetText(relative ? "\xCE\x94X" : "X");
+    centreYCaption->SetText(relative ? "\xCE\x94Y" : "Y");
+    centreXBox->SetTooltip(relative ? "How far the rotation centre lies right of the middle of the selection"
+                                    : "Horizontal position of the rotation centre");
+    centreYBox->SetTooltip(relative ? "How far the rotation centre lies below the middle of the selection"
+                                    : "Vertical position of the rotation centre");
+}
+
+void ArtCreatorWindow::ShowCentreGroup() {
+    if (!centreGroup || !canvas) return;
+    const bool on = canvas->GetHandleMode() == VectorHandleMode::Rotate;
+    if (centreGroup->IsVisible() == on) return;
+    centreGroup->SetVisible(on);
+    transformBar->InvalidateLayout();
+    RefreshTransformBar();
+}
+
+bool ArtCreatorWindow::RotateHandlesShown() const {
+    return canvas && canvas->GetHandleMode() == VectorHandleMode::Rotate;
+}
+
+Point2Dd ArtCreatorWindow::TurnPivot() const {
+    return RotateHandlesShown() ? canvas->GetRotationCenter() : TransformPivot();
+}
+
+void ArtCreatorWindow::ApplyCentre(bool horizontal, double value) {
+    if (!canvas || selection->Empty()) return;
+    double k = 1;
+    std::string unit;
+    TransformUnit(k, unit);
+    Point2Dd c = canvas->GetRotationCenter();
+    const Point2Dd origin = settings.centreRelative ? canvas->SelectionFramePoint(0.5, 0.5) : Point2Dd(0, 0);
+    if (horizontal) c.x = origin.x + value * k;
+    else c.y = origin.y + value * k;
+    canvas->SetRotationCenter(c);
 }
 
 void ArtCreatorWindow::TransformUnit(double& pointsPerUnit, std::string& symbol) const {
@@ -801,12 +1029,12 @@ void ArtCreatorWindow::RefreshTransformBar() {
     const bool any = !selection->Empty();
     for (UltraCanvasUIElement* e : std::initializer_list<UltraCanvasUIElement*>{
              posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), scaleWBox.get(), scaleHBox.get(),
-             rotationBox.get(), shearBox.get()})
+             rotationBox.get(), shearBox.get(), centreXBox.get(), centreYBox.get(), centrePicker.get()})
         if (e->IsDisabled() == any) e->SetDisabled(!any);
     double k = 1;
     std::string unit;
     TransformUnit(k, unit);
-    for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get()}) {
+    for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), centreXBox.get(), centreYBox.get()}) {
         if (s->GetSuffix() != unit) s->SetSuffix(unit);
     }
     const auto ids = selection->Ids();
@@ -827,9 +1055,25 @@ void ArtCreatorWindow::RefreshTransformBar() {
         if (sameSelection) rotation += 360.0 * std::round((rotationBox->GetValue() - rotation) / 360.0);
         rotationBox->SetValue(rotation);
         shearBox->SetValue(shear);
+        // The rotation centre, on the page or from the middle of the frame;
+        // on the picker, one of its nine points or a ring pointing its way.
+        const Point2Dd c = canvas->GetRotationCenter();
+        const Point2Dd origin = settings.centreRelative ? canvas->SelectionFramePoint(0.5, 0.5) : Point2Dd(0, 0);
+        centreXBox->SetValue((c.x - origin.x) / k);
+        centreYBox->SetValue((c.y - origin.y) / k);
+        const Point2Dd f = canvas->SelectionFrameFraction(c);
+        std::optional<ReferencePoint> onPoint;
+        for (int i = 0; i < 9 && !onPoint; ++i) {
+            const Point2Dd p = ReferencePointFraction(static_cast<ReferencePoint>(i));
+            if (std::fabs(p.x - f.x) < 1e-6 && std::fabs(p.y - f.y) < 1e-6) onPoint = static_cast<ReferencePoint>(i);
+        }
+        if (onPoint) centrePicker->SetPoint(*onPoint);
+        else centrePicker->SetFreePoint(f);
     } else {
-        for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), rotationBox.get(), shearBox.get()})
+        for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), rotationBox.get(), shearBox.get(),
+                        centreXBox.get(), centreYBox.get()})
             s->SetValue(0);
+        centrePicker->SetPoint(ReferencePoint::Centre);
     }
     scaleWBox->SetValue(100);
     scaleHBox->SetValue(100);
@@ -846,8 +1090,13 @@ void ArtCreatorWindow::ApplyPosition(bool horizontal, double value, bool merge) 
     const double dy = horizontal ? 0.0 : value * k - p.y;
     if (std::fabs(dx) < 1e-9 && std::fabs(dy) < 1e-9) return;
     auto ids = selection->Ids();
-    history.Record("Move", [&]() { TranslateElements(selection->Elements(), dx, dy); }, merge);
+    history->Record("Move", [&]() { TranslateElements(selection->Elements(), dx, dy); }, merge);
     Reselect(ids);
+    // A rotation centre of the selection's own goes with it.
+    if (canvas->HasRotationCenter()) {
+        const Point2Dd c = canvas->GetRotationCenter();
+        canvas->SetRotationCenter(Point2Dd(c.x + dx, c.y + dy));
+    }
 }
 
 void ArtCreatorWindow::ApplySize(bool horizontal, double value, bool merge) {
@@ -871,7 +1120,7 @@ void ArtCreatorWindow::ApplyScalePercent(bool horizontal, double percent, bool m
     if (std::fabs(sx - 1.0) < 1e-9 && std::fabs(sy - 1.0) < 1e-9) { RefreshTransformBar(); return; }
     const Point2Dd pivot = TransformPivot();
     auto ids = selection->Ids();
-    history.Record("Resize", [&]() { ScaleElements(selection->Elements(), sx, sy, pivot); }, merge);
+    history->Record("Resize", [&]() { ScaleElements(selection->Elements(), sx, sy, pivot); }, merge);
     Reselect(ids);
 }
 
@@ -882,9 +1131,9 @@ void ArtCreatorWindow::ApplyRotation(double degrees, bool merge) {
     // The shortest turn there: 375 typed over 0 turns by 15.
     const double turn = std::remainder(degrees - rotation, 360.0);
     if (std::fabs(turn) < 1e-9) { RefreshTransformBar(); return; }
-    const Point2Dd pivot = TransformPivot();
+    const Point2Dd pivot = TurnPivot();
     auto ids = selection->Ids();
-    history.Record("Rotate", [&]() { RotateElements(selection->Elements(), -turn / kDegrees, pivot); }, merge);
+    history->Record("Rotate", [&]() { RotateElements(selection->Elements(), -turn / kDegrees, pivot); }, merge);
     Reselect(ids);
 }
 
@@ -898,45 +1147,13 @@ void ArtCreatorWindow::ApplyShear(double degrees, bool merge) {
     const double delta = std::atan(std::tan(-target / kDegrees) - std::tan(-shear / kDegrees));
     if (std::fabs(delta) < 1e-9) return;
     const double theta = -rotation / kDegrees;
-    const Point2Dd pivot = TransformPivot();
+    const Point2Dd pivot = TurnPivot();
     const Matrix3x3 m = Matrix3x3::Translate(pivot.x, pivot.y) * Matrix3x3::Rotate(theta) *
                         Matrix3x3::SkewX(delta) * Matrix3x3::Rotate(-theta) *
                         Matrix3x3::Translate(-pivot.x, -pivot.y);
     auto ids = selection->Ids();
-    history.Record("Shear", [&]() { TransformElements(selection->Elements(), m); }, merge);
+    history->Record("Shear", [&]() { TransformElements(selection->Elements(), m); }, merge);
     Reselect(ids);
-}
-
-namespace {
-    // The palette's groups, top to bottom, as UltraPaint's: tools of a kind
-    // share one slot, the group's main tool first. The slot shows the tool
-    // last picked from its group, and resting the pointer on it folds out a
-    // bar with the whole group. A group of one tool is a plain button. A
-    // tool missing here still gets a slot of its own, after these, so a tool
-    // added to CreateArtTools() never goes missing.
-    struct PaletteGroup {
-        const char* id;
-        std::vector<ArtToolId> tools;
-    };
-    const std::vector<PaletteGroup>& PaletteGroups() {
-        using T = ArtToolId;
-        static const std::vector<PaletteGroup> groups = {
-            { "select",  { T::Selector, T::ShapeEditor } },
-            { "draw",    { T::Pen, T::Freehand, T::Line } },
-            { "shapes",  { T::Rectangle, T::Ellipse, T::QuickShape } },
-            { "text",    { T::Text } },
-            { "fill",    { T::Fill, T::Transparency } },
-            { "effects", { T::Shadow, T::Feather, T::Contour, T::Bevel } },   // drawn around a shape
-            { "combine", { T::Blend, T::Mould } },                             // shapes into new ones
-            { "view",    { T::Zoom, T::Push } },
-        };
-        return groups;
-    }
-
-    // A tool's id among the palette's group items.
-    std::string ToolItemId(ArtToolId id) {
-        return "tool-" + std::to_string(static_cast<int>(id));
-    }
 }
 
 void ArtCreatorWindow::BuildToolPalette() {
@@ -945,67 +1162,25 @@ void ArtCreatorWindow::BuildToolPalette() {
     ToolbarAppearance app = palette->GetAppearance();
     app.showIconLabels = false;
     app.itemSpacing = 1.0f;
+    // The palette's icons are drawn on a 28 px grid (media/icons/artcreator/
+    // 28) with 2 px strokes on whole units: shown at 28 px they land on whole
+    // pixels and stay sharp; at any other size every line falls between two
+    // pixels and blurs.
+    app.iconSize = ToolbarIconSize::Custom;
+    app.customIconWidth = static_cast<int>(kToolIcon);
+    app.customIconHeight = static_cast<int>(kToolIcon);
     palette->SetAppearance(app);
     // The buttons keep their size: where the window is too short for all of
     // them the column scrolls (wheel, or the hints at its ends) rather than
     // squeezing every icon into a button too small for it.
     palette->SetOverflowMode(ToolbarOverflowMode::Scroll);
     palette->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    auto findTool = [this](ArtToolId id) -> const ArtTool* {
-        for (const auto& t : tools) if (t->id == id) return t.get();
-        return nullptr;
-    };
-    auto itemOf = [this](const ArtTool& t) {
-        ToolGroupItem item;
-        item.id = ToolItemId(t.id);
-        item.iconPath = ToolIconPath(t.iconFile);
-        item.tooltip = t.name;
-        if (t.shortcutKey) item.tooltip += std::string(" (") + t.shortcutKey + ")";
-        return item;
-    };
-
-    std::vector<std::pair<std::string, std::vector<ToolGroupItem>>> slots;
-    std::vector<ArtToolId> placed;
-    for (const auto& g : PaletteGroups()) {
-        std::vector<ToolGroupItem> items;
-        for (ArtToolId id : g.tools) {
-            if (const ArtTool* t = findTool(id)) { items.push_back(itemOf(*t)); placed.push_back(id); }
-        }
-        if (!items.empty()) slots.emplace_back(g.id, std::move(items));
-    }
-    for (const auto& t : tools) {
-        if (std::find(placed.begin(), placed.end(), t->id) != placed.end()) continue;
-        slots.emplace_back(ToolItemId(t->id), std::vector<ToolGroupItem>{ itemOf(*t) });
-    }
-
-    toolSlots.clear();
-    for (auto& [groupId, items] : slots) {
-        auto b = palette->AddToolGroup("ac-tools-" + groupId, items, [this](const std::string& itemId) {
-            for (const auto& t : tools) {
-                if (ToolItemId(t->id) == itemId) { SelectTool(t->id); return; }
-            }
-        });
-        b->SetSlotShowsLastPicked(true);
-        // The palette's icons are drawn on a 28 px grid (media/icons/
-        // artcreator/28) with 2 px strokes on whole units: shown at 28 px
-        // they land on whole pixels and stay sharp. Shown at any other size
-        // every line falls between two pixels and blurs, as the 24 px icons
-        // did at 22 px. The fold-out bar's buttons take the slot's size, icon
-        // size and style.
-        b->SetIconSize(kToolIcon, kToolIcon);
-        b->SetElementSize(Size2Df(kToolButton, kToolButton));
-        // Flat: no box around a tool; a soft grey under the pointer and the
-        // active tool on a light blue, both rounded.
-        ButtonStyle flat = b->GetStyle();
-        flat.normalColor = Colors::Transparent;
-        flat.borderWidth = 0;
-        flat.cornerRadius = 6.0f;
-        flat.hoverColor = Color(0, 0, 0, 18);
-        flat.pressedColor = Color(0, 103, 192, 46);
-        b->SetStyle(flat);
-        toolSlots.push_back(b);
-    }
+    // A slot per group of tools, the others in its fold-out bar
+    // (ArtCreatorCommands.cpp); a right click shows, hides and folds them.
+    ApplyPaletteLayout();
+    InstallToolbarContextMenu(*palette, paletteLayout, commands,
+                              [this]() { ApplyPaletteLayout(); SaveLayouts(); },
+                              [this]() { OpenCustomise("t1"); });
     body->AddChild(palette);
 }
 
@@ -1081,13 +1256,13 @@ void ArtCreatorWindow::BuildRightPanel() {
         ApplyFillColour(c, true);
     };
     palettes->onPalettesChanged = [this]() {
-        // The file holds what this window has, as RememberColourPicker.
-        settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
-        settings.Save();
+        // Only the rows go to the file; another window's other settings stay.
+        const std::string rows = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
+        settings.Update([&rows](ArtCreatorSettings& s) { s.palettes = rows; });
     };
     palettes->onUserPalettesChanged = [this]() {
-        settings.userPalettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
-        settings.Save();
+        const std::string own = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
+        settings.Update([&own](ArtCreatorSettings& s) { s.userPalettes = own; });
     };
     // A swatch under the pointer floods the picker too, as the rows, so the
     // colour is seen on the whole of the card.
@@ -1143,11 +1318,15 @@ void ArtCreatorWindow::BuildRightPanel() {
 }
 
 void ArtCreatorWindow::RememberColourPicker() {
-    // The file holds only the picker, so this window's state is the whole of
-    // it: whichever window changed its picker last is the one remembered.
-    settings.pickerDesign = colorPicker->GetWheelStyle();
-    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
-    settings.Save();
+    // Whichever window changed its picker last is the one remembered; the
+    // other settings stay as the file has them (another window may have
+    // changed them since this one opened).
+    const ColorPickerWheelStyle design = colorPicker->GetWheelStyle();
+    const bool open = colorPicker->GetSlidersExpanded();
+    settings.Update([design, open](ArtCreatorSettings& s) {
+        s.pickerDesign = design;
+        s.pickerChannelsOpen = open;
+    });
 }
 
 void ArtCreatorWindow::BuildStatusBar() {
@@ -1174,42 +1353,46 @@ void ArtCreatorWindow::InstallShortcuts() {
     window->InstallEventFilter("ac-shortcuts", [this](const UCEvent& e) -> bool {
         if (e.type != UCEventType::KeyDown) return false;
         if (window->GetActivePopupElement()) return false;
-        if (FocusIsTextEntry(window.get())) return false;
-        const UCKeys k = e.virtualKey;
-        if (e.ctrl) {
-            switch (k) {
-                case UCKeys::N:
-                    if (e.alt) CmdNewWindow(); else if (e.shift) CmdLayerAdd(); else CmdNew();
-                    return true;
-                case UCKeys::O: CmdOpen(); return true;
-                case UCKeys::S: if (e.shift) CmdSaveAs(); else CmdSave(); return true;
-                case UCKeys::E: CmdExport(); return true;
-                case UCKeys::Q: CmdQuit(); return true;
-                case UCKeys::Z: if (e.shift) CmdRedo(); else CmdUndo(); return true;
-                case UCKeys::Y: CmdRedo(); return true;
-                case UCKeys::X: CmdCut(); return true;
-                case UCKeys::C: CmdCopy(); return true;
-                case UCKeys::V: CmdPaste(); return true;
-                case UCKeys::D: CmdDuplicate(); return true;
-                case UCKeys::A: if (e.shift) CmdSelectNone(); else CmdSelectAll(); return true;
-                case UCKeys::G: CmdGroup(); return true;
-                case UCKeys::U: CmdUngroup(); return true;
-                case UCKeys::F: CmdReorder(e.shift ? ZOrderMove::Forward : ZOrderMove::ToFront); return true;
-                case UCKeys::B: CmdReorder(e.shift ? ZOrderMove::Backward : ZOrderMove::ToBack); return true;
-                case UCKeys::Key0: canvas->ZoomToPage(); return true;
-                case UCKeys::Key1: canvas->ZoomToActual(); return true;
-                case UCKeys::P: if (!e.shift) break; CmdSnapToPixels(); return true;
-                default: break;
+        // The file commands still work while a text is typed (it is
+        // finished first); every other key is the text's.
+        const bool fileKey = e.ctrl && (e.virtualKey == UCKeys::S || e.virtualKey == UCKeys::O ||
+                                        e.virtualKey == UCKeys::N || e.virtualKey == UCKeys::E ||
+                                        e.virtualKey == UCKeys::Q || e.virtualKey == UCKeys::W);
+        // A control of the text bar has the keyboard (a size typed, a font
+        // looked up by its first letters): the keys are its, and the text
+        // being typed stays open - a shortcut that finished it sent the
+        // size to the whole text. Escape gives the keys back to the text.
+        if (textBar && textBar->IsVisible() && textBar->HasKeyboardFocus() && !fileKey) {
+            if (e.virtualKey == UCKeys::Escape && IsEditingText() && textEditor) {
+                textEditor->SetFocus(true);
+                return true;
             }
             return false;
         }
-        if (k == UCKeys::Delete && activeTool != ArtToolId::ShapeEditor) { CmdDelete(); return true; }
-        // single-letter tool keys
-        if (!e.alt && !e.shift && k >= UCKeys::A && k <= UCKeys::Z) {
-            for (const auto& t : tools)
-                if (t->shortcutKey && t->shortcutKey == static_cast<char>(k)) { SelectTool(t->id); return true; }
+        // Typing on the page: Escape, or Ctrl+Enter, finishes the text
+        // (Enter starts a new line in it).
+        if (IsEditingText() && (e.virtualKey == UCKeys::Escape ||
+                                (e.ctrl && (e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter)))) {
+            CommitTextEdit();
+            return true;
         }
-        return false;
+        // Ctrl+Tab and Ctrl+Shift+Tab go through the drawings' tabs.
+        if (e.ctrl && !e.alt && e.virtualKey == UCKeys::Tab) {
+            CmdNextTab(e.shift ? -1 : 1);
+            return true;
+        }
+        if (IsEditingText() && fileKey) return RunShortcut(e);
+        if (FocusIsTextEntry(window.get())) return false;
+        // Delete is the Shape Editor's own while it is active (its nodes).
+        if (!e.ctrl && !e.alt && e.virtualKey == UCKeys::Delete) {
+            if (activeTool == ArtToolId::ShapeEditor) return false;
+            CmdDelete();
+            return true;
+        }
+        // Ctrl with a letter or digit, and a tool's letter alone: the
+        // command whose shortcut that is - the one its menu entry shows.
+        if (!e.ctrl && (e.alt || e.shift)) return false;
+        return RunShortcut(e);
     }, { UCEventType::KeyDown });
 }
 
@@ -1217,7 +1400,8 @@ void ArtCreatorWindow::InstallShortcuts() {
 // DOCUMENT
 // ===========================================================================
 
-void ArtCreatorWindow::NewDrawing(const ArtCreatorPageResult& page) {
+void ArtCreatorWindow::NewDrawing(const ArtCreatorPageResult& page, bool inNewTab) {
+    if (inNewTab) AddDrawingTab();
     lastPage = page;
     auto doc = std::make_shared<VectorDocument>();
     const double w = page.landscape ? std::max(page.WidthPoints(), page.HeightPoints()) : std::min(page.WidthPoints(), page.HeightPoints());
@@ -1232,19 +1416,22 @@ void ArtCreatorWindow::NewDrawing(const ArtCreatorPageResult& page) {
 }
 
 void ArtCreatorWindow::SetDocument(std::shared_ptr<VectorDocument> doc, const std::string& path) {
+    DropTextEdit();
     document = std::move(doc);
     documentPath = path;
     modified = false;
     activeLayerIndex = std::max(0, static_cast<int>(document->Layers.size()) - 1);
     selection->Clear();
-    history.SetDocument(document);
+    history->SetDocument(document);
     canvas->SetDocument(document);
     canvas->ClearGuides();
     if (document->ViewBox.width <= 0 || document->ViewBox.height <= 0)
         document->ViewBox = Rect2Dd{0, 0, document->Size.width, document->Size.height};
     canvas->ZoomToPage();
+    // A new tab's switch ends here, now there is a drawing to start the tool on.
+    if (toolIdle) { toolIdle = false; SelectTool(activeTool); }
     RebuildLayerPanel();
-    UpdateUndoButtons();
+    RefreshCommandStates();
     UpdateTitle();
     UpdateStatus();
     RefreshTransformBar();
@@ -1263,6 +1450,18 @@ std::vector<std::string> ArtCreatorWindow::SaveableExtensions() {
 }
 
 bool ArtCreatorWindow::OpenFile(const std::string& path) {
+    // A drawing open already comes forward rather than opening twice.
+    if (!path.empty()) {
+        const std::string wanted = NormalizePath(path);
+        for (int i = 0; i < static_cast<int>(drawings.size()); ++i) {
+            const std::string& open = i == activeDrawing ? documentPath : drawings[i]->documentPath;
+            if (!open.empty() && NormalizePath(open) == wanted) {
+                SwitchToTab(i);
+                if (statusHint) statusHint->SetText(TrF("{0} is open already", FileNameOf(path)));
+                return true;
+            }
+        }
+    }
     std::string error;
     std::vector<std::string> warnings;
     auto doc = UltraCanvasFileLoader::LoadVectorDocument(path, error, &warnings);
@@ -1278,6 +1477,9 @@ bool ArtCreatorWindow::OpenFile(const std::string& path) {
     }
     if (doc->Layers.empty()) doc->AddLayer("Layer 1");
     EnsureIds(*doc);
+    // A tab of its own - unless the one shown holds a new drawing nobody
+    // has touched, which the file takes the place of.
+    if (!ActiveTabIsPristine()) AddDrawingTab();
     SetDocument(doc, path);
     canvas->SetRulerUnit(lastPage.PointsPerUnit(), ArtCreatorPageResult::UnitSymbol(lastPage.unit));
     // A square page of one of the icon sizes - 24 x 24, the way icons are
@@ -1306,7 +1508,11 @@ bool ArtCreatorWindow::SaveToPath(const std::string& path, const FileSaveImageSi
         return false;
     }
     // Only a format that keeps the drawing editable becomes the document's file.
-    if (UltraCanvasFileLoader::CanLoadVectorDocument(path)) { documentPath = path; modified = false; }
+    if (UltraCanvasFileLoader::CanLoadVectorDocument(path)) {
+        documentPath = path;
+        modified = false;
+        if (activeDrawing >= 0) drawings[activeDrawing]->untitledNumber = 0;
+    }
     UpdateTitle();
     if (statusHint && UltraCanvasFileLoader::CanSaveImage(path)) {
         const Size2Di pixels = size.IsOriginal() ? UltraCanvasFileLoader::GetVectorDocumentPixelSize(*document)
@@ -1341,7 +1547,7 @@ void ArtCreatorWindow::OnDocumentChanged() {
     if (activeLayerIndex >= static_cast<int>(document->Layers.size())) activeLayerIndex = std::max(0, static_cast<int>(document->Layers.size()) - 1);
     canvas->Refresh();
     RebuildLayerPanel();
-    UpdateUndoButtons();
+    RefreshCommandStates();
     UpdateTitle();
     UpdateStatus();
     RefreshIconPreview();
@@ -1355,12 +1561,15 @@ void ArtCreatorWindow::OnSelectionChanged() {
     RefreshTransformBar();
     if (auto* t = ActiveTool()) t->OnSelectionChanged(toolContext);
     UpdateToolCards();   // the Line card follows a selected line
+    if (activeTool == ArtToolId::Text && !IsEditingText()) SyncTextBar();   // the selected text's attributes
     UpdateStatus();
+    RefreshCommandStates();   // what needs a selection follows it
 }
 
 void ArtCreatorWindow::UpdateTitle() {
+    UpdateTabTitle(activeDrawing);
     if (!window) return;
-    std::string t = FileNameOf(documentPath);
+    std::string t = TabTitle(activeDrawing);
     if (modified) t = "*" + t;
     window->SetWindowTitle(t + " - ArtCreator " ARTCREATOR_VERSION);
 }
@@ -1383,17 +1592,6 @@ void ArtCreatorWindow::UpdateStatus() {
         std::snprintf(buf, sizeof(buf), "1 %s  %.1f x %.1f %s", ElementKindName(*selection->First()), b.width / k, b.height / k, unit);
     } else std::snprintf(buf, sizeof(buf), "%zu objects selected", selection->Count());
     statusSelection->SetText(buf);
-}
-
-void ArtCreatorWindow::UpdateUndoButtons() {
-    if (undoButton) {
-        undoButton->SetDisabled(!history.CanUndo());
-        undoButton->SetTooltip(history.CanUndo() ? "Undo " + history.UndoLabel() + " (Ctrl+Z)" : "Undo (Ctrl+Z)");
-    }
-    if (redoButton) {
-        redoButton->SetDisabled(!history.CanRedo());
-        redoButton->SetTooltip(history.CanRedo() ? "Redo " + history.RedoLabel() + " (Ctrl+Y)" : "Redo (Ctrl+Y)");
-    }
 }
 
 std::shared_ptr<VectorLayer> ArtCreatorWindow::ActiveLayer() const {
@@ -1421,11 +1619,8 @@ void ArtCreatorWindow::Reselect(const std::vector<std::string>& ids) {
 
 void ArtCreatorWindow::CmdNew() {
     auto dlg = std::make_shared<ArtCreatorPageDialog>(lastPage, false);
-    dlg->onAccept = [this](const ArtCreatorPageResult& r) {
-        auto go = [this, r]() { NewDrawing(r); };
-        if (modified) ConfirmDiscard("Discard the unsaved changes and start a new drawing?", go);
-        else go();
-    };
+    // The new drawing opens in a tab of its own: nothing open is replaced.
+    dlg->onAccept = [this](const ArtCreatorPageResult& r) { NewDrawing(r); };
     ShowDialog(dlg);
 }
 
@@ -1443,9 +1638,7 @@ void ArtCreatorWindow::CmdOpen() {
         .SetParentWindow(window.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
-        auto go = [this, path]() { OpenFile(path); };
-        if (modified) ConfirmDiscard("Discard the unsaved changes and open " + FileNameOf(path) + "?", go);
-        else go();
+        OpenFile(path);   // in a tab of its own: nothing open is replaced
     });
 }
 
@@ -1511,7 +1704,7 @@ void ArtCreatorWindow::CmdDocumentSetup() {
         lastPage = r;
         const double w = r.landscape ? std::max(r.WidthPoints(), r.HeightPoints()) : std::min(r.WidthPoints(), r.HeightPoints());
         const double h = r.landscape ? std::min(r.WidthPoints(), r.HeightPoints()) : std::max(r.WidthPoints(), r.HeightPoints());
-        history.Record("Document Setup", [&]() {
+        history->Record("Document Setup", [&]() {
             document->Size = Size2Dd{w, h};
             document->ViewBox = Rect2Dd{0, 0, w, h};
         });
@@ -1523,8 +1716,9 @@ void ArtCreatorWindow::CmdDocumentSetup() {
 }
 
 void ArtCreatorWindow::CmdQuit() {
+    CommitTextEdit();
     int unsaved = 0;
-    for (const auto& editor : OpenWindows()) if (editor && editor->modified) ++unsaved;
+    for (const auto& editor : OpenWindows()) if (editor) unsaved += editor->UnsavedDrawingCount();
     auto go = []() { if (auto* app = UltraCanvasApplication::GetInstance()) app->RequestExit(); };
     if (unsaved == 0) { go(); return; }
     ConfirmDiscard(unsaved == 1 ? "A drawing has unsaved changes. Quit anyway?"
@@ -1543,8 +1737,8 @@ void ArtCreatorWindow::CmdAbout() {
 // EDIT COMMANDS
 // ===========================================================================
 
-void ArtCreatorWindow::CmdUndo() { history.Undo(); }
-void ArtCreatorWindow::CmdRedo() { history.Redo(); }
+void ArtCreatorWindow::CmdUndo() { CommitTextEdit(); history->Undo(); }
+void ArtCreatorWindow::CmdRedo() { CommitTextEdit(); history->Redo(); }
 
 void ArtCreatorWindow::CmdCopy() {
     clipboard.clear();
@@ -1710,7 +1904,7 @@ void ArtCreatorWindow::PlaceElement(const ElementPtr& element, const std::string
     auto layer = ActiveLayer();
     if (!layer || !element) return;
     if (element->Id.empty()) element->Id = GenerateId();
-    history.Record(label, [&]() {
+    history->Record(label, [&]() {
         if (alongside) alongside();
         layer->AddChild(element);
     });
@@ -1721,7 +1915,7 @@ void ArtCreatorWindow::PasteCopiedElements() {
     if (clipboard.empty() || !document) return;
     ++pasteCount;
     std::vector<std::string> ids;
-    history.Record("Paste", [&]() {
+    history->Record("Paste", [&]() {
         auto layer = ActiveLayer();
         if (!layer) return;
         for (const auto& c : clipboard) {
@@ -1744,13 +1938,13 @@ void ArtCreatorWindow::PasteCopiedElements() {
 void ArtCreatorWindow::CmdDuplicate() {
     if (selection->Empty()) return;
     std::vector<std::string> ids;
-    history.Record("Duplicate", [&]() { for (auto& e : DuplicateElements(selection->Elements(), 12, 12)) ids.push_back(e->Id); });
+    history->Record("Duplicate", [&]() { for (auto& e : DuplicateElements(selection->Elements(), 12, 12)) ids.push_back(e->Id); });
     Reselect(ids);
 }
 
 void ArtCreatorWindow::CmdDelete() {
     if (selection->Empty()) return;
-    history.Record("Delete", [&]() { DeleteElements(selection->Elements()); });
+    history->Record("Delete", [&]() { DeleteElements(selection->Elements()); });
     selection->Clear();
 }
 
@@ -1769,7 +1963,7 @@ void ArtCreatorWindow::CmdSelectNone() { selection->Clear(); }
 void ArtCreatorWindow::CmdReorder(ZOrderMove move) {
     if (selection->Empty()) return;
     auto ids = selection->Ids();
-    history.Record(move == ZOrderMove::ToFront ? "Bring to Front" : move == ZOrderMove::ToBack ? "Send to Back"
+    history->Record(move == ZOrderMove::ToFront ? "Bring to Front" : move == ZOrderMove::ToBack ? "Send to Back"
                    : move == ZOrderMove::Forward ? "Bring Forward" : "Send Backward",
                    [&]() { ReorderElements(selection->Elements(), move); });
     Reselect(ids);
@@ -1778,14 +1972,14 @@ void ArtCreatorWindow::CmdReorder(ZOrderMove move) {
 void ArtCreatorWindow::CmdGroup() {
     if (selection->Count() < 2) return;
     std::string id;
-    history.Record("Group", [&]() { if (auto g = GroupElements(selection->Elements())) id = g->Id; });
+    history->Record("Group", [&]() { if (auto g = GroupElements(selection->Elements())) id = g->Id; });
     if (!id.empty()) Reselect({id});
 }
 
 void ArtCreatorWindow::CmdUngroup() {
     if (selection->Empty()) return;
     std::vector<std::string> ids;
-    history.Record("Ungroup", [&]() { for (auto& e : UngroupElements(selection->Elements())) ids.push_back(e->Id); });
+    history->Record("Ungroup", [&]() { for (auto& e : UngroupElements(selection->Elements())) ids.push_back(e->Id); });
     Reselect(ids);
 }
 
@@ -1798,7 +1992,7 @@ void ArtCreatorWindow::CmdMirror(bool horizontal) {
     auto ids = selection->Ids();
     const Rect2Dd b = selection->Bounds();
     const Point2Dd pivot{b.x + b.width / 2.0, b.y + b.height / 2.0};
-    history.Record(horizontal ? "Mirror Horizontally" : "Mirror Vertically", [&]() {
+    history->Record(horizontal ? "Mirror Horizontally" : "Mirror Vertically", [&]() {
         ScaleElements(selection->Elements(), horizontal ? -1.0 : 1.0, horizontal ? 1.0 : -1.0, pivot);
     });
     Reselect(ids);
@@ -1809,21 +2003,21 @@ void ArtCreatorWindow::CmdAlign(AlignMode mode, bool toPage) {
     auto ids = selection->Ids();
     std::optional<Rect2Dd> ref;
     if (toPage) ref = Rect2Dd(0, 0, document->Size.width, document->Size.height);
-    history.Record("Align", [&]() { AlignElements(selection->Elements(), mode, ref); });
+    history->Record("Align", [&]() { AlignElements(selection->Elements(), mode, ref); });
     Reselect(ids);
 }
 
 void ArtCreatorWindow::CmdDistribute(DistributeMode mode) {
     if (selection->Count() < 3) return;
     auto ids = selection->Ids();
-    history.Record("Distribute", [&]() { DistributeElements(selection->Elements(), mode); });
+    history->Record("Distribute", [&]() { DistributeElements(selection->Elements(), mode); });
     Reselect(ids);
 }
 
 void ArtCreatorWindow::CmdConvertToPath() {
     if (selection->Empty()) return;
     auto ids = selection->Ids();
-    history.Record("Convert to Editable Shapes", [&]() { for (auto& e : selection->Elements()) ConvertToPath(e); });
+    history->Record("Convert to Editable Shapes", [&]() { for (auto& e : selection->Elements()) ConvertToPath(e); });
     Reselect(ids);
 }
 
@@ -1832,7 +2026,7 @@ void ArtCreatorWindow::CmdCombine(CombineOp op) {
     if (selection->Count() < 2) return;
     static const char* labels[] = { "Add Shapes", "Subtract Shapes", "Intersect Shapes", "Slice Shapes" };
     std::vector<std::string> ids;
-    history.Record(labels[static_cast<int>(op)], [&]() {
+    history->Record(labels[static_cast<int>(op)], [&]() {
         for (auto& e : CombineShapes(selection->Elements(), op)) ids.push_back(e->Id);
     });
     if (ids.empty() && toolContext.setStatus) toolContext.setStatus("Combine shapes needs two or more shapes with outlines");
@@ -1844,7 +2038,7 @@ void ArtCreatorWindow::CmdCombine(CombineOp op) {
 void ArtCreatorWindow::CmdApplyClipView() {
     if (selection->Count() < 2) return;
     std::string id;
-    history.Record("Apply ClipView", [&]() {
+    history->Record("Apply ClipView", [&]() {
         const auto ordered = SortByDrawingOrder(selection->Elements());
         auto parent = ParentOf(ordered.back());
         if (!parent) return;
@@ -1871,21 +2065,21 @@ void ArtCreatorWindow::CmdRemoveContainer() {
             containers.push_back(e);
     if (containers.empty()) { if (toolContext.setStatus) toolContext.setStatus("Select a clip view, blend or mould to remove"); return; }
     std::vector<std::string> ids;
-    history.Record("Remove Container", [&]() { for (auto& e : UngroupElements(containers)) ids.push_back(e->Id); });
+    history->Record("Remove Container", [&]() { for (auto& e : UngroupElements(containers)) ids.push_back(e->Id); });
     Reselect(ids);
 }
 
 void ArtCreatorWindow::CmdRemoveFill() {
     if (selection->Empty()) return;
     auto ids = selection->Ids();
-    history.Record("No Fill", [&]() { for (auto& e : selection->Elements()) e->Style.Fill.reset(); });
+    history->Record("No Fill", [&]() { for (auto& e : selection->Elements()) e->Style.Fill.reset(); });
     Reselect(ids);
 }
 
 void ArtCreatorWindow::CmdRemoveLine() {
     if (selection->Empty()) return;
     auto ids = selection->Ids();
-    history.Record("No Line", [&]() { for (auto& e : selection->Elements()) e->Style.Stroke.reset(); });
+    history->Record("No Line", [&]() { for (auto& e : selection->Elements()) e->Style.Stroke.reset(); });
     Reselect(ids);
 }
 
@@ -1893,7 +2087,7 @@ void ArtCreatorWindow::CmdLineWidth(float width) {
     toolOptions.strokeWidth = width;
     if (selection->Empty()) return;
     auto ids = selection->Ids();
-    history.Record("Line Width", [&]() {
+    history->Record("Line Width", [&]() {
         for (auto& e : selection->Elements()) {
             if (!e->Style.Stroke.has_value()) { StrokeData st; st.Fill = lineColour; e->Style.Stroke = st; }
             e->Style.Stroke->Width = width;
@@ -1924,7 +2118,7 @@ void ArtCreatorWindow::CmdLineWidthPixels(int pixels) {
 void ArtCreatorWindow::CmdLayerAdd() {
     if (!document) return;
     const int n = static_cast<int>(document->Layers.size());
-    history.Record("New Layer", [&]() {
+    history->Record("New Layer", [&]() {
         auto layer = document->AddLayer("Layer " + std::to_string(n + 1));
         layer->Id = GenerateId("layer");
     });
@@ -1934,7 +2128,7 @@ void ArtCreatorWindow::CmdLayerAdd() {
 void ArtCreatorWindow::CmdLayerDelete() {
     if (!document || document->Layers.size() <= 1) return;
     const int i = activeLayerIndex;
-    history.Record("Delete Layer", [&]() {
+    history->Record("Delete Layer", [&]() {
         if (i >= 0 && i < static_cast<int>(document->Layers.size())) document->Layers.erase(document->Layers.begin() + i);
     });
     selection->Clear();
@@ -1945,14 +2139,14 @@ void ArtCreatorWindow::CmdLayerMove(int delta) {
     if (!document) return;
     const int i = activeLayerIndex, j = i + delta;
     if (j < 0 || j >= static_cast<int>(document->Layers.size())) return;
-    history.Record(delta > 0 ? "Move Layer Up" : "Move Layer Down", [&]() { std::swap(document->Layers[i], document->Layers[j]); });
+    history->Record(delta > 0 ? "Move Layer Up" : "Move Layer Down", [&]() { std::swap(document->Layers[i], document->Layers[j]); });
     SetActiveLayer(j);
 }
 
 void ArtCreatorWindow::CmdLayerToggle(bool visible) {
     auto layer = ActiveLayer();
     if (!layer) return;
-    history.Record(visible ? "Show Layer" : "Hide Layer", [&]() { layer->Visible = visible; });
+    history->Record(visible ? "Show Layer" : "Hide Layer", [&]() { layer->Visible = visible; });
     if (!visible) selection->Clear();
 }
 
@@ -1966,14 +2160,13 @@ ArtTool* ArtCreatorWindow::ActiveTool() const {
 }
 
 void ArtCreatorWindow::SelectTool(ArtToolId id) {
+    if (id != ArtToolId::Text) CommitTextEdit();
+    ShowTextBar(id == ArtToolId::Text);
     if (auto* old = ActiveTool()) { if (old->id != id) old->Deactivate(toolContext); }
     activeTool = id;
     ArtTool* t = ActiveTool();
     // The slot of the tool's group shows it and is pressed; the others not.
-    for (const auto& slot : toolSlots) {
-        const bool on = slot->SetCurrentItem(ToolItemId(id));
-        if (slot->IsPressed() != on) slot->SetPressed(on);
-    }
+    if (palette) palette->RefreshCommandStates();
     if (!t) return;
     t->Activate(toolContext);
     canvas->SetToolCursor(t->Cursor());
@@ -2029,7 +2222,7 @@ void ArtCreatorWindow::RebuildLinePanel() {
         o.strokeWidth = v;
         if (selection->Empty()) return;
         auto ids = selection->Ids();
-        history.Record("Line Width", [&]() {
+        history->Record("Line Width", [&]() {
             for (auto& e : selection->Elements()) {
                 if (!e->Style.Stroke.has_value()) { StrokeData st; st.Fill = lineColour; e->Style.Stroke = st; }
                 e->Style.Stroke->Width = v;
@@ -2053,7 +2246,7 @@ void ArtCreatorWindow::RebuildLinePanel() {
 void ArtCreatorWindow::ApplyLineGallery(const std::string& label) {
     if (syncingColours || selection->Empty()) return;
     auto ids = selection->Ids();
-    history.Record(label, [&]() {
+    history->Record(label, [&]() {
         for (auto& e : selection->Elements()) {
             if (!e) continue;
             if (!e->Style.Stroke.has_value()) { StrokeData st; st.Fill = lineColour; st.Width = toolOptions.strokeWidth; e->Style.Stroke = st; }
@@ -2092,7 +2285,7 @@ void ArtCreatorWindow::RebuildLayerPanel() {
             if (i >= static_cast<int>(document->Layers.size())) return;
             auto l = document->Layers[i];
             const bool on = s == CheckedState::Checked;
-            history.Record(on ? "Show Layer" : "Hide Layer", [&]() { l->Visible = on; });
+            history->Record(on ? "Show Layer" : "Hide Layer", [&]() { l->Visible = on; });
         };
         vis->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->AddChild(vis);
@@ -2103,7 +2296,7 @@ void ArtCreatorWindow::RebuildLayerPanel() {
             if (i >= static_cast<int>(document->Layers.size())) return;
             auto l = document->Layers[i];
             const bool on = s == CheckedState::Checked;
-            history.Record(on ? "Lock Layer" : "Unlock Layer", [&]() { l->Locked = on; });
+            history->Record(on ? "Lock Layer" : "Unlock Layer", [&]() { l->Locked = on; });
         };
         lock->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->AddChild(lock);
@@ -2147,7 +2340,31 @@ void ArtCreatorWindow::SyncColourPanelFromSelection() {
 }
 
 void ArtCreatorWindow::ApplyFillColour(const Color& c, bool commit) {
-    if (syncingColours || selection->Empty()) return;
+    if (syncingColours) return;
+    // While a text is typed, the colour is the text's: it goes into the
+    // edit, and the keys go back to the text once the choice is made.
+    if (textSession && textEditor) {
+        if (textEditor->HasSelection()) {
+            // The selected words take it, as runs of their own.
+            RichCharFormatDelta delta;
+            delta.setColor = true;
+            delta.color = Color(c.r, c.g, c.b).ToHexString();
+            textEditor->ApplyCharFormat(delta);
+        } else {
+            // Nothing selected: the whole text, its words' own colours too.
+            textSession->model->Style.Fill = c;
+            textSession->fillChanged = true;
+            if (auto words = textEditor->GetDocument()) {
+                for (auto& block : words->blocks)
+                    for (auto& run : block.runs) run.color.clear();
+            }
+            textEditor->SetStyle(TextEditorStyle());
+            textEditor->InvalidateDocument();
+        }
+        if (commit) textEditor->SetFocus(true);
+        return;
+    }
+    if (selection->Empty()) return;
     auto ids = selection->Ids();
     auto apply = [&]() {
         for (auto& e : selection->Elements()) {
@@ -2163,9 +2380,13 @@ void ArtCreatorWindow::ApplyFillColour(const Color& c, bool commit) {
                 }
             }
             if (!done) e->Style.Fill = c;
+            // A whole text takes the colour: its words' own colours go.
+            if (!done)
+                if (auto* t = dynamic_cast<VectorText*>(e.get()))
+                    for (auto& span : t->Spans) span.Style.FillColor.reset();
         }
     };
-    if (commit) { history.Record("Fill Colour", apply, true); Reselect(ids); }
+    if (commit) { history->Record("Fill Colour", apply, true); Reselect(ids); }
     else { apply(); canvas->Refresh(); }
     if (commit) { syncingColours = true; SyncColourPanelFromSelection(); syncingColours = false; }
 }
@@ -2180,7 +2401,7 @@ void ArtCreatorWindow::ApplyLineColour(const Color& c, bool commit) {
             e->Style.Stroke->Fill = c;
         }
     };
-    if (commit) { history.Record("Line Colour", apply, true); Reselect(ids); }
+    if (commit) { history->Record("Line Colour", apply, true); Reselect(ids); }
     else { apply(); canvas->Refresh(); }
 }
 
@@ -2204,24 +2425,778 @@ void ArtCreatorWindow::ApplyRamp(bool commit) {
         lg.Stops = ramp->GetStops();
         el->Style.Fill = GradientData{lg};
     };
-    if (commit) { history.Record("Gradient", apply, true); Reselect({id}); }
+    if (commit) { history->Record("Gradient", apply, true); Reselect({id}); }
     else { apply(); canvas->Refresh(); }
 }
 
-void ArtCreatorWindow::PlaceText(double x, double y, const ArtCreatorTextResult& r) {
-    if (r.text.empty() || !document) return;
-    auto text = std::make_shared<VectorText>();
-    text->Position = {x, y};
-    text->BaseStyle.FontFamily = r.font;
-    text->BaseStyle.FontSize = static_cast<float>(r.size);
-    text->BaseStyle.Weight = r.bold ? FontWeight::Bold : FontWeight::Normal;
-    text->BaseStyle.Slant = r.italic ? FontSlant::Italic : FontSlant::Normal;
-    text->SetText(r.text);
-    text->Style.Fill = fillColour;
+// ===========================================================================
+// TYPING TEXT ON THE PAGE
+// ===========================================================================
+
+namespace {
+    // The text engine takes sizes in points at 96 dpi; the drawing's text
+    // sizes are in its own units (VectorRenderer::RenderText).
+    constexpr float kTextPointsPerUnit = 72.0f / 96.0f;
+
+    FontStyle SpanFont(const VectorTextStyle& style, const VectorTextStyle& base) {
+        VectorTextStyle st = style;
+        if (st.FontFamily.empty()) st.FontFamily = base.FontFamily;
+        if (st.FontSize <= 0) st.FontSize = base.FontSize;
+        FontStyle fs = st.ToFontStyle();
+        if (fs.fontFamily.empty()) fs.fontFamily = "Sans";
+        fs.fontSize *= kTextPointsPerUnit;
+        return fs;
+    }
+
+    // From one baseline of a text to the next: its line spacing (a factor
+    // of its size, 1.2 when it states none) times its size.
+    double LineAdvance(const VectorText& text) {
+        const double size = std::max(1.0f, text.BaseStyle.FontSize);
+        const double factor = text.BaseStyle.LineHeight > 0.0f ? text.BaseStyle.LineHeight : 1.2;
+        return size * factor;
+    }
+
+    // How far below the top of a line the editor puts its baseline when the
+    // line is `advance` tall exactly, as StampEditorParagraphs makes them:
+    // measured the way the editor lays it out (its layouts, its absolute
+    // line height), in document units.
+    double EditorBaseline(IRenderContext* ctx, const FontStyle& font, double advance) {
+        double baseline = font.fontSize / kTextPointsPerUnit * 0.8 + (advance - font.fontSize / kTextPointsPerUnit * 1.2) / 2.0;
+        if (!ctx) return baseline;
+        ctx->PushState();
+        if (auto probe = ctx->CreateTextLayout("Ag", false)) {
+            probe->SetFontStyle(font);
+            if (auto height = TextAttributeFactory::CreateAbsoluteLineHeight(advance)) {
+                height->SetRange(0, 2);
+                probe->InsertAttribute(std::move(height));
+            }
+            if (probe->GetBaseline() > 0) baseline = probe->GetBaseline();
+        }
+        ctx->PopState();
+        return baseline;
+    }
+
+    // A run of the editor in a span's style, against the text's base style
+    // (which is the editor's base font). Underline and strikethrough are the
+    // runs' own, always stated.
+    RichTextRun RunFromSpan(const VectorTextStyle& span, const VectorTextStyle& base) {
+        RichTextRun run;
+        const bool baseBold = base.Weight >= FontWeight::Bold;
+        const bool baseItalic = base.Slant != FontSlant::Normal;
+        run.bold = span.Weight >= FontWeight::Bold && !baseBold;
+        run.italic = span.Slant != FontSlant::Normal && !baseItalic;
+        run.underline = span.Underline;
+        run.strikethrough = span.StrikeThrough;
+        if (!span.FontFamily.empty() && span.FontFamily != base.FontFamily) run.fontFamily = span.FontFamily;
+        if (span.FontSize > 0 && std::fabs(span.FontSize - base.FontSize) > 1e-3f)
+            run.fontSizePt = span.FontSize * kTextPointsPerUnit;
+        if (std::fabs(span.LetterSpacing - base.LetterSpacing) > 1e-4f)
+            run.letterSpacingPt = span.LetterSpacing * kTextPointsPerUnit;
+        if (span.FillColor) run.color = span.FillColor->ToHexString();
+        return run;
+    }
+
+    // "#RRGGBB" (a run's colour) as a colour; nothing for anything else.
+    std::optional<Color> ColourOfHex(const std::string& hex) {
+        if (hex.size() != 7 || hex[0] != '#') return std::nullopt;
+        unsigned value = 0;
+        for (size_t i = 1; i < 7; ++i) {
+            const char c = hex[i];
+            const int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                            : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+            if (digit < 0) return std::nullopt;
+            value = value * 16 + static_cast<unsigned>(digit);
+        }
+        return Color(static_cast<uint8_t>(value >> 16), static_cast<uint8_t>(value >> 8), static_cast<uint8_t>(value));
+    }
+
+    // A text's words as the editor's document: a paragraph for each line -
+    // a span placed on a lower baseline starts one, so does a line break in
+    // a span's text - and a run for each span.
+    std::shared_ptr<UCRichDocument> WordsOfText(const VectorText& text) {
+        const double lineAdvance = LineAdvance(text);
+        auto words = std::make_shared<UCRichDocument>();
+        words->blocks.emplace_back();
+        double lineY = text.Position.y;
+        for (const auto& span : text.Spans) {
+            if (span.Position.has_value() && std::fabs(span.Position->y - lineY) > 1e-6) {
+                // Lines left empty in between stay, as empty paragraphs.
+                const double lines = lineAdvance > 0 ? std::round((span.Position->y - lineY) / lineAdvance) : 1.0;
+                const int count = static_cast<int>(std::clamp(lines, 1.0, 1000.0));
+                for (int i = 0; i < count; ++i) words->blocks.emplace_back();
+                lineY = span.Position->y;
+            }
+            const RichTextRun style = RunFromSpan(span.Style, text.BaseStyle);
+            size_t start = 0;
+            for (;;) {
+                const size_t nl = span.Text.find('\n', start);
+                const std::string piece = span.Text.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+                if (!piece.empty()) {
+                    RichTextRun run = style;
+                    run.text = piece;
+                    words->blocks.back().runs.push_back(run);
+                }
+                if (nl == std::string::npos) break;
+                words->blocks.emplace_back();
+                lineY += lineAdvance;
+                start = nl + 1;
+            }
+        }
+        return words;
+    }
+
+    // The editor's lines: a paragraph each, and each line break inside one.
+    std::vector<std::vector<const RichTextRun*>> LinesOfWords(const UCRichDocument& words) {
+        std::vector<std::vector<const RichTextRun*>> lines;
+        for (const auto& block : words.blocks) {
+            lines.emplace_back();
+            for (const auto& run : block.runs) {
+                if (run.lineBreakBefore) lines.emplace_back();
+                if (run.mediaIndex >= 0 || run.text.empty()) continue;
+                lines.back().push_back(&run);
+            }
+        }
+        return lines;
+    }
+
+    // A run's style in the drawing: the text's base style with what the run
+    // sets of its own.
+    VectorTextStyle StyleOfRun(const RichTextRun& run, const VectorTextStyle& base) {
+        VectorTextStyle st = base;
+        if (run.bold) st.Weight = FontWeight::Bold;
+        if (run.italic) st.Slant = FontSlant::Italic;
+        st.Underline = run.underline;
+        st.StrikeThrough = run.strikethrough;
+        if (!run.fontFamily.empty()) st.FontFamily = run.fontFamily;
+        if (run.fontSizePt > 0) st.FontSize = run.fontSizePt / kTextPointsPerUnit;
+        if (run.letterSpacingPt) st.LetterSpacing = *run.letterSpacingPt / kTextPointsPerUnit;
+        st.FillColor = ColourOfHex(run.color);
+        return st;
+    }
+
+    // The spans of what was typed: one a run, the first of each line after
+    // the first placed on its own baseline, a line spacing below the last.
+    std::vector<TextSpanData> SpansOfWords(const UCRichDocument& words, const VectorText& model) {
+        const double lineAdvance = LineAdvance(model);
+        std::vector<TextSpanData> spans;
+        const auto lines = LinesOfWords(words);
+        for (size_t k = 0; k < lines.size(); ++k) {
+            bool first = true;
+            for (const RichTextRun* run : lines[k]) {
+                TextSpanData span;
+                span.Style = StyleOfRun(*run, model.BaseStyle);
+                std::string piece = run->text;
+                piece.erase(std::remove(piece.begin(), piece.end(), '\n'), piece.end());
+                span.Text = piece;
+                if (first && k > 0)
+                    span.Position = Point2Dd(model.Position.x, model.Position.y + static_cast<double>(k) * lineAdvance);
+                first = false;
+                spans.push_back(std::move(span));
+            }
+        }
+        return spans;
+    }
+
+    bool SameTextStyle(const VectorTextStyle& a, const VectorTextStyle& b) {
+        return a.FontFamily == b.FontFamily && std::fabs(a.FontSize - b.FontSize) < 1e-4f &&
+               a.Weight == b.Weight && a.Slant == b.Slant && a.Anchor == b.Anchor &&
+               std::fabs(a.LetterSpacing - b.LetterSpacing) < 1e-4f && std::fabs(a.LineHeight - b.LineHeight) < 1e-4f &&
+               a.Underline == b.Underline && a.StrikeThrough == b.StrikeThrough && a.FillColor == b.FillColor;
+    }
+
+    bool SameSpans(const std::vector<TextSpanData>& a, const std::vector<TextSpanData>& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            const auto& x = a[i]; const auto& y = b[i];
+            if (x.Text != y.Text || x.Position.has_value() != y.Position.has_value()) return false;
+            if (x.Position && (std::fabs(x.Position->x - y.Position->x) > 1e-6 || std::fabs(x.Position->y - y.Position->y) > 1e-6)) return false;
+            if (!SameTextStyle(x.Style, y.Style)) return false;
+        }
+        return true;
+    }
+
+    RichTextAlign AlignOfAnchor(TextAnchor anchor) {
+        return anchor == TextAnchor::Middle ? RichTextAlign::Center
+             : anchor == TextAnchor::End ? RichTextAlign::Right : RichTextAlign::Left;
+    }
+
+    TextAnchor AnchorOfAlign(int align) {
+        return align == 1 ? TextAnchor::Middle : align == 2 ? TextAnchor::End : TextAnchor::Start;
+    }
+
+    int AlignOfTextAnchor(TextAnchor anchor) {
+        return anchor == TextAnchor::Middle ? 1 : anchor == TextAnchor::End ? 2 : 0;
+    }
+
+    // The frame of the editor: as big as the canvas and over it, so the
+    // editor is cut off where the text runs past what the canvas shows
+    // instead of drawing over the panels beside it. A press on it - outside
+    // the editor - finishes the text; the pointer's moves and the wheel go
+    // on to the canvas below (same bounds, so the same coordinates).
+    class TextEditorHost : public UltraCanvasContainer {
+    public:
+        explicit TextEditorHost(const std::string& id) : UltraCanvasContainer(id) {}
+        std::function<void()> onPressOutside;
+        UltraCanvasUIElement* passTo = nullptr;
+        bool OnEvent(const UCEvent& event) override {
+            if (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseDoubleClick) {
+                if (onPressOutside) onPressOutside();
+                return true;
+            }
+            if (passTo && (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseWheel))
+                return passTo->OnEvent(event);
+            return UltraCanvasContainer::OnEvent(event);
+        }
+    };
+}
+
+RichTextEditStyle ArtCreatorWindow::TextEditorStyle() const {
+    RichTextEditStyle style;
+    if (!textSession || !textSession->model) return style;
+    const VectorText& t = *textSession->model;
+    style.baseFont = SpanFont(t.BaseStyle, t.BaseStyle);
+    Color colour = Colors::Black;
+    if (t.Style.Fill.has_value())
+        if (const auto* c = std::get_if<Color>(&*t.Style.Fill)) colour = *c;
+    colour.a = static_cast<uint8_t>(std::clamp(colour.a * t.Style.FillOpacity, 0.0f, 255.0f));
+    style.textColor = colour;
+    style.backgroundColor = Colors::Transparent;
+    style.drawBorder = false;
+    style.padding = 0.0f;
+    style.blockSpacing = 0.0f;
+    style.paragraphLeading = 0.0f;
+    style.letterSpacing = t.BaseStyle.LetterSpacing;
+    style.selectionColor = Color(64, 128, 255, 96);
+    // A caret that shows on any colour: the text's, made opaque, unless it
+    // is nearly white.
+    const int light = (colour.r * 299 + colour.g * 587 + colour.b * 114) / 1000;
+    style.cursorColor = light > 225 ? Color(30, 30, 40, 255) : Color(colour.r, colour.g, colour.b, 255);
+    return style;
+}
+
+void ArtCreatorWindow::StampEditorParagraphs() {
+    if (!textSession || !textEditor) return;
+    auto words = textEditor->GetDocument();
+    if (!words) return;
+    const VectorText& t = *textSession->model;
+    const float heightPt = static_cast<float>(LineAdvance(t)) * kTextPointsPerUnit;
+    const RichTextAlign align = AlignOfAnchor(t.BaseStyle.Anchor);
+    bool changed = false;
+    for (auto& block : words->blocks) {
+        if (std::fabs(block.lineHeightPt - heightPt) > 1e-4f || block.lineHeightAtLeast || block.align != align) {
+            block.lineHeightPt = heightPt;
+            block.lineHeightAtLeast = false;
+            block.align = align;
+            changed = true;
+        }
+    }
+    if (changed) textEditor->InvalidateDocument();
+}
+
+void ArtCreatorWindow::BeginTextEdit(const Point2Dd& docPoint, const std::shared_ptr<VectorText>& text) {
+    if (!document || !canvas) return;
+    CommitTextEdit();
+    if (!textMeasure) textMeasure = CreateRenderContext(Size2Di(4, 4), nullptr);
+
+    auto session = std::make_unique<TextEditSession>();
+    if (text) {
+        session->elementId = text->Id;
+        session->model = std::static_pointer_cast<VectorText>(text->Clone());
+        session->toDocument = text->GetGlobalTransform();
+        // The bar shows the text's own attributes, and a new text starts in them.
+        const VectorTextStyle& b = text->BaseStyle;
+        if (!b.FontFamily.empty()) toolOptions.textFont = b.FontFamily;
+        toolOptions.textSize = std::max(1.0f, b.FontSize);
+        toolOptions.textBold = b.Weight >= FontWeight::Bold;
+        toolOptions.textItalic = b.Slant != FontSlant::Normal;
+        toolOptions.textUnderline = b.Underline;
+        toolOptions.textStrike = b.StrikeThrough;
+        toolOptions.textAlign = AlignOfTextAnchor(b.Anchor);
+        toolOptions.textLineSpacing = (b.LineHeight > 0 ? b.LineHeight : 1.2f) * 100.0f;
+        toolOptions.textLetterSpacing = b.LetterSpacing;
+    } else {
+        auto model = std::make_shared<VectorText>();
+        model->Position = docPoint;
+        VectorTextStyle& b = model->BaseStyle;
+        b.FontFamily = toolOptions.textFont;
+        b.FontSize = std::max(1.0f, toolOptions.textSize);
+        b.Weight = toolOptions.textBold ? FontWeight::Bold : FontWeight::Normal;
+        b.Slant = toolOptions.textItalic ? FontSlant::Italic : FontSlant::Normal;
+        b.Underline = toolOptions.textUnderline;
+        b.StrikeThrough = toolOptions.textStrike;
+        b.Anchor = AnchorOfAlign(toolOptions.textAlign);
+        b.LineHeight = std::max(0.1f, toolOptions.textLineSpacing / 100.0f);
+        b.LetterSpacing = toolOptions.textLetterSpacing;
+        model->Style.Fill = fillColour;
+        session->model = model;
+        session->toDocument = Matrix3x3::Identity();
+    }
+    session->startWords = WordsOfText(*session->model);
+
+    if (!textEditorHost) {
+        auto host = std::make_shared<TextEditorHost>("ac-text-host");
+        host->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        if (!host->layoutItem.position) host->layoutItem.position = CSSLayout::Position();
+        host->SetZIndex(OverlayZOrder::Overlays);
+        host->SetBackgroundColor(Colors::Transparent);
+        host->SetMouseCursor(UCMouseCursor::Text);
+        host->passTo = canvas.get();
+        host->onPressOutside = [this]() { CommitTextEdit(); };
+        host->SetVisible(false);
+        textEditor = std::make_shared<UltraCanvasRichTextEdit>("ac-text-editor", 0, 0, 10, 10);
+        textEditor->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
+        if (!textEditor->layoutItem.position) textEditor->layoutItem.position = CSSLayout::Position();
+        textEditor->SetSpellCheckEnabled(false);
+        textEditor->SetShowComments(false);
+        textEditor->SetShowFontNotice(false);
+        textEditor->SetZoomRange(1.0f / 64.0f, 256.0f);
+        // The box grows with what is typed; a new line is set as the others.
+        textEditor->onDocumentChanged = [this]() {
+            StampEditorParagraphs();
+            // A new, empty line of a text underlined or struck through as
+            // a whole is typed that way too (Enter leaves the line it ends
+            // behind with what it was typed in).
+            if (textSession && textEditor && !textSession->arming && !textEditor->HasSelection()) {
+                const VectorTextStyle& b = textSession->model->BaseStyle;
+                const RichDocPosition caret = textEditor->GetEditor().GetCaret();
+                auto words = textEditor->GetDocument();
+                if ((b.Underline || b.StrikeThrough) && words && caret.cellRow < 0 &&
+                    caret.blockIndex >= 0 && caret.blockIndex < static_cast<int>(words->blocks.size())) {
+                    bool empty = true;
+                    for (const auto& run : words->blocks[static_cast<size_t>(caret.blockIndex)].runs)
+                        empty = empty && run.text.empty();
+                    if (empty) {
+                        RichCharFormatDelta armed;
+                        if (b.Underline) { armed.setUnderline = true; armed.underline = true; }
+                        if (b.StrikeThrough) { armed.setStrikethrough = true; armed.strikethrough = true; }
+                        textSession->arming = true;   // arming may report a change: not again
+                        textEditor->ApplyCharFormat(armed);
+                        if (textSession) textSession->arming = false;
+                    }
+                }
+            }
+            PlaceTextEditor();
+        };
+        // The bar follows the caret.
+        textEditor->onSelectionChanged = [this]() { SyncTextBar(); };
+        // Ctrl+wheel over the text zooms the canvas, which the editor follows.
+        textEditor->onZoomChanged = [this](float zoom) {
+            if (!textSession || !canvas) return;
+            const double scale = std::sqrt(std::max(1e-12, std::fabs(textSession->toDocument.Determinant())));
+            const double canvasZoom = zoom / scale;
+            if (std::fabs(canvas->GetZoom() - canvasZoom) > 1e-6) canvas->SetZoom(canvasZoom);
+            PlaceTextEditor();
+        };
+        host->AddChild(textEditor);
+        // Beside the canvases, whose bounds it is placed by.
+        pages->AddChild(host);
+        textEditorHost = host;
+    }
+
+    textSession = std::move(session);
+    textEditor->SetStyle(TextEditorStyle());
+    // The editor edits a copy: the session keeps what it opened with.
+    textEditor->SetDocument(std::make_shared<UCRichDocument>(*textSession->startWords));
+    StampEditorParagraphs();
+    textEditor->GetEditor().SetCaret(textEditor->GetEditor().DocumentEnd());
+    if (!text && (toolOptions.textUnderline || toolOptions.textStrike)) {
+        // A new text is typed underlined or struck through as the bar says.
+        RichCharFormatDelta armed;
+        armed.setUnderline = true;     armed.underline = toolOptions.textUnderline;
+        armed.setStrikethrough = true; armed.strikethrough = toolOptions.textStrike;
+        textEditor->ApplyCharFormat(armed);
+    }
+    textEditor->SetModified(false);
+
+    // The text itself is left out of the drawing while its words are typed
+    // over it, and out of the selection (its handles would frame nothing).
+    if (text) {
+        text->Style.Visible = false;
+        selection->Clear();
+    }
+    textEditorHost->SetVisible(true);
+    PlaceTextEditor();
+    SyncTextBar();
+    textEditor->SetFocus(true);
+    if (statusHint) {
+        statusHint->SetText(text ? Tr("Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes")
+                                 : Tr("Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes"));
+    }
+    canvas->Refresh();
+}
+
+void ArtCreatorWindow::PlaceTextEditor() {
+    if (!textSession || !textEditor || !textEditorHost || !canvas) return;
+    const VectorText& t = *textSession->model;
+    // The text's own scale (its transform and its groups'), so a text drawn
+    // twice as large is typed twice as large; a turn or a slant is not
+    // followed - the words are typed upright at the text's start.
+    const Matrix3x3& m = textSession->toDocument;
+    const double scale = std::sqrt(std::max(1e-12, std::fabs(m.Determinant())));
+    const double zoom = canvas->GetZoom() * scale;
+    if (std::fabs(textEditor->GetZoom() - zoom) > 1e-6) textEditor->SetZoom(static_cast<float>(zoom));
+
+    const Rect2Df c = canvas->GetBounds();
+    textEditorHost->layoutItem.position->left = CSSLayout::Dimension::Px(c.x);
+    textEditorHost->layoutItem.position->top = CSSLayout::Dimension::Px(c.y);
+    textEditorHost->size.width = CSSLayout::Dimension::Px(c.width);
+    textEditorHost->size.height = CSSLayout::Dimension::Px(c.height);
+
+    // What is typed, as the drawing will hold it: its widest line sets the
+    // editor's width (with room for the next letters, so it never wraps),
+    // its lines its height.
+    const double advance = LineAdvance(t);
+    const double baseline = EditorBaseline(textMeasure.get(), SpanFont(t.BaseStyle, t.BaseStyle), advance);
+    double widest = 0;
+    int lineCount = 1;
+    // The lines' heights as their largest letters need them: the editor
+    // lays a larger word out on its next frame, and a box sized before that
+    // showed a scrollbar.
+    double linesHeight = advance;
+    if (auto words = textEditor->GetDocument()) {
+        const auto lines = LinesOfWords(*words);
+        lineCount = std::max<int>(1, static_cast<int>(lines.size()));
+        linesHeight = 0;
+        for (const auto& line : lines) {
+            double width = 0;
+            double lineHeight = advance;
+            for (const RichTextRun* run : line) {
+                const VectorTextStyle st = StyleOfRun(*run, t.BaseStyle);
+                const FontStyle fs = SpanFont(st, t.BaseStyle);
+                lineHeight = std::max(lineHeight, fs.fontSize / kTextPointsPerUnit * 1.3);
+                size_t letters = 0;
+                for (unsigned char ch : run->text) if ((ch & 0xC0) != 0x80) ++letters;
+                width += static_cast<double>(letters) * st.LetterSpacing;   // the run's own, or the text's
+                if (textMeasure) {
+                    textMeasure->SetFontFace(fs.fontFamily, fs.fontWeight, fs.fontSlant);
+                    textMeasure->SetFontSize(fs.fontSize);
+                    width += textMeasure->GetTextLineWidth(run->text);
+                } else {
+                    width += static_cast<double>(letters) * fs.fontSize / kTextPointsPerUnit * 0.6;
+                }
+            }
+            widest = std::max(widest, width);
+            linesHeight += lineHeight;
+        }
+    }
+
+    const double size = std::max(1.0f, t.BaseStyle.FontSize);
+    const double contentHeight = std::max({static_cast<double>(textEditor->GetContentHeight()), advance * lineCount, linesHeight});
+    const Point2Dd at = canvas->DocToView(m.Transform(t.Position));
+    const double width = std::ceil((widest + size * 2.0) * zoom) + 4.0;
+    // The lines start at the text's point, or centre on it, or end there -
+    // as the editor aligns them in its box, so the box goes round the point
+    // that way.
+    double left = at.x;
+    if (t.BaseStyle.Anchor == TextAnchor::Middle) left = at.x - width / 2.0;
+    else if (t.BaseStyle.Anchor == TextAnchor::End) left = at.x - width;
+    const double top = at.y - baseline * zoom;
+    Rect2Dd& r = textSession->viewRect;
+    r = Rect2Dd(std::floor(left), std::floor(top), width, std::ceil(contentHeight * zoom) + 2.0);
+    textEditor->layoutItem.position->left = CSSLayout::Dimension::Px(static_cast<float>(r.x));
+    textEditor->layoutItem.position->top = CSSLayout::Dimension::Px(static_cast<float>(r.y));
+    textEditor->size.width = CSSLayout::Dimension::Px(static_cast<float>(r.width));
+    textEditor->size.height = CSSLayout::Dimension::Px(static_cast<float>(r.height));
+    textEditorHost->InvalidateLayout();
+    pages->InvalidateLayout();
+    pages->RequestRedraw();
+    canvas->Refresh();
+}
+
+void ArtCreatorWindow::DrawTextEditFrame(IRenderContext* ctx) {
+    if (!ctx || !textSession) return;
+    // Where the words go: a dashed frame round the editor, in the canvas's
+    // view coordinates (the host lies on the canvas, so the editor's are the same).
+    const Rect2Dd& b = textSession->viewRect;
+    if (b.width <= 0 || b.height <= 0) return;
+    const Rect2Dd r(b.x - 2.5, b.y - 2.5, b.width + 5.0, b.height + 5.0);
+    ctx->SetStrokeWidth(1.0);
+    ctx->SetLineDash(UCDashPattern());
+    ctx->SetStrokePaint(Color(255, 255, 255, 160));
+    ctx->DrawRectangle(r);
+    ctx->SetLineDash(UCDashPattern({4.0, 4.0}));
+    ctx->SetStrokePaint(Color(30, 110, 230, 230));
+    ctx->DrawRectangle(r);
+    ctx->SetLineDash(UCDashPattern());
+}
+
+void ArtCreatorWindow::DropTextEdit() {
+    if (!textSession) return;
+    textSession.reset();
+    if (textEditorHost) textEditorHost->SetVisible(false);
+    if (body) body->RequestRedraw();
+}
+
+void ArtCreatorWindow::CommitTextEdit() {
+    if (!textSession) return;
+    // Null from here on, so a commit that re-enters (a focus change, the
+    // history's notifications) finds nothing to commit twice.
+    std::unique_ptr<TextEditSession> session = std::move(textSession);
+    std::shared_ptr<UCRichDocument> words = textEditor ? textEditor->GetDocument() : nullptr;
+    if (textEditorHost) textEditorHost->SetVisible(false);
+    if (window && textEditor && window->GetFocusedElement() == textEditor.get()) canvas->SetFocus(true);
+    if (body) body->RequestRedraw();
+    if (!document) return;
+
+    ElementPtr existing = session->elementId.empty() ? nullptr : document->FindElementById(session->elementId);
+    auto* edited = existing ? dynamic_cast<VectorText*>(existing.get()) : nullptr;
+    if (edited) edited->Style.Visible = session->model->Style.Visible;
+    canvas->Refresh();
+    if (!words) return;
+
+    VectorText& model = *session->model;
+    std::vector<TextSpanData> spans = SpansOfWords(*words, model);
+    bool blank = true;
+    for (const auto& span : spans) {
+        if (span.Text.find_first_not_of(" \t") != std::string::npos) { blank = false; break; }
+    }
+
+    if (blank) {
+        // Nothing typed: no text. An edited text emptied is deleted.
+        if (edited) {
+            const std::string id = session->elementId;
+            history->Record(Tr("Delete Text"), [&]() {
+                if (auto e = document->FindElementById(id))
+                    if (auto parent = e->Parent.lock()) parent->RemoveChild(id);
+            });
+            if (statusHint) statusHint->SetText(Tr("The text was emptied, so it was deleted"));
+        } else if (statusHint) {
+            statusHint->SetText(Tr("Nothing was typed"));
+        }
+        return;
+    }
+
+    if (edited) {
+        // Looked at, not changed: no undo step.
+        if (SameSpans(edited->Spans, spans) && SameTextStyle(edited->BaseStyle, model.BaseStyle) && !session->fillChanged) {
+            Reselect({session->elementId});
+            return;
+        }
+        const std::string id = session->elementId;
+        history->Record(Tr("Edit Text"), [&]() {
+            auto e = document->FindElementById(id);
+            auto* t = e ? dynamic_cast<VectorText*>(e.get()) : nullptr;
+            if (!t) return;
+            t->BaseStyle = model.BaseStyle;
+            if (session->fillChanged) t->Style.Fill = model.Style.Fill;
+            t->Spans = spans;
+        });
+        Reselect({id});
+        if (statusHint) statusHint->SetText(Tr("Changed the text"));
+        return;
+    }
+
+    auto text = std::static_pointer_cast<VectorText>(model.Clone());
+    text->Spans = spans;
     text->Id = GenerateId("text");
     const std::string id = text->Id;
-    history.Record("Text", [&]() { if (auto layer = ActiveLayer()) layer->AddChild(text); });
+    history->Record("Text", [&]() { if (auto layer = ActiveLayer()) layer->AddChild(text); });
     Reselect({id});
+    if (statusHint) statusHint->SetText(Tr("Added the text: click it with the Text tool, or double-click it, to edit it"));
+}
+
+// ===========================================================================
+// THE TEXT BAR
+// ===========================================================================
+
+void ArtCreatorWindow::BuildTextBar() {
+    // The framework's text bar (UltraCanvasTextFormatBar); sizes in points,
+    // the drawing's units.
+    textBar = CreateTextFormatBar("ac-textbar", 50.0f);
+    textBar->SetSizeUnit(" pt", 1, 2000, 1, 1);
+    textBar->SetLetterSpacingUnit(" pt", -100, 1000, 1, 0.5);
+    textBar->SetBackgroundColor(Color(228, 228, 232, 255));   // the transform bar's, whose place it takes
+    textBar->onFormatChanged = [this](TextFormatAttribute attribute, const TextFormat& f) {
+        toolOptions.textFont = f.fontFamily;
+        toolOptions.textSize = f.size;
+        toolOptions.textBold = f.bold;
+        toolOptions.textItalic = f.italic;
+        toolOptions.textUnderline = f.underline;
+        toolOptions.textStrike = f.strikethrough;
+        toolOptions.textAlign = static_cast<int>(f.align);
+        toolOptions.textLineSpacing = f.lineSpacing;
+        toolOptions.textLetterSpacing = f.letterSpacing;
+        static const char* names[] = { "font", "size", "bold", "italic", "underline", "strike",
+                                       "align", "line-spacing", "letter-spacing" };
+        ApplyTextAttribute(names[static_cast<int>(attribute)]);
+    };
+    // After a control of the bar, the keys go back to the text being typed.
+    textBar->onControlDone = [this]() {
+        if (IsEditingText() && textEditor && textEditorHost && textEditorHost->IsVisible()) textEditor->SetFocus(true);
+    };
+    textBar->SetVisible(false);
+    window->AddChild(textBar);
+    SyncTextBar();
+}
+
+void ArtCreatorWindow::ShowTextBar(bool show) {
+    if (!textBar || !transformBar) return;
+    if (textBar->IsVisible() == show) return;
+    textBar->SetVisible(show);
+    transformBar->SetVisible(!show);
+    if (show) SyncTextBar();
+    window->InvalidateLayout();
+    window->RequestRedraw();
+}
+
+void ArtCreatorWindow::SyncTextBar() {
+    if (!textBar) return;
+    // What the bar shows: the caret's (or the selected words') attributes
+    // in the text being typed, else the first selected text's, else what a
+    // new text starts in.
+    auto formatOf = [](const VectorTextStyle& st) {
+        TextFormat f;
+        f.fontFamily = st.FontFamily.empty() ? std::string("Sans") : st.FontFamily;
+        f.size = std::max(0.1f, st.FontSize);
+        f.bold = st.Weight >= FontWeight::Bold;
+        f.italic = st.Slant != FontSlant::Normal;
+        f.underline = st.Underline;
+        f.strikethrough = st.StrikeThrough;
+        f.align = static_cast<TextFormatAlign>(AlignOfTextAnchor(st.Anchor));
+        f.lineSpacing = (st.LineHeight > 0 ? st.LineHeight : 1.2f) * 100.0f;
+        f.letterSpacing = st.LetterSpacing;
+        return f;
+    };
+    TextFormat shown;
+    shown.fontFamily = toolOptions.textFont;
+    shown.size = toolOptions.textSize;
+    shown.bold = toolOptions.textBold;
+    shown.italic = toolOptions.textItalic;
+    shown.underline = toolOptions.textUnderline;
+    shown.strikethrough = toolOptions.textStrike;
+    shown.align = static_cast<TextFormatAlign>(std::clamp(toolOptions.textAlign, 0, 2));
+    shown.lineSpacing = toolOptions.textLineSpacing;
+    shown.letterSpacing = toolOptions.textLetterSpacing;
+    if (textSession && textEditor) {
+        const RichCharFormatState state = textEditor->GetFormatState();
+        shown = TextFormatAtCaret(state, formatOf(textSession->model->BaseStyle), kTextPointsPerUnit);
+        // The colour picker shows the caret's colour too: the selected
+        // words' own, else the text's.
+        if (colorPicker && !syncingColours) {
+            std::optional<Color> colour = state.colorMixed ? std::nullopt : ColourOfHex(state.color);
+            if (colour) colour->a = fillColour.a;   // a word's colour has no opacity of its own
+            if (!colour && textSession->model->Style.Fill.has_value())
+                if (const auto* c = std::get_if<Color>(&*textSession->model->Style.Fill)) colour = *c;
+            if (colour) {
+                syncingColours = true;
+                fillColour = *colour;
+                colorPicker->SetForegroundColor(*colour, false);
+                syncingColours = false;
+            }
+        }
+    } else {
+        for (const auto& e : selection->Elements()) {
+            if (auto* t = e ? dynamic_cast<VectorText*>(e.get()) : nullptr) {
+                shown = formatOf(t->BaseStyle);
+                // Underlined or struck through all along, as the spans say.
+                bool under = !t->Spans.empty(), strike = !t->Spans.empty();
+                for (const auto& span : t->Spans) { under = under && span.Style.Underline; strike = strike && span.Style.StrikeThrough; }
+                shown.underline = under;
+                shown.strikethrough = strike;
+                break;
+            }
+        }
+    }
+    textBar->SetFormat(shown);
+}
+
+void ArtCreatorWindow::ApplyTextAttribute(const std::string& attribute) {
+    if (!document) return;
+    const bool character = attribute == "font" || attribute == "size" || attribute == "bold" ||
+                           attribute == "italic" || attribute == "underline" || attribute == "strike" ||
+                           attribute == "letter-spacing";
+    // An attribute in a text's style, as the options now say.
+    auto applyTo = [&](VectorTextStyle& style) {
+        if (attribute == "font") style.FontFamily = toolOptions.textFont;
+        else if (attribute == "size") style.FontSize = std::max(1.0f, toolOptions.textSize);
+        else if (attribute == "bold") style.Weight = toolOptions.textBold ? FontWeight::Bold : FontWeight::Normal;
+        else if (attribute == "italic") style.Slant = toolOptions.textItalic ? FontSlant::Italic : FontSlant::Normal;
+        else if (attribute == "underline") style.Underline = toolOptions.textUnderline;
+        else if (attribute == "strike") style.StrikeThrough = toolOptions.textStrike;
+        else if (attribute == "align") style.Anchor = AnchorOfAlign(toolOptions.textAlign);
+        else if (attribute == "line-spacing") style.LineHeight = std::max(0.1f, toolOptions.textLineSpacing / 100.0f);
+        else if (attribute == "letter-spacing") style.LetterSpacing = toolOptions.textLetterSpacing;
+    };
+
+    if (textSession && textEditor) {
+        if (character && textEditor->HasSelection()) {
+            // The selected words take it, as spans of their own.
+            static const std::map<std::string, TextFormatAttribute> which = {
+                { "font", TextFormatAttribute::Font }, { "size", TextFormatAttribute::Size },
+                { "bold", TextFormatAttribute::Bold }, { "italic", TextFormatAttribute::Italic },
+                { "underline", TextFormatAttribute::Underline }, { "strike", TextFormatAttribute::Strikethrough },
+                { "letter-spacing", TextFormatAttribute::LetterSpacing } };
+            const RichCharFormatDelta delta = TextFormatCharDelta(which.at(attribute), textBar->GetFormat(), kTextPointsPerUnit);
+            textEditor->ApplyCharFormat(delta);
+        } else {
+            // Nothing selected, or a paragraph attribute: the whole text -
+            // its base style, and every run gives up its own setting of it.
+            applyTo(textSession->model->BaseStyle);
+            if (auto words = textEditor->GetDocument()) {
+                for (auto& block : words->blocks) {
+                    for (auto& run : block.runs) {
+                        if (attribute == "font") run.fontFamily.clear();
+                        else if (attribute == "size") run.fontSizePt = 0.0f;
+                        else if (attribute == "bold") run.bold = false;
+                        else if (attribute == "italic") run.italic = false;
+                        else if (attribute == "underline") run.underline = toolOptions.textUnderline;
+                        else if (attribute == "strike") run.strikethrough = toolOptions.textStrike;
+                        else if (attribute == "letter-spacing") run.letterSpacingPt.reset();
+                    }
+                }
+            }
+            if (attribute == "underline" || attribute == "strike") {
+                // ... and what is typed next.
+                RichCharFormatDelta armed;
+                if (attribute == "underline") { armed.setUnderline = true; armed.underline = toolOptions.textUnderline; }
+                else { armed.setStrikethrough = true; armed.strikethrough = toolOptions.textStrike; }
+                textEditor->ApplyCharFormat(armed);
+            }
+            textEditor->SetStyle(TextEditorStyle());
+            StampEditorParagraphs();
+            textEditor->InvalidateDocument();
+        }
+        textEditor->SetFocus(true);
+        PlaceTextEditor();
+        SyncTextBar();
+        return;
+    }
+
+    // Otherwise the selected texts, as one undo step (a run of a spinner's
+    // steps as one).
+    std::vector<std::string> ids;
+    for (const auto& e : selection->Elements())
+        if (e && e->Type == VectorElementType::Text) ids.push_back(e->Id);
+    if (ids.empty()) return;
+    const std::map<std::string, std::string> labels = {
+        { "font", Tr("Text Font") }, { "size", Tr("Text Size") }, { "bold", Tr("Text Bold") },
+        { "italic", Tr("Text Italic") }, { "underline", Tr("Text Underline") },
+        { "strike", Tr("Text Strikethrough") }, { "align", Tr("Text Alignment") },
+        { "line-spacing", Tr("Line Spacing") }, { "letter-spacing", Tr("Letter Spacing") } };
+    const auto label = labels.find(attribute);
+    if (label == labels.end()) return;
+    const auto all = selection->Ids();
+    history->Record(label->second, [&]() {
+        for (const auto& id : ids) {
+            auto e = document->FindElementById(id);
+            auto* t = e ? dynamic_cast<VectorText*>(e.get()) : nullptr;
+            if (!t) continue;
+            const double oldAdvance = LineAdvance(*t);
+            applyTo(t->BaseStyle);
+            for (auto& span : t->Spans) applyTo(span.Style);
+            // The lines move to the new spacing (the size's or the line
+            // spacing's): each stays the same number of lines down.
+            const double newAdvance = LineAdvance(*t);
+            if (oldAdvance > 0 && std::fabs(newAdvance - oldAdvance) > 1e-9) {
+                for (auto& span : t->Spans) {
+                    if (!span.Position) continue;
+                    const double lines = std::round((span.Position->y - t->Position.y) / oldAdvance);
+                    span.Position->y = t->Position.y + lines * newAdvance;
+                }
+            }
+        }
+    }, attribute == "size" || attribute == "line-spacing" || attribute == "letter-spacing");
+    Reselect(all);
 }
 
 // ===========================================================================
@@ -2229,7 +3204,9 @@ void ArtCreatorWindow::PlaceText(double x, double y, const ArtCreatorTextResult&
 // ===========================================================================
 
 void ArtCreatorWindow::CmdNewIcon(int pixels) {
-    auto go = [this, pixels]() {
+    // In a tab of its own - or the untouched new drawing's.
+    {
+        if (!ActiveTabIsPristine()) AddDrawingTab();
         // One document unit a pixel, as icons are saved: an SVG of
         // width="24" height="24" viewBox="0 0 24 24".
         auto doc = std::make_shared<VectorDocument>();
@@ -2241,9 +3218,7 @@ void ArtCreatorWindow::CmdNewIcon(int pixels) {
         SetIconSize(pixels);
         canvas->ZoomToPage();
         if (statusHint) statusHint->SetText("New " + std::to_string(pixels) + " px icon: draw on the pixel grid, the panel shows it at its size");
-    };
-    if (modified) ConfirmDiscard("Discard the unsaved changes and start a new icon?", go);
-    else go();
+    }
 }
 
 double ArtCreatorWindow::IconPixel() const {
@@ -2349,7 +3324,7 @@ void ArtCreatorWindow::CmdSnapToPixels() {
     if (targets.empty()) return;
     const auto ids = selection->Ids();
     PixelSnapResult result;
-    history.Record("Snap to Pixels", [&]() {
+    history->Record("Snap to Pixels", [&]() {
         result = SnapToPixels(targets, p, Point2Dd(document->ViewBox.x, document->ViewBox.y));
     });
     Reselect(ids);

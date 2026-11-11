@@ -1,3 +1,69 @@
+#### 2026-11-11 *0.2.36*
+- **Auto contrast counts with the framework's histogram model.** The stretch
+  comes from `UltraCanvasHistogramModel` (`ClippedRange`, 0.2 % off each end per
+  channel), the counting the Curves backdrop uses. Opaque pictures are
+  stretched exactly as before; fully transparent pixels no longer count, so
+  the colour hidden under a transparent area no longer sets the stretch.
+
+#### 2026-11-10 *0.2.35*
+- **Curves shows the same histogram as the image viewer.** The backdrop is
+  counted by the framework's `UltraCanvasHistogramModel`, as the viewer's Curves
+  dialog counts it. The RGB backdrop now adds the red, green and blue values
+  level by level - the values the RGB curve maps - instead of counting each
+  pixel's average of the three. Transparent pixels are still left out.
+
+#### 2026-11-09 *0.2.34*
+- **Images in tabs.** A window holds several images, one tab each, in a strip
+  over the canvas (`UltraCanvasTabbedContainer`); each tab has its own paint
+  surface and keeps its zoom and scroll. *File ▸ New*, *Open*, *Paste as New
+  Image*, the strip's **+** and *Open in new tab* on a dropped image (in place
+  of *Open new window*) add a tab instead of replacing the image or opening a
+  window, so none of them asks to discard changes any more; the blank canvas a
+  window starts with is replaced by the first image opened while nobody has
+  touched it. Several files on the command line, and the files a second start
+  hands over, open as tabs of the window used last. A dot marks a tab with
+  unsaved changes; *File ▸ Close Tab* (`Ctrl+W`) and the tab's **×** ask before
+  closing one, closing the window asks once about all of them, and
+  `Ctrl+Tab` / `Ctrl+Shift+Tab` move between tabs. *File ▸ New Window* still
+  opens a second window.
+
+#### 2026-11-05 *0.2.33*
+- **UltraPaint takes the Image base set.** Its catalogue names `Image` under
+  `@bases`, as the localisation proposal's Appendix B assigns it, so a text
+  of image editing it shows comes in the shared Image vocabulary of every
+  language - the same words as ArtCreator and UltraViewer.
+
+#### 2026-11-05 *0.2.32*
+- **The Text tool in every language.** UltraPaint's own catalogue
+  (`media/locale/<lang>/UltraPaint.json`) now exists in all thirty
+  languages: the Text tool's status-line hint and its undo steps showed in
+  English whatever the language. They read the same as ArtCreator's.
+
+#### 2026-11-04 *0.2.31*
+- **Selected words take a letter spacing of their own.** The text bar's letter
+  spacing goes to the selected words while a text is typed (it spread the
+  whole text); with nothing selected it still sets the whole text's.
+- **A size typed into the text bar no longer changes the whole text.** Typing
+  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
+  finished the text first. The keys now stay in the field, and Escape there
+  gives them back to the text.
+
+#### 2026-11-03 *0.2.30*
+- **The text bar.** While the Text tool is active, a bar under the toolbar -
+  the framework's `UltraCanvasTextFormatBar`, the one ArtCreator shows - sets
+  the font (every installed font, each shown in itself in the list), size,
+  bold, italic, underline, **strikethrough**, alignment, **line spacing** and
+  **letter spacing**. It replaces the Text card in the right panel and shows
+  what is at the caret. While a text is typed, the character attributes go to
+  the selection or what is typed next, alignment to the selected paragraphs
+  and the spacings to the whole text; otherwise the bar changes the active
+  text layer as one undo step.
+- Line spacing is a percentage of each line's largest letters, set exactly, so
+  a word made larger opens its line up instead of running into the next. A
+  text layer from before keeps the font's own spacing until it is given one.
+- Letter spacing is kept in the project and in a *.ucd (a version 2 text
+  frame, written only for a text that has some).
+
 #### 2026-10-25 *0.2.29*
 - **The Palette manager.** The "+" under the colour palettes opens a window
   with a title bar to drag it by; *Add palette* at its foot makes a palette

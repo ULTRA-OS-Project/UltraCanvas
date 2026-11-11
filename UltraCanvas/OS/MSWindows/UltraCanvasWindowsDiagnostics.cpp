@@ -1,5 +1,8 @@
 // OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp
 // Startup and crash diagnostics for Windows builds. See the header for why.
+// Version: 1.2.1 - the crash dump folder's rule is UltraCanvasCrashDumpFolder() (its own
+//                  header), so tools can show the user the same folder; a custom folder
+//                  gets its parents created too
 // Version: 1.2.0 - the exit watchdog: a process whose main loop ended but which does not
 //                  end is reported and ended
 // Version: 1.1.0 - the crash report's function names also come from the module file's COFF
@@ -37,6 +40,7 @@
 
 #include "../../include/UltraCanvasDebug.h"
 #include "../../include/UltraCanvasPathUtf8.h"   // GetEnvUtf8 / PathFromUtf8
+#include "../../include/UltraCanvasCrashDumpFolder.h"   // where the dumps go
 
 namespace UltraCanvas {
 
@@ -496,29 +500,21 @@ namespace UltraCanvas {
             return true;
         }
 
-        // The dump folder: ULTRACANVAS_CRASH_DUMP_DIR when set, else
-        // %LOCALAPPDATA%\UltraCanvas\CrashDumps - the per-user application
-        // data folder, writable without rights and never inside the
-        // installation (which may be read-only, or a download about to be
-        // deleted). Created now, with its parent; an empty result means no
-        // dump will be written and the report says where to look instead.
+        // The dump folder: UltraCanvasCrashDumpFolder() - ULTRACANVAS_CRASH_DUMP_DIR
+        // when set, else %LOCALAPPDATA%\UltraCanvas\CrashDumps - the per-user
+        // application data folder, writable without rights and never inside
+        // the installation (which may be read-only, or a download about to be
+        // deleted). The rule lives in that header so a tool can show the user
+        // the same folder. Created now, with its parents; an empty result
+        // means no dump will be written and the report says where to look
+        // instead.
         void PrepareCrashDumpDir() {
             gCrashDumpDir[0] = L'\0';
-            std::wstring dir;
-            // UTF-8 from the wide environment: Widen expects UTF-8, and the
-            // narrow getenv would have handed it the ANSI code page's bytes,
-            // so a folder named outside that code page came out mangled.
-            if (const std::string custom = UltraCanvas::GetEnvUtf8("ULTRACANVAS_CRASH_DUMP_DIR"); !custom.empty())
-                dir = Widen(custom);
-            if (dir.empty()) {
-                wchar_t local[MAX_PATH * 2] = L"";
-                const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH * 2);
-                if (n == 0 || n >= MAX_PATH * 2) return;
-                dir = std::wstring(local) + L"\\UltraCanvas";
-                CreateDirectoryW(dir.c_str(), nullptr);
-                dir += L"\\CrashDumps";
-            }
-            CreateDirectoryW(dir.c_str(), nullptr);
+            const std::filesystem::path folder = UltraCanvas::UltraCanvasCrashDumpFolder();
+            if (folder.empty()) return;
+            std::error_code ec;
+            std::filesystem::create_directories(folder, ec);
+            const std::wstring dir = folder.wstring();   // path-string-ok: the native UTF-16 path
             const DWORD attrs = GetFileAttributesW(dir.c_str());
             if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) return;
             if (dir.size() + 1 >= MAX_PATH * 2) return;

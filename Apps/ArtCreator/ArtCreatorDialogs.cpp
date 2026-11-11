@@ -1,10 +1,11 @@
 // Apps/ArtCreator/ArtCreatorDialogs.cpp
-// New Drawing / Document Setup and Text windows.
+// New Drawing / Document Setup windows.
+// Version: 1.2.0 - the Text window is gone: text is typed on the page
 // Version: 1.1.1 - the Text dialog opens with its text field focused
 // Version: 1.1.0 - cards on the section page, segmented unit and orientation, the matching
 //                 preset on open, Bold / Italic side by side and a preview of the text
 // Version: 1.0.0
-// Last Modified: 2026-10-22
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorDialogs.h"
@@ -240,97 +241,6 @@ void ArtCreatorPageDialog::SyncOrientation() {
     const bool landscape = orientationSwitch->GetSelectedIndex() == 1;
     if ((landscape && h > w) || (!landscape && w > h)) { widthSpin->SetValue(h); heightSpin->SetValue(w); }
     syncing = false;
-}
-
-// ===========================================================================
-// TEXT
-// ===========================================================================
-
-ArtCreatorTextDialog::ArtCreatorTextDialog(const ArtCreatorTextResult& initial) : UltraCanvasWindow() {
-    config_.title = "Text";
-    config_.width = 400; config_.height = 312;
-    config_.minWidth = 380; config_.minHeight = 312;
-    config_.resizable = true;
-    config_.deleteOnClose = true;
-    StyleDialog(*this, config_);
-
-    std::shared_ptr<UltraCanvasContainer> form;
-    AddChild(FormCard("act-card", "Text", form));
-
-    textInput = CreateTextInput("act-text", 0, 0, kFieldW, kFieldH);
-    textInput->SetText(initial.text);
-    textInput->SetPlaceholder("Type the text to place");
-    FormRow(form, "act-text-row", "Text:", textInput);
-
-    fontDrop = CreateDropdown("act-font", 0, 0, kFieldW, kFieldH);
-    for (const char* f : { "Sans", "Serif", "Monospace" }) fontDrop->AddItem(f);
-    fontDrop->SetSelectedIndex(initial.font == "Serif" ? 1 : initial.font == "Monospace" ? 2 : 0, false);
-    FormRow(form, "act-font-row", "Font:", fontDrop);
-
-    sizeSpin = CreateIntSpinner("act-size", 0, 0, 110, kFieldH, 4, 500, initial.size, 1);
-    sizeSpin->SetSuffix(" pt");
-    FormRow(form, "act-size-row", "Size:", sizeSpin);
-    // A size needs no more than a few digits: not stretched to the column.
-    sizeSpin->layoutItem.SetFlexGrow(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
-
-    // Bold and Italic side by side, under the fields rather than each on a
-    // row of its own.
-    auto styleRow = std::make_shared<UltraCanvasContainer>("act-style", 0, 0, kFieldW, kFieldH);
-    styleRow->layout.SetFlexRow().SetFlexGap(18).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    boldBox = std::make_shared<UltraCanvasCheckbox>("act-bold", 0, 0, 70, kFieldH, "Bold");
-    boldBox->SetChecked(initial.bold);
-    styleRow->AddChild(boldBox);
-    italicBox = std::make_shared<UltraCanvasCheckbox>("act-italic", 0, 0, 70, kFieldH, "Italic");
-    italicBox->SetChecked(initial.italic);
-    styleRow->AddChild(italicBox);
-    FormRow(form, "act-style-row", "Style:", styleRow);
-
-    // The text as it will look, up to a size that fits the card.
-    preview = CreateLabel("act-preview", 0, 0, 0, 44, "");
-    preview->SetAlignment(TextAlignment::Center);
-    preview->SetBackgroundColor(Colors::SectionPage);
-    preview->SetBorders(1.0f, Colors::SectionCardBorder);
-    preview->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    FormWideRow(form, preview);
-    textInput->onTextChanged = [this](const std::string&) { UpdatePreview(); };
-    fontDrop->onSelectionChanged = [this](int, const DropdownItem&) { UpdatePreview(); };
-    sizeSpin->onValueChanged = [this](double) { UpdatePreview(); };
-    sizeSpin->onValueChanging = [this](double) { UpdatePreview(); };
-    boldBox->onStateChanged = [this](CheckedState, CheckedState) { UpdatePreview(); };
-    italicBox->onStateChanged = [this](CheckedState, CheckedState) { UpdatePreview(); };
-    UpdatePreview();
-
-    AddStretchSpacer();
-    AddChild(ButtonRow("act-buttons", this, [this]() {
-        ArtCreatorTextResult r;
-        r.text = textInput->GetText();
-        const int f = fontDrop->GetSelectedIndex();
-        r.font = f == 1 ? "Serif" : f == 2 ? "Monospace" : "Sans";
-        r.size = static_cast<int>(sizeSpin->GetValue());
-        r.bold = boldBox->IsChecked();
-        r.italic = italicBox->IsChecked();
-        if (onAccept) onAccept(r);
-    }, "Place"));
-}
-
-void ArtCreatorTextDialog::FocusText() {
-    if (!textInput) return;
-    SetFocusedElement(textInput.get());
-    textInput->SelectAll();
-}
-
-void ArtCreatorTextDialog::UpdatePreview() {
-    if (!preview) return;
-    LabelStyle st = preview->GetStyle();
-    const int f = fontDrop->GetSelectedIndex();
-    st.fontStyle.fontFamily = f == 1 ? "Serif" : f == 2 ? "Monospace" : "Sans";
-    st.fontStyle.fontSize = std::clamp(sizeSpin->GetValue(), 8.0, 26.0);
-    st.fontStyle.fontWeight = boldBox->IsChecked() ? FontWeight::Bold : FontWeight::Normal;
-    st.fontStyle.fontSlant = italicBox->IsChecked() ? FontSlant::Italic : FontSlant::Normal;
-    const std::string text = textInput->GetText();
-    st.textColor = text.empty() ? Colors::SectionCardCaption : Colors::TextDefault;
-    preview->SetStyle(st);
-    preview->SetText(text.empty() ? "Preview" : text);
 }
 
 } // namespace UltraCanvas

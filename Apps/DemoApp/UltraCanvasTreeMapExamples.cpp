@@ -26,26 +26,26 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeMapExamples() {
-        auto container = DemoKit::CreatePage("treeMapContainer", "TreeMap - Hierarchical Data Example",
-                "Sales by category and product, drawn as nested rectangles sized by value");
-        auto card = DemoKit::AddCard(container, "treeMapCard", "Sales tree map",
-                "Cycle the layout algorithm, the visual style and the colour scheme; toggle values and labels");
+        auto container = DemoKit::CreatePage("treeMapContainer", Tr("TreeMap - Hierarchical Data Example"),
+                Tr("Sales by category and product, drawn as nested rectangles sized by value"));
+        auto card = DemoKit::AddCard(container, "treeMapCard", Tr("Sales tree map"),
+                Tr("Cycle the layout algorithm, the visual style and the colour scheme; toggle values and labels"));
         
         auto treeMap = std::make_shared<UltraCanvasTreeMapElement>("treeMap", 0, 0, 600, 400);
         
         std::vector<std::tuple<std::string, std::string, double, double>> data = {
-            {"Technology", "Computers", 45000, 500},
-            {"Technology", "Phones", 32000, 400},
-            {"Technology", "Tablets", 18000, 200},
-            {"Food", "Fruits", 25000, 300},
-            {"Food", "Vegetables", 18000, 250},
-            {"Food", "Snacks", 12000, 150},
-            {"Clothing", "Men", 22000, 280},
-            {"Clothing", "Women", 28000, 350},
-            {"Clothing", "Kids", 12000, 150},
-            {"Electronics", "TVs", 35000, 450},
-            {"Electronics", "Audio", 22000, 280},
-            {"Electronics", "Gaming", 28000, 360}
+            {Tr("Technology"), Tr("Computers"), 45000, 500},
+            {Tr("Technology"), Tr("Phones"), 32000, 400},
+            {Tr("Technology"), Tr("Tablets"), 18000, 200},
+            {Tr("Food"), Tr("Fruits"), 25000, 300},
+            {Tr("Food"), Tr("Vegetables"), 18000, 250},
+            {Tr("Food"), Tr("Snacks"), 12000, 150},
+            {Tr("Clothing"), Tr("Men"), 22000, 280},
+            {Tr("Clothing"), Tr("Women"), 28000, 350},
+            {Tr("Clothing"), Tr("Kids"), 12000, 150},
+            {Tr("Electronics"), Tr("TVs"), 35000, 450},
+            {Tr("Electronics"), Tr("Audio"), 22000, 280},
+            {Tr("Electronics"), Tr("Gaming"), 28000, 360}
         };
         
         treeMap->SetDataFromHierarchy(data);
@@ -54,16 +54,16 @@ namespace UltraCanvas {
         DemoKit::AddFixed(card, treeMap);
         
         auto buttonRow = DemoKit::AddRow(card, "treeMapButtons", 10);
-        auto btnCycleAlgorithm = MakeTreeMapButton("btnCycleAlgorithm", "Cycle Algorithm");
+        auto btnCycleAlgorithm = MakeTreeMapButton("btnCycleAlgorithm", Tr("Cycle Algorithm"));
         DemoKit::Add(buttonRow, btnCycleAlgorithm);
         
-        auto btnCycleStyle = MakeTreeMapButton("btnCycleStyle", "Cycle Style");
+        auto btnCycleStyle = MakeTreeMapButton("btnCycleStyle", Tr("Cycle Style"));
         DemoKit::Add(buttonRow, btnCycleStyle);
         
-        auto btnCycleColor = MakeTreeMapButton("btnCycleColor", "Cycle Colors");
+        auto btnCycleColor = MakeTreeMapButton("btnCycleColor", Tr("Cycle Colors"));
         DemoKit::Add(buttonRow, btnCycleColor);
         
-        auto btnReset = MakeTreeMapButton("btnReset", "Reset");
+        auto btnReset = MakeTreeMapButton("btnReset", Tr("Reset"));
         DemoKit::Add(buttonRow, btnReset);
 
         auto switchRow = DemoKit::AddRow(card, "treeMapSwitches", 24);
@@ -114,14 +114,14 @@ namespace UltraCanvas {
 
         treeMap->SetDisplayOptions(showLabels, showValues, false, true);
 
-        auto swValues = UltraCanvasSwitch::Create("swToggleValues", 0, 0, "Values", showValues);
+        auto swValues = UltraCanvasSwitch::Create("swToggleValues", 0, 0, Tr("Values"), showValues);
         swValues->onStateChanged = [treeMap](CheckedState, CheckedState newState) {
             showValues = (newState == CheckedState::Checked);
             treeMap->SetDisplayOptions(showLabels, showValues, false, true);
         };
         DemoKit::Add(switchRow, swValues);
 
-        auto swLabels = UltraCanvasSwitch::Create("swToggleLabels", 0, 0, "Labels", showLabels);
+        auto swLabels = UltraCanvasSwitch::Create("swToggleLabels", 0, 0, Tr("Labels"), showLabels);
         swLabels->onStateChanged = [treeMap](CheckedState, CheckedState newState) {
             showLabels = (newState == CheckedState::Checked);
             treeMap->SetDisplayOptions(showLabels, showValues, false, true);
@@ -138,18 +138,18 @@ namespace UltraCanvas {
             swLabels->SetChecked(true);
             
             std::vector<std::tuple<std::string, std::string, double, double>> data = {
-                {"Technology", "Computers", 45000, 500},
-                {"Technology", "Phones", 32000, 400},
-                {"Technology", "Tablets", 18000, 200},
-                {"Food", "Fruits", 25000, 300},
-                {"Food", "Vegetables", 18000, 250},
-                {"Food", "Snacks", 12000, 150},
-                {"Clothing", "Men", 22000, 280},
-                {"Clothing", "Women", 28000, 350},
-                {"Clothing", "Kids", 12000, 150},
-                {"Electronics", "TVs", 35000, 450},
-                {"Electronics", "Audio", 22000, 280},
-                {"Electronics", "Gaming", 28000, 360}
+                {Tr("Technology"), Tr("Computers"), 45000, 500},
+                {Tr("Technology"), Tr("Phones"), 32000, 400},
+                {Tr("Technology"), Tr("Tablets"), 18000, 200},
+                {Tr("Food"), Tr("Fruits"), 25000, 300},
+                {Tr("Food"), Tr("Vegetables"), 18000, 250},
+                {Tr("Food"), Tr("Snacks"), 12000, 150},
+                {Tr("Clothing"), Tr("Men"), 22000, 280},
+                {Tr("Clothing"), Tr("Women"), 28000, 350},
+                {Tr("Clothing"), Tr("Kids"), 12000, 150},
+                {Tr("Electronics"), Tr("TVs"), 35000, 450},
+                {Tr("Electronics"), Tr("Audio"), 22000, 280},
+                {Tr("Electronics"), Tr("Gaming"), 28000, 360}
             };
             
             treeMap->SetDataFromHierarchy(data);

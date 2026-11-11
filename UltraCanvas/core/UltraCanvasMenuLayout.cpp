@@ -1,10 +1,13 @@
 // core/UltraCanvasMenuLayout.cpp
 // Implementation of the serializable, id-based menu layout.
+// Version: 1.1.0 - the commands the program's menus held, saved with a layout ([KNOWN]),
+//                  and MergeMenuLayoutSet
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenuLayout.h"
 #include "UltraCanvasUtils.h"   // TrimWhitespace, Split
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include "UltraCanvasPathUtf8.h"
@@ -74,6 +77,12 @@ namespace UltraCanvas {
 
         f << "# UltraCanvas menu layout\n";
         f << "# Auto-generated. Ids refer to commands in the menu registry.\n";
+        // Before the first menu, where a reader that does not know the
+        // section passes over its lines.
+        if (!set.knownCommands.empty()) {
+            f << "[KNOWN]\n";
+            for (const auto& id : set.knownCommands) f << "ID=" << id << "\n";
+        }
         for (const auto& m : set.menus) {
             f << "[MENU]\n";
             f << "NAME=" << m.name << "\n";
@@ -94,6 +103,8 @@ namespace UltraCanvas {
         if (!f.is_open()) return false;
 
         out.menus.clear();
+        out.knownCommands.clear();
+        bool inKnown = false;
 
         MenuLayout* curMenu = nullptr;
         // lastAtDepth[d] = pointer to the most recently placed node at depth d in
@@ -136,7 +147,13 @@ namespace UltraCanvas {
             std::string line = TrimWhitespace(rawLine);
             if (line.empty() || line[0] == '#') continue;
 
+            if (line == "[KNOWN]") {
+                flushNode();
+                inKnown = true;
+                continue;
+            }
             if (line == "[MENU]") {
+                inKnown = false;
                 flushNode();
                 out.menus.push_back(MenuLayout{});
                 curMenu = &out.menus.back();
@@ -144,6 +161,7 @@ namespace UltraCanvas {
                 continue;
             }
             if (line == "[NODE]") {
+                inKnown = false;
                 flushNode();
                 pending = MenuLayoutNode();
                 pendingDepth = 0;
@@ -154,6 +172,10 @@ namespace UltraCanvas {
             std::string key, value;
             if (!SplitKeyValue(line, key, value)) continue;
 
+            if (inKnown) {
+                if (key == "ID" && !value.empty()) out.knownCommands.push_back(value);
+                continue;
+            }
             if (!haveNode) {
                 // Menu-level fields.
                 if (key == "NAME" && curMenu) curMenu->name = value;
@@ -171,6 +193,148 @@ namespace UltraCanvas {
         return true;
     }
 
+// ===== Merge with a newer program's defaults =====
+    namespace {
+        void CollectIds(const std::vector<MenuLayoutNode>& nodes, std::vector<std::string>& out) {
+            for (const auto& n : nodes) {
+                if (n.IsCommand() && !n.commandId.empty() &&
+                    std::find(out.begin(), out.end(), n.commandId) == out.end()) out.push_back(n.commandId);
+                if (n.IsGroup()) CollectIds(n.children, out);
+            }
+        }
+
+        bool Has(const std::vector<std::string>& ids, const std::string& id) {
+            return std::find(ids.begin(), ids.end(), id) != ids.end();
+        }
+
+        // Whether two entries are the same one: a command by its id, a
+        // submenu by its label. Separators are never anchors.
+        bool SameEntry(const MenuLayoutNode& a, const MenuLayoutNode& b) {
+            if (a.kind != b.kind) return false;
+            if (a.IsCommand()) return a.commandId == b.commandId;
+            if (a.IsGroup()) return a.label == b.label;
+            return false;
+        }
+
+        struct MergeContext {
+            const std::vector<std::string>* known = nullptr;     // what the saved layout's program had
+            const std::vector<std::string>* present = nullptr;   // what the saved layout holds anywhere
+        };
+
+        bool IsNew(const MenuLayoutNode& n, const MergeContext& ctx) {
+            return n.IsCommand() && !n.commandId.empty() && !Has(*ctx.known, n.commandId) &&
+                   !Has(*ctx.present, n.commandId);
+        }
+
+        // The part of a submenu of the defaults that is new: its new commands
+        // and the submenus holding some, none of the rest.
+        bool NewPart(const MenuLayoutNode& group, const MergeContext& ctx, MenuLayoutNode& out) {
+            out = group;
+            out.children.clear();
+            for (const auto& c : group.children) {
+                if (c.IsCommand() && IsNew(c, ctx)) {
+                    out.children.push_back(c);
+                } else if (c.IsGroup()) {
+                    MenuLayoutNode sub;
+                    if (NewPart(c, ctx, sub)) out.children.push_back(sub);
+                }
+            }
+            return !out.children.empty();
+        }
+
+        // Brings the new entries of `defaults` into `saved`, list by list.
+        void MergeList(std::vector<MenuLayoutNode>& saved, const std::vector<MenuLayoutNode>& defaults,
+                       const MergeContext& ctx) {
+            for (size_t i = 0; i < defaults.size(); ++i) {
+                const MenuLayoutNode& d = defaults[i];
+                if (d.IsSeparator()) continue;
+
+                // The same submenu in the saved list: merge into it.
+                if (d.IsGroup()) {
+                    auto same = std::find_if(saved.begin(), saved.end(),
+                                             [&d](const MenuLayoutNode& s) { return SameEntry(s, d); });
+                    if (same != saved.end()) {
+                        MergeList(same->children, d.children, ctx);
+                        continue;
+                    }
+                }
+
+                MenuLayoutNode adding;
+                if (d.IsCommand()) {
+                    if (!IsNew(d, ctx)) continue;
+                    adding = d;
+                } else if (!NewPart(d, ctx, adding)) {
+                    continue;   // a submenu with nothing new in it
+                }
+
+                // After the entry it follows in the defaults, or first.
+                size_t at = 0;
+                for (size_t j = i; j-- > 0;) {
+                    auto anchor = std::find_if(saved.begin(), saved.end(),
+                                               [&](const MenuLayoutNode& s) { return SameEntry(s, defaults[j]); });
+                    if (anchor != saved.end()) { at = static_cast<size_t>(anchor - saved.begin()) + 1; break; }
+                }
+                saved.insert(saved.begin() + static_cast<std::ptrdiff_t>(at), adding);
+            }
+        }
+
+        void DropUnknown(std::vector<MenuLayoutNode>& nodes, const UltraCanvasCommandRegistry& registry) {
+            nodes.erase(std::remove_if(nodes.begin(), nodes.end(), [&registry](const MenuLayoutNode& n) {
+                return n.IsCommand() && !n.commandId.empty() && !registry.Contains(n.commandId);
+            }), nodes.end());
+            for (auto& n : nodes) if (n.IsGroup()) DropUnknown(n.children, registry);
+        }
+    } // namespace
+
+    std::vector<std::string> MenuLayoutCommandIds(const MenuLayoutSet& set) {
+        std::vector<std::string> ids;
+        for (const auto& m : set.menus) CollectIds(m.topLevel, ids);
+        return ids;
+    }
+
+    MenuLayoutSet MergeMenuLayoutSet(const MenuLayoutSet& defaults, const MenuLayoutSet& saved,
+                                     const UltraCanvasCommandRegistry* registry) {
+        MenuLayoutSet result = saved;
+        const std::vector<std::string> present = MenuLayoutCommandIds(saved);
+        // Without a record, what the saved layout holds is what its program had.
+        const std::vector<std::string> known = saved.knownCommands.empty() ? present : saved.knownCommands;
+        MergeContext ctx;
+        ctx.known = &known;
+        ctx.present = &present;
+
+        for (const auto& d : defaults.menus) {
+            if (MenuLayout* menu = result.Find(d.name)) {
+                MergeList(menu->topLevel, d.topLevel, ctx);
+            } else {
+                result.menus.push_back(d);   // a menu new to this program
+            }
+        }
+        if (registry) {
+            for (auto& m : result.menus) DropUnknown(m.topLevel, *registry);
+        }
+        result.knownCommands = MenuLayoutCommandIds(defaults);
+        return result;
+    }
+
+    bool SaveMenuLayoutSet(const MenuLayoutSet& set, const std::string& filePath,
+                           const MenuLayoutSet& defaults) {
+        MenuLayoutSet withKnown = set;
+        withKnown.knownCommands = MenuLayoutCommandIds(defaults);
+        return SaveMenuLayoutSet(withKnown, filePath);
+    }
+
+    bool LoadMenuLayoutSet(MenuLayoutSet& out, const std::string& filePath,
+                           const MenuLayoutSet& defaults, const UltraCanvasCommandRegistry* registry) {
+        MenuLayoutSet saved;
+        if (!LoadMenuLayoutSet(saved, filePath) || saved.menus.empty()) {
+            out = defaults;
+            out.knownCommands = MenuLayoutCommandIds(defaults);
+            return false;
+        }
+        out = MergeMenuLayoutSet(defaults, saved, registry);
+        return true;
+    }
+
     bool LoadMenuLayout(MenuLayout& out, const std::string& filePath) {
         MenuLayoutSet set;
         if (!LoadMenuLayoutSet(set, filePath)) return false;
@@ -181,7 +345,7 @@ namespace UltraCanvas {
 
 // ===== Materialize =====
     namespace {
-        MenuItemData MaterializeNode(const MenuLayoutNode& n, const UltraCanvasMenuRegistry& reg) {
+        MenuItemData MaterializeNode(const MenuLayoutNode& n, const UltraCanvasCommandRegistry& reg) {
             switch (n.kind) {
                 case MenuLayoutNode::Kind::Separator:
                     return MenuItemData::Separator();
@@ -206,7 +370,7 @@ namespace UltraCanvas {
     } // namespace
 
     std::vector<MenuItemData> MaterializeLayout(const MenuLayout& layout,
-                                                const UltraCanvasMenuRegistry& registry) {
+                                                const UltraCanvasCommandRegistry& registry) {
         std::vector<MenuItemData> out;
         out.reserve(layout.topLevel.size());
         for (const auto& n : layout.topLevel) {
@@ -216,7 +380,7 @@ namespace UltraCanvas {
     }
 
     void MaterializeInto(UltraCanvasMenu& menu, const MenuLayout& layout,
-                         const UltraCanvasMenuRegistry& registry) {
+                         const UltraCanvasCommandRegistry& registry) {
         menu.Clear();
         for (auto& item : MaterializeLayout(layout, registry)) {
             menu.AddItem(item);

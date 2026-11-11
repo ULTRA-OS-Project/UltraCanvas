@@ -1,6 +1,6 @@
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; Point2Di dropPoint; -->
 
 ## Contents
 
@@ -26,6 +26,7 @@
   - [Scroll-to-Top and Scroll-to-Selection Buttons](#scroll-to-top-and-scroll-to-selection-buttons)
   - [Measuring the Tree](#measuring-the-tree)
   - [Color Properties](#color-properties)
+  - [Following the theme](#following-the-theme)
   - [Event Callbacks](#event-callbacks)
 - [Usage Examples](#usage-examples)
   - [Basic Tree Creation](#basic-tree-creation)
@@ -38,6 +39,7 @@
   - [Click Behaviors](#click-behaviors)
   - [Expand/Collapse Button](#expandcollapse-button)
   - [Check Flag](#check-flag)
+  - [Dragging Rows](#dragging-rows)
   - [Scrolling](#scrolling)
 - [Rendering Details](#rendering-details)
   - [Visual Elements](#visual-elements)
@@ -54,8 +56,8 @@
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.
 
-**Version:** 1.3.0  
-**Last Modified:** 2026-10-13  
+**Version:** 1.4.0 - `ApplyTheme` on both views, `TreeColumnStyle::FromTheme`: the trees follow the theme  
+**Last Modified:** 2026-11-10  
 **Files:** 
 - Header: `include/UltraCanvasTreeView.h` (columns variant: `include/UltraCanvasColumnsTreeView.h`)
 - Implementation: `core/UltraCanvasTreeView.cpp`, `core/UltraCanvasColumnsTreeView.cpp`
@@ -391,6 +393,22 @@ TreeNode* FindNode(const std::string& nodeId);
 ```
 Finds a node by its ID.
 
+#### `GetNodeAtY`
+```cpp
+TreeNode* GetNodeAtY(int y);
+```
+The row at an element-local y - as scrolled, so the y of `MapToLocal` of a
+window point - or `nullptr` below the last row. For a drop that starts in
+another element (a list's row dragged onto a category in the tree):
+
+```cpp
+// dropPoint: where the drag ended, in window coordinates (UCEvent::pointerWindow)
+const Point2Df local = treeView->MapToLocal(Point2Df(dropPoint.x, dropPoint.y));
+if (TreeNode* node = treeView->GetNodeAtY(static_cast<int>(local.y))) {
+    ShowPage(node->data.nodeId);
+}
+```
+
 ### Selection Management
 
 #### `SelectNode`
@@ -576,7 +594,7 @@ const Color& GetExpanderArrowColor() const;
 ```
 How the expand button of a row with children looks. `TreeExpanderStyle::Box`
 (the default) is the `+` / `-` in a square, coloured by
-`SetExpandButtonColor`. `TreeExpanderStyle::Chevron` is an arrow instead,
+`SetExpandButtonColor` / `SetExpandButtonColors`. `TreeExpanderStyle::Chevron` is an arrow instead,
 pointing right on a closed row and down on an open one, drawn with a 1.5 px
 round stroke in `SetExpanderArrowColor` (default a mid grey,
 `Color(0x70, 0x70, 0x78)`). It takes the same place and the same click as the
@@ -788,26 +806,64 @@ if (int need = tree->GetRequiredWidth(); need > 0)
 ```cpp
 void SetBackgroundColor(const Color& color);
 void SetSelectionColor(const Color& color);
+void SetSelectionTextColor(const Color& color);
 void SetHoverColor(const Color& color);
 void SetFocusRingColor(const Color& color);
 void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
+void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol);
 void SetExpanderArrowColor(const Color& color);
 void SetCheckboxColors(const Color& background, const Color& border, const Color& check);
 ```
 Sets various color properties for the tree view. `SetBackgroundColor` is
 inherited from `UltraCanvasUIElement`.
 
+`SetSelectionTextColor` is the text of a selected row (every cell of it in
+Columns mode); `Colors::Transparent`, the default, keeps the row's own text
+colour, and a node or cell coloured by hand keeps its colour either way. The
+theme sets the colour that reads on the accent (`onAccent`), so a light
+accent on a dark window does not get white text.
+
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
-(default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
+(default `#E0E0E0`). `SetExpandButtonColors` sets the fill, the 1 px border
+(default gray) and the `+`/`-` glyph (default black) together - what a dark
+theme needs, where a black glyph on a light box stands out of the tree.
 `SetExpanderArrowColor` is the arrow's colour under `TreeExpanderStyle::Chevron`
 (see [Expander Style](#expander-style)).
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
 `SetLoadingBarColor` sets the bar a loading row slides along its foot (default
 the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loading)).
+
+### Following the theme
+
+Under the theme policy a new tree follows the framework theme
+(`UltraCanvasTheme.md`) by itself: `ApplyTheme` puts the roles onto the
+colours above - the well behind the rows with the control border round it,
+ink for the labels at the body size, the accent for the selection, the hover
+fill, the control border for the lines, the raised surface for the `+`/`-`
+box with ink in it, muted ink for a chevron, the well and the accent for the
+check flags, the accent for a drop target and the loading bar, the floating
+buttons in muted ink with the panel for their arrow, the scrollbar from
+`ScrollbarStyle::FromTheme`. The tree has no style struct, so a colour set
+by hand does not stop the following (the next theme change puts the theme's
+back): an application that colours the tree itself calls
+`SetFollowTheme(false)` first. `UltraCanvasColumnsTreeView` adds
+`TreeColumnStyle::FromTheme` - hairline separators, the panel for the header
+band with ink; a section header keeps its black bar unless the theme names
+`columns-tree.group-header` and `columns-tree.on-group-header` - and a
+`SetColumnStyle` by hand does stop its following.
+
+```cpp
+auto tree = std::make_shared<UltraCanvasTreeView>("tree", 0, 0, 240, 320);
+tree->SetFollowTheme(false);                                  // styled by the application
+tree->SetSelectionColor(Color(242, 165, 58));
+auto columns = std::make_shared<UltraCanvasColumnsTreeView>("columns", 0, 0, 400, 320);
+columns->SetColumnStyle(TreeColumnStyle::FromTheme(UltraCanvasTheme::Current(), columns->GetColumnStyle()));
+columns->SetFollowTheme(true);                                // the roles over the hand-set columns, on every change
+```
 
 ### Event Callbacks
 
@@ -818,7 +874,9 @@ std::function<void(TreeNode*)> onNodeSelected;
 std::function<void(TreeNode*)> onNodeDoubleClicked;
 std::function<void(TreeNode*)> onNodeExpanded;
 std::function<void(TreeNode*)> onNodeCollapsed;
+// A row dragged onto another and released there (SetNodeDragEnabled, below)
 std::function<void(TreeNode*, TreeNode*)> onNodeDragDrop;   // dragged, target
+std::function<bool(TreeNode* dragged, TreeNode* target)> onNodeDragAccept;
 std::function<void(TreeNode*, TreeCheckState)> onNodeCheckChanged;
 // Files dragged in from elsewhere and dropped on a node: onFilesDragAccept
 // decides whether a node is a valid target (only accepted nodes get the drop
@@ -1046,6 +1104,37 @@ TreeNode* current = treeView->GetFocusedNode();
 
 ### Check Flag
 - Clicking the check box toggles the row's flag and leaves the selection alone
+
+### Dragging Rows
+Off by default; `SetNodeDragEnabled(true)` lets the user drag a row onto
+another one, as a menu or toolbar editor rearranges its entries:
+
+```cpp
+void SetNodeDragEnabled(bool enabled);
+bool IsNodeDragEnabled() const;
+bool IsDraggingNode() const;      // a press has become a drag
+TreeNode* GetDraggedNode() const; // the row being dragged, or null
+```
+
+The press selects the row as always. Once the pointer has travelled six
+pixels with the button down, the press is a drag: the row under the pointer
+is drawn as the drop target when it accepts the dragged row, and a pointer
+past the top or bottom edge scrolls a row at a time. Releasing over a target
+fires `onNodeDragDrop(dragged, target)` after the drag has ended, so the
+handler may rebuild the tree. A release anywhere else, or Escape, drops
+nothing. Without `onNodeDragAccept`, every row is a target except the dragged
+one and the rows inside it; with it, the callback decides alone. The tree
+changes nothing itself: what a drop means is the handler's to do.
+
+```cpp
+auto tree = std::make_shared<UltraCanvasTreeView>("Layout", 0, 0, 300, 400);
+tree->SetNodeDragEnabled(true);
+// Commands go into groups, never into other commands.
+tree->onNodeDragAccept = [](TreeNode*, TreeNode* target) { return target->HasChildren(); };
+tree->onNodeDragDrop = [](TreeNode* dragged, TreeNode* target) {
+    // move dragged->data.nodeId under target->data.nodeId in the model, then rebuild
+};
+```
 
 ### Scrolling
 - **Mouse Wheel**: Scroll vertically

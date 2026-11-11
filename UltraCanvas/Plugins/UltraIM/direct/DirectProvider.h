@@ -3,9 +3,29 @@
 // key-pair identity, end-to-end encrypted messages peer to peer over WebRTC
 // data channels, the relay for rendezvous, the offline queue and groups, and
 // the local network for all of that between two ChatCubes with no relay
+// A picture, a video or a file travels as sealed envelopes like a text: a
+// "file" body with its name, size and preview picture, then the bytes in
+// numbered parts (32 KiB each, one envelope per part), peer to peer over
+// the link when it is up, else through the relay's queue - so a file reaches
+// someone offline, and a group, with nothing added to the relay.
+//
+// The identity's key vault opens by itself with the device key, or - as its
+// owner chooses (SetSignInProtection) - only with a password (the vault
+// encrypted under it: Argon2id, XChaCha20-Poly1305), and/or once the code
+// of an authenticator app (UltraAuthenticator; TOTP, RFC 6238) is typed.
+// SignIn then goes in steps, as Telegram's does: NeedsInput with the auth
+// step Password, then Code. The e-mail address and phone number the owner
+// gives (to recover the account) are kept in the vault and on the relay,
+// for the owner alone.
+// Version: 0.1.5 - the e-mail address confirmed by the link the relay e-mails; recovery by an e-mailed link
+//                  (POST /v1/recovery/poll with the token only this computer holds)
+// Version: 0.1.4 - confirming the e-mail and phone with the relay's codes; account recovery (the relay
+//                  keeps a copy of the key while it is on, and gives it back for codes sent to both)
+// Version: 0.1.3 - the account's profile (name, e-mail, phone); a password and/or an authenticator code to sign in
+// Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -68,6 +88,36 @@ public:
     UltraIMConnectionState GetConnectionState() const override { return state_.load(); }
     std::string GetLocalUserId() const override;
     bool HasStoredSession() const override;
+    // Password, then Code, while a protected sign-in waits for them.
+    UltraIMAuthStep GetAuthStep() const override { return authStep_.load(); }
+    std::string GetAuthHint() const override;
+
+    // ---- the account's profile and its sign-in protection -------------------------
+    void FetchAccountProfile(UltraIMAccountProfileCallback onResult) override;
+    // The name to the relay and the local network's next announcement, the
+    // e-mail and phone into the vault and to the relay (PUT /v1/profile).
+    void UpdateAccountProfile(const UltraIMAccountProfile& profile, UltraIMResultCallback onResult) override;
+    UltraIMSignInProtection GetSignInProtection() const override;
+    UltraIMResult StartAuthenticatorSetup(std::string& outOtpAuthUri) override;
+    // On the worker thread (the password is stretched, twice when it changes).
+    void SetSignInProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) override;
+
+    // ---- confirming the e-mail and phone; account recovery ----------------------------
+    // The relay e-mails the link that confirms the address and texts the
+    // phone's code, and checks it (POST /v1/profile/verify; /verify/resend
+    // for another). Recovery on: the relay gets a copy of this ID's key,
+    // which it keeps encrypted with its recovery key (PUT /v1/recovery/escrow);
+    // off: it deletes it. On a computer without an ID, StartRecovery (POST
+    // /v1/recovery/start) has a link e-mailed; FinishRecovery asks (POST
+    // /v1/recovery/poll, with the poll token kept from the start) whether it
+    // was approved, and once it was, the key comes back and the ID is stored
+    // here as if it had been made here.
+    void VerifyContact(UltraIMContactChannel channel, const std::string& code, UltraIMResultCallback onResult) override;
+    void ResendContactCode(UltraIMContactChannel channel, UltraIMResultCallback onResult) override;
+    void SetRecoveryEnabled(bool enabled, UltraIMResultCallback onResult) override;
+    void StartRecovery(const std::string& server, const std::string& address,
+                       UltraIMRecoveryChallengeCallback onResult) override;
+    void FinishRecovery(const UltraIMRecoveryAnswer& answer, UltraIMResultCallback onResult) override;
 
     // ---- data ---------------------------------------------------------------
     void FetchConversations(UltraIMConversationsCallback onResult) override;
@@ -85,6 +135,20 @@ public:
     // ---- sending ------------------------------------------------------------
     UltraIMResult SendText(const std::string& conversationId, const std::string& text,
                            const UltraIMSendOptions& options) override;
+    // A file of ours, in parts (up to 64 MiB), with its preview picture when
+    // the application makes one (UltraIM_SetPreviewMaker). The outcome as
+    // for a text; our own row is in the store at once, pointing at the file.
+    UltraIMResult SendImage(const std::string& conversationId, const std::string& localPath,
+                            const std::string& caption, const UltraIMSendOptions& options) override;
+    UltraIMResult SendVideo(const std::string& conversationId, const std::string& localPath,
+                            const std::string& caption, const UltraIMSendOptions& options) override;
+    UltraIMResult SendFile(const std::string& conversationId, const std::string& localPath,
+                           const UltraIMSendOptions& options) override;
+    // Everything arrives by itself (the sender pushes the parts): this waits
+    // for the file when it is still on its way, and answers from disk when
+    // it is here.
+    void DownloadAttachment(const std::string& conversationId, const std::string& messageId,
+                            UltraIMAttachmentCallback onResult) override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
@@ -129,8 +193,35 @@ private:
     // Signs a signalling message and sends it through the relay.
     bool SendSignal(const std::string& to, const std::string& kind, const std::string& session,
                     const std::string& data);
-    bool LoadIdentity(std::string& error);
+    // What opening the identity's vault came to.
+    enum class VaultOpen { Opened, Empty, NeedsPassword, WrongPassword, Failed };
+    // The vault opened (with `password` when it has one), the identity, the
+    // authenticator secret and the profile read from it.
+    VaultOpen OpenVault(const std::string& password, std::string& error);
     bool SaveIdentity();
+    bool SaveProfile();
+    // The vault used with the password it was opened with ("" : the device key).
+    bool WithVault(const std::function<void(UltraVault::DeviceKeyVault& vault)>& use);
+    // `code` checked against `secret`: once per code, after a pause when too
+    // many were wrong (kept across starts). `lastStep` the step accepted
+    // last (0: none); the one accepted now in `outStep`.
+    bool CheckCode(const UltraCryptSecureBuffer& secret, const std::string& code, uint64_t lastStep,
+                   uint64_t& outStep, std::string& error);
+    void SignInNow(const UltraIMCredentials& credentials, UltraIMResultCallback onResult);
+    void ChangeProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult);
+    void SendProfileToRelay(std::function<void(const UltraIMResult&)> onDone);
+    // Signed in to the relay (Connected, or the socket Reconnecting).
+    bool HasRelaySession() const;
+    // Whether this computer holds an ID already (in the vault, behind a password or not).
+    bool HasIdentityHere();
+    // The relay a recovery talks to, before there is a session (one at a time).
+    std::shared_ptr<RelayClient> recoveryRelay_;
+    // What proves this computer started the recovery; the relay answers the
+    // key only with it.
+    std::string recoveryId_;
+    std::string recoveryPollToken_;
+    // Runs `job` on the worker thread, between two pumps.
+    void Enqueue(std::function<void()> job);
     void AfterLogin();
     void FetchUser(const std::string& userId, std::function<void(bool known)> onDone);
     std::vector<uint8_t> KeyOf(const std::string& userId);
@@ -155,6 +246,18 @@ private:
     void ProcessEnvelope(const std::string& envelopeJson, int64_t relayId, bool overLink);
     void HandleBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
 
+    // ---- files ---------------------------------------------------------------------
+    UltraIMResult SendMedia(const std::string& conversationId, const std::string& localPath, const std::string& caption,
+                            UltraIMMessageType type, const UltraIMSendOptions& options);
+    // Where a file that arrived (or its preview picture) is kept.
+    std::string MediaPath(const std::string& fileId, const std::string& suffix) const;
+    // All parts here and the message known: the file is put together, the
+    // message updated, and whoever waits for it told.
+    void TryAssemble(const std::string& fileId);
+    // The "file" and "chunk" bodies.
+    void HandleFileBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    void HandleChunkBody(const UltraCanvas::JSONValue& body);
+
     // ---- outgoing ---------------------------------------------------------------
     void QueueBody(const std::string& conversation, const std::vector<std::string>& recipients,
                    const std::string& clientId, const std::string& bodyJson, int64_t timestampMs);
@@ -177,6 +280,19 @@ private:
     bool            vaultOpen_ = false;
     Identity        identity_;
     std::string     displayName_;
+    // The account (accountMutex_): what was read from the vault, the
+    // password it was opened with ("" : the device key), the authenticator's
+    // secret (empty: no code asked) and one being set up.
+    mutable std::mutex accountMutex_;
+    std::string     vaultPassword_;
+    UltraCryptSecureBuffer totpSecret_;
+    UltraCryptSecureBuffer pendingTotp_;
+    bool            codeAccepted_ = false;      // this start's code was right
+    std::string     email_;
+    std::string     phone_;
+    std::string     authHint_;
+    std::atomic<UltraIMAuthStep> authStep_{UltraIMAuthStep::Idle};
+    std::vector<std::function<void()>> jobs_;   // under mutex_
     KeyRing         keyRing_;
     LinkManager     links_;
     CallManager     calls_;
@@ -198,6 +314,7 @@ private:
         int64_t deadlineMs = 0;
     };
     std::vector<PendingAdd> pendingAdds_;
+    std::map<std::string, std::vector<UltraIMAttachmentCallback>> mediaWaiters_;    // file id -> DownloadAttachment's callbacks
 
     std::thread     worker_;
     std::condition_variable wake_;

@@ -29,6 +29,7 @@
   - [FitContent Width Mode (Alignment Toolbar)](#fitcontent-width-mode-alignment-toolbar)
   - [Disabled Segments](#disabled-segments)
   - [A Segment in Its Own Colour](#a-segment-in-its-own-colour)
+  - [A Tooltip for Each Segment](#a-tooltip-for-each-segment)
   - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
 - [Keyboard Navigation](#keyboard-navigation)
 - [See Also](#see-also)
@@ -37,7 +38,7 @@
 
 **UltraCanvasSegmentedControl** is a multi-segment selection control for choosing between mutually exclusive options (single mode) or toggling several options independently (multiple/toggle mode). It is well-suited for view-switchers, filter bars, formatting toolbars, and size pickers.
 
-**Version:** 1.0.1
+**Version:** 1.6.0 - `SegmentedControlStyle::FromTheme`, `ApplyTheme`: the control follows the theme
 **Header:** `include/UltraCanvasSegmentedControl.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -105,6 +106,11 @@ void SetSegmentWidth(int index, float width);    // Used with SegmentWidthMode::
 // One segment's text colour while it is not selected; selected, it takes
 // selectedTextColor. Colors::Transparent restores the style's colours.
 void SetSegmentTextColor(int index, const Color& color);
+// One segment's own tooltip - an icon-only segment naming itself. It shows
+// while the pointer is over that segment and switches as the pointer moves
+// to the next; a segment without one shows the control's (SetTooltip).
+void        SetSegmentTooltip(int index, const std::string& text);
+std::string GetSegmentTooltip(int index) const;
 ```
 
 ### Selection — Single Mode
@@ -224,7 +230,26 @@ struct SegmentedControlStyle {
     static SegmentedControlStyle Modern();   // iOS-like blue
     static SegmentedControlStyle Flat();     // Spaced individual segments
     static SegmentedControlStyle Bar();      // No separators, solid bar
+
+    // The framework theme's roles over a base's shape (UltraCanvasTheme.md)
+    static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme, const SegmentedControlStyle& base);
+    static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme);
+    static SegmentedControlStyle FromTheme();
 };
+```
+
+`FromTheme` puts the theme's roles over a base style's shape: the raised
+surface for a segment at rest, the accent with text on it for the selected
+one, the hover fill, the panel disabled, the control border and hairline
+separators, the interface font at the body size. Under the theme policy a
+new control follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto view = std::make_shared<UltraCanvasSegmentedControl>("view", 240, 28);
+SegmentedControlStyle flat = SegmentedControlStyle::Flat();
+view->SetStyle(SegmentedControlStyle::FromTheme(UltraCanvasTheme::Current(), flat));   // the roles over the Flat shape
+view->SetFollowTheme(true);
 ```
 
 ## Events and Callbacks
@@ -396,6 +421,24 @@ assistant->AddSegment("Claude Code");
 assistant->AddSegment("Codex");
 assistant->SetSegmentTextColor(0, Color(200, 30, 30));
 assistant->SetSelectedIndex(1);
+```
+
+### A Tooltip for Each Segment
+
+Icon-only segments say what they are in their own tooltips. A tooltip set
+with `SetTooltip` on the control is read once, when the pointer comes in, so
+changing it from `onSegmentHover` leaves the first segment's text up while
+the pointer moves on; `SetSegmentTooltip` swaps the shown tooltip as the
+pointer crosses from one segment to the next.
+
+```cpp
+auto shape = CreateSegmentedControl("shape", 50, 780, 102, 28);
+shape->AddSegment("", "media/icons/snip-rectangle.svg");
+shape->AddSegment("", "media/icons/snip-window.svg");
+shape->AddSegment("", "media/icons/snip-screen.svg");
+shape->SetSegmentTooltip(0, "Rectangle: an area you drag out");
+shape->SetSegmentTooltip(1, "Window: the window you click");
+shape->SetSegmentTooltip(2, "Full screen: the whole screen");
 ```
 
 ### Variable-Length Segments with a Custom Theme

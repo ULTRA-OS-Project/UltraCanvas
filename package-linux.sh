@@ -52,6 +52,8 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # (UltraCrypt); without it they are skipped here like any app not built.
 # UltraClipboard shows the clipboard history UltraDesktop records, and
 # records it itself while it is open on another desktop.
+# UltraNotifications keeps the notifications after their toast has gone and
+# counts the unread for UltraDesktop's bell.
 # UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 # UltraCanvasStart, the setup application, is in the bundle like every app;
 # scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
@@ -61,7 +63,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress
+      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraWeb UltraCanvasStart ultrapress
       SmartHomeCenter UltraDBAdmin)
 
 # AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,
@@ -221,6 +223,29 @@ while IFS= read -r -d '' f; do
     fi
 done < <(find "$PKG/bin" "$PKG/lib" -type f -print0)
 
+# --- libvips' loader modules and libheif's codec plug-ins ---------------------
+# Both are opened at run time (g_module_open / dlopen), so ldd below never
+# sees them: without this a package built on a system whose libvips keeps
+# HEIF and JPEG XL in modules (8.13 on, Ubuntu 24.04) or whose libheif keeps
+# its decoders in plug-ins would read neither HEIC, AVIF nor JXL. Copied
+# under lib/ with their layout; the launcher points libvips (VIPSHOME) and
+# libheif (LIBHEIF_PLUGIN_PATH) at them, and the closure pass picks up what
+# they link.
+
+log "Bundling libvips modules and libheif plug-ins ..."
+for moddir in "/usr/lib/$MULTIARCH"/vips-modules-*; do
+    if [ -d "$moddir" ]; then
+        mkdir -p "$PKG/lib/$MULTIARCH"
+        cp -a "$moddir" "$PKG/lib/$MULTIARCH/"
+        log "  $(basename "$moddir") ($(ls -1 "$moddir"/*.so 2>/dev/null | wc -l) modules)"
+    fi
+done
+if [ -d "/usr/lib/$MULTIARCH/libheif/plugins" ]; then
+    mkdir -p "$PKG/lib/libheif"
+    cp -a "/usr/lib/$MULTIARCH/libheif/plugins" "$PKG/lib/libheif/"
+    log "  libheif plug-ins ($(ls -1 "$PKG/lib/libheif/plugins"/*.so 2>/dev/null | wc -l))"
+fi
+
 # --- collect dependent .so (transitive closure) ------------------------------
 
 log "Collecting dependent shared libraries ..."
@@ -275,6 +300,15 @@ for app in "${FOUND_APPS[@]}"; do
 HERE="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="$HERE/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 IM_LIB="$(ls -d "$HERE"/lib/ImageMagick-* 2>/dev/null | head -1)"
+# libvips finds its loader modules under $VIPSHOME/lib/<multiarch>/vips-modules-*
+# and libheif its codec plug-ins in LIBHEIF_PLUGIN_PATH (see the bundling
+# step): nothing is set where the package carries none.
+if ls -d "$HERE"/lib/*/vips-modules-* >/dev/null 2>&1; then
+    export VIPSHOME="$HERE"
+fi
+if [ -d "$HERE/lib/libheif/plugins" ]; then
+    export LIBHEIF_PLUGIN_PATH="$HERE/lib/libheif/plugins"
+fi
 if [ -n "$IM_LIB" ]; then
     export MAGICK_HOME="$HERE"
     export MAGICK_CONFIGURE_PATH="$HERE/etc/ImageMagick-6:$IM_LIB/config-Q16"

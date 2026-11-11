@@ -66,6 +66,7 @@ before adding cross-module code.
   CI runs `UltraCanvasDemo --audit-layout` and `--audit-layout --pseudo-loc`
   (every text ~40% longer) on a virtual display and fails on a label or
   button narrower than its text, or content cut off without a scrollbar.
+  The audit measures in the bundled Ubuntu 12, whatever the desktop's font.
   Run both before pushing a page (`--audit-page <id>` for one page).
 
 ## Core conventions
@@ -354,9 +355,11 @@ enforces this and runs in CI; a genuine exception opts out with
 ## Building and testing
 
 ```bash
-# Ubuntu/Debian deps
+# Ubuntu/Debian deps (the two libheif plug-ins exist from Ubuntu 24.04 on:
+# HEIC and AVIF decode only with them, and ImageFormatsTest insists)
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev clang
+    libfreetype6-dev libvips-dev libharfbuzz-dev clang \
+    libheif-plugin-libde265 libheif-plugin-aomdec libjxl-dev
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 
@@ -385,6 +388,15 @@ dead, which apt itself waits out for as long as the job lasts. The build's
 Linux legs also restore the packages the last run on `main` downloaded
 (`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
 serves only what changed.
+The repository has 10 GB of Actions cache, and GitHub evicts past that.
+`cache-prune.yml` (`scripts/prune_actions_caches.py`) deletes every
+run-numbered entry (a key ending in `${{ github.run_id }}`) but the newest of
+its kind, and closed pull requests' caches, after each build. Two rules for a
+new cache: a key that grows with every run ends in the run id, so the prune
+recognises it; and no leg's `restore-keys` prefix may be the start of another
+leg's key. `vcpkg-macos-15-` once matched `vcpkg-macos-15-intel-...`, and the
+arm64 leg restored x86_64 libraries and rebuilt them all; name a leg by its
+runner and its architecture (`vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-`).
 A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
 ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
 its runner is five to ten times slower and the two macOS rows share one code
@@ -394,6 +406,15 @@ bundled library) asks for that row with the `ci:intel` label; adding it
 starts a run with the full matrix.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
+
+**Downloads in CI retry.** Apt installs go through `ci-apt.sh`; every other
+download a CI step makes retries too: a file through
+`curl -fsSL --retry 5 --retry-all-errors` into a file (never piped straight
+into `tar`), and a tool with no retry of its own - a `git clone`, a
+submodule update, `emsdk install`, an installer script - through
+`scripts/ci-retry.sh [--clean DIR] -- <command>`, three tries 30 s and 60 s
+apart, `--clean` emptying a clone's folder between them. A bare `wget` of
+`llvm.sh` once failed both Linux legs in under a second.
 
 **Cloud sessions.** The Claude Code cloud image is a general Ubuntu 24.04
 without most of the libraries CI installs, and CMake leaves a missing optional
@@ -419,7 +440,11 @@ tests skip. A test that fails here but passes in CI because a library is
 missing is fixed by adding the package to that list, not by treating the
 failure as expected; re-run `cmake` on a build directory configured before
 the install. To build what CI builds, configure with the options of CI's
-*Configure CMake (macOS/Linux)* step.
+*Configure CMake (macOS/Linux)* step. The same hook widens the clone's fetch refspec to
+every branch and fetches the session branch's `origin/<branch>` copy: a cloud
+clone is shallow and single-branch, and without that copy both Stop hooks -
+the repository's and the image's own `~/.claude/stop-hook-git-check.sh`,
+which the image rewrites every turn - reported a pushed branch as unpushed.
 
 **Tests that need a display.** A few tests under `Tests/` open a real window
 and read the composited pixels back (`CaretStackingTest`,
@@ -589,10 +614,13 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
+| `Docs/UltraAIServerAdmin/CHANGELOG.md` | UltraAI ServerAdmin — the model server's admin tool |
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
 | `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
+| `Docs/UltraNotifications/CHANGELOG.md` | UltraNotifications — the notifications after their pop-up |
+| `Docs/UltraSnip/CHANGELOG.md` | UltraSnip — screenshots and screen recordings |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
@@ -764,12 +792,21 @@ and never introduce a new literal copy of one:
    `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
    `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
    `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI
-   runs that too. Changing C++ the Windows build compiles (anything but an
-   OS arm)? Run `python3 scripts/check_libcxx_syntax.py <dir or file>`: the
-   Windows builds compile against libc++, which refuses what libstdc++ lets
-   through (`std::to_string` of a file time's tick count, say), and the
-   script type-checks the units under that path against libc++ with the
-   build's own flags - a module in seconds, the whole tree in twenty minutes. Reading HTML,
+   runs that too. Changing UltraIM's provider interface
+   (`UltraIMPlugins.h`) or a type in `UltraIMTypes.h`? Bump
+   `ULTRAIM_PLUGIN_HOST_ABI_VERSION` - the provider modules are called through
+   that vtable and those structs, and the host loads only a module of its own
+   version. Changing `UltraCanvasElementPlugins.h`? Bump
+   `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION` for a member appended to the host
+   table, or the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG` for a type that
+   crosses to the plug-ins. Then run `python3 scripts/check_plugin_abi.py
+   --update`; CI runs the check. Changing C++ the Windows build compiles
+   (anything but an OS arm)? Run `python3 scripts/check_libcxx_syntax.py <dir
+   or file>`: the Windows builds compile against libc++, which refuses what
+   libstdc++ lets through (`std::to_string` of a file time's tick count,
+   say), and the script type-checks the units under that path against libc++
+   with the build's own flags - a module in seconds, the whole tree in twenty
+   minutes. Reading HTML,
    CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
@@ -781,7 +818,35 @@ and never introduce a new literal copy of one:
    (`UltraCanvasNotificationActivation.h`); and it gets a row in
    `NOTIFICATION_ACTIVATORS` in `scripts/make_msix_layout.py`, which declares
    the activator in the MSIX package's manifest — run
-   `python3 scripts/check_notification_activators.py`; CI runs that too.
+   `python3 scripts/check_notification_activators.py`; CI runs that too. Writing text a person reads in a window? Through `Tr`
+   (`UltraLocalisation/UltraLocalisation.h`: `Tr("Save")`, `TrC`, `TrN`,
+   `TrF`), never a bare literal in a label, a menu or a dialog — then run
+   `python3 scripts/extract_ui_strings.py` so the English catalogues under
+   `media/locale/en/` carry the key, and `python3
+   scripts/check_locale_catalogues.py`; CI runs that too. **A text that lands
+   in the standard set (`media/locale/en/Standard.json`) brings its
+   translations with it:** the check fails on a standard entry any language
+   lacks (a regional variant such as `pt-BR` counts its parent's), because
+   that text would show in English to everyone using that language, in
+   every application - draft them with `scripts/translate_catalogue.py`
+   (marked `machine draft … reviewed by -` like the rest). A word every
+   application has is in `Standard.json` or a base set already (the
+   proposal's appendices): an application's own catalogue holds only what
+   is its own. The demo app is the one place a bare literal is right:
+   `DemoApp` is in `SKIP_APPS` of `scripts/extract_ui_strings.py`, so its
+   pages have no catalogue and wrap nothing - a demo page is example code a
+   developer reads beside its document, in English, not a product a person
+   runs in their language - and a review that finds no `Tr` there has found
+   nothing. **A catalogue under `media/locale/en/` that conflicts in a
+   merge is never merged by hand:** whichever branch merges second merges
+   the base and runs `python3 scripts/extract_ui_strings.py` - it rebuilds a
+   conflicted catalogue from both sides git keeps (its `@bases` and other
+   metadata) and the merged sources - then `git add`s it.
+   `check_pr_overlap.py` reports such a file as *rebuilt*, not as a
+   conflict. (A hand-merge, or the script before it learned this, can drop
+   `@bases`, and the application then stops inheriting its base set without
+   any check noticing.) The hand-curated base sets under `base/` are not
+   generated: a conflict there is a real one.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
@@ -797,7 +862,11 @@ and never introduce a new literal copy of one:
    are listed in `scripts/doc_examples_baseline.txt` until the API exists;
    a component doc must never be added there. Writing one of those APIs
    makes its entries stop being found, which fails the check until the file
-   is rewritten (`--all --update-baseline`) in the same change.
+   is rewritten in the same change: `--all --update-baseline`, or
+   `--update-baseline <doc>...` for the docs changed, with the others'
+   entries kept. Those are the only ways to write the file - each doc's
+   entries end in a line that signs them, and a block edited by hand fails
+   the check naming the doc to regenerate.
    Changing a header can therefore fail a doc you did not touch: fix that
    doc in the same change. A name a snippet takes from the application - a
    `window`, a callback the reader writes, a version macro - is declared in

@@ -1,4 +1,7 @@
 // include/UltraCanvasDatePicker.h
+// Version: 1.2.0 - CalendarStyle::FromTheme, DatePickerStyle::FromTheme, ApplyTheme on the calendar view and the
+//                  two pickers: they follow the theme; a SetStyle by hand stops the following
+// Version: 1.1.0 - the calendar names follow a language switched at run time
 // Calendar / date-selection widgets for UltraCanvas.
 //
 // This header provides two complementary widgets that cover the common
@@ -32,7 +35,7 @@
 // Version: 1.1.0 - 2026-06-17 - several months per view, stacked or side by side (SetMonthsPerView,
 //                  CalendarOrientation)
 // Version: 1.0.0 - 2026-06-14 - UltraCanvasCalendarView and UltraCanvasDatePicker
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -185,6 +188,20 @@ namespace UltraCanvas {
         std::string fontFamily;
         float fontSize              = 12.0f;
         float headerFontSize        = 13.0f;
+
+        // The theme's roles: the raised surface for the panel and its header
+        // with hairlines, ink for the cells and the header, muted ink for
+        // the weekday row and the arrows, faint ink for the days of the
+        // months beside and the week numbers, the hover fill, the accent
+        // with text on it for the selected day, today's ring and the
+        // footer, the soft accent for a range, the focus ring, danger for a
+        // blocked day's strike; the weekend colour is the element role
+        // "calendar.weekend" where a theme names it, else the base's; the
+        // interface font at the body size - over a base's own shape
+        // (metrics), or a default one
+        static CalendarStyle FromTheme(const UltraCanvasTheme& theme, const CalendarStyle& base);
+        static CalendarStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, CalendarStyle()); }
+        static CalendarStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== CALENDAR VIEW =====
@@ -204,7 +221,7 @@ namespace UltraCanvas {
             : UltraCanvasCalendarView(identifier, -1, -1, w, h) {}
         explicit UltraCanvasCalendarView(const std::string& identifier)
             : UltraCanvasCalendarView(identifier, -1, -1, -1, -1) {}
-        ~UltraCanvasCalendarView() override = default;
+        ~UltraCanvasCalendarView() override;
 
         // ===== SELECTION MODE =====
         void SetSelectionMode(DateSelectionMode mode);
@@ -254,9 +271,17 @@ namespace UltraCanvas {
         // firstDayOfWeek: 0 = Sunday (default), 1 = Monday, ...
         void SetFirstDayOfWeek(int dow) { firstDayOfWeek = ((dow % 7) + 7) % 7; RequestRedraw(); }
         int GetFirstDayOfWeek() const { return firstDayOfWeek; }
+        // The names come from the standard set's "weekday|Mo", "month|May"
+        // and "month-short|May" entries in the current language, and follow
+        // a language switched at run time (UltraLocalisation::SetLanguage)
+        // without the picker being rebuilt. Names set here replace them and
+        // stay through a switch; a size other than 7 / 12 is ignored.
         void SetWeekdayNames(const std::vector<std::string>& shortNames); // size 7, Sunday-first
         void SetMonthNames(const std::vector<std::string>& longNames,
                            const std::vector<std::string>& shortNames);   // size 12
+        const std::vector<std::string>& GetWeekdayNames() const { return weekdayNames; }
+        const std::vector<std::string>& GetMonthNamesLong() const { return monthNamesLong; }
+        const std::vector<std::string>& GetMonthNamesShort() const { return monthNamesShort; }
         void SetShowWeekNumbers(bool show);
         void SetShowAdjacentMonthDays(bool show) { showAdjacentDays = show; RequestRedraw(); }
         void SetShowFooter(bool show) { showFooter = show; RequestRedraw(); }
@@ -280,9 +305,10 @@ namespace UltraCanvas {
         void SetScrollMonthRange(const UCDate& from, const UCDate& to);
 
         // ===== STYLE =====
-        void SetStyle(const CalendarStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const CalendarStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
         const CalendarStyle& GetStyle() const { return style; }
         CalendarStyle& GetStyle() { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(CalendarStyle::FromTheme(theme, style)); }
 
         // Preferred size for the current style/configuration (used when hosted
         // in a popup or to size an inline calendar).
@@ -437,6 +463,9 @@ namespace UltraCanvas {
         std::vector<std::string> weekdayNames;   // Sunday-first, short
         std::vector<std::string> monthNamesLong;
         std::vector<std::string> monthNamesShort;
+        bool customCalendarNames = false;        // set through SetWeekdayNames / SetMonthNames: kept through a language switch
+        int languageHandler = 0;                 // UltraLocalisation change handler, removed in the destructor
+        void ResolveCalendarNames();             // the current language's names into the three vectors
 
         // hover tracking (for hover highlight + range preview)
         UCDate hoverDate;
@@ -470,6 +499,16 @@ namespace UltraCanvas {
         float fontSize       = 12.0f;
 
         CalendarStyle calendarStyle;
+
+        // The theme's roles: the well for the field with the control border
+        // and the focus ring, the hover fill, the panel disabled, ink and the
+        // caret in ink, faint ink for the hint, muted ink for the glyph; the
+        // interface font at the body size; the calendar from
+        // CalendarStyle::FromTheme - over a base's own shape (metrics), or a
+        // default one
+        static DatePickerStyle FromTheme(const UltraCanvasTheme& theme, const DatePickerStyle& base);
+        static DatePickerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, DatePickerStyle()); }
+        static DatePickerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== DATE PICKER (dropdown calendar) =====
@@ -543,6 +582,7 @@ namespace UltraCanvas {
         // ===== STYLE =====
         void SetStyle(const DatePickerStyle& s);
         const DatePickerStyle& GetStyle() const { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(DatePickerStyle::FromTheme(theme, style)); }
 
         // ===== OVERRIDES =====
         void SetWindow(UltraCanvasWindowBase* win) override;
@@ -644,6 +684,7 @@ namespace UltraCanvas {
 
         // ===== STYLE =====
         void SetStyle(const DatePickerStyle& s);
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(DatePickerStyle::FromTheme(theme, style)); }
 
         // ===== OVERRIDES =====
         void SetBounds(const Rect2Df& b) override;

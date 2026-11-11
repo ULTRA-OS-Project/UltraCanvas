@@ -20,6 +20,25 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## OpenSSL 3 libcrypto (UltraCrypt's X.509, CMS, RSA and ECDSA)
+
+- **Used by:** UltraCrypt's X.509 and CMS (`UltraCanvas/core/UltraCrypt/UltraCryptX509.cpp`,
+  `UltraCryptX509.h`) and its RSA / ECDSA checks (`UltraCryptPublicKey.h`),
+  and through them UltraMail's S/MIME and the UltraDBAdmin relay's ID-token
+  signature. Optional: without
+  OpenSSL 3 those calls answer `BackendUnavailable`. (UltraNet links OpenSSL
+  for TLS on Linux and Android, UltraRTC for DTLS; those are listed with them.)
+- **Upstream:** https://github.com/openssl/openssl
+- **Linked, not vendored:** the system package (`libssl-dev`; MSYS2's
+  `openssl`), on macOS vcpkg's build for macOS 14 (`MacOS/deps/vcpkg.json`),
+  bundled as a dylib in the suite's shared `Frameworks/`. No OpenSSL source is
+  carried in this repository, and no OpenSSL type appears in any UltraCanvas
+  public header.
+- **License:** Apache License 2.0 (OpenSSL 3.0 and later). A binary
+  distribution that carries the library carries its licence text.
+
+---
+
 ## wasmtime (WebAssembly engine)
 
 - **Used by:** the WasmHost module (`UltraCanvas/core/WasmHost/`), and through
@@ -37,7 +56,7 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
-## TDLib (Telegram client library)
+## TDLib (Telegram Database Library)
 
 - **Used by:** the UltraIM Telegram provider
   (`UltraCanvas/Plugins/UltraIM/telegram/`), and through it ChatCube's
@@ -129,6 +148,22 @@ its own license; the full license texts ship alongside the respective files.
   provider plugins - Copyright (c) 2003-2024 Dom Lachowicz and contributors.
 
 ---
+
+## Manrope and Inter (the UltraStore shop design's fonts)
+
+- **Used by:** every application through `media/fonts` (registered at start
+  with the Ubuntu family); UltraStore's window names them - Manrope for the
+  display text, Inter for the body text - after the UltraStore shop design.
+- **Upstream:** Manrope by Mikhail Sharanda — https://github.com/sharanda/manrope;
+  Inter by Rasmus Andersson — https://github.com/rsms/inter. Both taken from
+  Google Fonts (https://github.com/google/fonts, `ofl/manrope`, `ofl/inter`)
+  as the variable fonts.
+- **Vendored at:** `media/fonts/Manrope-Variable.ttf`, `media/fonts/Inter-Variable.ttf`
+- **License:** SIL Open Font License 1.1 — freely usable, embeddable and
+  redistributable, commercial use permitted; the fonts may not be sold by
+  themselves. Copyright 2018 The Manrope Project Authors; copyright 2016 The
+  Inter Project Authors.
+- **Full text:** `media/fonts/Manrope-OFL.txt`, `media/fonts/Inter-OFL.txt`
 
 ## MicroTeX (LaTeX math engine)
 
@@ -329,6 +364,34 @@ their source is published here; UltraCanvas's own files are unaffected.
 
 ---
 
+## wlr-protocols and ext-workspace (Wayland protocol definitions for the desktop shell)
+
+- **Used by:** the Wayland desktop shell backend
+  (`UltraCanvas/OS/Linux/Wayland/`): `wlr-layer-shell-unstable-v1` places
+  the desktop window and its bars' reserved edges,
+  `wlr-foreign-toplevel-management-unstable-v1` lists and drives the other
+  clients' windows, `ext-workspace-v1` reads and switches the virtual
+  desktops. Only in a build with `ULTRACANVAS_WAYLAND=ON`.
+- **Upstream:** https://gitlab.freedesktop.org/wlroots/wlr-protocols (the
+  two wlr files), https://gitlab.freedesktop.org/wayland/wayland-protocols
+  (ext-workspace, from its 1.39).
+- **What is included:** the three protocol XML files under
+  `UltraCanvas/OS/Linux/Wayland/protocols/`; `wayland-scanner` generates
+  the C bindings from them at build time. They are vendored because
+  `wayland-protocols` does not carry the wlr ones and carries ext-workspace
+  only from 1.39 (Ubuntu 22.04 packages 1.25). One change: the layer
+  shell's `get_layer_surface` argument named `namespace` is named `scope`
+  here, since the generated header is included from C++ and `namespace`
+  is a keyword there (the wire protocol is the same; argument names are
+  not on the wire).
+- **License:** MIT-style (the X11 / HPND wording the Wayland protocols
+  use) — Copyright © 2017 Drew DeVault (layer shell), Copyright © 2018 Ilia
+  Bozhinov (foreign toplevel management), Copyright © 2019 Christopher
+  Billington, 2020 Ilia Bozhinov, 2022 Victoria Brekenfeld (ext-workspace).
+  Each file carries its notice.
+
+---
+
 ## libcdr (CorelDRAW reader) — vendored and patched
 
 - **Used by:** the CDR plugin (`UltraCanvas/Plugins/Vector/CDR/`) and, through
@@ -403,6 +466,28 @@ their source is published here; UltraCanvas's own files are unaffected.
   speaks to MySQL servers as well.
 
 ---
+
+## GPGME (GnuPG Made Easy — UltraMail's OpenPGP)
+
+- **Used by:** UltraMail's OpenPGP support
+  (`Apps/UltraMail/engine/UltraMailOpenPgp.cpp`): checking and making
+  signatures, encrypting and decrypting, with the user's own GnuPG keyring.
+  Optional: a build without it has no OpenPGP and says so.
+- **Upstream:** https://dev.gnupg.org/source/gpgme/
+- **Linked, not vendored, and dynamically:** the system package is used
+  (`libgpgme-dev`; MSYS2's `gpgme`); on macOS vcpkg builds it
+  (`MacOS/deps/vcpkg.json`) and the suite bundles it as a dylib in its shared
+  `Frameworks/`, with its two libraries **libassuan** and **libgpg-error**
+  (both LGPL-2.1-or-later, the same terms). GPGME runs GnuPG's own programs (`gpg`,
+  `gpg-agent`, `pinentry`) as separate processes; none of GnuPG is linked.
+  No GPGME source is carried in this repository, and the code that calls it is
+  not a modification of it: it stays MIT.
+- **License:** **LGPL-2.1-or-later** (GnuPG itself, run as a program, is
+  GPL-3.0-or-later). A distributor of a binary that links GPGME ships the
+  licence text and this notice, makes the exact GPGME source shipped
+  available, keeps the library a separate file the user could replace, and
+  does not forbid reverse engineering for debugging such a replacement - as
+  for MariaDB Connector/C above.
 
 ## FFmpeg (optional — VideoFX's engine; LGPL or GPL depending on the build)
 

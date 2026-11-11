@@ -1,10 +1,91 @@
 # UltraCanvasPerformanceMatrix — Research & Feature Proposal
 
-**Status:** Proposal — nothing is built yet. The demo app already lists a
-*Performance Matrix* item (`performancematrix`, Info Graphics) with
-`ImplementationStatus::Planned`. Its page is placeholder text only, and this
-document is the design behind it.
+**Status:** **All three phases are implemented** as
+`UltraCanvasPerformanceMatrix` and `UltraCanvasPerformanceMatrixModel` — see
+[`UltraCanvasPerformanceMatrix.md`](UltraCanvasPerformanceMatrix.md) for the
+guide. The demo's *Performance Matrix* page (`performancematrix`, Info
+Graphics) now shows the element instead of placeholder text. Delivered: the
+model (C1, C2, C4, C6, `Validate`, `FindCell`, `SetCell`, `Rank`), all four
+designs D1–D4, the palettes S1, the colourings S2 except `ByCount`, S3, S4,
+S5, L1, L3, L5, L6, the §7.1 text fitting, every sample of C3, hover, click
+and selection (I1 for cells, I2), the demo page, the guide,
+`Tests/PerformanceMatrixModelTest.cpp` and
+`Tests/PerformanceMatrixRenderTest.cpp`. Reference images 1, 2, 3 and 5 are
+all drawn.
 
+How it departs from the plan below, and why:
+
+* **`Cards` (D4) came forward from Phase 2.** It needs nothing from the
+  population, only a border, a badge and bullets, so all four table images
+  are covered now.
+* **`PerformanceCellColoring::None` is `Plain`.** `None` is an X11 macro, and
+  `check_platform_names.py` rejects it (AGENTS.md).
+* **No population yet.** The model has no `items`, `targetDistribution` or
+  `CellOf` until Phase 2 builds what reads them. A field nobody draws would
+  only be a promise in the API.
+* **The axes have no `lowCaption` / `highCaption`.** The level labels already
+  name both ends, and none of the reference images captions them twice.
+* **The palette grew `levelColors` and `forceLevelColors`.** A one-hue palette
+  has to recolour a model that brings its own accents (image 3 is image 1 in
+  blue); without the flag the samples' own colours would win.
+* **A cell's badge, like its icon, is a block at the top of the cell** in
+  every design, not a corner mark. In `Cards` it is left-aligned, as in image 5.
+
+Phase 2 (2026-11-02) delivered the population: P1–P3, P5, P6, the
+`Count` / `Percent` / `Dots` / `Names` displays with the §7.2 overflow,
+`ByCount`, L4 level bars, row and column totals, item tooltips and clicks
+(I1, I3), the group legend, `SampleTeam()` and `SampleTargetDistribution()`,
+and a Calibration variant on the demo page. How it departs from the plan:
+
+* **Counts take the place of a hidden group's people too.** Hiding a group in
+  the legend removes its people from the cells, the counts, the shares and
+  `ByCount` alike. A share that still counted hidden people would no longer
+  add up to what the cells show.
+* **Deviation from a target is shown as numbers, not colour:** "14% / 10%".
+  Colour is never the only signal (§7.4), and the two numbers already say
+  which way the cell is off.
+* **The population has its own band in the cell.** Dots and names take the
+  lower part of the cell, and the cell's text is fitted into what is left; a
+  count or share is a chip in the top corner, and the text starts below it.
+  Fitting text and people into one area would let neither be read.
+* **"+N" takes slots of its own:** the last three dot slots, or the last name
+  slot. Every person is either drawn or counted, never both and never
+  neither.
+* **Anonymised keeps the dots.** Dots name no one, so they stay; names turn
+  into counts, and no person answers the pointer or a click, so no tooltip can
+  give a name away.
+* **`ByCount` uses the light 8–80 % of its colour map**, so an empty cell is
+  near white and text reads on the fullest one.
+* **Row and column totals (P3) are a line under each level label,** "n = 12",
+  switched on with `SetShowTotals`.
+* **An item has no avatar icon.** A dot or a name carries its group's colour.
+  An icon per person would have to fit a 13 px dot slot to be any use, and no
+  reference image asks for one.
+
+Phase 3 (2026-11-03) delivered the calibration and the files: I4 (drag with
+an `onItemMove` veto, off by default), I5 (arrows, Enter, Escape,
+Ctrl+arrows), I6, X1 and X2, and the demo's Open / Save JSON and Import /
+Export CSV through `UltraCanvasFileLoader`. How it departs from the plan:
+
+* **I6 is a callback, not a built-in popup.** A click on "+N more" calls
+  `onOverflowClick` with everyone in the box, and `GetCellItems` gives the
+  same list. Where the list goes (a side panel, a dialog, a report) is the
+  application's choice. The demo fills an `UltraCanvasListView` beside the
+  matrix, and selecting a row there selects the person, so someone hidden
+  behind "+N more" can still be moved with Ctrl+arrows.
+* **A selected person (`SetSelectedItem`) is new.** Ctrl+arrows need someone
+  to move, and the ring around a dot or name shows who.
+* **A drag starts after 4 px, and with dragging on, the click fires on
+  release.** A press cannot know whether it is a click until the pointer moves
+  or comes up. With dragging off, the click still fires on the press, as in
+  Phase 2.
+* **Moving is never possible while anonymised,** and no overflow list is
+  offered then. Both would single a person out.
+* **JSON names levels by index.** The sample levels have no ids, and an
+  index is never ambiguous. The reader also accepts an id or a label, for
+  files written by hand.
+* **CSV leaves out an item's colour.** It is the people for a spreadsheet;
+  the JSON keeps the colour.
 **Revision 2 (2026-10-24): scope correction.** Reference image 4, the
 importance–performance matrix, is **out of scope for this element**. It comes
 from operations strategy (Slack 1994), not from talent management. It rates
@@ -22,7 +103,7 @@ the ids of the other features do not change. Placing people by continuous
 scores (P1, P2) stays, because 9-box ratings are often numbers too.
 
 **Author:** UltraCanvas Framework
-**Last Modified:** 2026-10-24
+**Last Modified:** 2026-10-27
 **Related:** `UltraCanvasQuadrantChart` (implemented: a 2×2 plane with
 continuous points, the nearest *chart* sibling), `UltraCanvasMatrixDiagram`
 (implemented: relationship symbols between item lists, the nearest *grid*
@@ -117,7 +198,7 @@ are tabs to the left: *Performance Exceeding* (green), *Meeting* (orange) and
 from each other at the corner instead of meeting in a square.
 
 Demands: **D3** `HeaderTabs` design; per-level accent colour and icon (**C1**);
-a cell that is only a centred phrase (**C2**); `None` cell colouring (**S2**);
+a cell that is only a centred phrase (**C2**); `Plain` cell colouring (**S2**);
 the stepped corner (**L3**).
 
 ### Image 2 — "Performance vs Potential", coded tiles
@@ -261,9 +342,10 @@ geometry is close, but the model is not.
    proposal's entries from `scripts/doc_examples_baseline.txt`
    (`--all --update-baseline`) as each API lands.
 
-`Docs/UltraCanvas/UltraCanvasUIElements.md` needs no row. The catalogue covers
-interactive UI elements and hands charts and diagrams to the plugin docs, as
-the matrix diagram proposal found. The element is a **self-rendered view**
+`Docs/UltraCanvas/UltraCanvasUIElements.md` gets a row next to the SWOT diagram:
+`check_element_catalogue.py` covers `include/Plugins/` too, and refuses an
+element without one. (Revision 1 said no row was needed; the check said
+otherwise.) The element is a **self-rendered view**
 ("charts" in AGENTS.md), so painting its own cells, tabs and labels is within
 that exception. Anything that *edits* text in a cell must use real child
 elements (§9 Q4).
@@ -295,8 +377,6 @@ namespace UltraCanvas {
 
     struct PerformanceAxis {
         std::string title;                     // "Performance", "Leadership Potential"
-        std::string lowCaption  = "Low";       // at the arrow's low end
-        std::string highCaption = "High";
         std::vector<PerformanceLevel> levels;  // always ordered low -> high
         double      minScore = 0.0;            // continuous range for scores
         double      maxScore = 1.0;
@@ -325,7 +405,6 @@ namespace UltraCanvas {
         std::string id;
         std::string label;                 // "J. Smith", "Delivery speed"
         std::string group;                 // team, department: legend and filter
-        std::string iconPath;              // avatar or symbol
         Color       color = Color(0, 0, 0, 0);
         std::string note;
 
@@ -344,11 +423,6 @@ namespace UltraCanvas {
         bool IsValid() const { return row >= 0 && col >= 0; }
     };
 
-    struct PerformanceMatrixValidation {
-        bool ok = true;
-        std::vector<std::string> problems;  // "cell (3, 0) outside a 3x3 grid", ...
-    };
-
     struct PerformanceMatrixModel {
         std::string title;
         std::string subtitle;
@@ -361,13 +435,16 @@ namespace UltraCanvas {
         // distribution in a calibration: drawn as "12 % / target 10 %" (P3).
         std::vector<double> targetDistribution;
 
+        bool highXIsBest = true;           // C4: the best corner
+        bool highYIsBest = true;
+
         int Rows() const    { return static_cast<int>(yAxis.levels.size()); }
         int Columns() const { return static_cast<int>(xAxis.levels.size()); }
 
         const PerformanceCell* FindCell(int row, int col) const;
         PerformanceCellRef     CellOf(const PerformanceMatrixItem& item) const;
-        std::vector<int>       CountsPerCell() const;               // row-major
-        PerformanceMatrixValidation Validate() const;
+        std::vector<int>       CountsPerCell(const std::vector<std::string>& hiddenGroups = {}) const;   // row-major
+        std::vector<std::string> Validate() const;   // problems; empty = valid
     };
 
     // ===== INTERCHANGE (strings only; files go through UltraCanvasFileLoader) =====
@@ -408,7 +485,7 @@ namespace UltraCanvas {
     };
 
     enum class PerformanceCellColoring {
-        None,           // white cells; colour lives in the headers (images 1, 3)
+        Plain,          // white cells; colour lives in the headers (images 1, 3)
         Explicit,       // each PerformanceCell::fill
         DiagonalBands,  // by distance from the best corner (image 2)
         ByRow,          // the row level's accent (image 5)
@@ -426,10 +503,14 @@ namespace UltraCanvas {
 
     struct PerformanceMatrixPalette {
         std::vector<Color> rankColors;   // best -> worst, for DiagonalBands
-        Color headerText;
-        Color cellText;
-        Color gridLine;
+        std::vector<Color> levelColors;  // low -> high, for levels without an accent
+        bool  forceLevelColors = false;  // one-hue palettes override the levels' accents
+        Color background;
         Color panelBackground;
+        Color cellBackground;
+        Color gridLine;
+        Color text;
+        Color mutedText;
 
         static PerformanceMatrixPalette TrafficLight();        // image 2
         static PerformanceMatrixPalette Vivid();               // image 1
@@ -448,7 +529,6 @@ namespace UltraCanvas {
         void SetCellColoring(PerformanceCellColoring coloring);
         void SetPalette(const PerformanceMatrixPalette& palette);
         void SetPopulationDisplay(PerformancePopulationDisplay display);
-        void SetBestCorner(bool highXIsBest, bool highYIsBest);  // C4
 
         void SetShowAxisArrows(bool show);
         void SetShowContainerPanel(bool show);  // S4: rounded panel behind everything
@@ -541,7 +621,7 @@ Notes on the shape of the model:
 | Id | Feature |
 |---|---|
 | S1 | Palettes: `TrafficLight`, `Vivid`, `Monochrome(hue)`, `Pastel`; the design and the palette are independent |
-| S2 | Cell colouring: `None`, `Explicit`, `DiagonalBands`, `ByRow`, `ByColumn`, `ByCount` |
+| S2 | Cell colouring: `Plain`, `Explicit`, `DiagonalBands`, `ByRow`, `ByColumn`, `ByCount` |
 | S3 | Text colour picked for contrast against each fill, never fixed |
 | S4 | Rounded container panel (image 3) |
 | S5 | Hover highlight of a cell and of its row and column headers |

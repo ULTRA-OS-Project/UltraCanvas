@@ -6,6 +6,8 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.9.1 - an attachment is a program when RunsCodeWhenOpened says so: scripts,
+//                  shortcuts, installers, disk images on every platform
 // Version: 0.9.0 - fake invoices: a payment reminder whose "invoice" is an .html page
 //                  loading a script, sent in a company's name from a foreign domain
 // Version: 0.8.0 - loan and credit offers (loan-offer-fraud): two real letters,
@@ -212,6 +214,30 @@ TEST(an_executable_attachment_is_called_what_it_is) {
     const ThreatReport p = ScanMessage(plain);
     REQUIRE(HasFinding(p, "attachment-executable"));
     REQUIRE(p.level == ThreatLevel::Suspicious);
+}
+
+TEST(an_attachment_is_a_program_when_opening_it_would_run_it) {
+    // The scanner and the Open button ask the same question
+    // (FileAssociations::RunsCodeWhenOpened): what UltraMail refuses to open
+    // is what the scanner names, on every platform.
+    for (const char* name : { "deploy.sh", "Update.desktop", "Bank.url", "setup.pkg",
+                              "Installer.dmg", "tool.AppImage", "run.ps1", "setup.exe. " }) {
+        ScanInput in = Html("someone@example.test", "<p>See attached</p>");
+        in.attachmentNames = { name };
+        REQUIRE(HasFinding(ScanMessage(in), "attachment-executable"));
+    }
+    // Dressed as a document, a script is the disguise too.
+    ScanInput disguised = Html("someone@example.test", "<p>Your statement</p>");
+    disguised.attachmentNames = { "Statement.pdf.sh" };
+    REQUIRE(HasFinding(ScanMessage(disguised), "attachment-disguised-executable"));
+    // Documents, pictures and archives are not programs.
+    for (const char* name : { "report.pdf", "photo.jpeg", "minutes.docx", "archive.zip" }) {
+        ScanInput in = Html("someone@example.test", "<p>See attached</p>");
+        in.attachmentNames = { name };
+        const ThreatReport r = ScanMessage(in);
+        REQUIRE(!HasFinding(r, "attachment-executable"));
+        REQUIRE(!HasFinding(r, "attachment-disguised-executable"));
+    }
 }
 
 TEST(credential_language_plus_an_off_domain_link_is_suspicious) {
@@ -842,7 +868,7 @@ TEST(a_signed_message_is_recognised_but_not_vouched_for) {
     const auto checks = DescribeMessageAuthentication(smime);
     REQUIRE_EQ(checks.size(), static_cast<std::size_t>(2));   // Not checked + S/MIME
     REQUIRE(CheckNamed(checks, "S/MIME")->state == AuthCheckState::Neutral);
-    REQUIRE(Says(CheckNamed(checks, "S/MIME"), "does not check such signatures yet"));
+    REQUIRE(Says(CheckNamed(checks, "S/MIME"), "not yet a check"));
 
     REQUIRE_EQ(MessageSignatureKind(
         "Content-Type: multipart/signed; protocol=\"application/pgp-signature\"\r\n\r\n"),

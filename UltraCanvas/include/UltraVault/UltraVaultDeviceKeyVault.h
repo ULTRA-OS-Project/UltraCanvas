@@ -36,6 +36,8 @@
 // The directory is a UTF-8 path on every platform (UltraCanvasPathUtf8.h): a
 // profile folder named in Thai or Cyrillic opens the same as an ASCII one.
 //
+// Version: 0.5.0 - UseWithPassphrase: Use() for a vault behind a Primary Password
+// Version: 0.4.0 - ChangePassphrase, NeedsPassphrase, ForgetDeviceKey: a Primary Password
 // Version: 0.3.0 - several vaults in one process, from any thread: one lock,
 //                  the store's owner remembered, a vault re-opens its own file
 //                  before every access
@@ -133,9 +135,48 @@ public:
     // False (and `use` not run) when the vault cannot be opened.
     bool Use(const std::function<void(DeviceKeyVault& vault)>& use);
 
+    // Use() for a vault behind a Primary Password: opens this vault's file
+    // with `passphrase` (the one the user typed), runs `use` and closes it
+    // again - all under the process's one lock, so no other vault takes the
+    // store between the unlock and `use` (an Unlock() followed by a
+    // Retrieve() could find it gone, and a vault with no device key cannot
+    // re-open by itself). "" is Use(): the device key. What Unlock()
+    // answered, and `use` run only on Ok.
+    UnlockStatus UseWithPassphrase(const std::string& passphrase,
+                                   const std::function<void(DeviceKeyVault& vault)>& use);
+
     // Write `passphrase` as the device key (owner-only perms), so the next
     // launch unlocks silently. Call after a manual Unlock() succeeds.
     bool PersistDeviceKey(const std::string& passphrase);
+
+    // A Primary Password: the vault opens only with a passphrase the user
+    // types, and no device key is kept. True when the vault file exists and
+    // there is no device key beside it.
+    bool NeedsPassphrase() const;
+
+    // The passphrase the vault file is encrypted with, changed from
+    // `currentPassphrase` ("" : the device key) to `newPassphrase`. Every
+    // secret in the file is carried over - whatever its prefix, another
+    // module's too - into a new file under a new salt, which then replaces
+    // the old one: interrupted, the old file and its passphrase stay.
+    //  - keepAsDeviceKey false: the device key is removed, and from now on
+    //    only `newPassphrase` opens the vault (setting a Primary Password);
+    //  - keepAsDeviceKey true: `newPassphrase` is written as the device key
+    //    (removing one: pass NewDeviceKey()).
+    // The vault is open with the new passphrase afterwards. WrongPassphrase
+    // when `currentPassphrase` does not open it; the old passphrase still
+    // opens it after any failure.
+    UnlockStatus ChangePassphrase(const std::string& currentPassphrase,
+                                  const std::string& newPassphrase,
+                                  bool keepAsDeviceKey);
+
+    // A random passphrase fit to be a device key; "" without a crypto backend.
+    static std::string NewDeviceKey();
+
+    // Remove the device key, so the vault opens only with its passphrase -
+    // after a typed passphrase opened a vault whose stale device key did
+    // not. True when there was one.
+    bool ForgetDeviceKey();
 
     // True once Unlock() has succeeded (and until Lock()): the vault has its
     // key, whether or not the process's one store holds its file right now.

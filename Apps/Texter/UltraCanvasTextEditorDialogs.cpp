@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditorDialogs.cpp
 // Implementation of custom dialogs for Find and Replace
+// Version: 1.3.0 - the dialogs' texts go through Tr / TrF
 // Version: 1.2.0
 // Last Modified: 2026-06-01
 // Author: UltraCanvas Framework
@@ -8,6 +9,7 @@
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasTextEditorDialogs.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -23,7 +25,7 @@ namespace UltraCanvas {
     void UltraCanvasFindDialog::Initialize() {
         // Configure dialog window
         DialogConfig config;
-        config.title = "Find";
+        config.title = Tr("Find");
         config.width = 480;
         config.height = 210;
         config.resizable = false;
@@ -50,11 +52,11 @@ namespace UltraCanvas {
         searchRow->layout.SetFlexGap(4);
 
         searchLabel = std::make_shared<UltraCanvasLabel>("SearchLabel", 0, 0, 80, 25);
-        searchLabel->SetText("Find what:");
+        searchLabel->SetText(Tr("Find what:"));
         searchLabel->SetFontSize(11);
 
         searchInput = std::make_shared<UltraCanvasTextInput>("SearchInput", 0, 0, 290, 25);
-        searchInput->SetPlaceholder("Enter search text...");
+        searchInput->SetPlaceholder(Tr("Enter search text..."));
 
         // *** FIX: Disable the validation checkmark icon ***
         searchInput->SetShowValidationState(false);
@@ -77,11 +79,11 @@ namespace UltraCanvas {
         optionsRow->layout.SetFlexGap(20);
 
         caseSensitiveCheck = std::make_shared<UltraCanvasCheckbox>("CaseSensitive", 0, 0, 130, 20);
-        caseSensitiveCheck->SetText("Case sensitive");
+        caseSensitiveCheck->SetText(Tr("Case sensitive"));
         caseSensitiveCheck->SetFontSize(11);
 
         wholeWordCheck = std::make_shared<UltraCanvasCheckbox>("WholeWord", 0, 0, 130, 20);
-        wholeWordCheck->SetText("Whole word");
+        wholeWordCheck->SetText(Tr("Whole word"));
         wholeWordCheck->SetFontSize(11);
 
         optionsRow->AddChild(caseSensitiveCheck);
@@ -111,15 +113,15 @@ namespace UltraCanvas {
         buttonSection->AddStretchSpacer(1);
 
         findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 0, 0, buttonMinWidth, buttonHeight);
-        findNextButton->SetText("Find Next");
+        findNextButton->SetText(Tr("Find Next"));
         //findNextButton->SetMinWidth(buttonMinWidth);
 
         findPreviousButton = std::make_shared<UltraCanvasButton>("FindPrev", 0, 0, buttonMinWidth, buttonHeight);
-        findPreviousButton->SetText("Find Previous");
+        findPreviousButton->SetText(Tr("Find Previous"));
         //findPreviousButton->SetMinWidth(buttonMinWidth);
 
         closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 0, 0, 80, buttonHeight);
-        closeButton->SetText("Close");
+        closeButton->SetText(Tr("Close"));
 
         buttonSection->AddChild(findPreviousButton);
         buttonSection->AddChild(findNextButton);
@@ -191,7 +193,7 @@ namespace UltraCanvas {
         if (!statusLabel) return;
 
         if (totalMatches == 0) {
-            statusLabel->SetText("None found");
+            statusLabel->SetText(Tr("None found"));
             statusLabel->SetTextColor(Color(200, 50, 50));  // Red for error
         } else if (currentIndex > 0) {
             // Show "X / Y" format
@@ -298,7 +300,7 @@ namespace UltraCanvas {
     void UltraCanvasReplaceDialog::Initialize() {
         // Configure dialog window
         DialogConfig config;
-        config.title = "Replace";
+        config.title = Tr("Replace");
         config.width = 530;
         config.height = 260;
         config.resizable = false;
@@ -325,11 +327,11 @@ namespace UltraCanvas {
         findRow->layout.SetFlexGap(4);
 
         findLabel = std::make_shared<UltraCanvasLabel>("FindLabel", 0, 0, 80, 25);
-        findLabel->SetText("Find what:");
+        findLabel->SetText(Tr("Find what:"));
         findLabel->SetFontSize(11);
 
         findInput = std::make_shared<UltraCanvasTextInput>("FindInput", 0, 0, 330, 25);
-        findInput->SetPlaceholder("Enter search text...");
+        findInput->SetPlaceholder(Tr("Enter search text..."));
 
         // *** FIX: Disable the validation checkmark icon ***
         findInput->SetShowValidationState(false);
@@ -352,11 +354,11 @@ namespace UltraCanvas {
         replaceRow->layout.SetFlexGap(4);
 
         replaceLabel = std::make_shared<UltraCanvasLabel>("ReplaceLabel", 0, 0, 80, 25);
-        replaceLabel->SetText("Replace:");
+        replaceLabel->SetText(Tr("Replace:"));
         replaceLabel->SetFontSize(11);
 
         replaceInput = std::make_shared<UltraCanvasTextInput>("ReplaceInput", 0, 0, 330, 25);
-        replaceInput->SetPlaceholder("Enter replacement text...");
+        replaceInput->SetPlaceholder(Tr("Enter replacement text..."));
 
         // *** FIX: Disable the validation checkmark icon ***
         replaceInput->SetShowValidationState(false);
@@ -379,11 +381,11 @@ namespace UltraCanvas {
         optionsRow->layout.SetFlexGap(20);
 
         caseSensitiveCheck = std::make_shared<UltraCanvasCheckbox>("CaseSensitive", 0, 0, 130, 20);
-        caseSensitiveCheck->SetText("Case sensitive");
+        caseSensitiveCheck->SetText(Tr("Case sensitive"));
         caseSensitiveCheck->SetFontSize(11);
 
         wholeWordCheck = std::make_shared<UltraCanvasCheckbox>("WholeWord", 0, 0, 130, 20);
-        wholeWordCheck->SetText("Whole word");
+        wholeWordCheck->SetText(Tr("Whole word"));
         wholeWordCheck->SetFontSize(11);
 
         optionsRow->AddChild(caseSensitiveCheck);
@@ -413,19 +415,19 @@ namespace UltraCanvas {
         buttonSection->AddStretchSpacer(1);
 
         findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 0, 0, buttonMinWidth, buttonHeight);
-        findNextButton->SetText("Find Next");
+        findNextButton->SetText(Tr("Find Next"));
         //findNextButton->SetMinWidth(buttonMinWidth);
 
         replaceButton = std::make_shared<UltraCanvasButton>("Replace", 0, 0, buttonMinWidth, buttonHeight);
-        replaceButton->SetText("Replace");
+        replaceButton->SetText(Tr("Replace"));
         //replaceButton->SetMinWidth(buttonMinWidth);
 
         replaceAllButton = std::make_shared<UltraCanvasButton>("ReplaceAll", 0, 0, buttonMinWidth, buttonHeight);
-        replaceAllButton->SetText("Replace All");
+        replaceAllButton->SetText(Tr("Replace All"));
         //replaceAllButton->SetMinWidth(buttonMinWidth);
 
         closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 0, 0, 80, buttonHeight);
-        closeButton->SetText("Close");
+        closeButton->SetText(Tr("Close"));
 
         buttonSection->AddChild(findNextButton);
         buttonSection->AddChild(replaceButton);
@@ -608,7 +610,7 @@ namespace UltraCanvas {
         if (!statusLabel) return;
 
         if (totalMatches == 0) {
-            statusLabel->SetText("None found");
+            statusLabel->SetText(Tr("None found"));
             statusLabel->SetTextColor(Color(200, 50, 50));
         } else if (currentIndex > 0) {
             std::string status = std::to_string(currentIndex) + " / " + std::to_string(totalMatches);
@@ -673,7 +675,7 @@ namespace UltraCanvas {
 
         // Configure dialog window
         DialogConfig config;
-        config.title = "Go to Line";
+        config.title = Tr("Go to Line");
         config.width = 350;
         config.height = 140;
         config.resizable = false;
@@ -702,7 +704,7 @@ namespace UltraCanvas {
         lineRow->layout.SetFlexGap(8);
 
         lineLabel = std::make_shared<UltraCanvasLabel>("LineLabel", 0, 0, 100, 25);
-        lineLabel->SetText("Line number:");
+        lineLabel->SetText(Tr("Line number:"));
         lineLabel->SetFontSize(11);
         // lineLabel->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
 
@@ -726,10 +728,10 @@ namespace UltraCanvas {
         buttonSection->AddStretchSpacer(1);
 
         goButton = std::make_shared<UltraCanvasButton>("GoBtn", 0, 0, 80, 28);
-        goButton->SetText("Go");
+        goButton->SetText(Tr("Go"));
 
         cancelButton = std::make_shared<UltraCanvasButton>("CancelBtn", 0, 0, 80, 28);
-        cancelButton->SetText("Cancel");
+        cancelButton->SetText(Tr("Cancel"));
 
         buttonSection->AddChild(goButton);
         buttonSection->AddChild(cancelButton);

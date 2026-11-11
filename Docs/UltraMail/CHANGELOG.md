@@ -1,3 +1,202 @@
+#### 2026-11-11 *0.10.87*
+- **Settings > Mail > Proxy.** IMAP, SMTP, JMAP and the sign-in go through
+  the proxy every ULTRA OS application shares, and the page opens the Proxy
+  settings dialog to choose it. An HTTP proxy carries the mail connections
+  as a CONNECT tunnel; the system's web proxy is not used for mail, its
+  SOCKS proxy is.
+
+#### 2026-11-09 *0.10.86*
+- **An account's card counted 0 new, 0 unread and 0 waiting although its
+  inbox was full of unread mail.** The counters count the mail of the folder
+  with the inbox role, and the inbox's mail is always stored under `INBOX` -
+  but that row could lose the role:
+  - after a change of the account's server (which drops the downloaded mail
+    and folders), the next inbox sync re-created the `INBOX` row with no role;
+  - a server that lists its inbox as `Inbox` (an IMAP server, in any case; a
+    JMAP server, by the mailbox's display name) got a second, empty `Inbox`
+    folder with the role - the second "Inbox" under Inbox in the folder tree.
+
+  The server's inbox is now always stored as `INBOX`, the row the sync makes
+  for it keeps the inbox role, the stray `Inbox` folder goes at the next folder
+  list, and UltraMail repairs an affected mail store when it starts:
+  the counters are right at once, "waiting for reply" included.
+- **Two folders whose names differ only in case ("Work" and "work") no longer
+  share - and overwrite - their downloaded messages.** On Windows and macOS
+  they were cached in one directory, so a message in each with the same
+  number overwrote the other's file, and deleting one folder deleted the
+  other's messages too. A folder named in the usual way ("Sent Items",
+  "Drafts") keeps its directory; any other casing gets one of its own, marked
+  with a `~` and a short code ("work~1"). The first start moves the cached
+  messages of an earlier version; where two folders shared a directory each
+  takes its own, and a message both had under the same number is downloaded
+  again when it is read.
+
+#### 2026-11-04 *0.10.85*
+- **The format bar's Font list shows each font in itself.** Arial, Georgia,
+  Courier New and the others are drawn in their own typeface, as the text bars
+  of ArtCreator, UltraPaint and UltraVideo show theirs; a font this computer
+  lacks shows in a substitute.
+
+#### 2026-11-03 *0.10.84*
+- **Settings > Handling > Email send notification: a sent message is
+  reported in a popup window or in the status bar.** Until now every message
+  sent successfully raised a "Message sent to ..." window that had to be
+  closed with OK. The new *Handling* section of the settings window chooses
+  between *Show in popup window* (the default, as before) and *Display
+  success in status bar*, where the same words appear at the foot of the main
+  window and nothing has to be closed. A message that could not be sent is
+  still reported in a window either way, since it offers Retry. Saved as
+  `send_notification = popup | status-bar` in `preferences.ini`.
+
+#### 2026-11-01 *0.10.83*
+- **`UltraMail --minimized`** starts with the window minimized: mail is
+  fetched and the unread count reaches the desktop's mail icon as with the
+  window open - what UltraDesktop's *Start with the desktop* asks for. On
+  Windows the command line now reaches the program (`WinMain` passes it on).
+
+#### 2026-10-30 *0.10.82*
+- **The threat scanner names the same attachments UltraMail refuses to
+  open.** Whether an attachment is a program is now
+  `FileAssociations::RunsCodeWhenOpened`, the question *Open* asks, instead of
+  the scanner's own shorter, Windows-only list. Scripts (`.sh`, `.py`,
+  `.ps1`), shortcuts (`.url`, `.desktop`), installers (`.pkg`, `.deb`,
+  `.msix`), disk images (`.dmg`, `.vhd`) and macOS and Linux programs
+  (`.app`, `.AppImage`) are now called programs too, and so is a name that
+  hides its extension behind trailing dots or spaces (`setup.exe.`). As
+  before, a program sent as a program is *attachment-executable*
+  (suspicious) and one dressed as a document *attachment-disguised-executable*.
+
+#### 2026-10-30 *0.10.81*
+- **Import: messages saved as files come into UltraMail.** A new *Import*
+  button on the toolbar picks `.eml`, Apple Mail `.emlx` and Outlook `.msg`
+  files (several at once) and puts them into the folder on show of the
+  account on screen. They are uploaded to the account's server, as the
+  Drafts and Sent copies are, so the folder's sync brings them into the list
+  and every other device sees them too. An Outlook message is built again as
+  a standard message: sender, recipients, subject, date, Message-ID and
+  In-Reply-To, the HTML body with its plain text, the pictures it shows and
+  its attachments (an attached Outlook item is not carried over). The
+  imported messages arrive marked as read. A file that is not a message is
+  named in one alert with the reason, and the others are still imported.
+  Reads the `.msg` through the framework's new `UltraCanvasOutlookMessage`
+  (`Docs/UltraCanvas/UltraCanvasOutlookMessage.md`).
+- **An attachment that is a program or a script is never opened.** *Open*
+  on an `.exe`, `.bat`, `.js`, `.ps1`, `.lnk`, `.msi`, `.iso`, `.sh`,
+  `.desktop`, `.appimage` and the rest
+  (`FileAssociations::RunsCodeWhenOpened`) no longer hands it to the system,
+  which would run it - the commonest way mail carries malware. UltraMail says
+  so and offers to save it instead; it is not even written to the
+  attachment cache. An unnamed part is judged by the name its media type
+  gives it too.
+
+#### 2026-10-28 *0.10.80*
+- **Mail security per account.** *Account Settings > Security > Mail
+  security…* - and, with *Skip*, right after an account is added - sets how
+  the account signs and encrypts: its S/MIME certificate (Import / Remove,
+  moved here from their own row), the OpenPGP key it signs with (the
+  keyring's secret keys by name, address and fingerprint; by default the one
+  whose user id is the account's address), and how its new messages, replies
+  and forwards start - *Off*, *S/MIME* or *OpenPGP*, *Sign*, *Encrypt*. The
+  compose window's Security row starts from that and stays changeable per
+  message; a reply to encrypted mail still starts encrypted.
+  - Stored with the account (`AccountSecurity`, mail.db schema 13,
+    `LocalStore::SetAccountSecurity`); `OpenPgpSecretKeys`, and
+    `SecureKeys::openPgpSigningKeyFor` signing with the chosen key.
+  - `test_securemime`: the defaults stored and kept across a re-added
+    account; the secret keys listed, a chosen key signing, an unknown
+    fingerprint refused.
+- **S/MIME signatures from real authorities are vouched for on Windows and
+  macOS too.** The certificate check uses the operating system's trusted
+  roots there (Windows' certificate stores, macOS's keychains), as it used
+  Linux's; until now a signature from a public certificate authority read
+  "not vouched for here" on those two systems.
+
+#### 2026-10-28 *0.10.79*
+- **S/MIME runs on UltraCrypt.** Certificates, their trust check, signing,
+  checking, encrypting, decrypting and PKCS #12 import are UltraCrypt's X.509
+  and CMS (`UltraCryptX509.h`); `UltraMailSmime.cpp` keeps only what each
+  finding means to the reader, and UltraMail links no OpenSSL of its own. A
+  certificate that holds but is not one for signing mail now says so.
+
+#### 2026-10-28 *0.10.78*
+- **The mail on the computer is encrypted.** The mailbox index (`mail.db`),
+  the address book, the outbox, the cloud accounts and every downloaded
+  message are ciphertext on disk, under a random storage key kept in the
+  vault (`UltraMailStorage.h`): each database is an encrypted SQLite file
+  with a key of its own derived from it, each message file is sealed whole
+  with XChaCha20-Poly1305. Copied off the computer, or opened with the sqlite3
+  shell or UltraDBAdmin, they show nothing; with a Primary Password nothing
+  on the computer opens them without it.
+  - An earlier version's mailbox is converted at the first start: the
+    databases before the window opens (17 ms for the demo mailbox), the
+    message files on a thread of their own. Reading takes a plain file as
+    it is meanwhile.
+  - Attachments opened for viewing are plain copies for the viewer, so they
+    are deleted at every start now (they were kept for a week).
+  - EmailCleaner reads UltraMail's mailbox with the same key, taken from the
+    vault with the device key; with a Primary Password set it says it cannot.
+  - `test_storage` checks the storage key, the derived keys, sealing and
+    opening (a changed byte and another key refused, a plain file read),
+    converting plain message files and the mailbox database in place.
+- **The data folder is yours alone.** UltraMail makes its data folder
+  owner-only at every start (`SecureDataDir`), before the instance lock is
+  written into it: the folder and the folders in it `rwx------`, the files
+  directly in it `rw-------`. An earlier version created it with the
+  system's default, which on many Linux systems let every other user of the
+  computer read the mail, the databases and the vault; that folder is
+  tightened the first time. Windows' per-user `%APPDATA%` was already
+  private and is left as it is.
+- **A Primary Password.** *Settings > Privacy > Primary Password* sets one,
+  changes it and removes it (each asks for the current one first). Once set,
+  UltraMail asks for it when it starts, before it reads anything stored: a
+  wrong one is asked for again in the same dialog, Cancel ends the start. It
+  protects the account passwords and sign-ins in the vault, whose device key
+  is then gone, so nothing on the computer opens the vault without it.
+  - The vault now opens at the start, before the mailbox (about 0.1 s, the
+    Argon2id key derivation), instead of after the window is up.
+  - A vault from an early version that was made with a master password and
+    never got a device key is now treated as having a Primary Password: it
+    is asked for at the start, and *Remove* turns it off. Before, typing it
+    once turned it into a device key without a word.
+  - The password dialog says *Primary Password* throughout; two passwords
+    that do not match, or none typed, ask again in place instead of closing
+    the dialog.
+- **Signed and encrypted mail: S/MIME and OpenPGP.** Mail on the computer is
+  now exactly as readable as it was on its way to the server: encrypted mail
+  stays encrypted on disk and is decrypted only for the reading pane.
+  - Reading: S/MIME (signed, opaque-signed, encrypted) and OpenPGP (PGP/MIME
+    signed and encrypted, inline and clear-signed PGP) are decrypted where a
+    key here opens them and their signatures checked; pills say what holds -
+    *Encrypted*, *S/MIME* / *OpenPGP* green (vouched for), amber (holds,
+    nobody vouches), red (changed after signing). An encrypted message no key
+    opens says why instead of showing ciphertext.
+  - Sending: the compose window's *Security* row (Off, S/MIME, OpenPGP; Sign,
+    Encrypt). Encrypted to every recipient and to the sender; Drafts, the send
+    and Sent use the same secured bytes; a missing recipient certificate or
+    key is named before anything is queued, and a message that cannot be
+    secured is never sent in plain text. Replies to encrypted mail start
+    encrypted.
+  - Keys: an S/MIME certificate and key imported from a `.p12` / `.pfx` in
+    *Account Settings* (kept in the vault; only for the account's address);
+    correspondents' certificates learnt from their vouched-for signatures
+    (address book schema 4); OpenPGP through the user's GnuPG keyring, with
+    `application/pgp-keys` attachments offered for import.
+  - Built with OpenSSL 3 (S/MIME) and GPGME (OpenPGP) where found; the
+    outbox gains schema 5 (the draft's security choice).
+  - `test_securemime` checks the MIME pieces, S/MIME signing (untrusted,
+    tampered, LF line ends), encrypting to recipient and sender, PKCS #12
+    import, the outbox filing only ciphertext, and OpenPGP signing,
+    encrypting and inline messages against a throw-away keyring.
+- The *S/MIME* / *OpenPGP* pill no longer says UltraMail does not check such
+  signatures.
+- **OpenPGP on macOS.** The macOS suite bundles GPGME (built by vcpkg for
+  macOS 14, with libassuan and libgpg-error); GnuPG is the user's, from
+  Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite, and UltraMail
+  finds it in their folders although a Finder-started app's `PATH` lacks them.
+- OpenPGP is not built on Windows on Arm: there GPGME's first operation ended
+  the process (CI's windows-11-arm, MSYS2 CLANGARM64), which in the app would
+  quit it on opening an OpenPGP message. S/MIME is unaffected.
+
 #### 2026-10-27 *0.10.77*
 - **A JMAP sync keeps its connection.** UltraMail asks UltraNet to pool
   HTTP connections per thread (`UltraNetConfig::reuseHttpConnections`), so

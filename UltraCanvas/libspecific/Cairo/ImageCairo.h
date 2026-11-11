@@ -1,5 +1,8 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
+// Version: 1.10.0 - UCPixmapCairo::IsOpaque, Init(w, h, opaque): a picture without
+//                   an alpha channel is an RGB24 pixmap
+// Version: 1.9.0 - FromBgra / FromRgba: a picture from pixels in memory, no decoding
 // Version: 1.7.0 - VipsCanDecode: a loader that can decode here (HEIC / AVIF need
 //                  libheif's decoder)
 // Version: 1.6.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
@@ -9,7 +12,7 @@
 //                  and JPEG, BMP, GIF through the bundled stb_image
 // Version: 1.5.0 - An SVG libvips cannot load is read through the vector preview seam
 // Version: 1.4.0 - GetFresh: the cached image checked against the file
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef IMAGECAIRO_H
@@ -52,10 +55,20 @@ namespace VectorStorage { class VectorDocument; }
     public:
         UCPixmapCairo() = default;
         explicit UCPixmapCairo(int w, int h);
+        // `opaque`: a picture with no alpha channel, kept as CAIRO_FORMAT_RGB24
+        // - the same four bytes per pixel (cairo has no packed 24-bit image
+        // format), with the top byte 0xFF and ignored, so cairo composites it
+        // as a copy instead of blending every pixel, and the QOI blob of it
+        // says so. ARGB32 otherwise.
+        UCPixmapCairo(int w, int h, bool opaque);
         explicit UCPixmapCairo(cairo_surface_t * surf);
         ~UCPixmapCairo();
 
         bool Init(int w, int h) override;
+        bool Init(int w, int h, bool opaque);
+        // True for an RGB24 surface: no alpha channel; every pixel's top byte
+        // is 0xFF, so a reader that takes it for alpha sees it opaque.
+        bool IsOpaque() const;
         cairo_surface_t * GetSurface() const { return surface; };
         void SetPixel(int x, int y, uint32_t pixel) override;
         uint32_t GetPixel(int x, int y) const override;
@@ -173,6 +186,11 @@ namespace VectorStorage { class VectorDocument; }
         bool LoadVectorDocumentFromMemory(const uint8_t* data, size_t size);   // bytes that read as SVG
         std::shared_ptr<UCPixmapCairo> CreatePixmapFromVectorDocument(int width, int height,
                                                                      ImageFitMode fitMode, float scale);
+        // A picture made from pixels (FromBgra / FromRgba): its surface,
+        // premultiplied ARGB32, which every pixmap is scaled from
+        std::shared_ptr<UCPixmapCairo> pixelSource;
+        std::shared_ptr<UCPixmapCairo> CreatePixmapFromPixelSource(int width, int height,
+                                                                  ImageFitMode fitMode, float scale);
 
 #ifdef HAS_LIBVIPS
         // Reads "n-pages" / "delay" metadata off a freshly loaded header.
@@ -226,12 +244,39 @@ namespace VectorStorage { class VectorDocument; }
         // old file's header. Use after a file on disk changes so the next
         // Get()/DrawImage re-reads it instead of serving the stale copy.
         static void RemoveFromCache(const std::string &path);
+        // Lets go of every file a finished decode still holds. libvips keeps
+        // completed loads in its operation cache, and with them the file's
+        // descriptor and, for a JPEG, its memory map - and Windows refuses to
+        // delete a mapped file to anybody, administrators included, until
+        // this process lets go (it refuses to truncate one too). Call before
+        // deleting or overwriting files this process may have shown, such as
+        // a folder whose pictures a file manager drew thumbnails of. Decoded
+        // images and pixmaps stay cached; only finished loaders are dropped.
+        static void ReleaseCachedFiles();
         static std::shared_ptr<UCImageRaster> Load(const std::string &path, bool loadOnlyHeader = true);
         static std::shared_ptr<UCImageRaster> LoadFromMemory(const uint8_t* data, size_t dataSize);
         static std::shared_ptr<UCImageRaster> LoadFromMemory(const std::vector<uint8_t>& data) {
             return LoadFromMemory(data.data(), data.size());
         };
+        // LoadFromMemory through the shared image cache, keyed by the bytes
+        // themselves: the same picture asked for again is not decoded again,
+        // wherever its buffer now lives, and a different picture in a buffer
+        // reusing a freed one's address is never handed the old image.
         static std::shared_ptr<UCImageRaster> GetFromMemory(const uint8_t* data, size_t dataSize);
+        // A picture from pixels already in memory - no file, no decoder: a
+        // screen capture, a frame a program made. `pixels` holds `height`
+        // rows, `stride` bytes apart, of 32-bit pixels in memory order B, G,
+        // R, A - cairo's native layout and what the platforms' screen
+        // captures hand over. With `opaque` the fourth byte is ignored (an
+        // x byte); otherwise it is straight alpha, premultiplied on the way
+        // in. The rows are copied, so the caller's buffer may go. Draws,
+        // scales, saves and reports transparency like any other picture;
+        // null when the size or the pointer is empty.
+        static std::shared_ptr<UCImageRaster> FromBgra(const uint8_t* pixels, int width, int height, int stride,
+                                                       bool opaque = false);
+        // The same for straight R, G, B, A rows of `width` * 4 bytes
+        // (ClipboardDib::RgbaImage, VideoFXFrame).
+        static std::shared_ptr<UCImageRaster> FromRgba(const uint8_t* pixels, int width, int height);
 
         std::string Save(const std::string &imagePath, const UCImageSave::ImageExportOptions& options);
 

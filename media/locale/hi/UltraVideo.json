@@ -1,0 +1,19 @@
+{
+  "@language": "hi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "शीर्षक का रंग बदलना",
+  "Edit Title": "शीर्षक संपादन",
+  "The title is in the video": "शीर्षक वीडियो में है",
+  "The title is unchanged": "शीर्षक अपरिवर्तित है",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "शीर्षक खाली कर दिया गया: वह अपना टेक्स्ट बनाए रखता है (उसे निकालने के लिए उसकी लेन पर शीर्षक हटाएँ)",
+  "Title Alignment": "शीर्षक संरेखण",
+  "Title Bold": "बोल्ड शीर्षक",
+  "Title Font": "शीर्षक फ़ॉन्ट",
+  "Title Italic": "इटैलिक शीर्षक",
+  "Title Letter Spacing": "शीर्षक अक्षर अंतराल",
+  "Title Line Spacing": "शीर्षक पंक्ति अंतराल",
+  "Title Size": "शीर्षक आकार",
+  "Title Strikethrough": "काटकर लिखा शीर्षक",
+  "Title Underline": "रेखांकित शीर्षक",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "फ़्रेम पर शीर्षक टाइप हो रहा है: Escape, Ctrl+Enter या बाहर क्लिक करने से वह वीडियो में आ जाता है"
+}

@@ -3,6 +3,10 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.5.4 - host ABI 4: UltraNet_ResolveProxy / UltraNet_DescribeProxy, so a
+//                  plug-in's own libcurl handles follow the proxy setting, and
+//                  UltraNet_TcpOpen / UltraNet_SocketDetach for one that is not libcurl's
+// Version: 0.5.3 - UltraNetMailMessage::rawMessage: a message sent exactly as it is
 // Version: 0.5.2 - ISshTunnelPlugin; UltraNetRemoteOptions moved to UltraNetSsh.h, with the host key
 // Version: 0.5.1 - IServiceDiscoveryPlugin (mDNS / DNS-SD advertising)
 // Version: 0.5.0 - IMailboxProtocolPlugin::WatchMailbox / StopWatching (push);
@@ -52,6 +56,13 @@ struct UltraNetMailMessage {
     std::vector<UltraNetMailInlinePart> inlineParts;
     std::map<std::string, std::string> headers;
     std::vector<std::pair<std::string, std::vector<uint8_t>>> attachments; // (name, bytes)
+    // A whole RFC 5322 message, sent exactly as it is when not empty: a
+    // signed or encrypted one, whose bytes nothing may rewrite. The message
+    // builder (UltraNet_MimeBuildMailMessage) returns it unchanged, so every
+    // mail plug-in sends it; `from` and to/cc/bcc still give the envelope,
+    // and the fields above the content are then not used. Appended last, as
+    // fields of this struct are.
+    std::string rawMessage;
 };
 
 // How a mail session signs in at the server - the "authentication method" of a
@@ -669,11 +680,16 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 //        format), UltraNet_SseStreamAsync / CancelRequest / IsRequestActive
 //        (the JMAP plug-in's push). The shim refuses an older host: a plug-in
 //        built from this tree calls them.
-constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 3;
+// ABI 4: + UltraNet_ResolveProxy / UltraNet_DescribeProxy: the proxy every
+//        libcurl handle a plug-in opens connects through (UltraNetCurlProxy.h);
+//        UltraNet_TcpOpen / UltraNet_SocketDetach: a connection made through
+//        it for a library that runs its own protocol (the SSH plug-in).
+constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 4;
 
 struct UltraNetUrlComponents;
 struct UltraNetMimeBuildInput;
 struct UltraNetSseEvent;
+struct UltraNetSocketOptions;
 
 struct UltraNetPluginHost {
     int abiVersion;            // == ULTRANET_PLUGIN_HOST_ABI_VERSION of the host
@@ -701,6 +717,14 @@ struct UltraNetPluginHost {
                                      std::function<void(const UltraNetResult&)> onComplete);
     UltraNetResult (*CancelRequest)(UltraNetHandle handle);
     bool           (*IsRequestActive)(UltraNetHandle handle);
+
+    // ---- ABI 4 ----------------------------------------------------------
+    UltraNetProxyConfig (*ResolveProxy)(const std::string& url,
+                                        const UltraNetProxyConfig& requested);
+    std::string    (*DescribeProxy)(const UltraNetProxyConfig& proxy);
+    UltraNetResult (*TcpOpen)(const std::string& host, int port,
+                              const UltraNetSocketOptions& options, UltraNetHandle& outHandle);
+    std::intptr_t  (*SocketDetach)(UltraNetHandle handle);
 };
 
 // The table this host hands to every plug-in it loads - for tests, and for a

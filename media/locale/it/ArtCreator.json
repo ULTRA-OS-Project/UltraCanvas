@@ -1,0 +1,22 @@
+{
+  "@language": "it",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Testo aggiunto: fai clic su di esso con lo strumento testo, o fai doppio clic su di esso, per modificarlo",
+  "Changed the text": "Testo modificato",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Fai clic sulla pagina e digita, o fai clic su un testo per modificarlo; la barra sopra ne imposta carattere, dimensione, stile, allineamento e spaziatura. Esc, Ctrl+Invio o un clic all'esterno termina",
+  "Delete Text": "Eliminazione del testo",
+  "Edit Text": "Modifica del testo",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Modifica del testo: Invio inizia una nuova riga; Esc, Ctrl+Invio o un clic all'esterno termina",
+  "Letter Spacing": "Spaziatura lettere",
+  "Line Spacing": "Interlinea",
+  "Nothing was typed": "Non è stato digitato nulla",
+  "Text Alignment": "Allineamento del testo",
+  "Text Bold": "Grassetto del testo",
+  "Text Font": "Carattere del testo",
+  "Text Italic": "Corsivo del testo",
+  "Text Size": "Dimensione del testo",
+  "Text Strikethrough": "Barrato del testo",
+  "Text Underline": "Sottolineato del testo",
+  "The text was emptied, so it was deleted": "Il testo è stato svuotato, quindi è stato eliminato",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Digitazione di un nuovo testo: Invio inizia una nuova riga; Esc, Ctrl+Invio o un clic all'esterno termina"
+}

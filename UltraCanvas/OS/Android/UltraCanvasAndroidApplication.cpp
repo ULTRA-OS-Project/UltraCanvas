@@ -1,8 +1,10 @@
 // OS/Android/UltraCanvasAndroidApplication.cpp
 // Android platform implementation for UltraCanvas Framework.
+// Version: 1.2.0 - the first tap is logged with the element it landed on
+// Version: 1.1.0 - RegisterPlatformBundledFonts: the bundled fonts' registration, shared with a tool
 // Version: 1.0.1 - InitializeNative marks the application initialized, so Run() runs
 // Version: 1.0.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -19,6 +21,7 @@
 #include "UltraCanvasDebug.h"
 
 #include <android/configuration.h>
+#include <android/log.h>
 #include <android/input.h>
 #include <android/keycodes.h>
 #include <android/looper.h>
@@ -583,6 +586,20 @@ namespace UltraCanvas {
                     lastTapX = physX;
                     lastTapY = physY;
                 }
+                if (!firstTapLogged) {
+                    // Straight to logcat, like the window's first-frame line:
+                    // the emulator test taps a field and checks it was hit.
+                    firstTapLogged = true;
+                    UltraCanvasUIElement* hit = win->FindElementAtPoint(
+                        Point2Df(static_cast<float>(event.pointerWindow.x),
+                                 static_cast<float>(event.pointerWindow.y)), true);
+                    const std::string line = "first tap: " + std::to_string(physX) + "," +
+                        std::to_string(physY) + " px -> " +
+                        std::to_string(static_cast<int>(event.pointerWindow.x)) + "," +
+                        std::to_string(static_cast<int>(event.pointerWindow.y)) +
+                        ", element '" + (hit ? hit->GetIdentifier() : std::string()) + "'";
+                    __android_log_write(ANDROID_LOG_INFO, "UltraCanvas", line.c_str());
+                }
                 break;
             }
             case AMOTION_EVENT_ACTION_UP:
@@ -1068,15 +1085,20 @@ namespace UltraCanvas {
         return result;
     }
 
-    void UltraCanvasAndroidApplication::LoadBundledFontsNative() {
-        // Same FontConfig registration as the Linux backend: add the bundled
-        // fonts as app fonts and force a FreeType-backed Pango font map.
+    // The bundled fonts for Pango, the Android way - the one registration an
+    // application's start (LoadBundledFontsNative) and a tool without one
+    // (RegisterBundledFontsWithoutApplication) both make. The same FontConfig
+    // registration as the Linux backend: the bundled fonts as app fonts and a
+    // FreeType-backed Pango font map.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs) {
+        (void)systemFontsWaitMs;   // no system font scan on Android
         FcConfig* cfg = FcConfigGetCurrent();
         if (!cfg) {
             debugOutput << "UltraCanvas Android: FcConfigGetCurrent() returned null; "
                            "bundled fonts not registered" << std::endl;
-            return;
+            return 0;
         }
+        int registered = 0;
 
         const std::string dir = GetBundledFontsDir();
         for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
@@ -1088,6 +1110,8 @@ namespace UltraCanvas {
             if (!FcConfigAppFontAddFile(cfg,
                     reinterpret_cast<const FcChar8*>(path.c_str()))) {
                 debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
+            } else {
+                ++registered;
             }
         }
         // The emoji font the emoji setting picks, and its rule.
@@ -1103,6 +1127,11 @@ namespace UltraCanvas {
                            "returned null" << std::endl;
             pango_cairo_font_map_set_default(nullptr);
         }
+        return registered;
+    }
+
+    void UltraCanvasAndroidApplication::LoadBundledFontsNative() {
+        RegisterPlatformBundledFonts(0);
     }
 
     bool UltraCanvasAndroidApplication::RegisterFontFileNative(const std::string& fontFilePath) {

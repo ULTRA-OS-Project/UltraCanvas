@@ -1,11 +1,13 @@
 // include/UltraCanvasSpellChecker.h
 // Cross-platform spell checking service with runtime language switching and menu integration
+// Version: 1.3.0 - SpellCheckStyle::FromTheme: the marks from the theme (danger, the accent)
 // Version: 1.2.0 - automatic language detection (DetectLanguage, SpellLanguageDetectionOptions)
 // Version: 1.1.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasMenu.h"
@@ -147,6 +149,20 @@ struct SpellCheckStyle {
     Color ColorForKind(SpellErrorKind kind) const {
         return (kind == SpellErrorKind::RepeatedWord) ? repeatedWordColor : markColor;
     }
+
+    // The theme's roles over a base's own mark style and metrics: danger
+    // for a misspelling and its highlight, the accent for a repeated word.
+    // The checker is shared, not an element: a host that follows the theme
+    // sets this from its own ApplyTheme
+    static SpellCheckStyle FromTheme(const UltraCanvasTheme& theme, const SpellCheckStyle& base) {
+        SpellCheckStyle s = base;
+        s.markColor = theme.roles.danger;
+        s.repeatedWordColor = theme.roles.accent;
+        s.highlightColor = theme.roles.danger.WithAlpha(base.highlightColor.a);
+        return s;
+    }
+    static SpellCheckStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SpellCheckStyle()); }
+    static SpellCheckStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== MENU BUILD OPTIONS =====

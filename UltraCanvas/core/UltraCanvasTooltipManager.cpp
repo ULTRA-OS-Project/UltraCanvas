@@ -1,5 +1,9 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
+// Version: 2.5.1 - in a window of its own on macOS too
+// Version: 2.5.0 - shown in a window of its own (WindowType::Tooltip) above every other
+//                  window, placed on the screen rather than inside the window it
+//                  belongs to; drawn in that window only where the platform has none
 // Version: 1.2.0 - SetStyle static
 // Version: 2.4.1 - long words wrap between characters when they must, so a
 //                  URL or a path stays inside the tooltip's box
@@ -7,7 +11,7 @@
 //                  clear of the line under it (below the pointer's arrow only
 //                  when there is no room above)
 // Version: 2.3.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTooltipManager.h"
@@ -39,6 +43,27 @@ namespace UltraCanvas {
     TooltipStyle UltraCanvasTooltipManager::style;
 
     bool UltraCanvasTooltipManager::enabled = true;
+
+    std::shared_ptr<UltraCanvasWindowBase> UltraCanvasTooltipManager::ownWindow;
+    UltraCanvasWindowBase* UltraCanvasTooltipManager::ownWindowTarget = nullptr;
+    bool UltraCanvasTooltipManager::useOwnWindow = true;
+    bool UltraCanvasTooltipManager::shownInOwnWindow = false;
+    Point2Di UltraCanvasTooltipManager::cursorPosition;
+    Point2Di UltraCanvasTooltipManager::screenPosition;
+
+    // Where a tooltip can have a window of its own: a backend that places a
+    // WindowType::Tooltip window on the screen. The browser and Android have
+    // one surface per application, and iOS no windows of this kind: there
+    // the tooltip is drawn inside its window, as before.
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+    static constexpr bool kOwnWindowPlatform = false;
+#else
+    static constexpr bool kOwnWindowPlatform = true;
+#endif
+
+    // How far below the pointer's tip a tooltip goes when there is no room
+    // above it: clear of the arrow, which hangs down from the tip.
+    static constexpr int kPointerArrowHeight = 22;
 //    Rect2Di UltraCanvasTooltipManager::screenBounds = Rect2Di(0, 0, 1920, 1080);
 
 // ===== INTERNAL LAYOUT STATE =====
@@ -238,6 +263,28 @@ namespace UltraCanvas {
         return out;
     }
 
+    // The style the tooltip is drawn with. In its own window it has no soft
+    // shadow and square corners: the window is opaque, so a shadow or the
+    // corners outside a rounded body would be painted on it in black, not
+    // blended over what is beneath. (A compositing window manager gives a
+    // tooltip window a shadow of its own.)
+    static TooltipStyle DrawnStyle(const TooltipStyle& style, bool inOwnWindow) {
+        TooltipStyle drawn = style;
+        if (inOwnWindow) {
+            drawn.hasShadow = false;
+            drawn.cornerRadius = 0.0f;
+        }
+        return drawn;
+    }
+
+    // The opaque colour the own window is filled with, under the tooltip's
+    // own (slightly translucent) background
+    static Color OwnWindowBackground(const TooltipStyle& style) {
+        Color c = style.backgroundColor;
+        c.a = 255;
+        return c;
+    }
+
     // Margins the soft shadow needs around the tooltip body on each side
     static void GetShadowMargins(const TooltipStyle& style, int& left, int& top, int& right, int& bottom) {
         left = top = right = bottom = 0;
@@ -303,11 +350,13 @@ namespace UltraCanvas {
                     if (!pendingShow) return;
                     pendingShow = false;
                     visible = true;
-                    targetWindow->RequestWindowComposition();
+                    if (!ShowInOwnWindow() && targetWindow) {
+                        targetWindow->RequestWindowComposition();
+                    }
                     //debugOutput << "Tooltip shown" << std::endl;
                 });
         } else {
-            targetWindow->RequestWindowComposition();
+            RefreshShown();
         }
 
         //debugOutput << "Tooltip requested. Text: " << currentText << std::endl;
@@ -338,6 +387,10 @@ namespace UltraCanvas {
                     if (!pendingHide) return;
                     pendingHide = false;
                     visible = false;
+                    if (shownInOwnWindow && ownWindow) {
+                        ownWindow->Hide();
+                    }
+                    shownInOwnWindow = false;
                     if (targetWindow) {
                         targetWindow->RequestWindowComposition();
                     }
@@ -352,21 +405,25 @@ namespace UltraCanvas {
     void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const TooltipContent& content,
                                                                     const Point2Di& position, const TooltipStyle& newStyle) {
         UpdateAndShowTooltip(win, content, position, newStyle);
+        if (!enabled || content.Empty()) return;
         CancelShowTimer();
         CancelHideTimer();
         pendingShow = false;
         pendingHide = false;
+        const bool wasVisible = visible;
         visible = true;
+        if (!wasVisible && !ShowInOwnWindow() && targetWindow) {
+            targetWindow->RequestWindowComposition();
+        }
     }
 
     void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text,
                                                                     const Point2Di &position, const TooltipStyle& newStyle) {
-        UpdateAndShowTooltip(win, text, position, newStyle);
-        CancelShowTimer();
-        CancelHideTimer();
-        pendingShow = false;
-        pendingHide = false;
-        visible = true;
+        TooltipContent content;
+        if (!text.empty()) {
+            content.AddPlainText(text);   // plain data: < > & are shown literally
+        }
+        UpdateAndShowTooltipImmediately(win, content, position, newStyle);
     }
 
     void UltraCanvasTooltipManager::HideTooltipImmediately() {
@@ -375,21 +432,235 @@ namespace UltraCanvas {
         pendingHide = false;
         pendingShow = false;
         visible = false;
+        if (shownInOwnWindow && ownWindow) {
+            ownWindow->Hide();
+        }
+        shownInOwnWindow = false;
         if (targetWindow) {
             targetWindow->RequestWindowComposition();
         }
         renderCtx.reset();
     }
 
+    // ===== ITS OWN WINDOW =====
+
+    void UltraCanvasTooltipManager::SetUseOwnWindow(bool use) {
+        if (useOwnWindow == use) return;
+        HideTooltipImmediately();
+        CloseOwnWindow();
+        useOwnWindow = use;
+    }
+
+    bool UltraCanvasTooltipManager::GetUseOwnWindow() {
+        return useOwnWindow;
+    }
+
+    UltraCanvasWindowBase* UltraCanvasTooltipManager::GetTooltipWindow() {
+        return (visible && shownInOwnWindow) ? ownWindow.get() : nullptr;
+    }
+
+    bool UltraCanvasTooltipManager::OwnWindowAvailable() {
+        return kOwnWindowPlatform && useOwnWindow;
+    }
+
+    UltraCanvasWindowBase* UltraCanvasTooltipManager::RenderHost() {
+        return (shownInOwnWindow && ownWindow) ? ownWindow.get() : targetWindow;
+    }
+
+    bool UltraCanvasTooltipManager::ShowInOwnWindow() {
+        shownInOwnWindow = false;
+        if (!OwnWindowAvailable() || !targetWindow) return false;
+        // A tooltip of another window: the window is made again for it (on
+        // Wayland it is that window's child, and goes with it).
+        if (ownWindow && ownWindowTarget != targetWindow) {
+            CloseOwnWindow();
+        }
+        if (ownWindow && !ownWindow->IsCreated()) {
+            ownWindow.reset();
+            ownWindowTarget = nullptr;
+        }
+
+        const int width = std::max(1, tooltipRect.width);
+        const int height = std::max(1, tooltipRect.height);
+        if (!ownWindow) {
+            WindowConfig config;
+            config.title = "Tooltip";
+            config.type = WindowType::Tooltip;
+            config.width = width;
+            config.height = height;
+            config.minWidth = 1;
+            config.minHeight = 1;
+            config.resizable = false;
+            config.minimizable = false;
+            config.maximizable = false;
+            config.closable = false;
+            config.backgroundColor = OwnWindowBackground(style);
+            config.x = screenPosition.x;
+            config.y = screenPosition.y;
+#if defined(ULTRACANVAS_DISPLAY_WAYLAND)
+            // On Wayland a window is placed only by its parent: the tooltip
+            // is a popup of the window it belongs to (or a top-layer surface
+            // beside a desktop on the layer shell). Elsewhere it has none: an
+            // owned window on Windows would be tied into its owner's place in
+            // the stack, the desktop's at the bottom.
+            config.parentWindow = targetWindow;
+#endif
+            auto window = CreateWindow(config);
+            if (!window || !window->IsCreated()) {
+                debugOutput << "UltraCanvasTooltipManager: no window of its own; the tooltip is drawn in its window" << std::endl;
+                if (window) window->Close();
+                return false;
+            }
+            ownWindow = window;
+            ownWindowTarget = targetWindow;
+        } else {
+            ownWindow->SetBackgroundColor(OwnWindowBackground(style));
+            int currentWidth = 0, currentHeight = 0;
+            ownWindow->GetWindowSize(currentWidth, currentHeight);
+            if (currentWidth != width || currentHeight != height) {
+                ownWindow->SetWindowSize(width, height);
+            }
+        }
+
+        // Placed again now that the window, and so its size on the screen,
+        // is known; then shown, above every other window.
+        PlaceOnScreen();
+        ownWindow->SetWindowPosition(screenPosition.x, screenPosition.y);
+        shownInOwnWindow = true;
+        ownWindow->Show();
+        ownWindow->RequestWindowComposition();
+        return true;
+    }
+
+    void UltraCanvasTooltipManager::CloseOwnWindow() {
+        std::shared_ptr<UltraCanvasWindowBase> window = std::move(ownWindow);
+        ownWindow.reset();
+        ownWindowTarget = nullptr;
+        if (shownInOwnWindow) {
+            shownInOwnWindow = false;
+            renderCtx.reset();
+        }
+        if (window && window->IsCreated()) {
+            window->Close();
+        }
+    }
+
+    void UltraCanvasTooltipManager::RefreshShown() {
+        if (shownInOwnWindow && ownWindow) {
+            ownWindow->SetBackgroundColor(OwnWindowBackground(style));
+            int currentWidth = 0, currentHeight = 0;
+            ownWindow->GetWindowSize(currentWidth, currentHeight);
+            const int width = std::max(1, tooltipRect.width);
+            const int height = std::max(1, tooltipRect.height);
+            if (currentWidth != width || currentHeight != height) {
+                ownWindow->SetWindowSize(width, height);
+                PlaceOnScreen();
+                ownWindow->SetWindowPosition(screenPosition.x, screenPosition.y);
+            }
+            ownWindow->RequestWindowComposition();
+        } else if (targetWindow) {
+            targetWindow->RequestWindowComposition();
+        }
+    }
+
+    void UltraCanvasTooltipManager::ForgetWindow(UltraCanvasWindowBase* win) {
+        if (!win) return;
+        // The own window closed by someone else (every window closed at once,
+        // say): let go of it; the tooltip it showed is gone.
+        if (ownWindow.get() == win) {
+            if (shownInOwnWindow) {
+                shownInOwnWindow = false;
+                visible = false;
+                pendingHide = false;
+                CancelHideTimer();
+                renderCtx.reset();
+            }
+            ownWindow.reset();
+            ownWindowTarget = nullptr;
+        }
+        // The window the tooltip belongs to: the tooltip goes, and its own
+        // window with it - a window left over would keep the application
+        // running after its last real window closed.
+        if (win == targetWindow || win == ownWindowTarget) {
+            if (win == targetWindow) {
+                HideTooltipImmediately();
+                targetWindow = nullptr;
+            }
+            CloseOwnWindow();
+        }
+    }
+
+    void UltraCanvasTooltipManager::WindowScaleChanged(UltraCanvasWindowBase* win) {
+        if (win && win == ownWindow.get()) {
+            // Moved to a monitor of another scale: drawn again at it
+            renderCtx.reset();
+            if (shownInOwnWindow) ownWindow->RequestWindowComposition();
+            return;
+        }
+        // The tooltip's surface was made for the window's old scale
+        HideTooltipImmediately();
+    }
+
+    void UltraCanvasTooltipManager::PlaceOnScreen() {
+        if (!targetWindow) return;
+        // Native screen units per logical pixel of the window the tooltip
+        // belongs to (physical px on X11 and Windows, as SetWindowPosition
+        // takes them)
+        int targetNativeWidth = 0, targetNativeHeight = 0;
+        targetWindow->GetNativeWindowSize(targetNativeWidth, targetNativeHeight);
+        const double scale = (targetWindow->GetConfig().width > 0 && targetNativeWidth > 0)
+                                 ? static_cast<double>(targetNativeWidth) / targetWindow->GetConfig().width
+                                 : 1.0;
+        auto native = [scale](int logical) { return static_cast<int>(std::lround(logical * scale)); };
+
+        int originX = 0, originY = 0;
+        targetWindow->GetContentScreenOrigin(originX, originY);
+        const int pointerX = originX + native(cursorPosition.x);
+        const int pointerY = originY + native(cursorPosition.y);
+
+        // The tooltip's size on the screen: its own window's, once there is
+        // one, else the logical size at the scale of the window it belongs to
+        int width = native(tooltipRect.width);
+        int height = native(tooltipRect.height);
+        if (ownWindow && ownWindowTarget == targetWindow) {
+            ownWindow->GetNativeWindowSize(width, height);
+        }
+
+        int screenX = 0, screenY = 0, screenWidth = 0, screenHeight = 0;
+        targetWindow->GetScreenBounds(screenX, screenY, screenWidth, screenHeight);
+
+        // As inside a window (UpdateTooltipPosition): above and to the right
+        // of the pointer; left of it when there is no room on the right;
+        // below the pointer's arrow when there is none above - only now the
+        // room is the monitor's, not the window's.
+        int x = pointerX + native(style.offsetX);
+        int y = pointerY - native(style.offsetY) - height;
+        if (screenWidth > 0 && screenHeight > 0) {
+            if (x + width > screenX + screenWidth) {
+                x = pointerX - native(style.offsetX) - width;
+            }
+            if (y < screenY) {
+                y = pointerY + native(kPointerArrowHeight);
+                if (y + height > screenY + screenHeight) {
+                    y = screenY + screenHeight - height;
+                }
+            }
+            x = std::max(x, screenX);
+            y = std::max(y, screenY);
+        }
+        screenPosition = Point2Di(x, y);
+    }
+
     IRenderContext* UltraCanvasTooltipManager::Render(UltraCanvasWindowBase* win) {
-        if (!visible || currentContent.Empty() || win != targetWindow) return nullptr;
+        if (!visible || currentContent.Empty() || !win || win != RenderHost()) return nullptr;
 
         if (renderCtx) {
             return renderCtx.get();
         }
 
+        const TooltipStyle drawn = DrawnStyle(style, shownInOwnWindow);
         int marginLeft, marginTop, marginRight, marginBottom;
-        GetShadowMargins(style, marginLeft, marginTop, marginRight, marginBottom);
+        GetShadowMargins(drawn, marginLeft, marginTop, marginRight, marginBottom);
 
         renderCtx = CreateRenderContext({tooltipRect.width + marginLeft + marginRight,
                                          tooltipRect.height + marginTop + marginBottom}, win->GetNativeSurface());
@@ -397,37 +668,37 @@ namespace UltraCanvas {
         Rect2Di contentRect(marginLeft, marginTop, tooltipRect.width, tooltipRect.height);
 
         // Draw shadow first
-        if (style.hasShadow && style.shadowColor.a > 0) {
+        if (drawn.hasShadow && drawn.shadowColor.a > 0) {
             Rect2Di shadowRect(
-                    contentRect.x + style.shadowOffset.x,
-                    contentRect.y + style.shadowOffset.y,
+                    contentRect.x + drawn.shadowOffset.x,
+                    contentRect.y + drawn.shadowOffset.y,
                     contentRect.width,
                     contentRect.height
             );
 
-            if (style.shadowBlur <= 0) {
-                renderCtx->DrawFilledRectangle(shadowRect, style.shadowColor, 0, Colors::Transparent, style.cornerRadius);
+            if (drawn.shadowBlur <= 0) {
+                renderCtx->DrawFilledRectangle(shadowRect, drawn.shadowColor, 0, Colors::Transparent, drawn.cornerRadius);
             } else {
                 // No blur primitive in IRenderContext, so approximate a
                 // Gaussian falloff by stacking translucent rounded rectangles,
                 // each inflated by one more pixel. The per-layer alpha is
                 // chosen so the fully overlapped core reaches shadowColor.a.
-                int layers = style.shadowBlur;
-                float coreAlpha = style.shadowColor.a / 255.0f;
+                int layers = drawn.shadowBlur;
+                float coreAlpha = drawn.shadowColor.a / 255.0f;
                 float layerAlpha = 1.0f - std::pow(1.0f - coreAlpha, 1.0f / static_cast<float>(layers));
-                Color layerColor = style.shadowColor;
+                Color layerColor = drawn.shadowColor;
                 layerColor.a = static_cast<uint8_t>(std::clamp(layerAlpha * 255.0f + 0.5f, 1.0f, 255.0f));
                 for (int i = layers; i >= 1; --i) {
                     Rect2Di inflated(shadowRect.x - i, shadowRect.y - i,
                                      shadowRect.width + 2 * i, shadowRect.height + 2 * i);
                     renderCtx->DrawFilledRectangle(inflated, layerColor, 0, Colors::Transparent,
-                                                   style.cornerRadius + static_cast<float>(i));
+                                                   drawn.cornerRadius + static_cast<float>(i));
                 }
             }
         }
 
         // Draw tooltip background
-        renderCtx->DrawFilledRectangle(contentRect, style.backgroundColor, style.borderWidth, style.borderColor, style.cornerRadius);
+        renderCtx->DrawFilledRectangle(contentRect, style.backgroundColor, style.borderWidth, style.borderColor, drawn.cornerRadius);
 
         // Draw content blocks
         const int contentWidth = tooltipRect.width - style.paddingLeft - style.paddingRight;
@@ -496,6 +767,8 @@ namespace UltraCanvas {
     }
 
     Point2Di UltraCanvasTooltipManager::GetCompositePosition() {
+        // In its own window the tooltip fills it, from the corner
+        if (shownInOwnWindow) return Point2Di(0, 0);
         int marginLeft, marginTop, marginRight, marginBottom;
         GetShadowMargins(style, marginLeft, marginTop, marginRight, marginBottom);
         return Point2Di(tooltipRect.x - marginLeft, tooltipRect.y - marginTop);
@@ -506,8 +779,10 @@ namespace UltraCanvas {
             renderCtx.reset();
         }
         style = newStyle;
-        if (visible) {
+        if (visible && targetWindow) {
             CalculateTooltipLayout(); // Recalculate if currently visible
+            UpdateTooltipPosition(cursorPosition);
+            RefreshShown();
             targetWindow->RequestRedraw();
         }
     }
@@ -731,7 +1006,9 @@ namespace UltraCanvas {
         tooltipRect.height = std::max(y + style.paddingTop + style.paddingBottom, 15);
     }
 
-    void UltraCanvasTooltipManager::UpdateTooltipPosition(const Point2Di &cursorPosition) {
+    void UltraCanvasTooltipManager::UpdateTooltipPosition(const Point2Di &pointer) {
+        if (!targetWindow) return;
+        cursorPosition = pointer;
         int windowWidth = targetWindow->GetWidth();
         int windowHeight = targetWindow->GetHeight();
 
@@ -752,7 +1029,6 @@ namespace UltraCanvas {
             // No room above (near the top of the window): below the pointer,
             // under its arrow rather than over it.
             if (tooltipRect.y < 0) {
-                constexpr int kPointerArrowHeight = 22;
                 tooltipRect.y = cursorPosition.y + kPointerArrowHeight;
                 if (tooltipRect.y + tooltipRect.height > windowHeight) {
                     tooltipRect.y = windowHeight - tooltipRect.height;
@@ -762,6 +1038,15 @@ namespace UltraCanvas {
             // Ensure tooltip is not off-screen
             tooltipRect.x = std::max(tooltipRect.x, 0);
             tooltipRect.y = std::max(tooltipRect.y, 0);
+        }
+
+        // In its own window the room is the monitor's: placed on the screen,
+        // and the window follows while the tooltip is up
+        if (OwnWindowAvailable()) {
+            PlaceOnScreen();
+            if (shownInOwnWindow && ownWindow) {
+                ownWindow->SetWindowPosition(screenPosition.x, screenPosition.y);
+            }
         }
     }
 

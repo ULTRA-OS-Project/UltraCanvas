@@ -22,7 +22,7 @@ drops one. The entries are the application's strings - a path it
 normalised, a name - compared as text.
 
 **File Location**: `include/UltraCanvasAppSettings.h`
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -132,6 +132,19 @@ test.Save();
 - `Set` on a dotted key makes the objects on the way and replaces a scalar
   in the way; `Set` with a scalar on a key that holds an object replaces
   the object.
+- An older file is never a problem: a key it does not have reads as the
+  fallback, and `Set` makes the objects on the way. Renaming or moving a
+  key is three calls, and the old file still reads:
+
+  <!-- doc-check: UltraCanvas::UltraCanvasAppSettings settings("UltraSnip"); -->
+  ```cpp
+  // 0.1 kept the rate under "video.fps"; 0.2 calls it "video.frameRate"
+  if (settings.Has("video.fps")) {
+      settings.Set("video.frameRate", settings.GetInt("video.fps", 20));
+      settings.Remove("video.fps");
+      settings.Save();
+  }
+  ```
 - `AppSettingsTest` (`Tests/AppSettingsTest.cpp`) covers it.
 
 ## Related

@@ -7,10 +7,12 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.5.0 - a run's own letter spacing (RichTextRun::letterSpacingPt), over the tracking
+// Version: 1.4.0 - RichTextEditStyle::letterSpacing: extra room between every two letters
 // Version: 1.3.0 - the font report and its notice: the fonts the document needs that the
 //                  computer lacks, each a link to its download page
 // Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
@@ -143,6 +145,7 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
     // Typing gets a word processor's corrections (smart quotes, dashes,
     // lists from "1. "...); SetAutoFormatEnabled(false) turns them off.
     editor.SetAutoFormatEnabled(true);
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasRichTextEdit::~UltraCanvasRichTextEdit() {
@@ -219,6 +222,7 @@ void UltraCanvasRichTextEdit::SetPageView(bool enabled) {
 }
 
 void UltraCanvasRichTextEdit::SetStyle(const RichTextEditStyle& s) {
+    StyleSetByHand();
     style = s;
     InvalidateDocument();
 }
@@ -1119,6 +1123,15 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                                                   int cellRow, int cellColumn) const {
     if (!layout) return;
 
+    // Tracking: the same extra room between every two letters of the text
+    // (a drawing's text kerned as a whole), under what the runs set.
+    if (std::fabs(style.letterSpacing) > 1e-6f) {
+        if (auto spacing = TextAttributeFactory::CreateLetterSpacing(static_cast<double>(style.letterSpacing))) {
+            spacing->SetRange(0, static_cast<int>(layout->GetText().size()));
+            layout->InsertAttribute(std::move(spacing));
+        }
+    }
+
     int position = 0;
     for (const RichTextRun& run : runs) {
         int span = (run.lineBreakBefore ? 1 : 0) + static_cast<int>(run.text.size());
@@ -1261,6 +1274,10 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         }
         if (!run.fontFamily.empty()) add(TextAttributeFactory::CreateFontFamily(run.fontFamily));
         if (run.fontSizePt > 0.0f)   add(TextAttributeFactory::CreateFontSize(run.fontSizePt));
+        // A run's own letter spacing, over the whole text's (the later of
+        // two attributes on the same letters is the one that counts).
+        if (run.letterSpacingPt)
+            add(TextAttributeFactory::CreateLetterSpacing(static_cast<double>(Px(*run.letterSpacingPt))));
         if (!run.color.empty()) {
             add(TextAttributeFactory::CreateForeground(ParseHexColor(run.color, style.textColor)));
         }
@@ -5566,4 +5583,32 @@ void UltraCanvasRichTextEdit::EndPrintLayout() {
     InvalidateDocument();
 }
 
+
+// ===== THE THEME =====
+RichTextEditStyle RichTextEditStyle::FromTheme(const UltraCanvasTheme& theme, const RichTextEditStyle& base) {
+    RichTextEditStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.textColor = r.ink;
+    s.backgroundColor = r.well;
+    s.selectionColor = r.accentSoft;
+    s.cursorColor = r.ink;
+    s.linkColor = r.accent;
+    s.quoteBarColor = r.lineStrong;
+    s.quoteTextColor = r.inkMuted;
+    s.codeTextColor = r.ink;
+    s.codeBackgroundColor = r.panel;
+    s.codeBorderColor = r.line;
+    s.ruleColor = r.lineStrong;
+    s.pageBreakColor = r.inkFaint;
+    s.listMarkerColor = r.inkMuted;
+    s.tableBorderColor = r.lineStrong;
+    s.tableGuideColor = r.line;
+    s.imagePlaceholderColor = r.inkFaint;
+    s.borderColor = r.lineStrong;
+    s.deskColor = r.panel;
+    // the element's own role: paper of another colour than the well
+    s.pageColor = theme.Role("rich-text.page", r.well);
+    s.pageMarginGuideColor = r.line;
+    return s;
+}
 } // namespace UltraCanvas

@@ -1,5 +1,9 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.13.0 - FromTheme sets the interface font at the body size; a SetStyle by hand stops the following;
+//                  a new button that follows by default takes the theme in its constructor
+// Version: 2.12.0 - ButtonStyle::wrap / SetWrap: the text on several lines (a tile's name under its icon)
+// Version: 2.11.0 - GetIconImage: the icon the button shows, for a menu entry standing in for it
 // Version: 2.10.2 - that layout is an UltraCanvasTextLayoutCache, the label's pattern too
 // Version: 2.10.1 - the shortened text's layout is kept from draw to draw and rebuilt when its inputs change
 // Version: 2.10.0 - ButtonStyle::ellipsize / SetEllipsize: a text that does not fit shortened in the middle or at the start
@@ -9,7 +13,7 @@
 // Version: 2.7.1 - GetIconWidth / GetIconHeight
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -118,6 +122,11 @@ namespace UltraCanvas {
         // default), from the left, or in the middle - a path's first and
         // last parts stay readable then.
         EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;
+        // Word wrap: the text breaks onto as many lines as its area holds,
+        // from the area's top, and the last line that fits ends in "…" when
+        // more is left (an application's name under its icon on a tile).
+        // WrapNone (the default) keeps it on one line.
+        TextWrap wrap = TextWrap::WrapNone;
 
         int iconSpacing = 4;  // Space between icon and text
         float cornerRadius = 3.0f;
@@ -295,6 +304,9 @@ namespace UltraCanvas {
         void SetUseIconAsMask(bool useAsMask);
         void SetIconMaskColor(const Color& c);
         bool HasIcon() const { return icon != nullptr; }
+        // The icon the button shows, null without one: a toolbar's overflow
+        // menu draws the entry that stands in for the button with it.
+        std::shared_ptr<UCImage> GetIconImage() const { return icon; }
 
         // ===== STYLING METHODS =====
         void SetColors(const Color& normal, const Color& hover,
@@ -311,6 +323,7 @@ namespace UltraCanvas {
         void SetFontSize(float size);
         void SetTextAlign(TextAlignment align);
         void SetEllipsize(EllipsizeMode mode);   // ButtonStyle::ellipsize
+        void SetWrap(TextWrap wrap);             // ButtonStyle::wrap
         void SetIconSpacing(int spacing);
         void SetCornerRadius(float radius);
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),
@@ -336,6 +349,8 @@ namespace UltraCanvas {
         // Right (secondary) mouse button pressed over the button; args are window-relative
         // coordinates, suitable for popping up a context menu there.
         std::function<void(int windowX, int windowY)> onContextMenu;
+        // The pointer comes over the button / goes off it. A toggle button
+        // that is on reports it too; a push button held down does not.
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
 
@@ -357,7 +372,7 @@ namespace UltraCanvas {
         // switches between Ghost and Selected with this alone
         void SetThemeVariant(ButtonVariant variant) {
             themeVariant = variant;
-            if (GetFollowTheme()) ApplyTheme(UltraCanvasTheme::Current());
+            ApplyThemeIfFollowing();
         }
         ButtonVariant GetThemeVariant() const { return themeVariant; }
         bool AcceptsFocus() const override { return canAcceptFocus; }

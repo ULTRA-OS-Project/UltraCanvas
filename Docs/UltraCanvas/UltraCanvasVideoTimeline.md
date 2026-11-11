@@ -1,6 +1,6 @@
 # UltraCanvas Video Timeline
 
-<!-- doc-check: struct MyDocument { UltraCanvas::TimelineModel model; }; MyDocument document; bool ApplyToDocument(MyDocument& document, const UltraCanvas::TimelineChange& change); std::vector<UltraCanvas::UCPixmapPtr> DecodeThumbnails(const std::string& source, double in, double out, int frames, int height); UltraCanvas::WaveformChannelData DecodePeaks(const std::string& source, double in, double out, double blocksPerSecond); std::shared_ptr<UltraCanvasVideoPlayerElement> player; -->
+<!-- doc-check: struct MyDocument { UltraCanvas::TimelineModel model; }; MyDocument document; bool ApplyToDocument(MyDocument& document, const UltraCanvas::TimelineChange& change); std::vector<UltraCanvas::UCPixmapPtr> DecodeThumbnails(const std::string& source, double in, double out, int frames, int height); UltraCanvas::WaveformChannelData DecodePeaks(const std::string& source, double in, double out, double blocksPerSecond); std::shared_ptr<UltraCanvasVideoPlayerElement> player; UltraCanvas::TimelineTrack overlays; -->
 
 `UltraCanvasVideoTimeline` — a **media timeline editor**: clips on tracks under
 a time ruler, with a playhead, trim handles, reordering, splitting,
@@ -33,11 +33,12 @@ Two things make it different from a chart that merely draws spans:
 **Base class:** `UltraCanvasUIElement` (a self-rendered view; it adds no
 child elements of its own)
 **Demo:** `Apps/DemoApp/UltraCanvasVideoTimelineExamples.cpp` (Video > Video Timeline)
-**Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display)
+**Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display),
+`Tests/VideoTimelineElementTest.cpp` (the element in a window, under Xvfb)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.3.0
-**Last Modified:** 2026-10-14
+**Version:** 1.5.0
+**Last Modified:** 2026-11-05
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -64,7 +65,8 @@ muted scrim and the unused source beyond an edge; transitions as badges on
 the cut with a draggable length; the playhead; zoom around the pointer,
 scrolling, fit; reorder on the magnetic main track with an insertion
 marker, free placement elsewhere; trim with snapping and a live readout;
-split with the blade tool or `S`; delete with ripple; duplicate; nudge;
+split with the blade tool or `S`; delete with ripple; a close-gap button
+in every gap of a free track; duplicate; nudge;
 markers; the work area; rubber-band selection; file drop with an insertion
 marker; a context-menu hook; keyboard throughout. Light and dark palettes,
 and `VideoTimelineStyle::FromTheme` for the framework theme
@@ -162,6 +164,7 @@ timeline->SetFollowPlayhead(true);           // page the view during playback
 timeline->SetTool(TimelineTool::Blade);      // Select, Blade, Trim, Slip
 timeline->SetSnapping(true);
 timeline->SetShowBeats(true);
+timeline->SetShowGapButtons(true);           // the |<- in each gap of a free track (the default)
 timeline->SetStyle(VideoTimelineStyle::DarkPalette());
 timeline->SetSelection({"beach"});
 timeline->SetSelectedTransition("photo");    // the badge on the cut into `photo`
@@ -184,8 +187,11 @@ timeline->ClearDropFeedback();                     // a DragLeave event does the
 
 ### Providers
 
-Thumbnails and peaks arrive later, from the app. The element asks once per
-clip and zoom step, caches what it gets, and draws the clip's fill alone
+Thumbnails and peaks arrive later, from the app. The element asks for the
+thumbnails of the part of a clip in view, a few pictures at a time (`frames`
+evenly spread moments from `in` to `out`, both included; a picture that
+cannot be decoded may be a null pixmap, its slot then stays empty), and the
+peaks once per clip; it caches what it gets, and draws the clip's fill alone
 until then — never a spinner inside a clip. The callback may run at once or
 after a decode on another thread; call `done` on the UI thread.
 
@@ -213,7 +219,7 @@ timeline->onChangeRequested = [&](const TimelineChange& change) {   // capture t
 
 | `TimelineChangeKind` | `before` / `after` | Also |
 |---|---|---|
-| `Move` | Magnetic track: every clip of the track, in the old and the new order, with derived starts. Free track: the one clip, at its old and new `start` | `ripple` |
+| `Move` | Magnetic track: every clip of the track, in the old and the new order, with derived starts. Free track: the one clip, at its old and new `start` — or, from a `Shift`-click on a close-gap button, every clip after the gap, the one closing it first | `ripple`, `at` the new start |
 | `Trim` | As for `Move`; the trimmed clip carries its new `start`, `duration` and `sourceIn` | `at` the edge's time |
 | `Split` | The one clip; the two parts, the right one with the id `<id>:2` (the app may rename it on apply) | `at` |
 | `Delete` | The removed clips; on a magnetic track `after` is what remains | `ripple` |
@@ -266,6 +272,11 @@ TimelineTrimClip(main, "beach", false, 9.0, 25.0, &applied);   // the right edge
 TimelineMoveClip(main, "photo", 0, 0.0);                 // magnetic: to the front
 TimelineDeleteClips(main, {"photo"}, true);
 TimelineDuplicateClip(main, "beach", "beach:copy");
+double empty = 0.0;
+for (const TimelineGap& gap : TimelineGaps(overlays, 1.0 / 25.0))   // a free track's empty stretches, a frame or longer
+    empty += gap.Length();                                         // gap.start..gap.end, before the clip gap.clipId
+std::vector<TimelineClip> moved;
+TimelineCloseGap(overlays, "logo", false, 1.0 / 25.0, &moved);   // logo to the end of the clip before it (or 0)
 double minor = 0.0, major = 0.0;
 TimelineRulerSteps(80.0, 25.0, minor, major);            // 0.2 s ticks, labels every second
 std::string tc = TimelineTimecode(11.2, 25.0);           // "00:00:11:05"
@@ -303,6 +314,21 @@ double-click a clip, a transition or a marker to activate it; right-click
 for the context-menu hook. A hidden or locked track draws dimmed and a
 locked one takes no edits.
 
+**Closing a gap.** On a free track (titles, overlays, sounds — not the
+magnetic main track, which has none), every empty stretch before a clip
+that is wide enough at the current zoom shows a small `|<-` button: a bar,
+where the clip will go, and an arrow into it. It sits in the middle of the
+part of the gap that is on screen, halfway up the lane, so the button of a
+gap longer than the view is still in reach; its tooltip says which clip
+moves where ("Close the gap: move logo.mp4 to the end of intro.mp4"). A
+click moves the clip after the gap left to the end of the clip before it,
+or to 0 for the gap at the start of the track; `Shift`+click moves every
+clip after the gap by the same amount, so the spacing behind it is kept.
+Both arrive as one `Move` change. A locked lane, or a timeline with
+`SetShowGapButtons(false)`, shows none. This is what a cut leaves behind:
+split a clip with the blade, delete one part, and the gap's button puts the
+rest back against its neighbour.
+
 ## Style
 
 `VideoTimelineStyle` holds every colour, size and font. The defaults are the
@@ -331,6 +357,15 @@ timeline->SetStyle(style);
   ignores it then, so a decode need not be cancelled.
 - The model keeps seconds; the element rounds edits to the frame grid of
   `frameRate` and shows `HH:MM:SS:FF`.
-- Thumbnail requests are keyed by source, range, frame count and height,
-  with the frame count rounded up to a multiple of four so that zooming
-  does not decode at every step.
+- Thumbnail requests are keyed by source, range, frame count and height.
+  Each picture fills a slot of about one frame's width at its own moment,
+  so it sits where its time is on the ruler, to the clip's end at any zoom;
+  the slot length steps by a factor of root 2, so zooming inside a step and
+  scrolling reuse what was decoded. Only the slots in view are asked for,
+  in chunks of eight.
+- The element is in the element registry as `"video-timeline"` (category
+  Widget, `MakeVideoTimelineDescriptor`). It is a selectable widget: compiled
+  into the core by default, or built as the `ultracanvas-widget-video-timeline`
+  runtime module when `ULTRACANVAS_WIDGETS` leaves it out. See *Widgets as
+  runtime modules* in
+  [`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md).

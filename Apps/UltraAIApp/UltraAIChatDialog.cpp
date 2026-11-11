@@ -1,21 +1,27 @@
 // Apps/UltraAIApp/UltraAIChatDialog.cpp
+// Version: 0.3.0 - the playground panel
 // Version: 0.1.0
 
 #include "UltraAIChatDialog.h"
 
 #include "UltraAILocalModelDialog.h"
 #include "UltraAISettingsDialog.h"
+#include "UltraAISettingsWidgets.h"
 
 #include "UltraAI.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasTextUtils.h"
+#include "DataFormats/UltraCanvasJSON.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <sstream>
 #include <thread>
+#include <optional>
 #include <utility>
 
 namespace UltraAIApp {
@@ -56,6 +62,28 @@ MimeInfo GuessMime(const std::string& filename) {
     if (ext == "csv")  return {"text/csv", false};
     return {"application/octet-stream", false};
 }
+
+// "12,345" style token counts are for a person: grouped, in the locale's way
+// is a nicety we leave out; plain digits read fine at these sizes.
+std::string Tokens(int32_t n) { return std::to_string(n); }
+
+std::string ShortenForTranscript(const std::string& text, size_t limit = 400) {
+    if (text.size() <= limit) return text;
+    size_t cut = limit;
+    while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) --cut;
+    return text.substr(0, cut) + "…";
+}
+
+// Inline code in the markdown transcript: a backtick inside would end it.
+std::string InlineCode(const std::string& text) {
+    std::string clean;
+    for (char c : text) clean += (c == '`') ? '\'' : (c == '\n' ? ' ' : c);
+    return "`" + clean + "`";
+}
+
+constexpr const char* kToolsPlaceholder =
+    R"([{"name": "get_weather", "description": "Weather for a city", )"
+    R"("parameters": {"type": "object", "properties": {"city": {"type": "string"}}}}])";
 
 constexpr const char* kGreeting =
     "**UltraAI Chat**\n\nPick an endpoint above and type a message. Replies "
@@ -98,7 +126,15 @@ void UltraAIChatDialog::CreateChatDialog() {
     endpointPicker_ = std::make_shared<UltraCanvasDropdown>("chat-endpoint", 0, 0, 0, 28);
     endpointPicker_->size.height = Dimension::Px(28);
     endpointPicker_->layoutItem.SetFlexGrow(1);
+    endpointPicker_->onSelectionChanged = [this](int, const DropdownItem&) { RebuildModelPicker(); };
     topRow->AddChild(endpointPicker_);
+
+    playgroundButton_ = std::make_shared<UltraCanvasButton>("chat-playground", 0, 0, 130, 28);
+    playgroundButton_->SetText(Tr("Hide settings"));
+    playgroundButton_->size.width = Dimension::Px(130);
+    playgroundButton_->layoutItem.SetFlexShrink(0);
+    playgroundButton_->onClick = [this]() { TogglePlayground(); };
+    topRow->AddChild(playgroundButton_);
 
     auto settingsBtn = std::make_shared<UltraCanvasButton>("chat-settings", 0, 0, 130, 28);
     settingsBtn->SetText("⚙  Settings");
@@ -114,6 +150,9 @@ void UltraAIChatDialog::CreateChatDialog() {
     newChatBtn->onClick = [this]() { OnNewChat(); };
     topRow->AddChild(newChatBtn);
     AddChild(topRow);
+
+    // ===== Playground settings =====
+    CreatePlaygroundPanel();
 
     // ===== Transcript (fills all slack) =====
     transcript_ = std::make_shared<UltraCanvasTextArea>("chat-transcript", 0, 0, 0, 0);
@@ -207,6 +246,7 @@ void UltraAIChatDialog::RebuildEndpointPicker(const std::string& selectId) {
     }
     endpointPicker_->SetSelectedIndex(selectIndex, false);
     SetStatus("");
+    RebuildModelPicker();
 }
 
 void UltraAIChatDialog::OnSend() {
@@ -222,8 +262,46 @@ void UltraAIChatDialog::OnSend() {
 
     const std::string text = input_ ? input_->GetText() : "";
     if (text.empty() && pending_.empty()) {
-        SetStatus("Type a message or attach a file first.");
+        SetStatus(pendingToolCalls_.empty() ? "Type a message or attach a file first."
+                                            : Tr("Type the tool's result first."));
         return;
+    }
+    {
+        // A bad number or tools JSON is reported before anything changes.
+        ChatRequest probe;
+        std::string error;
+        if (!ApplyPlayground(probe, endpoint, error)) {
+            SetStatus(error);
+            return;
+        }
+    }
+
+    // The model asked for tools: this message is their result.
+    if (!pendingToolCalls_.empty()) {
+        for (const auto& call : pendingToolCalls_) {
+            Message tm;
+            tm.role = Role::Tool;
+            tm.toolCallId = call.id;
+            tm.name = call.name;
+            tm.text = text;
+            messages_.push_back(std::move(tm));
+        }
+        pendingToolCalls_.clear();
+        AppendTranscript("**" + Tr("Tool result") + "**\n\n" + text + "\n\n**Assistant**\n\n");
+        if (input_) input_->SetText("");
+        assistantAccum_.clear();
+        StartStream(endpoint);
+        return;
+    }
+
+    // A user turn left at the end of the history was never answered: the
+    // stream failed before it produced a reply, or the "Get a local model"
+    // dialog was dismissed. Replace it instead of appending after it, or the
+    // provider sees two user messages in a row - a chat template that
+    // demands alternating roles (Gemma on LocalAI, say) refuses the whole
+    // request with "Conversation roles must alternate user/assistant".
+    if (!messages_.empty() && messages_.back().role == Role::User) {
+        messages_.pop_back();
     }
 
     // Build the user message (multimodal when attachments are present).
@@ -279,6 +357,11 @@ void UltraAIChatDialog::StartStream(const Endpoint& endpoint) {
     ChatRequest req;
     req.messages = messages_;
     req.model = endpoint.defaultModel;   // empty -> adapter default
+    std::string playgroundError;
+    ApplyPlayground(req, endpoint, playgroundError);   // checked in OnSend
+    lastModel_ = req.model;
+    streamToolCalls_.clear();
+    lastUsage_ = TokenUsage{};
 
     sending_ = true;
     if (sendButton_) sendButton_->SetText("Sending...");
@@ -325,11 +408,26 @@ void UltraAIChatDialog::StartStream(const Endpoint& endpoint) {
                     post([this, m]() { OnStreamFinished(m); });
                     break;
                 }
-                case StreamEventKind::Done:
-                    post([this]() { OnStreamFinished(""); });
+                case StreamEventKind::ToolCallEnd: {
+                    ToolCall call = ev.toolCallDelta;
+                    post([this, call]() { OnStreamToolCall(call); });
                     break;
+                }
+                case StreamEventKind::UsageUpdate: {
+                    TokenUsage u = ev.usage;
+                    post([this, u]() { OnStreamUsage(u); });
+                    break;
+                }
+                case StreamEventKind::Done: {
+                    TokenUsage u = ev.usage;
+                    post([this, u]() {
+                        if (u.inputTokens || u.outputTokens) OnStreamUsage(u);
+                        OnStreamFinished("");
+                    });
+                    break;
+                }
                 default:
-                    break;  // ToolCall*/UsageUpdate — not surfaced yet
+                    break;  // ToolCallDelta: the finished call arrives as ToolCallEnd
             }
         };
 
@@ -371,19 +469,73 @@ void UltraAIChatDialog::OnStreamFinished(const std::string& errorMessage) {
     if (!errorMessage.empty()) {
         AppendTranscript("\n\n_" + errorMessage + "_");
     }
-    if (!assistantAccum_.empty()) {
+    if (!assistantAccum_.empty() || !streamToolCalls_.empty()) {
         Message am;
         am.role = Role::Assistant;
         am.text = assistantAccum_;
+        am.toolCalls = streamToolCalls_;
         messages_.push_back(std::move(am));
+        if (!streamToolCalls_.empty()) {
+            // A playground has no code behind the tools: the user answers.
+            std::string calls;
+            for (const auto& c : streamToolCalls_) {
+                calls += "\n\n🔧 **" + c.name + "** " +
+                         InlineCode(ShortenForTranscript(c.argumentsJson.empty() ? "{}" : c.argumentsJson));
+            }
+            AppendTranscript(calls);
+            pendingToolCalls_ = streamToolCalls_;
+        }
+    } else if (!errorMessage.empty() && !messages_.empty() &&
+               messages_.back().role == Role::Tool) {
+        // The tool results were sent but nothing came back: take them out
+        // and ask for them again, so the conversation stays one a provider
+        // accepts (every tool call answered exactly once).
+        while (!messages_.empty() && messages_.back().role == Role::Tool) messages_.pop_back();
+        if (!messages_.empty()) pendingToolCalls_ = messages_.back().toolCalls;
+    } else if (!errorMessage.empty() && !messages_.empty() &&
+               messages_.back().role == Role::User) {
+        // The request failed before the model said anything, so the turn
+        // never happened: take the user message back out of the history.
+        // Left in, the next send would follow it with a second user message
+        // and a provider whose chat template requires alternating roles
+        // rejects the conversation (seen with LiteLLM + LocalAI: both the
+        // failed and the new question arrived as consecutive "user" turns).
+        // The transcript keeps the echo and the error so the user sees what
+        // was tried; a partial reply above is kept as the assistant turn.
+        messages_.pop_back();
     }
     AppendTranscript("\n\n---\n\n");
     assistantAccum_.clear();
+    streamToolCalls_.clear();
 
     sending_ = false;
     if (sendButton_) sendButton_->SetText("Send");
-    SetStatus(errorMessage.empty() ? "" : "Error: " + errorMessage);
+    if (!errorMessage.empty()) SetStatus("Error: " + errorMessage);
+    else ShowUsage();
     stream_.reset();
+}
+
+void UltraAIChatDialog::OnStreamToolCall(const ToolCall& call) {
+    streamToolCalls_.push_back(call);
+}
+
+void UltraAIChatDialog::OnStreamUsage(const TokenUsage& usage) {
+    lastUsage_ = usage;
+}
+
+void UltraAIChatDialog::ShowUsage() {
+    chatUsage_.inputTokens  += lastUsage_.inputTokens;
+    chatUsage_.outputTokens += lastUsage_.outputTokens;
+    std::string text = TrF("{0} tokens in, {1} out  ·  this chat: {2} in, {3} out",
+                           Tokens(lastUsage_.inputTokens), Tokens(lastUsage_.outputTokens),
+                           Tokens(chatUsage_.inputTokens), Tokens(chatUsage_.outputTokens));
+    if (!lastModel_.empty()) text = lastModel_ + "  ·  " + text;
+    if (!pendingToolCalls_.empty()) {
+        text = TrF("The model asked for {0}: type the result and send it.  ", 
+                   pendingToolCalls_.size() == 1 ? pendingToolCalls_[0].name
+                                                 : Tr("several tools")) + text;
+    }
+    SetStatus(text);
 }
 
 void UltraAIChatDialog::OnAttach() {
@@ -422,6 +574,9 @@ void UltraAIChatDialog::OnNewChat() {
     messages_.clear();
     pending_.clear();
     assistantAccum_.clear();
+    pendingToolCalls_.clear();
+    streamToolCalls_.clear();
+    chatUsage_ = TokenUsage{};
     if (transcript_) transcript_->SetText(kGreeting);
     RefreshAttachmentChips();
     SetStatus("New conversation.");
@@ -444,6 +599,197 @@ void UltraAIChatDialog::OnOpenSettings() {
     // Reflect any endpoint changes made while the dialog was open, keeping the
     // endpoint the user had selected rather than snapping back to the first.
     RebuildEndpointPicker(selectId);
+}
+
+// ===== Playground =====
+
+void UltraAIChatDialog::CreatePlaygroundPanel() {
+    using UltraCanvas::CSSLayout::Dimension;
+    using UltraCanvas::CSSLayout::AlignItems;
+    using SettingsWidgets::MakeLabel;
+
+    playgroundPanel_ = std::make_shared<UltraCanvasContainer>("chat-playground-panel");
+    playgroundPanel_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(AlignItems::Stretch);
+    playgroundPanel_->layoutItem.SetFlexShrink(0);
+
+    auto row = [](const std::string& id) {
+        auto r = std::make_shared<UltraCanvasContainer>(id);
+        r->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(AlignItems::Center);
+        r->size.height = Dimension::Px(26);
+        r->layoutItem.SetFlexShrink(0);
+        return r;
+    };
+    auto number = [](const std::string& id, int width, const std::string& placeholder) {
+        auto input = std::make_shared<UltraCanvasTextInput>(id, 0, 0, width, 24);
+        input->SetPlaceholder(placeholder);
+        input->size.width = Dimension::Px(width);
+        input->layoutItem.SetFlexShrink(0);
+        return input;
+    };
+
+    // Model.
+    auto modelRow = row("chat-pg-model");
+    modelRow->AddChild(MakeLabel("chat-pg-model-label", Tr("Model")));
+    modelPicker_ = std::make_shared<UltraCanvasDropdown>("chat-pg-model-picker", 0, 0, 0, 24);
+    modelPicker_->size.height = Dimension::Px(24);
+    modelPicker_->layoutItem.SetFlexGrow(1);
+    modelRow->AddChild(modelPicker_);
+    modelRow->AddChild(MakeLabel("chat-pg-model-or", Tr("or")));
+    customModel_ = number("chat-pg-model-custom", 220, Tr("another model id"));
+    modelRow->AddChild(customModel_);
+    playgroundPanel_->AddChild(modelRow);
+
+    // Sampling.
+    auto samplingRow = row("chat-pg-sampling");
+    samplingRow->AddChild(MakeLabel("chat-pg-temp-label", Tr("Temperature")));
+    temperature_ = number("chat-pg-temp", 70, Tr("default"));
+    samplingRow->AddChild(temperature_);
+    samplingRow->AddChild(MakeLabel("chat-pg-topp-label", Tr("Top p")));
+    topP_ = number("chat-pg-topp", 70, Tr("default"));
+    samplingRow->AddChild(topP_);
+    samplingRow->AddChild(MakeLabel("chat-pg-max-label", Tr("Most output tokens")));
+    maxTokens_ = number("chat-pg-max", 90, Tr("default"));
+    samplingRow->AddChild(maxTokens_);
+    playgroundPanel_->AddChild(samplingRow);
+
+    // System prompt and tools, side by side.
+    auto textRow = std::make_shared<UltraCanvasContainer>("chat-pg-texts");
+    textRow->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(AlignItems::Stretch);
+    textRow->size.height = Dimension::Px(92);
+    textRow->layoutItem.SetFlexShrink(0);
+    auto column = [](const std::string& id, const std::string& label,
+                     std::shared_ptr<UltraCanvasTextArea>& area, const std::string& placeholder) {
+        auto col = std::make_shared<UltraCanvasContainer>(id);
+        col->layout.SetFlexColumn().SetFlexGap(2).SetFlexAlignItems(AlignItems::Stretch);
+        col->layoutItem.SetFlexGrow(1).SetFlexBasis(Dimension::Px(0));
+        col->AddChild(MakeLabel(id + "-label", label));
+        area = std::make_shared<UltraCanvasTextArea>(id + "-text", 0, 0, 0, 0);
+        area->SetEditingMode(TextAreaEditingMode::PlainText);
+        area->SetWordWrap(true);
+        area->SetPlaceholder(placeholder);
+        area->SetBorders(1.0f, Color(200, 200, 200, 255));
+        area->layoutItem.SetFlexGrow(1);
+        col->AddChild(area);
+        return col;
+    };
+    textRow->AddChild(column("chat-pg-system", Tr("System prompt"), systemPrompt_,
+                             Tr("How the model should behave, e.g. \"Answer in one sentence.\"")));
+    textRow->AddChild(column("chat-pg-tools", Tr("Tools (JSON)"), toolsJson_, kToolsPlaceholder));
+    playgroundPanel_->AddChild(textRow);
+
+    AddChild(playgroundPanel_);
+}
+
+void UltraAIChatDialog::TogglePlayground() {
+    if (!playgroundPanel_) return;
+    const bool show = !playgroundPanel_->IsVisible();
+    playgroundPanel_->SetVisible(show);
+    if (playgroundButton_) playgroundButton_->SetText(show ? Tr("Hide settings") : Tr("Show settings"));
+    InvalidateLayout();
+}
+
+void UltraAIChatDialog::RebuildModelPicker() {
+    if (!modelPicker_) return;
+    modelPicker_->ClearItems();
+    pickerModels_.clear();
+    int idx = endpointPicker_ ? endpointPicker_->GetSelectedIndex() : 0;
+    if (chatEndpoints_.empty() || idx < 0 || idx >= static_cast<int>(chatEndpoints_.size())) {
+        modelPicker_->AddItem(Tr("(the provider's default)"));
+        pickerModels_.push_back("");
+        modelPicker_->SetSelectedIndex(0, false);
+        return;
+    }
+    const Endpoint& e = chatEndpoints_[static_cast<size_t>(idx)];
+    modelPicker_->AddItem(e.defaultModel.empty()
+        ? Tr("(the provider's default)")
+        : TrF("{0} (the endpoint's default)", e.defaultModel));
+    pickerModels_.push_back(e.defaultModel);
+    for (const auto& m : e.models) {
+        if (m.name.empty() || m.name == e.defaultModel) continue;
+        if (!m.mode.empty() && m.mode != "chat") continue;   // embeddings, images, ...
+        modelPicker_->AddItem(m.name);
+        pickerModels_.push_back(m.name);
+    }
+    modelPicker_->SetSelectedIndex(0, false);
+}
+
+std::string UltraAIChatDialog::ChosenModel(const Endpoint& endpoint) const {
+    if (customModel_ && !customModel_->GetText().empty()) return customModel_->GetText();
+    if (modelPicker_) {
+        const int i = modelPicker_->GetSelectedIndex();
+        if (i >= 0 && i < static_cast<int>(pickerModels_.size()) && !pickerModels_[static_cast<size_t>(i)].empty()) {
+            return pickerModels_[static_cast<size_t>(i)];
+        }
+    }
+    return endpoint.defaultModel;
+}
+
+bool UltraAIChatDialog::ApplyPlayground(ChatRequest& req, const Endpoint& endpoint,
+                                        std::string& error) const {
+    req.model = ChosenModel(endpoint);
+
+    auto readNumber = [&error](const std::shared_ptr<UltraCanvasTextInput>& input,
+                               const std::string& name, double low, double high,
+                               std::optional<double>& out) {
+        out.reset();
+        if (!input || input->GetText().empty()) return true;
+        double value = 0;
+        if (!TryParseFloat(input->GetText(), value) || value < low || value > high) {
+            error = TrF("{0} must be a number from {1} to {2}.", name, FormatFloatClassic(low), FormatFloatClassic(high));
+            return false;
+        }
+        out = value;
+        return true;
+    };
+    std::optional<double> temperature, topP, maxTokens;
+    if (!readNumber(temperature_, Tr("Temperature"), 0, 2, temperature)) return false;
+    if (!readNumber(topP_, Tr("Top p"), 0, 1, topP)) return false;
+    if (!readNumber(maxTokens_, Tr("Most output tokens"), 1, 1000000, maxTokens)) return false;
+    if (temperature) req.sampling.temperature = *temperature;
+    if (topP) req.sampling.topP = *topP;
+    if (maxTokens) req.sampling.maxOutputTokens = static_cast<int32_t>(*maxTokens);
+
+    if (systemPrompt_ && !systemPrompt_->GetText().empty()) {
+        Message sys;
+        sys.role = Role::System;
+        sys.text = systemPrompt_->GetText();
+        req.messages.insert(req.messages.begin(), std::move(sys));
+    }
+
+    // Tools: a JSON array of {"name", "description", "parameters"} - the
+    // parameters being a JSON Schema ("input_schema" is taken too).
+    const std::string toolsText = toolsJson_ ? toolsJson_->GetText() : std::string{};
+    if (!toolsText.empty()) {
+        JSONParseResult parsed;
+        JSONValue root = JSON::Parse(toolsText, &parsed);
+        if (!parsed.success || !(root.IsArray() || root.IsObject())) {
+            error = Tr("The tools are not valid JSON: give an array of {\"name\", \"description\", \"parameters\"} objects.");
+            return false;
+        }
+        auto addTool = [&req, &error](const JSONValue& t) {
+            if (!t.IsObject() || t.Get("name").GetString().empty()) {
+                error = Tr("Every tool needs a \"name\".");
+                return false;
+            }
+            ToolDefinition def;
+            def.name = t.Get("name").GetString();
+            def.description = t.Get("description").GetString();
+            const JSONValue& params = t.Get("parameters").IsObject() ? t.Get("parameters")
+                                                                     : t.Get("input_schema");
+            def.parametersJsonSchema = params.IsObject() ? JSON::Serialize(params)
+                                                         : R"({"type":"object","properties":{}})";
+            req.tools.push_back(std::move(def));
+            return true;
+        };
+        if (root.IsObject()) {
+            if (!addTool(root)) return false;
+        } else {
+            for (size_t i = 0; i < root.GetSize(); ++i) {
+                if (!addTool(root.At(i))) return false;
+            }
+        }
+    }
+    return true;
 }
 
 void UltraAIChatDialog::RefreshAttachmentChips() {

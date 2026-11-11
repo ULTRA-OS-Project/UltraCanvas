@@ -8,13 +8,15 @@
 //                 row; "File name:" was at the dialog's own window offset and
 //                 the "Will create:" preview below the dialog
 // Version: 1.1.1 - the close cross, document icon and tick are drawn, not typed
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNewDocumentDialog.h"
+#include <cmath>
 #include "UltraCanvasConfig.h"        // GetResourcesDir
 #include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasUtils.h"         // NormalizePath
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <cctype>
 
@@ -33,6 +35,7 @@ namespace UltraCanvas {
         SetupComponents();
         SetupLayout();
         LoadDefaultDocumentTypes();
+        ApplyThemeIfFollowing();
     }
 
 // ===== SETUP =====
@@ -41,7 +44,7 @@ namespace UltraCanvas {
         // Filter input
         filterInput = std::make_shared<UltraCanvasTextInput>(
                 "FilterInput", 0, 0, 100, 28);
-        filterInput->SetPlaceholder("Filter document types...");
+        filterInput->SetPlaceholder(Tr("Filter document types..."));
         filterInput->onTextChanged = [this](const std::string& text) {
             ApplyFilter(text);
         };
@@ -57,7 +60,7 @@ namespace UltraCanvas {
         // Create button
         createButton = std::make_shared<UltraCanvasButton>(
                 "CreateButton", 0, 0, 90, 32);
-        createButton->SetText("Create");
+        createButton->SetText(Tr("Create"));
         createButton->onClick = [this]() {
             OnCreateClicked();
         };
@@ -65,7 +68,7 @@ namespace UltraCanvas {
         // Cancel button
         cancelButton = std::make_shared<UltraCanvasButton>(
                 "CancelButton", 0, 0, 90, 32);
-        cancelButton->SetText("Cancel");
+        cancelButton->SetText(Tr("Cancel"));
         cancelButton->onClick = [this]() {
             OnCancelClicked();
         };
@@ -845,4 +848,29 @@ namespace UltraCanvas {
         return types;
     }
 
+
+// ===== THE THEME =====
+    NewDocumentDialogStyle NewDocumentDialogStyle::FromTheme(const UltraCanvasTheme& theme, const NewDocumentDialogStyle& base) {
+        NewDocumentDialogStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.titleFontSize = static_cast<int>(std::lround(theme.FontSize(ThemeTextRole::Heading)));
+        s.itemFontSize = static_cast<int>(std::lround(theme.FontSize(ThemeTextRole::Body)));
+        s.backgroundColor = r.panel;
+        s.borderColor = r.line;
+        s.titleColor = r.ink;
+        s.listBackgroundColor = r.well;
+        s.listBorderColor = r.line;
+        s.itemHoverColor = r.hover;
+        s.itemSelectedColor = r.accentSoft;
+        s.itemTextColor = r.ink;
+        s.categoryTextColor = r.inkMuted;
+        s.inputBackgroundColor = r.well;
+        s.inputBorderColor = r.lineStrong;
+        s.inputFocusBorderColor = r.focus;
+        s.buttonColor = r.raised;
+        s.buttonHoverColor = r.hover;
+        s.primaryButtonColor = r.accent;
+        s.primaryButtonTextColor = r.onAccent;
+        return s;
+    }
 } // namespace UltraCanvas

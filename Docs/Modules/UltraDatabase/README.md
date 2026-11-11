@@ -13,12 +13,13 @@ the app code hard-codes.
 
 > Status: **Stage 1 implemented, the PostgreSQL and MySQL / MariaDB drivers
 > from Stage 2, schema introspection, server administration, streaming
-> cursors, per-statement scripts, cancelling and statement observers.**
+> cursors, per-statement scripts, cancelling, statement observers and
+> encryption at rest for SQLite.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 87 tests, the PostgreSQL and MySQL
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 103 tests, the PostgreSQL and MySQL
 > ones against a live server where one is configured). The **PostgreSQL**
 > driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
 > libpq is found at configure time; it takes `?` placeholders, verifies TLS by
@@ -464,6 +465,64 @@ has any token.
 
 ---
 
+### Encrypted at rest
+
+A SQLite connection with an `encryptionKey` (32 bytes, an
+`UltraCryptSecureBuffer` the application holds - typically random and kept
+in its own UltraVault) reads and writes a file that is ciphertext on disk:
+every page of the database, of its WAL and of its rollback journal is
+sealed with XChaCha20-Poly1305 as it is written
+(`UltraDatabaseEncryption.h`). It is a VFS in front of the platform's, so
+it works on the system's own libsqlite3, on every platform; nothing in the
+queries changes.
+
+<!-- doc-check: std::string dataDir; -->
+```cpp
+UltraCryptSecureBuffer raw;
+UltraCrypt_RandomSecureBuffer(32, raw);          // once; then kept in the app's vault
+auto key = std::make_shared<const UltraCryptSecureBuffer>(std::move(raw));
+
+UltraDbConnectionConfig mail;
+mail.name          = "mail";
+mail.database      = dataDir + "/mail.db";
+mail.encryptionKey = key;
+UltraDb_RegisterConnection(mail);
+UltraDb_Exec("mail", "PRAGMA journal_mode=WAL");
+
+// An existing plain file becomes an encrypted one in place - and back,
+// or from one key to another - with no connection open on it:
+UltraDb_SetSqliteFileEncryption(dataDir + "/contacts.db", nullptr, key.get());
+```
+
+- **Refused as what it is.** A wrong key is `CredentialsUnavailable`; a plain
+  file opened with a key is refused with a pointer to
+  `UltraDb_SetSqliteFileEncryption`; an encrypted file opened without one is
+  "not a database" to SQLite, the sqlite3 shell and UltraDBAdmin.
+  `UltraDb_InspectSqliteFile` says which a file is without opening it, and
+  `UltraDb_SqliteKeyOpens` whether a key opens it.
+- **What it protects:** every page's content - rows, indexes, the schema -
+  and every page's place: each page's tag covers its number, so a changed
+  or moved page fails to read (`SQLITE_IOERR_DATA`).
+- **What it does not hide:** the file's size and number of pages; that WAL
+  frames and journal records carry SQLite's own checksums, computed over the
+  page as SQLite sees it (a guess of a page's whole content could be
+  confirmed); an older copy of the file put back in its place.
+- **On disk:** 4096-byte pages whose last 40 bytes (SQLite's reserved bytes)
+  hold the nonce and tag, so 4056 usable bytes a page; page 1 starts with
+  `UltraDB:XC20P:1` instead of `SQLite format 3`. Temporary data stays in
+  memory (`temp_store=MEMORY`); the encrypting VFS refuses to create a
+  temporary file.
+- **Recovery works through it.** A WAL left by a crash and a hot rollback
+  journal are replayed as SQLite replays them; the suite does both on
+  copies taken mid-write.
+- **The key is the application's.** The module never stores it. Changing
+  the password that protects the application's vault leaves the database
+  as it is; changing the key itself is `UltraDb_SetSqliteFileEncryption`
+  with both keys.
+- Available wherever UltraCrypt has its backend
+  (`UltraDb_SqliteEncryptionAvailable`); elsewhere a key is refused with
+  `Unsupported`, never ignored.
+
 ## Threading
 
 Database calls are blocking I/O, so UltraDatabase owns a **worker
@@ -505,8 +564,8 @@ idea* above).
   VerifyFull}` with verification on by default; certificate handling
   reuses the platform trust store (and UltraNet's TLS stack where a
   driver tunnels over it).
-- **At-rest encryption** for SQLite via the SQLCipher-compatible path,
-  opt-in per connection.
+- **At-rest encryption** for SQLite, opt-in per connection
+  (`encryptionKey`; see [Encrypted at rest](#encrypted-at-rest)).
 - **Least privilege.** Read-only connections (`readOnly = true`) are
   enforced by the driver where supported.
 
@@ -530,9 +589,10 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseSshTunnel.h      the opener over UltraNet's SSH plug-in (header-only)
 │   ├── UltraDatabaseRelay.h          the relay driver's seam, UltraDbRelayServer
 │   ├── UltraDatabaseRelayUltraNet.h  the relay's transport over UltraNet's WebSocket (header-only)
+│   ├── UltraDatabaseEncryption.h     SQLite files encrypted at rest
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
 ├── core/UltraDatabase/               (.cpp implementations)
-│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver and its introspection
+│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver, its introspection, its encrypting VFS
 │   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
 │   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
 │   ├── UltraDatabaseServerViews.cpp  server administration for both server engines
@@ -603,7 +663,8 @@ headless data module usable from any ULTRA OS process.
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
 | SSH tunnels (`UltraDatabaseTunnel.h`, `UltraDatabaseSshTunnel.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Relay (`UltraDatabaseRelay.h`: the `relay` driver, `UltraDbRelayServer` with its limits and statement time-out, a program's own sign-in, `UltraDatabaseRelayUltraNet.h`) | Implemented |
-| Test suite (94 tests) | Passing |
+| Encryption at rest for SQLite (`UltraDatabaseEncryption.h`) | Implemented |
+| Test suite (103 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |
@@ -618,7 +679,7 @@ headless data module usable from any ULTRA OS process.
    (The PostgreSQL and MySQL / MariaDB drivers, with their UltraVault and
    TLS wiring, and streaming cursors are done.)
 3. **Stage 3** — remaining drivers (MSSQL, Redis, MongoDB, DuckDB),
-   at-rest encryption, read-replica/failover options.
+   read-replica/failover options. (At-rest encryption for SQLite is done.)
 
 ---
 

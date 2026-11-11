@@ -1,9 +1,11 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
+// Version: 1.8.0 - FolderBreadcrumbOptions::driveLabel names the drive node and the
+//                  entries of the Computer node's list
 // Version: 1.7.0 - drop-downs open anchored to their crumb: above it when there is no
 //                  room below, never over it
 // Version: 1.6.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
@@ -223,6 +225,7 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         style = BreadcrumbStyle::Default();
         SetMouseCursor(style.itemCursor);
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasBreadcrumb::~UltraCanvasBreadcrumb() {
@@ -387,6 +390,7 @@ namespace UltraCanvas {
 
 // ===== STYLE =====
     void UltraCanvasBreadcrumb::SetStyle(const BreadcrumbStyle& newStyle) {
+        StyleSetByHand();
         style = newStyle;
         layoutDirty = true;
         ApplyHoverCursor(hoveredSlotIdx, hoveredOnDropdown, hoveredSlotIdx >= 0);
@@ -1786,10 +1790,13 @@ namespace UltraCanvas {
             computer.hasDropdown = true;
             computer.sortDropdownItems = true;
             computer.dropdownAvailableProvider = []() { return !ListDriveRoots().empty(); };
-            computer.dropdownItemsProvider = [onNavigate]() {
+            auto driveLabelOf = options.driveLabel;
+            computer.dropdownItemsProvider = [onNavigate, driveLabelOf]() {
                 std::vector<MenuItemData> out;
                 for (const std::string& d : ListDriveRoots()) {
-                    out.emplace_back(d, [onNavigate, d]() {
+                    std::string label = driveLabelOf ? driveLabelOf(d) : std::string();
+                    if (label.empty()) label = d;
+                    out.emplace_back(label, [onNavigate, d]() {
                         if (onNavigate) onNavigate(d);
                     });
                 }
@@ -1804,8 +1811,12 @@ namespace UltraCanvas {
         std::string driveLabel = PathToUtf8(p.root_name());
         if (driveLabel.empty() && !options.showComputerItem) driveLabel = PathToUtf8(base);
         if (!driveLabel.empty()) {
-            BreadcrumbItem drive(driveLabel);
             std::string target = PathToUtf8(base);
+            if (options.driveLabel) {
+                const std::string named = options.driveLabel(target);
+                if (!named.empty()) driveLabel = named;
+            }
+            BreadcrumbItem drive(driveLabel);
             drive.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
             if (options.subFolderDropdowns) {
                 drive.hasDropdown = true;
@@ -1840,4 +1851,30 @@ namespace UltraCanvas {
         }
     }
 
+
+// ===== THE THEME =====
+    BreadcrumbStyle BreadcrumbStyle::FromTheme(const UltraCanvasTheme& theme, const BreadcrumbStyle& base) {
+        BreadcrumbStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
+        // a filled strip keeps being filled, a transparent one transparent
+        if (base.backgroundColor.a > 0) s.backgroundColor = r.panel;
+        if (base.borderColor.a > 0) s.borderColor = r.line;
+        s.itemTextColor = r.inkMuted;
+        s.itemHoverTextColor = r.accent;
+        s.itemPressedTextColor = r.accentHover;
+        s.disabledItemTextColor = r.inkFaint;
+        s.currentItemTextColor = r.ink;
+        if (base.itemBackgroundColor.a > 0) s.itemBackgroundColor = r.raised;
+        s.itemHoverBackgroundColor = r.hover;
+        s.itemPressedBackgroundColor = r.pressed;
+        if (base.currentItemBackgroundColor.a > 0) s.currentItemBackgroundColor = r.accentSoft;
+        s.separatorColor = r.inkFaint;
+        s.levelIndicatorColor = r.accent;
+        s.levelIndicatorTextColor = r.onAccent;
+        s.levelIndicatorBorderColor = r.panel;
+        return s;
+    }
 } // namespace UltraCanvas

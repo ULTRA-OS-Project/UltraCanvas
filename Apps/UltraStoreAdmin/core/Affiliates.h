@@ -17,12 +17,16 @@
 // the payout - is the payment service's; the admin records sales by hand
 // until it exists (RecordSale), so the report and the payouts work from
 // day one.
+// Version: 0.2.2 - JoinPage and RetiredCodePage in the page frame (PageFrame.h), like CodeLandingPage
+// Version: 0.2.1 - JoinPage (the page behind the join link, with the store's contact; closed for a partner switched off), RetiredCodePage
+// Version: 0.2.0 - RecordSale with a reference; SyncSales from the payment service
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "AdminDatabase.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -38,7 +42,21 @@ Result<Credits> CreditsFor(const AdminDatabase& db, const std::string& code, con
 
 // A sale into the ledger with its credits worked out.
 Result<SaleRecord> RecordSale(AdminDatabase& db, const std::string& code, const std::string& app,
-                              const std::string& amount, const std::string& currency, const std::string& at = {});
+                              const std::string& amount, const std::string& currency, const std::string& at = {},
+                              const std::string& reference = {});
+
+// The sales the payment service reports (Server/UltraStorePay,
+// GET /v1/sales?since=), into the ledger with their credits, each once: the
+// sequence reached is kept in the setting payment.sales_seq, and a sale
+// whose order is already in the ledger is skipped. The fetch is a function
+// (the URL with the bearer token -> the body), UltraNet by default.
+using SalesFetcher = std::function<Result<std::string>(const std::string& url, const std::string& token)>;
+SalesFetcher UltraNetSalesFetcher();
+struct SyncReport {
+    size_t recorded = 0, skipped = 0;
+    uint64_t sequence = 0;        // the last sequence seen
+};
+Result<SyncReport> SyncSales(AdminDatabase& db, const std::string& paymentUrl, const std::string& token, const SalesFetcher& fetch = UltraNetSalesFetcher());
 
 // Per affiliate, what the ledger owes: the sales made with their codes and
 // their credit, the sales of their recruits and that credit, by currency.
@@ -63,8 +81,22 @@ std::string StoreLink(const std::string& code);                                 
 // The QR code of a text as an SVG file (UTF-8 path).
 Result<void> WriteQrCodeSvg(const std::string& text, const std::string& fileUtf8);
 
-// The landing page of a code, for the publish folder's go/<CODE>.html:
+// The landing page of a code, for the publish folder's go/<CODE>/index.html:
 // what the code gives, the apps, and the link that opens the store with it.
 std::string CodeLandingPage(const UltraStore::PromoCode& code, const std::vector<UltraStore::Component>& apps, const std::string& catalogBase);
+
+// The page behind a partner's join link, for the publish folder's
+// join/<affiliate>/index.html: what a partner earns, who is inviting, the
+// partner id to name when signing up so the recruiter is credited, and the
+// store's contact (the setting store.contact) to sign up with. For a
+// partner switched off, a page saying the invitation is closed: the
+// uploader never deletes on the server, so the page that replaces the
+// old one is what makes a stale link harmless.
+std::string JoinPage(const Affiliate& recruiter, const std::string& storeContact, const std::string& catalogBase);
+
+// The page that replaces a code's landing page once the code is out of the
+// catalog (switched off, or its partner is): "no longer valid", for the
+// same reason.
+std::string RetiredCodePage(const std::string& code, const std::string& catalogBase);
 
 } // namespace UltraStoreAdmin

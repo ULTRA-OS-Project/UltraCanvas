@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Registry.cpp
 // The installed-software registry on UltraDatabase (Registry.h).
+// Version: 0.2.0 - licences
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Registry.h"
@@ -78,6 +79,14 @@ Result<void> SqliteRegistry::Open(const std::string& databasePathUtf8) {
             " PRIMARY KEY (id, version))"); !r) {
         Close();
         return DbFailure(r, "create its tables");
+    }
+    if (const UltraDbResult r = UltraDb_Exec(connection_,
+            "CREATE TABLE IF NOT EXISTS licences ("
+            " app TEXT PRIMARY KEY, licence_id TEXT NOT NULL, order_id TEXT NOT NULL, order_secret TEXT NOT NULL DEFAULT '',"
+            " token TEXT NOT NULL, issued_at TEXT NOT NULL DEFAULT '', amount TEXT NOT NULL DEFAULT '',"
+            " currency TEXT NOT NULL DEFAULT '', receipt_no INTEGER NOT NULL DEFAULT 0)"); !r) {
+        Close();
+        return DbFailure(r, "create its licences table");
     }
     if (existing < kSchemaVersion) {
         if (const UltraDbResult r = UltraDb_Exec(connection_,
@@ -202,6 +211,63 @@ std::vector<Dependency> SqliteRegistry::SplitDepends(const std::string& text) {
         out.push_back({item.substr(0, at), item.substr(at + 1)});
     }
     return out;
+}
+
+// ===== licences =====
+namespace {
+LicenceRecord LicenceOf(const UltraDbRow& row) {
+    LicenceRecord l;
+    l.app = row["app"].AsString();
+    l.licenceId = row["licence_id"].AsString();
+    l.orderId = row["order_id"].AsString();
+    l.orderSecret = row["order_secret"].AsString();
+    l.token = row["token"].AsString();
+    l.issuedAt = row["issued_at"].AsString();
+    l.amount = row["amount"].AsString();
+    l.currency = row["currency"].AsString();
+    l.receiptNo = static_cast<int>(row["receipt_no"].AsInt64());
+    return l;
+}
+} // namespace
+
+Result<void> SqliteRegistry::PutLicence(const LicenceRecord& l) {
+    if (connection_.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "The registry is not open");
+    if (l.app.empty() || l.token.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "A licence names its app and carries a token");
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT OR REPLACE INTO licences (app, licence_id, order_id, order_secret, token, issued_at, amount, currency, receipt_no)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        {UltraDbValue(l.app), UltraDbValue(l.licenceId), UltraDbValue(l.orderId), UltraDbValue(l.orderSecret), UltraDbValue(l.token),
+         UltraDbValue(l.issuedAt), UltraDbValue(l.amount), UltraDbValue(l.currency), UltraDbValue(static_cast<int64_t>(l.receiptNo))});
+    if (!r) return DbFailure(r, "keep the licence of " + l.app);
+    return Result<void>::Succeed();
+}
+
+Result<LicenceRecord> SqliteRegistry::GetLicence(std::string_view app) const {
+    using R = Result<LicenceRecord>;
+    if (connection_.empty()) return R::Failure(ErrorCode::InvalidArgument, "The registry is not open");
+    UltraDbResultSet rs;
+    const UltraDbResult r = UltraDb_Query(connection_, "SELECT * FROM licences WHERE app = ?", {UltraDbValue(std::string(app))}, rs);
+    if (!r) return R::Failure(ErrorCode::IoError, "The registry could not be read", r.message);
+    if (rs.Empty()) return R::Failure(ErrorCode::NotFound, std::string(app) + " was not bought here");
+    return R::Succeed(LicenceOf(rs.Row(0)));
+}
+
+Result<std::vector<LicenceRecord>> SqliteRegistry::Licences() const {
+    using R = Result<std::vector<LicenceRecord>>;
+    if (connection_.empty()) return R::Failure(ErrorCode::InvalidArgument, "The registry is not open");
+    UltraDbResultSet rs;
+    const UltraDbResult r = UltraDb_Query(connection_, "SELECT * FROM licences ORDER BY app", rs);
+    if (!r) return R::Failure(ErrorCode::IoError, "The registry could not be read", r.message);
+    std::vector<LicenceRecord> out;
+    for (const UltraDbRow& row : rs) out.push_back(LicenceOf(row));
+    return R::Succeed(std::move(out));
+}
+
+Result<void> SqliteRegistry::RemoveLicence(std::string_view app) {
+    if (connection_.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "The registry is not open");
+    const UltraDbResult r = UltraDb_Exec(connection_, "DELETE FROM licences WHERE app = ?", {UltraDbValue(std::string(app))});
+    if (!r) return DbFailure(r, "forget the licence of " + std::string(app));
+    return Result<void>::Succeed();
 }
 
 } // namespace UltraStore

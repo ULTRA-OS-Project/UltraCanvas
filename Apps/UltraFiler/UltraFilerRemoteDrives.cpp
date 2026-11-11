@@ -1,4 +1,12 @@
 // Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+// Version: 1.15.0 - RemoveDrive, InvalidateDrive, RefreshFolder; a failed
+//                   preview copy keeps what kind of failure it was
+//                   (RemoteFailure); the sign-in log's sessions are named by
+//                   the dialog that runs them
+// Version: 1.14.2 - a failed cloud operation or listing is described in the
+//                   reader's language by its result code (UltraCloud's
+//                   DescribeResult), the provider's own words in brackets
+// Version: 1.14.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.14.0 - a changed folder is marked Stale, not dropped, so the display
 //                   keeps its files while it is fetched again; listings the
 //                   user looks at go ahead of queued transfers; ListingStatus
@@ -16,7 +24,7 @@
 //                   under a name of its own; CachedListing, Revalidate
 // Version: 1.9.0 - a running preview copy can be called off (CancelActivePreviewLocked)
 // Version: 1.8.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #include "UltraFilerRemoteDrives.h"
 #include "UltraFilerRemoteCache.h"
@@ -34,9 +42,12 @@
 #include <fstream>
 #include <sstream>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraFilerDeviceProvider.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
+#include "UltraCloudResultText.h"      // DescribeResult (UltraCloudUI)
 #include <UltraCloud/UltraCloudAccounts.h>
 #include <UltraCloud/UltraCloudHttp.h>   // RateLimitPolicy
 #include <UltraCloud/UltraCloudLog.h>
@@ -71,6 +82,39 @@ struct UltraFilerRemoteDrives::Impl {
     std::shared_ptr<UltraCloud::ISecretStore> secrets;
     std::shared_ptr<UltraCloud::CloudService> service;
     bool opened = false;
+
+    // The phones and cameras plugged in right now (SetDevices) are accounts
+    // of a service of their own: an account store in memory - a device is a
+    // drive while it is connected, never a configured one, so nothing of it
+    // may reach remote-drives.db - and no secrets, because a device has no
+    // password. Made here, before any worker can ask for it, and independent
+    // of Open(): a phone is browsable even when the vault the configured
+    // drives keep their passwords in cannot be opened.
+    std::shared_ptr<UltraCloud::AccountStore> deviceAccounts =
+            std::make_shared<UltraCloud::AccountStore>();
+    std::shared_ptr<UltraCloud::CloudService> deviceService;
+    // The account ids that are devices; the worker asks under the lock.
+    mutable std::mutex deviceIdsMutex;
+    std::unordered_set<std::string> deviceAccountIds;
+
+    Impl() {
+        RegisterPortableDeviceProvider();
+        if (deviceAccounts->Open("ultrafiler-devices", ":memory:").IsOk())
+            deviceService = std::make_shared<UltraCloud::CloudService>(
+                    deviceAccounts, std::make_shared<UltraCloud::MemorySecretStore>());
+    }
+
+    bool IsDeviceAccount(const std::string& accountId) const {
+        std::lock_guard<std::mutex> lk(deviceIdsMutex);
+        return deviceAccountIds.count(accountId) != 0;
+    }
+
+    // The service that carries `accountId`: the devices' for a connected
+    // device, the configured drives' for everything else.
+    UltraCloud::CloudService* ServiceFor(const std::string& accountId) {
+        if (deviceService && IsDeviceAccount(accountId)) return deviceService.get();
+        return service.get();
+    }
 
     // Opens the account store, the vault and the secret store once. The
     // accounts are an UltraDatabase file beside UltraFiler's settings; the
@@ -146,6 +190,36 @@ std::string UploadedName(const std::string& localFile, const std::string& remote
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 // UltraCloud's class of a failure, in the words the connection log shows,
 // with the number it has in the module - the error code a bug report quotes.
+// What a person reads about a failed cloud call: a sentence in their language
+// by the result's code, and the provider's own words in brackets where it
+// gave any - "550 Permission denied" tells the user what to change, so it
+// stays, as it came.
+std::string CloudFailureText(const UltraCloud::Result& r) {
+    const std::string sentence = UltraCloud::DescribeResult(r);
+    return r.message.empty() ? sentence : sentence + " (" + r.message + ")";
+}
+
+// What kind of failure a result is, for whether the window says it in a
+// dialog (RemoteFailure). The network and a service limiting requests may
+// answer the next time; a file that is not there, a refused sign-in or a
+// refused request will not, until something is changed.
+RemoteFailure FailureOf(const UltraCloud::Result& r) {
+    switch (r.code) {
+        case UltraCloud::ResultCode::Ok:          return RemoteFailure::NoFailure;
+        case UltraCloud::ResultCode::NotFound:    return RemoteFailure::NotFound;
+        case UltraCloud::ResultCode::Network:
+        case UltraCloud::ResultCode::RateLimited:
+        case UltraCloud::ResultCode::Cancelled:   return RemoteFailure::Passing;
+        case UltraCloud::ResultCode::AuthFailed:
+        case UltraCloud::ResultCode::Unsupported:
+        case UltraCloud::ResultCode::Server:
+        case UltraCloud::ResultCode::InvalidArgument:
+        case UltraCloud::ResultCode::IoError:
+        case UltraCloud::ResultCode::Unknown:     return RemoteFailure::Lasting;
+    }
+    return RemoteFailure::Lasting;
+}
+
 std::string DescribeResultCode(UltraCloud::ResultCode code) {
     std::string words;
     switch (code) {
@@ -254,6 +328,9 @@ bool UltraFilerRemoteDrives::ProviderBelongsToKind(const std::string& providerId
     // the Cloud Storage choice offers. The in-process "memory" provider is a
     // test fake and belongs in neither list.
     if (providerId == "memory") return false;
+    // A phone or camera is not added by hand: it is a drive while it is
+    // plugged in (SetDevices).
+    if (providerId == PortableDeviceProviderId()) return false;
     const bool isFtp = providerId == "ftp";
     return kind == RemoteDriveKind::FtpOrSftp ? isFtp : !isFtp;
 }
@@ -302,11 +379,74 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
               });
 
     std::lock_guard<std::mutex> lk(mutex_);
-    drives_ = std::move(drives);
+    configuredDrives_ = std::move(drives);
+    drives_ = configuredDrives_;
+    drives_.insert(drives_.end(), deviceDrives_.begin(), deviceDrives_.end());
     // The first time the drives are known is the first time the listings
     // kept from the last run can be matched to them.
     LoadDiskCacheLocked();
     return true;
+#endif
+}
+
+void UltraFilerRemoteDrives::SetDevices(const std::vector<PortableDeviceInfo>& devices) {
+#ifndef ULTRAFILER_HAS_ULTRACLOUD
+    (void)devices;
+#else
+    if (!impl_->deviceService) return;
+
+    std::vector<RemoteDrive> drives;
+    std::unordered_set<std::string> ids;
+    for (const PortableDeviceInfo& info : devices) {
+        UltraCloud::Account account;
+        account.accountId = PortableDeviceAccountId(info.id);
+        account.providerId = PortableDeviceProviderId();
+        account.displayName = info.name;
+        account.serverUrl = info.id;   // what the provider opens
+        impl_->deviceAccounts->Upsert(account);
+        ids.insert(account.accountId);
+
+        RemoteDrive d;
+        d.accountId = account.accountId;
+        d.providerId = account.providerId;
+        d.displayName = info.name;
+        // Under the name on the Computer page, where a server's address
+        // goes: who made it, which is what tells two phones apart.
+        d.serverUrl = info.manufacturer;
+        d.rootPath = MakeRemoteFilerPath(account.accountId, "/");
+        // A device reached read-only (Image Capture on macOS) is browsed and
+        // copied from, and offers no change: no upload, rename, delete or
+        // new folder that could only fail.
+        d.canModify = !info.readOnly;
+        d.canUpload = !info.readOnly;
+        d.isDevice = true;
+        d.deviceKind = info.kind;
+        d.deviceId = info.id;
+        drives.push_back(std::move(d));
+    }
+    std::sort(drives.begin(), drives.end(),
+              [](const RemoteDrive& a, const RemoteDrive& b) {
+                  return a.displayName < b.displayName;
+              });
+
+    // A device pulled out: its account goes, and so does what was cached of
+    // it - the next device on that port may be a different phone.
+    std::vector<std::string> gone;
+    {
+        std::lock_guard<std::mutex> lk(impl_->deviceIdsMutex);
+        for (const std::string& id : impl_->deviceAccountIds)
+            if (!ids.count(id)) gone.push_back(id);
+        impl_->deviceAccountIds = ids;
+    }
+    for (const std::string& id : gone) {
+        impl_->deviceAccounts->Remove(id);
+        Invalidate(MakeRemoteFilerPath(id, "/"));
+    }
+
+    std::lock_guard<std::mutex> lk(mutex_);
+    deviceDrives_ = std::move(drives);
+    drives_ = configuredDrives_;
+    drives_.insert(drives_.end(), deviceDrives_.begin(), deviceDrives_.end());
 #endif
 }
 
@@ -356,8 +496,18 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
         it->second.lastUsed = ++useCounter_;
         switch (it->second.state) {
             case CacheState::Ready:
-                out = it->second.entries;
-                return true;
+                // Fetched recently: the folder as it is. Fetched a while ago,
+                // it may not be - another device can have added or deleted a
+                // file since - so it is shown and asked for again behind it,
+                // as a listing kept from the last run is.
+                if (!RemoteListingOutdated(it->second.fetchedAt,
+                                           std::chrono::steady_clock::now())) {
+                    out = it->second.entries;
+                    return true;
+                }
+                it->second.state = CacheState::Stale;
+                it->second.revalidating = false;
+                [[fallthrough]];
             case CacheState::Stale: {
                 // What the folder held last time, shown now; the server is
                 // asked again behind it and the answer replaces it through
@@ -615,7 +765,7 @@ void UltraFilerRemoteDrives::SideListingMain(const std::string& path) {
         outcome.message = std::string("listing failed: ") + e.what();
     } catch (...) {
         outcome.failed = true;
-        outcome.message = "listing failed";
+        outcome.message = Tr("listing failed");
     }
     // The connection this thread opened goes with it - closed here, while
     // the thread still runs: on Windows a thread's last rites run under the
@@ -949,6 +1099,10 @@ std::string UltraFilerRemoteDrives::PreviewCacheDirectory() {
     return DiskCache::Directory("remote-previews");
 }
 
+std::string UltraFilerRemoteDrives::OpenCopyDirectory() {
+    return DiskCache::Directory("remote-opened");
+}
+
 namespace {
 
 // Deletes the preview copies nobody has looked at within the disk cache's
@@ -1024,9 +1178,21 @@ void SweepPreviewCache(const std::string& directory) {
 
 } // namespace
 
+void UltraFilerRemoteDrives::SweepOpenCopies() {
+    // The same rule as the preview copies': a folder per copy, kept while
+    // anything in it was written within the cache's age.
+    SweepPreviewCache(OpenCopyDirectory());
+}
+
 UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
-        const FilerEntry& entry, std::string& localPath, std::string& error) {
+        const FilerEntry& entry, std::string& localPath, std::string& error,
+        RemoteFailure* failure) {
     localPath.clear();
+    // Lasting unless said otherwise below: what is refused here outright
+    // would be refused the same way the next time.
+    RemoteFailure ignored = RemoteFailure::NoFailure;
+    RemoteFailure& kind = failure ? *failure : ignored;
+    kind = RemoteFailure::Lasting;
     std::string accountId, remotePath;
     if (!SplitRemoteFilerPath(entry.path, accountId, remotePath) ||
         entry.isDirectory || remotePath == "/") {
@@ -1039,10 +1205,14 @@ UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
     }
     if (entry.size > kRemotePreviewMaxBytes) {
         error = "too large to fetch for a preview";
+        kind = RemoteFailure::NoFailure;
         return PreviewCopy::TooLarge;
     }
     const std::string directory = PreviewCacheDirectory();
     if (directory.empty()) {
+        // This computer's business, not the file's: no dialog at every
+        // picture selected.
+        kind = RemoteFailure::Passing;
         error = "there is no cache folder to fetch a preview into";
         return PreviewCopy::Failed;
     }
@@ -1063,6 +1233,7 @@ UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
     if (fs::is_regular_file(UltraCanvas::PathFromUtf8(target), ec) && !ec) {
         DiskCache::Touch(targetPath);
         localPath = targetPath;
+        kind = RemoteFailure::NoFailure;
         return PreviewCopy::Ready;
     }
 
@@ -1082,6 +1253,7 @@ UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
             if (it->second.pending) return PreviewCopy::Pending;
             if (!it->second.error.empty()) {
                 error = it->second.error;
+                kind = it->second.failure;
                 return PreviewCopy::Failed;
             }
         }
@@ -1111,10 +1283,11 @@ UltraFilerRemoteDrives::PreviewCopy UltraFilerRemoteDrives::RequestPreviewCopy(
         // At the front: the user is looking at the selection now, and a batch
         // of uploads queued earlier should not stand between them and it.
         queue_.push_front(std::move(job));
-        previews_[entry.path] = PreviewState{true, targetPath, {}};
+        previews_[entry.path] = PreviewState{true, targetPath, {}, RemoteFailure::NoFailure};
         EnsureWorker();
     }
     cond_.notify_one();
+    kind = RemoteFailure::NoFailure;
     return PreviewCopy::Pending;
 }
 
@@ -1123,6 +1296,7 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
     (void)job;
     std::lock_guard<std::mutex> lk(mutex_);
     lastOperationError_ = "this build of UltraFiler carries no cloud support";
+    lastOperationFailure_ = RemoteFailure::Lasting;
     outcome.failed = true;
     outcome.message = lastOperationError_;
 #else
@@ -1139,17 +1313,17 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
     UltraCloud::Result r = UltraCloud::Result::Ok();
     switch (job.operation) {
         case RemoteOperation::Delete:
-            r = impl_->service->Delete(accountId, remotePath, job.isDirectory);
+            r = impl_->ServiceFor(accountId)->Delete(accountId, remotePath, job.isDirectory);
             break;
         case RemoteOperation::Rename:
-            r = impl_->service->Rename(accountId, remotePath, job.argument);
+            r = impl_->ServiceFor(accountId)->Rename(accountId, remotePath, job.argument);
             break;
         case RemoteOperation::MakeDirectory: {
             // The provider takes the full path of the folder to create, so the
             // name is appended to the folder it goes in.
             const std::string parent = remotePath == "/" ? std::string()
                                                          : remotePath;
-            r = impl_->service->MakeDirectory(accountId, parent + "/" + job.argument);
+            r = impl_->ServiceFor(accountId)->MakeDirectory(accountId, parent + "/" + job.argument);
             break;
         }
         case RemoteOperation::Upload: {
@@ -1157,7 +1331,7 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
             const std::string parent = remotePath == "/" ? std::string()
                                                          : remotePath;
             const std::string name = UploadedName(job.argument, job.remoteName);
-            r = impl_->service->Upload(accountId, job.argument, parent + "/" + name);
+            r = impl_->ServiceFor(accountId)->Upload(accountId, job.argument, parent + "/" + name);
             break;
         }
         case RemoteOperation::Download: {
@@ -1167,7 +1341,7 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
             // window closed - rather than fetching the file from the start.
             const bool previousContinues =
                     UltraCloud::SetThreadDownloadContinues(job.isPreview);
-            r = impl_->service->Download(accountId, remotePath, job.argument);
+            r = impl_->ServiceFor(accountId)->Download(accountId, remotePath, job.argument);
             UltraCloud::SetThreadDownloadContinues(previousContinues);
             // A download that failed part way - the connection lost, the
             // window closed (Stop) - leaves no half a file behind: an FTP
@@ -1183,11 +1357,10 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
     }
 
     std::lock_guard<std::mutex> lk(mutex_);
-    // The provider's own words where there are any: "550 Permission denied"
-    // tells the user what to change, "the operation failed" tells them nothing.
-    lastOperationError_ = r.IsOk() ? std::string()
-                        : r.message.empty() ? "the server refused this"
-                                            : r.message;
+    // A sentence in the reader's language, the provider's own words beside
+    // it: "550 Permission denied" tells the user what to change.
+    lastOperationError_ = r.IsOk() ? std::string() : CloudFailureText(r);
+    lastOperationFailure_ = FailureOf(r);
     outcome.failed = !r.IsOk();
     outcome.message = lastOperationError_;
     if (outcome.failed) {
@@ -1216,6 +1389,101 @@ void UltraFilerRemoteDrives::InvalidateAll() {
         if (!it->second.pending) it = previews_.erase(it);
         else ++it;
     }
+}
+
+void UltraFilerRemoteDrives::RefreshFolder(const std::string& path) {
+    if (!IsRemoteFilerPath(path)) return;
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        // A preview in the folder that failed - the file was not there, the
+        // server said no - is asked for again when it is next looked at: a
+        // Refresh is "try again" for those too.
+        for (auto it = previews_.begin(); it != previews_.end();) {
+            if (!it->second.pending && RemoteFilerParent(it->first) == path)
+                it = previews_.erase(it);
+            else
+                ++it;
+        }
+    }
+    // The listing stays on screen, marked out of date, while the server is
+    // asked again ahead of the queue; a failed one is asked from nothing.
+    Revalidate(path);
+}
+
+void UltraFilerRemoteDrives::ForgetDriveLocked(const std::string& accountId, bool jobs) {
+    auto ofDrive = [&accountId](const std::string& path) {
+        return RemoteFilerAccountId(path) == accountId;
+    };
+    for (auto it = cache_.begin(); it != cache_.end();) {
+        if (ofDrive(it->first)) it = cache_.erase(it);
+        else ++it;
+    }
+    for (auto it = previews_.begin(); it != previews_.end();) {
+        // A copy being fetched is the worker's to finish or fail; it is
+        // called off below when the drive is going.
+        if (!it->second.pending && ofDrive(it->first)) it = previews_.erase(it);
+        else ++it;
+    }
+    if (!jobs) return;
+    // The requests still waiting for the drive go with it - each would only
+    // fail once the account is gone - and so do the downloads' promises of a
+    // local name, which only a job that runs gives back.
+    for (auto it = queue_.begin(); it != queue_.end();) {
+        if (!ofDrive(it->path)) { ++it; continue; }
+        if (!it->isListing && !it->isPreview && it->operation == RemoteOperation::Download)
+            promisedDownloads_.erase(it->argument);
+        if (it->isPreview) previews_.erase(it->path);
+        it = queue_.erase(it);
+    }
+    for (auto it = prefetchQueue_.begin(); it != prefetchQueue_.end();) {
+        if (ofDrive(*it)) {
+            prefetchQueued_.erase(*it);
+            it = prefetchQueue_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (activePreviewCancel_ && ofDrive(activePreviewPath_))
+        CancelActivePreviewLocked(PreviewSuperseded);
+}
+
+void UltraFilerRemoteDrives::InvalidateDrive(const std::string& accountId) {
+    if (accountId.empty()) return;
+    std::lock_guard<std::mutex> lk(mutex_);
+    ForgetDriveLocked(accountId, /*jobs=*/false);
+}
+
+bool UltraFilerRemoteDrives::RemoveDrive(const std::string& accountId, std::string& error) {
+#ifndef ULTRAFILER_HAS_ULTRACLOUD
+    (void)accountId;
+    error = "this build of UltraFiler carries no cloud support";
+    return false;
+#else
+    if (accountId.empty()) {
+        error = "no drive was named";
+        return false;
+    }
+    if (impl_->IsDeviceAccount(accountId)) {
+        error = "a connected device is not a configured drive - it goes when it is unplugged";
+        return false;
+    }
+    if (!impl_->Open(error)) return false;
+    // The account and its secrets. One already gone - removed by another
+    // window, or by another program sharing the store - is what was asked
+    // for; anything else is said.
+    const UltraCloud::Result removed = impl_->service->RemoveAccount(accountId);
+    if (!removed.IsOk() && removed.code != UltraCloud::ResultCode::NotFound) {
+        error = CloudFailureText(removed);
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        ForgetDriveLocked(accountId, /*jobs=*/true);
+    }
+    // The list without it. Its listings are not written to the disk cache
+    // when the window closes, since that keeps only configured drives.
+    return Reload(error);
+#endif
 }
 
 std::size_t UltraFilerRemoteDrives::PrefetchQueueSize() const {
@@ -1429,6 +1697,7 @@ bool UltraFilerRemoteDrives::DescribeTransferLocked(const Job& job, RemoteTransf
                           : RemoteFilerName(job.path);
     const std::string accountId = RemoteFilerAccountId(job.path);
     out.drive = accountId;
+    out.accountId = accountId;
     for (const RemoteDrive& d : drives_) {
         if (d.accountId != accountId) continue;
         out.drive = d.displayName;
@@ -1741,6 +2010,10 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // A change reports its failure through operationError so the UI hears
         // the same thing whether the provider refused or threw.
         std::string operationError;
+        // What kind of failure operationError is, for the window
+        // (onOperationFinished): an exception out of a provider says nothing
+        // of the file, and counts as one that will not pass by itself.
+        RemoteFailure operationFailure = RemoteFailure::NoFailure;
         bool notifyListing = true;
         JobOutcome outcome;
         try {
@@ -1760,7 +2033,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
         } catch (...) {
             outcome.failed = true;
             if (job.isListing) {
-                outcome.message = "listing failed";
+                outcome.message = Tr("listing failed");
                 std::lock_guard<std::mutex> lk(mutex_);
                 notifyListing = RecordListingFailureLocked(job.path, job.isPrefetch,
                                                            outcome.message);
@@ -1838,14 +2111,23 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // into place if it arrived whole, and the window is told either way.
         if (job.isPreview) {
             std::string previewError = operationError;
+            // An exception out of the provider (operationError) is not the
+            // file's doing; what the provider answered says what it was.
+            RemoteFailure previewFailure = RemoteFailure::Passing;
             {
                 std::lock_guard<std::mutex> lk(mutex_);
-                if (previewError.empty()) previewError = lastOperationError_;
+                if (previewError.empty()) {
+                    previewError = lastOperationError_;
+                    previewFailure = lastOperationFailure_;
+                }
                 lastOperationError_.clear();
+                lastOperationFailure_ = RemoteFailure::NoFailure;
             }
             std::error_code ec;
             if (previewError.empty()) {
                 fs::rename(UltraCanvas::PathFromUtf8(job.argument), PathFromUtf8(job.previewTarget), ec);
+                // This disk's problem, not the drive's.
+                if (ec) previewFailure = RemoteFailure::Passing;
                 if (ec) previewError = "cannot store the preview: " + ec.message();
                 // Stamped now, whatever time the transfer gave the file, so
                 // the sweep counts its age from this look.
@@ -1856,7 +2138,7 @@ void UltraFilerRemoteDrives::WorkerMain() {
                 std::lock_guard<std::mutex> lk(mutex_);
                 if (previewError.empty()) previews_.erase(job.path);
                 else previews_[job.path] = PreviewState{false, job.previewTarget,
-                                                        previewError};
+                                                        previewError, previewFailure};
             }
             if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
             std::size_t left = 0;
@@ -1916,9 +2198,14 @@ void UltraFilerRemoteDrives::WorkerMain() {
             // A listing of it being fetched beside this job may have been
             // read before the change: it is not to stand as the fresh one.
             if (sideListingPaths_.count(changedFolder)) sideListingsOverrun_.insert(changedFolder);
-            if (operationError.empty() && !lastOperationError_.empty())
+            if (!operationError.empty()) {
+                operationFailure = RemoteFailure::Lasting;
+            } else if (!lastOperationError_.empty()) {
                 operationError = lastOperationError_;
+                operationFailure = lastOperationFailure_;
+            }
             lastOperationError_.clear();
+            lastOperationFailure_ = RemoteFailure::NoFailure;
         }
 
         if (watchesBytes) UltraNet_SetTransferCallbacks(previousCallbacks);
@@ -1948,12 +2235,12 @@ void UltraFilerRemoteDrives::WorkerMain() {
             const bool listing = job.isListing;
             const std::string path = job.path;
             app->PostToUIThread([this, alive, listing, path, changedFolder,
-                                 operationError]() {
+                                 operationError, operationFailure]() {
                 if (!alive->load()) return;   // owner destroyed meanwhile
                 if (listing) {
                     if (onListingArrived) onListingArrived(path);
                 } else if (onOperationFinished) {
-                    onOperationFinished(changedFolder, operationError);
+                    onOperationFinished(changedFolder, operationError, operationFailure);
                 }
             });
         }
@@ -1984,12 +2271,12 @@ uint64_t UltraFilerRemoteDrives::BeginLogSession(const Job& job) {
         return (remotePath == "/" ? std::string() : remotePath) + "/" + name;
     };
     if (job.isListing) {
-        header.operation = job.isPrefetch ? "Read folder ahead" : "Open folder";
+        header.operation = job.isPrefetch ? Tr("Read folder ahead") : Tr("Open folder");
         header.target = remotePath;
     } else {
         switch (job.operation) {
             case RemoteOperation::Delete:
-                header.operation = job.isDirectory ? "Delete folder" : "Delete";
+                header.operation = job.isDirectory ? Tr("Delete folder") : "Delete";
                 header.target = remotePath;
                 break;
             case RemoteOperation::Rename:
@@ -2005,7 +2292,7 @@ uint64_t UltraFilerRemoteDrives::BeginLogSession(const Job& job) {
                 header.target = inFolder(UploadedName(job.argument, job.remoteName));
                 break;
             case RemoteOperation::Download:
-                header.operation = job.isPreview ? "Fetch for preview" : "Download";
+                header.operation = job.isPreview ? Tr("Fetch for preview") : "Download";
                 header.target = remotePath;
                 break;
         }
@@ -2049,16 +2336,20 @@ struct RemoteSignInLog::State {
     // Shared with the drives: whether they are stopping, and how many
     // sign-ins are still running.
     std::shared_ptr<RemoteSignInTracker> tracker;
+    // What the log calls each session: "Add drive", "Configure drive".
+    std::string operation;
     UltraNetFtpLogCallback previousFtpLog;
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
     UltraCloud::LogCallback previousCloudLog;
 #endif
 };
 
-std::shared_ptr<RemoteSignInLog> UltraFilerRemoteDrives::MakeSignInLog() {
+std::shared_ptr<RemoteSignInLog> UltraFilerRemoteDrives::MakeSignInLog(
+        const std::string& operation) {
     auto log = std::make_shared<RemoteSignInLog>();
     log->state_ = std::make_shared<RemoteSignInLog::State>();
     log->state_->tracker = signIns_;
+    log->state_->operation = operation.empty() ? std::string("Add drive") : operation;
     auto alive = alive_;
     log->state_->onDrives = [this, alive](std::function<void(UltraFilerRemoteDrives&)> work) {
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
@@ -2075,7 +2366,7 @@ void RemoteSignInLog::Begin(const std::string& providerId, const std::string& dr
                             const std::string& server) {
     if (!state_) return;
     RemoteLogSession header;
-    header.operation = "Add drive";
+    header.operation = state_->operation;
     header.drive = driveName;
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
     if (header.drive.empty())
@@ -2178,7 +2469,7 @@ bool UltraFilerRemoteDrives::FetchListing(const std::string& path, bool isPrefet
     (void)isPrefetch;
     (void)recordFailure;
     outcome.failed = true;
-    outcome.message = "this build of UltraFiler carries no cloud support";
+    outcome.message = Tr("this build of UltraFiler carries no cloud support");
     std::lock_guard<std::mutex> lk(mutex_);
     cache_[path] = CacheEntry{CacheState::Failed, {},
                               "this build of UltraFiler carries no cloud support"};
@@ -2197,14 +2488,13 @@ bool UltraFilerRemoteDrives::FetchListing(const std::string& path, bool isPrefet
 
     std::vector<UltraCloud::Entry> entries;
     const UltraCloud::Result r =
-            impl_->service->List(accountId, remotePath, entries);
+            impl_->ServiceFor(accountId)->List(accountId, remotePath, entries);
 
     if (!r.IsOk()) {
-        // The provider's own words: "530 Login incorrect" tells the user what
-        // to change, where "could not list" tells them nothing.
+        // The reason in the reader's language, the provider's own words
+        // ("530 Login incorrect") beside it.
         outcome.failed = true;
-        outcome.message = r.message.empty() ? "cannot list this folder"
-                                            : "cannot list this folder: " + r.message;
+        outcome.message = CloudFailureText(r);
         outcome.category = DescribeResultCode(r.code);
         outcome.diagnostics = r.diagnostics;
         if (!recordFailure) return false;
@@ -2214,6 +2504,7 @@ bool UltraFilerRemoteDrives::FetchListing(const std::string& path, bool isPrefet
 
     CacheEntry result;
     result.state = CacheState::Ready;
+    result.fetchedAt = std::chrono::steady_clock::now();
     result.entries.reserve(entries.size());
     for (const UltraCloud::Entry& e : entries) {
         FilerEntry f;

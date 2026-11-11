@@ -5,14 +5,16 @@
 // border line, padding and caption strip are kept in sync through
 // RecalculatePadding() so the inherited container lays the children out
 // inside the visible frame, below the caption.
+// Version: 1.3.0 - the close button (SetCloseButton / onCloseClicked)
 // Version: 1.2.0 - the SectionCard preset (Colors::SectionCard*)
 // Version: 1.1.1 - the help tooltip is anchored at the info icon's top edge (tooltips
 //                 now sit above the spot passed)
 // Version: 1.1.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasGroupBox.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <algorithm>
 #include <cmath>
 
@@ -73,6 +75,12 @@ namespace UltraCanvas {
         SetBackgroundColor(Colors::Transparent);
         expandedHeight = size.height;
         RecalculatePadding();
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasGroupBox::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasContainer::ApplyTheme(theme);
+        SetVisualStyle(GroupBoxVisualStyle::FromTheme(theme, visualStyle));
     }
 
 // ===== TITLE =====
@@ -97,6 +105,7 @@ namespace UltraCanvas {
 
 // ===== STYLE =====
     void UltraCanvasGroupBox::SetVisualStyle(const GroupBoxVisualStyle& newStyle) {
+        StyleSetByHand();
         visualStyle = newStyle;
         RecalculatePadding();
         RequestRedraw();
@@ -204,6 +213,15 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+// ===== CLOSE BUTTON =====
+    void UltraCanvasGroupBox::SetCloseButton(bool show) {
+        if (showCloseButton == show) return;
+        showCloseButton = show;
+        if (!show) closeHovered = false;
+        RecalculatePadding();
+        RequestRedraw();
+    }
+
 // ===== COLLAPSIBLE =====
     void UltraCanvasGroupBox::SetCollapsible(bool value) {
         if (collapsible == value) return;
@@ -236,7 +254,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasGroupBox::HasTitleContent() const {
-        return !title.empty() || checkable || collapsible || showInfoIcon;
+        return !title.empty() || checkable || collapsible || showInfoIcon || showCloseButton;
     }
 
     float UltraCanvasGroupBox::TitleAreaHeight() const {
@@ -324,8 +342,17 @@ namespace UltraCanvas {
             lx += indSize + spacing;
         }
 
-        // ----- Right cluster (right-side activator and/or info icon) -----
+        // ----- Right cluster (close button, right-side activator, info icon) -----
         float rx = rightEdge;
+        if (showCloseButton) {
+            // A little larger than the other indicators: it is a click target,
+            // and it sits closer to the edge than the caption indent.
+            const float cs = std::min(th - 2.0f, std::round(indSize * 1.35f));
+            rx = std::min(rx, w - bw - 4.0f) - cs;
+            tl.hasClose = true;
+            tl.closeRect = Rect2Df(rx, vcenter(cs), cs, cs);
+            rx -= spacing;
+        }
         if (checkable && activatorSide == GroupBoxIndicatorSide::Right) {
             rx -= actSize.width;
             tl.hasActivator = true;
@@ -377,6 +404,7 @@ namespace UltraCanvas {
             if (tl.hasArrow)     addGap(tl.arrowRect.x, tl.arrowRect.Right());
             if (tl.hasActivator) addGap(tl.activatorRect.x, tl.activatorRect.Right());
             if (tl.hasInfo)      addGap(tl.infoRect.x, tl.infoRect.Right());
+            if (tl.hasClose)     addGap(tl.closeRect.x, tl.closeRect.Right());
             if (textW > 0)       addGap(textX, textX + textW);
         }
         return tl;
@@ -528,6 +556,9 @@ namespace UltraCanvas {
         if (tl.hasInfo) {
             DrawInfoIcon(ctx, tl.infoRect);
         }
+        if (tl.hasClose) {
+            DrawCloseButton(ctx, tl.closeRect);
+        }
         if (!title.empty()) {
             ctx->SetFontStyle(visualStyle.titleFont);
             ctx->SetTextPaint(titleColor);
@@ -618,6 +649,24 @@ namespace UltraCanvas {
         ctx->ClearPath();
     }
 
+    void UltraCanvasGroupBox::DrawCloseButton(IRenderContext* ctx, const Rect2Df& rect) {
+        if (closeHovered) {
+            ctx->SetFillPaint(visualStyle.closeHoverBackgroundColor);
+            ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, rect.width, rect.height),
+                                      std::min(4.0f, rect.width * 0.25f));
+        }
+        const Color color = closeHovered ? visualStyle.closeIconHoverColor
+                                         : visualStyle.closeIconColor;
+        // An "x" over the middle 40 % of the button.
+        const float inset = rect.width * 0.30f;
+        const float x0 = rect.x + inset, x1 = rect.Right() - inset;
+        const float y0 = rect.y + inset, y1 = rect.Bottom() - inset;
+        ctx->SetStrokePaint(color);
+        ctx->SetStrokeWidth(std::max(1.5f, rect.width * 0.09f));
+        ctx->DrawLine(Point2Dd(x0, y0), Point2Dd(x1, y1));
+        ctx->DrawLine(Point2Dd(x1, y0), Point2Dd(x0, y1));
+    }
+
 // ===== HELP TOOLTIP =====
     void UltraCanvasGroupBox::ShowHelpTooltip() {
         if (helpText.empty() || !GetWindow()) return;
@@ -641,6 +690,11 @@ namespace UltraCanvas {
 // ===== EVENT HANDLING =====
     bool UltraCanvasGroupBox::OnEvent(const UCEvent& event) {
         if (event.type == UCEventType::MouseLeave) {
+            if (closeHovered) {
+                closeHovered = false;
+                UltraCanvasTooltipManager::HideTooltip();
+                RequestRedraw();
+            }
             if (infoIconHovered) {
                 infoIconHovered = false;
                 HideHelpTooltip();
@@ -655,6 +709,28 @@ namespace UltraCanvas {
             if (nowHovered != titleHovered) {
                 titleHovered = nowHovered;
                 if (collapsible || checkable) RequestRedraw();
+            }
+
+            if (showCloseButton) {
+                IRenderContext* ctx = GetRenderContext();
+                bool overClose = false;
+                if (ctx) {
+                    TitleLayout tl = ComputeTitleLayout(ctx);
+                    overClose = tl.hasClose && tl.closeRect.Contains(p);
+                }
+                if (overClose != closeHovered) {
+                    closeHovered = overClose;
+                    if (overClose && GetWindow()) {
+                        Point2Df winPos = GetPositionInWindow();
+                        UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                                GetWindow(), closeTooltip.empty() ? Tr("Close") : closeTooltip,
+                                Point2Di(static_cast<int>(winPos.x + p.x),
+                                         static_cast<int>(winPos.y + p.y)));
+                    } else if (!overClose) {
+                        UltraCanvasTooltipManager::HideTooltip();
+                    }
+                    RequestRedraw();
+                }
             }
 
             // Info-icon hover → reveal/hide the help tooltip.
@@ -694,6 +770,13 @@ namespace UltraCanvas {
                     ShowHelpTooltip();
                     return true;
                 }
+                if (tl.hasClose && tl.closeRect.Contains(p)) {
+                    closeHovered = false;
+                    UltraCanvasTooltipManager::HideTooltip();
+                    RequestRedraw();
+                    if (onCloseClicked) onCloseClicked();
+                    return true;
+                }
             }
 
             if ((collapsible || checkable) && TitleBarRect().Contains(p)) {
@@ -709,4 +792,28 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+
+// ===== THE THEME =====
+    GroupBoxVisualStyle GroupBoxVisualStyle::FromTheme(const UltraCanvasTheme& theme, const GroupBoxVisualStyle& base) {
+        GroupBoxVisualStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.titleFont.fontFamily = body.fontFamily;
+        s.titleFont.fontSize = body.fontSize;
+        // a filled frame or header keeps being filled, a transparent one transparent
+        if (base.backgroundColor.a > 0) s.backgroundColor = r.raised;
+        if (base.headerBackgroundColor.a > 0) s.headerBackgroundColor = r.panel;
+        s.borderColor = r.line;
+        s.titleColor = r.ink;
+        s.disabledTitleColor = r.inkFaint;
+        s.activatorOnColor = r.accent;
+        s.activatorOffColor = r.lineStrong;
+        s.activatorKnobColor = r.raised;
+        s.infoIconColor = r.inkMuted;
+        s.infoIconHoverColor = r.accent;
+        s.closeIconColor = r.inkMuted;
+        s.closeIconHoverColor = r.ink;
+        s.closeHoverBackgroundColor = r.hover;
+        return s;
+    }
 } // namespace UltraCanvas

@@ -1,13 +1,16 @@
 // UltraCloud/providers/UltraCloudWebDav.cpp
+// Version: 0.6.0 - a transfer keeps the file's dates: X-OC-Mtime / X-OC-CTime on
+//                  an upload (Nextcloud, ownCloud), Last-Modified on a download
 // Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile),
 //                  an upload sent from the file as it goes (bodyFilePath)
 // Version: 0.4.0 - Delete and Rename, so a WebDAV server is a drive and a publish target that can prune
 // Version: 0.3.0 - WebDavErrorMessage: the <s:message> of an error body
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudWebDav.h>
 
 #include <UltraNet/UltraNetUrl.h>   // UltraNet_UrlEncode / Decode
+#include "core/UltraCloudInternal.h"   // LocalFileDates / GiveFileDates / ParseHttpDate
 
 #include <algorithm>
 #include <cctype>
@@ -21,6 +24,10 @@
 #include "../../UltraCanvas/include/HTMLReader/HTMLDocument.h"   // HTML::DecodeEntities
 
 namespace UltraCloud {
+
+using internal::GiveFileDates;
+using internal::LocalFileDates;
+using internal::ParseHttpDate;
 
 // ---- Pure helpers -----------------------------------------------------------
 
@@ -258,6 +265,14 @@ Result WebDavProvider::Upload(const Account& account, const Credentials& credent
     req.bodyFilePath = localPath;
     req.options.timeoutMs = -1;
     req.options.stallTimeoutMs = 30000;
+    // The file keeps its own dates: Nextcloud and ownCloud take them from
+    // these headers (and answer "X-OC-MTime: accepted"); WebDAV has no
+    // standard way - getlastmodified is a property the server keeps - and a
+    // server that does not know the headers ignores them.
+    int64_t modified = 0, created = 0;
+    LocalFileDates(localPath, modified, created);
+    if (modified > 0) req.headers.Set("X-OC-Mtime", std::to_string(modified));
+    if (created > 0) req.headers.Set("X-OC-CTime", std::to_string(created));
     UltraNetResponse resp;
     UltraNetResult net = Send(credentials, req, resp);
     return FromHttp(net, resp, "upload " + remotePath);
@@ -303,7 +318,13 @@ Result WebDavProvider::Download(const Account& account, const Credentials& crede
     req.url = DavUrl(account, remotePath);
     req.method = UltraNetHttpMethod::Get;
     // Written to disk as it arrives, not held in memory first.
-    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
+    UltraNetResponse answer;
+    Result r = DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath,
+                              &answer);
+    // The copy keeps the file's date on the server (Last-Modified is the
+    // file's modification date on a WebDAV GET).
+    if (r) GiveFileDates(localPath, ParseHttpDate(answer.headers.Get("Last-Modified")), 0);
+    return r;
 }
 
 Result WebDavProvider::CreateShareLink(const Account& account, const Credentials&,

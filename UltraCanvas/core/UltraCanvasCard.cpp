@@ -23,6 +23,12 @@ namespace UltraCanvas {
         SetSubtitle(subtitle);
         if (h <= 0) size.height = CSSLayout::Dimension::Auto();
         layoutItem.SetFlexShrink(0);
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasCard::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasContainer::ApplyTheme(theme);
+        SetStyle(CardStyle::FromTheme(theme, style));
     }
 
     void UltraCanvasCard::Build() {
@@ -182,6 +188,7 @@ namespace UltraCanvas {
     void UltraCanvasCard::SetSelected(bool on) { if (selected != on) { selected = on; ApplySurface(); } }
 
     void UltraCanvasCard::SetStyle(const CardStyle& newStyle) {
+        StyleSetByHand();
         style = newStyle;
         layout.SetFlexGap(style.gap);
         SetPadding(style.padding);
@@ -241,4 +248,23 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+
+// ===== THE THEME =====
+    CardStyle CardStyle::FromTheme(const UltraCanvasTheme& theme, const CardStyle& base) {
+        CardStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle heading = theme.Font(ThemeTextRole::Heading), body = theme.Font(ThemeTextRole::Body);
+        s.titleFont.fontFamily = heading.fontFamily;
+        s.titleFont.fontSize = heading.fontSize;
+        s.subtitleFont.fontFamily = body.fontFamily;
+        s.subtitleFont.fontSize = body.fontSize;
+        s.backgroundColor = r.raised;
+        s.hoverBackgroundColor = r.hover;
+        s.selectedBackgroundColor = r.accentSoft;
+        s.borderColor = r.line;
+        s.highlightBorderColor = r.accent;
+        s.titleColor = r.ink;
+        s.subtitleColor = r.inkMuted;
+        return s;
+    }
 } // namespace UltraCanvas

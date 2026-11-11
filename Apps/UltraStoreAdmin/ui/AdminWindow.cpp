@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/ui/AdminWindow.cpp
 // The shell, the store's pages (Overview, Settings, Keys, Publish) and the
 // worker thread; the component form is in AdminComponentPage.cpp.
+// Version: 0.4.0 - the payment settings and Sync sales
 // Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
 // Version: 0.1.0
@@ -45,10 +46,14 @@ constexpr const char* kItemPrefix = "c:";
 const char* kSettingKeys[][2] = {
     {"catalog.base_url", "Catalog base URL"},
     {"packages.base_url", "Packages base URL"},
+    {"store.contact", "Store contact (on the partners' join pages)"},
     {"texts.languages", "Languages to translate into"},
     {"ai.provider", "UltraAI provider"},
     {"ai.base_url", "UltraAI server"},
     {"ai.model", "UltraAI model"},
+    {"payment.url", "Payment service URL"},
+    {"payment.licence_key", "Licence key (hex, GET /v1/keys)"},
+    {"payment.token", "Payment service admin token"},
 };
 
 std::shared_ptr<UltraCanvasContainer> MakeScrollList(const std::string& id) {
@@ -640,7 +645,8 @@ void AdminWindow::PublishNow() {
         const PublishReport& r = report.Value();
         out.message = "Published sequence " + std::to_string(r.sequence) + ": " + std::to_string(r.apps) + " app(s), " +
                       std::to_string(r.components) + " component(s), " + std::to_string(r.packagesCopied) + " package file(s), " +
-                      std::to_string(r.mediaCopied) + " picture(s)";
+                      std::to_string(r.mediaCopied) + " picture(s), " + std::to_string(r.codePages) + " code page(s), " +
+                      std::to_string(r.joinPages) + " join page(s), " + std::to_string(r.retiredPages) + " retired page(s)";
         out.lines.push_back(r.catalogPath);
         out.lines.push_back(r.signaturePath);
         out.lines.push_back("key " + r.publicKeyHex);
@@ -832,6 +838,19 @@ void AdminWindow::BuildAffiliatesPage() {
     sCurrency_ = Theme::Pin(CreateTextInput("uaS2.currency", 0, 0, 70, Theme::kControlHeight));
     sCurrency_->SetPlaceholder("EUR");
     saleRow->AddChild(sCurrency_);
+    auto sync = Theme::Button("uaS2.sync", "Sync sales", 100, Theme::ButtonKind::Primary);
+    sync->SetTooltip("Fetch the paid orders from the payment service (Settings: payment.url and the admin token) into the ledger");
+    sync->onClick = [this]() {
+        const std::string url = db_.Setting("payment.url"), token = db_.Setting("payment.token");
+        RunJob("Syncing the sales", [this, url, token]() {
+            JobOutcome out;
+            const auto report = SyncSales(db_, url, token);
+            if (!report) { out.ok = false; out.message = report.error.message + (report.error.detail.empty() ? "" : " (" + report.error.detail + ")"); return out; }
+            out.message = "Synced: " + std::to_string(report.Value().recorded) + " sale(s) recorded, " + std::to_string(report.Value().skipped) + " already there";
+            return out;
+        }, [this](const JobOutcome&) { RefreshAffiliatesPage(); });
+    };
+    saleRow->AddChild(sync);
     auto record = Theme::Button("uaS2.record", "Record sale", 110);
     record->onClick = [this]() {
         const auto sale = RecordSale(db_, sCode_->GetText(), sApp_->GetText(), sAmount_->GetText(), sCurrency_->GetText());

@@ -1,7 +1,8 @@
 // UltraCanvasVectorStorage.h
 // Internal Vector Graphics Storage System for UltraCanvas
+// Version: 2.1.0 - VectorTextStyle::FillColor: a span of a text in its own colour
 // Version: 2.0.0
-// Last Modified: 2025-01-20
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 //
 // REFACTORED: Uses types from UltraCanvasRenderContext.h (GradientStop, FontWeight, FontSlant)
@@ -391,6 +392,10 @@ namespace UltraCanvas {
             float LineHeight = 1.2f;
             bool Underline = false;
             bool StrikeThrough = false;
+            // A span's own colour (an SVG tspan's fill); unset = the text's
+            // fill. Read on a span's style only: the text itself is painted
+            // with its element style's fill.
+            std::optional<Color> FillColor;
 
             FontStyle ToFontStyle() const {
                 FontStyle fs;

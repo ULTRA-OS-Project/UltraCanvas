@@ -31,6 +31,13 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.10.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
+//                  tree, the bottom bar and the page switching are the kit's; nothing
+//                  changes on screen
+// Version: 0.9.0 - Language > Translations: the localisation editor (UltraCanvasLocalisationEditor)
+// Version: 0.8.0 - the Language page
+// Version: 0.7.0 - Desktop: the Apps window (view, sub-categories, Recent)
+// Version: 0.6.0 - Desktop: the programs that start with the desktop
 // Version: 0.5.0 - Notifications > Registrations: the applications' Windows
 //                  notification registrations, listed and removed
 // Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
@@ -42,12 +49,17 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasSettingsPageKit.h"   // the window, the tree of pages, the page look
 #include "UltraCanvasWindow.h"   // UltraCanvasWindow is a per-platform typedef
 
 #include <functional>
+#include "UltraCanvasLocalisationEditor.h"
 #include <map>
+#include <vector>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace UltraCanvas {
     class UltraCanvasContainer;
@@ -55,6 +67,7 @@ namespace UltraCanvas {
     class UltraCanvasSegmentedControl;
     class UltraCanvasLabel;
     class UltraCanvasDropdown;
+    class UltraCanvasCheckbox;
     class UltraCanvasTextInput;
     class UltraCanvasButton;
     enum class DesktopReplacement;   // UltraCanvasDesktopShell.h
@@ -62,7 +75,10 @@ namespace UltraCanvas {
 
 namespace UOSSettings {
 
-class UOSSettingsWindow {
+// The framework's settings window (UltraCanvasSettingsPageKit): the tree
+// of pages, the page area, the bottom bar and the page switching are its;
+// this class adds the ULTRA OS logo over the tree and the pages.
+class UOSSettingsWindow : public UltraCanvas::SettingsPageKit::UltraCanvasSettingsWindow {
 public:
     explicit UOSSettingsWindow(std::string version);
     ~UOSSettingsWindow();
@@ -71,7 +87,6 @@ public:
     void Show();
 
     // The window was closed.
-    std::function<void()> onClosed;
 
 private:
     void BuildDesktopPage();
@@ -87,13 +102,17 @@ private:
     // Explorer (from the next sign-in).
     void SetSystemDesktop(UltraCanvas::DesktopReplacement how);
     void BuildLastFolderPage();
-    void ShowPage(const std::string& pageId);
     // Re-reads FileDialog.conf and fills the switch and the table from it.
     void RefreshLastFolderPage();
     void SetMode(bool individual);
     void SetAppScope(const std::string& appName, bool individual);
+    void BuildLanguagePage();
+    void BuildTranslationsPage();
+    // Re-reads the folders into the editor's pickers and the translator's name.
+    void RefreshTranslationsPage();
     void BuildEmojiPage();
     // Re-reads Emoji.conf into the page's switch.
+    void RefreshLanguagePage();
     void RefreshEmojiPage();
     void BuildNotificationsPage();
     // Re-reads the registrations into the page's table.
@@ -105,19 +124,28 @@ private:
     void ForgetCertificate(const std::string& address);
 
     std::string version_;
-    std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
-    std::shared_ptr<UltraCanvas::UltraCanvasTreeView> tree_;
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> pageArea_;
-    std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasContainer>> pages_;
+
+    // ----- Translations -----
+    std::shared_ptr<UltraCanvas::UltraCanvasLocalisationEditor> translations_;
 
     // ----- Desktop -----
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> edge_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> theme_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> dropFiles_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> wallpaper_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> ramDisc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filer_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> desktops_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsView_;     // the Apps window: tiles or tree
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsSplit_;    // split a category above N
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> recentShown_;  // Recent's count
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> boardDisplay_;  // Sticker board: text / thumbnail / row
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> boardPreview_;  // Sticker board: hover preview size
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> systemDesktop_;   // only where the platform has the switch
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> desktopStatus_;
+    // "Start with the desktop": one per DesktopSettings::StartupPrograms(),
+    // with the program's name.
+    std::vector<std::pair<std::string, std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>>> startup_;
 
     // ----- Last used folder -----
     // One table row per application. Rows are made once and then updated in
@@ -134,6 +162,10 @@ private:
     std::map<std::string, AppRow> rows_;
 
     // ----- Emoji -----
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> language_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> translator_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> languageStatus_;
+    std::vector<std::string> languageTags_;   // the dropdown's rows: "system", then the tags
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> emojiStyle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> emojiStatus_;
 

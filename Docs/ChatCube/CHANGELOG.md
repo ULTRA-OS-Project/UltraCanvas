@@ -1,3 +1,162 @@
+#### 2026-11-11 *0.1.16*
+- **Settings > Networks > Proxy.** Matrix and the ChatCube relay are reached
+  through the proxy every ULTRA OS application shares, and the page opens
+  the Proxy settings dialog to choose it.
+
+#### 2026-11-04 *0.1.15*
+- **Your e-mail address is confirmed by a link.** Right after you make your
+  ChatCube ID, the relay e-mails a link to the address you gave; opening it
+  shows a page that says the address is confirmed. Edit profile shows
+  whether it is, with *Check* and *Send again* under the field. The phone
+  number is confirmed by a code sent by SMS, when the relay can send one.
+- **Your ChatCube ID can come back on a new computer.** With the address
+  confirmed, *Turn recovery on* in Edit profile lets the relay keep a copy of
+  your key. On another computer, *Recover my ChatCube ID* under the sign-in
+  card asks for the relay and your e-mail address; the relay e-mails a link
+  there - only if an ID really has that address. Open it and confirm on the
+  page, and ChatCube, which has been waiting, signs in as you by itself -
+  same ID, same contacts - and you get an e-mail saying so. Recovery is off
+  until you turn it on, and the window says why: whoever runs the relay can
+  read that copy, and whoever reads your e-mail can recover your ID. The
+  relay needs an e-mail sender for it (ChatCube relay 1.2.0); one without
+  says so.
+
+#### 2026-11-02 *0.1.14*
+- **An e-mail address and a phone number for every ChatCube ID.** A new ID
+  asks for both: they are how the account is recovered, kept in the
+  identity's encrypted key vault on this computer and on the relay, for the
+  owner alone - contacts see the name, never these.
+- **A password, an UltraAuthenticator code, or both to sign in.** The
+  sign-in card asks how signing in on this computer is protected: no
+  password (as before), a password - the key to the ID is then encrypted
+  with it (Argon2id, XChaCha20-Poly1305) and cannot be read without it - a
+  6-digit code from UltraAuthenticator or any other authenticator app, or
+  the password and the code. A protected ID asks for them at every start,
+  the password first, then the code; each code works once, and after five
+  wrong ones ChatCube waits before it takes another.
+- **Edit profile.** The person button beside your ID opens a window with
+  the name, the e-mail address and the phone number, and how signing in is
+  protected. Changing the protection asks for what protects it now; a new
+  authenticator is a QR code (and its key, for typing) that
+  UltraAuthenticator scans from the screen, proven with the first code it
+  shows.
+
+#### 2026-11-01 *0.1.13*
+- **A Settings window.** The gear beside the copy button, at the top of the
+  sidebar, opens it - laid out as UltraFiler's: the sections on the left,
+  each with its pages, the chosen page on the right with what it is about
+  at its foot, and *Restore defaults* and *Close* in the bar below. Every
+  change applies at once and is saved
+  (`<settings folder>/ChatCube/settings.json`).
+  - *Appearance > Look*: light or dark, from the next start (`--dark`
+    still wins).
+  - *Appearance > Time & date*: a 24- or 12-hour clock (`14:05` or
+    `2:05 PM`), and the date as `31.10.2026`, `2026-10-31` or `10/31/2026`,
+    in the open conversation too.
+  - *Messages > Sending*: Enter sends, or Ctrl+Enter sends and Enter starts
+    a new line - for long messages of several paragraphs.
+  - *Messages > Typing*: whether the other side is told you are typing,
+    and whether you see when they are.
+  - *Networks > Accounts*: where ChatCube Direct, Matrix and Telegram each
+    stand, your ChatCube ID to copy, and signing out of Matrix or Telegram
+    (their conversations leave the list).
+  - *Networks > Local network*: whether the people found on this network
+    are listed in the sidebar.
+  - *Extras > Data folder*: where your identity, contacts and history are
+    kept, to open or copy; *Extras > About*.
+- **The Matrix and Telegram buttons keep their names.** Signed in, they
+  read "Matrix: @you:matrix.org" and "Telegram: signed in", and signed out
+  "Matrix account" / "Telegram account" - all longer than the third of the
+  sidebar each has. They now always say *Matrix* and *Telegram*; where the
+  account stands is their tooltip.
+
+#### 2026-11-01 *0.1.12*
+- **`ChatCube --minimized`** starts with the window minimized, so messages
+  arrive in the background - what UltraDesktop's *Start with the desktop*
+  asks for.
+
+#### 2026-10-31 *0.1.11*
+- **A picture or a file waits in the composer until you send it.** The
+  paperclip, or Ctrl+V with a picture or a file on the clipboard, no longer
+  sends at once: what you chose or pasted sits in a strip above the message
+  field - a picture as its thumbnail, a file as its name and size - each with
+  a × to take it out again when it was the wrong one, and goes with Enter or
+  the send button, what you typed as the caption of the first picture or
+  video. A pasted picture (a screenshot, a copy from a browser or a drawing
+  program) is kept as a file in ChatCube's cache and deleted when dropped.
+- **An SVG drawing shows as a picture.** Sent or received as a file - the
+  networks take no SVG as a photo - it is drawn in the bubble as a photo is,
+  over its name and size, in the composer's strip too; and it goes with a
+  preview picture so the other side sees it before the file is here.
+- **The ticks show on Windows.** The `✓` and `✓✓` of a sent, delivered and
+  read message were a glyph that the fonts of a Windows installation do not
+  all have, and showed as a box there; they are now drawn as strokes, like
+  the play mark, in every look.
+
+#### 2026-10-29 *0.1.10*
+- **Pictures, videos and files between ChatCubes.** The paperclip works in
+  ChatCube Direct chats and groups too: a file goes end-to-end encrypted,
+  peer to peer when both are online, through the relay's queue when not, and
+  the other side sees its preview picture at once and the file as it
+  finishes arriving.
+- **A preview picture goes with what you send.** A photo or a video sent on
+  any network carries a small preview - photos through the image pipeline,
+  videos through VideoFX when ChatCube is built with it - so the other side
+  sees something before the file is fetched; and a photo on its way in shows
+  its preview in the bubble until it is here.
+
+#### 2026-10-29 *0.1.9*
+- **Pictures, videos and files - and people's faces.** A Telegram chat now
+  shows what it holds: a photo as its picture in the bubble, a video as its
+  preview picture under a play mark with its length, a file as its name and
+  size, the caption under the picture. Photos and preview pictures arrive by
+  themselves; a click on a video or a file fetches it and opens it in the
+  media viewer (a photo opens there too, full size). The sidebar's avatars,
+  the header's and, in a group, the one beside each person's bubble are their
+  Telegram profile pictures when they have one, the initials as before when
+  not. The paperclip in the composer sends a picture, a video or any file to
+  the open chat, with the composer's text as its caption; the bubble appears
+  at once and takes its ticks as a text does. The same in Matrix rooms,
+  encrypted ones included; ChatCube Direct does not carry pictures yet, and
+  its paperclip says so.
+
+#### 2026-10-28 *0.1.8*
+- **Sign in to Telegram with a QR code.** When Telegram says it sent the
+  code to your Telegram app and the app shows none - as it has for
+  third-party applications for stretches since early 2026 - *Scan a QR code
+  instead* under the code field (or *Sign in with a QR code instead* at the
+  start) puts a QR code in the form: scan it with the Telegram app on your
+  phone (Settings, Devices, Link Desktop Device) and ChatCube is signed in
+  with no code at all, after your two-step password if you have one. The
+  code refreshes as Telegram renews the link; *Use my phone number instead*
+  goes back to the number.
+
+#### 2026-10-28 *0.1.7*
+- **Screenshots without a display.** `Apps/ChatCube/tools/screenshot.sh`
+  starts a relay and a second identity on this machine, drives ChatCube
+  under Xvfb like a person would (sign in, add a contact, two messages each
+  way) and writes a picture of each stage, in the light or the dark look.
+
+#### 2026-10-27 *0.1.6*
+- **A new look.** The sign-in page is a card under the ChatCube logo; the
+  sidebar has round avatars with a presence dot, a soft green selection, a
+  pill for adding a contact and three icon buttons (Group, Matrix, Telegram)
+  in place of the full-width ones; the open conversation shows its avatar in
+  the header beside round call buttons; the composer is a rounded field with
+  the send button inside it; the bubbles, the date separators and the call
+  bar follow the same palette. Every colour comes from one theme
+  (`ui/ChatCubeTheme.*`), the ChatCube green on warm neutrals, in a light
+  and a dark version: `ChatCube --dark`.
+
+#### 2026-10-27 *0.1.5*
+- **The Telegram form says where the code went.** Telegram sends the
+  sign-in code as a message to the Telegram apps your number is already
+  signed in on, not by SMS, and the status line's one-line hint was easy to
+  miss; the form itself now says so above the code field ("Telegram sent the
+  5-digit code as a message to the Telegram apps where +… is signed in -
+  type it here"), and when Telegram offers another way - SMS, a call - a
+  button under the field asks for it.
+
 #### 2026-10-25 *0.1.4*
 - **"Send me the code" no longer stays grey forever.** When Telegram could
   not be reached, the button went grey, nothing was said, and nothing ever

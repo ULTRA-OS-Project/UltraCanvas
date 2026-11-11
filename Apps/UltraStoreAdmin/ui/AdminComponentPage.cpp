@@ -162,6 +162,8 @@ void AdminWindow::BuildComponentPage() {
     settings->AddChild(Theme::Field("uaC.ageRow", "Age rating", fAgeRating_));
     fRequiresAccount_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaC.account", 0, 0, 420, Theme::kControlHeight, "Needs an account of its own to be useful", false));
     settings->AddChild(fRequiresAccount_);
+    fFeatured_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaC.featured", 0, 0, 420, Theme::kControlHeight, "Featured: the store's hero and its Editor's picks", false));
+    settings->AddChild(fFeatured_);
     fPricingModel_ = Choice("uaC.pricing", kPricing, {"Free", "One-time purchase", "Monthly fee", "Yearly fee"}, 200);
     settings->AddChild(Theme::Field("uaC.pricingRow", "Monetary", fPricingModel_));
     auto priceRow = Theme::Row("uaC.priceRow", Theme::kInnerGap);
@@ -405,6 +407,7 @@ void AdminWindow::FillForm() {
     fSuccessor_->SetText(c.successor);
     fAgeRating_->SetSelectedIndex(IndexOfValue(kAges, c.ageRating), false);
     fRequiresAccount_->SetChecked(c.requiresAccount);
+    fFeatured_->SetChecked(c.featured);
     fPricingModel_->SetSelectedIndex(IndexOfValue(kPricing, UltraStore::PricingModelName(c.pricing.model)), false);
     fPrice_->SetText(c.pricing.price);
     fCurrency_->SetText(c.pricing.currency);
@@ -488,6 +491,7 @@ bool AdminWindow::ReadForm(std::string& error) {
     c.successor = Trim(fSuccessor_->GetText());
     c.ageRating = kAges[std::max(0, fAgeRating_->GetSelectedIndex())];
     c.requiresAccount = fRequiresAccount_->IsChecked();
+    c.featured = fFeatured_->IsChecked();
     c.pricing.model = UltraStore::ParsePricingModel(kPricing[std::max(0, fPricingModel_->GetSelectedIndex())]);
     c.pricing.price = Trim(fPrice_->GetText());
     c.pricing.currency = Trim(fCurrency_->GetText());

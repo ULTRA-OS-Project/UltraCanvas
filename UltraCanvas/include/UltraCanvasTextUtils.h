@@ -1,7 +1,7 @@
 // include/UltraCanvasTextUtils.h
 // Standalone text utilities: trimming, case folding, splitting, and the
-// RFC 4648 Base64 / Base32 codecs, and the repair of file names written in a
-// legacy code page.
+// RFC 4648 Base64 / Base32 codecs, the repair of file names written in a
+// legacy code page, and Windows code-page text as UTF-8.
 //
 // This header is part of UltraCanvasUtils — UltraCanvasUtils.h includes it, so
 // existing callers need no change — but it is kept in its own file with no
@@ -17,6 +17,7 @@
 // Base32; the one crypto-relevant variant — decoding straight into a zeroizing
 // buffer — remains there as UltraCrypt_Base32Decode and calls the decoder below.
 //
+// Version: 1.1.0 - DecodeWindowsCodePage (moved from the .xls reader, for the .msg reader too)
 // Version: 1.0.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -200,5 +201,13 @@ bool IsWellFormedUtf8(const std::string& s);
 // and "Namens\x84nderung" come back as "Namensänderung". For display only:
 // the file is still reached by its real bytes.
 std::string RepairLegacyEncodedName(const std::string& name);
+
+// `count` bytes of text in a Windows code page, as UTF-8: 1250 (Central
+// European), 1251 (Cyrillic), 1252 (Western; 0x8001, Excel's "Windows ANSI",
+// is read as it) and 65001 (UTF-8; a stray byte that is not UTF-8 is read
+// as RepairLegacyEncodedName reads it). Any other code page is Latin-1, which
+// keeps ASCII intact. Used for the 8-bit text of the binary Office formats
+// (an .xls workbook's BIFF5 strings, an Outlook .msg's).
+std::string DecodeWindowsCodePage(const uint8_t* bytes, size_t count, int codePage);
 
 } // namespace UltraCanvas

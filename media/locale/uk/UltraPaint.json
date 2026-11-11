@@ -1,0 +1,15 @@
+{
+  "@language": "uk",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "Клацніть і введіть текст або розтягніть рамку, у межах якої переноситимуться рядки; клацніть текст, щоб змінити його. Панель вище задає шрифт, розмір, стиль, вирівнювання та інтервали; колір тексту — основний колір. Escape або клацання поза ним завершують введення",
+  "Letter Spacing": "Міжлітерний інтервал",
+  "Line Spacing": "Міжрядковий інтервал",
+  "Text Alignment": "Вирівнювання тексту",
+  "Text Bold": "Текст: жирний",
+  "Text Colour": "Колір тексту",
+  "Text Font": "Шрифт тексту",
+  "Text Italic": "Текст: курсив",
+  "Text Size": "Розмір тексту",
+  "Text Strikethrough": "Текст: закреслений",
+  "Text Underline": "Текст: підкреслений"
+}

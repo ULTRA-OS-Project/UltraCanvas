@@ -1,3 +1,7 @@
+// include/Plugins/QRCode/UltraCanvasQRCode.h
+// A QR code drawn from its content, and read back from a picture or a camera frame
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 
 #include "UltraCanvasUIElement.h"

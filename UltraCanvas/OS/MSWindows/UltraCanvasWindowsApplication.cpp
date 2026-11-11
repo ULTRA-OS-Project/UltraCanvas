@@ -1,5 +1,10 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
+// Version: 1.11.1 - the start's log line counts the fonts read from the Windows font folder
+// Version: 1.11.0 - the Windows font folders by path (GenerateWindowsFontFoldersConfig), added
+//                  to a font set that does not read them, and a log line saying whether it does
+// Version: 1.10.0 - RegisterPlatformBundledFonts: the start's font set-up (system font folders, aliases, bundled fonts, FC font map), shared with a tool
+// Version: 1.9.0 - the system fonts are the desktop's (UltraCanvasWindowsSystemFont.cpp), not Ubuntu 12
 // Version: 1.8.0 - the exit watchdog is armed when the main loop has ended
 // Version: 1.7.1 - the inline config for an empty fontconfig scales bitmap fonts
 //                 (GenerateBitmapScalingConfig): colour emoji at the text's size
@@ -11,7 +16,7 @@
 // Version: 1.5.0 - the system fonts are not waited for: with a cold font cache the
 //                  start goes on with the bundled fonts and Windows' symbol fonts
 // Version: 1.4.0 - Wheel delta normalized to +/-1 per notch
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 // winsock2.h must precede windows.h (pulled in by the headers below) so the legacy winsock.h v1
@@ -27,6 +32,7 @@
 #include <imm.h>
 #include <iostream>
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>          // getenv, _putenv_s (PANGOCAIRO_BACKEND)
 #include <exception>
@@ -1018,31 +1024,52 @@ namespace UltraCanvas {
         return result;
     }
 
-    FontStyle UltraCanvasWindowsApplication::DetectSystemFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu";
-        result.fontSize = 12.0f;
-        return result;
+    // DetectSystemFontStyleNative / DetectMonospacedFontStyleNative: the
+    // message font of the non-client metrics and Consolas, in
+    // UltraCanvasWindowsSystemFont.cpp.
+
+    namespace {
+        // Does `cfg` read the Windows font folder? Its font directories as
+        // fontconfig holds them ("C:\\WINDOWS\\fonts"), compared without
+        // regard to case or the direction of the slashes.
+        bool ConfigReadsWindowsFonts(FcConfig* cfg) {
+            const std::string folder = GetWindowsFontsFolder();
+            if (!cfg || folder.empty()) return false;
+            auto normal = [](std::string s) {
+                for (char& c : s) {
+                    if (c == '\\') c = '/';
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                }
+                while (s.size() > 1 && s.back() == '/') s.pop_back();
+                return s;
+            };
+            const std::string wanted = normal(folder);
+            bool found = false;
+            if (FcStrList* dirs = FcConfigGetFontDirs(cfg)) {
+                while (FcChar8* dir = FcStrListNext(dirs)) {
+                    if (normal(reinterpret_cast<const char*>(dir)) == wanted) { found = true; break; }
+                }
+                FcStrListDone(dirs);
+            }
+            return found;
+        }
     }
 
-    FontStyle UltraCanvasWindowsApplication::DetectMonospacedFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu Mono";
-        result.fontSize = 12.0f;
-        return result;
-    }
-
-    void UltraCanvasWindowsApplication::LoadBundledFontsNative() {
+    // The bundled fonts for Pango, the Windows way - the one registration an
+    // application's start (LoadBundledFontsNative) and a tool without one
+    // (RegisterBundledFontsWithoutApplication) both make.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs) {
         const std::string dir = GetBundledFontsDir();
+        int registered = 0;
 
         // The system fonts are scanned on a thread (SetupBundledFontconfig).
-        // With a warm font cache the scan ends within this wait and its full
-        // set is used from the start, as before. With a cold one - which
-        // opens every file in C:\Windows\Fonts and takes many seconds - the
-        // start goes on with the bundled fonts, and the windows switch to the
-        // full set when the scan ends.
-        constexpr int kSystemFontsWaitMs = 400;
-        const bool systemFonts = AdoptSystemFontsWithin(kSystemFontsWaitMs);
+        // With a warm font cache the scan ends within the wait and its full
+        // set is used from the start. With a cold one - which opens every
+        // file in C:\Windows\Fonts and takes many seconds - an application
+        // goes on with the bundled fonts and its windows switch to the full
+        // set when the scan ends; a tool, which has no windows to switch,
+        // waits for the scan to end.
+        const bool systemFonts = AdoptSystemFontsWithin(systemFontsWaitMs);
 
         FcConfig* cfg = FcConfigGetCurrent();
 
@@ -1051,26 +1078,28 @@ namespace UltraCanvas {
         // bundled fonts added below, and scripts they don't cover (Thai, CJK,
         // Arabic, ...) have no fallback and render as boxes. If the config is
         // empty, teach it the Windows system + per-user font directories and
-        // a cache dir so the scan doesn't repeat on every launch.
-        // WINDOWSFONTDIR / WINDOWSUSERFONTDIR / LOCAL_APPDATA_FONTCONFIG_CACHE
-        // are fontconfig's built-in Windows keywords.
+        // a cache dir so the scan doesn't repeat on every launch - by path
+        // (GenerateWindowsFontFoldersConfig), not fontconfig's keywords.
         if (cfg) {
             bool hasFontDirs = false;
             if (FcStrList* dirs = FcConfigGetFontDirs(cfg)) {
                 hasFontDirs = (FcStrListNext(dirs) != nullptr);
                 FcStrListDone(dirs);
             }
+            const std::string fontFolders = GenerateWindowsFontFoldersConfig();
+            if (hasFontDirs && systemFonts && !ConfigReadsWindowsFonts(cfg)) {
+                // A set with folders of its own but not Windows' - a
+                // fonts.conf found beside the program, or a full set that
+                // came without them - while no scan will bring them: they
+                // are added now (FcConfigBuildFonts below reads them).
+                if (!FcConfigParseAndLoadFromMemory(cfg, reinterpret_cast<const FcChar8*>(fontFolders.c_str()),
+                                                    FcFalse)) {
+                    debugOutput << "UltraCanvas: failed to add the Windows font folders to fontconfig" << std::endl;
+                }
+            }
             if (!hasFontDirs) {
-                static const char kSystemFontsConfig[] =
-                    "<?xml version=\"1.0\"?>"
-                    "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">"
-                    "<fontconfig>"
-                    "<dir>WINDOWSFONTDIR</dir>"
-                    "<dir>WINDOWSUSERFONTDIR</dir>"
-                    "<cachedir>LOCAL_APPDATA_FONTCONFIG_CACHE</cachedir>"
-                    "</fontconfig>";
                 if (!FcConfigParseAndLoadFromMemory(cfg,
-                        reinterpret_cast<const FcChar8*>(kSystemFontsConfig),
+                        reinterpret_cast<const FcChar8*>(fontFolders.c_str()),
                         FcFalse)) {
                     debugOutput << "UltraCanvas: failed to add Windows system "
                                    "font dirs to fontconfig" << std::endl;
@@ -1104,7 +1133,7 @@ namespace UltraCanvas {
                 continue;
             }
 
-            std::wstring wpath = Utf8ToUtf16(path);
+            std::wstring wpath = UltraCanvasWindowsApplication::Utf8ToUtf16(path);
             if (AddFontResourceExW(wpath.c_str(), FR_PRIVATE, 0) == 0) {
                 debugOutput << "UltraCanvas: AddFontResourceExW failed for " << path << std::endl;
             }
@@ -1113,6 +1142,8 @@ namespace UltraCanvas {
                 if (!FcConfigAppFontAddFile(cfg,
                         reinterpret_cast<const FcChar8*>(path.c_str()))) {
                     debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
+                } else {
+                    ++registered;
                 }
             }
         }
@@ -1126,7 +1157,8 @@ namespace UltraCanvas {
             wchar_t windowsDir[MAX_PATH] = {};
             const UINT n = GetWindowsDirectoryW(windowsDir, MAX_PATH);
             if (n > 0 && n < MAX_PATH) {
-                const std::string fontsDir = Utf16ToUtf8(std::wstring(windowsDir, n)) + "\\Fonts\\";
+                const std::string fontsDir =
+                    UltraCanvasWindowsApplication::Utf16ToUtf8(std::wstring(windowsDir, n)) + "\\Fonts\\";
                 for (const char* name : { "seguisym.ttf", "seguiemj.ttf", "cambria.ttc" }) {
                     const std::string path = fontsDir + name;
                     std::error_code fontEc;
@@ -1148,6 +1180,31 @@ namespace UltraCanvas {
             // actually find the just-added app fonts. No-op on a system-loaded
             // config; required on a FcConfigCreate'd one.
             FcConfigBuildFonts(cfg);
+            {
+                // One line to tell from a log whether Windows' fonts are in.
+                const FcFontSet* systemSet = FcConfigGetFonts(cfg, FcSetSystem);
+                const FcFontSet* appSet = FcConfigGetFonts(cfg, FcSetApplication);
+                // How many came from the Windows font folder: named is not read.
+                const std::string folder = GetWindowsFontsFolder();
+                std::string prefix = folder + "/";
+                for (char& c : prefix) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c == '\\' ? '/' : c)));
+                int fromFolder = 0;
+                for (const FcFontSet* fonts : { systemSet, appSet }) {
+                    for (int i = 0; fonts && i < fonts->nfont; ++i) {
+                        FcChar8* file = nullptr;
+                        if (FcPatternGetString(fonts->fonts[i], FC_FILE, 0, &file) != FcResultMatch || !file) continue;
+                        std::string key = reinterpret_cast<const char*>(file);
+                        for (char& c : key) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c == '\\' ? '/' : c)));
+                        if (key.rfind(prefix, 0) == 0) ++fromFolder;
+                    }
+                }
+                debugOutput << "UltraCanvas: " << (systemSet ? systemSet->nfont : 0) << " system and "
+                            << (appSet ? appSet->nfont : 0) << " application font files, " << fromFolder
+                            << " of them from the Windows font folder (" << folder << "), which is "
+                            << (ConfigReadsWindowsFonts(cfg) ? "named"
+                                : systemFonts ? "NOT named" : "named when the scan ends")
+                            << std::endl;
+            }
 
             // Pango's default font map on Windows is its Win32 one, which
             // never reads our FC config and falls back poorly: a character
@@ -1207,7 +1264,16 @@ namespace UltraCanvas {
             }
 #endif
         }
+        return registered;
     }
+
+    void UltraCanvasWindowsApplication::LoadBundledFontsNative() {
+        // 400 ms for the system fonts' scan: with a warm cache it ends well
+        // within it; with a cold one the start goes on and switches later.
+        constexpr int kStartupSystemFontsWaitMs = 400;
+        RegisterPlatformBundledFonts(kStartupSystemFontsWaitMs);
+    }
+
     bool UltraCanvasWindowsApplication::RegisterFontFileNative(const std::string& fontFilePath) {
         // Two registrations, because two consumers look in different places:
         // GDI (FR_PRIVATE - this process only) for anything that goes through

@@ -40,6 +40,7 @@
 #include "UltraMailSignature.h"   // PlainBodyToRichDocument
 #include "UltraMailTheme.h"
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -233,6 +234,59 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     subject_->SetText(draft_.subject);
     subject_->SetPlaceholder("Subject");
     addField("cSubj", "Subject", subject_);
+
+    // Security: off, or a method to sign and/or encrypt with. A reply to
+    // encrypted mail comes here encrypted (Composer::Reply).
+    std::vector<std::string> methods = secureMethods_;
+    if (!draft_.secureMethod.empty() &&
+        std::find(methods.begin(), methods.end(), draft_.secureMethod) == methods.end())
+        methods.push_back(draft_.secureMethod);
+    if (!methods.empty()) {
+        auto row = CreateContainer("cSecureRow", 0, 0, 0, Theme::kControlHeight);
+        row->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto label = Theme::MakeLine("cSecureLbl", "Security", Theme::kControlHeight,
+                                     Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+        row->AddChild(label);
+        secureMethod_ = CreateSegmentedControl("cSecure", 0, 0, 90.0f * (methods.size() + 1),
+                                               Theme::kControlHeight);
+        Theme::StyleSegmented(secureMethod_);
+        secureMethod_->AddSegment("Off");
+        for (const std::string& m : methods) secureMethod_->AddSegment(m);
+        secureMethod_->SetTooltip("Sign and encrypt the message with S/MIME (a certificate) or "
+                                  "OpenPGP (a key in GnuPG)");
+        int chosen = 0;
+        for (size_t i = 0; i < methods.size(); ++i)
+            if (methods[i] == draft_.secureMethod) chosen = static_cast<int>(i) + 1;
+        if (!draft_.sign && !draft_.encrypt) chosen = 0;
+        secureMethod_->SetSelectedIndex(chosen);
+        row->AddChild(secureMethod_);
+        auto makeBox = [&row](const std::string& id, const std::string& text, bool checked,
+                              const std::string& tip) {
+            auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 90.0f, Theme::kControlHeight, text);
+            box->SetFontSize(Theme::kSizeBody);
+            box->SetChecked(checked);
+            box->SetTooltip(tip);
+            row->AddChild(box);
+            return box;
+        };
+        signBox_ = makeBox("cSign", "Sign", chosen > 0 ? draft_.sign : true,
+                           "Signed: the recipient can check that it is from you and unchanged");
+        encryptBox_ = makeBox("cEncrypt", "Encrypt", chosen > 0 && draft_.encrypt,
+                              "Encrypted: only the recipients (and you) can read it; every "
+                              "recipient needs a certificate or key");
+        auto sync = [this]() {
+            const bool on = secureMethod_ && secureMethod_->GetSelectedIndex() > 0;
+            if (signBox_) signBox_->SetDisabled(!on);
+            if (encryptBox_) encryptBox_->SetDisabled(!on);
+        };
+        secureMethod_->onSegmentSelected = [sync](int) { sync(); };
+        sync();
+        root_->AddChild(row);
+        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    }
 
     // The editor card: the formatting strip on top, the body below, in one
     // frame - the toolbar reads as the editor's own, and the body is a clear
@@ -546,6 +600,13 @@ Draft ComposeView::CollectDraft() const {
     if (bcc_)     d.bcc = bccRow_ && bccRow_->IsVisible() ? Split(bcc_->GetText())
                                                        : std::vector<std::string>();
     if (subject_) d.subject = subject_->GetText();
+    d.secureMethod.clear();
+    d.sign = d.encrypt = false;
+    if (secureMethod_ && secureMethod_->GetSelectedIndex() > 0) {
+        d.sign = signBox_ && signBox_->IsChecked();
+        d.encrypt = encryptBox_ && encryptBox_->IsChecked();
+        if (d.sign || d.encrypt) d.secureMethod = secureMethod_->GetSegmentText(secureMethod_->GetSelectedIndex());
+    }
     if (formatted_ && rich_) {
         // The edited document goes out as HTML with a plain-text version.
         d.richBody = rich_->GetDocument();

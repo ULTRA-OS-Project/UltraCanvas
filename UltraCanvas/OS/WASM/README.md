@@ -28,6 +28,9 @@ OS/WASM/
 ├── UltraCanvasSpellCheckSupport.cpp   # No system speller: Hunspell backend
 ├── UltraCanvasWASMSupport.h/cpp       # Optional browser utilities (IDBFS, fetch, file
 │                                      # import/export, image/font loading, URL, ...)
+├── UltraCanvasWASMWasmHost.cpp        # WasmHost's engine here: the browser's WebAssembly
+│                                      # (runs UltraWeb apps, Docs/UltraWeb/UltraWebInTheBrowser.md)
+├── UltraCanvasWASMNetUrl.cpp          # UltraNetUrl.h over the WHATWG URL parser (UltraNet is off)
 ├── build-wasm-sysroot.sh              # Cross-compiles the dependency stack
 ├── patches/                           # wasm fixes applied to the deps by the script
 └── demo/                              # Browser validation apps: wasm-demo, ultraos-frontpage

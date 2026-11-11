@@ -7,8 +7,15 @@
 // Click a point, or move between them with the arrow keys; Home picks the
 // centre.
 //
+// A point that is none of the nine - a rotation centre dragged somewhere
+// else - is shown as a free point: a ring in its direction across the grid,
+// kept inside the frame (SetFreePoint).
+//
+// Version: 1.2.0 - ReferencePointPickerStyle::FromTheme, ApplyTheme: the picker follows the theme; a SetStyle by
+//                  hand stops the following
+// Version: 1.1.0 - SetFreePoint: a point off the nine, drawn as a ring kept inside the frame
 // Version: 1.0.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -19,6 +26,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <optional>
 
 namespace UltraCanvas {
 
@@ -49,11 +57,19 @@ namespace UltraCanvas {
         float cornerRadius      = 2.0f;
         float pointSize         = 5.0f;    // side of a point's square
         float selectedPointSize = 7.0f;
+
+        // The theme's roles over a base's own metrics: the well with the
+        // control border, faint ink for the points not picked, muted ink
+        // hovered, the accent picked, the focus ring, a hairline disabled
+        static ReferencePointPickerStyle FromTheme(const UltraCanvasTheme& theme, const ReferencePointPickerStyle& base);
+        static ReferencePointPickerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ReferencePointPickerStyle()); }
+        static ReferencePointPickerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
     class UltraCanvasReferencePointPicker : public UltraCanvasUIElement {
     private:
         ReferencePoint point = ReferencePoint::Centre;
+        std::optional<Point2Dd> freePoint;   // fractions of the box; none: one of the nine
         int hovered = -1;   // index of the point under the pointer, -1 none
         ReferencePointPickerStyle style;
 
@@ -64,17 +80,28 @@ namespace UltraCanvas {
         explicit UltraCanvasReferencePointPicker(const std::string& identifier)
             : UltraCanvasReferencePointPicker(identifier, -1, -1, -1, -1) {}
 
-        // Picks `p`; `runCallback` fires onPointChanged when it changes.
+        // Picks `p` (and clears a free point); `runCallback` fires
+        // onPointChanged when it changes.
         void SetPoint(ReferencePoint p, bool runCallback = false);
         ReferencePoint GetPoint() const { return point; }
+        // A point that is none of the nine, as fractions of the box's width
+        // and height (0, 0 top left; 1, 1 bottom right; outside 0..1 when it
+        // lies outside the box). None of the nine is lit while it is set; it
+        // is drawn as a ring in its direction, clamped to the frame, so a
+        // point far outside still shows which way it lies. A click on one
+        // of the nine clears it; nullopt clears it too. Fires no callback.
+        void SetFreePoint(const std::optional<Point2Dd>& fraction);
+        const std::optional<Point2Dd>& GetFreePoint() const { return freePoint; }
+        bool HasFreePoint() const { return freePoint.has_value(); }
 
         ReferencePointPickerStyle& GetStyle() { return style; }
         const ReferencePointPickerStyle& GetStyle() const { return style; }
-        void SetStyle(const ReferencePointPickerStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const ReferencePointPickerStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ReferencePointPickerStyle::FromTheme(theme, style)); }
 
         // ===== ACCESSIBILITY =====
         AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Group; }
-        std::string GetAccessibleValueText() const override { return ReferencePointName(point); }
+        std::string GetAccessibleValueText() const override { return freePoint ? "Free point" : ReferencePointName(point); }
 
         // ===== OVERRIDES =====
         bool AcceptsFocus() const override { return true; }

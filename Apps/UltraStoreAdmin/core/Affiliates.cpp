@@ -1,14 +1,23 @@
 // Apps/UltraStoreAdmin/core/Affiliates.cpp
 // The affiliate scheme (Affiliates.h).
+// Version: 0.3.1 - the join and retired pages in the shared frame too
+// Version: 0.3.0 - the landing page in the shared frame with the mark
+// Version: 0.2.0 - RecordSale with a reference; SyncSales
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Affiliates.h"
 
+#include "PageFrame.h"
+
+#include "DataFormats/UltraCanvasJSON.h"
 #include "Plugins/QRCode/UltraCanvasQRCode.h"
+#include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetHttp.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -107,7 +116,7 @@ Result<Credits> CreditsFor(const AdminDatabase& db, const std::string& code, con
 }
 
 Result<SaleRecord> RecordSale(AdminDatabase& db, const std::string& code, const std::string& app,
-                              const std::string& amount, const std::string& currency, const std::string& at) {
+                              const std::string& amount, const std::string& currency, const std::string& at, const std::string& reference) {
     using R = Result<SaleRecord>;
     int64_t cents = 0;
     if (!Cents(amount, cents)) return R::Failure(ErrorCode::InvalidArgument, "The amount is a decimal such as 29.90", amount);
@@ -124,7 +133,61 @@ Result<SaleRecord> RecordSale(AdminDatabase& db, const std::string& code, const 
     sale.recruiter = credits.Value().recruiter;
     sale.affiliateCredit = credits.Value().affiliateCredit;
     sale.recruiterCredit = credits.Value().recruiterCredit;
+    sale.reference = reference;
     return db.AddSale(sale);
+}
+
+SalesFetcher UltraNetSalesFetcher() {
+    return [](const std::string& url, const std::string& token) -> Result<std::string> {
+        if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+        UltraNetHttpOptions options;
+        options.httpsOnlyRedirects = true;
+        options.maxReceiveSize = int64_t(8) << 20;
+        options.headers.Set("Authorization", "Bearer " + token);
+        UltraNetResponse response;
+        const UltraNetResult r = UltraNet_HttpGet(url, response, options);
+        if (!r && r.code != UltraNetResultCode::HttpError) return Result<std::string>::Failure(ErrorCode::NetworkError, "The payment service could not be reached", r.message);
+        if (!response.IsComplete()) return Result<std::string>::Failure(ErrorCode::NetworkError, "The payment service could not be reached", response.transferError);
+        if (!response.IsSuccess()) return Result<std::string>::Failure(ErrorCode::NetworkError, "The payment service answered HTTP " + std::to_string(response.statusCode), response.GetBodyAsString());
+        return Result<std::string>::Succeed(response.GetBodyAsString());
+    };
+}
+
+Result<SyncReport> SyncSales(AdminDatabase& db, const std::string& paymentUrl, const std::string& token, const SalesFetcher& fetch) {
+    using R = Result<SyncReport>;
+    if (paymentUrl.empty()) return R::Failure(ErrorCode::InvalidArgument, "No payment service URL (the setting payment.url)");
+    if (token.empty()) return R::Failure(ErrorCode::InvalidArgument, "No admin token for the payment service (the setting payment.token)");
+    SyncReport report;
+    uint64_t since = std::strtoull(db.Setting("payment.sales_seq", "0").c_str(), nullptr, 10);   // locale-ok: digits only
+    report.sequence = since;
+    for (int page = 0; page < 1000; ++page) {
+        const auto body = fetch(TrimSlash(paymentUrl) + "/v1/sales?since=" + std::to_string(since), token);
+        if (!body) return R::Failure(body.error.code, body.error.message, body.error.detail);
+        UltraCanvas::JSONParseResult parse;
+        const UltraCanvas::JSONValue v = UltraCanvas::JSON::Parse(body.Value(), &parse);
+        if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The payment service's sales are not JSON", parse.errorMessage);
+        const UltraCanvas::JSONValue& sales = v.Get("sales");
+        if (sales.GetSize() == 0) break;
+        for (size_t i = 0; i < sales.GetSize(); ++i) {
+            const UltraCanvas::JSONValue& s = sales.At(i);
+            const std::string reference = s.Get("order_id").GetString();
+            const uint64_t seq = static_cast<uint64_t>(std::max<int64_t>(0, s.Get("seq").GetInteger(0)));
+            if (!reference.empty() && db.HasSaleReference(reference)) { ++report.skipped; }
+            else {
+                const auto recorded = RecordSale(db, s.Get("code").GetString(), s.Get("app").GetString(), s.Get("amount").GetString(),
+                                                 s.Get("currency").GetString(), s.Get("at").GetString(), reference);
+                if (!recorded) return R::Failure(recorded.error.code, "A sale could not be recorded: " + recorded.error.message, recorded.error.detail);
+                ++report.recorded;
+            }
+            if (seq > report.sequence) report.sequence = seq;
+        }
+        const uint64_t next = static_cast<uint64_t>(std::max<int64_t>(0, v.Get("next").GetInteger(0)));
+        if (next <= since) break;
+        since = next;
+        if (const auto kept = db.SetSetting("payment.sales_seq", std::to_string(since)); !kept) return R::Failure(kept.error.code, kept.error.message, kept.error.detail);
+    }
+    if (report.sequence > 0) db.SetSetting("payment.sales_seq", std::to_string(report.sequence));
+    return R::Succeed(report);
 }
 
 Result<std::vector<AffiliateTotals>> AffiliateReport(const AdminDatabase& db) {
@@ -193,21 +256,55 @@ std::string CodeLandingPage(const UltraStore::PromoCode& code, const std::vector
         names += "<li>" + Escape(app.name) + "</li>";
     }
     const std::string store = StoreLink(code.code);
-    std::string page =
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        "<title>UltraStore code " + Escape(code.code) + "</title>\n"
-        "<style>body{font-family:sans-serif;max-width:36em;margin:3em auto;padding:0 1em;color:#1f2937}code{font-size:1.4em;background:#f3f4f6;padding:.2em .5em;border-radius:.3em}"
-        "a.button{display:inline-block;background:#2563eb;color:#fff;padding:.6em 1.2em;border-radius:.4em;text-decoration:none}</style>\n</head>\n<body>\n"
-        "<h1>Your UltraStore code</h1>\n<p><code>" + Escape(code.code) + "</code></p>\n";
-    if (!what.empty()) page += "<p>" + Escape(what) + (names.empty() ? " on every app." : " on:</p>\n<ul>" + names + "</ul>\n<p>");
-    else if (!names.empty()) page += "<p>A partner code for:</p>\n<ul>" + names + "</ul>\n<p>";
-    else page += "<p>A partner code.";
-    if (!code.validUntil.empty()) page += " Valid until " + Escape(code.validUntil) + ".";
-    page += "</p>\n<p><a class=\"button\" href=\"" + Escape(store) + "\">Open in UltraStore</a></p>\n"
-            "<p>On a computer with UltraStore, the button opens the store with the code. Otherwise enter the code on the store's Discover page: "
-            "the prices show what it takes off for 30 days, and the partner is credited when you buy.</p>\n"
-            "<p><small>" + Escape(TrimSlash(catalogBase)) + "</small></p>\n</body>\n</html>\n";
-    return page;
+    std::string body = "<p><code>" + Escape(code.code) + "</code></p>\n";
+    if (!what.empty()) body += "<p>" + Escape(what) + (names.empty() ? " on every app." : " on:</p>\n<ul>" + names + "</ul>\n<p>");
+    else if (!names.empty()) body += "<p>A partner code for:</p>\n<ul>" + names + "</ul>\n<p>";
+    else body += "<p>A partner code.";
+    if (!code.validUntil.empty()) body += " Valid until " + Escape(code.validUntil) + ".";
+    body += "</p>\n<p><a class=\"button\" href=\"" + Escape(store) + "\">Open in UltraStore</a></p>\n"
+            "<p class=\"muted\">On a computer with UltraStore, the button opens the store with the code. Otherwise enter the code on the store's Discover page: "
+            "the prices show what it takes off for 30 days, and the partner is credited when you buy.</p>\n";
+    // The page sits in go/<CODE>/; publish puts the mark in media/ beside go/.
+    return FramePage("Code " + code.code, "Your UltraStore code", body, "../../media/",
+                     "UltraStore, the ULTRA OS app store. " + Escape(TrimSlash(catalogBase)));
+}
+
+namespace {
+
+// The join and retired pages sit in join/<affiliate>/ and go/<CODE>/,
+// two levels under the publish folder, like the landing page.
+std::string FramedPage(const std::string& title, const std::string& body, const std::string& catalogBase) {
+    return FramePage(title, title, body, "../../media/", "UltraStore, the ULTRA OS app store. " + Escape(TrimSlash(catalogBase)));
+}
+
+} // namespace
+
+std::string JoinPage(const Affiliate& recruiter, const std::string& storeContact, const std::string& catalogBase) {
+    const std::string signUp = storeContact.empty()
+        ? "<p>Signing up is done by the store's team; they create your partner code and tell you your share.</p>\n"
+        : "<p>To sign up, write to the store's team at <strong>" + Escape(storeContact) + "</strong>; they create your partner code and tell you your share.</p>\n";
+    if (!recruiter.enabled) {
+        return FramedPage("This invitation is closed",
+                             "<p>The partner who shared this link is no longer part of the UltraStore partner programme, so this invitation is no longer active.</p>\n" + signUp,
+                             catalogBase);
+    }
+    std::string body =
+        "<p><strong>" + Escape(recruiter.name) + "</strong> invites you to join the UltraStore partner programme.</p>\n"
+        "<p>A partner has a code. Buyers enter it in the store or scan the partner's QR code, and every sale made with it "
+        "credits the partner a share of the price. A partner who was brought in by another partner earns that one a "
+        "recruit share of their sales - once, one level up and no further.</p>\n"
+        "<p>When you sign up, name the partner who invited you so they are credited for bringing you in:</p>\n"
+        "<p>Partner id <code>" + Escape(recruiter.id) + "</code> (" + Escape(recruiter.name) + ")</p>\n";
+    if (!recruiter.contact.empty()) body += "<p class=\"muted\">Questions about the programme go to " + Escape(recruiter.name) + ": " + Escape(recruiter.contact) + "</p>\n";
+    body += signUp;
+    return FramedPage("Become an UltraStore partner", body, catalogBase);
+}
+
+std::string RetiredCodePage(const std::string& code, const std::string& catalogBase) {
+    return FramedPage("This code is no longer valid",
+                         "<p><code>" + Escape(UltraStore::NormalizeCode(code)) + "</code> is no longer an UltraStore code: it was withdrawn, "
+                         "or the partner it belonged to left the programme. The store does not accept it.</p>\n",
+                         catalogBase);
 }
 
 } // namespace UltraStoreAdmin

@@ -158,8 +158,8 @@ Linear / Log / SymLog / Percentile over datasets chosen to suit each.
 
 `SetProjectionKind(...)`: `Vertical` (domain right, value up), `Horizontal`
 (the same content transposed — note the domain runs **downward**, so the first
-category is the top row), `Polar` (domain around the circle, value outward;
-`Space3D` reserved). Content that draws its shapes as subdivided projected
+category is the top row), `Polar` (domain around the circle, value outward),
+`Ternary` (three shares in a triangle, below; `Space3D` reserved). Content that draws its shapes as subdivided projected
 edges renders correctly under all of them — the demo's bars become ring
 sectors under Polar with no chart-side change. Edge-axis furniture follows the
 projection too: the engine derives which end of an edge carries the low value
@@ -187,6 +187,17 @@ o'clock; a radial bar chart sweeps `270`; a donut leaves `0.55` empty) and
 survive projection switches. A radial bar chart runs the value *around* the
 circle: give its value axis `role = ChartAxisRole::Domain` and its category
 axis `ChartAxisRole::Value`.
+
+`Ternary` maps `(u, v)` to a point in the largest equilateral triangle in the
+plot area: `u` and `v` are the shares of the second and third part of a
+three-part composition, and the first is `1 - u - v`. `ChartTernaryProjection`
+gives the corners (`Corner(0)` is the apex A, `1` bottom left B, `2` bottom
+right C; `SetApexDown(true)` turns it over). The map is affine, so polygons,
+hulls, hit regions and the label plan work through it unchanged, and the
+background fills the triangle as the plot area. The engine draws no axis
+furniture for it: a triangle has three edge axes that neither side nor role
+describes, so the chart that uses it draws its own -
+[`UltraCanvasTernaryChart`](UltraCanvasTernaryChart.md) does.
 
 ## Highlights (slot 200 wash / slot 700 overlay)
 
@@ -235,12 +246,26 @@ target.label = "Target window";
   web); a domain axis rules across the value range (spokes under Polar).
   `SetDomainGridAxis(index)` adds the second direction, so a scatter plot
   rules both x and y and a radar draws rings and spokes.
+  `SetExtraGridAxes({index, ...})` rules further axes the same way: the other
+  panes of a chart whose value axes share the plot in sub-bands
+  (`ChartAxis::bandStart` / `bandEnd`), so every pane has its own grid.
 - **Limiters**: `AddLimiter({kind, axisIndex, value, color, width, dashed,
   caption})` draws reference lines (average, target, threshold...); captions
   are solved into the label plan so they never overprint value labels. A
   limiter on a domain axis runs across the value range (a pyramid's average
   age), and `extentStart` / `extentEnd` trim it to part of the plot (one side
-  of a diverging chart).
+  of a diverging chart). A limiter whose value falls outside its axis's band
+  (the whole plot, or the axis's pane) is neither drawn nor captioned, rather
+  than drawn across a neighbouring pane. `captionPlacement` decides where the
+  caption goes: `Solved` (the default) lets the label solver place it beside
+  the line near its far end, anchored half its own width in from the end so it
+  fits there instead of running past the plot edge; `AboveEnd` pins it just
+  above the line there (beside a line that runs up the screen, such as a
+  stage divider, so it stays inside the plot); `BeyondEnd` puts it just past
+  the line's end, outside the plot, in room the engine reserves - the column
+  of limit values a control chart has, clear of the data. Where two captions
+  in that column would overprint, they are spread apart just enough, in order. `GetLimiters()` and `GetHighlights()` return
+  what was added.
 - **Span annotations**: `AddSpanAnnotation({xAxisIndex, yAxisIndex, from, to,
   label, ...})` draws a dimension line between two value-space points, with
   arrowheads and a boxed caption the label plan steers around - the lead time,
@@ -506,7 +531,10 @@ sectors, wedges). The engine then owns hover: MouseMove hit-tests the regions
 without re-running layout or the label solver, `HoveredRegionId()` tells the
 content what to emphasise, `OnHitRegionHoverChanged` notifies subclasses, and
 a region's tooltip is shown through the standard tooltip manager whenever
-tooltips are enabled (`SetEnableTooltips`).
+tooltips are enabled (`SetEnableTooltips`). `HitRegionAt(point, &tooltip)`
+answers what a hover at `point` would find - the region's id (-1 for none)
+and its tooltip, as of the last render - for tests and for a host that shows
+its own read-out.
 
 ## Animation
 

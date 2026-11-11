@@ -2,6 +2,10 @@
 // Implementation of the new RAM disc dialog. Construction follows
 // UltraFilerFindTextDialog (flex-column content, custom Create / Cancel
 // buttons so Create can refuse a bad name without closing).
+// Version: 1.1.3 - the size notes and the name errors go through Tr
+// Version: 1.1.2 - the note under the size is as tall as its text, the window as tall
+//                  as its content, and the buttons sit at the bottom right
+// Version: 1.1.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.1.0 - the facts about the machine come from the caller
 // Author: UltraCanvas Framework
 
@@ -10,12 +14,24 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraLocalisation/UltraLocalisation.h"
+
+#include <cmath>
 
 namespace UltraCanvas {
 
 namespace {
 
 constexpr float kContentWidth = 428.0f;
+constexpr float kPadding = 16.0f;
+constexpr float kSectionGap = 10.0f;    // between the controls and the buttons
+constexpr float kRowGap = 6.0f;         // between the rows of the controls
+constexpr float kLabelHeight = 20.0f;
+constexpr float kFieldHeight = 30.0f;
+constexpr float kButtonRowHeight = 34.0f;
+// Room for the note when it cannot be measured (no render context yet):
+// six lines, the longest the note runs to in English.
+constexpr float kFallbackNoteHeight = 120.0f;
 constexpr uint64_t kMiB = 1024ull * 1024;
 
 // The sizes offered, smallest first. Powers of two because that is how memory
@@ -28,31 +44,34 @@ const uint64_t kPresetSizes[] = {
 
 // What the chosen size means here, and what happens to the files. Shown under
 // the size so nobody is surprised by either.
+// Whole sentences, each translated on its own and joined with a space, so a
+// translation never has to fit around a piece of another sentence.
 std::string PlatformNote(uint64_t largest) {
-    const std::string freeText =
-            largest > 0 ? UltraFilerRamDisks::FormatSize(largest) + " is free now. "
-                        : std::string();
     std::string note;
     if (!UltraFilerRamDisks::TrueRamAvailable()) {
-        note = "No RAM disc driver (ImDisk) is installed, so this disc will be "
+        // Keeps its trailing space: it is the key the catalogues know it by.
+        note = Tr("No RAM disc driver (ImDisk) is installed, so this disc will be "
                "a folder on the system drive, wiped when it is ejected - it "
-               "is not held in memory. ";
-    } else if (UltraFilerRamDisks::SizeIsEnforced()) {
-        note = "The memory is reserved when the disc is created. " + freeText;
+               "is not held in memory. ");
     } else {
-        note = "All RAM discs share the system's memory area, and memory is "
-               "used only as files are written - the size is checked against "
-               "what is free, not reserved. " + freeText;
+        note = UltraFilerRamDisks::SizeIsEnforced()
+                ? Tr("The memory is reserved when the disc is created.")
+                : Tr("All RAM discs share the system's memory area, and memory is "
+                     "used only as files are written - the size is checked against "
+                     "what is free, not reserved.");
+        if (largest > 0)
+            note += " " + TrF("{0} is free now.", UltraFilerRamDisks::FormatSize(largest));
+        note += " ";
     }
-    return note + "Everything on the disc is lost when it is ejected or the "
-                  "computer restarts.";
+    return note + Tr("Everything on the disc is lost when it is ejected or the "
+                     "computer restarts.");
 }
 
 }  // namespace
 
 void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     DialogConfig cfg;
-    cfg.title = "New RAM disc";
+    cfg.title = Tr("New RAM disc");
     cfg.width = 460;
     cfg.height = 330;
     cfg.resizable = false;
@@ -63,18 +82,19 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     CreateDialog(cfg);
 
     layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    layout.SetFlexGap(10);
-    SetPadding(16);
+    layout.SetFlexGap(kSectionGap);
+    SetPadding(kPadding);
 
+    // Its height is set below, once the note has been measured.
     auto content = std::make_shared<UltraCanvasContainer>(
-        "uf-ramdisk-content", 0, 0, kContentWidth, 236);
+        "uf-ramdisk-content", 0, 0, kContentWidth, 200);
     content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    content->layout.SetFlexGap(6);
+    content->layout.SetFlexGap(kRowGap);
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
-        "uf-ramdisk-name-label", 0, 0, kContentWidth, 20, "Name:"));
+        "uf-ramdisk-name-label", 0, 0, kContentWidth, kLabelHeight, Tr("Name:")));
     nameInput_ = std::make_shared<UltraCanvasTextInput>(
-        "uf-ramdisk-name", 0, 0, kContentWidth, 30.0f);
+        "uf-ramdisk-name", 0, 0, kContentWidth, kFieldHeight);
     // 23 on Windows, where the name has to fit the disc's volume label.
     nameInput_->SetMaxLength(static_cast<int>(UltraFilerRamDisks::MaxNameLength()));
     nameInput_->SetText(facts.suggestedName);
@@ -85,9 +105,9 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     content->AddChild(nameInput_);
 
     content->AddChild(std::make_shared<UltraCanvasLabel>(
-        "uf-ramdisk-size-label", 0, 0, kContentWidth, 20, "Size:"));
+        "uf-ramdisk-size-label", 0, 0, kContentWidth, kLabelHeight, Tr("Size:")));
     sizeDropdown_ = std::make_shared<UltraCanvasDropdown>(
-        "uf-ramdisk-size", 0, 0, kContentWidth, 30.0f);
+        "uf-ramdisk-size", 0, 0, kContentWidth, kFieldHeight);
     // Only sizes that fit: a choice that can only fail is not a choice. When
     // free memory cannot be read every size is offered and Create says so if
     // one does not fit.
@@ -104,29 +124,50 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     sizeDropdown_->SetSelectedIndex(preselect, false);
     content->AddChild(sizeDropdown_);
 
+    // The note runs from four lines to six, longer in other languages and
+    // at a larger font: a fixed box cut its last line off. It is measured
+    // at the width it wraps at once it is in the window, and everything
+    // below it - the content, the window - follows from that height.
     auto note = std::make_shared<UltraCanvasLabel>(
-        "uf-ramdisk-note", 0, 0, kContentWidth, 72, PlatformNote(largest));
+        "uf-ramdisk-note", 0, 0, kContentWidth, kFallbackNoteHeight, PlatformNote(largest));
     note->SetWrap(TextWrap::WrapWord);
     content->AddChild(note);
 
     errorLabel_ = std::make_shared<UltraCanvasLabel>(
-        "uf-ramdisk-error", 0, 0, kContentWidth, 20, "");
+        "uf-ramdisk-error", 0, 0, kContentWidth, kLabelHeight, "");
     errorLabel_->SetTextColor(Color(200, 30, 30));
     content->AddChild(errorLabel_);
 
     AddChild(content);
 
+    float noteHeight = kFallbackNoteHeight;
+    {
+        CSSLayout::LayoutContext lctx;
+        const Size2Df measured = note->MeasureOwnContent(kContentWidth, lctx);
+        if (measured.height > 0.0f) noteHeight = std::ceil(measured.height) + 4.0f;
+    }
+    note->SetElementSize(Size2Df(kContentWidth, noteHeight));
+    // Name label, name, size label, size, note, error line - and a gap
+    // between each pair.
+    const float contentHeight = 3 * kLabelHeight + 2 * kFieldHeight + noteHeight + 5 * kRowGap;
+    content->SetElementSize(Size2Df(kContentWidth, contentHeight));
+    SetWindowSize(static_cast<int>(cfg.width),
+                  static_cast<int>(std::ceil(2 * kPadding + contentHeight + kSectionGap +
+                                             kButtonRowHeight)));
+
+    // Create and Cancel at the bottom right, as in every other dialog.
     auto buttons = std::make_shared<UltraCanvasContainer>(
-        "uf-ramdisk-buttons", 0, 0, kContentWidth, 34);
-    buttons->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        "uf-ramdisk-buttons", 0, 0, kContentWidth, kButtonRowHeight);
+    buttons->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center)
+                   .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd);
     buttons->layout.SetFlexGap(8);
     auto createBtn = std::make_shared<UltraCanvasButton>(
         "uf-ramdisk-create", 0, 0, 100, 30);
-    createBtn->SetText("Create");
+    createBtn->SetText(Tr("Create"));
     createBtn->onClick = [this]() { Accept(); };
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "uf-ramdisk-cancel", 0, 0, 100, 30);
-    cancelBtn->SetText("Cancel");
+    cancelBtn->SetText(Tr("Cancel"));
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     buttons->AddChild(createBtn);
     buttons->AddChild(cancelBtn);
@@ -147,10 +188,11 @@ void UltraFilerRamDiskDialog::Accept() {
         if (errorLabel_) {
             const std::size_t maxLength = UltraFilerRamDisks::MaxNameLength();
             errorLabel_->SetText(name.empty()
-                    ? std::string("Give the disc a name.")
+                    ? Tr("Give the disc a name.")
                     : name.size() > maxLength
-                    ? "At most " + std::to_string(maxLength) + " characters."
-                    : std::string("Use letters, digits, '.', '_' and '-' only."));
+                    ? TrN("At most {n} character.", "At most {n} characters.",
+                          static_cast<long long>(maxLength))
+                    : Tr("Use letters, digits, '.', '_' and '-' only."));
         }
         return;
     }

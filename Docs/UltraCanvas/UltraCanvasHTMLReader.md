@@ -518,6 +518,13 @@ goes to `BuildOptions::onLinkActivatedNewWindow` when that is set, else to
 `onLinkActivated` like any other. (Two links to the same address in one
 run of text, one with and one without a new-window target, both open the
 other window.) `<script>` is not run, and `<noscript>` and its content are shown.
+A viewer of local files turns the web off: `SetOpensWebLinks(false)` sends
+`http` / `https` links to `onExternalLink` as `mailto:` goes (file links
+still open in the view), `ScrollBy(dy)` scrolls the page for a host that
+keeps the keyboard, and `Clear()` leaves nothing on show - the page, its
+players and the history let go. The media viewer's HTML preview is built
+that way ([UltraCanvasMediaViewer.md](UltraCanvasMediaViewer.md), *HTML
+pages*).
 `Tests/HTMLPageLoaderTest.cpp` and `Tests/WebViewTest.cpp` cover both
 against a fake web. UltraWeb is the browser around it
 (`Docs/UltraWeb/UltraWeb.md`).

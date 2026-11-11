@@ -1,10 +1,18 @@
 // Apps/Demo/Items/UltraCanvasNodeDiagramExamples.cpp
-// Comprehensive examples for UltraCanvasNodeDiagram v2.2.0
+// Comprehensive examples for UltraCanvasNodeDiagram v2.4.0
+// Version: 2.4.1 - the Friends tab is a personal social network: 24 card
+//                  nodes with interest icons in five circles, two bridges,
+//                  tie-strength link widths, a legend, icon-only cards when
+//                  zoomed out, and a click that describes the person
+// Version: 2.4.0 - the Organization tab's names fit their nodes: the diagram
+//                  uses NodeLabelFit::GrowNode (the nodes grow for their
+//                  names, the degree sizing starts above what a name needs)
+//                  and the sidebar has a LABEL FIT dropdown for all four modes
 // Version: 2.3.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
 //                  card that fills the page area, each diagram filling its tab,
 //                  the Organization sidebar and the edit popup laid out by flex,
 //                  every label and button sized to its text
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-03
 //
 // Demonstrates all features of NodeDiagram 2.x:
 //  - Simple API (graph visualization)
@@ -56,7 +64,10 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasUtils.h"
 #include <memory>
+#include <map>
+#include <algorithm>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -88,39 +99,274 @@ static void AddFillingDiagram(const std::shared_ptr<UltraCanvasContainer>& paren
 }
 
 // =============================================================================
-// 1. SIMPLE API - GRAPH VISUALIZATION (compatible with 1.x)
+// 1. FRIENDS - A PERSONAL SOCIAL NETWORK OF CARD NODES (2.4.0)
 // =============================================================================
 //
-// Quick way to visualize a graph: AddNode with simple parameters,
-// AddLink between ids, run a layout, done.
+// What the first tab shows: one person's social graph. Twenty-four friends
+// in five circles (college, the climbing club, work, the neighbours, family),
+// each friend a card - an icon for what they are into, their name, their
+// interest - as wide as that text needs, and two people who belong to two
+// circles at once, the bridges a plain contact list cannot show.
 //
-// 2.0.2: This now returns the bare diagram (no overlays). The button bar and
-// status are provided by the wrapping container (see CreateNodeDiagramExamples).
+// The 2.3.0 card look (icon disc, sublabel, rounded corners, shadow), the
+// 2.2.0 cluster boxes, cohesion and legend, the 2.4.0 layout that keeps
+// the cards and the boxes apart, and the detail zoom: zoom out and the
+// cards collapse to their icon discs, zoom in and they come back.
+// =============================================================================
+
+namespace {
+
+struct FriendCircle {
+    std::string id;
+    std::string label;
+    Color color;
+};
+
+struct Friend {
+    std::string id;
+    std::string name;
+    std::string interest;    // "Guitar", "Trail running" ...
+    std::string city;
+    std::string icon;        // under media/icons/
+    std::vector<std::string> circles;   // one, or two for a bridge
+};
+
+// A light tint of a circle's colour for the icon disc and the box wash.
+static Color FriendTint(const Color& base, int alpha) {
+    return Color(std::min(255, base.r + 150), std::min(255, base.g + 150), std::min(255, base.b + 150), alpha);
+}
+
+static std::string FriendIcon(const std::string& relativePath) {
+    return NormalizePath(GetResourcesDir() + "media/icons/" + relativePath);
+}
+
+// Built at each call, so the circle names follow the current language.
+static std::vector<FriendCircle> FriendCircles() {
+    return {
+        {"college",   Tr("College"),       Color(79,  70, 229, 255)},
+        {"climbing",  Tr("Climbing club"), Color(22, 163,  74, 255)},
+        {"work",      Tr("Work"),          Color(217, 119,   6, 255)},
+        {"neighbours",Tr("Neighbours"),    Color(13, 148, 136, 255)},
+        {"family",    Tr("Family"),        Color(219,  39, 119, 255)},
+    };
+}
+
+// Built at each call, so the interests follow the current language; the
+// names and cities are people's and places' own.
+static std::vector<Friend> Friends() {
+    return {
+        // College
+        {"alice",  "Alice Weber",    Tr("Guitar"),        "Berlin",     "folder-music.svg",     {"college"}},
+        {"ben",    "Ben Okafor",     Tr("Photos"),   "Hamburg",    "smarthome/camera.svg", {"college"}},
+        {"clara",  "Clara Fischer",  Tr("Books"),         "Leipzig",    "menu/book.svg",        {"college"}},
+        {"david",  "David Lund",     Tr("Film nights"),   "Berlin",     "chatcube/video.svg",   {"college"}},
+        {"emma",   "Emma Rossi",     Tr("Travel"),        "Milan",      "menu/globe.svg",       {"college"}},
+        // College + climbing: a bridge
+        {"maya",   "Maya Schulz",    Tr("Bouldering"),    "Berlin",     "menu/run.svg",         {"college", "climbing"}},
+        // Climbing club
+        {"finn",   "Finn Berg",      Tr("Alpine"), "Munich",     "menu/sun.svg",         {"climbing"}},
+        {"greta",  "Greta Hahn",     Tr("Trail runs"),    "Innsbruck",  "menu/run.svg",         {"climbing"}},
+        {"hugo",   "Hugo Martin",    Tr("Routes"), "Berlin",     "menu/wand.svg",        {"climbing"}},
+        {"ida",    "Ida Nilsson",    Tr("Yoga"),          "Potsdam",    "smarthome/activity.svg", {"climbing"}},
+        // Work
+        {"jonas",  "Jonas Krause",   Tr("Code"),   "Berlin",     "menu/code.svg",        {"work", "neighbours"}},
+        {"kim",    "Kim Park",       Tr("Data"),          "Seoul",      "menu/chart.svg",       {"work"}},
+        {"lena",   "Lena Vogel",     Tr("Design"),        "Berlin",     "menu/palette.svg",     {"work"}},
+        {"marco",  "Marco Conti",    Tr("Coffee"),        "Turin",      "smarthome/kettle.svg", {"work"}},
+        {"nina",   "Nina Adler",     Tr("Podcasts"),      "Vienna",     "chatcube/mic.svg",     {"work"}},
+        {"omar",   "Omar Haddad",    Tr("Chess"),         "Berlin",     "menu/dataset.svg",     {"work"}},
+        // Neighbours
+        {"paula",  "Paula Brandt",   Tr("Gardening"),     "Berlin",     "smarthome/home.svg",   {"neighbours"}},
+        {"quentin","Quentin Roux",   Tr("Games"),   "Berlin",     "menu/monitor.svg",     {"neighbours"}},
+        {"rosa",   "Rosa Ortiz",     Tr("Night owl"),     "Berlin",     "menu/moon.svg",        {"neighbours"}},
+        // Family
+        {"sam",    "Sam Weber",      Tr("Brother"),       "Cologne",    "chatcube/profile.svg", {"family"}},
+        {"tess",   "Tess Weber",     Tr("Mother"),        "Cologne",    "chatcube/profile.svg", {"family"}},
+        {"uli",    "Uli Weber",      Tr("Father"),        "Cologne",    "chatcube/profile.svg", {"family"}},
+        {"vera",   "Vera Lindt",     Tr("Cook"),  "Bonn",       "smarthome/kettle.svg", {"family"}},
+        {"will",   "Will Weber",     Tr("Gamer"), "Cologne",    "menu/monitor.svg",     {"family"}},
+    };
+}
+
+// Who knows whom, and how well (1 = acquaintance, 2 = friend, 3 = close).
+struct FriendTie { std::string a, b; int strength; };
+static const std::vector<FriendTie> kFriendTies = {
+    // You and your circles
+    {"me", "alice", 3}, {"me", "maya", 3}, {"me", "clara", 2}, {"me", "david", 2},
+    {"me", "finn", 2}, {"me", "hugo", 2},
+    {"me", "jonas", 3}, {"me", "lena", 2}, {"me", "kim", 1},
+    {"me", "paula", 2}, {"me", "rosa", 1},
+    {"me", "sam", 3}, {"me", "tess", 3}, {"me", "uli", 3}, {"me", "vera", 2},
+    // College
+    {"alice", "ben", 3}, {"alice", "clara", 2}, {"ben", "david", 2}, {"clara", "emma", 3},
+    {"david", "emma", 1}, {"maya", "alice", 2}, {"maya", "emma", 1},
+    // Climbing
+    {"maya", "finn", 3}, {"maya", "greta", 2}, {"finn", "greta", 3}, {"finn", "hugo", 2},
+    {"hugo", "ida", 2}, {"greta", "ida", 1},
+    // Work
+    {"jonas", "kim", 2}, {"jonas", "lena", 3}, {"kim", "omar", 2}, {"lena", "marco", 2},
+    {"marco", "nina", 3}, {"nina", "omar", 1}, {"lena", "nina", 1},
+    // Neighbours
+    {"jonas", "paula", 2}, {"paula", "quentin", 2}, {"quentin", "rosa", 3}, {"paula", "rosa", 1},
+    // Family
+    {"sam", "tess", 3}, {"sam", "uli", 3}, {"tess", "uli", 3}, {"tess", "vera", 2},
+    {"sam", "will", 2}, {"uli", "will", 2},
+    // Across circles: the ties that make it a network
+    {"ben", "lena", 1},        // college meets work over photography
+    {"ida", "rosa", 1},        // yoga class
+    {"will", "quentin", 2},    // board games
+};
+
+} // namespace
+
+// Who the person is, the number of ties, the circles - for the status line.
+static std::string DescribeFriend(const UltraCanvasNodeDiagram& diagram, const std::string& id) {
+    const NodeDiagramNode* node = diagram.GetNode(id);
+    if (!node) return {};
+    const std::vector<Friend> friendList = Friends();
+    const Friend* person = nullptr;
+    for (const auto& f : friendList) if (f.id == id) person = &f;
+    std::vector<std::string> circleNames;
+    for (const auto& groupId : diagram.GetAllGroupIds()) {
+        const NodeDiagramGroup* group = diagram.GetGroup(groupId);
+        if (!group) continue;
+        if (std::find(group->nodeIds.begin(), group->nodeIds.end(), id) == group->nodeIds.end()) continue;
+        circleNames.push_back(group->label);
+    }
+    std::string circles;
+    for (const auto& name : circleNames)
+        circles = circles.empty() ? name : TrF("{0} and {1}", circles, name);
+    const int friends = diagram.GetNodeDegree(id, NodeDegreeMode::Total);
+    const std::string who = person ? person->name + " - " + person->interest + ", " + person->city : node->label;
+    const std::string ties = TrN("{n} tie", "{n} ties", friends);
+    if (id == "me") return TrF("{0}. {1} - everyone here is one step away.", who, ties);
+    if (circleNames.size() > 1) return TrF("{0}. {1}, a bridge between {2}.", who, ties, circles);
+    if (!circleNames.empty()) return TrF("{0}. {1}, in {2}.", who, ties, circles);
+    return who + ". " + ties + ".";
+}
 
 std::shared_ptr<UltraCanvasNodeDiagram> CreateFriendsNetworkDiagram(
         int x, int y, int w, int h) {
     auto diagram = CreateNodeDiagram("nd_friends", x, y, w, h);
-    
-    diagram->SetTheme(NodeDiagramTheme::Colorful);
-    diagram->SetGridVisible(true, 25.0f);
-    
-    // Just node id, label, position - cannot get simpler
-    diagram->AddNode("alice",   "Alice",   200, 200);
-    diagram->AddNode("bob",     "Bob",     400, 150);
-    diagram->AddNode("charlie", "Charlie", 600, 250);
-    diagram->AddNode("diana",   "Diana",   300, 400);
-    diagram->AddNode("eve",     "Eve",     500, 450);
-    
-    diagram->AddLink("l1", "alice", "bob");
-    diagram->AddLink("l2", "alice", "diana");
-    diagram->AddLink("l3", "bob", "charlie");
-    diagram->AddLink("l4", "charlie", "eve");
-    diagram->AddLink("l5", "diana", "eve");
-    diagram->AddLink("l6", "bob", "diana");
-    
+
+    diagram->SetTheme(NodeDiagramTheme::Minimal);
+    diagram->SetBackgroundColor(Color(247, 248, 251, 255));
+    diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
+    diagram->SetFontFamily("Arial");
+    // 2.4.0: every card as wide as its name and interest need - no ellipsis,
+    // no width chosen by hand.
+    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
+    const std::vector<FriendCircle> friendCircles = FriendCircles();
+    const std::vector<Friend> friendList = Friends();
+    auto circleOf = [&friendCircles](const std::string& id) -> const FriendCircle* {
+        for (const auto& c : friendCircles) if (c.id == id) return &c;
+        return nullptr;
+    };
+
+    // --- You, at the centre of it all ---
+    {
+        NodeDiagramNode me("me", Tr("You"));
+        me.shape = NodeShape::Rectangle;
+        me.width = 120.0;
+        me.height = 46.0;
+        me.fontSize = 12.0;
+        me.fillColor = Color(31, 41, 55, 255);
+        me.borderColor = Color(250, 204, 21, 255);
+        me.borderWidth = 2.5;
+        me.textColor = Color(255, 255, 255, 255);
+        me.sublabel = Tr("Your network");
+        me.sublabelColor = Color(203, 213, 225, 255);
+        me.iconPath = FriendIcon("chatcube/profile.svg");
+        me.iconBackground = Color(250, 204, 21, 255);
+        me.cornerRadius = 12.0;
+        me.shadow = true;
+        diagram->AddNode(me);
+    }
+
+    // --- The friends, one card each ---
+    std::map<std::string, std::vector<std::string>> members;   // circle -> ids
+    for (const auto& person : friendList) {
+        const FriendCircle* home = circleOf(person.circles.front());
+        const Color base = home ? home->color : Color(100, 116, 139, 255);
+
+        NodeDiagramNode card(person.id, person.name);
+        card.shape = NodeShape::Rectangle;
+        card.width = 96.0;      // a floor: the label fit widens a card for a long name
+        card.height = 40.0;
+        card.fontSize = 11.0;
+        card.fillColor = Color(255, 255, 255, 255);
+        card.borderColor = person.circles.size() > 1 ? Color(31, 41, 55, 255) : base;
+        card.borderWidth = person.circles.size() > 1 ? 2.0 : 1.2;   // a bridge is outlined dark
+        card.textColor = Color(31, 41, 55, 255);
+        card.sublabel = person.interest;
+        card.sublabelColor = Color(100, 116, 139, 255);
+        card.iconPath = FriendIcon(person.icon);
+        card.iconBackground = FriendTint(base, 255);
+        card.cornerRadius = 10.0;
+        card.shadow = true;
+        diagram->AddNode(card);
+
+        for (const auto& circleId : person.circles) members[circleId].push_back(person.id);
+    }
+
+    // --- The circles as soft boxes ---
+    for (const auto& circle : friendCircles) {
+        NodeDiagramGroup group(circle.id, circle.label);
+        group.nodeIds = members[circle.id];
+        group.borderColor = Color(circle.color.r, circle.color.g, circle.color.b, 160);
+        group.borderWidth = 1.2;
+        group.fillColor = FriendTint(circle.color, 60);
+        group.labelColor = circle.color;
+        group.labelFontSize = 12.0;
+        group.padding = 14.0;
+        group.cornerRadius = 14.0;
+        group.labelPosition = GroupLabelPosition::TopLeft;
+        diagram->AddGroup(group);
+    }
+
+    // --- The ties: a circle's colour inside it, grey across, width by strength ---
+    int tieNo = 0;
+    for (const auto& tie : kFriendTies) {
+        NodeDiagramLink link("tie" + std::to_string(++tieNo), tie.a, tie.b);
+        link.directed = false;
+        link.lineWidth = 0.8 + 0.9 * tie.strength;
+        const std::string ga = diagram->GetNodeGroupId(tie.a);
+        const std::string gb = diagram->GetNodeGroupId(tie.b);
+        const FriendCircle* shared = nullptr;
+        if (tie.a != "me" && tie.b != "me" && !ga.empty() && ga == gb) shared = circleOf(ga);
+        if (shared) {
+            link.lineColor = Color(shared->color.r, shared->color.g, shared->color.b, 120 + 30 * tie.strength);
+        } else {
+            link.lineColor = Color(148, 163, 184, 90 + 35 * tie.strength);
+        }
+        diagram->AddLink(link);
+    }
+
+    // --- Layout: cards apart, circles together ---
+    diagram->SetLinkDistance(28.0);
+    diagram->SetChargeStrength(-360.0);
+    diagram->SetGroupCohesion(0.12);
+
+    diagram->BuildLegendFromGroups();
+    NodeDiagramLegendConfig legendCfg = diagram->GetLegendConfig();
+    legendCfg.visible = true;
+    legendCfg.position = DiagramPanelPosition::BottomRight;
+    legendCfg.title = Tr("Circles");
+    legendCfg.backgroundColor = Color(255, 255, 255, 235);
+    legendCfg.borderColor = Color(226, 232, 240, 255);
+    diagram->SetLegendConfig(legendCfg);
+
+    // Zoomed out, the cards become their icon discs; a hovered or selected
+    // one still shows its name.
+    diagram->SetDetailZoom(0.5);
+
+    diagram->SetMinimapVisible(false);
+    diagram->SetControlsVisible(false);
+
     diagram->SetLayout(NodeDiagramLayout::ForceDirected);
     diagram->RunLayout();  // Auto-fits at the end (2.0.1)
-    
+
     return diagram;
 }
 
@@ -169,62 +415,62 @@ static std::vector<OrgDepartment> BuildOrgDepartments() {
 
     OrgDepartment sales;
     sales.id = "grp_sales";
-    sales.label = "Sales";
+    sales.label = Tr("Sales");
     sales.color = Color(31, 78, 160, 255);
     sales.hubId = "sales_hub";
-    sales.hubLabel = "Sales Support";
+    sales.hubLabel = Tr("Sales Support");
     sales.members = {
-        {"sales_tl1", "Team Lead A"}, {"sales_tl2", "Team Lead B"},
-        {"sa1", "Analyst 1"}, {"sa2", "Analyst 2"}, {"sa3", "Analyst 3"},
-        {"sa4", "Analyst 4"}, {"sa5", "Analyst 5"}, {"sa6", "Analyst 6"}
+        {"sales_tl1", TrF("Team Lead {0}", "A")}, {"sales_tl2", TrF("Team Lead {0}", "B")},
+        {"sa1", TrF("Analyst {0}", 1)}, {"sa2", TrF("Analyst {0}", 2)}, {"sa3", TrF("Analyst {0}", 3)},
+        {"sa4", TrF("Analyst {0}", 4)}, {"sa5", TrF("Analyst {0}", 5)}, {"sa6", TrF("Analyst {0}", 6)}
     };
     departments.push_back(sales);
 
     OrgDepartment care;
     care.id = "grp_care";
-    care.label = "Customer Care";
+    care.label = Tr("Customer Care");
     care.color = Color(38, 125, 60, 255);
     care.hubId = "care_lead";
-    care.hubLabel = "Quality Control";
+    care.hubLabel = Tr("Quality Control");
     care.members = {
-        {"care1", "Service 1"}, {"care2", "Service 2"}, {"care3", "Service 3"}
+        {"care1", TrF("Service {0}", 1)}, {"care2", TrF("Service {0}", 2)}, {"care3", TrF("Service {0}", 3)}
     };
     departments.push_back(care);
 
     OrgDepartment solutions;
     solutions.id = "grp_solutions";
-    solutions.label = "Business Solutions";
+    solutions.label = Tr("Business Solutions");
     solutions.color = Color(214, 106, 20, 255);
     solutions.hubId = "bsc_hub";
-    solutions.hubLabel = "Solution Center";
+    solutions.hubLabel = Tr("Solution Center");
     solutions.members = {
-        {"bsc_tl1", "Team Lead C"}, {"bsc_tl2", "Team Lead D"},
-        {"agent1", "Agent 1"}, {"agent2", "Agent 2"}, {"agent3", "Agent 3"},
-        {"agent4", "Agent 4"}, {"agent5", "Agent 5"},
-        {"support1", "Online 1"}, {"support2", "Online 2"}
+        {"bsc_tl1", TrF("Team Lead {0}", "C")}, {"bsc_tl2", TrF("Team Lead {0}", "D")},
+        {"agent1", TrF("Agent {0}", 1)}, {"agent2", TrF("Agent {0}", 2)}, {"agent3", TrF("Agent {0}", 3)},
+        {"agent4", TrF("Agent {0}", 4)}, {"agent5", TrF("Agent {0}", 5)},
+        {"support1", TrF("Online {0}", 1)}, {"support2", TrF("Online {0}", 2)}
     };
     departments.push_back(solutions);
 
     OrgDepartment client;
     client.id = "grp_client";
-    client.label = "Client Services";
+    client.label = Tr("Client Services");
     client.color = Color(196, 42, 96, 255);
     client.hubId = "pcs_lead";
-    client.hubLabel = "Client Lead";
+    client.hubLabel = Tr("Client Lead");
     client.members = {
-        {"pcs1", "Analyst A"}, {"pcs2", "Analyst B"},
-        {"pcs3", "Analyst C"}, {"pcs4", "Analyst D"}
+        {"pcs1", TrF("Analyst {0}", "A")}, {"pcs2", TrF("Analyst {0}", "B")},
+        {"pcs3", TrF("Analyst {0}", "C")}, {"pcs4", TrF("Analyst {0}", "D")}
     };
     departments.push_back(client);
 
     OrgDepartment exec;
     exec.id = "grp_exec";
-    exec.label = "Executive";
+    exec.label = Tr("Executive");
     exec.color = Color(94, 53, 160, 255);
     exec.hubId = "director";
-    exec.hubLabel = "Director";
+    exec.hubLabel = Tr("Director");
     exec.members = {
-        {"pm", "Project Mgr"}
+        {"pm", Tr("Project Mgr")}
     };
     departments.push_back(exec);
 
@@ -257,6 +503,7 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
         hub.borderColor = Color(40, 40, 40, 255);
         hub.textColor = Color(255, 255, 255, 255);
         hub.width = hub.height = 46.0;
+        hub.fontSize = 10.0;
         hub.value = 6.0;   // Headcount-ish magnitude, for NodeSizeMode::ByValue
         diagram->AddNode(hub);
 
@@ -272,7 +519,7 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
             node.width = node.height = 34.0;
             node.fontSize = 9.0;
             // Team leads carry more weight than individual contributors.
-            node.value = (member.second.rfind("Team Lead", 0) == 0) ? 3.0 : 1.0;
+            node.value = (member.first.find("_tl") != std::string::npos) ? 3.0 : 1.0;   // the team leads' ids
             diagram->AddNode(node);
 
             groupMembers.push_back(member.first);
@@ -326,13 +573,19 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
         diagram->AddLink(link);
     }
 
+    // --- 2.4.0: the names keep their sizes (10 pt hubs, 9 pt members) and
+    // the nodes grow to hold them. The degree range below starts above what
+    // a member's name needs at 9 pt, so a hub still outgrows a leaf by its
+    // connections and not only by the length of its name.
+    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+
     // --- 2.2.0 features on by default so the tab opens on the good view ---
     NodeDiagramSizing sizing;
     sizing.mode = NodeSizeMode::ByDegree;
     sizing.degreeMode = NodeDegreeMode::Total;
-    sizing.baseSize = 20.0;
-    sizing.minSize = 26.0;
-    sizing.maxSize = 74.0;
+    sizing.baseSize = 36.0;
+    sizing.minSize = 40.0;
+    sizing.maxSize = 130.0;
     diagram->SetNodeSizing(sizing);
 
     diagram->SetGroupCohesion(0.14);
@@ -341,7 +594,7 @@ std::shared_ptr<UltraCanvasNodeDiagram> CreateOrgNetworkDiagram(
     NodeDiagramLegendConfig legendCfg = diagram->GetLegendConfig();
     legendCfg.visible = true;
     legendCfg.position = DiagramPanelPosition::TopRight;
-    legendCfg.title = "Departments";
+    legendCfg.title = Tr("Departments");
     diagram->SetLegendConfig(legendCfg);
 
     diagram->SetMinimapVisible(false);
@@ -406,12 +659,12 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
     };
 
     // ---- Layout algorithm ----
-    addCaption("ndOrgLayoutCap", "LAYOUT");
+    addCaption("ndOrgLayoutCap", Tr("LAYOUT"));
     auto layoutDD = makeDropdown("ndOrgLayout");
-    layoutDD->AddItem("Force-directed", "force");
-    layoutDD->AddItem("Circular", "circular");
-    layoutDD->AddItem("Grid", "grid");
-    layoutDD->AddItem("Hierarchical", "hierarchical");
+    layoutDD->AddItem(Tr("Force-directed"), "force");
+    layoutDD->AddItem(Tr("Circular"), "circular");
+    layoutDD->AddItem(Tr("Grid"), "grid");
+    layoutDD->AddItem(Tr("Hierarchical"), "hierarchical");
     layoutDD->SetSelectedIndex(0);
     layoutDD->onSelectionChanged =
         [diagram, setStatus](int index, const DropdownItem&) {
@@ -422,48 +675,86 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                 default: diagram->SetLayout(NodeDiagramLayout::ForceDirected); break;
             }
             diagram->RunLayout();
-            setStatus("Layout changed - group cohesion only applies to the "
+            setStatus(Tr("Layout changed - group cohesion only applies to the "
                       "force-directed layout, so the cluster boxes look loosest "
-                      "in Grid and Circular.");
+                      "in Grid and Circular."));
         };
     DemoKit::AddStretched(sidebar, layoutDD);
 
     // ---- Node sizing ----
-    addCaption("ndOrgSizeCap", "NODE SIZE (2.2.0)");
+    addCaption("ndOrgSizeCap", Tr("NODE SIZE (2.2.0)"));
     auto sizeDD = makeDropdown("ndOrgSize");
-    sizeDD->AddItem("By degree", "degree");
-    sizeDD->AddItem("By value", "value");
-    sizeDD->AddItem("Fixed", "fixed");
+    sizeDD->AddItem(Tr("By degree"), "degree");
+    sizeDD->AddItem(Tr("By value"), "value");
+    sizeDD->AddItem(Tr("Fixed"), "fixed");
     sizeDD->SetSelectedIndex(0);
     sizeDD->onSelectionChanged =
         [diagram, setStatus](int index, const DropdownItem&) {
             switch (index) {
                 case 1:
                     diagram->SetNodeSizeMode(NodeSizeMode::ByValue);
-                    setStatus("Node size = sqrt(node.value) - here a stand-in for "
-                              "headcount, so leads outrank individual contributors.");
+                    setStatus(Tr("Node size = sqrt(node.value) - here a stand-in for "
+                              "headcount, so leads outrank individual contributors."));
                     break;
                 case 2:
                     diagram->SetNodeSizeMode(NodeSizeMode::Fixed);
-                    setStatus("Fixed size - every node renders at its authored size, "
-                              "and the hubs become impossible to spot.");
+                    setStatus(Tr("Fixed size - every node renders at its authored size "
+                              "(grown where its name needs more), and the hubs "
+                              "become hard to spot."));
                     break;
                 default:
                     diagram->SetNodeSizeMode(NodeSizeMode::ByDegree);
-                    setStatus("Node size = sqrt(connection count) - the department "
-                              "hubs now read as hubs.");
+                    setStatus(Tr("Node size = sqrt(connection count) - the department "
+                              "hubs now read as hubs."));
                     break;
             }
             diagram->FitView();
         };
     DemoKit::AddStretched(sidebar, sizeDD);
 
+    // ---- Label fit (2.4.0) ----
+    addCaption("ndOrgFitCap", Tr("LABEL FIT (2.4.0)"));
+    auto fitDD = makeDropdown("ndOrgFit");
+    fitDD->AddItem(Tr("Grow node"), "grow");
+    fitDD->AddItem(Tr("Shrink font"), "shrink");
+    fitDD->AddItem(Tr("Shrink, then grow"), "both");
+    fitDD->AddItem(Tr("Overflow (2.3)"), "overflow");
+    fitDD->SetSelectedIndex(0);
+    fitDD->onSelectionChanged =
+        [diagram, setStatus](int index, const DropdownItem&) {
+            switch (index) {
+                case 1:
+                    diagram->SetLabelFit(NodeLabelFit::ShrinkFont);
+                    setStatus(Tr("Shrink font - the nodes keep the size the data gives "
+                              "them and a name is drawn smaller, down to 7 pt; what "
+                              "still does not fit ends in an ellipsis."));
+                    break;
+                case 2:
+                    diagram->SetLabelFit(NodeLabelFit::ShrinkThenGrow);
+                    setStatus(Tr("Shrink, then grow (the component's default) - a name "
+                              "shrinks to 7 pt first, and a node that still cannot "
+                              "hold it grows."));
+                    break;
+                case 3:
+                    diagram->SetLabelFit(NodeLabelFit::Overflow);
+                    setStatus(Tr("Overflow - the 2.3 behaviour: names run out of their "
+                              "nodes and over their neighbours."));
+                    break;
+                default:
+                    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+                    setStatus(Tr("Grow node - every name keeps its size and its node "
+                              "grows to hold it; neighbours move aside."));
+                    break;
+            }
+        };
+    DemoKit::AddStretched(sidebar, fitDD);
+
     // ---- Degree counting mode ----
-    addCaption("ndOrgDegreeCap", "DEGREE COUNTS");
+    addCaption("ndOrgDegreeCap", Tr("DEGREE COUNTS"));
     auto degreeDD = makeDropdown("ndOrgDegree");
-    degreeDD->AddItem("In + out (total)", "total");
-    degreeDD->AddItem("Incoming only", "in");
-    degreeDD->AddItem("Outgoing only", "out");
+    degreeDD->AddItem(Tr("In + out (total)"), "total");
+    degreeDD->AddItem(Tr("Incoming only"), "in");
+    degreeDD->AddItem(Tr("Outgoing only"), "out");
     degreeDD->SetSelectedIndex(0);
     degreeDD->onSelectionChanged =
         [diagram, setStatus](int index, const DropdownItem&) {
@@ -473,19 +764,19 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                                              : NodeDegreeMode::Total;
             diagram->SetNodeSizing(sizing);
             diagram->FitView();
-            setStatus("Degree mode changed - links here are undirected, so "
+            setStatus(Tr("Degree mode changed - links here are undirected, so "
                       "Incoming/Outgoing split each pair by the order it was "
-                      "declared in.");
+                      "declared in."));
         };
     DemoKit::AddStretched(sidebar, degreeDD);
 
     // ---- Clustering strength ----
-    addCaption("ndOrgCohesionCap", "CLUSTER COHESION");
+    addCaption("ndOrgCohesionCap", Tr("CLUSTER COHESION"));
     auto cohesionDD = makeDropdown("ndOrgCohesion");
-    cohesionDD->AddItem("Medium (0.14)", "medium");
-    cohesionDD->AddItem("Off (0.0)", "off");
-    cohesionDD->AddItem("Light (0.04)", "light");
-    cohesionDD->AddItem("Strong (0.20)", "strong");
+    cohesionDD->AddItem(Tr("Medium (0.14)"), "medium");
+    cohesionDD->AddItem(Tr("Off (0.0)"), "off");
+    cohesionDD->AddItem(Tr("Light (0.04)"), "light");
+    cohesionDD->AddItem(Tr("Strong (0.20)"), "strong");
     cohesionDD->SetSelectedIndex(0);
     cohesionDD->onSelectionChanged =
         [diagram, setStatus](int index, const DropdownItem&) {
@@ -497,23 +788,23 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             diagram->SetLayout(NodeDiagramLayout::ForceDirected);
             diagram->RunLayout();
             if (strength <= 0.0) {
-                setStatus("Cohesion off - repulsion scatters department members "
+                setStatus(Tr("Cohesion off - repulsion scatters department members "
                           "and the cluster boxes grow until they overlap. This is "
-                          "why the force needs to exist.");
+                          "why the force needs to exist."));
             } else {
-                setStatus("Cohesion applied - members are pulled toward their "
-                          "department centroid during layout.");
+                setStatus(Tr("Cohesion applied - members are pulled toward their "
+                          "department centroid during layout."));
             }
         };
     DemoKit::AddStretched(sidebar, cohesionDD);
 
     // ---- Link routing ----
-    addCaption("ndOrgLinkCap", "LINK STYLE");
+    addCaption("ndOrgLinkCap", Tr("LINK STYLE"));
     auto linkDD = makeDropdown("ndOrgLink");
-    linkDD->AddItem("Straight", "straight");
-    linkDD->AddItem("Bezier", "bezier");
-    linkDD->AddItem("Smooth step", "smoothstep");
-    linkDD->AddItem("Step", "step");
+    linkDD->AddItem(Tr("Straight"), "straight");
+    linkDD->AddItem(Tr("Bezier"), "bezier");
+    linkDD->AddItem(Tr("Smooth step"), "smoothstep");
+    linkDD->AddItem(Tr("Step"), "step");
     linkDD->SetSelectedIndex(0);
     linkDD->onSelectionChanged =
         [diagram, setStatus](int index, const DropdownItem&) {
@@ -525,18 +816,18 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                 diagram->SetLinkStyle(linkId, style);
             }
             diagram->SetDefaultLinkStyle(style);
-            setStatus("Link routing changed for all links.");
+            setStatus(Tr("Link routing changed for all links."));
         };
     DemoKit::AddStretched(sidebar, linkDD);
 
     // ---- Node shape ----
-    addCaption("ndOrgShapeCap", "NODE SHAPE");
+    addCaption("ndOrgShapeCap", Tr("NODE SHAPE"));
     auto shapeDD = makeDropdown("ndOrgShape");
-    shapeDD->AddItem("Square", "square");
-    shapeDD->AddItem("Circle", "circle");
-    shapeDD->AddItem("Rounded square", "rounded");
-    shapeDD->AddItem("Diamond", "diamond");
-    shapeDD->AddItem("Hexagon", "hexagon");
+    shapeDD->AddItem(Tr("Square"), "square");
+    shapeDD->AddItem(Tr("Circle"), "circle");
+    shapeDD->AddItem(Tr("Rounded square"), "rounded");
+    shapeDD->AddItem(Tr("Diamond"), "diamond");
+    shapeDD->AddItem(Tr("Hexagon"), "hexagon");
     shapeDD->SetSelectedIndex(0);
     shapeDD->onSelectionChanged =
         [diagram, setStatus](int index, const DropdownItem&) {
@@ -548,17 +839,21 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             for (const auto& nodeId : diagram->GetAllNodeIds()) {
                 diagram->SetNodeShape(nodeId, shape);
             }
-            setStatus("Node shape changed for all nodes.");
+            // 2.4.0: a diamond holds less text than a square, so the nodes
+            // grow to fit their names and the layout spreads to fit them.
+            diagram->FitNodesToLabels();
+            setStatus(Tr("Node shape changed for all nodes - the ones whose names "
+                      "need more room in the new shape grew."));
         };
     DemoKit::AddStretched(sidebar, shapeDD);
 
     // ---- Theme ----
-    addCaption("ndOrgThemeCap", "THEME");
+    addCaption("ndOrgThemeCap", Tr("THEME"));
     auto themeDD = makeDropdown("ndOrgTheme");
-    themeDD->AddItem("Minimal", "minimal");
-    themeDD->AddItem("Default", "default");
-    themeDD->AddItem("Professional", "professional");
-    themeDD->AddItem("Dark", "dark");
+    themeDD->AddItem(Tr("Minimal"), "minimal");
+    themeDD->AddItem(Tr("Default"), "default");
+    themeDD->AddItem(Tr("Professional"), "professional");
+    themeDD->AddItem(Tr("Dark"), "dark");
     themeDD->SetSelectedIndex(0);
     themeDD->onSelectionChanged =
         [diagram, setStatus](int index, const DropdownItem&) {
@@ -567,8 +862,8 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                                    : (index == 3) ? NodeDiagramTheme::Dark
                                                   : NodeDiagramTheme::Minimal;
             diagram->SetTheme(theme);
-            setStatus("Theme changed - themes set the canvas and grid colors; the "
-                      "per-node department colors set by this example stay put.");
+            setStatus(Tr("Theme changed - themes set the canvas and grid colors; the "
+                      "per-node department colors set by this example stay put."));
         };
     DemoKit::AddStretched(sidebar, themeDD);
 
@@ -587,33 +882,33 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
         return box;
     };
 
-    addToggle("ndOrgGroups", "Cluster boxes", true,
+    addToggle("ndOrgGroups", Tr("Cluster boxes"), true,
         [diagram, setStatus](bool on) {
             diagram->SetGroupsVisible(on);
-            setStatus(on ? "Cluster containers shown - each box auto-fits its member "
-                           "nodes and follows them when they are dragged."
-                         : "Cluster containers hidden - the departments are now only "
-                           "readable from the node colors.");
+            setStatus(on ? Tr("Cluster containers shown - each box auto-fits its member "
+                           "nodes and follows them when they are dragged.")
+                         : Tr("Cluster containers hidden - the departments are now only "
+                           "readable from the node colors."));
         });
 
-    addToggle("ndOrgLegend", "Color legend", true,
+    addToggle("ndOrgLegend", Tr("Color legend"), true,
         [diagram, setStatus](bool on) {
             diagram->SetLegendVisible(on);
-            setStatus(on ? "Legend shown (screen space - it does not pan or zoom "
-                           "with the diagram)."
-                         : "Legend hidden.");
+            setStatus(on ? Tr("Legend shown (screen space - it does not pan or zoom "
+                           "with the diagram).")
+                         : Tr("Legend hidden."));
         });
 
-    addToggle("ndOrgGrid", "Background grid", false,
+    addToggle("ndOrgGrid", Tr("Background grid"), false,
         [diagram](bool on) { diagram->SetGridVisible(on, 25.0); });
 
-    addToggle("ndOrgMinimap", "Minimap", false,
+    addToggle("ndOrgMinimap", Tr("Minimap"), false,
         [diagram](bool on) { diagram->SetMinimapVisible(on); });
 
-    addToggle("ndOrgControls", "Zoom controls", false,
+    addToggle("ndOrgControls", Tr("Zoom controls"), false,
         [diagram](bool on) { diagram->SetControlsVisible(on); });
 
-    addToggle("ndOrgSnap", "Snap to grid", false,
+    addToggle("ndOrgSnap", Tr("Snap to grid"), false,
         [diagram](bool on) { diagram->SetSnapToGrid(on); });
 
     AddFillingDiagram(tab, diagram);
@@ -783,7 +1078,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
         idStream << "node_" << (++st->nodeCounter);
         std::string newId = idStream.str();
         
-        std::string defaultLabel = "Node " + std::to_string(st->nodeCounter);
+        std::string defaultLabel = TrF("Node {0}", st->nodeCounter);
         auto [w, h] = sizeForLabel(defaultLabel);
         
         NodeDiagramNode n(newId, defaultLabel);
@@ -801,9 +1096,9 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
         
         OpenCustomEditorPopup(st, newId, n.label, n.fillColor, /*isNewNode=*/true);
         if (statusLabel) {
-            statusLabel->SetText("Node created at right-click position - "
+            statusLabel->SetText(Tr("Node created at right-click position - "
                                   "Edit label and color in the popup, click OK; "
-                                  "Cancel will remove it.");
+                                  "Cancel will remove it."));
         }
     };
     
@@ -814,8 +1109,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
         if (!node) return;
         OpenCustomEditorPopup(st, nodeId, node->label, node->fillColor, /*isNewNode=*/false);
         if (statusLabel) {
-            statusLabel->SetText("Editing node '" + nodeId + "' - "
-                                  "Change label/color and click OK.");
+            statusLabel->SetText(TrF("Editing node '{0}' - Change label/color and click OK.", nodeId));
         }
     };
     
@@ -829,16 +1123,15 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
             // First click: remember the source
             st->connectFirstNodeId = nodeId;
             if (statusLabel) {
-                statusLabel->SetText("Connect: source = '" + nodeId +
-                                      "'. Click target node to create link, "
-                                      "or Esc / Select to cancel.");
+                statusLabel->SetText(TrF("Connect: source = '{0}'. Click target node to create link, "
+                                         "or Esc / Select to cancel.", nodeId));
             }
         } else {
             // Second click: create link from A to B (skip if same node)
             if (nodeId == st->connectFirstNodeId) {
                 if (statusLabel) {
-                    statusLabel->SetText("Connect: same node clicked twice - "
-                                          "cancelled. Click two different nodes.");
+                    statusLabel->SetText(Tr("Connect: same node clicked twice - "
+                                          "cancelled. Click two different nodes."));
                 }
                 st->connectFirstNodeId.clear();
                 return;
@@ -849,9 +1142,9 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
             st->diagram->AddLink(linkId, st->connectFirstNodeId, nodeId);
             
             if (statusLabel) {
-                statusLabel->SetText("Connect: link created '" + st->connectFirstNodeId +
-                                      "' -> '" + nodeId + "'. Click another source "
-                                      "node to continue, or Select to exit Connect.");
+                statusLabel->SetText(TrF("Connect: link created '{0}' -> '{1}'. Click another source "
+                                         "node to continue, or Select to exit Connect.",
+                                         st->connectFirstNodeId, nodeId));
             }
             // Stay in Connect mode so the user can chain links
             st->connectFirstNodeId.clear();
@@ -877,7 +1170,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     st->popup = popup;
     
     // Popup title
-    auto popupTitle = DemoKit::CreateHeading("popupTitle", "Edit Node");
+    auto popupTitle = DemoKit::CreateHeading("popupTitle", Tr("Edit Node"));
     popupTitle->SetFontSize(14);
     popupTitle->SetTextColor(Color(40, 50, 110, 255));
     DemoKit::Add(popup, popupTitle);
@@ -887,13 +1180,13 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     labelRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     DemoKit::Add(popup, labelRow);
 
-    auto lblCap = DemoKit::CreateText("popupLblCap", "Label:");
+    auto lblCap = DemoKit::CreateText("popupLblCap", Tr("Label:"));
     lblCap->SetFontSize(11);
     DemoKit::Add(labelRow, lblCap);
     
     auto labelInput = std::make_shared<UltraCanvasTextInput>(
         "popupLabelInput", 0, 0, POPUP_W - 82, 24);
-    labelInput->SetPlaceholder("Type a label...");
+    labelInput->SetPlaceholder(Tr("Type a label..."));
     st->labelInput = labelInput;
     DemoKit::Add(labelRow, labelInput, 1);
     
@@ -902,7 +1195,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     colorRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     DemoKit::Add(popup, colorRow);
 
-    auto colCap = DemoKit::CreateText("popupColCap", "Color:");
+    auto colCap = DemoKit::CreateText("popupColCap", Tr("Color:"));
     colCap->SetFontSize(11);
     colCap->SetMargin(0, 2, 0, 0);
     DemoKit::Add(colorRow, colCap);
@@ -940,7 +1233,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     auto buttonRow = DemoKit::CreateRow("popupButtonRow", 6, true);
     DemoKit::Add(popup, buttonRow);
     
-    auto btnDelete = MakeNdButton("popupBtnDelete", "Delete", BTN_W, BTN_H);
+    auto btnDelete = MakeNdButton("popupBtnDelete", Tr("Delete"), BTN_W, BTN_H);
     btnDelete->SetBackgroundColor(Color(220, 90, 90, 255));
     btnDelete->onClick = [st, statusLabel]() {
         if (!st->diagram || st->editingNodeId.empty()) {
@@ -953,7 +1246,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
         st->pendingNewNodeId.clear();   // 2.0.5
         if (st->popup) st->popup->SetVisible(false);
         if (statusLabel) {
-            statusLabel->SetText("Node '" + id + "' deleted.");
+            statusLabel->SetText(TrF("Node '{0}' deleted.", id));
         }
     };
     DemoKit::Add(buttonRow, btnDelete);
@@ -961,7 +1254,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     auto buttonGap = std::make_shared<UltraCanvasContainer>("popupButtonGap");
     DemoKit::Add(buttonRow, buttonGap, 1);
     
-    auto btnCancel = MakeNdButton("popupBtnCancel", "Cancel", BTN_W, BTN_H);
+    auto btnCancel = MakeNdButton("popupBtnCancel", Tr("Cancel"), BTN_W, BTN_H);
     btnCancel->onClick = [st, statusLabel]() {
         // 2.0.5: If this popup was opened for a JUST-CREATED node (right-click
         // or Add Node button), Cancel reverts the creation by deleting the
@@ -977,15 +1270,15 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
         if (st->popup) st->popup->SetVisible(false);
         if (statusLabel) {
             if (revert) {
-                statusLabel->SetText("Cancelled - node '" + revertedId + "' removed.");
+                statusLabel->SetText(TrF("Cancelled - node '{0}' removed.", revertedId));
             } else {
-                statusLabel->SetText("Edit cancelled.");
+                statusLabel->SetText(Tr("Edit cancelled."));
             }
         }
     };
     DemoKit::Add(buttonRow, btnCancel);
     
-    auto btnOk = MakeNdButton("popupBtnOk", "OK", BTN_W, BTN_H);
+    auto btnOk = MakeNdButton("popupBtnOk", Tr("OK"), BTN_W, BTN_H);
     btnOk->SetBackgroundColor(Color(80, 140, 220, 255));
     btnOk->onClick = [st, statusLabel]() {
         if (!st->diagram || st->editingNodeId.empty()) {
@@ -1023,7 +1316,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
         st->pendingNewNodeId.clear();  // 2.0.5: confirm the creation
         if (st->popup) st->popup->SetVisible(false);
         if (statusLabel) {
-            statusLabel->SetText("Node '" + id + "' updated.");
+            statusLabel->SetText(TrF("Node '{0}' updated.", id));
         }
     };
     DemoKit::Add(buttonRow, btnOk);
@@ -1516,11 +1809,11 @@ void RegisterNodeDiagramExamples(/* DemoRegistry& registry */) {
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiagramExamples() {
     // ---- Page: the tabs fill the display area, each diagram scrolls and
     // zooms inside its tab ----
-    auto root = DemoKit::CreatePage("ndDemoRoot", "Node Diagram",
-        "Friends: a force-directed network. Organization: cluster containers, "
+    auto root = DemoKit::CreatePage("ndDemoRoot", Tr("Node Diagram"),
+        Tr("Friends: a personal network of card nodes in five circles. Organization: cluster containers, "
         "degree-based node sizing and a color legend, with controls for every "
         "option. Custom: click 'Add Node' or right-click the canvas to create "
-        "nodes, double-click a node to edit its label and color.");
+        "nodes, double-click a node to edit its label and color."));
     root->SetFillsArea(true);
 
     auto card = DemoKit::CreateCard("ndCard");
@@ -1539,12 +1832,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     
     // The status line under the button bar; every tab reports to it.
     auto statusLabel = DemoKit::CreateCaption(
-        "ndStatus", "Ready - Click 'Add Node' or right-click on the canvas "
-                    "(Custom tab) to start building. Wheel to zoom, drag to pan.");
+        "ndStatus", Tr("Ready - Click 'Add Node' or right-click on the canvas "
+                    "(Custom tab) to start building. Wheel to zoom, drag to pan."));
     statusLabel->SetTextColor(Color(90, 90, 100, 255));
     
     // ---- Friends tab (read-only example graph) ----
     auto friendsDiag = CreateFriendsNetworkDiagram(4, 4, INNER_W, INNER_H);
+    // A click names the person: who they are, how many ties, which circles.
+    friendsDiag->onNodeClick = [diagram = friendsDiag.get(), statusLabel](const std::string& id) {
+        if (statusLabel) statusLabel->SetText(DescribeFriend(*diagram, id));
+    };
     auto friendsTab = std::make_shared<UltraCanvasContainer>(
         "ndTabFriends", 0, 0, INNER_W, INNER_H);
     friendsTab->SetBackgroundColor(Color(255, 255, 255, 255));
@@ -1562,9 +1859,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
                                           customState, statusLabel);
     auto customDiag = customState->diagram;  // For activeDiagram routing
 
-    tabs->AddTab("Friends", friendsTab);
-    tabs->AddTab("Organization", orgTab);
-    tabs->AddTab("Custom", customTab);
+    tabs->AddTab(Tr("Friends"), friendsTab);
+    tabs->AddTab(Tr("Organization"), orgTab);
+    tabs->AddTab(Tr("Custom"), customTab);
     tabs->SetActiveTab(0);
     
     DemoKit::Add(card, tabs, 1);
@@ -1587,16 +1884,17 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         *isCustomTab = custom;
         if (statusLabel) {
             if (custom) {
-                statusLabel->SetText("Custom - Click 'Add Node' or right-click on the "
+                statusLabel->SetText(Tr("Custom - Click 'Add Node' or right-click on the "
                                       "canvas to create a node. Double-click any node "
-                                      "to edit its label/color.");
+                                      "to edit its label/color."));
             } else if (newIdx == TAB_ORG) {
-                statusLabel->SetText("Organization - Cluster containers, degree-based "
+                statusLabel->SetText(Tr("Organization - Cluster containers, degree-based "
                                       "node sizing and a color legend. Use the controls "
-                                      "on the left to switch every option on and off.");
+                                      "on the left to switch every option on and off."));
             } else {
-                statusLabel->SetText("Friends - Force-directed graph. "
-                                      "Use mouse wheel to zoom, drag to pan.");
+                statusLabel->SetText(Tr("Friends - your network: 24 people in five circles, "
+                                      "two of them bridges. Click a person, zoom out to "
+                                      "see the circles as icons, drag to pan."));
             }
         }
     };
@@ -1610,17 +1908,17 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     const int BTN_W_CLEAR = 90;
     const int BTN_H = 32;
     
-    auto btnSelect = MakeNdButton("ndBtnSelect", "Select", BTN_W, BTN_H);
-    auto btnConnect = MakeNdButton("ndBtnConnect", "Connect", BTN_W, BTN_H);
-    auto btnReset = MakeNdButton("ndBtnReset", "Reset", BTN_W, BTN_H);
+    auto btnSelect = MakeNdButton("ndBtnSelect", Tr("Select"), BTN_W, BTN_H);
+    auto btnConnect = MakeNdButton("ndBtnConnect", Tr("Connect"), BTN_W, BTN_H);
+    auto btnReset = MakeNdButton("ndBtnReset", Tr("Reset"), BTN_W, BTN_H);
     
-    auto btnAddNode = MakeNdButton("ndBtnAddNode", "Add Node", BTN_W_ADD, BTN_H);
+    auto btnAddNode = MakeNdButton("ndBtnAddNode", Tr("Add Node"), BTN_W_ADD, BTN_H);
     btnAddNode->SetBackgroundColor(Color(80, 160, 80, 255));
     
-    auto btnDelete = MakeNdButton("ndBtnDelete", "Delete", BTN_W, BTN_H);
+    auto btnDelete = MakeNdButton("ndBtnDelete", Tr("Delete"), BTN_W, BTN_H);
     btnDelete->SetBackgroundColor(Color(220, 90, 90, 255));
     
-    auto btnClearAll = MakeNdButton("ndBtnClearAll", "Clear All", BTN_W_CLEAR, BTN_H);
+    auto btnClearAll = MakeNdButton("ndBtnClearAll", Tr("Clear All"), BTN_W_CLEAR, BTN_H);
     btnClearAll->SetBackgroundColor(Color(160, 90, 130, 255));
     
     // Custom-only buttons start hidden (Friends is the initial tab)
@@ -1641,8 +1939,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
             customState->connectFirstNodeId.clear();
         }
         if (statusLabel) {
-            statusLabel->SetText("Select mode - Click nodes/links to select. "
-                                  "Shift+click toggles. Delete key removes.");
+            statusLabel->SetText(Tr("Select mode - Click nodes/links to select. "
+                                  "Shift+click toggles. Delete key removes."));
         }
     };
     
@@ -1656,14 +1954,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
             customState->mode = CustomMode::Connect;
             customState->connectFirstNodeId.clear();
             if (statusLabel) {
-                statusLabel->SetText("Connect mode (Custom) - Click first node, then "
+                statusLabel->SetText(Tr("Connect mode (Custom) - Click first node, then "
                                       "click second node to create a link. Esc / Select "
-                                      "to exit.");
+                                      "to exit."));
             }
         } else if (statusLabel) {
-            statusLabel->SetText("Connect (Friends) - Drag from a handle (the small "
+            statusLabel->SetText(Tr("Connect (Friends) - Drag from a handle (the small "
                                   "circles on a node) to another to create a link. "
-                                  "Switch to Custom for click-A-then-B mode.");
+                                  "Switch to Custom for click-A-then-B mode."));
         }
     };
     
@@ -1677,10 +1975,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
             // Custom: only re-fit; preserves user's nodes (Clear All wipes).
             if (!*isCustomTab) {
                 d->RunLayout();
-                statusLabel->SetText("Reset - Layout re-run and view fitted.");
+                statusLabel->SetText(Tr("Reset - Layout re-run and view fitted."));
             } else {
                 d->FitView();
-                statusLabel->SetText("Reset - View re-fitted to content.");
+                statusLabel->SetText(Tr("Reset - View re-fitted to content."));
             }
         }
     };
@@ -1707,7 +2005,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         std::ostringstream idStream;
         idStream << "node_" << (++customState->nodeCounter);
         std::string newId = idStream.str();
-        std::string defaultLabel = "Node " + std::to_string(customState->nodeCounter);
+        std::string defaultLabel = TrF("Node {0}", customState->nodeCounter);
         
         // 2.0.4: auto-size to fit label
         double w = 60.0, h = 60.0;
@@ -1727,9 +2025,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         
         OpenCustomEditorPopup(customState, newId, n.label, n.fillColor, /*isNewNode=*/true);
         if (statusLabel) {
-            statusLabel->SetText("Node added at viewport center - "
+            statusLabel->SetText(Tr("Node added at viewport center - "
                                   "Edit label/color and click OK; "
-                                  "Cancel will remove it.");
+                                  "Cancel will remove it."));
         }
     };
     
@@ -1742,17 +2040,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         auto selectedLinkIds = d->GetSelectedLinkIds();
         if (selectedNodeIds.empty() && selectedLinkIds.empty()) {
             if (statusLabel) {
-                statusLabel->SetText("Delete - Nothing selected. Click a node or link "
-                                      "first, then Delete.");
+                statusLabel->SetText(Tr("Delete - Nothing selected. Click a node or link "
+                                      "first, then Delete."));
             }
             return;
         }
         d->DeleteSelected();
         if (statusLabel) {
-            std::ostringstream s;
-            s << "Deleted " << selectedNodeIds.size() << " node(s) and "
-              << selectedLinkIds.size() << " link(s).";
-            statusLabel->SetText(s.str());
+            statusLabel->SetText(TrF("Deleted {0} and {1}.",
+                TrN("{n} node", "{n} nodes", static_cast<long long>(selectedNodeIds.size())),
+                TrN("{n} link", "{n} links", static_cast<long long>(selectedLinkIds.size()))));
         }
     };
     
@@ -1767,8 +2064,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         customState->connectFirstNodeId.clear();
         if (customState->popup) customState->popup->SetVisible(false);
         if (statusLabel) {
-            statusLabel->SetText("Cleared - Canvas is empty. Use Add Node or "
-                                  "right-click to start a new diagram.");
+            statusLabel->SetText(Tr("Cleared - Canvas is empty. Use Add Node or "
+                                  "right-click to start a new diagram."));
         }
     };
     

@@ -7,18 +7,42 @@
 //     handshake on curl_easy_perform and then exposes ws_send/ws_recv).
 //   - one receiver thread that loops curl_ws_recv and dispatches frames
 //     to the global UltraNetWebSocketCallbacks bag.
-//   - a send mutex so concurrent SendText/SendBinary/Close/Ping calls
-//     don't interleave on the same easy handle.
+//   - one I/O mutex around every curl_ws_recv and curl_ws_send: an easy
+//     handle is not thread-safe, and the receiver reads while other threads
+//     send. It is held for the call only, never while a callback runs (a
+//     callback may send).
+//
+// Keeping it alive. A PING from the server is answered with a PONG carrying
+// its payload - here, not by libcurl: in connect-only mode libcurl 8.5 does
+// not, and a server that pings (uvicorn: every 20 s, closing after 20 s more)
+// dropped every idle connection after about 40 s; a libcurl that would answer
+// by itself is told not to (CURLWS_NOAUTOPONG), so there is one PONG each.
+// With options.pingIntervalMs the client pings too, and a peer that sends
+// nothing at all - not even the PONG - for two intervals is taken as gone:
+// onError once, the state Closed, so its owner reconnects instead of waiting
+// on a dead connection.
+//
+// A message is assembled from however many reads it takes, up to
+// options.maxMessageBytes (64 MB unless set): past it the connection ends
+// with close 1009 before the memory is spent. Reconnecting is the owner's.
+// Version: 0.4.2 - through the proxy setting, as a CONNECT tunnel (UltraNetCurlProxy.h)
+// Version: 0.4.1 - options.maxMessageBytes: a message past it ends the connection (1009) before it is
+//                  assembled; the reconnect options, which nothing read, removed
+// Version: 0.4.0 - PINGs answered; pingIntervalMs pings and notices a silent peer; reads and writes
+//                  of the one easy handle under one mutex; a frame larger than a read is delivered
+//                  whole, not as one message per read
 // Version: 0.3.0 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetWebSocket.h"
 #include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetCurlProxy.h"
 
 #include <curl/curl.h>
 #include <curl/websockets.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -34,7 +58,9 @@ struct WsConnection {
     UltraNetHandle handle = UltraNetInvalidHandle;
     CURL* easy = nullptr;
     curl_slist* slist = nullptr;
-    std::mutex sendMutex;
+    std::mutex ioMutex;                 // every curl_ws_recv and curl_ws_send
+    int pingIntervalMs = 0;             // 0: the client does not ping
+    std::size_t maxMessageBytes = 0;    // 0: no limit
     std::atomic<UltraNetWebSocketState> state{UltraNetWebSocketState::Closed};
     std::atomic<bool> running{false};
     // The receiver holds a shared_ptr to its connection, so the last
@@ -101,17 +127,51 @@ std::shared_ptr<WsConnection> FindConnection(UltraNetHandle h) {
     return it == G().connections.end() ? nullptr : it->second;
 }
 
+// One frame out, under the I/O mutex.
+CURLcode SendLocked(WsConnection& c, const void* data, std::size_t len, unsigned flags) {
+    std::lock_guard<std::mutex> lk(c.ioMutex);
+    std::size_t sent = 0;
+    return curl_ws_send(c.easy, data, len, &sent, 0, flags);
+}
+
 void ReceiverLoop(std::shared_ptr<WsConnection> c) {
     // Buffer for partial fragments; libcurl returns per-chunk metadata.
     std::vector<uint8_t> textAcc, binaryAcc;
     bool inText = false, inBinary = false;
 
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point lastHeard = Clock::now();     // anything from the peer
+    Clock::time_point lastPing = lastHeard;
+    const auto interval = std::chrono::milliseconds(c->pingIntervalMs);
+
     char buf[8192];
     while (c->running.load(std::memory_order_acquire)) {
         std::size_t nread = 0;
         const struct curl_ws_frame* meta = nullptr;
-        CURLcode rc = curl_ws_recv(c->easy, buf, sizeof buf, &nread, &meta);
+        CURLcode rc;
+        {
+            std::lock_guard<std::mutex> lk(c->ioMutex);
+            rc = curl_ws_recv(c->easy, buf, sizeof buf, &nread, &meta);
+        }
         if (rc == CURLE_AGAIN) {
+            if (c->pingIntervalMs > 0) {
+                const Clock::time_point now = Clock::now();
+                if (now - lastHeard > 2 * interval) {
+                    // Not even the PONG: the connection is gone without a
+                    // close (a network that dropped, a peer that died).
+                    const auto cbs = CallbacksSnapshot();
+                    c->state.store(UltraNetWebSocketState::Closed, std::memory_order_release);
+                    if (cbs.onError)
+                        cbs.onError(c->handle, "no answer from the other side for " +
+                                                   std::to_string(2 * c->pingIntervalMs) + " ms");
+                    break;
+                }
+                if (now - lastPing >= interval &&
+                    c->state.load(std::memory_order_acquire) == UltraNetWebSocketState::Open) {
+                    lastPing = now;
+                    SendLocked(*c, "", 0, CURLWS_PING);
+                }
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
             continue;
         }
@@ -121,6 +181,7 @@ void ReceiverLoop(std::shared_ptr<WsConnection> c) {
             if (cbs.onError) cbs.onError(c->handle, curl_easy_strerror(rc));
             break;
         }
+        lastHeard = Clock::now();
         if (!meta) continue;
 
         const unsigned flags = meta->flags;
@@ -128,9 +189,10 @@ void ReceiverLoop(std::shared_ptr<WsConnection> c) {
 
         if (flags & CURLWS_PING) {
             std::vector<uint8_t> payload(buf, buf + nread);
+            // Answered at once, with the same payload (RFC 6455 5.5.3).
+            if (c->state.load(std::memory_order_acquire) == UltraNetWebSocketState::Open)
+                SendLocked(*c, payload.data(), payload.size(), CURLWS_PONG);
             if (cbs.onPing) cbs.onPing(c->handle, payload);
-            // libcurl auto-replies with pong by default; explicit Pong send
-            // is omitted to match that behaviour.
             continue;
         }
         if (flags & CURLWS_PONG) {
@@ -151,10 +213,31 @@ void ReceiverLoop(std::shared_ptr<WsConnection> c) {
             break;
         }
 
+        // A message is whole when this frame has no bytes left - libcurl
+        // hands a frame larger than the buffer over in parts (bytesleft) -
+        // and no fragment follows it (CURLWS_CONT).
+        const bool messageDone = meta->bytesleft == 0 && !(flags & CURLWS_CONT);
+        // A message past the limit is not assembled: the connection ends
+        // (1009, message too big) before the memory is spent - checked by
+        // what is already here plus what this frame still announces.
+        if ((flags & (CURLWS_TEXT | CURLWS_BINARY)) && c->maxMessageBytes > 0) {
+            const std::size_t held = (flags & CURLWS_TEXT) ? textAcc.size() : binaryAcc.size();
+            const curl_off_t left = meta->bytesleft > 0 ? meta->bytesleft : 0;
+            if (held + nread + static_cast<std::size_t>(left) > c->maxMessageBytes) {
+                static const unsigned char tooBig[] = {0x03, 0xF1, 'm', 'e', 's', 's', 'a', 'g', 'e',
+                                                       ' ', 't', 'o', 'o', ' ', 'b', 'i', 'g'};   // 1009
+                SendLocked(*c, tooBig, sizeof tooBig, CURLWS_CLOSE);
+                c->state.store(UltraNetWebSocketState::Closed, std::memory_order_release);
+                if (cbs.onError)
+                    cbs.onError(c->handle, "a message larger than " + std::to_string(c->maxMessageBytes) +
+                                               " bytes (UltraNetWebSocketOptions::maxMessageBytes)");
+                break;
+            }
+        }
         if (flags & CURLWS_TEXT) {
             if (!inText) { textAcc.clear(); inText = true; }
             textAcc.insert(textAcc.end(), buf, buf + nread);
-            if (!(flags & CURLWS_CONT)) {
+            if (messageDone) {
                 if (cbs.onText) cbs.onText(c->handle,
                     std::string(textAcc.begin(), textAcc.end()));
                 textAcc.clear();
@@ -163,7 +246,7 @@ void ReceiverLoop(std::shared_ptr<WsConnection> c) {
         } else if (flags & CURLWS_BINARY) {
             if (!inBinary) { binaryAcc.clear(); inBinary = true; }
             binaryAcc.insert(binaryAcc.end(), buf, buf + nread);
-            if (!(flags & CURLWS_CONT)) {
+            if (messageDone) {
                 if (cbs.onBinary) cbs.onBinary(c->handle, binaryAcc);
                 binaryAcc.clear();
                 inBinary = false;
@@ -222,11 +305,20 @@ UltraNetHandle UltraNet_WebSocketConnect(
 
     curl_easy_setopt(c->easy, CURLOPT_URL, url.c_str());
     curl_easy_setopt(c->easy, CURLOPT_CONNECT_ONLY, 2L);   // WebSocket connect-only
+    // The proxy setting; through an HTTP proxy the upgrade goes in a CONNECT
+    // tunnel, which every proxy passes, rather than as a proxied GET.
+    ultranet_curlproxy::ApplyFor(c->easy, url, /*tunnel=*/true);
     curl_easy_setopt(c->easy, CURLOPT_CONNECTTIMEOUT_MS,
                      static_cast<long>(options.connectTimeoutMs));
     curl_easy_setopt(c->easy, CURLOPT_SSL_VERIFYPEER, options.verifyTls ? 1L : 0L);
     curl_easy_setopt(c->easy, CURLOPT_SSL_VERIFYHOST, options.verifyTls ? 2L : 0L);
     curl_easy_setopt(c->easy, CURLOPT_NOSIGNAL, 1L);
+#ifdef CURLWS_NOAUTOPONG
+    // The receiver answers PINGs itself (one PONG each, every libcurl).
+    curl_easy_setopt(c->easy, CURLOPT_WS_OPTIONS, static_cast<long>(CURLWS_NOAUTOPONG));
+#endif
+    c->pingIntervalMs = options.pingIntervalMs > 0 ? options.pingIntervalMs : 0;
+    c->maxMessageBytes = options.maxMessageBytes;
 
     UltraNetHttpHeaders headers = options.headers;
     if (!options.subprotocols.empty()) {
@@ -269,9 +361,7 @@ namespace {
             return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                          "WebSocket not open");
         }
-        std::lock_guard<std::mutex> lk(c.sendMutex);
-        std::size_t sent = 0;
-        CURLcode rc = curl_ws_send(c.easy, data, len, &sent, 0, flags);
+        CURLcode rc = SendLocked(c, data, len, flags);
         if (rc != CURLE_OK) {
             return UltraNetResult::Error(UltraNetResultCode::SendFailed,
                                          curl_easy_strerror(rc));

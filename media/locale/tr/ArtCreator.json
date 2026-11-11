@@ -1,0 +1,22 @@
+{
+  "@language": "tr",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Metin eklendi: düzenlemek için Metin aracıyla üzerine tıklayın veya çift tıklayın",
+  "Changed the text": "Metin değiştirildi",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Sayfaya tıklayıp yazın veya düzenlemek için bir metne tıklayın; yukarıdaki çubuk metnin yazı tipini, boyutunu, stilini, hizalamasını ve aralığını ayarlar. Escape, Ctrl+Enter veya dışarıya tıklama işlemi bitirir",
+  "Delete Text": "Metin silme",
+  "Edit Text": "Metin düzenleme",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Metin düzenleniyor: Enter yeni bir satır başlatır; Escape, Ctrl+Enter veya dışarıya tıklama işlemi bitirir",
+  "Letter Spacing": "Harf aralığı",
+  "Line Spacing": "Satır aralığı",
+  "Nothing was typed": "Hiçbir şey yazılmadı",
+  "Text Alignment": "Metin hizalaması",
+  "Text Bold": "Kalın metin",
+  "Text Font": "Metin yazı tipi",
+  "Text Italic": "İtalik metin",
+  "Text Size": "Metin boyutu",
+  "Text Strikethrough": "Üstü çizili metin",
+  "Text Underline": "Altı çizili metin",
+  "The text was emptied, so it was deleted": "Metin boşaltıldı, bu yüzden silindi",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Yeni metin yazılıyor: Enter yeni bir satır başlatır; Escape, Ctrl+Enter veya dışarıya tıklama işlemi bitirir"
+}

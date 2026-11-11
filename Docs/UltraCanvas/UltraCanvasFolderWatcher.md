@@ -34,8 +34,43 @@ caller's decision, not the filesystem's.
 | `Stop()` | Stop watching. Joins the backend thread, so **no callback runs after it returns** — which is what makes it safe for the callback to capture the caller. Safe to call twice, and safe if `Watch()` failed. |
 | `IsWatching()` / `WatchedPath()` | What is being watched, if anything. |
 | `NativeBackendAvailable()` | *static.* Whether this build has a backend at all. False means every `Watch()` will fail, so a caller can skip trying. |
+| `UltraCanvasFolderWatchHold hold(folders)` | Keeps every watch in the process off `folders` and everything below them for as long as `hold` lives — see [*Letting go of a folder about to change*](#letting-go-of-a-folder-about-to-change). `hold.Released()` says how many running watches it released. |
 
 The destructor calls `Stop()`.
+
+## Letting go of a folder about to change
+
+On Windows a watch holds its folder open (with delete sharing, so the folder
+itself can still be deleted), and Windows will not let a folder go while
+anything holds it. On FAT and exFAT, the file systems of most USB sticks and
+external drives, a deleted folder stays listed as *delete pending* until the
+last handle closes. On every Windows file system, a folder **above** a held one
+cannot be renamed or moved, not even to the Recycle Bin. A second file display
+showing a subfolder of the folder being deleted was enough to cause this.
+
+So whatever deletes, renames or moves a folder holds watches off it until it is
+done:
+
+```cpp
+#include "UltraCanvasFolderWatcher.h"
+
+{
+    UltraCanvasFolderWatchHold hold({folder});   // folder: UTF-8
+    // ... delete, rename or move `folder` ...
+}   // watches may start there again
+```
+
+Taking the hold releases every running watch on those folders or below them.
+Each one stops as if it had died: its `onFailed` runs, at once and on the
+hold's thread, and its `WatchedPath()` stays, so its owner polls that path
+instead, as it does for a pulled USB stick. While the hold lives, `Watch()` on
+a path there answers false, so a display refreshing in the meantime polls
+rather than watching again. Holds may overlap, and each lifts only its own
+folders. Paths are compared by their names, without regard to case on Windows
+(`Lei2` is not below `Lei`). A hold is safe from any thread.
+
+`UltraCanvasFilerWidget` takes one for a delete (permanent or to the trash) and
+for a move, for as long as the queue runs, and for a folder rename.
 
 ## A watch that dies on its own
 
@@ -69,8 +104,21 @@ but the watch is alive and a rescan covers it.
 | Platform | Backend |
 |---|---|
 | Linux, BSD | `inotify` — one watch on the directory, a thread waiting on the queue and a self-pipe so `Stop()` wakes it immediately |
-| Windows | `ReadDirectoryChangesW` — overlapped, on a directory handle opened with `FILE_SHARE_DELETE` so watching a folder never blocks renaming or deleting it |
-| macOS, Android, WebAssembly | none yet — `Watch()` returns false and the caller polls |
+| Windows | `ReadDirectoryChangesW` — overlapped, on a directory handle opened with `FILE_SHARE_DELETE`, so the watched folder itself can be renamed or deleted; for what the handle still blocks, see [*Letting go of a folder about to change*](#letting-go-of-a-folder-about-to-change) |
+| macOS | FSEvents — a stream on the folder, delivered on a private serial dispatch queue; events for subfolders are dropped, so it answers for this folder only like the others |
+| Android, WebAssembly | none yet — `Watch()` returns false and the caller polls |
+
+Every backend is already listening when `Watch()` returns — inotify adds its
+watch, Windows issues its first read and FSEvents registers its stream before
+it returns — so a change made right after is reported. That is what lets a
+caller start the watch first and list the folder second without a gap between
+the two.
+
+On macOS the watch ends when FSEvents reports `RootChanged` (the folder was
+deleted, moved away or replaced) or `Unmount` for the volume it is on. Events
+FSEvents could not keep apart — `MustScanSubDirs`, or dropped by the kernel or
+the user-space daemon — count as a change, never as a failure: the stream is
+alive and a rescan covers them.
 
 Platform code lives under `UltraCanvas/OS/<Platform>/`; the core file holds no
 operating system calls at all. A platform is wired up by dropping its backend

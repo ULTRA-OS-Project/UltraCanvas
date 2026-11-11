@@ -47,6 +47,7 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
   - [Ultra AI module](#ultra-ai-module)
   - [UltraCloud module](#ultracloud-module)
   - [UltraCrypt module](#ultracrypt-module)
+  - [UltraMail: signed and encrypted mail](#ultramail-signed-and-encrypted-mail)
   - [UltraDatabase module](#ultradatabase-module)
   - [Ultra Net module](#ultra-net-module)
   - [UltraVault module](#ultravault-module)
@@ -72,6 +73,7 @@ their *License* is likewise marked **—** (OS component).
 | Library | Website | Source code | License |
 |---|---|---|---|
 | ALSA | [alsa-project.org](https://www.alsa-project.org/) | [github.com/alsa-project/alsa-lib](https://github.com/alsa-project/alsa-lib) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| aom (libaom) | [aomedia.org](https://aomedia.org/) | [aomedia.googlesource.com/aom](https://aomedia.googlesource.com/aom) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | AVFoundation | [developer.apple.com](https://developer.apple.com/documentation/avfoundation) | — | — |
 | brotli | [brotli.org](https://www.brotli.org/) | [github.com/google/brotli](https://github.com/google/brotli) | [MIT](https://spdx.org/licenses/MIT.html) |
 | Cairo | [cairographics.org](https://www.cairographics.org/) | [gitlab.freedesktop.org/cairo/cairo](https://gitlab.freedesktop.org/cairo/cairo) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
@@ -102,6 +104,7 @@ their *License* is likewise marked **—** (OS component).
 | GutenPrint (runtime, not linked) | [gutenprint.sourceforge.net](http://gutenprint.sourceforge.net/) | [sourceforge.net/p/gimp-print/source](https://sourceforge.net/p/gimp-print/source/) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | gumbo | [github.com/google/gumbo-parser](https://github.com/google/gumbo-parser) | [github.com/google/gumbo-parser](https://github.com/google/gumbo-parser) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | HarfBuzz | [harfbuzz.github.io](https://harfbuzz.github.io/) | [github.com/harfbuzz/harfbuzz](https://github.com/harfbuzz/harfbuzz) | [MIT](https://spdx.org/licenses/MIT.html) |
+| Highway | [google.github.io/highway](https://google.github.io/highway/) | [github.com/google/highway](https://github.com/google/highway) | [Apache 2.0](https://spdx.org/licenses/Apache-2.0.html) or [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | ICA (ImageCaptureCore) | [developer.apple.com](https://developer.apple.com/documentation/imagecapturecore) | — | — |
 | ICU | [icu.unicode.org](https://icu.unicode.org/) | [github.com/unicode-org/icu](https://github.com/unicode-org/icu) | [Unicode](https://spdx.org/licenses/Unicode-3.0.html) |
 | ImageMagick | [imagemagick.org](https://imagemagick.org/) | [github.com/ImageMagick/ImageMagick](https://github.com/ImageMagick/ImageMagick) | [ImageMagick](https://spdx.org/licenses/ImageMagick.html) |
@@ -117,8 +120,10 @@ their *License* is likewise marked **—** (OS component).
 | libcdr | [wiki.documentfoundation.org](https://wiki.documentfoundation.org/DLP/Libraries/libcdr) | [github.com/LibreOffice/libcdr](https://github.com/LibreOffice/libcdr) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libdatachannel (+ libjuice, usrsctp, libsrtp, plog) | [libdatachannel.org](https://libdatachannel.org/) | [github.com/paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libcurl | [curl.se/libcurl](https://curl.se/libcurl/) | [github.com/curl/curl](https://github.com/curl/curl) | [curl](https://spdx.org/licenses/curl.html) |
+| libde265 | [github.com/strukturag/libde265](https://github.com/strukturag/libde265) | [github.com/strukturag/libde265](https://github.com/strukturag/libde265) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libheif | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libjpeg-turbo | [libjpeg-turbo.org](https://libjpeg-turbo.org/) | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
+| libjxl | [jpeg.org/jpegxl](https://jpeg.org/jpegxl/) | [github.com/libjxl/libjxl](https://github.com/libjxl/libjxl) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libmspack | [cabextract.org.uk/libmspack](https://www.cabextract.org.uk/libmspack/) | [github.com/kyz/libmspack](https://github.com/kyz/libmspack) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libogg | [xiph.org/ogg](https://xiph.org/ogg/) | [github.com/xiph/ogg](https://github.com/xiph/ogg) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libopusenc | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/libopusenc](https://github.com/xiph/libopusenc) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -139,6 +144,7 @@ their *License* is likewise marked **—** (OS component).
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
 | MariaDB Connector/C (libmariadb; the MySQL / MariaDB driver) | [mariadb.com](https://mariadb.com/docs/connectors/mariadb-connector-c/) | [github.com/mariadb-corporation/mariadb-connector-c](https://github.com/mariadb-corporation/mariadb-connector-c) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| GPGME (GnuPG Made Easy; UltraMail's OpenPGP) | [gnupg.org](https://www.gnupg.org/software/gpgme/) | [dev.gnupg.org/source/gpgme](https://dev.gnupg.org/source/gpgme/) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | Noto Color Emoji / Noto Emoji (fonts, bundled) | [fonts.google.com/noto](https://fonts.google.com/noto/specimen/Noto+Color+Emoji) | [github.com/googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) | [OFL 1.1](https://spdx.org/licenses/OFL-1.1.html) |
@@ -158,7 +164,7 @@ their *License* is likewise marked **—** (OS component).
 | SANE | [sane-project.org](http://www.sane-project.org/) | [gitlab.com/sane-project/backends](https://gitlab.com/sane-project/backends) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | SQLite | [sqlite.org](https://www.sqlite.org/) | [github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) | [public domain](https://spdx.org/licenses/blessing.html) |
 | Tesseract | [tesseract-ocr.github.io](https://tesseract-ocr.github.io/) | [github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
-| TDLib (loaded at run time, not linked; the prebuilt 1.8.69 fetched at configure time by `cmake/UltraCanvasTdlib.cmake`) | [core.telegram.org/tdlib](https://core.telegram.org/tdlib) | [github.com/tdlib/td](https://github.com/tdlib/td) | [BSL 1.0](https://spdx.org/licenses/BSL-1.0.html) |
+| TDLib - Telegram Database Library (loaded at run time, not linked; the prebuilt 1.8.69 fetched at configure time by `cmake/UltraCanvasTdlib.cmake`) | [core.telegram.org/tdlib](https://core.telegram.org/tdlib) | [github.com/tdlib/td](https://github.com/tdlib/td) | [BSL 1.0](https://spdx.org/licenses/BSL-1.0.html) |
 | TinyXML2 | [leethomason.github.io/tinyxml2](https://leethomason.github.io/tinyxml2/) | [github.com/leethomason/tinyxml2](https://github.com/leethomason/tinyxml2) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
 | V4L2 (Video4Linux2) | [docs.kernel.org](https://docs.kernel.org/userspace-api/media/v4l/v4l2.html) | [git.linuxtv.org/v4l-utils.git](https://git.linuxtv.org/v4l-utils.git) | — |
@@ -200,7 +206,8 @@ their *License* is likewise marked **—** (OS component).
 | String formatting | fmt | fmt | fmt |
 | Image processing & resize | libvips | libvips | libvips |
 | Bitmap codecs (via libvips) | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp |
-| GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif | giflib, libheif |
+| GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif (+ libde265, aom): reads HEIC, reads and writes AVIF; no HEIC writing - its encoder, x265, is GPL and kept out of the core | giflib, libheif (+ libde265, aom, dav1d, kvazaar): reads and writes HEIC and AVIF. MSYS2's libheif links x265 and x264 (GPL), so CI rebuilds the same release without them and kvazaar (BSD) writes HEIC, 4:2:0 only |
+| JPEG XL (via libvips) | libjxl, where the distribution's libvips has it (Ubuntu 24.04 does, 22.04 does not) | libjxl (+ brotli, Highway) | libjxl (+ brotli, Highway), through libvips' `vips-jxl` module |
 | BMP / PCX coders (via libvips) | ImageMagick | ImageMagick | ImageMagick |
 | Audio playback & capture | miniaudio (bundled) → ALSA / PulseAudio | miniaudio (bundled) → CoreAudio | miniaudio (bundled) → WASAPI |
 | Audio encode FLAC / OGG / Opus / MP3, decode OGG / Opus | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) |
@@ -481,6 +488,32 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
+| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`); RSA and ECDSA P-256 signature checks (`UltraCryptPublicKey.h`: JWS RS256 / ES256) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
+
+> OpenSSL is UltraCrypt's second backend, for the public-key infrastructure
+> libsodium has nothing of; libsodium stays the backend of everything
+> UltraCanvas encrypts of its own (`Docs/Modules/UltraCrypt/README.md` §5.11).
+> UltraCrypt links libcrypto privately, so the installed package names no
+> OpenSSL target for a consumer to find. Without OpenSSL 3 (the browser
+> build, a system without it) the X.509 calls answer `BackendUnavailable`.
+
+### UltraMail: signed and encrypted mail
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| S/MIME (sign, check, encrypt, decrypt; PKCS #12 import) | UltraCrypt's X.509 and CMS (OpenSSL 3, above) | UltraCrypt's X.509 and CMS | UltraCrypt's X.509 and CMS |
+| OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | GPGME from vcpkg (`MacOS/deps/vcpkg.json`, bundled with libassuan and libgpg-error); GnuPG the user's, from Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite | GPGME (MSYS2 `gpgme`, which brings GnuPG); x64 only - not built on Windows on Arm, where GPGME ended the process |
+
+> Both are optional and soft-failing (`UltraCrypt_IsX509Available()`,
+> `ULTRAMAIL_HAVE_OPENPGP`): without one, a message in that form is shown as
+> one this build cannot check, and the compose window does not offer it.
+> GPGME is LGPL-2.1 and linked as the system's shared library; it starts the
+> user's GnuPG (`gpg`, `gpg-agent`) as programs, so GnuPG must be installed for
+> OpenPGP to work at run time (`OpenPgpAvailable()` says whether it is). On
+> macOS it is looked for where Homebrew (Apple silicon and Intel), GPG Suite
+> and MacPorts install it, since a Finder-started app's `PATH` has none of
+> them; Homebrew's GnuPG also needs `pinentry-mac` named in
+> `~/.gnupg/gpg-agent.conf` to ask for a passphrase outside a terminal.
 
 > libsodium is optional to the *build* only: configure succeeds without it, but
 > UltraCrypt then reports `BackendUnavailable` from every operation, and the

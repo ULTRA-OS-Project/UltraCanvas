@@ -13,6 +13,10 @@
 //   <out>/restricted/<sha256>.<format>      the packages of paid apps - the server hands
 //                                           these out only through a buyer's short-lived
 //                                           signed URL (the access scheme, see the README)
+// Version: 0.3.2 - a join page per partner, join/<affiliate>/index.html, behind the join QR code; a closed or
+//                  no-longer-valid page replaces the page of a partner or code switched off or removed (the database remembers
+//                  every page ever published), since the uploader never deletes
+// Version: 0.3.1 - a code's landing page is go/<CODE>/index.html, so the QR link <base>/go/<CODE> serves it as it is
 // Version: 0.3.0 - the codes in the catalog, their landing pages under go/
 // Version: 0.2.0 - trusted_keys from the active keys
 // Version: 0.1.0
@@ -44,7 +48,9 @@ struct PublishReport {
     std::string signaturePath;
     std::string publicKeyHex;
     size_t apps = 0, components = 0, packagesCopied = 0, mediaCopied = 0;
-    size_t codePages = 0;            // go/<CODE>.html written, one per code in the catalog
+    size_t codePages = 0;            // go/<CODE>/index.html written, one per code in the catalog
+    size_t joinPages = 0;            // join/<affiliate>/index.html written, one per enabled partner
+    size_t retiredPages = 0;         // the pages of codes out of the catalog and of partners switched off or removed, saying so
     std::vector<std::string> warnings;
 };
 

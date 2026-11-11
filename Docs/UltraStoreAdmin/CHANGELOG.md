@@ -1,3 +1,65 @@
+#### 2026-11-11 *0.1.8*
+- **The join and retired pages in the page frame.** The partner join page
+  and the pages a withdrawn code or a closed invitation leave behind wear
+  the frame the code landing page and the payment service's pages have
+  (`PageFrame.h`): the ULTRA OS mark, the store's colours, a dark look where
+  the browser asks for one, instead of their own plain stylesheet.
+
+#### 2026-11-11 *0.1.7*
+- **Featured.** An app can be marked as featured - the form's checkbox, or
+  `app set <id> featured true` - and the catalog carries it as `featured`:
+  the store shows the newest featured app as its Discover hero and the
+  featured apps as *Editor's picks*.
+- **The join QR code's link opened nothing.** `publish` now writes a page
+  per partner as `join/<affiliate>/index.html`, behind
+  `<catalog base>/join/<affiliate>`: who invites, what a partner earns, the
+  recruiter's contact when they gave one, the partner id to name when
+  signing up so the recruiter is credited, and the store's contact to sign
+  up with - the new setting `store.contact`, on the Settings page and
+  `settings set store.contact <address>`.
+- **A stale page no longer outlives its code or partner.** The uploader
+  never deletes on the server, so a page once published stayed reachable
+  after its code was switched off or its partner left. `admin.sqlite` now
+  remembers every page ever published (`published_pages`, schema 4), and
+  each publish writes one for every entry: a code out of the catalog, a
+  partner switched off, and a code or a partner removed outright get a
+  page that says so (*no longer valid*, *this invitation is closed*),
+  which the next upload puts in place of the old one. The publish report,
+  in the window and on the command line, counts the code pages, the join
+  pages and these retired pages.
+- **The shop design's look.** The window wears the store's tokens - a
+  white ground, ink text, the UltraStore blue as the one accent, Manrope
+  headings over Inter, rounded surfaces, pill buttons - at the denser
+  sizes its forms need (`AdminTheme.h`).
+
+#### 2026-11-10 *0.1.6*
+- **The partner landing pages** (`go/<CODE>/`) have the look of the
+  payment service's pages: the same stylesheet, the ULTRA OS mark at the
+  top, a dark look where the browser asks for one. Publish copies the mark
+  from the framework's media folder into the publish folder's `media/`.
+
+#### 2026-11-01 *0.1.5*
+- **A code's QR link opened nothing.** The QR code and `code link` give
+  `<catalog base>/go/<CODE>`, but `publish` wrote the landing page as
+  `go/<CODE>.html`, which a static web server does not serve for that URL
+  without a rewrite rule. The page is now `go/<CODE>/index.html`, which
+  every web server serves for `go/<CODE>` as it is.
+
+#### 2026-10-28 *0.1.4*
+- **`sale sync`** and the window's *Sync sales*: the paid orders pulled
+  from the payment service and recorded once each in the ledger, with the
+  partners' credits; the `payment.url`, `payment.licence_key` and
+  `payment.token` settings, the first two published in the catalog so
+  every store finds the service and its licence key.
+- **Publish warns about a restricted package on an app with a trial**:
+  *Try* installs the same package and would fail without a licence, so
+  the package of an app with a trial stays public.
+
+#### 2026-10-27 *0.1.3*
+- The buttons that open a dialog say what they do without a trailing
+  ellipsis: *Choose*, *Export .pub*, *Add release*, *Add package*, *Add
+  screenshot*, *QR*, *Join QR*.
+
 #### 2026-10-27 *0.1.2*
 - **Affiliates and codes.** Partners with a share of each sale made with
   their codes; two tiers and no more: a partner recruited by another names

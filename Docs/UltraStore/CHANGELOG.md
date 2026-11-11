@@ -1,3 +1,90 @@
+#### 2026-11-11 *0.1.11*
+- **The payment service runs on PostgreSQL in production**; SQLite is for
+  tests and development only. `ULTRASTORE_PAY_DB` is a database URL, one
+  database layer hides the two engines, and the tests run the whole
+  purchase on both, PostgreSQL through a service container in CI.
+
+#### 2026-11-11 *0.1.10*
+- **Proxy settings** on the Settings page: the catalog, the downloads and
+  the purchases go through the proxy every ULTRA OS application shares, and
+  the button opens the dialog that sets it.
+
+#### 2026-11-11 *0.1.9*
+- The README and `Apps/UltraStore/keys/README.md` describe what a build
+  now trusts: the production server as `ULTRASTORE_SERVERS`'s default and
+  `publish.pub` as the compiled-in key, instead of saying neither exists.
+- **Every text the window shows goes through UltraLocalisation.** The
+  pages, the app page, the settings, the jobs' progress and messages are
+  `Tr`, `TrF` and `TrN` sites, and `media/locale/en/UltraStore.json` is
+  their English catalogue, so a translation reaches the store by dropping
+  a `<lang>/UltraStore.json` beside it.
+- **The shop design.** The window follows the canvas *UltraStore Shop
+  Design* (2026-11-05): a white ground, ink text, the UltraStore blue as
+  the one accent, Manrope over Inter, 20 px card corners, pill buttons and
+  chips. A header with the wordmark, the sections as pills (Updates with
+  its count), the search pill, Refresh and Settings replaces the sidebar.
+  Discover shows the featured app as a hero, the categories as pills, *New
+  and updated* as a numbered list, *Free essentials* as cards, the four
+  reasons for the store and the partner / discount code; a search turns it
+  into the results. Categories gets the filters on the left (the categories
+  with their counts, All / Free / Paid, open source only, hide installed),
+  the count and the sort order (newest release, name, price), the cards in
+  a grid. The app page is the shop's: the breadcrumb, the facts as pills,
+  what this machine downloads, the screenshots, *About*, *What's new* with
+  the version history, *What it installs* with the sizes, the information
+  column with the links, *More from* the publisher. Not taken from the
+  design: *Sign in* (no accounts), the share and wish-list buttons, the
+  footer's links, the *Runs on* filter.
+- **`featured`.** An app the admin marks as featured (the catalog's new
+  `featured` flag) is the Discover hero - the newest one this machine can
+  install - and the featured apps are the *Editor's picks* row; without a
+  pick the hero is the newest release.
+
+#### 2026-11-10 *0.1.8*
+- **The payment pages look like the product.** The checkout hand-off,
+  the thank-you and cancel pages and the receipt share one frame: the
+  ULTRA OS mark and the name at the top, the content on a card in the
+  store's colours, a dark look where the browser asks for one. The
+  receipt opens as a page from the store's *Receipt* button and stays
+  text for a script. The stylesheet and the mark are served by the
+  service itself.
+
+#### 2026-10-28 *0.1.7*
+- **After the purchase.** The licence carries the app's update period as
+  the catalog had it when the order was paid, and the store holds to it:
+  an update outside the purchase is refused, the card shows *Buy update*,
+  *Update all* counts it as "to buy anew", the *Bought* badge names the
+  terms. The licence reaches the app as `apps/<id>/licence.ulic`, written
+  at install and at purchase, found and verified by the app with
+  `FindLicenceFile` and `ReadLicenceFile` (`Purchase.h`); `ultrastore
+  licence <app-id>` shows a purchase and checks the file. An order the
+  store was closed in the middle of is remembered and picked up at the
+  next start: paid meanwhile, the licence is kept; still open, the checkout
+  opens again.
+- **Buy through the payment service.** A catalog that names one
+  (`payment_url`, `licence_key`) makes *Buy* ask it for the order with the
+  code in force, open the checkout in the browser, wait for the payment
+  (the download panel shows it; half an hour at most), verify the licence
+  against the catalog's key and keep it in the registry; a bought app
+  shows *Bought*, *Install* instead of *Buy*, its receipt number and a
+  *Receipt* button, and its restricted package is fetched through the URL
+  the service signs for the order, on every install and update. Without
+  a payment service *Buy* still goes to the publisher's page. `ultrastore
+  buy` and `licences` on the command line.
+
+#### 2026-10-27 *0.1.6*
+- **The payment service** (`Server/UltraStorePay`): a Skrill Quick Checkout
+  session per purchase, priced from the signed catalog with the code in
+  force; Skrill's status report verified (the signature, the amount, the
+  currency) before an order is paid; the licence an app checks offline
+  (Ed25519-signed), the numbered receipt, the signed ten-minute URLs for
+  the packages of paid apps, and the sales for the admin backend's ledger.
+  The store's *Buy* through it is the next step.
+
+#### 2026-10-27 *0.1.5*
+- The buttons that open a dialog or a page say what they do without a
+  trailing ellipsis: *Buy*, not *Buy…*.
+
 #### 2026-10-27 *0.1.4*
 - **Discount and affiliate codes.** The catalog carries `codes`: what a code
   takes off (a percentage or an amount), the apps it applies to, its

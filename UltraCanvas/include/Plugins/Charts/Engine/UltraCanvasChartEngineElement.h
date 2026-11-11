@@ -17,6 +17,9 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.7.0 - SetExtraGridAxes: further value axes ruled like the grid axis (stacked panes);
+//                  GetLimiters, GetHighlights, HitRegionAt; ChartLimiter::captionPlacement
+// Version: 1.6.1 - under the ternary projection the plot area drawn is the triangle
 // Version: 1.6.0 - draws ChartHighlightShape::Polygon (densified along the rings under Polar)
 // Version: 1.5.0 - OnThemeChanged() renamed OnChartThemeChanged(): it hid the element's
 //   OnThemeChanged(const UltraCanvasTheme&); value-axis tick labels inside the
@@ -28,7 +31,7 @@
 //   a partial extent, span annotations
 // Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -64,6 +67,17 @@ struct ChartEngineFrame {
 
 enum class ChartLimiterKind { Minimum, Maximum, Average, Median, Target, Threshold, Custom };
 
+// Where a limiter's caption goes.
+enum class ChartLimiterCaptionPlacement {
+    Solved,     // the label solver places it near the line's far end (default)
+    AboveEnd,   // exactly above the line near its far end, never moved
+    // Past the line's far end, outside the plot, in room the engine reserves
+    // beside it - the "UCL = 25.018" column of a control chart, clear of the
+    // data. For a line that runs across the screen (a value limiter under
+    // Vertical, a domain limiter under Horizontal); otherwise AboveEnd.
+    BeyondEnd
+};
+
 // A reference line across the plot at a value on one axis (phase 1, slot 400).
 struct ChartLimiter {
     ChartLimiterKind kind = ChartLimiterKind::Custom;
@@ -74,6 +88,7 @@ struct ChartLimiter {
     bool dashed = true;
     std::string caption;             // solved as a LimiterCaption label
     Color captionColor = Color(120, 40, 40, 255);
+    ChartLimiterCaptionPlacement captionPlacement = ChartLimiterCaptionPlacement::Solved;
     // How far the line runs across the plot, as a fraction of the direction
     // perpendicular to its axis: a value-axis limiter spans the domain, a
     // limiter on a domain axis (an average age on a population pyramid's age
@@ -225,9 +240,14 @@ public:
     // A second grid source, so a chart can rule both directions - a scatter
     // plot's x and y, a radar's rings and spokes. SIZE_MAX = none (default).
     void SetDomainGridAxis(size_t axisIndex);
+    // Further axes ruled like the grid axis: the other panes of a chart
+    // whose value axes share the plot in sub-bands (ChartAxis::bandStart /
+    // bandEnd), so every pane has its own grid. Empty = none (default).
+    void SetExtraGridAxes(const std::vector<size_t>& axisIndices);
 
     size_t AddLimiter(const ChartLimiter& limiter);
     void ClearLimiters();
+    const std::vector<ChartLimiter>& GetLimiters() const { return limiters; }
 
     // Highlights (Engine/UltraCanvasChartHighlights.h): group washes drawn
     // under the grid (zSlot 200) or overlaid above the content (zSlot 700),
@@ -237,6 +257,7 @@ public:
     // ChartLabelClass::HighlightLabel.
     size_t AddHighlight(const ChartHighlight& highlight);
     void ClearHighlights();
+    const std::vector<ChartHighlight>& GetHighlights() const { return highlights; }
 
     // Span annotations (ChartSpanAnnotation above) - drawn over the content.
     size_t AddSpanAnnotation(const ChartSpanAnnotation& span);
@@ -302,6 +323,9 @@ public:
     // The hovered region's id, -1 when none. Ids are chart-defined (encode a
     // series/category pair, a data index, ...).
     int64_t HoveredRegionId() const { return hoveredRegionId; }
+    // The region a hover at `point` would find (-1 = none) and, when asked,
+    // the tooltip it would show - as of the last render.
+    int64_t HitRegionAt(const Point2Dd& point, std::string* tooltip = nullptr) const;
     virtual void OnHitRegionHoverChanged(int64_t regionId) { (void)regionId; }
 
     bool OnEvent(const UCEvent& event) override;
@@ -408,6 +432,7 @@ private:
     std::vector<double> axisEdgeOffsets;
     size_t gridAxisIndex = static_cast<size_t>(-1);
     size_t domainGridAxisIndex = static_cast<size_t>(-1);
+    std::vector<size_t> extraGridAxes;
 
     // Polar geometry, applied to the projection whenever it is polar.
     double polarStartAngle = -90.0;

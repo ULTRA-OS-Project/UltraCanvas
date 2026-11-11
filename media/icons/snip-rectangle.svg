@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A dragged-out area: a dashed rectangle with a handle at each corner (UltraSnip's Rectangle) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path d="M1,1h4v1H2v3H1Z M19,1h4v4h-1V2h-3Z M1,19h1v3h3v1H1Z M22,19h1v4h-4v-1h3Z"/>
+  <path d="M8,1h3v1H8Z M13,1h3v1h-3Z M8,22h3v1H8Z M13,22h3v1h-3Z M1,8h1v3H1Z M1,13h1v3H1Z M22,8h1v3h-1Z M22,13h1v3h-1Z"/>
+</svg>

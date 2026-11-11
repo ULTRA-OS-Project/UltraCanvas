@@ -1,5 +1,13 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.8.1 - on macOS too
+// Version: 1.8.0 - every popup in a window of its own (WindowType::Popup), above every other
+//                  window: made as it opens, placed, sized and cut to its outline as it is
+//                  drawn, closed with it; the popup stays this window's in every other way
+// Version: 1.7.1 - a change of scale goes to the tooltip manager, which draws the tooltip
+//                  again in its own window rather than hiding it
+// Version: 1.7.0 - Close() kept back by onWindowClosing restores a minimized
+//                  window, so the question it asks is seen
 // Version: 1.6.0 - RefreshAfterFontChange(): a new layout and a full repaint, popups too
 // Version: 1.5.0 - popups are blended over the window with their alpha (rounded corners
 //                  show what is beneath) and a popup's drop shadow is painted under it
@@ -7,7 +15,7 @@
 // Version: 1.4.0 - popups composite at their opacity (SetPopupOpacity), mixed with
 //                  the window content beneath, so a popup can fade as a whole
 // Version: 1.3.3 - PerformClose() closes transient child windows so no orphaned modal survives its parent
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -76,6 +84,82 @@ namespace UltraCanvas {
             static std::vector<UltraCanvasWindowBase*> live;
             return live;
         }
+
+        // Popups in windows of their own (SetPopupsInOwnWindows): where the
+        // platform can place such a window - not the browser or Android, one
+        // surface per application, nor iOS.
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+        constexpr bool kPopupWindowsPlatform = false;
+#else
+        constexpr bool kPopupWindowsPlatform = true;
+#endif
+        bool g_popupsInOwnWindows = kPopupWindowsPlatform;
+
+        // Windows being drawn right now (UpdateAndRender). The application
+        // draws its windows walking its list of them, so no window may be
+        // made meanwhile: a popup opened then gets its own on the next turn.
+        int g_windowsRendering = 0;
+        struct RenderingScope {
+            RenderingScope() { ++g_windowsRendering; }
+            ~RenderingScope() { --g_windowsRendering; }
+        };
+
+        // Where a popup's top-left corner is on the screen, in the native
+        // coordinates SetWindowPosition takes (physical px on X11 and
+        // Windows): the window's content origin plus the popup's place in it
+        Point2Di PopupScreenPosition(UltraCanvasWindowBase& owner, const UltraCanvasUIElement& popup) {
+            int nativeWidth = 0, nativeHeight = 0;
+            owner.GetNativeWindowSize(nativeWidth, nativeHeight);
+            const double scale = (owner.GetConfig().width > 0 && nativeWidth > 0)
+                                     ? static_cast<double>(nativeWidth) / owner.GetConfig().width
+                                     : 1.0;
+            int originX = 0, originY = 0;
+            owner.GetContentScreenOrigin(originX, originY);
+            const Point2Df pos = popup.GetPositionInWindow();
+            return Point2Di(originX + static_cast<int>(std::lround(pos.x * scale)),
+                            originY + static_cast<int>(std::lround(pos.y * scale)));
+        }
+
+        // The rectangles that cover the opaque pixels (alpha at least half)
+        // of a width x height ARGB32 image: one per run of such pixels in a
+        // row, rows with the same runs one above the other joined into one.
+        std::vector<Rect2Di> OpaqueRects(const unsigned char* data, int stride, int width, int height) {
+            std::vector<Rect2Di> rects;
+            std::vector<std::pair<int, int>> previousRuns;
+            std::vector<size_t> previousRects;   // index in `rects` of each previous run
+            for (int y = 0; y < height; ++y) {
+                const uint32_t* row = reinterpret_cast<const uint32_t*>(data + static_cast<size_t>(y) * stride);
+                std::vector<std::pair<int, int>> runs;
+                for (int x = 0; x < width;) {
+                    while (x < width && (row[x] >> 24) < 128) ++x;
+                    if (x >= width) break;
+                    const int start = x;
+                    while (x < width && (row[x] >> 24) >= 128) ++x;
+                    runs.emplace_back(start, x - start);
+                }
+                std::vector<size_t> currentRects;
+                if (runs == previousRuns) {
+                    for (size_t index : previousRects) rects[index].height += 1;
+                    currentRects = previousRects;
+                } else {
+                    for (const auto& run : runs) {
+                        currentRects.push_back(rects.size());
+                        rects.emplace_back(run.first, y, run.second, 1);
+                    }
+                }
+                previousRuns = std::move(runs);
+                previousRects = std::move(currentRects);
+            }
+            return rects;
+        }
+    }
+
+    void UltraCanvasWindowBase::SetPopupsInOwnWindows(bool inOwnWindows) {
+        g_popupsInOwnWindows = kPopupWindowsPlatform && inOwnWindows;
+    }
+
+    bool UltraCanvasWindowBase::GetPopupsInOwnWindows() {
+        return g_popupsInOwnWindows;
     }
 
     UltraCanvasWindowBase::UltraCanvasWindowBase()
@@ -402,6 +486,9 @@ namespace UltraCanvas {
                 // Deactivation: the focused element is told it lost focus but
                 // stays _focusedElement, so activation restores it below.
                 NotifyFocusedElementWindowActive(false);
+                // A popup in a window of its own floats above every window:
+                // focus leaving the application is its click outside.
+                ClosePopupsInOwnWindowsOnBlur();
                 if (onWindowBlur) {
                     onWindowBlur();
                 }
@@ -440,11 +527,16 @@ namespace UltraCanvas {
 
             case UCEventType::WindowResize:
                 HandleResizeEvent(event.width, event.height);
+                // Also a move on X11 (ConfigureNotify): the windows of the
+                // popups follow
+                _needsPopupHostSync = true;
                 RequestRedraw();
                 return true;
 
             case UCEventType::WindowMove:
                 HandleMoveEvent(event.pointer.x, event.pointer.y);
+                _needsPopupHostSync = true;
+                RequestRedraw();
                 return true;
 
             case UCEventType::WindowRepaint:
@@ -511,6 +603,8 @@ namespace UltraCanvas {
         // shadows are drawn again at the new scale on the next composite.
         for (auto& pe : popupElements) {
             pe.shadowSurface.reset();
+            pe.hostShapeFor = Size2Di(0, 0);   // cut again at the new scale
+            _needsPopupHostSync = true;
             if (pe.element) {
                 pe.element->renderContext.reset();
                 Size2Di ps = pe.element->GetSize();
@@ -519,9 +613,10 @@ namespace UltraCanvas {
                 }
             }
         }
-        // Tooltip caches a static render context tied to the old nativeSurface;
-        // drop it now so it is rebuilt at the new scale on next show.
-        UltraCanvasTooltipManager::HideTooltipImmediately();
+        // Tooltip caches a static render context tied to the old nativeSurface:
+        // a tooltip drawn in this window is hidden, to be rebuilt at the new
+        // scale on its next show; the tooltip's own window draws it again.
+        UltraCanvasTooltipManager::WindowScaleChanged(this);
         // The shared caret's context likewise; it is only rebuilt on a size
         // change by itself, and the caret's size in logical pixels is the same
         // on both monitors.
@@ -668,6 +763,7 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowBase::UpdateAndRender() {
         if (!_created || (!_windowVisible && !_renderingBeforeShow)) return;
+        RenderingScope rendering;
         // A backend can lose its presentation surface while the window is
         // still marked visible (Android between APP_CMD_TERM_WINDOW and the
         // next APP_CMD_INIT_WINDOW). Dirty rects keep accumulating; the
@@ -745,11 +841,17 @@ namespace UltraCanvas {
         // ---- Popup pass: each popup owns its own dirty queue, in popup-local coords ----
         for (auto& pe : popupElements) {
             auto* p = pe.element;
-            if (!p || !p->IsVisible()) continue;
-
+            // A popup hidden, or not laid out yet: nor is its own window
+            if (!p || !p->IsVisible()) {
+                if (pe.host && pe.host->IsWindowVisible()) pe.host->Hide();
+                continue;
+            }
 
             Size2Di want = p->GetSize();
-            if (want.width <= 0 || want.height <= 0) continue;
+            if (want.width <= 0 || want.height <= 0) {
+                if (pe.host && pe.host->IsWindowVisible()) pe.host->Hide();
+                continue;
+            }
 
             if (!p->renderContext) {
                 p->renderContext = CreateRenderContext(want, nativeSurface);
@@ -759,6 +861,7 @@ namespace UltraCanvas {
                 pe.dirtyRectManager.Add(Rect2Di(0, 0, want.width, want.height));
             }
 
+            bool repainted = false;
             if (pe.dirtyRectManager.HasDirtyRects()) {
                 const auto& popupRects = pe.dirtyRectManager.GetOptimizedRectangles();
                 for (const auto& rect : popupRects) {
@@ -768,9 +871,23 @@ namespace UltraCanvas {
                     p->renderContext->PopState();
                 }
                 pe.dirtyRectManager.Clear();
-                _needsWindowComposition = true;
+                repainted = true;
             }
+
+            // In a window of its own: that window follows the popup - its
+            // place, size and outline - and shows what was drawn.
+            if (pe.host && (repainted || _needsPopupHostSync || _needsPopupGeometry ||
+                            !pe.host->IsWindowVisible() || pe.hostShapeFor != want)) {
+                if (SyncPopupHost(pe)) {
+                    if (pe.hostShapeFor != want) UpdatePopupHostShape(pe);
+                    pe.host->RequestWindowComposition();
+                    continue;
+                }
+            }
+            if (pe.host) continue;   // nothing of it is on this window
+            if (repainted) _needsWindowComposition = true;
         }
+        _needsPopupHostSync = false;
 
         if (timed) timing.paintMs = stepMs();
         const bool composites = _needsWindowComposition;
@@ -784,6 +901,14 @@ namespace UltraCanvas {
         UltraCanvasUIElement* caretLayer =
                 caret.IsOnWindow(this) ? caret.GetPopupLayer() : nullptr;
 
+        // The caret's layer is a popup in a window of its own: that window
+        // draws it, over the popup, and nothing of it is drawn here.
+        UltraCanvasWindowBase* caretHost = caretLayer ? GetPopupWindow(*caretLayer) : nullptr;
+        if (caretHost) {
+            if (_needsCaretComposition || _needsWindowComposition) caretHost->RequestWindowComposition();
+            _needsCaretComposition = false;
+        }
+
         // A caret blink toggle only needs the few pixels under the caret
         // refreshed. That shortcut is valid only while no overlay stacked above
         // the caret's layer covers those pixels; otherwise fall back to a full
@@ -792,7 +917,9 @@ namespace UltraCanvas {
             // No surface to restore the caret's layer from => full composite.
             // Nor when that layer is a popup shown below full opacity: its
             // surface alone is not what is on screen there.
-            bool caretCovered = UltraCanvasTooltipManager::IsVisible() ||
+            // A tooltip in a window of its own covers nothing drawn here.
+            bool caretCovered = (UltraCanvasTooltipManager::IsVisible() &&
+                                 UltraCanvasTooltipManager::GetTooltipWindow() == nullptr) ||
                                 (caretLayer && !caretLayer->renderContext) ||
                                 (caretLayer && GetPopupOpacity(*caretLayer) < 1.0f);
             if (!caretCovered) {
@@ -808,7 +935,7 @@ namespace UltraCanvas {
                         if (p == caretLayer) aboveCaretLayer = true;
                         continue;
                     }
-                    if (!p->IsVisible()) continue;
+                    if (!p->IsVisible() || pe.host) continue;   // one in its own window covers nothing here
                     if (PopupPaintedBounds(*p).Intersects(caretRect)) {
                         caretCovered = true;
                         break;
@@ -820,12 +947,28 @@ namespace UltraCanvas {
             }
         }
 
+        // A popup's own window shows the popup - its pixels as they are,
+        // the transparent corners cut away by the window's outline - and
+        // the caret of a field in it; nothing of its own.
+        if (_needsWindowComposition && hostedPopup) {
+            if (hostedPopup->renderContext) {
+                hostedPopup->renderContext->FlushToSurface(nativeSurface, {0, 0});
+            }
+            if (hostedPopupOwner && caret.IsOnWindow(hostedPopupOwner) &&
+                caret.GetPopupLayer() == hostedPopup) {
+                const Point2Df popupPos = hostedPopup->GetPositionInWindow();
+                caret.Composite(hostedPopupOwner, nativeSurface,
+                                Point2Di(-static_cast<int>(std::lround(popupPos.x)),
+                                         -static_cast<int>(std::lround(popupPos.y))));
+            }
+            InvalidateWindowNative();
+        }
         // Composite popups, the caret and tooltips onto the native surface
-        if (_needsWindowComposition) {
+        else if (_needsWindowComposition) {
             renderContext->FlushToSurface(nativeSurface, {0, 0});
 
             // Caret above the window content when its owner lives there...
-            bool caretPending = caret.IsOnWindow(this);
+            bool caretPending = caret.IsOnWindow(this) && !caretHost;
             if (caretPending && !caretLayer) {
                 caret.Composite(this, nativeSurface);
                 caretPending = false;
@@ -835,6 +978,7 @@ namespace UltraCanvas {
                 for (auto& pe : popupElements) {
                     auto* p = pe.element;
                     if (!p || !p->IsVisible() || !p->renderContext) continue;
+                    if (pe.host) continue;   // shown in a window of its own
                     auto pos = p->GetPositionInWindow();
                     // The window content and the popups below are already on
                     // the surface. The popup is blended over them with its
@@ -877,7 +1021,7 @@ namespace UltraCanvas {
             // pixels under the caret from the surface its layer was drawn into
             // — the window content, or the popup hosting the focused widget —
             // then blend the caret back on top in its visible phase.
-            if (caret.IsOnWindow(this)) {
+            if (caret.IsOnWindow(this) && !caretHost) {
                 const Rect2Di& r = caret.GetRect();
                 IRenderContext* layerCtx = renderContext.get();
                 Rect2Dd region(r.x, r.y, r.width, r.height);
@@ -1041,6 +1185,7 @@ namespace UltraCanvas {
     void UltraCanvasWindowBase::OpenPopup(const Point2Di& pos, UltraCanvasUIElement& elem, const PopupElementSettings& settings) {
         for(auto it = popupElements.begin(); it != popupElements.end(); ++it) {
             if (it->element == &elem) {
+                ReleasePopupHost(*it, false);
                 popupElements.erase(it);
                 break;
             }
@@ -1063,7 +1208,231 @@ namespace UltraCanvas {
         // Seed the popup's dirty list so the first frame paints fully.
         popupElements.back().dirtyRectManager.Add(Rect2Di(0, 0, sz.width, sz.height));
 
+        // Its own window, made now, shown once the popup is laid out and
+        // drawn. No window may be made while the windows are being drawn: a
+        // popup opened then gets its window on the next turn of the loop.
+        if (g_windowsRendering == 0) {
+            CreatePopupHost(popupElements.back());
+        } else if (auto* app = UltraCanvasApplication::GetInstance()) {
+            std::weak_ptr<UltraCanvasWindowBase> self = GetWindowWeakPtr();
+            UltraCanvasUIElement* opened = &elem;
+            app->PostToUIThread([self, opened]() {
+                auto window = self.lock();
+                if (!window) return;
+                for (auto& pe : window->popupElements) {
+                    if (pe.element == opened && !pe.host && !pe.hostFailed) {
+                        window->CreatePopupHost(pe);
+                        window->RequestRedraw();
+                    }
+                }
+            });
+        }
+
         elem.OnPopupOpened();
+    }
+
+    bool UltraCanvasWindowBase::CreatePopupHost(PopupElement& pe) {
+        if (pe.host || pe.hostFailed) return pe.host != nullptr;
+        // Not for a window that is itself a popup's or a tooltip's, nor one
+        // not on screen: there the popup is composited as before.
+        if (!g_popupsInOwnWindows || !_created || IsPopupHost() ||
+            config_.type == WindowType::Tooltip || config_.type == WindowType::Popup || !pe.element) {
+            pe.hostFailed = true;
+            return false;
+        }
+        const Size2Di size = pe.element->GetSize();
+        const Point2Di at = PopupScreenPosition(*this, *pe.element);
+        WindowConfig config;
+        config.title = "Popup";
+        config.type = WindowType::Popup;
+        config.width = std::max(1, size.width);
+        config.height = std::max(1, size.height);
+        config.minWidth = 1;
+        config.minHeight = 1;
+        config.resizable = false;
+        config.minimizable = false;
+        config.maximizable = false;
+        config.closable = false;
+        config.backgroundColor = Colors::Transparent;
+        config.x = at.x;
+        config.y = at.y;
+#if defined(ULTRACANVAS_DISPLAY_WAYLAND)
+        // Placed only by its parent on Wayland: a popup of this window, or
+        // an overlay-layer surface beside a desktop on the layer shell
+        config.parentWindow = this;
+#endif
+        auto window = CreateWindow(config);
+        if (!window || !window->IsCreated()) {
+            debugOutput << "UltraCanvas: no window of its own for popup '" << pe.element->GetIdentifier()
+                        << "'; it is composited onto its window" << std::endl;
+            if (window) window->Close();
+            pe.hostFailed = true;
+            return false;
+        }
+        UltraCanvasWindowBase* host = window.get();
+        host->hostedPopupOwner = this;
+        host->hostedPopup = pe.element;
+        host->SelectMouseCursor(currentMouseCursor);
+        pe.host = window;
+        pe.hostShapeFor = Size2Di(0, 0);
+        return true;
+    }
+
+    bool UltraCanvasWindowBase::SyncPopupHost(PopupElement& pe) {
+        if (!pe.host) return false;
+        UltraCanvasWindowBase* host = pe.host.get();
+        if (!host->IsCreated()) {
+            pe.host.reset();
+            pe.hostFailed = true;
+            return false;
+        }
+        UltraCanvasUIElement* p = pe.element;
+        Size2Di size(0, 0);
+        if (p) size = p->GetSize();
+        // Shown while the popup is: visible, laid out, and not faded out to
+        // nothing (a popup in its own window is shown in full above that).
+        const bool shown = p && p->IsVisible() && pe.opacity > 0.0f && size.width > 0 && size.height > 0;
+        if (!shown) {
+            if (host->IsWindowVisible()) host->Hide();
+            return true;
+        }
+        int width = 0, height = 0;
+        host->GetWindowSize(width, height);
+        if (width != size.width || height != size.height) {
+            host->SetWindowSize(size.width, size.height);
+            pe.hostShapeFor = Size2Di(0, 0);
+        }
+        const Point2Di at = PopupScreenPosition(*this, *p);
+        if (host->GetConfig().x != at.x || host->GetConfig().y != at.y) {
+            host->SetWindowPosition(at.x, at.y);
+        }
+        if (!host->IsWindowVisible()) {
+            host->Show();
+        }
+        return true;
+    }
+
+    void UltraCanvasWindowBase::UpdatePopupHostShape(PopupElement& pe) {
+        UltraCanvasUIElement* p = pe.element;
+        if (!pe.host || !p || !p->renderContext) return;
+        const Size2Di size = p->GetSize();
+        if (size.width <= 0 || size.height <= 0) return;
+        pe.hostShapeFor = size;
+#if !defined(ULTRACANVAS_DISPLAY_WAYLAND) && !defined(__APPLE__)
+        // The popup's pixels at the window's physical size: its outline is
+        // where they are opaque. (A Wayland surface and a macOS popup window
+        // have an alpha channel: the transparent corners are transparent on
+        // screen already.)
+        UltraCanvasWindowBase* host = pe.host.get();
+        int physicalWidth = 0, physicalHeight = 0;
+        host->GetNativeWindowSize(physicalWidth, physicalHeight);
+        if (physicalWidth <= 0 || physicalHeight <= 0) return;
+        cairo_surface_t* image = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, physicalWidth, physicalHeight);
+        if (cairo_surface_status(image) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(image);
+            return;
+        }
+        const double scale = static_cast<double>(physicalWidth) / size.width;
+        cairo_surface_set_device_scale(image, scale, scale);
+        p->renderContext->FlushToSurface(image, {0, 0});
+        cairo_surface_flush(image);
+        std::vector<Rect2Di> rects = OpaqueRects(cairo_image_surface_get_data(image),
+                                                 cairo_image_surface_get_stride(image),
+                                                 physicalWidth, physicalHeight);
+        cairo_surface_destroy(image);
+        // Opaque all over: no outline of its own. Nothing opaque (a popup
+        // not drawn yet): the whole window too, rather than none of it.
+        if (rects.empty() ||
+            (rects.size() == 1 && rects[0] == Rect2Di(0, 0, physicalWidth, physicalHeight))) {
+            rects.clear();
+        }
+        host->SetNativeWindowShape(rects);
+#endif
+    }
+
+    void UltraCanvasWindowBase::ReleasePopupHost(PopupElement& pe, bool closeNow) {
+        std::shared_ptr<UltraCanvasWindowBase> host = std::move(pe.host);
+        pe.host.reset();
+        if (!host) return;
+        UltraCanvasWindowBase* window = host.get();
+        window->hostedPopup = nullptr;
+        window->hostedPopupOwner = nullptr;
+        if (!window->IsCreated()) return;
+        window->Hide();
+        // Closed on the next turn of the loop: this may run inside a click
+        // the window itself received (an item of a menu in it).
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!closeNow && app) {
+            app->PostToUIThread([host]() { host->Close(); });
+        } else {
+            window->Close();
+        }
+    }
+
+    void UltraCanvasWindowBase::ForgetPopupHost(UltraCanvasWindowBase* host) {
+        for (auto& pe : popupElements) {
+            if (pe.host.get() != host) continue;
+            // Back onto this window; no new window for it
+            pe.host.reset();
+            pe.hostFailed = true;
+            Size2Di sz(0, 0);
+            if (pe.element) sz = pe.element->GetSize();
+            if (sz.width > 0 && sz.height > 0) pe.dirtyRectManager.Add(Rect2Di(0, 0, sz.width, sz.height));
+            RequestWindowComposition();
+        }
+    }
+
+    void UltraCanvasWindowBase::ClosePopupsInOwnWindowsOnBlur() {
+        bool any = false;
+        for (const auto& pe : popupElements) {
+            if (pe.host && pe.settings.closeByClickOutside) any = true;
+        }
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!any || !app) return;
+        // Once the focus has settled: gone to another window of this
+        // application (a dialog the popup opened), the popups stay.
+        std::weak_ptr<UltraCanvasWindowBase> self = GetWindowWeakPtr();
+        app->PostToUIThread([self]() {
+            auto window = self.lock();
+            auto* application = UltraCanvasApplication::GetInstance();
+            if (!window || !application || application->GetFocusedWindow() != nullptr) return;
+            std::vector<UltraCanvasUIElement*> closing;
+            for (const auto& pe : window->popupElements) {
+                if (pe.host && pe.settings.closeByClickOutside && pe.element) closing.push_back(pe.element);
+            }
+            // The newest first, as clicks outside them would close them
+            for (auto it = closing.rbegin(); it != closing.rend(); ++it) {
+                bool stillOpen = false;
+                for (const auto& pe : window->popupElements) stillOpen = stillOpen || pe.element == *it;
+                if (stillOpen) window->ClosePopup(**it, ClosePopupReason::ClickOutside);
+            }
+        });
+    }
+
+    UltraCanvasWindowBase* UltraCanvasWindowBase::GetPopupWindow(const UltraCanvasUIElement& popup) const {
+        for (const auto& pe : popupElements) {
+            if (pe.element == &popup) return pe.host.get();
+        }
+        return nullptr;
+    }
+
+    UltraCanvasUIElement* UltraCanvasWindowBase::FindElementAtPoint(const Point2Df& pos, bool interactiveElementOnly) {
+        // Past the window's edges only a popup in a window of its own can be
+        // under the pointer: the newest first.
+        if (!GetBounds().Contains(pos)) {
+            for (auto it = popupElements.rbegin(); it != popupElements.rend(); ++it) {
+                UltraCanvasUIElement* p = it->element;
+                if (!p || !it->host || !p->IsVisible()) continue;
+                if (!p->GetBounds().Contains(pos)) continue;
+                if (auto* container = dynamic_cast<UltraCanvasContainer*>(p)) {
+                    if (UltraCanvasUIElement* hit = container->FindElementAtPoint(pos, interactiveElementOnly)) return hit;
+                }
+                if (interactiveElementOnly && !p->IsInteractive()) return nullptr;
+                return p;
+            }
+            return nullptr;
+        }
+        return UltraCanvasContainer::FindElementAtPoint(pos, interactiveElementOnly);
     }
 
     bool UltraCanvasWindowBase::ClosePopup(UltraCanvasUIElement& elem, ClosePopupReason reason) {
@@ -1071,6 +1440,7 @@ namespace UltraCanvas {
             for(auto it = popupElements.begin(); it != popupElements.end(); ++it) {
                 if (it->element == &elem) {
                     if (elem.OnPopupAboutToClose(reason)) {
+                        ReleasePopupHost(*it, false);
                         popupElements.erase(it);
                         elem.isPopup = false;
                         elem.SetVisible(false);
@@ -1103,6 +1473,8 @@ namespace UltraCanvas {
                     pe.opacity = opacity;
                     // Only the composite changes: the popup's surface is as it was.
                     RequestWindowComposition();
+                    // In a window of its own it is shown or hidden, in full
+                    if (pe.host) _needsPopupHostSync = true;
                 }
                 return true;
             }
@@ -1133,6 +1505,7 @@ namespace UltraCanvas {
         bool closedAny = !popupElements.empty();
         while (!popupElements.empty()) {
             UltraCanvasUIElement* elem = popupElements.back().element;
+            ReleasePopupHost(popupElements.back(), true);
             popupElements.pop_back();
             if (!elem) continue;
             elem->isPopup = false;
@@ -1200,9 +1573,16 @@ namespace UltraCanvas {
         if (!onWindowClosing || onWindowClosing()) {
             PerformClose();
             return true;
-        } else {
-            return false;
         }
+        // The application kept the window open - most often to ask whether
+        // to save. Asked from a minimized window (another program's "Close",
+        // a taskbar menu) the question would sit unseen and the close look
+        // as if it did nothing: the window comes back to ask it.
+        if (_created && IsMinimized()) {
+            Restore();
+            RaiseAndFocus();
+        }
+        return false;
     }
 
     void UltraCanvasWindowBase::PerformClose() {
@@ -1212,6 +1592,15 @@ namespace UltraCanvas {
         }
         debugOutput << "UltraCanvas: Window perform close this=" << this << std::endl;
         _state = WindowState::Closing;
+
+        // A popup's own window closed by someone else (every window closed
+        // at once): its popup goes back onto the window it belongs to.
+        if (hostedPopupOwner) {
+            UltraCanvasWindowBase* owner = hostedPopupOwner;
+            hostedPopupOwner = nullptr;
+            hostedPopup = nullptr;
+            owner->ForgetPopupHost(this);
+        }
 
         CloseAllPopups();
 
@@ -1277,6 +1666,11 @@ namespace UltraCanvas {
         if (currentMouseCursor != ptr) {
             if (UltraCanvasApplication::GetInstance()->SelectMouseCursorNative(this, ptr)) {
                 currentMouseCursor = ptr;
+                // The pointer over a popup in its own window is over that
+                // window: it shows the same pointer
+                for (auto& pe : popupElements) {
+                    if (pe.host) pe.host->SelectMouseCursor(ptr);
+                }
                 return true;
             }
         }

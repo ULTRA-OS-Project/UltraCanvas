@@ -1,8 +1,17 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.6 - account recovery by a link e-mailed to the confirmed address (UltraIMRecoveryAnswer
+//                  without codes); the e-mail address confirmed by a link, the phone by a code
+// Version: 0.1.5 - UltraIMPreviewMaker: the application's way of making a preview picture of a file to send
+// Version: 0.1.4 - UltraIMAttachment::thumbnailPath (a video's or a file's preview picture); UltraIMAttachmentCallback
+// Version: 0.1.3 - UltraIMAuthStep::OtherDevice: a sign-in confirmed on another device (a QR code scanned there)
+// Version: 0.1.2 - UltraIMProviderInfo::authResendHint: a sign-in code can be asked for another way
+// Version: 0.1.3 - the profile's verified flags and recovery state; UltraIMContactChannel, UltraIMRecoveryChallenge,
+//                  UltraIMRecoveryAnswer: account recovery by codes to the e-mail and the phone
+// Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -34,8 +43,14 @@ enum class UltraIMDeliveryStatus {
     Failed          // Could not be sent
 };
 
+// A picture, a video, a file, a voice note or a sticker with a message. The
+// provider downloads a picture (and a video's or a file's preview picture)
+// by itself and says so with a MessageUpdate carrying localPath /
+// thumbnailPath; a video, a file or a voice note is fetched when asked for
+// (UltraIM_DownloadAttachment), since it may be large.
 struct UltraIMAttachment {
     std::string localPath;          // UTF-8 path once downloaded (empty until then)
+    std::string thumbnailPath;      // UTF-8 path of a small preview picture, once downloaded ("" when none)
     std::string remoteUrl;          // Provider URL or file id
     std::string fileName;           // Display name
     std::string mimeType;
@@ -144,7 +159,10 @@ enum class UltraIMCapabilityFlags : uint32_t {
     PeerToPeer      = 1u << 22,  // 1:1 content travels directly between the devices
     LocalNetwork    = 1u << 23,  // Works on a LAN with no server at all
     AddContact      = 1u << 24,  // UltraIM_AddContact
-    CreateGroup     = 1u << 25   // UltraIM_CreateGroup
+    CreateGroup     = 1u << 25,  // UltraIM_CreateGroup
+    AccountProfile  = 1u << 26,  // UltraIM_FetchAccountProfile / UltraIM_UpdateAccountProfile
+    SignInProtection = 1u << 27, // UltraIM_SetSignInProtection: a password, an authenticator code
+    AccountRecovery = 1u << 28   // UltraIM_StartRecovery / FinishRecovery: back by a link e-mailed to the owner
 };
 
 inline UltraIMCapabilityFlags operator|(UltraIMCapabilityFlags a, UltraIMCapabilityFlags b) {
@@ -168,21 +186,35 @@ enum class UltraIMLoginType {
 
 // Where a sign-in that takes more than one round stands (Telegram: the phone
 // number, then the code Telegram sends, then the cloud password when the
-// account has one; a new number registers with a name).
+// account has one; a new number registers with a name; or a QR code scanned
+// from a signed-in app instead of the number and the code).
 enum class UltraIMAuthStep {
     Idle,           // nothing asked (signed in, or not started); not `None`, which X11 #defines
     PhoneNumber,    // credentials.phoneNumber
     Code,           // credentials.otpCode: the code sent by SMS or to another device
     Password,       // credentials.password: the account's two-step password
-    Registration    // credentials.displayName: a new account's name
+    Registration,   // credentials.displayName: a new account's name
+    // Nothing to type: the hint is a link (Telegram: tg://login?token=...) to
+    // show as a QR code for a signed-in app to scan; the service refreshes
+    // it (AuthStepChange, the new link), and goes on by itself - to Password
+    // when the account has one, else signed in - once it is scanned. Asked
+    // for with credentials.loginType QRCode (at the start, or in place of a
+    // code that never came); a phone number given here starts over with it.
+    OtherDevice
 };
 
 struct UltraIMCredentials {
+    // QRCode: sign in by a QR code scanned from a signed-in app (Telegram),
+    // with no phoneNumber - see UltraIMAuthStep::OtherDevice.
     UltraIMLoginType loginType = UltraIMLoginType::UsernamePassword;
     std::string server;             // Homeserver / relay URL ("" = the provider's default)
     std::string username;
     std::string password;
     std::string displayName;        // KeyPair: the name shown to contacts
+    // KeyPair, createAccount: the account's e-mail address, kept by the
+    // provider's service for its owner alone (to recover the account) -
+    // with phoneNumber, which is the same for it. Never shown to contacts.
+    std::string email;
     bool        createAccount = false; // KeyPair: register a new identity
     // Also find and reach contacts on the local network, with no server
     // between (ChatCube Direct; always on when there is no relay). Remembered.
@@ -193,6 +225,83 @@ struct UltraIMCredentials {
     std::string apiHash;
     std::string accessToken;        // Restored session
     std::string refreshToken;
+};
+
+// ---- The account's own details ---------------------------------------------
+// The signed-in account as its owner sees it in an "Edit profile" window:
+// the name its contacts see, and the e-mail address and phone number its
+// service keeps for the owner alone, to recover the account with (ChatCube
+// Direct: the relay; never part of what contacts or anyone else are told).
+struct UltraIMAccountProfile {
+    std::string displayName;
+    std::string email;
+    std::string phoneNumber;        // international form, "+49 151 ..." as typed
+    // What the service says, read by FetchAccountProfile (an update ignores
+    // them): whether the address is confirmed (the link e-mailed to it was
+    // opened) and the number (the code sent to it came back,
+    // UltraIM_VerifyContact), whether the service offers recovery at all
+    // (and can text the phone a code), and whether this account has it on
+    // (UltraIM_SetRecoveryEnabled).
+    bool emailVerified = false;
+    bool phoneVerified = false;
+    bool recoveryAvailable = false;
+    bool phoneCodesAvailable = false;
+    bool recoveryEnabled = false;
+};
+
+// The two ways the service reaches the owner: a link by e-mail, a code by SMS.
+enum class UltraIMContactChannel { Email, Phone };
+
+// ---- Account recovery ------------------------------------------------------
+// A new computer gets an account back without the old one: the service
+// e-mails a link to the account's confirmed address, and once the owner has
+// opened it and said yes, the computer that asked gets the account back
+// (ChatCube Direct: the relay hands back the copy of the key it keeps while
+// recovery is on). The asking computer finds out by asking again
+// (FinishRecovery) until then; only it can - the provider keeps what proves
+// it asked.
+struct UltraIMRecoveryChallenge {
+    std::string recoveryId;         // what FinishRecovery names
+    int         expiresInSeconds = 0;
+};
+struct UltraIMRecoveryAnswer {
+    std::string server;             // the same service StartRecovery asked
+    std::string recoveryId;
+};
+
+// What signing in asks of the user on this device (ChatCube Direct, whose
+// identity is a key kept on the device). The password encrypts the key
+// vault (Argon2id, XChaCha20-Poly1305 - UltraCrypt through UltraVault), so
+// without it the key cannot be read; the authenticator code is a TOTP code
+// (RFC 6238) from an authenticator app - UltraAuthenticator, or any other -
+// checked by the provider, once per code. Stored by number: append only.
+enum class UltraIMSignInProtection {
+    DeviceKey = 0,                      // nothing to type: the key on this device signs in
+    Password = 1,                       // the password, at every start
+    AuthenticatorCode = 2,              // a code from the authenticator, at every start
+    PasswordAndAuthenticatorCode = 3    // both
+};
+inline bool UltraIM_ProtectionHasPassword(UltraIMSignInProtection p) {
+    return p == UltraIMSignInProtection::Password || p == UltraIMSignInProtection::PasswordAndAuthenticatorCode;
+}
+inline bool UltraIM_ProtectionHasCode(UltraIMSignInProtection p) {
+    return p == UltraIMSignInProtection::AuthenticatorCode || p == UltraIMSignInProtection::PasswordAndAuthenticatorCode;
+}
+
+// A change of the sign-in protection (UltraIM_SetSignInProtection): what it
+// becomes, proven with what it is now.
+struct UltraIMProtectionChange {
+    UltraIMSignInProtection protection = UltraIMSignInProtection::DeviceKey;
+    std::string currentPassword;    // when there is a password now
+    std::string currentCode;        // when a code is asked for now: the authenticator's code
+    // When the new protection has a password: the new one ("" keeps the
+    // current one, when there is one).
+    std::string newPassword;
+    // When the new protection asks for a code and an authenticator was set
+    // up for it (UltraIM_StartAuthenticatorSetup): the code the
+    // authenticator shows for it now, which proves it was added. Without a
+    // set-up the current authenticator stays.
+    std::string newCode;
 };
 
 enum class UltraIMConnectionState {
@@ -215,6 +324,10 @@ struct UltraIMProviderInfo {
     bool                    hasStoredSession = false; // Can sign in without asking the user
     UltraIMAuthStep         authStep = UltraIMAuthStep::Idle; // What SignIn needs next
     std::string             authHint;      // e.g. where the code went, the password's hint
+    // Code step: the other way the code can be sent, in words for a button
+    // ("Send it by SMS instead"); "" when the service offers none. Asked for
+    // with UltraIM_ResendAuthCode.
+    std::string             authResendHint;
 };
 
 struct UltraIMSendOptions {
@@ -355,6 +468,23 @@ using UltraIMStickerPacksCallback = std::function<void(const UltraIMResult& resu
                                                        const std::vector<UltraIMStickerPack>& packs)>;
 using UltraIMKeyExportCallback    = std::function<void(const UltraIMResult& result, const std::string& data)>;
 using UltraIMKeyImportCallback    = std::function<void(const UltraIMResult& result, int imported)>;
+// A message's attachment once UltraIM_DownloadAttachment has it on disk
+// (localPath set, isDownloaded true).
+using UltraIMAttachmentCallback   = std::function<void(const UltraIMResult& result,
+                                                       const UltraIMAttachment& attachment)>;
+// Makes a preview picture of a picture or video file about to be sent: a
+// JPEG, its longer side at most maxSide pixels, written to outJpegPath, its
+// size in outWidth / outHeight. The application installs one
+// (UltraIM_SetPreviewMaker) with its image and video libraries; a provider
+// asks through UltraIM_MakePreview and sends the preview along with the
+// file, so the other side sees something before the file has arrived.
+// Returns false when it cannot read the file.
+using UltraIMPreviewMaker = std::function<bool(const std::string& path, const std::string& mimeType, int maxSide,
+                                               const std::string& outJpegPath, int& outWidth, int& outHeight)>;
+using UltraIMRecoveryChallengeCallback = std::function<void(const UltraIMResult& result,
+                                                            const UltraIMRecoveryChallenge& challenge)>;
+using UltraIMAccountProfileCallback = std::function<void(const UltraIMResult& result,
+                                                         const UltraIMAccountProfile& profile)>;
 // Credentials a provider's service keeps for another provider (the ChatCube
 // relay: the Telegram application's API ID and hash), to hand that
 // provider's SignIn.

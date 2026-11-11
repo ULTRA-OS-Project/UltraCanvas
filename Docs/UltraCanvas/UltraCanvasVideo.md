@@ -13,10 +13,12 @@ and composite UI elements, all behind a pluggable platform backend.
 - [Public API surface](#public-api-surface)
   - [Frame resource — `UltraCanvasVideo.h`](#frame-resource-—-ultracanvasvideoh)
   - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual-—-ultracanvasvideoplayerh)
+  - [File facts — `UltraCanvasVideoFileInfo.h`](#file-facts-—-ultracanvasvideofileinfoh)
   - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames-—-ultracanvasvideothumbnailh)
   - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
   - [UI elements](#ui-elements)
   - [Devices — `UltraCanvasVideoDevices.h`](#devices-—-ultracanvasvideodevicesh)
+- [Following the theme](#following-the-theme)
 - [Adding a container or codec](#adding-a-container-or-codec)
 - [Build](#build)
 - [Notes / follow-ups](#notes--follow-ups)
@@ -84,6 +86,44 @@ Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`.
 Frame access: `GetCurrentFrame()` (thread-safe).
 Callbacks: `onLoaded`, `onPlaybackStateChanged`, `onFrameReady`,
 `onPositionChanged`, `onEnded`, `onError`.
+
+### File facts — `UltraCanvasVideoFileInfo.h`
+
+`ReadVideoFileInfo(path, info)` reads a clip's technical facts from its
+container headers - no decoder, no playback, the same answer on every
+platform (the backend's `VideoStreamInfo` depends on the backend: Media
+Foundation fills only the size and the duration). It reads ISO base media
+(MP4, M4V, MOV, 3GP, fragmented MP4 included), Matroska / WebM and AVI, and
+returns `false` for anything else. `VideoFileInfo` holds the container and
+brand, duration, overall bit rate; the first video track's codec and profile
+(`"High, level 4.1"`, `"Main 10, level 5.1"`), coded and display size, frame
+rate, frame count, bit rate, bit depth and clockwise rotation; the first
+sound track's codec (`"AAC LC"`, `"HE-AAC"`, `"Opus"`, `"AC-3"`), sample
+rate, channels, bit depth (PCM), bit rate and language; the track counts;
+and the file's title, encoder and creation time. A fact the file does not
+state is 0 or empty.
+
+```cpp
+#include "UltraCanvasVideoFileInfo.h"
+using namespace UltraCanvas;
+
+VideoFileInfo info;
+if (ReadVideoFileInfo("clip.mp4", info) && info.hasVideo) {
+    std::string line = std::to_string(info.width) + " x " + std::to_string(info.height) +
+                       ", " + FormatFrameRate(info.frameRate) + " fps, " + info.videoCodec;
+    if (info.hasAudio)
+        line += ", " + info.audioCodec + " " + FormatSampleRate(info.sampleRate) +
+                " " + DescribeAudioChannels(info.channels);
+    // "1920 x 1080, 29.97 fps, H.264, AAC LC 48 kHz Stereo"
+}
+```
+
+The formatting helpers beside it - `FormatBitRate` (`"1.68 Mb/s"`),
+`FormatFrameRate`, `FormatSampleRate`, `DescribeAspectRatio` (`"16:9"`),
+`DescribeAudioChannels` (`"5.1"`), `FormatMediaDuration` (`"1:02:03"`) - are
+dot-decimal whatever the locale. `UltraCanvasMediaViewer` uses it for a
+video's Details panel and status bar, falling back on the player's
+`VideoStreamInfo` for a container it does not read (WMV, MPEG-TS).
 
 ### Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`
 
@@ -225,6 +265,31 @@ tile->PushFrame(rgba.data(), 640, 360, 640 * 4, VideoTilePixelFormat::BGRA32);
 
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
 `RequestCameraPermission()`, `GetBackendName()`, `IsAvailable()`.
+
+## Following the theme
+
+A player, a recorder and a tile are a dark stage with a translucent bar
+whatever the window, so `VideoPlayerStyle::FromTheme`,
+`VideoRecorderStyle::FromTheme` and `VideoTileStyle::FromTheme` take from
+the framework theme (`UltraCanvasTheme.md`) only what reads on it: the
+accent for the progress fill and the hovered icons, danger for the record
+button, the caption at the caption size and a hairline where a tile draws
+a border. The stage, the bar and the tile's caption ink are the element
+roles `video-player.stage`, `video-player.control-bar`,
+`video-recorder.stage`, `video-recorder.control-bar`, `video-tile.stage`
+and `video-tile.caption` where a theme names them. Under the theme policy
+a new element follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto player = std::make_shared<UltraCanvasVideoPlayerElement>("player", 0, 0, 640, 400);
+VideoPlayerStyle cover = player->GetStyle();
+cover.videoFit = VideoPlayerFit::Cover;
+player->SetStyle(VideoPlayerStyle::FromTheme(UltraCanvasTheme::Current(), cover));
+player->SetFollowTheme(true);
+auto tile = std::make_shared<UltraCanvasVideoTile>("tile");
+tile->SetStyle(VideoTileStyle::FromTheme());
+```
 
 ## Adding a container or codec
 

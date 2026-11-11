@@ -1,13 +1,15 @@
 // core/UltraCanvasSlideshow.cpp
 // Timed image slideshow with selectable info-panel layouts and indicator styles.
+// Version: 1.6.0 - Make/Register descriptor: "slideshow" in the element registry, bundled or as a runtime module
 // Version: 1.5.1 - the slide counter is centred on its capitals, not its line box
 // Version: 1.5.0 - a picture saved over shows its new content: the drawn
 //                  paths go to an UltraCanvasImageFileWatch, checked on its
 //                  worker, never on the paint path
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlideshow.h"
+#include "UltraCanvasElementPlugins.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
 #include <algorithm>
@@ -32,6 +34,12 @@ namespace UltraCanvas {
         SetMouseCursor(UCMouseCursor::Default);
         SetBackgroundColor(config.backgroundColor);
         slideStartedAt = std::chrono::steady_clock::now();
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasSlideshow::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasContainer::ApplyTheme(theme);
+        SetConfig(SlideshowConfig::FromTheme(theme, config));
     }
 
     UltraCanvasSlideshow::~UltraCanvasSlideshow() {
@@ -40,6 +48,7 @@ namespace UltraCanvas {
 
     // ===== CONFIGURATION =====
     void UltraCanvasSlideshow::SetConfig(const SlideshowConfig& cfg) {
+        StyleSetByHand();
         bool wasPlaying = playing;
         if (wasPlaying) Pause();
         config = cfg;
@@ -49,6 +58,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSlideshow::SetIndicatorStyle(const SlideshowIndicatorStyle& style) {
+        StyleSetByHand();
         config.indicators = style;
         UpdateRedrawTimer();
         RequestRedraw();
@@ -1151,4 +1161,47 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+
+    UCElementDescriptor MakeSlideshowDescriptor() {
+        UCElementDescriptor descriptor;
+        descriptor.typeName = "slideshow";
+        descriptor.category = UCPluginCategory::Widget;
+        descriptor.displayName = "Slideshow";
+        descriptor.description = "Pictures one at a time, with transitions, a counter and autoplay";
+        descriptor.docPath = "Docs/UltraCanvas/UltraCanvasSlideshowExamples.md";
+        descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+            return std::static_pointer_cast<UltraCanvasUIElement>(
+                std::make_shared<UltraCanvasSlideshow>(id, x, y, w, h));
+        };
+        return descriptor;
+    }
+
+    void RegisterSlideshowElement() {
+        UltraCanvasElementRegistry::Register(MakeSlideshowDescriptor());
+    }
+
+
+// ===== THE THEME =====
+    SlideshowIndicatorStyle SlideshowIndicatorStyle::FromTheme(const UltraCanvasTheme& theme, const SlideshowIndicatorStyle& base) {
+        SlideshowIndicatorStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.inactiveColor = r.lineStrong;
+        s.activeColor = r.accent;
+        s.hoverColor = r.inkMuted;
+        s.textColor = r.ink;
+        return s;
+    }
+
+    SlideshowConfig SlideshowConfig::FromTheme(const UltraCanvasTheme& theme, const SlideshowConfig& base) {
+        SlideshowConfig c = base;
+        const ThemeRoles& r = theme.roles;
+        c.fontFamily = theme.fonts.ui.fontFamily;
+        // the element's own role: the stage keeps its black unless a theme names another
+        c.backgroundColor = theme.Role("slideshow.stage", base.backgroundColor);
+        c.infoPanelColor = r.panel;
+        c.titleColor = r.ink;
+        c.bodyColor = r.inkMuted;
+        c.indicators = SlideshowIndicatorStyle::FromTheme(theme, base.indicators);
+        return c;
+    }
 } // namespace UltraCanvas

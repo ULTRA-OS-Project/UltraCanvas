@@ -1,5 +1,6 @@
 # cmake/UltraCanvasTdlib.cmake
-# TDLib's JSON library (libtdjson) for the Telegram provider
+# The JSON library (libtdjson) of TDLib, the Telegram Database Library, for
+# the Telegram provider
 # (Plugins/UltraIM/telegram), fetched prebuilt at configure time and put
 # where the provider looks first at run time: <build>/Plugins/UltraIM/tdlib/
 # (libtdjson.so / libtdjson.dylib / tdjson.dll, with the OpenSSL and zlib
@@ -168,7 +169,7 @@ else()
             endforeach()
             file(WRITE "${ULTRAIM_TDLIB_DIR}/README.txt"
 "TDLib ${ULTRAIM_TDLIB_VERSION} (https://github.com/tdlib/td, Boost Software License 1.0), the
-Telegram client library ChatCube's Telegram provider loads at run time, as
+Telegram Database Library ChatCube's Telegram provider loads at run time, as
 built for the tdjson Python package (https://pypi.org/project/tdjson/) and
 taken from its wheel by cmake/UltraCanvasTdlib.cmake. On macOS and Windows
 the OpenSSL (Apache License 2.0 / OpenSSL License) and zlib (zlib License)

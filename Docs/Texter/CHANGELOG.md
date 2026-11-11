@@ -1,3 +1,47 @@
+#### 2026-11-06 *1.78*
+- **Crash recovery no longer asks.** Files autosaved in a session that did not
+  end cleanly are reopened at startup straight away, each in its own tab and
+  marked modified, instead of behind a *Crash Recovery* question whose *No*
+  deleted them.
+
+#### 2026-11-04 *1.77*
+- **UltraTexter in every language.** Its own catalogue
+  (`media/locale/<lang>/UltraTexter.json`) now exists in all thirty
+  languages: until now its 213 texts - menus, toolbars, the find bar,
+  comments and tracked changes, the export and print dialogs - showed in
+  English whatever the language. A failed save no longer explains itself
+  half in English: the reason is a whole translated sentence per case
+  instead of an English phrase put into "The file {0}.".
+
+#### 2026-11-04 *1.76*
+- **UltraTexter speaks the chosen language.** Its own texts - the menus, the
+  toolbars' tooltips, the language and encoding lists, the search bar, the
+  dialogs (Go to line, Crash recovery, File statistics, the spelling and
+  review menus, Translate selection), the status line's messages and the
+  About box - go through `Tr`, so they follow the language set in
+  UOS-Settings; `media/locale/en/UltraTexter.json` is its set, on the *Text*
+  base set. **Help > Translate UltraTexter...** opens the localisation
+  editor on UltraTexter's own set in the language it runs in.
+
+#### 2026-10-28 *1.75*
+- **Hidden characters can be shown.** The editor's right-click menu has a
+  *Display* submenu with *Hidden Characters*, *Line Numbers* and *Word Wrap*;
+  *View > Hidden Characters* is the same switch. With it on, every space is
+  marked with a dot, a tab with an arrow across its width, a no-break space
+  with a small ring, a zero-width character (zero-width space and joiners,
+  word joiner, soft hyphen, byte order mark) with a tick, and the end of every
+  line with a pilcrow (¶) - so trailing spaces, tabs mixed with spaces and
+  invisible characters pasted from the web can be seen. Resting the pointer
+  on a mark names the character in a tooltip with its code, decimal value
+  and UTF-8 bytes (*NO-BREAK SPACE, U+00A0, 160, C2 A0*); on a pilcrow it
+  gives the file's line ending (LF, CRLF or CR). The text itself is
+  unchanged. Applies to text tabs (word-processing tabs keep their own view)
+  and is remembered with the other View settings. Framework:
+  `UltraCanvasTextArea::SetShowHiddenCharacters`.
+- **Markdown footnote and abbreviation tooltips open next to the pointer**
+  instead of over the toolbar near the top of the window. Framework:
+  `UltraCanvasTextArea::HandleMarkdownHover`.
+
 #### 2026-10-25 *1.74*
 - **Starting UltraTexter after closing it could say "UltraTexter is already
   running"** on Windows, with the old copy left in Task Manager without a

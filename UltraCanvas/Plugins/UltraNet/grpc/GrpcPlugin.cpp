@@ -32,6 +32,7 @@
 #include <UltraNet/UltraNetUrl.h>
 
 #include <curl/curl.h>
+#include <UltraNet/UltraNetCurlProxy.h>   // after UltraNetPlugins.h: it brings <windows.h>
 
 #include <atomic>
 #include <cstdint>
@@ -216,6 +217,7 @@ public:
                 UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
 
             curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), url, /*tunnel=*/true);   // the proxy setting
             curl_easy_setopt(h.get(), CURLOPT_HTTP_VERSION,
                              (long)CURL_HTTP_VERSION_2_PRIOR_KNOWLEDGE);
             curl_easy_setopt(h.get(), CURLOPT_POST, 1L);

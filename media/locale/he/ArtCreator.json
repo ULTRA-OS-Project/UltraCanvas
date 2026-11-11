@@ -1,0 +1,22 @@
+{
+  "@language": "he",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "הטקסט נוסף: כדי לערוך אותו יש ללחוץ עליו עם כלי טקסט, או ללחוץ עליו לחיצה כפולה",
+  "Changed the text": "הטקסט שונה",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "יש ללחוץ על הדף ולהקליד, או ללחוץ על טקסט כדי לערוך אותו; הסרגל שלמעלה קובע את הגופן, הגודל, הסגנון, היישור והריווח שלו. לסיום: Escape, Ctrl+Enter או לחיצה בחוץ",
+  "Delete Text": "מחיקת טקסט",
+  "Edit Text": "עריכת טקסט",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "עריכת הטקסט: Enter מתחיל שורה חדשה; לסיום: Escape, Ctrl+Enter או לחיצה בחוץ",
+  "Letter Spacing": "ריווח אותיות",
+  "Line Spacing": "ריווח שורות",
+  "Nothing was typed": "לא הוקלד דבר",
+  "Text Alignment": "יישור טקסט",
+  "Text Bold": "טקסט מודגש",
+  "Text Font": "גופן טקסט",
+  "Text Italic": "טקסט נטוי",
+  "Text Size": "גודל טקסט",
+  "Text Strikethrough": "קו חוצה בטקסט",
+  "Text Underline": "קו תחתון בטקסט",
+  "The text was emptied, so it was deleted": "הטקסט התרוקן, ולכן נמחק",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "הקלדת טקסט חדש: Enter מתחיל שורה חדשה; לסיום: Escape, Ctrl+Enter או לחיצה בחוץ"
+}

@@ -508,6 +508,38 @@ switches to the full set when the scan ends - laid out and drawn again
 stay a box. `GetSystemFontScanStatus()` says which happened, and
 `SetSystemFontsSwitchedHandler()` hears of the switch.
 
+The font folders are named by path (`GenerateWindowsFontFoldersConfig()`:
+`%SystemRoot%\fonts`, `%LOCALAPPDATA%\Microsoft\Windows\Fonts` and
+fontconfig's cache folder), not by fontconfig's keywords (`WINDOWSFONTDIR` and
+the others): how a fontconfig resolves those in a config read from memory has
+changed between versions, and one it cannot resolve failed the whole config -
+the system fonts were then never loaded. Once the full set is in use,
+`FONTCONFIG_FILE` names its `fonts.conf`, so a reload of fontconfig's
+configuration by any library reads the full set rather than the start's
+bundled fonts alone. A set with folders of its own but without Windows' (a
+`fonts.conf` beside the program) gets them added.
+
+Named is not read: fontconfig keeps a cache of each folder and trusts it as
+long as the folder's time stamp is unchanged, and `C:\Windows\Fonts` seldom
+changes - a cache that once came out empty (a scan that failed, another
+program's fontconfig writing to the same cache folder) left every later start
+with the bundled fonts alone. So the scan counts the fonts it has from the
+Windows font folder; with none while the folder holds font files, it reads the
+folder again past its cache (`FcDirCacheUnlink`, a new build), and as a last
+resort adds its files one by one. An error in one element of the scan's
+configuration no longer discards the rest of it.
+
+The debug log (`ULTRACANVAS_DEBUG_LOG`) says how it went:
+
+- "UltraCanvas: N system and M application font files, K of them from the
+  Windows font folder (C:/WINDOWS/fonts), which is named" - at the start;
+  "named when the scan ends" while the scan still runs.
+- "UltraCanvas: the system font scan has K fonts from C:/WINDOWS/fonts (F font
+  files there)", and when K was 0, "... read again past its cache: K fonts"
+  or "... added file by file: K fonts".
+- "UltraCanvas: the font set in use has K fonts from C:/WINDOWS/fonts" after
+  the windows switched to the full set.
+
 Text goes through Pango's fontconfig font map on every thread: the main
 thread's is made in `LoadBundledFontsNative()`, and `PANGOCAIRO_BACKEND=fc` is
 set once it exists, so a worker thread (or libvips and librsvg laying out

@@ -1,3 +1,19 @@
+#### 2026-11-09 *0.4.13*
+- **Follows UltraMail's new layout of cached messages.** A folder whose name
+  is not in the usual casing ("work", "sent items") is now cached under its
+  name with a `~` and a short code ("work~1"), so two folders whose names
+  differ only in case keep their messages apart on Windows and macOS. The
+  cache of EmailCleaner's own accounts is moved to it at the first start, and
+  telling a Sent or Trash folder by its name reads past the code.
+
+#### 2026-10-28 *0.4.12*
+- **Reads UltraMail's encrypted mailbox.** UltraMail now keeps its databases
+  and message files encrypted at rest; EmailCleaner takes the storage key from
+  UltraMail's vault with the device key (never writing to it) and opens the
+  account list, the address book and the cached messages with it. A mailbox
+  whose vault has a Primary Password stays closed, and EmailCleaner says so
+  instead of asking UltraMail to store a device key.
+
 #### 2026-10-23 *0.4.11*
 - **A Contacts page: the address book against the mail you sent.** UltraMail
   used to collect every sender it synced into its address book, so one kept

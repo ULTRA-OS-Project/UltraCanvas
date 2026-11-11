@@ -44,22 +44,22 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoExamples() {
-        auto page = DemoKit::CreatePage("VideoExamples", "Video Player & Recorder", "");
+        auto page = DemoKit::CreatePage("VideoExamples", Tr("Video Player & Recorder"), "");
 
         auto status = DemoKit::AddText(page, "VideoStatus", "");
         if (UltraCanvasVideoDevices::IsAvailable()) {
-            status->SetText("Backend: " + UltraCanvasVideoDevices::GetBackendName() + " — ready");
+            status->SetText(TrF("Backend: {0} — ready", UltraCanvasVideoDevices::GetBackendName()));
             status->SetTextColor(Color(40, 120, 40));
         } else {
 #if defined(_WIN32)
-            const char* framework = "Media Foundation (ships with Windows)";
+            const std::string framework = Tr("Media Foundation (ships with Windows)");
 #elif defined(__APPLE__)
-            const char* framework = "AVFoundation (ships with macOS)";
+            const std::string framework = Tr("AVFoundation (ships with macOS)");
 #else
-            const char* framework = "GStreamer (gstreamer-1.0 + app/video/pbutils plugins)";
+            const std::string framework = Tr("GStreamer (gstreamer-1.0 + app/video/pbutils plugins)");
 #endif
-            status->SetText(std::string("Video backend not available. Install/enable ") +
-                            framework + " and rebuild with -DULTRACANVAS_ENABLE_VIDEO=ON.");
+            status->SetText(TrF("Video backend not available. Install/enable {0} and rebuild with -DULTRACANVAS_ENABLE_VIDEO=ON.",
+                                framework));
             status->SetTextColor(Color(180, 60, 60));
         }
         status->SetFontSize(11);
@@ -67,7 +67,7 @@ namespace UltraCanvas {
         auto cardRow = DemoKit::AddRow(page, "VideoCards");
 
         // ----- Playback -----
-        auto playCard = DemoKit::AddCard(cardRow, "VPlayLabel", "Playback");
+        auto playCard = DemoKit::AddCard(cardRow, "VPlayLabel", Tr("Playback"));
 
         auto player = CreateVideoPlayer("DemoVideoPlayer", 0, 0, 460, 300);
         auto playerWeak = std::weak_ptr<UltraCanvasVideoPlayerElement>(player);
@@ -77,21 +77,21 @@ namespace UltraCanvas {
         // a freshly loaded-but-paused clip shows nothing but the "Buffering..."
         // placeholder until Play() is called.
         player->onFileOpened = [status, playerWeak](const std::string& path) {
-            status->SetText("Playing: " + path);
+            status->SetText(TrF("Playing: {0}", path));
             status->SetTextColor(Color(40, 120, 40));
             if (auto p = playerWeak.lock()) p->Play();
         };
         DemoKit::AddFixed(playCard, player);
 
         auto playButtons = DemoKit::AddRow(playCard, "VPlayButtons", 10);
-        auto openBtn = MakeVideoButton("OpenVideo", "Open video", 130);
+        auto openBtn = MakeVideoButton("OpenVideo", Tr("Open video"), 130);
         openBtn->onClick = [playerWeak]() {
             if (auto p = playerWeak.lock()) p->ShowOpenDialog();
         };
         DemoKit::Add(playButtons, openBtn);
 
         // ----- Recording -----
-        auto recCard = DemoKit::AddCard(cardRow, "VRecLabel", "Recording");
+        auto recCard = DemoKit::AddCard(cardRow, "VRecLabel", Tr("Recording"));
 
         auto recorder = CreateVideoRecorder("DemoVideoRecorder", 0, 0, 460, 300);
         DemoKit::AddFixed(recCard, recorder);
@@ -103,35 +103,35 @@ namespace UltraCanvas {
         // navigation (DisplayDemoItem/ClearDisplay), which closes the camera, so it is
         // never left running in the background.
         auto recButtons = DemoKit::AddRow(recCard, "VRecButtons", 10);
-        auto camBtn = MakeVideoButton("StartCam", "Start camera", 130);
+        auto camBtn = MakeVideoButton("StartCam", Tr("Start camera"), 130);
         DemoKit::Add(recButtons, camBtn);
         std::weak_ptr<UltraCanvasButton> camBtnWeak = camBtn;
 
         recorder->onRecordStarted = [status, camBtnWeak]() {
-            status->SetText("Recording...");
+            status->SetText(Tr("Recording..."));
             status->SetTextColor(Color(200, 60, 60));
             // Recording always runs the live camera; keep the toggle label in sync
             // when a recording is started from "Record to file" rather than here.
-            if (auto b = camBtnWeak.lock()) b->SetText("Stop camera");
+            if (auto b = camBtnWeak.lock()) b->SetText(Tr("Stop camera"));
         };
         recorder->onRecordStopped = [status, recWeak, camBtnWeak]() {
-            status->SetText("Recording stopped.");
+            status->SetText(Tr("Recording stopped."));
             // A stop can come from the in-surface record button too; keep the toggle
             // label truthful about whether the camera is still open afterwards.
             if (auto r = recWeak.lock()) {
                 auto rec = r->GetRecorder();
                 if (auto b = camBtnWeak.lock())
-                    b->SetText(rec && rec->IsOpen() ? "Stop camera" : "Start camera");
+                    b->SetText(rec && rec->IsOpen() ? Tr("Stop camera") : Tr("Start camera"));
             }
         };
         recorder->onSaved = [status](const std::string& path) {
-            status->SetText("Saved to " + path);
+            status->SetText(TrF("Saved to {0}", path));
             status->SetTextColor(Color(40, 120, 40));
         };
         // Surface backend failures (camera can't open, caps negotiation fails, etc.)
         // so the status line reflects reality instead of a stale "preview" message.
         recorder->onError = [status](const std::string& msg) {
-            status->SetText("Camera error: " + msg);
+            status->SetText(TrF("Camera error: {0}", msg));
             status->SetTextColor(Color(180, 60, 60));
         };
 
@@ -147,8 +147,8 @@ namespace UltraCanvas {
                     rec->GetState() == VideoRecordingState::Paused)
                     r->StopRecording();
                 r->CloseCamera();
-                if (b) b->SetText("Start camera");
-                status->SetText("Camera off.");
+                if (b) b->SetText(Tr("Start camera"));
+                status->SetText(Tr("Camera off."));
                 status->SetTextColor(Color(120, 120, 120));
             } else {
                 // Start camera: fully close any prior session first — after a
@@ -162,18 +162,18 @@ namespace UltraCanvas {
                 if (!r->OpenCamera(/*live=*/true)) {
                     std::string why = rec ? rec->GetLastError() : "";
                     status->SetText(why.empty()
-                                        ? "Could not start the camera (no device or access denied)."
-                                        : "Could not start the camera: " + why);
+                                        ? Tr("Could not start the camera (no device or access denied).")
+                                        : TrF("Could not start the camera: {0}", why));
                     status->SetTextColor(Color(180, 60, 60));
                     return;
                 }
-                if (b) b->SetText("Stop camera");
-                status->SetText("Live camera preview.");
+                if (b) b->SetText(Tr("Stop camera"));
+                status->SetText(Tr("Live camera preview."));
                 status->SetTextColor(Color(40, 120, 40));
             }
         };
 
-        auto recBtn = MakeVideoButton("RecToFile", "Record to file", 150);
+        auto recBtn = MakeVideoButton("RecToFile", Tr("Record to file"), 150);
         recBtn->onClick = [recWeak]() {
             if (auto r = recWeak.lock()) r->ShowSaveDialog();
         };
@@ -184,18 +184,18 @@ namespace UltraCanvas {
         // reports, and switches the recorder's input device on change.
         auto camRow = DemoKit::AddRow(recCard, "VCamSelRow", 8);
         camRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        DemoKit::AddText(camRow, "VCamSelLabel", "Camera:");
+        DemoKit::AddText(camRow, "VCamSelLabel", Tr("Camera:"));
 
         // Takes the rest of the line; a long label moves it onto its own.
         auto camDrop = CreateDropdown("CameraSelect", 0, 0, 300, 28);
-        camDrop->AddItem("Default camera (auto-selected)", "");
+        camDrop->AddItem(Tr("Default camera (auto-selected)"), "");
         for (const auto& cam : UltraCanvasVideoDevices::ListCameras()) {
-            camDrop->AddItem(cam.name + (cam.isDefault ? "  (auto-selected)" : ""), cam.id);
+            camDrop->AddItem(cam.isDefault ? TrF("{0}  (auto-selected)", cam.name) : cam.name, cam.id);
         }
         camDrop->SetSelectedIndex(0, false);
         camDrop->onSelectionChanged = [recWeak](int, const DropdownItem& item) {
             if (auto r = recWeak.lock()) {
-                std::string label = item.value.empty() ? "Default camera" : item.text;
+                std::string label = item.value.empty() ? Tr("Default camera") : item.text;
                 r->SelectCamera(item.value, label);
             }
         };

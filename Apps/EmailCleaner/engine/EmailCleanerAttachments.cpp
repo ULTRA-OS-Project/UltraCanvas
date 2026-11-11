@@ -1,7 +1,9 @@
 // Apps/EmailCleaner/engine/EmailCleanerAttachments.cpp
+// Version: 0.4.0 - cached messages read through UltraMailStorage (sealed at rest)
 // Version: 0.3.0 (Phase 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerAttachments.h"
+#include "UltraMailStorage.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "EmailCleanerClassifier.h"
@@ -29,13 +31,10 @@ std::string Lower(std::string s) {
     return s;
 }
 
+// A cached message: UltraMail seals its message files at rest
+// (UltraMailStorage.h); opened with the body key the app set, as it is when plain.
 bool ReadFile(const std::string& path, std::string& out) {
-    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
-    if (!in) return false;
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    out = buffer.str();
-    return in.good() || in.eof();
+    return UltraMail::ReadBodyFile(path, out);
 }
 
 } // namespace

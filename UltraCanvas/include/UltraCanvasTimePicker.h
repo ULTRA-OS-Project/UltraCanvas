@@ -13,8 +13,10 @@
 // circular clock-face dial (UltraCanvasTimeClockView) with a Windows-10-style
 // dual-ring 24-hour face.
 //
+// Version: 1.3.0 - TimePickerStyle::FromTheme, ApplyTheme on the picker and the clock view: they follow the
+//                  theme; a SetStyle by hand stops the following; SetStyle reaches the field's editor
 // Version: 1.2.0
-// Last Modified: 2026-08-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -121,6 +123,19 @@ namespace UltraCanvas {
         Color clockSelectionTextColor = Colors::White;
         Color clockHoverColor         = Color(0, 120, 215, 60);
         float clockHeaderFontSize     = 26.0f;
+
+        // The theme's roles: the well for the field with the control border
+        // and the focus ring, the hover fill, the panel disabled, ink and the
+        // caret in ink, faint ink for the hint, muted ink for the glyph and
+        // the separators; the raised surface for the popup with a hairline,
+        // the accent for the footer; the clock's header and selection in the
+        // accent with text on it, its face in the pressed fill (the element
+        // role "time-picker.clock-face" where a theme names it), its numbers
+        // in ink; the interface font at the body size - over a base's own
+        // shape (metrics, the header size), or a default one
+        static TimePickerStyle FromTheme(const UltraCanvasTheme& theme, const TimePickerStyle& base);
+        static TimePickerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, TimePickerStyle()); }
+        static TimePickerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // Which kind of panel the field pops up.
@@ -163,7 +178,9 @@ namespace UltraCanvas {
         Section GetSection() const { return section; }
 
         // Shares the picker's style struct (clock* + font fields are used).
-        void SetStyle(const TimePickerStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const TimePickerStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        const TimePickerStyle& GetStyle() const { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(TimePickerStyle::FromTheme(theme, style)); }
 
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
@@ -273,8 +290,10 @@ namespace UltraCanvas {
         bool IsPopupOpen() const { return popupOpen; }
 
         // ===== STYLE =====
-        void SetStyle(const TimePickerStyle& s) { style = s; RequestRedraw(); }
+        // The field's text, caret, hint and font go to the editor too
+        void SetStyle(const TimePickerStyle& s);
         const TimePickerStyle& GetStyle() const { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(TimePickerStyle::FromTheme(theme, style)); }
 
         // ===== OVERRIDES =====
         void SetWindow(UltraCanvasWindowBase* win) override;

@@ -1,4 +1,6 @@
 // Apps/UltraDBAdmin/relay/RelaySignIn.cpp
+// Version: 0.2.0 - the ID token's signature and the random state through
+//   UltraCrypt (UltraCryptPublicKey.h, UltraCryptCore.h); no OpenSSL here
 // Version: 0.1.1 - a P-256 key read from its DER form (OpenSSL 3.0.2)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -8,13 +10,8 @@
 #include <UltraNet/UltraNetHttp.h>
 #include <UltraNet/UltraNetOAuth2.h>
 
-#include <openssl/bn.h>
-#include <openssl/core_names.h>
-#include <openssl/ecdsa.h>
-#include <openssl/evp.h>
-#include <openssl/param_build.h>
-#include <openssl/rand.h>
-#include <openssl/x509.h>
+#include <UltraCrypt/UltraCryptCore.h>
+#include <UltraCrypt/UltraCryptPublicKey.h>
 
 #include <yyjson.h>
 
@@ -85,7 +82,7 @@ void Page(HttpReply& reply, int status, const char* reason, const std::string& w
 
 std::string RandomToken(size_t bytes) {
     std::string raw(bytes, '\0');
-    if (RAND_bytes(reinterpret_cast<unsigned char*>(raw.data()), static_cast<int>(bytes)) != 1) return std::string();
+    if (!UltraCrypt_RandomBytes(raw.data(), bytes)) return std::string();
     return Base64UrlEncode(raw);
 }
 
@@ -112,68 +109,7 @@ bool Loopback(const std::string& url) {
     return url.rfind("http://", 0) == 0 && IsLoopback(UrlHost(url));
 }
 
-// ===== keys =====
-
-struct KeyFree {
-    void operator()(EVP_PKEY* k) const { EVP_PKEY_free(k); }
-};
-using Key = std::unique_ptr<EVP_PKEY, KeyFree>;
-
-Key RsaKey(const std::string& n, const std::string& e) {
-    BIGNUM* bn = BN_bin2bn(reinterpret_cast<const unsigned char*>(n.data()), static_cast<int>(n.size()), nullptr);
-    BIGNUM* be = BN_bin2bn(reinterpret_cast<const unsigned char*>(e.data()), static_cast<int>(e.size()), nullptr);
-    OSSL_PARAM_BLD* build = OSSL_PARAM_BLD_new();
-    EVP_PKEY* key = nullptr;
-    if (bn && be && build && OSSL_PARAM_BLD_push_BN(build, OSSL_PKEY_PARAM_RSA_N, bn) &&
-        OSSL_PARAM_BLD_push_BN(build, OSSL_PKEY_PARAM_RSA_E, be)) {
-        OSSL_PARAM* params = OSSL_PARAM_BLD_to_param(build);
-        EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_from_name(nullptr, "RSA", nullptr);
-        if (params && ctx && EVP_PKEY_fromdata_init(ctx) == 1)
-            EVP_PKEY_fromdata(ctx, &key, EVP_PKEY_PUBLIC_KEY, params);
-        EVP_PKEY_CTX_free(ctx);
-        OSSL_PARAM_free(params);
-    }
-    OSSL_PARAM_BLD_free(build);
-    BN_free(bn);
-    BN_free(be);
-    return Key(key);
-}
-
-Key P256Key(const std::string& x, const std::string& y) {
-    if (x.size() != 32 || y.size() != 32) return nullptr;
-    // The key as a SubjectPublicKeyInfo (RFC 5480): the fixed DER prefix for
-    // an id-ecPublicKey on prime256v1, then the uncompressed point. Read with
-    // d2i_PUBKEY, which every OpenSSL reads alike (OSSL_PARAM_BLD's EC import
-    // fails on 3.0.2's).
-    static const unsigned char prefix[] = { 0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d,
-                                            0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01,
-                                            0x07, 0x03, 0x42, 0x00, 0x04 };
-    std::string der(reinterpret_cast<const char*>(prefix), sizeof prefix);
-    der += x;
-    der += y;
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(der.data());
-    return Key(d2i_PUBKEY(nullptr, &p, static_cast<long>(der.size())));
-}
-
-// JWS's ES256 signature is r || s, 32 bytes each; OpenSSL verifies DER.
-std::string EcdsaDer(const std::string& raw) {
-    if (raw.size() != 64) return std::string();
-    ECDSA_SIG* sig = ECDSA_SIG_new();
-    BIGNUM* r = BN_bin2bn(reinterpret_cast<const unsigned char*>(raw.data()), 32, nullptr);
-    BIGNUM* s = BN_bin2bn(reinterpret_cast<const unsigned char*>(raw.data()) + 32, 32, nullptr);
-    std::string der;
-    if (sig && r && s && ECDSA_SIG_set0(sig, r, s) == 1) {
-        r = s = nullptr;                    // the signature owns them now
-        unsigned char* out = nullptr;
-        const int size = i2d_ECDSA_SIG(sig, &out);
-        if (size > 0) der.assign(reinterpret_cast<char*>(out), static_cast<size_t>(size));
-        OPENSSL_free(out);
-    }
-    BN_free(r);
-    BN_free(s);
-    ECDSA_SIG_free(sig);
-    return der;
-}
+std::vector<uint8_t> Bytes(const std::string& s) { return std::vector<uint8_t>(s.begin(), s.end()); }
 
 } // namespace
 
@@ -232,8 +168,9 @@ bool Base64UrlDecode(const std::string& text, std::string& bytes) {
 struct PublicKeys::Impl {
     struct One {
         std::string kid;
-        std::string kty;        // RSA, EC
-        Key key;
+        std::string kty;        // RSA, EC (P-256)
+        std::vector<uint8_t> a; // RSA: n; EC: x
+        std::vector<uint8_t> b; // RSA: e; EC: y
     };
     std::vector<One> keys;
 };
@@ -260,13 +197,16 @@ bool PublicKeys::Parse(const std::string& jwks, std::string& error) {
         one.kid = Str(jwk, "kid");
         one.kty = Str(jwk, "kty");
         std::string a, b;
-        if (one.kty == "RSA" && Base64UrlDecode(Str(jwk, "n"), a) && Base64UrlDecode(Str(jwk, "e"), b) &&
-            a.size() >= 256)            // 2048 bits at least
-            one.key = RsaKey(a, b);
+        bool usable = false;
+        if (one.kty == "RSA" && Base64UrlDecode(Str(jwk, "n"), a) && Base64UrlDecode(Str(jwk, "e"), b))
+            usable = UltraCrypt_CheckRsaPublicKey(Bytes(a), Bytes(b));      // 2048 bits at least
         else if (one.kty == "EC" && Str(jwk, "crv") == "P-256" && Base64UrlDecode(Str(jwk, "x"), a) &&
                  Base64UrlDecode(Str(jwk, "y"), b))
-            one.key = P256Key(a, b);
-        if (one.key) impl_->keys.push_back(std::move(one));
+            usable = UltraCrypt_CheckP256PublicKey(Bytes(a), Bytes(b));     // on the curve
+        if (!usable) continue;
+        one.a = Bytes(a);
+        one.b = Bytes(b);
+        impl_->keys.push_back(std::move(one));
     }
     if (impl_->keys.empty()) {
         error = "the key set holds no RSA (2048 bits or more) or P-256 signing key";
@@ -297,13 +237,9 @@ bool PublicKeys::Verify(const std::string& kid, const std::string& alg, const st
         error = "the token is signed with a key the provider does not publish (" + kid + ")";
         return false;
     }
-    const std::string sig = alg == "ES256" ? EcdsaDer(signature) : signature;
-    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-    const bool ok = ctx && !sig.empty() &&
-                    EVP_DigestVerifyInit(ctx, nullptr, EVP_sha256(), nullptr, found->key.get()) == 1 &&
-                    EVP_DigestVerify(ctx, reinterpret_cast<const unsigned char*>(sig.data()), sig.size(),
-                                     reinterpret_cast<const unsigned char*>(data.data()), data.size()) == 1;
-    EVP_MD_CTX_free(ctx);
+    const bool ok = alg == "ES256"
+                        ? UltraCrypt_VerifyEcdsaP256Sha256(found->a, found->b, data.data(), data.size(), Bytes(signature))
+                        : UltraCrypt_VerifyRsaPkcs1Sha256(found->a, found->b, data.data(), data.size(), Bytes(signature));
     if (!ok) error = "the token's signature is not the provider's";
     return ok;
 }

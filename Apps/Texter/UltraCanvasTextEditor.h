@@ -80,6 +80,8 @@ namespace UltraCanvas {
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
         bool wordWrap = true;
+        // Spaces, tabs and line ends drawn as faint marks in text tabs.
+        bool showHiddenCharacters = false;
         // Word-processing documents shown on their pages (headers, footers,
         // page breaks) rather than as one column.
         bool documentPageLayout = true;
@@ -495,6 +497,10 @@ namespace UltraCanvas {
         void OnViewToggleTheme();
         void OnViewToggleLineNumbers(bool checked);
         void OnViewToggleWordWrap(bool checked);
+        void OnViewToggleHiddenCharacters(bool checked);
+        // Ticks the View menu's Line Numbers, Word Wrap and Hidden Characters
+        // to match the config after the editor's context menu changed one.
+        void UpdateViewMenuChecks();
         void OnViewTogglePageLayout(bool checked);
         void OnViewToggleToolbar(bool checked);
         void OnViewToggleMarkdownToolbar(bool checked);
@@ -618,8 +624,8 @@ namespace UltraCanvas {
         // Post-construction initialization (called after window is shown).
         // Split into two phases around the splash screen:
         //   - RestoreSessionDocuments() runs synchronously while the splash is up.
-        //   - PromptCrashRecovery() runs after the splash closes so the modal
-        //     recovery dialog can take focus cleanly.
+        //   - PromptCrashRecovery() runs after the splash closes and reopens
+        //     every orphan autosave backup as a modified tab - no dialog.
         void RestoreSessionDocuments();
         void PromptCrashRecovery();
 

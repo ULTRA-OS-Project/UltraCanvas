@@ -1,3 +1,21 @@
+#### 2026-11-02 *0.18*
+- **The History tab is never blank for want of a click.** Selecting the tab
+  reads the store over the chosen range, as Names and Events already
+  refreshed themselves on selection; before, it waited for Refresh and showed
+  "Nothing loaded yet" over flows recorded in an earlier run. After *Record*
+  the tab also reads itself once a few snapshots are in, while it is in
+  front, so the first rows appear without a second click; Refresh still
+  re-reads at any time. The idle line names the store's path, as the loaded
+  one does, so the place the record will live is known before anything is
+  recorded.
+- **No "…" on buttons.** *Info* and *Purge* say what they do, as the house
+  rule asks of every button; the status lines that point at Info follow.
+  *Purge* still asks a second time, as "Confirm purge", before it deletes.
+- **Smaller table text.** The five tables - processes, connections, recorded
+  flows, names and events - are set in 11 pt over 22 px rows, down from
+  12 pt over 24 px, so a screen holds more of them; the headers keep their
+  10 pt.
+
 #### 2026-10-15 *0.17*
 - **No console window on Windows when it is started from the Start menu or
   Explorer.** `UltraNetMonitor.exe` is a GUI program now. Beside it,

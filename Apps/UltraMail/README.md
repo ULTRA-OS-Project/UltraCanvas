@@ -104,6 +104,23 @@ Apps/UltraMail/
                                   framework's UltraVault::DeviceKeyVault with
                                   UltraMail's profile (ultramail.vault,
                                   device.key, keys mail.ultramail.<account>)
+    UltraMailStorage.{h,cpp}      the stored mail encrypted at rest: the storage
+                                  key in the vault, a key per database file
+                                  (UltraDatabase's encrypted SQLite) and one for
+                                  the message files (sealed .eml); converting an
+                                  earlier version's plain files
+    UltraMailSecureMime.{h,cpp}   signed and encrypted mail: OpenSecureMessage
+                                  (decrypt, check signatures, S/MIME and
+                                  OpenPGP, nested), SecureOutgoingMessage
+                                  (sign / encrypt to recipients and sender),
+                                  PKCS #12 import, the raw-MIME helpers
+    UltraMailSecureBackends.h     the byte work behind it, one file per library:
+    UltraMailSmime.cpp              S/MIME on UltraCrypt's X.509 and CMS
+                                    (UltraCryptX509.h); the verdicts in words
+    UltraMailOpenPgp.cpp            OpenPGP on GPGME (ULTRAMAIL_HAVE_OPENPGP);
+                                    stubs where the library is not found
+    UltraMailSecureKeys.{h,cpp}   the account's S/MIME identity in the vault
+                                  (<account>.smime.cert / .smime.key)
     UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail, Outlook, Yahoo): provider
                                   table, the sign-in service, app registration
                                   (env / oauth.ini), sign-in +
@@ -192,7 +209,13 @@ Apps/UltraMail/
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
                                   port, security, username; validates in place;
-                                  as Account Settings also name, password, Signature
+                                  as Account Settings also name, password, Signature,
+                                  Security
+    UltraMailSecurityDialog.{h,cpp} an account's mail security: the S/MIME
+                                  certificate (Import / Remove), the OpenPGP key
+                                  it signs with, how new messages start (Off /
+                                  S/MIME / OpenPGP, Sign, Encrypt); from Account
+                                  Settings and after adding an account (Skip)
     UltraMailSignatureDialog.{h,cpp} the signature editor: None / Plain text /
                                   HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards
@@ -201,7 +224,8 @@ Apps/UltraMail/
                                   Reading >
                                   Layout / Messages, Privacy > Images /
                                   Sender icons, Display > Links /
-                                  Notifications / Treeview
+                                  Notifications / Treeview, Handling >
+                                  Email send notification
     UltraMailPreferences.{h,cpp}  app-wide preferences.ini behind it
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
@@ -244,6 +268,11 @@ each page, *Restore default* in the bottom bar). Changes apply and are saved
   account** (the account chosen in the account bar; a click on another tile
   shows that one's folders) or **Show all email accounts** (the default),
   one below the other in the account bar's order.
+- *Handling > Email send notification* — how a message sent successfully is
+  reported: **Show in popup window** ("Message sent to ...", closed with OK;
+  the default) or **Display success in status bar** (the same words at the
+  foot of the main window, nothing to close). A message that could not be
+  sent is always reported in a window, with Retry.
 
 An account's servers and sign-in stay in its own *Account Settings*.
 
@@ -430,6 +459,10 @@ process started and the thread (`ui`, or `w<n>` for a worker):
   reported too.
 
 `ULTRAMAIL_TRACE=0` turns it off.
+
+`UltraMail --minimized` starts with the window minimized: mail is fetched
+and the unread count published to the desktop's mail icon as with the
+window open. UltraDesktop's *Start with the desktop* starts it so.
 
 ## What the engine provides now
 

@@ -5,7 +5,7 @@
 #include "AccountStore.h"
 
 #include "AccountExport.h"
-#include "otp/OtpAuthUri.h"
+#include "UltraCrypt/OtpAuthUri.h"
 
 #include <algorithm>
 #include <cstring>

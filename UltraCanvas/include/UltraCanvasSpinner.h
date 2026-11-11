@@ -13,12 +13,15 @@
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
 //   * FieldOnly      - the field alone; the arrow keys and the wheel still step
 //
+// Version: 1.7.0 - SpinnerVisualStyle::FromTheme, ApplyTheme: the spinner follows the theme;
+//                  a SetStyle by hand stops the following
+// Version: 1.6.0 - a held arrow button repeats its step (SetButtonRepeat)
 // Version: 1.5.0 - SpinnerLayout::FieldOnly: a field without step buttons
 // Version: 1.4.0 - onStepsFinished: once when a run of steps ends (button or key
 //                  released, the wheel at rest), not on every step
 // Version: 1.3.0 - SetSnapToStep: a Decimal value off the step grid
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -88,6 +91,15 @@ namespace UltraCanvas {
         SpinnerButtonGlyph glyph = SpinnerButtonGlyph::Triangle;
 
         FontStyle fontStyle;
+
+        // The theme's roles: the well for the field with the control border
+        // and the focus ring, ink and the caret in ink; the raised surface
+        // for the step buttons with the hover and pressed fills, their
+        // glyphs in muted ink; the panel disabled; the interface font at the
+        // body size - over a base's own shape (metrics, glyph), or a default one
+        static SpinnerVisualStyle FromTheme(const UltraCanvasTheme& theme, const SpinnerVisualStyle& base);
+        static SpinnerVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SpinnerVisualStyle()); }
+        static SpinnerVisualStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== MAIN SPINNER COMPONENT =====
@@ -158,6 +170,12 @@ namespace UltraCanvas {
         bool    stepRunOpen  = false;
         TimerId stepRunTimer = InvalidTimerId;
 
+        // A held arrow button steps again after repeatDelayMs, then every
+        // repeatIntervalMs while the pointer stays on it (0: no repeat).
+        unsigned int repeatDelayMs    = 400;
+        unsigned int repeatIntervalMs = 60;
+        TimerId      repeatTimer      = InvalidTimerId;
+
     public:
         // ===== CONSTRUCTORS (REQUIRED PATTERN) =====
         UltraCanvasSpinner(const std::string& identifier, float x, float y, float w, float h);
@@ -208,6 +226,16 @@ namespace UltraCanvas {
         // `step` from it: a measurement field showing 8.61 that steps by 0.1.
         void SetSnapToStep(bool enabled) { snapToStep = enabled; }
         bool IsSnapToStep() const { return snapToStep; }
+
+        // Holding an arrow button down repeats its step, as a held arrow key
+        // does: the first repeat after `delayMs`, then one every
+        // `intervalMs` while the pointer stays on the button. On by default
+        // (400 ms, 60 ms); 0 for either turns it off. The repeats are steps
+        // of one run, so onStepsFinished still fires once, on release.
+        void SetButtonRepeat(unsigned int delayMs, unsigned int intervalMs) {
+            repeatDelayMs = delayMs;
+            repeatIntervalMs = intervalMs;
+        }
 
         // Step the value up/down by one step (or a caller-supplied multiple).
         void StepUp(double steps = 1.0)   { StepBy(steps); }
@@ -265,7 +293,8 @@ namespace UltraCanvas {
 
         SpinnerVisualStyle& GetStyle() { return style; }
         const SpinnerVisualStyle& GetStyle() const { return style; }
-        void SetStyle(const SpinnerVisualStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const SpinnerVisualStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(SpinnerVisualStyle::FromTheme(theme, style)); }
 
         // ===== BASE OVERRIDES =====
         bool AcceptsFocus() const override { return true; }
@@ -340,6 +369,10 @@ namespace UltraCanvas {
         void EndStepRun();                        // fires onStepsFinished once
         void EndStepRunAfter(unsigned int ms);    // unless another step comes first
         void CancelStepRunTimer();
+        // The held arrow button's repeat.
+        void StartButtonRepeat();
+        void StopButtonRepeat();
+        void RepeatHeldButton();
     };
 
 // ===== FACTORY FUNCTIONS =====

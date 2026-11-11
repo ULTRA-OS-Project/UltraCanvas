@@ -13,6 +13,7 @@
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
 - [Keyboard Reference](#keyboard-reference)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -30,7 +31,7 @@ A value can be changed four ways:
 - **Typing** a value directly into the editable field (numeric modes)
 
 **File Location**: `include/UltraCanvasSpinner.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `SpinnerVisualStyle::FromTheme`, `ApplyTheme`: the spinner follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -60,6 +61,8 @@ A value can be changed four ways:
   clicking the field selects the current value so typing replaces it
 - ✅ Optional **value dropdown** (`SetDropdownEnabled(true)`) — a combobox-style
   popup of every available value, opened by clicking the field
+- ✅ A held arrow button **repeats** its step (after 400 ms, then every 60 ms,
+  while the pointer stays on it; `SetButtonRepeat`)
 - ✅ Buttons render disabled at the range limits (unless wrapping)
 - ✅ Full state feedback: hover, pressed, focused, disabled
 - ✅ Event callbacks: value changed / changing, selection changed, editing finished
@@ -125,6 +128,7 @@ void   SetWrap(bool);
 void   SetSnapToStep(bool);             // false: a Decimal value keeps its own places
 void   StepUp(double steps = 1.0);
 void   StepDown(double steps = 1.0);
+void   SetButtonRepeat(unsigned int delayMs, unsigned int intervalMs);   // 0: no repeat
 
 // List mode
 void        SetListItems(const std::vector<std::string>& items);
@@ -175,6 +179,25 @@ bool IsStepping() const;                         // a run of steps is open
 | `Enter` | Commit the typed value |
 | `Esc` | Cancel the edit and revert |
 
+## Following the theme
+
+`SpinnerVisualStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink for the value and the
+caret, the raised surface with the hover and pressed fills for the step
+buttons and muted ink for their glyphs, the panel disabled, the interface
+font at the body size. Under the theme policy a new spinner follows the
+theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto count = std::make_shared<UltraCanvasSpinner>("count", 90, 26);
+SpinnerVisualStyle wide = count->GetStyle();
+wide.buttonThickness = 24;
+count->SetStyle(SpinnerVisualStyle::FromTheme(UltraCanvasTheme::Current(), wide));
+count->SetFollowTheme(true);
+```
+
 ## Notes
 
 - In **List** mode `GetValue()` returns the selected index as a `double`; use
@@ -183,6 +206,10 @@ bool IsStepping() const;                         // a run of steps is open
   (`min + n * step`) unless `SetSnapToStep(false)`: then a Decimal spinner keeps
   any value to its `decimals` places and the buttons step by `step` from it -
   a measurement field that shows `8.61` and steps by `0.1`.
+- Holding an arrow button down steps once at once, again after the repeat
+  delay and then at the repeat interval, as a held arrow key does; sliding off
+  the button pauses it, and the release ends it. `SetButtonRepeat(0, 0)` makes
+  each click one step.
 - `onValueChanging` and `onValueChanged` fire on every step. `onStepsFinished`
   fires once when a *run* of steps ends - the arrow button released, the
   arrow / Page / Home / End key released, the wheel at rest for half a second,

@@ -3,7 +3,7 @@
 // (icon buttons, level meter, label, device dropdown, save/discard buttons)
 // arranged by a flex row layout.
 // Version: 0.3.0
-// Last Modified: 2026-06-23
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioRecorderElement.h"
@@ -49,6 +49,12 @@ UltraCanvasAudioRecorderElement::UltraCanvasAudioRecorderElement(
     ApplyStyleToChildren();
     UpdateRecordIcon();
     UpdatePauseButton();
+    ApplyThemeIfFollowing();
+}
+
+void UltraCanvasAudioRecorderElement::ApplyTheme(const UltraCanvasTheme& theme) {
+    UltraCanvasContainer::ApplyTheme(theme);
+    SetStyle(AudioRecorderStyle::FromTheme(theme, style));
 }
 
 UltraCanvasAudioRecorderElement::~UltraCanvasAudioRecorderElement() {
@@ -378,6 +384,7 @@ void UltraCanvasAudioRecorderElement::SetInputDevice(const std::string& deviceId
 }
 
 void UltraCanvasAudioRecorderElement::SetStyle(const AudioRecorderStyle& s) {
+    StyleSetByHand();
     style = s;
     ApplyStyleToChildren();
     RefreshEmbeddedPlayer();
@@ -412,4 +419,20 @@ void UltraCanvasAudioRecorderElement::Render(IRenderContext* ctx, const Rect2Df&
     UltraCanvasContainer::Render(ctx, dirtyRect);
 }
 
+
+// ===== THE THEME =====
+AudioRecorderStyle AudioRecorderStyle::FromTheme(const UltraCanvasTheme& theme, const AudioRecorderStyle& base) {
+    AudioRecorderStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.backgroundColor = r.panel;
+    s.borderColor = r.line;
+    s.recordButtonColor = r.danger;
+    // the element's own role: the pulse keeps its red unless a theme names another
+    s.recordingPulseColor = theme.Role("audio-recorder.pulse", base.recordingPulseColor);
+    s.levelMeterBgColor = r.pressed;
+    s.textColor = r.ink;
+    s.iconColor = r.inkMuted;
+    s.disabledColor = r.inkFaint;
+    return s;
+}
 } // namespace UltraCanvas

@@ -13,8 +13,8 @@ and the element drains the finished result while it draws.
 **Header:** `UltraCanvasSpellChecker.h`
 **Implementation:** `UltraCanvasSpellChecker.cpp`
 **Backend interface:** `ISpellCheckBackend.h`
-**Version:** 1.0.1
-**Last Modified:** 2026-08-24
+**Version:** 1.1.0 - `SpellCheckStyle::FromTheme`: the marks from the theme
+**Last Modified:** 2026-11-10
 **Author:** UltraCanvas Framework
 
 ## Backends
@@ -276,11 +276,13 @@ its argument through `ResolveAvailableLanguageCode()` first and reports the
 resolved spelling through `onSpellLanguageChange`, so what a host stores in its
 settings is what the backend enumerated.
 
-`DetectPreferredLanguage()` asks, in order: `LC_ALL`, `LC_MESSAGES`, `LANG`,
-`LANGUAGE`; then the backend's `GetPreferredLanguageHint()` (on Windows the
-locale from `GetUserDefaultLocaleName`, since the POSIX variables are normally
-unset there); then the same base language with any region; then the first
-available dictionary.
+`DetectPreferredLanguage()` asks, in order: the desktop's languages, best
+first, from [`UltraCanvasSystemLanguage.md`](UltraCanvasSystemLanguage.md)
+(the POSIX variables as gettext reads them, then the platform's own list -
+Windows' preferred UI languages and default locale, macOS's Language &
+Region); then the backend's `GetPreferredLanguageHint()` as a tie-breaker;
+for each, the same base language with any region; then the first available
+dictionary.
 
 ### Automatic language detection
 ```cpp
@@ -497,6 +499,18 @@ UltraTexter does exactly this for markdown documents — `TextByteSpan`,
 `Apps/Texter/UltraCanvasMarkdownSpellRanges.h`, a scanner that covers fenced
 and indented code, inline code spans, link and image targets, autolinks, inline
 HTML, math and YAML front matter.
+
+## Following the theme
+
+`SpellCheckStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's mark style and metrics: danger
+for a misspelling and its highlight, the accent for a repeated word. The
+checker is shared and not an element, so nothing applies it by itself: a
+host that follows the theme sets it from its own `ApplyTheme`.
+
+```cpp
+UltraCanvasSpellChecker::Instance().SetStyle(SpellCheckStyle::FromTheme(UltraCanvasTheme::Current(), UltraCanvasSpellChecker::Instance().GetStyle()));
+```
 
 ## Testing
 

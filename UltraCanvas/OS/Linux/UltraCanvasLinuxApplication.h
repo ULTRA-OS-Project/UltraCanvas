@@ -1,5 +1,9 @@
 // OS/Linux/UltraCanvasLinuxApplication.h
 // Complete Linux platform implementation for UltraCanvas Framework
+// Version: 1.7.0 - DetectHostAppearanceNative: the desktop's look (LinuxHostAppearance) with
+//                  the XSETTINGS manager's property, its PropertyNotify and the config
+//                  folders' watch as the change events
+// Version: 1.6.1 - the font methods forward to UltraCanvasLinuxFonts
 // Version: 1.6.0 - a held key is one press and one release (detectable auto-repeat)
 // Version: 1.5.0 - image cursors kept per screen scaling
 // Last Modified: 2026-10-17
@@ -12,6 +16,8 @@
 
 // ===== CORE INCLUDES =====
 #include "../../include/UltraCanvasWindow.h"
+#include "UltraCanvasLinuxHostAppearanceWatch.h"
+#include <vector>
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
 #include "../../include/UltraCanvasImageCursorCache.h"
@@ -107,6 +113,15 @@ namespace UltraCanvas {
 
         // ===== SYSTEM ATOMS =====
         Atom wmDeleteWindow;
+        // XSETTINGS: the screen's manager selection, its property, and the
+        // manager's window, whose PropertyNotify says the desktop's look
+        // changed (the window is looked up again on every read: a settings
+        // daemon restarts).
+        Atom xsettingsSelection = None;
+        Atom xsettingsSettings = None;
+        Window xsettingsOwner = None;
+        // The config folders the desktops write their look to.
+        LinuxHostAppearanceWatch hostAppearanceWatch;
 //        Atom wmProtocols;
 //        Atom wmState;
 //        Atom wmStateFullscreen;
@@ -199,6 +214,13 @@ namespace UltraCanvas {
         void ShutdownWakeUp() override;
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
+        // The desktop's look: XSETTINGS, the portal, GSettings and the files
+        // (UltraCanvasLinuxHostAppearance.h), the fonts the font detector's.
+        HostAppearance DetectHostAppearanceNative() override;
+        // The manager's _XSETTINGS_SETTINGS property; false without a manager.
+        bool FetchXSettings(std::vector<uint8_t>& bytes);
+        // Looks the manager up and asks for its PropertyNotify.
+        void WatchXSettingsOwner();
         void LoadBundledFontsNative() override;
         bool RegisterFontFileNative(const std::string& fontFilePath) override;
 

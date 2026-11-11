@@ -1,5 +1,6 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
+// Version: 1.19.0 - FromTheme sets the entries' font at the body size; the SetStyle rule and the constructor tail
 // Version: 1.18.1 - the kept layout and width are one slot per entry, moved with the entries
 // Version: 1.18.0 - an entry's width is measured once and kept with what it was measured from
 // Version: 1.17.0 - the labels are shaped once and kept (UltraCanvasTextLayoutCache)
@@ -18,7 +19,7 @@
 // Version: 1.10.0 - enableAnimations fades the entries in when a popup opens; the
 //                  MenuItemData::Input() declarations, never defined, are gone
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -94,7 +95,7 @@ namespace UltraCanvas {
         // Stable, serializable identifier for this action (e.g. "file.open").
         // Empty by default so existing code is unaffected. When set, it lets the
         // item be referenced from a persisted MenuLayout and rebuilt via
-        // UltraCanvasMenuRegistry (see UltraCanvasMenuRegistry.h / UltraCanvasMenuLayout.h).
+        // UltraCanvasCommandRegistry (see UltraCanvasCommandRegistry.h / UltraCanvasMenuLayout.h).
         // Lambdas cannot be serialized, so this id is what a saved menu stores.
         std::string commandId;
         bool enabled = true;
@@ -391,6 +392,7 @@ namespace UltraCanvas {
         UltraCanvasMenu(const std::string& identifier, float x, float y, float w, float h)
                 : UltraCanvasUIElement(identifier, x, y, w, h) {
             style = MenuStyle::Default();
+            ApplyThemeIfFollowing();
         }
 
         UltraCanvasMenu(const std::string& identifier, float w, float h)
@@ -432,6 +434,7 @@ namespace UltraCanvas {
         MenuOrientation GetOrientation() const { return orientation; }
 
         void SetStyle(const MenuStyle& menuStyle) {
+            StyleSetByHand();
             style = menuStyle;
             InvalidateLayout();
         }

@@ -33,6 +33,7 @@ doc file name. For the prose on a given element, use
 | Single-line text | `UltraCanvasTextInput` | `UltraCanvasTextInput.h` |
 | Multi-line text or code | `UltraCanvasTextArea` | `UltraCanvasTextArea.h` |
 | A **formatted document** edited as it looks — fonts, sizes, colours, headings, lists, tables, images ([doc](UltraCanvasRichTextEdit.md)) | `UltraCanvasRichTextEdit` | `UltraCanvasRichTextEdit.h` |
+| The **text formatting bar** over text the user sets — Font (every installed family, each shown in itself), Size, Bold, Italic, Underline, Strikethrough, alignment, line and letter spacing; reports each change, helpers for an `UltraCanvasRichTextEdit` typed on a canvas ([doc](UltraCanvasTextFormatBar.md)) | `UltraCanvasTextFormatBar` | `UltraCanvasTextFormatBar.h` |
 | Text with a suggestion list | `UltraCanvasAutoComplete` | `UltraCanvasAutoComplete.h` |
 | Tokens / tags typed into a field | `UltraCanvasTagInput` | `UltraCanvasChip.h` |
 | A number with up/down steppers | `UltraCanvasSpinner` | `UltraCanvasSpinner.h` |
@@ -66,7 +67,7 @@ from an external "Show password" checkbox. See
 | Checkbox | `UltraCanvasCheckbox` | `UltraCanvasCheckbox.h` |
 | Radio button / group | `UltraCanvasRadio`, `UltraCanvasRadioGroup` | `UltraCanvasRadio.h` |
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
-| Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
+| Pick one of a list (a row can be drawn in a font of its own: a font list, `DropdownItem::fontFamily`) | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
@@ -121,7 +122,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
-| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), and `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page) | `UltraCanvasToolbar.h` |
+| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page), and `ToolbarOverflowMode::Menu` moves what does not fit into a chevron button's menu. A separator divides the bar into groups, `groupSpacing` apart. Built from groups of commands the user can show, hide and reorder, kept in the settings: `MaterializeToolbar` ([doc](UltraCanvasToolbarLayout.md)) | `UltraCanvasToolbar.h`, `UltraCanvasToolbarLayout.h` |
 | Several tools sharing one slot of a palette or toolbar - the slot shows one, a bar of the whole group folds out while the pointer rests on it, the slot then shows the tool last picked (or always the main one) ([doc](UltraCanvasToolGroupButton.md)) | `UltraCanvasToolGroupButton` (`UltraCanvasToolbar::AddToolGroup`) | `UltraCanvasToolGroupButton.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
@@ -136,10 +137,11 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 |---|---|---|
 | The navigation column of a window: sections of items with icon, label and badge, one selected, keyboard and wheel, a compact icons-only mode ([doc](UltraCanvasSidebarNavigation.md)) | `UltraCanvasSidebarNavigation` | `UltraCanvasSidebarNavigation.h` |
 | Menu bar, popup and context menus | `UltraCanvasMenu` (+ `MenuBuilder`, `MenuItemData`) | `UltraCanvasMenu.h` |
-| Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
+| Editable menus and toolbars - one editor for a program's menus and its toolbars' groups, from one command catalogue ([doc](UltraCanvasCommandConfigWidget.md)); `ShowCommandConfigDialog` opens it in a window | `UltraCanvasCommandConfigWidget` (was `UltraCanvasMenuConfigWidget`, an alias) | `UltraCanvasCommandConfigWidget.h` |
+| Translations - every set an application's texts come from (its own, the base sets it takes, Standard) in one grid with a column per set; edit, take / promote / demote / merge the sets, Undo, save into the source tree or the settings folder, export, draft ([doc](UltraCanvasLocalisationEditor.md)); `ShowLocalisationEditorDialog` opens it on the running application | `UltraCanvasLocalisationEditor` (+ `LocalisationWorkspace`, the model without UI) | `UltraCanvasLocalisationEditor.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
-| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree ([`UltraCanvasColumnsTreeView`](UltraCanvasTreeViewExamples.md#columnar-layout-ultracanvascolumnstreeview): aligned Name / Type / Value columns with a header band, resizable boundaries and section-header rows); sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 | The desktop message centre: every chat, mail and notification on the UltraMessage feed, with sources, filters, search and the notification's actions ([doc](UltraCanvasMessageCenter.md)) | `UltraCanvasMessageCenter` | `Plugins/UltraMessage/UltraCanvasMessageCenter.h` |
@@ -163,6 +165,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
 | The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
+| The proxy every application connects through - the system's (the default), none, or HTTP / SOCKS with exceptions and a sign-in, Check connection; one setting (`Proxy.conf`) for every application ([doc](UltraCanvasProxySettings.md)); `MakeProxySettingsPage` is its page for a settings window | `ShowProxySettingsDialog`, `MakeProxySettingsPage` (`ProxySettings`, the setting without UI) | `UltraCanvasProxySettingsDialog.h` |
 | One file format's save settings (JPEG quality, PNG compression, TIFF codec ...), kept for every application - and, for a picture, the size to write it at this once | `UltraCanvasFileLoader::ShowSaveSettingsDialog` ([doc](UltraCanvasFileDialog.md#save-settings)) | `UltraCanvasFileLoader.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Save a bitmap with per-format options - opened on the format's save settings (and the format the file name has), which Save stores back | `UltraCanvasImageExportDialog` ([save settings](UltraCanvasFileDialog.md#save-settings)) | `dialogs/UltraCanvasImageExportDialog.h` |
@@ -201,6 +204,8 @@ Each takes its data through setters and renders itself; most have a
 | Two paired values per category (before / after) | `UltraCanvasDumbbellChart` | `Plugins/Charts/UltraCanvasDumbbellChart.h` |
 | Values either side of a centre: likert scales, demographics | `UltraCanvasDivergingBarChart`, `UltraCanvasPopulationChart` | `Plugins/Charts/UltraCanvasDivergingBarChart.h`, `Plugins/Charts/UltraCanvasPopulationChart.h` |
 | 100% stacked columns of *different widths* (Marimekko / mosaic) | `UltraCanvasMekkoChartElement` | `Plugins/Charts/UltraCanvasMekkoChart.h` |
+| Mixes of three parts that add up to 100 % - vote shares, soil texture, alloys - as points in a triangle (ternary plot) | `UltraCanvasTernaryChart` | `Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.h` |
+| A picture's histogram: how many pixels have each level of red, green and blue (overlaid or one channel) or luminosity, beside a photo | `UltraCanvasHistogramChart` | `Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.h` |
 | Many measures per item: radar, or parallel coordinates | `UltraCanvasRadarChartElement`, `UltraCanvasParallelCoordinateChartElement` | `Plugins/Charts/UltraCanvasRadarChartElement.h`, `Plugins/Charts/UltraCanvasParallelCoordinateChart.h` |
 | Angle / radius space: polar series, radial bars, activity rings, ringed infographic | `UltraCanvasPolarChart`, `UltraCanvasRadialBarChart`, `UltraCanvasCircularProgressChart`, `UltraCanvasCircularInfoGraphic` | matching `Plugins/Charts/*.h` |
 | A matrix of values as colour: heatmap, hexbin, contribution calendar | `UltraCanvasHeatmapChartElement`, `UltraCanvasHexbinChartElement`, `UltraCanvasCalendarHeatmapElement` | `Plugins/Charts/UltraCanvasHeatmapChart.h`, `Plugins/Charts/UltraCanvasHexbinChart.h`, `Plugins/Charts/UltraCanvasCalendarHeatmap.h` |
@@ -239,6 +244,7 @@ Each takes its data through setters and renders itself; most have a
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
 | The four-panel SWOT infographic | `UltraCanvasSWOTDiagram` | `Plugins/Diagrams/UltraCanvasSWOTDiagram.h` |
+| A grid of named categories where two rated axes cross: a 9-box talent grid, performance vs potential, a performance management matrix, skill / will | `UltraCanvasPerformanceMatrix` | `Plugins/Diagrams/UltraCanvasPerformanceMatrix.h` |
 | Cause and effect (Ishikawa / fishbone) | `UltraCanvasFishboneDiagram` | `Plugins/Diagrams/UltraCanvasFishboneDiagram.h` |
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |

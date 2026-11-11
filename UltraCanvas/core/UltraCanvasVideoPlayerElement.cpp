@@ -1,7 +1,7 @@
 // core/UltraCanvasVideoPlayerElement.cpp
 // Composite UI control wrapping UltraCanvasVideoPlayer: video surface + transport bar
 // Version: 0.1.10
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-10
 // V0.1.10: The title-safe guide (VideoPlayerStyle::showSafeArea), dashed over
 //   the picture; a Pixels zoom relative to zoomReferenceHeight.
 // V0.1.9: The picture is placed by VideoPlayerStyle::videoFit (Contain, Cover,
@@ -71,6 +71,7 @@ UltraCanvasVideoPlayerElement::UltraCanvasVideoPlayerElement(
     player = std::make_shared<UltraCanvasVideoPlayer>();
     HookPlayerCallbacks();
     Relayout();
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasVideoPlayerElement::~UltraCanvasVideoPlayerElement() {
@@ -169,6 +170,7 @@ void UltraCanvasVideoPlayerElement::TogglePlayPause() {
 }
 
 void UltraCanvasVideoPlayerElement::SetStyle(const VideoPlayerStyle& s) {
+    StyleSetByHand();
     style = s;
     Relayout();
     RequestRedraw();
@@ -586,4 +588,15 @@ bool UltraCanvasVideoPlayerElement::OnEvent(const UCEvent& event) {
     }
 }
 
+
+// ===== THE THEME =====
+VideoPlayerStyle VideoPlayerStyle::FromTheme(const UltraCanvasTheme& theme, const VideoPlayerStyle& base) {
+    VideoPlayerStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.backgroundColor = theme.Role("video-player.stage", base.backgroundColor);
+    s.controlBarColor = theme.Role("video-player.control-bar", base.controlBarColor);
+    s.progressFillColor = r.accent;
+    s.iconHoverColor = r.accent;
+    return s;
+}
 } // namespace UltraCanvas
