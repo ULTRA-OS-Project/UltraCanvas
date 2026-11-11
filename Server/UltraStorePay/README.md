@@ -2,7 +2,7 @@
 
 The server side of a purchase in [UltraStore](../../Docs/UltraStore/README.md)
 (*Payment*): a small [FastAPI](https://fastapi.tiangolo.com/) service on
-PostgreSQL that holds the merchant credentials - never the store binary, never
+MySQL or PostgreSQL that holds the merchant credentials - never the store binary, never
 the catalog - and does what the store cannot do for itself:
 
 - opens a **Skrill Quick Checkout** session for an app, priced from the
@@ -152,21 +152,28 @@ they are first exercised against Skrill itself.
 
 ## The database
 
-**PostgreSQL in production; SQLite for tests and development only.**
-`ULTRASTORE_PAY_DB` is a URL: `postgresql://user:password@host:5432/db`
-(psycopg 3, installed with the `postgres` extra) or `sqlite:///path` (a
-bare path means the same). `db.py` hides the two engines behind one small
-interface - the placeholder style, the serial type, how a row is read -
-and `store.py` writes one SQL dialect against it; nothing else in the
-service knows which engine runs. The tests run on SQLite always and on
-PostgreSQL too when `ULTRASTORE_PAY_TEST_PG_URL` names one, which CI does
-with a PostgreSQL service container, so the production engine runs the
-whole purchase on every change. The service makes its tables on the first
-start; the database and its user are made beforehand:
+**MySQL or PostgreSQL in production; SQLite for tests and development
+only.** `ULTRASTORE_PAY_DB` is a URL: `mysql://user:password@host:3306/db`
+(PyMySQL, the `mysql` extra), `postgresql://user:password@host:5432/db`
+(psycopg 3, the `postgres` extra) or `sqlite:///path` (a bare path means
+the same). The layer is [`ultrastore-db`](../UltraStoreDb/README.md),
+shared with the marketplace service: it hides the engines behind one
+small interface, `store.py` writes one SQL dialect against it, and
+nothing else in the service knows which engine runs. The tests run on
+SQLite always and on PostgreSQL and MySQL too when
+`ULTRASTORE_PAY_TEST_PG_URL` and `ULTRASTORE_PAY_TEST_MYSQL_URL` name
+one, which CI does with service containers, so both production engines
+run the whole purchase on every change. The service makes its tables on
+the first start and brings an older database to the current schema; the
+database and its user are made beforehand:
 
 ```
 sudo -u postgres createuser --pwprompt ultrastore_pay
 sudo -u postgres createdb --owner ultrastore_pay ultrastore_pay
+# or, on MySQL
+mysql -u root -e "CREATE DATABASE ultrastore_pay CHARACTER SET utf8mb4;
+  CREATE USER 'ultrastore_pay'@'localhost' IDENTIFIED BY 'password';
+  GRANT ALL ON ultrastore_pay.* TO 'ultrastore_pay'@'localhost';"
 ```
 
 ## Settings
@@ -191,9 +198,9 @@ the host when a test endpoint is given.
 ## Running
 
 ```
-python3 -m venv .venv && .venv/bin/pip install -e '.[test,postgres]'
+python3 -m venv .venv && .venv/bin/pip install -e ../UltraStoreDb -e '.[test,postgres,mysql]'
 .venv/bin/python -m pytest -q                                   # on SQLite
-ULTRASTORE_PAY_TEST_PG_URL=postgresql://... .venv/bin/python -m pytest -q   # and on PostgreSQL
+ULTRASTORE_PAY_TEST_PG_URL=postgresql://... ULTRASTORE_PAY_TEST_MYSQL_URL=mysql://... .venv/bin/python -m pytest -q   # and on PostgreSQL and MySQL
 ULTRASTORE_PAY_DB=postgresql://... ULTRASTORE_PAYMENT_BASE_URL=https://store.example ... .venv/bin/ultrastore-pay
 ```
 

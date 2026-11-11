@@ -65,24 +65,26 @@ class FakeSkrillApi:
 
 
 def database_urls() -> list[str]:
-    """SQLite always (tests and development), and PostgreSQL when the
-    environment names one: ULTRASTORE_PAY_TEST_PG_URL=postgresql://... -
-    the production engine, so the whole purchase runs on it too."""
+    """SQLite always (tests and development), and PostgreSQL and MySQL when
+    the environment names one: ULTRASTORE_PAY_TEST_PG_URL=postgresql://...,
+    ULTRASTORE_PAY_TEST_MYSQL_URL=mysql://... - the production engines, so
+    the whole purchase runs on them too."""
     urls = ["sqlite"]
     if os.environ.get("ULTRASTORE_PAY_TEST_PG_URL"):
         urls.append("postgresql")
+    if os.environ.get("ULTRASTORE_PAY_TEST_MYSQL_URL"):
+        urls.append("mysql")
     return urls
 
 
 def database_url(kind: str, tmp_path) -> str:
-    if kind == "postgresql":
-        url = os.environ["ULTRASTORE_PAY_TEST_PG_URL"]
+    if kind in ("postgresql", "mysql"):
+        url = os.environ["ULTRASTORE_PAY_TEST_PG_URL" if kind == "postgresql" else "ULTRASTORE_PAY_TEST_MYSQL_URL"]
         # A fresh schema per test: the tables are dropped first.
-        import psycopg
-        with psycopg.connect(url, autocommit=True) as db:
-            db.execute("DROP TABLE IF EXISTS payments")
-            db.execute("DROP TABLE IF EXISTS orders")
-            db.execute("DROP TABLE IF EXISTS meta")
+        from ultrastore_db import Database
+        db = Database(url)
+        db.script(["DROP TABLE IF EXISTS payments", "DROP TABLE IF EXISTS orders", "DROP TABLE IF EXISTS meta"])
+        db.close()
         return url
     return "sqlite:///" + str(tmp_path / "pay.sqlite3")
 
