@@ -60,14 +60,33 @@ bool Has(const std::vector<std::string>& v, const std::string& s) {
 
 } // namespace
 
-TEST(categories_are_the_listed_apps_sorted_once) {
+TEST(categories_are_the_store_list_the_listed_apps_use_in_its_order) {
     Catalog c = FixtureCatalog();
-    c.apps[0].categories = {"Office", "Mail"};
-    if (c.apps.size() > 1) c.apps[1].categories = {"Mail", "Tools"};
+    REQUIRE(c.apps.size() > 1);
+    c.apps[0].categories = {"Office", "games", "Mail"};   // "Office" from before the list, "Mail" no category of it
+    c.apps[1].categories = {"video", "office"};
     const auto cats = CatalogCategories(c);
-    REQUIRE(Has(cats, "Office") && Has(cats, "Mail"));
-    REQUIRE(std::is_sorted(cats.begin(), cats.end()));
-    REQUIRE(std::adjacent_find(cats.begin(), cats.end()) == cats.end());
+    REQUIRE(cats == std::vector<std::string>({"video", "office", "games"}));
+}
+
+TEST(category_ids_names_and_the_admin_check) {
+    REQUIRE_EQ(CategoryId("  Office "), std::string("office"));
+    REQUIRE(IsStoreCategory("video") && !IsStoreCategory("Video") && !IsStoreCategory("mail"));
+    REQUIRE_EQ(StoreCategories().front(), std::string("audio"));
+    REQUIRE(CheckCategories({"audio", "utilities"}).Ok());
+    const auto bad = CheckCategories({"audio", "Tools"});
+    REQUIRE(!bad.Ok());
+    REQUIRE(bad.error.message.find("Tools") != std::string::npos);
+    REQUIRE(bad.error.detail.find("utilities") != std::string::npos);
+    // Without a catalogue loaded the names are the English ones.
+    REQUIRE_EQ(CategoryName("audio"), std::string("Music and audio"));
+    REQUIRE_EQ(CategoryName("Development"), std::string("Developer tools"));
+    REQUIRE_EQ(CategoryName("mail"), std::string("mail"));
+    Component app;
+    app.categories = {"Mail", "Graphics", "video"};
+    REQUIRE_EQ(PrimaryCategory(app), std::string("graphics"));
+    app.categories = {"Mail"};
+    REQUIRE(PrimaryCategory(app).empty());
 }
 
 TEST(listing_sorts_by_name_and_joins_the_installed_version) {
@@ -148,6 +167,9 @@ TEST(search_matches_every_word_somewhere) {
     REQUIRE(MatchesSearch(app, "ultra", "en"));
     REQUIRE(MatchesSearch(app, "MAIL client", "en"));
     REQUIRE(MatchesSearch(app, "imap office", "en"));
+    app.categories = {"development"};
+    REQUIRE(MatchesSearch(app, "developer tools", "en"));   // the category's name, not only its id
+    app.categories = {"Office"};
     REQUIRE(MatchesSearch(app, "programm", "de"));
     REQUIRE(!MatchesSearch(app, "programm", "en"));
     REQUIRE(!MatchesSearch(app, "mail video", "en"));
