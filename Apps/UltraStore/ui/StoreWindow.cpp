@@ -1,6 +1,7 @@
 // Apps/UltraStore/ui/StoreWindow.cpp
 // The shell, the pages and the app page after the shop design; the jobs are
 // in StoreJobs.cpp, the settings page in StoreSettingsPage.cpp.
+// Version: 0.5.2 - the header in less room: Refresh, the wordmark and Settings as their icons, as far as it needs
 // Version: 0.5.1 - every text through Tr: the header, the filters, the buttons, the facts; dates in the language's order
 // Version: 0.5.0 - the shop design: the header, the Discover sections, the Categories filters, the app page
 // Version: 0.4.0 - the open order resumed, the update terms
@@ -273,6 +274,10 @@ bool StoreWindow::Create() {
         LayoutForSize(static_cast<float>(w), static_cast<float>(h));
     };
     window_->onWindowClosing = [this]() { return OnClosing(); };
+    // The header's level is measured after each frame that laid it out.
+    window_->onFrameRendered = [this](const WindowFrameTiming& timing) {
+        if (timing.laidOut) FitHeader();
+    };
 
     RebuildAllPages();
     LoadSettingsIntoPage();
@@ -348,7 +353,7 @@ void StoreWindow::BuildHeader() {
     // The pill gives way first when the labels around it are long (a
     // translation): it may shrink to this, the sections and buttons never.
     searchInput_->boxConstraints = CSSLayout::BoxConstraints{};
-    searchInput_->boxConstraints->minWidth = CSSLayout::Dimension::Px(120);
+    searchInput_->boxConstraints->minWidth = CSSLayout::Dimension::Px(kSearchMinWidth);
     searchInput_->onTextChanged = [this](const std::string& text) {
         search_ = text;
         if (!search_.empty() && currentPage_ != kDiscover) {
@@ -364,16 +369,77 @@ void StoreWindow::BuildHeader() {
     refresh->SetTooltip(Tr("Fetch the catalog from the store's servers"));
     refresh->onClick = [this]() { RefreshCatalog(); };
     header_->AddChild(refresh);
+    refreshButton_ = refresh;
 
     // Where the design puts "Sign in": the store has no accounts, so the
     // settings live here instead.
     auto settings = Theme::Button("usSettings", Tr("Settings"), 104, Theme::ButtonKind::Secondary);
+    settings->SetTooltip(Tr("Settings"));
     settings->onClick = [this]() {
         if (currentPage_ == kSettings) return;
         detailsAppId_.clear();
         ShowPage(kSettings);
     };
     header_->AddChild(settings);
+    settingsButton_ = settings;
+}
+
+float StoreWindow::HeaderNeed() const {
+    // What the header takes at the level it is at: each part as wide as it
+    // is (a button as wide as its text), the search field at its least.
+    float need = header_->GetPaddingLeft() + header_->GetPaddingRight();
+    int parts = 0;
+    for (const auto& child : header_->GetChildren()) {
+        auto* part = dynamic_cast<UltraCanvasUIElement*>(child.get());
+        if (!part || !part->IsVisible()) continue;
+        need += part == searchInput_.get() ? kSearchMinWidth : part->GetWidth();
+        ++parts;
+    }
+    return need + Theme::kGap * static_cast<float>(std::max(0, parts - 1));
+}
+
+void StoreWindow::FitHeader() {
+    if (!header_ || headerLevelPosted_) return;
+    const float room = header_->GetWidth();
+    if (room <= 0.0f) return;
+    const float need = HeaderNeed();
+    headerNeed_[headerLevel_] = need;
+    int level = headerLevel_;
+    if (need > room + 0.5f && level < kHeaderLevels - 1) ++level;
+    else if (level > 0 && headerNeed_[level - 1] > 0.0f && headerNeed_[level - 1] <= room) --level;
+    if (level == headerLevel_) return;
+    // Not from inside the frame: the next turn of the loop, which this wakes.
+    headerLevelPosted_ = true;
+    std::weak_ptr<int> token = alive_;
+    app_.PostToUIThread([this, token, level]() {
+        if (token.expired()) return;
+        headerLevelPosted_ = false;
+        ApplyHeaderLevel(level);
+    });
+}
+
+void StoreWindow::ApplyHeaderLevel(int level) {
+    headerLevel_ = std::clamp(level, 0, kHeaderLevels - 1);
+    const float height = Theme::kControlHeight;
+    if (refreshButton_) {
+        const bool iconOnly = headerLevel_ >= 1;
+        refreshButton_->SetText(iconOnly ? std::string() : Tr("Refresh"));
+        refreshButton_->SetElementSize(CSSLayout::Dimension::Px(iconOnly ? height : 96.0f), CSSLayout::Dimension::Px(height));
+    }
+    if (logoButton_) {
+        const bool iconOnly = headerLevel_ >= 2;
+        logoButton_->SetText(iconOnly ? std::string() : std::string("UltraStore"));
+        logoButton_->SetElementSize(CSSLayout::Dimension::Px(iconOnly ? 48.0f : 164.0f), CSSLayout::Dimension::Px(48.0f));
+    }
+    if (settingsButton_) {
+        const bool iconOnly = headerLevel_ >= 3;
+        settingsButton_->SetText(iconOnly ? std::string() : Tr("Settings"));
+        if (iconOnly) settingsButton_->SetIcon(Theme::Icon("settings.svg"));
+        else settingsButton_->SetIcon(std::shared_ptr<UCImage>());
+        settingsButton_->SetElementSize(CSSLayout::Dimension::Px(iconOnly ? height : 104.0f), CSSLayout::Dimension::Px(height));
+    }
+    header_->InvalidateLayout();
+    header_->RequestRedraw();
 }
 
 void StoreWindow::BuildShell() {
