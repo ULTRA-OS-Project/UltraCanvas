@@ -1,6 +1,7 @@
 // core/UltraCanvasSettingsWatcher.cpp
 // The settings folder watched, the handlers run once per burst for the files
 // that changed (UltraCanvasSettingsWatcher.h).
+// Version: 1.0.2 - a check posted to the UI thread does nothing once the watcher is gone
 // Version: 1.0.1 - the file name joined through PathFromUtf8 (UTF-8 on Windows)
 // Version: 1.0.0
 // Last Modified: 2026-11-11
@@ -70,7 +71,8 @@ namespace UltraCanvas {
         // On the watcher's thread: one look per burst, on the UI thread.
         if (!post) return;
         if (checkPending.exchange(true)) return;
-        post([this]() {
+        post([this, alive = alive]() {
+            if (!*alive) return;   // the watcher went away before the UI thread got here
             checkPending = false;
             Poll();
         });

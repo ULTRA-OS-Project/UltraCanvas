@@ -15,8 +15,9 @@
 //   const bool native = watcher.Start(UltraCanvasSettingsFolder(), [&](std::function<void()> f) { app.PostToUIThread(std::move(f)); });
 //   // not native: a timer calls watcher.Poll() every five seconds
 //
+// Version: 1.0.1 - a check posted to the UI thread does nothing once the watcher is gone
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -38,7 +39,7 @@ namespace UltraCanvas {
         using Poster = std::function<void(std::function<void()>)>;
 
         UltraCanvasSettingsWatcher() = default;
-        ~UltraCanvasSettingsWatcher() { Stop(); }
+        ~UltraCanvasSettingsWatcher() { Stop(); *alive = false; }
         UltraCanvasSettingsWatcher(const UltraCanvasSettingsWatcher&) = delete;
         UltraCanvasSettingsWatcher& operator=(const UltraCanvasSettingsWatcher&) = delete;
 
@@ -77,6 +78,10 @@ namespace UltraCanvas {
         std::unique_ptr<UltraCanvasFolderWatcher> watcher;
         bool native = false;
         std::atomic<bool> checkPending{false};
+        // A check posted to the UI thread may run after the watcher is gone
+        // (the application resets its watcher at shutdown): the task holds
+        // this and does nothing then. Set and read on the UI thread.
+        std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>>(true);
     };
 
 } // namespace UltraCanvas
