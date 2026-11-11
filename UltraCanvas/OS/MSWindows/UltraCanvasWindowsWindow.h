@@ -1,8 +1,9 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.h
 // Windows platform window implementation for UltraCanvas Framework
+// Version: 1.3.0 - SetTransientParent: the parent becomes the owner window
 // Version: 1.2.0 - SetNativeWindowShape
 // Version: 1.1.0 - Per-Monitor HiDPI (deviceScale) support
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -77,6 +78,10 @@ namespace UltraCanvas {
         void Show() override;
         void Hide() override;
         void RaiseAndFocus() override;
+        // The parent becomes the window's owner: Windows keeps an owned
+        // window above its owner (and only above it), and hides it with
+        // the owner when that is minimised.
+        void SetTransientParent(UltraCanvasWindowBase* parent) override;
         void SetWindowTitle(const std::string& title) override;
         void SetWindowIcon(const std::string& iconPath) override;
         void SetWindowSize(int width, int height) override;
