@@ -6,6 +6,8 @@
 #   2. the launcher icon at every screen density (ImageMagick, aapt2 compile)
 #      + AndroidManifest.xml + assets/ -> base APK (aapt2 link)
 #   3. + classes.dex + lib/<abi>/lib<App>.so     (stripped with the NDK's llvm-strip)
+#      + every shared library it needs that Android does not provide
+#        (libc++_shared.so; the NDK's own copy)
 #   4. zipalign, then apksigner with a throwaway debug key
 #
 # The assets are what the app opens by path at run time. On the first launch
@@ -75,6 +77,15 @@ for tool in aapt2 d8 zipalign apksigner; do
 done
 strip="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
 [ -x "$strip" ] || die "no llvm-strip in the NDK at $strip"
+readelf="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+[ -x "$readelf" ] || die "no llvm-readelf in the NDK at $readelf"
+case "$abi" in
+    arm64-v8a)   triple=aarch64-linux-android ;;
+    armeabi-v7a) triple=arm-linux-androideabi ;;
+    x86_64)      triple=x86_64-linux-android ;;
+    x86)         triple=i686-linux-android ;;
+esac
+ndk_libs="$ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/$triple"
 [ -f "$icon" ] || die "no icon at $icon"
 magick="$(command -v magick || command -v convert || true)"
 [ -n "$magick" ] || die "ImageMagick not found (magick or convert), needed for the launcher icon"
@@ -138,6 +149,24 @@ mkdir -p "$work/stage/lib/$abi"
 cp "$work/dex/classes.dex" "$work/stage/"
 "$strip" --strip-unneeded -o "$work/stage/lib/$abi/$(basename "$lib")" "$lib"
 echo "  $(basename "$lib") $(du -h "$lib" | cut -f1) -> $(du -h "$work/stage/lib/$abi/$(basename "$lib")" | cut -f1) stripped"
+
+# The libraries it needs. A system library of the minSdk platform (libc,
+# liblog, libandroid, libEGL ...) is on every device; the NDK's runtimes
+# (libc++_shared.so) are not, and an app ships its own copy - without it the
+# activity's dlopen fails before a line of the app runs ("library
+# libc++_shared.so not found", the emulator's first run). Anything that is
+# neither stops the packaging here rather than on a device.
+mapfile -t needed < <("$readelf" -d "$lib" | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p')
+for dep in "${needed[@]}"; do
+    if [ -e "$ndk_libs/$min_sdk/$dep" ]; then
+        continue                                   # the platform's
+    elif [ -e "$ndk_libs/$dep" ]; then
+        cp "$ndk_libs/$dep" "$work/stage/lib/$abi/"   # the NDK's runtime
+        echo "  + $dep (from the NDK)"
+    else
+        die "$(basename "$lib") needs $dep, which is neither an API $min_sdk system library nor in the NDK"
+    fi
+done
 # The library is stored, not deflated, and zipalign below puts it on a page
 # boundary, so Android can map it straight from the APK.
 (cd "$work/stage" && zip -q "$work/base.apk" classes.dex && zip -q -0 -r "$work/base.apk" lib)

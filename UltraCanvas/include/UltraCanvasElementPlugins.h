@@ -14,8 +14,15 @@
 // (which is what makes Windows work without -rdynamic), and refuse loading
 // cleanly on an ABI mismatch.
 //
+// Version: 1.0.3 - UltraCanvas_RegisterSelectedWidgets: the widgets compiled in (ULTRACANVAS_WIDGETS)
+// Version: 1.0.2 - a plugin exports the id of the framework headers it was compiled against
+//                  (UltraCanvas_PluginHeadersId) and the loader refuses another: the classes a
+//                  plugin derives from UltraCanvasUIElement are laid out by those headers
+// Version: 1.0.1 - a plugin requires a host table at least as new as the one it was built for
+//                  (it asked for version 1 whatever it was built for); scripts/check_plugin_abi.py
+//                  fails a change to this header that moves neither the table's version nor "ucN"
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -100,8 +107,20 @@ public:
 // =============================================================================
 
 // Version of the C entry contract. Grows append-only: a newer host passes a
-// larger vtable, an older plugin simply ignores the tail.
+// larger vtable, an older plugin simply ignores the tail - and a plugin built
+// for a newer table than the host's refuses to load, since the members it
+// would call are not there. Bump it with every member appended to
+// UltraCanvasPluginHost; scripts/check_plugin_abi.py (CI: plugin-abi.yml)
+// fails a change to this header that moves neither it nor the "ucN" of
+// ULTRACANVAS_FRAMEWORK_ABI_TAG below.
 inline constexpr int ULTRACANVAS_PLUGIN_HOST_ABI_VERSION = 1;
+
+// The table version a plugin requires of its host: the one it is built
+// against. Defined differently only by the loader's test, to build a plugin
+// "from a newer framework" and see it refused.
+#ifndef ULTRACANVAS_PLUGIN_BUILT_FOR_ABI
+  #define ULTRACANVAS_PLUGIN_BUILT_FOR_ABI ::UltraCanvas::ULTRACANVAS_PLUGIN_HOST_ABI_VERSION
+#endif
 
 // Toolchain/stdlib tag guarding the C++ boundary - the thing that actually
 // breaks when a plugin is built with a different compiler or standard library.
@@ -129,6 +148,33 @@ inline constexpr int ULTRACANVAS_PLUGIN_HOST_ABI_VERSION = 1;
 #define ULTRACANVAS_FRAMEWORK_ABI_TAG \
     ULTRACANVAS_ABI_COMPILER "-" ULTRACANVAS_ABI_STDLIB "-cxx20-uc1"
 
+// Which framework headers a build is: a hash of every header under include/,
+// libspecific/ and OS/, written by CMake into UltraCanvasFrameworkHeadersId.h
+// (the build's generated/include, installed beside these headers). A plugin
+// creates classes derived from UltraCanvasUIElement - often from deeper
+// framework classes - and the host calls their virtual functions and reads
+// their members, at places and offsets those headers fix. They change all the
+// time and carry no version a person bumps, so the plugin exports the id of
+// the headers it was compiled against (UltraCanvas_PluginHeadersId, defined
+// by ULTRACANVAS_DEFINE_ELEMENT_PLUGIN) and the loader calls nothing else in
+// a plugin whose id is not its own: a plugin built separately from the
+// framework works with exactly the headers it was built with, and is rebuilt
+// for any other. Compiled without the generated header the id is "unknown",
+// which the loader refuses too.
+#if defined(__has_include)
+  #if __has_include("UltraCanvasFrameworkHeadersId.h")
+    #include "UltraCanvasFrameworkHeadersId.h"
+  #endif
+#endif
+#ifndef ULTRACANVAS_FRAMEWORK_HEADERS_ID
+  #define ULTRACANVAS_FRAMEWORK_HEADERS_ID "unknown"
+#endif
+// The id a plugin says it was compiled against. Defined differently only by
+// the loader's test, to build a plugin "against other headers".
+#ifndef ULTRACANVAS_PLUGIN_BUILT_WITH_HEADERS
+  #define ULTRACANVAS_PLUGIN_BUILT_WITH_HEADERS ULTRACANVAS_FRAMEWORK_HEADERS_ID
+#endif
+
 #if defined(_WIN32) || defined(_WIN64)
   #define ULTRACANVAS_PLUGIN_EXPORT __declspec(dllexport)
 #else
@@ -149,14 +195,27 @@ struct UltraCanvasPluginHost {
 // missing backend, ...): the host skips the plugin with a log line and nothing
 // is half-registered.
 using UltraCanvas_PluginInitFn = bool (*)(const UltraCanvasPluginHost* host);
+// The second symbol: the framework headers id the plugin was compiled
+// against. The loader reads it before UltraCanvas_PluginInit and refuses a
+// plugin without it (one built before it existed) or with another id.
+using UltraCanvas_PluginHeadersIdFn = const char* (*)();
 
-// Defines UltraCanvas_PluginInit with the ABI handshake and exception fence
-// already in place; `initFn` is bool(const UltraCanvasPluginHost*) and runs
-// only after both checks pass.
+// Defines UltraCanvas_PluginHeadersId and UltraCanvas_PluginInit with the ABI
+// handshake and exception fence already in place; `initFn` is bool(const UltraCanvasPluginHost*) and runs
+// only after both checks pass: the host's table is at least the one the
+// plugin was built for (it may be longer), and the C++ types crossing the
+// boundary are laid out alike (the ABI tag, compared exactly).
 #define ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(initFn)                              \
     extern "C" ULTRACANVAS_PLUGIN_EXPORT                                       \
+    const char* UltraCanvas_PluginHeadersId() { return ULTRACANVAS_PLUGIN_BUILT_WITH_HEADERS; } \
+    extern "C" ULTRACANVAS_PLUGIN_EXPORT                                       \
     bool UltraCanvas_PluginInit(const UltraCanvas::UltraCanvasPluginHost* host) { \
-        if (!host || host->abiVersion < 1 || !host->RegisterElement) return false; \
+        if (!host || !host->RegisterElement) return false;                     \
+        if (host->abiVersion < ULTRACANVAS_PLUGIN_BUILT_FOR_ABI) {             \
+            if (host->Log) host->Log(2, "plugin refused: the host's table is older than the " \
+                                        "one the plugin was built for - update the framework"); \
+            return false;                                                      \
+        }                                                                      \
         if (!host->frameworkAbiTag ||                                          \
             std::string(host->frameworkAbiTag) != ULTRACANVAS_FRAMEWORK_ABI_TAG) { \
             if (host->Log) host->Log(2, "plugin refused: ABI tag mismatch, "   \
@@ -195,5 +254,14 @@ std::string UltraCanvas_GetLastPluginError();
 // call it unconditionally at startup. Charts not selected here arrive as
 // runtime modules through the loader above.
 void UltraCanvas_RegisterSelectedCharts();
+
+// Registers the selectable widgets compiled in at configure time
+// (ULTRACANVAS_WIDGETS, "all" by default) - today VideoTimeline as
+// "video-timeline". Generated by CMake like the chart call above, so it can be
+// called unconditionally; a widget not compiled in arrives as a runtime module
+// (ultracanvas-widget-<name>) through the loader. A static-core host that loads
+// widget modules must call it: its generated body also anchors into the
+// executable the core objects only those widgets use.
+void UltraCanvas_RegisterSelectedWidgets();
 
 } // namespace UltraCanvas

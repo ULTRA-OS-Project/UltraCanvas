@@ -3,8 +3,10 @@
 // line, area, cumulative flow, scatter and bubble charts next to their engine
 // ports (UltraCanvasEngineLineChart, UltraCanvasEngineScatterChart), each pair
 // fed the same data the legacy chart's own demo page uses.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): checkboxes and
+//                  buttons as wide as their text, the old width as a minimum
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEngineComparison.h"
@@ -27,12 +29,20 @@ using EngineChart = std::shared_ptr<UltraCanvasChartEngineElement>;
 
 // ---- shared data ------------------------------------------------------------
 
-const std::vector<std::string> kMonths = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+// Built when a tab is, so the labels are in the current language.
+std::vector<std::string> Months() {
+    return {Tr("Jan"), Tr("Feb"), Tr("Mar"), Tr("Apr"), Tr("May"), Tr("Jun"),
+            Tr("Jul"), Tr("Aug"), Tr("Sep"), Tr("Oct"), Tr("Nov"), Tr("Dec")};
+}
 const std::vector<double> kMonthlySales = {45000, 52000, 48000, 61000, 55000, 67000,
                                            71000, 69000, 58000, 63000, 72000, 78000};
-const std::vector<std::string> kQuarters = {"Q1 2023", "Q2 2023", "Q3 2023", "Q4 2023",
-                                            "Q1 2024", "Q2 2024", "Q3 2024", "Q4 2024"};
+std::vector<std::string> Quarters() {
+    std::vector<std::string> quarters;
+    for (int year = 2023; year <= 2024; ++year) {
+        for (int quarter = 1; quarter <= 4; ++quarter) quarters.push_back(TrF("Q{0} {1}", quarter, year));
+    }
+    return quarters;
+}
 const std::vector<double> kQuarterlyRevenue = {85000, 92000, 78000, 105000,
                                                98000, 112000, 125000, 138000};
 
@@ -51,10 +61,19 @@ std::shared_ptr<ChartDataVector> MakeDataSource(const std::vector<std::string>& 
 // The strips are siblings of the charts, never their parents, so capturing a
 // chart's shared_ptr in a control callback is ownership, not a cycle.
 
+// Controls are as wide as their text, at least the width they were given:
+// a longer caption (a translation) widens the control instead of being cut.
+void SetMinimumWidth(UltraCanvasUIElement& element, int minWidth) {
+    CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(minWidth));
+    element.boxConstraints = limits;
+}
+
 std::shared_ptr<UltraCanvasCheckbox> MakeCheck(const std::string& id, const std::string& text,
                                                bool checked, int width,
                                                std::function<void(bool)> onChange) {
-    auto box = std::make_shared<UltraCanvasCheckbox>(id, width, 24);
+    auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 24);
+    SetMinimumWidth(*box, width);
     box->SetText(text);
     box->SetChecked(checked);
     box->onStateChanged = [onChange](CheckedState, CheckedState state) {
@@ -78,15 +97,15 @@ std::shared_ptr<UltraCanvasDropdown> MakeChoice(const std::string& id,
 // offers, appended after the tab's own controls.
 void AddEngineControls(UltraCanvasContainer& strip, const std::string& prefix,
                        const EngineChart& engine) {
-    AddStripLabel(strip, prefix + "ProjLabel", "Projection:", 70);
-    AddToStrip(strip, MakeChoice(prefix + "Projection", {"Vertical", "Horizontal", "Polar"}, 0, 110,
+    AddStripLabel(strip, prefix + "ProjLabel", Tr("Projection:"), 70);
+    AddToStrip(strip, MakeChoice(prefix + "Projection", {Tr("Vertical"), Tr("Horizontal"), Tr("Polar")}, 0, 110,
         [engine](int index) {
             engine->SetProjectionKind(index == 1 ? ChartProjectionKind::Horizontal
                                       : index == 2 ? ChartProjectionKind::Polar
                                                    : ChartProjectionKind::Vertical);
         }));
 
-    AddStripLabel(strip, prefix + "ThemeLabel", "Theme:", 46);
+    AddStripLabel(strip, prefix + "ThemeLabel", Tr("Theme:"), 46);
     const std::vector<std::string> themes = ChartThemes::Names();
     int current = 0;
     for (size_t i = 0; i < themes.size(); ++i) {
@@ -99,8 +118,9 @@ void AddEngineControls(UltraCanvasContainer& strip, const std::string& prefix,
             }
         }));
 
-    auto replay = std::make_shared<UltraCanvasButton>(prefix + "Replay", 0, 0, 120, 24);
-    replay->SetText("Replay animation");
+    auto replay = std::make_shared<UltraCanvasButton>(prefix + "Replay", 0, 0, 0, 24);
+    SetMinimumWidth(*replay, 120);
+    replay->SetText(Tr("Replay animation"));
     replay->onClick = [engine]() { engine->StartEngineAnimation(0.8f); };
     AddToStrip(strip, replay);
 }
@@ -111,8 +131,8 @@ void AddEngineControls(UltraCanvasContainer& strip, const std::string& prefix,
 
 std::shared_ptr<UltraCanvasUIElement> BuildLineTab() {
     auto legacy = CreateLineChartElement("CmpLineLegacy", 0, 0, 400, 300);
-    legacy->SetDataSource(MakeDataSource(kMonths, kMonthlySales));
-    legacy->SetChartTitle("Monthly Sales Trend");
+    legacy->SetDataSource(MakeDataSource(Months(), kMonthlySales));
+    legacy->SetChartTitle(Tr("Monthly Sales Trend"));
     legacy->SetLineColor(Color(0, 102, 204, 255));
     legacy->SetLineWidth(3.0f);
     legacy->SetShowDataPoints(true);
@@ -124,9 +144,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildLineTab() {
     legacy->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
 
     auto engine = CreateEngineLineChart("CmpLineEngine");
-    engine->SetChartTitle("Monthly Sales Trend");
-    engine->SetCategories(kMonths);
-    engine->SetSeries({{"Sales", kMonthlySales, Color(0, 102, 204, 255)}});
+    engine->SetChartTitle(Tr("Monthly Sales Trend"));
+    engine->SetCategories(Months());
+    engine->SetSeries({{Tr("Sales"), kMonthlySales, Color(0, 102, 204, 255)}});
     engine->SetLineWidth(3.0f);
     engine->SetMarkerColor(Color(255, 99, 71, 255));
     engine->SetMarkerRadius(5.0f);
@@ -136,24 +156,24 @@ std::shared_ptr<UltraCanvasUIElement> BuildLineTab() {
     engine->SetCategoryPadding(0.4);
 
     auto strip = MakeControlStrip("CmpLine");
-    AddStripLabel(*strip, "CmpLineShapeLabel", "Line:", 34);
-    AddToStrip(*strip, MakeChoice("CmpLineShape", {"Straight", "Curved", "Step"}, 1, 100,
+    AddStripLabel(*strip, "CmpLineShapeLabel", Tr("Line:"), 34);
+    AddToStrip(*strip, MakeChoice("CmpLineShape", {Tr("Straight"), Tr("Curved"), Tr("Step")}, 1, 100,
         [legacy, engine](int index) {
             legacy->SetSmoothingEnabled(index == 1);    // the legacy chart has no steps
             engine->SetLineShape(index == 0 ? ChartLineShape::Straight
                                  : index == 1 ? ChartLineShape::Curved
                                               : ChartLineShape::StepMiddle);
         }));
-    AddToStrip(*strip, MakeCheck("CmpLinePoints", "Points", true, 70,
+    AddToStrip(*strip, MakeCheck("CmpLinePoints", Tr("Points"), true, 70,
         [legacy, engine](bool on) { legacy->SetShowDataPoints(on); engine->SetShowMarkers(on); }));
-    AddToStrip(*strip, MakeCheck("CmpLineLabels", "Value labels", true, 110,
+    AddToStrip(*strip, MakeCheck("CmpLineLabels", Tr("Value labels"), true, 110,
         [legacy, engine](bool on) { legacy->SetShowValueLabels(on); engine->SetShowValueLabels(on); }));
     AddEngineControls(*strip, "CmpLine", engine);
 
     return MakeComparisonTab(
         "CmpLine",
-        "Monthly sales as a smoothed line with points and value labels. The port draws the curve as a monotone cubic that never\n"
-        "overshoots a month, declutters the value labels through the label plan, and follows the projection - Polar is a polar line chart.",
+        Tr("Monthly sales as a smoothed line with points and value labels. The port draws the curve as a monotone cubic that never\n"
+        "overshoots a month, declutters the value labels through the label plan, and follows the projection - Polar is a polar line chart."),
         "UltraCanvasLineChartElement", legacy, "UltraCanvasEngineLineChart", engine, strip);
 }
 
@@ -164,8 +184,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildLineTab() {
 std::shared_ptr<UltraCanvasUIElement> BuildAreaTab() {
     const Color teal(0, 150, 136, 255);
     auto legacy = CreateAreaChartElement("CmpAreaLegacy", 0, 0, 400, 300);
-    legacy->SetDataSource(MakeDataSource(kQuarters, kQuarterlyRevenue));
-    legacy->SetChartTitle("Quarterly Revenue Growth");
+    legacy->SetDataSource(MakeDataSource(Quarters(), kQuarterlyRevenue));
+    legacy->SetChartTitle(Tr("Quarterly Revenue Growth"));
     legacy->SetFillColor(Color(0, 150, 136, 120));
     legacy->SetLineColor(teal);
     legacy->SetLineWidth(3.0f);
@@ -180,10 +200,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildAreaTab() {
     legacy->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
 
     auto engine = CreateEngineLineChart("CmpAreaEngine");
-    engine->SetChartTitle("Quarterly Revenue Growth");
+    engine->SetChartTitle(Tr("Quarterly Revenue Growth"));
     engine->SetMode(EngineLineChartMode::Area);
-    engine->SetCategories(kQuarters);
-    engine->SetSeries({{"Revenue", kQuarterlyRevenue, teal}});
+    engine->SetCategories(Quarters());
+    engine->SetSeries({{Tr("Revenue"), kQuarterlyRevenue, teal}});
     engine->SetLineWidth(3.0f);
     engine->SetMarkerColor(Color(255, 87, 34, 255));
     engine->SetGradientFill(true);
@@ -193,23 +213,23 @@ std::shared_ptr<UltraCanvasUIElement> BuildAreaTab() {
     engine->SetValueFormat("$", "", true);
 
     auto strip = MakeControlStrip("CmpArea");
-    AddToStrip(*strip, MakeCheck("CmpAreaSmooth", "Smooth", true, 76,
+    AddToStrip(*strip, MakeCheck("CmpAreaSmooth", Tr("Smooth"), true, 76,
         [legacy, engine](bool on) {
             legacy->SetSmoothingEnabled(on);
             engine->SetLineShape(on ? ChartLineShape::Curved : ChartLineShape::Straight);
         }));
-    AddToStrip(*strip, MakeCheck("CmpAreaGradient", "Gradient", true, 86,
+    AddToStrip(*strip, MakeCheck("CmpAreaGradient", Tr("Gradient"), true, 86,
         [legacy, engine](bool on) { legacy->SetFillGradientEnabled(on); engine->SetGradientFill(on); }));
-    AddToStrip(*strip, MakeCheck("CmpAreaPoints", "Points", true, 70,
+    AddToStrip(*strip, MakeCheck("CmpAreaPoints", Tr("Points"), true, 70,
         [legacy, engine](bool on) { legacy->SetShowDataPoints(on); engine->SetShowMarkers(on); }));
-    AddToStrip(*strip, MakeCheck("CmpAreaLabels", "Value labels", true, 110,
+    AddToStrip(*strip, MakeCheck("CmpAreaLabels", Tr("Value labels"), true, 110,
         [legacy, engine](bool on) { legacy->SetShowValueLabels(on); engine->SetShowValueLabels(on); }));
     AddEngineControls(*strip, "CmpArea", engine);
 
     return MakeComparisonTab(
         "CmpArea",
-        "Quarterly revenue as a gradient-filled area. The port fills from the zero line through BuildAreaOutlines, so the same\n"
-        "area becomes a filled band under Horizontal and a filled polar area under Polar; hover a quarter for its tooltip.",
+        Tr("Quarterly revenue as a gradient-filled area. The port fills from the zero line through BuildAreaOutlines, so the same\n"
+        "area becomes a filled band under Horizontal and a filled polar area under Polar; hover a quarter for its tooltip."),
         "UltraCanvasAreaChartElement", legacy, "UltraCanvasEngineLineChart (Area)", engine, strip);
 }
 
@@ -218,13 +238,13 @@ std::shared_ptr<UltraCanvasUIElement> BuildAreaTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> BuildCumulativeFlowTab() {
-    const std::vector<std::string> months = {"Month 1", "Month 2", "Month 3", "Month 4", "Month 5",
-                                             "Month 6", "Month 7", "Month 8", "Month 9"};
+    std::vector<std::string> months;
+    for (int month = 1; month <= 9; ++month) months.push_back(TrF("Month {0}", month));
     const std::vector<std::pair<std::string, std::vector<double>>> stages = {
-        {"To do", {17, 15, 12, 12, 10, 5, 2, 1, 1}},
-        {"Doing", {3, 3, 3, 3, 3, 5, 5, 5, 4}},
-        {"QA",    {0, 2, 3, 2, 2, 3, 3, 3, 2}},
-        {"Done",  {0, 0, 2, 3, 5, 7, 10, 11, 13}}};
+        {Tr("To do"), {17, 15, 12, 12, 10, 5, 2, 1, 1}},
+        {Tr("Doing"), {3, 3, 3, 3, 3, 5, 5, 5, 4}},
+        {Tr("QA"),    {0, 2, 3, 2, 2, 3, 3, 3, 2}},
+        {Tr("Done"),  {0, 0, 2, 3, 5, 7, 10, 11, 13}}};
 
     const CumulativeFlowChartStyle olive = CumulativeFlowStyles::CreateOlive();
     auto legacy = CreateCumulativeFlowChartElement("CmpFlowLegacy", 0, 0, 400, 300);
@@ -246,7 +266,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildCumulativeFlowTab() {
         series.push_back(s);
     }
     auto engine = CreateEngineLineChart("CmpFlowEngine");
-    engine->SetChartTitle("Cumulative flow");
+    engine->SetChartTitle(Tr("Cumulative flow"));
     engine->SetMode(EngineLineChartMode::StackedArea);
     engine->SetReverseStackOrder(true);
     engine->SetCategories(months);
@@ -259,7 +279,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildCumulativeFlowTab() {
     engine->AddCumulativeFlowAnnotations();
 
     auto strip = MakeControlStrip("CmpFlow");
-    AddToStrip(*strip, MakeCheck("CmpFlowSpans", "Lead / cycle / WIP", true, 150,
+    AddToStrip(*strip, MakeCheck("CmpFlowSpans", Tr("Lead / cycle / WIP"), true, 150,
         [legacy, engine](bool on) {
             legacy->ClearAnnotations();
             engine->ClearSeriesSpans();
@@ -270,13 +290,13 @@ std::shared_ptr<UltraCanvasUIElement> BuildCumulativeFlowTab() {
                 engine->AddCumulativeFlowAnnotations();
             }
         }));
-    AddToStrip(*strip, MakeCheck("CmpFlowMarkers", "Markers", true, 80,
+    AddToStrip(*strip, MakeCheck("CmpFlowMarkers", Tr("Markers"), true, 80,
         [legacy, engine](bool on) {
             legacy->EditStyle().showMarkers = on;
             legacy->StyleChanged();
             engine->SetShowMarkers(on);
         }));
-    AddToStrip(*strip, MakeCheck("CmpFlowPercent", "100% (engine)", false, 116,
+    AddToStrip(*strip, MakeCheck("CmpFlowPercent", Tr("100% (engine)"), false, 116,
         [engine](bool on) {
             engine->SetMode(on ? EngineLineChartMode::PercentStackedArea
                                : EngineLineChartMode::StackedArea);
@@ -285,8 +305,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildCumulativeFlowTab() {
 
     return MakeComparisonTab(
         "CmpFlow",
-        "A cumulative flow diagram: per-stage bands stacked over the months, first stage on top. The port is the line chart's\n"
-        "StackedArea mode with SetReverseStackOrder; lead time, cycle time and WIP are engine span annotations the value labels steer around.",
+        Tr("A cumulative flow diagram: per-stage bands stacked over the months, first stage on top. The port is the line chart's\n"
+        "StackedArea mode with SetReverseStackOrder; lead time, cycle time and WIP are engine span annotations the value labels steer around."),
         "UltraCanvasCumulativeFlowChartElement", legacy, "UltraCanvasEngineLineChart (StackedArea)",
         engine, strip);
 }
@@ -303,21 +323,21 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
     std::uniform_real_distribution<> noise(-5000, 5000);
     auto data = std::make_shared<ChartDataVector>();
     EngineScatterGroup group;
-    group.name = "Campaigns";
+    group.name = Tr("Campaigns");
     group.color = Color(255, 140, 0, 255);
     std::vector<ChartDataPoint> points;
     for (int i = 0; i < 50; ++i) {
         const double spend = xDist(gen);
         const double sales = spend * 3.2 + 15000 + noise(gen);
-        points.emplace_back(spend, sales, 0.0, "Point " + std::to_string(i + 1), sales);
+        points.emplace_back(spend, sales, 0.0, TrF("Point {0}", i + 1), sales);
         group.points.emplace_back(spend, sales, std::nan(""), std::nan(""),
-                                  "Point " + std::to_string(i + 1));
+                                  TrF("Point {0}", i + 1));
     }
     data->LoadFromArray(points);
 
     auto legacy = CreateScatterPlotElement("CmpScatterLegacy", 0, 0, 400, 300);
     legacy->SetDataSource(data);
-    legacy->SetChartTitle("Marketing Spend vs Sales");
+    legacy->SetChartTitle(Tr("Marketing Spend vs Sales"));
     legacy->SetPointColor(Color(255, 140, 0, 255));
     legacy->SetPointSize(8.0f);
     legacy->SetPointShape(UltraCanvasScatterPlotElement::PointShape::Circle);
@@ -326,18 +346,18 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
     legacy->SetShowCorrelationInfo(true);
 
     auto engine = CreateEngineScatterChart("CmpScatterEngine");
-    engine->SetChartTitle("Marketing Spend vs Sales");
+    engine->SetChartTitle(Tr("Marketing Spend vs Sales"));
     engine->SetGroups({group});
     engine->SetMarkerRadius(4.5f);
-    engine->SetAxisTitles("Marketing spend", "Sales");
+    engine->SetAxisTitles(Tr("Marketing spend"), Tr("Sales"));
     engine->SetXFormat("$", "", true);
     engine->SetYFormat("$", "", true);
     engine->SetShowTrendLine(true);
     engine->SetShowCorrelationInfo(true);
 
     auto strip = MakeControlStrip("CmpScatter");
-    AddStripLabel(*strip, "CmpScatterShapeLabel", "Shape:", 42);
-    AddToStrip(*strip, MakeChoice("CmpScatterShape", {"Circle", "Square", "Triangle", "Diamond"}, 0, 100,
+    AddStripLabel(*strip, "CmpScatterShapeLabel", Tr("Shape:"), 42);
+    AddToStrip(*strip, MakeChoice("CmpScatterShape", {Tr("Circle"), Tr("Square"), Tr("Triangle"), Tr("Diamond")}, 0, 100,
         [legacy, engine, group](int index) {
             using Legacy = UltraCanvasScatterPlotElement::PointShape;
             static const Legacy legacyShapes[] = {Legacy::Circle, Legacy::Square,
@@ -351,20 +371,20 @@ std::shared_ptr<UltraCanvasUIElement> BuildScatterTab() {
             reshaped.marker = engineShapes[i];
             engine->SetGroups({reshaped});
         }));
-    AddToStrip(*strip, MakeCheck("CmpScatterTrend", "Trend line", true, 96,
+    AddToStrip(*strip, MakeCheck("CmpScatterTrend", Tr("Trend line"), true, 96,
         [legacy, engine](bool on) {
             legacy->SetShowTrendLine(on);
             legacy->SetShowCorrelationInfo(on);
             engine->SetShowTrendLine(on);
         }));
-    AddToStrip(*strip, MakeCheck("CmpScatterEllipse", "95% ellipse (engine)", false, 160,
+    AddToStrip(*strip, MakeCheck("CmpScatterEllipse", Tr("95% ellipse (engine)"), false, 160,
         [engine](bool on) { engine->SetShowConfidenceEllipses(on, 0.95); }));
     AddEngineControls(*strip, "CmpScatter", engine);
 
     return MakeComparisonTab(
         "CmpScatter",
-        "Fifty campaigns with a least-squares trend line and its y = ax + b / r / r\xC2\xB2 readout. The port rules both directions from\n"
-        "the axis ticks, places the readout through the label plan and can wrap the group in an engine confidence-ellipse highlight.",
+        Tr("Fifty campaigns with a least-squares trend line and its y = ax + b / r / r\xC2\xB2 readout. The port rules both directions from\n"
+        "the axis ticks, places the readout through the label plan and can wrap the group in an engine confidence-ellipse highlight."),
         "UltraCanvasScatterPlotElement", legacy, "UltraCanvasEngineScatterChart", engine, strip);
 }
 
@@ -382,12 +402,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildBubbleTab() {
 
     auto legacy = CreateBubbleChartElement("CmpBubbleLegacy", 0, 0, 400, 300);
     EngineScatterGroup group;
-    group.name = "Countries";
+    group.name = Tr("Countries");
     for (const Row& r : rows) {
         legacy->AddBubble(r.cost, r.safety, r.health, r.food, r.name);
         group.points.emplace_back(r.cost, r.safety, r.health, r.food, r.name);
     }
-    legacy->SetChartTitle("Concerns when traveling");
+    legacy->SetChartTitle(Tr("Concerns when traveling"));
     legacy->SetSizeScale(BubbleSizeScale::Area);
     legacy->SetRadiusRange(8.0f, 34.0f);
     legacy->SetColorMode(BubbleColorMode::ColormapByValue);
@@ -396,33 +416,33 @@ std::shared_ptr<UltraCanvasUIElement> BuildBubbleTab() {
     legacy->SetNameLabelColor(Color(130, 150, 175, 255));
     legacy->SetValueLabelMode(BubbleValueLabelMode::Hidden);
     legacy->SetShowSizeLegend(true);
-    legacy->SetSizeLegendTitle("Health");
+    legacy->SetSizeLegendTitle(Tr("Health"));
     legacy->SetSizeLegendValues({46.1, 20.5, 5.1});
     legacy->SetValueDecimals(1);
-    legacy->SetFootnote("Darkness relates to Food concerns");
+    legacy->SetFootnote(Tr("Darkness relates to Food concerns"));
     legacy->SetEnableTooltips(true);
 
     auto engine = CreateEngineScatterChart("CmpBubbleEngine");
-    engine->SetChartTitle("Concerns when traveling");
+    engine->SetChartTitle(Tr("Concerns when traveling"));
     engine->SetGroups({group});
     engine->SetRadiusRange(8.0f, 34.0f);
     engine->SetSizeScale(EngineBubbleScale::Area);
     engine->SetCustomColormap(ramp);
     engine->SetMarkerOpacity(1.0f);
     engine->SetMarkerOutline(Color(255, 255, 255, 255), 1.0f);
-    engine->SetAxisTitles("Cost", "Safety");
+    engine->SetAxisTitles(Tr("Cost"), Tr("Safety"));
     engine->SetPointLabelMode(EngineScatterLabelMode::Inside);
-    engine->SetShowSizeLegend(true, "Health", {46.1, 20.5, 5.1});
+    engine->SetShowSizeLegend(true, Tr("Health"), {46.1, 20.5, 5.1});
 
     auto strip = MakeControlStrip("CmpBubble");
-    AddStripLabel(*strip, "CmpBubbleScaleLabel", "Size:", 32);
-    AddToStrip(*strip, MakeChoice("CmpBubbleScale", {"Area", "Diameter"}, 0, 96,
+    AddStripLabel(*strip, "CmpBubbleScaleLabel", Tr("Size:"), 32);
+    AddToStrip(*strip, MakeChoice("CmpBubbleScale", {Tr("Area"), Tr("Diameter")}, 0, 96,
         [legacy, engine](int index) {
             legacy->SetSizeScale(index == 1 ? BubbleSizeScale::Diameter : BubbleSizeScale::Area);
             engine->SetSizeScale(index == 1 ? EngineBubbleScale::Diameter : EngineBubbleScale::Area);
         }));
-    AddStripLabel(*strip, "CmpBubbleNamesLabel", "Names:", 44);
-    AddToStrip(*strip, MakeChoice("CmpBubbleNames", {"Auto", "Hidden", "Outside"}, 0, 96,
+    AddStripLabel(*strip, "CmpBubbleNamesLabel", Tr("Names:"), 44);
+    AddToStrip(*strip, MakeChoice("CmpBubbleNames", {Tr("Auto"), Tr("Hidden"), Tr("Outside")}, 0, 96,
         [legacy, engine](int index) {
             legacy->SetNameLabelMode(index == 1 ? BubbleNameLabelMode::Hidden
                                      : index == 2 ? BubbleNameLabelMode::BelowBubble
@@ -431,29 +451,29 @@ std::shared_ptr<UltraCanvasUIElement> BuildBubbleTab() {
                                       : index == 2 ? EngineScatterLabelMode::Outside
                                                    : EngineScatterLabelMode::Inside);
         }));
-    AddStripLabel(*strip, "CmpBubbleKeyLabel", "Key (engine):", 80);
-    AddToStrip(*strip, MakeChoice("CmpBubbleKey", {"Size", "Food colour bar"}, 0, 130,
+    AddStripLabel(*strip, "CmpBubbleKeyLabel", Tr("Key (engine):"), 80);
+    AddToStrip(*strip, MakeChoice("CmpBubbleKey", {Tr("Size"), Tr("Food colour bar")}, 0, 130,
         [engine](int index) {
-            engine->SetShowSizeLegend(index == 0, "Health", {46.1, 20.5, 5.1});
-            engine->SetShowColorBar(index == 1, "Food");
+            engine->SetShowSizeLegend(index == 0, Tr("Health"), {46.1, 20.5, 5.1});
+            engine->SetShowColorBar(index == 1, Tr("Food"));
         }));
     AddEngineControls(*strip, "CmpBubble", engine);
 
     return MakeComparisonTab(
         "CmpBubble",
-        "Four dimensions per country: cost (x), safety (y), health (bubble area) and food (darkness). The port keys the size with the\n"
-        "engine's area-scaled size legend (or the food colour bar), puts names inside bubbles that fit and solves the rest outside.",
+        Tr("Four dimensions per country: cost (x), safety (y), health (bubble area) and food (darkness). The port keys the size with the\n"
+        "engine's area-scaled size legend (or the food colour bar), puts names inside bubbles that fit and solves the rest outside."),
         "UltraCanvasBubbleChartElement", legacy, "UltraCanvasEngineScatterChart (bubbles)", engine, strip);
 }
 
 } // namespace
 
 std::vector<ComparisonTab> LineFamilyTabs() {
-    return {{"Line", BuildLineTab},
-            {"Area", BuildAreaTab},
-            {"Cumulative Flow", BuildCumulativeFlowTab},
-            {"Scatter", BuildScatterTab},
-            {"Bubble", BuildBubbleTab}};
+    return {{Tr("Line"), BuildLineTab},
+            {Tr("Area"), BuildAreaTab},
+            {Tr("Cumulative Flow"), BuildCumulativeFlowTab},
+            {Tr("Scatter"), BuildScatterTab},
+            {Tr("Bubble"), BuildBubbleTab}};
 }
 
 } // namespace EngineComparison

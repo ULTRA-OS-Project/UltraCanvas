@@ -7,6 +7,8 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
+// Version: 1.3.0 - letter spacing: a delta sets a run's own, the format state reports it, a
+//                  changed character style restyles it
 // Version: 1.2.1 - RunsText is UCRichDocument::ConcatenateRunText (one definition of
 //                  the text positions index into)
 // Version: 1.2.0
@@ -115,6 +117,8 @@ void RichCharFormatDelta::ApplyTo(RichTextRun& run) const {
     if (setFontFamily) run.fontFamily = fontFamily;
     if (setFontSize)   run.fontSizePt = fontSizePt;
     if (setColor)      run.color = color;
+    if (setHighlight)  run.highlightColor = highlightColor;
+    if (setLetterSpacing) run.letterSpacingPt = letterSpacingPt;
     if (setLink)       run.linkTarget = linkTarget;
     if (addComment >= 0 && std::find(run.commentIds.begin(), run.commentIds.end(), addComment) == run.commentIds.end()) {
         run.commentIds.push_back(addComment);
@@ -1105,6 +1109,7 @@ RichCharFormatDelta DeltaFromRun(const RichTextRun& run) {
     delta.setFontFamily = true;    delta.fontFamily = run.fontFamily;
     delta.setFontSize = true;      delta.fontSizePt = run.fontSizePt;
     delta.setColor = true;         delta.color = run.color;
+    delta.setHighlight = true;     delta.highlightColor = run.highlightColor;
     delta.setLink = true;          delta.linkTarget = run.linkTarget;
     return delta;
 }
@@ -1767,12 +1772,19 @@ RichCharFormatState UCRichDocumentEditor::GetFormatState() const {
         state.superscript = fold(state.superscript, run.superscript, first);
         foldString(state.fontFamily, state.fontFamilyMixed, run.fontFamily, first);
         foldString(state.color, state.colorMixed, run.color, first);
+        foldString(state.highlightColor, state.highlightMixed, run.highlightColor, first);
         foldString(state.linkTarget, state.linkMixed, run.linkTarget, first);
         if (first) {
             state.fontSizePt = run.fontSizePt;
         } else if (!state.fontSizeMixed && state.fontSizePt != run.fontSizePt) {
             state.fontSizeMixed = true;
             state.fontSizePt = 0.0f;
+        }
+        if (first) {
+            state.letterSpacingPt = run.letterSpacingPt;
+        } else if (!state.letterSpacingMixed && state.letterSpacingPt != run.letterSpacingPt) {
+            state.letterSpacingMixed = true;
+            state.letterSpacingPt.reset();
         }
     };
 
@@ -1912,6 +1924,13 @@ void UCRichDocumentEditor::SetTextColor(const std::string& hexColor) {
     ApplyCharFormat(delta);
 }
 
+void UCRichDocumentEditor::SetHighlightColor(const std::string& hexColor) {
+    RichCharFormatDelta delta;
+    delta.setHighlight = true;
+    delta.highlightColor = hexColor;
+    ApplyCharFormat(delta);
+}
+
 void UCRichDocumentEditor::SetLink(const std::string& target) {
     RichCharFormatDelta delta;
     delta.setLink = true;
@@ -1924,7 +1943,7 @@ void UCRichDocumentEditor::ClearFormatting() {
     delta.setBold = delta.setItalic = delta.setUnderline = true;
     delta.setStrikethrough = delta.setCode = true;
     delta.setSubscript = delta.setSuperscript = true;
-    delta.setFontFamily = delta.setFontSize = delta.setColor = true;
+    delta.setFontFamily = delta.setFontSize = delta.setColor = delta.setHighlight = true;
     delta.bold = delta.italic = delta.underline = false;
     delta.strikethrough = delta.code = false;
     delta.subscript = delta.superscript = false;
@@ -2313,6 +2332,7 @@ void RestyleRun(RichTextRun& run, const RichStyleCharacter& before, const RichSt
     Restyle(run.fontSizePt, before.fontSizePt, after.fontSizePt, force, 0.0f);
     Restyle(run.color, before.color, after.color, force, std::string());
     Restyle(run.highlightColor, before.highlightColor, after.highlightColor, force, std::string());
+    Restyle(run.letterSpacingPt, before.letterSpacingPt, after.letterSpacingPt, force, std::optional<float>());
 }
 
 } // namespace

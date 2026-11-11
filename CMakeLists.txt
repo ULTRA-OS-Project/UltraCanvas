@@ -264,6 +264,11 @@ if(ANDROID)
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    # The desktop store; its hard requirement on libsodium and SQLite would
+    # stop this configure, and the Android store is a later milestone.
+    set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
+    set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
@@ -343,6 +348,9 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAFIBU OFF CACHE BOOL "Build the UltraFIBU accounting application")
     set(BUILD_ULTRACLEANER OFF CACHE BOOL "Build the UltraCleaner application")
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
+    set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
+    set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
@@ -350,6 +358,8 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
     set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
+    set(BUILD_ULTRANOTIFICATIONS OFF CACHE BOOL "Build the UltraNotifications application")
+    set(BUILD_ULTRASNIP OFF CACHE BOOL "Build the UltraSnip application")
     set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
@@ -432,13 +442,13 @@ if(BUILD_DEMO_APP)
 endif()
 
 # Which platforms ship a native folder-watch backend (UltraCanvasFolderWatcher:
-# inotify / ReadDirectoryChangesW). Decided HERE, above every add_subdirectory,
+# inotify / ReadDirectoryChangesW / FSEvents). Decided HERE, above every add_subdirectory,
 # because the library and Tests/ are sibling scopes and both must agree: the
 # core file compiles a null-returning fallback unless this is set, so a
 # disagreement is either a duplicate symbol or a missing one at link time.
 # Adding a platform means dropping its backend under OS/<Platform>/ and adding
 # it to the condition below.
-if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH ON)
 endif()
 
@@ -449,6 +459,22 @@ endif()
 # and Tests/ must agree about which side defines the backend.
 if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
+endif()
+
+# Which platforms can reach phones, cameras and players that are not a drive
+# (UltraCanvasPortableDevices: Windows Portable Devices - MTP / PTP; on macOS
+# Image Capture - an iPhone's photos and a camera's card, read-only). Same
+# reason as above: the core file compiles a null-returning fallback unless this
+# is set. Linux desktops mount such devices themselves (gvfs).
+if(WIN32 OR APPLE)
+    set(ULTRACANVAS_HAS_PORTABLE_DEVICES ON)
+endif()
+
+# Which platforms can list the network's computers and shares and the WSL
+# distributions (UltraCanvasNetworkPlaces: WNetOpenEnum, NetShareEnum, the Lxss
+# registry key). Windows only; elsewhere the core file compiles empty lists.
+if(WIN32)
+    set(ULTRACANVAS_HAS_NETWORK_PLACES ON)
 endif()
 
 # Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
@@ -485,6 +511,14 @@ if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK ON)
 endif()
 
+# Which platforms can give a copy its original's dates (UltraCanvasFileTimes:
+# SetFileTime on Windows, setattrlist + utimensat on macOS, utimensat on Linux
+# and the BSDs). Elsewhere the core file copies the modification date through
+# std::filesystem.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_FILE_TIMES ON)
+endif()
+
 # A build machine's private OAuth settings (the sign-in service UltraNet is
 # built with), kept out of the repository - see cmake/oauth.local.cmake.example.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
@@ -494,6 +528,33 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
 endif()
 
 add_subdirectory(UltraCanvas)
+
+# An application that uses a selectable widget's typed API (its class, its
+# Create function, its style) needs that widget compiled into the core: a
+# runtime module (ULTRACANVAS_WIDGETS, UltraCanvas/CMakeLists.txt "WIDGET
+# SYSTEM") is reached only by name. Stops the configure, naming the widgets
+# and the way out, when an application that is built would not link.
+function(ultracanvas_require_widgets build_flag app_name)
+    if(NOT ${build_flag})
+        return()
+    endif()
+    get_property(compiled_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    set(missing "")
+    foreach(widget IN LISTS ARGN)
+        if(NOT widget IN_LIST compiled_in)
+            list(APPEND missing ${widget})
+        endif()
+    endforeach()
+    if(missing)
+        string(REPLACE ";" ", " missing_text "${missing}")
+        message(FATAL_ERROR "${app_name} needs ${missing_text} compiled into the core: add "
+            "them to ULTRACANVAS_WIDGETS (or use 'all'), or configure with -D${build_flag}=OFF")
+    endif()
+endfunction()
+ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
+    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+ultracanvas_require_widgets(BUILD_ULTRAPAINT_APP UltraPaint ColorPaletteManager)
+ultracanvas_require_widgets(BUILD_ARTCREATOR_APP ArtCreator ColorPaletteManager VectorCanvas)
 
 # ===== WEBASSEMBLY DEMOS =====
 # The browser validation apps under UltraCanvas/OS/WASM/demo/ (wasm-demo and
@@ -555,6 +616,11 @@ endif()
 # its vendor SDK is vendored — see SmartHome/STATUS.md.
 option(BUILD_SMARTHOME "Build the Smart Home module" ON)
 option(ULTRACANVAS_BUILD_SMARTHOME_TESTS "Build the Smart Home test suite" OFF)
+# BUILD_TESTS (CI's Linux row) builds it too: the suite is headless apart from
+# the widget test's device controls, which skip without a display.
+if(BUILD_TESTS)
+    set(ULTRACANVAS_BUILD_SMARTHOME_TESTS ON)
+endif()
 if(BUILD_SMARTHOME)
     if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
         enable_testing()   # must be the top-level call, as for every other suite
@@ -655,6 +721,16 @@ if(BUILD_ULTRACLAUDE)
     add_subdirectory(Apps/UltraClaude)
 endif()
 
+# ===== CHATCUBE =====
+# The ULTRA OS native messenger on UltraIM: peer-to-peer, end-to-end
+# encrypted chat with no account, groups through a relay (Server/ChatCubeRelay).
+option(BUILD_CHATCUBE "Build the ChatCube messenger" ON)
+if(BUILD_CHATCUBE)
+    message(STATUS "")
+    message(STATUS "── Building ChatCube ──")
+    add_subdirectory(Apps/ChatCube)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless
@@ -688,6 +764,19 @@ if(BUILD_ULTRAWEB)
     add_subdirectory(Apps/UltraWeb)
 endif()
 
+# The UltraWeb runtime for ordinary browsers: under emcmake, UltraWeb apps
+# run in Chrome or Firefox on UltraCanvas compiled to WebAssembly, installed
+# once by a browser extension or served by the site
+# (Docs/UltraWeb/UltraWebInTheBrowser.md).
+if(EMSCRIPTEN)
+    option(BUILD_ULTRAWEB_RUNTIME "Build the UltraWeb runtime, extension and sample site for browsers" ON)
+    if(BUILD_ULTRAWEB_RUNTIME)
+        message(STATUS "")
+        message(STATUS "── Building the UltraWeb runtime ──")
+        add_subdirectory(Apps/UltraWeb/browser)
+    endif()
+endif()
+
 # ===== ULTRADESKTOP =====
 # The ULTRA OS desktop: taskbar with the running applications, desktop
 # organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
@@ -711,11 +800,57 @@ if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
 endif()
 
+# ===== ULTRANOTIFICATIONS =====
+# The notifications of ULTRA OS after their toast has gone: every
+# notification, chat message and mail on the UltraMessage feed, to read,
+# search, open and dismiss (UltraCanvasMessageCenter). UltraDesktop's bell
+# opens it and shows its unread count.
+option(BUILD_ULTRANOTIFICATIONS "Build the UltraNotifications application" ON)
+if(BUILD_ULTRANOTIFICATIONS)
+    add_subdirectory(Apps/UltraNotifications)
+endif()
+
+# ===== ULTRASNIP =====
+# The screenshot and screen-recording tool of ULTRA OS: a rectangle, a window
+# or the whole screen as a picture (clipboard, Pictures/Screenshots) or as a
+# video (Videos/Screen Recordings, through VideoFX's frame recorder).
+# UltraDesktop's screenshot button and Super+Shift+S start it.
+option(BUILD_ULTRASNIP "Build the UltraSnip application" ON)
+if(BUILD_ULTRASNIP)
+    add_subdirectory(Apps/UltraSnip)
+endif()
+
+# ===== VIDEOFX TEXT THROUGH ULTRACANVAS =====
+# UltraCanvas's text engine as VideoFX's text renderer
+# (VideoFX/ultracanvas/VideoFXUltraCanvasText.h): a text overlay naming a font
+# family - an UltraVideo title, with its bold words, font, alignment and
+# spacing - is drawn by the UltraCanvasRichTextEdit that types it. A library
+# of its own beside VideoFX, which stays free of UltraCanvas, defined here
+# where both targets exist (VideoFX is added before the framework). The
+# `videofx` tool links it, so `videofx render` draws a project's titles as
+# UltraVideo shows them; a VideoFX built on its own draws them plain.
+if(TARGET VideoFX AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_library(VideoFXUltraCanvasText STATIC VideoFX/ultracanvas/VideoFXUltraCanvasText.cpp)
+    set_target_properties(VideoFXUltraCanvasText PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_include_directories(VideoFXUltraCanvasText PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/VideoFX/ultracanvas
+        ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(VideoFXUltraCanvasText PUBLIC ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_compile_features(VideoFXUltraCanvasText PUBLIC cxx_std_20)
+    if(TARGET videofx_cli)
+        target_link_libraries(videofx_cli PRIVATE VideoFXUltraCanvasText)
+        target_compile_definitions(videofx_cli PRIVATE VIDEOFX_WITH_ULTRACANVAS_TEXT=1)
+    endif()
+    message(STATUS "  [✓] VideoFX text through UltraCanvas (the videofx tool draws titles as UltraVideo does)")
+endif()
+
 # ===== ULTRAVIDEO =====
 # The video editor on the VideoFX engine and the UltraCanvasVideoTimeline
 # element: media bin, viewer with scrubbing, inspector, timeline, undo,
 # .ultravideo projects, export (Docs/Research/UltraVideoDesignProposal.md).
 option(BUILD_ULTRAVIDEO "Build the UltraVideo application" ON)
+# UltraVideo uses the video timeline's and the album's typed API.
+ultracanvas_require_widgets(BUILD_ULTRAVIDEO UltraVideo VideoTimeline Album)
 if(BUILD_ULTRAVIDEO)
     message(STATUS "")
     message(STATUS "── Building UltraVideo ──")
@@ -743,6 +878,9 @@ option(BUILD_SMARTHOME_CENTER "Build the SmartHome Center application" ON)
 if(BUILD_SMARTHOME_CENTER AND BUILD_SMARTHOME)
     message(STATUS "")
     message(STATUS "── Building SmartHome Center ──")
+    if(BUILD_TESTS OR ULTRACANVAS_BUILD_SMARTHOME_TESTS)
+        enable_testing()   # SmartHomeCenterCliTest; must be the top-level call
+    endif()
     add_subdirectory(Apps/SmartHomeCenter)
 endif()
 
@@ -772,6 +910,51 @@ if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraPassword)
 endif()
 
+# ===== ULTRASTORE =====
+# The ULTRA OS app store: a signed catalog of apps and the shared-library
+# components they run on, the package for this machine, per-user installs
+# and updates (Docs/UltraStore/README.md): one program, `ultrastore`, the
+# window when started plainly and the commands when given one. It requires UltraCrypt with
+# libsodium and UltraDatabase with SQLite and stops the configure without
+# them - Apps/UltraStore/CMakeLists.txt says which and how to turn it off.
+option(BUILD_ULTRASTORE "Build the UltraStore application" ON)
+if(BUILD_ULTRASTORE)
+    message(STATUS "")
+    message(STATUS "── Building UltraStore ──")
+    if(ANDROID OR IOS OR EMSCRIPTEN)
+        # The desktop store. The stores for the phones and the browser read
+        # the same catalog later; this target's requirements must not stop
+        # their configures now.
+        message(STATUS "  [−] UltraStore - SKIPPED (the desktop store; not built for this platform)")
+    else()
+        add_subdirectory(Apps/UltraStore)
+    endif()
+endif()
+
+# ===== ULTRASTOREADMIN =====
+# The store's admin backend: the apps and their settings in a database, the
+# packages, the signing key, the translations, the catalog generated and
+# signed (Docs/UltraStoreAdmin/README.md). On the store's core, so it is
+# built where the store is.
+option(BUILD_ULTRASTOREADMIN "Build the UltraStoreAdmin application" ON)
+if(BUILD_ULTRASTOREADMIN AND TARGET UltraStoreCore)
+    message(STATUS "")
+    message(STATUS "── Building UltraStoreAdmin ──")
+    add_subdirectory(Apps/UltraStoreAdmin)
+endif()
+
+# ===== ULTRAAI SERVERADMIN =====
+# The super administrator's tool for an UltraAI model server
+# (Server/UltraAIModelServer): which models UltraAI clients may install, their
+# files, the topics, the accounts (Docs/UltraAIServerAdmin/README.md). On the
+# shared core's UltraNet and UltraCrypt.
+option(BUILD_ULTRAAISERVERADMIN "Build the UltraAI ServerAdmin application" ON)
+if(BUILD_ULTRAAISERVERADMIN AND TARGET UltraNet AND TARGET UltraCrypt)
+    message(STATUS "")
+    message(STATUS "── Building UltraAI ServerAdmin ──")
+    add_subdirectory(Apps/UltraAIServerAdmin)
+endif()
+
 # ===== ANCHORPOINT =====
 # Peer-to-peer file sharing with no server file storage. Apps/AnchorPoint is
 # also its own CMake project (core + CLI build without the framework); here it
@@ -798,6 +981,8 @@ if(BUILD_DEMO_APP)
     set(DEMO_SOURCES
             Apps/DemoApp/main.cpp
             Apps/DemoApp/UltraCanvasDemo.cpp
+            Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp
+            Apps/DemoApp/UltraCanvasDemoPageKit.cpp
             Apps/DemoApp/UltraCanvasDemoExamples.cpp
             Apps/DemoApp/UltraCanvasButtonExamples.cpp
             Apps/DemoApp/UltraCanvasDropDownExamples.cpp
@@ -806,6 +991,8 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp
+            Apps/DemoApp/UltraCanvasSettingsPageKitExamples.cpp
+            Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp
             Apps/DemoApp/UltraCanvasVectorCanvasExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
@@ -816,6 +1003,10 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
             Apps/DemoApp/UltraCanvasChipExamples.cpp
+            Apps/DemoApp/UltraCanvasChipGroupExamples.cpp
+            Apps/DemoApp/UltraCanvasCardExamples.cpp
+            Apps/DemoApp/UltraCanvasCollapsiblePanelExamples.cpp
+            Apps/DemoApp/UltraCanvasSidebarNavigationExamples.cpp
             Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
             Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
@@ -868,7 +1059,12 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
+            Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
+            Apps/DemoApp/UltraCanvasTernaryChartExamples.cpp
+            Apps/DemoApp/UltraCanvasHistogramChartExamples.cpp
+            Apps/DemoApp/UltraCanvasControlChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasPerformanceMatrixExamples.cpp
             Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTickerBoardExamples.cpp
@@ -924,6 +1120,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
             Apps/DemoApp/UltraCanvasAIExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
+            Apps/DemoApp/UltraCanvasLocalisationExamples.cpp
             Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
             Apps/DemoApp/UltraCanvasSTLExamples.cpp
@@ -1107,6 +1304,32 @@ if(BUILD_DEMO_APP)
         target_link_libraries(UltraCanvasDemo PRIVATE UltraMessageCenter)
     endif()
 
+    # The Smart Home entry opens the module's panel on its simulated home
+    # when the widgets are built (Apps/DemoApp/UltraCanvasSmartHomeExamples.cpp);
+    # otherwise it shows the module's documentation.
+    if(TARGET SmartHomeUI)
+        target_sources(UltraCanvasDemo PRIVATE Apps/DemoApp/UltraCanvasSmartHomeExamples.cpp)
+        target_link_libraries(UltraCanvasDemo PRIVATE SmartHomeUI)
+        target_compile_definitions(UltraCanvasDemo PRIVATE ULTRACANVAS_DEMO_HAS_SMARTHOME=1)
+    endif()
+
+    # The IODeviceManager entry is DeviceExplorer itself: the application's
+    # panel (Apps/DeviceExplorer/ui), compiled in from the same files, so the
+    # page and the application cannot drift apart. Its version is named in
+    # the panel's About, so the definition goes on the one page that passes
+    # it. Not in the browser or on Android, where there is no device to scan.
+    if(NOT EMSCRIPTEN AND NOT ANDROID)
+        target_sources(UltraCanvasDemo PRIVATE
+            Apps/DemoApp/UltraCanvasIODeviceManagerExamples.cpp
+            Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp
+            Apps/DeviceExplorer/ui/DeviceExplorerPanel.cpp
+            Apps/DeviceExplorer/ui/DeviceExplorerPrinterQuery.cpp)
+        target_include_directories(UltraCanvasDemo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Apps/DeviceExplorer/ui)
+        target_compile_definitions(UltraCanvasDemo PRIVATE ULTRACANVAS_DEMO_HAS_DEVICEEXPLORER=1)
+        set_source_files_properties(Apps/DemoApp/UltraCanvasIODeviceManagerExamples.cpp PROPERTIES
+            COMPILE_DEFINITIONS "DEVICEEXPLORER_VERSION=\"${DEVICEEXPLORER_VERSION}\"")
+    endif()
+
     # Link against all plugin libraries
     if(ULTRACANVAS_PLUGIN_TARGETS)
         target_link_libraries(UltraCanvasDemo PRIVATE
@@ -1240,6 +1463,37 @@ if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
 endif()
 
+# ===== JPEG XL TEST WITHOUT THE FULL SUITE =====
+# ImageJxlTest alone, for builds that leave BUILD_TESTS off (the macOS and
+# Windows CI rows): the libvips each of them ships - vcpkg's on macOS, MSYS2's
+# with its vips-jxl module on Windows - has to write and read JPEG XL.
+option(ULTRACANVAS_BUILD_JXL_TESTS "Build ImageJxlTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_JXL_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/ImageJxlTests.cmake)
+endif()
+
+# ===== HEIF / AVIF TEST WITHOUT THE FULL SUITE =====
+# ImageHeifTest alone, for builds that leave BUILD_TESTS off (the macOS and
+# Windows CI rows): the libheif each of them ships has to decode and encode
+# what UC_HEIF_EXPECT says it must - and on macOS, not encode HEIC (x265 is
+# GPL and stays out of the core).
+option(ULTRACANVAS_BUILD_HEIF_TESTS "Build ImageHeifTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_HEIF_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/ImageHeifTests.cmake)
+endif()
+
+# ===== START PAGE AND APP SETTINGS TESTS WITHOUT THE FULL SUITE =====
+# StartPageTest, AppSettingsTest and ProxySettingsTest alone, for builds that leave BUILD_TESTS
+# off (the macOS and Windows CI rows): every application's start page and its
+# settings file, on the platform's own path rules and settings folder.
+option(ULTRACANVAS_BUILD_STARTPAGE_TESTS "Build StartPageTest, AppSettingsTest and ProxySettingsTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_STARTPAGE_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/StartPageTests.cmake)
+endif()
+
 # ===== FILER TESTS WITHOUT THE FULL SUITE =====
 # FilerFolderPreviewTest and FilerNameEncodingTest alone, for builds that
 # leave BUILD_TESTS off (the Windows CI rows): the file display lists and draws
@@ -1302,6 +1556,16 @@ option(ULTRACANVAS_BUILD_VAULT_TESTS "Build UltraVaultTests without BUILD_TESTS"
 if(ULTRACANVAS_BUILD_VAULT_TESTS AND NOT BUILD_TESTS AND TARGET UltraVault)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)
+endif()
+
+# ===== CRYPT TESTS WITHOUT THE FULL SUITE =====
+# UltraCryptTests alone, for builds that leave BUILD_TESTS off (the Windows and
+# macOS CI rows): the certificate check's system roots are the operating
+# system's there, and only there can a test show they were read.
+option(ULTRACANVAS_BUILD_CRYPT_TESTS "Build UltraCryptTests without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_CRYPT_TESTS AND NOT BUILD_TESTS AND TARGET UltraCrypt)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/CryptTests.cmake)
 endif()
 
 # ===== ULTRANET TESTS =====
@@ -1374,6 +1638,24 @@ if(ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS AND TARGET UltraMessage)
     message(STATUS "")
     message(STATUS "── UltraMessage test suite enabled (target: UltraMessageTests) ──")
 endif()
+# ===== ULTRAIM TESTS =====
+# Headless: a fake provider registered in-process and one loaded as a module.
+option(ULTRACANVAS_BUILD_ULTRAIM_TESTS "Build the UltraIM test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAIM_TESTS AND TARGET UltraIM)
+    enable_testing()
+    add_subdirectory(Tests/UltraIM)
+    message(STATUS "")
+    message(STATUS "── UltraIM test suite enabled (target: UltraIMTests) ──")
+endif()
+# ===== ULTRARTC TESTS =====
+# Two peers in one process over host candidates: no network service needed.
+option(ULTRACANVAS_BUILD_ULTRARTC_TESTS "Build the UltraRTC test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRARTC_TESTS AND TARGET UltraRTC)
+    enable_testing()
+    add_subdirectory(Tests/UltraRTC)
+    message(STATUS "")
+    message(STATUS "── UltraRTC test suite enabled (target: UltraRTCTests) ──")
+endif()
 option(BUILD_ULTRAMSG_CLI "Build the ultramsg command-line tool" ON)
 if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
     add_executable(ultramsg Apps/UltraMessageCli/main.cpp)
@@ -1383,6 +1665,18 @@ if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
     # .exe carries media/appicon/UltraMsg.png (the render of UltraMsg.svg).
     ultracanvas_embed_app_icon(ultramsg
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraMsg.png")
+endif()
+
+# ===== ULTRALOCALISATION DRAFT TOOL =====
+# ultralocalisation-draft (Apps/UltraLocalisationDraft): drafts a translation
+# catalogue with UltraAI's translator; scripts/translate_catalogue.py runs it
+# over every set of a language. Needs the UltraAI module.
+option(BUILD_ULTRALOCALISATION_DRAFT "Build the ultralocalisation-draft tool" ON)
+if(BUILD_ULTRALOCALISATION_DRAFT AND BUILD_ULTRAAI_MODULE AND TARGET UltraAI_Core AND TARGET UltraLocalisation)
+    add_executable(ultralocalisation-draft Apps/UltraLocalisationDraft/main.cpp)
+    target_compile_features(ultralocalisation-draft PRIVATE cxx_std_20)
+    target_link_libraries(ultralocalisation-draft PRIVATE UltraLocalisation UltraAI_Core)
+    set_target_properties(ultralocalisation-draft PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
 
 # ===== ULTRADATABASE TESTS =====
@@ -1501,6 +1795,30 @@ if(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS AND TARGET UltraCanvasStartEngine)
     message(STATUS "── UltraCanvasStart engine test suite enabled (target: UltraCanvasStartEngineTests) ──")
 endif()
 
+# ===== ULTRASTORE CORE TESTS =====
+# Headless tests of the store's core: the platform model, the catalog's JSON,
+# the Ed25519 verifier, the package resolver and the catalog client with an
+# injected fetcher. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRASTORE_TESTS "Build the UltraStore core test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASTORE_TESTS AND TARGET UltraStoreCore)
+    enable_testing()
+    add_subdirectory(Tests/UltraStore)
+    message(STATUS "")
+    message(STATUS "── UltraStore core test suite enabled (target: UltraStoreCoreTests) ──")
+endif()
+
+# ===== ULTRASTOREADMIN CORE TESTS =====
+# The admin database, the sealed signing key, the package store, the catalog
+# published and verified the way the store verifies it, the translations
+# with a fake translator. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS "Build the UltraStoreAdmin core test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS AND TARGET UltraStoreAdminCore)
+    enable_testing()
+    add_subdirectory(Tests/UltraStoreAdmin)
+    message(STATUS "")
+    message(STATUS "── UltraStoreAdmin core test suite enabled (target: UltraStoreAdminCoreTests) ──")
+endif()
+
 # ===== DOCUMENTATION =====
 #find_package(Doxygen QUIET)
 #if(DOXYGEN_FOUND)
@@ -1513,6 +1831,7 @@ endif()
 if (BUILD_TEXTER_APP)
     # Create executable
     add_executable(Texter
+            Apps/Texter/UltraCanvasTextEditorTranslate.cpp
             Apps/Texter/UltraCanvasTextEditor.cpp
             Apps/Texter/UltraCanvasTextEditorHelpers.cpp
             Apps/Texter/UltraCanvasTextEditorDialogs.cpp
@@ -1539,6 +1858,13 @@ if (BUILD_TEXTER_APP)
             ${ULTRACANVAS_LIBRARY}
     )
     target_link_libraries(Texter PRIVATE fmt::fmt)
+    # Edit > Translate Selection... translates through UltraAI, local models
+    # first, and offers the download through the module's dialog. Only in a
+    # build that has the module and its UI library.
+    if(TARGET UltraAI_Core AND TARGET UltraAI_UI)
+        target_link_libraries(Texter PRIVATE UltraAI_Core UltraAI_UI)
+        target_compile_definitions(Texter PRIVATE TEXTER_HAS_ULTRAAI=1)
+    endif()
 
     # iconv - on Linux it's part of glibc, on macOS it needs explicit linking
 if(APPLE)
@@ -1567,6 +1893,14 @@ endif()
     # Embed app icon in .exe (Windows only)
     ultracanvas_embed_app_icon(Texter
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Texter.png")
+
+    # Embed manifest with UTF-8 active code page (Windows only), as UltraViewer
+    # does: the files to open arrive as main()'s narrow argv - from Explorer's
+    # "Open with", from the MSIX package's file types, from a second start
+    # handing them over - and without it a name the ANSI code page cannot hold
+    # (Thai, CJK) arrived as '?'. This target has no .rc of its own; the
+    # standalone UltraTexter target (Apps/Texter) embeds UltraTexter.manifest.
+    ultracanvas_embed_windows_manifest(Texter)
 
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -1601,6 +1935,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+            Apps/UltraFiler/UltraFilerDeviceProvider.cpp
             Apps/UltraFiler/UltraFilerConnectionLogWindow.cpp
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
@@ -1730,6 +2065,15 @@ if (BUILD_ULTRAVIEWER_APP)
             ${ULTRACANVAS_LIBRARY}
     )
     target_link_libraries(UltraViewer PRIVATE fmt::fmt)
+
+    # Every format plugin this build produced, registered before main(), as
+    # in UltraFiler: without it a CorelDRAW, Xara, DXF or DWG file showed only
+    # the preview bitmap stored inside it (or nothing), never the drawing,
+    # and the 3D formats past STL did not open.
+    if(TARGET UltraCanvasAllFormats)
+        target_link_libraries(UltraViewer PRIVATE
+                ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats)
+    endif()
 
     target_compile_features(UltraViewer PRIVATE cxx_std_20)
 
@@ -1873,6 +2217,7 @@ if (BUILD_ARTCREATOR_APP)
     add_executable(ArtCreator
             Apps/ArtCreator/main.cpp
             Apps/ArtCreator/ArtCreatorWindow.cpp
+            Apps/ArtCreator/ArtCreatorCommands.cpp
             Apps/ArtCreator/ArtCreatorTools.cpp
             Apps/ArtCreator/ArtCreatorDialogs.cpp
             Apps/ArtCreator/ArtCreatorIcon.cpp
@@ -1948,8 +2293,13 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsDialog.cpp
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
+        Apps/UltraAIApp/UltraAITopicsPage.cpp
+        Apps/UltraAIApp/UltraAISettingsWidgets.cpp
+        Apps/UltraAIApp/UltraAILocalModelsPage.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
         Apps/UltraAIApp/UltraAITranslatorDialog.cpp
+        Apps/UltraAIApp/UltraAIAgentDialog.cpp
+        Apps/UltraAIApp/UltraAIAgentTools.cpp
     )
     # One copy per user (UltraCanvasSingleInstance.h).
     ultracanvas_single_instance(UltraAIApp)
@@ -1963,6 +2313,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         ${ULTRACANVAS_LIBRARY}
         UltraAI_Core
     )
+    if(TARGET UltraAI_UI)
+        target_link_libraries(UltraAIApp PRIVATE UltraAI_UI)
+    endif()
 
     if(TARGET fmt::fmt)
         target_link_libraries(UltraAIApp PRIVATE fmt::fmt)
@@ -2089,6 +2442,19 @@ if (BUILD_TESTS)
     add_test(NAME WebViewTest COMMAND WebViewTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # <video> and <audio>: the builder's media requests and fallback content,
+    # and the web view's players kept across rebuilds (headless; plays a WAV
+    # when the build has a media backend).
+    add_executable(HTMLMediaTest Tests/HTMLMediaTest.cpp)
+    target_include_directories(HTMLMediaTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLMediaTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLMediaTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLMediaTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLMediaTest COMMAND HTMLMediaTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # HTML forms with real widgets: encodings, the builder's widgets and their
     # places, the entry list, submit / Enter / reset, radio groups, form="id",
     # what was typed across a rebuild (headless).
@@ -2142,6 +2508,19 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME UIElementBoxSizingTest COMMAND UIElementBoxSizingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The chip group, the card, the collapsible panel and the sidebar
+    # navigation: selection rules, structure, folding and geometry, laid out
+    # by the CSSLayout engine and fed events, no window.
+    add_executable(UIWidgetsTest Tests/UIWidgetsTest.cpp)
+    target_include_directories(UIWidgetsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(UIWidgetsTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(UIWidgetsTest PRIVATE cxx_std_20)
+    set_target_properties(UIWidgetsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UIWidgetsTest COMMAND UIWidgetsTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
@@ -2233,21 +2612,9 @@ if (BUILD_TESTS)
     add_test(NAME NetworkMonitorTests COMMAND NetworkMonitorTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-    # UltraCrypt unit tests: published vectors (FIPS 180-4, RFC 4231), AEAD
-    # round-trip plus the mandated negative cases, KDF behaviour and secure
-    # buffer semantics. Compiles only UltraCrypt, so it runs headless.
-    add_executable(UltraCryptTests Tests/UltraCryptTests.cpp)
-    # UltraCrypt brings UltraCanvasBase32; the test also checks Base64 vectors,
-    # which live with the rest of the core's text utilities. Linking that archive
-    # here is safe precisely because this test is headless — there is no shared
-    # libultracanvas on the line for its symbols to collide with.
-    target_link_libraries(UltraCryptTests PRIVATE UltraCrypt UltraCanvasTextUtils)
-    target_compile_features(UltraCryptTests PRIVATE cxx_std_20)
-    set_target_properties(UltraCryptTests PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME UltraCryptTests COMMAND UltraCryptTests
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # UltraCrypt unit tests (Tests/CryptTests.cmake, shared with
+    # the ULTRACANVAS_BUILD_CRYPT_TESTS option).
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/CryptTests.cmake)
 
     # Authenticator vault: confidentiality on disk, wrong-password refusal,
     # tamper detection over the whole container, and durability of each
@@ -2289,8 +2656,6 @@ if (BUILD_TESTS)
         Apps/UltraAuthenticator/LockPolicy.cpp
         Apps/UltraAuthenticator/AccountExport.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
         UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
     )
     target_include_directories(UltraAuthenticatorExportTests PRIVATE
@@ -2325,8 +2690,6 @@ if (BUILD_TESTS)
     # UltraCrypt, so it runs headless.
     add_executable(UltraOtpTests
         Tests/UltraOtpTests.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
     )
     target_link_libraries(UltraOtpTests PRIVATE UltraCrypt)
     target_compile_features(UltraOtpTests PRIVATE cxx_std_20)
@@ -2349,8 +2712,6 @@ if (BUILD_TESTS)
         Apps/UltraAuthenticator/AccountExport.cpp
         UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
     )
     target_include_directories(UltraAuthenticatorAccountTests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator
@@ -2380,6 +2741,23 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraAuthenticatorLockTests
              COMMAND UltraAuthenticatorLockTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Authenticator brand colours: the name of a known service matched to the
+    # colour of its card's monogram, and a readable letter on every colour in
+    # the table. Header-only, no crypto, no UI.
+    add_executable(UltraAuthenticatorBrandColorTests
+        Tests/UltraAuthenticatorBrandColorTests.cpp
+    )
+    target_include_directories(UltraAuthenticatorBrandColorTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
+    target_compile_features(UltraAuthenticatorBrandColorTests PRIVATE cxx_std_20)
+    set_target_properties(UltraAuthenticatorBrandColorTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAuthenticatorBrandColorTests
+             COMMAND UltraAuthenticatorBrandColorTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraVault unit tests (Tests/VaultTests.cmake, shared with
@@ -2569,7 +2947,8 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
+            UltraClipboard UltraNotifications UltraSnip UltraAuthenticator UltraPassword UltraVideo
+            UltraDBAdmin)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()

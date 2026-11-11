@@ -1,7 +1,7 @@
 // core/UltraCanvasRating.cpp
 // Platform-independent rating control implementation.
 // Version: 1.0.0
-// Last Modified: 2026-07-07
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRating.h"
@@ -15,6 +15,7 @@ namespace UltraCanvas {
                                          float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
+        ApplyThemeIfFollowing();
     }
 
 // ===================================================================
@@ -276,6 +277,21 @@ namespace UltraCanvas {
                 break;
         }
         return false;
+    }
+
+// ===== THE THEME =====
+    RatingStyle RatingStyle::FromTheme(const UltraCanvasTheme& theme, const RatingStyle& base) {
+        RatingStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
+        s.offColor = r.lineStrong;
+        // the element's own roles: a filled symbol keeps its amber unless a theme names another
+        s.onColor = theme.Role("rating.on", base.onColor);
+        s.hoverColor = theme.Role("rating.hover", base.hoverColor);
+        s.borderColor = theme.Role("rating.border", base.borderColor);
+        return s;
     }
 
 } // namespace UltraCanvas

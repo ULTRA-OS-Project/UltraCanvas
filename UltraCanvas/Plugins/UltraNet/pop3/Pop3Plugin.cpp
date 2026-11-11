@@ -29,6 +29,7 @@
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetCurlTls.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginGuard.h"
@@ -61,7 +62,7 @@ std::size_t WriteToString(char* data, std::size_t size, std::size_t nmemb, void*
 
 UltraNetResultCode MapCurlError(CURLcode rc) {
     switch (rc) {
-        case CURLE_OK:                      return UltraNetResultCode::Success;
+        case CURLE_OK:                      return UltraNetResultCode::Ok;
         case CURLE_URL_MALFORMAT:           return UltraNetResultCode::InvalidUrl;
         case CURLE_COULDNT_RESOLVE_HOST:    return UltraNetResultCode::HostNotFound;
         case CURLE_COULDNT_CONNECT:         return UltraNetResultCode::ConnectionRefused;
@@ -184,6 +185,9 @@ bool ParsePop3Url(const std::string& url,
 constexpr const char* kPluginVersion = "0.1.2";
 
 UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+    // The proxy setting (the operating system's by default); an HTTP proxy
+    // carries the mail connection as a CONNECT tunnel.
+    ultranet_curlproxy::ApplyFor(h, opt.serverUrl, /*tunnel=*/true);
     // The documented mail trace: README "Debugging a mail connection" names
     // POP3 with SMTP and IMAP, and until now this plug-in never asked.
     ultranet_curldebug::EnableIfRequested(h);

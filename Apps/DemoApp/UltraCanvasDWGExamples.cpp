@@ -6,11 +6,15 @@
 // reader and shown in an UltraCanvasVectorElement; a click opens the drawing
 // in the demo's media viewer window. The status line reports what the reader
 // found and any entity types it skipped.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the tiles in a card
+//                  that wraps, tile captions and the status line sized to their text,
+//                  the info and how-it-works panels as cards
 // Version: 1.1.0
-// Last Modified: 2026-09-10
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -20,6 +24,7 @@
 #include "UltraCanvasCADConverters.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -41,7 +46,7 @@ namespace {
         CadLoadResult result;
         auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
         if (!converter || !converter->CanImport()) {
-            result.warnings.push_back("no reader for " + path);
+            result.warnings.push_back(TrF("no reader for {0}", path));
             return result;
         }
         VectorConverter::ConversionOptions options;
@@ -65,54 +70,48 @@ namespace {
     std::string DescribeDocument(const VectorStorage::VectorDocument& doc, double ms) {
         size_t drawables = 0;
         for (const auto& layer : doc.Layers) if (layer) drawables += CountDrawables(*layer);
-        char buf[160];
-        std::snprintf(buf, sizeof(buf), "%zu layers, %zu drawables, page %.0f x %.0f pt, decoded in %.0f ms",
-                      doc.Layers.size(), drawables, doc.Size.width, doc.Size.height, ms);
-        return buf;
+        return TrF("{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms",
+                   doc.Layers.size(), drawables, std::llround(doc.Size.width), std::llround(doc.Size.height),
+                   std::llround(ms));
     }
 
 }   // namespace
 
 // ===== DWG VECTOR EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDWGVectorExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DWGExamples", 0, 0, 1000, 780);
-        container->SetBackgroundColor(Color(245, 245, 245, 255));
+        auto page = DemoKit::CreatePage("DWGExamples",
+                Tr("AutoCAD DWG and DXF Drawings - Click to Open in the Media Viewer"),
+                Tr("Native DWG decoding (R13 to R2018) with no external tools, and the DXF reader it shares: blocks, "
+                "layers, hatches, splines, dimensions and 3D meshes projected to plan view. Click a drawing to open it in the media viewer."));
 
-        auto title = std::make_shared<UltraCanvasLabel>("DWGTitle", 10, 10, 700, 30);
-        title->SetText("AutoCAD DWG and DXF Drawings - Click to Open in the Media Viewer");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        auto samplesCard = DemoKit::AddCard(page, "DWGSamples");
+        auto tilesRow = DemoKit::AddRow(samplesCard, "DWGTiles", 20);
 
-        auto description = std::make_shared<UltraCanvasLabel>("DWGDescription", 10, 45, 900, 40);
-        description->SetText("Native DWG decoding (R13 to R2018) with no external tools, and the DXF reader it shares: blocks,\n"
-                             "layers, hatches, splines, dimensions and 3D meshes projected to plan view. Click a drawing to open it in the media viewer.");
-        description->SetFontSize(12);
-        description->SetTextColor(Color(80, 80, 80, 255));
-        container->AddChild(description);
-
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("DWGStatus", 10, 712, 980, 60);
-        statusLabel->SetText("Ready. Click a drawing to open it in the media viewer.");
+        // The status line under the tiles; it grows with the reader's warnings.
+        auto statusLabel = DemoKit::CreateText("DWGStatus", Tr("Ready. Click a drawing to open it in the media viewer."));
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
-        container->AddChild(statusLabel);
+        statusLabel->SetPadding(6);
 
         // One tile per sample. The flat drawings live in media/vector/; the one
         // sample that carries 3D geometry lives with the models in media/3D/
         // and is read here anyway, because projecting polyface meshes to plan
         // view is part of what a CAD reader has to do - `root` says which.
-        auto makeTile = [&](const std::string& id, int x, int y, const std::string& root,
+        auto makeTile = [&](const std::string& id, const std::string& root,
                             const std::string& folder, const std::string& fileName,
                             const std::string& caption) {
-            auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 300, 240);
+            // As wide as the drawing it frames (280 + padding + border); as tall
+            // as its caption needs.
+            auto tile = DemoKit::CreateColumn(id, 4);
             tile->SetBackgroundColor(Colors::White);
             tile->SetBorders(2, Color(180, 180, 180, 255));
+            tile->SetPadding(10);
 
             std::string path = NormalizePath(GetResourcesDir() + root + folder + "/" + fileName);
             CadLoadResult loaded = LoadCadDocument(path);
 
-            auto element = CreateVectorElement(id + "El", 10, 10, 280, 190);
+            auto element = CreateVectorElement(id + "El", 0, 0, 280, 190);
             VectorElementOptions opts = element->GetOptions();
             opts.BackgroundColor = Colors::White;
             element->SetOptions(opts);
@@ -122,15 +121,9 @@ namespace {
                 element->SetDocument(loaded.document);
                 summary = fileName + ": " + DescribeDocument(*loaded.document, loaded.milliseconds);
             } else {
-                summary = "Failed to load " + path;
+                summary = TrF("Failed to load {0}", path);
             }
             for (const auto& w : loaded.warnings) summary += "\n" + w;
-
-            auto label = std::make_shared<UltraCanvasLabel>(id + "Label", 10, 204, 280, 28);
-            label->SetText(caption);
-            label->SetAlignment(TextAlignment::Center);
-            label->SetFontSize(11);
-            tile->AddChild(label);
 
             element->SetMouseCursor(UCMouseCursor::Hand);
             element->SetEventCallback([tile = tile.get(), statusLabel, summary, path](const UCEvent& event) {
@@ -150,76 +143,57 @@ namespace {
                 }
             });
 
-            tile->AddChild(element);
-            container->AddChild(tile);
+            DemoKit::AddFixed(tile, element);
+
+            auto label = DemoKit::CreateText(id + "Label", caption);
+            label->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
+            label->SetFontSize(11);
+            DemoKit::Add(tile, label);
+
+            DemoKit::Add(tilesRow, tile);
+            tile->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(304));
         };
 
-        makeTile("DWGContainer1", 20, 95, "media/vector/", "DWG", "Audi-Q5-DWGFree.com_.dwg",
-                 "DWG: Audi Q5 (R2013, 2D block)");
-        makeTile("DWGContainer2", 340, 95, "media/vector/", "DWG", "womans hostel.dwg",
-                 "DWG: hostel plans (R2007, blocks, hatches)");
-        makeTile("DWGContainer3", 660, 95, "media/3D/", "DWG", "bagno_3d_1.dwg",
-                 "DWG: bathroom (R2013, 3D polyface meshes, projected)");
-        makeTile("DXFContainer1", 20, 340, "media/vector/", "DXF", "millennium-falcon.dxf",
-                 "DXF: Millennium Falcon (1015 LWPOLYLINEs, 507 LINEs)");
-        makeTile("DXFContainer2", 340, 340, "media/vector/", "DXF", "women-body.dxf",
-                 "DXF: figure study (74 NURBS SPLINEs)");
+        makeTile("DWGContainer1", "media/vector/", "DWG", "Audi-Q5-DWGFree.com_.dwg",
+                 Tr("DWG: Audi Q5 (R2013, 2D block)"));
+        makeTile("DWGContainer2", "media/vector/", "DWG", "womans hostel.dwg",
+                 Tr("DWG: hostel plans (R2007, blocks, hatches)"));
+        makeTile("DWGContainer3", "media/3D/", "DWG", "bagno_3d_1.dwg",
+                 Tr("DWG: bathroom (R2013, 3D polyface meshes, projected)"));
+        makeTile("DXFContainer1", "media/vector/", "DXF", "millennium-falcon.dxf",
+                 Tr("DXF: Millennium Falcon (1015 LWPOLYLINEs, 507 LINEs)"));
+        makeTile("DXFContainer2", "media/vector/", "DXF", "women-body.dxf",
+                 Tr("DXF: figure study (74 NURBS SPLINEs)"));
+
+        DemoKit::Add(samplesCard, statusLabel);
+
+        auto infoRow = DemoKit::AddRow(page, "DWGInfoRow");
 
         // ===== INFO PANEL =====
-        auto infoContainer = std::make_shared<UltraCanvasContainer>("InfoPanel", 660, 340, 320, 240);
-        infoContainer->SetBackgroundColor(Color(240, 248, 255, 255));
-        infoContainer->SetBorders(2, Color(100, 149, 237, 255));
-
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 10, 10, 300, 25);
-        infoTitle->SetText("Native CAD import");
-        infoTitle->SetFontWeight(FontWeight::Bold);
-        infoTitle->SetFontSize(13);
-        infoContainer->AddChild(infoTitle);
-
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 40, 300, 190);
-        infoText->SetText(
-                "• DWG R13, R14, 2000, 2004, 2007, 2010, 2013, 2018\n"
-                "• DXF R12 and later (read and write)\n"
-                "• Lines, arcs, circles, ellipses, splines\n"
-                "• Polylines, LW polylines, 3D and mesh polylines\n"
-                "• Hatches (solid, pattern, gradient boundaries)\n"
-                "• Text, MTEXT, attributes, leaders, dimensions\n"
-                "• Blocks and nested inserts, mirrored and arrayed\n"
-                "• Layers, true colours, lineweights, linetypes\n"
-                "• DWG to DXF conversion: DWGConverter::DecodeToDxf\n"
-                "• DWG writing needs LibreDWG's dxf2dwg (optional)\n"
-        );
-        infoText->SetFontSize(11);
-        infoText->SetTextColor(Color(50, 50, 50, 255));
-        infoContainer->AddChild(infoText);
-        container->AddChild(infoContainer);
+        DemoKit::AddNotes(infoRow, "InfoPanel", Tr("Native CAD import"), {
+                Tr("DWG R13, R14, 2000, 2004, 2007, 2010, 2013, 2018"),
+                Tr("DXF R12 and later (read and write)"),
+                Tr("Lines, arcs, circles, ellipses, splines"),
+                Tr("Polylines, LW polylines, 3D and mesh polylines"),
+                Tr("Hatches (solid, pattern, gradient boundaries)"),
+                Tr("Text, MTEXT, attributes, leaders, dimensions"),
+                Tr("Blocks and nested inserts, mirrored and arrayed"),
+                Tr("Layers, true colours, lineweights, linetypes"),
+                Tr("DWG to DXF conversion: DWGConverter::DecodeToDxf"),
+                Tr("DWG writing needs LibreDWG's dxf2dwg (optional)")});
 
         // ===== HOW IT WORKS =====
-        auto howContainer = std::make_shared<UltraCanvasContainer>("HowPanel", 20, 586, 960, 122);
-        howContainer->SetBackgroundColor(Color(255, 250, 240, 255));
-        howContainer->SetBorders(2, Color(222, 184, 135, 255));
+        auto howCard = DemoKit::AddCard(infoRow, "HowPanel", Tr("How a .dwg becomes a VectorDocument"));
+        DemoKit::AddText(howCard, "HowText",
+                Tr("1. UltraCanvasDWGDecoder decodes the binary drawing database - bit-coded values, the R2004+ compressed "
+                "pages, the R2007 Reed-Solomon pages, the object map, CLASSES and the block definitions - and renders "
+                "it as tagged DXF text (DWGConverter::DecodeToDxf).\n"
+                "2. The DXF reader builds the VectorStorage::VectorDocument, the same path a .dxf file takes directly: "
+                "blocks expand into transformed groups, layers keep their names, colours and visibility, and the page "
+                "follows the drawing's real extents."));
+        DemoKit::AddCaption(howCard, "HowCode", Tr("auto doc = DWGConverter().Import(\"plan.dwg\");"));
 
-        auto howTitle = std::make_shared<UltraCanvasLabel>("HowTitle", 10, 6, 940, 22);
-        howTitle->SetText("How a .dwg becomes a VectorDocument");
-        howTitle->SetFontWeight(FontWeight::Bold);
-        howTitle->SetFontSize(13);
-        howContainer->AddChild(howTitle);
-
-        auto howText = std::make_shared<UltraCanvasLabel>("HowText", 10, 30, 940, 88);
-        howText->SetText(
-                "1. UltraCanvasDWGDecoder decodes the binary drawing database - bit-coded values, the R2004+ compressed\n"
-                "   pages, the R2007 Reed-Solomon pages, the object map, CLASSES and the block definitions - and renders\n"
-                "   it as tagged DXF text (DWGConverter::DecodeToDxf).\n"
-                "2. The DXF reader builds the VectorStorage::VectorDocument, the same path a .dxf file takes directly:\n"
-                "   blocks expand into transformed groups, layers keep their names, colours and visibility, and the page\n"
-                "   follows the drawing's real extents.   auto doc = DWGConverter().Import(\"plan.dwg\");"
-        );
-        howText->SetFontSize(11);
-        howText->SetTextColor(Color(50, 50, 50, 255));
-        howContainer->AddChild(howText);
-        container->AddChild(howContainer);
-
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

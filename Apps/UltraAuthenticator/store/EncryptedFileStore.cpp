@@ -142,7 +142,7 @@ bool WriteFileAtomically(const std::string& path, const std::vector<uint8_t>& da
 
 StoreResult StoreResult::Ok() {
     StoreResult r;
-    r.code = StoreResultCode::Success;
+    r.code = StoreResultCode::Ok;
     r.success = true;
     return r;
 }

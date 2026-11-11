@@ -1,5 +1,6 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
+// Version: 1.6.0 - SetMinimumValueSpan: a floor under the value axis's span
 // Version: 1.5.0 - an optional icon over the empty-state message (SetEmptyIcon)
 // Version: 1.4.0 - a settable empty-state message (SetEmptyMessage), centred
 //                  on the chart's own background
@@ -127,6 +128,9 @@ namespace UltraCanvas {
 
         // What a chart with no data says, centred: a line and an optional
         // second, smaller one under it.
+        // The value axis covers at least this much (0: just the data).
+        double minimumValueSpan = 0.0;
+
         std::string emptyMessage = "No data to display";
         std::string emptyDetail;
         Color emptyMessageColor = Color(128, 128, 128, 255);
@@ -278,6 +282,19 @@ namespace UltraCanvas {
             gridColor = color;
             RequestRedraw();
         }
+
+        // The value axis spans at least `span` (in the data's units), centred
+        // on the data: a room holding 20.6-20.7 °C reads as steady on a
+        // 2-degree axis instead of as a sawtooth filling the plot. 0 (the
+        // default) fits the axis to the data. Line, area and scatter charts
+        // (the base's bounds); a bar chart keeps its zero line and
+        // SetValueRange.
+        void SetMinimumValueSpan(double span) {
+            minimumValueSpan = span > 0 ? span : 0.0;
+            InvalidateCache();
+            RequestRedraw();
+        }
+        double GetMinimumValueSpan() const { return minimumValueSpan; }
 
         // What the chart says while it has no data ("No data to display"
         // unless set), with an optional smaller line under it - "Connect a

@@ -1,5 +1,10 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.10.1 - pointerGlobal flipped about the primary screen, as the windows' top-left positions are
+// Version: 2.10.0 - the host appearance observers installed at start and removed at shutdown
+//                   (UltraCanvasMacOSHostAppearance.mm)
+// Version: 2.9.0 - RegisterPlatformBundledFonts: the CoreText registration of the bundled fonts, shared with a tool
+// Version: 2.8.0 - the monospace font is the system's (SF Mono by Menlo) at the interface size, not Ubuntu Mono 12
 // Version: 2.7.0 - key presses for an element that draws input method
 //   compositions go through the input method (TextComposition events); a
 //   click commits a composition in progress
@@ -10,7 +15,7 @@
 // Version: 2.3.0 - RunInEventLoop() commits the CoreAnimation transaction each
 //   main-loop iteration, so frames rendered without a Cocoa event reach the
 //   screen (previously they waited for the next mouse move)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSAccessibility.h"
@@ -102,6 +107,9 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
 
             // STEP 6: Initialize wakeup mechanism for cross-thread signaling
             InitializeWakeUp();
+
+            // STEP 7: hear the host's look change (dark, accent, contrast)
+            InstallHostAppearanceObservers();
 
             initialized = true;
 
@@ -228,6 +236,7 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
     void UltraCanvasMacOSApplication::ShutdownNative() {
         debugOutput << "UltraCanvas: Shutting down macOS Application..." << std::endl;
 
+        RemoveHostAppearanceObservers();
         MacOSAccessibility::Shutdown();
 
         ShutdownWakeUp();
@@ -429,9 +438,14 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
             event.pointerWindow = { (int)locInWindow.x, (int)(windowHeight - locInWindow.y) };
             event.pointer = event.pointerWindow;
             if (nsWindow) {
+                // Top-left screen coordinates, as the windows' positions are:
+                // flipped about the primary screen (Cocoa's origin is its
+                // bottom-left corner), not the one with the key window
                 NSPoint screenPoint = [nsWindow convertPointToScreen:locInWindow];
-                NSRect screenFrame = [[NSScreen mainScreen] frame];
-                event.pointerGlobal = { (int)screenPoint.x, (int)(screenFrame.size.height - screenPoint.y) };
+                NSArray<NSScreen*>* screens = [NSScreen screens];
+                NSRect primaryFrame = [screens count] > 0 ? [[screens objectAtIndex:0] frame]
+                                                          : [[NSScreen mainScreen] frame];
+                event.pointerGlobal = { (int)screenPoint.x, (int)(primaryFrame.size.height - screenPoint.y) };
             }
             NSUInteger flags = [ev modifierFlags];
             event.ctrl = (flags & NSEventModifierFlagControl) != 0;
@@ -786,16 +800,36 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
     }
 
     FontStyle UltraCanvasMacOSApplication::DetectMonospacedFontStyleNative() {
+        // The system's monospace at the interface size: SF Mono where AppKit
+        // offers it (10.15), which Pango cannot resolve by its private name,
+        // so Menlo - the face Terminal and Xcode showed before SF Mono - at
+        // that size. Ubuntu Mono 12 only when the system font is unknown.
         FontStyle result;
         result.fontFamily = "Ubuntu Mono";
         result.fontSize = 12.0f;
+        @autoreleasepool {
+            const FontStyle ui = DetectSystemFontStyleNative();
+            if (ui.fontSize > 0) result.fontSize = ui.fontSize;
+            std::string family;
+            if (@available(macOS 10.15, *)) {
+                NSFont* mono = [NSFont monospacedSystemFontOfSize:0 weight:NSFontWeightRegular];
+                if (mono) family = [[mono familyName] UTF8String];
+            }
+            if (family.empty() || family[0] == '.') family = "Menlo";
+            result.fontFamily = family;
+        }
         return result;
     }
 
-    void UltraCanvasMacOSApplication::LoadBundledFontsNative() {
-        // macOS keeps the system proportional font; only the monospace family
-        // is replaced with DejaVu Sans Mono. Register the four mono variants
-        // process-privately via CoreText.
+    // The bundled fonts for Pango, the macOS way: registered with CoreText
+    // for this process only (Pango's font map on macOS is CoreText's) - the
+    // one registration an application's start (LoadBundledFontsNative) and a
+    // tool without one (RegisterBundledFontsWithoutApplication) both make.
+    // macOS keeps its own interface font; the bundled families are there for
+    // what names them (a title in Ubuntu, the monospace family).
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs) {
+        (void)systemFontsWaitMs;   // no system font scan on macOS
+        int registered = 0;
         @autoreleasepool {
             const std::string dir = GetBundledFontsDir();
             for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
@@ -816,12 +850,21 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
                         if (code != kCTFontManagerErrorAlreadyRegistered) {
                             debugOutput << "UltraCanvas: CTFontManagerRegisterFontsForURL failed for "
                                         << path << " (code " << (long)code << ")" << std::endl;
+                        } else {
+                            ++registered;   // there already
                         }
                     }
+                } else {
+                    ++registered;
                 }
                 if (err) CFRelease(err);
             }
         }
+        return registered;
+    }
+
+    void UltraCanvasMacOSApplication::LoadBundledFontsNative() {
+        RegisterPlatformBundledFonts(0);
     }
 
     bool UltraCanvasMacOSApplication::RegisterFontFileNative(const std::string& fontFilePath) {

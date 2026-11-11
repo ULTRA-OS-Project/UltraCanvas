@@ -9,12 +9,16 @@
 //   3. Repository        - the lane view every git client shows: newest commit
 //                          at the top, ref chips, subject column, dark theme.
 //
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a card
+//                  that fills the area, each graph fills its tab, the toolbars wrap
+//                  and every label and button is as wide as its text
 // Version: 1.0.1 - the file-list provider no longer owns the graph it is stored on
 // Version: 1.0.0
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasGitGraph.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -32,18 +36,58 @@ namespace UltraCanvas {
 
 namespace {
 
-constexpr int kPageWidth  = 1030;
-constexpr int kPageHeight = 800;
-constexpr int kGraphWidth  = kPageWidth - 60;
-constexpr int kGraphHeight = 520;
-
-std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, int x, int y,
-                                            int w, int h, const std::string& text,
-                                            float fontSize = 11.0f) {
-    auto label = std::make_shared<UltraCanvasLabel>(id, x, y, w, h);
-    label->SetText(text);
-    label->SetFontSize(fontSize);
+// A toolbar label: as wide as its text.
+std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text) {
+    auto label = DemoKit::CreateText(id, text);
+    label->SetFontSize(11.0f);
     return label;
+}
+
+// A button as wide as its text, at least `minWidth` (the width it had) so a
+// one-character "+" stays an easy target.
+std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& text,
+                                              float minWidth) {
+    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 28, text);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+    button->boxConstraints = limits;
+    return button;
+}
+
+// A checkbox as wide as its text.
+std::shared_ptr<UltraCanvasCheckbox> MakeCheck(const std::string& id, const std::string& text) {
+    return std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 0, 22, text);
+}
+
+// A bar of controls that wraps onto a second line when the tab is narrow.
+std::shared_ptr<UltraCanvasContainer> MakeBar(const std::string& id) {
+    auto bar = DemoKit::CreateRow(id, 8, true);
+    bar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    return bar;
+}
+
+// A tab's page: its description, wrapped, above the toolbars and the graph,
+// which takes the rest of the tab's height.
+std::shared_ptr<UltraCanvasContainer> MakeTabPage(const std::string& id, const std::string& descId,
+                                                  const std::string& text) {
+    auto tab = std::make_shared<UltraCanvasContainer>(id);
+    tab->SetPadding(8, 10, 8, 10);
+    tab->layout.SetFlexColumn().SetFlexGap(6)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    DemoKit::AddText(tab, descId, text)->SetFontSize(11);
+    return tab;
+}
+
+// The graph pans and zooms itself, so it fills what the tab leaves; built
+// with no size, never squeezed below 300 px.
+void AddGraph(const std::shared_ptr<UltraCanvasContainer>& tab,
+              const std::shared_ptr<UltraCanvasGitGraph>& graph) {
+    graph->size.width  = CSSLayout::Dimension::Auto();
+    graph->size.height = CSSLayout::Dimension::Auto();
+    CSSLayout::BoxConstraints limits;
+    limits.minHeight = CSSLayout::Dimension::Px(300);
+    graph->boxConstraints = limits;
+    DemoKit::Add(tab, graph, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -91,9 +135,9 @@ void BuildGitFlowHistory(UltraCanvasGitGraph* graph) {
     graph->Checkout("develop");
     graph->Merge("hotfixes", "hotfix in develop");
 
-    graph->AddAnnotation(rel1,  "only bugfixes");
-    graph->AddAnnotation(feat1, "major feature for the next release");
-    graph->AddAnnotation(hot1,  "hotfix in develop");
+    graph->AddAnnotation(rel1,  Tr("only bugfixes"));
+    graph->AddAnnotation(feat1, Tr("major feature for the next release"));
+    graph->AddAnnotation(hot1,  Tr("hotfix in develop"));
 
     GitGraphStyle style = graph->GetStyle();
     style.edgeStyle        = GitGraphEdgeStyle::Bezier;
@@ -261,67 +305,62 @@ std::shared_ptr<UltraCanvasContainer> MakeToolbar(
         const std::shared_ptr<UltraCanvasGitGraph>& graph,
         bool includeLaneControls) {
 
-    auto toolbar = std::make_shared<UltraCanvasContainer>(idPrefix + "Toolbar",
-                                                          10, 40, kGraphWidth, 40);
-    toolbar->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto toolbar = MakeBar(idPrefix + "Toolbar");
     toolbar->SetBackgroundColor(Color(248, 248, 252));
+    toolbar->SetPadding(6);
 
-    toolbar->AddChild(MakeLabel(idPrefix + "ThemeLabel", 0, 0, 46, 20, "Theme:"));
+    DemoKit::Add(toolbar, MakeLabel(idPrefix + "ThemeLabel", Tr("Theme:")));
     auto themeDropdown = std::make_shared<UltraCanvasDropdown>(idPrefix + "Theme", 0, 0, 110, 28);
-    themeDropdown->AddItem("Default");
-    themeDropdown->AddItem("Dark");
-    themeDropdown->AddItem("Light");
-    themeDropdown->AddItem("Colorful");
-    themeDropdown->AddItem("Mono");
+    themeDropdown->AddItem(Tr("Default"));
+    themeDropdown->AddItem(Tr("Dark"));
+    themeDropdown->AddItem(Tr("Light"));
+    themeDropdown->AddItem(Tr("Colorful"));
+    themeDropdown->AddItem(Tr("Mono"));
     themeDropdown->SetSelectedIndex(0);
-    toolbar->AddChild(themeDropdown);
+    DemoKit::Add(toolbar, themeDropdown);
 
-    toolbar->AddChild(MakeLabel(idPrefix + "EdgeLabel", 0, 0, 40, 20, "Edges:"));
+    DemoKit::Add(toolbar, MakeLabel(idPrefix + "EdgeLabel", Tr("Edges:")));
     auto edgeDropdown = std::make_shared<UltraCanvasDropdown>(idPrefix + "Edge", 0, 0, 120, 28);
-    edgeDropdown->AddItem("Orthogonal");
-    edgeDropdown->AddItem("Bezier");
-    edgeDropdown->AddItem("Arc");
-    edgeDropdown->AddItem("Straight");
+    edgeDropdown->AddItem(Tr("Orthogonal"));
+    edgeDropdown->AddItem(Tr("Bezier"));
+    edgeDropdown->AddItem(Tr("Arc"));
+    edgeDropdown->AddItem(Tr("Straight"));
     edgeDropdown->SetSelectedIndex(0);
-    toolbar->AddChild(edgeDropdown);
+    DemoKit::Add(toolbar, edgeDropdown);
 
     std::shared_ptr<UltraCanvasDropdown> laneDropdown;
     std::shared_ptr<UltraCanvasDropdown> orientationDropdown;
     if (includeLaneControls) {
-        toolbar->AddChild(MakeLabel(idPrefix + "LaneLabel", 0, 0, 48, 20, "Lanes:"));
+        DemoKit::Add(toolbar, MakeLabel(idPrefix + "LaneLabel", Tr("Lanes:")));
         laneDropdown = std::make_shared<UltraCanvasDropdown>(idPrefix + "Lane", 0, 0, 100, 28);
-        laneDropdown->AddItem("Stable");
-        laneDropdown->AddItem("Compact");
+        laneDropdown->AddItem(Tr("Stable"));
+        laneDropdown->AddItem(Tr("Compact"));
         laneDropdown->SetSelectedIndex(0);
-        toolbar->AddChild(laneDropdown);
+        DemoKit::Add(toolbar, laneDropdown);
 
-        toolbar->AddChild(MakeLabel(idPrefix + "OrientLabel", 0, 0, 40, 20, "Flow:"));
+        DemoKit::Add(toolbar, MakeLabel(idPrefix + "OrientLabel", Tr("Flow:")));
         orientationDropdown = std::make_shared<UltraCanvasDropdown>(idPrefix + "Orient",
                                                                    0, 0, 130, 28);
-        orientationDropdown->AddItem("Newest top");
-        orientationDropdown->AddItem("Oldest top");
-        orientationDropdown->AddItem("Left to right");
+        orientationDropdown->AddItem(Tr("Newest top"));
+        orientationDropdown->AddItem(Tr("Oldest top"));
+        orientationDropdown->AddItem(Tr("Left to right"));
         orientationDropdown->SetSelectedIndex(0);
-        toolbar->AddChild(orientationDropdown);
+        DemoKit::Add(toolbar, orientationDropdown);
     }
 
     toolbar->AddStretchSpacer();
 
-    auto zoomInBtn = std::make_shared<UltraCanvasButton>(idPrefix + "ZoomIn", 0, 0, 36, 28);
-    zoomInBtn->SetText("+");
-    toolbar->AddChild(zoomInBtn);
+    auto zoomInBtn = MakeButton(idPrefix + "ZoomIn", "+", 36);
+    DemoKit::Add(toolbar, zoomInBtn);
 
-    auto zoomOutBtn = std::make_shared<UltraCanvasButton>(idPrefix + "ZoomOut", 0, 0, 36, 28);
-    zoomOutBtn->SetText("-");
-    toolbar->AddChild(zoomOutBtn);
+    auto zoomOutBtn = MakeButton(idPrefix + "ZoomOut", "-", 36);
+    DemoKit::Add(toolbar, zoomOutBtn);
 
-    auto fitBtn = std::make_shared<UltraCanvasButton>(idPrefix + "Fit", 0, 0, 50, 28);
-    fitBtn->SetText("Fit");
-    toolbar->AddChild(fitBtn);
+    auto fitBtn = MakeButton(idPrefix + "Fit", Tr("Fit"), 50);
+    DemoKit::Add(toolbar, fitBtn);
 
-    auto svgBtn = std::make_shared<UltraCanvasButton>(idPrefix + "Svg", 0, 0, 90, 28);
-    svgBtn->SetText("Save SVG");
-    toolbar->AddChild(svgBtn);
+    auto svgBtn = MakeButton(idPrefix + "Svg", Tr("Save SVG"), 90);
+    DemoKit::Add(toolbar, svgBtn);
 
     themeDropdown->onSelectionChanged = [graph](int index, const DropdownItem&) {
         switch (index) {
@@ -372,38 +411,32 @@ std::shared_ptr<UltraCanvasContainer> MakeToolbar(
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraphExamples() {
-    auto mainContainer = std::make_shared<UltraCanvasContainer>(
-        "GitGraphExamples", 0, 0, kPageWidth, kPageHeight);
+    auto page = DemoKit::CreatePage("GitGraphExamples", Tr("Git Graph"),
+        Tr("Commit-graph visualization: git-flow swimlanes, branch operations with "
+        "changed-file boxes, and the repository lane view"));
+    // The graphs pan and zoom themselves: the tabs fill the area.
+    page->SetFillsArea(true);
 
-    auto title = MakeLabel("GitGraphTitle", 20, 10, 600, 35, "Git Graph", 18.0f);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 150));
-    mainContainer->AddChild(title);
+    auto card = DemoKit::CreateCard("GitGraphCard");
+    DemoKit::Add(page, card, 1);
 
-    mainContainer->AddChild(MakeLabel(
-        "GitGraphSubtitle", 20, 45, kPageWidth - 70, 25,
-        "Commit-graph visualization: git-flow swimlanes, branch operations with "
-        "changed-file boxes, and the repository lane view", 12.0f));
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("GitGraphTabs");
+    tabs->SetTabPosition(TabPosition::Top);
+    DemoKit::Add(card, tabs, 1);
 
-    auto statusLabel = MakeLabel("GitGraphStatus", 20, kPageHeight - 40, kPageWidth - 40, 25,
-                                 "Ready - click a commit to select it, drag to pan, "
-                                 "wheel to zoom");
+    auto statusLabel = DemoKit::AddText(card, "GitGraphStatus",
+                                        Tr("Ready - click a commit to select it, drag to pan, "
+                                        "wheel to zoom"));
+    statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(60, 60, 60));
     statusLabel->SetBackgroundColor(Color(240, 240, 245));
     statusLabel->SetPadding(5);
-    mainContainer->AddChild(statusLabel);
-
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-        "GitGraphTabs", 10, 78, kPageWidth - 20, kPageHeight - 130);
-    tabs->SetTabPosition(TabPosition::Top);
-    mainContainer->AddChild(tabs);
 
     auto wireStatus = [statusLabel](const std::shared_ptr<UltraCanvasGitGraph>& graph) {
         graph->onCommitClick = [graph = graph.get(), statusLabel](const std::string& sha) {
             const GitGraphCommit* commit = graph->GetCommit(sha);
-            statusLabel->SetText(commit ? ("Selected " + commit->ShortSha() + " - " +
-                                           commit->subject)
-                                        : ("Selected " + sha));
+            statusLabel->SetText(commit ? TrF("Selected {0} - {1}", commit->ShortSha(), commit->subject)
+                                        : TrF("Selected {0}", sha));
         };
         graph->onCommitHover = [graph = graph.get(), statusLabel](const std::string& sha) {
             const GitGraphCommit* commit = graph->GetCommit(sha);
@@ -413,31 +446,27 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
 
     // ===== TAB 1: GIT FLOW =====
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("GitFlowTab", 0, 0,
-                                                          kPageWidth - 30, kGraphHeight + 110);
-        tab->AddChild(MakeLabel("GitFlowDesc", 10, 8, kPageWidth - 60, 22,
-                                "Swimlane mode: one band per branch either side of the trunk, "
-                                "with tags and callout annotations"));
+        auto tab = MakeTabPage("GitFlowTab", "GitFlowDesc",
+                               Tr("Swimlane mode: one band per branch either side of the trunk, "
+                               "with tags and callout annotations"));
 
-        auto graph = CreateGitGraph("GitFlowGraph", 10, 88, kGraphWidth, kGraphHeight);
+        auto graph = CreateGitGraph("GitFlowGraph", 0, 0, 0, 0);
         BuildGitFlowHistory(graph.get());
         wireStatus(graph);
 
-        tab->AddChild(MakeToolbar("GitFlow", graph, false));
-        tab->AddChild(graph);
-        tabs->AddTab("Git Flow", tab);
+        DemoKit::Add(tab, MakeToolbar("GitFlow", graph, false));
+        AddGraph(tab, graph);
+        tabs->AddTab(Tr("Git Flow"), tab);
     }
 
     // ===== TAB 2: BRANCH OPERATIONS =====
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("BranchOpsTab", 0, 0,
-                                                          kPageWidth - 30, kGraphHeight + 110);
-        tab->AddChild(MakeLabel("BranchOpsDesc", 10, 8, kPageWidth - 60, 22,
-                                "Branch and merge operations: a trunk with one branch above and "
-                                "one below, each commit showing its changed files. Drag a commit "
-                                "onto another to merge, or into empty space to branch."));
+        auto tab = MakeTabPage("BranchOpsTab", "BranchOpsDesc",
+                               Tr("Branch and merge operations: a trunk with one branch above and "
+                               "one below, each commit showing its changed files. Drag a commit "
+                               "onto another to merge, or into empty space to branch."));
 
-        auto graph = CreateGitGraph("BranchOpsGraph", 10, 88, kGraphWidth, kGraphHeight);
+        auto graph = CreateGitGraph("BranchOpsGraph", 0, 0, 0, 0);
         BuildBranchOperationsHistory(graph.get());
         wireStatus(graph);
 
@@ -445,95 +474,78 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
         // branch off it.
         graph->SetAuthoringEnabled(true);
         graph->onAuthorBranch = [statusLabel](const std::string&, const std::string& branch) {
-            statusLabel->SetText("Created branch '" + branch + "'");
+            statusLabel->SetText(TrF("Created branch '{0}'", branch));
         };
         graph->onAuthorMerge = [statusLabel](const std::string& source, const std::string&) {
-            statusLabel->SetText("Merged " + source.substr(0, 7));
+            statusLabel->SetText(TrF("Merged {0}", source.substr(0, 7)));
         };
 
-        tab->AddChild(MakeToolbar("BranchOps", graph, false));
-        tab->AddChild(graph);
-        tabs->AddTab("Branch Operations", tab);
+        DemoKit::Add(tab, MakeToolbar("BranchOps", graph, false));
+        AddGraph(tab, graph);
+        tabs->AddTab(Tr("Branch Operations"), tab);
     }
 
     // ===== TAB 3: REPOSITORY BROWSER =====
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("RepoTab", 0, 0,
-                                                          kPageWidth - 30, kGraphHeight + 110);
-        tab->AddChild(MakeLabel("RepoDesc", 10, 8, kPageWidth - 60, 22,
-                                "Lane mode: newest commit first with ref chips and a subject "
-                                "column - the view git clients show"));
+        auto tab = MakeTabPage("RepoTab", "RepoDesc",
+                               Tr("Lane mode: newest commit first with ref chips and a subject "
+                               "column - the view git clients show"));
 
-        auto graph = CreateGitGraph("RepoGraph", 10, 128, kGraphWidth, kGraphHeight - 40);
+        auto graph = CreateGitGraph("RepoGraph", 0, 0, 0, 0);
         BuildRepositoryHistory(graph.get());
         wireStatus(graph);
 
-        tab->AddChild(MakeToolbar("Repo", graph, true));
+        DemoKit::Add(tab, MakeToolbar("Repo", graph, true));
 
         // Second toolbar row: search and filtering.
-        auto filterBar = std::make_shared<UltraCanvasContainer>("RepoFilterBar", 10, 84,
-                                                                kGraphWidth, 38);
-        filterBar->layout.SetFlexRow().SetFlexGap(8)
-                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto filterBar = MakeBar("RepoFilterBar");
 
-        filterBar->AddChild(MakeLabel("RepoSearchLabel", 0, 0, 50, 20, "Search:"));
+        DemoKit::Add(filterBar, MakeLabel("RepoSearchLabel", Tr("Search:")));
         auto searchInput = std::make_shared<UltraCanvasTextInput>("RepoSearch", 0, 0, 200, 28);
-        searchInput->SetPlaceholder("sha, subject, author or ref");
-        filterBar->AddChild(searchInput);
+        searchInput->SetPlaceholder(Tr("sha, subject, author or ref"));
+        DemoKit::Add(filterBar, searchInput);
 
-        auto prevBtn = std::make_shared<UltraCanvasButton>("RepoPrev", 0, 0, 36, 28);
-        prevBtn->SetText("<");
-        filterBar->AddChild(prevBtn);
+        auto prevBtn = MakeButton("RepoPrev", "<", 36);
+        DemoKit::Add(filterBar, prevBtn);
 
-        auto nextBtn = std::make_shared<UltraCanvasButton>("RepoNext", 0, 0, 36, 28);
-        nextBtn->SetText(">");
-        filterBar->AddChild(nextBtn);
+        auto nextBtn = MakeButton("RepoNext", ">", 36);
+        DemoKit::Add(filterBar, nextBtn);
 
-        auto matchLabel = MakeLabel("RepoMatches", 0, 0, 110, 20, "no search");
-        filterBar->AddChild(matchLabel);
+        auto matchLabel = MakeLabel("RepoMatches", Tr("no search"));
+        DemoKit::Add(filterBar, matchLabel);
 
-        auto mergesCheck = std::make_shared<UltraCanvasCheckbox>("RepoMerges", 0, 0, 130, 22);
-        mergesCheck->SetText("Merges only");
-        filterBar->AddChild(mergesCheck);
+        auto mergesCheck = MakeCheck("RepoMerges", Tr("Merges only"));
+        DemoKit::Add(filterBar, mergesCheck);
 
-        auto tableCheck = std::make_shared<UltraCanvasCheckbox>("RepoTable", 0, 0, 110, 22);
-        tableCheck->SetText("Table");
+        auto tableCheck = MakeCheck("RepoTable", Tr("Table"));
         tableCheck->SetChecked(true);
-        filterBar->AddChild(tableCheck);
+        DemoKit::Add(filterBar, tableCheck);
 
-        auto minimapCheck = std::make_shared<UltraCanvasCheckbox>("RepoMinimap", 0, 0, 120, 22);
-        minimapCheck->SetText("Minimap");
+        auto minimapCheck = MakeCheck("RepoMinimap", Tr("Minimap"));
         minimapCheck->SetChecked(true);
-        filterBar->AddChild(minimapCheck);
+        DemoKit::Add(filterBar, minimapCheck);
 
-        auto crossingsCheck = std::make_shared<UltraCanvasCheckbox>("RepoCrossings", 0, 0, 150, 22);
-        crossingsCheck->SetText("Reduce crossings");
+        auto crossingsCheck = MakeCheck("RepoCrossings", Tr("Reduce crossings"));
         crossingsCheck->SetChecked(true);
-        filterBar->AddChild(crossingsCheck);
+        DemoKit::Add(filterBar, crossingsCheck);
 
-        auto timeCheck = std::make_shared<UltraCanvasCheckbox>("RepoTimeAxis", 0, 0, 120, 22);
-        timeCheck->SetText("Time axis");
-        filterBar->AddChild(timeCheck);
+        auto timeCheck = MakeCheck("RepoTimeAxis", Tr("Time axis"));
+        DemoKit::Add(filterBar, timeCheck);
 
-        auto collapseCheck = std::make_shared<UltraCanvasCheckbox>("RepoCollapse", 0, 0, 110, 22);
-        collapseCheck->SetText("Collapse");
-        filterBar->AddChild(collapseCheck);
+        auto collapseCheck = MakeCheck("RepoCollapse", Tr("Collapse"));
+        DemoKit::Add(filterBar, collapseCheck);
 
-        auto avatarCheck = std::make_shared<UltraCanvasCheckbox>("RepoAvatars", 0, 0, 110, 22);
-        avatarCheck->SetText("Avatars");
-        filterBar->AddChild(avatarCheck);
+        auto avatarCheck = MakeCheck("RepoAvatars", Tr("Avatars"));
+        DemoKit::Add(filterBar, avatarCheck);
 
-        auto diffCheck = std::make_shared<UltraCanvasCheckbox>("RepoDiff", 0, 0, 110, 22);
-        diffCheck->SetText("Diff pane");
-        filterBar->AddChild(diffCheck);
+        auto diffCheck = MakeCheck("RepoDiff", Tr("Diff pane"));
+        DemoKit::Add(filterBar, diffCheck);
 
-        auto laneOrderCheck = std::make_shared<UltraCanvasCheckbox>("RepoLaneOrder", 0, 0, 140, 22);
-        laneOrderCheck->SetText("develop first");
-        filterBar->AddChild(laneOrderCheck);
+        auto laneOrderCheck = MakeCheck("RepoLaneOrder", Tr("develop first"));
+        DemoKit::Add(filterBar, laneOrderCheck);
 
-        auto jsonBtn = std::make_shared<UltraCanvasButton>("RepoJson", 0, 0, 90, 28);
-        jsonBtn->SetText("Save JSON");
-        filterBar->AddChild(jsonBtn);
+        auto jsonBtn = MakeButton("RepoJson", Tr("Save JSON"), 90);
+        DemoKit::Add(filterBar, jsonBtn);
 
         // The demo has no repository behind it, so it stands in for the
         // providers an application would wire to UltraCanvasGitRepository.
@@ -590,7 +602,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
 
         graph->onSearchChanged = [matchLabel](size_t current, size_t total) {
             matchLabel->SetText(total == 0
-                                    ? "no matches"
+                                    ? Tr("no matches")
                                     : (std::to_string(current) + " / " + std::to_string(total)));
         };
         searchInput->onTextChanged = [graph](const std::string& text) {
@@ -615,12 +627,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGitGraph
         crossingsCheck->onChecked   = [graph]() { graph->SetReduceCrossings(true);  };
         crossingsCheck->onUnchecked = [graph]() { graph->SetReduceCrossings(false); };
 
-        tab->AddChild(filterBar);
-        tab->AddChild(graph);
-        tabs->AddTab("Repository", tab);
+        DemoKit::Add(tab, filterBar);
+        AddGraph(tab, graph);
+        tabs->AddTab(Tr("Repository"), tab);
     }
 
-    return mainContainer;
+    return page;
 }
 
 } // namespace UltraCanvas

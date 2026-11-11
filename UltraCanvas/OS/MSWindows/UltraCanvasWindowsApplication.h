@@ -1,7 +1,9 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.h
 // Windows platform implementation for UltraCanvas Framework
+// Version: 1.5.0 - DetectHostAppearanceNative (UltraCanvasWindowsHostAppearance.cpp)
+// Version: 1.4.0 - RunAfterMainLoop arms the exit watchdog
 // Version: 1.3.0
-// Last Modified: 2026-10-05
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -176,6 +178,8 @@ namespace UltraCanvas {
         // ===== INHERITED FROM BASE APPLICATION =====
         bool InitializeNative() override;
         void ShutdownNative() override;
+        // Arms the exit watchdog (UltraCanvasWindowsDiagnostics.h).
+        void RunAfterMainLoop() override;
         void CaptureMouseNative() override;
         void ReleaseMouseNative() override;
         void CollectAndProcessNativeEvents() override;
@@ -184,6 +188,8 @@ namespace UltraCanvas {
         void ShutdownWakeUp() override;
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
+        // The registry, the metrics and DWM (UltraCanvasWindowsHostAppearance.cpp).
+        HostAppearance DetectHostAppearanceNative() override;
         void LoadBundledFontsNative() override;
         bool RegisterFontFileNative(const std::string& fontFilePath) override;
 

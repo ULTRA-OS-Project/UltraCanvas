@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.6 - the SDK by its address on start.ultraos.eu, fetched by Download
 // Version: 0.2.5 - MSYS2 is updated first
 // Version: 0.2.4 - InstallPreview: MSYS2 set up by winget first, every command listed
 // Version: 0.2.3 - InstallPreview counts only the missing ones switched on
@@ -30,14 +31,14 @@ std::string Code(const std::string& text) {
     return "`" + text + "`";
 }
 
-// The SDK step every platform shares: the archive by its real name, the
-// download page that carries it, and the way the application unpacks it.
+// The SDK step every platform shares: the archive by its real name, linked
+// to its address, and the way the application fetches and unpacks it.
 std::string SdkLine(Platform platform, const std::string& version, const std::string& architecture,
                     const std::string& remark) {
     const std::string archive = SdkArchiveName(platform, version, architecture);
-    return "download the prebuilt SDK " + Code(archive) + " from " + Link("the download page", SdkDownloadPage()) +
-           (remark.empty() ? "" : " (" + remark + ")") +
-           " and let the Framework step's *Unpack...* unpack it - or";
+    return "let the Framework step's *Download* fetch and unpack the prebuilt SDK " +
+           Link(archive, SdkDownloadUrl(platform, version, architecture)) +
+           (remark.empty() ? "" : " (" + remark + ")") + " - or";
 }
 
 } // namespace
@@ -169,7 +170,7 @@ std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant) 
     if (assistant == Assistant::Other) {
         out += "Cursor, Windsurf, ChatGPT, a Claude.ai Project, a Gemini Gem: any assistant that can read "
                "a file works, because the repository carries its own instructions.\n";
-    } else if (const AssistantStatus* status = ai.Status(assistant); status && status->installed) {
+    } else if (const AssistantStatus* status = ai.StatusOf(assistant); status && status->installed) {
         out += name + " is installed" + (status->version.empty() ? "" : " (" + status->version + ")") +
                " at " + Code(status->path) + ".\n";
     } else {

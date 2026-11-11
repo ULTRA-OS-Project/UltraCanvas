@@ -144,7 +144,7 @@ VirtualFSOpenMode
 *Source: VirtualFSTypes.h*
 ```cpp
 enum class VirtualFSResult {
-    Success = 0,            // Operation completed successfully
+    Ok = 0,            // Operation completed successfully
     
     // General errors (1-99)
     Error = 1,              // Generic error
@@ -313,17 +313,42 @@ struct VirtualFSOpenOptions {
     VirtualFSOpenMode mode = VirtualFSOpenMode::Read;
     std::string password;                       // For encrypted archives
     VirtualFSCompressionLevel compressionLevel = VirtualFSCompressionLevel::Normal;
-    std::string compressionMethod;              // "deflate", "lzma", "zstd", etc.
-    bool followSymlinks = true;                 // Resolve symbolic links
+    VirtualFSCompressionMethod compressionMethod = VirtualFSCompressionMethod::Auto;
+                                                // ZIP / 7-Zip method when creating;
+                                                // NotSupported when it cannot be written
+    bool followSymlinks = true;                 // Reading: follow links inside the archive
     bool caseSensitive = true;                  // Case-sensitive path matching
     size_t cacheSize = 64 * 1024 * 1024;       // 64MB metadata cache
     bool validateCRC = false;                   // Verify checksums on read
     std::string encoding = "UTF-8";             // Filename encoding
+    VirtualFSArchiveWriteOptions archiveWrite;  // CreateArchive: see below
     
     static VirtualFSOpenOptions Default() { return VirtualFSOpenOptions(); }
     static VirtualFSOpenOptions ReadOnly() { return VirtualFSOpenOptions(); }
     static VirtualFSOpenOptions ForWriting(VirtualFSCompressionLevel level = VirtualFSCompressionLevel::Normal);
 };
+```
+
+### **VirtualFSArchiveWriteOptions**
+*Source: VirtualFSTypes.h*
+```cpp
+enum class VirtualFSTarFormat { Pax, Gnu, Ustar };
+
+struct VirtualFSArchiveWriteOptions {
+    int  filterLevel = -1;          // gzip/bzip2/lz4 1-9, xz 0-9, zstd 1-22; -1 = compressionLevel
+    int  threads = 1;               // xz / zstd workers; 0 = one per core
+    int  zstdLongWindowLog = 0;     // zstd --long=N; 0 = off
+    VirtualFSTarFormat tarFormat = VirtualFSTarFormat::Pax;
+    bool keepTimestamps = true;     // off: the packing time
+    bool keepPermissions = true;    // off: 0644 / folders 0755
+    bool keepOwner = false;         // off: uid/gid 0, no names
+    bool storeSymlinks = true;      // off: store what a link points to
+    std::vector<std::string> excludePatterns;   // '*' '?' patterns, case ignored
+};
+
+bool VirtualFSWildcardMatch(const std::string& pattern, const std::string& text);
+bool VirtualFSIsExcluded(const VirtualFSArchiveWriteOptions& options,
+                         const std::string& name, const std::string& relativePath);
 ```
 
 ### **VirtualFSExtractOptions**
@@ -1154,9 +1179,9 @@ public:
         // rewrite for the other writable formats.
         for (const auto& path : virtualPaths) {
             auto result = Delete(path);
-            if (result != VirtualFSResult::Success) return result;
+            if (result != VirtualFSResult::Ok) return result;
         }
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     }
     
     virtual VirtualFSResult Rename(
@@ -1354,7 +1379,7 @@ int main() {
     std::vector<uint8_t> data;
     auto result = VirtualFS_ReadFile("/home/user/archive.zip/docs/readme.txt", data);
     
-    if (result == VirtualFSResult::Success) {
+    if (result == VirtualFSResult::Ok) {
         std::string content(data.begin(), data.end());
         std::cout << "Content:\n" << content << "\n";
     }
@@ -1481,7 +1506,7 @@ int main() {
     
     std::cout << "\n";
     
-    if (result == VirtualFSResult::Success) {
+    if (result == VirtualFSResult::Ok) {
         std::cout << "Extraction complete!\n";
     } else {
         std::cout << "Error: " << VirtualFS_GetErrorMessage(result) << "\n";

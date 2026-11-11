@@ -5,17 +5,20 @@
 # VideoFX is a shared library of its own (libVideoFX.so, libVideoFX.dylib,
 # VideoFX.dll / libVideoFX.dll) - not absorbed into the UltraCanvas core, so an
 # application that does no video never loads it or FFmpeg.
+# Version: 0.18.0 - the engine reports 0.18.0 (text overlays drawn by the host's text renderer,
+#                  core/VideoFXText.cpp)
+# Version: 0.17.0 - the engine reports 0.17.0 (VideoFXFrameRecorder, core/VideoFXRecorder.cpp)
 # Version: 0.16.0 - the engine reports 0.16.0 (effects on image and video overlays)
 # Version: 0.15.1 - no experimental encoder is chosen, listed or reported (FindEncoderByName)
 # Version: 0.15.0 - the engine reports 0.15.0 (the Fill crop around a clip's faces)
 # Version: 0.14.1 - on Windows the DLL and videofx.exe go beside the applications
-# Last Modified: 2026-10-16
+# Last Modified: 2026-11-03
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 
 project(VideoFX
-    VERSION 0.16.0
+    VERSION 0.18.0
     DESCRIPTION "VideoFX - video editing and conversion engine"
     LANGUAGES CXX
 )
@@ -81,6 +84,7 @@ set(VIDEOFX_SOURCES
     core/VideoFXProxy.h
     core/VideoFXPlatform.h
     core/VideoFXJob.cpp
+    core/VideoFXText.cpp
 )
 # The per-user cache folder, where proxies go - the stub has it too
 if(WIN32)
@@ -97,6 +101,7 @@ if(VIDEOFX_FFMPEG_FOUND)
         core/VideoFXBackend.h
         core/VideoFXProbe.cpp
         core/VideoFXExport.cpp
+        core/VideoFXRecorder.cpp
         core/VideoFXRemux.cpp
         core/VideoFXFonts.cpp
     )
@@ -164,6 +169,15 @@ if(VIDEOFX_BUILD_SHARED)
         # import library.
         set_target_properties(VideoFX PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
     endif()
+endif()
+
+# Which build this DLL is (VideoFX_LibraryBuild), so a program refuses a
+# libVideoFX.dll from another build at start instead of crashing on it
+# (cmake/UltraCanvasLibraryBuildId.cmake). Inside the UltraCanvas tree only.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasLibraryBuildId.cmake" OPTIONAL)
+if(COMMAND ultracanvas_library_build_id)
+    ultracanvas_library_build_id(VideoFX "VideoFX" "${PROJECT_VERSION}"
+                                 "${CMAKE_CURRENT_SOURCE_DIR}/include" VideoFX_LibraryBuild)
 endif()
 
 find_package(Threads REQUIRED)

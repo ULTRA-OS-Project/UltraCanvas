@@ -186,7 +186,7 @@ struct File {
     std::vector<Group> Groups;
     std::vector<Material> Materials;
     float FramesPerSecond = 24.0f;
-    float CurrentTime = 0.0f;
+    float CurrentTimeSeconds = 0.0f;
     int32_t TotalFrames = 0;
     std::vector<Joint> Joints;
     std::vector<VertexWeights> Weights;       // empty when the block is absent
@@ -424,7 +424,7 @@ bool Parse(const std::vector<uint8_t>& data, File& out, const ConversionOptions&
 
     // --- animation header and joints ---
     out.FramesPerSecond = cursor.F32();
-    out.CurrentTime = cursor.F32();
+    out.CurrentTimeSeconds = cursor.F32();
     out.TotalFrames = cursor.I32();
     if (!cursor.Ok()) return false;
 

@@ -1,5 +1,6 @@
 # UltraAI/adapters/anthropic/CMakeLists.txt
-# Anthropic (Claude) Messages API adapter. JSON handling uses the repo's
+# Anthropic (Claude) Messages API adapters: ITextLLM and, on top of it, an
+# OCR IVisionAnalyzer. JSON handling uses the repo's
 # vendored nlohmann/json (already licensed in THIRD_PARTY_LICENSES.md);
 # when the monorepo layout is not present the adapter is skipped.
 
@@ -20,6 +21,8 @@ endif()
 
 add_library(UltraAI_AdapterAnthropic STATIC
     src/AnthropicTextLLM.cpp
+    # OCR (IVisionAnalyzer) through Claude, on top of the text adapter.
+    src/AnthropicVisionAnalyzer.cpp
 )
 add_library(UltraAI::AdapterAnthropic ALIAS UltraAI_AdapterAnthropic)
 

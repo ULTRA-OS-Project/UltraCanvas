@@ -61,7 +61,7 @@ struct FormulaToken {
     std::string text;
     double numValue = 0.0;
     bool boolValue = false;
-    CellErrorType errorValue = CellErrorType::None;
+    CellErrorType errorValue = CellErrorType::NoError;
     CellAddress cellRef;
     CellRange rangeRef;
     int position = 0;  // Position in original formula string
@@ -179,7 +179,7 @@ struct FormulaValue {
     
     CellErrorType GetError() const {
         if (auto* v = std::get_if<CellErrorType>(&value)) return *v;
-        return CellErrorType::None;
+        return CellErrorType::NoError;
     }
     
     // Convert to number (with type coercion)

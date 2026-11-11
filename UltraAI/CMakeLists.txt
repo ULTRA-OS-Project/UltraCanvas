@@ -62,6 +62,8 @@ set(ULTRAAI_PUBLIC_HEADERS
     include/UltraAIVideoGen.h
     include/UltraAIMusicGen.h
     include/UltraAICodeAssist.h
+    include/UltraAIAgent.h
+    include/UltraAIBatch.h
 )
 
 # ===== Core static library =====
@@ -72,6 +74,8 @@ add_library(UltraAI_Core STATIC
     src/CapabilityFactories.cpp
     src/Routing.cpp
     src/TextLLMTranslator.cpp
+    src/Agent.cpp
+    src/Batch.cpp
 )
 add_library(UltraAI::Core ALIAS UltraAI_Core)
 
@@ -165,6 +169,13 @@ if(ULTRAAI_BUILD_ADAPTERS)
         target_link_libraries(UltraAI_Core PUBLIC UltraAI_AdapterLocal)
         target_compile_definitions(UltraAI_Core PRIVATE ULTRAAI_HAS_LOCAL_ADAPTER=1)
     endif()
+endif()
+
+# The one library of the module that draws: the "Get a local model" dialog
+# (UltraAI_UI). Applications link it beside UltraAI_Core; it is not part
+# of the core, which stays free of the UI.
+if(ULTRAAI_LOCAL_RUNTIME AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ui/CMakeLists.txt")
+    add_subdirectory(ui)
 endif()
 
 # ===== Tests =====

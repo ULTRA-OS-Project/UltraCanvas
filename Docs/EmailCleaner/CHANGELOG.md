@@ -1,3 +1,55 @@
+#### 2026-11-09 *0.4.13*
+- **Follows UltraMail's new layout of cached messages.** A folder whose name
+  is not in the usual casing ("work", "sent items") is now cached under its
+  name with a `~` and a short code ("work~1"), so two folders whose names
+  differ only in case keep their messages apart on Windows and macOS. The
+  cache of EmailCleaner's own accounts is moved to it at the first start, and
+  telling a Sent or Trash folder by its name reads past the code.
+
+#### 2026-10-28 *0.4.12*
+- **Reads UltraMail's encrypted mailbox.** UltraMail now keeps its databases
+  and message files encrypted at rest; EmailCleaner takes the storage key from
+  UltraMail's vault with the device key (never writing to it) and opens the
+  account list, the address book and the cached messages with it. A mailbox
+  whose vault has a Primary Password stays closed, and EmailCleaner says so
+  instead of asking UltraMail to store a device key.
+
+#### 2026-10-23 *0.4.11*
+- **A Contacts page: the address book against the mail you sent.** UltraMail
+  used to collect every sender it synced into its address book, so one kept
+  for a while holds every shop and stranger that ever wrote. The new **Contacts** tab lists
+  UltraMail's address book with, per contact, the number of messages you sent
+  to it (counted from the To and Cc lines of your sent mail, over every
+  account) and, as the second figure, the number it sent you; the list is
+  ordered by mail sent. Each contact is tagged **Keep** when you wrote to it,
+  **Delete** when you never did and UltraMail only collected it (section Other
+  or Services), or **Review** when you never wrote to it but filed it yourself
+  (Family, Friends, Work, Leisure or a group of your own) or it has no address.
+  The Delete rows start selected, every selected row is marked red, and
+  **Delete selected…** removes them from the address book after a
+  confirmation that names them, all in one go (`ContactStore::RemoveAll`),
+  and forgets their addresses (`ContactStore::Forget`) so UltraMail does not
+  collect them again. The mail itself is not touched.
+- **Your own sent mail is read for its recipients and kept off the map.** A
+  message from the account's own address, or in the Sent folder (by its
+  SPECIAL-USE role, else by name: "Sent", "Sent Items", "[Gmail]/Sent Mail",
+  "Gesendet", ...), is no longer analysed as a sender block: only whom it went
+  to is stored (analysis schema 6). An account added in EmailCleaner now
+  downloads its Sent folder too, beside the inbox and the junk folder.
+
+#### 2026-10-22 *0.4.10*
+- **The UltraNet plug-in folder comes from UltraNet.** EmailCleaner looked for
+  `Plugins/UltraNet` beside its executable itself, with the same code as
+  UltraMail. UltraNet now does that by default, so EmailCleaner keeps only its
+  `EMAILCLEANER_PLUGIN_DIR` override, which it now reads as UTF-8.
+
+#### 2026-10-21 *0.4.9*
+- **Loan and credit offers count as financial scams.** The built-in rules
+  know the loan-offer letters' wording - "loan facilities", "loan funding",
+  "financing offer", "viable projects", "yearly repayment" and the like. One
+  phrase alone stays below the threshold, so a bank's own mention of a loan
+  offer is not called a scam; the scam letters pile several up.
+
 #### 2026-10-13 *0.4.8*
 - **UltraMail's mail is found on macOS and Windows.** EmailCleaner looked for
   UltraMail's data folder, and kept its own, under `$XDG_DATA_HOME` or

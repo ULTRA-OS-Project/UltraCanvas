@@ -24,6 +24,7 @@
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetCurlTls.h>
 #include <UltraNet/UltraNetMailAddr.h>
 
@@ -69,7 +70,7 @@ std::size_t ReadCallback(char* buffer, std::size_t size, std::size_t nmemb,
 
 UltraNetResultCode MapCurlError(CURLcode rc) {
     switch (rc) {
-        case CURLE_OK:                      return UltraNetResultCode::Success;
+        case CURLE_OK:                      return UltraNetResultCode::Ok;
         case CURLE_URL_MALFORMAT:           return UltraNetResultCode::InvalidUrl;
         case CURLE_COULDNT_RESOLVE_HOST:    return UltraNetResultCode::HostNotFound;
         case CURLE_COULDNT_CONNECT:         return UltraNetResultCode::ConnectionRefused;
@@ -127,6 +128,7 @@ public:
             ultranet_curldebug::EnableIfRequested(h.get());
 
             curl_easy_setopt(h.get(), CURLOPT_URL, options.serverUrl.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), options.serverUrl, /*tunnel=*/true);
 
             // TLS is required either way here (CURLUSESSL_ALL below).
             ultranet_curlmailauth::RecordContext(

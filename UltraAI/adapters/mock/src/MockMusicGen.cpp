@@ -185,7 +185,7 @@ StreamHandle MockMusicGen::GenerateJob(const MusicGenRequest& request,
         }
         if (onEvent && !handle->IsCancelled()) {
             MusicJobEvent done;
-            if (response.error.code != ErrorCode::None) {
+            if (response.error.code != ErrorCode::Ok) {
                 done.kind = MusicJobEventKind::Error;
                 done.error = response.error;
             } else {

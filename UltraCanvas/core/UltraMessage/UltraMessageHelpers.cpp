@@ -17,7 +17,7 @@ std::string Str(const JSONValue& json, const char* key) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetString() : std::string();
 }
-bool Bool(const JSONValue& json, const char* key, bool fallback = false) {
+bool JsonBool(const JSONValue& json, const char* key, bool fallback = false) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetBoolean(fallback) : fallback;
 }
@@ -204,7 +204,7 @@ bool ParseMessagingMessage(const JSONValue& body, MessagingMessage& out) {
     const JSONValue& conversation = Obj(body, "conversation");
     out.conversationId = Str(conversation, "id");
     out.conversationTitle = Str(conversation, "title");
-    out.isGroup = Bool(conversation, "isGroup");
+    out.isGroup = JsonBool(conversation, "isGroup");
     const JSONValue& sender = Obj(body, "sender");
     out.sender.id = Str(sender, "id");
     out.sender.name = Str(sender, "name");
@@ -212,7 +212,7 @@ bool ParseMessagingMessage(const JSONValue& body, MessagingMessage& out) {
     out.text = Str(body, "text");
     out.html = Str(body, "html");
     out.incoming = Str(body, "direction") != "out";
-    out.read = Bool(body, "read");
+    out.read = JsonBool(body, "read");
     out.externalId = Str(body, "externalId");
     out.replyTo = Str(body, "replyTo");
     out.attachments.clear();
@@ -275,9 +275,9 @@ bool ParseMailMessage(const JSONValue& body, MailMessage& out) {
     }
     out.subject = Str(body, "subject");
     out.snippet = Str(body, "snippet");
-    out.hasAttachments = Bool(body, "hasAttachments");
-    out.read = Bool(body, "read");
-    out.flagged = Bool(body, "flagged");
+    out.hasAttachments = JsonBool(body, "hasAttachments");
+    out.read = JsonBool(body, "read");
+    out.flagged = JsonBool(body, "flagged");
     out.externalId = Str(body, "externalId");
     out.threadId = Str(body, "threadId");
     return !out.account.empty();

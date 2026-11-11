@@ -255,6 +255,16 @@ static void TestCharacterFormatting() {
     CHECK_EQ(first.color, std::string("#FF0000"));
     CHECK_EQ(first.linkTarget, std::string("https://example.com"));
 
+    // The highlight (background) colour: set, reported, and cleared with the
+    // rest of the formatting.
+    ed.SetHighlightColor("#FFF59D");
+    CHECK_EQ(ed.GetBlock(0).runs[0].highlightColor, std::string("#FFF59D"));
+    CHECK_EQ(ed.GetFormatState().highlightColor, std::string("#FFF59D"));
+    ed.SetSelection({0, 0}, {0, 11});
+    CHECK(ed.GetFormatState().highlightMixed);
+    ed.ClearFormatting();
+    CHECK(ed.GetBlock(0).runs[0].highlightColor.empty());
+
     // Sub- and superscript are mutually exclusive.
     UCRichDocumentEditor script(MakeDocument({"x2"}));
     script.SetSelection({0, 1}, {0, 2});

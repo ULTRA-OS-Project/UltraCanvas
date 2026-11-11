@@ -1,5 +1,10 @@
 // Apps/UltraMail/engine/UltraMailLocalStore.cpp
 // LocalStore implementation on top of UltraDatabase.
+// Version: 0.7.1 - the INBOX folder row always has the inbox role: SetFolderUidState
+//                  no longer re-creates it without one (after ClearAccountMail),
+//                  and Open repairs a store where it lost it (the account bar
+//                  counted 0 unread, 0 today, 0 waiting for that account)
+// Version: 0.7.0 - schema 13 (security_method, security_sign, security_encrypt, pgp_key): SetAccountSecurity
 // Version: 0.6.0 - schema 12 (incoming_protocol: IMAP or JMAP)
 // Version: 0.5.0 - schema 11 (findings: the codes of a verdict's findings)
 // Version: 0.4.0 - schema 10 (verified_domain, verified_by); ListStaleVerdicts
@@ -82,6 +87,19 @@ bool NeedsAnswerFor(bool eligible, uint32_t flags, int64_t answerMark) {
     return eligible && (flags & Flag_Answered) == 0;
 }
 
+// Whether a message can wait for a reply at all: sent to the account's own
+// address (`ownLower`, lower case), not by the account itself, not bulk mail,
+// and in the inbox.
+bool EligibleFor(const std::string& ownLower, bool inInbox,
+                 const std::vector<std::string>& to, const std::string& fromAddr,
+                 bool automated) {
+    if (ownLower.empty() || !inInbox || automated) return false;
+    if (Lower(fromAddr) == ownLower) return false;
+    for (const auto& addr : to)
+        if (Lower(addr) == ownLower) return true;
+    return false;
+}
+
 const char* kMsgColumns =
     "account_id, folder, uid, message_id, in_reply_to, subject, "
     "from_name, from_addr, to_addrs, date, flags";
@@ -100,11 +118,13 @@ struct LocalStore::WrittenToCache {
 // ---- Open / schema ---------------------------------------------------------
 
 UltraDbResult LocalStore::Open(const std::string& connectionName,
-                               const std::string& databasePath) {
+                               const std::string& databasePath,
+                               std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey) {
     UltraDbConnectionConfig cfg;
     cfg.name     = connectionName;
     cfg.driver   = "sqlite";
     cfg.database = databasePath;
+    cfg.encryptionKey = std::move(encryptionKey);
     UltraDbResult reg = UltraDb_RegisterConnection(cfg);
     if (!reg) return reg;
     writtenTo_ = std::make_shared<WrittenToCache>();
@@ -220,8 +240,61 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           // 'imap' keeps what existing accounts did; 'jmap' reads the same
           // imap_* columns as a JMAP server (host, port, username, auth).
           "ALTER TABLE accounts ADD COLUMN incoming_protocol TEXT DEFAULT 'imap';" },
+        { 13, "account mail security defaults",
+          // '' keeps what existing accounts did: new messages start unsigned
+          // and unencrypted. pgp_key '' = the key for the account's address.
+          "ALTER TABLE accounts ADD COLUMN security_method TEXT DEFAULT '';"
+          "ALTER TABLE accounts ADD COLUMN security_sign INTEGER DEFAULT 1;"
+          "ALTER TABLE accounts ADD COLUMN security_encrypt INTEGER DEFAULT 0;"
+          "ALTER TABLE accounts ADD COLUMN pgp_key TEXT DEFAULT '';" },
     };
-    return UltraDb_Migrate(connection_, steps);
+    UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
+    if (!migrated) return migrated;
+    RepairInboxRole();
+    return migrated;
+}
+
+void LocalStore::RepairInboxRole() {
+    // The accounts whose inbox mail has no INBOX folder row with the inbox
+    // role: a row re-created without one by SetFolderUidState after
+    // ClearAccountMail, or the role lost to a server that lists its inbox as
+    // "Inbox". Their account bar counted nothing and none of their inbox
+    // mail could wait for a reply.
+    UltraDbResultSet broken;
+    if (!UltraDb_Query(connection_,
+            "SELECT DISTINCT m.account_id AS a, COALESCE(acc.email, '') AS e "
+            "FROM messages m LEFT JOIN accounts acc ON acc.account_id = m.account_id "
+            "WHERE m.folder = 'INBOX' AND NOT EXISTS (SELECT 1 FROM folders f "
+            "  WHERE f.account_id = m.account_id AND f.name = 'INBOX' AND f.role = 'inbox')",
+            {}, broken) || broken.Empty())
+        return;
+    for (const auto& row : broken) {
+        const std::string account = row["a"].AsString();
+        const std::string ownLower = Lower(row["e"].AsString());
+        UltraDbResultSet rs;
+        if (!UltraDb_Query(connection_,
+                "SELECT uid, from_addr, to_addrs, flags, answer_mark FROM messages "
+                "WHERE account_id = ? AND folder = 'INBOX'", { account }, rs))
+            continue;
+        UltraDbHandle tx = UltraDb_Begin(connection_);
+        if (tx == UltraDbInvalidHandle) continue;
+        UltraDb_ExecInTx(tx,
+            "INSERT INTO folders(account_id, name, role) VALUES(?, 'INBOX', 'inbox') "
+            "ON CONFLICT(account_id, name) DO UPDATE SET role = 'inbox'", { account });
+        // Each message's eligibility as UpsertMessage works it out in the
+        // inbox; the user's own needs-answer mark stays as it was.
+        for (const auto& m : rs) {
+            const bool eligible = EligibleFor(ownLower, true, Split(m["to_addrs"].AsString(), '\n'),
+                                              m["from_addr"].AsString(), false);
+            const bool needs = NeedsAnswerFor(eligible, m["flags"].AsU32(),
+                                              m["answer_mark"].AsInt64());
+            UltraDb_ExecInTx(tx,
+                "UPDATE messages SET eligible = ?, needs_answer = ? "
+                "WHERE account_id = ? AND folder = 'INBOX' AND uid = ?",
+                { eligible ? 1 : 0, needs ? 1 : 0, account, m["uid"].AsInt64() });
+        }
+        UltraDb_Commit(tx);
+    }
 }
 
 // ---- Accounts --------------------------------------------------------------
@@ -264,7 +337,8 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         "  imap_host, imap_port, imap_security, imap_username, imap_oauth, "
         "  smtp_host, smtp_port, smtp_security, smtp_username, smtp_oauth, "
         "  provider_name, imap_auth, smtp_auth, incoming_protocol, "
-        "  signature_kind, signature_text, signature_html, signature_replies FROM accounts "
+        "  signature_kind, signature_text, signature_html, signature_replies, "
+        "  security_method, security_sign, security_encrypt, pgp_key FROM accounts "
         "ORDER BY short_name", rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -291,6 +365,10 @@ UltraDbResult LocalStore::ListAccounts(std::vector<Account>& out) const {
         a.signature.text      = row["signature_text"].AsString();
         a.signature.html      = row["signature_html"].AsString();
         a.signature.onReplies = row["signature_replies"].AsInt() != 0;
+        a.security.method     = row["security_method"].AsString();
+        a.security.sign       = row["security_sign"].AsInt() != 0;
+        a.security.encrypt    = row["security_encrypt"].AsInt() != 0;
+        a.security.openPgpKey = row["pgp_key"].AsString();
         out.push_back(std::move(a));
     }
     return UltraDbResult::Ok();
@@ -306,6 +384,18 @@ UltraDbResult LocalStore::SetAccountSignature(const std::string& accountId,
         "signature_replies=? WHERE account_id=?",
         { ToString(signature.kind), signature.text, signature.html,
           static_cast<int64_t>(signature.onReplies ? 1 : 0), accountId });
+}
+
+UltraDbResult LocalStore::SetAccountSecurity(const std::string& accountId,
+                                             const AccountSecurity& security) {
+    if (accountId.empty())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "account id must not be empty");
+    return UltraDb_Exec(connection_,
+        "UPDATE accounts SET security_method=?, security_sign=?, security_encrypt=?, "
+        "pgp_key=? WHERE account_id=?",
+        { security.method, static_cast<int64_t>(security.sign ? 1 : 0),
+          static_cast<int64_t>(security.encrypt ? 1 : 0), security.openPgpKey, accountId });
 }
 
 UltraDbResult LocalStore::RemoveAccount(const std::string& accountId) {
@@ -387,12 +477,15 @@ UltraDbResult LocalStore::SetFolderUidState(const std::string& accountId,
                                             const std::string& folder,
                                             int64_t uidValidity, int64_t uidNext) {
     // Upsert so a folder that was never LIST-ed still records its UID state.
+    // A row made here for INBOX - after ClearAccountMail dropped the folders,
+    // before a folder list ran - carries the inbox role: the account bar's
+    // counts and the waiting-for-reply rule find the inbox by it.
     return UltraDb_Exec(connection_,
-        "INSERT INTO folders(account_id, name, uidvalidity, uidnext) "
-        "VALUES(?, ?, ?, ?) "
+        "INSERT INTO folders(account_id, name, role, uidvalidity, uidnext) "
+        "VALUES(?, ?, CASE WHEN ? = 'INBOX' THEN 'inbox' ELSE NULL END, ?, ?) "
         "ON CONFLICT(account_id, name) DO UPDATE SET "
         "uidvalidity=excluded.uidvalidity, uidnext=excluded.uidnext",
-        { accountId, folder, uidValidity, uidNext });
+        { accountId, folder, folder, uidValidity, uidNext });
 }
 
 // ---- Messages --------------------------------------------------------------
@@ -418,13 +511,8 @@ UltraDbResult LocalStore::UpsertMessage(const MessageEnvelope& m) {
         if (!rs.Empty()) role = FolderRoleFromString(rs.Row(0)["role"].AsString());
     }
 
-    const std::string ownLower = Lower(accountEmail);
-    bool toMe = false;
-    for (const auto& addr : m.to)
-        if (!ownLower.empty() && Lower(addr) == ownLower) { toMe = true; break; }
-    const bool fromSelf = !ownLower.empty() && Lower(m.fromAddr) == ownLower;
-
-    const bool eligible = toMe && !m.automated && role == FolderRole::Inbox && !fromSelf;
+    const bool eligible = EligibleFor(Lower(accountEmail), role == FolderRole::Inbox,
+                                      m.to, m.fromAddr, m.automated);
     const bool needsAnswer = eligible && (m.flags & Flag_Answered) == 0;
 
     return UltraDb_Exec(connection_,

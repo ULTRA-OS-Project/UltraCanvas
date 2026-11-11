@@ -7,7 +7,9 @@
 // (Ensure under each download policy, the shared record, a second Ensure
 // finding the running engine, idle stop, the restart marker after two
 // failed starts); and the `local` provider talking to the fake engine over
-// real loopback HTTP.
+// real loopback HTTP; the topics (the built-in document, the resolution
+// of a topic's model, the preferences, new models and the installs the
+// topic settings call for).
 //
 // argv[1] is the fake engine's path (CMake passes it). Uses plain asserts.
 
@@ -22,6 +24,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "VirtualFS/VirtualFS.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -358,7 +361,7 @@ struct Fixture {
         const VirtualFS::VirtualFSResult r = VirtualFS::VirtualFS_CreateArchive(
             PathToUtf8(bundleZip),
             {PathToUtf8(stage / PathFromUtf8(FindExecutableName())), PathToUtf8(stage / "LICENSE")});
-        if (r != VirtualFS::VirtualFSResult::Success ||
+        if (r != VirtualFS::VirtualFSResult::Ok ||
             UltraCanvas::GetEnvUtf8("ULTRAAI_TEST_NO_ARCHIVES") == "1") {
             std::cerr << "bundle archive not available (" << VirtualFS::VirtualFSResultToString(r)
                       << "): engine-bundle checks skipped, the engine comes from the override\n";
@@ -744,6 +747,149 @@ void TestRegistration() {
     EXPECT_EQ(ResolveProviderId("translator", {"mock", "local"}), std::string("local"));
 }
 
+// ----- topics -----
+
+void TestTopics() {
+    // The built-in topics parse, and every model they name is in the
+    // built-in catalogue with the topic's capability.
+    Topics builtin;
+    Catalogue catalogue;
+    std::string error;
+    EXPECT_TRUE(ParseTopics(BuiltinTopicsJson(), builtin, error));
+    EXPECT_TRUE(ParseCatalogue(BuiltinCatalogueJson(), catalogue, error));
+    EXPECT_TRUE(builtin.Find("chat") && builtin.Find("translation") && builtin.Find("search"));
+    for (const ModelTopic& t : builtin.topics) {
+        EXPECT_TRUE(!t.models.empty());
+        for (const TopicModelRef& ref : t.models) {
+            const LocalModelInfo* m = catalogue.Find(ref.modelId);
+            EXPECT_TRUE(m != nullptr);
+            EXPECT_EQ(m->capability, t.capability);
+        }
+    }
+
+    // The resolution, on a hand-made inventory.
+    ModelTopic topic;
+    topic.id = "code";
+    topic.capability = "textllm";
+    topic.models = {{"big", false}, {"mid", true}, {"small", false}};
+    auto model = [](const std::string& id, ModelFit fit, bool installed) {
+        LocalModelInfo m;
+        m.id = id; m.capability = "textllm"; m.fit = fit; m.installed = installed;
+        return m;
+    };
+    std::vector<LocalModelInfo> inv = {model("big", ModelFit::TooLarge, false), model("mid", ModelFit::RunsOnCpu, false),
+                                       model("small", ModelFit::Recommended, true), model("other", ModelFit::Recommended, true)};
+    EXPECT_EQ(topic.ServerDefault(), std::string("mid"));
+    // Following the server with downloads on: its default, to be installed.
+    EXPECT_EQ(ResolveTopicModel(topic, nullptr, inv, "fb"), std::string("mid"));
+    // Following without downloads: an installed model of the topic first.
+    TopicChoice noInstall;
+    noInstall.autoInstall = false;
+    EXPECT_EQ(ResolveTopicModel(topic, &noInstall, inv, "fb"), std::string("small"));
+    // The user's own pick, even outside the topic's list.
+    TopicChoice pick;
+    pick.modelId = "other";
+    EXPECT_EQ(ResolveTopicModel(topic, &pick, inv, "fb"), std::string("other"));
+    // A pick that does not fit, or does not exist, falls back.
+    pick.modelId = "big";
+    EXPECT_EQ(ResolveTopicModel(topic, &pick, inv, "fb"), std::string("small"));
+    // Nothing usable: the recommendation.
+    ModelTopic empty;
+    empty.id = "x"; empty.capability = "textllm";
+    EXPECT_EQ(ResolveTopicModel(empty, nullptr, inv, "fb"), std::string("fb"));
+
+    // Preferences round-trip.
+    TopicPreferences prefs;
+    prefs.newModels = NewModelPolicy::Automatic;
+    prefs.choices["code"].modelId = "small";
+    prefs.choices["chat"].autoInstall = false;
+    prefs.seenModels = {"a", "b"};
+    TopicPreferences back;
+    bool hadSeen = false;
+    EXPECT_TRUE(ParseTopicPreferences(SerializeTopicPreferences(prefs), back, hadSeen));
+    EXPECT_TRUE(hadSeen);
+    EXPECT_TRUE(back.newModels == NewModelPolicy::Automatic);
+    EXPECT_EQ(back.choices["code"].modelId, std::string("small"));
+    EXPECT_TRUE(back.choices["code"].autoInstall);
+    EXPECT_TRUE(!back.choices["chat"].autoInstall);
+    EXPECT_EQ(back.seenModels.size(), size_t(2));
+
+    // Through the runtime: a topics document of the test catalogue.
+    Fixture fx("topics");
+    LocalRuntimeOptions o = fx.Options(/*overrideEngine=*/true);
+    o.topicsJson = R"({"formatVersion": 1, "published": "2026-11-06", "topics": [
+        {"id": "chat", "name": "Chat", "capability": "textllm", "models": [{"id": "huge"}, {"id": "tiny", "default": true}]},
+        {"id": "search", "name": "Search", "capability": "embeddings", "models": ["tiny-embed"]},
+        {"id": "big", "name": "Big", "capability": "textllm", "models": ["huge"]}]})";
+    {
+        LocalRuntime rt(o);
+        EXPECT_EQ(rt.ListTopics().size(), size_t(3));
+        ModelTopic chat;
+        EXPECT_TRUE(rt.FindTopic("chat", chat));
+        EXPECT_EQ(chat.ServerDefault(), std::string("tiny"));
+        EXPECT_EQ(rt.ModelForTopic("chat"), std::string("tiny"));
+        EXPECT_EQ(rt.ModelForTopic("search"), std::string("tiny-embed"));
+        // A topic whose only model is too large: the recommendation.
+        EXPECT_EQ(rt.ModelForTopic("big"), rt.Recommend("textllm").id);
+        EXPECT_EQ(rt.ModelForTopic("nope"), std::string());
+        // The first start counts the whole catalogue as seen.
+        EXPECT_TRUE(rt.NewModels().empty());
+
+        // The user follows chat but not search: one install, for chat.
+        TopicPreferences p = rt.GetTopicPreferences();
+        p.choices["search"].autoInstall = false;
+        rt.SetTopicPreferences(p);
+        LocalRuntimeSettings s = rt.GetSettings();
+        s.policy = DownloadPolicy::Never;
+        rt.SetSettings(s);
+        EXPECT_TRUE(rt.ApplyTopicUpdates(nullptr).empty());     // Never: nothing
+        s.policy = DownloadPolicy::Ask;
+        rt.SetSettings(s);
+        const std::vector<std::string> jobs = rt.ApplyTopicUpdates(nullptr);
+        EXPECT_EQ(jobs.size(), size_t(1));
+        rt.WaitForJobs();
+        LocalModelInfo tiny;
+        EXPECT_TRUE(rt.FindModel("tiny", tiny));
+        EXPECT_TRUE(tiny.installed);
+        LocalModelInfo embed;
+        EXPECT_TRUE(rt.FindModel("tiny-embed", embed));
+        EXPECT_TRUE(!embed.installed);
+        EXPECT_TRUE(rt.ApplyTopicUpdates(nullptr).empty());     // nothing left to do
+
+        // A fixed pick for chat.
+        rt.SetTopicModel("chat", "crash-me");
+        EXPECT_EQ(rt.ModelForTopic("chat"), std::string("crash-me"));
+        rt.SetTopicModel("chat", "");
+        EXPECT_EQ(rt.ModelForTopic("chat"), std::string("tiny"));
+    }
+    // A model the catalogue gains later is new until it is marked seen.
+    {
+        TopicPreferences p;
+        bool had = false;
+        std::string text;
+        EXPECT_TRUE(ReadWholeFile(PathFromUtf8(o.rootFolder) / "topic-preferences.json", text));
+        EXPECT_TRUE(ParseTopicPreferences(text, p, had));
+        EXPECT_TRUE(had);
+        p.seenModels.erase(std::remove(p.seenModels.begin(), p.seenModels.end(), "tiny-embed"), p.seenModels.end());
+        std::string werr;
+        EXPECT_TRUE(WriteFileAtomic(PathFromUtf8(o.rootFolder) / "topic-preferences.json", SerializeTopicPreferences(p), werr));
+        LocalRuntime rt(o);
+        std::vector<LocalModelInfo> fresh = rt.NewModels();
+        EXPECT_EQ(fresh.size(), size_t(1));
+        EXPECT_EQ(fresh[0].id, std::string("tiny-embed"));
+        // The settings survived the restart.
+        EXPECT_TRUE(!rt.GetTopicPreferences().choices["search"].autoInstall);
+        rt.MarkModelsSeen({"tiny-embed"});
+        EXPECT_TRUE(rt.NewModels().empty());
+        // Ignore hides them altogether.
+        TopicPreferences q = rt.GetTopicPreferences();
+        q.seenModels.clear();
+        q.newModels = NewModelPolicy::Ignore;
+        rt.SetTopicPreferences(q);
+        EXPECT_TRUE(rt.NewModels().empty());
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -759,6 +905,7 @@ int main(int argc, char** argv) {
     TestFitAndBundles();
     TestRegistration();
     TestInstall();
+    TestTopics();
     TestEnsureAndSupervision();
     TestLocalProvider();
     TestLiveEngineInstall();

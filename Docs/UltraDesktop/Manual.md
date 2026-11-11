@@ -61,18 +61,19 @@ edge for one run, start it with `UltraDesktop --edge top` or `--edge bottom`.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 1  │  virtual desktops
-│ ⋮⋮ │                                                              │ 2  │
-│╲   │                                                              │ 3  │
-│ ╲  │                                                              │ 📌 │  Sticker board
-│ ▣  │                                                              │ 🗒 │  notes
-│ ▣  │                     wallpaper                                │ 📋 │  clipboard history
-│ ▣  │              (your windows float above it)                   │ 📷 │  screenshot
-│ ▣  │                                                              │╱   │
-│  ╲ │                                                              │ ✉14│  info panel
-│   ╲│                                                              │ ⇧⇩ │
-│ ▤  │                                                              │ ⌨ ●│
-│ 📁 │                                                              │ 🔋 │
+│ ⚙  │                                                              │ 🕒 │  clock and date
+│ ⋮⋮ │                                                              │30Oct│
+│╲   │                                                              │ 1  │  virtual desktops
+│ ╲  │                                                              │ 2  │
+│ ▣  │                                                              │ 3  │
+│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
+│ ▣  │              (your windows float above it)                   │ 🗒 │  notes
+│ ▣  │                                                              │ 📋 │  clipboard history
+│  ╲ │                                                              │ 📷 │  screenshot
+│   ╲│                                                              │╱   │
+│ ▤  │                                                              │ ✉14│  info panel
+│ 📁 │                                                              │ ⇧⇩ │
+│ 🎨 │                                                              │ 🔊 │
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -84,10 +85,11 @@ groups:
    **Applications** (⋮⋮) opens the list of installed programs.
 2. **Your open windows** on the current desktop, one button each.
 3. **Pinned**: the **RAM disc** (on Linux, `/dev/shm`; on Windows only if you
-   set a folder) and **UltraFiler**.
+   set a folder), **UltraFiler**, and the programs you pin yourself (section
+   4.1).
 
-**The right bar** has the virtual desktops and the tools at the top and the
-info panel at the bottom.
+**The right bar** has the clock at the top, then the virtual desktops and
+the tools, and the info panel at the bottom.
 
 Maximised windows stop beside the bars instead of covering them.
 
@@ -102,10 +104,17 @@ it is showing.
   tile; type in **Find an application…** to narrow the list, then click the
   tile. The window closes once the program starts; if it cannot start, the
   window stays open and says why.
-- When UltraDesktop runs instead of Explorer, a tap of the **Win key** on its
-  own opens the same window, where the Start menu would open.
+- A tap of the **Super key** (the Win key) on its own opens the same window
+  - on Linux, and on Windows when UltraDesktop runs instead of Explorer,
+  where the Start menu would open.
 - **UltraFiler** and the **RAM disc** are one click away at the foot of the
   taskbar.
+- **Pin a program** there too: right-click its window's taskbar button, or
+  its tile in Applications, and choose **Pin to taskbar**. It joins the
+  pinned group with its own icon. Right-click the pinned button for **Open**
+  and **Unpin from taskbar**. Pins stay through restarts, and a pinned
+  program that is uninstalled comes back to the bar when it is installed
+  again.
 
 On Windows the list holds the Start menu's programs, named as the Start menu
 names them, and the Microsoft Store apps (Calculator, Photos, Settings …).
@@ -121,14 +130,14 @@ highlighted.
 - **Click** a button to bring its window to the front; click the active
   window's button to minimise it.
 - **Right-click** for **Activate**, **Minimize**, **Move to** (a desktop, or
-  **Every desktop**) and **Close window**.
+  **Every desktop**), **Pin to taskbar** (section 4.1) and **Close window**.
 - **Drag** a button to put it somewhere else in the row. A new window joins
   its program's other windows.
 - When the row is full, scroll it with the mouse wheel.
 
 ### 4.3 Virtual desktops
 
-The numbered buttons at the top of the right bar are your virtual desktops.
+The numbered buttons under the clock on the right bar are your virtual desktops.
 Click one to switch to it. The taskbar then shows that desktop's windows.
 
 - To change how many there are, use UOS-Settings → Desktop → **Virtual
@@ -176,14 +185,25 @@ On Windows, while Explorer runs, Win+V belongs to Windows' own clipboard
 history. Use the clipboard button instead. When UltraDesktop runs instead of
 Explorer, Win+V opens UltraDesktop's panel.
 
-### 4.5 Screenshots
+### 4.5 Screenshots and screen recordings
 
-Click the screenshot button (📷). The whole screen is saved to
-`Pictures/Screenshots/Screenshot <date> <time>.png` in your home folder. The
+Click the screenshot button (📷), or press `Super+Shift+S` in any window:
+UltraSnip freezes the screen and you drag out the area you want. The picture
+goes to the clipboard and to `Pictures/Screenshots/Screenshot <date>
+<time>.png` in your home folder, and UltraSnip's window shows it with *Save
+as*, *Copy*, *Open folder* and *Edit in UltraPaint*. See the
+[UltraSnip manual](../UltraSnip/README.md) for the window and whole-screen
+shapes, the delay, and the video recording with its Pause and Stop bar.
+
+Right-click the button for the other shapes - *Snip a window*, *Snip the
+whole screen* - and for *Record an area*, *Record a window* and *Record the
+whole screen* (a video to `Videos/Screen Recordings`). *Screenshot now, to
+Pictures* saves the whole screen at once without opening anything: the
 button shows a green dot for three seconds, and its tooltip names the file.
+That is also what the click does on a desktop without UltraSnip beside it.
 
-From a prompt, `UltraDesktop --screenshot` does the same, and
-`UltraDesktop --screenshot <file>` saves to the file you name.
+From a prompt, `UltraDesktop --screenshot` takes the whole screen the same
+way, and `UltraDesktop --screenshot <file>` saves to the file you name.
 
 ### 4.6 Notes on the wallpaper
 
@@ -209,12 +229,46 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
   category later, double-click its title.
 - **Change the look:** the picker in the board's bar offers **Sticky notes**,
   **Poster**, **Schematic** and **Dark**.
+- **Open, copy or delete a file:** right-click its card. **Copy** puts the
+  file on the clipboard, to paste in the file manager; **Delete** moves it to
+  the trash after asking; **Remove from the board** only takes the card
+  away. **Move to** sends it to another category, as dragging does.
+- **Choose how cards look:** right-click anywhere on the board, then
+  **Display**: **Text only**, **Thumbnail and text** (the picture with the
+  name under it, the usual one) or **Thumbnail and text in a row**.
+- **See a file larger:** rest the pointer on its card for two seconds and a
+  bigger preview opens beside it. Its size is **Display ▸ Mouse hover
+  preview**: **Small**, **Medium** or **Large**. Both choices are also on
+  the **Desktop** page of the settings.
 - **Move or resize the board:** drag it by its title; resize it by the grip
   (◢) in its bottom-right corner.
 
-The board, its look, its place and its size are kept.
+The board, its look, how cards are shown and the preview size are kept.
 
-### 4.8 The info panel
+### 4.8 The clock
+
+The clock at the top of the right bar shows the time on a small analog face
+and the date under it; rest the pointer on it for the whole date and time.
+Right-click it to show it as an analog or a digital clock, with or without
+the date.
+Click it for the clock panel: the time large, on a face and in figures,
+today written out, and this month's calendar with today marked. You can page
+through other months; nothing is chosen there. Escape, or a click anywhere
+else, closes it.
+
+### 4.9 The loudspeaker
+
+Click the loudspeaker icon on the info panel for the volume panel: the
+output's name, a slider for its volume and a **Mute** switch. The icon's
+tooltip names the volume ("Loudspeaker: 63%"), says when something is
+playing, and the icon shows a red dot while muted. A change made elsewhere -
+the keyboard's volume keys, another program - shows within ten seconds.
+
+On Linux this talks to PulseAudio or PipeWire; on Windows to the default
+output. When no sound server answers, the panel says so and the slider is
+greyed out.
+
+### 4.10 The info panel
 
 The icons at the foot of the right bar show your devices and connections:
 Email, Upload, Download, Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard,
@@ -236,17 +290,22 @@ A click opens the program for that icon:
 | Email | UltraMail |
 | Upload, Download, Internet/LAN, VPN, Wi-Fi | UltraNetMonitor |
 | USB, Keyboard, Webcam | DeviceExplorer |
-| Bluetooth, Microphone, Loudspeaker, Battery, Task Manager | the Task Manager |
+| Loudspeaker | the volume panel (section 4.9) |
+| Bluetooth, Microphone, Battery, Task Manager | the Task Manager |
 
 When there are many virtual desktops on a small screen, the panel scrolls: a
 chevron marks where more icons are, and a click on it or the mouse wheel
 scrolls.
 
-When UltraDesktop runs instead of Explorer on Windows, the programs' **tray
-icons** (OneDrive, a VPN client, a chat program) appear here too, above the
-services. A click opens the program, and a right-click opens its menu.
+On Linux, and on Windows when UltraDesktop runs instead of Explorer, the
+programs' **tray icons** (a chat program, a cloud drive, a VPN client)
+appear here too, above the services. A click opens the program, and a
+right-click opens its menu. On Linux UltraDesktop is then the tray every
+such program registers with, so another desktop's tray must not be running
+at the same time; the icons' menus are drawn by UltraDesktop, submenus and
+check marks included.
 
-### 4.9 Notifications
+### 4.11 Notifications
 
 On ULTRA OS, notifications from every program appear in the top-right
 corner, beside the right bar. At most four show at a time, newest on top.
@@ -263,13 +322,62 @@ dunst …), that server shows them instead. On Windows beside Explorer, Windows
 shows them as before. Instead of Explorer, UltraDesktop shows the tray icons'
 balloons.
 
-### 4.10 The Task Manager
+### 4.12 The Task Manager
 
 The Task Manager icon at the foot of the info panel opens it.
 
 - **Windows** lists the open windows, each with **Activate** and **Close**.
 - **Hardware** shows the machine: CPU load and temperature, memory, storage
   and the network interfaces.
+
+### 4.13 The desktop's menus
+
+Right-click the **wallpaper** for the desktop's menu:
+
+- **Change wallpaper...** picks a picture; **Default wallpaper** goes back
+  to ULTRA OS's own picture.
+- **Theme**: **Dark** (light icons on dark grey bars) or **Light** (dark
+  icons on light grey bars). The panels the bars open - the clock, the
+  loudspeaker, Wi-Fi, Bluetooth, the devices, the clipboard and the window
+  pictures - follow it.
+- **Taskbar position**: on the left, at the top or at the bottom.
+- **Drop files**: where files you drag onto the wallpaper go.
+  - **Drop on sticker board** (the default): they join the Sticker board's
+    **Unsorted** category, which is added when the board has none, and the
+    board opens to show them.
+  - **Drop on desktop**: they are moved into your Desktop folder (copied,
+    when they come from another drive) and appear where you dropped them as
+    icons on the wallpaper. The wallpaper shows the Desktop folder's files as
+    icons while this is chosen: click one to select it, **Ctrl+click** to add
+    or remove one, **Shift+click** to add one, or draw a box on the
+    wallpaper around several (with Ctrl held, they are added). Double-click
+    to open, drag to move the selected icons together (they stay there), or
+    drag them onto another program's window - a file manager, a mail, an
+    editor - to hand the files to it. Right-click for **Open**, **Show in
+    the file manager**, **Delete**, **Select all** and **Arrange icons**,
+    for all the selected icons. Once you have clicked an icon or the
+    wallpaper, the keyboard works on them too: **Delete** deletes the
+    selected icons (after asking), **Ctrl+A** selects them all, **Enter**
+    opens them, **F2** renames the selected icon (its name becomes a text
+    field with the name before the extension chosen; **Enter** or a click
+    elsewhere renames the file, **Escape** keeps the old name - also
+    **Rename** on its menu), and **Escape** clears the selection (or, during
+    a drag or while drawing a box, puts things back as they were). A file saved to the Desktop
+    folder by another program appears within two seconds.
+- **Arrange icons** (with **Drop on desktop**) puts the icons back on the
+  grid, in name order.
+- **Notes on the wallpaper** shows or hides the notes.
+- **Display settings...** opens the system's own display settings - the
+  resolution, how the monitors are arranged, which one is the main one.
+  On Linux it is your desktop's display tool (GNOME's or Plasma's settings,
+  xfce4-display-settings, wdisplays, arandr, ...); where none is installed,
+  the entry is left out.
+- **Desktop settings...** opens UOS-Settings.
+
+Right-click the **taskbar or the right bar** where a button has no menu of
+its own - between the buttons, on the Applications button, a virtual
+desktop or a service icon - to move the taskbar to another edge or change
+the theme. The ⚙ button's menu has **Taskbar position** and **Theme** too.
 
 ## 5. Settings
 
@@ -280,6 +388,8 @@ settings**.
 | Setting | What it does |
 |---|---|
 | **Taskbar** | **Left**, **Top** or **Bottom** edge. |
+| **Theme** | **Dark** or **Light** bars. |
+| **Dropped files** | **Sticker board (Unsorted)** or **Desktop (as icons)**: where files dragged onto the wallpaper go (section 4.13). |
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
@@ -290,6 +400,12 @@ Changes are saved at once: a choice when you make it, a text field when you
 leave it or press Return. A running UltraDesktop takes them over within a
 second; there is no need to restart it. The line under the settings names the
 file they were saved to, or says why they were not saved.
+
+The ⚙ button's **right-click menu** also has **Lock screen** (or press
+Super+L), and - on Linux, and on Windows instead of Explorer - **Sign out**,
+**Restart** and **Shut down**, each of which asks first. On Linux these go
+through the system's logind, the same way the other desktops' menus do; if
+it is not there, the menu leaves them out.
 
 ## 6. UltraDesktop as your Windows desktop
 
@@ -410,12 +526,25 @@ at sign-in.
 | Where | Action | Does |
 |---|---|---|
 | Any window | Super+V (Win+V) | opens the clipboard history (on Windows only instead of Explorer) |
-| Any window, Windows instead of Explorer | Win key alone | opens Applications |
+| Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
+| Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
+| Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
+| Clock | click / right-click | the clock panel / analog or digital, with or without the date |
+| Wallpaper | right-click / drop files | wallpaper, theme, taskbar position, drop files, notes, display settings, desktop settings / onto the Sticker board's Unsorted category, or onto the desktop |
+| Desktop icon | click / Ctrl+click / Shift+click / double-click / drag / right-click | select / add or remove / add / open / move, or onto another program's window to give it the files / Open, Show in the file manager, Delete, Select all, Arrange icons |
+| Wallpaper, with desktop icons | drag / Ctrl+drag | select the icons in the box / add them |
+| Desktop icons (after a click on them or the wallpaper) | Delete / Ctrl+A / Enter / F2 / Escape | delete the selected (asked first) / select all / open the selected / rename the selected icon / clear the selection, or cancel a drag or a box |
+| The bars, between the buttons | right-click | taskbar position, theme |
+| Loudspeaker icon | click | the volume panel |
+| Pinned program | click / right-click | start it / open, unpin |
+| Applications tile | click / right-click | start it / pin or unpin |
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
+| Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
+| Sticker board | right-click a card / rest the pointer on it for two seconds / Delete | Open, Copy, Delete, Move to, Display / a larger preview / the selected card's file to the trash, or the note deleted (asked first) |
 | A notification | click / × | its default action / dismiss |
 
 ## 8. Troubleshooting
@@ -448,10 +577,34 @@ Explorer runs. Use the clipboard button on the right bar.
 **The Win key opens the Start menu.** That is expected beside Explorer. Only
 instead of Explorer does the Win key open Applications.
 
+**The loudspeaker panel says there is no sound server.** On Linux UltraDesktop
+talks to PulseAudio, or to PipeWire's PulseAudio service
+(`pipewire-pulse`); install or start one. The icon still shows when
+something is playing, which comes from the sound cards directly.
+
+**Sign out, Restart and Shut down are missing from the ⚙ menu.** On Linux
+they need logind (systemd) on the system bus; on Windows they appear only
+when UltraDesktop runs instead of Explorer - beside Explorer the Start menu
+has them.
+
+**Tray icons are missing on Linux, or appear twice.** Only one tray can run
+on a session. UltraDesktop hosts the icons when no other desktop's tray
+(KDE's, GNOME's AppIndicator extension …) holds the name
+`org.kde.StatusNotifierWatcher` when it starts; otherwise that one keeps
+them.
+
 **My other monitor shows Explorer's desktop, or the wallpaper is missing
 there.** Beside Explorer, the other monitors show Explorer's desktop. Instead
-of Explorer, UltraDesktop covers them with its wallpaper; a monitor whose
-wallpaper was closed is covered again within a few seconds.
+of Explorer, and on Linux, UltraDesktop covers them with its wallpaper; a
+monitor whose wallpaper was closed is covered again within a few seconds.
+
+**The bars are on the wrong monitor.** The bars sit on the primary monitor:
+on Linux `xrandr --output <name> --primary` chooses it (your desktop's
+display settings do the same), and UltraDesktop moves there within a few
+seconds. With the primary on the left of another monitor,
+maximised windows may cover the right bar, which lies between the two
+monitors: put the taskbar on the top or bottom edge, or make the right-hand
+monitor the primary.
 
 **I can't find the tray icons.** Beside Explorer they are in Explorer's
 taskbar; move the pointer to the bottom edge. Instead of Explorer they are on

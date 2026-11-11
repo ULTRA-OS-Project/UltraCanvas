@@ -16,6 +16,7 @@
 // Last Modified: 2026-10-12
 // Author: UltraCanvas Framework / ULTRA OS
 
+#include "host/UltraWebCookies.h"
 #include "host/UltraWebGuest.h"
 #include "host/UltraWebLoader.h"
 #include "host/UltraWebPages.h"
@@ -112,7 +113,8 @@ int RunPage(const std::string& typed) {
         { std::lock_guard<std::mutex> guard(lock); queue.push_back(std::move(task)); }
         wake.notify_one();
     };
-    HTML::PageLoader loader(UltraWeb::MakePageServices(post));
+    // Cookies for this load only: a login wall's redirects keep theirs.
+    HTML::PageLoader loader(UltraWeb::MakePageServices(post, std::make_shared<UltraNetCookieJar>()));
     bool done = false;
     HTML::LoadedPage result;
     loader.Load(UltraWeb::ToPageUrl(UltraWeb::UltraWebLoader::Normalise(typed)), [&](HTML::LoadedPage page) {

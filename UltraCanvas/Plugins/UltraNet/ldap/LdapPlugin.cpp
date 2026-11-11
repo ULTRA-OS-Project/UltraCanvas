@@ -23,6 +23,7 @@
 #include <UltraCanvasUtils.h>
 
 #include <curl/curl.h>
+#include <UltraNet/UltraNetCurlProxy.h>   // after UltraNetPlugins.h: it brings <windows.h>
 
 #include <algorithm>
 #include <cctype>
@@ -44,7 +45,7 @@ std::size_t WriteString(char* p, std::size_t s, std::size_t n, void* ud) {
 
 UltraNetResultCode MapCurlError(CURLcode rc) {
     switch (rc) {
-        case CURLE_OK:                      return UltraNetResultCode::Success;
+        case CURLE_OK:                      return UltraNetResultCode::Ok;
         case CURLE_URL_MALFORMAT:           return UltraNetResultCode::InvalidUrl;
         case CURLE_COULDNT_RESOLVE_HOST:    return UltraNetResultCode::HostNotFound;
         case CURLE_COULDNT_CONNECT:         return UltraNetResultCode::ConnectionRefused;
@@ -160,6 +161,7 @@ public:
 
             std::string body;
             curl_easy_setopt(h.get(), CURLOPT_URL, full.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), full, /*tunnel=*/true);   // the proxy setting
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
             curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);

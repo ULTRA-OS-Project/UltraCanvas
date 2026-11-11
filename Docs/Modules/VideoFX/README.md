@@ -435,9 +435,11 @@ A **video clip** keeps its people the same way when the export's `fitMode`
 is `Fill` (a portrait phone clip filling a 16:9 frame loses its sides, a
 landscape clip in a portrait frame its top and bottom): `keepInView` on a
 file segment places the crop window around the regions instead of the
-picture's centre, and `keepFacesInView` finds them itself in one frame from
-the middle of the clip's used range (found once per clip, whatever the
-preview asks later). A clip with no face found keeps the centred crop. The
+picture's centre, and `keepFacesInView` finds them itself in three frames
+of the clip's used range - a quarter, half and three quarters of the way
+through, every face of the three kept, since people move across a picture
+and one frame can miss them (found once per clip, whatever the preview
+asks later). A clip with no face in any of them keeps the centred crop. The
 regions are fractions of the picture as the file shows it, before the
 segment's effects. Under `Letterbox` and `Stretch` nothing is cropped and
 both are ignored.
@@ -817,6 +819,55 @@ std::string font = VideoFX_GetDefaultFontPath();               // what will be u
 Text overlays need an FFmpeg built with libfreetype (the usual Linux, macOS
 and MSYS2 packages are); ask `VideoFX_IsTextOverlayAvailable()`.
 
+### Text drawn by the host: fonts, styles, spacing
+
+FFmpeg's text filter draws one font file, plain, left-aligned. A text
+overlay can carry more - what a word processor sets - and have the host draw
+it:
+
+| Field | Meaning |
+|---|---|
+| `fontFamily` | The font by name. A text overlay that names one is drawn by the host's text renderer, when one is installed |
+| `richText`, `richTextHeight` | The words with their own fonts, sizes and styles - bold, italic, underline, strikethrough on any word - as HTML; `text` stays their plain text. A word's own size was set for a frame `richTextHeight` pixels high and scales with the frame |
+| `textAlign` | The lines: 0 left, 1 centred, 2 right |
+| `lineSpacing` | % of a line's largest letters from one baseline to the next (0: the font's own) |
+| `letterSpacing` | Added between letters, a share of the frame's height, like `fontSize` |
+
+```cpp
+// The host draws: true and an RGBA picture of the text as it lies over the
+// frame (its shadow and band too), or false to leave it to the text filter
+VideoFX_SetTextRenderer([](const VideoFXOverlay& o, int frameHeight, VideoFXFrame& picture) {
+    if (o.fontFamily.empty()) return false;
+    picture = MyTextEngine::Draw(o, frameHeight);
+    return true;
+});
+```
+
+What the renderer draws is laid over the frame as a picture, placed, timed,
+faded and dimmed as the text overlay was, sized as a share of the frame's
+height. `VideoFXExportJob::Start`, `VideoFX_Export`, `VideoFX_RenderProject`
+and `VideoFXPreview::Open` ask it on the **calling thread** - the export's own
+thread never does - so a renderer on a UI toolkit works from the UI thread;
+`VideoFX_DrawTextOverlays(segments, frameHeight)` does the same for a host
+that wants to see the result. Without a renderer such an overlay is drawn
+plain by the text filter, in `fontPath` or the default font. The fields are
+saved in project files.
+
+**UltraCanvas's renderer.** `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
+(the `VideoFXUltraCanvasText` library, built in the UltraCanvas tree) draws
+such an overlay with the `UltraCanvasRichTextEdit` that types it on a frame,
+its shadow and band as the text filter drew them:
+`VideoFX_UseUltraCanvasText()` installs it. UltraVideo does, and so does the
+`videofx` tool when built with UltraCanvas, so a project renders on the
+command line exactly as UltraVideo shows it (`videofx --version` says which).
+In a program without an `UltraCanvasApplication` - the tool - it first does
+what an application's start does for text
+(`RegisterBundledFontsWithoutApplication`): the bundled fonts and the system's,
+registered by the same per-platform code the applications run
+(`RegisterPlatformBundledFonts` - CoreText on macOS, fontconfig with the
+Windows font folders on Windows). VideoFX itself stays free of
+UltraCanvas: a VideoFX built on its own draws these titles plain.
+
 ---
 
 ## Export settings
@@ -909,6 +960,45 @@ reach them too. Proxies can be made on the hardware as well
 (`VideoFXProxySettings::acceleration`).
 
 ---
+
+## Recording a live source
+
+An export reads files; a recording takes frames as they happen. A screen
+recorder, a window capture or a camera hands `VideoFXFrameRecorder` one
+frame at a time with the moment it was taken, and the recorder encodes it
+into the file at once - the file grows while the recording runs and is
+complete after `Close()`. No sound: the microphone and loudspeaker capture
+stay the application's for now.
+
+```cpp
+VideoFXFrameRecorder recorder;
+VideoFXRecorderSettings settings;
+settings.frameRate = 20.0;                 // the file's rate
+if (recorder.Open("recording.mp4", settings) != VideoFXResult::Ok)
+    std::cerr << VideoFX_GetLastError() << "\n";
+while (recording) {
+    // the screen's pixels, four bytes each, B G R x - as every platform's
+    // screen capture gives them (UltraCanvasDesktopShell::CaptureScreenArea)
+    recorder.PushFrame(pixels, width, height, stride, SecondsSinceStart(), VideoFXPixelLayout::BGRA);
+}
+recorder.Close();
+```
+
+The frame's time places it: it lands on the nearest tick of the file's
+rate, a frame on a tick already written is dropped, and a gap (a slow
+capture) shows the last frame longer - so the recording keeps real time
+however many frames were caught. The size is the settings' or the first
+frame's, made even (H.264's 4:2:0 needs it), and every frame is scaled to
+it, so a source that changes size still records. `VideoFXRecorderSettings`
+takes the export's `container`, `videoCodec`, `quality`, `videoBitRate`,
+`keyframeInterval` and `acceleration`; its `encoderPreset` defaults to
+`"veryfast"` and the x264 / x265 encoders run with `zerolatency`, so a
+frame leaves the encoder as it comes in rather than after a look-ahead. An
+MP4 or MOV is written fragmented (`frag_keyframe`), so a recording cut
+short - the program killed, the machine off - still plays up to its last
+keyframe. `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight` and
+`GetEncoderName` describe the recording so far. UltraSnip (`Apps/UltraSnip`)
+records the screen with it.
 
 ## One-line helpers
 
@@ -1025,7 +1115,12 @@ videofx slideshow trip.mp4 *.jpg --music song.mp3 --beat-sync --save-project tri
 videofx project trip.vfxproj            # summary; exit status 1 if media are missing
 videofx render trip.vfxproj             # to the output it was saved with
 videofx render trip.vfxproj draft.mp4   # somewhere else
+videofx render trip.ultravideo          # a program's file around the engine's project
 ```
+
+A program's own project file that carries the engine's project under
+`"project"` - UltraVideo's `.ultravideo`, around its bin and its lanes - is
+read for that project, its media paths relative to the same file.
 
 ---
 
@@ -1127,6 +1222,15 @@ version is part of the library's name (`libVideoFX.so.0.7`).
 on Android).
 The test suite is `Tests/VideoFXTest.cpp` (`VideoFXTest` under ctest); it
 generates its own clips, so it needs no media files.
+
+The Windows builds compile the module against **libc++** (MSYS2's CLANG64
+toolchain), Linux against libstdc++, and the two disagree on details a Linux
+build never shows - libc++ gives `std::filesystem::file_time_type` a 128-bit
+tick count, which `std::to_string` has no overload for. Before pushing a
+change to the module, run `scripts/check_libcxx_syntax.sh`: it type-checks
+the engine's sources, the tool and the test with `clang++ -stdlib=libc++
+-fsyntax-only` in a few seconds (`apt install clang libc++-dev
+libc++abi-dev` on Ubuntu) and prints only the errors.
 
 ---
 

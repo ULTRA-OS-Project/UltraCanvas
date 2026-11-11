@@ -2,11 +2,15 @@
 // Ticker board demonstration: a market ticker in a font, an LED dot-matrix
 // sign, live quotes on a dot grid, and a headline crawl - with the controls
 // that pause, speed up and re-face a board while it rolls.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  board, the boards as wide as the page, buttons sized to their
+//                  text, the status line under the controls
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasTickerBoard.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -51,7 +55,7 @@ namespace UltraCanvas {
 
         TickerItem SampleQuoteItem(const SampleQuote& q, double price, double change) {
             TickerItem item = MakeTickerQuote(q.symbol, price, change);
-            item.tooltip = std::string(q.name) + "\nLast " + item.value + "  " + item.change;
+            item.tooltip = TrF("{0}\nLast {1}  {2}", q.name, item.value, item.change);
             return item;
         }
 
@@ -61,69 +65,55 @@ namespace UltraCanvas {
             board->SetItems(items);
         }
 
-        std::shared_ptr<UltraCanvasLabel> Caption(const std::string& id, float y, const std::string& text) {
-            auto label = std::make_shared<UltraCanvasLabel>(id, 20, y, 1160, 24);
-            label->SetText(text);
-            label->SetFontSize(13);
-            label->SetFontWeight(FontWeight::Bold);
-            return label;
+        // A control button: as wide as its text, at least the width it had.
+        std::shared_ptr<UltraCanvasButton> ControlButton(const std::string& id, float minWidth,
+                                                         const std::string& text) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 32, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+            button->boxConstraints = limits;
+            return button;
         }
     }
 
 // ===== MAIN TICKER BOARD EXAMPLES CREATOR =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTickerBoardExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TickerBoardContainer",
-                                                               0, 0, 1200, 810);
-
-        // === TITLE ===
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("TbTitleLabel", 20, 10, 1160, 35);
-        titleLabel->SetText("Ticker Board Examples - Crawling Quotes, LED Signs and Headline Crawls");
-        titleLabel->SetFontSize(18);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        titleLabel->SetAlignment(TextAlignment::Center);
-        titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-        container->AddChild(titleLabel);
-
-        // === DESCRIPTION ===
-        auto descLabel = std::make_shared<UltraCanvasLabel>("TbDescLabel", 20, 55, 1160, 50);
-        descLabel->SetText(
-            "A strip of items - label, value, change - crawling across a band without end. The Text face sets it in a\n"
-            "font; the DotMatrix face lights it on a grid of 5x7 LED dots that the text steps across one column at a time.\n"
-            "Every board pauses while the pointer rests on it, shows an item's tooltip, and reports a click on an item."
+        auto container = DemoKit::CreatePage("TickerBoardContainer",
+            Tr("Ticker Board Examples - Crawling Quotes, LED Signs and Headline Crawls"),
+            Tr("A strip of items - label, value, change - crawling across a band without end. The Text face sets it in a "
+            "font; the DotMatrix face lights it on a grid of 5x7 LED dots that the text steps across one column at a time. "
+            "Every board pauses while the pointer rests on it, shows an item's tooltip, and reports a click on an item.")
         );
-        descLabel->SetFontSize(11);
-        descLabel->SetWrap(TextWrap::WrapWord);
-        container->AddChild(descLabel);
 
         // === STATUS LINE (what was clicked) ===
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("TbStatusLabel", 20, 735, 1160, 24);
-        statusLabel->SetText("Click an item on any board to see it here. Hover a quote for its company name.");
-        statusLabel->SetFontSize(12);
+        // Added under the controls below.
+        auto statusLabel = DemoKit::CreateText("TbStatusLabel",
+            Tr("Click an item on any board to see it here. Hover a quote for its company name."));
         statusLabel->SetTextColor(Color(70, 70, 90, 255));
-        auto reportClick = [status = statusLabel.get()](const char* boardName, const TickerItem& item) {
-            std::string text = std::string(boardName) + ": " + item.label;
+        auto reportClick = [status = statusLabel.get()](const std::string& boardName, const TickerItem& item) {
+            std::string text = boardName + ": " + item.label;
             if (!item.value.empty())  text += " " + item.value;
             if (!item.change.empty()) text += " " + item.change;
             status->SetText(text);
         };
 
         // ===== EXAMPLE 1: TEXT FACE - MARKET TICKER =====
-        container->AddChild(Caption("TbQuotesCaption", 115,
-            "Text face - market quotes with trend colours and arrows (hover pauses, click reports)"));
+        auto quotesCard = DemoKit::AddCard(container, "TbQuotesCaption",
+            Tr("Text face - market quotes with trend colours and arrows (hover pauses, click reports)"));
 
-        auto quotesBoard = CreateTickerBoard("TbQuotesBoard", 20, 142, 1160, 44, TickerBoardFace::Text);
+        auto quotesBoard = CreateTickerBoard("TbQuotesBoard", 0, 0, 1160, 44, TickerBoardFace::Text);
         FillQuotes(quotesBoard.get());
         quotesBoard->onItemClick = [board = quotesBoard.get(), reportClick](size_t index) {
-            reportClick("Quotes", board->GetItems()[index]);
+            reportClick(Tr("Quotes"), board->GetItems()[index]);
         };
-        container->AddChild(quotesBoard);
+        DemoKit::AddStretched(quotesCard, quotesBoard);
 
         // ===== EXAMPLE 2: DOT MATRIX FACE - AMBER LED SIGN =====
-        container->AddChild(Caption("TbSignCaption", 200,
-            "DotMatrix face - an amber LED sign: the message steps across a fixed grid of dots"));
+        auto signCard = DemoKit::AddCard(container, "TbSignCaption",
+            Tr("DotMatrix face - an amber LED sign: the message steps across a fixed grid of dots"));
 
-        auto signBoard = CreateTickerBoard("TbSignBoard", 20, 227, 1160, 64, TickerBoardFace::DotMatrix);
+        auto signBoard = CreateTickerBoard("TbSignBoard", 0, 0, 1160, 64, TickerBoardFace::DotMatrix);
         {
             TickerBoardStyle s = signBoard->GetStyle();
             s.backgroundColor = Color(12, 10, 8, 255);
@@ -135,21 +125,21 @@ namespace UltraCanvas {
             signBoard->SetStyle(s);
         }
         signBoard->SetItems({
-            TickerItem("WELCOME TO THE ULTRACANVAS DEMO"),
-            TickerItem("Next departure: Platform 4 at 12:45"),
-            TickerItem("Zürich 18°C - clear skies"),
-            TickerItem("Tickets from €9.90 / £8.50"),
+            TickerItem(Tr("WELCOME TO THE ULTRACANVAS DEMO")),
+            TickerItem(Tr("Next departure: Platform 4 at 12:45")),
+            TickerItem(Tr("Zürich 18°C - clear skies")),
+            TickerItem(Tr("Tickets from €9.90 / £8.50")),
         });
         signBoard->onItemClick = [board = signBoard.get(), reportClick](size_t index) {
-            reportClick("LED sign", board->GetItems()[index]);
+            reportClick(Tr("LED sign"), board->GetItems()[index]);
         };
-        container->AddChild(signBoard);
+        DemoKit::AddStretched(signCard, signBoard);
 
         // ===== EXAMPLE 3: DOT MATRIX QUOTES, UPDATED LIVE =====
-        container->AddChild(Caption("TbLiveCaption", 305,
-            "DotMatrix face - quotes on a green/red dot grid, re-priced every 1.5 s in place (UpdateItem keeps the position)"));
+        auto liveCard = DemoKit::AddCard(container, "TbLiveCaption",
+            Tr("DotMatrix face - quotes on a green/red dot grid, re-priced every 1.5 s in place (UpdateItem keeps the position)"));
 
-        auto liveBoard = CreateTickerBoard("TbLiveBoard", 20, 332, 1160, 56, TickerBoardFace::DotMatrix);
+        auto liveBoard = CreateTickerBoard("TbLiveBoard", 0, 0, 1160, 56, TickerBoardFace::DotMatrix);
         {
             TickerBoardStyle s = liveBoard->GetStyle();
             s.backgroundColor = Color(6, 8, 10, 255);
@@ -161,9 +151,9 @@ namespace UltraCanvas {
         }
         FillQuotes(liveBoard.get());
         liveBoard->onItemClick = [board = liveBoard.get(), reportClick](size_t index) {
-            reportClick("Live quotes", board->GetItems()[index]);
+            reportClick(Tr("Live quotes"), board->GetItems()[index]);
         };
-        container->AddChild(liveBoard);
+        DemoKit::AddStretched(liveCard, liveBoard);
 
         auto live = std::make_shared<LivePrices>();
         for (const SampleQuote& q : kSampleQuotes) {
@@ -192,10 +182,10 @@ namespace UltraCanvas {
         }
 
         // ===== EXAMPLE 4: TEXT FACE - HEADLINE CRAWL, RIGHTWARD, LIGHT =====
-        container->AddChild(Caption("TbNewsCaption", 402,
-            "Text face - a headline crawl: light band, larger font, rightward, no pause on hover"));
+        auto newsCard = DemoKit::AddCard(container, "TbNewsCaption",
+            Tr("Text face - a headline crawl: light band, larger font, rightward, no pause on hover"));
 
-        auto newsBoard = CreateTickerBoard("TbNewsBoard", 20, 429, 1160, 40, TickerBoardFace::Text);
+        auto newsBoard = CreateTickerBoard("TbNewsBoard", 0, 0, 1160, 40, TickerBoardFace::Text);
         {
             TickerBoardStyle s = newsBoard->GetStyle();
             s.direction = TickerDirection::Rightward;
@@ -211,64 +201,66 @@ namespace UltraCanvas {
             newsBoard->SetStyle(s);
         }
         newsBoard->SetItems({
-            TickerItem("BREAKING", "Shared core library ships on every platform"),
-            TickerItem("DEMO", "Diagrams section gains a ticker board"),
-            TickerItem("WEATHER", "Clear skies over the build farm, light CI winds"),
-            TickerItem("SPORT", "UltraFiler wins the 1 000 000-file sprint"),
+            TickerItem(Tr("BREAKING"), Tr("Shared core library ships on every platform")),
+            TickerItem(Tr("DEMO"), Tr("Diagrams section gains a ticker board")),
+            TickerItem(Tr("WEATHER"), Tr("Clear skies over the build farm, light CI winds")),
+            TickerItem(Tr("SPORT"), Tr("UltraFiler wins the 1 000 000-file sprint")),
         });
         newsBoard->onItemClick = [board = newsBoard.get(), reportClick](size_t index) {
-            reportClick("Headlines", board->GetItems()[index]);
+            reportClick(Tr("Headlines"), board->GetItems()[index]);
         };
-        container->AddChild(newsBoard);
+        DemoKit::AddStretched(newsCard, newsBoard);
 
         // ===== CONTROLS =====
-        container->AddChild(Caption("TbControlsCaption", 485,
-            "Controls - act on the market ticker at the top"));
+        auto controlsCard = DemoKit::AddCard(container, "TbControlsCaption",
+            Tr("Controls - act on the market ticker at the top"));
 
-        auto pauseButton = CreateButton("TbPauseButton", 20, 515, 130, 32, "Pause");
+        auto controlsRow = DemoKit::AddRow(controlsCard, "TbControlsRow", 10);
+
+        auto pauseButton = ControlButton("TbPauseButton", 130, Tr("Pause"));
         pauseButton->SetOnClick([board = quotesBoard.get(), button = pauseButton.get()]() {
-            if (board->IsRunning()) { board->Stop();  button->SetText("Resume"); }
-            else                    { board->Start(); button->SetText("Pause"); }
+            if (board->IsRunning()) { board->Stop();  button->SetText(Tr("Resume")); }
+            else                    { board->Start(); button->SetText(Tr("Pause")); }
         });
-        container->AddChild(pauseButton);
+        DemoKit::Add(controlsRow, pauseButton);
 
-        auto slowerButton = CreateButton("TbSlowerButton", 160, 515, 110, 32, "Slower");
+        auto slowerButton = ControlButton("TbSlowerButton", 110, Tr("Slower"));
         slowerButton->SetOnClick([board = quotesBoard.get()]() {
             board->SetSpeed(std::max(10.0f, board->GetStyle().pixelsPerSecond - 20.0f));
         });
-        container->AddChild(slowerButton);
+        DemoKit::Add(controlsRow, slowerButton);
 
-        auto fasterButton = CreateButton("TbFasterButton", 280, 515, 110, 32, "Faster");
+        auto fasterButton = ControlButton("TbFasterButton", 110, Tr("Faster"));
         fasterButton->SetOnClick([board = quotesBoard.get()]() {
             board->SetSpeed(std::min(400.0f, board->GetStyle().pixelsPerSecond + 20.0f));
         });
-        container->AddChild(fasterButton);
+        DemoKit::Add(controlsRow, fasterButton);
 
-        auto directionButton = CreateButton("TbDirectionButton", 400, 515, 150, 32, "Reverse direction");
+        auto directionButton = ControlButton("TbDirectionButton", 150, Tr("Reverse direction"));
         directionButton->SetOnClick([board = quotesBoard.get()]() {
             board->SetDirection(board->GetStyle().direction == TickerDirection::Leftward
                                 ? TickerDirection::Rightward : TickerDirection::Leftward);
         });
-        container->AddChild(directionButton);
+        DemoKit::Add(controlsRow, directionButton);
 
-        auto faceButton = CreateButton("TbFaceButton", 560, 515, 170, 32, "Switch to DotMatrix");
+        auto faceButton = ControlButton("TbFaceButton", 170, Tr("Switch to DotMatrix"));
         faceButton->SetOnClick([board = quotesBoard.get(), button = faceButton.get()]() {
             const bool toDots = board->GetStyle().face == TickerBoardFace::Text;
             board->SetFace(toDots ? TickerBoardFace::DotMatrix : TickerBoardFace::Text);
-            button->SetText(toDots ? "Switch to Text" : "Switch to DotMatrix");
+            button->SetText(toDots ? Tr("Switch to Text") : Tr("Switch to DotMatrix"));
         });
-        container->AddChild(faceButton);
+        DemoKit::Add(controlsRow, faceButton);
 
-        auto arrowsButton = CreateButton("TbArrowsButton", 740, 515, 130, 32, "Hide arrows");
+        auto arrowsButton = ControlButton("TbArrowsButton", 130, Tr("Hide arrows"));
         arrowsButton->SetOnClick([board = quotesBoard.get(), button = arrowsButton.get()]() {
             TickerBoardStyle s = board->GetStyle();
             s.showArrows = !s.showArrows;
             board->SetStyle(s);
-            button->SetText(s.showArrows ? "Hide arrows" : "Show arrows");
+            button->SetText(s.showArrows ? Tr("Hide arrows") : Tr("Show arrows"));
         });
-        container->AddChild(arrowsButton);
+        DemoKit::Add(controlsRow, arrowsButton);
 
-        auto resetButton = CreateButton("TbResetButton", 880, 515, 150, 32, "Reset live prices");
+        auto resetButton = ControlButton("TbResetButton", 150, Tr("Reset live prices"));
         resetButton->SetOnClick([live, board = liveBoard.get()]() {
             for (size_t i = 0; i < live->price.size(); ++i) {
                 live->price[i] = kSampleQuotes[i].price;
@@ -276,12 +268,14 @@ namespace UltraCanvas {
             }
             FillQuotes(board);
         });
-        container->AddChild(resetButton);
+        DemoKit::Add(controlsRow, resetButton);
+
+        DemoKit::Add(controlsCard, statusLabel);
 
         // === HOW IT IS USED ===
-        auto usageLabel = std::make_shared<UltraCanvasLabel>("TbUsageLabel", 20, 565, 1160, 160);
-        usageLabel->SetText(
-            "auto board = CreateTickerBoard(\"Prices\", 0, 0, 800, 44, TickerBoardFace::Text);\n"
+        auto usageCard = DemoKit::AddCard(container, "TbUsageCard");
+        auto usageLabel = DemoKit::AddText(usageCard, "TbUsageLabel",
+            Tr("auto board = CreateTickerBoard(\"Prices\", 0, 0, 800, 44, TickerBoardFace::Text);\n"
             "board->AddItem(MakeTickerQuote(\"UCNV\", 189.30, 1.25));   // value \"189.30\", change \"+1.25 (+0.66%)\", trend Up\n"
             "board->AddItem(TickerItem(\"Platform 4\", \"12:45\"));      // a label and a value, no change\n"
             "board->SetText(\"WELCOME\");                              // or one crawling message\n"
@@ -289,14 +283,13 @@ namespace UltraCanvas {
             "board->UpdateItem(0, MakeTickerQuote(\"UCNV\", 190.05, 2.00)); // re-price in place while it rolls\n"
             "\n"
             "Style: face (Text / DotMatrix), direction, pixelsPerSecond, pauseOnHover, the band and trend colours,\n"
-            "fontFamily / fontSize / weights and gaps for Text, dotPitch / dotFill / offDotColor and column gaps for DotMatrix."
+            "fontFamily / fontSize / weights and gaps for Text, dotPitch / dotFill / offDotColor and column gaps for DotMatrix.")
         );
         usageLabel->SetFont("Monospace", 11);
         usageLabel->SetTextColor(Color(50, 50, 70, 255));
         usageLabel->SetBackgroundColor(Color(248, 248, 252, 255));
-        container->AddChild(usageLabel);
+        usageLabel->SetPadding(8);
 
-        container->AddChild(statusLabel);
         return container;
     }
 

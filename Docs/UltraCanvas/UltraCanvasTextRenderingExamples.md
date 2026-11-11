@@ -76,6 +76,14 @@ After mutating any of the three, call `RequestRedraw()` on the affected element 
 | 5     | `CAIRO_ANTIALIAS_GOOD`      | Hint: balanced quality                                                      |
 | 6     | `CAIRO_ANTIALIAS_BEST`      | Hint: highest quality                                                       |
 
+The framework's default is `CAIRO_ANTIALIAS_GRAY`. Subpixel rendering colours
+the edges of every stem (red on one side, blue on the other), which reads as
+sharper text only on an LCD with a horizontal RGB stripe at 1:1 scale; in a
+screenshot, on a scaled, rotated or OLED screen, and in a window composited
+through alpha, as every UltraCanvas window is, the colours show as ghosts
+beside the text. A host that knows its panel selects `SUBPIXEL` with
+`RenderContextCairo::SetTextAntialias`.
+
 ## Hint Styles
 
 `cairo_hint_style_t` values control how aggressively glyph outlines are snapped to the pixel grid before rasterization.

@@ -19,14 +19,16 @@ colours nobody can reach.
 
 **File Location**: `include/UltraCanvasColorSwatchBar.h`
 **Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
-**Version**: 1.2.0
+**Version**: 1.3.0 - `ColorSwatchBarStyle::FromTheme`, `ApplyTheme`: the bar follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
 
 - ✅ Any list of colours (`SetColors`), with ready-made palettes: grayscale,
   colours, or both
-- ✅ Optional leading **checkered** swatch standing for "no colour — show the
+- ✅ Optional leading **auto** swatch (half light, half dark) standing for
+  "whichever colour suits what is shown" — the host decides which
+- ✅ Optional **checkered** swatch standing for "no colour — show the
   transparency pattern"
 - ✅ Swatch size adapts to the element's width **and** height; the row is centred
 - ✅ Hover outline, selected outline, per-swatch tooltip (`#RRGGBB`)
@@ -37,6 +39,8 @@ colours nobody can reach.
   GIF palette as a compact block; `HeightForWidth` sizes the element
 - ✅ `SetColorAt` edits one entry; `onColorContextClicked` reports a right
   click with the entry's index, for a host that edits it in a popup
+- ✅ `onColorHovered` reports the entry under the pointer, for a host that
+  previews it (the palette manager floods its rows and the picker with it)
 - ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
 
 ## Quick Start
@@ -83,14 +87,28 @@ bar->SetColors({ Colors::White, Color(245, 240, 225, 255), Colors::Black });
 Replacing the palette keeps the selection **only** if the selected colour is in
 the new list; otherwise nothing is marked.
 
+## The auto swatch
+
+```cpp
+bar->SetShowAutoEntry(true);       // first of all, before the checkerboard
+bar->onAutoSelected = [&]() { /* pick a colour that suits the content */ };
+```
+
+The swatch is drawn half `style.autoLight`, half `style.autoDark` and its
+tooltip says *Automatic*; it selects like any other and reports through
+`onAutoSelected`. What colour "auto" turns into is the host's call - the media
+viewer works it out from the shown picture (`ContrastingBackdropFor`).
+
 ## Selection
 
 ```cpp
 void  SelectColor(const Color& c, bool runCallback = false);  // by value, alpha ignored
 void  SelectCheckered(bool runCallback = false);
+void  SelectAuto(bool runCallback = false);
 void  ClearSelection();
 bool  HasColorSelected() const;
 bool  IsCheckeredSelected() const;
+bool  IsAutoSelected() const;
 int   GetSelectedIndex() const;      // -1 == none
 Color GetSelectedColor() const;      // ask HasColorSelected() first
 ```
@@ -145,7 +163,9 @@ gif->SetElementSize(Size2Df(230, gif->HeightForWidth(230)));
 In wrap mode the swatches stay at least `minSwatchSize`; the bar takes as many
 lines as that needs, shares the colours out evenly over them (16 on two lines
 are 8 + 8), and makes each swatch as large as the line's width allows up to
-`swatchSize`. The block starts at the top-left corner. `HeightForWidth(w)` is
+`swatchSize`. When a line or two more than the fewest divides the colours
+exactly, it takes that many, so no line is short: 256 colours with room for
+37 a line are 8 lines of 32. The block starts at the top-left corner. `HeightForWidth(w)` is
 the height all the lines take at width `w`.
 `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
 uses it for its palette rows.
@@ -153,15 +173,37 @@ uses it for its palette rows.
 The background is transparent by default — set `style.background` when the strip
 needs to read as a bar of its own.
 
+## Following the theme
+
+`ColorSwatchBarStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: a filled bar takes the
+panel, a transparent one stays so; the control border round a swatch, muted
+ink hovered, the accent selected; the checkerboard and the auto swatch keep
+their own greys. Under the theme policy a new bar follows the theme by
+itself (`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasColorSwatchBar>("swatches", 300, 28);
+ColorSwatchBarStyle roomy = bar->GetStyle();
+roomy.spacing = 6;
+bar->SetStyle(ColorSwatchBarStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+bar->SetFollowTheme(true);
+```
+
 ## Callbacks
 
 ```cpp
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+std::function<void()>             onAutoSelected;          // the auto swatch
 // right click with the entry's index and the window position; when set it
 // takes the right click instead of onColorAdjustSelected
 std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
+// The pointer came onto a colour swatch (its index), or left the bar (-1);
+// crossing the gap between two swatches reports nothing.
+std::function<void(int index)> onColorHovered;
 ```
 
 A right click does not move the selection outline (that tracks left clicks)

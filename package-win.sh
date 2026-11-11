@@ -96,6 +96,28 @@ if [ -d ./build/Plugins/UltraNet ]; then
     cp ./build/Plugins/UltraNet/*.dll "$DIST_DIR/Plugins/UltraNet/" 2>/dev/null || true
     echo "Copied UltraNet plugins"
 fi
+# UltraIM provider modules (ultraim_direct/matrix/telegram): ChatCube loads
+# them from <exe>/Plugins/UltraIM, and without ultraim_direct it can only
+# report "The ChatCube Direct module was not found". Before the DLL closure,
+# like the UltraNet plug-ins, so their dependencies come along.
+if [ -d ./build/Plugins/UltraIM ]; then
+    mkdir -p "$DIST_DIR/Plugins/UltraIM"
+    cp ./build/Plugins/UltraIM/*.dll "$DIST_DIR/Plugins/UltraIM/" 2>/dev/null || true
+    echo "Copied UltraIM providers"
+fi
+# TDLib for the Telegram provider (cmake/UltraCanvasTdlib.cmake fetched it):
+# tdjson.dll with the OpenSSL, zlib and MSVC runtime DLLs it imports under
+# their hashed names, loaded from <exe>/Plugins/UltraIM/tdlib at run time.
+# Not linked, so the DLL closure never sees it - copied whole.
+if [ -f ./build/Plugins/UltraIM/tdlib/tdjson.dll ]; then
+    mkdir -p "$DIST_DIR/Plugins/UltraIM/tdlib"
+    cp ./build/Plugins/UltraIM/tdlib/* "$DIST_DIR/Plugins/UltraIM/tdlib/"
+    echo "Copied TDLib (Plugins/UltraIM/tdlib)"
+fi
+if [ -f "$DIST_DIR/ChatCube.exe" ] && [ ! -f "$DIST_DIR/Plugins/UltraIM/ultraim_direct.dll" ]; then
+    echo "Error: ChatCube.exe is packaged without Plugins/UltraIM/ultraim_direct.dll, its ChatCube Direct provider" >&2
+    exit 1
+fi
 # Chart/Element runtime modules (MODULE DSOs on a shared-core build), if present.
 if [ -d ./build/Plugins/Elements ]; then
     mkdir -p "$DIST_DIR/Plugins/Elements"
@@ -254,14 +276,26 @@ VIPS_MODULE_DIR=$(ls -d $MSYS_PREFIX/lib/vips-modules-* 2>/dev/null | head -1)
 if [ -d "$VIPS_MODULE_DIR" ]; then
     VIPS_MOD_DEST="$DIST_DIR/lib/$(basename "$VIPS_MODULE_DIR")"
     mkdir -p "$VIPS_MOD_DEST"
-    # vips-heif: HEIF/AVIF support, vips-magick: ImageMagick bridge (BMP, etc.)
-    for mod in vips-heif.dll vips-magick.dll; do
+    # vips-heif: HEIF/AVIF support, vips-magick: ImageMagick bridge (BMP, etc.),
+    # vips-jxl: JPEG XL (MSYS2 builds it as a module; without it libvips has
+    # no jxlload / jxlsave and the apps offer no JPEG XL at all). The loop
+    # below that collects transitive DLLs brings libjxl, brotli and highway.
+    for mod in vips-heif.dll vips-magick.dll vips-jxl.dll; do
         [ -f "$VIPS_MODULE_DIR/$mod" ] && cp "$VIPS_MODULE_DIR/$mod" "$VIPS_MOD_DEST/"
     done
-    echo "  Copied vips modules: vips-heif, vips-magick"
+    echo "  Copied vips modules: vips-heif, vips-magick, vips-jxl"
 fi
 
-# Copy libheif codec plugins (AOM for AVIF, x265 for HEIC, etc.)
+# libheif without GPL encoders. MSYS2's libheif.dll links x265 and x264 (GPL)
+# and every app on the core loads it through vips-heif; CI replaces it with a
+# rebuild of the same release without them, kvazaar writing HEIC (see "Rebuild
+# libheif without x265 and x264" in .github/workflows/build.yml). A package
+# made from a stock MSYS2 libheif is said to carry them, not refused.
+if objdump -p "$MSYS_PREFIX/bin/libheif.dll" 2>/dev/null | grep -qi 'DLL Name: .*x26[45]'; then
+    echo "  WARNING: libheif.dll links x264 / x265 (GPL) - MSYS2's own build, not CI's rebuild"
+fi
+
+# Copy libheif codec plugins (MSYS2 builds them into libheif.dll: none today)
 if [ -d "$MSYS_PREFIX/lib/libheif" ]; then
     mkdir -p "$DIST_DIR/lib/libheif"
     cp $MSYS_PREFIX/lib/libheif/*.dll "$DIST_DIR/lib/libheif/" 2>/dev/null || true
@@ -417,14 +451,19 @@ echo "  done"
 # from the package stopped at start with "libVideoFX.dll was not found". Here
 # that fails the build with the importer and the DLL named. One objdump per
 # file and one awk at the end: a grep per import costs minutes under MSYS2.
+# A DLL beside its importer counts as packaged too: tdjson.dll imports the
+# OpenSSL, zlib and MSVC runtime DLLs shipped next to it in
+# Plugins/UltraIM/tdlib under their hashed names, and the Telegram provider
+# puts that folder on the search path when it loads them.
 echo ""
 echo "Checking that every DLL of this build that the package imports is in it..."
 UNPACKAGED=$(
     find "$DIST_DIR" \( -iname '*.exe' -o -iname '*.dll' \) | while IFS= read -r bin; do
         bin_name=${bin##*/}
+        bin_dir=${bin%/*}
         "$OBJDUMP" -p "$bin" 2>/dev/null | sed -n 's/.*DLL Name:[[:space:]]*//p' | tr -d '\r' \
             | while IFS= read -r name; do
-                [ -f "$DIST_DIR/$name" ] || printf '%s\t%s\n' "$bin_name" "$name"
+                [ -f "$DIST_DIR/$name" ] || [ -f "$bin_dir/$name" ] || printf '%s\t%s\n' "$bin_name" "$name"
             done
     done | awk -F'\t' 'FNR == NR { built[tolower($0)] = 1; next }
                        built[tolower($2)] { print "  " $1 " imports " $2 }' \
@@ -486,9 +525,33 @@ echo "  Added uc-diagnose.bat + uc-diagnose.ps1 (startup troubleshooting launche
 sed 's/$/\r/' "$SCRIPT_DIR/scripts/uc-remove-registrations.cmd" > "$DIST_DIR/uc-remove-registrations.cmd"
 echo "  Added uc-remove-registrations.cmd (removes the notification registrations; the ZIP has no uninstaller)"
 
-cd $DIST_DIR
-zip -r ../$PACKAGE_ZIP *
-cd ..
+# Which package filled this folder. The installer reads it before it installs
+# over a folder that already holds framework DLLs (Windows/Installer/
+# UltraCanvasSetup.nsi, CheckInstallFolder), and a program refused for a DLL
+# from another build names the package it came from
+# (UltraCanvasWindowsLibraryCheck.cpp). INI, CRLF: both read it with the
+# Windows profile functions.
+printf '[Package]\r\nName=UltraCanvas\r\nVersion=%s\r\nArch=%s\r\n' "$VERSION" "$ARCH" \
+    > "$DIST_DIR/UltraCanvas-Package.ini"
+echo "  Added UltraCanvas-Package.ini (which package this folder holds)"
+
+# The ZIP holds one folder named after it, not the files themselves: extracted
+# into a folder that already holds programs - "Extract here", or into a
+# collection of apps - it makes a folder of its own instead of laying its
+# DLLs over another package's. One libUltraCanvas.dll shared by programs from
+# two builds crashed the older ones at start (ChatCube, UltraAI). dist/ is
+# renamed for the zip and back: CI reads dist/ after this.
+PACKAGE_FOLDER="$(basename "$PACKAGE_ZIP" .zip)"
+if [ -e "$PACKAGE_FOLDER" ]; then
+    echo "Error: '$PACKAGE_FOLDER' exists already; move it away (dist/ is renamed to it for the zip)" >&2
+    exit 1
+fi
+rm -f "$PACKAGE_ZIP"   # zip -r would add to an old one, beside its old layout
+mv "$DIST_DIR" "$PACKAGE_FOLDER"
+trap 'mv "$PACKAGE_FOLDER" "$DIST_DIR" 2>/dev/null || true' EXIT
+zip -r "$PACKAGE_ZIP" "$PACKAGE_FOLDER"
+mv "$PACKAGE_FOLDER" "$DIST_DIR"
+trap - EXIT
 echo ""
 TOTAL_DLLS=$(find "$DIST_DIR" -maxdepth 1 -name '*.dll' | wc -l)
 echo "=== Package complete ==="

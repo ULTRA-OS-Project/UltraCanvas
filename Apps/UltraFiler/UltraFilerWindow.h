@@ -4,8 +4,8 @@
 // UltraCanvasTabbedContainer detached from its pages: the strip is the
 // window's top bar, the pages live in the folder pane of the split below,
 // and the "+" at the end of the tab list opens another tab), then
-// a navigation row (Back / Forward / Up / Refresh, the
-// History clock toggle, the Favorites heart toggle, folder breadcrumb, and
+// a navigation row (the flat Home and Computer buttons, then Back / Forward /
+// Up / Refresh, the History clock toggle, the Favorites heart toggle, folder breadcrumb, and
 // the settings gear at the far right opening the settings window), a command
 // bar (the "New folder ▾" split button — its arrow lists the same kinds as
 // the context menu's "New >" submenu —, Cut / Copy / Paste / Rename / Delete, the
@@ -81,6 +81,27 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.36.0 - OpenRemoteFile, OpenRemoteCopy
+// Version: 1.35.0 - VolumeDisplayName, RefreshPathBars, pathBarVolumeNamesApplied: the path
+//                  bar names a drive by its volume (Display > Path bar)
+// Version: 1.34.0 - ConfirmRemoveRemoteDrive, ConfigureRemoteDrive,
+//                  RefreshFolderEverywhere, ShowRemoteFileError
+// Version: 1.33.0 - PreviewPanePath: the file shown or on its way
+// Version: 1.32.0 - RefreshWslNodes, the Network section (OpenNetworkServer and the
+//                  network jobs)
+// Version: 1.31.0 - a double-click on a picture, audio file or video starts
+//                  UltraViewer with it (OpenInUltraViewer, Settings >
+//                  Handling > Opening files)
+// Version: 1.30.0 - the navigation row starts with flat Home and Computer buttons
+// Version: 1.30.0 - Extras > Open location: the UltraCanvas and system folders
+//                  (crash dumps, settings, application data, logs, ...), and
+//                  Enter location… (Ctrl+L) for a typed %VAR% / $VAR / ~ path
+// Version: 1.29.1 - a remote drive's path bar is its own (FillRemoteBreadcrumb):
+//                  it was resolved as a local path, which on Windows put an
+//                  "ultracloud:" node under the user folder that opened an
+//                  empty display; a tab on a drive's top folder is titled
+//                  with the drive's name, not its ultracloud:// address
+//                  (TabTitleFor)
 // Version: 1.29.0 - AllowCloseDuringTransfers: closing during an upload or a
 //                  download asks first; an upload onto a name that is taken
 //                  asks Keep both / Replace / Skip (PlanRemoteUploads)
@@ -91,7 +112,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -114,6 +135,8 @@
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraCanvasVolumeMonitor.h" // mounted volumes + mount/unmount notification
+#include "UltraCanvasPortableDevices.h" // phones and cameras over MTP / PTP
+#include "UltraCanvasNetworkPlaces.h"   // the network's computers and shares, WSL
 #include "Plugins/Charts/UltraCanvasPieChart.h"  // the drive cards' used / free pie
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderIcons.h"
@@ -371,6 +394,85 @@ private:
     // and hides the section while there are none - like "Pinned" and
     // "Cloud Storage" above it.
     void RefreshRemoteDriveNodes();
+    // Delete on a drive's row under "Remote Drives": asks, then forgets the
+    // drive (UltraFilerRemoteDrives::RemoveDrive) - its settings and saved
+    // password, never a file on the server. A display on the drive goes to
+    // the home folder first. Works whether or not the drive still signs in,
+    // which is when it is needed: a drive whose password was changed
+    // elsewhere could not be got rid of.
+    void ConfirmRemoveRemoteDrive(const std::string& rootPath);
+    // "Configure drive" on such a row: the account dialog's edit form
+    // (UltraCloud::ShowEditAccountDialog) over the drive's settings. Once
+    // saved, the drive's row is renamed, what was cached of it is forgotten
+    // and every display on it reads it again with the new settings.
+    void ConfigureRemoteDrive(const std::string& rootPath);
+    // Refresh on a folder - a row of the tree, a folder of a display, the
+    // folder a display shows: it is read again, and so are its rows in the
+    // tree and every display showing it. On a drive that means asking the
+    // server again (UltraFilerRemoteDrives::RefreshFolder) while what was
+    // there stays on screen: the one way to see a change made on the drive
+    // from another device. A computer of the Network section has its shares
+    // listed again.
+    void RefreshFolderEverywhere(const std::string& folder);
+    // A file on a drive could not be fetched to be shown, for a reason that
+    // will not pass by itself (RemoteFailure::NotFound or Lasting): said in a
+    // dialog, not only on the status line. Asked once per selection
+    // (remoteFileAlertPath). A file that is no longer there has its folder
+    // read again, so it leaves the display.
+    void ShowRemoteFileError(const std::string& path, const std::string& why,
+                             RemoteFailure failure);
+    // A file on a drive the preview does not show - a document, a
+    // spreadsheet, an archive - double-clicked or Entered: fetched into
+    // UltraFilerRemoteDrives::OpenCopyDirectory and opened with the program
+    // this system opens its type with, as a file on the disk is; the status
+    // line says that changes to the copy do not reach the drive. A copy
+    // fetched before, of the same version of the file, is opened again
+    // without a request. A program or a launcher is not started from a
+    // drive: the user is told to copy it to this computer first.
+    void OpenRemoteFile(const FilerEntry& entry);
+    // The copy fetched for OpenRemoteFile, opened with the system's program.
+    void OpenRemoteCopy(const std::string& localFile, const std::string& name);
+    // ===== PHONES AND CAMERAS (MTP / PTP) =====
+    // Asks which portable devices are connected, on a worker thread (a device
+    // seen for the first time is opened once to learn whether it is a phone
+    // or a camera), and brings their rows and cards in line on the UI thread
+    // (ApplyDevices). A request while one is running is served by it.
+    void RefreshDevices();
+    // Hands the devices to the drives (UltraFilerRemoteDrives::SetDevices),
+    // rebuilds their rows under Computer and their cards on the Computer page,
+    // and moves a display that was showing a device that is gone to Home.
+    void ApplyDevices(const std::vector<PortableDeviceInfo>& devices);
+    // One row under Computer per connected device, after the drives - the
+    // place Explorer shows a phone. Browsed like a remote drive.
+    void RefreshDeviceNodes();
+    void AddTreeDeviceNode(const RemoteDrive& drive);
+    // Starts watching for devices being plugged in and pulled out.
+    void StartDeviceMonitor();
+    // ===== LINUX (WSL) AND NETWORK (Windows) =====
+    // "Linux": one row per installed WSL distribution (\\wsl$\Ubuntu), read
+    // from the registry. A row is not probed - touching a distribution starts
+    // it - but offered with an expand button and listed when opened.
+    void RefreshWslNodes();
+    // "Network": one row per computer - those the network lists, the servers
+    // of the user's connections, and those opened by name before
+    // (settings.networkServers). Listed off the UI thread (RunNetworkJob).
+    void RefreshNetworkComputers();
+    void ApplyNetworkComputers(const std::vector<NetworkComputer>& computers);
+    void AddTreeNetworkComputerNode(const std::string& serverPath, const std::string& label);
+    // A computer's shares: listed off the UI thread, then put under its row,
+    // and shown in the folder display when the computer was opened there
+    // (OpenNetworkServer).
+    void QueueNetworkShares(const std::string& serverPath);
+    void ApplyNetworkShares(const std::string& serverPath, const std::vector<NetworkShare>& shares,
+                            const std::string& error);
+    // "\\NAS" - typed into the path bar, or its row clicked: a computer is not
+    // a folder, so its row is opened and its shares listed in the display.
+    void OpenNetworkServer(const std::string& serverPath);
+    // One job at a time on networkWorker: "" lists the computers, a server
+    // path lists its shares. Network calls wait out a computer that does not
+    // answer, which must never be the UI thread.
+    void QueueNetworkJob(const std::string& job);
+    void RunNextNetworkJob();
     // ===== RAM DISCS =====
     // Asks the system, on a worker thread, whether it can make RAM discs and
     // which discs are mounted now, then brings the "+ Drive" button and the
@@ -708,6 +810,18 @@ private:
     // too, and the tree keeps "Computer" selected while it is up.
     void BuildComputerPage();
     void SetComputerPageVisible(bool visible);
+    // What a drive is called on the path bar (Display > Path bar): the label
+    // its tree row has, from the last drive listing ("My Passport Ultra
+    // (D:)"); empty for a root that listing did not have.
+    std::string VolumeDisplayName(const std::string& root) const;
+    // Rebuild the path bars - the main one and the split view's two - for
+    // the folders they show.
+    void RefreshPathBars();
+    // What the Computer page shows: everything (the tree's Computer row, the
+    // breadcrumb, Up), or one section - the tree's Cloud Storage, Remote
+    // Drives or RAM Discs row. Opens the page if it is not up.
+    enum class ComputerSection { All, Cloud, Remote, Ram };
+    void ShowComputerSection(ComputerSection section);
     // Re-lists the page's folders (Home, then the Cloud Storage folders the
     // tree found) and rebuilds the drive cards from what is mounted right
     // now; the sizes come in afterwards (QueueVolumeSpaceQuery).
@@ -740,6 +854,14 @@ private:
     void FillFolderBreadcrumb(UltraCanvasBreadcrumb* crumb, const std::string& path,
                               std::function<void(const std::string&)> onNavigate);
     void FillComputerBreadcrumb(UltraCanvasBreadcrumb* crumb);
+    // FillFolderBreadcrumb for a remote drive's path: Computer, the drive
+    // under its tree label, then its folders - never resolved against the
+    // local filesystem.
+    // A tab's caption for `path`: the folder's name, the home folder's
+    // "Home", and on a drive's top folder the drive's name.
+    std::string TabTitleFor(const std::string& path) const;
+    void FillRemoteBreadcrumb(UltraCanvasBreadcrumb* crumb, const std::string& path,
+                              std::function<void(const std::string&)> onNavigate);
     // Pin > To Favorites: each target goes into the tab its kind belongs to.
     void PinTargetsToFavorites();
     // Pin > To Treeview: each target folder appears under the tree's Pinned
@@ -750,7 +872,7 @@ private:
     void UnpinTargetsFromTree();
     // The app's tail of the filer context menus' Extras submenu (wired into
     // every filer's extrasMenuProvider, rebuilt on each open): "Open prompt",
-    // then Pin / Unpin submenus whose "To Treeview" / "To Favorites" flags
+    // the "Open location" submenu, then Pin / Unpin submenus whose "To Treeview" / "To Favorites" flags
     // show whether the current selection is pinned there.
     std::vector<MenuItemData> BuildExtrasMenuItems();
 
@@ -886,6 +1008,9 @@ private:
 
     // ===== SELECTION / PREVIEW / STATUS =====
     void UpdateStatusBar();
+    // Turns `display`'s own info bar off and has its line shown in the status
+    // bar instead (GetSelectionInfo, onSelectionInfoChanged).
+    void ShowInfoInStatusBar(UltraCanvasFilerWidget& display);
     // Window title: app name + version + what is on screen (the active
     // tab's folder path, or the History/Favorites view while shown).
     void UpdateWindowTitle();
@@ -910,7 +1035,14 @@ private:
     // file as it was when opened (size and modification time, stamped before
     // the viewer reads it) for ReloadChangedPreview. `asCopy`: a remote file's
     // local copy, shown on its own rather than browsed in its folder.
+    // The pane shows a loading ring and the file's name at once, and reads the
+    // file after that frame (OpenFileWhenShown): the previous file does not
+    // linger, and the window answers again before a large file is decoded.
     void OpenPreviewFile(const std::string& path, bool asCopy);
+    // The file the pane is showing - or, while it is loading, the one on its
+    // way. What the pane is compared with, so a refresh during the load does
+    // not start it over.
+    std::string PreviewPanePath() const;
     // The previewed file changed on disk since the pane opened it - a rescan
     // found it with another size or modification time, which is how a picture
     // saved over in an editor shows up: reopen it, so the pane shows what the
@@ -989,6 +1121,26 @@ private:
     // (Extras > Open prompt); an empty setting uses the platform default.
     void OpenSystemPrompt();
 
+    // ===== OPEN LOCATION (Extras > Open location) =====
+    // The submenu: the UltraCanvas folders (crash dumps, settings, cache),
+    // the system's (application data, temporary files, logs, startup, ...)
+    // from FilerOsLocations - a folder that does not exist is listed
+    // disabled - then "Enter location…" and the locations typed there
+    // before, with "Clear recent locations". Each entry's tooltip is the
+    // path it opens (a recent one's: what its variables expand to).
+    std::vector<MenuItemData> BuildOpenLocationItems();
+    // Shows `path` in the active tab: a folder is opened, a file is shown
+    // selected in its folder (OpenHistoryEntry).
+    void OpenLocation(const std::string& path);
+    // Enter location… (also Ctrl+L): asks for a location, pre-filled with
+    // the last one typed, and opens it (OpenTypedLocation).
+    void PromptForLocation();
+    // A location as typed: %VAR% / $VAR / ~ expanded, a relative one taken
+    // from the active tab's folder. Opens it and remembers it in the recent
+    // list; a location that does not exist is reported with what it expanded
+    // to, and is not remembered.
+    void OpenTypedLocation(const std::string& typed);
+
     // ===== SETTINGS =====
     // Pushes the persisted settings into the widgets they configure (the
     // preview's transparent-image backdrop). Called at startup and by the
@@ -1014,6 +1166,14 @@ private:
     // over this one. The window is reused, so a second double-click replaces
     // what is in it rather than opening another.
     void OpenInMediaWindow(const std::string& path);
+    // Settings > Handling > Opening files: a picture, an audio file or a
+    // video on the disk is opened by starting UltraViewer with it (a running
+    // UltraViewer shows it in place of what it showed). False - and nothing
+    // started - when the setting is off, the entry is anything else (a
+    // folder, a shortcut, an entry inside an archive or on a remote drive),
+    // or UltraViewer cannot be found or started; the caller then opens the
+    // file the way it would have.
+    bool OpenInUltraViewer(const FilerEntry& entry);
     // The tail the file display hangs under Display > Thumbnails and
     // Display > Detail view: "File formats...", which opens the matching
     // settings page.
@@ -1107,7 +1267,16 @@ private:
     };
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders
+    std::shared_ptr<UltraCanvasLabel>           computerFoldersHeading;
+    std::shared_ptr<UltraCanvasLabel>           computerDrivesHeading;
     std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
+    ComputerSection computerSection = ComputerSection::All;
+    // The Remote Drives and RAM Discs sections under it: a heading and a row
+    // of cards each, hidden while the section has no card.
+    std::shared_ptr<UltraCanvasLabel>           computerRemoteHeading;
+    std::shared_ptr<UltraCanvasContainer>       computerRemoteRow;
+    std::shared_ptr<UltraCanvasLabel>           computerRamHeading;
+    std::shared_ptr<UltraCanvasContainer>       computerRamRow;
     std::vector<ComputerDriveCard>              computerDriveCards;
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
     std::shared_ptr<UltraCanvasButton>          addDriveButton;  // "+ Drive" in the navigation row
@@ -1122,6 +1291,11 @@ private:
     // The status strip: the line of text, and the bar that appears beside it
     // while a transfer to a drive is running.
     std::shared_ptr<UltraCanvasContainer>       statusRow;
+    // The status row: the shown display's info line on the left, its
+    // "1 of 404 selected" beside it, and statusLabel - what is happening,
+    // and every message - on the right.
+    std::shared_ptr<UltraCanvasLabel>           statusInfoLabel;
+    std::shared_ptr<UltraCanvasLabel>           statusSelectionLabel;
     std::shared_ptr<UltraCanvasLabel>           statusLabel;
     // The transfer bar: an UltraCanvasGaugeDiagramElement in LinearBar mode,
     // which is the framework's progress bar. Short enough that the gauge
@@ -1169,6 +1343,21 @@ private:
     // or the download failed). Shown on the status line after the drop note
     // and cleared as soon as the selection moves.
     std::string remotePreviewNote;
+    // The file on a drive whose failure was put in a dialog last
+    // (ShowRemoteFileError). The preview pane is brought up to date again
+    // for the same selection - a status change, a copy arriving - and asking
+    // again each time would make the dialog impossible to get rid of. Cleared
+    // once the selection moves off it, so choosing the file again asks again.
+    std::string remoteFileAlertPath;
+    // Files being fetched to be opened (OpenRemoteFile), by the local folder
+    // each lands in - the folder onOperationFinished names when it is in.
+    struct RemoteOpenWaiting {
+        std::string remoteFile;
+        std::string localFile;
+    };
+    std::map<std::string, RemoteOpenWaiting> remoteOpensWaiting;
+    // Old copies are swept once per run, before the first is fetched.
+    bool remoteOpenCopiesSwept = false;
     // What the last copy, move or delete did - "3 files copied to \"alt\"",
     // "\"report.pdf\" moved to the Trash" - said on
     // the status line for kTransferNoteMs after it ends, so a drop or a paste
@@ -1261,8 +1450,13 @@ private:
     // Node ids (the drives' root paths) of the "Remote Drives" rows, so the
     // section can be rebuilt without walking the whole tree.
     std::vector<std::string> treeRemoteDriveNodeIds;
+    // The rows under Computer that are connected phones and cameras
+    // (RefreshDeviceNodes): their remote root paths.
+    std::vector<std::string> treeDeviceNodeIds;
     // Node ids (the mount paths) of the "RAM Discs" rows.
     std::vector<std::string> treeRamDiskNodeIds;
+    // The RAM discs as last listed (ApplyRamDiskList), for the Computer page.
+    std::vector<UltraFilerRamDisks::RamDisc> knownRamDiscs;
     // The start-up probe (StartRamDiskProbe) and what it answered. Both
     // flags are written on the UI thread only, by the callback it posts.
     std::thread ramDiskProbeWorker;
@@ -1280,6 +1474,19 @@ private:
     std::thread driveListWorker;
     std::atomic<bool> driveListBusy{false};
     std::atomic<bool> driveListPending{false};
+    // The network jobs (QueueNetworkJob): UI thread only, but for the flag
+    // the worker clears when it cannot post its answer back.
+    std::thread networkWorker;
+    std::atomic<bool> networkBusy{false};
+    std::deque<std::string> networkQueue;
+    // The computer whose shares go into the folder display once listed.
+    std::string networkPendingOpen;
+    std::vector<std::string> treeNetworkNodeIds;   // the computer rows
+    std::vector<std::string> treeWslNodeIds;       // the distribution rows
+    // RefreshDevices' worker, the same arrangement.
+    std::thread deviceListWorker;
+    std::atomic<bool> deviceListBusy{false};
+    std::atomic<bool> deviceListPending{false};
     std::vector<MountedVolume> knownVolumes;
     // The last failure reported for a drive operation. Deleting five entries
     // queues five operations, and five identical "permission denied" dialogs
@@ -1330,6 +1537,9 @@ private:
     // Display > Home folder mode, mirrored for the probe worker: `settings`
     // belongs to the UI thread, the "has subfolders?" probe does not.
     std::atomic<bool> curatedHomeActive{false};
+    // Display > Path bar as last applied: ApplySettings rebuilds the path
+    // bars only when it moved.
+    bool pathBarVolumeNamesApplied = true;
     // Display > Files > Show hidden files as it was last pushed to the folder
     // displays, so ApplySettings only pushes it when it actually changed and
     // a display revealed by hand stays revealed. Starts at the shipped
@@ -1348,6 +1558,8 @@ private:
     // flag its callback touches, so even the implicit Stop() in its own
     // destructor runs while that flag is still alive.
     UltraCanvasVolumeMonitor volumeMonitor;
+    // Phones and cameras plugged in and pulled out (StartDeviceMonitor).
+    UltraCanvasPortableDeviceMonitor deviceMonitor;
     // Cleared on destruction so results still in flight drop instead of
     // reaching a half-destroyed window.
     std::shared_ptr<std::atomic<bool>> probeAlive =

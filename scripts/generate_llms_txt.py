@@ -60,7 +60,7 @@ EXCLUDE_PATTERNS = ("Proposal", "Plan", "DesignVariants")
 # Docs/Legal holds the privacy declarations: they describe each product's
 # data flows from its source, which is exactly what an assistant asked "what
 # does UltraMail send, and to whom?" should find, so they are indexed.
-APP_DOC_DIRS = ("UltraAuthenticator", "UltraPassword", "UltraClipboard", "UltraPaint", "ArtCreator", "DeviceExplorer",
+APP_DOC_DIRS = ("UltraAuthenticator", "UltraPassword", "UltraClipboard", "UltraNotifications", "UltraSnip", "UltraPaint", "ArtCreator", "DeviceExplorer",
                 "UltraDesktop", "UltraCanvasStart", "UltraMail", "UltraVideo", "UltraPress", "Legal")
 
 SUMMARY = (

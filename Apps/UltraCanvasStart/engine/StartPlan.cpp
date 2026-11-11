@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPlan.cpp
+// Version: 0.1.8 - the SDK step names the archive's address and the Download button
 // Version: 0.1.7 - an installed MSYS2 is updated before pacman installs
 // Version: 0.1.6 - Windows without MSYS2: winget sets it up before pacman installs
 // Version: 0.1.5 - a check switched off on the Tools step is not installed
@@ -27,7 +28,7 @@ PackageManager DefaultManagerFor(Platform platform) {
         case Platform::Linux:   return PackageManager::Apt;
         case Platform::MacOS:   return PackageManager::Homebrew;
         case Platform::Windows: return PackageManager::Msys2Pacman;
-        default:                return PackageManager::None;
+        default:                return PackageManager::NoPackageManager;
     }
 }
 
@@ -57,7 +58,7 @@ std::vector<std::string> PlatformNotes(const SystemProfile& profile, Platform ta
             notes.push_back("`package-win.sh` makes the standalone zip");
             break;
         case Platform::Linux:
-            if (local && profile.packageManager == PackageManager::None) {
+            if (local && profile.packageManager == PackageManager::NoPackageManager) {
                 notes.push_back("No apt, dnf, pacman or zypper was found: install the packages named below with your distribution's tool");
             }
             notes.push_back("A C++20 compiler: `clang` 14 or newer, or `gcc` 11 or newer (CI builds with clang)");
@@ -79,7 +80,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
                                                                   : choices.platform;
     const bool local = target == profile.platform;
     PackageManager manager = local ? profile.packageManager : DefaultManagerFor(target);
-    if (local && manager == PackageManager::None) manager = DefaultManagerFor(target);
+    if (local && manager == PackageManager::NoPackageManager) manager = DefaultManagerFor(target);
 
     plan.notes = PlatformNotes(profile, target);
 
@@ -129,9 +130,10 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
         download.kind = StepKind::Download;
         download.title = "Get the UltraCanvas SDK " + SdkArtifactName(target, version, arch);
         download.description = "The framework prebuilt for " + PlatformName(target) + " " + arch +
-                               ": download " + SdkArchiveName(target, version, arch) + " from " +
-                               SdkDownloadPage() + " (also on " + SdkReleasePage(version) +
-                               "), then the Framework step's Unpack button unpacks it";
+                               ": the Framework step's Download button fetches " +
+                               SdkDownloadUrl(target, version, arch) + ", checks it against the " +
+                               "version's SHA256SUMS and unpacks it (also on " +
+                               SdkReleasePage(version) + ")";
         plan.steps.push_back(download);
     }
     if (choices.cloneFramework || !choices.useSdk) {

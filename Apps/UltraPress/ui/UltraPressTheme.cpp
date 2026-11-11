@@ -1,14 +1,10 @@
 // Apps/UltraPress/ui/UltraPressTheme.cpp
 // See UltraPressTheme.h.
+// Version: 0.8.4 - the look's file is UltraPressSettings' now
 // Version: 0.8.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressTheme.h"
 
-#include "UltraCanvasPathUtf8.h"
-#include "UltraCanvasSettingsFolder.h"
-
-#include <filesystem>
-#include <fstream>
 
 using namespace UltraCanvas;
 
@@ -26,8 +22,6 @@ const Color kAccent(169, 7, 7, 255);
 const Color kAccentDeep(130, 5, 5, 255);
 const Color kAccentOnDark(229, 72, 72, 255);
 const Color kRule(220, 220, 224, 255);
-
-const char* kLookFile = "look";
 
 } // namespace
 
@@ -83,30 +77,6 @@ SideColors SideColorsOf(const UltraCanvasTheme& theme) {
     c.active = theme.Role("press.side-active", Color(255, 255, 255, 36));
     c.strong = theme.Role("press.side-strong", Color(255, 255, 255, 60));
     return c;
-}
-
-std::string LookSettingsDirectory() {
-    const std::filesystem::path folder = UltraCanvasSettingsFolder();
-    if (folder.empty()) return "";
-    return PathToUtf8(folder / "UltraPress");
-}
-
-bool LoadLook(const std::string& settingsDir) {
-    if (settingsDir.empty()) return false;
-    std::ifstream in(PathFromUtf8(settingsDir) / kLookFile);
-    std::string word;
-    if (!in || !(in >> word)) return false;
-    return word == "dark";
-}
-
-bool SaveLook(const std::string& settingsDir, bool dark) {
-    if (settingsDir.empty()) return false;
-    std::error_code ec;
-    std::filesystem::create_directories(PathFromUtf8(settingsDir), ec);
-    std::ofstream out(PathFromUtf8(settingsDir) / kLookFile, std::ios::trunc);
-    if (!out) return false;
-    out << (dark ? "dark" : "light") << '\n';
-    return static_cast<bool>(out);
 }
 
 void FollowTheme(const std::shared_ptr<UltraCanvasLabel>& label, LabelVariant variant) {

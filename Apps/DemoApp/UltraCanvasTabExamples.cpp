@@ -1,11 +1,15 @@
-// Apps/DemoApp/UltraCanvasComprehensiveTabDemo.cpp
+// Apps/DemoApp/UltraCanvasTabExamples.cpp
 // Comprehensive demonstration of all tabbed container features
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  section, the tabbed containers as wide as the card, every
+//                  text sized to fit, tab pages scroll when their text is taller
 // Version: 1.1.0 - the five Pill colourways
 // Version: 1.0.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -23,216 +27,180 @@ namespace UltraCanvas {
         auto content = std::make_shared<UltraCanvasContainer>(id, 0, 0, w, h);
         content->SetBackgroundColor(bgColor);
         content->SetPadding(15);
+        content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        // A text taller than the tab (a longer translation) scrolls.
+        ContainerStyle style;
+        style.autoShowScrollbars = true;
+        style.autoShowHorizontalScrollbar = false;
+        content->SetContainerStyle(style);
 
-        auto label = std::make_shared<UltraCanvasLabel>(id + "_label", 0, 0, w - 30, h - 30);
-        label->SetText(text);
-        label->SetFontSize(12);
-        //label->SetAlignment(TextAlignment::TopLeft);
+        // The first child: the Pill examples recolour it.
+        auto label = DemoKit::CreateText(id + "_label", text);
         label->SetTextColor(Colors::Black);
-        content->AddChild(label);
+        DemoKit::Add(content, label);
 
         return content;
     }
 
 // ===== MAIN COMPREHENSIVE TAB DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples() {
-        // The page root. Its height is provisional: the real one is set from
-        // yOffset once every example has been placed, so an added example
-        // cannot run off the bottom of the page.
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("ComprehensiveTabDemo", 0, 0, 1020, 1000);
-        //mainContainer->EnableVerticalScrolling(true);
-//        mainContainer->SetBackgroundColor(Color(245, 245, 245));
+        auto mainContainer = DemoKit::CreatePage("ComprehensiveTabDemo",
+                Tr("UltraCanvas Tabbed Container - Comprehensive Demo"),
+                Tr("Showcasing all tab styles, features, and configurations"));
 
-        int yOffset = 10;
-
-        // ========================================
-        // TITLE
-        // ========================================
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("MainTitle", 20, yOffset, 960, 35);
-        mainTitle->SetText("UltraCanvas Tabbed Container - Comprehensive Demo");
-        mainTitle->SetFontSize(18);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetTextColor(Color(40, 40, 40));
-        mainContainer->AddChild(mainTitle);
-        yOffset += 45;
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("Subtitle", 20, yOffset, 960, 25);
-        subtitle->SetText("Showcasing all tab styles, features, and configurations");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(subtitle);
-        yOffset += 40;
+        // One example: its bold caption over the tabbed container, which
+        // keeps its height and takes the card's width.
+        auto addExample = [](const std::shared_ptr<UltraCanvasContainer>& card,
+                             const std::string& labelId, const std::string& text) {
+            auto group = DemoKit::CreateColumn(labelId + "Group", 4);
+            DemoKit::Add(card, group);
+            auto label = DemoKit::AddText(group, labelId, text);
+            label->SetFontSize(11);
+            label->SetFontWeight(FontWeight::Bold);
+            return group;
+        };
 
         // ========================================
         // SECTION 1: TAB STYLES (Classic, Modern, Flat, Rounded)
         // ========================================
-        auto section1Title = std::make_shared<UltraCanvasLabel>("Section1Title", 20, yOffset, 960, 30);
-        section1Title->SetText("1. TAB VISUAL STYLES");
-        section1Title->SetFontSize(14);
-        section1Title->SetFontWeight(FontWeight::Bold);
-        section1Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section1Title);
-        yOffset += 35;
+        auto card1 = DemoKit::AddCard(mainContainer, "Section1", Tr("1. TAB VISUAL STYLES"));
+        card1->layout.SetFlexGap(14);
 
         // --- Classic Style ---
-        auto classicLabel = std::make_shared<UltraCanvasLabel>("ClassicLabel", 40, yOffset, 400, 20);
-        classicLabel->SetText("Classic Style (Windows 7 look with 3D borders)");
-        classicLabel->SetFontSize(11);
-        classicLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(classicLabel);
-        yOffset += 25;
+        auto classicGroup = addExample(card1, "ClassicLabel", Tr("Classic Style (Windows 7 look with 3D borders)"));
 
-        auto classicTabs = std::make_shared<UltraCanvasTabbedContainer>("ClassicTabs", 40, yOffset, 800, 220);
+        auto classicTabs = std::make_shared<UltraCanvasTabbedContainer>("ClassicTabs", 0, 0, 800, 220);
         classicTabs->SetTabStyle(TabStyle::Classic);
         classicTabs->SetTabHeight(30);
 //        classicTabs->SetCornerRadius(4.0f);
 //        classicTabs->SetTabElevation(2.0f);
 
-        classicTabs->AddTab("Home", CreateSampleTabContent("Classic1",
-                                                           "Classic Style Features:\n\n"
+        classicTabs->AddTab(Tr("Home"), CreateSampleTabContent("Classic1",
+                                                           Tr("Classic Style Features:\n\n"
                                                            "• 3D raised effect for active tabs\n"
                                                            "• Subtle shadows for depth\n"
                                                            "• Border connects active tab to content area\n"
                                                            "• Inactive tabs appear slightly recessed\n"
-                                                           "• Professional Windows 7/10 aesthetic",
+                                                           "• Professional Windows 7/10 aesthetic"),
                                                            Color(250, 250, 250)));
 
-        classicTabs->AddTab("Documents", CreateSampleTabContent("Classic2",
-                                                                "This tab demonstrates how multiple tabs work together.\n\n"
-                                                                "Click between tabs to see the 3D effect and smooth transitions.",
+        classicTabs->AddTab(Tr("Documents"), CreateSampleTabContent("Classic2",
+                                                                Tr("This tab demonstrates how multiple tabs work together.\n\n"
+                                                                "Click between tabs to see the 3D effect and smooth transitions."),
                                                                 Color(245, 250, 255)));
 
-        classicTabs->AddTab("Settings", CreateSampleTabContent("Classic3",
-                                                               "Settings content goes here.\n\n"
-                                                               "Each tab can contain any UltraCanvas UI elements.",
+        classicTabs->AddTab(Tr("Settings"), CreateSampleTabContent("Classic3",
+                                                               Tr("Settings content goes here.\n\n"
+                                                               "Each tab can contain any UltraCanvas UI elements."),
                                                                Color(250, 245, 255)));
 
         classicTabs->SetActiveTab(0);
         classicTabs->SetCloseMode(TabCloseMode::NoClose);
-        mainContainer->AddChild(classicTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(classicGroup, classicTabs);
 
         // --- Modern Style ---
-        auto modernLabel = std::make_shared<UltraCanvasLabel>("ModernLabel", 40, yOffset, 400, 20);
-        modernLabel->SetText("Modern Style (Material Design with bottom indicator)");
-        modernLabel->SetFontSize(11);
-        modernLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(modernLabel);
-        yOffset += 25;
+        auto modernGroup = addExample(card1, "ModernLabel", Tr("Modern Style (Material Design with bottom indicator)"));
 
-        auto modernTabs = std::make_shared<UltraCanvasTabbedContainer>("ModernTabs", 40, yOffset, 800, 220);
+        auto modernTabs = std::make_shared<UltraCanvasTabbedContainer>("ModernTabs", 0, 0, 800, 220);
         modernTabs->SetTabStyle(TabStyle::Modern);
         modernTabs->SetTabHeight(32);
 //        modernTabs->SetActiveTabIndicatorHeight(3.0f);
 //        modernTabs->SetActiveTabIndicatorColor(Color(33, 150, 243)); // Material Blue
 
-        modernTabs->AddTab("Files and Folders", CreateSampleTabContent("Modern1",
-                                                                       "Modern Style Features:\n\n"
+        modernTabs->AddTab(Tr("Files and Folders"), CreateSampleTabContent("Modern1",
+                                                                       Tr("Modern Style Features:\n\n"
                                                                        "• Flat design with no borders\n"
                                                                        "• Bold bottom indicator line (3px) under active tab\n"
                                                                        "• Subtle background color change on hover\n"
                                                                        "• Clean, minimal Material Design appearance\n"
-                                                                       "• Popular in Google and Android apps",
+                                                                       "• Popular in Google and Android apps"),
                                                                        Color(250, 250, 250)));
 
-        modernTabs->AddTab("User Profiles", CreateSampleTabContent("Modern2",
-                                                                   "User profiles and management features.\n\n"
-                                                                   "Notice the blue indicator line that follows the active tab.",
+        modernTabs->AddTab(Tr("User Profiles"), CreateSampleTabContent("Modern2",
+                                                                   Tr("User profiles and management features.\n\n"
+                                                                   "Notice the blue indicator line that follows the active tab."),
                                                                    Color(245, 250, 255)));
 
-        modernTabs->AddTab("Contacts", CreateSampleTabContent("Modern3",
-                                                              "Contact management interface.\n\n"
-                                                              "Modern style is ideal for web applications and mobile-inspired UIs.",
+        modernTabs->AddTab(Tr("Contacts"), CreateSampleTabContent("Modern3",
+                                                              Tr("Contact management interface.\n\n"
+                                                              "Modern style is ideal for web applications and mobile-inspired UIs."),
                                                               Color(250, 245, 255)));
 
-        modernTabs->AddTab("Applications", CreateSampleTabContent("Modern4",
-                                                                  "Application settings and configuration.",
+        modernTabs->AddTab(Tr("Applications"), CreateSampleTabContent("Modern4",
+                                                                  Tr("Application settings and configuration."),
                                                                   Color(255, 250, 245)));
 
         modernTabs->SetActiveTab(0);
         modernTabs->SetCloseMode(TabCloseMode::NoClose);
-        mainContainer->AddChild(modernTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(modernGroup, modernTabs);
 
         // --- Flat Style ---
-        auto flatLabel = std::make_shared<UltraCanvasLabel>("FlatLabel", 40, yOffset, 400, 20);
-        flatLabel->SetText("Flat Style (Minimal text-only design)");
-        flatLabel->SetFontSize(11);
-        flatLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(flatLabel);
-        yOffset += 25;
+        auto flatGroup = addExample(card1, "FlatLabel", Tr("Flat Style (Minimal text-only design)"));
 
-        auto flatTabs = std::make_shared<UltraCanvasTabbedContainer>("FlatTabs", 40, yOffset, 800, 220);
+        auto flatTabs = std::make_shared<UltraCanvasTabbedContainer>("FlatTabs", 0, 0, 800, 220);
         flatTabs->SetTabStyle(TabStyle::Flat);
         flatTabs->SetTabHeight(28);
 
-        flatTabs->AddTab("General", CreateSampleTabContent("Flat1",
-                                                           "Flat Style Features:\n\n"
+        flatTabs->AddTab(Tr("General"), CreateSampleTabContent("Flat1",
+                                                           Tr("Flat Style Features:\n\n"
                                                            "• Completely flat with no borders\n"
                                                            "• Only active tab shows different background\n"
                                                            "• Maximum minimalism\n"
                                                            "• Very clean and unobtrusive\n"
-                                                           "• Perfect for simple, elegant interfaces",
+                                                           "• Perfect for simple, elegant interfaces"),
                                                            Color(250, 250, 250)));
 
-        flatTabs->AddTab("Advanced", CreateSampleTabContent("Flat2",
-                                                            "Advanced configuration options.\n\n"
-                                                            "Flat style keeps the focus on content, not chrome.",
+        flatTabs->AddTab(Tr("Advanced"), CreateSampleTabContent("Flat2",
+                                                            Tr("Advanced configuration options.\n\n"
+                                                            "Flat style keeps the focus on content, not chrome."),
                                                             Color(245, 250, 255)));
 
-        flatTabs->AddTab("About", CreateSampleTabContent("Flat3",
-                                                         "About this application.\n\n"
-                                                         "Minimal UI, maximum content.",
+        flatTabs->AddTab(Tr("About"), CreateSampleTabContent("Flat3",
+                                                         Tr("About this application.\n\n"
+                                                         "Minimal UI, maximum content."),
                                                          Color(250, 245, 255)));
 
         flatTabs->SetActiveTab(0);
         flatTabs->SetCloseMode(TabCloseMode::NoClose);
-        mainContainer->AddChild(flatTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(flatGroup, flatTabs);
 
         // --- Rounded Style ---
-        auto roundedLabel = std::make_shared<UltraCanvasLabel>("RoundedLabel", 40, yOffset, 400, 20);
-        roundedLabel->SetText("Rounded Style (Chrome/Firefox browser-style)");
-        roundedLabel->SetFontSize(11);
-        roundedLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(roundedLabel);
-        yOffset += 25;
+        auto roundedGroup = addExample(card1, "RoundedLabel", Tr("Rounded Style (Chrome/Firefox browser-style)"));
 
-        auto roundedTabs = std::make_shared<UltraCanvasTabbedContainer>("RoundedTabs", 40, yOffset, 800, 220);
+        auto roundedTabs = std::make_shared<UltraCanvasTabbedContainer>("RoundedTabs", 0, 0, 800, 220);
         roundedTabs->SetTabStyle(TabStyle::Rounded);
         roundedTabs->SetTabHeight(30);
         roundedTabs->SetTabCornerRadius(8.0f);
         roundedTabs->SetTabElevation(1.0f);
 
-        roundedTabs->AddTab("Page 1", CreateSampleTabContent("Rounded1",
-                                                             "Rounded Style Features:\n\n"
+        roundedTabs->AddTab(Tr("Page 1"), CreateSampleTabContent("Rounded1",
+                                                             Tr("Rounded Style Features:\n\n"
                                                              "• Rounded top-left and top-right corners\n"
                                                              "• Active tab connects smoothly to content area\n"
                                                              "• Optional shadow for depth\n"
                                                              "• Soft, friendly appearance\n"
-                                                             "• Used in Chrome, Edge, Firefox browsers",
+                                                             "• Used in Chrome, Edge, Firefox browsers"),
                                                              Color(240, 240, 255)));
 
-        roundedTabs->AddTab("Page 2", CreateSampleTabContent("Rounded2",
-                                                             "Another page in the rounded style.\n\n"
-                                                             "Notice the smooth rounded corners on the tabs.",
+        roundedTabs->AddTab(Tr("Page 2"), CreateSampleTabContent("Rounded2",
+                                                             Tr("Another page in the rounded style.\n\n"
+                                                             "Notice the smooth rounded corners on the tabs."),
                                                              Color(240, 240, 255)));
 
-        roundedTabs->AddTab("Page 3", CreateSampleTabContent("Rounded3",
-                                                             "Third page content.\n\n"
-                                                             "This style is very popular in modern applications.",
+        roundedTabs->AddTab(Tr("Page 3"), CreateSampleTabContent("Rounded3",
+                                                             Tr("Third page content.\n\n"
+                                                             "This style is very popular in modern applications."),
                                                              Color(240, 240, 255)));
 
         roundedTabs->SetActiveTab(0);
-        mainContainer->AddChild(roundedTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(roundedGroup, roundedTabs);
 
         // --- Pill Style: five colourways ---
         // The same style throughout; only colours and insets differ. They
         // match the five in Docs/UltraCanvas/UltraCanvasTabExamples.md and
         // Tests/TabPillStyleScreenshotTest.cpp.
         struct PillColourway {
-            const char* name;
+            std::string name;
             Color bar;
             Color activeFill, activeBorder, activeText, activeClose;
             Color inactiveFill, inactiveText;
@@ -243,31 +211,31 @@ namespace UltraCanvas {
             bool newTabButton;
         };
         const PillColourway pillColourways[] = {
-            {"Pill Style 1 - outlined pill on a tinted bar (unselected tabs are text only)",
+            {Tr("Pill Style 1 - outlined pill on a tinted bar (unselected tabs are text only)"),
              Color(229, 234, 241),
              Colors::White, Color(96, 146, 224), Color(30, 37, 46), Colors::Transparent,
              Colors::Transparent, Color(84, 96, 112),
              Color(255, 255, 255, 140),
              Color(84, 96, 112), Colors::White, Color(205, 212, 222), 0.0f, true},
-            {"Pill Style 2 - tinted pill with a teal outline",
+            {Tr("Pill Style 2 - tinted pill with a teal outline"),
              Color(250, 251, 252),
              Color(228, 244, 240), Color(34, 150, 130), Color(20, 60, 55), Colors::Transparent,
              Colors::Transparent, Color(90, 96, 104),
              Color(238, 240, 243),
              Color(110, 116, 125), Colors::White, Color(226, 229, 234), 0.0f, false},
-            {"Pill Style 3 - solid accent pill, grey pills for the others",
+            {Tr("Pill Style 3 - solid accent pill, grey pills for the others"),
              Color(245, 246, 248),
              Color(41, 112, 196), Colors::Transparent, Colors::White, Color(225, 236, 250),
              Color(226, 229, 234), Color(60, 64, 72),
              Color(212, 216, 224),
              Color(110, 116, 125), Colors::White, Color(226, 229, 234), 0.0f, false},
-            {"Pill Style 4 - neutral chips (corner radius 6)",
+            {Tr("Pill Style 4 - neutral chips (corner radius 6)"),
              Color(252, 252, 253),
              Colors::White, Color(205, 205, 214), Color(30, 37, 46), Colors::Transparent,
              Color(240, 241, 244), Color(90, 90, 100),
              Color(232, 233, 237),
              Color(120, 120, 130), Colors::White, Color(228, 228, 232), 6.0f, false},
-            {"Pill Style 5 - dark bar",
+            {Tr("Pill Style 5 - dark bar"),
              Color(30, 30, 36),
              Color(46, 46, 58), Color(120, 170, 240), Color(240, 240, 245), Colors::Transparent,
              Colors::Transparent, Color(170, 170, 185),
@@ -280,17 +248,12 @@ namespace UltraCanvas {
             const std::string suffix = std::to_string(++pillIndex);
             const bool first = (pillIndex == 1);
 
-            auto pillLabel = std::make_shared<UltraCanvasLabel>("PillLabel" + suffix, 40, yOffset, 700, 20);
-            pillLabel->SetText(cw.name);
-            pillLabel->SetFontSize(11);
-            pillLabel->SetFontWeight(FontWeight::Bold);
-            mainContainer->AddChild(pillLabel);
-            yOffset += 25;
+            auto pillGroup = addExample(card1, "PillLabel" + suffix, cw.name);
 
             // The first colourway gets a full page; the others only need
             // their tab bar and a line of content.
             const int height = first ? 220 : 110;
-            auto pillTabs = std::make_shared<UltraCanvasTabbedContainer>("PillTabs" + suffix, 40, yOffset, 800, height);
+            auto pillTabs = std::make_shared<UltraCanvasTabbedContainer>("PillTabs" + suffix, 0, 0, 800, height);
             pillTabs->SetTabStyle(TabStyle::Pill);
             pillTabs->SetTabHeight(36);
             pillTabs->SetPillInset(2, 4);
@@ -323,100 +286,78 @@ namespace UltraCanvas {
                     label->SetTextColor(pageText);
                 return content;
             };
-            pillTabs->AddTab("Inbox", page("Pill" + suffix + "a", first ?
-                                                         "Pill Style Features:\n\n"
+            pillTabs->AddTab(Tr("Inbox"), page("Pill" + suffix + "a", first ?
+                                                         Tr("Pill Style Features:\n\n"
                                                          "• Each tab is a capsule inset in the tab bar\n"
                                                          "• The open tab is filled and outlined in its own colours\n"
                                                          "• Unselected tabs are plain text, or quiet pills, until hovered\n"
                                                          "• Colours and insets give the five colourways on this page\n"
-                                                         "• The page keeps a hairline, not a frame" :
-                                                         "Colourway " + suffix + ": the same TabStyle::Pill, other colours."));
-            pillTabs->AddTab("UltraMail: Add/Delete account", page("Pill" + suffix + "b",
-                                                         "A long title is truncated inside its capsule."));
-            pillTabs->AddTab("Drafts", page("Pill" + suffix + "c",
-                                                         "Hover a tab to see its capsule fade in."));
+                                                         "• The page keeps a hairline, not a frame") :
+                                                         TrF("Colourway {0}: the same TabStyle::Pill, other colours.", suffix)));
+            pillTabs->AddTab(Tr("UltraMail: Add/Delete account"), page("Pill" + suffix + "b",
+                                                         Tr("A long title is truncated inside its capsule.")));
+            pillTabs->AddTab(Tr("Drafts"), page("Pill" + suffix + "c",
+                                                         Tr("Hover a tab to see its capsule fade in.")));
             pillTabs->SetTabIcon(0, NormalizePath(GetResourcesDir() + "media/icons/home-icon.png"));
             pillTabs->SetTabIcon(1, NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
             pillTabs->SetTabIcon(2, NormalizePath(GetResourcesDir() + "media/icons/document.png"));
             pillTabs->SetActiveTab(first ? 0 : 1);
-            mainContainer->AddChild(pillTabs);
-            yOffset += height + 10;
+            DemoKit::AddStretched(pillGroup, pillTabs);
         }
 
         // ========================================
         // SECTION 2: TAB FEATURES (Icons, Badges, Close Buttons)
         // ========================================
-        auto section2Title = std::make_shared<UltraCanvasLabel>("Section2Title", 20, yOffset, 960, 30);
-        section2Title->SetText("2. TAB FEATURES (Icons, Badges, Close Buttons)");
-        section2Title->SetFontSize(14);
-        section2Title->SetFontWeight(FontWeight::Bold);
-        section2Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section2Title);
-        yOffset += 35;
+        auto card2 = DemoKit::AddCard(mainContainer, "Section2", Tr("2. TAB FEATURES (Icons, Badges, Close Buttons)"));
+        card2->layout.SetFlexGap(14);
 
         // --- Tabs with Icons and Badges ---
-        auto featuresLabel = std::make_shared<UltraCanvasLabel>("FeaturesLabel", 40, yOffset, 600, 20);
-        featuresLabel->SetText("Tabs with Icons, Notification Badges, and Close Buttons");
-        featuresLabel->SetFontSize(11);
-        featuresLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(featuresLabel);
-        yOffset += 25;
+        auto featuresGroup = addExample(card2, "FeaturesLabel", Tr("Tabs with Icons, Notification Badges, and Close Buttons"));
 
-        auto featureTabs = std::make_shared<UltraCanvasTabbedContainer>("FeatureTabs", 40, yOffset, 800, 220);
+        auto featureTabs = std::make_shared<UltraCanvasTabbedContainer>("FeatureTabs", 0, 0, 800, 220);
         featureTabs->SetTabStyle(TabStyle::Rounded);
         featureTabs->SetTabHeight(32);
         featureTabs->SetCloseMode(TabCloseMode::Closable);
         featureTabs->SetIconSize(16);
 
         // Add tabs with icons
-        int tabIndex1 = featureTabs->AddTab("Messages", CreateSampleTabContent("Feature1",
-                                                                               "Tab Features Demonstrated:\n\n"
+        int tabIndex1 = featureTabs->AddTab(Tr("Messages"), CreateSampleTabContent("Feature1",
+                                                                               Tr("Tab Features Demonstrated:\n\n"
                                                                                "• Tab icons (16x16 images next to title)\n"
                                                                                "• Notification badges (red circles with counts)\n"
                                                                                "• Close buttons (× on each tab)\n"
                                                                                "• Hover effects on all interactive elements\n"
-                                                                               "• Visual feedback for user actions",
+                                                                               "• Visual feedback for user actions"),
                                                                                Color(250, 250, 250)));
         featureTabs->SetTabIcon(tabIndex1, NormalizePath(GetResourcesDir() + "media/icons/envelope-icon.png"));
         featureTabs->SetTabBadge(tabIndex1, "5", true);  // 5 unread messages
 
-        int tabIndex2 = featureTabs->AddTab("Notifications", CreateSampleTabContent("Feature2",
-                                                                                    "Notification center content.\n\n"
-                                                                                    "Badge shows 12 new notifications.",
+        int tabIndex2 = featureTabs->AddTab(Tr("Notifications"), CreateSampleTabContent("Feature2",
+                                                                                    Tr("Notification center content.\n\n"
+                                                                                    "Badge shows 12 new notifications."),
                                                                                     Color(245, 250, 255)));
         featureTabs->SetTabIcon(tabIndex2, NormalizePath(GetResourcesDir() + "media/icons/bell-icon.png"));
         featureTabs->SetTabBadge(tabIndex2, "999+", true);  // 12 notifications
 
-        int tabIndex3 = featureTabs->AddTab("Settings", CreateSampleTabContent("Feature3",
-                                                                               "Settings and preferences.\n\n"
-                                                                               "This tab has an icon but no badge.",
+        int tabIndex3 = featureTabs->AddTab(Tr("Settings"), CreateSampleTabContent("Feature3",
+                                                                               Tr("Settings and preferences.\n\n"
+                                                                               "This tab has an icon but no badge."),
                                                                                Color(250, 245, 255)));
         featureTabs->SetTabIcon(tabIndex3, NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
 
         featureTabs->SetActiveTab(0);
-        mainContainer->AddChild(featureTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(featuresGroup, featureTabs);
 
         // ========================================
         // SECTION 3: TAB OVERFLOW & SCROLLING
         // ========================================
-        auto section3Title = std::make_shared<UltraCanvasLabel>("Section3Title", 20, yOffset, 960, 30);
-        section3Title->SetText("3. TAB OVERFLOW HANDLING (Dropdown & Search)");
-        section3Title->SetFontSize(14);
-        section3Title->SetFontWeight(FontWeight::Bold);
-        section3Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section3Title);
-        yOffset += 35;
+        auto card3 = DemoKit::AddCard(mainContainer, "Section3", Tr("3. TAB OVERFLOW HANDLING (Dropdown & Search)"));
+        card3->layout.SetFlexGap(14);
 
         // --- Many Tabs with Overflow Dropdown ---
-        auto overflowLabel = std::make_shared<UltraCanvasLabel>("OverflowLabel", 40, yOffset, 700, 20);
-        overflowLabel->SetText("20 Tabs with Overflow Dropdown + Search (when scrollbar appears)");
-        overflowLabel->SetFontSize(11);
-        overflowLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(overflowLabel);
-        yOffset += 25;
+        auto overflowGroup = addExample(card3, "OverflowLabel", Tr("20 Tabs with Overflow Dropdown + Search (when scrollbar appears)"));
 
-        auto overflowTabs = std::make_shared<UltraCanvasTabbedContainer>("OverflowTabs", 40, yOffset, 800, 220);
+        auto overflowTabs = std::make_shared<UltraCanvasTabbedContainer>("OverflowTabs", 0, 0, 800, 220);
         overflowTabs->SetTabStyle(TabStyle::Modern);
         overflowTabs->SetTabHeight(30);
         overflowTabs->SetOverflowDropdownPosition(OverflowDropdownPosition::Left);
@@ -425,14 +366,11 @@ namespace UltraCanvas {
 
         // Add 20 tabs to trigger overflow
         for (int i = 1; i <= 20; i++) {
-            std::ostringstream titleStream;
-            titleStream << "Tab " << i;
-
-            std::ostringstream contentStream;
-            contentStream << "Content for Tab " << i << "\n\n"
-                          << "This demonstrates the overflow dropdown feature.\n"
-                          << "Click the dropdown arrow at the end of the tab bar to see all tabs.\n"
-                          << "Search field appears when dropdown has scrollbar.";
+            const std::string title = TrF("Tab {0}", i);
+            const std::string contentText = TrF("Content for Tab {0}\n\n"
+                                                "This demonstrates the overflow dropdown feature.\n"
+                                                "Click the dropdown arrow at the end of the tab bar to see all tabs.\n"
+                                                "Search field appears when dropdown has scrollbar.", i);
 
             Color tabColor = Color(
                     240 + (i % 3) * 5,
@@ -440,34 +378,23 @@ namespace UltraCanvas {
                     250 - (i % 4) * 3
             );
 
-            overflowTabs->AddTab(titleStream.str(),
+            overflowTabs->AddTab(title,
                                  CreateSampleTabContent("Overflow" + std::to_string(i),
-                                                        contentStream.str(), tabColor));
+                                                        contentText, tabColor));
         }
 
         overflowTabs->SetActiveTab(0);
-        mainContainer->AddChild(overflowTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(overflowGroup, overflowTabs);
 
         // ========================================
         // SECTION 4: NEW TAB BUTTON - STYLE A (Fixed Tab)
         // ========================================
-        auto section4Title = std::make_shared<UltraCanvasLabel>("Section4Title", 20, yOffset, 960, 30);
-        section4Title->SetText("4. NEW TAB BUTTON - STYLE A (Browser-Style Fixed Tab)");
-        section4Title->SetFontSize(14);
-        section4Title->SetFontWeight(FontWeight::Bold);
-        section4Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section4Title);
-        yOffset += 35;
+        auto card4 = DemoKit::AddCard(mainContainer, "Section4", Tr("4. NEW TAB BUTTON - STYLE A (Browser-Style Fixed Tab)"));
+        card4->layout.SetFlexGap(14);
 
-        auto newTabALabel = std::make_shared<UltraCanvasLabel>("NewTabALabel", 40, yOffset, 700, 20);
-        newTabALabel->SetText("Click the '+' tab to create new tabs (Browser behavior)");
-        newTabALabel->SetFontSize(11);
-        newTabALabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(newTabALabel);
-        yOffset += 25;
+        auto newTabAGroup = addExample(card4, "NewTabALabel", Tr("Click the '+' tab to create new tabs (Browser behavior)"));
 
-        auto newTabATabs = std::make_shared<UltraCanvasTabbedContainer>("NewTabATabs", 40, yOffset, 800, 220);
+        auto newTabATabs = std::make_shared<UltraCanvasTabbedContainer>("NewTabATabs", 0, 0, 800, 220);
         newTabATabs->SetTabStyle(TabStyle::Rounded);
         newTabATabs->SetTabHeight(30);
         newTabATabs->SetTabCornerRadius(8.0f);
@@ -484,66 +411,52 @@ namespace UltraCanvas {
         newTabATabs->onNewTabRequest = [newTabATabs = newTabATabs.get()]() {
             static int tabCounter = 1;
 
-            std::ostringstream titleStream;
-            titleStream << "New Tab " << tabCounter;
-
-            std::ostringstream contentStream;
-            contentStream << "This is a dynamically created tab!\n\n"
-                          << "Tab #" << tabCounter << " created at runtime.\n"
-                          << "Click the '+' tab to create more tabs.\n"
-                          << "Use the '×' button to close tabs.";
+            const std::string title = TrF("New Tab {0}", tabCounter);
+            const std::string contentText = TrF("This is a dynamically created tab!\n\n"
+                                                "Tab #{0} created at runtime.\n"
+                                                "Click the '+' tab to create more tabs.\n"
+                                                "Use the '×' button to close tabs.", tabCounter);
 
             auto content = CreateSampleTabContent(
                     "DynamicTab" + std::to_string(tabCounter),
                     
-                    contentStream.str(),
+                    contentText,
                     Color(240 + (tabCounter % 10), 250, 240 + (tabCounter % 15))
             );
 
-            int newIndex = newTabATabs->AddTab(titleStream.str(), content);
+            int newIndex = newTabATabs->AddTab(title, content);
             newTabATabs->SetActiveTab(newIndex);
 
             tabCounter++;
         };
 
         // Add initial tabs
-        newTabATabs->AddTab("Welcome", CreateSampleTabContent("NewTabA1",
-                                                              "Style A - Fixed Tab Button Features:\n\n"
+        newTabATabs->AddTab(Tr("Welcome"), CreateSampleTabContent("NewTabA1",
+                                                              Tr("Style A - Fixed Tab Button Features:\n\n"
                                                               "• Mini tab that looks like regular tabs\n"
                                                               "• Fixed width (32px default)\n"
                                                               "• Inherits visual styling from tab style\n"
                                                               "• Always visible, doesn't scroll\n"
-                                                              "• Used in Chrome, Edge, Firefox browsers",
+                                                              "• Used in Chrome, Edge, Firefox browsers"),
                                                               Color(250, 250, 250)));
 
-        newTabATabs->AddTab("Tab 2", CreateSampleTabContent("NewTabA2",
-                                                            "Click the '+' tab to create new tabs!\n\n"
-                                                            "Each new tab can be closed individually.",
+        newTabATabs->AddTab(Tr("Tab 2"), CreateSampleTabContent("NewTabA2",
+                                                            Tr("Click the '+' tab to create new tabs!\n\n"
+                                                            "Each new tab can be closed individually."),
                                                             Color(245, 250, 255)));
 
         newTabATabs->SetActiveTab(0);
-        mainContainer->AddChild(newTabATabs);
-        yOffset += 230;
+        DemoKit::AddStretched(newTabAGroup, newTabATabs);
 
         // ========================================
         // SECTION 5: NEW TAB BUTTON - STYLE B (Icon Button)
         // ========================================
-        auto section5Title = std::make_shared<UltraCanvasLabel>("Section5Title", 20, yOffset, 960, 30);
-        section5Title->SetText("5. NEW TAB BUTTON - STYLE B (VS Code-Style Icon Button)");
-        section5Title->SetFontSize(14);
-        section5Title->SetFontWeight(FontWeight::Bold);
-        section5Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section5Title);
-        yOffset += 35;
+        auto card5 = DemoKit::AddCard(mainContainer, "Section5", Tr("5. NEW TAB BUTTON - STYLE B (VS Code-Style Icon Button)"));
+        card5->layout.SetFlexGap(14);
 
-        auto newTabBLabel = std::make_shared<UltraCanvasLabel>("NewTabBLabel", 40, yOffset, 700, 20);
-        newTabBLabel->SetText("Click the '+' icon button to create new tabs (Code editor behavior)");
-        newTabBLabel->SetFontSize(11);
-        newTabBLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(newTabBLabel);
-        yOffset += 25;
+        auto newTabBGroup = addExample(card5, "NewTabBLabel", Tr("Click the '+' icon button to create new tabs (Code editor behavior)"));
 
-        auto newTabBTabs = std::make_shared<UltraCanvasTabbedContainer>("NewTabBTabs", 40, yOffset, 800, 220);
+        auto newTabBTabs = std::make_shared<UltraCanvasTabbedContainer>("NewTabBTabs", 0, 0, 800, 220);
         newTabBTabs->SetTabStyle(TabStyle::Flat);
         newTabBTabs->SetTabHeight(28);
         newTabBTabs->SetCloseMode(TabCloseMode::Closable);
@@ -569,16 +482,15 @@ namespace UltraCanvas {
             std::ostringstream titleStream;
             titleStream << "File " << tabCounter << ".txt";
 
-            std::ostringstream contentStream;
-            contentStream << "Code Editor Tab #" << tabCounter << "\n\n"
-                          << "This mimics VS Code tab behavior.\n"
-                          << "Compact icon button for creating tabs.\n"
-                          << "Minimal UI, maximum workspace.";
+            const std::string contentText = TrF("Code Editor Tab #{0}\n\n"
+                                                "This mimics VS Code tab behavior.\n"
+                                                "Compact icon button for creating tabs.\n"
+                                                "Minimal UI, maximum workspace.", tabCounter);
 
             auto content = CreateSampleTabContent(
                     "CodeTab" + std::to_string(tabCounter),
                     
-                    contentStream.str(),
+                    contentText,
                     Color(248, 248, 248)
             );
 
@@ -590,121 +502,104 @@ namespace UltraCanvas {
 
         // Add initial tabs
         newTabBTabs->AddTab("main.cpp", CreateSampleTabContent("NewTabB1",
-                                                               "Style B - Icon Button Features:\n\n"
+                                                               Tr("Style B - Icon Button Features:\n\n"
                                                                "• Simple icon button (24x24 default)\n"
                                                                "• Separate from tab visual style\n"
                                                                "• More compact and minimal\n"
                                                                "• Centered in tab bar\n"
-                                                               "• Used in VS Code, Sublime Text, code editors",
+                                                               "• Used in VS Code, Sublime Text, code editors"),
                                                                Color(248, 248, 248)));
 
         newTabBTabs->AddTab("utils.h", CreateSampleTabContent("NewTabB2",
-                                                              "Click the small '+' button to add files.\n\n"
-                                                              "Perfect for code editor interfaces.",
+                                                              Tr("Click the small '+' button to add files.\n\n"
+                                                              "Perfect for code editor interfaces."),
                                                               Color(250, 250, 250)));
 
         newTabBTabs->SetActiveTab(0);
         newTabBTabs->SetCloseMode(TabCloseMode::Closable);
-        mainContainer->AddChild(newTabBTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(newTabBGroup, newTabBTabs);
 
         // ========================================
         // SECTION 6: TAB POSITIONS (Top, Bottom, Left, Right)
         // ========================================
-        auto section6Title = std::make_shared<UltraCanvasLabel>("Section6Title", 20, yOffset, 960, 30);
-        section6Title->SetText("6. TAB POSITIONS (Top, Bottom, Left, Right)");
-        section6Title->SetFontSize(14);
-        section6Title->SetFontWeight(FontWeight::Bold);
-        section6Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section6Title);
-        yOffset += 35;
+        auto card6 = DemoKit::AddCard(mainContainer, "Section6", Tr("6. TAB POSITIONS (Top, Bottom, Left, Right)"));
+        card6->layout.SetFlexGap(14);
 
-        // Create a container for side-by-side position demos
-        auto positionContainer = std::make_shared<UltraCanvasContainer>("PositionContainer", 40, yOffset, 800, 480);
-        positionContainer->SetBackgroundColor(Colors::Transparent);
+        // Bottom and left side by side (under each other when narrow), right below
+        auto positionContainer = DemoKit::CreateColumn("PositionContainer", 12);
+        DemoKit::Add(card6, positionContainer);
+        auto positionRow = DemoKit::CreateRow("PositionRow", 30);
+        DemoKit::Add(positionContainer, positionRow);
 
         // Bottom Position Tabs
-        auto bottomTabs = std::make_shared<UltraCanvasTabbedContainer>("BottomTabs", 10, 10, 370, 190);
+        auto bottomTabs = std::make_shared<UltraCanvasTabbedContainer>("BottomTabs", 0, 0, 370, 190);
         bottomTabs->SetTabPosition(TabPosition::Bottom);
         bottomTabs->SetTabStyle(TabStyle::Classic);
-        bottomTabs->AddTab("Bottom 1", CreateSampleTabContent("Bottom1",
-                                                              "Tabs at bottom\n(Terminal/Console style)", Color(250, 250, 250), 340, 150));
-        bottomTabs->AddTab("Bottom 2", CreateSampleTabContent("Bottom2",
-                                                              "Useful for tool windows", Color(245, 250, 255), 340, 150));
+        bottomTabs->AddTab(Tr("Bottom 1"), CreateSampleTabContent("Bottom1",
+                                                              Tr("Tabs at bottom\n(Terminal/Console style)"), Color(250, 250, 250), 340, 150));
+        bottomTabs->AddTab(Tr("Bottom 2"), CreateSampleTabContent("Bottom2",
+                                                              Tr("Useful for tool windows"), Color(245, 250, 255), 340, 150));
         bottomTabs->SetActiveTab(0);
-        positionContainer->AddChild(bottomTabs);
+        DemoKit::AddFixed(positionRow, bottomTabs);
 
         // Left Position Tabs
-        auto leftTabs = std::make_shared<UltraCanvasTabbedContainer>("LeftTabs", 410, 10, 370, 190);
+        auto leftTabs = std::make_shared<UltraCanvasTabbedContainer>("LeftTabs", 0, 0, 370, 190);
         leftTabs->SetTabPosition(TabPosition::Left);
         leftTabs->SetTabStyle(TabStyle::Flat);
-        leftTabs->AddTab("Left 1", CreateSampleTabContent("Left1",
-                                                          "Vertical tabs on left side", Color(250, 250, 250), 240, 150));
-        leftTabs->AddTab("Left Panel 2", CreateSampleTabContent("Left2",
-                                                          "Sidebar navigation style", Color(245, 250, 255), 240, 150));
+        leftTabs->AddTab(Tr("Left 1"), CreateSampleTabContent("Left1",
+                                                          Tr("Vertical tabs on left side"), Color(250, 250, 250), 240, 150));
+        leftTabs->AddTab(Tr("Left Panel 2"), CreateSampleTabContent("Left2",
+                                                          Tr("Sidebar navigation style"), Color(245, 250, 255), 240, 150));
         leftTabs->SetActiveTab(0);
-        positionContainer->AddChild(leftTabs);
+        DemoKit::AddFixed(positionRow, leftTabs);
 
         // Right Position Tabs
-        auto rightTabs = std::make_shared<UltraCanvasTabbedContainer>("RightTabs", 10, 260, 780, 200);
+        auto rightTabs = std::make_shared<UltraCanvasTabbedContainer>("RightTabs", 0, 0, 780, 200);
         rightTabs->SetTabPosition(TabPosition::Right);
         rightTabs->SetTabStyle(TabStyle::Modern);
-        rightTabs->AddTab("Right 1", CreateSampleTabContent("Right1",
-                                                                  "Tabs on right side - useful for property panels and inspector windows", Color(250, 250, 250)));
-        rightTabs->AddTab("Right Panel 2", CreateSampleTabContent("Right2",
-                                                                  "Common in design tools and IDEs for tool palettes", Color(245, 250, 255)));
+        rightTabs->AddTab(Tr("Right 1"), CreateSampleTabContent("Right1",
+                                                                  Tr("Tabs on right side - useful for property panels and inspector windows"), Color(250, 250, 250)));
+        rightTabs->AddTab(Tr("Right Panel 2"), CreateSampleTabContent("Right2",
+                                                                  Tr("Common in design tools and IDEs for tool palettes"), Color(245, 250, 255)));
         rightTabs->SetActiveTab(0);
-        positionContainer->AddChild(rightTabs);
-
-        mainContainer->AddChild(positionContainer);
-        yOffset += 510;
+        DemoKit::AddStretched(positionContainer, rightTabs);
 
         // ========================================
         // SECTION 7: ADVANCED FEATURES
         // ========================================
         /*
-        auto section7Title = std::make_shared<UltraCanvasLabel>("Section7Title", 20, yOffset, 960, 30);
-        section7Title->SetText("7. ADVANCED FEATURES (Drag & Drop, Callbacks, Custom Colors)");
-        section7Title->SetFontSize(14);
-        section7Title->SetFontWeight(FontWeight::Bold);
-        section7Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section7Title);
-        yOffset += 35;
+        auto card7 = DemoKit::AddCard(mainContainer, "Section7", Tr("7. ADVANCED FEATURES (Drag & Drop, Callbacks, Custom Colors)"));
+        card7->layout.SetFlexGap(14);
 
-        auto advancedLabel = std::make_shared<UltraCanvasLabel>("AdvancedLabel", 40, yOffset, 700, 20);
-        advancedLabel->SetText("Custom styled tabs with per-tab colors and event callbacks");
-        advancedLabel->SetFontSize(11);
-        advancedLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(advancedLabel);
-        yOffset += 25;
+        auto advancedGroup = addExample(card7, "AdvancedLabel", Tr("Custom styled tabs with per-tab colors and event callbacks"));
 
-        auto advancedTabs = std::make_shared<UltraCanvasTabbedContainer>("AdvancedTabs", 40, yOffset, 800, 220);
+        auto advancedTabs = std::make_shared<UltraCanvasTabbedContainer>("AdvancedTabs", 0, 0, 800, 220);
         advancedTabs->SetTabStyle(TabStyle::Rounded);
         advancedTabs->SetTabHeight(32);
         advancedTabs->SetShowTabSeparators(true);
 
         // Add tabs with custom colors
-        int redTabIndex = advancedTabs->AddTab("Error Log", CreateSampleTabContent("Advanced1",
-                                                                                   "Custom Tab Features:\n\n"
+        int redTabIndex = advancedTabs->AddTab(Tr("Error Log"), CreateSampleTabContent("Advanced1",
+                                                                                   Tr("Custom Tab Features:\n\n"
                                                                                    "• Per-tab background colors\n"
                                                                                    "• Per-tab text colors\n"
                                                                                    "• Tab separators (vertical lines)\n"
                                                                                    "• Event callbacks (onTabChange, onTabClose)\n"
-                                                                                   "• Drag & drop reordering (try it!)",
+                                                                                   "• Drag & drop reordering (try it!)"),
                                                                                    Color(255, 240, 240)));
         advancedTabs->SetTabBackgroundColor(redTabIndex, Color(255, 200, 200));
         advancedTabs->SetTabTextColor(redTabIndex, Color(150, 0, 0));
 
-        int greenTabIndex = advancedTabs->AddTab("Success", CreateSampleTabContent("Advanced2",
-                                                                                   "This tab has custom green coloring.\n\n"
-                                                                                   "Perfect for status indicators!",
+        int greenTabIndex = advancedTabs->AddTab(Tr("Success"), CreateSampleTabContent("Advanced2",
+                                                                                   Tr("This tab has custom green coloring.\n\n"
+                                                                                   "Perfect for status indicators!"),
                                                                                    Color(240, 255, 240)));
         advancedTabs->SetTabBackgroundColor(greenTabIndex, Color(200, 255, 200));
         advancedTabs->SetTabTextColor(greenTabIndex, Color(0, 120, 0));
 
-        int blueTabIndex = advancedTabs->AddTab("Information", CreateSampleTabContent("Advanced3",
-                                                                                      "Blue themed tab.\n\n"
-                                                                                      "Each tab can have unique styling.",
+        int blueTabIndex = advancedTabs->AddTab(Tr("Information"), CreateSampleTabContent("Advanced3",
+                                                                                      Tr("Blue themed tab.\n\n"
+                                                                                      "Each tab can have unique styling."),
                                                                                       Color(240, 240, 255)));
         advancedTabs->SetTabBackgroundColor(blueTabIndex, Color(200, 220, 255));
         advancedTabs->SetTabTextColor(blueTabIndex, Color(0, 60, 150));
@@ -716,25 +611,15 @@ namespace UltraCanvas {
         };
 
         advancedTabs->SetActiveTab(0);
-        mainContainer->AddChild(advancedTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(advancedGroup, advancedTabs);
         */
         // ========================================
         // FOOTER
         // ========================================
-        auto footer = std::make_shared<UltraCanvasLabel>("Footer", 20, yOffset, 960, 40);
-        footer->SetText("UltraCanvas Tabbed Container Demo\n"
-                        "All features demonstrated above are production-ready and fully functional.");
-        footer->SetFontSize(10);
-        footer->SetTextColor(Color(120, 120, 120));
-        footer->SetAlignment(TextAlignment::Center);
-        mainContainer->AddChild(footer);
-        yOffset += 50;
-
-        // The page is as tall as what was placed on it. SetElementSize sets
-        // the CSS pixel height the layout reads back; SetHeight would only
-        // move finalBounds, which the next Arrange overwrites.
-        mainContainer->SetElementSize(Size2Df(1020.0f, static_cast<float>(yOffset)));
+        auto footer = DemoKit::AddCaption(mainContainer, "Footer",
+                Tr("UltraCanvas Tabbed Container Demo\n"
+                "All features demonstrated above are production-ready and fully functional."));
+        footer->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
         return mainContainer;
     }

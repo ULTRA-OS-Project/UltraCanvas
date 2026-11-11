@@ -6,7 +6,7 @@
 // Version: 1.3.0 - the value list opens anchored to the field: above it when there is
 //                  no room below, never over it
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpinner.h"
@@ -22,11 +22,13 @@ namespace UltraCanvas {
                                            float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasSpinner::~UltraCanvasSpinner() {
-        // The run timer captures `this`.
+        // The run and repeat timers capture `this`.
         CancelStepRunTimer();
+        StopButtonRepeat();
     }
 
 // ===================================================================
@@ -577,11 +579,13 @@ namespace UltraCanvas {
                 SetHovered(false);
                 hoveredPart = Part::NonePart;
                 pressedPart = Part::NonePart;
+                StopButtonRepeat();
                 EndStepRun();
                 RequestRedraw();
                 return true;
             case UCEventType::FocusLost:
                 if (editing) CommitEditing();
+                StopButtonRepeat();
                 EndStepRun();
                 return false;
             default:
@@ -596,15 +600,18 @@ namespace UltraCanvas {
 
         SetFocus(true);
         pressedPart = part;
+        hoveredPart = part;   // a press without a move before it is on the part too
         // The run lasts while the button is held: no timer ends it.
         CancelStepRunTimer();
 
         if (part == Part::IncButton) {
             if (editing) CommitEditing();
             StepBy(1.0);
+            StartButtonRepeat();
         } else if (part == Part::DecButton) {
             if (editing) CommitEditing();
             StepBy(-1.0);
+            StartButtonRepeat();
         } else if (part == Part::Field) {
             if (dropdownEnabled) {
                 // Combobox-style: the field click toggles the value dropdown.
@@ -622,6 +629,7 @@ namespace UltraCanvas {
     bool UltraCanvasSpinner::HandleMouseUp(const UCEvent& /*event*/) {
         if (pressedPart == Part::NonePart) return false;
         pressedPart = Part::NonePart;
+        StopButtonRepeat();
         EndStepRun();
         RequestRedraw();
         return true;
@@ -782,11 +790,65 @@ namespace UltraCanvas {
         });
     }
 
+    void UltraCanvasSpinner::StartButtonRepeat() {
+        StopButtonRepeat();
+        if (repeatDelayMs == 0 || repeatIntervalMs == 0) return;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        repeatTimer = app->StartTimer(repeatDelayMs, false, [this](TimerId) {
+            repeatTimer = InvalidTimerId;
+            RepeatHeldButton();
+            if (pressedPart != Part::IncButton && pressedPart != Part::DecButton) return;
+            if (auto* a = UltraCanvasApplication::GetInstance())
+                repeatTimer = a->StartTimer(repeatIntervalMs, true, [this](TimerId) { RepeatHeldButton(); });
+        });
+    }
+
+    void UltraCanvasSpinner::StopButtonRepeat() {
+        if (repeatTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(repeatTimer);
+        repeatTimer = InvalidTimerId;
+    }
+
+    // One repeat of the held button; none while the pointer has slid off
+    // it (the press still holds, so sliding back on carries on).
+    void UltraCanvasSpinner::RepeatHeldButton() {
+        if (pressedPart != Part::IncButton && pressedPart != Part::DecButton) { StopButtonRepeat(); return; }
+        if (IsDisabled() || !IsVisible()) { StopButtonRepeat(); return; }
+        if (hoveredPart != pressedPart) return;
+        StepBy(pressedPart == Part::IncButton ? 1.0 : -1.0);
+        RequestRedraw();
+    }
+
     bool UltraCanvasSpinner::SetFocus(bool focus) {
         bool result = UltraCanvasUIElement::SetFocus(focus);
         if (!focus && editing) CommitEditing();
         RequestRedraw();
         return result;
+    }
+
+// ===== THE THEME =====
+    SpinnerVisualStyle SpinnerVisualStyle::FromTheme(const UltraCanvasTheme& theme, const SpinnerVisualStyle& base) {
+        SpinnerVisualStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
+        s.backgroundColor = r.well;
+        s.disabledBackgroundColor = r.panel;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.textColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        s.caretColor = r.ink;
+        s.buttonColor = r.raised;
+        s.buttonHoverColor = r.hover;
+        s.buttonPressedColor = r.pressed;
+        s.buttonDisabledColor = r.panel;
+        s.buttonBorderColor = r.line;
+        s.glyphColor = r.inkMuted;
+        s.glyphDisabledColor = r.inkFaint;
+        return s;
     }
 
 } // namespace UltraCanvas

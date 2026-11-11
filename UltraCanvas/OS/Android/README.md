@@ -11,9 +11,14 @@ APK asset extraction.
 dependency sysroot builds in CI for `arm64-v8a` and `x86_64`, the core library
 compiles against it, DemoApp links against that into `libUltraCanvasDemo.so`,
 and `scripts/android-package-apk.sh` packages that into a debug-signed APK,
-uploaded by every run of `.github/workflows/android-build.yml`. But nothing has
-installed one yet, so none of this has run on a device — it is compiled,
-linked and packaged continuously in CI, not observed. See
+uploaded by every run of `.github/workflows/android-build.yml`, whose emulator
+job installs the x86_64 one and requires a first frame with something drawn
+in it (`scripts/android-emulator-smoke.sh`). That is the whole of what is
+observed so far on an emulator: the first frame (at 160 and 420 dpi), a tap
+on the demo's tree filter field landing on it, a word typed into that field
+reaching it, and an in-place rotation to landscape. Dialogs, the IME's own
+composing path, gestures and everything else past that are still designed
+and reviewed, not seen working. See
 [`packaging/`](packaging/README.md), and
 [`AndroidOnLinuxInvestigation.md`](../../../Docs/UltraCanvas/AndroidOnLinuxInvestigation.md)
 for how to run the first APK on a Linux box rather than a phone (and what to
@@ -28,7 +33,7 @@ Android).
 | `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, UTF-8 ↔ jstring both ways (`ToStdString` / `ToJString`: real UTF-8, not JNI's modified UTF-8, so emoji survive and malformed bytes become U+FFFD instead of aborting under CheckJNI). Never use `NewStringUTF` for anything but a literal. |
 | `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text both ways; images and files can be **pasted** (the clip's `content://` items are copied into the app cache through `UltraCanvasActivity`, as the file picker does) but not **copied** — see Clipboard below. `GetAvailableFormats` reports what the clip actually advertises, in the same MIME spelling the Linux backend uses. Change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "nothing there" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
-| `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name (`Apps/DemoApp/main.cpp` is the worked example; [`packaging/`](packaging/README.md#the-app-library) has the CMake side). |
+| `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name; its arguments after `argv[0]` are the launching intent's `ultracanvas.args` string extra split on whitespace (`am start -e ultracanvas.args "--no-about" ...`), none from the launcher (`Apps/DemoApp/main.cpp` is the worked example; [`packaging/`](packaging/README.md#the-app-library) has the CMake side). |
 | `UltraCanvasAndroidLog.{h,cpp}` | stdout/stderr → logcat pump, installed by `android_main` before anything can log. A native app's stdio goes to `/dev/null`, so without it every warning from cairo/Pango/fontconfig and every `std::cout`/`std::cerr` call site in shared framework code is discarded. The framework's own `debugOutput` does **not** come through here — it reaches logcat directly (see Diagnostics below). |
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs, input dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile` and `SelectFolder` stay logged "Cancel" stubs — **Dialogs** below explains why those two are blocked on an API decision rather than unfinished. |
 | `UltraCanvasAndroidDialogBridge.{h,cpp}` | Sync-over-async bridge to the Java dialogs: shows the dialog, then pumps activity commands on the glue thread until the Java UI thread delivers the answer. Falls back cleanly when the app runs a plain `NativeActivity`. |
@@ -63,6 +68,15 @@ failure this replaces. If the store still ends up empty and the caller asked
 for verification, `Wrap()` fails with a message naming that cause instead of
 letting the handshake fail obscurely; verification is never quietly disabled.
 
+## System bars
+
+`UltraCanvasActivity` runs in sticky immersive mode: the status bar and the
+navigation bar are hidden, and a swipe from the screen's edge shows them over
+the app for a moment. NativeActivity's surface spans the whole window, which
+spans the display, so without it the bars covered the app's top and bottom
+rows and took the taps there. A plain `NativeActivity` (no Java) still has
+that problem.
+
 ## Lifecycle (background / foreground / rotation)
 
 `Run()` survives the whole activity lifecycle; only `APP_CMD_DESTROY`
@@ -79,7 +93,14 @@ letting the handshake fail obscurely; verification is never quietly disabled.
   composite is queued. A rotation that happened while backgrounded arrives
   as a size mismatch and runs the normal resize path.
 - **In-place rotation / fold change** (`APP_CMD_CONFIG_CHANGED` /
-  `WINDOW_RESIZED`): handled as a resize. For this path to be used, the app's
+  `WINDOW_RESIZED`): handled as a resize. The window's new size is read after
+  restoring its own buffer geometry (`setBuffersGeometry(window, 0, 0, ...)`):
+  once the backend has set a buffer size, the window reports that size rather
+  than its own (Android's `Surface` answers the width query with the size the
+  app asked for), so a plain read could not see the rotation. A resize rebuilds
+  the surface without presenting it; the repaint that follows does. The emulator smoke test
+  turns the display to landscape and requires a frame at the new size that
+  fills the window. For this path to be used, the app's
   manifest **must** keep the activity alive across configuration changes:
 
   ```xml

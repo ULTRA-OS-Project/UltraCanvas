@@ -1,10 +1,13 @@
 // OS/WASM/UltraCanvasWASMApplication.cpp
 // WebAssembly (Emscripten) platform application implementation
+// Version: 2.4.0 - DetectHostAppearanceNative: prefers-color-scheme, prefers-contrast and
+//                  prefers-reduced-motion, their change events posting a refresh
+// Version: 2.3.0 - RegisterPlatformBundledFonts: the bundled fonts' registration, shared with a tool
 // Version: 2.2.0 - input method composition: a transparent textarea takes the
 //   keyboard while the focused element draws compositions; its composition
 //   events become TextComposition events
 // Version: 2.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -30,6 +33,12 @@
 // InitializeNative() lands here with the pasted text: hand it to the
 // clipboard backend first, then queue the Ctrl+V key event the application
 // was waiting for, so the text field's paste handler finds the text in place.
+// A media query the look is read from changed (the listeners registered in
+// InitializeNative): read the host again, once per burst, on the UI thread.
+extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnHostAppearanceChanged() {
+    if (auto* app = UltraCanvas::UltraCanvasWASMApplication::GetInstance()) app->ScheduleHostAppearanceRefresh();
+}
+
 extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWasmOnPaste(char* text) {
     if (text) {
         UltraCanvas::UltraCanvasWASMClipboard::OfferText(text);
@@ -132,6 +141,28 @@ namespace UltraCanvas {
                 _UltraCanvasWasmOnPaste(stringToNewUTF8(text));
             };
             document.addEventListener('paste', window.__ultracanvasOnPaste);
+        });
+
+        // The browser's look: a change of the colour scheme, the contrast or
+        // the motion preference reaches DetectHostAppearanceNative through
+        // one refresh.
+        // (EM_ASM stringifies its argument through the preprocessor, which
+        // splits it at a comma outside parentheses: hence push, not an array
+        // literal.)
+        EM_ASM({
+            if (!window.matchMedia) return;
+            if (!window.__ultracanvasAppearanceQueries) {
+                var queries = [];
+                queries.push(window.matchMedia('(prefers-color-scheme: dark)'));
+                queries.push(window.matchMedia('(prefers-contrast: more)'));
+                queries.push(window.matchMedia('(prefers-reduced-motion: reduce)'));
+                window.__ultracanvasAppearanceQueries = queries;
+                queries.forEach(function(q) {
+                    var fire = function() { _UltraCanvasWasmOnHostAppearanceChanged(); };
+                    try { q.addEventListener('change', fire); }
+                    catch (err) { try { q.addListener(fire); } catch (e2) {} }
+                });
+            }
         });
 
         // Input method bridge: a transparent textarea that takes the
@@ -765,7 +796,33 @@ namespace UltraCanvas {
         return result;
     }
 
-    void UltraCanvasWASMApplication::LoadBundledFontsNative() {
+    HostAppearance UltraCanvasWASMApplication::DetectHostAppearanceNative() {
+        // The browser says dark, contrast and motion through its media
+        // queries; it has no accent, and the bundled fonts stay (the page
+        // renders through Pango, not the browser's text engine).
+        HostAppearance host = DefaultHostAppearance();
+        host.source = "wasm-media-query";
+        host.dark = EM_ASM_INT({
+            return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 1 : 0;
+        }) != 0;
+        host.highContrast = EM_ASM_INT({
+            return (window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches) ? 1 : 0;
+        }) != 0;
+        host.reduceMotion = EM_ASM_INT({
+            return (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 1 : 0;
+        }) != 0;
+        const FontStyle ui = DetectSystemFontStyleNative();
+        const FontStyle mono = DetectMonospacedFontStyleNative();
+        if (!ui.fontFamily.empty() && ui.fontSize > 0) host.uiFont = ui;
+        if (!mono.fontFamily.empty() && mono.fontSize > 0) host.monoFont = mono;
+        return host;
+    }
+
+    // The bundled fonts for Pango in the browser - the one registration an
+    // application's start (LoadBundledFontsNative) and a tool without one
+    // (RegisterBundledFontsWithoutApplication) both make.
+    int RegisterPlatformBundledFonts(int systemFontsWaitMs) {
+        (void)systemFontsWaitMs;   // no system font scan in the browser
         // Same registration as the Linux backend: the bundled TTFs must be
         // preloaded into the virtual FS (--preload-file media/fonts@/...) so
         // GetBundledFontsDir() resolves. Missing files are skipped with a
@@ -774,8 +831,9 @@ namespace UltraCanvas {
         FcConfig* cfg = FcConfigGetCurrent();
         if (!cfg) {
             debugOutput << "UltraCanvas WASM: no fontconfig config, bundled fonts not registered" << std::endl;
-            return;
+            return 0;
         }
+        int registered = 0;
 
         const std::string dir = GetBundledFontsDir();
         for (size_t i = 0; i < kEmbeddedAllFontsCount; i++) {
@@ -784,9 +842,14 @@ namespace UltraCanvas {
                 debugOutput << "UltraCanvas WASM: bundled font not found: " << path << std::endl;
                 continue;
             }
-            FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(path.c_str()));
+            if (FcConfigAppFontAddFile(cfg, reinterpret_cast<const FcChar8*>(path.c_str()))) ++registered;
         }
         FcConfigBuildFonts(cfg);
+        return registered;
+    }
+
+    void UltraCanvasWASMApplication::LoadBundledFontsNative() {
+        RegisterPlatformBundledFonts(0);
     }
 
     bool UltraCanvasWASMApplication::RegisterFontFileNative(const std::string& fontFilePath) {

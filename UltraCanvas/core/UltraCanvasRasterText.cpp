@@ -1,8 +1,11 @@
 // core/UltraCanvasRasterText.cpp
 // Draws a text layer's words into its pixels through UltraCanvasRichTextEdit,
 // the element that edits them on the canvas, so the two agree to the pixel.
+// Version: 1.1.0 - RasterTextContent::letterSpacingPx: the text tracked wider or tighter;
+//                  SetTextLineSpacing / GetTextLineSpacing: a text bar's line spacing
+// Version: 1.0.1 - the canvas editor and the renderer show no font notice
 // Version: 1.0.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterText.h"
@@ -53,6 +56,31 @@ namespace {
     }
 }
 
+bool SetTextLineSpacing(UCRichDocument& document, float baseSizePx, float percent) {
+    bool changed = false;
+    for (auto& block : document.blocks) {
+        float largestPt = baseSizePx * kPointsPerPixel;
+        for (const auto& run : block.runs)
+            if (run.fontSizePt > 0.0f) largestPt = std::max(largestPt, run.fontSizePt);
+        const float height = largestPt * percent / 100.0f;
+        if (std::fabs(block.lineHeightPt - height) > 1e-3f || block.lineHeightAtLeast) {
+            block.lineHeightPt = height;
+            block.lineHeightAtLeast = false;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+float GetTextLineSpacing(const UCRichDocument& document, float baseSizePx) {
+    if (document.blocks.empty() || document.blocks.front().lineHeightPt <= 0.0f) return 0.0f;
+    const RichDocBlock& block = document.blocks.front();
+    float largestPt = baseSizePx * kPointsPerPixel;
+    for (const auto& run : block.runs)
+        if (run.fontSizePt > 0.0f) largestPt = std::max(largestPt, run.fontSizePt);
+    return largestPt > 0.0f ? block.lineHeightPt / largestPt * 100.0f : 0.0f;
+}
+
 RichTextEditStyle TextLayerEditStyle(const RasterTextContent& content) {
     RichTextEditStyle style;
     style.baseFont.fontFamily = content.fontFamily.empty() ? std::string("Sans") : content.fontFamily;
@@ -63,6 +91,7 @@ RichTextEditStyle TextLayerEditStyle(const RasterTextContent& content) {
     style.backgroundColor = Colors::Transparent;
     style.drawBorder = false;
     style.padding = 0.0f;
+    style.letterSpacing = content.letterSpacingPx;
     // What the editor shows on top of the words while they are edited; the
     // renderer draws neither.
     style.selectionColor = Color(64, 128, 255, 96);
@@ -74,6 +103,8 @@ void PrepareTextLayerEditor(UltraCanvasRichTextEdit& editor, const RasterTextCon
     editor.SetStyle(TextLayerEditStyle(content));
     editor.SetSpellCheckEnabled(false);
     editor.SetShowComments(false);
+    // On the canvas it draws exactly the layer's pixels: no notice over them.
+    editor.SetShowFontNotice(false);
     editor.SetZoomRange(1.0f / 64.0f, 64.0f);
     editor.SetZoom(static_cast<float>(zoom));
 }
@@ -112,6 +143,7 @@ std::shared_ptr<UCRasterLayer> RenderTextLayer(const RasterTextContent& content,
     element->SetStyle(style);
     element->SetSpellCheckEnabled(false);
     element->SetShowComments(false);
+    element->SetShowFontNotice(false);
     element->SetReadOnly(true);
     element->SetDocument(std::make_shared<UCRichDocument>(*stated));
 

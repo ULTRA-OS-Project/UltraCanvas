@@ -8,11 +8,15 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.10.0 - ColourTitle: the Clip panel's colour for the selected words of a title being typed
+// Version: 0.9.0 - titles typed on the frame with the text bar (BeginTitleEdit ... CommitTitleEdit)
+// Version: 0.8.1 - WrapToWidth for the bin notes; BeginBinDrag gone, a tile's press arms the drag
+// Version: 0.8.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
 // Version: 0.7.0 - presets on overlay clips; Edit's merge key for a slider's drag
 // Version: 0.6.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.5.0 - OpenFiles: files handed over by a second start
 // Version: 0.4.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,6 +40,8 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasTextFormatBar.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasTimer.h"
@@ -107,17 +113,19 @@ private:
     void MakeStory();                  // the wizard, then the plan on the worker, then a new project
     void ImportFiles(const std::vector<std::string>& files, double at = -1.0);
     void AddMediaToTimeline(const std::string& path, double at = -1.0);
-    // A bin tile dragged onto the timeline: the window carries the file
-    // from the album to the element's own drop path (insertion marker,
-    // the lane and time under the pointer)
-    void BeginBinDrag(const std::string& path);
-    void DragToTimeline(const UltraCanvas::UCEvent& event, bool drop);
-    // An effect preset dragged from its bin button onto a clip: the press
-    // arms it, the pointer leaving the button starts it, the timeline rings
-    // the main-track clip under the pointer, the drop applies the preset
-    void BeginEffectDrag(std::string presetKey);
-    void DragEffect(const UltraCanvas::UCEvent& event, bool drop);
-    void CancelEffectDrag();
+    // A drag the window carries from the bin to the timeline, one at a
+    // time: a file from a tile (handed to the element's own drop path, so
+    // its insertion marker, lane and time are the element's), an effect
+    // preset from its button (onto a clip, ringed as the target) or a title
+    // style from its button (onto the title lane, the element's marker
+    // showing where). A tile's or a button's press arms its drag and the
+    // pointer moving away starts it
+    enum class DragKind { Nothing, File, Effect, Title };
+    static void WrapToWidth(const std::shared_ptr<UltraCanvas::UltraCanvasLabel>& label);   // a bin note: wrapped, as tall as its text
+    void ArmDrag(DragKind kind, const std::string& key);
+    void StartDrag(DragKind kind, std::string key);
+    void CarryDrag(const UltraCanvas::UCEvent& event, bool drop);
+    void CancelDrag();
     void ConfirmThen(std::function<void()> then);   // asks to save first when dirty
 
     // playback and the playhead
@@ -149,6 +157,7 @@ private:
     // Whose effects a clip id names - a main-track segment or an overlay clip - and its name
     EffectTarget EffectTargetOf(const std::string& clipId) const;
     std::string EffectClipName(EffectTarget target) const;
+    std::string TitleLabel(const std::string& styleKey) const;   // a style's label, its key when unknown
     void AddOverlay(const std::string& path, double at);     // a file over the picture, on V2
     void ChooseOverlay(double at);                           // ... from a file dialog
     void AddSound(const std::string& path, double at, bool voiceOver);   // a file's sound on A2
@@ -166,6 +175,31 @@ private:
 
     bool OnKey(const UltraCanvas::UCEvent& event);
     bool TextHasFocus() const;
+
+    // ----- titles typed on the frame -----
+    // A double-click on a title in the viewer lays an UltraCanvasRichTextEdit
+    // over it, at the picture's scale, in the title's font, colour, alignment
+    // and spacing - drawn by the engine that draws the title itself
+    // (UltraVideoTitles.h), so what is typed is what the video shows. The
+    // title is left out of the frame meanwhile. The text bar over the viewer
+    // (the framework's UltraCanvasTextFormatBar, as in ArtCreator and
+    // UltraPaint) sets the font, size, bold, italic, underline,
+    // strikethrough, alignment, line and letter spacing: of the selected
+    // words, else of the whole title; with no title being typed, of the
+    // selected title. Escape, Ctrl+Enter or a click outside puts the words in
+    // the title as one undo step.
+    void BuildTextBar();
+    void ShowTextBar();          // while a title is selected or typed
+    void SyncTextBar();
+    int TitleAtViewerPoint(const UltraCanvas::Point2Df& surfacePoint) const;
+    void BeginTitleEdit(int titleIndex);
+    void PlaceTitleEditor();
+    void CommitTitleEdit();
+    void RestyleTitleEditor();   // after the bar changed the title's base
+    void ApplyTitleAttribute(UltraCanvas::TextFormatAttribute attribute, const UltraCanvas::TextFormat& format);
+    // The Clip panel's colour for a title: the words selected in the title
+    // being typed, or the whole title (its words' own colours go).
+    bool ColourTitle(int title, uint32_t rgb);
     void Message(const std::string& text);
 
     UltraCanvas::UltraCanvasApplication& app_;
@@ -224,12 +258,19 @@ private:
     void SweepOldDrafts();             // drafts of earlier runs left in the temp folder
     int messageTicks_ = 0;
     std::string selectedClip_;
-    std::string binDrag_;              // the file being dragged from the bin, "" when none
+    std::string editingTitle_;                 // the title typed on the frame; empty when none
+    TitleSpan editingSpan_;                    // its look as the text bar sets it meanwhile
+    std::shared_ptr<UltraCanvas::UltraCanvasTextFormatBar> textBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> titleHost_;      // over the frame surface
+    std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> titleEditor_;
+    std::unique_ptr<UltraCanvas::IRenderContext> titleMeasure_;          // the lines' widths
+    DragKind dragKind_ = DragKind::Nothing;   // the drag in flight
+    std::string dragKey_;              // its file, preset key or style key
+    std::string dragHover_;            // what it is over, so the status line changes only with it
     bool pointerDown_ = false;         // the mouse button is held (a keyboard press arms no drag)
-    std::string effectPress_;          // the preset whose button is held down, "" when none
-    UltraCanvas::Point2Di effectPressAt_;   // where the button was pressed, window coordinates
-    std::string effectDrag_;           // the preset being dragged, "" when none
-    std::string effectHover_;          // what the drag is over: "clip:<id>", "other" (a clip off the main track) or ""
+    DragKind armedKind_ = DragKind::Nothing;   // the button held down, until the pointer moves away
+    std::string armedKey_;
+    UltraCanvas::Point2Di armedAt_;    // where it was pressed, window coordinates
     bool snapping_ = true;
     bool showBeats_ = false;
     std::map<std::string, std::vector<double>> songBeats_;   // per song path; empty = none found

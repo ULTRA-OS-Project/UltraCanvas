@@ -1,18 +1,32 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
+// Version: 1.4.0 - 2026-11-10 - FromTheme sets the body font; the SetStyle rule and the constructor tail
+// Version: 1.3.0 - 2026-11-03 - DropdownItem::fontFamily: a row's text drawn in its own font
+//                  (a font list showing each font in itself), prepared in idle slices
+//                  once the dropdown is on screen, the rows the list opens on first
+// Version: 1.2.0 - 2026-10-27 - SetPlaceholderText: what the button reads while no item is
+//                  selected (a zoom box showing a zoom that is none of its items)
+// Version: 1.1.0 - 2026-10-21 - the button's text and the rows' are shaped once and kept
+//                  (UltraCanvasTextLayoutCache)
+// Version: 1.0.4 - 2026-10-15 - type-ahead in the dropdown and its open list; takes the keyboard
+//                  focus (SetAcceptsFocus); Return in the list chooses the highlighted item
+//                  (onItemActivated); DropdownItem::tooltip; DropdownStyle::buttonShowsText,
+//                  the icon alone on the button
+// Version: 1.0.3 - 2026-10-14 - DropdownStyle::FromTheme, ApplyTheme: the dropdown follows the theme
+// Version: 1.0.2 - 2026-10-08 - describes itself to screen readers (the ComboBox role, its value)
+// Version: 1.0.1 - 2026-10-06 - the context-menu cursor over the button, on Windows too
+// Version: 1.0.0 - the dropdown: items with icons and values, single or multiple selection,
+//                  the list in a popup (the numbers from 1.0.1 on were given afterwards,
+//                  from the framework changelog)
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-10-15 - type-ahead: letters typed in the open list go to the item starting with them
-// Last Modified: 2026-10-15 - takes the keyboard focus (Tab, a click); SetAcceptsFocus
-// Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item
-// Last Modified: 2026-10-15 - DropdownItem::tooltip: shown over the item in the open list
-// Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: an icon-only button
-// Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
+// Last Modified: 2026-11-10 - DropdownStyle::FromTheme, ApplyTheme
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListModel.h"
 #include "UltraCanvasListDelegate.h"
@@ -32,6 +46,7 @@ namespace UltraCanvas {
     constexpr auto DropdownEnabledRole   = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 1);
     constexpr auto DropdownSeparatorRole = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 2);
     constexpr auto DropdownSelectedRole  = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 3);
+    constexpr auto DropdownFontRole      = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 4);
 
 // ===== DROPDOWN ITEM DATA =====
     struct DropdownItem {
@@ -41,6 +56,14 @@ namespace UltraCanvas {
         // Shown when the pointer rests on the item in the open list (the
         // list's ToolTipRole); empty shows none.
         std::string tooltip;
+        // The row's text is drawn in this font family in the open list - a
+        // font list showing each font in itself; empty, in the list's font.
+        // The closed button keeps the list's font. Loading a font takes a
+        // few milliseconds the first time, so the dropdown prepares these
+        // rows in small idle slices once it is on screen - the rows its list
+        // opens on first, then the rest - and a row not prepared yet when it
+        // scrolls into view is prepared as it is drawn.
+        std::string fontFamily;
         bool enabled = true;
         bool separator = false;
         bool selected = false;  // for multi-selection support
@@ -146,12 +169,21 @@ namespace UltraCanvas {
 
         int GetRowHeight(const IListModel* model, int row) const override;
 
+        // Shapes a row's text now, as RenderItem would, and keeps it - so the
+        // row draws at once later. False when there is nothing to shape.
+        bool PrepareRow(IRenderContext* ctx, const IListModel* model, int row);
+
     private:
+        // The layout key RenderItem draws a row's text with.
+        bool RowKey(const IListModel* model, int row, TextLayoutKey& key) const;
         void RenderCheckbox(IRenderContext* ctx, bool checked, const Rect2Di& rect) const;
         void RenderIcon(IRenderContext* ctx, const std::string& iconPath, const Rect2Di& rect) const;
 
         const DropdownStyle* style = nullptr;
         bool multiSelectEnabled = false;
+        // One kept layout per row (UltraCanvasTextLayoutCache): the list is
+        // repainted on every hover, the rows' texts seldom change.
+        std::vector<UltraCanvasTextLayoutCache> rowLayouts;
     };
 
 // ===== DROPDOWN COMPONENT =====
@@ -176,6 +208,8 @@ namespace UltraCanvas {
 
     private:
         std::vector<DropdownItem> items;
+        // The closed button's text, shaped once and kept (UltraCanvasTextLayoutCache).
+        UltraCanvasTextLayoutCache displayLayout_;
         int selectedIndex = -1;
         bool dropdownOpen = false;
         bool buttonPressed = false;
@@ -189,11 +223,23 @@ namespace UltraCanvas {
         // Multi-selection support
         bool multiSelectEnabled = false;
         std::set<int> selectedIndices;
+        std::string placeholderText;   // shown while nothing is selected
 
         // Takes the keyboard focus (Tab, a click), as a button does.
         bool canAcceptFocus = true;
 
         DropdownStyle style;
+
+        // Font previews (DropdownItem::fontFamily) prepared ahead of the
+        // list opening: the rows still to prepare, in order, and the idle
+        // timer working through them a slice at a time.
+        std::vector<int> previewQueue;
+        size_t previewNext = 0;
+        unsigned int previewTimer = 0;
+        bool previewsDirty = false;      // the items changed: queue them again
+        void QueuePreviews();
+        void PrepareNextPreviews();
+        void StopPreviewTimer();
 
         // ListView popup components
         std::shared_ptr<UltraCanvasListView> popupListView;
@@ -209,7 +255,7 @@ namespace UltraCanvas {
         explicit UltraCanvasDropdown(const std::string& identifier)
             : UltraCanvasDropdown(identifier, -1, -1, -1, -1) {}
 
-        virtual ~UltraCanvasDropdown() = default;
+        ~UltraCanvasDropdown() override;
 
         // ===== ITEM MANAGEMENT =====
         void AddItem(const std::string& text);
@@ -230,6 +276,12 @@ namespace UltraCanvas {
         }
 
         const DropdownItem* GetSelectedItem() const;
+
+        // What the button reads while no item is selected (single selection):
+        // a value the list does not hold, such as a zoom box's "137%" between
+        // its preset steps. Empty by default - the button is blank.
+        void SetPlaceholderText(const std::string& text);
+        const std::string& GetPlaceholderText() const { return placeholderText; }
 
         // Multi-selection management
         void SetMultiSelectEnabled(bool enabled);

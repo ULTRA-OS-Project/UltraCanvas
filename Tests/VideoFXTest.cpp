@@ -10,6 +10,12 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.18.0 - a text overlay's formatting in project files, a host's text renderer
+//                  (VideoFX_SetTextRenderer / VideoFX_DrawTextOverlays), a program's file around the project
+// Version: 0.17.0 - VideoFXFrameRecorder: frames pushed with their time land on the
+//                  file's ticks, BGRA as RGBA, an odd size made even, duplicates dropped
+// Version: 0.16.2 - a clip re-exported over an old file of the same name has its faces looked for afresh
+// Version: 0.16.1 - a face only in a clip's last third still places the Fill crop
 // Version: 0.16.0 - overlay effects (filter text, the export, the preview, project files);
 //                  blur radii scaled on proxies
 // Version: 0.15.0 - the Fill crop around a video segment's keepInView
@@ -18,7 +24,7 @@
 // Version: 0.14.0 - VideoFX_GetFileFormats: every type it writes written and read back;
 //                  VideoFX_SetPictureReader: picture types the application reads
 // Version: 0.13.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "VideoFX/VideoFX.h"
@@ -976,6 +982,62 @@ static void TestProjectFiles() {
     VideoFXProject memory = VideoFXProject::FromTimeline({VideoFXSegment::FromImageFrame(SolidFrame(8, 8, 1, 2, 3), 1.0)});
     CHECK(VideoFX_ProjectToJson(memory, json) == VideoFXResult::InvalidArgument, "a photo held only in memory refused");
 
+    // ---- a text overlay's formatting, and a program's file around the project ----
+    {
+        VideoFXSegment card = VideoFXSegment::SolidColor(0x202020, 2.0);
+        VideoFXOverlay title = VideoFXOverlay::Text("Summer trip", VideoFXAnchor::Bottom, 0.08);
+        title.fontFamily = "Serif";
+        title.richText = "<p><b>Summer</b> trip</p>";
+        title.richTextHeight = 720;
+        title.textAlign = 2;
+        title.lineSpacing = 135.0;
+        title.letterSpacing = 0.003;
+        card.overlays.push_back(title);
+        card.overlays.push_back(VideoFXOverlay::Text("plain"));
+        const VideoFXProject styled = VideoFXProject::FromTimeline({card});
+        std::string text;
+        VideoFXProject back;
+        CHECK(VideoFX_ProjectToJson(styled, text) == VideoFXResult::Ok && VideoFX_ProjectFromJson(text, back) == VideoFXResult::Ok &&
+              back.segments.size() == 1 && back.segments[0].overlays.size() == 2, "a formatted title written and read back");
+        if (back.segments.size() == 1 && back.segments[0].overlays.size() == 2) {
+            const VideoFXOverlay& t = back.segments[0].overlays[0];
+            CHECK(t.fontFamily == "Serif" && t.richText == title.richText && t.richTextHeight == 720 && t.textAlign == 2 &&
+                  Near(t.lineSpacing, 135.0, 1e-12) && Near(t.letterSpacing, 0.003, 1e-12),
+                  "its font, words, alignment and spacings kept");
+            CHECK(back.segments[0].overlays[1].fontFamily.empty() && text.find("\"plain\"") != std::string::npos &&
+                  text.find("\"richText\"") == text.rfind("\"richText\"") && text.find("\"fontFamily\"") == text.rfind("\"fontFamily\""),
+                  "a plain overlay writes none of it");
+        }
+        // UltraVideo's .ultravideo: its own keys around the engine's project
+        const std::string wrapped = "{\"format\": \"ultravideo\", \"version\": 1, \"bin\": [], \"project\": " + text + "}";
+        VideoFXProject inner;
+        CHECK(VideoFX_ProjectFromJson(wrapped, inner) == VideoFXResult::Ok && inner.segments.size() == 1 &&
+              inner.segments[0].overlays.size() == 2 && inner.segments[0].overlays[0].fontFamily == "Serif",
+              "a program's file around the engine's project read for it (videofx render trip.ultravideo)");
+
+        // A host's text renderer draws the overlays it wants, on this thread:
+        // pictures in their place, a share of the frame's height
+        std::vector<VideoFXSegment> segments = inner.segments;
+        VideoFX_DrawTextOverlays(segments, 720);
+        CHECK(segments[0].overlays[0].kind == VideoFXOverlayKind::Text, "no renderer: the text stays text");
+        int asked = 0;
+        VideoFX_SetTextRenderer([&asked](const VideoFXOverlay& o, int frameHeight, VideoFXFrame& picture) {
+            ++asked;
+            if (o.fontFamily.empty()) return false;
+            picture = SolidFrame(200, frameHeight / 10, 255, 255, 255);
+            return true;
+        });
+        CHECK(VideoFX_HasTextRenderer(), "a renderer installed");
+        VideoFX_DrawTextOverlays(segments, 720);
+        const VideoFXOverlay& drawn = segments[0].overlays[0];
+        CHECK(asked == 2 && drawn.kind == VideoFXOverlayKind::Image && drawn.image.IsValid() &&
+              Near(drawn.imageHeight, 72.0 / 720.0, 1e-12) && drawn.anchor == VideoFXAnchor::Bottom &&
+              segments[0].overlays[1].kind == VideoFXOverlayKind::Text,
+              "the renderer's overlay a picture at the text's anchor, a share of the frame; the other left to the text filter");
+        VideoFX_SetTextRenderer(nullptr);
+        CHECK(!VideoFX_HasTextRenderer(), "and taken away");
+    }
+
     // ---- files: written whole, read with missing media reported ----
     const stdfs::path tmp = stdfs::temp_directory_path() /
                             ("videofx-project-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -1201,6 +1263,123 @@ static void TestAudioClips(const VideoFXExportSettings& base);
 static void TestFileFormats();
 static void TestPictureReader();
 static void TestOverlayEffects(const VideoFXExportSettings& base);
+static void TestFrameRecorder();
+
+
+// ---------------------------------------------------------------------------
+// The frame recorder: a live source's frames, pushed one by one
+// ---------------------------------------------------------------------------
+static void TestFrameRecorder() {
+    std::printf("Frame recorder:\n");
+    // MPEG-4 in MKV, as the clips above: no libx264 needed
+    VideoFXRecorderSettings settings;
+    settings.container = VideoFXContainer::MKV;
+    settings.videoCodec = VideoFXVideoCodec::MPEG4;
+    settings.frameRate = 10.0;
+
+    auto fill = [](std::vector<uint8_t>& px, int w, int h, uint8_t a, uint8_t b, uint8_t c) {
+        px.assign(static_cast<size_t>(w) * h * 4, 0);
+        for (size_t i = 0; i < px.size(); i += 4) { px[i] = a; px[i + 1] = b; px[i + 2] = c; px[i + 3] = 255; }
+    };
+
+    {
+        VideoFXFrameRecorder recorder;
+        CHECK(!recorder.IsOpen(), "not open before Open");
+        VideoFXRecorderSettings bad = settings;
+        bad.frameRate = 0.0;
+        CHECK(recorder.Open(TempPath("rec-bad.mkv"), bad) == VideoFXResult::InvalidArgument, "a rate of 0 is refused");
+        VideoFXRecorderSettings wav = settings;
+        wav.container = VideoFXContainer::Auto;             // from the extension: a sound file
+        CHECK(recorder.Open(TempPath("rec-bad.wav"), wav) == VideoFXResult::UnsupportedFormat,
+              "a sound container is refused");
+        CHECK(!recorder.IsOpen(), "a refused Open leaves it closed");
+    }
+
+    // 2 s of red, then 1 s of blue, as RGBA at 320x240; the frame's time is
+    // the clock, and a frame on a tick already written is dropped
+    const std::string rgba = TempPath("rec-rgba.mkv");
+    {
+        VideoFXFrameRecorder recorder;
+        CHECK_OK(recorder.Open(rgba, settings), "open an RGBA recording (size from the first frame)");
+        CHECK(recorder.IsOpen() && recorder.GetWidth() == 0, "open, size not known yet");
+        std::vector<uint8_t> red, blue;
+        fill(red, 320, 240, 255, 0, 0);
+        fill(blue, 320, 240, 0, 0, 255);
+        for (int i = 0; i < 30; ++i) {
+            const std::vector<uint8_t>& px = i < 20 ? red : blue;
+            CHECK_OK(recorder.PushFrame(px.data(), 320, 240, 320 * 4, i / 10.0), "push a frame");
+        }
+        CHECK(recorder.GetWidth() == 320 && recorder.GetHeight() == 240, "the file is 320x240");
+        CHECK(recorder.GetFrameCount() == 30, "30 frames written");
+        CHECK_OK(recorder.PushFrame(blue.data(), 320, 240, 320 * 4, 2.9), "a frame on a written tick is accepted");
+        CHECK(recorder.GetFrameCount() == 30, "... and dropped");
+        CHECK(Near(recorder.GetDuration(), 3.0, 0.01), "3 s written");
+        CHECK(!recorder.GetEncoderName().empty(), "the encoder has a name");
+        CHECK_OK(recorder.Close(), "close");
+        CHECK(!recorder.IsOpen(), "closed");
+        CHECK_OK(recorder.Close(), "closing again is Ok");
+    }
+    VideoFXMediaInfo info;
+    CHECK_OK(VideoFX_Probe(rgba, info), "probe the recording");
+    CHECK(info.HasVideo() && !info.HasAudio(), "video, no sound");
+    CHECK(info.width == 320 && info.height == 240, "recorded at 320x240");
+    CHECK(Near(info.duration, 3.0, 0.2), "about 3 s long");
+    VideoFXFrame f;
+    double r, g, b;
+    CHECK_OK(VideoFX_ExtractFrame(rgba, 0.5, f), "frame at 0.5 s");
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 60 && b < 60, "0.5 s is red");
+    CHECK_OK(VideoFX_ExtractFrame(rgba, 2.5, f), "frame at 2.5 s");
+    CentreColour(f, r, g, b);
+    CHECK(b > 200 && r < 60 && g < 60, "2.5 s is blue");
+
+    // BGRA frames (what the screen captures hand over) of an odd size: the
+    // bytes are read in their order, and the file is made even
+    const std::string bgra = TempPath("rec-bgra.mp4");
+    {
+        VideoFXFrameRecorder recorder;
+        VideoFXRecorderSettings s = settings;
+        s.container = VideoFXContainer::Auto;
+        if (!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264)) s.videoCodec = VideoFXVideoCodec::MPEG4;
+        else s.videoCodec = VideoFXVideoCodec::Auto;
+        CHECK_OK(recorder.Open(bgra, s), "open an MP4 recording");
+        // a BGRA pixel 0,0,255 is red; as RGBA it would be blue
+        std::vector<uint8_t> redBgra;
+        fill(redBgra, 321, 241, 0, 0, 255);
+        for (int i = 0; i < 10; ++i)
+            CHECK_OK(recorder.PushFrame(redBgra.data(), 321, 241, 321 * 4, i / 10.0, VideoFXPixelLayout::BGRA),
+                     "push a BGRA frame");
+        CHECK(recorder.GetWidth() == 320 && recorder.GetHeight() == 240, "321x241 recorded as 320x240");
+        CHECK_OK(recorder.Close(), "close the MP4");
+    }
+    CHECK_OK(VideoFX_Probe(bgra, info), "probe the MP4 recording");
+    CHECK(info.width == 320 && info.height == 240, "the MP4 is 320x240");
+    CHECK_OK(VideoFX_ExtractFrame(bgra, 0.5, f), "frame of the BGRA recording");
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 60 && b < 60, "a BGRA 0,0,255 pixel came out red");
+
+    // A VideoFXFrame carries its own time
+    {
+        VideoFXFrameRecorder recorder;
+        VideoFXRecorderSettings s = settings;
+        s.width = 64;
+        s.height = 48;
+        CHECK_OK(recorder.Open(TempPath("rec-frame.mkv"), s), "open with a size given");
+        CHECK(recorder.GetWidth() == 64 && recorder.GetHeight() == 48, "the size is known at once");
+        VideoFXFrame frame;
+        frame.width = 100;
+        frame.height = 80;
+        frame.pixels.assign(100 * 80 * 4, 128);
+        frame.timestamp = 0.0;
+        CHECK_OK(recorder.PushFrame(frame), "push a VideoFXFrame of another size (scaled)");
+        frame.timestamp = 1.0;
+        CHECK_OK(recorder.PushFrame(frame), "push one at 1 s");
+        CHECK(recorder.GetFrameCount() == 2 && Near(recorder.GetDuration(), 1.1, 0.01), "two frames, 1.1 s");
+        VideoFXFrame empty;
+        CHECK(recorder.PushFrame(empty) == VideoFXResult::InvalidArgument, "an empty frame is refused");
+        CHECK_OK(recorder.Close(), "close");
+    }
+}
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1330,6 +1509,52 @@ static void TestEngine() {
         CHECK_OK(VideoFX_ExtractFrame(TempPath("bars.mkv"), 0.5, f), "frame of the letterboxed clip");
         CentreColour(f, r, g, b);
         CHECK(g > 200 && r < 60, "the whole clip is shown: green in the middle");
+
+        // The faces are looked for in three frames of the clip, not one: a
+        // tall clip that is green for two seconds and then shows the test
+        // photo in its top third for one. Its middle frame has no face; the
+        // frame three quarters through has, and the crop follows it.
+        VideoFXFrame photo;
+        if (ReadPpm(kAstronaut, photo)) {
+            VideoFXFrame tall;
+            tall.width = photo.width; tall.height = photo.height * 3;
+            tall.pixels.assign(static_cast<size_t>(tall.width) * tall.height * 4, 255);
+            for (size_t i = 0; i < static_cast<size_t>(tall.width) * tall.height; ++i) { tall.pixels[i * 4] = 0; tall.pixels[i * 4 + 2] = 0; }
+            std::copy(photo.pixels.begin(), photo.pixels.end(), tall.pixels.begin());   // the photo on top, green below
+            VideoFXFrame greenTall = tall;
+            for (size_t i = 0; i < static_cast<size_t>(tall.width) * tall.height; ++i) { greenTall.pixels[i * 4] = 0; greenTall.pixels[i * 4 + 1] = 255; greenTall.pixels[i * 4 + 2] = 0; }
+            const VideoFXImageMotion stillMotion = VideoFXImageMotion::Make(VideoFXMotionStyle::Still);
+            const std::string lateFace = TempPath("late-face.mkv");
+            VideoFXExportSettings tallOut = base;
+            tallOut.width = tall.width; tallOut.height = tall.height;
+            VideoFXExportSettings wideFill = base;
+            wideFill.width = tall.width * 2; wideFill.height = tall.width; wideFill.fitMode = VideoFXFitMode::Fill;
+            VideoFXSegment late = VideoFXSegment::FromFile(lateFace);
+            // First a clip of the same name and length with no face in it,
+            // filled around its faces: the (empty) answer is remembered for
+            // the file. The real clip then replaces it under the same name -
+            // a re-export over an old file - and must be looked at afresh.
+            CHECK_OK(VideoFX_Export({VideoFXSegment::FromImageFrame(greenTall, 3.0, stillMotion)}, lateFace, tallOut),
+                     "a tall clip, green throughout, under the name the late-face clip will take");
+            late.keepFacesInView = true;
+            CHECK_OK(VideoFX_Export({late}, TempPath("late-face-none.mkv"), wideFill), "filled keeping its faces: none");
+            late.keepFacesInView = false;
+            CHECK_OK(VideoFX_Export({VideoFXSegment::FromImageFrame(greenTall, 2.0, stillMotion),
+                                     VideoFXSegment::FromImageFrame(tall, 1.0, stillMotion)}, lateFace, tallOut),
+                     "a tall clip, green for two seconds, the photo on top for one, over the old file");
+            const std::string centred = TempPath("late-face-centred.mkv"), kept = TempPath("late-face-kept.mkv");
+            CHECK_OK(VideoFX_Export({late}, centred, wideFill), "filled without looking for faces");
+            CHECK_OK(VideoFX_ExtractFrame(centred, 2.5, f), "its frame in the last third");
+            CentreColour(f, r, g, b);
+            CHECK(g > 200 && r < 60, "the centred crop shows the green below the photo");
+            late.keepFacesInView = true;
+            CHECK_OK(VideoFX_Export({late}, kept, wideFill), "filled keeping the faces");
+            CHECK_OK(VideoFX_ExtractFrame(kept, 2.5, f), "its frame in the last third");
+            CentreColour(f, r, g, b);
+            CHECK(r > 60 && !(g > 200 && r < 60), "the face seen three quarters through moves the crop up onto the photo (the faces of the old file under that name forgotten)");
+        } else {
+            CHECK(false, "the test photo could not be read");
+        }
     }
 
     // ---- trim ----
@@ -1471,6 +1696,7 @@ static void TestEngine() {
     TestFileFormats();
     TestPictureReader();
     TestOverlayEffects(base);
+    TestFrameRecorder();
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);

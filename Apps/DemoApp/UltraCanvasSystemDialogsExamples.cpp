@@ -8,12 +8,17 @@
 //                one either as the ULTRA OS dialog (the framework's own) or as
 //                the host platform's, and every answer is written to the log.
 //   * Details  - Docs/UltraCanvas/UltraCanvasSystemDialogs.md.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description on the page, the tabs in a card that fills the
+//                  area, buttons and checkboxes sized to their text, the
+//                  Examples tab scrolls when it is taller than the tab
 // Version: 1.1.0 - the file dialogs offer FileLoader's types
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
@@ -57,66 +62,65 @@ namespace {
     }
 
     std::string DescribePrintChoice(const NativePrintResult& choice) {
-        if (!choice) return "Print dialog cancelled.";
+        if (!choice) return Tr("Print dialog cancelled.");
         const IOPrintOptions& o = choice.options;
-        std::string text = "Print settings chosen:";
-        text += "\n    printer:     " + (choice.printerName.empty() ? std::string("(none)") : choice.printerName);
+        std::string text = Tr("Print settings chosen:");
+        text += "\n    " + TrF("printer:     {0}", choice.printerName.empty() ? Tr("(none)") : choice.printerName);
         if (choice.printToFile) {
-            text += "\n    to file:     " + choice.outputFilePath;
+            text += "\n    " + TrF("to file:     {0}", choice.outputFilePath);
         }
-        text += "\n    copies:      " + std::to_string(o.copies) + (o.collate ? " (collated)" : "");
-        text += "\n    paper:       " + std::string(IOPaperSizeToString(o.page.paperSize));
-        text += "\n    orientation: " + std::string(
+        text += "\n    " + (o.collate ? TrF("copies:      {0} (collated)", o.copies)
+                                       : TrF("copies:      {0}", o.copies));
+        text += "\n    " + TrF("paper:       {0}", IOPaperSizeToString(o.page.paperSize));
+        text += "\n    " + TrF("orientation: {0}",
                     o.page.orientation == IOPrintOrientation::Landscape ||
                     o.page.orientation == IOPrintOrientation::ReverseLandscape
-                    ? "landscape" : "portrait");
-        text += "\n    duplex:      " + std::string(IODuplexModeToString(o.duplex));
-        text += "\n    colour:      " + std::string(IOPrinterColorModeToString(o.colorMode));
-        text += "\n    quality:     " + std::string(IOPrintQualityToString(o.quality));
+                    ? Tr("landscape") : Tr("portrait"));
+        text += "\n    " + TrF("duplex:      {0}", IODuplexModeToString(o.duplex));
+        text += "\n    " + TrF("colour:      {0}", IOPrinterColorModeToString(o.colorMode));
+        text += "\n    " + TrF("quality:     {0}", IOPrintQualityToString(o.quality));
         if (choice.pageRange.empty()) {
-            text += "\n    pages:       all";
+            text += "\n    " + Tr("pages:       all");
         } else {
-            text += "\n    pages:      ";
-            for (int page : choice.pageRange) text += " " + std::to_string(page);
+            std::string pages;
+            for (int page : choice.pageRange) pages += (pages.empty() ? "" : " ") + std::to_string(page);
+            text += "\n    " + TrF("pages:       {0}", pages);
         }
-        text += "\n    (settings only - nothing was sent to the printer)";
+        text += "\n    " + Tr("(settings only - nothing was sent to the printer)");
         return text;
     }
 
-    const char* kTestPageText =
-        "ULTRA OS - system dialogs test page\n"
-        "===================================\n\n"
-        "This page was printed from the UltraCanvas demo application\n"
-        "(ULTRA OS modules -> System dialogs -> Print test page).\n\n"
-        "The settings chosen in the print dialog - printer, copies,\n"
-        "paper, orientation, duplex and page range - were carried to\n"
-        "the printer by IODeviceManager.\n";
-
-    std::shared_ptr<UltraCanvasLabel> SectionLabel(const std::string& id, const std::string& text) {
-        auto label = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 22);
-        label->SetText(text);
-        label->SetFontSize(13);
-        label->SetFontWeight(FontWeight::Bold);
-        label->SetTextColor(Color(60, 60, 60, 255));
-        label->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return label;
+    // The text the test page prints, in the person's language.
+    std::string TestPageText() {
+        return Tr("ULTRA OS - system dialogs test page\n"
+            "===================================\n\n"
+            "This page was printed from the UltraCanvas demo application\n"
+            "(ULTRA OS modules -> System dialogs -> Print test page).\n\n"
+            "The settings chosen in the print dialog - printer, copies,\n"
+            "paper, orientation, duplex and page range - were carried to\n"
+            "the printer by IODeviceManager.\n");
     }
 
+    // A wrapping row of controls, centred on one line.
     std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id) {
-        auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, 0, 34);
-        row->layout.SetFlexRow().SetFlexGap(8)
-                   .SetFlexWrap(CSSLayout::FlexWrap::Wrap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        auto row = DemoKit::CreateRow(id, 8);
+        row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
         return row;
+    }
+
+    // The width it was given is a floor: a longer text widens the element.
+    void SetMinWidth(const std::shared_ptr<UltraCanvasUIElement>& element, float width) {
+        CSSLayout::BoxConstraints limits = element->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(width);
+        element->boxConstraints = limits;
     }
 
     std::shared_ptr<UltraCanvasButton> AddButton(const std::shared_ptr<UltraCanvasContainer>& row,
                                                  const std::string& id, const std::string& text,
                                                  float width) {
-        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 30, text);
-        button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->AddChild(button);
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 30, text);
+        SetMinWidth(button, width);
+        DemoKit::Add(row, button);
         return button;
     }
 
@@ -127,100 +131,86 @@ namespace {
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
-
-        auto title = std::make_shared<UltraCanvasLabel>("SysDlgTitle", 0, 0, 0, 26);
-        title->SetText("ULTRA OS system dialogs");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
-
-        auto intro = std::make_shared<UltraCanvasLabel>("SysDlgIntro", 0, 0, 0, 36);
-        intro->SetText("The dialogs an application asks the system for. \"ULTRA OS\" shows the "
-                       "framework's own dialogs, the same on every platform; \"Native\" shows the "
-                       "host platform's. The print dialog is always the platform's.");
-        intro->SetFontSize(12);
-        intro->SetTextColor(Color(90, 90, 90, 255));
-        intro->SetWrap(TextWrap::WrapWord);
-        intro->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(intro);
+        // Taller than the tab (a short window, a longer translation): it
+        // scrolls instead of cutting the log off.
+        {
+            ContainerStyle style;
+            style.autoShowScrollbars = true;
+            style.autoShowHorizontalScrollbar = false;
+            root->SetContainerStyle(style);
+        }
 
         // ----- Dialog style + options -----
         auto styleRow = ButtonRow("SysDlgStyleRow");
-        auto styleLabel = std::make_shared<UltraCanvasLabel>("SysDlgStyleLabel", 0, 0, 90, 30);
-        styleLabel->SetText("Dialog style:");
-        styleLabel->SetFontSize(12);
-        styleLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-        styleLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        styleRow->AddChild(styleLabel);
+        DemoKit::Add(root, styleRow);
+        DemoKit::AddText(styleRow, "SysDlgStyleLabel", Tr("Dialog style:"));
 
         auto styleSelector = CreateSegmentedControl("SysDlgStyle", 0, 0, 220, 30);
         styleSelector->AddSegment("ULTRA OS");
-        styleSelector->AddSegment("Native");
+        styleSelector->AddSegment(Tr("Native"));
         styleSelector->SetSelectedIndex(static_cast<int>(DialogStyle::UltraOS));
-        styleSelector->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        styleRow->AddChild(styleSelector);
+        DemoKit::AddFixed(styleRow, styleSelector);
 
-        auto hiddenCheck = UltraCanvasCheckbox::CreateCheckbox("SysDlgHidden", 0, 0, 160, 30,
-                                                               "Show hidden files", false);
-        hiddenCheck->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        styleRow->AddChild(hiddenCheck);
+        auto hiddenCheck = std::make_shared<UltraCanvasCheckbox>("SysDlgHidden", Tr("Show hidden files"));
+        hiddenCheck->SetChecked(false);
+        DemoKit::Add(styleRow, hiddenCheck);
 
-        auto togglesCheck = UltraCanvasCheckbox::CreateCheckbox("SysDlgToggles", 0, 0, 200, 30,
-                                                                "Filters as toggle buttons", false);
-        togglesCheck->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        styleRow->AddChild(togglesCheck);
-        root->AddChild(styleRow);
+        auto togglesCheck = std::make_shared<UltraCanvasCheckbox>("SysDlgToggles", Tr("Filters as toggle buttons"));
+        togglesCheck->SetChecked(false);
+        DemoKit::Add(styleRow, togglesCheck);
 
         // ----- Files -----
-        root->AddChild(SectionLabel("SysDlgFilesLabel", "Files"));
+        DemoKit::AddHeading(root, "SysDlgFilesLabel", Tr("Files"));
         auto fileRow = ButtonRow("SysDlgFileRow");
-        auto openBtn     = AddButton(fileRow, "SysDlgOpen",     "Open file",        120);
-        auto openManyBtn = AddButton(fileRow, "SysDlgOpenMany", "Open multiple",    140);
-        auto saveBtn     = AddButton(fileRow, "SysDlgSave",     "Save file",        120);
-        auto folderBtn   = AddButton(fileRow, "SysDlgFolder",   "Select folder",    140);
-        root->AddChild(fileRow);
+        DemoKit::Add(root, fileRow);
+        auto openBtn     = AddButton(fileRow, "SysDlgOpen",     Tr("Open file"),        120);
+        auto openManyBtn = AddButton(fileRow, "SysDlgOpenMany", Tr("Open multiple"),    140);
+        auto saveBtn     = AddButton(fileRow, "SysDlgSave",     Tr("Save file"),        120);
+        auto folderBtn   = AddButton(fileRow, "SysDlgFolder",   Tr("Select folder"),    140);
 
         // ----- Printing -----
-        root->AddChild(SectionLabel("SysDlgPrintLabel", "Printing"));
+        DemoKit::AddHeading(root, "SysDlgPrintLabel", Tr("Printing"));
         auto printRow = ButtonRow("SysDlgPrintRow");
-        auto printSettingsBtn = AddButton(printRow, "SysDlgPrintSettings", "Print settings",   150);
-        auto printTestBtn     = AddButton(printRow, "SysDlgPrintTest",     "Print test page",  150);
-        root->AddChild(printRow);
+        DemoKit::Add(root, printRow);
+        auto printSettingsBtn = AddButton(printRow, "SysDlgPrintSettings", Tr("Print settings"),   150);
+        auto printTestBtn     = AddButton(printRow, "SysDlgPrintTest",     Tr("Print test page"),  150);
 
         // ----- Messages and input -----
-        root->AddChild(SectionLabel("SysDlgMsgLabel", "Messages and input"));
+        DemoKit::AddHeading(root, "SysDlgMsgLabel", Tr("Messages and input"));
         auto msgRow = ButtonRow("SysDlgMsgRow");
-        auto infoBtn     = AddButton(msgRow, "SysDlgInfo",     "Information", 110);
-        auto questionBtn = AddButton(msgRow, "SysDlgQuestion", "Question",    100);
-        auto warningBtn  = AddButton(msgRow, "SysDlgWarning",  "Warning",     100);
-        auto errorBtn    = AddButton(msgRow, "SysDlgError",    "Error",       90);
-        auto inputBtn    = AddButton(msgRow, "SysDlgInput",    "Text input",  110);
-        auto passwordBtn = AddButton(msgRow, "SysDlgPassword", "Password",    100);
-        root->AddChild(msgRow);
+        DemoKit::Add(root, msgRow);
+        auto infoBtn     = AddButton(msgRow, "SysDlgInfo",     Tr("Information"), 110);
+        auto questionBtn = AddButton(msgRow, "SysDlgQuestion", Tr("Question"),    100);
+        auto warningBtn  = AddButton(msgRow, "SysDlgWarning",  Tr("Warning"),     100);
+        auto errorBtn    = AddButton(msgRow, "SysDlgError",    Tr("Error"),       90);
+        auto inputBtn    = AddButton(msgRow, "SysDlgInput",    Tr("Text input"),  110);
+        auto passwordBtn = AddButton(msgRow, "SysDlgPassword", Tr("Password"),    100);
 
         // ----- Result log -----
         auto logHeader = ButtonRow("SysDlgLogHeader");
-        auto logLabel = SectionLabel("SysDlgLogLabel", "What the dialogs answered");
-        logLabel->size.width = CSSLayout::Dimension::Px(220);
-        logHeader->AddChild(logLabel);
-        auto clearBtn = AddButton(logHeader, "SysDlgClear", "Clear", 70);
-        root->AddChild(logHeader);
+        DemoKit::Add(root, logHeader);
+        DemoKit::Add(logHeader, DemoKit::CreateHeading("SysDlgLogLabel", Tr("What the dialogs answered")));
+        auto clearBtn = AddButton(logHeader, "SysDlgClear", Tr("Clear"), 70);
 
         auto log = std::make_shared<UltraCanvasTextArea>("SysDlgLog");
         log->SetReadOnly(true);
         log->SetWordWrap(true);
         log->SetText("");
-        log->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        root->AddChild(log);
+        // The rest of the tab, but never so little that the tab scrolls a
+        // log too short to read.
+        DemoKit::Add(root, log, 1);
+        log->layoutItem.SetFlexShrink(1);
+        {
+            CSSLayout::BoxConstraints limits;
+            limits.minHeight = CSSLayout::Dimension::Px(140);
+            log->boxConstraints = limits;
+        }
 
         // Appends one entry, prefixed with the style the dialog was shown in,
         // and keeps the newest entry in view.
         auto write = [log, styleSelector](const std::string& text) {
             const bool native = styleSelector->GetSelectedIndex() == static_cast<int>(DialogStyle::Native);
-            log->AppendText(std::string(native ? "[Native]   " : "[ULTRA OS] ") + text + "\n");
+            log->AppendText((native ? "[" + Tr("Native") + "]   " : std::string("[ULTRA OS] ")) + text + "\n");
             log->MoveCursorToEnd();
             log->RequestRedraw();
         };
@@ -248,32 +238,32 @@ namespace {
 
         // ----- File dialogs -----
         openBtn->onClick = [write, style, fileOptions]() {
-            auto opts = fileOptions("Open a file");
+            auto opts = fileOptions(Tr("Open a file"));
             // The types this build reads, from FileLoader's inventory
-            UltraCanvasFileLoader::AddLoadTypes(opts, "Pictures", {MediaFormatCategory::Bitmap, MediaFormatCategory::Vector});
-            UltraCanvasFileLoader::AddLoadTypes(opts, "Documents", {MediaFormatCategory::Document});
-            UltraCanvasFileLoader::AddLoadTypes(opts, "Audio and video", {MediaFormatCategory::Audio, MediaFormatCategory::Video});
-            opts.AddFilter("All files", "*");
+            UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Pictures"), {MediaFormatCategory::Bitmap, MediaFormatCategory::Vector});
+            UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Documents"), {MediaFormatCategory::Document});
+            UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Audio and video"), {MediaFormatCategory::Audio, MediaFormatCategory::Video});
+            opts.AddFilter(Tr("All files"), "*");
             WithDialogStyle(style(), [&]() {
                 UltraCanvasFileLoader::OpenFileDialog(opts,
                     [write](DialogResult result, const std::string& path) {
-                        if (result == DialogResult::OK && !path.empty()) write("Open file: " + path);
-                        else write("Open file: " + DialogResultText(result));
+                        if (result == DialogResult::OK && !path.empty()) write(TrF("Open file: {0}", path));
+                        else write(TrF("Open file: {0}", DialogResultText(result)));
                     });
             });
         };
 
         openManyBtn->onClick = [write, style, fileOptions]() {
-            auto opts = fileOptions("Open files");
-            opts.AddFilter("All files", "*");
+            auto opts = fileOptions(Tr("Open files"));
+            opts.AddFilter(Tr("All files"), "*");
             WithDialogStyle(style(), [&]() {
                 UltraCanvasFileLoader::OpenMultipleFilesDialog(opts,
                     [write](DialogResult result, const std::vector<std::string>& paths) {
                         if (result != DialogResult::OK || paths.empty()) {
-                            write("Open multiple: " + DialogResultText(result));
+                            write(TrF("Open multiple: {0}", DialogResultText(result)));
                             return;
                         }
-                        std::string text = "Open multiple: " + std::to_string(paths.size()) + " file(s)";
+                        std::string text = TrN("Open multiple: {n} file", "Open multiple: {n} files", static_cast<long long>(paths.size()));
                         for (const auto& path : paths) text += "\n    " + path;
                         write(text);
                     });
@@ -281,28 +271,28 @@ namespace {
         };
 
         saveBtn->onClick = [write, style, fileOptions]() {
-            auto opts = fileOptions("Save a file");
+            auto opts = fileOptions(Tr("Save a file"));
             opts.SetDefaultFileName("Untitled.odt");
             UltraCanvasFileLoader::AddTextDocumentSaveTypes(opts);
-            opts.AddFilter("All files", "*");
+            opts.AddFilter(Tr("All files"), "*");
             WithDialogStyle(style(), [&]() {
                 // Only the chosen name is reported: the demo writes nothing.
                 UltraCanvasFileLoader::SaveFileDialog(opts,
                     [write](DialogResult result, const std::string& path) {
                         if (result == DialogResult::OK && !path.empty())
-                            write("Save file: " + path + "   (nothing was written)");
-                        else write("Save file: " + DialogResultText(result));
+                            write(TrF("Save file: {0}   (nothing was written)", path));
+                        else write(TrF("Save file: {0}", DialogResultText(result)));
                     });
             });
         };
 
         folderBtn->onClick = [write, style, fileOptions]() {
-            auto opts = fileOptions("Select a folder");
+            auto opts = fileOptions(Tr("Select a folder"));
             WithDialogStyle(style(), [&]() {
                 UltraCanvasFileLoader::SelectFolderDialog(opts,
                     [write](DialogResult result, const std::string& folder) {
-                        if (result == DialogResult::OK && !folder.empty()) write("Select folder: " + folder);
-                        else write("Select folder: " + DialogResultText(result));
+                        if (result == DialogResult::OK && !folder.empty()) write(TrF("Select folder: {0}", folder));
+                        else write(TrF("Select folder: {0}", DialogResultText(result)));
                     });
             });
         };
@@ -310,20 +300,20 @@ namespace {
         // ----- Print dialogs (always the platform's) -----
         printSettingsBtn->onClick = [write, styleSelector]() {
             NativePrintResult choice = UltraCanvasNativeDialogs::RequestPrintSettings(
-                    "UltraCanvas demo - test page", styleSelector->GetWindow());
+                    Tr("UltraCanvas demo - test page"), styleSelector->GetWindow());
             write(DescribePrintChoice(choice));
         };
 
         printTestBtn->onClick = [write, styleSelector]() {
-            IODeviceResult result = PrintTextWithDialog("UltraCanvas demo - test page",
-                                                        kTestPageText, styleSelector->GetWindow());
+            IODeviceResult result = PrintTextWithDialog(Tr("UltraCanvas demo - test page"),
+                                                        TestPageText(), styleSelector->GetWindow());
             if (result.success) {
-                write("Print test page: sent (job " + std::to_string(result.backendCode) + ")");
+                write(TrF("Print test page: sent (job {0})", result.backendCode));
             } else if (result.code == IODeviceResultCode::Cancelled) {
-                write("Print test page: Cancel");
+                write(Tr("Print test page: Cancel"));
             } else {
-                write("Print test page: failed - " +
-                      (result.message.empty() ? std::string("no reason given") : result.message));
+                write(TrF("Print test page: failed - {0}",
+                      result.message.empty() ? Tr("no reason given") : result.message));
             }
         };
 
@@ -331,8 +321,8 @@ namespace {
         infoBtn->onClick = [write, style, styleSelector]() {
             WithDialogStyle(style(), [&]() {
                 UltraCanvasDialogManager::ShowInformation(
-                    "The document was saved.", "Information",
-                    [write](DialogResult r) { write("Information: " + DialogResultText(r)); },
+                    Tr("The document was saved."), Tr("Information"),
+                    [write](DialogResult r) { write(TrF("Information: {0}", DialogResultText(r))); },
                     styleSelector->GetWindow());
             });
         };
@@ -340,8 +330,8 @@ namespace {
         questionBtn->onClick = [write, style, styleSelector]() {
             WithDialogStyle(style(), [&]() {
                 UltraCanvasDialogManager::ShowQuestion(
-                    "Discard the changes to \"Untitled.txt\"?", "Question",
-                    [write](DialogResult r) { write("Question: " + DialogResultText(r)); },
+                    TrF("Discard the changes to \"{0}\"?", "Untitled.txt"), Tr("Question"),
+                    [write](DialogResult r) { write(TrF("Question: {0}", DialogResultText(r))); },
                     styleSelector->GetWindow());
             });
         };
@@ -349,8 +339,8 @@ namespace {
         warningBtn->onClick = [write, style, styleSelector]() {
             WithDialogStyle(style(), [&]() {
                 UltraCanvasDialogManager::ShowWarning(
-                    "The disk is nearly full.", "Warning",
-                    [write](DialogResult r) { write("Warning: " + DialogResultText(r)); },
+                    Tr("The disk is nearly full."), Tr("Warning"),
+                    [write](DialogResult r) { write(TrF("Warning: {0}", DialogResultText(r))); },
                     styleSelector->GetWindow());
             });
         };
@@ -358,8 +348,8 @@ namespace {
         errorBtn->onClick = [write, style, styleSelector]() {
             WithDialogStyle(style(), [&]() {
                 UltraCanvasDialogManager::ShowError(
-                    "The file could not be written.", "Error",
-                    [write](DialogResult r) { write("Error: " + DialogResultText(r)); },
+                    Tr("The file could not be written."), Tr("Error"),
+                    [write](DialogResult r) { write(TrF("Error: {0}", DialogResultText(r))); },
                     styleSelector->GetWindow());
             });
         };
@@ -367,10 +357,10 @@ namespace {
         inputBtn->onClick = [write, style, styleSelector]() {
             WithDialogStyle(style(), [&]() {
                 UltraCanvasDialogManager::ShowInputDialog(
-                    "Name of the new folder:", "New folder", "Untitled folder", InputType::Text,
+                    Tr("Name of the new folder:"), Tr("New folder"), Tr("Untitled folder"), InputType::Text,
                     [write](DialogResult r, const std::string& value) {
-                        if (r == DialogResult::OK) write("Text input: \"" + value + "\"");
-                        else write("Text input: " + DialogResultText(r));
+                        if (r == DialogResult::OK) write(TrF("Text input: \"{0}\"", value));
+                        else write(TrF("Text input: {0}", DialogResultText(r)));
                     },
                     styleSelector->GetWindow());
             });
@@ -379,12 +369,12 @@ namespace {
         passwordBtn->onClick = [write, style, styleSelector]() {
             WithDialogStyle(style(), [&]() {
                 UltraCanvasDialogManager::ShowInputDialog(
-                    "Password for \"demo@ultra-os\":", "Password", "", InputType::Password,
+                    TrF("Password for \"{0}\":", "demo@ultra-os"), Tr("Password"), "", InputType::Password,
                     [write](DialogResult r, const std::string& value) {
                         // Never echo a password, not even a demo one.
                         if (r == DialogResult::OK)
-                            write("Password: " + std::to_string(value.size()) + " character(s) entered");
-                        else write("Password: " + DialogResultText(r));
+                            write(TrN("Password: {n} character entered", "Password: {n} characters entered", static_cast<long long>(value.size())));
+                        else write(TrF("Password: {0}", DialogResultText(r)));
                     },
                     styleSelector->GetWindow());
             });
@@ -414,25 +404,32 @@ namespace {
 
 // ===== ULTRA OS SYSTEM DIALOGS DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSystemDialogsExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("SystemDialogsExamples", 0, 0, 1000, 720);
-        root->size.width  = CSSLayout::Dimension::Pct(100);
-        root->size.height = CSSLayout::Dimension::Pct(100);
-        root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        auto page = DemoKit::CreatePage("SystemDialogsExamples", Tr("ULTRA OS system dialogs"),
+                Tr("The dialogs an application asks the system for. \"ULTRA OS\" shows the "
+                "framework's own dialogs, the same on every platform; \"Native\" shows the "
+                "host platform's. The print dialog is always the platform's."));
+        // The log and the documentation scroll themselves: the page is the
+        // area's height and the tabs take what the title and description leave.
+        page->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("SystemDialogsCard");
+        card->SetPadding(4);
+        DemoKit::Add(page, card, 1);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("SystemDialogsTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
-        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        tabs->AddTab("Examples", BuildExamplesTab());
-        tabs->AddTab("Details",  BuildDetailsTab());
+        tabs->AddTab(Tr("Examples"), BuildExamplesTab());
+        tabs->AddTab(Tr("Details"),  BuildDetailsTab());
         tabs->SetActiveTab(0);
 
-        root->AddChild(tabs);
-        return root;
+        DemoKit::Add(card, tabs, 1);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
+        return page;
     }
 
 } // namespace UltraCanvas

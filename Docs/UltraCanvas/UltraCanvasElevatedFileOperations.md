@@ -58,9 +58,14 @@ page, for example, keeps the plain *Try again / Skip* choice.
   reported, not resolved against whatever the elevated process's working
   directory happens to be. The one file it reads is one it writes — the
   report — and only after the deletes.
-- **Get past a sharing violation.** "In use by another program" is not a
-  permission problem; `IsPermissionFailure` says no for it and the widget keeps
-  offering *Try again* there.
+- **Get past a file in use.** "In use by another program" is not a
+  permission problem, and on Windows it often arrives as the same *Access is
+  denied*: a running program's executable, or a picture an image library
+  keeps memory-mapped, refuses its delete to an administrator too.
+  `IsPermissionFailure` only reads the error code, so it cannot tell. The
+  widget asks [UltraCanvasFileRemoval](UltraCanvasFileRemoval.md) instead
+  and offers the retry only for `FileRemovalProblem::NotPermitted`. Use that
+  for a new caller as well.
 - **Help when already elevated.** When the process runs as administrator and
   the system still says no (a file owned by TrustedInstaller, say), asking
   again cannot change the answer, so `IsAvailable()` is false then.
@@ -70,7 +75,7 @@ page, for example, keeps the plain *Try again / Skip* choice.
 | Function | Purpose |
 |---|---|
 | `RunHelperIfRequested(argc, argv, exitCode)` | Host side, first in `main()`. True: this process was the helper, the work is done, return `exitCode`. False: an ordinary start. Calling it at all installs the retry. |
-| `IsAvailable()` | A backend exists, the helper is installed, and this process is not already elevated. |
+| `IsAvailable()` | A backend exists, the helper is installed, this process is not already elevated, and it may start an elevated process at all: on Windows, a copy running from an MSIX package only when the package declares the restricted capability `allowElevation` ([UltraCanvasWindowsMSIX](UltraCanvasWindowsMSIX.md)). |
 | `ProcessIsElevated()` | The process token's elevation state (Windows); false elsewhere. |
 | `IsPermissionFailure(ec)` | Is this `std::error_code` from a filesystem call the refusal administrator rights may resolve (`ERROR_ACCESS_DENIED` / `EACCES`)? |
 | `DeleteElevated(paths)` | Delete these entries (files, or folders with everything in them) through the helper. **Blocks** until the consent prompt is answered and the helper has exited — run it off the UI thread. One prompt for the whole list. |
@@ -94,11 +99,15 @@ before it could write anything.
 <exe> --uc-elevated-delete <report file> <absolute path>...
 ```
 
-The helper deletes each path in order, lifting read-only attributes first (on
-the entry and, for a folder, on everything in it — a read-only file cannot be
-removed on Windows, and getting things out of the way is the point). It writes
+The helper deletes each path in order through `RemoveFileSystemTree`
+([UltraCanvasFileRemoval](UltraCanvasFileRemoval.md)). It lifts read-only
+attributes on files and folders as it goes, since Windows refuses to delete
+either while the bit is set, and counts an entry that is already delete
+pending as gone. It writes
 one `<path>\t<reason>` line per failure into the report file (UTF-8, LF) —
-an empty file for a clean run, so the caller can tell *nothing failed* from
+the reason naming the entry inside that refused (`IMG_0001.JPG: in use by a
+program (…)`), and an empty file for a clean run, so the caller can tell
+*nothing failed* from
 *the helper never got this far* — and exits `0` when everything went, `1` when
 something is left, `2` when the arguments made no sense.
 

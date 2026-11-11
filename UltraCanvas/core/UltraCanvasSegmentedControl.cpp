@@ -1,12 +1,21 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
+// Version: 1.7.0 - SetSegmentTooltip: the tooltip follows the segment under the pointer
+// Version: 1.6.1 - a caption stays on one line, shortened with an ellipsis when the segment
+//                 is too narrow, instead of wrapping out of the segment
+// Version: 1.6.0 - a caption is centred on its capitals (the layout gets the segment's
+//                 height), not on its line box, which sat high or low with the font
+// Version: 1.5.0 - style.iconAsMask tints the icon with the text colour; an icon and a
+//                 centred caption are centred as one
 // Version: 1.4.0 - SetSegmentTextColor: a segment's own text colour while unselected
 // Version: 1.3.1 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasWindow.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <fmt/os.h>
 #include <algorithm>
@@ -108,6 +117,9 @@ namespace UltraCanvas {
         // Add text width
         if (segment.HasText()) {
             ITextLayout* textLayout = GetOrCreateTextLayout(ctx, segment);
+            // The caption's own width, not the segment's it was last drawn in
+            // (which would shorten it to what fitted then).
+            if (textLayout->GetExplicitWidth() >= 0) textLayout->SetExplicitWidth(-1);
             Size2Di textSize = textLayout->GetLayoutSize();
             width += textSize.width;
         }
@@ -352,12 +364,38 @@ namespace UltraCanvas {
         // Render icon if present. Alone in its segment it sits in the middle:
         // the segment is seldom exactly icon + padding wide (equal widths share
         // out the control), so the left padding would push it off centre.
+        // Beside a centred caption the two are centred as one, rather than the
+        // icon at the left edge and the text in the middle of what remains.
+        ITextLayout* centredText = nullptr;
+        if (segment.HasIcon() && segment.HasText() && segment.alignment == TextAlignment::Center) {
+            centredText = GetOrCreateTextLayout(ctx, segment);
+            if (centredText->GetExplicitWidth() >= 0) centredText->SetExplicitWidth(-1);
+            const double textW = centredText->GetLayoutSize().width;
+            const double groupW = style.iconSize + style.iconSpacing + textW;
+            contentX = static_cast<int>(std::round(rect.x + std::max(0.0, (rect.width - groupW) / 2.0)));
+        }
         if (segment.HasIcon()) {
             int iconX = segment.HasText() ? contentX
                                           : rect.x + (rect.width - style.iconSize) / 2;
             int iconY = contentY - style.iconSize / 2;
-            ctx->DrawImage(segment.iconPath, Rect2Dd(iconX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
+            const Rect2Dd iconRect(iconX, iconY, style.iconSize, style.iconSize);
+            if (style.iconAsMask) ctx->DrawMask(textColor, segment.iconPath, iconRect, ImageFitMode::Contain);
+            else ctx->DrawImage(segment.iconPath, iconRect, ImageFitMode::Contain);
             contentX += style.iconSize + style.iconSpacing;
+        }
+        // The caption gets the segment's height and centres itself in it
+        // (VerticalAlignment::Middle): its capitals on the segment's middle,
+        // as a button's caption is, wherever the font's line box sits.
+        // Centring the line box put the text a few pixels high or low with
+        // the font (high in the Windows demo).
+        auto fitHeight = [&rect](ITextLayout* layout) {
+            if (layout->GetExplicitHeight() != rect.height) layout->SetExplicitHeight(rect.height);
+        };
+        if (centredText) {
+            centredText->ChangeAttribute(TextAttributeFactory::CreateForeground(textColor));
+            fitHeight(centredText);
+            ctx->DrawTextLayout(*centredText, Point2Dd(contentX, rect.y));
+            return;
         }
 
         // Render text
@@ -369,8 +407,8 @@ namespace UltraCanvas {
             if (textLayout->GetExplicitWidth() != layoutWidth) {
                 textLayout->SetExplicitWidth(layoutWidth);
             }
-            auto textSize = textLayout->GetLayoutSize();
-            ctx->DrawTextLayout(*textLayout, Point2Dd(contentX, contentY - textSize.height / 2));
+            fitHeight(textLayout);
+            ctx->DrawTextLayout(*textLayout, Point2Dd(contentX, rect.y));
         }
     }
 
@@ -383,13 +421,17 @@ namespace UltraCanvas {
                         .fontWeight = style.fontWeight,
                         .fontSlant = FontSlant::Normal
                 };
-                //auto txtMarkup = fmt::format("<span font=\"{}\">{}</span>", fstyle.ToFontDesc(), segment.text);
                 segment.textLayout = ctx->CreateTextLayout("<span>"+segment.text+"</span>", true);
-                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontFamily(style.fontFamily));
-                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontWeight(style.fontWeight));
-                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontSize(style.fontSize));
+                // The layout's own font, not font attributes over its text:
+                // the vertical centring measures the capitals of the layout's
+                // font, and would measure the default size's instead.
+                segment.textLayout->SetFontStyle(fstyle);
                 segment.textLayout->SetAlignment(segment.alignment);
                 segment.textLayout->SetVerticalAlignment(VerticalAlignment::Middle);
+                // One line, shortened with an ellipsis when the segment is too
+                // narrow: a caption wrapped onto a second line ran out of the
+                // segment above and below.
+                segment.textLayout->SetWrap(TextWrap::WrapNone);
             }
             return segment.textLayout.get();
         } else {
@@ -430,6 +472,11 @@ namespace UltraCanvas {
 
             case UCEventType::MouseUp:
                 return HandleMouseUp(event);
+
+            case UCEventType::MouseEnter:
+                // Before the application reads the tooltip to show it
+                if (Contains(event.pointer)) UpdateSegmentTooltip(event, GetSegmentAtPosition(event.pointer.x, event.pointer.y));
+                return false;
 
             case UCEventType::MouseMove:
                 return HandleMouseMove(event);
@@ -510,6 +557,7 @@ namespace UltraCanvas {
         int index = GetSegmentAtPosition(event.pointer.x, event.pointer.y);
         if (index != hoveredIndex) {
             hoveredIndex = index;
+            UpdateSegmentTooltip(event, index);
 
             if (hoveredIndex >= 0 && onSegmentHover) {
                 onSegmentHover(hoveredIndex);
@@ -723,6 +771,39 @@ namespace UltraCanvas {
         if (index >= 0 && index < static_cast<int>(segments.size())) {
             segments[index].textColor = color;
             RequestRedraw();
+        }
+    }
+
+    void UltraCanvasSegmentedControl::SetSegmentTooltip(int index, const std::string& text) {
+        if (index >= 0 && index < static_cast<int>(segments.size())) segments[index].tooltip = text;
+    }
+
+    std::string UltraCanvasSegmentedControl::GetSegmentTooltip(int index) const {
+        if (index >= 0 && index < static_cast<int>(segments.size())) return segments[index].tooltip;
+        return {};
+    }
+
+    void UltraCanvasSegmentedControl::UpdateSegmentTooltip(const UCEvent& event, int index) {
+        bool anyOwn = false;
+        for (const auto& segment : segments) anyOwn = anyOwn || !segment.tooltip.empty();
+        if (!anyOwn) return;   // the control's tooltip alone, as before
+        // The control's own tooltip, as it was before a segment's replaced it
+        if (!controlTooltipKept || GetTooltip() != lastSegmentTooltip) {
+            controlTooltip = GetTooltip();
+            controlTooltipKept = true;
+        }
+        std::string text = controlTooltip;
+        if (index >= 0 && index < static_cast<int>(segments.size()) && !segments[index].tooltip.empty())
+            text = segments[index].tooltip;
+        if (text == GetTooltip()) return;
+        SetTooltip(text);
+        lastSegmentTooltip = text;
+        // The manager took the old text when the pointer came in: give it
+        // the new one where it is up or about to be
+        UltraCanvasWindowBase* win = GetWindow();
+        if (win && (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending())) {
+            if (text.empty()) UltraCanvasTooltipManager::HideTooltip();
+            else UltraCanvasTooltipManager::UpdateAndShowTooltip(win, text, event.pointerWindow);
         }
     }
 
@@ -1014,6 +1095,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSegmentedControl::SetStyle(SegmentedControlStyle st) {
+        StyleSetByHand();
         style = st;
         // Font lives in the style — drop cached text layouts so they re-measure.
         for (auto& segment : segments) segment.textLayout.reset();
@@ -1045,5 +1127,25 @@ namespace UltraCanvas {
         }
 
         return true;
+    }
+
+// ===== THE THEME =====
+    SegmentedControlStyle SegmentedControlStyle::FromTheme(const UltraCanvasTheme& theme, const SegmentedControlStyle& base) {
+        SegmentedControlStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.normalColor = r.raised;
+        s.selectedColor = r.accent;
+        s.hoverColor = r.hover;
+        s.disabledColor = r.panel;
+        s.normalTextColor = r.ink;
+        s.selectedTextColor = r.onAccent;
+        s.hoverTextColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        s.borderColor = r.lineStrong;
+        s.separatorColor = r.line;
+        return s;
     }
 } // namespace UltraCanvas

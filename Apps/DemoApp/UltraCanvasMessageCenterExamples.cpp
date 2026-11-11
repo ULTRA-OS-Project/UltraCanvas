@@ -4,13 +4,18 @@
 // in-memory journal, so it never touches the user's message centre, seeds a
 // few chats, mails and notifications through a second endpoint, and lets the
 // visitor post more with a button — the element updates live.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the button,
+//   readout and feed in one card that fills the area, the button as wide as
+//   its text
 // Version: 1.0.1 - seeds only an empty feed (the journal outlives the page, so
 //   every visit added the samples again); the subtitle's height follows its
 //   lines instead of clipping them at 40 px
 // Version: 1.0.0
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -48,7 +53,7 @@ struct DemoSource {
         if (endpoint != UltraMsgInvalidHandle) return true;
         UltraMsgConnectOptions options;
         options.appId = "org.ultraos.demo.messagesource";
-        options.displayName = "Demo source";
+        options.displayName = Tr("Demo source");
         options.busPath = DemoBusPath();
         options.journalPath = ":memory:";
         options.deliverOnUIThread = false;
@@ -103,26 +108,26 @@ struct DemoSource {
     }
 
     void Seed() {
-        Chat("telegram", "Ada Lovelace", "Ada Lovelace", "Are we still on for the engine review at 9?");
-        Chat("telegram", "Analytical Engine", "Charles Babbage", "The mill is finished; the store needs another week.", true);
-        Chat("signal", "Grace Hopper", "Grace Hopper", "Found the moth. Literally.");
-        Mail("erika@example.org", "Konrad Zuse", "konrad@example.org", "Z3 relay order",
-             "The relays arrive Thursday; can we start assembly on Friday?");
-        Mail("erika@example.org", "RISC OS Open", "news@riscosopen.org", "Newsletter: September",
-             "This month: the new Filer, UltraCanvas on the Pi 5, and a bundle of bug fixes.");
-        Notification("Downloads", "org.ultraos.filer", "Download finished", "ultracanvas-src.tar.gz (48 MB)", "low",
-                     {{"open", "Open"}, {"folder", "Show in Filer"}});
-        Notification("Battery", "org.ultraos.power", "Battery low", "12 % remaining — plug in soon", "critical");
+        Chat("telegram", "Ada Lovelace", "Ada Lovelace", Tr("Are we still on for the engine review at 9?"));
+        Chat("telegram", "Analytical Engine", "Charles Babbage", Tr("The mill is finished; the store needs another week."), true);
+        Chat("signal", "Grace Hopper", "Grace Hopper", Tr("Found the moth. Literally."));
+        Mail("erika@example.org", "Konrad Zuse", "konrad@example.org", Tr("Z3 relay order"),
+             Tr("The relays arrive Thursday; can we start assembly on Friday?"));
+        Mail("erika@example.org", "RISC OS Open", "news@riscosopen.org", Tr("Newsletter: September"),
+             Tr("This month: the new Filer, UltraCanvas on the Pi 5, and a bundle of bug fixes."));
+        Notification(Tr("Downloads"), "org.ultraos.filer", Tr("Download finished"), "ultracanvas-src.tar.gz (48 MB)", "low",
+                     {{"open", Tr("Open")}, {"folder", Tr("Show in Filer")}});
+        Notification(Tr("Battery"), "org.ultraos.power", Tr("Battery low"), Tr("12 % remaining — plug in soon"), "critical");
     }
 
     void PostAnother() {
         ++counter;
         switch (counter % 3) {
-            case 0: Chat("telegram", "Ada Lovelace", "Ada Lovelace", "Message " + std::to_string(counter) + " from the demo"); break;
-            case 1: Mail("erika@example.org", "Demo", "demo@example.org", "Sample mail " + std::to_string(counter),
-                         "Posted from the DemoApp page."); break;
-            default: Notification("Demo", "org.ultraos.demo", "Sample notification " + std::to_string(counter),
-                                  "Posted from the DemoApp page.", "normal", {{"ok", "OK"}}); break;
+            case 0: Chat("telegram", "Ada Lovelace", "Ada Lovelace", TrF("Message {0} from the demo", counter)); break;
+            case 1: Mail("erika@example.org", Tr("Demo"), "demo@example.org", TrF("Sample mail {0}", counter),
+                         Tr("Posted from the DemoApp page.")); break;
+            default: Notification(Tr("Demo"), "org.ultraos.demo", TrF("Sample notification {0}", counter),
+                                  Tr("Posted from the DemoApp page."), "normal", {{"ok", Tr("OK")}}); break;
         }
     }
 };
@@ -131,55 +136,42 @@ struct DemoSource {
 #endif // ULTRACANVAS_HAS_MESSAGECENTER
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageCenterExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("MessageCenterExamples", 0, 0, 1000, 640);
-    container->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    container->SetPadding(10, 20);
-
-    auto title = CreateLabel("MCTitle", 0, 0, 0, 30);
-    title->SetText("Message Centre");
-    title->SetFontSize(18);
-    title->SetFontWeight(FontWeight::Bold);
-    container->AddChild(title);
-    title->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    // Height 0 = auto: the wrapped text is three lines at the usual width and
-    // was cut to a fixed 40 px.
-    auto subtitle = CreateLabel("MCSubtitle", 0, 0, 0, 0);
-    subtitle->SetWrap(TextWrap::WrapWord);
-    subtitle->SetFontSize(12);
-    container->AddChild(subtitle);
-    subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
 #ifdef ULTRACANVAS_HAS_MESSAGECENTER
-    subtitle->SetText("One element on the UltraMessage feed: chats, mail and notifications, grouped by source, "
-                      "filtered by section and service, searchable, with the notification's own actions. "
-                      "This page hosts a private broker with an in-memory journal and seeds it; "
-                      "\"Post another\" adds a message live.");
+    auto container = DemoKit::CreatePage("MessageCenterExamples", Tr("Message Centre"),
+            Tr("One element on the UltraMessage feed: chats, mail and notifications, grouped by source, "
+            "filtered by section and service, searchable, with the notification's own actions. "
+            "This page hosts a private broker with an in-memory journal and seeds it; "
+            "\"Post another\" adds a message live."));
+    // The feed scrolls itself: the page is the area's height and the feed
+    // takes what the texts and the bar leave.
+    container->SetFillsArea(true);
 
-    auto bar = CreateContainer("MCBar", 0, 0, 0, 0);
-    bar->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    auto post = CreateButton("MCPost", 0, 0, 130, 28, "Post another");
-    post->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    bar->AddChild(post);
-    auto gap = CreateContainer("MCGap", 0, 0, 10, 1);
-    gap->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    bar->AddChild(gap);
-    auto readout = CreateLabel("MCReadout", 0, 0, 600, 28);
-    readout->SetFontSize(12);
-    readout->SetText("Unread: 0");
-    bar->AddChild(readout);
-    container->AddChild(bar);
-    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto card = DemoKit::CreateCard("MCCard");
+    DemoKit::Add(container, card, 1);
+    card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
+
+    auto bar = DemoKit::AddRow(card, "MCBar", 10);
+    bar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    // As wide as its text, at least the 130 px it had.
+    auto post = std::make_shared<UltraCanvasButton>("MCPost", 0, 0, 0, 28, Tr("Post another"));
+    {
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(130);
+        post->boxConstraints = limits;
+    }
+    DemoKit::Add(bar, post);
+    auto readout = DemoKit::CreateText("MCReadout", Tr("Unread: 0"));
+    DemoKit::Add(bar, readout, 1);
 
     auto center = CreateMessageCenter("MCCenter", 0, 0, 0, 0);
     center->onUnreadCountChanged = [readout = readout.get()](int unread) {
-        readout->SetText("Unread: " + std::to_string(unread));
+        readout->SetText(TrF("Unread: {0}", unread));
     };
     center->onOpen = [readout = readout.get()](const MessageCenterEntry& entry) {
-        readout->SetText("Open: " + entry.title + " — " + entry.snippet);
+        readout->SetText(TrF("Open: {0} — {1}", entry.title, entry.snippet));
     };
-    container->AddChild(center);
-    center->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    DemoKit::Add(card, center, 1);
+    center->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
     // The demo's own bus: the element hosts the broker, the source posts to it.
     UltraMsgConnectOptions options = UltraCanvasMessageCenter::DefaultConnectOptions();
@@ -196,12 +188,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
     }
     post->onClick = [source, center = center.get()]() {
         if (source->Connect()) source->PostAnother();
-        else center->GetStatusLabel()->SetText("The demo source could not connect to the bus.");
+        else center->GetStatusLabel()->SetText(Tr("The demo source could not connect to the bus."));
     };
     // The source lives as long as the page: captured by the button above.
 #else
-    subtitle->SetText("This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
-                      "so the message centre element is not available.");
+    auto container = DemoKit::CreatePage("MessageCenterExamples", Tr("Message Centre"),
+            Tr("This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
+            "so the message centre element is not available."));
 #endif
     return container;
 }

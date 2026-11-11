@@ -1,0 +1,19 @@
+{
+  "@language": "tr",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Başlık renklendirme",
+  "Edit Title": "Başlık düzenleme",
+  "The title is in the video": "Başlık videoya yerleştirildi",
+  "The title is unchanged": "Başlık değişmedi",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Başlık boşaltıldı: metnini korur (kaldırmak için başlığı kendi şeridinde silin)",
+  "Title Alignment": "Başlık hizalaması",
+  "Title Bold": "Kalın başlık",
+  "Title Font": "Başlık yazı tipi",
+  "Title Italic": "İtalik başlık",
+  "Title Letter Spacing": "Başlık harf aralığı",
+  "Title Line Spacing": "Başlık satır aralığı",
+  "Title Size": "Başlık boyutu",
+  "Title Strikethrough": "Üstü çizili başlık",
+  "Title Underline": "Altı çizili başlık",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Başlık karenin üzerine yazılıyor: Escape, Ctrl+Enter veya dışarıya tıklama başlığı videoya yerleştirir"
+}

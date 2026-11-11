@@ -64,8 +64,8 @@ void TestCredentialResolution() {
 }
 
 void TestHttpStatusMapping() {
-    EXPECT_EQ(MapHttpStatus(200).code, ErrorCode::None);
-    EXPECT_EQ(MapHttpStatus(302).code, ErrorCode::None);
+    EXPECT_EQ(MapHttpStatus(200).code, ErrorCode::Ok);
+    EXPECT_EQ(MapHttpStatus(302).code, ErrorCode::Ok);
     EXPECT_EQ(MapHttpStatus(400).code, ErrorCode::InvalidRequest);
     EXPECT_EQ(MapHttpStatus(401).code, ErrorCode::AuthenticationFailed);
     EXPECT_EQ(MapHttpStatus(402).code, ErrorCode::QuotaExceeded);

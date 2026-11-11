@@ -15,7 +15,7 @@ Changelog and version: [`Docs/UltraNetMonitor/CHANGELOG.md`](../../Docs/UltraNet
 |---|---|
 | `ui/UltraNetMonitorModels.*` | The five `IListModel`s: one row per connection, per process, per recorded flow, per named address, per connection event |
 | `ui/UltraNetMonitorPaths.*` | Where the activity store lives by default (the per-user data directory) |
-| `ui/UltraNetMonitorWindow.*` | The window: the *Live* tab's split pane, the *History*, *Names* and *Events* tabs, the Record toggle, the *Info…* dialog, the snapshot thread |
+| `ui/UltraNetMonitorWindow.*` | The window: the *Live* tab's split pane, the *History*, *Names* and *Events* tabs, the Record toggle, the *Info* dialog, the snapshot thread |
 | `main.cpp` | GUI bootstrap, the name and event sources, and the command line: `--list`, `--by-app` (both with `--csv`), `--names`, `--events`, `--capabilities`, `--record`, `--history`, `--dns`, `--events-history`, `--totals`, `--store-stats`, `--purge` |
 | `UltraNetMonitor.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/UltraNetMonitor.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is how the application menu and UltraFiler find the app and its icon |
 
@@ -92,7 +92,7 @@ mail server's history names the mail client although only the antivirus
 proxy ever talked to it. A search for the client's name finds those rows
 too. Flows older than 30 days are rolled up into daily totals per
 application and peer, which keep the last *for*; those age out after a
-year. *Purge…* asks twice. The store never leaves the machine.
+year. *Purge* asks twice. The store never leaves the machine.
 
 ## Command line
 
@@ -125,7 +125,7 @@ UltraNetMonitor --purge --yes                  # irreversible
 Not elevated, only this user's processes can be attributed: on Linux and
 Windows other users' sockets still appear, as *(unattributed)*; on macOS
 they do not appear at all, because sockets there are enumerated per process.
-The status line says how many processes could not be inspected, and *Info…*
+The status line says how many processes could not be inspected, and *Info*
 on the toolbar says why - with the backend and its limits, every name and
 event source with its count or the error it failed with, and the notes from
 start-up; the tabs' status lines only name a source that failed. The *Sent*

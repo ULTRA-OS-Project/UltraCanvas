@@ -55,6 +55,7 @@
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetCurlTls.h>
 
 #include "ImapParse.h"
@@ -126,7 +127,7 @@ std::size_t ReadFromString(char* buffer, std::size_t size, std::size_t nitems, v
 
 UltraNetResultCode MapCurlError(CURLcode rc) {
     switch (rc) {
-        case CURLE_OK:                       return UltraNetResultCode::Success;
+        case CURLE_OK:                       return UltraNetResultCode::Ok;
         case CURLE_URL_MALFORMAT:            return UltraNetResultCode::InvalidUrl;
         case CURLE_COULDNT_RESOLVE_HOST:     return UltraNetResultCode::HostNotFound;
         case CURLE_COULDNT_CONNECT:          return UltraNetResultCode::ConnectionRefused;
@@ -164,6 +165,9 @@ bool ParseServerBase(const std::string& serverUrl, std::string& outBase, bool& o
 constexpr const char* kPluginVersion = "0.2.0";
 
 UltraNetResult ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+    // The proxy setting (the operating system's by default); an HTTP proxy
+    // carries the mail connection as a CONNECT tunnel.
+    ultranet_curlproxy::ApplyFor(h, opt.serverUrl, /*tunnel=*/true);
     ultranet_curldebug::EnableIfRequested(h);
     // STARTTLS here is CURLUSESSL_TRY (below): an upgrade if the server offers one.
     ultranet_curlmailauth::RecordContext(std::string("UltraNet IMAP plug-in ") + kPluginVersion,
@@ -279,7 +283,7 @@ public:
             while (reader_.Next(r)) {
                 if (r.IsTagged(tag)) {
                     Touch();
-                    if (r.Status() == "OK") return UltraNetResult::Ok();
+                    if (r.StatusWord() == "OK") return UltraNetResult::Ok();
                     const std::string verb = command.substr(0, command.find(' ', 4));
                     return UltraNetResult::Error(UltraNetResultCode::Unknown,
                         "The mail server refused " + verb + ": " + r.Text());
@@ -993,7 +997,7 @@ public:
             CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
             if (rc != CURLE_OK)
                 return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
-            if (flags != UltraNetMailFlags::None) SetFlagsOfAppended(serverUrl, folder, rawMessage,
+            if (flags != UltraNetMailFlags::NoFlags) SetFlagsOfAppended(serverUrl, folder, rawMessage,
                                                                      flags, options);
             return UltraNetResult::Ok();
         });
@@ -1052,7 +1056,7 @@ public:
                 if (listed) {
                     for (uint32_t uid : uids) {
                         auto it = fm.find(uid);
-                        onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::None,
+                        onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::NoFlags,
                                 /*flagsKnown=*/it != fm.end());
                     }
                     return UltraNetResult::Ok();
@@ -1086,7 +1090,7 @@ public:
 
             for (uint32_t uid : uids) {
                 auto it = fm.find(uid);
-                onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::None,
+                onFlags(uid, it != fm.end() ? it->second : UltraNetMailFlags::NoFlags,
                         /*flagsKnown=*/it != fm.end());
             }
             return UltraNetResult::Ok();
@@ -1337,7 +1341,7 @@ private:
         const bool known = PerformOn(h, mbUrl, UidFetchFlagsCommand(uid), flagsBody)
                            && HasFetchFlags(flagsBody);
         const UltraNetMailFlags before = known ? ParseFetchFlags(flagsBody)
-                                               : UltraNetMailFlags::None;
+                                               : UltraNetMailFlags::NoFlags;
         if (flagsOut) *flagsOut = before;
         UltraNetResult r = PerformOn(h, sectionUrl, std::string(), out);
         // Only when the flags were read: a message whose state is unknown is

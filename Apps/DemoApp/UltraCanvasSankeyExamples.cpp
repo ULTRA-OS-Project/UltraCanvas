@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasSankeyExamples.cpp
 // Interactive Sankey diagram demonstration page
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
+//                  card, each tab's controls in rows that wrap, every text sized
+//                  to fit, buttons as wide as their text
 // Version: 1.0.0
-// Last Modified: 2025-10-16
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasSankey.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -19,39 +23,39 @@
 namespace UltraCanvas {
     void GenerateEnergySankeyData(UltraCanvasSankeyDiagram* renderer) {
         // Energy flow example
-        renderer->AddLink("Coal", "Electricity", 35.0f);
-        renderer->AddLink("Natural Gas", "Electricity", 35.0f);
-        renderer->AddLink("Nuclear", "Electricity", 10.0f);
-        renderer->AddLink("Solar", "Electricity", 3.0f);
-        renderer->AddLink("Wind", "Electricity", 2.0f);
-        renderer->AddLink("Hydro", "Electricity", 5.0f);
+        renderer->AddLink(Tr("Coal"), Tr("Electricity"), 35.0f);
+        renderer->AddLink(Tr("Natural Gas"), Tr("Electricity"), 35.0f);
+        renderer->AddLink(Tr("Nuclear"), Tr("Electricity"), 10.0f);
+        renderer->AddLink(Tr("Solar"), Tr("Electricity"), 3.0f);
+        renderer->AddLink(Tr("Wind"), Tr("Electricity"), 2.0f);
+        renderer->AddLink(Tr("Hydro"), Tr("Electricity"), 5.0f);
 
-        renderer->AddLink("Electricity", "Residential", 40.0f);
-        renderer->AddLink("Electricity", "Commercial", 35.0f);
-        renderer->AddLink("Electricity", "Industrial", 45.0f);
+        renderer->AddLink(Tr("Electricity"), Tr("Residential"), 40.0f);
+        renderer->AddLink(Tr("Electricity"), Tr("Commercial"), 35.0f);
+        renderer->AddLink(Tr("Electricity"), Tr("Industrial"), 45.0f);
 
-        renderer->AddLink("Natural Gas", "Residential Heating", 15.0f);
-        renderer->AddLink("Natural Gas", "Commercial Heating", 10.0f);
+        renderer->AddLink(Tr("Natural Gas"), Tr("Residential Heating"), 15.0f);
+        renderer->AddLink(Tr("Natural Gas"), Tr("Commercial Heating"), 10.0f);
 
         renderer->SetTheme(SankeyTheme::Energy);
     }
 
     void GenerateFinanceSankeyData(UltraCanvasSankeyDiagram* renderer) {
         // Financial flow example
-        renderer->AddLink("Revenue", "Product Sales", 65.0f);
-        renderer->AddLink("Revenue", "Services", 35.0f);
+        renderer->AddLink(Tr("Revenue"), Tr("Product Sales"), 65.0f);
+        renderer->AddLink(Tr("Revenue"), Tr("Services"), 35.0f);
 
-        renderer->AddLink("Product Sales", "Profit", 20.0f);
-        renderer->AddLink("Product Sales", "Manufacturing", 30.0f);
-        renderer->AddLink("Product Sales", "Marketing", 15.0f);
+        renderer->AddLink(Tr("Product Sales"), Tr("Profit"), 20.0f);
+        renderer->AddLink(Tr("Product Sales"), Tr("Manufacturing"), 30.0f);
+        renderer->AddLink(Tr("Product Sales"), Tr("Marketing"), 15.0f);
 
-        renderer->AddLink("Services", "Profit", 15.0f);
-        renderer->AddLink("Services", "Operations", 10.0f);
-        renderer->AddLink("Services", "Support", 10.0f);
+        renderer->AddLink(Tr("Services"), Tr("Profit"), 15.0f);
+        renderer->AddLink(Tr("Services"), Tr("Operations"), 10.0f);
+        renderer->AddLink(Tr("Services"), Tr("Support"), 10.0f);
 
-        renderer->AddLink("Profit", "Dividends", 15.0f);
-        renderer->AddLink("Profit", "R&D", 10.0f);
-        renderer->AddLink("Profit", "Reserves", 10.0f);
+        renderer->AddLink(Tr("Profit"), Tr("Dividends"), 15.0f);
+        renderer->AddLink(Tr("Profit"), Tr("R&D"), 10.0f);
+        renderer->AddLink(Tr("Profit"), Tr("Reserves"), 10.0f);
 
         renderer->SetTheme(SankeyTheme::Finance);
     }
@@ -62,21 +66,21 @@ namespace UltraCanvas {
         // Clear existing data
         renderer->ClearAll();
 
-        renderer->AddLink("Search", "Homepage", 30.0f);
-        renderer->AddLink("Social Media", "Homepage", 30.0f);
-        renderer->AddLink("Direct", "Homepage", 25.0f);
-        renderer->AddLink("Referral", "Homepage", 25.0f);
+        renderer->AddLink(Tr("Search"), Tr("Homepage"), 30.0f);
+        renderer->AddLink(Tr("Social Media"), Tr("Homepage"), 30.0f);
+        renderer->AddLink(Tr("Direct"), Tr("Homepage"), 25.0f);
+        renderer->AddLink(Tr("Referral"), Tr("Homepage"), 25.0f);
 
-        renderer->AddLink("Homepage", "Product Page", 50.0f);
-        renderer->AddLink("Homepage", "About", 20.0f);
-        renderer->AddLink("Homepage", "Blog", 20.0f);
-        renderer->AddLink("Homepage", "Exit", 20.0f);
+        renderer->AddLink(Tr("Homepage"), Tr("Product Page"), 50.0f);
+        renderer->AddLink(Tr("Homepage"), Tr("About"), 20.0f);
+        renderer->AddLink(Tr("Homepage"), Tr("Blog"), 20.0f);
+        renderer->AddLink(Tr("Homepage"), Tr("Exit"), 20.0f);
 
-        renderer->AddLink("Product Page", "Checkout", 30.0f);
-        renderer->AddLink("Product Page", "Exit", 20.0f);
+        renderer->AddLink(Tr("Product Page"), Tr("Checkout"), 30.0f);
+        renderer->AddLink(Tr("Product Page"), Tr("Exit"), 20.0f);
 
-        renderer->AddLink("Checkout", "Purchase", 25.0f);
-        renderer->AddLink("Checkout", "Exit", 5.0f);
+        renderer->AddLink(Tr("Checkout"), Tr("Purchase"), 25.0f);
+        renderer->AddLink(Tr("Checkout"), Tr("Exit"), 5.0f);
 
         renderer->SetTheme(SankeyTheme::WebTraffic);
     }
@@ -130,31 +134,31 @@ namespace UltraCanvas {
 
         // ===== COLUMN 1: WORLD PRODUCTION (Source) =====
         // Total: 104.7 mb/day
-        sankey->AddNode("World", "World\nOil Production\n(104.7 mb/d)", Color(147, 180, 220));
+        sankey->AddNode("World", Tr("World\nOil Production\n(104.7 mb/d)"), Color(147, 180, 220));
 
         // ===== COLUMN 2: REGIONAL DISTRIBUTION =====
         // Links from World Production to Regions (values from CSV)
-        sankey->AddLink("World", "North America", 24.5f, Color(255, 182, 193));
-        sankey->AddLink("World", "Central America & Caribbean", 1.1f, Color(255, 218, 185));
-        sankey->AddLink("World", "South America", 6.0f, Color(255, 239, 186));
-        sankey->AddLink("World", "Europe + CIS", 18.5f, Color(186, 225, 255));
-        sankey->AddLink("World", "Middle East", 8.7f, Color(255, 204, 153));
-        sankey->AddLink("World", "China", 16.4f, Color(255, 153, 153));
-        sankey->AddLink("World", "India", 5.55f, Color(204, 229, 255));
-        sankey->AddLink("World", "Rest of Asia", 10.5f, Color(229, 204, 255));
-        sankey->AddLink("World", "Africa", 4.25f, Color(204, 255, 204));
-        sankey->AddLink("World", "Oceania", 1.15f, Color(179, 229, 252));
+        sankey->AddLink("World", Tr("North America"), 24.5f, Color(255, 182, 193));
+        sankey->AddLink("World", Tr("Central America & Caribbean"), 1.1f, Color(255, 218, 185));
+        sankey->AddLink("World", Tr("South America"), 6.0f, Color(255, 239, 186));
+        sankey->AddLink("World", Tr("Europe + CIS"), 18.5f, Color(186, 225, 255));
+        sankey->AddLink("World", Tr("Middle East"), 8.7f, Color(255, 204, 153));
+        sankey->AddLink("World", Tr("China"), 16.4f, Color(255, 153, 153));
+        sankey->AddLink("World", Tr("India"), 5.55f, Color(204, 229, 255));
+        sankey->AddLink("World", Tr("Rest of Asia"), 10.5f, Color(229, 204, 255));
+        sankey->AddLink("World", Tr("Africa"), 4.25f, Color(204, 255, 204));
+        sankey->AddLink("World", Tr("Oceania"), 1.15f, Color(179, 229, 252));
 
-        sankey->SetNodeOrdering("North America", 10);
-        sankey->SetNodeOrdering("South America", 20);
-        sankey->SetNodeOrdering("Europe + CIS", 30);
-        sankey->SetNodeOrdering("Middle East", 40);
-        sankey->SetNodeOrdering("China", 50);
-        sankey->SetNodeOrdering("India", 60);
-        sankey->SetNodeOrdering("Rest of Asia", 70);
-        sankey->SetNodeOrdering("Africa", 80);
-        sankey->SetNodeOrdering("Central America & Caribbean", 90);
-        sankey->SetNodeOrdering("Oceania", 100);
+        sankey->SetNodeOrdering(Tr("North America"), 10);
+        sankey->SetNodeOrdering(Tr("South America"), 20);
+        sankey->SetNodeOrdering(Tr("Europe + CIS"), 30);
+        sankey->SetNodeOrdering(Tr("Middle East"), 40);
+        sankey->SetNodeOrdering(Tr("China"), 50);
+        sankey->SetNodeOrdering(Tr("India"), 60);
+        sankey->SetNodeOrdering(Tr("Rest of Asia"), 70);
+        sankey->SetNodeOrdering(Tr("Africa"), 80);
+        sankey->SetNodeOrdering(Tr("Central America & Caribbean"), 90);
+        sankey->SetNodeOrdering(Tr("Oceania"), 100);
 
         // ===== COLUMN 3: CONSUMPTION SECTORS =====
         // Calculate proportional distribution from each region to sectors
@@ -173,300 +177,303 @@ namespace UltraCanvas {
         // Non-energy/Other: 5.5 / 104.7 = 5.25%
 
         // North America (24.5 mb/d) to sectors
-        sankey->AddLink("North America", "Road Transport", 10.65f, Color(255, 179, 186));
-        sankey->AddLink("North America", "Aviation", 1.75f, Color(186, 255, 201));
-        sankey->AddLink("North America", "Maritime Shipping", 1.75f, Color(186, 225, 255));
-        sankey->AddLink("North America", "Rail & Buses", 0.59f, Color(255, 223, 186));
-        sankey->AddLink("North America", "Petrochemicals", 3.74f, Color(219, 186, 255));
-        sankey->AddLink("North America", "Industry", 2.11f, Color(186, 255, 255));
-        sankey->AddLink("North America", "Buildings/Residential", 1.29f, Color(255, 255, 186));
-        sankey->AddLink("North America", "Power Generation", 0.82f, Color(255, 204, 204));
-        sankey->AddLink("North America", "Agriculture", 0.59f, Color(204, 255, 179));
-        sankey->AddLink("North America", "Non-energy/Other", 1.21f, Color(224, 224, 224));
+        sankey->AddLink(Tr("North America"), Tr("Road Transport"), 10.65f, Color(255, 179, 186));
+        sankey->AddLink(Tr("North America"), Tr("Aviation"), 1.75f, Color(186, 255, 201));
+        sankey->AddLink(Tr("North America"), Tr("Maritime Shipping"), 1.75f, Color(186, 225, 255));
+        sankey->AddLink(Tr("North America"), Tr("Rail & Buses"), 0.59f, Color(255, 223, 186));
+        sankey->AddLink(Tr("North America"), Tr("Petrochemicals"), 3.74f, Color(219, 186, 255));
+        sankey->AddLink(Tr("North America"), Tr("Industry"), 2.11f, Color(186, 255, 255));
+        sankey->AddLink(Tr("North America"), Tr("Buildings/Residential"), 1.29f, Color(255, 255, 186));
+        sankey->AddLink(Tr("North America"), Tr("Power Generation"), 0.82f, Color(255, 204, 204));
+        sankey->AddLink(Tr("North America"), Tr("Agriculture"), 0.59f, Color(204, 255, 179));
+        sankey->AddLink(Tr("North America"), Tr("Non-energy/Other"), 1.21f, Color(224, 224, 224));
 
-        sankey->SetNodeOrdering("Road Transport", 300);
-        sankey->SetNodeOrdering("Aviation", 210);
-        sankey->SetNodeOrdering("Maritime Shipping", 220);
-        sankey->SetNodeOrdering("Rail & Buses", 230);
-        sankey->SetNodeOrdering("Petrochemicals", 240);
-        sankey->SetNodeOrdering("Industry", 250);
-        sankey->SetNodeOrdering("Buildings/Residential", 260);
-        sankey->SetNodeOrdering("Power Generation", 270);
-        sankey->SetNodeOrdering("Agriculture", 280);
-        sankey->SetNodeOrdering("Non-energy/Other", 290);
+        sankey->SetNodeOrdering(Tr("Road Transport"), 300);
+        sankey->SetNodeOrdering(Tr("Aviation"), 210);
+        sankey->SetNodeOrdering(Tr("Maritime Shipping"), 220);
+        sankey->SetNodeOrdering(Tr("Rail & Buses"), 230);
+        sankey->SetNodeOrdering(Tr("Petrochemicals"), 240);
+        sankey->SetNodeOrdering(Tr("Industry"), 250);
+        sankey->SetNodeOrdering(Tr("Buildings/Residential"), 260);
+        sankey->SetNodeOrdering(Tr("Power Generation"), 270);
+        sankey->SetNodeOrdering(Tr("Agriculture"), 280);
+        sankey->SetNodeOrdering(Tr("Non-energy/Other"), 290);
 
 
         // Central America & Caribbean (1.1 mb/d) to sectors
-        sankey->AddLink("Central America & Caribbean", "Road Transport", 0.48f);
-        sankey->AddLink("Central America & Caribbean", "Aviation", 0.08f);
-        sankey->AddLink("Central America & Caribbean", "Maritime Shipping", 0.08f);
-        sankey->AddLink("Central America & Caribbean", "Petrochemicals", 0.17f);
-        sankey->AddLink("Central America & Caribbean", "Industry", 0.09f);
-        sankey->AddLink("Central America & Caribbean", "Buildings/Residential", 0.06f);
-        sankey->AddLink("Central America & Caribbean", "Non-energy/Other", 0.14f);
+        sankey->AddLink(Tr("Central America & Caribbean"), Tr("Road Transport"), 0.48f);
+        sankey->AddLink(Tr("Central America & Caribbean"), Tr("Aviation"), 0.08f);
+        sankey->AddLink(Tr("Central America & Caribbean"), Tr("Maritime Shipping"), 0.08f);
+        sankey->AddLink(Tr("Central America & Caribbean"), Tr("Petrochemicals"), 0.17f);
+        sankey->AddLink(Tr("Central America & Caribbean"), Tr("Industry"), 0.09f);
+        sankey->AddLink(Tr("Central America & Caribbean"), Tr("Buildings/Residential"), 0.06f);
+        sankey->AddLink(Tr("Central America & Caribbean"), Tr("Non-energy/Other"), 0.14f);
 
         // South America (6.0 mb/d) to sectors
-        sankey->AddLink("South America", "Road Transport", 2.61f);
-        sankey->AddLink("South America", "Aviation", 0.43f);
-        sankey->AddLink("South America", "Maritime Shipping", 0.43f);
-        sankey->AddLink("South America", "Rail & Buses", 0.14f);
-        sankey->AddLink("South America", "Petrochemicals", 0.92f);
-        sankey->AddLink("South America", "Industry", 0.52f);
-        sankey->AddLink("South America", "Buildings/Residential", 0.31f);
-        sankey->AddLink("South America", "Power Generation", 0.20f);
-        sankey->AddLink("South America", "Agriculture", 0.14f);
-        sankey->AddLink("South America", "Non-energy/Other", 0.30f);
+        sankey->AddLink(Tr("South America"), Tr("Road Transport"), 2.61f);
+        sankey->AddLink(Tr("South America"), Tr("Aviation"), 0.43f);
+        sankey->AddLink(Tr("South America"), Tr("Maritime Shipping"), 0.43f);
+        sankey->AddLink(Tr("South America"), Tr("Rail & Buses"), 0.14f);
+        sankey->AddLink(Tr("South America"), Tr("Petrochemicals"), 0.92f);
+        sankey->AddLink(Tr("South America"), Tr("Industry"), 0.52f);
+        sankey->AddLink(Tr("South America"), Tr("Buildings/Residential"), 0.31f);
+        sankey->AddLink(Tr("South America"), Tr("Power Generation"), 0.20f);
+        sankey->AddLink(Tr("South America"), Tr("Agriculture"), 0.14f);
+        sankey->AddLink(Tr("South America"), Tr("Non-energy/Other"), 0.30f);
 
         // Europe + CIS (18.5 mb/d) to sectors
-        sankey->AddLink("Europe + CIS", "Road Transport", 8.04f);
-        sankey->AddLink("Europe + CIS", "Aviation", 1.32f);
-        sankey->AddLink("Europe + CIS", "Maritime Shipping", 1.32f);
-        sankey->AddLink("Europe + CIS", "Rail & Buses", 0.44f);
-        sankey->AddLink("Europe + CIS", "Petrochemicals", 2.83f);
-        sankey->AddLink("Europe + CIS", "Industry", 1.59f);
-        sankey->AddLink("Europe + CIS", "Buildings/Residential", 0.97f);
-        sankey->AddLink("Europe + CIS", "Power Generation", 0.62f);
-        sankey->AddLink("Europe + CIS", "Agriculture", 0.44f);
-        sankey->AddLink("Europe + CIS", "Non-energy/Other", 0.93f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Road Transport"), 8.04f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Aviation"), 1.32f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Maritime Shipping"), 1.32f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Rail & Buses"), 0.44f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Petrochemicals"), 2.83f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Industry"), 1.59f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Buildings/Residential"), 0.97f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Power Generation"), 0.62f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Agriculture"), 0.44f);
+        sankey->AddLink(Tr("Europe + CIS"), Tr("Non-energy/Other"), 0.93f);
 
         // Middle East (8.7 mb/d) to sectors
-        sankey->AddLink("Middle East", "Road Transport", 3.78f);
-        sankey->AddLink("Middle East", "Aviation", 0.62f);
-        sankey->AddLink("Middle East", "Maritime Shipping", 0.62f);
-        sankey->AddLink("Middle East", "Rail & Buses", 0.21f);
-        sankey->AddLink("Middle East", "Petrochemicals", 1.33f);
-        sankey->AddLink("Middle East", "Industry", 0.75f);
-        sankey->AddLink("Middle East", "Buildings/Residential", 0.46f);
-        sankey->AddLink("Middle East", "Power Generation", 0.29f);
-        sankey->AddLink("Middle East", "Agriculture", 0.21f);
-        sankey->AddLink("Middle East", "Non-energy/Other", 0.43f);
+        sankey->AddLink(Tr("Middle East"), Tr("Road Transport"), 3.78f);
+        sankey->AddLink(Tr("Middle East"), Tr("Aviation"), 0.62f);
+        sankey->AddLink(Tr("Middle East"), Tr("Maritime Shipping"), 0.62f);
+        sankey->AddLink(Tr("Middle East"), Tr("Rail & Buses"), 0.21f);
+        sankey->AddLink(Tr("Middle East"), Tr("Petrochemicals"), 1.33f);
+        sankey->AddLink(Tr("Middle East"), Tr("Industry"), 0.75f);
+        sankey->AddLink(Tr("Middle East"), Tr("Buildings/Residential"), 0.46f);
+        sankey->AddLink(Tr("Middle East"), Tr("Power Generation"), 0.29f);
+        sankey->AddLink(Tr("Middle East"), Tr("Agriculture"), 0.21f);
+        sankey->AddLink(Tr("Middle East"), Tr("Non-energy/Other"), 0.43f);
 
         // China (16.4 mb/d) to sectors
-        sankey->AddLink("China", "Road Transport", 7.13f);
-        sankey->AddLink("China", "Aviation", 1.17f);
-        sankey->AddLink("China", "Maritime Shipping", 1.17f);
-        sankey->AddLink("China", "Rail & Buses", 0.39f);
-        sankey->AddLink("China", "Petrochemicals", 2.51f);
-        sankey->AddLink("China", "Industry", 1.41f);
-        sankey->AddLink("China", "Buildings/Residential", 0.86f);
-        sankey->AddLink("China", "Power Generation", 0.55f);
-        sankey->AddLink("China", "Agriculture", 0.39f);
-        sankey->AddLink("China", "Non-energy/Other", 0.82f);
+        sankey->AddLink(Tr("China"), Tr("Road Transport"), 7.13f);
+        sankey->AddLink(Tr("China"), Tr("Aviation"), 1.17f);
+        sankey->AddLink(Tr("China"), Tr("Maritime Shipping"), 1.17f);
+        sankey->AddLink(Tr("China"), Tr("Rail & Buses"), 0.39f);
+        sankey->AddLink(Tr("China"), Tr("Petrochemicals"), 2.51f);
+        sankey->AddLink(Tr("China"), Tr("Industry"), 1.41f);
+        sankey->AddLink(Tr("China"), Tr("Buildings/Residential"), 0.86f);
+        sankey->AddLink(Tr("China"), Tr("Power Generation"), 0.55f);
+        sankey->AddLink(Tr("China"), Tr("Agriculture"), 0.39f);
+        sankey->AddLink(Tr("China"), Tr("Non-energy/Other"), 0.82f);
 
         // India (5.55 mb/d) to sectors
-        sankey->AddLink("India", "Road Transport", 2.41f);
-        sankey->AddLink("India", "Aviation", 0.40f);
-        sankey->AddLink("India", "Maritime Shipping", 0.40f);
-        sankey->AddLink("India", "Rail & Buses", 0.13f);
-        sankey->AddLink("India", "Petrochemicals", 0.85f);
-        sankey->AddLink("India", "Industry", 0.48f);
-        sankey->AddLink("India", "Buildings/Residential", 0.29f);
-        sankey->AddLink("India", "Power Generation", 0.19f);
-        sankey->AddLink("India", "Agriculture", 0.13f);
-        sankey->AddLink("India", "Non-energy/Other", 0.27f);
+        sankey->AddLink(Tr("India"), Tr("Road Transport"), 2.41f);
+        sankey->AddLink(Tr("India"), Tr("Aviation"), 0.40f);
+        sankey->AddLink(Tr("India"), Tr("Maritime Shipping"), 0.40f);
+        sankey->AddLink(Tr("India"), Tr("Rail & Buses"), 0.13f);
+        sankey->AddLink(Tr("India"), Tr("Petrochemicals"), 0.85f);
+        sankey->AddLink(Tr("India"), Tr("Industry"), 0.48f);
+        sankey->AddLink(Tr("India"), Tr("Buildings/Residential"), 0.29f);
+        sankey->AddLink(Tr("India"), Tr("Power Generation"), 0.19f);
+        sankey->AddLink(Tr("India"), Tr("Agriculture"), 0.13f);
+        sankey->AddLink(Tr("India"), Tr("Non-energy/Other"), 0.27f);
 
         // Rest of Asia (10.5 mb/d) to sectors
-        sankey->AddLink("Rest of Asia", "Road Transport", 4.56f);
-        sankey->AddLink("Rest of Asia", "Aviation", 0.75f);
-        sankey->AddLink("Rest of Asia", "Maritime Shipping", 0.75f);
-        sankey->AddLink("Rest of Asia", "Rail & Buses", 0.25f);
-        sankey->AddLink("Rest of Asia", "Petrochemicals", 1.60f);
-        sankey->AddLink("Rest of Asia", "Industry", 0.90f);
-        sankey->AddLink("Rest of Asia", "Buildings/Residential", 0.55f);
-        sankey->AddLink("Rest of Asia", "Power Generation", 0.35f);
-        sankey->AddLink("Rest of Asia", "Agriculture", 0.25f);
-        sankey->AddLink("Rest of Asia", "Non-energy/Other", 0.54f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Road Transport"), 4.56f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Aviation"), 0.75f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Maritime Shipping"), 0.75f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Rail & Buses"), 0.25f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Petrochemicals"), 1.60f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Industry"), 0.90f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Buildings/Residential"), 0.55f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Power Generation"), 0.35f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Agriculture"), 0.25f);
+        sankey->AddLink(Tr("Rest of Asia"), Tr("Non-energy/Other"), 0.54f);
 
         // Africa (4.25 mb/d) to sectors
-        sankey->AddLink("Africa", "Road Transport", 1.85f);
-        sankey->AddLink("Africa", "Aviation", 0.30f);
-        sankey->AddLink("Africa", "Maritime Shipping", 0.30f);
-        sankey->AddLink("Africa", "Rail & Buses", 0.10f);
-        sankey->AddLink("Africa", "Petrochemicals", 0.65f);
-        sankey->AddLink("Africa", "Industry", 0.37f);
-        sankey->AddLink("Africa", "Buildings/Residential", 0.22f);
-        sankey->AddLink("Africa", "Power Generation", 0.14f);
-        sankey->AddLink("Africa", "Agriculture", 0.10f);
-        sankey->AddLink("Africa", "Non-energy/Other", 0.22f);
+        sankey->AddLink(Tr("Africa"), Tr("Road Transport"), 1.85f);
+        sankey->AddLink(Tr("Africa"), Tr("Aviation"), 0.30f);
+        sankey->AddLink(Tr("Africa"), Tr("Maritime Shipping"), 0.30f);
+        sankey->AddLink(Tr("Africa"), Tr("Rail & Buses"), 0.10f);
+        sankey->AddLink(Tr("Africa"), Tr("Petrochemicals"), 0.65f);
+        sankey->AddLink(Tr("Africa"), Tr("Industry"), 0.37f);
+        sankey->AddLink(Tr("Africa"), Tr("Buildings/Residential"), 0.22f);
+        sankey->AddLink(Tr("Africa"), Tr("Power Generation"), 0.14f);
+        sankey->AddLink(Tr("Africa"), Tr("Agriculture"), 0.10f);
+        sankey->AddLink(Tr("Africa"), Tr("Non-energy/Other"), 0.22f);
 
         // Oceania (1.15 mb/d) to sectors
-        sankey->AddLink("Oceania", "Road Transport", 0.50f);
-        sankey->AddLink("Oceania", "Aviation", 0.08f);
-        sankey->AddLink("Oceania", "Maritime Shipping", 0.08f);
-        sankey->AddLink("Oceania", "Rail & Buses", 0.03f);
-        sankey->AddLink("Oceania", "Petrochemicals", 0.18f);
-        sankey->AddLink("Oceania", "Industry", 0.10f);
-        sankey->AddLink("Oceania", "Buildings/Residential", 0.06f);
-        sankey->AddLink("Oceania", "Power Generation", 0.04f);
-        sankey->AddLink("Oceania", "Agriculture", 0.03f);
-        sankey->AddLink("Oceania", "Non-energy/Other", 0.05f);
+        sankey->AddLink(Tr("Oceania"), Tr("Road Transport"), 0.50f);
+        sankey->AddLink(Tr("Oceania"), Tr("Aviation"), 0.08f);
+        sankey->AddLink(Tr("Oceania"), Tr("Maritime Shipping"), 0.08f);
+        sankey->AddLink(Tr("Oceania"), Tr("Rail & Buses"), 0.03f);
+        sankey->AddLink(Tr("Oceania"), Tr("Petrochemicals"), 0.18f);
+        sankey->AddLink(Tr("Oceania"), Tr("Industry"), 0.10f);
+        sankey->AddLink(Tr("Oceania"), Tr("Buildings/Residential"), 0.06f);
+        sankey->AddLink(Tr("Oceania"), Tr("Power Generation"), 0.04f);
+        sankey->AddLink(Tr("Oceania"), Tr("Agriculture"), 0.03f);
+        sankey->AddLink(Tr("Oceania"), Tr("Non-energy/Other"), 0.05f);
 }
+
+// ===== PAGE HELPERS =====
+    // A tab page: a column of description, controls and the diagram, which
+    // keeps the size it is built with. Taller than a short tab, it scrolls.
+    static std::shared_ptr<UltraCanvasContainer> MakeSankeyTab(const std::string& id, float w, float h,
+                                                               float padding = 10.0f) {
+        auto tab = std::make_shared<UltraCanvasContainer>(id, 0, 0, w, h);
+        tab->SetPadding(padding);
+        tab->layout.SetFlexColumn().SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        ContainerStyle style = tab->GetContainerStyle();
+        style.autoShowScrollbars = true;
+        tab->SetContainerStyle(style);
+        return tab;
+    }
+
+    // The description line at the top of a tab.
+    static void AddSankeyDesc(const std::shared_ptr<UltraCanvasContainer>& tab,
+                              const std::string& id, const std::string& text) {
+        DemoKit::AddText(tab, id, text)->SetFontSize(11);
+    }
+
+    // A grey strip of controls that wraps when they do not fit.
+    static std::shared_ptr<UltraCanvasContainer> AddSankeyControls(const std::shared_ptr<UltraCanvasContainer>& parent,
+                                                                   const std::string& id) {
+        auto row = DemoKit::AddRow(parent, id, 10);
+        row->SetBackgroundColor(Color(250, 250, 250));
+        row->SetPadding(8);
+        row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        return row;
+    }
+
+    // "Theme:" and its control, kept together when the strip wraps. Returns
+    // the pair, so a value read-out can follow the control.
+    static std::shared_ptr<UltraCanvasContainer> AddSankeyLabelled(const std::shared_ptr<UltraCanvasContainer>& row,
+                                                                   const std::string& labelId,
+                                                                   const std::string& text,
+                                                                   const std::shared_ptr<UltraCanvasUIElement>& control) {
+        auto pair = DemoKit::CreateRow(labelId + "Pair", 6, false);
+        pair->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::Add(row, pair);
+        auto label = DemoKit::CreateText(labelId, text);
+        label->SetFontSize(11);
+        DemoKit::Add(pair, label);
+        DemoKit::AddFixed(pair, control);
+        control->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+        return pair;
+    }
+
+    // A slider's value next to it.
+    static std::shared_ptr<UltraCanvasLabel> AddSankeyValue(const std::shared_ptr<UltraCanvasContainer>& pair,
+                                                            const std::string& id, const std::string& text) {
+        auto value = DemoKit::CreateText(id, text);
+        value->SetFontSize(11);
+        DemoKit::Add(pair, value);
+        return value;
+    }
+
+    // As wide as its text, at least the width it used to have.
+    static std::shared_ptr<UltraCanvasButton> MakeSankeyButton(const std::string& id, const std::string& text,
+                                                               float minWidth) {
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 25, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+        button->boxConstraints = limits;
+        return button;
+    }
 
 // ===== SANKEY DEMO IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSankeyExamples() {
-        // Main container for all Sankey examples
-        auto mainContainer = std::make_shared<UltraCanvasContainer>(
-                "SankeyExamples", 0, 0, 1030, 800
-        );
-
-        // ===== PAGE HEADER =====
-        auto title = std::make_shared<UltraCanvasLabel>(
-                "SankeyTitle", 20, 10, 500, 35
-        );
-        title->SetText("Sankey Diagram Visualization");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150));
-        mainContainer->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>(
-                "SankeySubtitle", 20, 45, 960, 25
-        );
-        subtitle->SetText("Interactive flow diagrams showing relationships and value distributions between entities");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(subtitle);
+        auto mainContainer = DemoKit::CreatePage("SankeyExamples", Tr("Sankey Diagram Visualization"),
+                Tr("Interactive flow diagrams showing relationships and value distributions between entities"));
 
         // ===== STATUS LABEL =====
-        auto statusLabel = std::make_shared<UltraCanvasLabel>(
-                "SankeyStatus", 730, 10, 310, 60
-        );
-        statusLabel->SetText("Hover over nodes and links to see details\nDrag nodes to adjust layout");
+        // Room for two lines at least, so the tabs under it do not move when
+        // a hover read-out is shorter than the one before.
+        auto statusLabel = DemoKit::AddText(mainContainer, "SankeyStatus",
+                Tr("Hover over nodes and links to see details\nDrag nodes to adjust layout"));
         statusLabel->SetFontSize(10);
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
-        statusLabel->SetAlignment(TextAlignment::Center);
-        mainContainer->AddChild(statusLabel);
+        statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+        CSSLayout::BoxConstraints statusLimits;
+        statusLimits.minHeight = CSSLayout::Dimension::Px(46);
+        statusLabel->boxConstraints = statusLimits;
 
         // ===== TABBED CONTAINER FOR DIFFERENT EXAMPLES =====
+        // The diagrams have a fixed size, and so do the tabs around them.
+        auto tabsCard = DemoKit::AddCard(mainContainer, "SankeyTabsCard");
+        tabsCard->SetPadding(4);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
-                "SankeyTabs", 10, 85, 1020, 710
+                "SankeyTabs", 0, 0, 1020, 710
         );
         tabbedContainer->SetTabPosition(TabPosition::Top);
         tabbedContainer->SetTabStyle(TabStyle::Modern);
+        DemoKit::AddFixed(tabsCard, tabbedContainer);
 
-        auto oilContainer = std::make_shared<UltraCanvasContainer>(
-                "OilTab", 0, 0, 1020, 700
-        );
+        auto oilContainer = MakeSankeyTab("OilTab", 1020, 700, 5);
 
         // Finance Sankey diagram
         auto oilSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "OilSankey", 5, 5, 1000, 650
+                "OilSankey", 0, 0, 1000, 650
         );
 
         // Add financial flow data
         GenerateOilSales2024Sankey(oilSankey.get());
 
-        oilContainer->AddChild(oilSankey);
+        DemoKit::AddFixed(oilContainer, oilSankey);
 
 
         // ========================================
         // TAB 1: ENERGY FLOW EXAMPLE
         // ========================================
-        auto energyContainer = std::make_shared<UltraCanvasContainer>(
-                "EnergyTab", 0, 0, 970, 640
-        );
+        auto energyContainer = MakeSankeyTab("EnergyTab", 970, 640);
 
         // Description
-        auto energyDesc = std::make_shared<UltraCanvasLabel>(
-                "EnergyDesc", 10, 10, 950, 40
-        );
-        energyDesc->SetText(
-                "Energy Flow Analysis: This Sankey diagram shows the flow of energy from sources (coal, gas, nuclear, renewables) "
-                "through electricity generation to end consumers (residential, commercial, industrial)."
-        );
-        energyDesc->SetFontSize(11);
-        energyDesc->SetWrap(TextWrap::WrapWord);
-        energyContainer->AddChild(energyDesc);
+        AddSankeyDesc(energyContainer, "EnergyDesc",
+                Tr("Energy Flow Analysis: This Sankey diagram shows the flow of energy from sources (coal, gas, nuclear, renewables) "
+                "through electricity generation to end consumers (residential, commercial, industrial)."));
 
         // Control panel
-        auto energyControls = std::make_shared<UltraCanvasContainer>(
-                "EnergyControls", 10, 55, 950, 45
-        );
-        energyControls->SetBackgroundColor(Color(250, 250, 250));
+        auto energyControls = AddSankeyControls(energyContainer, "EnergyControls");
 
         // Theme selector
-        auto themeLabel = std::make_shared<UltraCanvasLabel>(
-                "ThemeLabel", 10, 12, 60, 20
-        );
-        themeLabel->SetText("Theme:");
-        themeLabel->SetFontSize(11);
-        energyControls->AddChild(themeLabel);
-
         auto themeDropdown = std::make_shared<UltraCanvasDropdown>(
-                "ThemeDropdown", 75, 10, 120, 25
+                "ThemeDropdown", 0, 0, 120, 25
         );
-        themeDropdown->AddItem("Default", "0");
-        themeDropdown->AddItem("Energy", "1");
-        themeDropdown->AddItem("Finance", "2");
-        themeDropdown->AddItem("Web Traffic", "3");
+        themeDropdown->AddItem(Tr("Default"), "0");
+        themeDropdown->AddItem(Tr("Energy"), "1");
+        themeDropdown->AddItem(Tr("Finance"), "2");
+        themeDropdown->AddItem(Tr("Web Traffic"), "3");
         themeDropdown->SetSelectedIndex(1); // Energy theme
-        energyControls->AddChild(themeDropdown);
+        AddSankeyLabelled(energyControls, "ThemeLabel", Tr("Theme:"), themeDropdown);
 
         // Alignment selector
-        auto alignLabel = std::make_shared<UltraCanvasLabel>(
-                "AlignLabel", 210, 12, 80, 20
-        );
-        alignLabel->SetText("Alignment:");
-        alignLabel->SetFontSize(11);
-        energyControls->AddChild(alignLabel);
-
         auto alignDropdown = std::make_shared<UltraCanvasDropdown>(
-                "AlignDropdown", 295, 10, 100, 25
+                "AlignDropdown", 0, 0, 100, 25
         );
-        alignDropdown->AddItem("Left", "0");
-        alignDropdown->AddItem("Right", "1");
-        alignDropdown->AddItem("Center", "2");
-        alignDropdown->AddItem("Justify", "3");
+        alignDropdown->AddItem(Tr("Left"), "0");
+        alignDropdown->AddItem(Tr("Right"), "1");
+        alignDropdown->AddItem(Tr("Center"), "2");
+        alignDropdown->AddItem(Tr("Justify"), "3");
         alignDropdown->SetSelectedIndex(3); // Justify
-        energyControls->AddChild(alignDropdown);
+        AddSankeyLabelled(energyControls, "AlignLabel", Tr("Alignment:"), alignDropdown);
 
         // Curvature slider
-        auto curveLabel = std::make_shared<UltraCanvasLabel>(
-                "CurveLabel", 410, 12, 80, 20
-        );
-        curveLabel->SetText("Curvature:");
-        curveLabel->SetFontSize(11);
-        energyControls->AddChild(curveLabel);
-
         auto curveSlider = std::make_shared<UltraCanvasSlider>(
-                "CurveSlider", 495, 15, 150, 17
+                "CurveSlider", 0, 0, 150, 17
         );
         curveSlider->SetOrientation(SliderOrientation::Horizontal);
         curveSlider->SetRange(0.0f, 1.0f);
         curveSlider->SetValue(0.5f);
         curveSlider->SetStep(0.1f);
-        energyControls->AddChild(curveSlider);
-
-        auto curveValue = std::make_shared<UltraCanvasLabel>(
-                "CurveValue", 640, 12, 40, 20
-        );
-        curveValue->SetText("0.5");
-        curveValue->SetFontSize(11);
-        curveValue->SetAlignment(TextAlignment::Center);
-        energyControls->AddChild(curveValue);
+        auto curvePair = AddSankeyLabelled(energyControls, "CurveLabel", Tr("Curvature:"), curveSlider);
+        auto curveValue = AddSankeyValue(curvePair, "CurveValue", "0.5");
 
         // Export buttons
-        auto exportSVG = std::make_shared<UltraCanvasButton>(
-                "ExportSVG", 710, 10, 110, 25
-        );
-        exportSVG->SetText("Export SVG");
+        auto exportSVG = MakeSankeyButton("ExportSVG", Tr("Export SVG"), 110);
         exportSVG->SetStyle(ButtonStyles::PrimaryStyle());
-        energyControls->AddChild(exportSVG);
+        DemoKit::Add(energyControls, exportSVG);
 
-        auto loadCSV = std::make_shared<UltraCanvasButton>(
-                "LoadCSV", 830, 10, 100, 25
-        );
-        loadCSV->SetText("Load CSV");
+        auto loadCSV = MakeSankeyButton("LoadCSV", Tr("Load CSV"), 100);
         loadCSV->SetStyle(ButtonStyles::SecondaryStyle());
-        energyControls->AddChild(loadCSV);
-
-        energyContainer->AddChild(energyControls);
+        DemoKit::Add(energyControls, loadCSV);
 
         // Create Energy Sankey diagram
         auto energySankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "EnergySankey", 10, 110, 950, 520
+                "EnergySankey", 0, 0, 950, 520
         );
 
         // Add energy flow data
@@ -474,11 +481,11 @@ namespace UltraCanvas {
 
         // Set up event handlers
         energySankey->onNodeClick = [statusLabel](const std::string& nodeId) {
-            statusLabel->SetText("Clicked node: " + nodeId);
+            statusLabel->SetText(TrF("Clicked node: {0}", nodeId));
         };
 
         energySankey->onNodeHover = [statusLabel](const std::string& nodeId) {
-            statusLabel->SetText("Hovering over: " + nodeId + "\nDrag to reposition");
+            statusLabel->SetText(TrF("Hovering over: {0}\nDrag to reposition", nodeId));
         };
 
         themeDropdown->onSelectionChanged = [energySankey](int index, const DropdownItem& item) {
@@ -500,181 +507,118 @@ namespace UltraCanvas {
 
         loadCSV->onClick = [energySankey, statusLabel]() {
             // In real implementation, this would open a file dialog
-            statusLabel->SetText("Load CSV feature requires file dialog implementation");
+            statusLabel->SetText(Tr("Load CSV feature requires file dialog implementation"));
         };
 
-        energyContainer->AddChild(energySankey);
+        DemoKit::AddFixed(energyContainer, energySankey);
 
         // ========================================
         // TAB 2: FINANCIAL FLOW EXAMPLE
         // ========================================
-        auto financeContainer = std::make_shared<UltraCanvasContainer>(
-                "FinanceTab", 0, 0, 970, 640
-        );
+        auto financeContainer = MakeSankeyTab("FinanceTab", 970, 640);
 
         // Finance Sankey diagram
         auto financeSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "FinanceSankey", 10, 55, 950, 575
+                "FinanceSankey", 0, 0, 950, 575
         );
 
         // Add financial flow data
         GenerateFinanceSankeyData(financeSankey.get());
 
         financeSankey->onNodeClick = [statusLabel](const std::string& nodeId) {
-            std::stringstream ss;
-            ss << "Financial Entity: " << nodeId;
-            statusLabel->SetText(ss.str());
+            statusLabel->SetText(TrF("Financial Entity: {0}", nodeId));
         };
 
-        financeContainer->AddChild(financeSankey);
+        DemoKit::AddFixed(financeContainer, financeSankey);
 
         // ========================================
         // TAB 3: WEB TRAFFIC FLOW EXAMPLE
         // ========================================
-        auto webContainer = std::make_shared<UltraCanvasContainer>(
-                "WebTab", 0, 0, 970, 640
-        );
+        auto webContainer = MakeSankeyTab("WebTab", 970, 640);
 
         // Description
-        auto webDesc = std::make_shared<UltraCanvasLabel>(
-                "WebDesc", 10, 10, 950, 40
-        );
-        webDesc->SetText(
-                "Website User Flow: Visualize how users navigate through your website from various traffic sources "
-                "to conversion or exit points."
-        );
-        webDesc->SetFontSize(11);
-        webDesc->SetWrap(TextWrap::WrapWord);
-        webContainer->AddChild(webDesc);
+        AddSankeyDesc(webContainer, "WebDesc",
+                Tr("Website User Flow: Visualize how users navigate through your website from various traffic sources "
+                "to conversion or exit points."));
 
         // Web traffic Sankey diagram
         auto webSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "WebSankey", 10, 55, 950, 575
+                "WebSankey", 0, 0, 950, 575
         );
 
         // Add web traffic flow data
         GenerateWebTrafficSankeyData(webSankey.get());
 
         webSankey->onNodeClick = [statusLabel](const std::string& nodeId) {
-            std::stringstream ss;
-            ss << "Page/Source: " << nodeId;
-            statusLabel->SetText(ss.str());
+            statusLabel->SetText(TrF("Page/Source: {0}", nodeId));
         };
 
-        webContainer->AddChild(webSankey);
+        DemoKit::AddFixed(webContainer, webSankey);
 
         // ========================================
         // TAB 4: CUSTOM DATA EXAMPLE
         // ========================================
-        auto customContainer = std::make_shared<UltraCanvasContainer>(
-                "CustomTab", 0, 0, 970, 640
-        );
+        auto customContainer = MakeSankeyTab("CustomTab", 970, 640);
 
         // Description
-        auto customDesc = std::make_shared<UltraCanvasLabel>(
-                "CustomDesc", 10, 10, 950, 25
-        );
-        customDesc->SetText(
-                "Build Your Own: Create custom Sankey diagrams by adding nodes and links dynamically"
-        );
-        customDesc->SetFontSize(11);
-        customContainer->AddChild(customDesc);
+        AddSankeyDesc(customContainer, "CustomDesc",
+                Tr("Build Your Own: Create custom Sankey diagrams by adding nodes and links dynamically"));
 
-        // Control panel for custom diagram
-        auto customControls = std::make_shared<UltraCanvasContainer>(
-                "CustomControls", 10, 40, 950, 80
-        );
+        // Control panel for custom diagram: the link inputs, then the presets
+        auto customControls = DemoKit::CreateColumn("CustomControls", 6);
         customControls->SetBackgroundColor(Color(250, 250, 250));
+        DemoKit::Add(customContainer, customControls);
+        auto linkRow = AddSankeyControls(customControls, "CustomLinkRow");
+        auto presetRow = AddSankeyControls(customControls, "CustomPresetRow");
 
         // Input fields for adding links
-        auto sourceLabel = std::make_shared<UltraCanvasLabel>(
-                "SourceLabel", 10, 12, 70, 20
-        );
-        sourceLabel->SetText("Source:");
-        sourceLabel->SetFontSize(11);
-        customControls->AddChild(sourceLabel);
-
         auto sourceInput = std::make_shared<UltraCanvasTextInput>(
-                "SourceInput", 75, 10, 120, 25
+                "SourceInput", 0, 0, 120, 25
         );
-        sourceInput->SetPlaceholder("Node A");
-        customControls->AddChild(sourceInput);
-
-        auto targetLabel = std::make_shared<UltraCanvasLabel>(
-                "TargetLabel", 210, 12, 70, 20
-        );
-        targetLabel->SetText("Target:");
-        targetLabel->SetFontSize(11);
-        customControls->AddChild(targetLabel);
+        sourceInput->SetPlaceholder(Tr("Node A"));
+        AddSankeyLabelled(linkRow, "SourceLabel", Tr("Source:"), sourceInput);
 
         auto targetInput = std::make_shared<UltraCanvasTextInput>(
-                "TargetInput", 270, 10, 120, 25
+                "TargetInput", 0, 0, 120, 25
         );
-        targetInput->SetPlaceholder("Node B");
-        customControls->AddChild(targetInput);
-
-        auto valueLabel = std::make_shared<UltraCanvasLabel>(
-                "ValueLabel", 410, 12, 50, 20
-        );
-        valueLabel->SetText("Value:");
-        valueLabel->SetFontSize(11);
-        customControls->AddChild(valueLabel);
+        targetInput->SetPlaceholder(Tr("Node B"));
+        AddSankeyLabelled(linkRow, "TargetLabel", Tr("Target:"), targetInput);
 
         auto valueInput = std::make_shared<UltraCanvasTextInput>(
-                "ValueInput", 465, 10, 80, 25
+                "ValueInput", 0, 0, 80, 25
         );
         valueInput->SetPlaceholder("100");
         valueInput->SetInputType(TextInputType::Number);
-        customControls->AddChild(valueInput);
+        AddSankeyLabelled(linkRow, "ValueLabel", Tr("Value:"), valueInput);
 
-        auto addLinkBtn = std::make_shared<UltraCanvasButton>(
-                "AddLink", 570, 10, 100, 25
-        );
-        addLinkBtn->SetText("Add Link");
+        auto addLinkBtn = MakeSankeyButton("AddLink", Tr("Add Link"), 100);
         addLinkBtn->SetStyle(ButtonStyles::PrimaryStyle());
-        customControls->AddChild(addLinkBtn);
+        DemoKit::Add(linkRow, addLinkBtn);
 
-        auto clearBtn = std::make_shared<UltraCanvasButton>(
-                "ClearAll", 680, 10, 100, 25
-        );
-        clearBtn->SetText("Clear All");
+        auto clearBtn = MakeSankeyButton("ClearAll", Tr("Clear All"), 100);
         clearBtn->SetStyle(ButtonStyles::DangerStyle());
-        customControls->AddChild(clearBtn);
+        DemoKit::Add(linkRow, clearBtn);
 
         // Preset examples
-        auto presetLabel = std::make_shared<UltraCanvasLabel>(
-                "PresetLabel", 10, 47, 70, 20
-        );
-        presetLabel->SetText("Presets:");
+        auto presetLabel = DemoKit::CreateText("PresetLabel", Tr("Presets:"));
         presetLabel->SetFontSize(11);
-        customControls->AddChild(presetLabel);
+        DemoKit::Add(presetRow, presetLabel);
 
-        auto presetBtn1 = std::make_shared<UltraCanvasButton>(
-                "PresetSupply", 85, 45, 130, 25
-        );
-        presetBtn1->SetText("Supply Chain");
+        auto presetBtn1 = MakeSankeyButton("PresetSupply", Tr("Supply Chain"), 130);
         presetBtn1->SetStyle(ButtonStyles::SecondaryStyle());
-        customControls->AddChild(presetBtn1);
+        DemoKit::Add(presetRow, presetBtn1);
 
-        auto presetBtn2 = std::make_shared<UltraCanvasButton>(
-                "PresetBudget", 225, 45, 130, 25
-        );
-        presetBtn2->SetText("Budget Flow");
+        auto presetBtn2 = MakeSankeyButton("PresetBudget", Tr("Budget Flow"), 130);
         presetBtn2->SetStyle(ButtonStyles::SecondaryStyle());
-        customControls->AddChild(presetBtn2);
+        DemoKit::Add(presetRow, presetBtn2);
 
-        auto presetBtn3 = std::make_shared<UltraCanvasButton>(
-                "PresetProcess", 365, 45, 130, 25
-        );
-        presetBtn3->SetText("Process Flow");
+        auto presetBtn3 = MakeSankeyButton("PresetProcess", Tr("Process Flow"), 130);
         presetBtn3->SetStyle(ButtonStyles::SecondaryStyle());
-        customControls->AddChild(presetBtn3);
-
-        customContainer->AddChild(customControls);
+        DemoKit::Add(presetRow, presetBtn3);
 
         // Custom Sankey diagram
         auto customSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "CustomSankey", 10, 130, 950, 500
+                "CustomSankey", 0, 0, 950, 500
         );
 
         // Add link button handler
@@ -693,169 +637,124 @@ namespace UltraCanvas {
                     targetInput->SetText("");
                     valueInput->SetText("");
 
-                    statusLabel->SetText("Added link: " + source + " -> " + target + " (" + valueStr + ")");
+                    statusLabel->SetText(TrF("Added link: {0} -> {1} ({2})", source, target, valueStr));
                 } catch (...) {
-                    statusLabel->SetText("Invalid value entered!");
+                    statusLabel->SetText(Tr("Invalid value entered!"));
                 }
             } else {
-                statusLabel->SetText("Please fill all fields!");
+                statusLabel->SetText(Tr("Please fill all fields!"));
             }
         };
 
         clearBtn->onClick = [customSankey, statusLabel]() {
             customSankey->ClearAll();
-            statusLabel->SetText("Diagram cleared");
+            statusLabel->SetText(Tr("Diagram cleared"));
         };
 
         // Preset: Supply Chain
         presetBtn1->onClick = [customSankey, statusLabel]() {
             customSankey->ClearAll();
-            customSankey->AddLink("Suppliers", "Manufacturing", 200);
-            customSankey->AddLink("Manufacturing", "Quality Control", 180);
-            customSankey->AddLink("Quality Control", "Warehouse", 170);
-            customSankey->AddLink("Quality Control", "Rejected", 10);
-            customSankey->AddLink("Warehouse", "Distribution", 150);
-            customSankey->AddLink("Warehouse", "Storage", 20);
-            customSankey->AddLink("Distribution", "Retail", 100);
-            customSankey->AddLink("Distribution", "Online", 50);
-            customSankey->AddLink("Retail", "Customers", 95);
-            customSankey->AddLink("Online", "Customers", 48);
-            customSankey->AddLink("Retail", "Returns", 5);
-            customSankey->AddLink("Online", "Returns", 2);
-            statusLabel->SetText("Loaded Supply Chain example");
+            customSankey->AddLink(Tr("Suppliers"), Tr("Manufacturing"), 200);
+            customSankey->AddLink(Tr("Manufacturing"), Tr("Quality Control"), 180);
+            customSankey->AddLink(Tr("Quality Control"), Tr("Warehouse"), 170);
+            customSankey->AddLink(Tr("Quality Control"), Tr("Rejected"), 10);
+            customSankey->AddLink(Tr("Warehouse"), Tr("Distribution"), 150);
+            customSankey->AddLink(Tr("Warehouse"), Tr("Storage"), 20);
+            customSankey->AddLink(Tr("Distribution"), Tr("Retail"), 100);
+            customSankey->AddLink(Tr("Distribution"), Tr("Online"), 50);
+            customSankey->AddLink(Tr("Retail"), Tr("Customers"), 95);
+            customSankey->AddLink(Tr("Online"), Tr("Customers"), 48);
+            customSankey->AddLink(Tr("Retail"), Tr("Returns"), 5);
+            customSankey->AddLink(Tr("Online"), Tr("Returns"), 2);
+            statusLabel->SetText(Tr("Loaded Supply Chain example"));
         };
 
         // Preset: Budget Flow
         presetBtn2->onClick = [customSankey, statusLabel]() {
             customSankey->ClearAll();
-            customSankey->AddLink("Budget", "Operations", 400);
-            customSankey->AddLink("Budget", "Marketing", 150);
-            customSankey->AddLink("Budget", "R&D", 200);
-            customSankey->AddLink("Budget", "Admin", 100);
-            customSankey->AddLink("Operations", "Salaries", 250);
-            customSankey->AddLink("Operations", "Equipment", 100);
-            customSankey->AddLink("Operations", "Utilities", 50);
-            customSankey->AddLink("Marketing", "Digital", 80);
-            customSankey->AddLink("Marketing", "Traditional", 40);
-            customSankey->AddLink("Marketing", "Events", 30);
-            customSankey->AddLink("R&D", "Research", 120);
-            customSankey->AddLink("R&D", "Development", 80);
-            customSankey->AddLink("Admin", "Office", 60);
-            customSankey->AddLink("Admin", "Legal", 40);
-            statusLabel->SetText("Loaded Budget Flow example");
+            customSankey->AddLink(Tr("Budget"), Tr("Operations"), 400);
+            customSankey->AddLink(Tr("Budget"), Tr("Marketing"), 150);
+            customSankey->AddLink(Tr("Budget"), Tr("R&D"), 200);
+            customSankey->AddLink(Tr("Budget"), Tr("Admin"), 100);
+            customSankey->AddLink(Tr("Operations"), Tr("Salaries"), 250);
+            customSankey->AddLink(Tr("Operations"), Tr("Equipment"), 100);
+            customSankey->AddLink(Tr("Operations"), Tr("Utilities"), 50);
+            customSankey->AddLink(Tr("Marketing"), Tr("Digital"), 80);
+            customSankey->AddLink(Tr("Marketing"), Tr("Traditional"), 40);
+            customSankey->AddLink(Tr("Marketing"), Tr("Events"), 30);
+            customSankey->AddLink(Tr("R&D"), Tr("Research"), 120);
+            customSankey->AddLink(Tr("R&D"), Tr("Development"), 80);
+            customSankey->AddLink(Tr("Admin"), Tr("Office"), 60);
+            customSankey->AddLink(Tr("Admin"), Tr("Legal"), 40);
+            statusLabel->SetText(Tr("Loaded Budget Flow example"));
         };
 
         // Preset: Process Flow
         presetBtn3->onClick = [customSankey, statusLabel]() {
             customSankey->ClearAll();
-            customSankey->AddLink("Raw Input", "Processing", 100);
-            customSankey->AddLink("Processing", "Stage 1", 95);
-            customSankey->AddLink("Processing", "Waste", 5);
-            customSankey->AddLink("Stage 1", "Stage 2", 90);
-            customSankey->AddLink("Stage 1", "Rework", 5);
-            customSankey->AddLink("Stage 2", "Stage 3", 85);
-            customSankey->AddLink("Stage 2", "Rework", 5);
-            customSankey->AddLink("Stage 3", "Final QC", 80);
-            customSankey->AddLink("Stage 3", "Scrap", 5);
-            customSankey->AddLink("Final QC", "Output", 75);
-            customSankey->AddLink("Final QC", "Rework", 5);
-            customSankey->AddLink("Rework", "Return to processing", 15);
-            statusLabel->SetText("Loaded Process Flow example");
+            customSankey->AddLink(Tr("Raw Input"), Tr("Processing"), 100);
+            customSankey->AddLink(Tr("Processing"), Tr("Stage 1"), 95);
+            customSankey->AddLink(Tr("Processing"), Tr("Waste"), 5);
+            customSankey->AddLink(Tr("Stage 1"), Tr("Stage 2"), 90);
+            customSankey->AddLink(Tr("Stage 1"), Tr("Rework"), 5);
+            customSankey->AddLink(Tr("Stage 2"), Tr("Stage 3"), 85);
+            customSankey->AddLink(Tr("Stage 2"), Tr("Rework"), 5);
+            customSankey->AddLink(Tr("Stage 3"), Tr("Final QC"), 80);
+            customSankey->AddLink(Tr("Stage 3"), Tr("Scrap"), 5);
+            customSankey->AddLink(Tr("Final QC"), Tr("Output"), 75);
+            customSankey->AddLink(Tr("Final QC"), Tr("Rework"), 5);
+            customSankey->AddLink(Tr("Rework"), Tr("Return to processing"), 15);
+            statusLabel->SetText(Tr("Loaded Process Flow example"));
         };
 
-        customContainer->AddChild(customSankey);
+        DemoKit::AddFixed(customContainer, customSankey);
 
         // ========================================
         // TAB 5: PERFORMANCE TEST
         // ========================================
-        auto perfContainer = std::make_shared<UltraCanvasContainer>(
-                "PerfTab", 0, 0, 970, 640
-        );
+        auto perfContainer = MakeSankeyTab("PerfTab", 970, 640);
 
         // Description
-        auto perfDesc = std::make_shared<UltraCanvasLabel>(
-                "PerfDesc", 10, 10, 950, 40
-        );
-        perfDesc->SetText(
-                "Performance Testing: Generate large random Sankey diagrams to test rendering performance "
-                "and interaction responsiveness with varying numbers of nodes and links."
-        );
-        perfDesc->SetFontSize(11);
-        perfDesc->SetWrap(TextWrap::WrapWord);
-        perfContainer->AddChild(perfDesc);
+        AddSankeyDesc(perfContainer, "PerfDesc",
+                Tr("Performance Testing: Generate large random Sankey diagrams to test rendering performance "
+                "and interaction responsiveness with varying numbers of nodes and links."));
 
         // Performance controls
-        auto perfControls = std::make_shared<UltraCanvasContainer>(
-                "PerfControls", 10, 55, 950, 45
-        );
-        perfControls->SetBackgroundColor(Color(250, 250, 250));
-
-        auto nodesLabel = std::make_shared<UltraCanvasLabel>(
-                "NodesLabel", 10, 12, 60, 20
-        );
-        nodesLabel->SetText("Nodes:");
-        nodesLabel->SetFontSize(11);
-        perfControls->AddChild(nodesLabel);
+        auto perfControls = AddSankeyControls(perfContainer, "PerfControls");
 
         auto nodesSlider = std::make_shared<UltraCanvasSlider>(
-                "NodesSlider", 65, 15, 150, 17
+                "NodesSlider", 0, 0, 150, 17
         );
         nodesSlider->SetOrientation(SliderOrientation::Horizontal);
         nodesSlider->SetRange(5.0f, 50.0f);
         nodesSlider->SetValue(20.0f);
         nodesSlider->SetStep(5.0f);
-        perfControls->AddChild(nodesSlider);
-
-        auto nodesValue = std::make_shared<UltraCanvasLabel>(
-                "NodesValue", 225, 12, 30, 20
-        );
-        nodesValue->SetText("20");
-        nodesValue->SetFontSize(11);
-        perfControls->AddChild(nodesValue);
-
-        auto linksLabel = std::make_shared<UltraCanvasLabel>(
-                "LinksLabel", 270, 12, 50, 20
-        );
-        linksLabel->SetText("Links:");
-        linksLabel->SetFontSize(11);
-        perfControls->AddChild(linksLabel);
+        auto nodesPair = AddSankeyLabelled(perfControls, "NodesLabel", Tr("Nodes:"), nodesSlider);
+        auto nodesValue = AddSankeyValue(nodesPair, "NodesValue", "20");
 
         auto linksSlider = std::make_shared<UltraCanvasSlider>(
-                "LinksSlider", 315, 15, 150, 17
+                "LinksSlider", 0, 0, 150, 17
         );
         linksSlider->SetOrientation(SliderOrientation::Horizontal);
         linksSlider->SetRange(10.0f, 200.0f);
         linksSlider->SetValue(50.0f);
         linksSlider->SetStep(10.0f);
-        perfControls->AddChild(linksSlider);
+        auto linksPair = AddSankeyLabelled(perfControls, "LinksLabel", Tr("Links:"), linksSlider);
+        auto linksValue = AddSankeyValue(linksPair, "LinksValue", "50");
 
-        auto linksValue = std::make_shared<UltraCanvasLabel>(
-                "LinksValue", 475, 12, 40, 20
-        );
-        linksValue->SetText("50");
-        linksValue->SetFontSize(11);
-        perfControls->AddChild(linksValue);
-
-        auto generateBtn = std::make_shared<UltraCanvasButton>(
-                "GenerateBtn", 520, 10, 180, 25
-        );
-        generateBtn->SetText("Generate Random");
+        auto generateBtn = MakeSankeyButton("GenerateBtn", Tr("Generate Random"), 180);
         generateBtn->SetStyle(ButtonStyles::PrimaryStyle());
-        perfControls->AddChild(generateBtn);
+        DemoKit::Add(perfControls, generateBtn);
 
-        auto perfStats = std::make_shared<UltraCanvasLabel>(
-                "PerfStats", 670, 12, 270, 20
-        );
-        perfStats->SetText("Ready to generate");
+        // The result takes the rest of the strip, right-aligned.
+        auto perfStats = DemoKit::CreateText("PerfStats", Tr("Ready to generate"));
         perfStats->SetFontSize(11);
-        perfStats->SetAlignment(TextAlignment::Right);
-        perfControls->AddChild(perfStats);
-
-        perfContainer->AddChild(perfControls);
+        perfStats->SetAlignment(TextAlignment::Right, VerticalAlignment::Top);
+        DemoKit::Add(perfControls, perfStats, 1);
 
         // Performance Sankey diagram
         auto perfSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "PerfSankey", 10, 110, 950, 520
+                "PerfSankey", 0, 0, 950, 520
         );
 
         // Slider handlers
@@ -912,30 +811,26 @@ namespace UltraCanvas {
             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
             // Update stats
-            std::stringstream ss;
-            ss << "Generated " << nodeCount << " nodes, " << actualLinks << " links in "
-               << duration.count() << "ms";
-            perfStats->SetText(ss.str());
+            perfStats->SetText(TrF("Generated {0} nodes, {1} links in {2}ms",
+                                   nodeCount, actualLinks, duration.count()));
 
-            statusLabel->SetText("Performance test complete: " + std::to_string(duration.count()) + "ms");
+            statusLabel->SetText(TrF("Performance test complete: {0}ms", duration.count()));
         };
 
-        perfContainer->AddChild(perfSankey);
+        DemoKit::AddFixed(perfContainer, perfSankey);
 
         // ========================================
         // ADD TABS TO CONTAINER
         // ========================================
-        tabbedContainer->AddTab("Worldwide Oil Flow", oilContainer);
-        tabbedContainer->AddTab("Energy Flow", energyContainer);
-        tabbedContainer->AddTab("Financial", financeContainer);
-        tabbedContainer->AddTab("Web Traffic", webContainer);
-        tabbedContainer->AddTab("Custom Data", customContainer);
-        tabbedContainer->AddTab("Performance", perfContainer);
+        tabbedContainer->AddTab(Tr("Worldwide Oil Flow"), oilContainer);
+        tabbedContainer->AddTab(Tr("Energy Flow"), energyContainer);
+        tabbedContainer->AddTab(Tr("Financial"), financeContainer);
+        tabbedContainer->AddTab(Tr("Web Traffic"), webContainer);
+        tabbedContainer->AddTab(Tr("Custom Data"), customContainer);
+        tabbedContainer->AddTab(Tr("Performance"), perfContainer);
 
         // Set default active tab
         tabbedContainer->SetActiveTab(0);
-
-        mainContainer->AddChild(tabbedContainer);
 
         return mainContainer;
     }

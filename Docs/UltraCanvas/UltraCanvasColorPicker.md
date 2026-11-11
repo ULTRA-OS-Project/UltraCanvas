@@ -7,12 +7,14 @@
 - [Overview](#overview)
 - [Features](#features)
 - [Class Definition](#class-definition)
+- [Following the theme](#following-the-theme)
 - [Basic Usage](#basic-usage)
   - [Presentation variants](#presentation-variants)
   - [Light and dark styles](#light-and-dark-styles)
   - [Compact (sliders-only) variant](#compact-sliders-only-variant)
 - [Colour Space Helpers](#colour-space-helpers)
 - [Foreground-only picker](#foreground-only-picker)
+- [Previewing a colour from elsewhere](#previewing-a-colour-from-elsewhere)
 - [Interaction Summary](#interaction-summary)
 - [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
 
@@ -27,8 +29,8 @@ natively with the framework's `IRenderContext` primitives.
 
 **File Location**: `include/UltraCanvasColorPicker.h`
 **Implementation**: `core/UltraCanvasColorPicker.cpp`
-**Version**: 1.8.0
-**Last Modified**: 2026-10-16
+**Version**: 1.9.0 - `ColorPickerStyle::FromTheme`, `ApplyTheme`: the picker follows the theme
+**Last Modified**: 2026-11-10
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -226,6 +228,27 @@ namespace UltraCanvas {
 }
 ```
 
+## Following the theme
+
+`ColorPickerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics and scale: the panel
+for the surface, the raised surface for its panels with a hairline, the
+well with the control border for the fields, ink and muted ink, the
+accent; the markers keep their white and black unless the theme names
+`color-picker.marker` and `color-picker.marker-outline`; the interface
+font at the body size. Without a base it starts from `Dark()` or `Light()`
+by the theme's flag, as the menu does. Under the theme policy a new picker
+follows the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops
+that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto picker = std::make_shared<UltraCanvasColorPicker>("picker", 260, 320);
+ColorPickerStyle small = picker->GetStyle();
+small.uiScale = 0.8f;
+picker->SetStyle(ColorPickerStyle::FromTheme(UltraCanvasTheme::Current(), small));
+picker->SetFollowTheme(true);
+```
+
 ## Basic Usage
 
 ```cpp
@@ -357,6 +380,23 @@ entryPicker->SetAutoHeight(true);
 
 `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
 opens one in a popup when a palette swatch is right-clicked.
+
+## Previewing a colour from elsewhere
+
+Hovering the foreground or background swatch floods the whole picker with
+that colour, so it can be judged on a large area. A colour hovered outside
+the picker - a palette swatch under it - gets the same flood with
+`SetSurfacePreview`, until `ClearSurfacePreview`; a swatch of the picker's own
+under the pointer still shows that one.
+
+```cpp
+picker->SetSurfacePreview(Color(0, 119, 182, 255));   // the swatch under the pointer
+bool previewing = picker->HasSurfacePreview();
+picker->ClearSurfacePreview();                        // the pointer left it
+```
+
+`UltraCanvasColorPaletteManager` reports its hovered swatch through
+`onColorHovered` / `onColorHoverEnded` for exactly this.
 
 ## Interaction Summary
 

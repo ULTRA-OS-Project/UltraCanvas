@@ -2,11 +2,15 @@
 // Interactive showcase for the layout engine's label placement solver
 // (core/UltraCanvasLabelPlacement.cpp): labels around rectangles and circles,
 // with lines acting as keep-out obstacles.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tab is a
+//                  scrolling column of cards, the scene beside a control column
+//                  that wraps under it, every text sized to fit
 // Version: 1.0.0
-// Last Modified: 2026-07-29
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSwitch.h"
@@ -94,9 +98,9 @@ namespace UltraCanvas {
         // A deliberately crowded scene: shapes are close enough that the naive
         // placement collides, so the difference the solver makes is visible.
         void BuildScene() {
-            const char* names[] = {
-                    "Reception", "Archive", "Studio", "Server Room",
-                    "Kitchenette", "Lift", "Print / Copy", "Terrace"
+            const std::string names[] = {
+                    Tr("Reception"), Tr("Archive"), Tr("Studio"), Tr("Server Room"),
+                    Tr("Kitchenette"), Tr("Lift"), Tr("Print / Copy"), Tr("Terrace")
             };
             struct Def { bool circle; double x, y, a, b; };
             const Def defs[] = {
@@ -282,113 +286,113 @@ namespace UltraCanvas {
 // =============================================================================
 
     std::shared_ptr<UltraCanvasUIElement> CreateLabelPlacementLayoutTab() {
-        auto tab = std::make_shared<UltraCanvasContainer>("LabelPlacementTab", 0, 0, 1020, 640);
-        tab->SetBackgroundColor(Colors::White);
+        // The tab's content: the page look as a column of cards. The tabbed
+        // container sizes it to its content area, so it scrolls itself when
+        // its text (a longer translation) makes it taller than the tab.
+        auto tab = std::make_shared<UltraCanvasContainer>("LabelPlacementTab");
+        tab->SetBackgroundColor(DemoKit::PageBackground());
+        tab->SetPadding(DemoKit::kPagePadding);
+        tab->layout.SetFlexColumn().SetFlexGap(DemoKit::kPageGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        ContainerStyle tabStyle;
+        tabStyle.autoShowScrollbars = true;
+        tab->SetContainerStyle(tabStyle);
 
-        auto title = std::make_shared<UltraCanvasLabel>("LPTitle", 20, 12, 900, 26);
-        title->SetText("Label Placement Solver");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        tab->AddChild(title);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("LPDesc", 20, 40, 960, 56);
-        desc->SetText("PlaceShapeLabels() is part of the layout engine (core/UltraCanvasLabelPlacement.cpp), "
+        auto card = DemoKit::AddCard(tab, "LPCard", Tr("Label Placement Solver"));
+        DemoKit::AddText(card, "LPDesc",
+                      Tr("PlaceShapeLabels() is part of the layout engine (core/UltraCanvasLabelPlacement.cpp), "
                       "so every chart and diagram shares one implementation. Each label names a shape "
                       "(rectangle or circle), asks for a preferred position, and the solver moves it only when "
                       "that position would collide with another label, another shape, a keep-out obstacle such "
-                      "as a connector line, or the bounds. Overlapping labels are drawn in red.");
-        desc->SetFontSize(11.5f);
-        desc->SetTextColor(Color(80, 80, 80, 255));
-        desc->SetWrap(TextWrap::WrapWord);
-        tab->AddChild(desc);
+                      "as a connector line, or the bounds. Overlapping labels are drawn in red."));
 
-        auto canvas = std::make_shared<LabelPlacementCanvas>("LPCanvas", 20, 140, 560, 320);
-        tab->AddChild(canvas);
+        // The scene beside its controls; the controls move under the scene
+        // when the tab is too narrow for both.
+        auto demoRow = DemoKit::AddRow(card, "LPDemoRow", 20);
 
-        auto status = std::make_shared<UltraCanvasLabel>("LPStatus", 600, 404, 400, 56);
+        // The scene keeps its size: the solver's bounds and the shapes are
+        // laid out in its pixels.
+        auto canvas = std::make_shared<LabelPlacementCanvas>("LPCanvas", 0, 0, 560, 320);
+        DemoKit::AddFixed(demoRow, canvas);
+
+        auto controls = DemoKit::CreateColumn("LPControls", 8);
+        DemoKit::Add(demoRow, controls, 1);
+
+        auto status = DemoKit::CreateText("LPStatus", "");
         status->SetFontSize(11);
         status->SetTextColor(Color(60, 60, 60, 255));
-        status->SetWrap(TextWrap::WrapWord);
-        tab->AddChild(status);
 
         auto refreshStatus = [canvas, status]() {
-            std::string s = "Solver: ";
-            s += canvas->GetSolverEnabled() ? "on" : "off (naive placement)";
-            s += "\nStyle: ";
+            std::string style;
             switch (canvas->GetStyle()) {
-                case LabelPlacementCanvas::Style::Outside: s += "outside the shape"; break;
-                case LabelPlacementCanvas::Style::Inside:  s += "centred on the shape (overflow allowed)"; break;
-                case LabelPlacementCanvas::Style::Border:  s += "straddling the outline at 2 o'clock"; break;
+                case LabelPlacementCanvas::Style::Outside: style = Tr("outside the shape"); break;
+                case LabelPlacementCanvas::Style::Inside:  style = Tr("centred on the shape (overflow allowed)"); break;
+                case LabelPlacementCanvas::Style::Border:  style = Tr("straddling the outline at 2 o'clock"); break;
             }
-            s += "\nLines as obstacles: ";
-            s += canvas->GetLinesAreObstacles() ? "yes" : "no";
+            std::string s = TrF("Solver: {0}", canvas->GetSolverEnabled() ? Tr("on") : Tr("off (naive placement)"));
+            s += "\n" + TrF("Style: {0}", style);
+            s += "\n" + TrF("Lines as obstacles: {0}", canvas->GetLinesAreObstacles() ? Tr("yes") : Tr("no"));
             status->SetText(s);
         };
 
-        float bx = 600.0f, by = 140.0f;
+        // A button as wide as its text, at least the 190 px it had.
         auto addButton = [&](const std::string& id, const std::string& text,
                              std::function<void()> action) {
-            auto b = std::make_shared<UltraCanvasButton>(id, bx, by, 190.0f, 30.0f, text);
+            auto b = std::make_shared<UltraCanvasButton>(id, 0.0f, 0.0f, 0.0f, 30.0f, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(190);
+            b->boxConstraints = limits;
             b->SetOnClick([action, refreshStatus]() { action(); refreshStatus(); });
-            tab->AddChild(b);
-            by += 36.0f;
+            DemoKit::Add(controls, b);
+            b->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
         };
 
         auto sectionLabel = [&](const std::string& id, const std::string& text) {
-            auto l = std::make_shared<UltraCanvasLabel>(id, static_cast<long>(bx),
-                                                        static_cast<long>(by), 260, 20);
-            l->SetText(text);
+            auto l = DemoKit::AddHeading(controls, id, text);
             l->SetFontSize(11);
-            l->SetFontWeight(FontWeight::Bold);
             l->SetTextColor(Color(50, 50, 150, 255));
-            tab->AddChild(l);
-            by += 24.0f;
         };
 
         auto addSwitch = [&](const std::string& id, const std::string& text, bool initial,
                              std::function<void(bool)> action) {
-            auto s = UltraCanvasSwitch::Create(id, bx, by + 4.0f, text, initial);
+            auto s = UltraCanvasSwitch::Create(id, 0, 0, text, initial);
             s->onStateChanged = [action, refreshStatus](CheckedState, CheckedState newState) {
                 action(newState == CheckedState::Checked);
                 refreshStatus();
             };
-            tab->AddChild(s);
-            by += 36.0f;
+            DemoKit::Add(controls, s);
+            s->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
         };
 
-        sectionLabel("LPSecSolver", "Solver");
-        addSwitch("LPToggleSolver", "Solver", canvas->GetSolverEnabled(),
+        sectionLabel("LPSecSolver", Tr("Solver"));
+        addSwitch("LPToggleSolver", Tr("Solver"), canvas->GetSolverEnabled(),
                   [canvas](bool on) { canvas->SetSolverEnabled(on); });
-        addSwitch("LPToggleLines", "Lines as obstacles", canvas->GetLinesAreObstacles(),
+        addSwitch("LPToggleLines", Tr("Lines as obstacles"), canvas->GetLinesAreObstacles(),
                   [canvas](bool on) { canvas->SetLinesAreObstacles(on); });
 
-        by += 8.0f;
-        sectionLabel("LPSecStyle", "Preferred position");
-        addButton("LPStyleOutside", "Outside the shape",
+        sectionLabel("LPSecStyle", Tr("Preferred position"));
+        addButton("LPStyleOutside", Tr("Outside the shape"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Outside); });
-        addButton("LPStyleInside", "Centred on the shape",
+        addButton("LPStyleInside", Tr("Centred on the shape"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Inside); });
-        addButton("LPStyleBorder", "On the outline (2 o'clock)",
+        addButton("LPStyleBorder", Tr("On the outline (2 o'clock)"),
                   [canvas]() { canvas->SetStyle(LabelPlacementCanvas::Style::Border); });
 
+        DemoKit::Add(controls, status);
         refreshStatus();
 
-        auto note = std::make_shared<UltraCanvasLabel>("LPNote", 20, 476, 960, 130);
-        note->SetText(
-                "What each control shows:\n"
-                "• Solver off — every label goes to its preferred spot regardless of what is already there; "
-                "the red labels are the collisions this produces.\n"
-                "• Lines as obstacles — connector lines become keep-out rectangles, so labels step aside "
-                "instead of sitting on a line. Charts use the same mechanism for legends and axis titles.\n"
-                "• Outside / Centred / On the outline — the three conventions. Centred tolerates text spilling "
+        auto note = DemoKit::AddNotes(tab, "LPNote", Tr("What each control shows"), {
+                Tr("Solver off — every label goes to its preferred spot regardless of what is already there; "
+                "the red labels are the collisions this produces."),
+                Tr("Lines as obstacles — connector lines become keep-out rectangles, so labels step aside "
+                "instead of sitting on a line. Charts use the same mechanism for legends and axis titles."),
+                Tr("Outside / Centred / On the outline — the three conventions. Centred tolerates text spilling "
                 "over the outline (node diagrams, drawn with a halo) but still refuses to stack two labels; "
-                "on-the-outline places the text on the border at a clock-face angle.\n"
-                "Placement is greedy in input order, so submission order is the priority: this scene submits the "
-                "smallest shapes first, because their labels have the least room to move.");
-        note->SetFontSize(11);
-        note->SetTextColor(Color(80, 80, 80, 255));
-        note->SetWrap(TextWrap::WrapWord);
-        tab->AddChild(note);
+                "on-the-outline places the text on the border at a clock-face angle.")});
+        auto order = DemoKit::AddText(note, "LPNoteOrder",
+                Tr("Placement is greedy in input order, so submission order is the priority: this scene submits the "
+                "smallest shapes first, because their labels have the least room to move."));
+        order->SetFontSize(11);
 
         return tab;
     }

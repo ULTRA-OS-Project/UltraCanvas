@@ -30,9 +30,20 @@
 // Windows there is nothing to register: the notification service reports the
 // click over the bus while the application runs, and both calls do nothing.
 //
+// From an MSIX package Windows reads the activator from the package manifest
+// instead - a packaged program's HKEY_CURRENT_USER writes stay inside the
+// package - so RegisterNotificationActivator writes nothing there and only
+// serves the class, and the toasts are shown under the application's package
+// identity. The manifest's declaration comes from NOTIFICATION_ACTIVATORS in
+// scripts/make_msix_layout.py, which scripts/check_notification_activators.py
+// holds to the applications that call RegisterNotificationActivator: a new
+// application that calls it adds its row there. See
+// Docs/UltraCanvas/UltraCanvasWindowsMSIX.md.
+//
 // The helpers below are platform-neutral and header-only, so the presenter
 // that writes a toast and the application that reads the click agree on the
 // format without linking each other.
+// Version: 1.2.0 - from an MSIX package: the manifest declares the activator
 // Version: 1.1.0 - ListNotificationRegistrations; RemoveNotificationRegistrations
 //                 says how many it removed
 // Version: 1.0.0
@@ -61,7 +72,8 @@ namespace UltraCanvas {
     // Windows: registers this executable as the activator of the toasts shown
     // under `appId` (HKCU: the CLSID's LocalServer32 names this program with
     // -ToastActivated, the AppUserModelID's CustomActivator names the CLSID)
-    // and starts serving it. `onActivated` runs on the UI thread
+    // and starts serving it. From an MSIX package it only serves it: the
+    // package manifest names the class (scripts/make_msix_layout.py). `onActivated` runs on the UI thread
     // (PostToUIThread) for every click Windows hands over. Call it once, early.
     // False when nothing could be registered; elsewhere it does nothing and
     // returns false.

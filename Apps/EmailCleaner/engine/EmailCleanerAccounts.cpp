@@ -195,15 +195,18 @@ UltraMail::SyncOutcome FetchMailbox(UltraMail::LocalStore& store,
     if (!folders) return folders;
 
     // The inbox always; the junk folder too when the server names one, since
-    // what the provider already filtered is half of what a cleaner is for.
+    // what the provider already filtered is half of what a cleaner is for;
+    // and the Sent folder, whose recipients say which contacts are written to.
     std::vector<std::string> wanted = { "INBOX" };
     std::vector<UltraMail::Folder> known;
     if (store.ListFolders(account.accountId, known)) {
-        for (const UltraMail::Folder& folder : known) {
-            if (folder.role == UltraMail::FolderRole::Junk && folder.selectable &&
-                folder.name != "INBOX") {
-                wanted.push_back(folder.name);
-                break;
+        for (UltraMail::FolderRole role : { UltraMail::FolderRole::Junk,
+                                            UltraMail::FolderRole::Sent }) {
+            for (const UltraMail::Folder& folder : known) {
+                if (folder.role == role && folder.selectable && folder.name != "INBOX") {
+                    wanted.push_back(folder.name);
+                    break;
+                }
             }
         }
     }
@@ -213,8 +216,8 @@ UltraMail::SyncOutcome FetchMailbox(UltraMail::LocalStore& store,
     for (const std::string& folder : wanted) {
         UltraMail::SyncOutcome fetched = engine.SyncMessages(
             account.accountId, folder, serverUrl, options, /*fetchBodies=*/true);
-        // The inbox failing is the account failing; a junk folder that will
-        // not open is not worth losing the inbox over.
+        // The inbox failing is the account failing; a junk or sent folder
+        // that will not open is not worth losing the inbox over.
         if (!fetched && folder == "INBOX") return fetched;
         out.stats.messages += fetched.stats.messages;
         out.stats.bodies   += fetched.stats.bodies;

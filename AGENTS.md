@@ -61,6 +61,13 @@ before adding cross-module code.
   demo page names a `Docs/....md` that does not exist. Never edit the list by
   hand, and never put prose inside it - it is rewritten up to the next
   heading.
+- A demo page is built with `Apps/DemoApp/UltraCanvasDemoPageKit.h`
+  (`DemoKit::CreatePage`, cards, wrapping text, no fixed-size labels). Linux
+  CI runs `UltraCanvasDemo --audit-layout` and `--audit-layout --pseudo-loc`
+  (every text ~40% longer) on a virtual display and fails on a label or
+  button narrower than its text, or content cut off without a scrollbar.
+  The audit measures in the bundled Ubuntu 12, whatever the desktop's font.
+  Run both before pushing a page (`--audit-page <id>` for one page).
 
 ## Core conventions
 
@@ -217,11 +224,44 @@ before adding cross-module code.
   Pick another name (`CreateForFile`, `LoadImageFile`). A name the framework
   must keep is made safe by an `#undef` in the Windows platform headers next
   to the existing `#undef DrawText` (`UltraCanvasWindowsApplication.h`,
-  `UltraCanvasWindowsWindow.h`). `scripts/check_win32_names.py` enforces this
-  in CI (`win32-names.yml`) from the name list in
-  `scripts/win32_aw_macros.txt`; `scripts/win32_names_baseline.txt` holds the
-  sites that predate the check and only shrinks. A site that is correct as it
+  `UltraCanvasWindowsWindow.h`). `scripts/check_platform_names.py` enforces
+  this in CI (`platform-names.yml`) from the name list in
+  `scripts/win32_aw_macros.txt`; `scripts/platform_names_baseline.txt` holds
+  the sites that predate the check and only shrinks. A site that is correct as it
   stands says so with `// win32-name-ok: <why>`.
+- **No identifier is named like an X11 macro.** On Linux and BSD the window
+  headers reach `<X11/Xlib.h>`, which `#define`s `None`, `Success`, `Status`,
+  `Bool`, `Always`, `NoValue`, `Above`, `Below`, `True`, `False` and a few
+  hundred more as object-like macros, so an enumerator, method or member of
+  that name compiles in the files that include X11 after it and fails
+  ("expected identifier") in the one that includes a window header first.
+  Say what the value means instead - `ErrorCode::Ok`, `BorderStyle::NoBorder`,
+  `ArcEdgeType::AboveBaseline` - and never add an `#undef None` guard: it
+  only moves the failure to the next file. `scripts/check_platform_names.py`
+  enforces this in CI (`platform-names.yml`, the same check as the Win32 one)
+  from the name list in `scripts/x11_macro_names.txt` (generated from the X11
+  headers); its X11 entries in `scripts/platform_names_baseline.txt` are none
+  and stay so. A site that is
+  correct as it stands says so with `// x11-name-ok: <why>`.
+- **Nor like an Objective-C runtime name.** The macOS and iOS glue is
+  Objective-C++, and every C++ header a `.mm` file includes is parsed with
+  `<objc/objc.h>` in effect: `YES`, `NO`, `nil` and `Nil` are macros that
+  rewrite any identifier of that name, and `id`, `Class`, `SEL`, `IMP`,
+  `BOOL` and `Protocol` are global typedefs that a file-scope declaration
+  of the same name redefines. Inside a namespace, a class, an enum or a
+  parameter list those six are free (`struct S { int id; }` is fine), so
+  the rule is: no enumerator or member named `YES` / `NO` / `nil` / `Nil`,
+  and nothing at file scope named like the types - put it in a namespace.
+  Foundation also brings `<MacTypes.h>`, which puts `Rect`, `Point`,
+  `Boolean`, `Byte`, `Size`, `Handle`, `Ptr`, `Fixed`, `Style`, `OSErr`,
+  `UInt8`, `Str255` and a hundred more typedefs, and the Style constants
+  `normal`, `bold`, `italic`, ..., at global scope, and `kInvalidID` as a
+  macro: the same file-scope rule covers them, from the list
+  `scripts/mactypes_global_names.txt` generated from that header.
+  `scripts/check_platform_names.py` enforces this in CI (`platform-names.yml`,
+  the same check again); its Objective-C entries in
+  `scripts/platform_names_baseline.txt` are none and stay so. A site that is
+  correct as it stands says so with `// objc-name-ok: <why>`.
 - **An inline body in a public header uses all its parameters.** It is
   compiled into every file that includes the header, so a parameter it
   leaves unused warns in every build with `-Wextra` (the Models plugin, the
@@ -315,9 +355,11 @@ enforces this and runs in CI; a genuine exception opts out with
 ## Building and testing
 
 ```bash
-# Ubuntu/Debian deps
+# Ubuntu/Debian deps (the two libheif plug-ins exist from Ubuntu 24.04 on:
+# HEIC and AVIF decode only with them, and ImageFormatsTest insists)
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev clang
+    libfreetype6-dev libvips-dev libharfbuzz-dev clang \
+    libheif-plugin-libde265 libheif-plugin-aomdec libjxl-dev
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 
@@ -342,9 +384,37 @@ DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 The full 3-OS dependency lists are in `.github/workflows/build.yml`. CI
 installs Ubuntu packages with `scripts/ci-apt.sh install`, not
 `sudo apt-get install`: it stops and retries a download that has stopped
-dead, which apt itself waits out for as long as the job lasts.
+dead, which apt itself waits out for as long as the job lasts. The build's
+Linux legs also restore the packages the last run on `main` downloaded
+(`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
+serves only what changed.
+The repository has 10 GB of Actions cache, and GitHub evicts past that.
+`cache-prune.yml` (`scripts/prune_actions_caches.py`) deletes every
+run-numbered entry (a key ending in `${{ github.run_id }}`) but the newest of
+its kind, and closed pull requests' caches, after each build. Two rules for a
+new cache: a key that grows with every run ends in the run id, so the prune
+recognises it; and no leg's `restore-keys` prefix may be the start of another
+leg's key. `vcpkg-macos-15-` once matched `vcpkg-macos-15-intel-...`, and the
+arm64 leg restored x86_64 libraries and rebuilt them all; name a leg by its
+runner and its architecture (`vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-`).
+A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
+ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
+its runner is five to ten times slower and the two macOS rows share one code
+base and one packaging script. A pull request that changes what only the
+Intel toolchain would catch (the macOS platform layer, the packaging, a
+bundled library) asks for that row with the `ci:intel` label; adding it
+starts a run with the full matrix.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
+
+**Downloads in CI retry.** Apt installs go through `ci-apt.sh`; every other
+download a CI step makes retries too: a file through
+`curl -fsSL --retry 5 --retry-all-errors` into a file (never piped straight
+into `tar`), and a tool with no retry of its own - a `git clone`, a
+submodule update, `emsdk install`, an installer script - through
+`scripts/ci-retry.sh [--clean DIR] -- <command>`, three tries 30 s and 60 s
+apart, `--clean` emptying a clone's folder between them. A bare `wget` of
+`llvm.sh` once failed both Linux legs in under a second.
 
 **Cloud sessions.** The Claude Code cloud image is a general Ubuntu 24.04
 without most of the libraries CI installs, and CMake leaves a missing optional
@@ -370,7 +440,11 @@ tests skip. A test that fails here but passes in CI because a library is
 missing is fixed by adding the package to that list, not by treating the
 failure as expected; re-run `cmake` on a build directory configured before
 the install. To build what CI builds, configure with the options of CI's
-*Configure CMake (macOS/Linux)* step.
+*Configure CMake (macOS/Linux)* step. The same hook widens the clone's fetch refspec to
+every branch and fetches the session branch's `origin/<branch>` copy: a cloud
+clone is shallow and single-branch, and without that copy both Stop hooks -
+the repository's and the image's own `~/.claude/stop-hook-git-check.sh`,
+which the image rewrites every turn - reported a pushed branch as unpushed.
 
 **Tests that need a display.** A few tests under `Tests/` open a real window
 and read the composited pixels back (`CaretStackingTest`,
@@ -392,6 +466,13 @@ about a window under Xvfb catch people out:
   once, and `DisplayTest::WaitForCaret` drives frames until the shared caret is
   claimed. A text input shows its caret only while nothing is selected, so
   measure the caret before making a selection.
+
+A program's start-up and shut-down under Xvfb need no X client to send the
+close: `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run -a ./build/bin/ultrapress`
+opens the window, runs two seconds, closes it the way the window manager's
+close button would (`onWindowClosing` may refuse, `onWindowClosed` runs, the
+settings are written) and ends. `UltraCanvasApplication::CloseAllWindows()`
+is the same from inside a test.
 
 `TextMetricsScreenshotTest` doubles as the screenshot fixture for the
 text-metrics and crisp-border rules: with `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it
@@ -524,6 +605,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 |---|---|
 | `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, the modules, the build system, DemoApp |
 | `Docs/AnchorPoint/CHANGELOG.md` | AnchorPoint |
+| `Docs/ChatCube/CHANGELOG.md` | ChatCube — the ULTRA OS messenger |
 | `Docs/ArtCreator/CHANGELOG.md` | ArtCreator |
 | `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
 | `Docs/SmartHomeCenter/CHANGELOG.md` | SmartHome Center — the home control window |
@@ -532,22 +614,32 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
+| `Docs/UltraAIServerAdmin/CHANGELOG.md` | UltraAI ServerAdmin — the model server's admin tool |
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
 | `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
+| `Docs/UltraNotifications/CHANGELOG.md` | UltraNotifications — the notifications after their pop-up |
+| `Docs/UltraSnip/CHANGELOG.md` | UltraSnip — screenshots and screen recordings |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
 | `Docs/UltraNetMonitor/CHANGELOG.md` | UltraNetMonitor |
 | `Docs/UltraDBAdmin/CHANGELOG.md` | UltraDBAdmin — the database browser |
 | `Docs/UltraPassword/CHANGELOG.md` | UltraPassword — the password vault |
+| `Docs/UltraStore/CHANGELOG.md` | UltraStore — the app store |
+| `Docs/UltraStoreAdmin/CHANGELOG.md` | UltraStoreAdmin — the store's admin backend |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
 | `Docs/UltraVideo/CHANGELOG.md` | UltraVideo — the video editor |
 | `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
 | `Docs/UltraPress/CHANGELOG.md` | UltraPress — the website and shop builder that publishes WebAssembly |
+
+A framework header carries its own history in its head - `// Version: x.y.z -
+what changed` lines, newest first - so a reader sees what moved without the
+changelog; `scripts/check_version_history.py` lists the headers under
+`UltraCanvas/include` that have none.
 
 Format: `#### YYYY-MM-DD *x.y.z*`. **You do not write that line at all, for
 the framework or for an application**: drop your bullets in a new file in the
@@ -597,6 +689,11 @@ and never introduce a new literal copy of one:
   it was published, so `Docs/UltraCanvas/CHANGELOG.md` remains the record of
   what shipped in each framework release. Do not backfill it into the app
   files — that would put one change in two places under two numbers.
+- **Button text never ends with an ellipsis.** A button that opens a dialog
+  or a page says what it does - *Choose*, *Export .pub*, *Buy*, *Add
+  release* - not *Choose…*. The trailing "…" belongs to a status line that
+  says something is still running ("Fetching the catalog…") and to a
+  shortened value ("0415eff860c9…"), never to a control's label.
 - **Pending entries: every product's number is assigned on `main`, not by
   you.** Line 1 of a shared file was the most contended line in the
   repository, and two open pull requests collided there every time, in one of
@@ -692,8 +789,22 @@ and never introduce a new literal copy of one:
    `FormatFloatClassic`, never `std::stof` / `atof` / `std::to_string(double)`
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
    that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
-   `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
-   CI runs that too. Reading HTML, CSS or an `&entity;`? Through the
+   `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
+   `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
+   `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI
+   runs that too. Changing UltraIM's provider interface
+   (`UltraIMPlugins.h`) or a type in `UltraIMTypes.h`? Bump
+   `ULTRAIM_PLUGIN_HOST_ABI_VERSION` - the provider modules are called through
+   that vtable and those structs, and the host loads only a module of its own
+   version. Changing `UltraCanvasElementPlugins.h`? Bump
+   `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION` for a member appended to the host
+   table, or the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG` for a type that
+   crosses to the plug-ins. Then run `python3 scripts/check_plugin_abi.py
+   --update`; CI runs the check. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
+   the Windows builds compile it against libc++, which refuses what libstdc++
+   lets through (`std::to_string` of a file time's tick count, say), and the
+   script type-checks the module against libc++ in seconds. Reading HTML,
+   CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
@@ -701,8 +812,38 @@ and never introduce a new literal copy of one:
    also calls `UltraCanvas::RegisterNotificationActivator` at its start and
    gives the notification a `launch`, or a click on its Windows toast does
    nothing once the broker host has quit
-   (`UltraCanvasNotificationActivation.h`) — run
-   `python3 scripts/check_notification_activators.py`; CI runs that too.
+   (`UltraCanvasNotificationActivation.h`); and it gets a row in
+   `NOTIFICATION_ACTIVATORS` in `scripts/make_msix_layout.py`, which declares
+   the activator in the MSIX package's manifest — run
+   `python3 scripts/check_notification_activators.py`; CI runs that too. Writing text a person reads in a window? Through `Tr`
+   (`UltraLocalisation/UltraLocalisation.h`: `Tr("Save")`, `TrC`, `TrN`,
+   `TrF`), never a bare literal in a label, a menu or a dialog — then run
+   `python3 scripts/extract_ui_strings.py` so the English catalogues under
+   `media/locale/en/` carry the key, and `python3
+   scripts/check_locale_catalogues.py`; CI runs that too. **A text that lands
+   in the standard set (`media/locale/en/Standard.json`) brings its
+   translations with it:** the check fails on a standard entry any language
+   lacks (a regional variant such as `pt-BR` counts its parent's), because
+   that text would show in English to everyone using that language, in
+   every application - draft them with `scripts/translate_catalogue.py`
+   (marked `machine draft … reviewed by -` like the rest). A word every
+   application has is in `Standard.json` or a base set already (the
+   proposal's appendices): an application's own catalogue holds only what
+   is its own. The demo app is the one place a bare literal is right:
+   `DemoApp` is in `SKIP_APPS` of `scripts/extract_ui_strings.py`, so its
+   pages have no catalogue and wrap nothing - a demo page is example code a
+   developer reads beside its document, in English, not a product a person
+   runs in their language - and a review that finds no `Tr` there has found
+   nothing. **A catalogue under `media/locale/en/` that conflicts in a
+   merge is never merged by hand:** whichever branch merges second merges
+   the base and runs `python3 scripts/extract_ui_strings.py` - it rebuilds a
+   conflicted catalogue from both sides git keeps (its `@bases` and other
+   metadata) and the merged sources - then `git add`s it.
+   `check_pr_overlap.py` reports such a file as *rebuilt*, not as a
+   conflict. (A hand-merge, or the script before it learned this, can drop
+   `@bases`, and the application then stops inheriting its base set without
+   any check noticing.) The hand-curated base sets under `base/` are not
+   generated: a conflict there is a real one.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:
@@ -718,7 +859,11 @@ and never introduce a new literal copy of one:
    are listed in `scripts/doc_examples_baseline.txt` until the API exists;
    a component doc must never be added there. Writing one of those APIs
    makes its entries stop being found, which fails the check until the file
-   is rewritten (`--all --update-baseline`) in the same change.
+   is rewritten in the same change: `--all --update-baseline`, or
+   `--update-baseline <doc>...` for the docs changed, with the others'
+   entries kept. Those are the only ways to write the file - each doc's
+   entries end in a line that signs them, and a block edited by hand fails
+   the check naming the doc to regenerate.
    Changing a header can therefore fail a doc you did not touch: fix that
    doc in the same change. A name a snippet takes from the application - a
    `window`, a callback the reader writes, a version macro - is declared in
@@ -854,8 +999,11 @@ text on older Claude Code builds). A reply whose last non-blank line is not
 `Code needs to be PRed (N lines)` with the measured `N` is blocked once, with
 the line it found and the line it expected; surrounding backticks or bold and
 the ` — open as PR #<n>` suffix are accepted. The `Stop` form does not
-fetch, so it measures against `origin/main` as the clone last saw it — fetch
-before measuring and the two agree. The `SessionStart --brief` message
+fetch `main`, so it measures against `origin/main` as the clone last saw it -
+fetch before measuring and the two agree. (It does fetch the branch's own
+copy once when the clone lacks it: a cloud clone is shallow and single-branch,
+so a branch pushed with `-u` had no `origin/<branch>` and every commit on it
+read as unpushed although the remote held them all.) The `SessionStart --brief` message
 fetches the default branch first (a clone can arrive with an `origin/main`
 older than the commit its branch was cut from, which counts all of main's
 newer commits as this checkout's), then states the rule and the current `N`;

@@ -1,3 +1,68 @@
+#### 2026-11-06 *0.8.4*
+- **Host… reports the sign-in on the console.** Adding a host that refused
+  - or answered nothing, as a web server does to an FTP login - showed one
+  line in the dialog and nothing anywhere else. The sign-in the dialog runs
+  is now written to the console as it happens: where it signs in and as
+  whom, the steps and the FTP session's commands and replies, and how it
+  ended with the transport's diagnostics, the way `ultrapress hosts add`
+  reports one (`UltraPressWindow.cpp` 0.8.7). The dialog itself asks an FTP
+  / SFTP host for its protocol, its name and its port each on its own, and
+  chooses the private key with a file dialog - the framework's change of
+  the same day.
+- **`ultrapress hosts add --port <n>`.** An ftp host's port, when it is not
+  the protocol's own, as the window's dialog asks for it; it goes into the
+  stored URL, so `--port 2222` and `sftp://my.example:2222` are the same
+  host. `hosts add` also refuses a server URL that is not FTP - `https://`,
+  pasted from the browser - itself, so `--no-verify` stores none
+  (`UltraPressCli.cpp` 0.7.2).
+
+#### 2026-10-22 *0.8.3*
+- **One settings file, the framework's.** The look, the sites opened last
+  and the editor window's size live in `<settings folder>/UltraPress/
+  settings.json` (`ui/UltraPressSettings.h`, a typed view over the
+  framework's `UltraCanvasAppSettings`), the place for the next
+  preference; the `look` file of 0.8.0 to 0.8.2 is read once and goes when
+  the settings are first written. The editor window opens at the size it
+  had last. The program holds one settings object: the look and the window's
+  size are written together as the editor closes, the recent list as the
+  start window changes it - *Dark look* / *Light look* writes no file on
+  every click, and nothing reads the file back before writing it.
+- **A start-up and shut-down test ends the program by itself.** With
+  `ULTRACANVAS_CLOSE_AFTER_MS=<ms>` the framework closes the window after
+  that long, through the same path as the close button, so the window's
+  size is saved and the settings written; no X client is needed under Xvfb.
+- **The engine and render tests run on macOS and Windows too**, in a CI
+  step of their own, on each platform's own path rules and settings folder.
+- **The site's settings in the window.** *Site settings…* in the side
+  column puts the site itself into the property pane: its name, tagline,
+  address (the published site's root, kept without a trailing slash),
+  language and owner, each written into the model as typed and the page
+  re-rendered; selecting a page or a block returns to them. Until now the
+  name came from the start window or `ultrapress new --name` and the
+  address stayed `https://example.org` unless `site.json` was edited.
+- **The address is checked as typed.** `IsSiteAddress` in the model says
+  what a site's address has to be - `https://` or `http://`, a host with a
+  dot in it or `localhost`, no spaces, no trailing slash - and the Site
+  settings pane says under the field, in the error colour, when the typed
+  one is not that yet; `ultrapress check` and the editor's validation
+  report it too, so a slip is seen before the first publish writes it into
+  every page's canonical link, the sitemap and the feed. `ultrapress
+  import` says when an export's `<link>` is not an address, or names none,
+  instead of writing it into every page unseen.
+- **Started with nothing, the program opens a start window instead of
+  ending.** `ultrapress` with no argument, or with a folder that holds no
+  site, used to print its usage into a console that closed before it could
+  be read - from a double-click on Windows that looked like a crash. Now a
+  window says why, offers the folder dialog onto an existing site, and a
+  name and a folder for a new one (the starter site `ultrapress new`
+  writes); the editor opens from there. The window is the framework's
+  `UltraCanvasStartPage`, with UltraPress's words and its one field, laid
+  out row by row by the page (`AddField`, `AddButton`, `AddNote`); the
+  sites opened last are offered first as buttons (the five newest of the
+  eight remembered, the whole path in a tooltip, a folder that holds no
+  site any more said so and dropped). The window is built without a
+  display too (`StartWindow::BuildPage`), and the render tests build it.
+
 #### 2026-10-16 *0.8.2*
 - **A file with a `\` in its name is published, deployed and listed as
   itself on Linux and macOS.** The media library, the import of a file

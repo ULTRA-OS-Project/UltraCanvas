@@ -107,7 +107,7 @@ ImageGenProviderCapabilities MockImageGen::GetCapabilities() const {
     m.supportedModes = { ImageGenMode::TextToImage, ImageGenMode::ImageToImage,
                          ImageGenMode::Inpaint, ImageGenMode::Upscale,
                          ImageGenMode::Variation, ImageGenMode::BackgroundRemoval };
-    m.supportedControls = { ControlType::None, ControlType::CannyEdge,
+    m.supportedControls = { ControlType::NoControl, ControlType::CannyEdge,
                             ControlType::Depth, ControlType::Pose };
     m.supportedSizes = { {512, 512}, {1024, 1024}, {1024, 1792} };
     m.maxBatch = 8;
@@ -186,7 +186,7 @@ StreamHandle MockImageGen::GenerateJob(const ImageGenRequest& request,
         }
         if (onEvent && !handle->IsCancelled()) {
             ImageJobEvent done;
-            if (response.error.code != ErrorCode::None) {
+            if (response.error.code != ErrorCode::Ok) {
                 done.kind  = ImageJobEventKind::Error;
                 done.error = response.error;
             } else {

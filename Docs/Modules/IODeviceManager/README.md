@@ -1,5 +1,27 @@
 # IODeviceManager - One API for the Devices an Application Operates
 
+## Contents
+
+- [Scanners, Cameras and Printers Behind a Single Interface](#scanners-cameras-and-printers-behind-a-single-interface)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Device Enumeration](#device-enumeration)
+  - [Scanning](#scanning)
+  - [Cameras](#cameras)
+  - [Printing](#printing)
+  - [Network Scanners](#network-scanners)
+  - [Network Printers](#network-printers)
+  - [Printer Status](#printer-status)
+  - [Your Own Devices](#your-own-devices)
+- [Device Categories](#device-categories)
+- [Backends by Platform](#backends-by-platform)
+- [Why IODeviceManager?](#why-iodevicemanager)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+- [Architecture Highlights](#architecture-highlights)
+- [Get Started](#get-started)
+- [See It: DeviceExplorer](#see-it-deviceexplorer)
+
 ## Scanners, Cameras and Printers Behind a Single Interface
 
 > **API contract and design: [Architecture.md](Architecture.md). What is and

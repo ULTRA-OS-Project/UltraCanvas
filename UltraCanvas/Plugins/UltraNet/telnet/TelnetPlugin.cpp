@@ -18,6 +18,7 @@
 #include "UltraNetPluginHostShim.h"
 
 #include <curl/curl.h>
+#include <UltraNet/UltraNetCurlProxy.h>   // after UltraNetPlugins.h: it brings <windows.h>
 
 #include <atomic>
 #include <cstdio>
@@ -38,7 +39,7 @@ std::size_t WriteString(char* p, std::size_t s, std::size_t n, void* ud) {
 
 UltraNetResultCode MapCurlError(CURLcode rc) {
     switch (rc) {
-        case CURLE_OK:                      return UltraNetResultCode::Success;
+        case CURLE_OK:                      return UltraNetResultCode::Ok;
         case CURLE_URL_MALFORMAT:           return UltraNetResultCode::InvalidUrl;
         case CURLE_COULDNT_RESOLVE_HOST:    return UltraNetResultCode::HostNotFound;
         case CURLE_COULDNT_CONNECT:         return UltraNetResultCode::ConnectionRefused;
@@ -147,6 +148,7 @@ public:
             UploadCursor cursor{body.data(), body.size()};
 
             curl_easy_setopt(h.get(), CURLOPT_URL,           s->url.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), s->url, /*tunnel=*/true);   // the proxy setting
             curl_easy_setopt(h.get(), CURLOPT_UPLOAD,        1L);
             curl_easy_setopt(h.get(), CURLOPT_READFUNCTION,  &ReadCallback);
             curl_easy_setopt(h.get(), CURLOPT_READDATA,      &cursor);

@@ -1,9 +1,12 @@
 // Apps/DemoApp/UltraCanvasTreeMapExamples.cpp
 // TreeMap example implementations
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tree map
+//                  and its controls in a card, buttons as wide as their text
 // Version: 1.0.0
-// Last Modified: 2025-04-02
+// Last Modified: 2026-10-23
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasTreeMapElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -11,51 +14,59 @@
 
 namespace UltraCanvas {
 
+    namespace {
+        // A button as wide as its text, at least the 160 px it had.
+        std::shared_ptr<UltraCanvasButton> MakeTreeMapButton(const std::string& id, const std::string& text) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 30, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(160);
+            button->boxConstraints = limits;
+            return button;
+        }
+    } // namespace
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeMapExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("treeMapContainer", 0, 0, 800, 700);
+        auto container = DemoKit::CreatePage("treeMapContainer", Tr("TreeMap - Hierarchical Data Example"),
+                Tr("Sales by category and product, drawn as nested rectangles sized by value"));
+        auto card = DemoKit::AddCard(container, "treeMapCard", Tr("Sales tree map"),
+                Tr("Cycle the layout algorithm, the visual style and the colour scheme; toggle values and labels"));
         
-        auto treeMap = std::make_shared<UltraCanvasTreeMapElement>("treeMap", 100, 120, 600, 400);
+        auto treeMap = std::make_shared<UltraCanvasTreeMapElement>("treeMap", 0, 0, 600, 400);
         
         std::vector<std::tuple<std::string, std::string, double, double>> data = {
-            {"Technology", "Computers", 45000, 500},
-            {"Technology", "Phones", 32000, 400},
-            {"Technology", "Tablets", 18000, 200},
-            {"Food", "Fruits", 25000, 300},
-            {"Food", "Vegetables", 18000, 250},
-            {"Food", "Snacks", 12000, 150},
-            {"Clothing", "Men", 22000, 280},
-            {"Clothing", "Women", 28000, 350},
-            {"Clothing", "Kids", 12000, 150},
-            {"Electronics", "TVs", 35000, 450},
-            {"Electronics", "Audio", 22000, 280},
-            {"Electronics", "Gaming", 28000, 360}
+            {Tr("Technology"), Tr("Computers"), 45000, 500},
+            {Tr("Technology"), Tr("Phones"), 32000, 400},
+            {Tr("Technology"), Tr("Tablets"), 18000, 200},
+            {Tr("Food"), Tr("Fruits"), 25000, 300},
+            {Tr("Food"), Tr("Vegetables"), 18000, 250},
+            {Tr("Food"), Tr("Snacks"), 12000, 150},
+            {Tr("Clothing"), Tr("Men"), 22000, 280},
+            {Tr("Clothing"), Tr("Women"), 28000, 350},
+            {Tr("Clothing"), Tr("Kids"), 12000, 150},
+            {Tr("Electronics"), Tr("TVs"), 35000, 450},
+            {Tr("Electronics"), Tr("Audio"), 22000, 280},
+            {Tr("Electronics"), Tr("Gaming"), 28000, 360}
         };
         
         treeMap->SetDataFromHierarchy(data);
         treeMap->SetColorScheme(TreeMapColorScheme::Categorical);
         
-        container->AddChild(treeMap);
+        DemoKit::AddFixed(card, treeMap);
         
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("treeMapTitle", 50, 30, 700, 30);
-        titleLabel->SetText("TreeMap - Hierarchical Data Example");
-        titleLabel->SetFontSize(18);
-        container->AddChild(titleLabel);
+        auto buttonRow = DemoKit::AddRow(card, "treeMapButtons", 10);
+        auto btnCycleAlgorithm = MakeTreeMapButton("btnCycleAlgorithm", Tr("Cycle Algorithm"));
+        DemoKit::Add(buttonRow, btnCycleAlgorithm);
         
-        auto btnCycleAlgorithm = std::make_shared<UltraCanvasButton>("btnCycleAlgorithm", 50, 530, 160, 30);
-        btnCycleAlgorithm->SetText("Cycle Algorithm");
-        container->AddChild(btnCycleAlgorithm);
+        auto btnCycleStyle = MakeTreeMapButton("btnCycleStyle", Tr("Cycle Style"));
+        DemoKit::Add(buttonRow, btnCycleStyle);
         
-        auto btnCycleStyle = std::make_shared<UltraCanvasButton>("btnCycleStyle", 220, 530, 160, 30);
-        btnCycleStyle->SetText("Cycle Style");
-        container->AddChild(btnCycleStyle);
+        auto btnCycleColor = MakeTreeMapButton("btnCycleColor", Tr("Cycle Colors"));
+        DemoKit::Add(buttonRow, btnCycleColor);
         
-        auto btnCycleColor = std::make_shared<UltraCanvasButton>("btnCycleColor", 390, 530, 160, 30);
-        btnCycleColor->SetText("Cycle Colors");
-        container->AddChild(btnCycleColor);
-        
-        auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 390, 570, 160, 30);
-        btnReset->SetText("Reset");
-        container->AddChild(btnReset);
+        auto btnReset = MakeTreeMapButton("btnReset", Tr("Reset"));
+        DemoKit::Add(buttonRow, btnReset);
+
+        auto switchRow = DemoKit::AddRow(card, "treeMapSwitches", 24);
         
         static int currentAlgorithm = 0;
         static int currentStyle = 0;
@@ -103,19 +114,19 @@ namespace UltraCanvas {
 
         treeMap->SetDisplayOptions(showLabels, showValues, false, true);
 
-        auto swValues = UltraCanvasSwitch::Create("swToggleValues", 50, 574, "Values", showValues);
+        auto swValues = UltraCanvasSwitch::Create("swToggleValues", 0, 0, Tr("Values"), showValues);
         swValues->onStateChanged = [treeMap](CheckedState, CheckedState newState) {
             showValues = (newState == CheckedState::Checked);
             treeMap->SetDisplayOptions(showLabels, showValues, false, true);
         };
-        container->AddChild(swValues);
+        DemoKit::Add(switchRow, swValues);
 
-        auto swLabels = UltraCanvasSwitch::Create("swToggleLabels", 220, 574, "Labels", showLabels);
+        auto swLabels = UltraCanvasSwitch::Create("swToggleLabels", 0, 0, Tr("Labels"), showLabels);
         swLabels->onStateChanged = [treeMap](CheckedState, CheckedState newState) {
             showLabels = (newState == CheckedState::Checked);
             treeMap->SetDisplayOptions(showLabels, showValues, false, true);
         };
-        container->AddChild(swLabels);
+        DemoKit::Add(switchRow, swLabels);
 
         btnReset->SetOnClick([treeMap, swValues, swLabels]() {
             currentAlgorithm = 0;
@@ -127,18 +138,18 @@ namespace UltraCanvas {
             swLabels->SetChecked(true);
             
             std::vector<std::tuple<std::string, std::string, double, double>> data = {
-                {"Technology", "Computers", 45000, 500},
-                {"Technology", "Phones", 32000, 400},
-                {"Technology", "Tablets", 18000, 200},
-                {"Food", "Fruits", 25000, 300},
-                {"Food", "Vegetables", 18000, 250},
-                {"Food", "Snacks", 12000, 150},
-                {"Clothing", "Men", 22000, 280},
-                {"Clothing", "Women", 28000, 350},
-                {"Clothing", "Kids", 12000, 150},
-                {"Electronics", "TVs", 35000, 450},
-                {"Electronics", "Audio", 22000, 280},
-                {"Electronics", "Gaming", 28000, 360}
+                {Tr("Technology"), Tr("Computers"), 45000, 500},
+                {Tr("Technology"), Tr("Phones"), 32000, 400},
+                {Tr("Technology"), Tr("Tablets"), 18000, 200},
+                {Tr("Food"), Tr("Fruits"), 25000, 300},
+                {Tr("Food"), Tr("Vegetables"), 18000, 250},
+                {Tr("Food"), Tr("Snacks"), 12000, 150},
+                {Tr("Clothing"), Tr("Men"), 22000, 280},
+                {Tr("Clothing"), Tr("Women"), 28000, 350},
+                {Tr("Clothing"), Tr("Kids"), 12000, 150},
+                {Tr("Electronics"), Tr("TVs"), 35000, 450},
+                {Tr("Electronics"), Tr("Audio"), 22000, 280},
+                {Tr("Electronics"), Tr("Gaming"), 28000, 360}
             };
             
             treeMap->SetDataFromHierarchy(data);

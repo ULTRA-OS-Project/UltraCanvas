@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
 // Implementation of all component example creators
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the charts and
+//                  their controls in one card, the feature list in a card beside it
 // Version: 1.0.0
-// Last Modified: 2024-12-19
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 //#include "UltraCanvasButton3Sections.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include "UltraCanvasSwitch.h"
@@ -15,18 +18,14 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDivergingChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DivergingChartExamples", 0, 0, 1000, 600);
-        container->SetPadding(0,0,10,0);
-
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("DivergingChartTitle", 10, 10, 350, 30);
-        title->SetText("Diverging Bar Chart Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        auto container = DemoKit::CreatePage("DivergingChartExamples", Tr("Diverging Bar Chart Examples"),
+                Tr("Likert scale, population pyramid and tornado charts, with a grid switch and random data"));
+        auto mainRow = DemoKit::AddRow(container, "DivergingChartRow");
+        auto chartCard = DemoKit::AddCard(mainRow, "DivergingChartCard", Tr("Chart types"),
+                Tr("One tab per chart style; the controls under the tabs act on all three"));
 
         // Create tabbed container for the three chart types
-        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("divergingChartTabs", 10, 50, 700, 500);
+        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("divergingChartTabs", 0, 0, 700, 500);
         tabbedContainer->SetTabHeight(35);
         tabbedContainer->SetTabStyle(TabStyle::Modern);
 
@@ -37,15 +36,15 @@ namespace UltraCanvas {
             std::uniform_real_distribution<> dist(10.0, 50.0);
 
             std::vector<std::pair<std::string, std::map<std::string, float>>> data;
-            std::vector<std::string> rowLabels = {"Question 1", "Question 2", "Question 3", "Question 4", "Question 5"};
+            std::vector<std::string> rowLabels = {Tr("Question 1"), Tr("Question 2"), Tr("Question 3"), Tr("Question 4"), Tr("Question 5")};
 
             for (const auto& label : rowLabels) {
                 std::map<std::string, float> values;
-                values["Strongly Disagree"] = dist(gen);
-                values["Disagree"] = dist(gen);
-                values["Neutral"] = dist(gen) * 0.5f;
-                values["Agree"] = dist(gen);
-                values["Strongly Agree"] = dist(gen);
+                values[Tr("Strongly Disagree")] = dist(gen);
+                values[Tr("Disagree")] = dist(gen);
+                values[Tr("Neutral")] = dist(gen) * 0.5f;
+                values[Tr("Agree")] = dist(gen);
+                values[Tr("Strongly Agree")] = dist(gen);
                 data.push_back({label, values});
             }
             return data;
@@ -53,16 +52,16 @@ namespace UltraCanvas {
 
         // Set up Likert scale categories
         std::vector<DivergingCategory> categories;
-        categories.emplace_back("Strongly Disagree", Color(0xff, 0x50, 0x33, 255), false);
-        categories.emplace_back("Disagree", Color(244, 165, 130, 255), false);
-        categories.emplace_back("Neutral", Color(220, 220, 220, 255), false);
-        categories.emplace_back("Agree", Color(04, 0xd1, 0xd6, 255), true);
-        categories.emplace_back("Strongly Agree", Color(33, 102, 172, 255), true);
+        categories.emplace_back(Tr("Strongly Disagree"), Color(0xff, 0x50, 0x33, 255), false);
+        categories.emplace_back(Tr("Disagree"), Color(244, 165, 130, 255), false);
+        categories.emplace_back(Tr("Neutral"), Color(220, 220, 220, 255), false);
+        categories.emplace_back(Tr("Agree"), Color(04, 0xd1, 0xd6, 255), true);
+        categories.emplace_back(Tr("Strongly Agree"), Color(33, 102, 172, 255), true);
 
         // Create Likert Scale chart
         auto likertContainer = std::make_shared<UltraCanvasContainer>("likertContainer", 0, 0, 700, 450);
         auto likertChart = std::make_shared<UltraCanvasDivergingBarChart>("likertChart", 0, 0, 700, 450);
-        likertChart->SetChartTitle("Likert Scale Survey Responses");
+        likertChart->SetChartTitle(Tr("Likert Scale Survey Responses"));
         likertChart->SetChartStyle(DivergingChartStyle::LikertScale);
         likertChart->SetBarHeight(0.85f);
         likertChart->SetCenterGap(5.0f);
@@ -79,7 +78,7 @@ namespace UltraCanvas {
         // Create Population Pyramid chart
         auto pyramidContainer = std::make_shared<UltraCanvasContainer>("pyramidContainer", 0, 0, 700, 450);
         auto pyramidChart = std::make_shared<UltraCanvasDivergingBarChart>("pyramidChart", 0, 0, 700, 450);
-        pyramidChart->SetChartTitle("Population Pyramid Distribution");
+        pyramidChart->SetChartTitle(Tr("Population Pyramid Distribution"));
         pyramidChart->SetChartStyle(DivergingChartStyle::PopulationPyramid);
         pyramidChart->SetBarHeight(0.85f);
         pyramidChart->SetCenterGap(5.0f);
@@ -96,7 +95,7 @@ namespace UltraCanvas {
         // Create Tornado chart
         auto tornadoContainer = std::make_shared<UltraCanvasContainer>("tornadoContainer", 0, 0, 700, 450);
         auto tornadoChart = std::make_shared<UltraCanvasDivergingBarChart>("tornadoChart", 0, 0, 700, 450);
-        tornadoChart->SetChartTitle("Tornado Chart Analysis");
+        tornadoChart->SetChartTitle(Tr("Tornado Chart Analysis"));
         tornadoChart->SetChartStyle(DivergingChartStyle::TornadoChart);
         tornadoChart->SetBarHeight(0.85f);
         tornadoChart->SetCenterGap(5.0f);
@@ -111,33 +110,30 @@ namespace UltraCanvas {
         tornadoContainer->AddChild(tornadoChart);
 
         // Add tabs
-        tabbedContainer->AddTab("Likert Scale", likertContainer);
-        tabbedContainer->AddTab("Population Pyramid", pyramidContainer);
-        tabbedContainer->AddTab("Tornado Chart", tornadoContainer);
+        tabbedContainer->AddTab(Tr("Likert Scale"), likertContainer);
+        tabbedContainer->AddTab(Tr("Population Pyramid"), pyramidContainer);
+        tabbedContainer->AddTab(Tr("Tornado Chart"), tornadoContainer);
         tabbedContainer->SetActiveTab(0);
 
-        container->AddChild(tabbedContainer);
+        DemoKit::AddFixed(chartCard, tabbedContainer);
 
         // Control buttons
-        int buttonY = 560;
-        int buttonWidth = 160;
-        int buttonHeight = 30;
-        int buttonSpacing = 10;
-        int currentX = 10;
+        auto controls = DemoKit::AddRow(chartCard, "DivergingChartControls");
+        controls->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         // Grid switch
-        auto swGrid = UltraCanvasSwitch::Create("swGrid", currentX, buttonY + 5, "Grid", true);
+        auto swGrid = UltraCanvasSwitch::Create("swGrid", 0, 0, Tr("Grid"), true);
         swGrid->onStateChanged = [likertChart, pyramidChart, tornadoChart](CheckedState, CheckedState newState) {
             bool showGrid = (newState == CheckedState::Checked);
             likertChart->SetShowGrid(showGrid);
             pyramidChart->SetShowGrid(showGrid);
             tornadoChart->SetShowGrid(showGrid);
         };
-        container->AddChild(swGrid);
-        currentX += buttonWidth + buttonSpacing;
+        DemoKit::Add(controls, swGrid);
 
-        auto btnGenerateData = std::make_shared<UltraCanvasButton>("btnGenerate", currentX, buttonY, buttonWidth, buttonHeight);
-        btnGenerateData->SetText("Random Data");
+        // Width 0: as wide as its text.
+        auto btnGenerateData = std::make_shared<UltraCanvasButton>("btnGenerate", 0, 0, 0, 30);
+        btnGenerateData->SetText(Tr("Random Data"));
         btnGenerateData->SetColors(Color(70, 130, 180, 255), Color(90, 150, 200, 255), Color(50, 100, 160, 255), Color(150, 200, 240, 255));
         btnGenerateData->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::White);
         btnGenerateData->onClick = [likertChart, pyramidChart, tornadoChart, categories]() {
@@ -145,17 +141,17 @@ namespace UltraCanvas {
             std::random_device rd;
             std::mt19937 gen(rd());
             std::uniform_real_distribution<> dist(5.0, 45.0);
-            std::vector<std::string> newLabels = {"Item A", "Item B", "Item C", "Item D", "Item E", "Item F"};
+            std::vector<std::string> newLabels = {Tr("Item A"), Tr("Item B"), Tr("Item C"), Tr("Item D"), Tr("Item E"), Tr("Item F")};
 
             // Update Likert chart
             likertChart->ClearData();
             for (const auto& label : newLabels) {
                 std::map<std::string, float> values;
-                values["Strongly Disagree"] = static_cast<float>(dist(gen));
-                values["Disagree"] = static_cast<float>(dist(gen));
-                values["Neutral"] = static_cast<float>(dist(gen) * 0.4);
-                values["Agree"] = static_cast<float>(dist(gen));
-                values["Strongly Agree"] = static_cast<float>(dist(gen));
+                values[Tr("Strongly Disagree")] = static_cast<float>(dist(gen));
+                values[Tr("Disagree")] = static_cast<float>(dist(gen));
+                values[Tr("Neutral")] = static_cast<float>(dist(gen) * 0.4);
+                values[Tr("Agree")] = static_cast<float>(dist(gen));
+                values[Tr("Strongly Agree")] = static_cast<float>(dist(gen));
                 likertChart->AddDataRow(label, values);
             }
 
@@ -163,11 +159,11 @@ namespace UltraCanvas {
             pyramidChart->ClearData();
             for (const auto& label : newLabels) {
                 std::map<std::string, float> values;
-                values["Strongly Disagree"] = static_cast<float>(dist(gen));
-                values["Disagree"] = static_cast<float>(dist(gen));
-                values["Neutral"] = static_cast<float>(dist(gen) * 0.4);
-                values["Agree"] = static_cast<float>(dist(gen));
-                values["Strongly Agree"] = static_cast<float>(dist(gen));
+                values[Tr("Strongly Disagree")] = static_cast<float>(dist(gen));
+                values[Tr("Disagree")] = static_cast<float>(dist(gen));
+                values[Tr("Neutral")] = static_cast<float>(dist(gen) * 0.4);
+                values[Tr("Agree")] = static_cast<float>(dist(gen));
+                values[Tr("Strongly Agree")] = static_cast<float>(dist(gen));
                 pyramidChart->AddDataRow(label, values);
             }
 
@@ -175,25 +171,30 @@ namespace UltraCanvas {
             tornadoChart->ClearData();
             for (const auto& label : newLabels) {
                 std::map<std::string, float> values;
-                values["Strongly Disagree"] = static_cast<float>(dist(gen));
-                values["Disagree"] = static_cast<float>(dist(gen));
-                values["Neutral"] = static_cast<float>(dist(gen) * 0.4);
-                values["Agree"] = static_cast<float>(dist(gen));
-                values["Strongly Agree"] = static_cast<float>(dist(gen));
+                values[Tr("Strongly Disagree")] = static_cast<float>(dist(gen));
+                values[Tr("Disagree")] = static_cast<float>(dist(gen));
+                values[Tr("Neutral")] = static_cast<float>(dist(gen) * 0.4);
+                values[Tr("Agree")] = static_cast<float>(dist(gen));
+                values[Tr("Strongly Agree")] = static_cast<float>(dist(gen));
                 tornadoChart->AddDataRow(label, values);
             }
         };
-        container->AddChild(btnGenerateData);
+        DemoKit::Add(controls, btnGenerateData);
 
-        // Info label
-        auto infoLabel = std::make_shared<UltraCanvasLabel>("DivergingChartInfo", 740, 60, 250, 350);
-        infoLabel->SetText("Diverging Bar Chart Features:\n\n• Likert scale visualization\n• Population pyramid style\n• Tornado chart format\n• Interactive controls\n• Multiple data categories\n• Customizable colors\n• Grid and center line options\n• Dynamic data updates\n\nUse the controls below to:\n• Switch the grid on or off\n• Generate random data");
-        infoLabel->SetFontSize(11);
-        infoLabel->SetTextColor(Color(80, 80, 80, 255));
-        infoLabel->SetBackgroundColor(Color(250, 250, 250, 255));
-        infoLabel->SetBorders(1.0f);
-        infoLabel->SetPadding(10.0f);
-        container->AddChild(infoLabel);
+        // Info
+        auto infoCard = DemoKit::AddNotes(mainRow, "DivergingChartInfo", Tr("Diverging Bar Chart Features"), {
+                Tr("Likert scale visualization"),
+                Tr("Population pyramid style"),
+                Tr("Tornado chart format"),
+                Tr("Interactive controls"),
+                Tr("Multiple data categories"),
+                Tr("Customizable colors"),
+                Tr("Grid and center line options"),
+                Tr("Dynamic data updates")});
+        DemoKit::AddHeading(infoCard, "DivergingChartUseTitle", Tr("Use the controls below the chart to:"));
+        DemoKit::Add(infoCard, DemoKit::CreateBullets("DivergingChartUse", {
+                Tr("Switch the grid on or off"),
+                Tr("Generate random data")}));
 
         return container;
     }

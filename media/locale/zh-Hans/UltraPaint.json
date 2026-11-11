@@ -1,0 +1,15 @@
+{
+  "@language": "zh-Hans",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Click and type, or drag a box for the lines to wrap in; click a text to edit it. The bar above sets font, size, style, alignment and spacing; the colour is the foreground colour. Escape or a click outside finishes": "单击并输入，或拖出一个框让各行在其中换行；单击文本可进行编辑。上方的栏设置字体、大小、样式、对齐和间距；颜色为前景色。按 Escape 或在外部单击即可完成",
+  "Letter Spacing": "字间距",
+  "Line Spacing": "行距",
+  "Text Alignment": "文本对齐",
+  "Text Bold": "文本粗体",
+  "Text Colour": "文本颜色",
+  "Text Font": "文本字体",
+  "Text Italic": "文本斜体",
+  "Text Size": "文本大小",
+  "Text Strikethrough": "文本删除线",
+  "Text Underline": "文本下划线"
+}

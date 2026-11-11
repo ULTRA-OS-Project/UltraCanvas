@@ -2,6 +2,7 @@
 // The app-wide preferences behind the Settings window: the remote-image
 // policy, trusted websites (domain matching) and the reading options survive
 // a save and a load, and an old file keeps the defaults.
+// Version: 0.7.0 - attachments (bottom / right)
 // Version: 0.6.0 - switch_on_quiet_sec (Settings > Mail > Connection)
 // Version: 0.5.0 - the sender-icon downloads are off by default
 // Version: 0.4.0 - folder_tree_content, account_order
@@ -74,10 +75,13 @@ TEST(preferences_round_trip) {
     out.notifyNewMail = false;
     out.scamWarnings.romance = false;
     out.scamWarnings.cryptoCaution = false;
+    out.scamWarnings.loanOffers = false;
     out.senderLists.trusted = { "friend@example.org" };
     out.senderLists.blocked = { "offers@shop.example", "@junk.example" };
     out.folderTreeContent = FolderTreeContent::CurrentAccount;
     out.accountOrder = { "work", "erika", "club" };
+    out.attachmentPlacement = AttachmentPlacement::Right;
+    out.sendNotification = SendNotification::StatusBar;
     REQUIRE(out.Save(path));
 
     Preferences in;
@@ -92,6 +96,7 @@ TEST(preferences_round_trip) {
     REQUIRE(in.linkDisplay == LinkDisplay::Tooltip);
     REQUIRE(!in.scamWarnings.romance);
     REQUIRE(!in.scamWarnings.cryptoCaution);
+    REQUIRE(!in.scamWarnings.loanOffers);
     REQUIRE(in.scamWarnings.phishing);          // the others stay on
     REQUIRE(in.scamWarnings.advanceFee);
     REQUIRE(in.scamWarnings == out.scamWarnings);
@@ -103,6 +108,9 @@ TEST(preferences_round_trip) {
     REQUIRE(!in.notifyNewMail);
     REQUIRE(in.folderTreeContent == FolderTreeContent::CurrentAccount);
     REQUIRE(in.accountOrder == out.accountOrder);
+    REQUIRE(in.attachmentPlacement == AttachmentPlacement::Right);
+    REQUIRE(in.AttachmentsRight());
+    REQUIRE(in.sendNotification == SendNotification::StatusBar);
     std::remove(path.c_str());
 }
 
@@ -128,6 +136,8 @@ TEST(preferences_old_file_keeps_defaults) {
     REQUIRE(in.notifyNewMail);                                    // on until switched off
     REQUIRE(in.folderTreeContent == FolderTreeContent::AllAccounts);
     REQUIRE(in.accountOrder.empty());                             // the store's order
+    REQUIRE(in.attachmentPlacement == AttachmentPlacement::Bottom);  // under the message
+    REQUIRE(in.sendNotification == SendNotification::Popup);         // a popup window
     std::remove(path.c_str());
 }
 

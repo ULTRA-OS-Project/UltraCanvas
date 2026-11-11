@@ -1,3 +1,113 @@
+#### 2026-11-06 *1.78*
+- **Crash recovery no longer asks.** Files autosaved in a session that did not
+  end cleanly are reopened at startup straight away, each in its own tab and
+  marked modified, instead of behind a *Crash Recovery* question whose *No*
+  deleted them.
+
+#### 2026-11-04 *1.77*
+- **UltraTexter in every language.** Its own catalogue
+  (`media/locale/<lang>/UltraTexter.json`) now exists in all thirty
+  languages: until now its 213 texts - menus, toolbars, the find bar,
+  comments and tracked changes, the export and print dialogs - showed in
+  English whatever the language. A failed save no longer explains itself
+  half in English: the reason is a whole translated sentence per case
+  instead of an English phrase put into "The file {0}.".
+
+#### 2026-11-04 *1.76*
+- **UltraTexter speaks the chosen language.** Its own texts - the menus, the
+  toolbars' tooltips, the language and encoding lists, the search bar, the
+  dialogs (Go to line, Crash recovery, File statistics, the spelling and
+  review menus, Translate selection), the status line's messages and the
+  About box - go through `Tr`, so they follow the language set in
+  UOS-Settings; `media/locale/en/UltraTexter.json` is its set, on the *Text*
+  base set. **Help > Translate UltraTexter...** opens the localisation
+  editor on UltraTexter's own set in the language it runs in.
+
+#### 2026-10-28 *1.75*
+- **Hidden characters can be shown.** The editor's right-click menu has a
+  *Display* submenu with *Hidden Characters*, *Line Numbers* and *Word Wrap*;
+  *View > Hidden Characters* is the same switch. With it on, every space is
+  marked with a dot, a tab with an arrow across its width, a no-break space
+  with a small ring, a zero-width character (zero-width space and joiners,
+  word joiner, soft hyphen, byte order mark) with a tick, and the end of every
+  line with a pilcrow (¶) - so trailing spaces, tabs mixed with spaces and
+  invisible characters pasted from the web can be seen. Resting the pointer
+  on a mark names the character in a tooltip with its code, decimal value
+  and UTF-8 bytes (*NO-BREAK SPACE, U+00A0, 160, C2 A0*); on a pilcrow it
+  gives the file's line ending (LF, CRLF or CR). The text itself is
+  unchanged. Applies to text tabs (word-processing tabs keep their own view)
+  and is remembered with the other View settings. Framework:
+  `UltraCanvasTextArea::SetShowHiddenCharacters`.
+- **Markdown footnote and abbreviation tooltips open next to the pointer**
+  instead of over the toolbar near the top of the window. Framework:
+  `UltraCanvasTextArea::HandleMarkdownHover`.
+
+#### 2026-10-25 *1.74*
+- **Starting UltraTexter after closing it could say "UltraTexter is already
+  running"** on Windows, with the old copy left in Task Manager without a
+  window. The framework fixes behind it: the message bus's clean-up no longer
+  waits inside Windows' process shutdown, and an exit watchdog ends a copy
+  still running ten seconds after its window closed, leaving
+  `UltraTexter-exit-*.txt` in `%LOCALAPPDATA%\UltraCanvas\CrashDumps` that
+  names where it was stuck. A start made meanwhile waits for it and opens.
+
+#### 2026-10-24 *1.73*
+- **Typing no longer makes the spelling marks below the caret flicker.** Each
+  letter typed in a line shifted every later word by a byte, and every red
+  squiggle from the caret down disappeared until the background check came
+  back, then reappeared: at every keystroke the rest of the document blinked.
+  The marks now move with the text and stay where they are; only the word
+  being typed loses its mark until it is checked again. The same holds in
+  word-processing tabs (`.odt`, `.docx`, `.doc`).
+- **The spelling language is detected automatically.** When more than 70% of
+  the words in the document being edited are flagged, it is almost certainly
+  written in another language than the dictionary in use. Texter then checks
+  the text against the other installed dictionaries and switches to the one
+  that flags the fewest words, provided it flags fewer than 15% - type a German
+  text with English selected and the dictionary changes to German by itself.
+  The choice is stored like one made from *Edit > Spelling > Dictionary*. Only
+  the active tab switches the language, so two documents in two languages do
+  not keep switching it back and forth; changing tab lets the dictionary follow
+  the document on screen. On by default; *Edit > Spelling > Detect Language
+  Automatically* turns it off.
+
+#### 2026-10-22 *1.72*
+- **Edit > Translate Selection...** translates the selected text through
+  UltraAI and puts the translation in its place. A model on this computer is
+  used first - the local runtime's, which UltraAI's Local models page
+  manages - and a cloud service only when one was set up as the default
+  translator. The first time nothing is installed, the "Get a local model"
+  dialog offers the download (the recommended model preselected, with its
+  size and licence) and the translation runs once it is done. The target
+  language is asked for as a code (en, de, fr, pt-BR) and remembered for
+  the session. Only in a build with the UltraAI module; without it the menu
+  entry says so.
+
+#### 2026-10-22 *1.71*
+- **A file that cannot be saved says so, and why.** When writing a file
+  failed - the save icon, Ctrl+S, Save As, or *Yes* to "Save all before
+  closing?" - nothing happened: the tab stayed unsaved, closing the window
+  just stopped, and no message appeared. Texter now shows a *Save Failed*
+  message with the file's full path, the step that failed (opening the file
+  or writing it), the cause the framework finds (the folder does not exist,
+  the file is marked read-only, access is denied because another program
+  holds the file or you lack permission, the disk is full) and the system's
+  error code and text (for example *13: Permission denied*). It then opens
+  the Save dialog in the file's folder, and again after each failed attempt.
+  When closing, cancelling that dialog keeps the window open with the edits;
+  a file saved elsewhere lets the close go on.
+
+#### 2026-10-22 *1.70*
+- **Files with Thai, CJK or other non-Western names now open on Windows.**
+  When Explorer's *Open with*, the MSIX package's file types or a second
+  start hands Texter a file, the name arrives as `main()`'s narrow argument,
+  which Windows encodes in the ANSI code page. A name that code page could not
+  hold arrived as `?` and did not open. Texter's executable now embeds the
+  framework's manifest with the UTF-8 code page, as UltraViewer's does
+  (`ultracanvas_embed_windows_manifest(Texter)`), so the name arrives intact
+  on Windows 10 1903 and later. The MSIX package requires 1903 or later for
+  this reason.
+
 #### 2026-10-20 *1.69*
 - **Pasted text picks its own language.** Paste into a new, empty tab and
   UltraTexter recognises what the text is - C++, C, Python, Markdown, JSON,

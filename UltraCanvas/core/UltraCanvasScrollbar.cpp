@@ -1,7 +1,7 @@
 // core/UltraCanvasScrollbar.cpp
 // Platform-independent scrollbar component implementation
 // Version: 1.2.0
-// Last Modified: 2026-07-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasScrollbar.h"
@@ -44,6 +44,7 @@ namespace UltraCanvas {
         mouseCursor = (orient == ScrollbarOrientation::Vertical)
                   ? UCMouseCursor::SizeNS
                   : UCMouseCursor::SizeWE;
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasScrollbar::~UltraCanvasScrollbar() {
@@ -65,6 +66,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasScrollbar::SetStyle(const ScrollbarStyle &newStyle) {
+        StyleSetByHand();
         style = newStyle;
         layoutDirty = true;
         RequestRedraw();
@@ -591,5 +593,25 @@ namespace UltraCanvas {
     void ScrollbarScrollState::UpdateMaxPosition() {
         maxPosition = std::max(0, contentSize - viewportSize);
         position = std::clamp(position, 0, maxPosition);
+    }
+
+// ===== THE THEME =====
+    ScrollbarStyle ScrollbarStyle::FromTheme(const UltraCanvasTheme& theme, const ScrollbarStyle& base) {
+        ScrollbarStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        // the element's own roles, for a design whose bar is not the panel's grey
+        s.trackColor = theme.Role("scrollbar.track", r.panel).WithAlpha(base.trackColor.a);
+        s.trackHoverColor = r.hover.WithAlpha(base.trackHoverColor.a);
+        s.trackBorderColor = r.line;
+        s.thumbColor = theme.Role("scrollbar.thumb", r.lineStrong).WithAlpha(base.thumbColor.a);
+        s.thumbHoverColor = r.inkFaint.WithAlpha(base.thumbHoverColor.a);
+        s.thumbPressedColor = r.inkMuted.WithAlpha(base.thumbPressedColor.a);
+        s.thumbBorderColor = r.lineStrong;
+        s.arrowColor = r.inkMuted;
+        s.arrowHoverColor = r.ink;
+        s.arrowPressedColor = r.ink;
+        s.arrowBackgroundColor = r.panel;
+        s.arrowBackgroundHoverColor = r.hover;
+        return s;
     }
 } // namespace UltraCanvas

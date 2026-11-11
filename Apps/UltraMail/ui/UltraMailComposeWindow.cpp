@@ -1,4 +1,14 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.13.0 - Send, the attach buttons and Cancel on top; every
+//                   formatting tool in one row; Font and Size show the text
+//                   at the cursor; the attachments under the body or in a
+//                   column at its right (SetAttachmentsRight)
+// Version: 0.12.0 - the formatting tools and the body share one framed card
+//                   (the tools on a tinted strip on top); Send, Attach file and
+//                   Cloud link carry icons, Plain text | Formatted too
+// Version: 0.11.1 - the body editor shows no missing-fonts notice
+// Version: 0.11.0 - a recipient suggestion's right-click menu: Edit contact,
+//                   Delete address, Set as SPAM
 // Version: 0.10.1 - the cloud link picker gets the shared cloud service
 // Version: 0.10.0 - To / Cc / Bcc complete names and addresses from the address book
 // Version: 0.9.0 - a Bcc toggle beside Cc shows the Bcc row; a draft with blind
@@ -15,7 +25,7 @@
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -30,6 +40,7 @@
 #include "UltraMailSignature.h"   // PlainBodyToRichDocument
 #include "UltraMailTheme.h"
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -89,6 +100,50 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
                  .SetFlexGap(Theme::kInnerGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
+    // The action row, on top: Send first, the attach actions beside it, Cancel
+    // apart on the right so it cannot be hit by accident.
+    auto toolbar = CreateContainer("cToolbar", 0, 0, 0, Theme::kToolbarHeight);
+    toolbar->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+    auto sendBtn = CreateButton("cSend", 0, 0, 100, Theme::kControlHeight, "Send");
+    Theme::FitToLabel(sendBtn, 100);
+    Theme::StylePrimary(sendBtn);
+    Theme::SetButtonIcon(sendBtn, "send");
+    sendBtn->SetTooltip("Send the message now");
+    sendBtn->onClick = [this]() { if (onSend) onSend(CollectDraft()); };
+    toolbar->AddChild(sendBtn);
+
+    auto attachBtn = CreateButton("cAttach", 0, 0, 120, Theme::kControlHeight, "Attach file…");
+    Theme::FitToLabel(attachBtn, 120);
+    Theme::StyleSecondary(attachBtn);
+    Theme::SetButtonIcon(attachBtn, "attach");
+    attachBtn->SetTooltip("Attach a file from this computer");
+    attachBtn->onClick = [this]() { ChooseFileToAttach(); };
+    toolbar->AddChild(attachBtn);
+
+    auto cloudBtn = CreateButton("cCloud", 0, 0, 120, Theme::kControlHeight, "Cloud link…");
+    Theme::FitToLabel(cloudBtn, 120);
+    Theme::StyleSecondary(cloudBtn);
+    Theme::SetButtonIcon(cloudBtn, "cloud");
+    cloudBtn->SetTooltip(cloud_ ? "Upload a file to cloud storage, or pick one, and put its share link into the message"
+                                : "Cloud storage is not set up in this application");
+    cloudBtn->onClick = [this]() { ChooseCloudLink(); };
+    toolbar->AddChild(cloudBtn);
+
+    toolbar->AddStretchSpacer(1);
+
+    auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
+    Theme::StyleSecondary(cancelBtn);
+    cancelBtn->onClick = [this]() { if (onCancel) onCancel(); };
+    toolbar->AddChild(cancelBtn);
+
+    root_->AddChild(toolbar);
+    toolbar->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    root_->AddChild(Theme::MakeDivider("cTopRule"));
+
     // Header fields: a quiet label beside a full-width input.
     auto addField = [this](const std::string& id, const std::string& caption,
                            const std::shared_ptr<UltraCanvasTextInput>& input)
@@ -124,6 +179,12 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
             for (const auto& s : suggestRecipients(query, text))
                 items.emplace_back(s.recipient, CompleteRecipient(text, s.recipient));
             return items;
+        };
+        // A right click on a suggestion: what to do with that address, without
+        // writing to it.
+        field->onItemContextMenu = [this, weak](int, const AutoCompleteItem& item,
+                                                const UCEvent& event) {
+            if (auto f = weak.lock()) ShowRecipientMenu(f, RecipientAddress(item.text), event);
         };
         field->onItemSelected = [weak](int, const AutoCompleteItem& item) {
             auto f = weak.lock();
@@ -174,7 +235,88 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     subject_->SetPlaceholder("Subject");
     addField("cSubj", "Subject", subject_);
 
-    root_->AddChild(Theme::MakeDivider("cRule"));
+    // Security: off, or a method to sign and/or encrypt with. A reply to
+    // encrypted mail comes here encrypted (Composer::Reply).
+    std::vector<std::string> methods = secureMethods_;
+    if (!draft_.secureMethod.empty() &&
+        std::find(methods.begin(), methods.end(), draft_.secureMethod) == methods.end())
+        methods.push_back(draft_.secureMethod);
+    if (!methods.empty()) {
+        auto row = CreateContainer("cSecureRow", 0, 0, 0, Theme::kControlHeight);
+        row->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto label = Theme::MakeLine("cSecureLbl", "Security", Theme::kControlHeight,
+                                     Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+        row->AddChild(label);
+        secureMethod_ = CreateSegmentedControl("cSecure", 0, 0, 90.0f * (methods.size() + 1),
+                                               Theme::kControlHeight);
+        Theme::StyleSegmented(secureMethod_);
+        secureMethod_->AddSegment("Off");
+        for (const std::string& m : methods) secureMethod_->AddSegment(m);
+        secureMethod_->SetTooltip("Sign and encrypt the message with S/MIME (a certificate) or "
+                                  "OpenPGP (a key in GnuPG)");
+        int chosen = 0;
+        for (size_t i = 0; i < methods.size(); ++i)
+            if (methods[i] == draft_.secureMethod) chosen = static_cast<int>(i) + 1;
+        if (!draft_.sign && !draft_.encrypt) chosen = 0;
+        secureMethod_->SetSelectedIndex(chosen);
+        row->AddChild(secureMethod_);
+        auto makeBox = [&row](const std::string& id, const std::string& text, bool checked,
+                              const std::string& tip) {
+            auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 90.0f, Theme::kControlHeight, text);
+            box->SetFontSize(Theme::kSizeBody);
+            box->SetChecked(checked);
+            box->SetTooltip(tip);
+            row->AddChild(box);
+            return box;
+        };
+        signBox_ = makeBox("cSign", "Sign", chosen > 0 ? draft_.sign : true,
+                           "Signed: the recipient can check that it is from you and unchanged");
+        encryptBox_ = makeBox("cEncrypt", "Encrypt", chosen > 0 && draft_.encrypt,
+                              "Encrypted: only the recipients (and you) can read it; every "
+                              "recipient needs a certificate or key");
+        auto sync = [this]() {
+            const bool on = secureMethod_ && secureMethod_->GetSelectedIndex() > 0;
+            if (signBox_) signBox_->SetDisabled(!on);
+            if (encryptBox_) encryptBox_->SetDisabled(!on);
+        };
+        secureMethod_->onSegmentSelected = [sync](int) { sync(); };
+        sync();
+        root_->AddChild(row);
+        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    }
+
+    // The editor card: the formatting strip on top, the body below, in one
+    // frame - the toolbar reads as the editor's own, and the body is a clear
+    // place to write instead of an unbounded white area.
+    auto editorCard = CreateContainer("cEditorCard", 0, 0, 0, 0);
+    Theme::ApplyCard(editorCard, Theme::kControlRadius);
+    editorCard->SetPadding(1.0f);   // the strip's fill stays inside the frame
+    editorCard->layout.SetFlexColumn()
+                      .SetFlexGap(0)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    {
+        ContainerStyle style;
+        style.autoShowScrollbars = false;
+        editorCard->SetContainerStyle(style);
+    }
+    root_->AddChild(editorCard);
+    editorCard->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // Under the strip: the text and, when the attachments are shown at the
+    // right, their column beside it - inside the frame, so the toolbar keeps
+    // the whole width.
+    bodyRow_ = CreateContainer("cBodyRow", 0, 0, 0, 0);
+    bodyRow_->layout.SetFlexRow()
+                    .SetFlexGap(0)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    {
+        ContainerStyle style;
+        style.autoShowScrollbars = false;
+        bodyRow_->SetContainerStyle(style);
+    }
 
     // The formatting toolbar, with Plain text | Formatted at its right end.
     // The tools act on the rich editor, and only while the body is formatted.
@@ -182,6 +324,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     barOptions.idPrefix = "c";
     barOptions.dialogParent = parent_;
     barOptions.quoteTools = true;
+    barOptions.singleRow = true;   // the window is opened wide enough (kPreferredWidth)
     // Asked on every click, and again when a Link… or Picture… dialog
     // answers - by then the window may be closed and this view gone.
     barOptions.editor = [weak = weak_from_this()]() -> UltraCanvasRichTextEdit* {
@@ -189,17 +332,27 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
         return self && self->formatted_ ? self->rich_.get() : nullptr;
     };
     formatBar_ = FormatBar::Build(barOptions);
-    mode_ = CreateSegmentedControl("cMode", 0, 0, 160, Theme::kControlHeight);
+    mode_ = CreateSegmentedControl("cMode", 0, 0, 200, Theme::kControlHeight);
     Theme::StyleSegmented(mode_);
-    mode_->AddSegment("Plain text");
-    mode_->AddSegment("Formatted");
+    {
+        auto style = mode_->GetStyle();
+        style.iconAsMask = true;
+        style.iconSize = Theme::kButtonIcon;
+        mode_->SetStyle(style);
+    }
+    mode_->AddSegment("Plain text", Theme::MailIcon("plain-text"));
+    mode_->AddSegment("Formatted", Theme::MailIcon("formatted"));
     mode_->SetTooltip("Plain text, or formatted text (sent as HTML with a plain-text version)");
     mode_->onSegmentSelected = [this](int segment) {
         if (!switchingMode_) SetFormatted(segment == 1);
     };
     formatBar_.paragraphRow->AddChild(mode_);
-    root_->AddChild(formatBar_.root);
-    formatBar_.root->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    editorCard->AddChild(formatBar_.root);
+    formatBar_.root->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    editorCard->AddChild(Theme::MakeDivider("cRule"));
+    editorCard->AddChild(bodyRow_);
+    bodyRow_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // The body takes whatever height the fields and the toolbars leave. Both
     // editors exist; the mode decides which one shows and holds the message.
@@ -208,7 +361,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     body_->SetWordWrap(true);
     Theme::StyleTextArea(body_, /*bordered=*/false);
     body_->SetText(draft_.body);
-    root_->AddChild(body_);
+    bodyRow_->AddChild(body_);
     body_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     rich_ = CreateRichTextEdit("cRich", 0, 0, 0, 0);
@@ -216,71 +369,72 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     richStyle.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the plain body
     richStyle.drawBorder = false;
     rich_->SetStyle(richStyle);
+    // A mail names fonts the sender has (Calibri, Arial ...) and draws fine
+    // in a substitute: no notice over the text being written.
+    rich_->SetShowFontNotice(false);
     rich_->SetDocument(draft_.richBody ? draft_.richBody : PlainBodyToRichDocument(""));
     rich_->GetEditor().SetCaret(RichDocPosition(0, 0));  // the empty line above the quote
-    root_->AddChild(rich_);
+    // Font and Size follow the text at the cursor.
+    auto syncBar = [weak = weak_from_this()]() {
+        if (auto self = weak.lock(); self && self->rich_)
+            self->formatBar_.Sync(self->rich_->GetFormatState());
+    };
+    rich_->onSelectionChanged = syncBar;
+    rich_->onDocumentChanged  = syncBar;
+    formatBar_.Sync(rich_->GetFormatState());
+    bodyRow_->AddChild(rich_);
     rich_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     formatted_ = draft_.richBody != nullptr;
     ShowMode();
 
-    // Attachment chips between the body and the toolbar; the row is shown
-    // only while there is something to show (forwards carry the original's
-    // attachments).
+    // Attachment chips under the body, or in a column at its right
+    // (Settings > Reading > Attachments); shown only while there is something
+    // to show (forwards carry the original's attachments).
     attachWrap_ = CreateContainer("cAttachWrap", 0, 0, 0, kAttachRowHeight);
-    ContainerStyle stripStyle;
-    stripStyle.autoShowScrollbars = false;
-    attachWrap_->SetContainerStyle(stripStyle);
     attachWrap_->AddChild(attachments_.Build());
-    root_->AddChild(attachWrap_);
-    attachWrap_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    PlaceAttachments();
     RefreshAttachments();
 
-    // Bottom toolbar: Send first, the attach actions beside it, Cancel apart
-    // on the right so it cannot be hit by accident.
-    auto toolbar = CreateContainer("cToolbar", 0, 0, 0, Theme::kToolbarHeight);
-    toolbar->layout.SetFlexRow()
-                   .SetFlexGap(Theme::kInnerGap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-
-    auto sendBtn = CreateButton("cSend", 0, 0, 100, Theme::kControlHeight, "Send");
-    Theme::FitToLabel(sendBtn, 100);
-    Theme::StylePrimary(sendBtn);
-    sendBtn->onClick = [this]() { if (onSend) onSend(CollectDraft()); };
-    toolbar->AddChild(sendBtn);
-
-    auto attachBtn = CreateButton("cAttach", 0, 0, 120, Theme::kControlHeight, "Attach file…");
-    Theme::FitToLabel(attachBtn, 120);
-    Theme::StyleSecondary(attachBtn);
-    attachBtn->onClick = [this]() { ChooseFileToAttach(); };
-    toolbar->AddChild(attachBtn);
-
-    auto cloudBtn = CreateButton("cCloud", 0, 0, 192, Theme::kControlHeight,
-                                 "Attach cloud link…");
-    Theme::FitToLabel(cloudBtn, 192);
-    Theme::StyleSecondary(cloudBtn);
-    cloudBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/cloud.svg"));
-    cloudBtn->SetIconPosition(ButtonIconPosition::Left);
-    cloudBtn->SetIconSize(16, 16);
-    cloudBtn->SetIconSpacing(6);
-    cloudBtn->SetUseIconAsMask(true);
-    cloudBtn->SetTooltip(cloud_ ? "Upload a file to cloud storage, or pick one, and put its share link into the message"
-                                : "Cloud storage is not set up in this application");
-    cloudBtn->onClick = [this]() { ChooseCloudLink(); };
-    toolbar->AddChild(cloudBtn);
-
-    toolbar->AddStretchSpacer(1);
-
-    auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
-    Theme::FitToLabel(cancelBtn, 90);
-    Theme::StyleSecondary(cancelBtn);
-    cancelBtn->onClick = [this]() { if (onCancel) onCancel(); };
-    toolbar->AddChild(cancelBtn);
-
-    root_->AddChild(toolbar);
-    toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
     return root_;
+}
+
+void ComposeView::SetAttachmentsRight(bool right) {
+    if (right == attachmentsRight_) return;
+    attachmentsRight_ = right;
+    PlaceAttachments();
+}
+
+void ComposeView::PlaceAttachments() {
+    if (!attachWrap_ || !root_ || !bodyRow_) return;
+    if (UltraCanvasContainer* holder = attachWrap_->GetParentContainer())
+        holder->RemoveChild(attachWrap_);
+    attachments_.SetVertical(attachmentsRight_);
+    ContainerStyle style;
+    style.autoShowScrollbars = attachmentsRight_;   // a long column scrolls
+    style.autoShowHorizontalScrollbar = false;
+    attachWrap_->SetContainerStyle(style);
+    if (attachmentsRight_) {
+        // A tinted column, set off from the text by a line.
+        attachWrap_->SetBackgroundColor(Theme::kSidebar);
+        attachWrap_->SetBorderLeft(1.0f, Theme::kDivider);
+        attachWrap_->size.width  = CSSLayout::Dimension::Px(AttachmentStrip::ColumnWidth() + 1.0f);
+        attachWrap_->size.height = CSSLayout::Dimension::Auto();
+        attachWrap_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        bodyRow_->AddChild(attachWrap_);
+    } else {
+        attachWrap_->SetBackgroundColor(Colors::Transparent);
+        attachWrap_->SetBorderLeft(0.0f, Colors::Transparent);
+        attachWrap_->size.width  = CSSLayout::Dimension::Auto();
+        attachWrap_->size.height = CSSLayout::Dimension::Px(kAttachRowHeight);
+        attachWrap_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        root_->AddChild(attachWrap_);   // under the editor card, the last row
+    }
+    attachWrap_->SetVisible(!draft_.attachments.empty());
+    root_->InvalidateLayout();
+    root_->RequestRedraw();
 }
 
 void ComposeView::Resize(float width, float height) {
@@ -403,6 +557,42 @@ void ComposeView::ChooseCloudLink() {
         });
 }
 
+void ComposeView::ShowRecipientMenu(const std::shared_ptr<UltraCanvasAutoComplete>& field,
+                                    const std::string& address, const UCEvent& event) {
+    if (!parent_ || address.empty()) return;
+    if (!editRecipientContact && !deleteRecipientAddress && !markRecipientSpam) return;
+    // Once the address book or the blocked list changed: the field takes the
+    // keyboard back and shows what it now suggests. Weak: the answer can come
+    // after the window closed.
+    std::weak_ptr<UltraCanvasAutoComplete> weakField = field;
+    auto done = [weakField]() {
+        if (auto f = weakField.lock()) {
+            f->SetFocus(true);
+            f->RefreshSuggestions();
+        }
+    };
+    recipientMenu_ = std::make_shared<UltraCanvasMenu>("cRecipientMenu", 0, 0, 190, 0);
+    recipientMenu_->SetMenuType(MenuType::PopupMenu);
+    if (editRecipientContact) {
+        recipientMenu_->AddItem(MenuItemData::Action("Edit contact…", [this, address, done]() {
+            editRecipientContact(address, done);
+        }));
+    }
+    if (deleteRecipientAddress) {
+        recipientMenu_->AddItem(MenuItemData::Action("Delete address", [this, address, done]() {
+            deleteRecipientAddress(address, done);
+        }));
+    }
+    if (markRecipientSpam) {
+        recipientMenu_->AddItem(MenuItemData::Separator());
+        recipientMenu_->AddItem(MenuItemData::Action("Set as SPAM", [this, address, done]() {
+            markRecipientSpam(address, done);
+        }));
+    }
+    PopupElementSettings settings;
+    recipientMenu_->OpenMenu(event.pointerWindow, *parent_, settings);
+}
+
 Draft ComposeView::CollectDraft() const {
     Draft d = draft_;   // keep from/identity, in-reply-to, references, attachments
     if (to_)      d.to = Split(to_->GetText());
@@ -410,6 +600,13 @@ Draft ComposeView::CollectDraft() const {
     if (bcc_)     d.bcc = bccRow_ && bccRow_->IsVisible() ? Split(bcc_->GetText())
                                                        : std::vector<std::string>();
     if (subject_) d.subject = subject_->GetText();
+    d.secureMethod.clear();
+    d.sign = d.encrypt = false;
+    if (secureMethod_ && secureMethod_->GetSelectedIndex() > 0) {
+        d.sign = signBox_ && signBox_->IsChecked();
+        d.encrypt = encryptBox_ && encryptBox_->IsChecked();
+        if (d.sign || d.encrypt) d.secureMethod = secureMethod_->GetSegmentText(secureMethod_->GetSelectedIndex());
+    }
     if (formatted_ && rich_) {
         // The edited document goes out as HTML with a plain-text version.
         d.richBody = rich_->GetDocument();

@@ -1,0 +1,206 @@
+{
+  "formatVersion": 1,
+  "published": "2026-10-21",
+  "models": [
+    {
+      "id": "qwen3-4b-q4",
+      "displayName": "Qwen3 4B (Q4_K_M)",
+      "description": "A capable general chat model that answers in many languages, follows instructions and calls tools. The recommended first model for a computer with 8 GB or more.",
+      "capability": "textllm",
+      "engine": "llama-server",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "name": "Qwen3-4B-Q4_K_M.gguf",
+          "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+          "size": 2497000000
+        }
+      ],
+      "requires": {
+        "memoryBytes": 4000000000,
+        "gpuMemoryBytes": 3500000000
+      },
+      "features": {
+        "contextWindow": 32768,
+        "tools": true
+      },
+      "engineArgs": [
+        "--ctx-size",
+        "8192"
+      ],
+      "tags": [
+        "chat",
+        "tools",
+        "multilingual",
+        "recommended"
+      ]
+    },
+    {
+      "id": "qwen3-1.7b-q8",
+      "displayName": "Qwen3 1.7B (Q8_0)",
+      "description": "A small, fast chat model for a laptop or a computer without a GPU. Good for short answers, summaries and translation of simple text.",
+      "capability": "textllm",
+      "engine": "llama-server",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "name": "Qwen3-1.7B-Q8_0.gguf",
+          "url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf",
+          "size": 2170000000
+        }
+      ],
+      "requires": {
+        "memoryBytes": 3000000000,
+        "gpuMemoryBytes": 2600000000
+      },
+      "features": {
+        "contextWindow": 32768,
+        "tools": true
+      },
+      "engineArgs": [
+        "--ctx-size",
+        "8192"
+      ],
+      "tags": [
+        "chat",
+        "small",
+        "multilingual"
+      ]
+    },
+    {
+      "id": "qwen3-8b-q4",
+      "displayName": "Qwen3 8B (Q4_K_M)",
+      "description": "A stronger chat model for a computer with 16 GB of memory or a GPU with 8 GB. Better reasoning and writing than the 4B model.",
+      "capability": "textllm",
+      "engine": "llama-server",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "name": "Qwen3-8B-Q4_K_M.gguf",
+          "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf",
+          "size": 5027784384
+        }
+      ],
+      "requires": {
+        "memoryBytes": 7500000000,
+        "gpuMemoryBytes": 6500000000
+      },
+      "features": {
+        "contextWindow": 32768,
+        "tools": true
+      },
+      "engineArgs": [
+        "--ctx-size",
+        "8192"
+      ],
+      "tags": [
+        "chat",
+        "tools",
+        "multilingual"
+      ]
+    },
+    {
+      "id": "gemma-3-4b-it-q4",
+      "displayName": "Gemma 3 4B Instruct (Q4_K_M, vision)",
+      "description": "A chat model that also looks at images. Google's Gemma terms apply.",
+      "capability": "textllm",
+      "engine": "llama-server",
+      "license": "Gemma Terms of Use",
+      "files": [
+        {
+          "name": "gemma-3-4b-it-Q4_K_M.gguf",
+          "url": "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf",
+          "size": 2490000000
+        },
+        {
+          "name": "mmproj-model-f16.gguf",
+          "url": "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF/resolve/main/mmproj-model-f16.gguf",
+          "size": 851000000
+        }
+      ],
+      "requires": {
+        "memoryBytes": 5000000000,
+        "gpuMemoryBytes": 4500000000
+      },
+      "features": {
+        "contextWindow": 32768,
+        "vision": true
+      },
+      "engineArgs": [
+        "--ctx-size",
+        "8192"
+      ],
+      "tags": [
+        "chat",
+        "vision"
+      ]
+    },
+    {
+      "id": "qwen3-embedding-0.6b-q8",
+      "displayName": "Qwen3 Embedding 0.6B (Q8_0)",
+      "description": "Text embeddings for search and similarity, in many languages. 1024 dimensions.",
+      "capability": "embeddings",
+      "engine": "llama-server",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "name": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+          "url": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf",
+          "size": 640000000
+        }
+      ],
+      "requires": {
+        "memoryBytes": 1500000000,
+        "gpuMemoryBytes": 1000000000
+      },
+      "features": {
+        "contextWindow": 32768,
+        "embeddingDimensions": 1024
+      },
+      "engineArgs": [
+        "--ctx-size",
+        "8192",
+        "--pooling",
+        "last"
+      ],
+      "tags": [
+        "embeddings",
+        "multilingual",
+        "recommended"
+      ]
+    },
+    {
+      "id": "nomic-embed-text-v1.5-q8",
+      "displayName": "Nomic Embed Text v1.5 (Q8_0)",
+      "description": "A small, fast English embedding model. 768 dimensions, truncatable.",
+      "capability": "embeddings",
+      "engine": "llama-server",
+      "license": "Apache-2.0",
+      "files": [
+        {
+          "name": "nomic-embed-text-v1.5.Q8_0.gguf",
+          "url": "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q8_0.gguf",
+          "size": 146000000
+        }
+      ],
+      "requires": {
+        "memoryBytes": 600000000,
+        "gpuMemoryBytes": 300000000
+      },
+      "features": {
+        "contextWindow": 8192,
+        "embeddingDimensions": 768
+      },
+      "engineArgs": [
+        "--ctx-size",
+        "8192",
+        "--pooling",
+        "mean"
+      ],
+      "tags": [
+        "embeddings",
+        "small"
+      ]
+    }
+  ]
+}

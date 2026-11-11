@@ -4,6 +4,8 @@
 // payments and invoices. The list computes each message's facts from what it
 // already holds (flags, the needs-answer list, the sender badge, the brand
 // registry); this decides which messages a filter keeps. Headless.
+// Version: 0.2.0 - NewToday (the account bar's first counter, clicked);
+//                  MessageFacts::today; MessageFilter ==
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -23,8 +25,9 @@ enum class MessageFilterKind {
     NeedsAnswer,
     Spam,           // the sender badge says spam or scam
     SocialMedia,    // from a social network or messaging service
-    Payments        // a payment service, bank or crypto exchange, or an invoice /
+    Payments,       // a payment service, bank or crypto exchange, or an invoice /
                     // receipt / payment subject
+    NewToday        // unread and dated today - the account bar's "New today"
 };
 
 struct MessageFilter {
@@ -32,12 +35,14 @@ struct MessageFilter {
     std::string sender;      // SameSender: the address (compared case-insensitively)
 
     bool Active() const { return kind != MessageFilterKind::All; }
+    bool operator==(const MessageFilter&) const = default;
 };
 
 // What the list knows about one message, beyond its envelope.
 struct MessageFacts {
     bool unread = false;
     bool needsAnswer = false;
+    bool today = false;                         // dated since local midnight
     bool spam = false;                          // badge class Spam or Scam
     std::optional<BrandCategory> brand;         // the sender's registered service
 };

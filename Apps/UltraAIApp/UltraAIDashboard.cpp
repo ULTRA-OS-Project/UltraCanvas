@@ -1,10 +1,13 @@
 // Apps/UltraAIApp/UltraAIDashboard.cpp
+// Version: 0.3.0 - the Agents tile; six tiles a row
 // Version: 0.2.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-09
 
 #include "UltraAIDashboard.h"
 #include "UltraAIDialogs.h"
+#include "UltraAIAgentDialog.h"
 #include "UltraAIChatDialog.h"
+#include "UltraAILocalModelDialog.h"
 #include "UltraAITranslatorDialog.h"
 #include "UltraAISettingsWindow.h"
 
@@ -124,9 +127,11 @@ void UltraAIDashboard::CreateButtons() {
           [this]() { OpenMusicGenDialog(); } },
         { "code-assist",      "Code Assist",      "Write, explain and fix code",
           [this]() { OpenCodeAssistDialog(); } },
+        { "agents",           "Agents",           "Give a model a task and tools, and watch it work",
+          [this]() { OpenAgentDialog(); } },
     };
 
-    const int cols = 5;
+    const int cols = static_cast<int>(kColumns);
     for (size_t i = 0; i < entries.size(); ++i) {
         int col = static_cast<int>(i % cols);
         int row = static_cast<int>(i / cols);
@@ -167,8 +172,12 @@ void ShowServiceDialog(UltraCanvas::UltraCanvasWindow* parent, Args&&... args) {
 
 } // namespace
 
-void UltraAIDashboard::OpenSettingsDialog() {
-    UltraAISettingsWindow::Show(window_.get());
+void UltraAIDashboard::OpenSettingsDialog(UltraAISettingsWindow::Page page) {
+    UltraAISettingsWindow::Show(window_.get(), page);
+}
+
+void UltraAIDashboard::OpenLocalModelDialog() {
+    UltraAI::UltraAILocalModelDialog::Show(window_.get(), "Chat", "textllm", "", nullptr);
 }
 
 void UltraAIDashboard::OpenChatDialog() {
@@ -204,6 +213,11 @@ void UltraAIDashboard::OpenMusicGenDialog() {
 }
 void UltraAIDashboard::OpenCodeAssistDialog() {
     ShowServiceDialog<CodeAssistDialog>(window_.get());
+}
+void UltraAIDashboard::OpenAgentDialog() {
+    auto dlg = std::make_shared<UltraAIAgentDialog>();
+    dlg->CreateAgentDialog();
+    dlg->ShowModal(window_.get());
 }
 
 } // namespace UltraAIApp

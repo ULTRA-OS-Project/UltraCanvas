@@ -3,6 +3,12 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.5.4 - host ABI 4: UltraNet_ResolveProxy / UltraNet_DescribeProxy, so a
+//                  plug-in's own libcurl handles follow the proxy setting, and
+//                  UltraNet_TcpOpen / UltraNet_SocketDetach for one that is not libcurl's
+// Version: 0.5.3 - UltraNetMailMessage::rawMessage: a message sent exactly as it is
+// Version: 0.5.2 - ISshTunnelPlugin; UltraNetRemoteOptions moved to UltraNetSsh.h, with the host key
+// Version: 0.5.1 - IServiceDiscoveryPlugin (mDNS / DNS-SD advertising)
 // Version: 0.5.0 - IMailboxProtocolPlugin::WatchMailbox / StopWatching (push);
 //                  host ABI 3: SSE streaming, request cancel, the mail-message builder
 // Version: 0.4.2 - IMailboxProtocolPlugin::CreateFolder / DeleteFolder
@@ -14,6 +20,7 @@
 #include "UltraNetCore.h"
 #include "UltraNetFtp.h"      // UltraNetFtpEntry reused by IFileShareProtocolPlugin
 #include "UltraNetHttp.h"     // UltraNetHttpHeaders used by IRpcProtocolPlugin
+#include "UltraNetSsh.h"      // UltraNetRemoteOptions, the SSH tunnel
 
 #include <algorithm>
 #include <cstdint>
@@ -49,6 +56,13 @@ struct UltraNetMailMessage {
     std::vector<UltraNetMailInlinePart> inlineParts;
     std::map<std::string, std::string> headers;
     std::vector<std::pair<std::string, std::vector<uint8_t>>> attachments; // (name, bytes)
+    // A whole RFC 5322 message, sent exactly as it is when not empty: a
+    // signed or encrypted one, whose bytes nothing may rewrite. The message
+    // builder (UltraNet_MimeBuildMailMessage) returns it unchanged, so every
+    // mail plug-in sends it; `from` and to/cc/bcc still give the envelope,
+    // and the fields above the content are then not used. Appended last, as
+    // fields of this struct are.
+    std::string rawMessage;
 };
 
 // How a mail session signs in at the server - the "authentication method" of a
@@ -63,7 +77,7 @@ enum class UltraNetMailAuth {
     OAuth2,             // SASL XOAUTH2 / OAUTHBEARER with credentials.token
     Kerberos,           // SASL GSSAPI (the system's Kerberos ticket)
     NTLM,               // SASL NTLM
-    None                // no sign-in: the credentials are not sent (an SMTP relay
+    NoAuth              // no sign-in: the credentials are not sent (an SMTP relay
                         // that trusts the network, an IMAP PREAUTH greeting)
 };
 
@@ -88,16 +102,6 @@ struct UltraNetMessagingOptions {
     int connectTimeoutMs = 10000;
 };
 
-struct UltraNetRemoteOptions {
-    UltraNetCredentials credentials;
-    std::vector<uint8_t> privateKeyPem;
-    std::string privateKeyPassword;
-    int connectTimeoutMs = 10000;
-    int idleTimeoutMs = 0;              // 0 = no idle timeout
-    bool requestPty = false;
-    std::string term;                   // e.g. "xterm-256color"
-};
-
 struct UltraNetDirectoryQuery {
     std::string baseDn;
     std::string filter;
@@ -110,6 +114,15 @@ struct UltraNetDirectoryQuery {
 struct UltraNetDirectoryEntry {
     std::string dn;
     std::map<std::string, std::vector<std::string>> attributes;
+};
+
+// A service this program offers, announced on the local network (mDNS /
+// DNS-SD) until it is withdrawn.
+struct UltraNetServiceAdvertisement {
+    std::string              serviceType;    // "_chatcube._tcp"
+    std::string              instanceName;   // shown to people; a clash is renamed ("Alice #2")
+    int                      port = 0;
+    std::vector<std::string> txt;            // "key=value" records, each at most 255 bytes
 };
 
 struct UltraNetStreamOptions {
@@ -173,7 +186,7 @@ public:
 
 // IMAP system flags as a bitfield.
 enum class UltraNetMailFlags : uint32_t {
-    None     = 0,
+    NoFlags     = 0,
     Seen     = 1u << 0,   // \Seen
     Answered = 1u << 1,   // \Answered
     Flagged  = 1u << 2,   // \Flagged
@@ -214,7 +227,7 @@ struct UltraNetMailEnvelope {
     std::vector<std::string> to;
     std::vector<std::string> cc;
     std::string date;                     // raw Date header
-    UltraNetMailFlags flags = UltraNetMailFlags::None;
+    UltraNetMailFlags flags = UltraNetMailFlags::NoFlags;
     uint32_t size = 0;                    // RFC822.SIZE, if known
 };
 
@@ -486,6 +499,15 @@ public:
         int& outExitCode) = 0;
 };
 
+// SSH local port forwarding (UltraNetSsh.h): reach it by dynamic_cast from
+// the "ssh" plug-in; UltraNet_OpenSshTunnel does.
+class ISshTunnelPlugin : public IRemoteAccessPlugin {
+public:
+    virtual UltraNetResult OpenTunnel(const UltraNetSshTunnelOptions& options, UltraNetHandle& outHandle,
+                                      UltraNetSshTunnelInfo& outInfo) = 0;
+    virtual UltraNetResult CloseTunnel(UltraNetHandle handle) = 0;
+};
+
 // LDAP.
 class IDirectoryProtocolPlugin : public IUltraNetPlugin {
 public:
@@ -493,6 +515,18 @@ public:
         const std::string& url,
         const UltraNetDirectoryQuery& query,
         std::vector<UltraNetDirectoryEntry>& outEntries) = 0;
+};
+
+// mDNS / DNS-SD: browsing is the directory Search above (baseDn = the
+// service type); this adds announcing a service of our own. Reach it by
+// dynamic_cast from the "mdns" plug-in. An advertisement stays up -
+// renamed on a name clash, re-announced when the system's responder
+// restarts - until StopAdvertising or the plug-in shuts down.
+class IServiceDiscoveryPlugin : public IDirectoryProtocolPlugin {
+public:
+    virtual UltraNetResult Advertise(const UltraNetServiceAdvertisement& advertisement,
+                                     UltraNetHandle& outHandle) = 0;
+    virtual UltraNetResult StopAdvertising(UltraNetHandle handle) = 0;
 };
 
 // RTSP / RTMP / RTP.
@@ -598,6 +632,10 @@ std::vector<std::shared_ptr<IUltraNetPlugin>> UltraNet_GetAllPlugins();
 // Loads plug-in DSOs from UltraNet_GetPluginDirectory(). Idempotent.
 void UltraNet_RefreshPlugins();
 
+// The folder plug-ins are loaded from (UTF-8). Until it is set, it is
+// Plugins/UltraNet beside the executable, or one or two folders above it,
+// whichever holds a plug-in - never the working directory, unless the
+// executable's own path is unknown.
 std::string UltraNet_GetPluginDirectory();
 void        UltraNet_SetPluginDirectory(const std::string& path);
 
@@ -642,11 +680,16 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 //        format), UltraNet_SseStreamAsync / CancelRequest / IsRequestActive
 //        (the JMAP plug-in's push). The shim refuses an older host: a plug-in
 //        built from this tree calls them.
-constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 3;
+// ABI 4: + UltraNet_ResolveProxy / UltraNet_DescribeProxy: the proxy every
+//        libcurl handle a plug-in opens connects through (UltraNetCurlProxy.h);
+//        UltraNet_TcpOpen / UltraNet_SocketDetach: a connection made through
+//        it for a library that runs its own protocol (the SSH plug-in).
+constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 4;
 
 struct UltraNetUrlComponents;
 struct UltraNetMimeBuildInput;
 struct UltraNetSseEvent;
+struct UltraNetSocketOptions;
 
 struct UltraNetPluginHost {
     int abiVersion;            // == ULTRANET_PLUGIN_HOST_ABI_VERSION of the host
@@ -674,6 +717,14 @@ struct UltraNetPluginHost {
                                      std::function<void(const UltraNetResult&)> onComplete);
     UltraNetResult (*CancelRequest)(UltraNetHandle handle);
     bool           (*IsRequestActive)(UltraNetHandle handle);
+
+    // ---- ABI 4 ----------------------------------------------------------
+    UltraNetProxyConfig (*ResolveProxy)(const std::string& url,
+                                        const UltraNetProxyConfig& requested);
+    std::string    (*DescribeProxy)(const UltraNetProxyConfig& proxy);
+    UltraNetResult (*TcpOpen)(const std::string& host, int port,
+                              const UltraNetSocketOptions& options, UltraNetHandle& outHandle);
+    std::intptr_t  (*SocketDetach)(UltraNetHandle handle);
 };
 
 // The table this host hands to every plug-in it loads - for tests, and for a

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailOAuthCodeDialog.cpp
+// Version: 0.3.0 - a header (globe tile, "Sign in with ..."); Continue carries
+//                  an icon
 // Version: 0.2.0 - accepts the redirect address as well as the bare code
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -38,7 +40,7 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
     DialogConfig config;
     config.title      = "Sign in with " + providerName;
     config.width      = 440;
-    config.height     = 260;
+    config.height     = 270;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -58,17 +60,15 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                    .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto intro = CreateLabel("oauthCodeIntro", 0, 0, 400, 120,
+    auto header = Theme::MakeDialogHeader("oauthCodeHeader", "globe",
+        "Sign in with " + providerName,
         "Your browser has opened " + providerName + "'s sign-in page. Sign in as "
         + email + " and allow UltraMail to read and send your mail. " + providerName
         + " will then show an authorization code — copy it and paste it here. If the "
         "browser lands on a page that cannot be reached instead, copy the whole address "
-        "from its address bar and paste that.");
-    intro->SetWrap(TextWrap::WrapWord);
-    intro->SetFontSize(Theme::kSizeBody);
-    intro->SetTextColor(Theme::kTextSecondary);
-    content->AddChild(intro);
-    intro->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        "from its address bar and paste that.", 96.0f);
+    header->SetMargin(0, 0, 4, 0);
+    content->AddChild(header);
 
     auto row = CreateContainer("oauthCodeRow", 0, 0, 0, Theme::kControlHeight);
     row->layout.SetFlexRow()
@@ -105,6 +105,8 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
     auto okBtn = CreateButton("oauthCodeOk", 0, 0, 140, Theme::kControlHeight, "Continue");
     Theme::FitToLabel(okBtn, 140);
     Theme::StylePrimary(okBtn);
+    Theme::SetButtonIcon(okBtn, "arrow-right");
+    okBtn->SetIconPosition(ButtonIconPosition::Right);   // it leads on
     okBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(okBtn);
 

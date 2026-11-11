@@ -1,0 +1,25 @@
+# The UltraAI model server (Server/UltraAIModelServer): its tests, on every
+# change to it or to the framework's built-in gallery data it is seeded from.
+# Pure Python, no system packages.
+name: UltraAI model server
+
+on:
+  push:
+    branches: [main]
+    paths: ['Server/UltraAIModelServer/**', 'UltraAI/runtime/src/LocalRuntimeBuiltinData.cpp', '.github/workflows/ultraai-model-server.yml']
+  pull_request:
+    paths: ['Server/UltraAIModelServer/**', 'UltraAI/runtime/src/LocalRuntimeBuiltinData.cpp', '.github/workflows/ultraai-model-server.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: Server/UltraAIModelServer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[test]'
+      - run: python -m pytest -q

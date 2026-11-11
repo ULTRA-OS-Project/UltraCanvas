@@ -1,5 +1,6 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
+// Version: 1.10.0 - SetSurfacePreview: a palette swatch hovered floods the surface
 // Version: 1.9.0 - SetShowBackgroundColor: a foreground-only picker
 // Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
 //                  the HSV/HSL/RGB tabs collapse with the channel sliders;
@@ -12,7 +13,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -24,6 +25,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -64,6 +66,7 @@ namespace UltraCanvas {
             : UltraCanvasContainer(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
         previousColor = GetColor();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasColorPicker::~UltraCanvasColorPicker() {
@@ -171,7 +174,7 @@ namespace UltraCanvas {
             item.tooltip = ModelTooltip(static_cast<ColorPickerModel>(i));
             modelDropdown->AddItem(item);
         }
-        modelDropdown->SetAccessibleName("Colour model");
+        modelDropdown->SetAccessibleName(Tr("Colour model"));
         // Raw `this`: the dropdown is our own child.
         modelDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
             if (index >= 0 && index < 3) SetModel(static_cast<ColorPickerModel>(index));
@@ -255,8 +258,8 @@ namespace UltraCanvas {
         styleSelector->AddItem("Colour slider + square", "bar", NormalizePath(icons + "bar.svg"));
         styleSelector->AddItem("Colour rectangle", "field", NormalizePath(icons + "field.svg"));
         styleSelector->AddItem("Colour + brightness sliders", "sliders", NormalizePath(icons + "sliders.svg"));
-        styleSelector->SetTooltip("Colour picker design");
-        styleSelector->SetAccessibleName("Colour picker design");
+        styleSelector->SetTooltip(Tr("Colour picker design"));
+        styleSelector->SetAccessibleName(Tr("Colour picker design"));
         // Raw `this`: the selector is our own child.
         styleSelector->onSelectionChanged = [this](int index, const DropdownItem&) {
             if (index < 0 || index >= SelectorStyleCount) return;
@@ -369,6 +372,19 @@ namespace UltraCanvas {
         if (!show && editingBackground) EndBackgroundEdit();
         showBackground = show;
         hoverSwatch = HoverSwatch::NoneSwatch;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetSurfacePreview(const Color& c) {
+        if (surfacePreviewActive && surfacePreview == c) return;
+        surfacePreviewActive = true;
+        surfacePreview = c;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::ClearSurfacePreview() {
+        if (!surfacePreviewActive) return;
+        surfacePreviewActive = false;
         RequestRedraw();
     }
 
@@ -1346,6 +1362,7 @@ namespace UltraCanvas {
         Color surface = style.backgroundColor;
         if (hoverSwatch == HoverSwatch::Foreground)      { surface = GetColor();     surface.a = 255; }
         else if (hoverSwatch == HoverSwatch::Background) { surface = previousColor;  surface.a = 255; }
+        else if (surfacePreviewActive)                   { surface = surfacePreview; surface.a = 255; }
         ctx->SetFillPaint(surface);
         ctx->FillRectangle(Rect2Dd(0, 0, GetWidth(), GetHeight()));
 
@@ -2210,4 +2227,25 @@ namespace UltraCanvas {
         return true;
     }
 
+
+// ===== THE THEME =====
+    ColorPickerStyle ColorPickerStyle::FromTheme(const UltraCanvasTheme& theme, const ColorPickerStyle& base) {
+        ColorPickerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.backgroundColor = r.panel;
+        s.panelColor = r.raised;
+        s.borderColor = r.line;
+        s.textColor = r.ink;
+        s.mutedTextColor = r.inkMuted;
+        s.fieldColor = r.well;
+        s.fieldBorderColor = r.lineStrong;
+        s.accentColor = r.accent;
+        // the element's own roles: the markers keep their contrast pair unless a theme names another
+        s.markerColor = theme.Role("color-picker.marker", base.markerColor);
+        s.markerOutline = theme.Role("color-picker.marker-outline", base.markerOutline);
+        return s;
+    }
 } // namespace UltraCanvas

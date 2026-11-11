@@ -1,3 +1,217 @@
+#### 2026-11-09 *0.8.15*
+- **Several drawings in one window, in tabs.** A tab strip over the canvas
+  holds one drawing per tab, each with its own page, view, selection, undo
+  history, icon mode and file. New, New Icon, the strip's **+**, Open, a
+  file dropped on the canvas, more files on the command line and the files a
+  second start hands over all open a tab instead of a window; Open takes the
+  place of an untouched new drawing, and a drawing open already comes
+  forward. File > Close Tab (Ctrl+W, or the tab's x) asks first for an
+  unsaved drawing, Ctrl+Tab / Ctrl+Shift+Tab move between tabs, a dot on a
+  tab marks unsaved changes, and closing the window or quitting asks once for
+  all of them. New and Open no longer ask to discard the drawing shown, since
+  it stays open. File > New Window still opens another window.
+
+#### 2026-11-05 *0.8.14*
+- **ArtCreator takes the Image base set.** Its catalogue names `Image` under
+  `@bases`, as the localisation proposal's Appendix B assigns it, so a text
+  of image editing it shows comes in the shared Image vocabulary of every
+  language rather than a wording of its own.
+
+#### 2026-11-05 *0.8.13*
+- **The Text tool in every language.** ArtCreator's own catalogue
+  (`media/locale/<lang>/ArtCreator.json`) now exists in all thirty
+  languages: the Text tool's status-line hints and its undo steps ("Undo
+  Text Bold", "Undo Letter Spacing" ...) showed in English whatever the
+  language.
+
+#### 2026-11-04 *0.8.12*
+- **Selected words take a letter spacing and a colour of their own.** While a
+  text is typed on the page, the text bar's letter spacing and the fill colour
+  (picked in the colour panel) go to the selected words only, as the font, the
+  size and bold already did; with nothing selected they still change the whole
+  text. The drawing keeps both per word, and the colour panel shows the colour
+  of the words at the caret.
+- **A size typed into the text bar no longer changes the whole text.** Typing
+  in the size field (or Ctrl+A in it) ran the window's shortcuts, which
+  finished the text first, so the size went to all of it. The keys now stay in
+  the field, Escape there gives them back to the text, and the selected words
+  take the size.
+
+#### 2026-11-03 *0.8.11*
+- **Text is typed on the page, not in a window.** The Text tool's click
+  puts a caret where the text starts, and the words appear there as they
+  are typed - in the text's font, size, style, fill colour, alignment and
+  spacing, at the canvas's zoom, following it as the view zooms or scrolls -
+  inside a dashed frame. Enter starts a new line (each line is a span on its
+  own baseline, so the drawing and its SVG keep them). Escape, Ctrl+Enter, a
+  click outside, another tool or any command that changes the drawing
+  finishes it, as one undo step (*Text*, or *Edit Text*); the editor's own
+  Ctrl+Z takes back typing until then. The Text dialog is gone.
+- **Click a text to edit it in place** with the Text tool, or double-click it
+  with the Selector (which used to do nothing on a text). The text is left
+  out of the drawing while its words are typed over it; emptied, it is
+  deleted. A text looked at and not changed adds no undo step.
+- **The text bar.** While the Text tool is active, the bar under the toolbar
+  sets a text's **font** (every family installed, not three; type its first
+  letters to find one), **size**, **bold**, **italic**, **underline**,
+  **strikethrough**, **alignment** (the lines start at, centre on or end at
+  the text's point), **line spacing** (% of the size) and **letter spacing**
+  (points between letters, below 0 closer). While a text is typed, the
+  first six go to the selected words - spans of their own - or, with none
+  selected, to the whole text; the others always to the whole text. With no
+  text being typed they go to the selected texts, as one undo step, and are
+  what the next new text starts in. The bar shows what is at the caret.
+  It replaces the Text tool's card in the right panel.
+- A colour picked while a text is typed colours that text. Zooming while
+  typing (Ctrl+wheel over the words, or the View commands) keeps the keys
+  with the text.
+- The text bar is the framework's `UltraCanvasTextFormatBar`, shared with
+  UltraPaint and UltraVideo, and its **Font list shows each font in itself**.
+
+#### 2026-11-03 *0.8.10*
+- **Fit Page Width** on the toolbar's Zoom group, between Fit Page and
+  Actual Size, in the View menu and on Ctrl+2: the page's width fills the
+  window, and the part of the page in the middle of the view stays there,
+  so a tall page can be worked on at a readable size. A new icon,
+  `zoom-width.svg`, drawn on the 24 px and 16 px grids. A toolbar the user
+  customised gets the button too, after Fit Page.
+
+#### 2026-11-02 *0.8.9*
+- **Customise the menus and toolbars.** Every command is registered once
+  (`ArtCreatorCommands.cpp`) and the menu bar, the toolbar, the tool palette
+  and the keyboard are built from it, so a command has one label, icon,
+  shortcut and state everywhere. Undo / Redo name their step and are greyed
+  with nothing to undo - in the menu too, which never was - and what needs a
+  selection is greyed without one.
+- **Right-click the toolbar or the palette** to show or hide its groups -
+  the toolbar offers Edit, Align, Distribute, Combine, Layer, Line, Guides
+  and Snap besides the six it shows - to fold a group into one button, or to
+  hide a command; View > Toolbars offers the same. **View > Customise Menus
+  and Toolbars** edits the menu bar, the toolbar and the palette in one
+  editor. The arrangement is kept in the settings folder (`menus.txt`,
+  `settings.json`). A toolbar wider than the window puts what does not fit
+  into a chevron's menu.
+- **24 more toolbar icons**, drawn on the 24 px grid: Save As, Export,
+  Document Setup, New Icon, Quit, About, Rulers, Guides, Clear Guides, the
+  four snaps and Snap to Pixels, Show / Hide Layer, Remove ClipView, and the
+  line widths. A command's icon on the toolbar was its 16 px menu drawing
+  scaled up, which blurs.
+- A version that adds a menu command shows it to a user who customised the
+  menus too: `menus.txt` records ArtCreator's commands and is merged with the
+  next version's menus.
+
+#### 2026-10-30 *0.8.8*
+- **Ctrl+Shift+S showed *Convert to Editable Shapes* in the Arrange menu but
+  ran *Save As*.** Save As keeps Ctrl+Shift+S, as the File menu says;
+  Convert to Editable Shapes is Ctrl+Shift+C now, in the menu and on the
+  keyboard (Inkscape's key for Object to Path).
+- The panels' icon bars space their groups with the toolbar's new
+  `groupSpacing` instead of spacers around each divider; they look as before.
+
+#### 2026-10-29 *0.8.7*
+- **A rotation handle.** The Selector's Rotate handles (a second click on the
+  selection) now show where the selection turns about and how far it is
+  turned: a handle starts at the rotation centre and points along the
+  object's angle. Drag its knob to turn the selection; Ctrl holds it to 15°
+  angles. The *Handles* section of the Selector's options chooses its look -
+  a **dial** of degree ticks round the centre (the default) or a **stem** to
+  just beyond the frame - and keeps it (`handles.rotation` in `config.ini`).
+- **One object's own turned frame.** In Rotate mode a single object's frame
+  and handles turn with it instead of standing upright around it. While the
+  selection turns, the frame and the other handles disappear and only the
+  object, the centre and the rotation handle show; the status line reads the
+  angle and the turn so far.
+- **The rotation centre in the transform bar.** While the Rotate handles show,
+  the bar's right end holds the centre's X and Y and a reference point picker:
+  its nine points put the centre on a corner, the middle of an edge or the
+  middle of the frame, and a centre dragged anywhere else shows as a ring
+  pointing its way. The button in front of the fields switches them between
+  the centre's place on the page and how far it lies from the middle of the
+  selection (`transform.centre` in `config.ini`). Typed rotation and shear
+  turn about that centre while the Rotate handles show.
+- **The skew handles lean along the object's own edges.** The diamond
+  handles of the Rotate frame used to skew along the page's horizontal and
+  vertical, whatever the object's angle. Now the top and bottom handles slide
+  along the object's top edge and the side handles along its sides, about the
+  rotation centre, and the dragged handle stays under the pointer.
+- A moved rotation centre now goes with the selection when it is dragged or
+  moved from the bar, and stays after a typed change to the same objects.
+- Every field of the transform bar is one width, top and bottom row, and a
+  held arrow steps the value again and again - 1° or 1 mm (1 px in icon mode)
+  at a time - as one undo step.
+- **An object's size includes its line.** The selection's box ran down the
+  middle of a line, so a thick line stood out past the handles, and the
+  transform bar's W and H, the handles' scaling, Align and Distribute measured
+  the object without it. They now measure what is drawn: a 160 x 90 pt
+  rectangle with a 14 pt line is 174 x 104 pt.
+- **The marquee measures lines by their width.** Dragging a box round a thick
+  line used to select it as soon as the box held the line's middle, even when
+  it cut through the line itself; it now has to hold all of the line, as it
+  is drawn.
+- **Copying a selection as a picture keeps wide lines and far shadows.** A
+  line much wider than its object, or a shadow cast far from it, was cut off
+  at the picture's edge (framework: `RasterizeVectorElements`).
+- **Two windows no longer undo each other's settings.** Each window kept the
+  settings it read when it opened and wrote all of them back on any change,
+  so changing the colour picker in one window put back, say, the rotation
+  handle another window had just changed. A change is now made to the file as
+  it is at that moment (`ArtCreatorSettings::Update`), whether the other
+  window is in the same ArtCreator or another one, and the file is written
+  through a temporary file and a rename, so it is never read half-written.
+
+#### 2026-10-27 *0.8.6*
+- **The toolbar's *Quality* slider sat below its caption and value.** It now
+  sits on their line, with the framework's slider centring a bar that shows
+  no value.
+
+#### 2026-10-25 *0.8.5*
+- **The Palette manager.** The "+" under the colour palettes opens a window
+  with a title bar to drag it by; *Add palette* at its foot makes a palette
+  of your own - a name and the colours picked for it - kept under *My
+  palettes* between starts (`picker.userpalettes`) and added as a row.
+- **A palette swatch under the pointer floods the colour picker and the
+  palette rows with its colour**, as the picker's own foreground and
+  background swatches do.
+- The small palettes have more colours, so each fills its row; a 256-colour
+  one is eight full lines. Game Boy, PICO-8 and VGA 16 are gone from the
+  list.
+
+#### 2026-10-23 *0.8.4*
+- **The Selector's sections in boxes of their own**: Handles, Arrange,
+  Align and Distribute are each a rounded, lightly filled frame with a
+  small, regular-weight grey caption in its top line at the right, in place
+  of the bold captions over bare rows.
+- **Handles: Scale and Rotate with icons**, white on the lit segment; the
+  switch reads *Rotate* (its edge handles still skew).
+- The icon bars (and the Layers card's) have 2 px less above and below the
+  buttons.
+
+#### 2026-10-22 *0.8.3*
+- **The Selector's panel, redrawn.** *Handles* is a Scale | Rotate / skew
+  switch that shows which handles are up and follows a second click on the
+  selection. *Arrange* (front, forward, backward, back), *Align* (left,
+  centre, right | top, middle, bottom | centre on page) and the new
+  *Distribute* (centres evenly | equal gaps) are rows of flat icon buttons
+  with tooltips, the menu's icons, instead of two rows of text buttons
+  each; each is greyed until the selection has enough objects (one, two,
+  three). The panel's Arrange and Align now keep the selection afterwards,
+  as the menu's do.
+- **Quieter section captions and even button rows in every tool's
+  options**: a caption is the card caption's grey with a little space above
+  it, and the text buttons of a row (Shape Editor's node types, the effect
+  tools' Remove / Apply ...) are equally wide and rounded.
+- The Layers card's buttons are the same icon bar.
+- **New Drawing, Document Setup and Text look like the right panel**: their
+  fields sit on a white card over the light section page, in one column of
+  equal width, with the buttons at the foot. New Drawing / Document Setup
+  puts width x height on one line, makes the unit (mm cm in pt px) and the
+  orientation segmented switches, and opens on the preset the page matches
+  (an A4 page used to show *Custom*). The Text dialog puts Bold and Italic
+  side by side and previews the text in the chosen font, weight and slant.
+- **The Text dialog opens ready to type**: its text field has the keyboard
+  (and the previous text, if any, selected), where it used to need a click
+  first.
+
 #### 2026-10-19 *0.8.2*
 - **Colour palettes under the picker**, as UltraPaint's: the row of swatches
   in the Colour card ends in a small **+** that opens a gallery of colour

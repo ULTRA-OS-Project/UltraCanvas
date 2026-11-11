@@ -19,6 +19,7 @@ set(EMAILCLEANER_TEST_SOURCES
     test_overrides.cpp
     test_attachments.cpp
     test_accounts.cpp
+    test_contacts.cpp
 )
 
 add_executable(EmailCleanerEngineTests ${EMAILCLEANER_TEST_SOURCES})

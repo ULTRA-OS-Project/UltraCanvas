@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
 // Population Chart demonstration examples
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the two
+//                  pyramids in cards side by side while they fit, the
+//                  statistics in a card whose text wraps
 // Version: 1.0.0
-// Last Modified: 2025-01-19
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasPopulationChart.h"
 #include "UltraCanvasLabel.h"
 #include <memory>
@@ -12,30 +16,22 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePopulationChartExamples() {
-        // Create main container
-        auto container = std::make_shared<UltraCanvasContainer>("PopulationChartContainer", 0, 0, 1000, 780);
+        auto container = DemoKit::CreatePage("PopulationChartContainer",
+                Tr("Population Pyramid Charts - Germany vs Russia Comparison"),
+                Tr("Demographic comparison showing age and gender distribution (Data: 2024-2025)"));
 
-        // Title Label
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 960, 30);
-        titleLabel->SetText("Population Pyramid Charts - Germany vs Russia Comparison");
-        titleLabel->SetFontSize(18);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        titleLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(titleLabel);
-
-        // Description Label
-        auto descLabel = std::make_shared<UltraCanvasLabel>("DescLabel", 20, 45, 960, 20);
-        descLabel->SetText("Demographic comparison showing age and gender distribution (Data: 2024-2025)");
-        descLabel->SetFontSize(12);
-        descLabel->SetTextColor(Color(100, 100, 100));
-        descLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(descLabel);
+        // The two pyramids side by side; a card is never narrower than its
+        // chart, so on a narrow page the second one moves under the first.
+        const float chartCardW = 480 + 2 * DemoKit::kCardPadding + 2;
+        auto chartRow = DemoKit::AddRow(container, "PopulationChartRow");
+        auto germanyCard = DemoKit::AddCard(chartRow, "GermanyCard", "", "", chartCardW);
+        auto russiaCard = DemoKit::AddCard(chartRow, "RussiaCard", "", "", chartCardW);
 
         // ===== GERMANY POPULATION CHART =====
-        auto germanyChart = std::make_shared<UltraCanvasPopulationChart>("GermanyChart", 20, 75, 480, 640);
-        germanyChart->SetTitle("Germany");
+        auto germanyChart = std::make_shared<UltraCanvasPopulationChart>("GermanyChart", 0, 0, 480, 640);
+        germanyChart->SetTitle(Tr("Germany"));
         germanyChart->SetSubtitle("2024");
-        germanyChart->SetAxisLabel("Population (millions)");
+        germanyChart->SetAxisLabel(Tr("Population (millions)"));
         germanyChart->SetMaxAxisValue(4.0);
 
         // Configure colors
@@ -76,22 +72,22 @@ namespace UltraCanvas {
         germanyChart->SetAverageAgeLineColors(Color(30, 80, 160), Color(170, 40, 80));
 
         // Add legend
-        germanyChart->AddLegendItem("Males", Color(100, 150, 200));
-        germanyChart->AddLegendItem("Male surplus", Color(70, 110, 160));
-        germanyChart->AddLegendItem("Females", Color(220, 120, 140));
-        germanyChart->AddLegendItem("Female surplus", Color(190, 90, 110));
-        germanyChart->AddLegendLineItem("Avg age males", Color(30, 80, 160));
-        germanyChart->AddLegendLineItem("Avg age females", Color(170, 40, 80));
+        germanyChart->AddLegendItem(Tr("Males"), Color(100, 150, 200));
+        germanyChart->AddLegendItem(Tr("Male surplus"), Color(70, 110, 160));
+        germanyChart->AddLegendItem(Tr("Females"), Color(220, 120, 140));
+        germanyChart->AddLegendItem(Tr("Female surplus"), Color(190, 90, 110));
+        germanyChart->AddLegendLineItem(Tr("Avg age males"), Color(30, 80, 160));
+        germanyChart->AddLegendLineItem(Tr("Avg age females"), Color(170, 40, 80));
         germanyChart->EnableLegend(true);
         germanyChart->SetLegendPosition("top-right");
 
-        container->AddChild(germanyChart);
+        DemoKit::AddFixed(germanyCard, germanyChart);
 
         // ===== RUSSIA POPULATION CHART =====
-        auto russiaChart = std::make_shared<UltraCanvasPopulationChart>("RussiaChart", 510, 75, 480, 640);
-        russiaChart->SetTitle("Russia");
+        auto russiaChart = std::make_shared<UltraCanvasPopulationChart>("RussiaChart", 0, 0, 480, 640);
+        russiaChart->SetTitle(Tr("Russia"));
         russiaChart->SetSubtitle("2024");
-        russiaChart->SetAxisLabel("Population (millions)");
+        russiaChart->SetAxisLabel(Tr("Population (millions)"));
         russiaChart->SetMaxAxisValue(7.0);
 
         // Configure colors (same as Germany for comparison)
@@ -132,31 +128,28 @@ namespace UltraCanvas {
         russiaChart->SetAverageAgeLineColors(Color(30, 80, 160), Color(170, 40, 80));
 
         // Add legend
-        russiaChart->AddLegendItem("Males", Color(100, 150, 200));
-        russiaChart->AddLegendItem("Male surplus", Color(70, 110, 160));
-        russiaChart->AddLegendItem("Females", Color(220, 120, 140));
-        russiaChart->AddLegendItem("Female surplus", Color(190, 90, 110));
-        russiaChart->AddLegendLineItem("Avg age males", Color(30, 80, 160));
-        russiaChart->AddLegendLineItem("Avg age females", Color(170, 40, 80));
+        russiaChart->AddLegendItem(Tr("Males"), Color(100, 150, 200));
+        russiaChart->AddLegendItem(Tr("Male surplus"), Color(70, 110, 160));
+        russiaChart->AddLegendItem(Tr("Females"), Color(220, 120, 140));
+        russiaChart->AddLegendItem(Tr("Female surplus"), Color(190, 90, 110));
+        russiaChart->AddLegendLineItem(Tr("Avg age males"), Color(30, 80, 160));
+        russiaChart->AddLegendLineItem(Tr("Avg age females"), Color(170, 40, 80));
         russiaChart->EnableLegend(true);
         russiaChart->SetLegendPosition("top-right");
 
-        container->AddChild(russiaChart);
+        DemoKit::AddFixed(russiaCard, russiaChart);
 
         // ===== STATISTICS PANEL =====
-        auto statsLabel = std::make_shared<UltraCanvasLabel>("StatsLabel", 20, 720, 960, 20);
-        statsLabel->SetText("Key Statistics: Germany (83.6M, 49.1% M / 50.9% F, Median Age 45.5) | Russia (144M, 46.4% M / 53.6% F, Median Age 40.3)");
+        auto statsCard = DemoKit::AddCard(container, "PopulationStatsCard");
+        auto statsLabel = DemoKit::AddText(statsCard, "StatsLabel",
+                Tr("Key Statistics: Germany (83.6M, 49.1% M / 50.9% F, Median Age 45.5) | "
+                "Russia (144M, 46.4% M / 53.6% F, Median Age 40.3)"));
         statsLabel->SetFontSize(11);
         statsLabel->SetTextColor(Color(60, 60, 60));
-        statsLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(statsLabel);
 
-        auto insightsLabel = std::make_shared<UltraCanvasLabel>("InsightsLabel", 20, 740, 960, 20);
-        insightsLabel->SetText("Notable: Russia has 72% more population but Germany has older age structure. Russia shows significant female surplus in 30+ age groups.");
-        insightsLabel->SetFontSize(10);
-        insightsLabel->SetTextColor(Color(80, 80, 80));
-        insightsLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(insightsLabel);
+        DemoKit::AddCaption(statsCard, "InsightsLabel",
+                Tr("Notable: Russia has 72% more population but Germany has older age structure. "
+                "Russia shows significant female surplus in 30+ age groups."));
 
         return container;
     }

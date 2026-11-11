@@ -1,7 +1,8 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
+// Version: 2.11.0 - the analog clock's hands, ticks, rim and numbers in settable colours
 // Version: 2.10.0
-// Last Modified: 2026-07-02
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 // V2.10.0 changelog: LinearBar low-value fixes and warnings:
 //   - The fill pill keeps the bar's full corner radius at every value: it
@@ -346,6 +347,19 @@ void UltraCanvasGaugeDiagramElement::SetTextColor(const Color& c) { textColor = 
 
 void UltraCanvasGaugeDiagramElement::AddRange(const GaugeRangeSegment& range) {
     ranges.push_back(range); RequestRedraw();
+}
+
+void UltraCanvasGaugeDiagramElement::SetClockHandColor(const Color& c) {
+    clockHandColor = c;
+    clockMinuteHandColor = c;
+    RequestRedraw();
+}
+
+void UltraCanvasGaugeDiagramElement::SetClockTickColor(const Color& c) {
+    clockTickColor = c;
+    clockRimColor = c;
+    clockLabelColor = c;
+    RequestRedraw();
 }
 void UltraCanvasGaugeDiagramElement::ClearRanges() { ranges.clear(); RequestRedraw(); }
 
@@ -1451,21 +1465,21 @@ void UltraCanvasGaugeDiagramElement::RenderAnalogClock(
 
     ctx->SetFillPaint(bgColor);
     ctx->FillCircle(center, radius + 4.0f);
-    ctx->SetStrokePaint(Color(200, 200, 215, 255));
+    ctx->SetStrokePaint(clockRimColor);
     ctx->SetStrokeWidth(1.0f);
     ctx->DrawCircle(center, radius);
 
     ctx->SetFontFamily("Sans");
     ctx->SetFontSize(12.0f);
     ctx->SetFontWeight(FontWeight::Normal);
-    ctx->SetTextPaint(Color(100, 100, 115, 255));
+    ctx->SetTextPaint(clockLabelColor);
 
     for (int h = 1; h <= 12; h++) {
         double deg = h * 30.0 - 90.0;
         double rad = deg * M_PI / 180.0;
         float innerR = radius - 10.0f;
         float outerR = radius - 2.0f;
-        ctx->SetStrokePaint(Color(180, 180, 195, 220));
+        ctx->SetStrokePaint(clockTickColor);
         ctx->SetStrokeWidth(1.2f);
         ctx->SetLineCap(LineCap::Round);
         ctx->ClearPath();
@@ -1496,7 +1510,7 @@ void UltraCanvasGaugeDiagramElement::RenderAnalogClock(
 
     double hourAngle = (hour + minute / 60.0) * 30.0 - 90.0;
     double hourRad = hourAngle * M_PI / 180.0;
-    ctx->SetStrokePaint(Color(60, 60, 75, 255));
+    ctx->SetStrokePaint(clockHandColor);
     ctx->SetStrokeWidth(3.0f);
     ctx->SetLineCap(LineCap::Round);
     ctx->ClearPath();
@@ -1508,7 +1522,7 @@ void UltraCanvasGaugeDiagramElement::RenderAnalogClock(
 
     double minAngle = minute * 6.0 - 90.0;
     double minRad = minAngle * M_PI / 180.0;
-    ctx->SetStrokePaint(Color(80, 80, 95, 255));
+    ctx->SetStrokePaint(clockMinuteHandColor);
     ctx->SetStrokeWidth(1.8f);
     ctx->ClearPath();
     ctx->MoveTo(center.x, center.y);
@@ -1528,7 +1542,7 @@ void UltraCanvasGaugeDiagramElement::RenderAnalogClock(
         static_cast<float>(center.y + (radius * 0.82f) * std::sin(secRad)));
     ctx->Stroke();
 
-    ctx->SetFillPaint(Color(60, 60, 75, 255));
+    ctx->SetFillPaint(clockHandColor);
     ctx->FillCircle(center, 3.0f);
     ctx->SetFillPaint(Color(220, 60, 60, 255));
     ctx->FillCircle(center, 1.5f);

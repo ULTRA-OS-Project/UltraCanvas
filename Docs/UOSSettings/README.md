@@ -8,10 +8,13 @@ that belong to the system rather than to one application. It ships as
 (`-DBUILD_UOS_SETTINGS=ON`, the default). Its version is the first line of
 `Docs/UOSSettings/CHANGELOG.md` and shows in the window title.
 
-The window is laid out like UltraFiler's settings: a tree of pages on the
-left, the selected page on the right and Close at the foot. There is no
-Apply - every change is written at once and is picked up the next time an
-application opens the setting.
+The window is laid out like UltraFiler's settings - a tree of pages on the
+left, the selected page on the right and Close at the foot - and built on the
+same framework kit, `UltraCanvasSettingsPageKit`
+([doc](../UltraCanvas/UltraCanvasSettingsPageKit.md)), as a main window with
+the ULTRA OS logo above its tree. There is no Apply - every change is
+written at once and is picked up the next time an application opens the
+setting.
 
 ## Pages
 
@@ -23,10 +26,13 @@ UOS-Settings opens on this page.
 | Field | What it does |
 |---|---|
 | **Taskbar** | The screen edge the taskbar sits on: Left, Top or Bottom. |
+| **Theme** | The bars' colours: Dark (the default) or Light. |
+| **Dropped files** | Where files dropped on the wallpaper go: the Sticker board's Unsorted category (the default) or the Desktop folder, shown as icons. |
 | **Wallpaper** | The picture behind the desktop; empty is the framework's picture. *Browse...* opens the file dialog. |
 | **RAM disc** | The folder the desktop's drive button opens; empty, no button (the default on Windows). |
 | **File manager** | The program the desktop's folder buttons start. |
 | **Virtual desktops** | How many the organiser offers (1-9); asked of the window manager, which may offer another number. |
+| **Start with the desktop** | ChatCube and UltraMail, each a checkbox: started minimized a few seconds after the desktop, unless running already, so messages and mail arrive in the background (`startWithDesktop` in the file). |
 | **At sign-in** (Windows only) | What this account's sign-in starts. *The Windows desktop*: Explorer, as Windows has it - the way back from either of the others, at once: the taskbar as it was, and a desktop the sign-in started closes (instead of Explorer, Explorer then starts in its place). *UltraDesktop beside Explorer*: UltraDesktop starts at every sign-in - and now, if it is not running - and Explorer's taskbar hides itself. *UltraDesktop instead of Explorer*: from the next sign-in UltraDesktop is the whole desktop, with the programs' tray icons and sign out, restart and shut down; Explorer does not start, unless UltraDesktop fails. Not a setting in the file: it is the account's start at sign-in, through `UltraCanvasDesktopShell::ReplaceSystemDesktop` / `RestoreSystemDesktop`, so the choice always shows what is true. See [UltraDesktop on Windows](../UltraDesktop/README.md#on-windows). |
 
 A dropdown is saved when it changes, a text field when it is left or Return
@@ -39,6 +45,19 @@ checks the file once a second and rebuilds its bars when one of these fields
 changed. The file is read and written by UltraDesktop's own settings code
 (`Apps/UltraDesktop/ui/UltraDesktopSettings.*`, compiled into UOS-Settings
 too), so the two programs agree on it.
+
+### Language
+
+The language every application shows its menus, buttons and messages in:
+*System* follows the computer's own language setting, and a language is
+offered when a translation of the standard set ships for it (a folder
+under `media/locale/` or under `locale/` in the UltraCanvas settings
+folder with a `Standard.json`). The choice is written to `Language.conf`
+in the UltraCanvas settings folder and read by every application when it
+starts; the command line (`--lang`) and the `ULTRACANVAS_LANG` variable
+override it for one start. The *Translator* field is the name the
+localisation editor writes into the catalogues it saves. See
+`Docs/Modules/UltraLocalisation/README.md`.
 
 ### File dialogs > Last used folder
 

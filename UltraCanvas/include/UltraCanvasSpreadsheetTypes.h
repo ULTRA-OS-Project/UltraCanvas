@@ -15,19 +15,6 @@
 #include <limits>
 #include <cmath>
 
-// UltraCanvasCommonTypes.h transitively includes <X11/Xlib.h> on Linux/BSD,
-// which #defines several macros that clash with our identifiers. `None` (0L)
-// collides with CellErrorType::None below. Follow the same #undef pattern the
-// existing chart/diagram plugins use.
-#ifdef None
-#undef None
-#endif
-#ifdef Status
-#undef Status
-#endif
-#ifdef Always
-#undef Always
-#endif
 
 namespace UltraCanvas {
 
@@ -73,7 +60,7 @@ enum class CellValueType {
 // ============================================================================
 
 enum class CellErrorType {
-    None = 0,
+    NoError = 0,
     DivisionByZero,     // #DIV/0!
     ValueError,         // #VALUE!
     ReferenceError,     // #REF!
@@ -92,7 +79,7 @@ enum class CellErrorType {
 // Convert error type to display string
 inline std::string CellErrorToString(CellErrorType error) {
     switch (error) {
-        case CellErrorType::None: return "";
+        case CellErrorType::NoError: return "";
         case CellErrorType::DivisionByZero: return "#DIV/0!";
         case CellErrorType::ValueError: return "#VALUE!";
         case CellErrorType::ReferenceError: return "#REF!";
@@ -333,7 +320,7 @@ enum class HorizontalAlignment {
 
 // Border style
 enum class BorderStyle {
-    None,
+    NoBorder,
     Thin,
     Medium,
     Thick,
@@ -350,11 +337,11 @@ enum class BorderStyle {
 
 // Single border definition
 struct CellBorder {
-    BorderStyle style = BorderStyle::None;
+    BorderStyle style = BorderStyle::NoBorder;
     Color color = Colors::Black;
     int width = 1;
     
-    bool IsVisible() const { return style != BorderStyle::None; }
+    bool IsVisible() const { return style != BorderStyle::NoBorder; }
 };
 
 // All four borders
@@ -383,7 +370,7 @@ struct CellBorders {
 
 // Underline style
 enum class UnderlineStyle {
-    None,
+    NoUnderline,
     Single,
     Double,
     SingleAccounting,
@@ -398,7 +385,7 @@ struct CellFont {
     bool bold = false;
     bool italic = false;
     bool strikethrough = false;
-    UnderlineStyle underline = UnderlineStyle::None;
+    UnderlineStyle underline = UnderlineStyle::NoUnderline;
     bool subscript = false;
     bool superscript = false;
     
@@ -413,7 +400,7 @@ struct CellFont {
 
 // Background fill pattern
 enum class FillPattern {
-    None,
+    NoFill,
     Solid,
     Gray75,
     Gray50,
@@ -436,11 +423,11 @@ enum class FillPattern {
 
 // Cell fill/background
 struct CellFill {
-    FillPattern pattern = FillPattern::None;
+    FillPattern pattern = FillPattern::NoFill;
     Color foregroundColor = Colors::White;
     Color backgroundColor = Colors::White;
     
-    bool HasFill() const { return pattern != FillPattern::None; }
+    bool HasFill() const { return pattern != FillPattern::NoFill; }
     
     static CellFill Solid(const Color& color) {
         CellFill fill;
@@ -769,7 +756,7 @@ struct SortCriteria {
 };
 
 enum class FilterOperator {
-    None,
+    NoFilter,
     Equals,
     NotEquals,
     GreaterThan,
@@ -789,7 +776,7 @@ enum class FilterOperator {
 
 struct ColumnFilter {
     int column = 0;
-    FilterOperator op = FilterOperator::None;
+    FilterOperator op = FilterOperator::NoFilter;
     std::vector<std::string> values;    // For value-based filtering
     std::string customFormula;
     bool showBlanks = true;
@@ -874,7 +861,7 @@ struct SheetProtection {
 // ============================================================================
 
 enum class ClipboardOperation {
-    None,
+    NoOperation,
     Copy,
     Cut
 };
@@ -893,7 +880,7 @@ enum class PasteType {
 };
 
 enum class PasteOperation {
-    None,
+    NoOperation,
     Add,
     Subtract,
     Multiply,
@@ -902,7 +889,7 @@ enum class PasteOperation {
 
 struct PasteOptions {
     PasteType pasteType = PasteType::All;
-    PasteOperation operation = PasteOperation::None;
+    PasteOperation operation = PasteOperation::NoOperation;
     bool skipBlanks = false;
     bool transpose = false;
     bool pasteLink = false;

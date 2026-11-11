@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "UltraCanvas for UltraWeb apps",
+  "version": "@ULTRAWEB_VERSION@",
+  "description": "Runs UltraWeb apps with UltraCanvas installed once, so a site sends only its app, not the framework.",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["ultraweb-announce.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["runtime/*"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "ultraweb-runtime@ultraos.eu",
+      "strict_min_version": "128.0"
+    }
+  }
+}

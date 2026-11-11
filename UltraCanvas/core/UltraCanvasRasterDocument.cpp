@@ -13,6 +13,8 @@
 // it in its undo entry (RasterUndoEntry::textBefore), the same way it keeps
 // the pixels; structural operations carry the text with the layer objects
 // they share or replace.
+// Version: 1.6.0 - a text layer's letter spacing: "letterSpacingPx" in a project, a version 2
+//                  UCTF frame in a *.ucd (version 1 when it has none)
 // Version: 1.5.0 - password-protected *.ucd: the document keeps its password (secure buffer)
 //                 and saves with it; LoadUCD opens one with its password
 // Version: 1.4.0 - *.ucd: the UCD 2.1 layered image (SaveUCD / LoadUCD) - layers, blend
@@ -21,7 +23,7 @@
 //                 the text kept in .ucraster projects)
 // Version: 1.2.0 - SaveToFile without options writes with the user's save
 //                 settings for the format (UltraCanvasFileLoader), once set
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterDocument.h"
@@ -48,6 +50,8 @@
 #include <filesystem>
 #include <fstream>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include <cerrno>
 
 namespace UltraCanvas {
 
@@ -1051,7 +1055,8 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
 bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) {
 #ifdef HAS_LIBVIPS
     UCZipPackageWriter zip;
-    if (!zip.Open(path)) { error = "Could not create " + path; return false; }
+    errno = 0;
+    if (!zip.Open(path)) { error = "Could not create the file. " + FileWriteFailureReason(path, errno); return false; }
     JSONValue doc = JSONValue::MakeObject();
     doc.Set("format", "ucraster");
     doc.Set("version", 1);
@@ -1080,6 +1085,7 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
             jt.Set("height", t.height);
             jt.Set("font", t.fontFamily);
             jt.Set("sizePx", static_cast<double>(t.fontSizePx));
+            if (t.letterSpacingPx != 0.0f) jt.Set("letterSpacingPx", static_cast<double>(t.letterSpacingPx));
             JSONValue colour = JSONValue::MakeArray();
             for (int c : { t.colour.r, t.colour.g, t.colour.b, t.colour.a }) colour.Append(c);
             jt.Set("colour", colour);
@@ -1107,8 +1113,9 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
         }
     }
     doc.Set("layers", arr);
+    errno = 0;
     if (!zip.AddEntry("document.json", JSON::Serialize(doc)) || !zip.Finalize()) {
-        error = "Could not write " + path;
+        error = "Could not write the file. " + FileWriteFailureReason(path, errno);
         return false;
     }
     filePath = path;
@@ -1169,6 +1176,8 @@ bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) 
             content->height = std::max(0.0, jt.Get("height").GetNumber(0.0));
             content->fontFamily = jt.Get("font").GetString("Sans");
             content->fontSizePx = static_cast<float>(std::max(1.0, jt.Get("sizePx").GetNumber(32.0)));
+            const double tracking = jt.Get("letterSpacingPx").GetNumber(0.0);
+            content->letterSpacingPx = std::isfinite(tracking) ? static_cast<float>(tracking) : 0.0f;
             const JSONValue& colour = jt.Get("colour");
             if (colour.IsArray() && colour.GetSize() == 4) {
                 auto channel = [&](size_t c) {
@@ -1319,10 +1328,13 @@ namespace {
     }
 
     // A text layer's words as a VECT payload: 'UCTF', the box, the defaults
-    // and the rich text as an OpenDocument text.
+    // and the rich text as an OpenDocument text. Version 2 adds the letter
+    // spacing after the font family; a text without any is written as
+    // version 1, which every reader of text frames takes.
     std::vector<uint8_t> TextFramePayload(const RasterTextContent& t, const std::vector<uint8_t>& odt) {
         std::vector<uint8_t> out;
-        UCD::AppendPreamble(out, "UCTF", 1);
+        const bool tracked = t.letterSpacingPx != 0.0f;
+        UCD::AppendPreamble(out, "UCTF", tracked ? 2 : 1);
         UCD::ByteWriter w(out);
         w.F64(t.x);
         w.F64(t.y);
@@ -1331,6 +1343,7 @@ namespace {
         w.U8(t.colour.r); w.U8(t.colour.g); w.U8(t.colour.b); w.U8(t.colour.a);
         w.F32(t.fontSizePx);
         w.String16(t.fontFamily);
+        if (tracked) w.F32(t.letterSpacingPx);
         w.FourCC("ODT ");
         w.U32(static_cast<uint32_t>(odt.size()));
         w.Bytes(odt.data(), odt.size());
@@ -1342,7 +1355,7 @@ namespace {
     std::shared_ptr<RasterTextContent> TextFrameFromPayload(const std::vector<uint8_t>& payload) {
         std::string fourcc;
         uint8_t version = 0;
-        if (!UCD::ReadPreamble(payload, fourcc, version) || fourcc != "UCTF" || version != 1) return nullptr;
+        if (!UCD::ReadPreamble(payload, fourcc, version) || fourcc != "UCTF" || (version != 1 && version != 2)) return nullptr;
         UCD::ByteReader r(payload.data() + UCD::kPreambleSize, payload.size() - UCD::kPreambleSize);
         auto content = std::make_shared<RasterTextContent>();
         uint8_t rgba[4] = {};
@@ -1350,12 +1363,13 @@ namespace {
         uint32_t length = 0;
         if (!r.F64(content->x) || !r.F64(content->y) || !r.F64(content->width) || !r.F64(content->height) ||
             !r.Bytes(rgba, 4) || !r.F32(content->fontSizePx) || !r.String16(font) ||
+            (version >= 2 && !r.F32(content->letterSpacingPx)) ||
             !r.FourCC(encoding) || !r.U32(length) || length > r.Remaining() || encoding != "ODT ") {
             return nullptr;
         }
         const auto finite = [](double v) { return std::isfinite(v); };
         if (!finite(content->x) || !finite(content->y) || !finite(content->width) || !finite(content->height) ||
-            !std::isfinite(content->fontSizePx)) {
+            !std::isfinite(content->fontSizePx) || !std::isfinite(content->letterSpacingPx)) {
             return nullptr;
         }
         std::vector<uint8_t> odt(r.Here(), r.Here() + length);

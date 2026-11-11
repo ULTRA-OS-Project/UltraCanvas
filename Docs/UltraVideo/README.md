@@ -46,7 +46,8 @@ field filters the bin by name. The *Music* tab lists the songs, each with
 lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. The *Effects* tab holds the presets for the clips on the main
+playhead, or drag one onto the title lane at a time (the lane shows the
+insertion marker with the style's name; `Esc` lets go). The *Effects* tab holds the presets for the clips on the main
 track and the overlay lane (an overlay clip's effects change its own
 picture only) - a click puts one on the selected clip, or drag one onto a
 clip (the clip under the pointer shows a dashed ring and the status line
@@ -121,10 +122,29 @@ A title is one span on the title lane: drag it to its time, drag its edges
 for its length, split it with `S`, delete it with `Del`. Its text, style,
 place on the frame (the nine anchors), size, colour, shadow, band and
 fades are in the inspector. When the engine renders - in the viewer and in
-the export - the span becomes a text overlay on every clip it crosses,
+the export - the span becomes an overlay on every clip it crosses,
 with the fades only at the span's own ends, so a title runs across a cut
-without a seam. The project file keeps the spans and writes the overlays
-beside them for `videofx render`.
+without a seam.
+
+**Type a title on the frame**: double-click it in the viewer (or its span on
+the title lane) and the words lie over the picture where the title shows, at
+the viewer's scale, in its font and colour; the title leaves the frame
+meanwhile. The **text bar** over the viewer - the framework's
+`UltraCanvasTextFormatBar`, the one ArtCreator and UltraPaint show - sets the
+font (every installed font, each shown in itself), size (pixels of the
+project's frame), bold, italic, underline, strikethrough, alignment, line
+spacing and letter spacing: of the selected words, else of the whole title;
+with no title being typed, of the selected title as one undo step. Escape,
+Ctrl+Enter or a click outside puts the words in the video.
+
+A title is drawn by UltraCanvas's text engine - the editor that types it -
+as the engine's text renderer (`VideoFXUltraCanvasText`), into a picture laid
+over the frame, so the viewer, the export and the words being typed agree;
+the shadow and band are drawn into it, for the export's own height. The
+project file keeps the spans with their words, and the engine's project in
+it carries each title's formatting on its text overlay: `videofx render
+trip.ultravideo` draws the titles the same way, being built with
+UltraCanvas.
 
 ### Overlay video
 
@@ -182,7 +202,7 @@ the engine's beats; a dropdown names the clips' own sound so the music
 dips under it the right way. **3 Style**: the transition between pictures
 and its length, *Keep faces in shot* while the camera pans over photos
 and when a clip of another shape fills the frame (the engine finds them
-in a frame from the clip's middle and crops around them),
+in three frames of the clip and crops around them),
 photos and clips of another shape whole on a blurred background (clips:
 whole, with bars), filling the frame, or whole with bars, *Captions from
 the file names*, a fade in and out. *Make video* asks the engine for the

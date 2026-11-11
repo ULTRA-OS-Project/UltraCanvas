@@ -17,6 +17,14 @@
 // the click itself is handed to the UI thread (PostToUIThread).
 // INotificationActivationCallback is declared here from its documented ABI,
 // so no Windows SDK header newer than the toolchain's is needed.
+//
+// From an MSIX package nothing is written: Windows reads a packaged
+// application's activator from the package manifest (windows.comServer and
+// windows.toastNotificationActivation, which scripts/make_msix_layout.py
+// declares with the same CLSID), and a packaged program's HKEY_CURRENT_USER
+// writes stay inside the package, where Windows would not look. The class
+// object is served all the same.
+// Version: 1.2.0 - from an MSIX package: the class served, nothing written
 // Version: 1.1.0 - ListNotificationRegistrations; the removal works from it
 // Version: 1.0.0
 // Last Modified: 2026-10-21
@@ -36,6 +44,7 @@
 #include "../../include/UltraCanvasApplication.h"
 #include "../../include/UltraCanvasPathUtf8.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasWindowsPackage.h"
 
 #include <algorithm>
 #include <atomic>
@@ -265,7 +274,14 @@ bool RegisterNotificationActivator(const std::string& appId,
     const std::wstring classId = Wide(classIdText);
     CLSID clsid{};
     if (FAILED(CLSIDFromString(classId.c_str(), &clsid))) return false;
-    if (!WriteRegistration(appId, classId)) {
+    if (WindowsPackage::IsRunningFromPackage()) {
+        // The manifest names the activator; say so when it does not, since a
+        // click after the broker host quit then reaches nobody.
+        if (!WindowsPackage::ManifestMentions(classIdText.substr(1, classIdText.size() - 2)))
+            debugOutput << "UltraCanvas: the package manifest declares no notification activator for " << appId
+                        << " (" << classIdText << "): add it to NOTIFICATION_ACTIVATORS in "
+                        << "scripts/make_msix_layout.py" << std::endl;
+    } else if (!WriteRegistration(appId, classId)) {
         debugOutput << "UltraCanvas: could not register the notification activator of " << appId << std::endl;
         return false;
     }

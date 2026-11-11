@@ -7,6 +7,7 @@
 - [Key Functionality](#key-functionality)
   - [Generic File Loading](#generic-file-loading)
   - [Typed Object Loaders](#typed-object-loaders)
+  - [Text From Any File](#text-from-any-file)
   - [Editable Vector Documents](#editable-vector-documents)
   - [Save Settings](#save-settings)
   - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
@@ -61,6 +62,18 @@ if (photo.success) {
 }
 ```
 
+Its counterpart writes bytes to a local file as they are, for content no
+format writer stands for - a database blob, a download kept as it came. The
+file is written beside its name and moved there when complete, so a write
+that fails never leaves half a file in place of the one that was there:
+
+```cpp
+std::string error;
+if (!UltraCanvasFileLoader::SaveFile("photo copy.heic", photo.bytes, error)) {
+    // error says why: the folder cannot be written, the disk is full
+}
+```
+
 ### Typed Object Loaders
 
 Beyond raw bytes, FileLoader can open a file straight into the matching
@@ -108,6 +121,64 @@ loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
 and `SaveTextDocument(document, path, error, password)` or a spreadsheet's
 `SaveToFile(path, password)` writes the file encrypted. See
 [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
+
+### Text From Any File
+
+`ExtractText(path)` gives the words in a file as plain text a person can
+paste - the "extract text" of a clipboard manager, a file manager or a search
+indexer:
+
+| File | How it is read (`TextExtractionMethod`) |
+|---|---|
+| ODT, DOCX, LaTeX, a PowerPoint deck | `Document`: `LoadTextDocument`, then its plain text |
+| PDF | `PDF`: the text of every page; a scanned PDF without any is rendered at 300 DPI and read by text recognition |
+| ODS, XLSX, XLS | `Spreadsheet`: every sheet, tab-separated, each under its name when there are several |
+| TXT, Markdown, CSV, code, any UTF-8 file | `PlainText`: as it is |
+| PNG, JPEG, WebP, ... (what the image pipeline decodes) | `Recognition`: text recognition (OCR), on white where the picture is transparent |
+| Sound and video | `Transcription`: speech to text |
+
+Text recognition and speech to text are hooks, not part of the core. The OCR
+plugin installs Tesseract with `RegisterOCRTextRecognition()`
+(`UltraCanvasOCRPlugin.h`; every installed language, or the ones it is
+given). UltraAI's `RegisterUltraAITextRecognition`
+(`UltraAITextRecognition.h`, in `UltraAI_UI`), installed after it, puts an
+UltraAI vision provider that reads text in front - local first, a cloud one
+only when chosen - with Tesseract as the fallback
+(`GetImageTextRecognizer` hands it the recognizer before). Speech to text
+is UltraAI's `RegisterUltraAISpeechTranscription` (`UltraAISpeechTranscription.h`,
+in `UltraAI_UI`): a speech-to-text provider on UltraAI's default route
+transcribes sound files and videos, a video's sound track taken out with
+VideoFX first. An application with an engine of its own installs it with
+`SetSpeechTranscriber` (`GetSpeechTranscriber` hands it to the next one
+installed, as its fallback).
+`CanExtractText(path)` says whether this build can read a file, and
+`WhyNoTextExtraction(path)` says why not in a sentence for the user ("Speech
+to text is not available ..."). Recognition and transcription take seconds, so
+call `ExtractText` off the UI thread; the hooks are called on that thread.
+
+<!-- doc-check: std::string path; void ShowText(const std::string& text); void ShowError(const std::string& message); -->
+```cpp
+// Speech to text from the application's own engine (here: none yet).
+UltraCanvasFileLoader::SetSpeechTranscriber(
+        [](const std::string& file, std::string& text, std::string& error) {
+    (void)file;
+    (void)text;
+    error = "No speech engine";
+    return false;
+});
+
+if (!UltraCanvasFileLoader::CanExtractText(path)) {
+    ShowError(UltraCanvasFileLoader::WhyNoTextExtraction(path));
+} else {
+    auto reading = std::async(std::launch::async, [path]() { return UltraCanvasFileLoader::ExtractText(path); });
+    // ... later, on the UI thread:
+    const UltraCanvasFileLoader::TextExtractionResult result = reading.get();
+    if (!result.Ok()) ShowError(result.error);
+    else ShowText(result.text);   // empty: the file holds no words
+}
+```
+
+UltraClipboard's *Extract text* (an image, or copied files) is built on it.
 
 ### Editable Vector Documents
 

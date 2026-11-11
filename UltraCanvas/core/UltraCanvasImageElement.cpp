@@ -1,5 +1,7 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.11.0 - LoadFromPixmap
+// Version: 1.10.0 - a right-click goes to onContextMenu, never to onClick
 // Version: 1.9.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 1.9.0 - SetBoxAspectRatio: a following height keeps the box's shape
 // Version: 1.8.0 - the error placeholder shows after a failed load (it read the message
@@ -14,7 +16,7 @@
 //                 tiled area; drawn tile by tile where a backend has no patterns
 // Version: 1.2.0 - an image positioned off-centre (SetImagePosition) is drawn into
 //                 ImageDrawRect, clipped to the content box
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
@@ -72,6 +74,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath, bool forceLoad) {
         errorMessage.clear();
+        pixmapSource.reset();
         if (forceLoad) {
             UCImage::RemoveFromCache(filePath);
         }
@@ -97,8 +100,21 @@ namespace UltraCanvas {
         return false;
     }
 
+    bool UltraCanvasImageElement::LoadFromPixmap(std::shared_ptr<UCPixmap> pixmap) {
+        errorMessage.clear();
+        loadedImage.reset();
+        animator.SetAnimation(nullptr);
+        pixmapSource = (pixmap && pixmap->GetWidth() > 0 && pixmap->GetHeight() > 0) ? pixmap : nullptr;
+        InvalidateLayout();
+        RequestRedraw();
+        if (!pixmapSource) return false;
+        if (onImageLoaded) onImageLoaded();
+        return true;
+    }
+
     bool UltraCanvasImageElement::LoadFromImage(std::shared_ptr<UCImage> img) {
         errorMessage.clear();
+        pixmapSource.reset();
         loadedImage = img;
         SetupAnimation();
         // Intrinsic size changed — re-measure (for auto-sized elements) and repaint.
@@ -135,6 +151,7 @@ namespace UltraCanvas {
         // The tile's pixels, at its fitted size (the animation's current frame
         // for an animated image).
         std::shared_ptr<UCPixmap> pixmap = animator.GetCurrentFramePixmap();
+        if (!pixmap) pixmap = pixmapSource;
         if (!pixmap && loadedImage && loadedImage->IsValid()) {
             pixmap = loadedImage->GetPixmap(std::max(1, static_cast<int>(std::lround(tile.width))),
                                             std::max(1, static_cast<int>(std::lround(tile.height))),
@@ -166,6 +183,9 @@ namespace UltraCanvas {
     Size2Df UltraCanvasImageElement::NaturalImageSize() const {
         if (loadedImage && loadedImage->IsValid()) {
             return Size2Df((float)loadedImage->GetWidth(), (float)loadedImage->GetHeight());
+        }
+        if (pixmapSource) {
+            return Size2Df((float)pixmapSource->GetWidth(), (float)pixmapSource->GetHeight());
         }
         return Size2Df(0.f, 0.f);
     }
@@ -226,7 +246,7 @@ namespace UltraCanvas {
         ctx->PushState();
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
-        if (loadedImage && loadedImage->IsValid()) {
+        if ((loadedImage && loadedImage->IsValid()) || pixmapSource) {
             // Rounded corners (border-radius) clip the picture too, inside the
             // border, as CSS clips a replaced element.
             float radius = 0.f;
@@ -296,6 +316,7 @@ namespace UltraCanvas {
         errorMessage = message;
 //        loadState = ImageLoadState::Failed;
         loadedImage = std::make_shared<UCImage>(); // Reset
+        pixmapSource.reset();
         animator.SetAnimation(nullptr);
 
         debugOutput << "[UltraCanvasImageElement] Error: " << message << std::endl;
@@ -375,6 +396,8 @@ namespace UltraCanvas {
                     ctx->DrawPixmap(*framePm, d, ImageFitMode::Fill);
                 else if (loadedImage && loadedImage->IsValid())
                     ctx->DrawImage(*loadedImage.get(), d, ImageFitMode::Fill);
+                else if (pixmapSource)
+                    ctx->DrawPixmap(*pixmapSource, d, ImageFitMode::Fill);
                 ctx->PopState();
             }
         }
@@ -384,6 +407,8 @@ namespace UltraCanvas {
             ctx->DrawPixmap(*framePm, contentRect, fitMode);
         } else if (loadedImage && loadedImage->IsValid()) {
             ctx->DrawImage(*loadedImage.get(), contentRect, fitMode);
+        } else if (pixmapSource) {
+            ctx->DrawPixmap(*pixmapSource, contentRect, fitMode);
         } else {
             DrawImagePlaceholder(ctx, contentRect, "IMG");
         }
@@ -429,6 +454,11 @@ namespace UltraCanvas {
 
     void UltraCanvasImageElement::HandleMouseDown(const UCEvent &event) {
         if (!Contains(event.pointer)) return;
+        // A right-click asks for the menu: a linked picture does not open.
+        if (event.button == UCMouseButton::Right) {
+            if (onContextMenu) onContextMenu(event);
+            return;
+        }
 
         if (clickable && onClick) {
             onClick();

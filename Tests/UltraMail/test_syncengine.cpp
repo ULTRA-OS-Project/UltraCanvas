@@ -4,6 +4,10 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.4.0 - case twins get body directories of their own (CacheDirectoryOf);
+//                  MigrateBodyCache
+// Version: 0.3.0 - a folder's bodies go without its case twin's
+// Version: 0.2.0 - a server's inbox listed as "Inbox" is stored as INBOX
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -18,6 +22,7 @@
 #include <UltraNet/UltraNetMime.h>
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -84,13 +89,13 @@ public:
     // Set to fail every envelope fetch with this UltraNet code — the way the
     // IMAP plug-in fails when the server cannot be reached (HostNotFound) or
     // refuses the sign-in (AuthenticationFailed).
-    UltraNetResultCode fetchEnvelopesFail = UltraNetResultCode::Success;
+    UltraNetResultCode fetchEnvelopesFail = UltraNetResultCode::Ok;
     UltraNetResult FetchEnvelopes(const std::string&, const std::string& folder,
                                   uint32_t sinceUid, std::vector<UltraNetMailEnvelope>& out,
                                   const UltraNetMailOptions&) override {
         out.clear();
         ++fetchEnvelopesCalls;
-        if (fetchEnvelopesFail != UltraNetResultCode::Success) {
+        if (fetchEnvelopesFail != UltraNetResultCode::Ok) {
             UltraNetResult r = UltraNetResult::Error(fetchEnvelopesFail, "could not fetch");
             r.diagnostics = "Server: imaps://x/";
             return r;
@@ -227,7 +232,7 @@ struct Fixture {
 
         fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Sent", "sent") };
         fake.envelopes["INBOX"] = {
-            Env(1, "Boss <boss@acme.com>",  {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+            Env(1, "Boss <boss@acme.com>",  {"erika@example.com"}, "Please reply", UltraNetMailFlags::NoFlags),
             Env(2, "Ann <ann@x.com>",       {"erika@example.com"}, "Re: thanks",   UltraNetMailFlags::Answered),
             Env(3, "List <list@x.com>",     {"other@x.com"},       "Newsletter",   UltraNetMailFlags::Seen),
         };
@@ -297,10 +302,10 @@ TEST(sync_now_keeps_the_inbox_failure_code_and_details) {
     REQUIRE(!r.ok);
     REQUIRE(!r.NetworkUnreachable());
 
-    fx.fake.fetchEnvelopesFail = UltraNetResultCode::Success;
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::Ok;
     r = svc.SyncNow("erika", "imaps://x/", opts);
     REQUIRE(r.ok);
-    REQUIRE(r.code == UltraNetResultCode::Success);
+    REQUIRE(r.code == UltraNetResultCode::Ok);
 }
 
 TEST(sync_folders_populates_store) {
@@ -318,6 +323,163 @@ TEST(sync_folders_populates_store) {
     bool inbox = false;
     for (auto& f : folders) if (f.name == "INBOX") { inbox = true; REQUIRE(f.role == FolderRole::Inbox); }
     REQUIRE(inbox);
+}
+
+// A server that lists its inbox as "Inbox" (IMAP names it in any case; a JMAP
+// server lists the role=inbox mailbox by its display name): the folder is
+// INBOX, where the inbox sync stores the mail, and the account bar counts it.
+// The "Inbox" row an older version kept beside it goes.
+TEST(sync_folders_stores_listed_inbox_as_INBOX) {
+    Fixture fx("inbox-case");
+    fx.fake.folders = { MakeFolder("Inbox", "inbox"), MakeFolder("Sent", "sent") };
+    Folder stale; stale.accountId = "erika"; stale.name = "Inbox"; stale.role = FolderRole::Inbox;
+    REQUIRE(fx.store.UpsertFolder(stale).success);
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    REQUIRE(engine.SyncMessages("erika", "INBOX", "imaps://x/", opts).ok);
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+
+    std::vector<Folder> folders;
+    REQUIRE(fx.store.ListFolders("erika", folders).success);
+    REQUIRE_EQ(folders.size(), (size_t)2);
+    bool inbox = false;
+    for (auto& f : folders) {
+        REQUIRE(f.name != "Inbox");
+        if (f.name == "INBOX") { inbox = true; REQUIRE(f.role == FolderRole::Inbox); }
+    }
+    REQUIRE(inbox);
+    std::vector<AccountStatus> st;
+    REQUIRE(fx.store.GetAccountStatus(st).success);
+    REQUIRE_EQ(st.size(), (size_t)1);
+    REQUIRE_EQ(st[0].unread, 2);   // messages 1 and 2; 3 is \Seen
+}
+
+// The server dropping "Work" takes Work's bodies and none of work's: the two
+// have directories of their own, also where the file system ignores case.
+namespace {
+bool SameDirectoryNoCase(const fs::path& a, const fs::path& b) {
+    std::string x = UltraCanvas::PathToUtf8(a), y = UltraCanvas::PathToUtf8(b);
+    for (auto* s : {&x, &y})
+        for (char& c : *s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return x == y;
+}
+} // namespace
+
+// A folder's body directory: its name where that is in title case - which the
+// usual folders' names are, so their caches stay where they were - else the
+// name and a mask of the letters whose case differs. Names that differ only in
+// case never meet in one directory, also where the file system ignores case.
+TEST(cache_directory_of_a_folder) {
+    REQUIRE_EQ(CacheDirectoryOf("INBOX"), std::string("INBOX"));
+    REQUIRE_EQ(CacheDirectoryOf("Sent Items"), std::string("Sent Items"));
+    REQUIRE_EQ(CacheDirectoryOf("[Gmail]/All Mail"), std::string("[Gmail]_All Mail"));
+    REQUIRE_EQ(CacheDirectoryOf("INBOX.Drafts"), std::string("INBOX.Drafts"));
+    REQUIRE_EQ(CacheDirectoryOf("2024 Projects"), std::string("2024 Projects"));
+    REQUIRE_EQ(CacheDirectoryOf("Work"), std::string("Work"));
+    REQUIRE_EQ(CacheDirectoryOf("work"), std::string("work~1"));
+    REQUIRE_EQ(CacheDirectoryOf("WORK"), std::string("WORK~e"));
+    REQUIRE_EQ(CacheDirectoryOf("a~b"), std::string("a~~b~3"));
+    REQUIRE_EQ(CacheDirectoryOf("A~B"), std::string("A~~B"));
+    REQUIRE_EQ(FolderOfCacheDirectory("work~1"), std::string("work"));
+    REQUIRE_EQ(FolderOfCacheDirectory("a~~b~3"), std::string("a~b"));
+    REQUIRE_EQ(FolderOfCacheDirectory("Sent Items"), std::string("Sent Items"));
+
+    const std::vector<std::string> twins = { "work", "Work", "WORK", "wORK", "WoRk",
+                                             "work~1", "Work~1", "inbox", "Inbox", "INBOX" };
+    for (std::size_t i = 0; i < twins.size(); ++i)
+        for (std::size_t j = i + 1; j < twins.size(); ++j)
+            REQUIRE(!SameDirectoryNoCase(CacheDirectoryOf(twins[i]), CacheDirectoryOf(twins[j])));
+}
+
+// An earlier version cached every folder under its plain name. Once, at the
+// start, a folder whose directory is named otherwise now has its bodies moved
+// there; the others stay as they are.
+TEST(migrate_body_cache_moves_an_earlier_layout_once) {
+    Fixture fx("migrate");
+    for (const char* name : { "work", "Sent" }) {
+        Folder f; f.accountId = "erika"; f.name = name;
+        REQUIRE(fx.store.UpsertFolder(f).success);
+    }
+    MessageEnvelope m; m.accountId = "erika"; m.folder = "work"; m.uid = 3; m.fromAddr = "a@x.com";
+    REQUIRE(fx.store.UpsertMessage(m).success);
+    const fs::path account = UltraCanvas::PathFromUtf8(fx.emlDir) / "erika";
+    fs::create_directories(account / "work");
+    fs::create_directories(account / "Sent");
+    std::ofstream(account / "work" / "3.eml") << "raw";
+    std::ofstream(account / "Sent" / "4.eml") << "raw";
+
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 1);
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "work", 3))));
+    REQUIRE(!fs::exists(account / "work"));
+    REQUIRE(fs::exists(account / "Sent" / "4.eml"));   // already where it belongs
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "Sent", 4))));
+
+    // Done once: a directory of the old name made later is left alone.
+    fs::create_directories(account / "work");
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 0);
+    REQUIRE(fs::exists(account / "work"));
+}
+
+// Where the file system ignores case (Windows, macOS) "Work" and "work"
+// shared one directory - here a link makes it so. "work" moves out only what
+// is its own; what both had under one number is deleted, to be downloaded
+// again; "Work"'s bodies stay where they are.
+TEST(migrate_body_cache_splits_a_directory_case_twins_shared) {
+    Fixture fx("migrate-twins");
+    for (const char* name : { "Work", "work" }) {
+        Folder f; f.accountId = "erika"; f.name = name;
+        REQUIRE(fx.store.UpsertFolder(f).success);
+    }
+    auto message = [&](const char* folder, int64_t uid) {
+        MessageEnvelope m; m.accountId = "erika"; m.folder = folder; m.uid = uid; m.fromAddr = "a@x.com";
+        REQUIRE(fx.store.UpsertMessage(m).success);
+    };
+    message("work", 1); message("Work", 2); message("work", 5); message("Work", 5);
+    const fs::path account = UltraCanvas::PathFromUtf8(fx.emlDir) / "erika";
+    fs::create_directories(account / "work");
+    for (const char* file : { "1.eml", "2.eml", "5.eml" }) std::ofstream(account / "work" / file) << "raw";
+    std::error_code ec;
+    fs::create_directory_symlink("work", account / "Work", ec);
+    if (ec) return;   // no links here: nothing to simulate with
+
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 1);
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "work", 1))));
+    REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "Work", 2))));
+    REQUIRE(!fs::exists(account / "work" / "1.eml"));   // moved out
+    REQUIRE(!fs::exists(account / "work" / "5.eml"));   // whose? nobody's for sure
+    REQUIRE(!fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", "work", 5))));
+}
+
+TEST(removed_folder_keeps_its_case_twins_bodies) {
+    Fixture fx("case-twin");
+    fx.fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Work", ""),
+                        MakeFolder("work", ""), MakeFolder("Old", "") };
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+
+    auto store = [&](const std::string& folder, int64_t uid) {
+        MessageEnvelope m; m.accountId = "erika"; m.folder = folder; m.uid = uid;
+        m.fromAddr = "a@x.com"; m.date = 1000 + uid;
+        REQUIRE(fx.store.UpsertMessage(m).success);
+        const fs::path p = UltraCanvas::PathFromUtf8(engine.BodyPath("erika", folder, uid));
+        fs::create_directories(p.parent_path());
+        std::ofstream(p) << "raw";
+        return p;
+    };
+    const fs::path work1 = store("Work", 1);
+    const fs::path twin = store("work", 1);
+    REQUIRE(!SameDirectoryNoCase(work1.parent_path(), twin.parent_path()));
+    const fs::path old1 = store("Old", 1);
+    const fs::path oldStray = old1.parent_path() / "7.eml";
+    std::ofstream(oldStray) << "raw";
+
+    fx.fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("work", "") };
+    REQUIRE(engine.SyncFolders("erika", "imaps://x/", opts).ok);
+
+    REQUIRE(!fs::exists(work1));               // Work's body went
+    REQUIRE(fs::exists(twin));                 // work's stayed
+    REQUIRE(!fs::exists(old1.parent_path()));  // no twin: the whole directory went
 }
 
 TEST(sync_messages_computes_needs_answer) {
@@ -346,6 +508,47 @@ TEST(sync_messages_computes_needs_answer) {
     REQUIRE_EQ(NeedsFor(fx.store), 1);
     // unread inbox unseen: uid1 (unseen) + uid2 (unseen) = 2; uid3 is Seen.
     REQUIRE_EQ(UnreadFor(fx.store), 2);
+}
+
+TEST(sync_parses_rfc2822_and_iso8601_envelope_dates) {
+    // IMAP delivers an RFC 2822 Date header in the envelope's date field; JMAP
+    // delivers an ISO 8601 UTCDate (receivedAt) in the same field. Both must
+    // reach the store as the same epoch — otherwise a JMAP account's list shows
+    // blank dates (the date is stored as 0).
+    Fixture fx("dates");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+
+    auto env = [](uint32_t uid, const std::string& date) {
+        UltraNetMailEnvelope e;
+        e.uid = uid; e.from = "a@x.com"; e.to = {"erika@example.com"};
+        e.subject = "d"; e.messageId = "<" + std::to_string(uid) + "@x>";
+        e.date = date;
+        return e;
+    };
+    // The same instant, three ways: RFC 2822, ISO 8601 UTC, ISO 8601 +01:00.
+    fx.fake.envelopes["INBOX"] = {
+        env(10, "Fri, 17 Jul 2026 09:00:00 +0000"),
+        env(11, "2026-07-17T09:00:00Z"),
+        env(12, "2026-07-17T10:00:00+01:00"),
+    };
+
+    REQUIRE(engine.SyncMessages("erika", "INBOX", "imaps://x/", opts,
+                                /*fetchBodies=*/false).ok);
+
+    std::vector<MessageEnvelope> msgs;
+    fx.store.ListMessages("erika", "INBOX", 0, msgs);
+    int64_t dRfc = 0, dIso = 0, dOff = 0;
+    for (const auto& m : msgs) {
+        if (m.uid == 10) dRfc = m.date;
+        if (m.uid == 11) dIso = m.date;
+        if (m.uid == 12) dOff = m.date;
+    }
+    REQUIRE(dRfc > 0);          // RFC 2822 still parses (regression guard)
+    REQUIRE(dIso > 0);          // ISO 8601 now parses — the JMAP fix
+    REQUIRE_EQ(dIso, dRfc);     // same instant, UTC
+    REQUIRE_EQ(dOff, dRfc);     // 10:00 +01:00 is 09:00 UTC — the same instant
 }
 
 TEST(sync_messages_streams_each_header) {
@@ -387,7 +590,7 @@ TEST(sync_messages_is_incremental) {
 
     // A new message arrives.
     fx.fake.envelopes["INBOX"].push_back(
-        Env(4, "New <new@x.com>", {"erika@example.com"}, "Question", UltraNetMailFlags::None));
+        Env(4, "New <new@x.com>", {"erika@example.com"}, "Question", UltraNetMailFlags::NoFlags));
 
     SyncOutcome r = engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
     REQUIRE(r.ok);
@@ -582,7 +785,7 @@ TEST(sync_messages_resets_the_folder_when_uidvalidity_changes) {
     // max uid would miss them. The engine must drop the stale cache and refetch.
     fx.fake.uidValidity = 200;
     fx.fake.envelopes["INBOX"] = {
-        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::NoFlags),
         Env(11, "Ann <ann@x.com>",      {"erika@example.com"}, "Re: thanks",   UltraNetMailFlags::Seen),
     };
     engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
@@ -685,7 +888,7 @@ TEST(a_uidvalidity_reset_deletes_the_folders_old_bodies) {
 
     fx.fake.uidValidity = 200;
     fx.fake.envelopes["INBOX"] = {
-        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::NoFlags),
     };
     fx.fake.bodies["INBOX/10"] = fx.fake.bodies["INBOX/1"];
     engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
@@ -781,9 +984,9 @@ TEST(sync_messages_drops_a_cache_ahead_of_the_servers_uidnext) {
     fx.fake.uidNext = 3;
     fx.fake.envelopes["INBOX"] = {
         Env(1, "Reddit <noreply@redditmail.com>", {"erika@example.com"}, "gpt6.1 sol",
-            UltraNetMailFlags::None),
+            UltraNetMailFlags::NoFlags),
         Env(2, "Hetzner <noreply@hetzner.com>",   {"erika@example.com"}, "Verification code",
-            UltraNetMailFlags::None),
+            UltraNetMailFlags::NoFlags),
     };
     SyncOutcome r = engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
     REQUIRE(r.ok);
@@ -840,9 +1043,9 @@ TEST(sync_now_follows_mail_deleted_and_read_elsewhere) {
 TEST(fetch_envelopes_by_uid_default_serves_only_the_uids_asked_for) {
     FakeMailbox fake;
     fake.envelopes["INBOX"] = {
-        Env(5, "a <a@x.com>", {"erika@example.com"}, "five",  UltraNetMailFlags::None),
-        Env(7, "b <b@x.com>", {"erika@example.com"}, "seven", UltraNetMailFlags::None),
-        Env(9, "c <c@x.com>", {"erika@example.com"}, "nine",  UltraNetMailFlags::None),
+        Env(5, "a <a@x.com>", {"erika@example.com"}, "five",  UltraNetMailFlags::NoFlags),
+        Env(7, "b <b@x.com>", {"erika@example.com"}, "seven", UltraNetMailFlags::NoFlags),
+        Env(9, "c <c@x.com>", {"erika@example.com"}, "nine",  UltraNetMailFlags::NoFlags),
     };
     std::vector<uint32_t> got;
     UltraNetMailOptions opts;
@@ -963,7 +1166,7 @@ TEST(sync_folders_keeps_the_separator_and_the_numbering) {
 
     fx.fake.uidValidity = 200;   // renumbered: the same mail under new UIDs
     fx.fake.envelopes["INBOX"] = {
-        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None) };
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::NoFlags) };
     SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);
     REQUIRE(r.ok);
     REQUIRE(r.stats.cacheReset);

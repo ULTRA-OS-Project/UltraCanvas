@@ -1,4 +1,7 @@
 // Apps/UltraCanvasStart/ui/UltraCanvasStartWindow.cpp
+// Version: 0.4.6 - Download fetches the SDK from start.ultraos.eu into a chosen
+//                  folder, checks it against SHA256SUMS and unpacks it there;
+//                  the download page row is the archive's address
 // Version: 0.4.5 - the install and build output reach the console in batches,
 //                  one UI update per 100 ms drain, not one per line
 // Version: 0.4.4 - Windows without MSYS2: Install sets it up with winget, updates
@@ -45,6 +48,7 @@
 #include "UltraCanvasSwitch.h"
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <filesystem>
@@ -438,7 +442,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildComputerStep(
                                              found ? PackageManagerName(profile_.packageManager) : "none on PATH"));
         row->AddChild(Theme::MakeValue("ucsSysManagerPath",
                                        found ? profile_.packageManagerPath
-                                             : (profile_.packageManager == PackageManager::None
+                                             : (profile_.packageManager == PackageManager::NoPackageManager
                                                     ? "no apt, dnf, pacman, zypper or brew was found"
                                                     : PackageManagerName(profile_.packageManager) + " was not found on PATH"),
                                        found ? Theme::kTextPrimary : Theme::kTextSecondary));
@@ -462,7 +466,7 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildComputerStep(
         auto row = Theme::MakeKeyRow("ucsSysAssistants", "AI assistants");
         bool any = false;
         for (auto assistant : kAssistants) {
-            const AssistantStatus* status = ai_.Status(assistant);
+            const AssistantStatus* status = ai_.StatusOf(assistant);
             if (!status || !status->installed) continue;
             any = true;
             row->AddChild(Theme::MakeStatusBadge("ucsSysAssistant" + AssistantName(assistant), true,
@@ -626,8 +630,9 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFrameworkStep
         card->AddChild(row);
     }
     {
-        auto row = Theme::MakeKeyRow("ucsFwDownload", "Download page");
-        row->AddChild(Theme::MakeLink("ucsFwDownloadLink", SdkDownloadPage(), SdkDownloadPage()));
+        const std::string url = SdkDownloadUrl(profile_.platform, version, profile_.architecture);
+        auto row = Theme::MakeKeyRow("ucsFwDownload", "Download from");
+        row->AddChild(Theme::MakeLink("ucsFwDownloadLink", url, url));
         card->AddChild(row);
     }
     {
@@ -646,8 +651,8 @@ std::shared_ptr<UltraCanvasContainer> UltraCanvasStartWindow::BuildFrameworkStep
     sdkPrefixInput_->layoutItem.SetFlexGrow(1);
     sdkPrefixInput_->onTextChanged = [this](const std::string&) { ReadChoicesFromPanes(); RefreshFrameworkStep(); };
     sdkRow_->AddChild(sdkPrefixInput_);
-    downloadButton_ = Theme::MakeButton("ucsDownloadSdk", "Download page", true, 120);
-    downloadButton_->onClick = [this]() { OpenSdkDownloadPage(); };
+    downloadButton_ = Theme::MakeButton("ucsDownloadSdk", "Download", true, 100);
+    downloadButton_->onClick = [this]() { DownloadSdkArchive(); };
     sdkRow_->AddChild(downloadButton_);
     unpackButton_ = Theme::MakeButton("ucsUnpackSdk", "Unpack...", false, 90);
     unpackButton_->onClick = [this]() { UnpackSdk(); };
@@ -1061,8 +1066,9 @@ void UltraCanvasStartWindow::FindSdk() {
     if (prefix.empty()) {
         UltraCanvasDialogManager::ShowError(
             "No lib/cmake/UltraCanvas/UltraCanvasConfig.cmake under " + chosen +
-            ".\n\nDownload " + SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture) +
-            " from\n" + SdkDownloadPage() + "\nand unpack it with \"Unpack...\" first.",
+            ".\n\n\"Download\" fetches and unpacks " +
+            SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture) +
+            ", or \"Unpack...\" unpacks one you downloaded yourself.",
             "Not an SDK folder", nullptr, window_.get());
         return;
     }
@@ -1072,10 +1078,64 @@ void UltraCanvasStartWindow::FindSdk() {
     RefreshPlan();
 }
 
-void UltraCanvasStartWindow::OpenSdkDownloadPage() {
-    const std::string archiveName = SdkArchiveName(profile_.platform, FrameworkVersion(), profile_.architecture);
-    OpenURL(SdkDownloadPage());
-    SetStatus("Download " + archiveName + " in the browser, then Unpack... it.");
+namespace {
+// "12.3 MB" from a byte count, in integers: a status line, not a number
+// anything reads back.
+std::string Megabytes(int64_t bytes) {
+    const int64_t tenths = (bytes + 50000) / 100000;
+    return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10) + " MB";
+}
+} // namespace
+
+void UltraCanvasStartWindow::DownloadSdkArchive() {
+    if (working_) return;
+    const std::string version = FrameworkVersion();
+    const std::string archiveName = SdkArchiveName(profile_.platform, version, profile_.architecture);
+    if (!SdkDownloadAvailable()) {
+        OpenURL(SdkDownloadUrl(profile_.platform, version, profile_.architecture));
+        SetStatus("Download " + archiveName + " in the browser, then Unpack... it.");
+        return;
+    }
+    const std::string folder = UltraCanvasNativeDialogs::SelectFolder(
+        "Where should the SDK go? It is unpacked there.", profile_.homeDirectory, window_.get());
+    if (folder.empty()) return;
+
+    if (worker_.joinable()) worker_.join();
+    working_ = true;
+    SetBusy(true);
+    SetStatus("Downloading " + archiveName + "...");
+    const SystemProfile profile = profile_;
+    worker_ = std::thread([this, profile, version, archiveName, folder]() {
+        // At most four status lines a second: progress fires per chunk.
+        auto last = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+        const auto progress = [this, archiveName, &last](int64_t now, int64_t total) {
+            const auto t = std::chrono::steady_clock::now();
+            if (t - last < std::chrono::milliseconds(250)) return;
+            last = t;
+            std::string text = "Downloading " + archiveName + ": " + Megabytes(now);
+            if (total > 0) {
+                text += " of " + Megabytes(total) + " (" + std::to_string(now * 100 / total) + "%)";
+            }
+            RunOnUiThread([this, text]() { SetStatus(text); });
+        };
+        const SdkDownloadResult result =
+            DownloadSdk(profile.platform, version, profile.architecture, folder, progress);
+        RunOnUiThread([this, result, archiveName]() {
+            working_ = false;
+            SetBusy(false);
+            if (!result.ok) {
+                SetStatus(archiveName + " was not downloaded.");
+                UltraCanvasDialogManager::ShowError(result.error, "Download the SDK", nullptr, window_.get());
+                return;
+            }
+            // Unchecked only in a build without SHA-256; say so, then go on.
+            if (!result.verified) {
+                SetStatus(archiveName + " downloaded, but this build cannot check its SHA-256 (" +
+                          result.sha256 + "). Unpacking...");
+            }
+            StartUnpack(result.archive);
+        });
+    });
 }
 
 void UltraCanvasStartWindow::UnpackSdk() {
@@ -1462,8 +1522,11 @@ void UltraCanvasStartWindow::RefreshFrameworkStep() {
             text += "The SDK is the framework already built: the headers, the libraries, the plug-ins and the "
                     "CMake package that `find_package(UltraCanvas)` reads "
                     "([Docs/UltraCanvasSDK.md](https://github.com/ULTRA-OS-Project/UltraCanvas/blob/main/Docs/UltraCanvasSDK.md)).\n\n";
-            text += "1. **Download page** opens " + SdkDownloadPage() + " in the browser: download the archive named above.\n";
-            text += "2. **Unpack...** unpacks the downloaded archive beside it and fills the prefix in.\n";
+            text += "1. **Download** fetches the archive named above from " + SdkDownloadBase() +
+                    " into a folder you choose, checks it against the version's `SHA256SUMS`, unpacks it "
+                    "there and fills the prefix in.\n";
+            text += "2. **Unpack...** does the same for an archive you downloaded yourself "
+                    "(from the address above, or from the GitHub release).\n";
             text += "3. Or unpack it yourself and use **Find...** to point at the folder.\n";
             text += "4. The prefix goes into the project's `CMakePresets.json` as `CMAKE_PREFIX_PATH`.\n";
             if (!prefix.empty()) text += "\nThe prefix is `" + prefix + "`.\n";

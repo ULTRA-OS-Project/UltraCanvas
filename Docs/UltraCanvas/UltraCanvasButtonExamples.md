@@ -2,8 +2,8 @@
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.2.0 - a button grows to fit its text  
-**Last Modified:** 2026-10-16  
+**Version:** 1.3.0 - `SetWrap`: the text on several lines  
+**Last Modified:** 2026-11-01  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -29,6 +29,7 @@
   - [Auto-sized Button](#auto-sized-button)
   - [A Fixed Width Is a Minimum](#a-fixed-width-is-a-minimum)
   - [Split Button (a primary action plus a menu)](#split-button-a-primary-action-plus-a-menu)
+  - [A Tile: an Icon over a Wrapped Name](#a-tile-an-icon-over-a-wrapped-name)
   - [Disabled Button](#disabled-button)
 - [Keyboard Support](#keyboard-support)
 - [Rendering](#rendering)
@@ -174,6 +175,8 @@ void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetFontSize(float size);
 void SetTextAlign(TextAlignment align);
+void SetEllipsize(EllipsizeMode mode);   // how a text that does not fit is shortened: End (default), Middle, Start
+void SetWrap(TextWrap wrap);             // WrapWord: the text on as many lines as its area holds
 
 // Layout configuration
 void SetPadding(float all);                                      // inherited from UltraCanvasUIElement
@@ -213,7 +216,7 @@ std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's sta
 std::function<void()> onDoubleClick;     // Left double-click, instead of a second press
 std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
 std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
-std::function<void()> onHoverEnter;      // Fired when mouse enters button
+std::function<void()> onHoverEnter;      // Fired when mouse enters button (a toggle that is on too; a push button held down not)
 std::function<void()> onHoverLeave;      // Fired when mouse leaves button
 ```
 
@@ -308,6 +311,8 @@ struct ButtonStyle {
     float fontSize = 12.0f;
     FontWeight fontWeight = FontWeight::Normal;
     TextAlignment textAlign = TextAlignment::Center;
+    EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;   // Middle keeps a path's first and last part
+    TextWrap wrap = TextWrap::WrapNone;      // WrapWord: several lines, from the top of the text area
 
     int iconSpacing = 4;          // space between icon and text
     float cornerRadius = 3.0f;
@@ -520,6 +525,24 @@ newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
                                        Color(55, 55, 60, 128));  // disabled
 ```
 
+### A Tile: an Icon over a Wrapped Name
+
+A launcher's tile is a button with its icon on top and its name wrapped
+onto as many lines as the box below the icon holds. Wrapped text starts at
+the top of that box, and the last line that fits ends in "…" when more is
+left.
+
+```cpp
+auto tile = std::make_shared<UltraCanvasButton>("tile", 0, 0, 116, 120,
+                                                "Windows Defender Firewall mit erweiterter Sicherheit");
+tile->SetIcon("media/icons/apps/office.svg");
+tile->SetIconSize(48, 48);
+tile->SetIconPosition(ButtonIconPosition::Top);
+tile->SetWrap(TextWrap::WrapWord);
+tile->SetFontSize(12);
+tile->SetGrowToFitText(false);   // the tile keeps its width: the name wraps instead
+```
+
 ### Disabled Button
 
 ```cpp
@@ -557,6 +580,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |
 | 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
 | 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |

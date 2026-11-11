@@ -4,12 +4,16 @@
 // full child-management / scrolling / layout machinery; this class adds the
 // titled frame, an optional activator (checkbox or switch, on either side of
 // the title bar) that enables/disables the contents, an optional info icon
-// with help text, and optional collapsible behaviour.
+// with help text, an optional close button, and optional collapsible behaviour.
+// Version: 1.5.0 - GroupBoxVisualStyle::FromTheme, ApplyTheme: the group box follows the theme; a SetVisualStyle
+//                  by hand stops the following
+// Version: 1.4.0 - SetCloseButton / onCloseClicked: an "x" at the right end of the
+//                  title bar, for a box that is a panel the user dismisses
 // Version: 1.3.0 - GroupBoxVisualStyle::SectionCard(): one section of a window as a white
 //                  card on the light Colors::SectionPage (UltraMail's panes, UltraPaint's
 //                  side panel), shared instead of copied per app
 // Version: 1.2.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -77,6 +81,11 @@ namespace UltraCanvas {
         Color infoIconColor      = Color(120, 130, 150, 255);
         Color infoIconHoverColor = Color(60, 110, 220, 255);
 
+        // ----- Close button -----
+        Color closeIconColor           = Color(120, 130, 150, 255);
+        Color closeIconHoverColor      = Color(40, 40, 40, 255);
+        Color closeHoverBackgroundColor = Color(0, 0, 0, 28);
+
         // ----- Content -----
         float contentPadding = 8.0f;                      // padding inside the frame, around the children
 
@@ -96,6 +105,18 @@ namespace UltraCanvas {
         // titleFont.fontSize to it, and contentPadding to what its content
         // wants (8 px here).
         static GroupBoxVisualStyle SectionCard();
+
+        // The theme's roles over a base's own shape (widths, radius, indents,
+        // padding, the caption's weight) and its fills: a filled frame or
+        // header takes the raised surface and the panel, a transparent one
+        // stays transparent; the frame in a hairline, the caption in ink at
+        // the body size, faint ink disabled; the activator's track in the
+        // accent and the control border with the raised surface for its
+        // knob; the info and close icons in muted ink, the accent and ink
+        // when hovered, the hover fill behind the close button
+        static GroupBoxVisualStyle FromTheme(const UltraCanvasTheme& theme, const GroupBoxVisualStyle& base);
+        static GroupBoxVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+        static GroupBoxVisualStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== GROUP BOX =====
@@ -133,6 +154,7 @@ namespace UltraCanvas {
 
         // ===== STYLE =====
         void SetVisualStyle(const GroupBoxVisualStyle& newStyle);
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         const GroupBoxVisualStyle& GetVisualStyle() const { return visualStyle; }
 
         // Convenience setters
@@ -175,6 +197,17 @@ namespace UltraCanvas {
         void SetHelpText(const std::string& text);
         const std::string& GetHelpText() const { return helpText; }
 
+        // ===== CLOSE BUTTON =====
+        // An optional "x" at the right end of the title bar, for a box that is
+        // a panel the user dismisses (the media viewer's Details panel). A
+        // click runs onCloseClicked; the box does not hide itself - the host
+        // decides what closing means.
+        void SetCloseButton(bool show);
+        bool HasCloseButton() const { return showCloseButton; }
+        // The close button's tooltip; empty (the default) is "Close" in the
+        // user's language.
+        void SetCloseButtonTooltip(const std::string& text) { closeTooltip = text; }
+
         // ===== COLLAPSIBLE =====
         // A collapsible group box draws a disclosure arrow before its caption;
         // clicking the caption collapses the box down to just its title bar.
@@ -186,6 +219,7 @@ namespace UltraCanvas {
         // ===== CALLBACKS =====
         std::function<void(bool)> onCheckedChanged;     // arg: new checked state
         std::function<void(bool)> onCollapsedChanged;   // arg: new collapsed state
+        std::function<void()>     onCloseClicked;       // the close button was clicked
 
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -206,6 +240,10 @@ namespace UltraCanvas {
         GroupBoxIndicatorSide infoIconSide = GroupBoxIndicatorSide::Right;
         std::string helpText;
         bool infoIconHovered = false;
+
+        bool showCloseButton = false;
+        bool closeHovered    = false;
+        std::string closeTooltip;   // empty: "Close", in the user's language
 
         bool collapsible = false;
         bool collapsed   = false;
@@ -229,9 +267,11 @@ namespace UltraCanvas {
             bool   hasArrow = false;
             bool   hasActivator = false;
             bool   hasInfo = false;
+            bool   hasClose = false;
             Rect2Df arrowRect;                    // disclosure arrow (collapsible)
             Rect2Df activatorRect;                // checkbox / switch
             Rect2Df infoRect;                     // info icon
+            Rect2Df closeRect;                    // close button (rightmost)
             Point2Df textPos;                     // caption text top-left
             Size2Di textSize;
             // Top-border gap intervals (Framed style) covering on-border items.
@@ -246,6 +286,7 @@ namespace UltraCanvas {
         void DrawSwitchIndicator(IRenderContext* ctx, const Rect2Df& rect);
         void DrawInfoIcon(IRenderContext* ctx, const Rect2Df& rect);
         void DrawDisclosureArrow(IRenderContext* ctx, const Rect2Df& rect);
+        void DrawCloseButton(IRenderContext* ctx, const Rect2Df& rect);
 
         // ----- State plumbing -----
         void RecalculatePadding();                // fold border + caption into box padding

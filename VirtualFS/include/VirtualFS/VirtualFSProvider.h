@@ -9,12 +9,6 @@
 #include <memory>
 #include <vector>
 
-// Shield against X11 macros (see note in VirtualFSTypes.h)
-#pragma push_macro("Success")
-#pragma push_macro("None")
-#undef Success
-#undef None
-
 namespace VirtualFS {
 
 // ============================================================================
@@ -153,7 +147,7 @@ public:
      * @brief Opens an archive for reading/writing
      * @param archivePath Path to the archive file
      * @param options Open options (mode, password, etc.)
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult Open(
         const std::string& archivePath,
@@ -173,7 +167,7 @@ public:
      * @param data Archive bytes, shared with the provider for the open span
      * @param displayName Name reported by GetOpenPath() (diagnostics only)
      * @param options Open options (mode, password, etc.)
-     * @return Success, or NotSupported if this provider needs a real file
+     * @return Ok, or NotSupported if this provider needs a real file
      */
     virtual VirtualFSResult OpenFromMemory(
         std::shared_ptr<const std::vector<uint8_t>> data,
@@ -255,7 +249,7 @@ public:
      * @brief Reads entire file from archive into memory
      * @param virtualPath Path inside archive
      * @param outData Output buffer (resized to file size)
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult ReadFile(
         const std::string& virtualPath,
@@ -267,7 +261,7 @@ public:
      * @param offset Starting offset in bytes
      * @param length Number of bytes to read
      * @param outData Output buffer
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult ReadFilePartial(
         const std::string& virtualPath,
@@ -277,11 +271,11 @@ public:
         // Default implementation: read entire file and extract portion
         std::vector<uint8_t> fullData;
         auto result = ReadFile(virtualPath, fullData);
-        if (result != VirtualFSResult::Success) return result;
+        if (result != VirtualFSResult::Ok) return result;
         
         if (offset >= fullData.size()) {
             outData.clear();
-            return VirtualFSResult::Success;
+            return VirtualFSResult::Ok;
         }
         
         uint64_t actualLength = std::min(length, fullData.size() - offset);
@@ -289,7 +283,7 @@ public:
             fullData.begin() + static_cast<ptrdiff_t>(offset),
             fullData.begin() + static_cast<ptrdiff_t>(offset + actualLength)
         );
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     }
     
     /**
@@ -312,7 +306,7 @@ public:
      * @param virtualPath Path inside archive
      * @param destPath Destination file path
      * @param options Extraction options
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult ExtractFile(
         const std::string& virtualPath,
@@ -324,7 +318,7 @@ public:
      * @param destDirectory Destination directory
      * @param options Extraction options
      * @param progressCallback Optional progress callback
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult ExtractAll(
         const std::string& destDirectory,
@@ -337,7 +331,7 @@ public:
      * @param filter Filter callback
      * @param options Extraction options
      * @param progressCallback Optional progress callback
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult ExtractFiltered(
         const std::string& destDirectory,
@@ -357,7 +351,7 @@ public:
      * @brief Creates a new empty archive
      * @param archivePath Path for the new archive
      * @param options Creation options
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult CreateArchive(
         const std::string& archivePath,
@@ -370,7 +364,7 @@ public:
      * @param sourcePath Source file path
      * @param virtualPath Destination path inside archive
      * @param options Compression options
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult AddFile(
         const std::string& sourcePath,
@@ -384,7 +378,7 @@ public:
      * @param virtualPath Destination path inside archive
      * @param data File content
      * @param options Compression options
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult AddFromMemory(
         const std::string& virtualPath,
@@ -400,7 +394,7 @@ public:
      * @param recursive Include subdirectories
      * @param options Compression options
      * @param progressCallback Optional progress callback
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult AddDirectory(
         const std::string& sourcePath,
@@ -414,7 +408,7 @@ public:
     /**
      * @brief Creates an empty directory inside the archive
      * @param virtualPath Path for the new directory
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult CreateDirectory(const std::string& virtualPath) {
         return VirtualFSResult::NotSupported;
@@ -423,7 +417,7 @@ public:
     /**
      * @brief Deletes an entry from the archive
      * @param virtualPath Path inside archive
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult Delete(const std::string& virtualPath) {
         return VirtualFSResult::NotSupported;
@@ -434,7 +428,7 @@ public:
      * @param virtualPaths Paths inside archive; a directory path removes the
      *                     whole subtree beneath it
      * @param progressCallback Optional progress callback
-     * @return Success or error code
+     * @return Ok or error code
      *
      * Archive formats have no in-place delete: every mutation means rewriting
      * the whole archive. Providers should override this so that deleting N
@@ -448,18 +442,18 @@ public:
         (void)progressCallback;
         for (const auto& path : virtualPaths) {
             auto result = Delete(path);
-            if (result != VirtualFSResult::Success) {
+            if (result != VirtualFSResult::Ok) {
                 return result;
             }
         }
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     }
 
     /**
      * @brief Renames an entry in the archive
      * @param oldPath Current path
      * @param newPath New path
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult Rename(
         const std::string& oldPath,
@@ -471,7 +465,7 @@ public:
      * @brief Updates file content inside archive
      * @param virtualPath Path inside archive
      * @param data New file content
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult UpdateFile(
         const std::string& virtualPath,
@@ -482,7 +476,7 @@ public:
     /**
      * @brief Sets archive comment
      * @param comment Comment text
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult SetComment(const std::string& comment) {
         return VirtualFSResult::NotSupported;
@@ -490,11 +484,11 @@ public:
     
     /**
      * @brief Finalizes and closes a writable archive
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult Finalize() {
         Close();
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     }
     
     // =========================================================================
@@ -510,7 +504,7 @@ public:
     /**
      * @brief Tests archive by reading all entries
      * @param progressCallback Optional progress callback
-     * @return Success or error code
+     * @return Ok or error code
      */
     virtual VirtualFSResult Test(VirtualFSProgressCallback progressCallback = nullptr) {
         return VirtualFSResult::NotSupported;
@@ -672,6 +666,3 @@ public:
 using VirtualFSProviderFactory = std::function<std::shared_ptr<IVirtualFSProvider>()>;
 
 } // namespace VirtualFS
-
-#pragma pop_macro("None")
-#pragma pop_macro("Success")

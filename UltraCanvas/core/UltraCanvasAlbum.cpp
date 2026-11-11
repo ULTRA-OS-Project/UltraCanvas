@@ -1,9 +1,11 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
+// Version: 1.12.0 - Make/Register descriptor: "album" in the element registry, bundled or as a runtime module
+// Version: 1.11.0 - onItemPressed on a tile's press; ReleaseDrag forgets it for an owner carrying the tile; DragOut gone
 // Version: 1.10.0 - AlbumConfig::FromTheme
 // Version: 1.9.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // V1.8.0: A picture saved over shows its new content. The paths a paint drew
 //   go to an UltraCanvasImageFileWatch, whose worker checks the files and
 //   drops a changed one from the image cache; the album then relayouts and
@@ -55,6 +57,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAlbum.h"
+#include "UltraCanvasElementPlugins.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasMenu.h"
@@ -89,6 +92,7 @@ namespace UltraCanvas {
         cs.forceShowHorizontalScrollbar = false;
         SetContainerStyle(cs);
         BindScrollAnimators();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasAlbum::~UltraCanvasAlbum() {
@@ -105,6 +109,7 @@ namespace UltraCanvas {
 
     // ===== CONFIGURATION =====
     void UltraCanvasAlbum::SetConfig(const AlbumConfig& cfg) {
+        StyleSetByHand();
         config = cfg;
         SetBackgroundColor(config.backgroundColor);
         if (!config.videoHoverPreview) StopVideoHoverPreview();
@@ -1489,16 +1494,15 @@ namespace UltraCanvas {
         activePopupMenu->OpenMenu(winPos, *win, settings);
     }
 
-    // A tile dragged past the album's edge: the reorder is over, the app
-    // carries the item on from here
-    void UltraCanvasAlbum::DragOut(const Point2Di& windowPos) {
-        if (!dragging || dragItem < 0 || dragItem >= static_cast<int>(items.size()) || !onItemDraggedOut) return;
-        const size_t index = static_cast<size_t>(dragItem);
+    // The owner carries the pressed tile itself (its drag, armed from
+    // onItemPressed, has started): the press is forgotten here, so neither
+    // a click nor a reorder follows it
+    void UltraCanvasAlbum::ReleaseDrag() {
+        if (!dragArmed && !dragging && dragItem < 0) return;
         dragging = false;
         dragArmed = false;
         dragItem = -1;
         RequestRedraw();
-        onItemDraggedOut(index, windowPos);
     }
 
     void UltraCanvasAlbum::FinishDrag() {
@@ -1723,7 +1727,6 @@ namespace UltraCanvas {
                 }
                 dragArmed = false;
                 draggingScrollbar = false;
-                DragOut(Point2Di(event.pointerWindow.x, event.pointerWindow.y));
                 return true;
             }
             case UCEventType::MouseWheel: {
@@ -1758,11 +1761,6 @@ namespace UltraCanvas {
                     if (dx * dx + dy * dy >= kDragThreshold * kDragThreshold) {
                         dragging = true;
                     }
-                }
-                if (dragging && onItemDraggedOut &&
-                    !Rect2Di(0, 0, static_cast<int>(GetWidth()), static_cast<int>(GetHeight())).Contains(local)) {
-                    DragOut(Point2Di(event.pointerWindow.x, event.pointerWindow.y));
-                    return true;
                 }
                 int newHover = TileAt(ToContentPoint(local));
                 if (dragging || newHover != hoveredItem) {
@@ -1864,6 +1862,7 @@ namespace UltraCanvas {
                     dragCurrent = local;
                     // Reordering only in edit / admin modes.
                     dragArmed = (config.mode != AlbumMode::Display);
+                    if (onItemPressed) onItemPressed(static_cast<size_t>(item));
                     return true;
                 }
                 return false;
@@ -1916,6 +1915,8 @@ namespace UltraCanvas {
     AlbumConfig AlbumConfig::FromTheme(const UltraCanvasTheme& theme, const AlbumConfig& base) {
         AlbumConfig c = base;
         const ThemeRoles& r = theme.roles;
+        // the interface font; the caption sizes are the config's own
+        c.fontFamily = theme.fonts.ui.fontFamily;
         c.backgroundColor = r.panel;
         c.itemBackgroundColor = r.raised;
         c.borderColor = r.line;
@@ -1925,4 +1926,23 @@ namespace UltraCanvas {
         c.selectionColor = r.accent;
         return c;
     }
+
+    UCElementDescriptor MakeAlbumDescriptor() {
+        UCElementDescriptor descriptor;
+        descriptor.typeName = "album";
+        descriptor.category = UCPluginCategory::Widget;
+        descriptor.displayName = "Album";
+        descriptor.description = "Pictures and videos as tiles in a grid, list or strip";
+        descriptor.docPath = "Docs/UltraCanvas/UltraCanvasAlbumExamples.md";
+        descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+            return std::static_pointer_cast<UltraCanvasUIElement>(
+                std::make_shared<UltraCanvasAlbum>(id, x, y, w, h));
+        };
+        return descriptor;
+    }
+
+    void RegisterAlbumElement() {
+        UltraCanvasElementRegistry::Register(MakeAlbumDescriptor());
+    }
+
 } // namespace UltraCanvas

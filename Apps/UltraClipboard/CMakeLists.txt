@@ -44,6 +44,12 @@ endif()
 if(ULTRACANVAS_PLUGIN_TARGETS)
     target_link_libraries(UltraClipboard PRIVATE ${ULTRACANVAS_PLUGIN_TARGETS})
 endif()
+# Extract text asks UltraAI first: a vision provider that reads text, when
+# one is set up, instead of the OCR plugin (UltraAITextRecognition.h).
+if(TARGET UltraAI_UI)
+    target_link_libraries(UltraClipboard PRIVATE UltraAI_UI)
+    target_compile_definitions(UltraClipboard PRIVATE ULTRACLIPBOARD_HAS_ULTRAAI=1)
+endif()
 target_compile_features(UltraClipboard PRIVATE cxx_std_20)
 
 # Built next to UltraDesktop (the build tree's top), not into bin/: the

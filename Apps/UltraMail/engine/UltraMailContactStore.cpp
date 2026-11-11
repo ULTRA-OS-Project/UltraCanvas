@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailContactStore.cpp
+// Version: 0.5.0 - schema 4: correspondents' S/MIME certificates; Open with a key
+// Version: 0.3.0 - RemoveAll; forgotten_addresses (schema 3): Forget, ForgottenAddresses
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailContactStore.h"
@@ -33,11 +35,13 @@ std::string LowerAscii(std::string s) {
 } // namespace
 
 UltraDbResult ContactStore::Open(const std::string& connectionName,
-                                 const std::string& databasePath) {
+                                 const std::string& databasePath,
+                                 std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey) {
     UltraDbConnectionConfig cfg;
     cfg.name = connectionName;
     cfg.driver = "sqlite";
     cfg.database = databasePath;
+    cfg.encryptionKey = std::move(encryptionKey);
     UltraDbResult reg = UltraDb_RegisterConnection(cfg);
     if (!reg) return reg;
     connection_ = connectionName;
@@ -82,11 +86,62 @@ UltraDbResult ContactStore::Open(const std::string& connectionName,
           "  created_at TEXT);"
           "ALTER TABLE contacts ADD COLUMN group_name TEXT NOT NULL DEFAULT '';"
           "CREATE INDEX idx_contacts_group ON contacts(group_name);" },
+        { 3, "addresses the user deleted",
+          "CREATE TABLE forgotten_addresses("
+          "  address TEXT PRIMARY KEY,"
+          "  forgotten_at TEXT);" },
+        // Correspondents' S/MIME certificates, learnt from the signed mail
+        // they send (UltraMailSecureMime.h): what a message to them is
+        // encrypted to. By address, not by contact - a correspondent need
+        // not be in the address book, and a contact's addresses are
+        // rewritten on every save.
+        { 4, "S/MIME certificates of correspondents",
+          "CREATE TABLE certificates("
+          "  address TEXT PRIMARY KEY,"
+          "  certificate TEXT NOT NULL,"
+          "  fingerprint TEXT,"
+          "  valid_until INTEGER,"
+          "  learnt_at INTEGER);" },
     };
     UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
     if (!migrated) return migrated;
     RepairUndecodedNames();
     return migrated;
+}
+
+UltraDbResult ContactStore::SaveCertificate(const std::string& address, const std::string& certificatePem,
+                                           const std::string& fingerprint, int64_t validUntil) {
+    const std::string key = LowerAscii(address);
+    // A certificate that ends sooner than the one kept is an older one, sent
+    // again: the newer stays.
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_, "SELECT valid_until FROM certificates WHERE address = ?",
+                                    { key }, rs);
+    if (!r) return r;
+    if (!rs.Empty() && rs.Row(0)[0].AsInt64() > validUntil) return UltraDbResult::Ok();
+    return UltraDb_Exec(connection_,
+        "INSERT INTO certificates(address, certificate, fingerprint, valid_until, learnt_at) "
+        "VALUES (?, ?, ?, ?, strftime('%s','now')) "
+        "ON CONFLICT(address) DO UPDATE SET certificate = excluded.certificate, "
+        "fingerprint = excluded.fingerprint, valid_until = excluded.valid_until, learnt_at = excluded.learnt_at",
+        { key, certificatePem, fingerprint, validUntil });
+}
+
+UltraDbResult ContactStore::FindCertificate(const std::string& address, std::string& certificatePem,
+                                           bool& found) const {
+    found = false;
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_, "SELECT certificate FROM certificates WHERE address = ?",
+                                    { LowerAscii(address) }, rs);
+    if (r && !rs.Empty()) {
+        certificatePem = rs.Row(0)[0].AsString();
+        found = true;
+    }
+    return r;
+}
+
+UltraDbResult ContactStore::ForgetCertificate(const std::string& address) {
+    return UltraDb_Exec(connection_, "DELETE FROM certificates WHERE address = ?", { LowerAscii(address) });
 }
 
 void ContactStore::RepairUndecodedNames() {
@@ -211,6 +266,31 @@ UltraDbResult ContactStore::KnownAddresses(std::set<std::string>& out) const {
     return UltraDbResult::Ok();
 }
 
+UltraDbResult ContactStore::Forget(const std::vector<std::string>& addresses) {
+    if (addresses.empty()) return UltraDbResult::Ok();
+    UltraDbHandle tx = UltraDb_Begin(connection_);
+    if (tx == UltraDbInvalidHandle)
+        return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
+    for (const auto& a : addresses) {
+        if (a.empty()) continue;
+        UltraDbResult r = UltraDb_ExecInTx(tx,
+            "INSERT OR REPLACE INTO forgotten_addresses(address, forgotten_at) "
+            "VALUES(lower(?), datetime('now'))", { a });
+        if (!r) { UltraDb_Rollback(tx); return r; }
+    }
+    return UltraDb_Commit(tx);
+}
+
+UltraDbResult ContactStore::ForgottenAddresses(std::set<std::string>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT address FROM forgotten_addresses", rs);
+    if (!q) return q;
+    for (const auto& row : rs) out.insert(row["address"].AsString());
+    return UltraDbResult::Ok();
+}
+
 UltraDbResult ContactStore::SaveInTx(UltraDbHandle tx, Contact& c) {
     if (c.id == 0) {
         UltraDbResult ins = UltraDb_ExecInTx(tx,
@@ -241,12 +321,24 @@ UltraDbResult ContactStore::Get(int64_t id, Contact& out) const {
 }
 
 UltraDbResult ContactStore::Remove(int64_t id) {
+    // RemoveAll's transaction: a failed statement rolls the whole delete back
+    // and is returned, where this used to commit regardless and report success.
+    return RemoveAll({ id });
+}
+
+UltraDbResult ContactStore::RemoveAll(const std::vector<int64_t>& ids) {
+    if (ids.empty()) return UltraDbResult::Ok();
     UltraDbHandle tx = UltraDb_Begin(connection_);
     if (tx == UltraDbInvalidHandle)
         return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
-    UltraDb_ExecInTx(tx, "DELETE FROM contact_emails WHERE contact_id=?", { id });
-    UltraDb_ExecInTx(tx, "DELETE FROM contact_phones WHERE contact_id=?", { id });
-    UltraDb_ExecInTx(tx, "DELETE FROM contacts WHERE id=?", { id });
+    for (int64_t id : ids) {
+        for (const char* sql : { "DELETE FROM contact_emails WHERE contact_id=?",
+                                 "DELETE FROM contact_phones WHERE contact_id=?",
+                                 "DELETE FROM contacts WHERE id=?" }) {
+            UltraDbResult r = UltraDb_ExecInTx(tx, sql, { id });
+            if (!r) { UltraDb_Rollback(tx); return r; }
+        }
+    }
     return UltraDb_Commit(tx);
 }
 

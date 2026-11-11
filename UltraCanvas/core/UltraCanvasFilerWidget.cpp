@@ -50,6 +50,54 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.46.0 - a film's media info (the Length line, the info bar) comes from
+//                  ReadVideoFileInfo, as the viewer's Details do, and names its
+//                  picture size: "1:23 · 1920 × 1080 · H.264"; the Filer's own
+//                  MP4 / AVI / Matroska parsers are gone
+// Version: 1.45.0 - a copy keeps the original's dates: CopyFileTimes after each
+//                  file (both the copy_file and the chunked path) and after
+//                  each folder's contents - paste, drop, Duplicate, a move
+//                  between drives
+// Version: 1.44.0 - Refresh in the context menu (onRefreshRequested): the
+//                  folder on display, or the one folder right-clicked, read
+//                  again
+// Version: 1.43.7 - the last English messages are whole translated sentences:
+//                  the status line a copy or a move ends on (one sentence per
+//                  verb and kind, counts through TrN, names as {0}) and the
+//                  refusal to delete the running program's own folder
+// Version: 1.43.6 - the summaries a delete, a copy or a move ends on are
+//                  translated: the messages (counts through TrN, the trash by
+//                  the platform's name), the skip reasons, the administrator
+//                  delete's outcome, the list caption and the buttons
+// Version: 1.43.5 - the move / copy dialogs are translated whole: the drop
+//                  confirmation, the paste problem and name-conflict dialogs
+//                  and the rename-replace dialog, per verb and kind, counts
+//                  through TrN, the newer / older notes as TrC("age", ...)
+// Version: 1.44.0 - onFolderChangedOnDisk after every re-listing the folder watch
+//                  asked for
+// Version: 1.43.4 - Refresh() moves up to the nearest existing folder when the
+//                  shown folder is gone and its volume is not
+// Version: 1.43.3 - a delete that Windows answers "access denied" is told
+//                  apart (UltraCanvasFileRemoval): read-only folders inside
+//                  the tree are lifted like files, delete-pending entries
+//                  count as gone, and a file in use - a picture this program
+//                  drew a thumbnail of, memory-mapped by libvips - is let go
+//                  of and tried again, or reported as in use; only a refusal
+//                  of the access list offers "Delete as administrator"
+// Version: 1.43.2 - the delete confirmation is translated whole: question,
+//                  facts, the folder's list caption, notes and buttons, per
+//                  platform's trash name; the size facts (DescribeEntries,
+//                  CountedSizeFact) count files and folders through TrN
+// Version: 1.43.1 - the delete-problem dialog is translated whole: titles,
+//                  questions, facts, notes, scope and buttons, per kind and
+//                  trash name, no longer an English "file" / "folder" /
+//                  "Trash" passed into a translated sentence
+// Version: 1.43.0 - RenderFileThumbnail; the workers' decode switch is
+//                  DecodeContentThumbnail, shared with it; RenderTextPagePixmap
+// Version: 1.42.0 - Compress packs a TAR with the host's FilerTarSettings
+//                  (CompressOptionsFor), ZIP and 7-Zip storing what a link
+//                  points to; each Compress menu entry's tooltip is the
+//                  command line it packs with (DescribeCompressParameters)
 // Version: 1.41.0 - a remote folder being fetched or updated shows a thin blue
 //                  bar sliding along the foot of the file area, not a
 //                  "Loading folder" notice over it; its status line goes to
@@ -86,12 +134,9 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
-// VirtualFS + bridge must be included before the UI headers: X11 (pulled in
-// via UltraCanvasApplication.h) #defines None/Success, which collide with the
-// None enumerators in VirtualFS and UCVFSCompressionType.
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
 #include "VirtualFS/VirtualFS.h"
 #include "UltraCanvasVirtualFSBridge.h"
@@ -118,6 +163,8 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir - the context menu's icons
 #include "UltraCanvasTrash.h"
+#include "UltraCanvasFileTimes.h"   // CopyFileTimes: a copy keeps the original's dates
+#include "UltraCanvasVideoFileInfo.h"   // ReadVideoFileInfo: a film's length, size and codec
 #include "UltraCanvasSyntaxTokenizer.h"   // which extensions are source text
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
@@ -167,6 +214,7 @@
 #include <set>
 #include <sys/stat.h>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>   // GetFileAttributesExW: the attribute bits ::stat cannot see
 // The MSVC UCRT <sys/stat.h> exposes _S_IREAD/_S_IWRITE/_S_IEXEC but not the POSIX permission-bit
@@ -180,15 +228,6 @@
 #ifndef S_IXUSR
 #define S_IXUSR _S_IEXEC
 #endif
-#endif
-
-// X11 (pulled in via UltraCanvasApplication.h) #defines Success and None,
-// which collide with the VirtualFS::VirtualFSResult enumerators used below.
-#ifdef Success
-#undef Success
-#endif
-#ifdef None
-#undef None
 #endif
 
 namespace fs = std::filesystem;
@@ -265,6 +304,9 @@ namespace UltraCanvas {
         // never collapses to the icon.
         constexpr int kMinColumnWidth = 44;
         constexpr int kMinNameColumnWidth = 120;
+        // A pushed Details column stops here: wide enough for any path, and
+        // the sideways scroll stays something a scrollbar can still handle.
+        constexpr int kMaxDetailsColumnWidth = 4000;
         constexpr int kMinListColumnWidth = 80;
         constexpr int kMinBarWidth = 60;             // BarSize: shortest bar area
         constexpr int kScrollbarGutter = 10;         // reserved on the right edge
@@ -1736,6 +1778,142 @@ namespace UltraCanvas {
             return true;
         }
 
+        // A page of a text document's first lines, as a picture - what a
+        // tile draws for Text / Docs / Spreadsheets, rasterized so a caller
+        // that wants a picture (the desktop's Sticker board) gets one: a
+        // white portrait page in the box, the lines in a small font.
+        std::shared_ptr<UCPixmap> RenderTextPagePixmap(const std::string& path, int width, int height,
+                                                       float scale) {
+            std::vector<std::string> previewLines;
+            bool tabular = false;
+            if (!ExtractTextPreview(path, previewLines, tabular) || previewLines.empty()) return nullptr;
+            const float s = std::max(1.0f, scale);
+            const int pw = std::max(16, static_cast<int>(std::lround(width * s)));
+            const int ph = std::max(16, static_cast<int>(std::lround(height * s)));
+            auto pixmap = std::make_shared<UCPixmap>();
+            if (!pixmap->Init(pw, ph)) return nullptr;
+            std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(pw, ph), nullptr);
+            if (!ctx) return nullptr;
+            ctx->Clear(Colors::Transparent);
+            // A page three quarters as wide as it is tall, centred.
+            const double pageH = ph - 2.0;
+            const double pageW = std::min(static_cast<double>(pw) - 2.0, pageH * 0.75);
+            const Rect2Dd page((pw - pageW) / 2.0, 1.0, pageW, pageH);
+            ctx->DrawFilledRectangle(page, Colors::White, 1.0f, Color(170, 170, 170, 255));
+            const double margin = std::max(2.0, pageW * 0.08);
+            const double fontSize = std::max(4.0, pageH / 16.0);
+            const double lineHeight = fontSize * 1.3;
+            ctx->ClipRect(Rect2Dd(page.x + margin, page.y + margin, page.width - 2 * margin,
+                                  page.height - 2 * margin));
+            ctx->SetFontSize(fontSize);
+            ctx->SetTextPaint(Color(60, 60, 60, 255));
+            double y = page.y + margin;
+            for (const std::string& line : previewLines) {
+                if (y + lineHeight > page.y + page.height - margin) break;
+                if (!line.empty()) ctx->DrawText(line, Point2Dd(page.x + margin, y));
+                y += lineHeight;
+            }
+            ctx->ClearClipRect();
+            ctx->FlushToSurface(pixmap->GetSurface(), Point2Dd(0, 0));
+            pixmap->MarkDirty();
+            return pixmap;
+        }
+
+        // A file's content as a picture `w` x `h` (logical pixels at `scale`):
+        // the switch the thumbnail workers run, shared with
+        // RenderFileThumbnail. With `textPages`, a text document gets a page
+        // of its first lines; the Filer's own tiles draw those as text.
+        std::shared_ptr<UCPixmap> DecodeContentThumbnail(const std::string& path, int w, int h,
+                                                         ImageFitMode fit, float scale, bool textPages) {
+            std::shared_ptr<UCPixmap> pm;
+            switch (PreviewTypeForPath(path)) {
+                case FilerPreviewType::Videos: {
+                    // Poster frame of a video (may block for a few seconds on
+                    // a cold file — that is exactly what these workers are
+                    // for).
+                    VideoThumbnailRequest vreq;
+                    vreq.maxWidth = std::max(
+                            1, static_cast<int>(std::lround(w * scale)));
+                    vreq.maxHeight = std::max(
+                            1, static_cast<int>(std::lround(h * scale)));
+                    pm = CaptureVideoThumbnailPixmap(path, vreq);
+                    break;
+                }
+                case FilerPreviewType::PDF:
+                    pm = RenderPdfPreviewPixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::Models3D:
+                    pm = RenderModelPreviewPixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::Fonts:
+                    pm = RenderFontSpecimenPixmap(path, w, h, scale);
+                    break;
+                // A book shows its cover. (The Filer's workers see a document
+                // only as a book whose cover ThumbSourceFor asked for; its tiles
+                // draw the other documents' text themselves.)
+                case FilerPreviewType::Docs:
+                    if (EBookCoverReadable(LowerExtension(path))) {
+                        pm = RenderEBookCoverPixmap(path, w, h, fit, scale);
+                    } else if (textPages) {
+                        pm = RenderTextPagePixmap(path, w, h, scale);
+                    }
+                    break;
+                case FilerPreviewType::Text:
+                case FilerPreviewType::Spreadsheets:
+                    if (textPages) pm = RenderTextPagePixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::VectorGraphics: {
+                    // The image pipeline first (svg/svgz, and eps/ps on a
+                    // libvips build with a PostScript loader); a format it
+                    // does not rasterize - or one it fails on - falls back to
+                    // the preview bitmap the document carries.
+                    const std::string ext = LowerExtension(path);
+                    if (ImagePipelineLoadsExtension(ext)) {
+                        auto img = UCImage::GetFresh(path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
+                            pm = img->GetPixmap(w, h, fit, scale);
+                    }
+                    // The drawing itself, where a registered Vector plugin
+                    // reads the format: rendered from the document at the
+                    // tile's size rather than scaled from whatever bitmap
+                    // the authoring program happened to store.
+                    if (!pm && CanPreviewVectorExtension(path)) {
+                        pm = RenderVectorDrawingPixmap(path, w, h,
+                                                       scale);
+                    }
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(path, w, h,
+                                                         fit, scale);
+                    }
+                    // PDF-compatible Illustrator files (CS2 and newer) carry
+                    // no EPS preview but are a PDF from the first byte, so
+                    // the page renderer draws them like any document.
+                    if (!pm && PdfPreviewAvailable() &&
+                        FileStartsWithPdfSignature(path)) {
+                        pm = RenderPdfPreviewPixmap(path, w, h,
+                                                    scale);
+                    }
+                    break;
+                }
+                default: {
+                    const std::string ext = LowerExtension(path);
+                    if (ImagePipelineLoadsExtension(ext) || !FormatCarriesEmbeddedPreview(ext)) {
+                        auto img = UCImage::GetFresh(path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
+                            pm = img->GetPixmap(w, h, fit, scale);
+                        }
+                    }
+                    // A layered image (*.ucd): the thumbnail it carries.
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(path, w, h,
+                                                         fit, scale);
+                    }
+                    break;
+                }
+            }
+            return pm;
+        }
+
         bool IsBrowsableArchiveExt(const std::string& ext) {
             static const char* exts[] = {"zip", "7z", "rar", "tar", "gz", "tgz",
                                          "bz2", "xz", "zst", "jar"};
@@ -1835,9 +2013,6 @@ namespace UltraCanvas {
             return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16)
                  | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
         }
-        uint64_t U64BE(const unsigned char* p) {
-            return (uint64_t(U32BE(p)) << 32) | U32BE(p + 4);
-        }
 
         std::vector<unsigned char> ReadFileBytes(std::ifstream& f, uint64_t offset,
                                                  size_t count) {
@@ -1848,15 +2023,6 @@ namespace UltraCanvas {
                    static_cast<std::streamsize>(count));
             out.resize(static_cast<size_t>(std::max<std::streamsize>(0, f.gcount())));
             return out;
-        }
-
-        std::string FourCCName(const unsigned char* p) {
-            std::string s;
-            for (int i = 0; i < 4; ++i) {
-                char c = char(p[i]);
-                if (c >= 32 && c < 127) s += c;
-            }
-            return s;
         }
 
         // --- Bitmap dimensions (PNG / GIF / BMP / QOI / WebP / ICO / JPEG / TIFF) ---
@@ -1965,6 +2131,7 @@ namespace UltraCanvas {
         // --- Audio / video duration + codec ---
         struct FilerMediaProbe {
             double seconds = -1.0;
+            std::string size;     // a film's picture, "1920 × 1080"; empty for a sound
             std::string codec;
         };
 
@@ -2121,260 +2288,6 @@ namespace UltraCanvas {
             return !out.codec.empty();
         }
 
-        std::string Mp4CodecName(const std::string& fcc, bool& isVideo) {
-            struct Map { const char* fcc; const char* name; bool video; };
-            static const Map map[] = {
-                {"avc1", "H.264", true},  {"avc3", "H.264", true},
-                {"hvc1", "H.265", true},  {"hev1", "H.265", true},
-                {"vp08", "VP8", true},    {"vp09", "VP9", true},
-                {"av01", "AV1", true},    {"mp4v", "MPEG-4", true},
-                {"s263", "H.263", true},  {"mjpa", "MJPEG", true},
-                {"jpeg", "MJPEG", true},
-                {"mp4a", "AAC", false},   {"ac-3", "AC-3", false},
-                {"ec-3", "E-AC-3", false},{"alac", "ALAC", false},
-                {"Opus", "Opus", false},  {"opus", "Opus", false},
-                {"fLaC", "FLAC", false},  {"twos", "PCM", false},
-                {"sowt", "PCM", false},   {"lpcm", "PCM", false},
-                {"in24", "PCM", false},   {"fl32", "PCM", false},
-                {"samr", "AMR", false},   {"sawb", "AMR-WB", false},
-                {".mp3", "MP3", false},   {"dtsc", "DTS", false},
-                {"dtse", "DTS Express", false},
-            };
-            for (const Map& m : map)
-                if (fcc == m.fcc) { isVideo = m.video; return m.name; }
-            isVideo = false;
-            return fcc;   // unknown: show the raw sample-entry code
-        }
-
-        void ParseMp4Boxes(const unsigned char* p, size_t n, FilerMediaProbe& out,
-                           bool& haveVideoCodec, int depth) {
-            if (depth > 6) return;
-            size_t pos = 0;
-            while (pos + 8 <= n) {
-                uint64_t sz = U32BE(p + pos);
-                std::string type = FourCCName(p + pos + 4);
-                size_t hdr = 8;
-                if (sz == 1) {
-                    if (pos + 16 > n) return;
-                    sz = U64BE(p + pos + 8);
-                    hdr = 16;
-                } else if (sz == 0) {
-                    sz = n - pos;
-                }
-                if (sz < hdr || sz > n - pos) return;
-                const unsigned char* body = p + pos + hdr;
-                size_t bodyLen = size_t(sz - hdr);
-                if (type == "trak" || type == "mdia" || type == "minf" ||
-                    type == "stbl") {
-                    ParseMp4Boxes(body, bodyLen, out, haveVideoCodec, depth + 1);
-                } else if (type == "mvhd" && bodyLen >= 20) {
-                    if (body[0] == 1 && bodyLen >= 32) {
-                        uint32_t scale = U32BE(body + 20);
-                        uint64_t dur = U64BE(body + 24);
-                        if (scale && dur != ~0ull) out.seconds = double(dur) / scale;
-                    } else if (body[0] == 0 && bodyLen >= 20) {
-                        uint32_t scale = U32BE(body + 12);
-                        uint32_t dur = U32BE(body + 16);
-                        if (scale && dur != 0xFFFFFFFFu)
-                            out.seconds = double(dur) / scale;
-                    }
-                } else if (type == "stsd" && bodyLen >= 16) {
-                    bool isVideo = false;
-                    std::string name = Mp4CodecName(FourCCName(body + 12), isVideo);
-                    if (!name.empty() &&
-                        (out.codec.empty() || (isVideo && !haveVideoCodec))) {
-                        out.codec = name;
-                        haveVideoCodec = haveVideoCodec || isVideo;
-                    }
-                }
-                pos += size_t(sz);
-            }
-        }
-
-        bool ProbeMp4(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
-            auto head = ReadFileBytes(f, 0, 12);
-            if (head.size() < 12) return false;
-            std::string first = FourCCName(head.data() + 4);
-            if (first != "ftyp" && first != "moov" && first != "mdat" &&
-                first != "wide" && first != "free" && first != "skip")
-                return false;
-            uint64_t pos = 0;
-            for (int i = 0; i < 128 && pos + 8 <= fileSize; ++i) {
-                auto bh = ReadFileBytes(f, pos, 16);
-                if (bh.size() < 8) break;
-                uint64_t sz = U32BE(bh.data());
-                uint64_t hdr = 8;
-                if (sz == 1 && bh.size() >= 16) {
-                    sz = U64BE(bh.data() + 8);
-                    hdr = 16;
-                } else if (sz == 0) {
-                    sz = fileSize - pos;
-                }
-                if (sz < hdr) break;
-                if (std::memcmp(bh.data() + 4, "moov", 4) == 0) {
-                    size_t load = size_t(std::min<uint64_t>(sz - hdr, 8u << 20));
-                    auto moov = ReadFileBytes(f, pos + hdr, load);
-                    bool haveVideo = false;
-                    ParseMp4Boxes(moov.data(), moov.size(), out, haveVideo, 0);
-                    break;
-                }
-                pos += sz;
-            }
-            return out.seconds >= 0 || !out.codec.empty();
-        }
-
-        std::string AviCodecName(std::string fcc) {
-            std::transform(fcc.begin(), fcc.end(), fcc.begin(),
-                           [](unsigned char c) { return std::toupper(c); });
-            if (fcc == "H264" || fcc == "X264" || fcc == "AVC1") return "H.264";
-            if (fcc == "H265" || fcc == "X265" || fcc == "HEVC") return "H.265";
-            if (fcc == "XVID" || fcc == "DIVX" || fcc == "DX50" ||
-                fcc == "FMP4" || fcc == "MP4V") return "MPEG-4";
-            if (fcc == "MJPG") return "MJPEG";
-            if (fcc == "DVSD") return "DV";
-            if (fcc == "WMV3") return "WMV";
-            if (fcc == "VP80") return "VP8";
-            if (fcc == "VP90") return "VP9";
-            return fcc;
-        }
-
-        void ParseAviChunks(const unsigned char* p, size_t n, FilerMediaProbe& out,
-                            int depth) {
-            if (depth > 4) return;
-            size_t pos = 0;
-            while (pos + 8 <= n) {
-                const unsigned char* c = p + pos;
-                uint32_t sz = U32LE(c + 4);
-                if (sz > n - pos - 8) break;
-                if (std::memcmp(c, "LIST", 4) == 0 && sz >= 4) {
-                    ParseAviChunks(c + 12, sz - 4, out, depth + 1);
-                } else if (std::memcmp(c, "avih", 4) == 0 && sz >= 20) {
-                    uint32_t usPerFrame = U32LE(c + 8);
-                    uint32_t totalFrames = U32LE(c + 8 + 16);
-                    if (usPerFrame && totalFrames)
-                        out.seconds = double(usPerFrame) * totalFrames / 1e6;
-                } else if (std::memcmp(c, "strh", 4) == 0 && sz >= 8) {
-                    if (std::memcmp(c + 8, "vids", 4) == 0 && out.codec.empty())
-                        out.codec = AviCodecName(FourCCName(c + 12));
-                }
-                pos += 8 + size_t(sz) + (sz & 1);
-            }
-        }
-
-        bool ProbeAvi(std::ifstream& f, FilerMediaProbe& out) {
-            auto b = ReadFileBytes(f, 0, 65536);
-            if (b.size() < 16 || std::memcmp(b.data(), "RIFF", 4) != 0 ||
-                std::memcmp(b.data() + 8, "AVI ", 4) != 0) return false;
-            ParseAviChunks(b.data() + 12, b.size() - 12, out, 0);
-            if (out.codec.empty()) out.codec = "AVI";
-            return true;
-        }
-
-        // Matroska / WebM: a bounded EBML walk over Segment > Info / Tracks.
-        struct MkvScan {
-            double durationTicks = -1.0;
-            uint64_t timescale = 1000000;   // ns per tick, Matroska default
-            std::string videoCodec, audioCodec;
-        };
-
-        bool EbmlRead(std::ifstream& f, uint64_t& pos, uint64_t end,
-                      bool keepMarker, uint64_t& value, bool& unknown) {
-            unknown = false;
-            if (pos >= end) return false;
-            auto b = ReadFileBytes(f, pos, 8);
-            if (b.empty() || b[0] == 0) return false;
-            int len = 1;
-            while (len <= 8 && !(b[0] & (0x80 >> (len - 1)))) ++len;
-            if (len > 8 || size_t(len) > b.size()) return false;
-            value = keepMarker ? b[0] : uint64_t(b[0] & (0xFF >> len));
-            for (int i = 1; i < len; ++i) value = (value << 8) | b[i];
-            if (!keepMarker) {
-                uint64_t allOnes = (len == 8) ? 0x00FFFFFFFFFFFFFFull
-                                              : ((1ull << (7 * len)) - 1);
-                unknown = (value == allOnes);
-            }
-            pos += len;
-            return true;
-        }
-
-        std::string MkvCodecName(const std::string& id) {
-            if (id == "V_MPEG4/ISO/AVC")  return "H.264";
-            if (id == "V_MPEGH/ISO/HEVC") return "H.265";
-            if (id == "V_VP8")            return "VP8";
-            if (id == "V_VP9")            return "VP9";
-            if (id == "V_AV1")            return "AV1";
-            if (id == "V_THEORA")         return "Theora";
-            if (id == "V_MPEG2")          return "MPEG-2";
-            if (id.rfind("V_MPEG4", 0) == 0) return "MPEG-4";
-            if (id == "A_OPUS")           return "Opus";
-            if (id == "A_VORBIS")         return "Vorbis";
-            if (id == "A_FLAC")           return "FLAC";
-            if (id.rfind("A_AAC", 0) == 0) return "AAC";
-            if (id == "A_MPEG/L3")        return "MP3";
-            if (id == "A_AC3")            return "AC-3";
-            if (id == "A_EAC3")           return "E-AC-3";
-            if (id.rfind("A_PCM", 0) == 0) return "PCM";
-            if (id.size() > 2 && id[1] == '_') return id.substr(2);
-            return id;
-        }
-
-        void ParseMkvLevel(std::ifstream& f, uint64_t pos, uint64_t end,
-                           MkvScan& scan, int depth) {
-            if (depth > 5) return;
-            for (int guard = 0; pos < end && guard < 256; ++guard) {
-                uint64_t id = 0, sz = 0;
-                bool unknown = false, idUnknown = false;
-                if (!EbmlRead(f, pos, end, true, id, idUnknown)) return;
-                if (!EbmlRead(f, pos, end, false, sz, unknown)) return;
-                uint64_t bodyEnd = unknown ? end : std::min(end, pos + sz);
-                if (id == 0x1F43B675ull) return;   // Cluster: headers are done
-                if (id == 0x18538067ull || id == 0x1549A966ull ||
-                    id == 0x1654AE6Bull || id == 0xAEull) {
-                    // Segment / Info / Tracks / TrackEntry
-                    ParseMkvLevel(f, pos, bodyEnd, scan, depth + 1);
-                } else if (id == 0x2AD7B1ull) {    // TimestampScale (uint)
-                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 8)));
-                    uint64_t v = 0;
-                    for (unsigned char c : d) v = (v << 8) | c;
-                    if (v) scan.timescale = v;
-                } else if (id == 0x4489ull) {      // Duration (float)
-                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 8)));
-                    if (d.size() == 4) {
-                        uint32_t u = U32BE(d.data());
-                        float fv;
-                        std::memcpy(&fv, &u, 4);
-                        scan.durationTicks = fv;
-                    } else if (d.size() == 8) {
-                        uint64_t u = U64BE(d.data());
-                        double dv;
-                        std::memcpy(&dv, &u, 8);
-                        scan.durationTicks = dv;
-                    }
-                } else if (id == 0x86ull) {        // CodecID (string)
-                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 32)));
-                    std::string codecId(d.begin(), d.end());
-                    if (codecId.rfind("V_", 0) == 0 && scan.videoCodec.empty())
-                        scan.videoCodec = MkvCodecName(codecId);
-                    else if (codecId.rfind("A_", 0) == 0 && scan.audioCodec.empty())
-                        scan.audioCodec = MkvCodecName(codecId);
-                }
-                if (unknown) return;   // can't skip an unknown-size element
-                pos += sz;
-            }
-        }
-
-        bool ProbeMkv(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
-            auto head = ReadFileBytes(f, 0, 4);
-            if (head.size() < 4 ||
-                std::memcmp(head.data(), "\x1A\x45\xDF\xA3", 4) != 0) return false;
-            MkvScan scan;
-            ParseMkvLevel(f, 0, fileSize, scan, 0);
-            if (scan.durationTicks > 0)
-                out.seconds = scan.durationTicks * double(scan.timescale) / 1e9;
-            out.codec = !scan.videoCodec.empty() ? scan.videoCodec : scan.audioCodec;
-            return out.seconds >= 0 || !out.codec.empty();
-        }
-
         bool ProbeAsf(std::ifstream& f, FilerMediaProbe& out) {
             static const unsigned char kAsfHeader[16] =
                 {0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
@@ -2418,14 +2331,43 @@ namespace UltraCanvas {
             if (ext == "ogg" || ext == "oga" || ext == "opus")
                 return ProbeOgg(f, fileSize, out);
             if (ext == "mp4" || ext == "m4a" || ext == "m4b" || ext == "m4v" ||
-                ext == "mov" || ext == "3gp" || ext == "3g2")
-                return ProbeMp4(f, fileSize, out);
-            if (ext == "avi")  return ProbeAvi(f, out);
-            if (ext == "mkv" || ext == "webm" || ext == "mka")
-                return ProbeMkv(f, fileSize, out);
+                ext == "mov" || ext == "3gp" || ext == "3g2" || ext == "avi" ||
+                ext == "mkv" || ext == "webm" || ext == "mka") {
+                // The containers the media viewer reads too (ReadVideoFileInfo,
+                // UltraCanvasVideoFileInfo.h): one reader, so the list and the
+                // viewer's Details never disagree about a file. A film says its
+                // length, its picture size as shown (a phone's portrait clip
+                // upright) and its codec; a sound its length and codec.
+                VideoFileInfo info;
+                if (!ReadVideoFileInfo(path, info)) return false;
+                if (info.duration > 0) out.seconds = info.duration;
+                if (info.hasVideo) {
+                    int w = info.displayWidth > 0 ? info.displayWidth : info.width;
+                    int h = info.displayHeight > 0 ? info.displayHeight : info.height;
+                    if (info.rotation == 90 || info.rotation == 270) std::swap(w, h);
+                    if (w > 0 && h > 0) out.size = std::to_string(w) + " \xC3\x97 " + std::to_string(h);
+                    out.codec = info.videoCodec;
+                } else {
+                    out.codec = info.audioCodec;
+                }
+                return out.seconds >= 0 || !out.codec.empty() || !out.size.empty();
+            }
             if (ext == "wmv" || ext == "asf" || ext == "wma") return ProbeAsf(f, out);
             return false;
         }
+    }
+
+    // ===== A FILE'S PICTURE, FOR ANYONE =====
+    std::shared_ptr<UCPixmap> RenderFileThumbnail(const std::string& path, int width, int height, float scale) {
+        if (path.empty() || width <= 0 || height <= 0) return nullptr;
+        std::shared_ptr<UCPixmap> pixmap;
+        try {
+            pixmap = DecodeContentThumbnail(path, width, height, ImageFitMode::Contain, scale, /*textPages=*/true);
+        } catch (const std::exception& e) {
+            debugOutput << "RenderFileThumbnail: " << path << ": " << e.what() << std::endl;
+            pixmap = nullptr;
+        }
+        return pixmap;
     }
 
     // ===== CONSTRUCTION =====
@@ -2457,11 +2399,13 @@ namespace UltraCanvas {
         // the first folder is still scanning, so the context menu's
         // "Open with >" is a cache read by the time it can be opened.
         FileAssociations::PrewarmAsync();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
         CancelPendingRename();      // the timer callback captures `this`
         StopListingPendingTicks();  // so does this one
+        StopIconMenuFeedback();     // and this one
         // Detach the rename editor now: its callbacks capture `this`, and the
         // container teardown dropping its focus must not commit into a
         // half-destroyed widget.
@@ -2536,6 +2480,7 @@ namespace UltraCanvas {
         // callbacks capture `this` and could start a worker again.
         CancelPendingRename();
         StopListingPendingTicks();
+        StopIconMenuFeedback();
         StopFolderWatchTimer();
         thumbAlive->store(false);   // results still in flight redraw nothing
         {
@@ -2702,7 +2647,61 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::Refresh() {
         CancelRename();
         CancelPendingRename();
+        // The folder itself may be what changed: deleted from the other pane
+        // or by another program. Listing a folder that is not there showed an
+        // empty display with nowhere to go; the display moves up instead.
+        if (MoveUpFromVanishedFolder()) return;
         ScanFolder();
+    }
+
+    unsigned long long UltraCanvasFilerWidget::FolderDevice(const std::string& path) {
+#if defined(_WIN32) || defined(_WIN64)
+        (void)path;
+        return 0;
+#else
+        struct stat sb {};
+        if (::stat(PathFromUtf8(path).c_str(), &sb) != 0) return 0;
+        return static_cast<unsigned long long>(sb.st_dev);
+#endif
+    }
+
+    bool UltraCanvasFilerWidget::MoveUpFromVanishedFolder() {
+        // Only a folder the last scan saw as a real directory can have been
+        // deleted from under the display: an archive interior, a remote
+        // drive and a file list are not on the local disk to begin with.
+        if (fileListMode || currentPath.empty() || currentPath != shownFolderSeenPath)
+            return false;
+        if (isRemotePath && isRemotePath(currentPath)) return false;
+
+        fs::path shown = PathFromUtf8(currentPath).lexically_normal();
+        if (!shown.has_filename() && shown.has_relative_path()) shown = shown.parent_path();
+        std::error_code ec;
+        // Gone, and nothing less: a folder Windows still lists as delete
+        // pending, or one a network hiccup could not answer for, is left to
+        // the next look.
+        if (fs::symlink_status(shown, ec).type() != fs::file_type::not_found)
+            return false;
+
+        // The nearest folder above it that is still there. When none is -
+        // not even the drive root - the volume went (a stick pulled out on
+        // Windows, a share dropped), and the display waits for it.
+        fs::path up = shown;
+        for (;;) {
+            if (!up.has_relative_path()) return false;   // the root itself is gone
+            up = up.parent_path();
+            std::error_code uec;
+            if (fs::is_directory(up, uec)) break;
+        }
+        const std::string target = PathToUtf8(up);
+        // On Linux and macOS a pulled stick's mount point vanishes with it,
+        // and what is left above it is on another device: that too is a
+        // volume gone, not a folder deleted, and is waited for.
+        if (shownFolderDevice != 0) {
+            const unsigned long long device = FolderDevice(target);
+            if (device != 0 && device != shownFolderDevice) return false;
+        }
+        SetPath(target);
+        return true;
     }
 
     // ===== NAME FILTER (filter-as-you-type) =====
@@ -3006,12 +3005,13 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::UpdateHiddenNoticeButton() {
         if (!HiddenNoticeVisible()) {
             if (hiddenNoticeButton) hiddenNoticeButton->SetVisible(false);
+            if (hiddenNoticeSettingsButton) hiddenNoticeSettingsButton->SetVisible(false);
             return;
         }
         if (!hiddenNoticeButton) {
             hiddenNoticeButton = CreateButton(
                     GetIdentifier() + "-hidden-notice", 0, 0, 140, 24,
-                    "Show hidden files");
+                    Tr("Show hidden files"));
             ButtonStyle bs;
             bs.normalColor  = Color(66, 133, 244, 255);
             bs.hoverColor   = Color(90, 150, 250, 255);
@@ -3035,35 +3035,80 @@ namespace UltraCanvas {
             AddChild(hiddenNoticeButton);
         }
         hiddenNoticeButton->SetVisible(true);
+        // The gear beside it: only for a host that has settings deciding what
+        // is held back (onHiddenNoticeSettings), and it opens those.
+        if (onHiddenNoticeSettings && !hiddenNoticeSettingsButton) {
+            hiddenNoticeSettingsButton = CreateButton(
+                    GetIdentifier() + "-hidden-notice-settings", 0, 0, 24, 24, "");
+            ButtonStyle gs;
+            gs.normalColor  = Colors::Transparent;
+            gs.hoverColor   = Color(232, 232, 236, 255);
+            gs.pressedColor = Color(218, 218, 224, 255);
+            gs.borderWidth = 0.0f;
+            gs.cornerRadius = 4.0f;
+            gs.useIconAsMask = true;
+            gs.iconMaskColor = Color(85, 85, 92, 255);
+            hiddenNoticeSettingsButton->SetStyle(gs);
+            hiddenNoticeSettingsButton->SetIcon(
+                    NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
+            hiddenNoticeSettingsButton->SetIconSize(15, 15);
+            hiddenNoticeSettingsButton->SetIconSpacing(0);
+            hiddenNoticeSettingsButton->SetTooltip("Settings for what is hidden here");
+            hiddenNoticeSettingsButton->SetAcceptsFocus(false);
+            hiddenNoticeSettingsButton->SetOnClick([this]() {
+                if (onHiddenNoticeSettings) onHiddenNoticeSettings();
+            });
+            AddChild(hiddenNoticeSettingsButton);
+        }
+        if (hiddenNoticeSettingsButton)
+            hiddenNoticeSettingsButton->SetVisible(
+                    static_cast<bool>(onHiddenNoticeSettings));
         RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::PositionHiddenNoticeButton(IRenderContext* ctx) {
         if (!hiddenNoticeButton || !hiddenNoticeButton->IsVisible()) return;
         const Rect2Di bar = HiddenNoticeBar();
+        const bool gear = hiddenNoticeSettingsButton &&
+                          hiddenNoticeSettingsButton->IsVisible();
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
         fsty.fontSize = style.smallFontSize;
+        fsty.fontWeight = FontWeight::Normal;
+        ctx->SetFontStyle(fsty);
+        const int countW = ctx->GetTextLineDimensions(HiddenNoticeText()).width;
         fsty.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fsty);
         Size2Di ts = ctx->GetTextLineDimensions(hiddenNoticeButton->GetText());
         const int h = std::max(18, bar.height - 6);
         const int w = std::min(std::max(60, bar.width / 2), ts.width + 24);
+        const int gearW = gear ? h : 0;
+        const int gap = 10, gearGap = gear ? 4 : 0;
+        // Count, button and gear make one group centred in the file area;
+        // in a pane too narrow for the group it keeps to the right edge and
+        // the count is ellipsized.
+        const int buttonsW = w + gearGap + gearW;
+        const int left = bar.x + (bar.width - (countW + gap + buttonsW)) / 2;
+        const int buttonX = std::max(bar.x + 8,
+                std::min(left + countW + gap, bar.x + bar.width - 8 - buttonsW));
+        const int y = bar.y + (bar.height - h) / 2;
         PlaceChildAt(hiddenNoticeButton,
-                     Rect2Df(static_cast<float>(bar.x + bar.width - w - 8),
-                             static_cast<float>(bar.y + (bar.height - h) / 2),
+                     Rect2Df(static_cast<float>(buttonX), static_cast<float>(y),
                              static_cast<float>(w), static_cast<float>(h)));
+        if (gear)
+            PlaceChildAt(hiddenNoticeSettingsButton,
+                         Rect2Df(static_cast<float>(buttonX + w + gearGap),
+                                 static_cast<float>(y),
+                                 static_cast<float>(gearW), static_cast<float>(h)));
     }
 
     void UltraCanvasFilerWidget::DrawHiddenItemsNotice(IRenderContext* ctx) {
         const Rect2Di bar = HiddenNoticeBar();
         if (bar.height <= 0 || bar.width <= 0) return;
-        ctx->SetFillPaint(style.infoBarBackground);
+        // Part of the folder display, not a strip of its own: the display's
+        // background, no rule above it.
+        ctx->SetFillPaint(style.backgroundColor);
         ctx->FillRectangle(Rect2Dd(bar));
-        ctx->SetStrokePaint(style.gridLineColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Dd(bar.x, bar.y),
-                      Point2Dd(bar.x + bar.width, bar.y));
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
@@ -3071,17 +3116,21 @@ namespace UltraCanvas {
         fsty.fontWeight = FontWeight::Normal;
         ctx->SetFontStyle(fsty);
         const int pad = 8;
-        // Whatever the button leaves: the count is the less important half of
-        // the strip, and is ellipsized rather than drawn under the button.
-        int avail = bar.width - 2 * pad;
-        if (hiddenNoticeButton && hiddenNoticeButton->IsVisible())
-            avail = static_cast<int>(hiddenNoticeButton->GetBounds().x)
-                    - bar.x - 2 * pad;
+        // The count ends just left of the button; it is the less important
+        // half of the line, and is ellipsized rather than drawn under it.
+        const bool button = hiddenNoticeButton && hiddenNoticeButton->IsVisible();
+        const std::string text = HiddenNoticeText();
+        int right = bar.x + bar.width - pad;
+        if (button) right = static_cast<int>(hiddenNoticeButton->GetBounds().x) - 10;
+        Size2Di full = ctx->GetTextLineDimensions(text);
+        int avail = right - bar.x - pad;
         if (avail <= 12) return;
-        std::string shown = EllipsizeText(ctx, HiddenNoticeText(), avail);
+        std::string shown = EllipsizeText(ctx, text, avail);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
+        const int x = button ? right - ts.width
+                             : bar.x + (bar.width - full.width) / 2;
         ctx->SetTextPaint(style.secondaryTextColor);
-        ctx->DrawText(shown, Point2Dd(bar.x + pad,
+        ctx->DrawText(shown, Point2Dd(std::max(bar.x + pad, x),
                                       bar.y + (bar.height - ts.height) / 2.0));
     }
 
@@ -3473,6 +3522,14 @@ namespace UltraCanvas {
                isRemotePath && isRemotePath(currentPath);
     }
 
+    bool UltraCanvasFilerWidget::CanRenameHere() const {
+        return !ShowingRemoteFolder() || static_cast<bool>(remoteRename);
+    }
+
+    bool UltraCanvasFilerWidget::CanDeleteHere() const {
+        return !ShowingRemoteFolder() || static_cast<bool>(remoteDelete);
+    }
+
     bool UltraCanvasFilerWidget::IsRemoteEntryPath(const std::string& path) const {
         return !path.empty() && isRemotePath && isRemotePath(path);
     }
@@ -3718,6 +3775,26 @@ namespace UltraCanvas {
         // previews, the lock column - reads the local filesystem per entry,
         // which is exactly what a remote drive cannot serve.
         listingIsRealDirectory = fileListMode || isRealDir;
+        // What MoveUpFromVanishedFolder needs to tell a deleted folder from
+        // a volume that went: the folder, seen real, and its device then.
+        // Kept while the same path lists as gone - that is the case it is for.
+        if (!fileListMode && isRealDir) {
+            if (shownFolderSeenPath != currentPath) {
+                shownFolderSeenPath = currentPath;
+                shownFolderDevice = FolderDevice(currentPath);
+            }
+        } else if (fileListMode || shownFolderSeenPath != currentPath) {
+            shownFolderSeenPath.clear();
+            shownFolderDevice = 0;
+        }
+
+        // Watch first, read second. Started after the read, the watch missed
+        // whatever the folder did while it was being read - a file saved into
+        // a folder just opened stayed invisible until something else changed.
+        // Started here, such a change is reported and lists the folder once
+        // more. A rescan of the folder already watched keeps its watch, so this
+        // costs nothing on a Refresh().
+        if (!fileListMode && isRealDir) WatchFolder(currentPath);
 
         // What this listing leaves out, for the hidden-items notice: the
         // hidden entries filtered below, plus the subfolders a curated home
@@ -3997,9 +4074,9 @@ namespace UltraCanvas {
                         {distinct.begin(), distinct.end()});
         }
 
-        // Point the folder watch at what is now on screen. Done after the scan
-        // so the fingerprint the worker takes describes the listing the user
-        // is looking at, not the one that was there a moment ago.
+        // Point the folder watch at what is now on screen. A real folder is
+        // already watched (see above) and this keeps that watch; anything else
+        // - a file list, an archive interior, a remote drive - stops it.
         WatchFolder((fileListMode || !isRealDir) ? std::string() : currentPath);
 
         if (listingPendingStatus != pendingBefore && onListingPendingChanged)
@@ -4378,6 +4455,16 @@ namespace UltraCanvas {
         NotifyDisplayFormatsChanged();
     }
 
+    void UltraCanvasFilerWidget::SetCaptionMaxLines(int lines) {
+        lines = std::max(0, lines);
+        if (style.captionMaxLines == lines) return;
+        style.captionMaxLines = lines;
+        // The caption band of a row is its deepest wrapped name, so the grid
+        // is laid out again with the new limit.
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
     void UltraCanvasFilerWidget::SetFavoriteMarkProvider(
             std::function<bool(const FilerEntry&)> provider) {
         const bool hadGutter = FavoriteMarkGutter() > 0;
@@ -4448,6 +4535,10 @@ namespace UltraCanvas {
         RefreshHostFileIcons();
         DropHostIconCache();
         RequestRedraw();
+    }
+
+    std::string UltraCanvasFilerWidget::FormatSizeText(uint64_t bytes) {
+        return FormatSize(bytes);
     }
 
     std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
@@ -4597,6 +4688,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::SetStyle(const FilerStyle& s) {
+        StyleSetByHand();
         style = s;
         SetBackgroundColor(style.backgroundColor);
         InvalidateFilerLayout();
@@ -4604,6 +4696,16 @@ namespace UltraCanvas {
     }
 
     // ===== RESIZABLE COLUMNS =====
+    void UltraCanvasFilerWidget::SetDetailsColumnResizeMode(FilerColumnResizeMode mode) {
+        if (detailsResizeMode == mode) return;
+        detailsResizeMode = mode;
+        // Split-pane resizing needs the flexible Name column that keeps the
+        // table at the view's width.
+        if (mode == FilerColumnResizeMode::SplitWithNeighbour) detailsNameFlexible = true;
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
     void UltraCanvasFilerWidget::SetColumnResizeEnabled(bool enabled) {
         if (columnResizeEnabled == enabled) return;
         columnResizeEnabled = enabled;
@@ -4642,9 +4744,14 @@ namespace UltraCanvas {
                                                             : kMinColumnWidth;
         int width = std::max(minWidth, pixels);
         if (detailsColumnWidths[index] == width) return;
-        // Name is derived from what the others leave, so widening it means
-        // taking that width from the visible column next to it.
-        if (column == FilerDetailsColumn::Name) {
+        // Under PushFollowing a Name width set from code is kept as given;
+        // under SplitWithNeighbour Name is derived from what the others leave,
+        // so widening it means taking that width from the visible column next
+        // to it.
+        if (column == FilerDetailsColumn::Name &&
+            detailsResizeMode == FilerColumnResizeMode::PushFollowing) {
+            detailsNameFlexible = false;
+        } else if (column == FilerDetailsColumn::Name) {
             int delta = width - detailsColumnWidths[0];
             const std::vector<size_t> vis = VisibleDetailsSpecIndices();
             size_t next = vis.size() > 1 ? vis[1]
@@ -4666,6 +4773,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ResetDetailsColumnWidths() {
         detailsColumnWidths.clear();
         EnsureDetailsColumnWidths();
+        detailsNameFlexible = true;   // Name fills the view again
         InvalidateFilerLayout();
         NotifyColumnWidthsChanged();
         RequestRedraw();
@@ -5420,15 +5528,19 @@ namespace UltraCanvas {
                 if (e.isDirectory) ++folders;
                 else { ++files; bytes += e.size; }
             }
-            std::string text;
-            if (folders) text += std::to_string(folders) + (folders == 1 ? " folder" : " folders");
-            if (folders && files) text += " and ";
-            if (files) text += std::to_string(files) + (files == 1 ? " file" : " files");
+            // Translated, with each count's plural form from the language's
+            // own rule ("3 папки", "5 папок").
+            const std::string folderText = TrN("{n} folder", "{n} folders", static_cast<long long>(folders));
+            const std::string fileText = TrN("{n} file", "{n} files", static_cast<long long>(files));
+            std::string text = (folders && files) ? TrF("{0} and {1}", folderText, fileText)
+                             : folders            ? folderText
+                                                  : fileText;
             if (!folderTally) {
-                if (files) text += " (" + FormatSize(bytes) + (folders ? " in the files)" : ")");
+                if (files) text = folders ? TrF("{0} ({1} in the files)", text, FormatSize(bytes))
+                                          : text + " (" + FormatSize(bytes) + ")";
             } else if (folderTally->pending) {
-                text += " (" + (bytes ? FormatSize(bytes) + " so far, " : std::string())
-                      + "counting…)";
+                text = bytes ? TrF("{0} ({1} so far, counting…)", text, FormatSize(bytes))
+                             : TrF("{0} (counting…)", text);
             } else {
                 text += " (" + std::string(folderTally->capped ? "≥ " : "") + FormatSize(bytes) + ")";
             }
@@ -5458,13 +5570,14 @@ namespace UltraCanvas {
         if (entries.size() > 1) return DescribeEntries(entries, &tally);
         if (entries.empty()) return {};
         if (!entries.front().isDirectory) return FormatSize(entries.front().size);
-        if (tally.pending) return "counting…";
+        if (tally.pending) return Tr("counting…");
         const std::string atLeast = tally.capped ? "≥ " : "";
         std::string size = atLeast + FormatSize(tally.bytes) + " (" + atLeast
-                + std::to_string(walkedFiles) + (walkedFiles == 1 ? " file" : " files");
+                + TrN("{n} file", "{n} files", static_cast<long long>(walkedFiles));
+        // "in 3 folders" whole, so a language can put the noun in the case
+        // its preposition wants ("в 3 папках").
         if (walkedFolders)
-            size += " in " + std::to_string(walkedFolders)
-                  + (walkedFolders == 1 ? " folder" : " folders");
+            size += " " + TrN("in {n} folder", "in {n} folders", static_cast<long long>(walkedFolders));
         return size + ")";
     }
 
@@ -5475,36 +5588,43 @@ namespace UltraCanvas {
                                                  std::function<void()> onCancel) {
         if (!proceed) return;
 
-        const std::string verb = copyRequested ? "Copy" : "Move";
-        const std::string other = copyRequested ? "Move" : "Copy";
+        // Whole sentences per verb, translated: names as {0}, the count in
+        // the language's plural form.
+        const std::string verb = copyRequested ? Tr("Copy") : Tr("Move");
+        const std::string other = copyRequested ? Tr("Move") : Tr("Copy");
         const std::string destName = PathToUtf8(PathFromUtf8(destDir).filename());
+        const std::string into = destName.empty() ? destDir : destName;
         const std::vector<FilerEntry> entries = EntriesForPaths(sources);
-        std::string what;
-        if (sources.size() == 1) {
-            what = "\"" + RepairLegacyEncodedName(
-                    PathToUtf8(PathFromUtf8(sources.front()).filename())) + "\"";
-        } else {
-            what = std::to_string(sources.size()) + " items";
-        }
 
         OperationDialogSpec spec;
-        spec.title = verb + " files";
+        spec.title = copyRequested ? Tr("Copy files") : Tr("Move files");
         spec.type = DialogType::Question;
-        spec.question = verb + " " + what + " into \"" +
-                        (destName.empty() ? destDir : destName) + "\"?";
+        if (sources.size() == 1) {
+            const std::string name = RepairLegacyEncodedName(
+                    PathToUtf8(PathFromUtf8(sources.front()).filename()));
+            spec.question = copyRequested ? TrF("Copy \"{0}\" into \"{1}\"?", name, into)
+                                          : TrF("Move \"{0}\" into \"{1}\"?", name, into);
+        } else {
+            const long long n = static_cast<long long>(sources.size());
+            spec.question = LocalisationDetail::Substitute(
+                    copyRequested ? TrN("Copy {n} item into \"{0}\"?", "Copy {n} items into \"{0}\"?", n)
+                                  : TrN("Move {n} item into \"{0}\"?", "Move {n} items into \"{0}\"?", n),
+                    {into});
+        }
         // The full paths answer "which folder of that name" - a drop lands on
         // whatever folder happened to be under the cursor.
         const std::string from = CommonParentFolder(sources);
-        spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
-                                                   : FactPath(from))
-                   + "\n\n**Into:** " + FactPath(destDir);
+        spec.facts = "**" + Tr("From:") + "** " + (from.empty() ? Tr("several folders")
+                                                               : FactPath(from))
+                   + "\n\n**" + Tr("Into:") + "** " + FactPath(destDir);
+        const std::string sizeLabel = "\n\n**" + Tr("Size:") + "** ";
         // How much is going: the set's tally, or a single entry's own size.
         // What a folder holds comes from the background walk the info bar
         // uses; the dialog opens at once and the line fills in as walks land.
         const std::string placeFacts = spec.facts;
-        auto sizeFacts = [this, placeFacts, entries]() {
+        auto sizeFacts = [this, placeFacts, sizeLabel, entries]() {
             if (entries.empty()) return placeFacts;
-            return placeFacts + "\n\n**Size:** " + CountedSizeFact(entries);
+            return placeFacts + sizeLabel + CountedSizeFact(entries);
         };
         spec.facts = sizeFacts();
         spec.liveFacts = sizeFacts;
@@ -5512,14 +5632,14 @@ namespace UltraCanvas {
             spec.listed.assign(entries.begin(), entries.begin() +
                     static_cast<std::ptrdiff_t>(std::min(entries.size(), kOperationListRows)));
             if (entries.size() > spec.listed.size())
-                spec.listCaption = "The first " + std::to_string(spec.listed.size())
-                                 + " of " + std::to_string(entries.size()) + " items:";
+                spec.listCaption = TrF("The first {0} of {1} items:", spec.listed.size(),
+                                       entries.size());
         }
         // Both verbs, the requested one as the coloured default: a drop with
         // the wrong modifier is put right here instead of by a second drag.
         spec.buttons = {{verb, DialogButtonRole::Default},
                         {other, DialogButtonRole::Normal},
-                        {"Cancel", DialogButtonRole::Cancel}};
+                        {Tr("Cancel"), DialogButtonRole::Cancel}};
         spec.width = entries.size() > 1 ? 600 : 520;
 
         const bool shown = ShowOperationDialog(spec,
@@ -5757,10 +5877,10 @@ namespace UltraCanvas {
         // ("newer", or why an entry was skipped) when the rows carry them.
         auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
         if (labels) model->AddColumn(ListColumnDef("", 76));
-        model->AddColumn(ListColumnDef("Name", details ? (notes ? 230 : 270) : 280));
+        model->AddColumn(ListColumnDef(Tr("Name"), details ? (notes ? 230 : 270) : 280));
         if (details) {
-            model->AddColumn(ListColumnDef("Size", 80, TextAlignment::Right));
-            model->AddColumn(ListColumnDef("Modified", 130));
+            model->AddColumn(ListColumnDef(Tr("Size"), 80, TextAlignment::Right));
+            model->AddColumn(ListColumnDef(Tr("Modified"), 130));
         }
         if (notes) model->AddColumn(ListColumnDef(details ? "" : "Reason", details ? 90 : 260));
         for (size_t i = 0; i < listed.size(); ++i) {
@@ -5968,6 +6088,18 @@ namespace UltraCanvas {
         // before the first rename is attempted.
         if (cut) DeselectPathsForModification(paths);
         pendingPaste = std::make_unique<PendingPaste>();
+        // A move renames its folders away, which Windows refuses while
+        // anything holds a folder inside one open - a folder watch of
+        // another display showing it, say. Watches let go until it is done.
+        if (cut) {
+            std::vector<std::string> folders;
+            for (const std::string& p : paths)
+                if (fs::is_directory(fs::symlink_status(PathFromUtf8(p), ec))) folders.push_back(p);
+            ec.clear();
+            if (!folders.empty())
+                pendingPaste->watchHold =
+                        std::make_unique<UltraCanvasFolderWatchHold>(std::move(folders));
+        }
         pendingPaste->folder = std::move(folder);
         pendingPaste->sources = std::move(paths);
         pendingPaste->itemFolders.assign(pendingPaste->sources.size(), std::string());
@@ -6129,7 +6261,7 @@ namespace UltraCanvas {
                     continue;
                 }
                 if (action == PasteConflictAction::Skip)
-                    pp->skipped.push_back({src, "Skipped: the name is already taken", folder});
+                    pp->skipped.push_back({src, Tr("Skipped: the name is already taken"), folder});
             }
             pp->currentAction = action;
             for (;;) {
@@ -6152,7 +6284,7 @@ namespace UltraCanvas {
                     return;
                 }
                 if (pp->skipFailedForAll) {         // skip it, for the summary
-                    pp->skipped.push_back({src, why.empty() ? std::string("unknown error") : why,
+                    pp->skipped.push_back({src, why.empty() ? Tr("unknown error") : why,
                                            folder});
                     break;
                 }
@@ -6225,15 +6357,18 @@ namespace UltraCanvas {
         // end. A Stop or a Cancel already said what happened, and a paste
         // where nothing was skipped needs no window after its own.
         if (walkedToEnd && !skipped.empty()) {
-            const size_t total = pasted + skipped.size();
-            std::string message = std::string(cut ? "Moved " : "Copied ")
-                    + std::to_string(pasted) + " of " + std::to_string(total)
-                    + (total == 1 ? " item. " : " items. ")
-                    + std::to_string(skipped.size())
-                    + (skipped.size() == 1 ? " was skipped." : " were skipped.");
-            ShowOperationSummary(cut ? "Move finished" : "Copy finished", message, skipped,
-                    "**Into:** " + FactPath(destination),
-                    cut ? "Move skipped items again" : "Copy skipped items again",
+            // Two sentences, each count in the language's plural form; the
+            // first count is the total's, the done count goes in as {0}.
+            const long long total = static_cast<long long>(pasted + skipped.size());
+            const std::string message = LocalisationDetail::Substitute(
+                        cut ? TrN("Moved {0} of {n} item.", "Moved {0} of {n} items.", total)
+                            : TrN("Copied {0} of {n} item.", "Copied {0} of {n} items.", total),
+                        {std::to_string(pasted)})
+                    + " " + TrN("{n} was skipped.", "{n} were skipped.",
+                                static_cast<long long>(skipped.size()));
+            ShowOperationSummary(cut ? Tr("Move finished") : Tr("Copy finished"), message, skipped,
+                    "**" + Tr("Into:") + "** " + FactPath(destination),
+                    cut ? Tr("Move skipped items again") : Tr("Copy skipped items again"),
                     [this, skipped, cut]() { RetrySkippedPaste(skipped, cut); });
         }
     }
@@ -6250,28 +6385,45 @@ namespace UltraCanvas {
         if (r.items == 0 && !r.cancelled && r.skipped == 0) return {};   // nothing asked to move
         std::string where = PathToUtf8(PathFromUtf8(r.destination).filename());
         if (where.empty()) where = r.destination;                      // a drive root
-        where = "\"" + RepairLegacyEncodedName(where) + "\"";
-        const std::string done = r.moved ? "moved" : "copied";
-        auto count = [](size_t n, const char* one, const char* many) {
-            return std::to_string(n) + " " + (n == 1 ? one : many);
-        };
-        std::string what;
-        if (r.items == 1)
-            what = "\"" + RepairLegacyEncodedName(r.firstName) + "\"";
-        else if (r.folders == 0)
-            what = count(r.items, "file", "files");
-        else if (r.files == 0)
-            what = count(r.items, "folder", "folders");
-        else
-            what = count(r.items, "item", "items");
+        where = RepairLegacyEncodedName(where);
+        // A whole sentence per verb and kind, the counts in the language's
+        // plural forms, the names as {0}.. so a translation can place them
+        // and quote them its own way: a verb or a noun passed in would stay
+        // English.
+        const bool moved = r.moved;
         if (r.cancelled)
-            return std::string(r.moved ? "Move" : "Copy") + " cancelled - "
-                 + std::to_string(r.items) + " of " + count(requested, "item", "items")
-                 + " " + done + " to " + where;
+            return LocalisationDetail::Substitute(
+                    moved ? TrN("Move cancelled - {0} of {n} item moved to \"{1}\"",
+                                "Move cancelled - {0} of {n} items moved to \"{1}\"",
+                                static_cast<long long>(requested))
+                          : TrN("Copy cancelled - {0} of {n} item copied to \"{1}\"",
+                                "Copy cancelled - {0} of {n} items copied to \"{1}\"",
+                                static_cast<long long>(requested)),
+                    {std::to_string(r.items), where});
         if (r.skipped)
-            return std::to_string(r.items) + " of " + count(r.items + r.skipped, "item", "items")
-                 + " " + done + " to " + where + " (" + std::to_string(r.skipped) + " skipped)";
-        return what + " " + done + " to " + where;
+            return LocalisationDetail::Substitute(
+                    moved ? TrN("{0} of {n} item moved to \"{1}\" ({2} skipped)",
+                                "{0} of {n} items moved to \"{1}\" ({2} skipped)",
+                                static_cast<long long>(r.items + r.skipped))
+                          : TrN("{0} of {n} item copied to \"{1}\" ({2} skipped)",
+                                "{0} of {n} items copied to \"{1}\" ({2} skipped)",
+                                static_cast<long long>(r.items + r.skipped)),
+                    {std::to_string(r.items), where, std::to_string(r.skipped)});
+        if (r.items == 1)
+            return moved ? TrF("\"{0}\" moved to \"{1}\"", RepairLegacyEncodedName(r.firstName), where)
+                         : TrF("\"{0}\" copied to \"{1}\"", RepairLegacyEncodedName(r.firstName), where);
+        const long long n = static_cast<long long>(r.items);
+        std::string pattern;
+        if (r.folders == 0)
+            pattern = moved ? TrN("{n} file moved to \"{0}\"", "{n} files moved to \"{0}\"", n)
+                            : TrN("{n} file copied to \"{0}\"", "{n} files copied to \"{0}\"", n);
+        else if (r.files == 0)
+            pattern = moved ? TrN("{n} folder moved to \"{0}\"", "{n} folders moved to \"{0}\"", n)
+                            : TrN("{n} folder copied to \"{0}\"", "{n} folders copied to \"{0}\"", n);
+        else
+            pattern = moved ? TrN("{n} item moved to \"{0}\"", "{n} items moved to \"{0}\"", n)
+                            : TrN("{n} item copied to \"{0}\"", "{n} items copied to \"{0}\"", n);
+        return LocalisationDetail::Substitute(pattern, {where});
     }
 
     void UltraCanvasFilerWidget::RetrySkippedPaste(const std::vector<SkippedItem>& items,
@@ -6332,11 +6484,11 @@ namespace UltraCanvas {
         spec.listDetails = false;   // the reason takes the room
         spec.listVisibleRows = 8;
         if (skipped.size() > spec.listed.size())
-            spec.listCaption = "The first " + std::to_string(spec.listed.size())
-                             + " of " + std::to_string(skipped.size()) + " skipped items:";
+            spec.listCaption = TrF("The first {0} of {1} skipped items:", spec.listed.size(),
+                                   skipped.size());
         if (!retryLabel.empty() && onRetry)
             spec.buttons.push_back({retryLabel, DialogButtonRole::Normal});
-        spec.buttons.push_back({"Close", DialogButtonRole::Default});
+        spec.buttons.push_back({Tr("Close"), DialogButtonRole::Default});
         spec.width = 620;
         const bool hasRetry = !retryLabel.empty() && onRetry;
         if (!ShowOperationDialog(spec,
@@ -6447,32 +6599,49 @@ namespace UltraCanvas {
         std::error_code ec;
         const fs::path from = PathFromUtf8(src);
         const std::string name = RepairLegacyEncodedName(PathToUtf8(from.filename()));
-        const std::string kind = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) ? "folder" : "file";
+        // Whole sentences per kind and verb: a word passed in would stay
+        // English, and most languages inflect around it.
+        const bool isFolder = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec);
         const bool moving = pendingPaste->cut;
-        const std::string verb = moving ? "moved" : "copied";
         const size_t at = pendingPaste->next;
         const std::string folder =
                 at < pendingPaste->itemFolders.size() && !pendingPaste->itemFolders[at].empty()
                 ? pendingPaste->itemFolders[at] : pendingPaste->folder;
-        const std::string why = reason.empty() ? std::string("unknown error") : reason;
+        const std::string why = reason.empty() ? Tr("unknown error") : reason;
 
         OperationDialogSpec spec;
-        spec.title = std::string(moving ? "Move" : "Copy") + ": a " + kind
-                   + " could not be " + verb;
+        spec.title = moving ? (isFolder ? Tr("Move: a folder could not be moved")
+                                        : Tr("Move: a file could not be moved"))
+                            : (isFolder ? Tr("Copy: a folder could not be copied")
+                                        : Tr("Copy: a file could not be copied"));
         spec.type = DialogType::Warning;
-        spec.question = "\"" + name + "\" could not be " + verb + ".";
+        spec.question = moving ? TrF("\"{0}\" could not be moved.", name)
+                               : TrF("\"{0}\" could not be copied.", name);
         // The whole failure, spelled out: the operating system's own words for
         // why, the folder it was in and the one it was headed for.
-        spec.facts = "**Reason:** " + why
-                   + "\n\n**From:** " + FactPath(PathToUtf8(from.parent_path()))
-                   + "\n\n**Into:** " + FactPath(folder);
-        spec.note = "A " + kind + " that another program still holds open - or that is "
-                    "shown in a preview - cannot be " + verb + " until that program lets "
-                    "go of it. Close it there, then try again.";
-        spec.applyToAllLabel = "Apply to all later failures";
-        spec.buttons = {{"Try again", DialogButtonRole::Default},
-                        {"Skip", DialogButtonRole::Normal},
-                        {"Stop", DialogButtonRole::Cancel}};
+        spec.facts = "**" + Tr("Reason:") + "** " + why
+                   + "\n\n**" + Tr("From:") + "** " + FactPath(PathToUtf8(from.parent_path()))
+                   + "\n\n**" + Tr("Into:") + "** " + FactPath(folder);
+        if (moving)
+            spec.note = isFolder
+                    ? Tr("A folder that another program still holds open - or that is shown "
+                         "in a preview - cannot be moved until that program lets go of it. "
+                         "Close it there, then try again.")
+                    : Tr("A file that another program still holds open - or that is shown "
+                         "in a preview - cannot be moved until that program lets go of it. "
+                         "Close it there, then try again.");
+        else
+            spec.note = isFolder
+                    ? Tr("A folder that another program still holds open - or that is shown "
+                         "in a preview - cannot be copied until that program lets go of it. "
+                         "Close it there, then try again.")
+                    : Tr("A file that another program still holds open - or that is shown "
+                         "in a preview - cannot be copied until that program lets go of it. "
+                         "Close it there, then try again.");
+        spec.applyToAllLabel = Tr("Apply to all later failures");
+        spec.buttons = {{Tr("Try again"), DialogButtonRole::Default},
+                        {Tr("Skip"), DialogButtonRole::Normal},
+                        {Tr("Stop"), DialogButtonRole::Cancel}};
         spec.width = 620;
 
         auto self = this;
@@ -6523,8 +6692,17 @@ namespace UltraCanvas {
                 ++n;
             return n;
         }
+        // Why an entry stayed because a program holds it, for the summary
+        // row: "in use", or "in use by A, B" naming the programs.
+        std::string InUseReason(const std::vector<std::string>& holders) {
+            if (holders.empty()) return Tr("in use");
+            std::string list;
+            for (size_t i = 0; i < holders.size(); ++i) list += (i ? ", " : "") + holders[i];
+            return TrF("in use by {0}", list);
+        }
+        // "3 items", in the language's plural form.
         std::string Items(size_t n) {
-            return std::to_string(n) + (n == 1 ? " item" : " items");
+            return TrN("{n} item", "{n} items", static_cast<long long>(n));
         }
         // What tells two entries of the same name apart, for the row beside
         // each: which is newer, or that nothing does ("same": a file of the
@@ -6533,10 +6711,12 @@ namespace UltraCanvas {
                              std::string& aNote, std::string& bNote) {
             const bool identical = !a.isDirectory && !b.isDirectory &&
                                    a.size == b.size && a.modifiedTime == b.modifiedTime;
-            if (identical)                              aNote = bNote = "same";
-            else if (a.modifiedTime == b.modifiedTime)  aNote = bNote = "same date";
-            else if (b.modifiedTime > a.modifiedTime) { aNote = "older"; bNote = "newer"; }
-            else                                      { aNote = "newer"; bNote = "older"; }
+            // A context ("age|newer"): the words stand alone beside a row and
+            // a language may need a different form than elsewhere.
+            if (identical)                              aNote = bNote = TrC("age", "same");
+            else if (a.modifiedTime == b.modifiedTime)  aNote = bNote = TrC("age", "same date");
+            else if (b.modifiedTime > a.modifiedTime) { aNote = TrC("age", "older"); bNote = TrC("age", "newer"); }
+            else                                      { aNote = TrC("age", "newer"); bNote = TrC("age", "older"); }
         }
     }
 
@@ -6554,7 +6734,6 @@ namespace UltraCanvas {
         const std::string dest = PathToUtf8(PathFromUtf8(folder) / from.filename());
         const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) &&
                            fs::is_directory(PathFromUtf8(dest), ec);
-        const std::string kind = isDir ? "folder" : "file";
         std::string folderName = PathToUtf8(PathFromUtf8(folder).filename());
         if (folderName.empty()) folderName = folder;
 
@@ -6593,46 +6772,55 @@ namespace UltraCanvas {
 
         const std::string keepBothName = PathToUtf8(PathFromUtf8(
                 UniquePathIn(folder, PathToUtf8(from.filename()))).filename());
-        const std::string moveVerb = pp.cut ? "moves" : "copies";
 
         OperationDialogSpec spec;
-        spec.title = std::string(pp.cut ? "Move" : "Copy") + ": the name is already taken";
+        spec.title = pp.cut ? Tr("Move: the name is already taken")
+                            : Tr("Copy: the name is already taken");
         spec.type = DialogType::Question;
         spec.question = isDir
-                ? "A folder \"" + name + "\" already exists in \"" + folderName + "\"."
-                : "\"" + name + "\" already exists in \"" + folderName + "\".";
+                ? TrF("A folder \"{0}\" already exists in \"{1}\".", name, folderName)
+                : TrF("\"{0}\" already exists in \"{1}\".", name, folderName);
         spec.listed = {existing, pasted};
-        spec.rowLabels = {"Existing", "Pasted"};
+        spec.rowLabels = {Tr("Existing"), Tr("Pasted")};
         spec.rowNotes = {existingNote, pastedNote};
         spec.listVisibleRows = 2;
         if (isDir) {
-            spec.note = "Merge " + moveVerb + " the " + Items(pastedCount)
-                      + " into the existing folder and asks about any name that is "
-                        "taken inside it. Replace deletes the existing folder and its "
-                      + Items(existingCount) + " first.";
+            // {0} and {1} are counts already in the language's plural form
+            // ("3 items").
+            spec.note = pp.cut
+                    ? TrF("Merge moves the {0} into the existing folder and asks about any "
+                          "name that is taken inside it. Replace deletes the existing folder "
+                          "and its {1} first.", Items(pastedCount), Items(existingCount))
+                    : TrF("Merge copies the {0} into the existing folder and asks about any "
+                          "name that is taken inside it. Replace deletes the existing folder "
+                          "and its {1} first.", Items(pastedCount), Items(existingCount));
         } else if (identical) {
-            spec.note = "The two files have the same size and date. Keep both renames "
-                        "the pasted file to \"" + keepBothName + "\".";
+            spec.note = TrF("The two files have the same size and date. Keep both renames "
+                            "the pasted file to \"{0}\".", keepBothName);
         } else {
-            spec.note = "Keep both renames the pasted file to \"" + keepBothName + "\".";
+            spec.note = TrF("Keep both renames the pasted file to \"{0}\".", keepBothName);
         }
         if (remaining > 0) {
-            spec.applyToAllLabel = "Apply to all " + std::to_string(remaining) + " remaining "
-                                 + (isDir ? "folder conflicts" : "conflicts");
+            const long long n = static_cast<long long>(remaining);
+            spec.applyToAllLabel = isDir
+                    ? TrN("Apply to the {n} remaining folder conflict",
+                          "Apply to all {n} remaining folder conflicts", n)
+                    : TrN("Apply to the {n} remaining conflict",
+                          "Apply to all {n} remaining conflicts", n);
             spec.applyToAllChecked = isDir ? pp.applyToAllFolders : pp.applyToAll;
         }
         if (isDir) {
-            spec.buttons = {{"Merge", DialogButtonRole::Default},
-                            {"Replace", DialogButtonRole::Destructive},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.buttons = {{Tr("Merge"), DialogButtonRole::Default},
+                            {Tr("Replace"), DialogButtonRole::Destructive},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
         } else {
-            spec.buttons = {{"Keep both", identical ? DialogButtonRole::Normal
-                                                    : DialogButtonRole::Default},
-                            {"Replace", DialogButtonRole::Normal},
-                            {"Skip", identical ? DialogButtonRole::Default
-                                               : DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.buttons = {{Tr("Keep both"), identical ? DialogButtonRole::Normal
+                                                        : DialogButtonRole::Default},
+                            {Tr("Replace"), DialogButtonRole::Normal},
+                            {Tr("Skip"), identical ? DialogButtonRole::Default
+                                                   : DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
         }
         spec.width = 700;
 
@@ -6963,7 +7151,7 @@ namespace UltraCanvas {
         for (const std::string& archive : archiveOrder) {
             auto result = VirtualFS::VirtualFS_DeleteFromArchive(
                     archive, archiveVictims[archive]);
-            if (result != VirtualFS::VirtualFSResult::Success) {
+            if (result != VirtualFS::VirtualFSResult::Ok) {
                 ReportError("Delete failed in " + archive + ": " +
                             VirtualFS::VirtualFSResultToString(result));
                 continue;
@@ -6981,6 +7169,13 @@ namespace UltraCanvas {
         // delete asks afterwards — see ShowDeleteProblemDialog.
         pendingDelete = std::make_unique<PendingDelete>();
         pendingDelete->victims = fsVictims;   // copy: Refresh() rebuilds `entries`
+        // Every folder watch in the process lets go of the folders about to
+        // go - another display showing a subfolder of one, above all - and
+        // none comes back until the delete is through (FinishPendingDelete
+        // drops the hold with the queue). On Windows a watch holds its
+        // folder open, which keeps a deleted folder listed on FAT and exFAT
+        // and refuses moving a folder above it to the Recycle Bin.
+        pendingDelete->watchHold = HoldWatchesOffFolders(fsVictims);
         pendingDelete->modifiedFolders = std::move(archiveModified);
         pendingDelete->onDone = std::move(onDone);
         pendingDelete->toTrash = mode == FilerDeleteMode::MoveToTrash;
@@ -7013,6 +7208,35 @@ namespace UltraCanvas {
                                 [this]() { AfterDeleteStretch(); });
     }
 
+    std::unique_ptr<UltraCanvasFolderWatchHold>
+    UltraCanvasFilerWidget::HoldWatchesOffFolders(const std::vector<FilerEntry>& victims) {
+        std::vector<std::string> folders;
+        for (const FilerEntry& v : victims)
+            if (v.isDirectory && !v.path.empty()) folders.push_back(v.path);
+        if (folders.empty()) return nullptr;
+        return std::make_unique<UltraCanvasFolderWatchHold>(std::move(folders));
+    }
+
+    namespace {
+        // Whether a delete asks "write-protected?" before touching `e`. A
+        // read-only file does, everywhere. A read-only FOLDER does not on
+        // Windows: the attribute protects nothing there - the folder's
+        // entries can be added and removed as ever - and Windows sets it
+        // itself on a folder with a desktop.ini (a custom icon or a
+        // localised name) and on folders copied off a CD or a camera card,
+        // so Explorer deletes such a folder without a word. The removal
+        // lifts it as it goes (RemoveFileSystemEntry). Elsewhere a folder
+        // without write permission is a real one: nothing in it can be
+        // deleted, and the question is the place to hear it.
+        bool AsksBeforeDeleting(const FilerEntry& e) {
+            if (!e.isReadOnly) return false;
+#if defined(_WIN32) || defined(_WIN64)
+            if (e.isDirectory) return false;
+#endif
+            return true;
+        }
+    }
+
     void UltraCanvasFilerWidget::DeleteWorkerLoop(PendingDelete* pd) {
         std::error_code ec;
         FileOperation* op = fileOp.get();
@@ -7034,7 +7258,7 @@ namespace UltraCanvas {
                     credit.Rollback();
                     if (pd->skipFailedForAll) {
                         pd->skipped.push_back({e.path, trashError.empty()
-                                ? std::string("unknown error") : trashError, {}});
+                                ? Tr("unknown error") : trashError, {}});
                         AdvancePendingDelete();
                         continue;
                     }
@@ -7059,8 +7283,9 @@ namespace UltraCanvas {
                 AdvancePendingDelete();
                 continue;
             }
-            // A write-protected (locked) entry asks before the attempt.
-            if (e.isReadOnly) {
+            // A write-protected (locked) entry asks before the attempt -
+            // except a read-only folder on Windows (AsksBeforeDeleting).
+            if (AsksBeforeDeleting(e)) {
                 DeleteProblemAction action;
                 if (pd->currentDecided)       action = pd->currentAction;
                 else if (pd->protectedForAll) action = pd->protectedAction;
@@ -7072,7 +7297,7 @@ namespace UltraCanvas {
                     return;
                 }
                 if (action == DeleteProblemAction::Skip) {
-                    pd->skipped.push_back({e.path, "Skipped: write-protected", {}});
+                    pd->skipped.push_back({e.path, Tr("Skipped: write-protected"), {}});
                     AdvancePendingDelete();
                     continue;
                 }
@@ -7089,7 +7314,8 @@ namespace UltraCanvas {
             credit.total = CountTreeEntries(e.path, credit);
             ec.clear();
             std::string failedPath;
-            if (!RemoveTreeWithProgress(e.path, credit, ec, &failedPath)) {
+            FileRemovalProblem problem = FileRemovalProblem::NoProblem;
+            if (!RemoveTreeWithProgress(e.path, credit, ec, &failedPath, &problem)) {
                 // A removal that got part way - cancelled inside a big folder,
                 // or stopped by one locked file in it - still emptied part of
                 // the folder, and whoever shows that folder has to hear about
@@ -7110,22 +7336,27 @@ namespace UltraCanvas {
                 // questions below are asked of it.
                 if (failedPath == e.path) failedPath.clear();
                 const std::string& culprit = failedPath.empty() ? e.path : failedPath;
-                // "Access is denied" is two different things on Windows. A
-                // file a running program has loaded - its executable, a DLL
-                // - answers it, and no administrator can delete that either;
-                // the lock probe (Restart Manager) says who holds it. Only
-                // the rest is Explorer's shield-button case: deletable, just
-                // not by this user. Where the host wired the elevated helper
-                // the dialog offers that retry; the entry then waits for the
-                // one helper run at the end of the queue.
-                const bool permissionDenied =
-                        ec == std::errc::permission_denied ||
-                        ElevatedFileOperations::IsPermissionFailure(ec);
+                // "Access is denied" is several things on Windows, and
+                // RemoveFileSystemEntry has already told them apart: a
+                // read-only entry it lifted, a delete-pending one it counted
+                // as gone, and a file mapped into a process - a running
+                // program's executable or DLL, a picture an image library
+                // holds - comes back as InUse: no administrator can delete
+                // that either. Only NotPermitted is Explorer's shield-button
+                // case: deletable, just not by this user. Where the host
+                // wired the elevated helper the dialog offers that retry; the
+                // entry then waits for the one helper run at the end of the
+                // queue. The lock probe (Restart Manager) names who holds an
+                // entry in use - and catches a sharing violation a runtime
+                // reported as plain EACCES (libc++ does).
+                if (problem == FileRemovalProblem::NoProblem && ec)
+                    problem = ClassifyFileRemovalError(ec);
+                const bool permissionDenied = problem == FileRemovalProblem::NotPermitted;
                 std::vector<std::string> holders;
-                bool inUse = false;
-                if (permissionDenied && FileLockProbeAvailable()) {
+                bool inUse = problem == FileRemovalProblem::InUse;
+                if ((permissionDenied || inUse) && FileLockProbeAvailable()) {
                     const FileLockInfo lock = ProbeFileLock(culprit, /*wantHolders=*/true);
-                    inUse = lock.Blocks() || !lock.holders.empty();
+                    inUse = inUse || lock.Blocks() || !lock.holders.empty();
                     holders = lock.holders;
                 }
                 const bool needsPermission = !inUse && permissionDenied &&
@@ -7136,14 +7367,7 @@ namespace UltraCanvas {
                     continue;
                 }
                 std::string reason = ec ? ec.message() : std::string("unknown error");
-                if (inUse) {
-                    reason = "in use";
-                    if (!holders.empty()) {
-                        reason += " by ";
-                        for (size_t i = 0; i < holders.size(); ++i)
-                            reason += (i ? ", " : "") + holders[i];
-                    }
-                }
+                if (inUse) reason = InUseReason(holders);
                 if (pd->skipFailedForAll) {
                     pd->skipped.push_back({e.path, failedPath.empty()
                             ? reason
@@ -7160,7 +7384,7 @@ namespace UltraCanvas {
                 pd->stopKind = inUse           ? DeleteProblemKind::InUse
                              : needsPermission ? DeleteProblemKind::NeedsPermission
                                                : DeleteProblemKind::Failed;
-                pd->stopReason = ec ? ec.message() : std::string("unknown error");
+                pd->stopReason = ec ? ec.message() : Tr("unknown error");
                 pd->stopPath = failedPath;
                 pd->stopHolders = holders;
                 return;
@@ -7260,9 +7484,6 @@ namespace UltraCanvas {
             if (!folder.empty()) pd.modifiedFolders.push_back(folder);
         }
         const size_t left = pd.elevatedVictims.size() - gone;
-        auto items = [](size_t n) {
-            return std::to_string(n) + (n == 1 ? " item" : " items");
-        };
 
         switch (result.outcome) {
             case ElevatedOutcome::Completed:
@@ -7274,23 +7495,25 @@ namespace UltraCanvas {
                     for (const auto& f : result.failures)
                         failed.push_back({f.path, f.reason, std::string()});
                     const std::string message = result.failures.size() == 1
-                            ? "\"" + PathToUtf8(PathFromUtf8(result.failures.front().path).filename())
-                              + "\" could not be deleted even with administrator permission."
-                            : items(result.failures.size())
-                              + " could not be deleted even with administrator permission.";
-                    ShowOperationSummary("Delete finished", message, failed,
+                            ? TrF("\"{0}\" could not be deleted even with administrator permission.",
+                                  PathToUtf8(PathFromUtf8(result.failures.front().path).filename()))
+                            : TrN("{n} item could not be deleted even with administrator permission.",
+                                  "{n} items could not be deleted even with administrator permission.",
+                                  static_cast<long long>(result.failures.size()));
+                    ShowOperationSummary(Tr("Delete finished"), message, failed,
                                          std::string(), std::string(), nullptr);
                 }
                 break;
             case ElevatedOutcome::Declined:
-                ReportError("Administrator permission was not granted; "
-                            + items(left) + " left in place.");
+                ReportError(TrN("Administrator permission was not granted; {n} item left in place.",
+                                "Administrator permission was not granted; {n} items left in place.",
+                                static_cast<long long>(left)));
                 break;
             case ElevatedOutcome::Failed:
-                ReportError("Could not delete as administrator: " + result.error);
+                ReportError(TrF("Could not delete as administrator: {0}", result.error));
                 break;
             case ElevatedOutcome::Unavailable:
-                ReportError("Deleting as administrator is not available: " + result.error);
+                ReportError(TrF("Deleting as administrator is not available: {0}", result.error));
                 break;
         }
         FinishPendingDelete();   // elevationStarted: the ordinary finish now
@@ -7346,17 +7569,29 @@ namespace UltraCanvas {
         // (Entries handed to the administrator were reported by that run.)
         if (walkedToEnd && !pd->skipped.empty()) {
             const bool toTrash = pd->toTrash;
-            const size_t total = pd->removed + pd->skipped.size();
-            std::string message = std::string(toTrash ? "Moved " : "Deleted ")
-                    + std::to_string(pd->removed) + " of " + std::to_string(total)
-                    + (total == 1 ? " item" : " items")
-                    + (toTrash ? " to the " + TrashDisplayName() + ". " : std::string(". "))
-                    + std::to_string(pd->skipped.size())
-                    + (pd->skipped.size() == 1 ? " was skipped." : " were skipped.");
+            // Two sentences, the counts in the language's plural forms, the
+            // trash by the platform's name for it - whole sentences, since a
+            // name passed in would stay English.
+            const long long total = static_cast<long long>(pd->removed + pd->skipped.size());
+#if defined(_WIN32) || defined(_WIN64)
+            const std::string first = toTrash
+                    ? TrN("Moved {0} of {n} item to the Recycle Bin.",
+                          "Moved {0} of {n} items to the Recycle Bin.", total)
+                    : TrN("Deleted {0} of {n} item.", "Deleted {0} of {n} items.", total);
+#else
+            const std::string first = toTrash
+                    ? TrN("Moved {0} of {n} item to the Trash.",
+                          "Moved {0} of {n} items to the Trash.", total)
+                    : TrN("Deleted {0} of {n} item.", "Deleted {0} of {n} items.", total);
+#endif
+            const std::string message =
+                    LocalisationDetail::Substitute(first, {std::to_string(pd->removed)})
+                    + " " + TrN("{n} was skipped.", "{n} were skipped.",
+                                static_cast<long long>(pd->skipped.size()));
             std::vector<std::string> again;
             for (const SkippedItem& item : pd->skipped) again.push_back(item.path);
-            ShowOperationSummary("Delete finished", message, pd->skipped, std::string(),
-                    "Delete skipped items again",
+            ShowOperationSummary(Tr("Delete finished"), message, pd->skipped, std::string(),
+                    Tr("Delete skipped items again"),
                     [this, again, toTrash]() {
                         DeletePaths(again, nullptr, toTrash ? FilerDeleteMode::MoveToTrash
                                                             : FilerDeleteMode::Permanently);
@@ -7402,13 +7637,20 @@ namespace UltraCanvas {
                                                          DeleteProblemKind kind,
                                                          const std::string& reason) {
         if (!pendingDelete) return;
-        const std::string kindWord = entry.isDirectory ? "folder" : "file";
+        // Every text is translated whole, per kind (and, for the trash, per
+        // the platform's name for it): "file", "folder" and
+        // TrashDisplayName() passed in through a placeholder would stay
+        // English in every language, and most languages need the noun's
+        // gender or case in the sentence around it anyway. Names go in as
+        // {0} / {1}, so a translation can put them where its grammar wants.
+        const bool isFolder = entry.isDirectory;
+        const std::string kindLabel = isFolder ? Tr("Folder:") : Tr("File:");
         const bool writeProtected = kind == DeleteProblemKind::WriteProtected;
         const bool needsPermission = kind == DeleteProblemKind::NeedsPermission;
         const bool inUse = kind == DeleteProblemKind::InUse;
         const bool toTrash = pendingDelete->toTrash;
         const std::string name = RepairLegacyEncodedName(entry.name);
-        const std::string why = reason.empty() ? std::string("unknown error") : reason;
+        const std::string why = reason.empty() ? Tr("unknown error") : reason;
         // The file inside the folder that refused, when the failure is not
         // the entry's own: the question is about the entry the user chose,
         // the facts name the file that stopped it.
@@ -7418,10 +7660,9 @@ namespace UltraCanvas {
                 : RepairLegacyEncodedName(PathToUtf8(PathFromUtf8(culprit).filename()));
         const std::vector<std::string> holders = pendingDelete->stopHolders;
         auto entryFact = [&]() {
-            std::string facts = "**" + std::string(entry.isDirectory ? "Folder" : "File")
-                              + ":** " + FactPath(entry.path);
+            std::string facts = "**" + kindLabel + "** " + FactPath(entry.path);
             if (!culprit.empty())
-                facts += "\n\n**Stopped at:** " + FactPath(culprit);
+                facts += "\n\n**" + Tr("Stopped at:") + "** " + FactPath(culprit);
             return facts;
         };
         // Whether the file belongs to this very program: the delete is then
@@ -7440,95 +7681,104 @@ namespace UltraCanvas {
         spec.type = DialogType::Warning;
         spec.width = 640;
         if (writeProtected) {
-            spec.title = "Delete: a " + kindWord + " is write-protected";
-            spec.question = "\"" + name + "\" is write-protected.";
-            spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
-                       + FactPath(entry.path)
-                       + "\n\n**Why:** the read-only attribute is set";
-            spec.note = "Delete anyway removes the protection first.";
-            spec.applyToAllLabel = "Apply to all remaining write-protected items";
+            spec.title = isFolder ? Tr("Delete: a folder is write-protected")
+                                  : Tr("Delete: a file is write-protected");
+            spec.question = TrF("\"{0}\" is write-protected.", name);
+            spec.facts = "**" + kindLabel + "** " + FactPath(entry.path)
+                       + "\n\n**" + Tr("Why:") + "** " + Tr("the read-only attribute is set");
+            spec.note = Tr("Delete anyway removes the protection first.");
+            spec.applyToAllLabel = Tr("Apply to all remaining write-protected items");
             // Skipping is the safe default for a locked entry.
-            spec.buttons = {{"Skip", DialogButtonRole::Default},
-                            {"Delete anyway", DialogButtonRole::Destructive},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.buttons = {{Tr("Skip"), DialogButtonRole::Default},
+                            {Tr("Delete anyway"), DialogButtonRole::Destructive},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Skip, Proceed};
         } else if (inUse) {
             // A program holds the file - a running program's own executable
             // or library, as a rule. Not a permission problem, whatever the
             // system's wording: an administrator cannot delete it either, so
             // the answer is to close that program, and the dialog names it.
-            spec.title = culprit.empty()
-                    ? "Delete: the " + kindWord + " is in use"
-                    : "Delete: a file in the folder is in use";
+            spec.title = !culprit.empty() ? Tr("Delete: a file in the folder is in use")
+                       : isFolder         ? Tr("Delete: the folder is in use")
+                                          : Tr("Delete: the file is in use");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" is in use by another program."
-                    : "\"" + culpritName + "\" in \"" + name + "\" is in use by another program.";
+                    ? TrF("\"{0}\" is in use by another program.", name)
+                    : TrF("\"{0}\" in \"{1}\" is in use by another program.", culpritName, name);
             std::string facts = entryFact();
             if (!holders.empty()) {
-                facts += "\n\n**In use by:** ";
+                facts += "\n\n**" + Tr("In use by:") + "** ";
                 for (size_t i = 0; i < holders.size(); ++i)
                     facts += (i ? ", " : "") + holders[i];
             }
-            facts += "\n\n**Reason:** " + why;
+            facts += "\n\n**" + Tr("Reason:") + "** " + why;
             spec.facts = facts;
             if (ownFile) {
-                spec.note = "That program is this one: it is running from the folder "
-                            "being deleted. Close it, then delete the folder from "
-                            "another file manager or from a copy started elsewhere.";
+                spec.note = Tr("That program is this one: it is running from the folder "
+                               "being deleted. Close it, then delete the folder from "
+                               "another file manager or from a copy started elsewhere.");
             } else {
-                spec.note = "Close the program that holds it, then try again. "
-                            "Administrator rights do not help: a file a running "
-                            "program has loaded cannot be deleted by anyone.";
+                spec.note = Tr("Close the program that holds it, then try again. "
+                               "Administrator rights do not help: a file a running "
+                               "program has loaded cannot be deleted by anyone.");
             }
-            spec.applyToAllLabel = "Apply to all later files in use";
-            spec.buttons = {{"Skip", DialogButtonRole::Default},
-                            {"Try again", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+            spec.applyToAllLabel = Tr("Apply to all later files in use");
+            spec.buttons = {{Tr("Skip"), DialogButtonRole::Default},
+                            {Tr("Try again"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Skip, TryAgain};
         } else if (needsPermission) {
             // Explorer's "You'll need to provide administrator permission to
             // delete this file": the entry is deletable, just not by this
             // user. Windows asks for consent before the helper runs.
-            spec.title = "Delete: administrator permission needed";
+            spec.title = Tr("Delete: administrator permission needed");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" needs administrator permission to be deleted."
-                    : "\"" + culpritName + "\" in \"" + name
-                              + "\" needs administrator permission to be deleted.";
-            spec.facts = entryFact() + "\n\n**Reason:** " + why;
-            spec.note = "Windows asks you to confirm once, at the end, for every item "
-                        "handed to the administrator.";
-            spec.applyToAllLabel = "Apply to all later permission failures";
-            spec.buttons = {{"Delete as administrator", DialogButtonRole::Default},
-                            {"Try again", DialogButtonRole::Normal},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+                    ? TrF("\"{0}\" needs administrator permission to be deleted.", name)
+                    : TrF("\"{0}\" in \"{1}\" needs administrator permission to be deleted.",
+                          culpritName, name);
+            spec.facts = entryFact() + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = Tr("Windows asks you to confirm once, at the end, for every item "
+                           "handed to the administrator.");
+            spec.applyToAllLabel = Tr("Apply to all later permission failures");
+            spec.buttons = {{Tr("Delete as administrator"), DialogButtonRole::Default},
+                            {Tr("Try again"), DialogButtonRole::Normal},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {Elevate, TryAgain, Skip};
         } else if (toTrash) {
-            const std::string trash = TrashDisplayName();
-            spec.title = "Delete: a " + kindWord + " could not be moved to the " + trash;
-            spec.question = "\"" + name + "\" could not be moved to the " + trash + ".";
-            spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
-                       + FactPath(entry.path) + "\n\n**Reason:** " + why;
-            spec.note = "It is never deleted for good instead. To remove it anyway, "
-                        "stop and delete it with Delete permanently (Shift+Del).";
-            spec.applyToAllLabel = "Apply to all later failures";
-            spec.buttons = {{"Try again", DialogButtonRole::Default},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+#if defined(_WIN32) || defined(_WIN64)
+            spec.title = isFolder ? Tr("Delete: a folder could not be moved to the Recycle Bin")
+                                  : Tr("Delete: a file could not be moved to the Recycle Bin");
+            spec.question = TrF("\"{0}\" could not be moved to the Recycle Bin.", name);
+#else
+            spec.title = isFolder ? Tr("Delete: a folder could not be moved to the Trash")
+                                  : Tr("Delete: a file could not be moved to the Trash");
+            spec.question = TrF("\"{0}\" could not be moved to the Trash.", name);
+#endif
+            spec.facts = "**" + kindLabel + "** " + FactPath(entry.path)
+                       + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = Tr("It is never deleted for good instead. To remove it anyway, "
+                           "stop and delete it with Delete permanently (Shift+Del).");
+            spec.applyToAllLabel = Tr("Apply to all later failures");
+            spec.buttons = {{Tr("Try again"), DialogButtonRole::Default},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {TryAgain, Skip};
         } else {
-            spec.title = "Delete: a " + kindWord + " could not be deleted";
+            spec.title = isFolder ? Tr("Delete: a folder could not be deleted")
+                                  : Tr("Delete: a file could not be deleted");
             spec.question = culprit.empty()
-                    ? "\"" + name + "\" could not be deleted."
-                    : "\"" + culpritName + "\" in \"" + name + "\" could not be deleted.";
-            spec.facts = entryFact() + "\n\n**Reason:** " + why;
-            spec.note = "The " + (culprit.empty() ? kindWord : std::string("file"))
-                        + " may be locked or in use by another program. "
-                        "Close it there, then try again.";
-            spec.applyToAllLabel = "Apply to all later failures";
-            spec.buttons = {{"Try again", DialogButtonRole::Default},
-                            {"Skip", DialogButtonRole::Normal},
-                            {"Stop", DialogButtonRole::Cancel}};
+                    ? TrF("\"{0}\" could not be deleted.", name)
+                    : TrF("\"{0}\" in \"{1}\" could not be deleted.", culpritName, name);
+            spec.facts = entryFact() + "\n\n**" + Tr("Reason:") + "** " + why;
+            spec.note = (culprit.empty() && isFolder)
+                    ? Tr("The folder may be locked or in use by another program. "
+                         "Close it there, then try again.")
+                    : Tr("The file may be locked or in use by another program. "
+                         "Close it there, then try again.");
+            spec.applyToAllLabel = Tr("Apply to all later failures");
+            spec.buttons = {{Tr("Try again"), DialogButtonRole::Default},
+                            {Tr("Skip"), DialogButtonRole::Normal},
+                            {Tr("Stop"), DialogButtonRole::Cancel}};
             answers = {TryAgain, Skip};
         }
 
@@ -7536,12 +7786,7 @@ namespace UltraCanvas {
         const FilerEntry victim = entry;   // `entry` aliases the queue
         // What the summary says about a skipped entry: the file that
         // stopped it and, for one in use, who holds it.
-        std::string skipReason = why;
-        if (inUse) {
-            skipReason = "in use";
-            for (size_t i = 0; i < holders.size(); ++i)
-                skipReason += (i ? ", " : " by ") + holders[i];
-        }
+        std::string skipReason = inUse ? InUseReason(holders) : why;
         if (!culpritName.empty()) skipReason = culpritName + ": " + skipReason;
         const bool shown = ShowOperationDialog(spec,
                 [self, kind, victim, answers, skipReason](size_t button, bool all) {
@@ -7566,7 +7811,7 @@ namespace UltraCanvas {
                                     pd.protectedForAll = true;
                                     pd.protectedAction = DeleteProblemAction::Skip;
                                 }
-                                pd.skipped.push_back({victim.path, "Skipped: write-protected", {}});
+                                pd.skipped.push_back({victim.path, Tr("Skipped: write-protected"), {}});
                             } else {
                                 if (all) pd.skipFailedForAll = true;
                                 pd.skipped.push_back({victim.path, skipReason, {}});
@@ -7633,25 +7878,26 @@ namespace UltraCanvas {
         const bool whole = PathIsSameOrBelowCI(ownDir, hit->path);
 
         DialogConfig cfg;
-        cfg.title = "Cannot delete: " + program + " is running from here";
+        cfg.title = TrF("Cannot delete: {0} is running from here", program);
         cfg.dialogType = DialogType::Warning;
         cfg.width = 560;
         cfg.height = 240;
+        // Whole sentences, the item and the program's name as {0} / {1}.
         cfg.message = whole
-                ? "\"" + name + "\" holds the " + program + " you are using right now."
-                : "\"" + name + "\" is part of the " + program + " you are using right now.";
-        cfg.details = "**Program folder:** " + FactPath(ownDir) + "\n\n"
-                      "A running program cannot delete its own files: the ones it has "
-                      "loaded refuse to go, and taking the rest away makes it crash. "
-                      "Close this " + program + " and delete the folder from another "
-                      "file manager, or from a copy of " + program + " started elsewhere.";
+                ? TrF("\"{0}\" holds the {1} you are using right now.", name, program)
+                : TrF("\"{0}\" is part of the {1} you are using right now.", name, program);
+        cfg.details = "**" + Tr("Program folder:") + "** " + FactPath(ownDir) + "\n\n" +
+                      TrF("A running program cannot delete its own files: the ones it has "
+                          "loaded refuse to go, and taking the rest away makes it crash. "
+                          "Close this {0} and delete the folder from another file manager, "
+                          "or from a copy of {0} started elsewhere.", program);
         cfg.buttons = DialogButtons::OK;
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (dialog) {
             dialog->SetStyle(DialogStyleForFonts(dialog->GetStyle()));
             UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
         } else {
-            ReportError(cfg.message + " Close it and delete the folder from elsewhere.");
+            ReportError(cfg.message + " " + Tr("Close it and delete the folder from elsewhere."));
         }
         return true;
     }
@@ -7725,46 +7971,61 @@ namespace UltraCanvas {
                 }
             }
 #endif
-            listCaption = "Folder \"" + RepairLegacyEncodedName(folder.name) + "\" contains "
-                        + Items(listedTotal);
-            if (listedTotal == 0) listCaption = "Folder \"" +
-                    RepairLegacyEncodedName(folder.name) + "\" is empty.";
+            // The count's plural form from the language, the folder's name
+            // put in after it (TrN fills only {n}).
+            const std::string folderName = RepairLegacyEncodedName(folder.name);
+            listCaption = listedTotal == 0
+                    ? TrF("Folder \"{0}\" is empty.", folderName)
+                    : LocalisationDetail::Substitute(
+                          TrN("Folder \"{0}\" contains {n} item", "Folder \"{0}\" contains {n} items",
+                              static_cast<long long>(listedTotal)),
+                          {folderName});
         }
         if (listedTotal > listed.size())
-            listCaption += (listCaption.empty() ? "The first " : " (the first ")
-                         + std::to_string(listed.size())
-                         + (listCaption.empty() ? " of " + std::to_string(listedTotal) + " items:"
-                                                : " shown)");
+            listCaption = listCaption.empty()
+                    ? TrF("The first {0} of {1} items:", listed.size(), listedTotal)
+                    : listCaption + " " + TrF("(the first {0} shown)", listed.size());
 
         // The trash / permanent choice. Where the trash cannot take these
         // entries only the permanent delete is offered, and the note says why
         // rather than leaving a greyed-out button unexplained.
-        const std::string trash = TrashDisplayName();
+        // Whole sentences per platform's name for the trash: a name passed
+        // in through a placeholder would stay English in every language.
         const bool trashPossible = CanMoveToTrash(victims);
         std::string noTrashWhy;
         if (!trashPossible) {
+#if defined(_WIN32) || defined(_WIN64)
             if (!TrashAvailable())
-                noTrashWhy = "This system has no " + trash + ".";
+                noTrashWhy = Tr("This system has no Recycle Bin.");
             else if (ShowingRemoteFolder())
-                noTrashWhy = "Items on a remote drive cannot go to the " + trash + ".";
+                noTrashWhy = Tr("Items on a remote drive cannot go to the Recycle Bin.");
             else
-                noTrashWhy = "Items inside an archive cannot go to the " + trash + ".";
+                noTrashWhy = Tr("Items inside an archive cannot go to the Recycle Bin.");
+#else
+            if (!TrashAvailable())
+                noTrashWhy = Tr("This system has no Trash.");
+            else if (ShowingRemoteFolder())
+                noTrashWhy = Tr("Items on a remote drive cannot go to the Trash.");
+            else
+                noTrashWhy = Tr("Items inside an archive cannot go to the Trash.");
+#endif
         }
         const bool startInTrash =
                 trashPossible && preferred == FilerDeleteMode::MoveToTrash;
         const bool one = victims.size() == 1;
 
         OperationDialogSpec spec;
-        spec.title = "Delete";
+        spec.title = Tr("Delete");
         spec.type = DialogType::Warning;
         spec.question = one
-                ? "Delete \"" + RepairLegacyEncodedName(victims.front().name) + "\"?"
-                : "Delete " + std::to_string(victims.size()) + " items?";
+                ? TrF("Delete \"{0}\"?", RepairLegacyEncodedName(victims.front().name))
+                : TrN("Delete {n} item?", "Delete {n} items?", static_cast<long long>(victims.size()));
         std::vector<std::string> paths;
         for (const FilerEntry& v : victims) paths.push_back(v.path);
         const std::string from = CommonParentFolder(paths);
-        spec.facts = "**From:** " + (from.empty() ? std::string("several folders")
-                                                   : FactPath(from));
+        spec.facts = "**" + Tr("From:") + "** " + (from.empty() ? Tr("several folders")
+                                                               : FactPath(from));
+        const std::string sizeLabel = "\n\n**" + Tr("Size:") + "** ";
         // How much goes, as the move / copy question counts it: the folders'
         // contents from the background walk, the line filling in as walks
         // land. Only a folder on this machine's file system can be walked -
@@ -7778,31 +8039,38 @@ namespace UltraCanvas {
         }
         if (walkable) {
             const std::string placeFacts = spec.facts;
-            auto sizeFacts = [this, placeFacts, victims]() {
-                return placeFacts + "\n\n**Size:** " + CountedSizeFact(victims);
+            auto sizeFacts = [this, placeFacts, sizeLabel, victims]() {
+                return placeFacts + sizeLabel + CountedSizeFact(victims);
             };
             spec.facts = sizeFacts();
             spec.liveFacts = sizeFacts;
         } else if (victims.size() > 1) {
-            spec.facts += "\n\n**Size:** " + DescribeEntries(victims);
+            spec.facts += sizeLabel + DescribeEntries(victims);
         } else if (!victims.front().isDirectory) {
-            spec.facts += "\n\n**Size:** " + FormatSize(victims.front().size);
+            spec.facts += sizeLabel + FormatSize(victims.front().size);
         }
         spec.listed = std::move(listed);
         spec.listCaption = listCaption;
         spec.listVisibleRows = 10;
         if (trashPossible) {
-            spec.note = "Move to " + trash + " can be undone from the " + trash
-                      + ". Delete permanently cannot be undone.";
-            spec.buttons = {{"Move to " + trash, startInTrash ? DialogButtonRole::Default
-                                                              : DialogButtonRole::Normal},
-                            {"Delete permanently", startInTrash ? DialogButtonRole::Destructive
-                                                                : DialogButtonRole::DestructiveDefault},
-                            {"Cancel", DialogButtonRole::Cancel}};
+#if defined(_WIN32) || defined(_WIN64)
+            spec.note = Tr("Move to Recycle Bin can be undone from the Recycle Bin. "
+                           "Delete permanently cannot be undone.");
+            const std::string toTrashLabel = Tr("Move to Recycle Bin");
+#else
+            spec.note = Tr("Move to Trash can be undone from the Trash. "
+                           "Delete permanently cannot be undone.");
+            const std::string toTrashLabel = Tr("Move to Trash");
+#endif
+            spec.buttons = {{toTrashLabel, startInTrash ? DialogButtonRole::Default
+                                                        : DialogButtonRole::Normal},
+                            {Tr("Delete permanently"), startInTrash ? DialogButtonRole::Destructive
+                                                                    : DialogButtonRole::DestructiveDefault},
+                            {Tr("Cancel"), DialogButtonRole::Cancel}};
         } else {
-            spec.note = "This cannot be undone. " + noTrashWhy;
-            spec.buttons = {{"Delete permanently", DialogButtonRole::DestructiveDefault},
-                            {"Cancel", DialogButtonRole::Cancel}};
+            spec.note = Tr("This cannot be undone.") + " " + noTrashWhy;
+            spec.buttons = {{Tr("Delete permanently"), DialogButtonRole::DestructiveDefault},
+                            {Tr("Cancel"), DialogButtonRole::Cancel}};
         }
         spec.width = spec.listed.empty() ? 520 : 640;
 
@@ -7848,7 +8116,7 @@ namespace UltraCanvas {
         // carry the rename out; otherwise refuse now rather than let someone
         // type a new name that goes nowhere.
         if (ShowingRemoteFolder()) {
-            if (!remoteRename) {
+            if (!CanRenameHere()) {
                 ReportError("Cannot rename on this drive.");
                 return;
             }
@@ -7988,6 +8256,13 @@ namespace UltraCanvas {
         if (wasOnlySelection) DeselectPathsForModification({oldPath});
 
         std::error_code ec;
+        // Windows refuses to rename a folder while anything holds a folder
+        // inside it open - a folder watch of another display showing it, say.
+        std::unique_ptr<UltraCanvasFolderWatchHold> watchHold;
+        if (fs::is_directory(fs::symlink_status(UltraCanvas::PathFromUtf8(oldPath), ec)))
+            watchHold = std::make_unique<UltraCanvasFolderWatchHold>(
+                    std::vector<std::string>{oldPath});
+        ec.clear();
         fs::rename(UltraCanvas::PathFromUtf8(oldPath), UltraCanvas::PathFromUtf8(targetPath), ec);
         if (ec) {
             ReportError("Rename failed for " + oldPath + ": " + ec.message());
@@ -8022,7 +8297,6 @@ namespace UltraCanvas {
         const std::string oldName = RepairLegacyEncodedName(
                 PathToUtf8(PathFromUtf8(oldPath).filename()));
         const bool isDir = fs::is_directory(UltraCanvas::PathFromUtf8(target), ec);
-        const std::string kind = isDir ? "folder" : "file";
 
         // The two of them side by side: the entry that has the name, and the
         // entry about to take it.
@@ -8037,18 +8311,22 @@ namespace UltraCanvas {
         NewerOlderNotes(existing, renamed, existingNote, renamedNote);
 
         OperationDialogSpec spec;
-        spec.title = "Rename: the name is already taken";
+        spec.title = Tr("Rename: the name is already taken");
         spec.type = DialogType::Warning;
-        spec.question = "A " + kind + " \"" + newName + "\" already exists in this folder.";
-        spec.facts = "**Folder:** " + FactPath(PathToUtf8(target.parent_path()));
+        spec.question = isDir ? TrF("A folder \"{0}\" already exists in this folder.", newName)
+                              : TrF("A file \"{0}\" already exists in this folder.", newName);
+        spec.facts = "**" + Tr("Folder:") + "** " + FactPath(PathToUtf8(target.parent_path()));
         spec.listed = {existing, renamed};
-        spec.rowLabels = {"Existing", "Renamed"};
+        spec.rowLabels = {Tr("Existing"), Tr("Renamed")};
         spec.rowNotes = {existingNote, renamedNote};
         spec.listVisibleRows = 2;
-        spec.note = "Replace deletes the existing " + kind + " and gives \"" + oldName
-                  + "\" its name. This cannot be undone.";
-        spec.buttons = {{"Replace", DialogButtonRole::DestructiveDefault},
-                        {"Cancel", DialogButtonRole::Cancel}};
+        spec.note = isDir
+                ? TrF("Replace deletes the existing folder and gives \"{0}\" its name. "
+                      "This cannot be undone.", oldName)
+                : TrF("Replace deletes the existing file and gives \"{0}\" its name. "
+                      "This cannot be undone.", oldName);
+        spec.buttons = {{Tr("Replace"), DialogButtonRole::DestructiveDefault},
+                        {Tr("Cancel"), DialogButtonRole::Cancel}};
         spec.width = 640;
 
         auto self = this;
@@ -8059,7 +8337,11 @@ namespace UltraCanvas {
                         return;
                     }
                     std::error_code rec;
-                    fs::remove_all(PathFromUtf8(targetPath), rec);
+                    // A picture there this program drew a thumbnail of must
+                    // not keep it: libvips holds what it decoded mapped, and
+                    // Windows refuses to delete a mapped file.
+                    UCImage::ReleaseCachedFiles();
+                    RemoveFileSystemTree(PathFromUtf8(targetPath), rec);
                     if (rec) {
                         self->ReportError("Rename could not replace " + targetPath
                                           + ": " + rec.message());
@@ -8288,6 +8570,9 @@ namespace UltraCanvas {
         if (sizeEc || bytes <= kFileOpChunkThreshold) {
             fs::copy_file(UltraCanvas::PathFromUtf8(from), UltraCanvas::PathFromUtf8(to), fs::copy_options::overwrite_existing, ec);
             if (ec) return false;
+            // The copy keeps the original's dates: copy_file leaves the creation
+            // date at "now" everywhere and the modification date too off Windows.
+            CopyFileTimes(from, to);
             credit.Step(1 + bytes, {});
             return true;
         }
@@ -8337,6 +8622,8 @@ namespace UltraCanvas {
         const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(from), pec);
         if (!pec) fs::permissions(UltraCanvas::PathFromUtf8(to), st.permissions(),
                                   fs::perm_options::replace, pec);
+        // ...and its dates, as the small-file path does.
+        CopyFileTimes(from, to);
         return true;
     }
 
@@ -8376,6 +8663,9 @@ namespace UltraCanvas {
             std::error_code pec;
             fs::permissions(target, st.permissions(),
                             fs::perm_options::replace, pec);
+            // Its dates last of all: writing the children into the copy just
+            // made its modification date "now".
+            CopyFileTimes(from, to);
             return true;
         }
         if (fs::is_regular_file(st))
@@ -8391,14 +8681,42 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::RemoveTreeWithProgress(const std::string& path,
                                                         FileOpItemCredit& credit,
                                                         std::error_code& ec,
-                                                        std::string* failedPath) {
+                                                        std::string* failedPath,
+                                                        FileRemovalProblem* problem) {
+        FileRemovalProblem why = FileRemovalProblem::NoProblem;
+        bool removed = RemoveTreeLevel(path, credit, ec, failedPath, why);
+        if (!removed && why == FileRemovalProblem::InUse && !credit.Cancelled()) {
+            // The program holding it may be this one. libvips keeps the
+            // pictures it decoded - every thumbnail and folder preview drawn
+            // of the folder being deleted - mapped into this process, and
+            // Windows refuses to delete a mapped file to everybody, an
+            // administrator included. Let go of them, give a decode still
+            // running on a thumbnail worker a moment to finish, and go on
+            // from where the first attempt stopped.
+            UCImage::ReleaseCachedFiles();
+            std::this_thread::sleep_for(std::chrono::milliseconds(150));
+            ec.clear();
+            if (failedPath) failedPath->clear();
+            why = FileRemovalProblem::NoProblem;
+            removed = RemoveTreeLevel(path, credit, ec, failedPath, why);
+        }
+        if (problem) *problem = removed ? FileRemovalProblem::NoProblem : why;
+        return removed;
+    }
+
+    bool UltraCanvasFilerWidget::RemoveTreeLevel(const std::string& path,
+                                                 FileOpItemCredit& credit,
+                                                 std::error_code& ec,
+                                                 std::string* failedPath,
+                                                 FileRemovalProblem& problem) {
         ec.clear();
         if (credit.Cancelled()) return false;
         const fs::path victim = PathFromUtf8(path);
         // Whatever fails below is about this entry unless a deeper call
         // already named a deeper one.
-        auto failedHere = [&]() {
+        auto failedHere = [&](FileRemovalProblem why) {
             if (failedPath && failedPath->empty()) *failedPath = path;
+            problem = why;
             return false;
         };
         // symlink_status: a link is removed as the link it is and never
@@ -8412,42 +8730,54 @@ namespace UltraCanvas {
         // entry vanished under it (a folder watcher, another program) must not
         // stop the queue with a dialog about it.
         if (st.type() == fs::file_type::not_found) return true;
-        if (statEc) { ec = statEc; return failedHere(); }
+        if (statEc) {
+            // Windows keeps listing an entry that was deleted while a
+            // program still holds it (a scanner, the indexer), and answers
+            // "access denied" to every look at it until that program lets
+            // go. It is gone as far as this delete is concerned.
+            if (FileSystemEntryIsDeletePending(victim)) return true;
+            ec = statEc;
+            return failedHere(ClassifyFileRemovalError(ec));
+        }
         if (fs::is_directory(st)) {
             // Reading a directory while unlinking out of it may skip entries
             // (POSIX leaves it unspecified), so the pass is repeated until it
-            // finds nothing left. The repeat costs one empty readdir per
-            // folder and buys a delete that cannot silently leave files.
+            // finds nothing it has not handled. A name already handled is
+            // not handled twice: Windows lists an entry removed while a
+            // program holds it until that program lets go, and that is not
+            // work left. The repeat costs one readdir per folder and buys a
+            // delete that cannot silently leave files.
+            std::set<fs::path::string_type> handled;
             for (int pass = 0; pass < 8; ++pass) {
                 bool sawEntry = false;
                 std::error_code iterEc;
                 fs::directory_iterator it(victim, iterEc), end;
-                if (iterEc) { ec = iterEc; return failedHere(); }
+                if (iterEc) {
+                    if (FileSystemEntryIsDeletePending(victim)) return true;
+                    ec = iterEc;
+                    return failedHere(ClassifyFileRemovalError(ec));
+                }
                 for (; it != end; it.increment(iterEc)) {
-                    if (iterEc) { ec = iterEc; return failedHere(); }
+                    if (iterEc) { ec = iterEc; return failedHere(ClassifyFileRemovalError(ec)); }
                     if (credit.Cancelled()) return false;
+                    if (!handled.insert(it->path().filename().native()).second) continue;
                     sawEntry = true;
-                    if (!RemoveTreeWithProgress(PathToUtf8(it->path()), credit, ec,
-                                                failedPath))
+                    if (!RemoveTreeLevel(PathToUtf8(it->path()), credit, ec,
+                                         failedPath, problem))
                         return false;
                 }
+                if (iterEc) { ec = iterEc; return failedHere(ClassifyFileRemovalError(ec)); }
                 if (!sawEntry) break;
             }
         }
-        fs::remove(victim, ec);
-        if (ec == std::errc::permission_denied && !fs::is_directory(st)) {
-            // A read-only file inside the folder: Windows refuses to delete
-            // it with the same "access denied" a real permission problem
-            // gives. The entry's own write protection was lifted before the
-            // attempt (or asked about); one inside it is lifted here, so a
-            // folder unpacked with its read-only bits goes in one pass and
-            // without a question about administrator rights it never needed.
-            std::error_code pec;
-            fs::permissions(victim, fs::perms::owner_write,
-                            fs::perm_options::add, pec);
-            if (!pec) fs::remove(victim, ec);
-        }
-        if (ec) return failedHere();
+        // One entry, through RemoveFileSystemEntry: a read-only file or
+        // folder is lifted first (Windows refuses either with the "access
+        // denied" a real permission problem gives, and Explorer lifts both
+        // without asking), a folder whose last entries are still held is
+        // waited for briefly, and a failure comes back saying whether it is
+        // in use or not permitted.
+        FileRemovalProblem why = FileRemovalProblem::NoProblem;
+        if (!RemoveFileSystemEntry(victim, ec, &why)) return failedHere(why);
         credit.Step(1, PathToUtf8(victim.filename()));
         return true;
     }
@@ -8710,6 +9040,105 @@ namespace UltraCanvas {
         if (job->onFinished) job->onFinished(ok, cancelled);
     }
 
+    namespace {
+        // The TAR formats of Compress: a plain .tar and every .tar.<filter>.
+        bool IsTarExtension(const std::string& extension) {
+            return extension == "tar" || extension.rfind("tar.", 0) == 0;
+        }
+
+        // The level FilerTarSettings gives the compressor of `extension`,
+        // clamped to that compressor's range; -1 for a plain .tar.
+        int TarCompressorLevel(const std::string& extension,
+                               const FilerTarSettings& tar) {
+            using T = FilerTarSettings;
+            if (extension == "tar.gz")  return std::clamp(tar.gzipLevel, 1, T::kMaxGzipLevel);
+            if (extension == "tar.bz2") return std::clamp(tar.bzip2Level, 1, T::kMaxBzip2Level);
+            if (extension == "tar.xz")  return std::clamp(tar.xzLevel, 0, T::kMaxXzLevel);
+            if (extension == "tar.zst") return std::clamp(tar.zstdLevel, 1, T::kMaxZstdLevel);
+            return -1;
+        }
+
+        int TarThreads(const FilerTarSettings& tar) {
+            return std::clamp(tar.threads, 0, FilerTarSettings::kMaxThreads);
+        }
+
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        // What CreateArchive is handed for an archive of `extension`: the TAR
+        // settings for a TAR; for ZIP and 7-Zip the library defaults, storing
+        // what a link points to, as zip -r and 7z a do.
+        UCVFSCompressionOptions CompressOptionsFor(const std::string& extension,
+                                                   const FilerTarSettings& tar) {
+            UCVFSCompressionOptions options = UCVFSCompressionOptions::Default();
+            UCVFSArchiveWriteOptions& write = options.archive;
+            if (!IsTarExtension(extension)) {
+                write.storeSymlinks = false;
+                return options;
+            }
+            write.filterLevel = TarCompressorLevel(extension, tar);
+            write.threads = TarThreads(tar);
+            write.zstdLongWindowLog = (extension == "tar.zst" && tar.zstdLongMode) ? 27 : 0;
+            switch (tar.headerFormat) {
+                case FilerTarHeaderFormat::Pax:   write.tarFormat = UCVFSTarFormat::Pax;   break;
+                case FilerTarHeaderFormat::Gnu:   write.tarFormat = UCVFSTarFormat::Gnu;   break;
+                case FilerTarHeaderFormat::Ustar: write.tarFormat = UCVFSTarFormat::Ustar; break;
+            }
+            write.keepTimestamps = tar.keepTimestamps;
+            write.keepPermissions = tar.keepPermissions;
+            write.keepOwner = tar.keepOwner;
+            write.storeSymlinks = tar.storeSymlinks;
+            write.excludePatterns = tar.excludePatterns;
+            return options;
+        }
+#endif
+    }
+
+    std::string UltraCanvasFilerWidget::DescribeCompressParameters(
+            const std::string& extension, const FilerTarSettings& tar) {
+        // ZIP and 7-Zip pack at libarchive's defaults.
+        if (extension == "zip")
+            return "zip -r -6 <files>   (Deflate, level 6)\n"
+                   "Each file: own modification time, own permissions; "
+                   "links as the files they point to";
+        if (extension == "7z")
+            return "7z a -m0=LZMA -mx=6 <files>   (LZMA, level 6)\n"
+                   "Each file: own modification time; "
+                   "links as the files they point to";
+        if (!IsTarExtension(extension)) return std::string();
+
+        std::string command = "tar";
+        switch (tar.headerFormat) {
+            case FilerTarHeaderFormat::Pax:   command += " --format=pax";   break;
+            case FilerTarHeaderFormat::Gnu:   command += " --format=gnu";   break;
+            case FilerTarHeaderFormat::Ustar: command += " --format=ustar"; break;
+        }
+        if (!tar.storeSymlinks) command += " -h";
+        if (!tar.keepOwner) command += " --owner=0 --group=0 --numeric-owner";
+        if (!tar.keepTimestamps) command += " --mtime=now";
+        for (const std::string& pattern : tar.excludePatterns)
+            if (!pattern.empty()) command += " --exclude='" + pattern + "'";
+
+        const int level = TarCompressorLevel(extension, tar);
+        const std::string threads = " -T" + std::to_string(TarThreads(tar));
+        std::string compressor;
+        if (extension == "tar.gz")  compressor = "gzip -" + std::to_string(level);
+        if (extension == "tar.bz2") compressor = "bzip2 -" + std::to_string(level);
+        if (extension == "tar.xz")  compressor = "xz -" + std::to_string(level) + threads;
+        if (extension == "tar.zst")
+            compressor = "zstd -" + std::to_string(level) + threads +
+                         (tar.zstdLongMode ? " --long=27" : "");
+        if (compressor.empty())
+            command += " -cf archive." + extension + " <files>";
+        else
+            command += " -cf - <files> | " + compressor;
+
+        std::string kept = "Each file: ";
+        kept += tar.keepTimestamps ? "own modification time" : "the packing time";
+        kept += tar.keepPermissions ? ", own permissions" : ", permissions 0644 (folders 0755)";
+        kept += tar.keepOwner ? ", owner and group" : ", no owner";
+        kept += tar.storeSymlinks ? "; links as links" : "; links as the files they point to";
+        return command + "\n" + kept;
+    }
+
     void UltraCanvasFilerWidget::CompressSelection(const std::string& extension) {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         std::vector<FilerEntry> targets = SelectionOrAll();
@@ -8729,11 +9158,11 @@ namespace UltraCanvas {
         // to build the VirtualFS provider registry.
         UCVFSBridge::Initialize();
         const std::string archiveName = PathToUtf8(PathFromUtf8(dest).filename());
+        const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
         StartArchiveJob("Compressing", "Creating \"" + archiveName + "\"",
                         dest, /*packing=*/true,
-                        [dest, paths](const ArchiveProgressReporter& report) {
-            return UCVFSBridge::CreateArchive(dest, paths,
-                    UCVFSCompressionOptions::Default(),
+                        [dest, paths, options](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::CreateArchive(dest, paths, options,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
@@ -8847,18 +9276,17 @@ namespace UltraCanvas {
         const std::string folderName = PathToUtf8(PathFromUtf8(archive.name).stem());
 
         DialogConfig cfg;
-        cfg.title = "Folder Already Exists";
+        cfg.title = Tr("Folder Already Exists");
         cfg.dialogType = DialogType::Question;
-        cfg.message = "A folder named \"" + folderName
-                + "\" already exists in this folder.";
-        cfg.details = "Choose where to extract \"" + archive.name + "\":";
+        cfg.message = TrF("A folder named \"{0}\" already exists in this folder.", folderName);
+        cfg.details = TrF("Choose where to extract \"{0}\":", archive.name);
         cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
         cfg.width = 560;
         cfg.height = 330;
 
         auto self = this;
         OperationDialogSpec spec;
-        spec.title = "Extract: the folder name is already taken";
+        spec.title = Tr("Extract: the folder name is already taken");
         spec.type = DialogType::Question;
         spec.question = cfg.message;
         spec.facts = "**Archive:** " + FactPath(archive.path)
@@ -9249,12 +9677,12 @@ namespace UltraCanvas {
         // to build the VirtualFS provider registry.
         UCVFSBridge::Initialize();
         const std::vector<std::string> sources = d.sourcePaths;
+        const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
         StartArchiveJob("Compressing",
                         "Creating \"" + PathToUtf8(candidate.filename()) + "\"",
                         dest, /*packing=*/true,
-                        [dest, sources](const ArchiveProgressReporter& report) {
-            return UCVFSBridge::CreateArchive(dest, sources,
-                    UCVFSCompressionOptions::Default(),
+                        [dest, sources, options](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::CreateArchive(dest, sources, options,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
@@ -9390,7 +9818,7 @@ namespace UltraCanvas {
         smallFont.fontSize = style.smallFontSize;
         ctx->SetFontStyle(smallFont);
         ctx->SetTextPaint(style.secondaryTextColor);
-        std::string hint = "Drag the icon onto a folder to change the location";
+        std::string hint = Tr("Drag the icon onto a folder to change the location");
         std::string hintFit = EllipsizeText(ctx, hint, d.panel.width - 24);
         Size2Di hts = ctx->GetTextLineDimensions(hintFit);
         ctx->DrawText(hintFit,
@@ -9632,7 +10060,7 @@ namespace UltraCanvas {
         const FileAssociations::ApplicationFilter filter =
                 FileAssociations::GetApplicationFilter();
         FileDialogOptions opts;
-        opts.SetTitle("Select the application to open with")
+        opts.SetTitle(Tr("Select the application to open with"))
             .SetInitialDirectory(FileAssociations::GetApplicationsDirectory())
             // Picking a program is not a document the shell should remember.
             .SetRegisterAsRecent(false)
@@ -9736,8 +10164,7 @@ namespace UltraCanvas {
                                    std::string()});
             }
         }
-        const std::string message = "Not everything in \"" + name + "\" was extracted. "
-                                    "The rest of the archive was unpacked.";
+        const std::string message = TrF("Not everything in \"{0}\" was extracted. The rest of the archive was unpacked.", name);
         if (skipped.empty()) {   // text in a shape not expected: still say it
             ReportError(message + " " + detail);
             return;
@@ -9936,8 +10363,13 @@ namespace UltraCanvas {
         // The hidden-items strip stands down in a display too short to hold
         // both it and the files, so its button follows the display's height -
         // which changes with no rescan to hang the update on.
-        if (HiddenNoticeVisible() !=
-            (hiddenNoticeButton && hiddenNoticeButton->IsVisible()))
+        // The gear follows onHiddenNoticeSettings, which a host may set after
+        // the notice is already up.
+        const bool noticeUp = HiddenNoticeVisible();
+        const bool gearWanted = noticeUp && static_cast<bool>(onHiddenNoticeSettings);
+        if (noticeUp != (hiddenNoticeButton && hiddenNoticeButton->IsVisible()) ||
+            gearWanted != (hiddenNoticeSettingsButton &&
+                           hiddenNoticeSettingsButton->IsVisible()))
             UpdateHiddenNoticeButton();
         // A reveal requested while a resize was still in flight (see
         // EnsureSelectionVisible) is applied here, against the settled layout.
@@ -10014,14 +10446,17 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::LayoutDetails(const Rect2Di& area) {
         EnsureDetailsColumnWidths();
         const std::vector<size_t> vis = VisibleDetailsSpecIndices();
-        // The name column absorbs whatever the (splitter-resized) rest leaves,
-        // so the table always spans the widget and dragging a splitter moves
-        // width between two neighbours instead of scrolling the table sideways.
-        int othersTotal = 0;
-        for (size_t k = 1; k < vis.size(); ++k)
-            othersTotal += detailsColumnWidths[vis[k]];
-        detailsColumnWidths[0] = std::max(kMinNameColumnWidth,
-                                          area.width - othersTotal - kScrollbarGutter);
+        // While it is flexible, the name column absorbs whatever the
+        // (splitter-resized) rest leaves, so the table spans the widget. Once
+        // a PushFollowing drag has pinned it, every column keeps its own
+        // width and a table wider than the view scrolls sideways.
+        if (detailsNameFlexible) {
+            int othersTotal = 0;
+            for (size_t k = 1; k < vis.size(); ++k)
+                othersTotal += detailsColumnWidths[vis[k]];
+            detailsColumnWidths[0] = std::max(kMinNameColumnWidth,
+                                              area.width - othersTotal - kScrollbarGutter);
+        }
 
         int x = area.x;
         for (size_t k = 0; k < vis.size(); ++k) {
@@ -10038,18 +10473,26 @@ namespace UltraCanvas {
             x += c.width;
         }
 
+        // A row spans the table, and at least the view: the strip right of
+        // a table narrower than the widget still selects and opens the entry.
+        const int tableWidth = x - area.x;
+        const int rowWidth = std::max(tableWidth, area.width - kScrollbarGutter);
         int rowH = style.detailsRowHeight;
         int y = area.y + detailsHeaderHeight;
         for (size_t i = 0; i < entries.size(); ++i) {
             ItemLayout it;
             it.entryIndex = i;
-            it.rect = Rect2Di(area.x, y, x - area.x, rowH);
+            it.rect = Rect2Di(area.x, y, rowWidth, rowH);
             it.imageRect = Rect2Di(area.x + 4 + FavoriteMarkGutter(), y + 3,
                                    rowH - 6, rowH - 6);
             items.push_back(it);
             y += rowH;
         }
-        contentWidth = area.width;
+        // Wide enough that the last scroll position puts the table's right
+        // edge where an exactly fitting table has it; no wider than the view
+        // (no sideways scrolling) while the table fits.
+        contentWidth = std::max(area.width,
+                                tableWidth + kScrollbarGutter + 2 * style.outerPadding);
         contentHeight = y + style.outerPadding;
     }
 
@@ -10101,7 +10544,7 @@ namespace UltraCanvas {
         // Wrapping needs text metrics. Outside a render pass the widget may not
         // be on a window yet: captions then stay single-line and the first
         // Render() rebuilds the layout with real measurements.
-        int maxNameLines = std::max(1, style.captionMaxLines);
+        int maxNameLines = CaptionLineLimit();
         IRenderContext* mctx = measureContext ? measureContext : GetRenderContext();
         captionLinesMeasured = (mctx != nullptr);
         if (mctx && maxNameLines > 1) {
@@ -10333,22 +10776,37 @@ namespace UltraCanvas {
         scrollAnimY.Cancel();
     }
 
-    UltraCanvasFilerWidget::ScrollbarGeom UltraCanvasFilerWidget::ScrollbarGeometry() const {
+    bool UltraCanvasFilerWidget::ScrollsHorizontally() const {
+        return IsHorizontal() || viewType == FilerViewType::Details;
+    }
+
+    bool UltraCanvasFilerWidget::ScrollsVertically() const {
+        return !IsHorizontal();
+    }
+
+    UltraCanvasFilerWidget::ScrollbarGeom
+    UltraCanvasFilerWidget::ScrollbarGeometry(bool horizontal) const {
         ScrollbarGeom g;
+        if (horizontal ? !ScrollsHorizontally() : !ScrollsVertically()) return g;
         auto b = GetLocalBounds();
         constexpr int kBarThickness = 6;
         constexpr int kMinThumb = 30;
-        if (IsHorizontal()) {
+        if (horizontal) {
             int maxX = MaxScrollX();
             if (maxX <= 0) return g;
             int y = static_cast<int>(b.y + b.height) - InfoBarHeight()
                     - kBarThickness - 2;
+            // Stops short of the vertical bar's column when there is one, so
+            // the two thumbs never overlap in the corner.
+            int trackW = static_cast<int>(b.width);
+            if (ScrollsVertically() && MaxScrollY() > 0) trackW -= kBarThickness + 4;
+            trackW = std::max(1, trackW);
             double frac = static_cast<double>(b.width) / std::max(1, contentWidth);
-            int thumbW = std::max(kMinThumb, static_cast<int>(b.width * frac));
-            int travel = std::max(0, static_cast<int>(b.width) - thumbW);
+            int thumbW = std::min(trackW, std::max(kMinThumb, static_cast<int>(trackW * frac)));
+            int travel = std::max(0, trackW - thumbW);
             int tx = static_cast<int>(b.x) + (maxX > 0 ? travel * scrollOffsetX / maxX : 0);
             g.active = true; g.horizontal = true; g.travel = travel; g.maxScroll = maxX;
-            g.track = Rect2Di(static_cast<int>(b.x), y, static_cast<int>(b.width), kBarThickness);
+            g.track = Rect2Di(static_cast<int>(b.x), y, trackW, kBarThickness);
             g.thumb = Rect2Di(tx, y, thumbW, kBarThickness);
         } else {
             int maxY = MaxScrollY();
@@ -10366,8 +10824,8 @@ namespace UltraCanvas {
         return g;
     }
 
-    void UltraCanvasFilerWidget::ScrollThumbTo(int thumbLeadPx) {
-        ScrollbarGeom g = ScrollbarGeometry();
+    void UltraCanvasFilerWidget::ScrollThumbTo(int thumbLeadPx, bool horizontal) {
+        ScrollbarGeom g = ScrollbarGeometry(horizontal);
         if (!g.active || g.travel <= 0) return;
         // Dragging the thumb positions the view directly: a glide chasing the
         // pointer would lag behind the grabbed thumb.
@@ -10510,6 +10968,7 @@ namespace UltraCanvas {
                        static_cast<int>(lb.width), static_cast<int>(lb.height));
 
         DrawViewContent(ctx, bounds);
+        ReportSelectionInfoChange();
 
         // The name filter's "no matches" action button is a real child
         // element this self-rendered view must draw itself; placed fresh each
@@ -10524,17 +10983,20 @@ namespace UltraCanvas {
             ctx->PopState();
         }
 
-        // The hidden-items strip along the foot: its own chrome, drawn like
-        // the info bar, plus a real button child placed and drawn here.
+        // The hidden-items line along the foot of the file area: the count as
+        // text, plus the real button children (Show hidden files, and the
+        // gear when the host has settings for it) placed and drawn here.
         if (HiddenNoticeVisible()) {
             PositionHiddenNoticeButton(ctx);
             DrawHiddenItemsNotice(ctx);
-            if (hiddenNoticeButton && hiddenNoticeButton->IsVisible()) {
-                Rect2Df hb = hiddenNoticeButton->GetBounds();
+            for (UltraCanvasButton* nb : { hiddenNoticeButton.get(),
+                                           hiddenNoticeSettingsButton.get() }) {
+                if (!nb || !nb->IsVisible()) continue;
+                Rect2Df hb = nb->GetBounds();
                 ctx->PushState();
                 ctx->ClipRect(Rect2Dd(lb.x, lb.y, lb.width, lb.height));
                 ctx->Translate(Point2Df(hb.x, hb.y));
-                hiddenNoticeButton->Render(ctx, Rect2Df(0, 0, hb.width, hb.height));
+                nb->Render(ctx, Rect2Df(0, 0, hb.width, hb.height));
                 ctx->PopState();
             }
         }
@@ -11009,6 +11471,13 @@ namespace UltraCanvas {
     // come out near equal — "CoderBox" / "compiler.png" rather than the
     // greedy "CoderBox compiler" / ".png" (see UltraCanvasTextWrapping.h).
 
+    int UltraCanvasFilerWidget::CaptionLineLimit() const {
+        // No limit is a limit nothing reaches: the wrap stops at the end of
+        // the name, long before the line counter would.
+        if (style.captionMaxLines <= 0) return std::numeric_limits<int>::max();
+        return style.captionMaxLines;
+    }
+
     int UltraCanvasFilerWidget::CaptionOverflowSlack() const {
         if (style.captionOverflowSlack > 0) return style.captionOverflowSlack;
         // Auto: about half a character of the caption font — enough for the
@@ -11062,7 +11531,7 @@ namespace UltraCanvas {
     int UltraCanvasFilerWidget::CaptionLinesFor(IRenderContext* ctx,
                                                 const std::string& name,
                                                 int maxWidth) const {
-        int maxLines = std::max(1, style.captionMaxLines);
+        int maxLines = CaptionLineLimit();
         if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
         return TextWrapping::LineCount(ContextMeasure{ctx}, name,
                                        CaptionWrapOptions(maxWidth, maxLines));
@@ -12364,82 +12833,8 @@ namespace UltraCanvas {
                 const int edge = std::max(1, static_cast<int>(std::lround(
                         std::max(req.w, req.h) * req.scale)));
                 pm = LoadNativeFileIconPixmap(req.path, edge);
-            } else switch (PreviewTypeForPath(req.path)) {
-                case FilerPreviewType::Videos: {
-                    // Poster frame of a video (may block for a few seconds on
-                    // a cold file — that is exactly what these workers are
-                    // for).
-                    VideoThumbnailRequest vreq;
-                    vreq.maxWidth = std::max(
-                            1, static_cast<int>(std::lround(req.w * req.scale)));
-                    vreq.maxHeight = std::max(
-                            1, static_cast<int>(std::lround(req.h * req.scale)));
-                    pm = CaptureVideoThumbnailPixmap(req.path, vreq);
-                    break;
-                }
-                case FilerPreviewType::PDF:
-                    pm = RenderPdfPreviewPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                case FilerPreviewType::Models3D:
-                    pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                case FilerPreviewType::Fonts:
-                    pm = RenderFontSpecimenPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                // A document reaches the image workers only as a book whose
-                // cover ThumbSourceFor asked for.
-                case FilerPreviewType::Docs:
-                    pm = RenderEBookCoverPixmap(req.path, req.w, req.h, req.fit,
-                                                req.scale);
-                    break;
-                case FilerPreviewType::VectorGraphics: {
-                    // The image pipeline first (svg/svgz, and eps/ps on a
-                    // libvips build with a PostScript loader); a format it
-                    // does not rasterize - or one it fails on - falls back to
-                    // the preview bitmap the document carries.
-                    const std::string ext = LowerExtension(req.path);
-                    if (ImagePipelineLoadsExtension(ext)) {
-                        auto img = UCImage::GetFresh(req.path);
-                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
-                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
-                    }
-                    // The drawing itself, where a registered Vector plugin
-                    // reads the format: rendered from the document at the
-                    // tile's size rather than scaled from whatever bitmap
-                    // the authoring program happened to store.
-                    if (!pm && CanPreviewVectorExtension(req.path)) {
-                        pm = RenderVectorDrawingPixmap(req.path, req.w, req.h,
-                                                       req.scale);
-                    }
-                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
-                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
-                                                         req.fit, req.scale);
-                    }
-                    // PDF-compatible Illustrator files (CS2 and newer) carry
-                    // no EPS preview but are a PDF from the first byte, so
-                    // the page renderer draws them like any document.
-                    if (!pm && PdfPreviewAvailable() &&
-                        FileStartsWithPdfSignature(req.path)) {
-                        pm = RenderPdfPreviewPixmap(req.path, req.w, req.h,
-                                                    req.scale);
-                    }
-                    break;
-                }
-                default: {
-                    const std::string ext = LowerExtension(req.path);
-                    if (ImagePipelineLoadsExtension(ext) || !FormatCarriesEmbeddedPreview(ext)) {
-                        auto img = UCImage::GetFresh(req.path);
-                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
-                        }
-                    }
-                    // A layered image (*.ucd): the thumbnail it carries.
-                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
-                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
-                                                         req.fit, req.scale);
-                    }
-                    break;
-                }
+            } else {
+                pm = DecodeContentThumbnail(req.path, req.w, req.h, req.fit, req.scale, /*textPages=*/false);
             }
             });
 
@@ -13241,6 +13636,9 @@ namespace UltraCanvas {
         fsty.fontSize = style.fontSize;
         fsty.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fsty);
+        // Titles of columns scrolled off to the left stay inside the strip.
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(header));
         for (const DetailsColumn& c : detailsColumns) {
             // The sort direction is a triangle drawn after the title: the
             // bundled UI font has no "▲" or "▼", and where no fallback font
@@ -13250,7 +13648,10 @@ namespace UltraCanvas {
             std::string title = EllipsizeText(ctx, c.title, c.width - 12 - markWidth);
             ctx->SetTextPaint(style.headerTextColor);
             Size2Di ts = ctx->GetTextLineDimensions(title);
-            int tx = c.rightAligned ? c.x + c.width - ts.width - markWidth - 8 : c.x + 6;
+            // The header stays put vertically but scrolls sideways with the
+            // rows.
+            const int cx = c.x - scrollOffsetX;
+            int tx = c.rightAligned ? cx + c.width - ts.width - markWidth - 8 : cx + 6;
             int ty = area.y + (detailsHeaderHeight - ts.height) / 2;
             ctx->DrawText(title, Point2Dd(tx, ty));
             if (sorted) {
@@ -13258,6 +13659,7 @@ namespace UltraCanvas {
                                  sortAscending, style.headerTextColor);
             }
         }
+        ctx->PopState();
     }
 
     void UltraCanvasFilerWidget::DrawDetailsRow(IRenderContext* ctx,
@@ -13519,7 +13921,7 @@ namespace UltraCanvas {
             bool showSize = item.rect.height >= 42;
             int nameRoom = item.rect.height - 6 - (showSize ? lineH : 0);
             int maxLines = clampi(nameRoom / std::max(1, lineH), 1,
-                                  std::max(1, style.captionMaxLines));
+                                  CaptionLineLimit());
             std::vector<std::string> nameLines = WrapEntryName(
                     ctx, item.entryIndex, DisplayNameOf(e),
                     item.rect.width - 8, maxLines);
@@ -13557,27 +13959,132 @@ namespace UltraCanvas {
         // Right-align the strip inside the item, but never let it spill past the
         // item's left edge: on narrow thumbnail tiles the four buttons are wider
         // than the tile, so clamp the start to the left edge instead.
-        int x = item.rect.x + item.rect.width - total - 4;
+        int right = item.rect.x + item.rect.width;
+        // A Details row wider than the view (its columns pushed past it) keeps
+        // the strip at the visible right edge rather than off-screen.
+        if (viewType == FilerViewType::Details) {
+            const Rect2Di area = ContentBounds();
+            right = std::min(right, area.x + area.width - kScrollbarGutter + scrollOffsetX);
+        }
+        int x = right - total - 4;
         if (x < item.rect.x) x = item.rect.x;
         int y = item.rect.y + 2;
         for (IconMenuAction a : actions) {
             Rect2Di button(x, y, sz, sz);
-            ctx->SetFillPaint(style.iconMenuBackground);
-            ctx->FillRoundedRectangle(Rect2Dd(button), 4);
-            DrawIconMenuGlyph(ctx, a, button);
+            const double phase = IconMenuFeedbackPhase(a, item.entryIndex);
+            if (phase < 0) {
+                ctx->SetFillPaint(style.iconMenuBackground);
+                ctx->FillRoundedRectangle(Rect2Dd(button), 4);
+                DrawIconMenuGlyph(ctx, a, button, IconMenuActionEnabled(a));
+            } else {
+                // The done colour holds for the first 60 %, then blends back.
+                const double k = phase < 0.6 ? 1.0 : 1.0 - (phase - 0.6) / 0.4;
+                auto mix = [k](uint8_t from, uint8_t to) {
+                    return static_cast<uint8_t>(from + (to - from) * k + 0.5);
+                };
+                const Color& b0 = style.iconMenuBackground;
+                const Color& b1 = style.iconMenuDoneColor;
+                ctx->SetFillPaint(Color(mix(b0.r, b1.r), mix(b0.g, b1.g),
+                                        mix(b0.b, b1.b), mix(b0.a, b1.a)));
+                ctx->FillRoundedRectangle(Rect2Dd(button), 4);
+                if (phase < 0.75) {
+                    // A checkmark that pops: up to 1.3x over the first 30 %,
+                    // settling back to its size.
+                    const double pop = 1.0 + 0.3 * std::sin(
+                            3.14159265358979 * std::min(1.0, phase / 0.3));
+                    const double cx = button.x + button.width / 2.0;
+                    const double cy = button.y + button.height / 2.0;
+                    const double r = button.width * 0.26 * pop;
+                    ctx->SetStrokePaint(style.iconMenuGlyphColor);
+                    ctx->SetStrokeWidth(1.8f);
+                    ctx->DrawLine(Point2Dd(cx - r, cy), Point2Dd(cx - r * 0.3, cy + r * 0.7));
+                    ctx->DrawLine(Point2Dd(cx - r * 0.3, cy + r * 0.7),
+                                  Point2Dd(cx + r, cy - r * 0.7));
+                } else {
+                    DrawIconMenuGlyph(ctx, a, button, IconMenuActionEnabled(a));
+                }
+            }
+            // A greyed button keeps its hit rect, so pressing it is swallowed
+            // rather than falling through to the item, and its tooltip can
+            // say why it is off.
             iconMenuHits.push_back({button, item.entryIndex, a});
             x += sz + gap;
         }
     }
 
+    // ===== HOVER ICON-MENU FEEDBACK =====
+    // Copy and Cut change nothing on screen (a cut ghosts the entries, but a
+    // copy shows nothing at all), so the pressed button answers instead: it
+    // flashes the done colour with a checkmark and fades back to its glyph.
+    namespace { constexpr int kIconMenuFeedbackMs = 700; }
+
+    void UltraCanvasFilerWidget::StartIconMenuFeedback(IconMenuAction action,
+                                                       size_t entryIndex,
+                                                       const Rect2Di& button) {
+        if (entryIndex >= entries.size()) return;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        StopIconMenuFeedback();
+        iconFeedbackAction = static_cast<int>(action);
+        iconFeedbackPath   = entries[entryIndex].path;
+        iconFeedbackRect   = button;
+        iconFeedbackStart  = std::chrono::steady_clock::now();
+        // 30 ms ticks repaint only the button (its rect is in content
+        // coordinates, like every icon-menu hit rect).
+        iconFeedbackTimer = app->StartTimer(30, true, [this](TimerId) {
+            const Rect2Df dirty(static_cast<float>(iconFeedbackRect.x - scrollOffsetX),
+                                static_cast<float>(iconFeedbackRect.y - scrollOffsetY),
+                                static_cast<float>(iconFeedbackRect.width),
+                                static_cast<float>(iconFeedbackRect.height));
+            if (std::chrono::steady_clock::now() - iconFeedbackStart >=
+                std::chrono::milliseconds(kIconMenuFeedbackMs)) {
+                StopIconMenuFeedback();
+            }
+            InvalidateRect(dirty);
+        });
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::StopIconMenuFeedback() {
+        iconFeedbackAction = -1;
+        iconFeedbackPath.clear();
+        if (iconFeedbackTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(iconFeedbackTimer);
+        iconFeedbackTimer = InvalidTimerId;
+    }
+
+    double UltraCanvasFilerWidget::IconMenuFeedbackPhase(IconMenuAction action,
+                                                         size_t entryIndex) const {
+        if (iconFeedbackAction != static_cast<int>(action) ||
+            entryIndex >= entries.size() ||
+            entries[entryIndex].path != iconFeedbackPath) return -1.0;
+        const double ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - iconFeedbackStart).count();
+        if (ms >= kIconMenuFeedbackMs) return -1.0;
+        return ms / kIconMenuFeedbackMs;
+    }
+
+    bool UltraCanvasFilerWidget::IconMenuActionEnabled(IconMenuAction action) const {
+        switch (action) {
+            case IconMenuAction::Cut:    return !ShowingRemoteFolder();
+            case IconMenuAction::Rename: return CanRenameHere();
+            case IconMenuAction::Delete: return CanDeleteHere();
+            default:                     return true;
+        }
+    }
+
     void UltraCanvasFilerWidget::DrawIconMenuGlyph(IRenderContext* ctx,
                                                    IconMenuAction action,
-                                                   const Rect2Di& button) {
+                                                   const Rect2Di& button,
+                                                   bool enabled) {
         // Small vector glyphs so no icon assets are required.
         double cx = button.x + button.width / 2.0;
         double cy = button.y + button.height / 2.0;
         double r = button.width * 0.26;
-        ctx->SetStrokePaint(style.iconMenuGlyphColor);
+        Color glyph = style.iconMenuGlyphColor;
+        if (!enabled) glyph.a = static_cast<uint8_t>(glyph.a * 0.35);
+        ctx->SetStrokePaint(glyph);
         ctx->SetStrokeWidth(1.4f);
         switch (action) {
             case IconMenuAction::Copy: {
@@ -13595,10 +14102,16 @@ namespace UltraCanvas {
                 break;
             }
             case IconMenuAction::Rename: {
-                // Pencil over a baseline.
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx + r * 0.9, cy - r * 0.9));
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx - r * 0.5, cy + r));
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx - r, cy + r * 0.5));
+                // A serif "T" beside a text caret: it edits the NAME, so it
+                // reads as "type text" rather than a pencil, which looked like
+                // "edit the file's contents".
+                double tx = cx - r * 0.3;
+                ctx->DrawLine(Point2Dd(tx - r * 0.9, cy - r), Point2Dd(tx + r * 0.9, cy - r));
+                ctx->DrawLine(Point2Dd(tx - r * 0.9, cy - r), Point2Dd(tx - r * 0.9, cy - r * 0.7));
+                ctx->DrawLine(Point2Dd(tx + r * 0.9, cy - r), Point2Dd(tx + r * 0.9, cy - r * 0.7));
+                ctx->DrawLine(Point2Dd(tx, cy - r), Point2Dd(tx, cy + r));
+                ctx->DrawLine(Point2Dd(tx - r * 0.35, cy + r), Point2Dd(tx + r * 0.35, cy + r));
+                ctx->DrawLine(Point2Dd(cx + r * 1.15, cy - r * 0.6), Point2Dd(cx + r * 1.15, cy + r));
                 break;
             }
             case IconMenuAction::Delete: {
@@ -13630,21 +14143,26 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DrawScrollbar(IRenderContext* ctx) {
-        ScrollbarGeom g = ScrollbarGeometry();
-        if (!g.active) return;
-        Color thumbColor = draggingScrollbar ? Color(70, 70, 78, 220)
-                                             : Color(90, 90, 96, 180);
-        if (g.horizontal) {
-            ctx->SetFillPaint(Color(0, 0, 0, 30));
-            ctx->FillRoundedRectangle(Rect2Dd(g.track.x + 2, g.track.y,
-                                              g.track.width - 4, g.track.height), 3);
-        } else {
-            ctx->SetFillPaint(Color(0, 0, 0, 30));
-            ctx->FillRoundedRectangle(Rect2Dd(g.track.x, g.track.y + 2,
-                                              g.track.width, g.track.height - 4), 3);
+        // Details can carry both bars: the vertical one for the rows and the
+        // horizontal one once its columns are pushed past the view.
+        for (bool horizontal : {false, true}) {
+            ScrollbarGeom g = ScrollbarGeometry(horizontal);
+            if (!g.active) continue;
+            const bool held = draggingScrollbar && draggingScrollbarHorizontal == horizontal;
+            Color thumbColor = held ? Color(70, 70, 78, 220)
+                                    : Color(90, 90, 96, 180);
+            if (g.horizontal) {
+                ctx->SetFillPaint(Color(0, 0, 0, 30));
+                ctx->FillRoundedRectangle(Rect2Dd(g.track.x + 2, g.track.y,
+                                                  g.track.width - 4, g.track.height), 3);
+            } else {
+                ctx->SetFillPaint(Color(0, 0, 0, 30));
+                ctx->FillRoundedRectangle(Rect2Dd(g.track.x, g.track.y + 2,
+                                                  g.track.width, g.track.height - 4), 3);
+            }
+            ctx->SetFillPaint(thumbColor);
+            ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
         }
-        ctx->SetFillPaint(thumbColor);
-        ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
     }
 
     // ===== COLUMN SPLITTERS =====
@@ -13676,11 +14194,16 @@ namespace UltraCanvas {
 
         switch (viewType) {
             case FilerViewType::Details: {
-                // One splitter on the right edge of every column but the last;
-                // inside the header strip only.
-                for (size_t i = 0; i + 1 < detailsColumns.size(); ++i) {
+                // One splitter on the right edge of every column, inside the
+                // header strip only. Splitting with the neighbour leaves the
+                // last one out - that edge is the view's - while pushing the
+                // following columns makes the last column resizable too.
+                const bool push = detailsResizeMode == FilerColumnResizeMode::PushFollowing;
+                const size_t n = push ? detailsColumns.size()
+                                      : (detailsColumns.empty() ? 0 : detailsColumns.size() - 1);
+                for (size_t i = 0; i < n; ++i) {
                     const DetailsColumn& c = detailsColumns[i];
-                    strips.push_back({c.x + c.width, area.y,
+                    strips.push_back({c.x + c.width - scrollOffsetX, area.y,
                                       area.y + detailsHeaderHeight});
                 }
                 break;
@@ -13776,12 +14299,14 @@ namespace UltraCanvas {
                 // The splitter index counts visible columns; the widths stay
                 // indexed by FilerDetailsColumn (Path may be hidden).
                 const std::vector<size_t> vis = VisibleDetailsSpecIndices();
-                if (index + 1 >= (int)vis.size()) {
+                const bool push = detailsResizeMode == FilerColumnResizeMode::PushFollowing;
+                if (index >= (int)vis.size() || (!push && index + 1 >= (int)vis.size())) {
                     draggingSplitter = -1;
                     return;
                 }
                 splitterDragStartA = detailsColumnWidths[vis[index]];
-                splitterDragStartB = detailsColumnWidths[vis[index + 1]];
+                splitterDragStartB = (index + 1 < (int)vis.size())
+                        ? detailsColumnWidths[vis[index + 1]] : 0;
                 break;
             }
             case FilerViewType::List:
@@ -13814,12 +14339,25 @@ namespace UltraCanvas {
 
         switch (viewType) {
             case FilerViewType::Details: {
+                const std::vector<size_t> vis = VisibleDetailsSpecIndices();
+                if (index >= (int)vis.size()) return;
+                if (detailsResizeMode == FilerColumnResizeMode::PushFollowing) {
+                    // Only the dragged column changes; the ones after it move
+                    // along with their widths intact. The flexible Name column
+                    // is pinned at the width it is drawn with first, or it
+                    // would give way to the column being widened.
+                    if (delta == 0) return;
+                    detailsNameFlexible = false;
+                    int minWidth = (index == 0) ? kMinNameColumnWidth : kMinColumnWidth;
+                    detailsColumnWidths[vis[index]] =
+                            clampi(splitterDragStartA + delta, minWidth, kMaxDetailsColumnWidth);
+                    break;
+                }
                 // Split-pane semantics: the width the left column gains is
                 // taken from the column on the right, so the table keeps
                 // spanning the widget. The Name column is derived from what
                 // the others leave, which makes dragging the first splitter
                 // resize Name by the same amount in the opposite direction.
-                const std::vector<size_t> vis = VisibleDetailsSpecIndices();
                 if (index + 1 >= (int)vis.size()) return;
                 int pairTotal = splitterDragStartA + splitterDragStartB;
                 int minLeft = (index == 0) ? kMinNameColumnWidth : kMinColumnWidth;
@@ -14030,9 +14568,10 @@ namespace UltraCanvas {
                     FilerMediaProbe probe;
                     if (ProbeMediaFile(media.path, media.extension, probe)) {
                         out = FormatDuration(probe.seconds);
-                        if (!probe.codec.empty()) {
+                        for (const std::string* part : {&probe.size, &probe.codec}) {
+                            if (part->empty()) continue;
                             if (!out.empty()) out += " · ";
-                            out += probe.codec;
+                            out += *part;
                         }
                     }
                 }
@@ -14327,18 +14866,42 @@ namespace UltraCanvas {
                  fs::is_directory(PathFromUtf8(path), ec))
                         ? path : std::string();
 
+        // Every scan ends here, so most calls are a Refresh() of the folder
+        // already watched - most often one the watch itself asked for. Read
+        // before anything changes; folderWatchPath is only written on this
+        // thread, so reading it without the lock is safe.
+        const std::string previous =
+                nativeWatchActive ? folderWatcher.WatchedPath() : folderWatchPath;
+        const bool sameTarget = !target.empty() && target == previous;
+
         // The operating system can usually tell us the moment something
         // changes - inotify, ReadDirectoryChangesW - which beats re-reading
         // the folder on a timer on both latency and cost. The callback runs on
         // the watcher's thread and does nothing but raise the flag the UI timer
         // already polls, so the rest of the machinery is unchanged.
-        folderWatcher.Stop();
-        nativeWatchActive = false;
-        // Stop() joined the previous backend, so nothing can still be about to
-        // report the folder we just left: whatever sets this from here on
-        // belongs to the watch started below.
-        nativeWatchLost.store(false);
-        if (!target.empty()) {
+        //
+        // A live watch on this same folder is kept. Restarting it after every
+        // scan dropped whatever the folder did in between - and a save is
+        // several steps (Firefox writes a placeholder, then a .part file, then
+        // renames it): the first step triggered the scan, the rest landed
+        // while it ran or while the watch was being replaced, and the listing
+        // stayed on the half-saved state for good.
+        const bool keepNativeWatch =
+                sameTarget && nativeWatchActive && !nativeWatchLost.load();
+        if (!keepNativeWatch) {
+            folderWatcher.Stop();
+            nativeWatchActive = false;
+            // Stop() joined the previous backend, so nothing can still be
+            // about to report the folder we just left: whatever sets these
+            // from here on belongs to the watch started below.
+            nativeWatchLost.store(false);
+            // News pending about another folder means nothing here. News
+            // about this one is kept: the timer clears the flag before it
+            // refreshes, so a flag raised since came from a change the scan
+            // that just ran may not have seen.
+            if (!sameTarget) folderWatchDirty.store(false);
+        }
+        if (!target.empty() && !keepNativeWatch) {
             nativeWatchActive = folderWatcher.Watch(target,
                     [this]() { folderWatchDirty.store(true); },
                     // A native watch can die on its own - the volume it is on
@@ -14369,7 +14932,6 @@ namespace UltraCanvas {
             if (target.empty()) return;
             if (!nativeWatchActive) StartFolderWatchWorkerLocked();
         }
-        folderWatchDirty.store(false);   // whatever was pending described the old folder
         folderWatchCond.notify_all();
         ArmFolderWatchTimer();
     }
@@ -14493,10 +15055,20 @@ namespace UltraCanvas {
             if (!folderWatchDirty.load()) return;
             if (IsBusyForAutoRefresh()) return;   // try again on the next tick
             folderWatchDirty.store(false);
+            // Taken before Refresh(), which moves up when the folder itself
+            // is what went - and then the folder that went is the news.
+            const std::string changed = fileListMode ? std::string() : currentPath;
             Refresh();
             // The listing changed under the host too: its status bar counts and
             // any preview fed from the selection describe the folder as well.
             if (onFolderRefreshed) onFolderRefreshed();
+            // And so may its folder tree, which hears of the widget's own
+            // operations through onFolderModified but of nothing else: a
+            // subfolder another program deleted, or one this widget deleted
+            // while a program still held it, which Windows went on listing
+            // until that program let go - the tree checked it then, saw it
+            // still there, and kept its row for good.
+            if (onFolderChangedOnDisk && !changed.empty()) onFolderChangedOnDisk(changed);
         });
     }
 
@@ -14830,6 +15402,29 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasFilerWidget::GetSelectionInfo(std::string& primary,
+                                                  std::string& secondary) {
+        BuildSelectionInfoText(primary, secondary);
+    }
+
+    void UltraCanvasFilerWidget::ReportSelectionInfoChange() {
+        if (!onSelectionInfoChanged) return;
+        std::string primary, secondary;
+        BuildSelectionInfoText(primary, secondary);
+        std::string key = primary + '\x1f' + secondary;
+        if (key == reportedSelectionInfo) return;
+        reportedSelectionInfo = std::move(key);
+        // Posted, not called: this runs inside the paint, and a host that
+        // answers by setting a label's text should not do it mid-frame.
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            if (onSelectionInfoChanged) onSelectionInfoChanged();
+        });
+    }
+
     bool UltraCanvasFilerWidget::IsInInfoBar(const Point2Di& localPoint) const {
         int h = InfoBarHeight();
         if (h <= 0) return false;
@@ -14915,9 +15510,10 @@ namespace UltraCanvas {
         Rect2Di area = ContentBounds();
         if (localPoint.y < area.y || localPoint.y > area.y + detailsHeaderHeight)
             return -1;
+        const int x = localPoint.x + scrollOffsetX;   // the header scrolls sideways
         for (size_t i = 0; i < detailsColumns.size(); ++i) {
             const DetailsColumn& c = detailsColumns[i];
-            if (c.sortable && localPoint.x >= c.x && localPoint.x < c.x + c.width)
+            if (c.sortable && x >= c.x && x < c.x + c.width)
                 return static_cast<int>(i);
         }
         return -1;
@@ -14940,11 +15536,27 @@ namespace UltraCanvas {
         size_t iconEntry = 0;
         int iconAction = IconMenuActionAt(localPoint, iconEntry);
         if (iconAction >= 0) {
-            static const char* kIconMenuTips[] = { "Copy", "Cut", "Rename", "Delete" };
+            // Say what each button does to the file and give its keyboard
+            // shortcut, so the strip also teaches the keys.
+            static const char* kIconMenuTips[] = {
+                "Copy to clipboard (Ctrl+C)",
+                "Cut to clipboard (Ctrl+X)",
+                "Rename (F2)",
+                "Delete (Del)",
+            };
             target = TooltipTarget::IconButton;
             entry  = iconEntry;
             action = iconAction;
             text   = kIconMenuTips[iconAction];
+            if (!IconMenuActionEnabled(static_cast<IconMenuAction>(iconAction))) {
+                static const char* kIconMenuOffTips[] = {
+                    "",
+                    "Cut is not available on a drive - copy, then delete",
+                    "Rename is not available on this drive",
+                    "Delete is not available on this drive",
+                };
+                text = kIconMenuOffTips[iconAction];
+            }
         } else if (renamingIndex < 0 && !IsInInfoBar(localPoint) &&
                    hoveredSplitter < 0) {
             Point2Di content = ToContentPoint(localPoint);
@@ -15274,7 +15886,7 @@ namespace UltraCanvas {
         };
 
         OperationDialogSpec spec;
-        spec.title = "Run or open";
+        spec.title = Tr("Run or open");
         spec.type = DialogType::Question;
         spec.question = "\"" + RepairLegacyEncodedName(e.name) + "\" is an executable script.";
         spec.facts = "**File:** " + FactPath(e.path);
@@ -15388,7 +16000,7 @@ namespace UltraCanvas {
                 if (!openItems.empty())
                     openItems.push_back(MenuItemData::Separator());
                 openItems.push_back(MenuItemData::Action(
-                        "Other application…",
+                        Tr("Other application…"),
                         [this]() { OpenSelectionWithChooser(); }));
             }
             if (openItems.empty()) {
@@ -15397,7 +16009,7 @@ namespace UltraCanvas {
                 openItems.push_back(none);
             }
             MenuItemData openWith = MenuItemData::Submenu(
-                    "Open with", MenuIconPath("open-with.svg"), openItems);
+                    Tr("Open with"), MenuIconPath("open-with.svg"), openItems);
             if (openable) {
                 openWith.onClick = [this]() { OpenSelectionWithDefaultApp(); };
             }
@@ -15436,17 +16048,20 @@ namespace UltraCanvas {
                   [this]() { CutSelection(); }, "Ctrl+X");
         addAction("Paste", "paste.svg", ClipboardHasContent(),
                   [this]() { Paste(); }, "Ctrl+V");
-        addAction("Delete", "delete.svg", hasSel, [this]() {
+        // Rename and the deletes are greyed out on a drive the host cannot
+        // carry them out on, rather than offered and then refused.
+        addAction("Delete", "delete.svg", hasSel && CanDeleteHere(), [this]() {
             DeleteSelection(FilerDeleteMode::MoveToTrash);
         }, "Del");
-        addAction("Delete Permanently", "delete-permanently.svg", hasSel, [this]() {
+        addAction("Delete Permanently", "delete-permanently.svg",
+                  hasSel && CanDeleteHere(), [this]() {
             DeleteSelection(FilerDeleteMode::Permanently);
         }, "Shift+Del");
         addAction("Duplicate", "duplicate.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
             size_t renameIdx = singleSel ? selection.front() : 0;
-            addAction("Rename", "rename.svg", singleSel,
+            addAction("Rename", "rename.svg", singleSel && CanRenameHere(),
                       [this, renameIdx]() { StartRename(renameIdx); }, "F2");
         }
         menu.AddItem(MenuItemData::Separator());
@@ -15464,7 +16079,21 @@ namespace UltraCanvas {
                 newItems.push_back(MenuItemData::Action(
                         t.label, [this, copy]() { CreateNewDocument(copy); }));
             }
-            menu.AddItem(MenuItemData::Submenu("New", MenuIconPath("new.svg"), newItems));
+            menu.AddItem(MenuItemData::Submenu(Tr("New"), MenuIconPath("new.svg"), newItems));
+        }
+        // Refresh: the folder read again - the one folder entry right-clicked,
+        // or the folder on display. What changed there behind the display's
+        // back (another program, another device on a remote drive) shows
+        // without leaving the folder and coming back. The host carries it out
+        // when it asked to (onRefreshRequested): a remote folder answered
+        // from a cache has to be asked of its server again first.
+        {
+            const bool onFolder = singleSel && targets.front().isDirectory;
+            const std::string folder = onFolder ? targets.front().path : currentPath;
+            addAction(Tr("Refresh"), "refresh.svg", true, [this, folder]() {
+                if (onRefreshRequested && !folder.empty()) onRefreshRequested(folder);
+                else Refresh();
+            });
         }
         menu.AddItem(MenuItemData::Separator());
 
@@ -15489,10 +16118,13 @@ namespace UltraCanvas {
                         f.label,
                         [this, ext, label]() { OpenCompressDialog(ext, label); });
                 item.enabled = canCompress;
+                // What the entry packs with, as a command line - so the TAR
+                // settings the host offers can be read off the menu itself.
+                item.tooltip = DescribeCompressParameters(ext, tarSettings);
                 compressItems.push_back(item);
             }
             MenuItemData compressSub = MenuItemData::Submenu(
-                    "Compress", MenuIconPath("compress.svg"), compressItems);
+                    Tr("Compress"), MenuIconPath("compress.svg"), compressItems);
             compressSub.enabled = canCompress;
             menu.AddItem(compressSub);
         }
@@ -15507,19 +16139,19 @@ namespace UltraCanvas {
         // Extras >
         {
             std::vector<MenuItemData> extraItems;
-            MenuItemData share = MenuItemData::Action("Share", [this]() {
+            MenuItemData share = MenuItemData::Action(Tr("Share"), [this]() {
                 if (onShare) onShare(SelectionOrAll());
             });
             share.enabled = static_cast<bool>(onShare);
             extraItems.push_back(share);
 
-            MenuItemData attrs = MenuItemData::Action("Attributes", [this]() {
+            MenuItemData attrs = MenuItemData::Action(Tr("Attributes"), [this]() {
                 if (onAttributes) onAttributes(SelectionOrAll());
             });
             attrs.enabled = static_cast<bool>(onAttributes);
             extraItems.push_back(attrs);
 
-            extraItems.push_back(MenuItemData::Action("Copy path", [this]() {
+            extraItems.push_back(MenuItemData::Action(Tr("Copy path"), [this]() {
                 std::string text;
                 std::vector<FilerEntry> sel = GetSelectedEntries();
                 if (sel.empty()) text = currentPath;
@@ -15530,7 +16162,7 @@ namespace UltraCanvas {
                 SetClipboardText(text);
             }));
 
-            MenuItemData access = MenuItemData::Action("Access", [this]() {
+            MenuItemData access = MenuItemData::Action(Tr("Access"), [this]() {
                 if (onAccess) onAccess(SelectionOrAll());
             });
             access.enabled = static_cast<bool>(onAccess);
@@ -15547,7 +16179,7 @@ namespace UltraCanvas {
                 }
             }
 
-            menu.AddItem(MenuItemData::Submenu("Extras", MenuIconPath("extras.svg"),
+            menu.AddItem(MenuItemData::Submenu(Tr("Extras"), MenuIconPath("extras.svg"),
                                                extraItems));
         }
 
@@ -15565,10 +16197,10 @@ namespace UltraCanvas {
             }
             sortItems.push_back(MenuItemData::Separator());
             sortItems.push_back(MenuItemData::Radio(
-                    "Ascending", 2, sortAscending,
+                    Tr("Ascending"), 2, sortAscending,
                     [this]() { SetSortAscending(true); }));
             sortItems.push_back(MenuItemData::Radio(
-                    "Descending", 2, !sortAscending,
+                    Tr("Descending"), 2, !sortAscending,
                     [this]() { SetSortAscending(false); }));
 
             std::vector<MenuItemData> typeItems;
@@ -15644,7 +16276,7 @@ namespace UltraCanvas {
             // tag the thumbnail tiles show instead of / beside them.
             std::vector<MenuItemData> extensionItems;
             extensionItems.push_back(MenuItemData::Checkbox(
-                    "Show in names", fileExtensionsInNames,
+                    Tr("Show in names"), fileExtensionsInNames,
                     [this](bool on) { SetFileExtensionsInNames(on); }));
             extensionItems.push_back(MenuItemData::Separator());
             for (FilerExtensionBadge b : AllExtensionBadges()) {
@@ -15679,36 +16311,40 @@ namespace UltraCanvas {
                 displayItems.push_back(std::move(item));
             };
             MenuItemData sortSub = MenuItemData::Submenu(
-                    "Sort", MenuIconPath("sort.svg"), sortItems);
+                    Tr("Sort"), MenuIconPath("sort.svg"), sortItems);
             sortSub.enabled = !(fileListMode && preserveFileListOrder);
             displayItems.push_back(std::move(sortSub));
             displayItems.push_back(MenuItemData::Submenu(
-                    "Type", MenuIconPath("view-type.svg"), typeItems));
+                    Tr("Type"), MenuIconPath("view-type.svg"), typeItems));
             displayItems.push_back(MenuItemData::Submenu(
-                    "File extensions", MenuIconPath("file-extensions.svg"),
+                    Tr("File extensions"), MenuIconPath("file-extensions.svg"),
                     extensionItems));
             if (!fileIconItems.empty()) {
                 displayItems.push_back(MenuItemData::Submenu(
-                        "File icons", MenuIconPath("file-icons.svg"), fileIconItems));
+                        Tr("File icons"), MenuIconPath("file-icons.svg"), fileIconItems));
             }
             displayItems.push_back(MenuItemData::Submenu(
-                    "Thumbnails", MenuIconPath("thumbnails.svg"), thumbnailItems));
+                    Tr("Thumbnails"), MenuIconPath("thumbnails.svg"), thumbnailItems));
             displayItems.push_back(MenuItemData::Submenu(
-                    "Detail view", MenuIconPath("detail-view.svg"), detailViewItems));
+                    Tr("Detail view"), MenuIconPath("detail-view.svg"), detailViewItems));
             displayItems.push_back(MenuItemData::Submenu(
-                    "Dataset", MenuIconPath("dataset.svg"), datasetItems));
+                    Tr("Dataset"), MenuIconPath("dataset.svg"), datasetItems));
             addSwitch("Icon-Menu", "icon-menu.svg", hoverIconMenu,
                       [this](bool on) { SetHoverIconMenuEnabled(on); });
             // The first pictures inside a folder peeking out of its icon.
             addSwitch("Folder previews", "folder-previews.svg", folderPreviews,
                       [this](bool on) { SetFolderPreviewsEnabled(on); });
-            addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
-                      [this](bool on) { SetSelectionInfoVisible(on); });
+            // Left out where the host shows the same line in its own status
+            // bar (SetInfoBarMenuItemVisible) - switching the bar back on
+            // there would only say it twice.
+            if (showInfoBarMenuItem)
+                addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
+                          [this](bool on) { SetSelectionInfoVisible(on); });
             // "Show me everything": hidden entries, and the full physical
             // listing of a curated home folder (SetCuratedHomeFolder).
             addSwitch("Hidden files", "hidden-files.svg", showHiddenFiles,
                       [this](bool on) { SetShowHiddenFiles(on); });
-            menu.AddItem(MenuItemData::Submenu("Display", MenuIconPath("display.svg"),
+            menu.AddItem(MenuItemData::Submenu(Tr("Display"), MenuIconPath("display.svg"),
                                                displayItems));
         }
 
@@ -15904,7 +16540,8 @@ namespace UltraCanvas {
                 // a drag reaches another window) must not interrupt it.
                 return true;
             }
-            case UCEventType::MouseWheel: {
+            case UCEventType::MouseWheel:
+            case UCEventType::MouseWheelHorizontal: {
                 RememberPointer(event);
                 // Glide to the new position instead of jumping (see
                 // UltraCanvasSmoothScroll.h); each eased step repaints, and the
@@ -15912,10 +16549,17 @@ namespace UltraCanvas {
                 // hover, its icon menu and its tooltip on every one of those
                 // paints (RefreshHoverState) rather than staying on the old
                 // file.
-                if (IsHorizontal()) {
+                // A sideways wheel - or Shift with the normal one - scrolls a
+                // Details table that is wider than the view; the List view
+                // scrolls sideways with the normal wheel.
+                const bool tilt = event.type == UCEventType::MouseWheelHorizontal;
+                if (tilt && !ScrollsHorizontally()) return false;
+                if (tilt || IsHorizontal() || (event.shift && ScrollsHorizontally())) {
                     if (MaxScrollX() <= 0) return false;
-                    scrollAnimX.AnimateBy(-event.wheelDelta * kWheelStep,
-                                          0, MaxScrollX());
+                    // A tilt to the right reports +1 (see the platform layers),
+                    // a notch away from the user on the normal wheel +1 too.
+                    const int step = tilt ? event.wheelDelta : -event.wheelDelta;
+                    scrollAnimX.AnimateBy(step * kWheelStep, 0, MaxScrollX());
                 } else {
                     if (MaxScrollY() <= 0) return false;
                     scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep,
@@ -15972,8 +16616,8 @@ namespace UltraCanvas {
                     }
                 }
                 if (draggingScrollbar) {
-                    ScrollThumbTo((IsHorizontal() ? local.x : local.y)
-                                  - scrollbarGrabOffset);
+                    ScrollThumbTo((draggingScrollbarHorizontal ? local.x : local.y)
+                                  - scrollbarGrabOffset, draggingScrollbarHorizontal);
                     RequestRedraw();
                     return true;
                 }
@@ -16059,9 +16703,10 @@ namespace UltraCanvas {
 
                 if (renamingIndex >= 0) CommitRename();
 
-                // Scrollbar first: it sits above the content.
-                {
-                    ScrollbarGeom g = ScrollbarGeometry();
+                // Scrollbars first: they sit above the content (Details can
+                // have one along each axis).
+                for (bool horizontal : {false, true}) {
+                    ScrollbarGeom g = ScrollbarGeometry(horizontal);
                     if (g.active) {
                         Rect2Di hit = g.track;
                         if (g.horizontal) { hit.y -= 6; hit.height += 8; }
@@ -16074,9 +16719,10 @@ namespace UltraCanvas {
                                 scrollbarGrabOffset =
                                         (g.horizontal ? g.thumb.width : g.thumb.height) / 2;
                                 ScrollThumbTo((g.horizontal ? local.x : local.y)
-                                              - scrollbarGrabOffset);
+                                              - scrollbarGrabOffset, g.horizontal);
                             }
                             draggingScrollbar = true;
+                            draggingScrollbarHorizontal = g.horizontal;
                             // The pointer is parked on the bar for the whole
                             // drag, not on a file: drop the hover so its icon
                             // menu does not sit under the thumb the user is
@@ -16102,6 +16748,10 @@ namespace UltraCanvas {
                     size_t entryIdx = 0;
                     int action = IconMenuActionAt(local, entryIdx);
                     if (action >= 0) {
+                        // A greyed button (Cut on a drive) swallows the press
+                        // and does nothing, like a greyed menu item.
+                        if (!IconMenuActionEnabled(static_cast<IconMenuAction>(action)))
+                            return true;
                         // The buttons act on the hovered entry — or on the
                         // whole selection when that entry is part of it — and
                         // never change the selection themselves: pressing one
@@ -16111,9 +16761,17 @@ namespace UltraCanvas {
                         std::vector<FilerEntry> targets = SelectionOrEntry(entryIdx);
                         switch (static_cast<IconMenuAction>(action)) {
                             case IconMenuAction::Copy:
-                                EntriesToClipboard(targets, false); break;
-                            case IconMenuAction::Cut:
-                                EntriesToClipboard(targets, true); break;
+                            case IconMenuAction::Cut: {
+                                const auto a = static_cast<IconMenuAction>(action);
+                                EntriesToClipboard(targets, a == IconMenuAction::Cut);
+                                for (const IconMenuHit& h : iconMenuHits) {
+                                    if (h.entryIndex == entryIdx && h.action == a) {
+                                        StartIconMenuFeedback(a, entryIdx, h.rect);
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
                             case IconMenuAction::Rename:
                                 StartRename(entryIdx); break;
                             case IconMenuAction::Delete:
@@ -16440,4 +17098,38 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+
+// ===== THE THEME =====
+    FilerStyle FilerStyle::FromTheme(const UltraCanvasTheme& theme, const FilerStyle& base) {
+        FilerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.fontFamily = theme.fonts.ui.fontFamily;
+        s.fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+        s.smallFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
+        s.backgroundColor = r.well;
+        s.textColor = r.ink;
+        s.secondaryTextColor = r.inkMuted;
+        s.headerBackground = r.panel;
+        s.headerTextColor = r.inkMuted;
+        s.gridLineColor = r.line;
+        s.hoverColor = r.hover;
+        s.selectionColor = r.accentSoft;
+        s.selectionBorderColor = r.accent;
+        s.barColor = r.accent;
+        s.barBackground = r.panel;
+        s.loadingBarColor = r.accent;
+        // the element's own roles: the overlays keep their dark look unless a theme names another
+        s.iconMenuBackground = theme.Role("filer.icon-menu", base.iconMenuBackground);
+        s.iconMenuGlyphColor = theme.Role("filer.on-icon-menu", base.iconMenuGlyphColor);
+        s.iconMenuDoneColor = theme.Role("filer.icon-menu-done", base.iconMenuDoneColor);
+        s.renameFieldColor = r.well;
+        s.renameBorderColor = r.accent;
+        s.renameTextColor = r.ink;
+        s.infoBarBackground = r.panel;
+        s.infoBarTextColor = r.ink;
+        s.extensionBarBackground = theme.Role("filer.extension-bar", base.extensionBarBackground);
+        s.extensionTagBackground = theme.Role("filer.extension-tag", base.extensionTagBackground);
+        s.extensionTagTextColor = theme.Role("filer.on-extension-tag", base.extensionTagTextColor);
+        return s;
+    }
 } // namespace UltraCanvas

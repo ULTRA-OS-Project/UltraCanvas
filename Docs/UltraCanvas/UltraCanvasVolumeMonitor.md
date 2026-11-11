@@ -47,6 +47,9 @@ debounce for you, because how long to wait is the caller's decision.
 |---|---|
 | `ListMountedVolumes()` | Every volume mounted right now, system root first, the rest sorted by path. Each is a `MountedVolume { path, label, isSystemRoot }`. |
 | `ListVolumeRoots()` | The same list, mount points only — the shape a caller that just navigates wants. |
+| `ReadVolumeName(path)` | The name a drive letter's volume carries (`"My Passport Ultra"`), shown as Explorer does: `"My Passport Ultra (D:)"`. Empty when it has none, for a network drive, and on Linux and macOS (`label` already is the name there). Reads the medium, so call it off the UI thread — `ListMountedVolumes()` deliberately does not. |
+| `ListGvfsVolumes()` | The places a Linux desktop mounted through GVFS — a phone (MTP), a camera (gphoto2), an iPhone (AFC), a network share or server (SMB, SFTP, FTP, WebDAV, NFS, AFP) — each with a readable label. Part of `ListMountedVolumes()`; empty on Windows and macOS. See [GVFS places](#gvfs-places). |
+| `GvfsVolumeLabel(name)` | The label one GVFS mount name gets (`"mtp:host=Google_Pixel_8"` → `"Google Pixel 8"`); empty for a name that is not listed. For tests. |
 | `Start(onChanged)` | Report mounts and unmounts until `Stop()`. Uses the platform's notification where there is one and a polling thread where there is not, so it only fails on a missing callback. |
 | `Stop()` | Stop reporting. Joins whatever is running, so **no callback runs after it returns** — which is what makes it safe for the callback to capture the caller. Safe to call twice. |
 | `IsRunning()` / `IsNative()` | Whether it is watching, and whether the operating system is doing the reporting rather than the fallback thread. |
@@ -72,7 +75,7 @@ is rebuilt on every navigation. The mount table alone answers the question.
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `poll()` on `/proc/self/mountinfo` — the kernel reports `POLLPRI` when the mount table changes. A thread waits on that plus a self-pipe so `Stop()` wakes it immediately |
+| Linux, BSD | `poll()` on `/proc/self/mountinfo` — the kernel reports `POLLPRI` when the mount table changes. A thread waits on that plus a self-pipe so `Stop()` wakes it immediately, and wakes every two seconds to compare the GVFS places, which come and go without the mount table changing |
 | Windows | `WM_DEVICECHANGE` on a hidden top-level window with its own thread and message loop. It has to be a *real* top-level window: broadcast messages are not delivered to message-only (`HWND_MESSAGE`) windows |
 | macOS | `NSWorkspace` mount / unmount / rename notifications, on its own notification centre (the default one does not carry them) |
 | Android, WebAssembly, anything else | none — `Start()` runs the polling thread instead, so callers never need a fallback of their own |
@@ -107,6 +110,32 @@ udisks and hand-made `/mnt` entries leave behind out of the drive list.
 `/media` and `/run/media` (both also one level down, for the per-user directory
 udisks creates: `/media/bob/USB STICK`), plus `/Volumes` and `/mnt` flat. On
 Windows the mount table is the drive letters, and there is nothing to scan.
+On Linux the GVFS places follow the mounts.
+
+## GVFS places
+
+A phone plugged into a GNOME desktop is mounted by GVFS, not by the kernel:
+GVFS keeps one FUSE file system at `$XDG_RUNTIME_DIR/gvfs` (else
+`/run/user/<uid>/gvfs`) and every place the desktop opened is a directory in it
+— `mtp:host=SAMSUNG_Galaxy_S21_R58M123`, `gphoto2:host=Canon_Inc._Canon_Digital_Camera`,
+`afc:host=<udid>,port=3`, `smb-share:server=nas,share=photos`. None of them is a
+mount point, so the scan above cannot find them, and before `ListGvfsVolumes()`
+a phone that the desktop's own file manager showed was missing from every drive
+list. They are listed after the mounts, labelled from their names:
+
+| Mount name | Label |
+|---|---|
+| `mtp:host=SAMSUNG_Galaxy_S21_R58M12345` | `SAMSUNG Galaxy S21` — the serial (the last token, eight or more letters and digits with a digit) dropped, underscores read as spaces |
+| `mtp:host=[usb:002,010]` (older GVFS) | `Phone` (`Camera` for gphoto2) — a USB address names no device |
+| `afc:host=<udid>,port=3` | `iPhone or iPad` |
+| `smb-share:server=nas,share=photos` | `photos on nas` |
+| `sftp:host=example.com,user=bob` | `bob@example.com` (FTP, WebDAV, NFS and AFP alike) |
+
+A cloud account mounted there (`google-drive:`, `onedrive:`) is not a volume:
+`UltraCanvasCloudStorage` (`GetCloudStorageFolders`) lists those. Listing the
+directory is one round trip to the local GVFS daemon and never reaches a device
+or the network. KDE mounts devices through KIO, which has no file system path,
+so on KDE a phone stays out of reach.
 
 ## Reacting to a change
 

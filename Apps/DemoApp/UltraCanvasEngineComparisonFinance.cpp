@@ -3,8 +3,10 @@
 // legacy financial, heatmap and Mekko charts next to their engine ports, fed
 // the same data, with the options that matter for the comparison applied to
 // both sides at once.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): checkboxes and
+//                  buttons as wide as their text, the old width as a minimum
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEngineComparison.h"
@@ -33,6 +35,14 @@ namespace {
 // SHARED CONTROLS
 // =============================================================================
 
+// Controls are as wide as their text, at least the width they were given:
+// a longer caption (a translation) widens the control instead of being cut.
+void SetMinimumWidth(UltraCanvasUIElement& element, int minWidth) {
+    CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(minWidth));
+    element.boxConstraints = limits;
+}
+
 std::shared_ptr<UltraCanvasDropdown> MakeDropdown(const std::string& id,
                                                   const std::vector<std::string>& items,
                                                   int selected, int width = 130) {
@@ -44,7 +54,8 @@ std::shared_ptr<UltraCanvasDropdown> MakeDropdown(const std::string& id,
 
 std::shared_ptr<UltraCanvasCheckbox> MakeCheck(const std::string& id, const std::string& text,
                                                bool checked, int width = 120) {
-    auto box = std::make_shared<UltraCanvasCheckbox>(id, width, 24);
+    auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 24);
+    SetMinimumWidth(*box, width);
     box->SetText(text);
     box->SetChecked(checked);
     return box;
@@ -54,15 +65,16 @@ std::shared_ptr<UltraCanvasCheckbox> MakeCheck(const std::string& id, const std:
 // have neither, which is part of what the comparison shows.
 void AddEngineExtras(UltraCanvasContainer& strip, const std::string& idPrefix,
                      std::shared_ptr<UltraCanvasChartEngineElement> engine) {
-    AddStripLabel(strip, idPrefix + "ThemeLabel", "Engine theme:", 90);
+    AddStripLabel(strip, idPrefix + "ThemeLabel", Tr("Engine theme:"), 90);
     auto themes = MakeDropdown(idPrefix + "Theme", ChartThemes::Names(), 0, 120);
     themes->onSelectionChanged = [engine](int, const DropdownItem& item) {
         engine->SetTheme(item.text);
     };
     AddToStrip(strip, themes);
 
-    auto replay = std::make_shared<UltraCanvasButton>(idPrefix + "Replay", 0, 0, 120, 24);
-    replay->SetText("Replay animation");
+    auto replay = std::make_shared<UltraCanvasButton>(idPrefix + "Replay", 0, 0, 0, 24);
+    SetMinimumWidth(*replay, 120);
+    replay->SetText(Tr("Replay animation"));
     replay->onClick = [engine]() { engine->StartEngineAnimation(0.7f); };
     AddToStrip(strip, replay);
 }
@@ -104,7 +116,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildFinancialTab() {
     }
     auto legacy = CreateFinancialChartElement("CmpFinLegacy", 0, 0, 0, 0);
     legacy->SetFinancialDataSource(legacyData);
-    legacy->SetChartTitle("FCHI - Fantasy Chart Inc. (90 days)");
+    legacy->SetChartTitle(Tr("FCHI - Fantasy Chart Inc. (90 days)"));
     legacy->SetShowVolumePanel(true);
     legacy->SetVolumePanelHeightRatio(0.25f);
     legacy->SetShowMovingAverage(true, 20);
@@ -115,7 +127,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildFinancialTab() {
 
     auto engine = CreateEngineFinancialChart("CmpFinEngine");
     engine->SetData(bars);
-    engine->SetChartTitle("FCHI - Fantasy Chart Inc. (90 days)");
+    engine->SetChartTitle(Tr("FCHI - Fantasy Chart Inc. (90 days)"));
     engine->SetShowVolumePane(true);
     engine->SetVolumePaneRatio(0.25);
     engine->SetShowMovingAverage(true, 20);
@@ -124,8 +136,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildFinancialTab() {
     engine->SetBearishColor(Color(220, 0, 0, 255));
 
     auto strip = MakeControlStrip("CmpFin");
-    AddStripLabel(*strip, "CmpFinStyleLabel", "Style:", 40);
-    auto style = MakeDropdown("CmpFinStyle", {"Candlestick", "OHLC Bars", "Heikin-Ashi"}, 0);
+    AddStripLabel(*strip, "CmpFinStyleLabel", Tr("Style:"), 40);
+    auto style = MakeDropdown("CmpFinStyle", {Tr("Candlestick"), Tr("OHLC Bars"), Tr("Heikin-Ashi")}, 0);
     style->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         using LegacyStyle = UltraCanvasFinancialChartElement::CandleDisplayStyle;
         legacy->SetCandleDisplayStyle(index == 1 ? LegacyStyle::OHLCBars
@@ -137,7 +149,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildFinancialTab() {
     };
     AddToStrip(*strip, style);
 
-    auto volume = MakeCheck("CmpFinVolume", "Volume", true, 90);
+    auto volume = MakeCheck("CmpFinVolume", Tr("Volume"), true, 90);
     volume->onStateChanged = [legacy, engine](CheckedState, CheckedState state) {
         const bool on = state == CheckedState::Checked;
         legacy->SetShowVolumePanel(on);
@@ -145,8 +157,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildFinancialTab() {
     };
     AddToStrip(*strip, volume);
 
-    AddStripLabel(*strip, "CmpFinMALabel", "Moving average:", 100);
-    auto average = MakeDropdown("CmpFinMA", {"Off", "SMA 20", "SMA 50", "EMA 20 (engine)"}, 1);
+    AddStripLabel(*strip, "CmpFinMALabel", Tr("Moving average:"), 100);
+    auto average = MakeDropdown("CmpFinMA", {Tr("Off"), Tr("SMA 20"), Tr("SMA 50"), Tr("EMA 20 (engine)")}, 1);
     average->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         const int period = index == 2 ? 50 : 20;
         // The legacy chart has no exponential average; it keeps the SMA.
@@ -157,7 +169,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildFinancialTab() {
     };
     AddToStrip(*strip, average);
 
-    auto volumeAverage = MakeCheck("CmpFinVolMA", "Volume SMA", false, 110);
+    auto volumeAverage = MakeCheck("CmpFinVolMA", Tr("Volume SMA"), false, 110);
     volumeAverage->onStateChanged = [legacy, engine](CheckedState, CheckedState state) {
         const bool on = state == CheckedState::Checked;
         legacy->SetShowVolumeMovingAverage(on, 20);
@@ -168,8 +180,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildFinancialTab() {
 
     return MakeComparisonTab(
         "CmpFin",
-        "Candlestick / OHLC / Heikin-Ashi over 90 days with a volume pane and moving averages. The port puts price and volume in two\n"
-        "sub-bands of one plot (shared date axis, engine grid), computes real Heikin-Ashi candles, adds an EMA, a crosshair and a legend.",
+        Tr("Candlestick / OHLC / Heikin-Ashi over 90 days with a volume pane and moving averages. The port puts price and volume in two\n"
+        "sub-bands of one plot (shared date axis, engine grid), computes real Heikin-Ashi candles, adds an EMA, a crosshair and a legend."),
         "UltraCanvasFinancialChartElement", legacy,
         "UltraCanvasEngineFinancialChart", engine, strip);
 }
@@ -215,17 +227,17 @@ std::shared_ptr<UltraCanvasUIElement> BuildHeatmapTab() {
     legacy->SetColormap(HeatmapColormap::Inferno);
     legacy->SetScale(HeatmapScale::Logarithmic);
     legacy->SetShowColorBar(true);
-    legacy->SetChartTitle("Peaks - three gaussians, log scale");
+    legacy->SetChartTitle(Tr("Peaks - three gaussians, log scale"));
 
     auto engine = CreateEngineHeatmapChart("CmpHeatEngine");
     engine->SetData(peaks, cols, rows);
     engine->SetColormap(HeatmapColormap::Inferno);
     engine->SetScale(ChartHeatmapScale::Logarithmic);
     engine->SetShowColorBar(true);
-    engine->SetChartTitle("Peaks - three gaussians, log scale");
+    engine->SetChartTitle(Tr("Peaks - three gaussians, log scale"));
 
     auto strip = MakeControlStrip("CmpHeat");
-    AddStripLabel(*strip, "CmpHeatMapLabel", "Colour map:", 75);
+    AddStripLabel(*strip, "CmpHeatMapLabel", Tr("Colour map:"), 75);
     std::vector<std::string> names;
     for (const auto& choice : ColormapChoices()) names.push_back(choice.first);
     auto colormap = MakeDropdown("CmpHeatMap", names, 0, 110);
@@ -236,14 +248,14 @@ std::shared_ptr<UltraCanvasUIElement> BuildHeatmapTab() {
     };
     AddToStrip(*strip, colormap);
 
-    auto scale = MakeDropdown("CmpHeatScale", {"Linear", "Logarithmic"}, 1, 110);
+    auto scale = MakeDropdown("CmpHeatScale", {Tr("Linear"), Tr("Logarithmic")}, 1, 110);
     scale->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         legacy->SetScale(index == 1 ? HeatmapScale::Logarithmic : HeatmapScale::Linear);
         engine->SetScale(index == 1 ? ChartHeatmapScale::Logarithmic : ChartHeatmapScale::Linear);
     };
     AddToStrip(*strip, scale);
 
-    auto shape = MakeDropdown("CmpHeatShape", {"Rectangles", "Rounded", "Circles"}, 0, 110);
+    auto shape = MakeDropdown("CmpHeatShape", {Tr("Rectangles"), Tr("Rounded"), Tr("Circles")}, 0, 110);
     shape->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         legacy->SetCellShape(index == 1 ? HeatmapCellShape::RoundedRectangle
                              : index == 2 ? HeatmapCellShape::Circle : HeatmapCellShape::Rectangle);
@@ -256,7 +268,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHeatmapTab() {
     };
     AddToStrip(*strip, shape);
 
-    auto levels = MakeCheck("CmpHeatLevels", "6 bands", false, 85);
+    auto levels = MakeCheck("CmpHeatLevels", Tr("6 bands"), false, 85);
     levels->onStateChanged = [legacy, engine](CheckedState, CheckedState state) {
         const int count = state == CheckedState::Checked ? 6 : 0;
         legacy->SetColorLevels(count);
@@ -264,7 +276,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildHeatmapTab() {
     };
     AddToStrip(*strip, levels);
 
-    auto reverse = MakeCheck("CmpHeatReverse", "Reverse", false, 80);
+    auto reverse = MakeCheck("CmpHeatReverse", Tr("Reverse"), false, 80);
     reverse->onStateChanged = [legacy, engine](CheckedState, CheckedState state) {
         const bool on = state == CheckedState::Checked;
         legacy->SetReverseColormap(on);
@@ -275,8 +287,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildHeatmapTab() {
 
     return MakeComparisonTab(
         "CmpHeat",
-        "A 48 x 32 density grid through a colour map, keyed by a colour bar. The port's rows and columns are engine Category axes (dense labels\n"
-        "declutter instead of overprinting), the key is the shared legend in ColorBar mode with log ticks read back through the cells' own mapping.",
+        Tr("A 48 x 32 density grid through a colour map, keyed by a colour bar. The port's rows and columns are engine Category axes (dense labels\n"
+        "declutter instead of overprinting), the key is the shared legend in ColorBar mode with log ticks read back through the cells' own mapping."),
         "UltraCanvasHeatmapChartElement", legacy,
         "UltraCanvasEngineHeatmapChart", engine, strip);
 }
@@ -299,8 +311,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildCorrelationTab() {
     for (int r = 0; r < n; ++r) {
         for (int c = r + 1; c < n; ++c) v[static_cast<size_t>(c * n + r)] = v[static_cast<size_t>(r * n + c)];
     }
-    const std::vector<std::string> labels = {"Revenue", "Margin", "Churn", "NPS", "Visits", "Signups",
-                                             "Tickets", "Uptime", "Latency", "Spend", "Leads", "Deals"};
+    const std::vector<std::string> labels = {Tr("Revenue"), Tr("Margin"), Tr("Churn"), Tr("NPS"), Tr("Visits"), Tr("Signups"),
+                                             Tr("Tickets"), Tr("Uptime"), Tr("Latency"), Tr("Spend"), Tr("Leads"), Tr("Deals")};
     auto rounded = [](double value) {
         std::ostringstream out;
         out << std::fixed << std::setprecision(2) << value;
@@ -316,7 +328,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildCorrelationTab() {
     legacy->SetShowCellBorders(true, Color(255, 255, 255, 255), 1.0f);
     legacy->SetColumnLabels(labels);
     legacy->SetRowLabels(labels);
-    legacy->SetChartTitle("Metric correlation (diverging around 0)");
+    legacy->SetChartTitle(Tr("Metric correlation (diverging around 0)"));
 
     auto engine = CreateEngineHeatmapChart("CmpCorrEngine");
     engine->SetData(v, n, n);
@@ -328,12 +340,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildCorrelationTab() {
     engine->SetValueFormatter(rounded);
     engine->SetColumnLabels(labels);
     engine->SetRowLabels(labels);
-    engine->SetChartTitle("Metric correlation (diverging around 0)");
+    engine->SetChartTitle(Tr("Metric correlation (diverging around 0)"));
 
     auto strip = MakeControlStrip("CmpCorr");
-    AddStripLabel(*strip, "CmpCorrMaskLabel", "Mask:", 40);
-    auto mask = MakeDropdown("CmpCorrMask", {"Full matrix", "Lower", "Lower, no diagonal",
-                                             "Upper", "Upper, no diagonal"}, 0, 150);
+    AddStripLabel(*strip, "CmpCorrMaskLabel", Tr("Mask:"), 40);
+    auto mask = MakeDropdown("CmpCorrMask", {Tr("Full matrix"), Tr("Lower"), Tr("Lower, no diagonal"),
+                                             Tr("Upper"), Tr("Upper, no diagonal")}, 0, 150);
     mask->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         const HeatmapTriangularMask legacyMasks[] = {
             HeatmapTriangularMask::NoMask, HeatmapTriangularMask::Lower,
@@ -348,7 +360,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildCorrelationTab() {
     };
     AddToStrip(*strip, mask);
 
-    auto values = MakeCheck("CmpCorrValues", "Cell values", true, 100);
+    auto values = MakeCheck("CmpCorrValues", Tr("Cell values"), true, 100);
     values->onStateChanged = [legacy, engine](CheckedState, CheckedState state) {
         const bool on = state == CheckedState::Checked;
         legacy->SetShowCellValues(on);
@@ -356,7 +368,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildCorrelationTab() {
     };
     AddToStrip(*strip, values);
 
-    auto bottomUp = MakeCheck("CmpCorrBottomUp", "Row 0 at bottom", false, 130);
+    auto bottomUp = MakeCheck("CmpCorrBottomUp", Tr("Row 0 at bottom"), false, 130);
     bottomUp->onStateChanged = [legacy, engine](CheckedState, CheckedState state) {
         const bool on = state == CheckedState::Checked;
         legacy->SetRowOrder(on ? HeatmapRowOrder::BottomUp : HeatmapRowOrder::TopDown);
@@ -364,7 +376,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildCorrelationTab() {
     };
     AddToStrip(*strip, bottomUp);
 
-    auto transpose = MakeCheck("CmpCorrTranspose", "Transpose (engine)", false, 140);
+    auto transpose = MakeCheck("CmpCorrTranspose", Tr("Transpose (engine)"), false, 140);
     transpose->onStateChanged = [engine](CheckedState, CheckedState state) {
         engine->SetProjectionKind(state == CheckedState::Checked ? ChartProjectionKind::Horizontal
                                                                  : ChartProjectionKind::Vertical);
@@ -374,8 +386,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildCorrelationTab() {
 
     return MakeComparisonTab(
         "CmpCorr",
-        "A labelled 12 x 12 correlation matrix on a diverging map centred on 0, with cell values and triangular masks. In the port the\n"
-        "row and column names are axis furniture measured into the layout, and the same cells render transposed under the Horizontal projection.",
+        Tr("A labelled 12 x 12 correlation matrix on a diverging map centred on 0, with cell values and triangular masks. In the port the\n"
+        "row and column names are axis furniture measured into the layout, and the same cells render transposed under the Horizontal projection."),
         "UltraCanvasHeatmapChartElement", legacy,
         "UltraCanvasEngineHeatmapChart", engine, strip);
 }
@@ -385,13 +397,13 @@ std::shared_ptr<UltraCanvasUIElement> BuildCorrelationTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> BuildMekkoTab() {
-    struct Seed { const char* name; Color color; };
-    const Seed seeds[] = {{"USA", Color(25, 60, 130, 255)}, {"China", Color(235, 75, 105, 255)},
-                          {"Europe", Color(65, 145, 225, 255)}, {"Japan", Color(250, 190, 40, 255)}};
+    struct Seed { std::string name; Color color; };
+    const Seed seeds[] = {{Tr("USA"), Color(25, 60, 130, 255)}, {Tr("China"), Color(235, 75, 105, 255)},
+                          {Tr("Europe"), Color(65, 145, 225, 255)}, {Tr("Japan"), Color(250, 190, 40, 255)}};
     const std::vector<std::pair<std::string, std::vector<double>>> columnData = {
-        {"Technology", {88, 44, 30, 21}}, {"Transportation", {52, 38, 34, 15}},
-        {"Energy", {35, 42, 18, 10}},     {"Education", {40, 30, 26, 16}},
-        {"Finance", {95, 55, 48, 22}},    {"Tourism", {41, 25, 51, 18}}};
+        {Tr("Technology"), {88, 44, 30, 21}}, {Tr("Transportation"), {52, 38, 34, 15}},
+        {Tr("Energy"), {35, 42, 18, 10}},     {Tr("Education"), {40, 30, 26, 16}},
+        {Tr("Finance"), {95, 55, 48, 22}},    {Tr("Tourism"), {41, 25, 51, 18}}};
 
     auto legacyData = std::make_shared<MekkoChartDataVector>();
     std::vector<ChartMekkoSeries> series;
@@ -407,7 +419,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildMekkoTab() {
 
     using Legacy = UltraCanvasMekkoChartElement;
     auto legacy = CreateMekkoChartWithData("CmpMekkoLegacy", 0, 0, 0, 0, legacyData,
-                                           "Market Share by Sector ($B)");
+                                           Tr("Market Share by Sector ($B)"));
     legacy->SetMekkoMode(Legacy::MekkoMode::Marimekko);
     legacy->SetColumnHeaderMode(Legacy::ColumnHeaderMode::WidthPercent);
     legacy->SetSegmentLabelMode(Legacy::SegmentLabelMode::Value);
@@ -416,23 +428,23 @@ std::shared_ptr<UltraCanvasUIElement> BuildMekkoTab() {
 
     auto engine = CreateEngineMekkoChart("CmpMekkoEngine");
     engine->SetData(series, columns);
-    engine->SetChartTitle("Market Share by Sector ($B)");
+    engine->SetChartTitle(Tr("Market Share by Sector ($B)"));
     engine->SetMekkoMode(ChartMekkoMode::Marimekko);
     engine->SetColumnHeaderMode(ChartMekkoHeader::WidthPercent);
     engine->SetSegmentLabelMode(ChartMekkoSegmentLabel::Value);
     engine->SetValueUnits("$", "B");
 
     auto strip = MakeControlStrip("CmpMekko");
-    auto mode = MakeDropdown("CmpMekkoMode", {"Marimekko", "Bar-Mekko"}, 0, 110);
+    auto mode = MakeDropdown("CmpMekkoMode", {Tr("Marimekko"), Tr("Bar-Mekko")}, 0, 110);
     mode->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         legacy->SetMekkoMode(index == 1 ? Legacy::MekkoMode::BarMekko : Legacy::MekkoMode::Marimekko);
         engine->SetMekkoMode(index == 1 ? ChartMekkoMode::BarMekko : ChartMekkoMode::Marimekko);
     };
     AddToStrip(*strip, mode);
 
-    AddStripLabel(*strip, "CmpMekkoLabelsLabel", "Segments:", 65);
-    auto labels = MakeDropdown("CmpMekkoLabels", {"Value", "Percent", "Value (percent)", "Series",
-                                                  "None"}, 0, 130);
+    AddStripLabel(*strip, "CmpMekkoLabelsLabel", Tr("Segments:"), 65);
+    auto labels = MakeDropdown("CmpMekkoLabels", {Tr("Value"), Tr("Percent"), Tr("Value (percent)"), Tr("Series"),
+                                                  Tr("None")}, 0, 130);
     labels->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         const Legacy::SegmentLabelMode legacyModes[] = {
             Legacy::SegmentLabelMode::Value, Legacy::SegmentLabelMode::Percent,
@@ -448,9 +460,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildMekkoTab() {
     };
     AddToStrip(*strip, labels);
 
-    AddStripLabel(*strip, "CmpMekkoSortLabel", "Sort:", 35);
-    auto sort = MakeDropdown("CmpMekkoSort", {"Data order", "Largest first", "Smallest first",
-                                              "A-Z"}, 0, 120);
+    AddStripLabel(*strip, "CmpMekkoSortLabel", Tr("Sort:"), 35);
+    auto sort = MakeDropdown("CmpMekkoSort", {Tr("Data order"), Tr("Largest first"), Tr("Smallest first"),
+                                              Tr("A-Z")}, 0, 120);
     sort->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         const Legacy::ColumnSortMode legacyModes[] = {
             Legacy::ColumnSortMode::DataOrder, Legacy::ColumnSortMode::TotalDescending,
@@ -464,8 +476,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildMekkoTab() {
     };
     AddToStrip(*strip, sort);
 
-    AddStripLabel(*strip, "CmpMekkoHeaderLabel", "Headers:", 55);
-    auto headers = MakeDropdown("CmpMekkoHeader", {"Width %", "Total", "Total (%)", "None"}, 0, 100);
+    AddStripLabel(*strip, "CmpMekkoHeaderLabel", Tr("Headers:"), 55);
+    auto headers = MakeDropdown("CmpMekkoHeader", {Tr("Width %"), Tr("Total"), Tr("Total (%)"), Tr("None")}, 0, 100);
     headers->onSelectionChanged = [legacy, engine](int index, const DropdownItem&) {
         const Legacy::ColumnHeaderMode legacyModes[] = {
             Legacy::ColumnHeaderMode::WidthPercent, Legacy::ColumnHeaderMode::Total,
@@ -479,7 +491,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildMekkoTab() {
     };
     AddToStrip(*strip, headers);
 
-    auto cumulative = MakeCheck("CmpMekkoCumulative", "Cumulative %", false, 115);
+    auto cumulative = MakeCheck("CmpMekkoCumulative", Tr("Cumulative %"), false, 115);
     cumulative->onStateChanged = [legacy, engine](CheckedState, CheckedState state) {
         const bool on = state == CheckedState::Checked;
         legacy->SetShowCumulativeXAxis(on);
@@ -490,8 +502,8 @@ std::shared_ptr<UltraCanvasUIElement> BuildMekkoTab() {
 
     return MakeComparisonTab(
         "CmpMekko",
-        "Variable-width 100% stacked columns: width = the sector's share of the total. The port's domain is a 0-100% axis, the column names and\n"
-        "cumulative ticks are stacked edge axes, headers ride the label plan; click a legend entry to drop a region and watch the widths re-share.",
+        Tr("Variable-width 100% stacked columns: width = the sector's share of the total. The port's domain is a 0-100% axis, the column names and\n"
+        "cumulative ticks are stacked edge axes, headers ride the label plan; click a legend entry to drop a region and watch the widths re-share."),
         "UltraCanvasMekkoChartElement", legacy,
         "UltraCanvasEngineMekkoChart", engine, strip);
 }
@@ -500,10 +512,10 @@ std::shared_ptr<UltraCanvasUIElement> BuildMekkoTab() {
 
 std::vector<ComparisonTab> FinanceAndGridTabs() {
     return {
-        {"Candlestick / OHLC", BuildFinancialTab},
-        {"Heatmap", BuildHeatmapTab},
-        {"Correlation Matrix", BuildCorrelationTab},
-        {"Mekko", BuildMekkoTab},
+        {Tr("Candlestick / OHLC"), BuildFinancialTab},
+        {Tr("Heatmap"), BuildHeatmapTab},
+        {Tr("Correlation Matrix"), BuildCorrelationTab},
+        {Tr("Mekko"), BuildMekkoTab},
     };
 }
 

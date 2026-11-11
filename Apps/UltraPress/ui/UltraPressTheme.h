@@ -9,8 +9,9 @@
 // is built. The page in the middle is the site's, in the site's colours,
 // and does not follow.
 //
-// The look is remembered in the program's settings folder
-// (<settings folder>/UltraPress/look), one word: "dark" or "light".
+// The look is remembered with the program's other settings
+// (UltraPressSettings.h).
+// Version: 0.8.4 - the look's file is UltraPressSettings' now
 // Version: 0.8.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -32,15 +33,6 @@ struct SideColors {
     UltraCanvas::Color panel, ink, inkStrong, accent, hover, active, strong;
 };
 SideColors SideColorsOf(const UltraCanvas::UltraCanvasTheme& theme);
-
-// Which look the user chose last, in `settingsDir` (the program's folder
-// under the settings folder); false - the light look - when nothing was
-// chosen yet or the folder cannot be read.
-bool LoadLook(const std::string& settingsDir);
-// Remembers the look; false when the folder cannot be written.
-bool SaveLook(const std::string& settingsDir, bool dark);
-// <settings folder>/UltraPress, empty without a home.
-std::string LookSettingsDirectory();
 
 // A label coloured by the theme for its part, now and on every change.
 void FollowTheme(const std::shared_ptr<UltraCanvas::UltraCanvasLabel>& label, UltraCanvas::LabelVariant variant);

@@ -1,10 +1,16 @@
 // Apps/DemoApp/UltraCanvasChordChartExamples.cpp
 // Chord diagram demonstration: relationships and flows between categories
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): page, card
+//                  and every text sized to fit; the page still fills the area
 // Version: 1.1.0
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   v1.2.0 (2026-10-23):
+//     - The kit's page (title, description) fills the display area and holds
+//       the tabs in one card. The description, the tab captions, the panel's
+//       headers and its hint wrap instead of having a fixed height.
 //   v1.1.0 (2026-07-30):
 //     - Each example now sits in its own tab, so one chord chart gets the whole
 //       display area instead of a quarter of it.
@@ -16,6 +22,7 @@
 //       controls can start out showing the settings that chart really uses.
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasChordChart.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
@@ -36,8 +43,8 @@ namespace UltraCanvas {
     // than it receives back.
     static void BuildGlobalTradeData(std::shared_ptr<UltraCanvasChordChart> chart) {
         std::vector<std::string> regions = {
-            "North America", "Europe", "East Asia", "Southeast Asia",
-            "South America", "Middle East", "Africa", "Oceania"
+            Tr("North America"), Tr("Europe"), Tr("East Asia"), Tr("Southeast Asia"),
+            Tr("South America"), Tr("Middle East"), Tr("Africa"), Tr("Oceania")
         };
         std::vector<Color> colors = {
             Color( 70, 130, 180, 255),   // Steel blue
@@ -67,7 +74,7 @@ namespace UltraCanvas {
     // a ribbon that is wide at one end and narrow at the other.
     static void BuildMigrationData(std::shared_ptr<UltraCanvasChordChart> chart) {
         std::vector<std::string> regions = {
-            "Africa", "Asia", "Europe", "Latin America", "North America", "Oceania"
+            Tr("Africa"), Tr("Asia"), Tr("Europe"), Tr("Latin America"), Tr("North America"), Tr("Oceania")
         };
         std::vector<Color> colors = {
             Color(255,  87,  34, 255), Color(255, 193,   7, 255),
@@ -89,7 +96,7 @@ namespace UltraCanvas {
     // make a workflow cyclical (Testing back to Development, and so on).
     static void BuildProjectPhaseData(std::shared_ptr<UltraCanvasChordChart> chart) {
         std::vector<std::string> phases = {
-            "Planning", "Design", "Development", "Testing", "Deployment", "Maintenance"
+            Tr("Planning"), Tr("Design"), Tr("Development"), Tr("Testing"), Tr("Deployment"), Tr("Maintenance")
         };
         std::vector<Color> colors = {
             Color(233,  30,  99, 255), Color(  3, 169, 244, 255),
@@ -110,7 +117,7 @@ namespace UltraCanvas {
     // Cross-team ticket handovers inside one engineering organisation.
     static void BuildTeamCollaborationData(std::shared_ptr<UltraCanvasChordChart> chart) {
         std::vector<std::string> teams = {
-            "Frontend", "Backend", "Platform", "QA", "Design", "Support"
+            Tr("Frontend"), Tr("Backend"), Tr("Platform"), Tr("QA"), Tr("Design"), Tr("Support")
         };
         std::vector<std::vector<double>> flows = {
             {  0,  85,  30, 110,  70,  25},
@@ -153,17 +160,16 @@ namespace UltraCanvas {
         panel->SetBackgroundColor(Color(247, 247, 250, 255));
         panel->SetPadding(8, 10);
         panel->layout.SetFlexColumn().SetFlexGap(4)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // Controls are in flow (no explicit origin) and never grow or shrink,
         // so the column keeps its natural height whatever the window does.
+        // Headers and the hint take the panel's width and wrap there.
         auto addHeader = [&](const std::string& suffix, const std::string& text) {
-            auto header = std::make_shared<UltraCanvasLabel>(
-                idPrefix + suffix, kChordControlWidth, 17, text);
+            auto header = DemoKit::CreateText(idPrefix + suffix, text);
             header->SetFontSize(11);
             header->SetFontWeight(FontWeight::Bold);
-            header->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            panel->AddChild(header);
+            DemoKit::Add(panel, header);
         };
 
         auto addSlider = [&](const std::string& suffix, float minValue, float maxValue,
@@ -174,35 +180,34 @@ namespace UltraCanvas {
             slider->SetStep(step);
             slider->SetValue(value);
             slider->onValueChanged = std::move(onChange);
-            slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            panel->AddChild(slider);
+            DemoKit::AddFixed(panel, slider);
         };
 
-        addHeader("OpacityHeader", "Ribbon Opacity:");
+        addHeader("OpacityHeader", Tr("Ribbon Opacity:"));
         addSlider("Opacity", 0.1f, 1.0f, 0.05f, defaults.ribbonOpacity,
                   [chart](float value) { chart->SetRibbonOpacity(value); });
 
         // 1.0 pulls both bezier controls onto the centre (classic chord look);
         // lower values let the ribbons bulge outward.
-        addHeader("CurveHeader", "Ribbon Curvature:");
+        addHeader("CurveHeader", Tr("Ribbon Curvature:"));
         addSlider("Curvature", 0.0f, 1.0f, 0.05f, defaults.ribbonCurvature,
                   [chart](float value) { chart->SetRibbonCurvature(value); });
 
-        addHeader("PadHeader", "Category Gap (degrees):");
+        addHeader("PadHeader", Tr("Category Gap (degrees):"));
         addSlider("Padding", 0.0f, 10.0f, 0.5f, defaults.categoryPadding,
                   [chart](float value) { chart->SetCategoryPadding(value); });
 
-        addHeader("RingHeader", "Ring Thickness:");
+        addHeader("RingHeader", Tr("Ring Thickness:"));
         addSlider("RingThickness", 6.0f, 40.0f, 1.0f, defaults.ringThickness,
                   [chart](float value) { chart->SetRingThickness(value); });
 
-        addHeader("ColorHeader", "Ribbon Colour:");
+        addHeader("ColorHeader", Tr("Ribbon Colour:"));
         auto colorDropdown = std::make_shared<UltraCanvasDropdown>(
             idPrefix + "ColorMode", kChordControlWidth, 24);
-        colorDropdown->AddItem("Larger Endpoint");
-        colorDropdown->AddItem("Source");
-        colorDropdown->AddItem("Target");
-        colorDropdown->AddItem("Blend");
+        colorDropdown->AddItem(Tr("Larger Endpoint"));
+        colorDropdown->AddItem(Tr("Source"));
+        colorDropdown->AddItem(Tr("Target"));
+        colorDropdown->AddItem(Tr("Blend"));
         colorDropdown->SetSelectedIndex(defaults.colorModeIndex);
         colorDropdown->onSelectionChanged = [chart](int index, const DropdownItem&) {
             ChordRibbonColorMode mode;
@@ -214,55 +219,48 @@ namespace UltraCanvas {
             }
             chart->SetRibbonColorMode(mode);
         };
-        colorDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        panel->AddChild(colorDropdown);
+        DemoKit::AddFixed(panel, colorDropdown);
 
-        addHeader("LabelHeader", "Labels:");
+        addHeader("LabelHeader", Tr("Labels:"));
         auto labelDropdown = std::make_shared<UltraCanvasDropdown>(
             idPrefix + "LabelMode", kChordControlWidth, 24);
-        labelDropdown->AddItem("Outside (horizontal)");
-        labelDropdown->AddItem("Radial");
-        labelDropdown->AddItem("None");
+        labelDropdown->AddItem(Tr("Outside (horizontal)"));
+        labelDropdown->AddItem(Tr("Radial"));
+        labelDropdown->AddItem(Tr("None"));
         labelDropdown->SetSelectedIndex(defaults.labelModeIndex);
         labelDropdown->onSelectionChanged = [chart](int index, const DropdownItem&) {
             ChordLabelPlacement placement;
             switch (index) {
                 case 1:  placement = ChordLabelPlacement::Radial; break;
-                case 2:  placement = ChordLabelPlacement::None;   break;
+                case 2:  placement = ChordLabelPlacement::NoLabels;   break;
                 default: placement = ChordLabelPlacement::Outside; break;
             }
             chart->SetLabelPlacement(placement);
         };
-        labelDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        panel->AddChild(labelDropdown);
+        DemoKit::AddFixed(panel, labelDropdown);
 
         // Filtering rebuilds the arcs from the surviving flows, so the ring
         // always accounts for exactly what is drawn.
-        addHeader("FilterHeader", "Hide Flows Below:");
+        addHeader("FilterHeader", Tr("Hide Flows Below:"));
         addSlider("MinFlow", 0.0f, 300.0f, 10.0f, 0.0f,
                   [chart](float value) { chart->SetMinFlowValue(value); });
 
-        addHeader("DimHeader", "Dim Non-Hovered:");
+        addHeader("DimHeader", Tr("Dim Non-Hovered:"));
         addSlider("Dim", 0.0f, 1.0f, 0.05f, 0.25f,
                   [chart](float value) { chart->SetDimmedOpacity(value); });
 
         auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>(
             idPrefix + "Hover", kChordControlWidth, 24);
-        hoverCheckbox->SetText("Hover Highlight");
+        hoverCheckbox->SetText(Tr("Hover Highlight"));
         hoverCheckbox->SetChecked(true);
         hoverCheckbox->onStateChanged = [chart](CheckedState, CheckedState newState) {
             chart->SetHoverHighlightEnabled(newState == CheckedState::Checked);
         };
-        hoverCheckbox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        panel->AddChild(hoverCheckbox);
+        DemoKit::AddFixed(panel, hoverCheckbox);
 
-        auto hintLabel = std::make_shared<UltraCanvasLabel>(
-            idPrefix + "Hint", kChordControlWidth, 66,
-            "Hover a category arc to isolate\nits ribbons, or a single ribbon\nfor the exact flow and its\nreturn leg.");
-        hintLabel->SetFontSize(10);
-        hintLabel->SetTextColor(Color(110, 110, 110, 255));
-        hintLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        panel->AddChild(hintLabel);
+        DemoKit::AddCaption(panel, idPrefix + "Hint",
+            Tr("Hover a category arc to isolate its ribbons, or a single ribbon "
+            "for the exact flow and its return leg."));
 
         return panel;
     }
@@ -288,12 +286,8 @@ namespace UltraCanvas {
         chartColumn->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        auto captionLabel = std::make_shared<UltraCanvasLabel>(
-            idPrefix + "Caption", 0, 22, caption);
-        captionLabel->SetFontSize(12);
-        captionLabel->SetTextColor(Color(90, 90, 100, 255));
-        captionLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        chartColumn->AddChild(captionLabel);
+        auto captionLabel = DemoKit::AddText(chartColumn, idPrefix + "Caption", caption);
+        captionLabel->SetTextColor(DemoKit::SubtitleText());
 
         // The chart is built at zero size and sized entirely by the layout
         // engine, so it re-fits its ring whenever the window changes.
@@ -321,7 +315,7 @@ namespace UltraCanvas {
         });
 
         return MakeChordTab("CcTrade",
-                            "Global merchandise trade between eight world regions, in billions USD.",
+                            Tr("Global merchandise trade between eight world regions, in billions USD."),
                             chart, ChordPanelDefaults{});
     }
 
@@ -341,7 +335,7 @@ namespace UltraCanvas {
         ChordPanelDefaults defaults;
         defaults.colorModeIndex = 1;  // Source
         return MakeChordTab("CcMigration",
-                            "Migration corridors in thousands of people - several run almost entirely one way.",
+                            Tr("Migration corridors in thousands of people - several run almost entirely one way."),
                             chart, defaults);
     }
 
@@ -359,7 +353,7 @@ namespace UltraCanvas {
         defaults.categoryPadding = 4.0f;
         defaults.colorModeIndex  = 1;  // Source
         return MakeChordTab("CcPhase",
-                            "Handovers between project phases: a sparse matrix with cyclical feedback edges.",
+                            Tr("Handovers between project phases: a sparse matrix with cyclical feedback edges."),
                             chart, defaults);
     }
 
@@ -378,61 +372,40 @@ namespace UltraCanvas {
         defaults.colorModeIndex = 3;  // Blend
         defaults.labelModeIndex = 1;  // Radial
         return MakeChordTab("CcTeam",
-                            "Cross-team ticket handovers: blended ribbon colours, radial labels, thin ring.",
+                            Tr("Cross-team ticket handovers: blended ribbon colours, radial labels, thin ring."),
                             chart, defaults);
     }
 
 // ===== MAIN CHORD CHART EXAMPLES CREATOR =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChordChartExamples() {
-        // Stretchable flex column: title and description keep their height, the
-        // tabs take the rest. Auto size so the host's flex-grow/stretch sizes the
-        // page to the display area and a window resize propagates down through
-        // Measure/Arrange to each chart.
-        auto container = std::make_shared<UltraCanvasContainer>("ChordChartContainer");
-        container->SetBackgroundColor(Color(255, 255, 255, 255));
-        container->SetPadding(8, 10);
-        container->layout.SetFlexColumn().SetFlexGap(6)
-                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        container->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        auto page = DemoKit::CreatePage("ChordChartContainer",
+            Tr("Chord Chart Examples - Directed Flows Between Categories"),
+            Tr("Categories occupy arcs sized by total throughput; ribbons join them with a width proportional to the flow. "
+            "Each direction gets its own sub-arc, so an asymmetric relationship reads as a ribbon that is wide at one end "
+            "and narrow at the other. Hover isolates a category or a ribbon; tooltips report the flow and its return leg."));
+        // The page is the display area's height and the tabs take what the
+        // title and description leave, so a window resize propagates down
+        // through Measure/Arrange to each chart.
+        page->SetFillsArea(true);
 
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("CcTitleLabel", 0, 32);
-        titleLabel->SetText("Chord Chart Examples - Directed Flows Between Categories");
-        titleLabel->SetFontSize(18);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        titleLabel->SetAlignment(TextAlignment::Center);
-        titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-        titleLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        container->AddChild(titleLabel);
-
-        // Explicit line breaks and a fixed height rather than word wrap: the
-        // description is re-measured whenever the page is re-laid out, and a
-        // wrapped label re-measures against an unconstrained width, which leaves
-        // the text on one over-long line that the page then clips.
-        auto descLabel = std::make_shared<UltraCanvasLabel>("CcDescLabel", 0, 56);
-        descLabel->SetText(
-            "Categories occupy arcs sized by total throughput; ribbons join them with a width proportional to the flow.\n"
-            "Each direction gets its own sub-arc, so an asymmetric relationship reads as a ribbon that is wide at one end\n"
-            "and narrow at the other. Hover isolates a category or a ribbon; tooltips report the flow and its return leg."
-        );
-        descLabel->SetFontSize(11);
-        descLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        container->AddChild(descLabel);
+        auto card = DemoKit::CreateCard("ChordTabsCard");
+        card->SetPadding(4);
+        DemoKit::Add(page, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ChordTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
-        tabs->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        tabs->AddTab("Global Merchandise Trade", MakeTradeTab());
-        tabs->AddTab("Migration Corridors",      MakeMigrationTab());
-        tabs->AddTab("Project Phase Handovers",  MakePhaseTab());
-        tabs->AddTab("Cross-Team Handovers",     MakeTeamTab());
+        tabs->AddTab(Tr("Global Merchandise Trade"), MakeTradeTab());
+        tabs->AddTab(Tr("Migration Corridors"),      MakeMigrationTab());
+        tabs->AddTab(Tr("Project Phase Handovers"),  MakePhaseTab());
+        tabs->AddTab(Tr("Cross-Team Handovers"),     MakeTeamTab());
 
-        container->AddChild(tabs);
+        DemoKit::Add(card, tabs, 1);
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

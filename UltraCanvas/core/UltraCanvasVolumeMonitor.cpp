@@ -11,8 +11,11 @@
 // /media, /mnt and /Volumes, and neither looked at /run/media, where udisks2
 // mounts on Fedora, RHEL, Arch and openSUSE. A stick was then missing from
 // one list, from both, or shown in one and not the other.
+// Version: 1.2.0 - ReadVolumeName: a drive letter's own volume name
+// Version: 1.1.0 - ListGvfsVolumes: the phones, cameras and shares GVFS
+//                  mounted below $XDG_RUNTIME_DIR/gvfs
 // Version: 1.0.0
-// Last Modified: 2026-09-01
+// Last Modified: 2026-11-09
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVolumeMonitor.h"
@@ -20,6 +23,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <set>
 #include <utility>
@@ -29,6 +33,7 @@
 #include <windows.h>
 #else
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace UltraCanvas {
@@ -201,6 +206,136 @@ namespace UltraCanvas {
         });
         volumes.insert(volumes.end(), std::make_move_iterator(mounts.begin()),
                        std::make_move_iterator(mounts.end()));
+        // After the mounts: what the desktop mounted through GVFS (a phone,
+        // a camera, a share), which no mount-point test can find.
+        for (MountedVolume& v : ListGvfsVolumes()) volumes.push_back(std::move(v));
+#endif
+        return volumes;
+    }
+
+    // ===== GVFS =====
+
+    namespace {
+        // "%20" -> " ": GVFS escapes the values in its mount names.
+        std::string GvfsUnescape(const std::string& text) {
+            std::string out;
+            for (size_t i = 0; i < text.size(); ++i) {
+                if (text[i] == '%' && i + 2 < text.size()) {
+                    const std::string hex = text.substr(i + 1, 2);
+                    char* end = nullptr;
+                    const long value = std::strtol(hex.c_str(), &end, 16);
+                    if (end == hex.c_str() + 2) {
+                        out += static_cast<char>(value);
+                        i += 2;
+                        continue;
+                    }
+                }
+                out += text[i];
+            }
+            return out;
+        }
+
+        // The value of `key` in "scheme:key=value,key=value", unescaped.
+        std::string GvfsValue(const std::string& name, const std::string& key) {
+            const size_t colon = name.find(':');
+            if (colon == std::string::npos) return {};
+            size_t at = colon + 1;
+            while (at < name.size()) {
+                size_t end = name.find(',', at);
+                if (end == std::string::npos) end = name.size();
+                const std::string pair = name.substr(at, end - at);
+                const size_t eq = pair.find('=');
+                if (eq != std::string::npos && pair.compare(0, eq, key) == 0)
+                    return GvfsUnescape(pair.substr(eq + 1));
+                at = end + 1;
+            }
+            return {};
+        }
+
+        // "SAMSUNG_Galaxy_S21_R58M12345" -> "SAMSUNG Galaxy S21": GVFS names
+        // an MTP or gphoto2 device vendor_model_serial; the serial goes - a
+        // token of eight or more letters and digits with a digit in it - and
+        // the underscores read as spaces. An old-style "[usb:002,010]" host
+        // says nothing about the device and gives `fallback`.
+        std::string GvfsDeviceLabel(const std::string& host, const std::string& fallback) {
+            if (host.empty() || host.front() == '[') return fallback;
+            std::vector<std::string> words;
+            std::string word;
+            for (char c : host) {
+                if (c == '_') { if (!word.empty()) words.push_back(word); word.clear(); }
+                else word += c;
+            }
+            if (!word.empty()) words.push_back(word);
+            if (words.size() > 1) {
+                const std::string& last = words.back();
+                bool alnum = last.size() >= 8, digit = false;
+                for (char c : last) {
+                    if (c >= '0' && c <= '9') digit = true;
+                    else if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) alnum = false;
+                }
+                if (alnum && digit) words.pop_back();
+            }
+            std::string label;
+            for (const std::string& w : words) {
+                if (!label.empty()) label += ' ';
+                label += w;
+            }
+            return label.empty() ? fallback : label;
+        }
+    }
+
+    std::string GvfsVolumeLabel(const std::string& mountName) {
+        const size_t colon = mountName.find(':');
+        if (colon == std::string::npos) return {};
+        const std::string scheme = mountName.substr(0, colon);
+        if (scheme == "mtp")
+            return GvfsDeviceLabel(GvfsValue(mountName, "host"), "Phone");
+        if (scheme == "gphoto2")
+            return GvfsDeviceLabel(GvfsValue(mountName, "host"), "Camera");
+        if (scheme == "afc")
+            // The host is the device's UDID, which names nothing a user knows.
+            return "iPhone or iPad";
+        if (scheme == "smb-share") {
+            const std::string server = GvfsValue(mountName, "server");
+            const std::string share = GvfsValue(mountName, "share");
+            if (share.empty()) return server;
+            return server.empty() ? share : share + " on " + server;
+        }
+        if (scheme == "sftp" || scheme == "ftp" || scheme == "ftps" ||
+            scheme == "dav" || scheme == "davs" || scheme == "nfs" ||
+            scheme == "afp-volume") {
+            std::string host = GvfsValue(mountName, "host");
+            if (host.empty()) host = GvfsValue(mountName, "server");
+            const std::string user = GvfsValue(mountName, "user");
+            if (host.empty()) return {};
+            return user.empty() ? host : user + "@" + host;
+        }
+        return {};   // a cloud account, or a kind not shown as a volume
+    }
+
+    std::vector<MountedVolume> ListGvfsVolumes() {
+        std::vector<MountedVolume> volumes;
+#if !defined(_WIN32) && !defined(__APPLE__)
+        fs::path gvfs;
+        if (const char* runtime = std::getenv("XDG_RUNTIME_DIR"); runtime && *runtime)
+            gvfs = PathFromUtf8(runtime) / "gvfs";
+        else
+            gvfs = PathFromUtf8("/run/user") /
+                   std::to_string(static_cast<unsigned long>(::getuid())) / "gvfs";
+        std::error_code ec;
+        for (fs::directory_iterator it(gvfs, ec), end; it != end && !ec; it.increment(ec)) {
+            const std::string name = PathToUtf8(it->path().filename());
+            const std::string label = GvfsVolumeLabel(name);
+            if (label.empty()) continue;
+            MountedVolume v;
+            v.path = PathToUtf8(it->path());
+            v.label = label;
+            volumes.push_back(std::move(v));
+        }
+        std::sort(volumes.begin(), volumes.end(),
+                  [](const MountedVolume& a, const MountedVolume& b) {
+            return a.label < b.label;
+        });
 #endif
         return volumes;
     }
@@ -210,6 +345,27 @@ namespace UltraCanvas {
         for (const MountedVolume& v : ListMountedVolumes())
             roots.push_back(v.path);
         return roots;
+    }
+
+    std::string ReadVolumeName(const std::string& path) {
+#ifdef _WIN32
+        if (path.size() < 2 || path[1] != ':') return {};
+        std::wstring root = Utf8ToWide(path.substr(0, 2)) + L"\\";
+        const UINT type = ::GetDriveTypeW(root.c_str());
+        if (type == DRIVE_REMOTE || type == DRIVE_NO_ROOT_DIR || type == DRIVE_UNKNOWN)
+            return {};
+        // No "insert a disk" box for an empty card reader or optical drive:
+        // a missing medium is an empty name.
+        const UINT oldMode = ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+        wchar_t name[MAX_PATH + 1] = {};
+        const BOOL ok = ::GetVolumeInformationW(root.c_str(), name, MAX_PATH + 1,
+                                                nullptr, nullptr, nullptr, nullptr, 0);
+        ::SetErrorMode(oldMode);
+        return ok ? WideToUtf8(name) : std::string();
+#else
+        (void)path;
+        return {};
+#endif
     }
 
     // ===== THE MONITOR =====

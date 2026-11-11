@@ -12,19 +12,26 @@
 // context paint, clipping, inheritance, a self-referencing marker); line-
 // gallery arrowheads go out as markers and come back as arrowheads, and
 // width profiles and brushes go out as what they draw and come back as
-// strokes.
+// strokes. Export() to a file is staged: saving over a file replaces it
+// only once the new one is written, leaves no temporary file, and a save that
+// fails says why and keeps what was there.
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
-// Version: 1.5.0
-// Last Modified: 2026-10-07
+// Version: 1.6.0
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasPathUtf8.h"
 
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <functional>
 #include <cstdio>
 #include <string>
@@ -790,6 +797,90 @@ int main(int argc, char** argv) {
             Check((gap & 0xFF) < 128, "between the stamps there is no stroke");
         } else {
             Check(false, "the export with a profile and a brush rasterizes");
+        }
+    }
+
+    // ===== SAVING TO A FILE: STAGED, AND A FAILURE SAYS WHY =====
+    {
+        namespace fs = std::filesystem;
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        const fs::path dir = fs::temp_directory_path() / PathFromUtf8("svgconverter-staged-" + std::to_string(stamp));
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+
+        auto readAll = [](const fs::path& path) {
+            std::ifstream in(path, std::ios::binary);
+            return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        };
+        auto hasStagedLeftovers = [&dir]() {
+            std::error_code walkEc;
+            for (const auto& entry : fs::directory_iterator(dir, walkEc)) {
+                if (PathToUtf8(entry.path().filename()).rfind(".ucsave", 0) == 0) return true;
+            }
+            return false;
+        };
+        std::vector<std::string> notes;
+        VectorConverter::ConversionOptions noting;
+        noting.WarningCallback = [&notes](const std::string& msg) { notes.push_back(msg); };
+
+        const fs::path existing = dir / "drawing.svg";
+        { std::ofstream(existing, std::ios::binary) << "the drawing that was there"; }
+        Check(converter.Export(*doc, PathToUtf8(existing), noting), "Export() saves over an existing file");
+        Check(readAll(existing).find("<svg") != std::string::npos, "the file saved over holds the new drawing");
+        Check(!hasStagedLeftovers(), "a save leaves no temporary file");
+
+        notes.clear();
+        const std::string missing = PathToUtf8(dir / "no-such-folder" / "drawing.svg");
+        Check(!converter.Export(*doc, missing, noting), "Export() into a missing folder fails");
+        const std::string why = notes.empty() ? std::string() : notes.back();
+        std::printf("      reason: %s\n", why.c_str());
+        Check(why.find("does not exist") != std::string::npos, "the failure says the folder does not exist");
+        Check(why.find(".ucsave") == std::string::npos, "the failure names the file asked for, not the temporary one");
+
+        notes.clear();
+        const fs::path taken = dir / "taken.svg";
+        fs::create_directories(taken / "inside", ec);
+        Check(!converter.Export(*doc, PathToUtf8(taken), noting), "Export() over a folder of that name fails");
+        std::printf("      reason: %s\n", notes.empty() ? "" : notes.back().c_str());
+        Check(!notes.empty() && notes.back().find("folder") != std::string::npos, "the failure says a folder has that name");
+        Check(fs::is_directory(taken / "inside", ec), "the folder in the way is untouched");
+        Check(!hasStagedLeftovers(), "a failed save leaves no temporary file");
+
+        fs::remove_all(dir, ec);
+    }
+
+    // ---- A word of a text in its own colour: <tspan fill>, both ways ----
+    {
+        std::printf("Span colours\n");
+        auto cdoc = std::make_shared<VectorDocument>();
+        cdoc->Size = Size2Dd{200, 100};
+        cdoc->ViewBox = Rect2Dd{0, 0, 200, 100};
+        auto layer = cdoc->AddLayer("Words");
+        auto t = std::make_shared<VectorText>();
+        t->Position = Point2Dd(10, 50);
+        t->BaseStyle.FontFamily = "Sans";
+        t->BaseStyle.FontSize = 20;
+        t->Style.Fill = Color(0, 0, 0, 255);
+        TextSpanData plain; plain.Text = "Plain "; plain.Style = t->BaseStyle;
+        TextSpanData red; red.Text = "red"; red.Style = t->BaseStyle; red.Style.FillColor = Color(210, 52, 32, 128);
+        t->Spans = {plain, red};
+        layer->AddChild(t);
+
+        const std::string out = converter.ExportToString(*cdoc, options);
+        Check(out.find("fill=\"#d23420\"") != std::string::npos, "a span's own colour is its tspan's fill");
+        Check(out.find("fill-opacity=\"0.50") != std::string::npos, "and its opacity the tspan's fill-opacity");
+        auto back = converter.ImportFromString(out, options);
+        std::shared_ptr<VectorText> bt;
+        if (back)
+            for (const auto& l : back->Layers)
+                for (const auto& c : l->Children)
+                    if (auto x = std::dynamic_pointer_cast<VectorText>(c)) bt = x;
+        Check(bt && bt->Spans.size() == 2, "the text reads back with its two spans");
+        if (bt && bt->Spans.size() == 2) {
+            Check(!bt->Spans[0].Style.FillColor, "a span without a colour of its own stays without");
+            const auto& c = bt->Spans[1].Style.FillColor;
+            Check(c && c->r == 210 && c->g == 52 && c->b == 32 && std::abs(int(c->a) - 128) <= 1,
+                  "the coloured span reads back in its colour and opacity");
         }
     }
 

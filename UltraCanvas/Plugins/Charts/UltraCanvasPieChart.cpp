@@ -957,7 +957,7 @@ namespace UltraCanvas {
                                                   float outerR,
                                                   double vScale)
     {
-        if (labelPosition == LabelPosition::None) return;
+        if (labelPosition == LabelPosition::NoLabels) return;
         if (cachedSlices.empty()) return;
 
         ctx->PushState();

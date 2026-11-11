@@ -2,11 +2,13 @@
 // Top-level window for the UltraAI app: a grid of buttons, one per
 // capability. Clicking a button opens the matching modal service
 // dialog backed by the in-process mock adapter for that capability.
+// Version: 0.3.0 - the Agents tile; six tiles a row
 // Version: 0.2.0
 // Last Modified: 2026-10-16
 // Author: UltraAI Module
 #pragma once
 
+#include "UltraAISettingsWindow.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
 
@@ -25,11 +27,18 @@ public:
     // Cleanly request the application to exit.
     void OnWindowClosing();
 
+    // Open the settings window (default providers, local models, cloud
+    // fallback, endpoints), on `page` when one is named - the Settings
+    // tile, and the --settings command line.
+    void OpenSettingsDialog(UltraAISettingsWindow::Page page = UltraAISettingsWindow::Page::Default);
+    // Open the "Get a local model" dialog for Chat, as the chat dialog does
+    // when its model is not installed (the --get-local-model command line).
+    void OpenLocalModelDialog();
+    // The Agents dialog (the Agents tile, or --agents at start).
+    void OpenAgentDialog();
+
 private:
     void CreateButtons();
-
-    // Open the settings window (default providers, cloud fallback, endpoints).
-    void OpenSettingsDialog();
 
     // Open a modal dialog for the chosen capability.
     void OpenChatDialog();
@@ -53,7 +62,8 @@ private:
     static constexpr long kGap          = 20;
     static constexpr long kHeaderHeight = 60;
     static constexpr int  kIconSize     = 128;
-    static constexpr long kWindowWidth  = kGap + 5 * (kButtonWidth + kGap);
+    static constexpr long kColumns      = 6;
+    static constexpr long kWindowWidth  = kGap + kColumns * (kButtonWidth + kGap);
     static constexpr long kWindowHeight = kHeaderHeight + 2 * (kButtonHeight + kGap);
 };
 

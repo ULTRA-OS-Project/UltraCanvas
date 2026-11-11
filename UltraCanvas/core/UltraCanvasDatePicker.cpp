@@ -1,9 +1,16 @@
 // core/UltraCanvasDatePicker.cpp
 // Implementation of UCDate, UltraCanvasCalendarView and UltraCanvasDatePicker.
+// The history is in the header (include/UltraCanvasDatePicker.h).
+// Version: 1.4.0 - SetPlaceholder reaches the field after it was built
+// Version: 1.3.2 - the range field's separator is an en dash
+// Version: 1.3.1 - the calendar is kept inside the window vertically
+// Version: 1.3.0 - the typed field is an UltraCanvasTextInput child
+// Author: UltraCanvas Framework
 #include "UltraCanvasDatePicker.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <ctime>
 #include <cstdio>
 #include <cctype>
@@ -183,14 +190,19 @@ namespace UltraCanvas {
     UltraCanvasCalendarView::UltraCanvasCalendarView(const std::string& identifier,
                                                      float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
-        weekdayNames = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
-        monthNamesLong = {"January", "February", "March", "April", "May", "June",
-                          "July", "August", "September", "October", "November", "December"};
-        monthNamesShort = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        // The current language's calendar names, and again whenever the
+        // language changes while the picker is open - unless the
+        // application set names of its own.
+        ResolveCalendarNames();
+        languageHandler = UltraLocalisation::AddChangeHandler([this](const std::string&) {
+            if (customCalendarNames) return;
+            ResolveCalendarNames();
+            RequestRedraw();
+        });
         UCDate today = UCDate::Today();
         visibleYear = today.year;
         visibleMonth = today.month;
+        ApplyThemeIfFollowing();
     }
 
     Size2Df UltraCanvasCalendarView::GetPreferredSize() const {
@@ -282,14 +294,31 @@ namespace UltraCanvas {
         SetVisibleMonth(t.year, t.month);
     }
 
+    UltraCanvasCalendarView::~UltraCanvasCalendarView() {
+        if (languageHandler != 0) UltraLocalisation::RemoveChangeHandler(languageHandler);
+    }
+
+    void UltraCanvasCalendarView::ResolveCalendarNames() {
+        weekdayNames = {TrC("weekday", "Su"), TrC("weekday", "Mo"), TrC("weekday", "Tu"), TrC("weekday", "We"),
+                        TrC("weekday", "Th"), TrC("weekday", "Fr"), TrC("weekday", "Sa")};
+        monthNamesLong = {TrC("month", "January"), TrC("month", "February"), TrC("month", "March"),
+                          TrC("month", "April"), TrC("month", "May"), TrC("month", "June"),
+                          TrC("month", "July"), TrC("month", "August"), TrC("month", "September"),
+                          TrC("month", "October"), TrC("month", "November"), TrC("month", "December")};
+        monthNamesShort = {TrC("month-short", "Jan"), TrC("month-short", "Feb"), TrC("month-short", "Mar"),
+                           TrC("month-short", "Apr"), TrC("month-short", "May"), TrC("month-short", "Jun"),
+                           TrC("month-short", "Jul"), TrC("month-short", "Aug"), TrC("month-short", "Sep"),
+                           TrC("month-short", "Oct"), TrC("month-short", "Nov"), TrC("month-short", "Dec")};
+    }
+
     void UltraCanvasCalendarView::SetWeekdayNames(const std::vector<std::string>& shortNames) {
-        if (shortNames.size() == 7) { weekdayNames = shortNames; RequestRedraw(); }
+        if (shortNames.size() == 7) { weekdayNames = shortNames; customCalendarNames = true; RequestRedraw(); }
     }
 
     void UltraCanvasCalendarView::SetMonthNames(const std::vector<std::string>& longNames,
                                                 const std::vector<std::string>& shortNames) {
-        if (longNames.size() == 12) monthNamesLong = longNames;
-        if (shortNames.size() == 12) monthNamesShort = shortNames;
+        if (longNames.size() == 12) { monthNamesLong = longNames; customCalendarNames = true; }
+        if (shortNames.size() == 12) { monthNamesShort = shortNames; customCalendarNames = true; }
         RequestRedraw();
     }
 
@@ -520,8 +549,8 @@ namespace UltraCanvas {
         if (hoverNavRegion == 5)
             ctx->DrawFilledRectangle(l.clearButton, style.footerHoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
 
-        DrawCenteredText(ctx, "Today", l.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
-        DrawCenteredText(ctx, "Clear", l.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+        DrawCenteredText(ctx, Tr("Today"), l.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+        DrawCenteredText(ctx, Tr("Clear"), l.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
     }
 
     void UltraCanvasCalendarView::DrawDaysLevel(IRenderContext* ctx, const Layout& l) {
@@ -1219,8 +1248,8 @@ namespace UltraCanvas {
                 ctx->DrawFilledRectangle(ml.todayButton, style.footerHoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
             if (hoverNavRegion == 5)
                 ctx->DrawFilledRectangle(ml.clearButton, style.footerHoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
-            DrawCenteredText(ctx, "Today", ml.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
-            DrawCenteredText(ctx, "Clear", ml.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+            DrawCenteredText(ctx, Tr("Today"), ml.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+            DrawCenteredText(ctx, Tr("Clear"), ml.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
         }
     }
 
@@ -1440,6 +1469,15 @@ namespace UltraCanvas {
         };
 
         SyncTextFromValue();
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasDatePicker::SetPlaceholder(const std::string& text) {
+        placeholder = text;
+        // The field is built once, with the hint of that moment; a hint set
+        // later has to be handed on, or "Select a date" stays.
+        if (textInput) textInput->SetPlaceholder(placeholder);
+        RequestRedraw();
     }
 
     bool UltraCanvasDatePicker::CanTypeInField() const {
@@ -1530,6 +1568,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDatePicker::SetStyle(const DatePickerStyle& s) {
+        StyleSetByHand();
         style = s;
         calendar->SetStyle(style.calendarStyle);
         if (textInput) {
@@ -1870,6 +1909,7 @@ namespace UltraCanvas {
                                                            float x, float y, float w, float h)
             : UltraCanvasContainer(identifier, x, y, w, h) {
         Rebuild();
+        ApplyThemeIfFollowing();
     }
 
     std::vector<UCDate> UltraCanvasDateRangePicker::BlockedList() const {
@@ -2214,6 +2254,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDateRangePicker::SetStyle(const DatePickerStyle& s) {
+        StyleSetByHand();
         style = s;
         if (startPicker) startPicker->SetStyle(s);
         if (endPicker) endPicker->SetStyle(s);
@@ -2224,6 +2265,63 @@ namespace UltraCanvas {
     void UltraCanvasDateRangePicker::SetBounds(const Rect2Df& b) {
         UltraCanvasContainer::SetBounds(b);
         LayoutFields();
+    }
+
+// ===== THE THEME =====
+    CalendarStyle CalendarStyle::FromTheme(const UltraCanvasTheme& theme, const CalendarStyle& base) {
+        CalendarStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.headerFontSize = s.fontSize;
+        s.backgroundColor = r.raised;
+        s.borderColor = r.line;
+        s.headerBackgroundColor = r.raised;
+        s.headerTextColor = r.ink;
+        s.headerHoverColor = r.hover;
+        s.navArrowColor = r.inkMuted;
+        s.navArrowHoverColor = r.accent;
+        s.weekdayTextColor = r.inkMuted;
+        // the element's own role, for a design whose weekends are not red
+        const Color weekend = theme.Role("calendar.weekend", base.weekendTextColor);
+        s.weekendWeekdayColor = weekend;
+        s.weekendTextColor = weekend;
+        s.cellTextColor = r.ink;
+        s.adjacentMonthColor = r.inkFaint;
+        s.disabledTextColor = r.inkFaint;
+        s.hoverColor = r.hover;
+        s.selectedColor = r.accent;
+        s.selectedTextColor = r.onAccent;
+        s.todayBorderColor = r.accent;
+        s.focusBorderColor = r.focus;
+        s.rangeFillColor = r.accentSoft;
+        s.weekNumberColor = r.inkFaint;
+        s.blockedStrikeColor = r.danger.WithAlpha(200);
+        s.footerTextColor = r.accent;
+        s.footerHoverColor = r.hover;
+        s.footerSeparatorColor = r.line;
+        return s;
+    }
+
+    DatePickerStyle DatePickerStyle::FromTheme(const UltraCanvasTheme& theme, const DatePickerStyle& base) {
+        DatePickerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.backgroundColor = r.well;
+        s.hoverColor = r.hover;
+        s.disabledColor = r.panel;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.textColor = r.ink;
+        s.placeholderColor = r.inkFaint;
+        s.disabledTextColor = r.inkFaint;
+        s.iconColor = r.inkMuted;
+        s.caretColor = r.ink;
+        s.calendarStyle = CalendarStyle::FromTheme(theme, base.calendarStyle);
+        return s;
     }
 
 } // namespace UltraCanvas

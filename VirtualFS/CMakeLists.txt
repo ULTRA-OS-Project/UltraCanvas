@@ -209,6 +209,16 @@ endif()
 # Alias for use in subdirectories
 add_library(VirtualFS::VirtualFS ALIAS VirtualFS)
 
+# Built as a DLL, it says which build it is (VirtualFS_LibraryBuild), so a
+# program refuses one from another build at start instead of crashing on it
+# (cmake/UltraCanvasLibraryBuildId.cmake; nothing happens for the default
+# static library, which is inside the core). Inside the UltraCanvas tree only.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasLibraryBuildId.cmake" OPTIONAL)
+if(COMMAND ultracanvas_library_build_id)
+    ultracanvas_library_build_id(VirtualFS "VirtualFS" "${PROJECT_VERSION}"
+                                 "${CMAKE_CURRENT_SOURCE_DIR}/include" VirtualFS_LibraryBuild)
+endif()
+
 # PUBLIC so consumers compiling against VirtualFS (e.g. the UltraCanvas
 # bridge) see the same VIRTUALFS_HAS_* feature set the library was built with
 target_compile_definitions(VirtualFS PUBLIC ${VIRTUALFS_DEFINITIONS})

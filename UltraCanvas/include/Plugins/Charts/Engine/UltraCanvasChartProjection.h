@@ -1,5 +1,5 @@
 // include/Plugins/Charts/Engine/UltraCanvasChartProjection.h
-// Chart space projections: vertical, horizontal and polar.
+// Chart space projections: vertical, horizontal, polar and ternary.
 //
 // A projection maps normalised chart space - (u, v) both on [0,1], u along the
 // domain, v along the value - onto screen coordinates. Series drawing code is
@@ -10,8 +10,10 @@
 // Free of UI dependencies; the 3-D projection arrives with the camera work in a
 // later phase.
 //
+// Version: 1.1.0 - Ternary: (u, v) as the shares of the second and third part
+//   of a three-part composition, drawn in an equilateral triangle
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -20,7 +22,7 @@
 
 namespace UltraCanvas {
 
-enum class ChartProjectionKind { Vertical, Horizontal, Polar, Space3D };
+enum class ChartProjectionKind { Vertical, Horizontal, Polar, Space3D, Ternary };
 
 // A point in normalised chart space. Both components run 0..1 across the plot;
 // values outside that are legal and land outside the plot area.
@@ -97,6 +99,31 @@ private:
     double sweep = 360.0;
     bool clockwise = true;
     double innerFraction = 0.0;
+};
+
+// A three-part composition (a, b, c), a + b + c = 1, in the largest
+// equilateral triangle that fits the plot area: (u, v) = (b, c), and a is
+// 1 - u - v. Corner 0 (A) is the apex, corner 1 (B) bottom left and corner 2
+// (C) bottom right; with the apex down, A is at the bottom and B, C on top.
+// The map is affine, so straight lines stay straight and every shape the
+// engine draws through a projection (polygons, hulls, hit regions) works
+// unchanged. A point with u + v > 1 or a negative share lands outside the
+// triangle, as values outside 0..1 land outside the plot elsewhere.
+class ChartTernaryProjection : public IChartProjection {
+public:
+    ChartProjectionKind Kind() const override { return ChartProjectionKind::Ternary; }
+
+    void SetApexDown(bool down) { apexDown = down; }
+    bool IsApexDown() const { return apexDown; }
+    // 0 = A, 1 = B, 2 = C, in screen space.
+    Point2Dd Corner(int index) const;
+    double SideLength() const;
+
+    Point2Dd ToScreen(const ChartNormalizedPoint& p) const override;
+    ChartNormalizedPoint ToNormalized(const Point2Dd& screen) const override;
+
+private:
+    bool apexDown = false;
 };
 
 std::unique_ptr<IChartProjection> CreateChartProjection(ChartProjectionKind kind);

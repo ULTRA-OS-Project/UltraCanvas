@@ -15,8 +15,9 @@
 // hash is recorded in the model's model.json. Pinning the hashes here is
 // the curation step the proposal describes (§6.3); sizes are approximate
 // until then and are corrected from the host at install time.
+// Version: 0.2.0 - the built-in topics
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 
 #include "LocalRuntimeInternal.h"
@@ -57,10 +58,14 @@ const char* BuiltinGalleryJson() {
 })json";
 }
 
+// The file names and sizes were checked against the Hugging Face repositories
+// on 2026-10-21 (sizes to the repositories' figure where it was published, the
+// nearest 10 MB otherwise); the hashes are still taken from the tree API at
+// install time.
 const char* BuiltinCatalogueJson() {
     return R"json({
   "formatVersion": 1,
-  "published": "2026-10-20",
+  "published": "2026-10-21",
   "models": [
     {
       "id": "qwen3-4b-q4",
@@ -82,7 +87,7 @@ const char* BuiltinCatalogueJson() {
       "capability": "textllm",
       "engine": "llama-server",
       "license": "Apache-2.0",
-      "files": [{"name": "Qwen3-1.7B-Q8_0.gguf", "url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf", "size": 1830000000}],
+      "files": [{"name": "Qwen3-1.7B-Q8_0.gguf", "url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q8_0.gguf", "size": 2170000000}],
       "requires": {"memoryBytes": 3000000000, "gpuMemoryBytes": 2600000000},
       "features": {"contextWindow": 32768, "tools": true},
       "engineArgs": ["--ctx-size", "8192"],
@@ -95,7 +100,7 @@ const char* BuiltinCatalogueJson() {
       "capability": "textllm",
       "engine": "llama-server",
       "license": "Apache-2.0",
-      "files": [{"name": "Qwen3-8B-Q4_K_M.gguf", "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf", "size": 5030000000}],
+      "files": [{"name": "Qwen3-8B-Q4_K_M.gguf", "url": "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf", "size": 5027784384}],
       "requires": {"memoryBytes": 7500000000, "gpuMemoryBytes": 6500000000},
       "features": {"contextWindow": 32768, "tools": true},
       "engineArgs": ["--ctx-size", "8192"],
@@ -142,6 +147,59 @@ const char* BuiltinCatalogueJson() {
       "features": {"contextWindow": 8192, "embeddingDimensions": 768},
       "engineArgs": ["--ctx-size", "8192", "--pooling", "mean"],
       "tags": ["embeddings", "small"]
+    }
+  ]
+})json";
+}
+
+// The topics shipped with the framework: the same document the model server
+// (Server/UltraAIModelServer) is seeded with - its tests compare the two.
+const char* BuiltinTopicsJson() {
+    return R"json({
+  "formatVersion": 1,
+  "published": "2026-11-06",
+  "topics": [
+    {
+      "id": "chat",
+      "name": "General chat",
+      "description": "Conversations, questions and answers, writing help.",
+      "capability": "textllm",
+      "models": [{"id": "qwen3-4b-q4", "default": true}, {"id": "qwen3-8b-q4"}, {"id": "qwen3-1.7b-q8"}, {"id": "gemma-3-4b-it-q4"}]
+    },
+    {
+      "id": "code",
+      "name": "Programming",
+      "description": "Writing, explaining and fixing source code.",
+      "capability": "textllm",
+      "models": [{"id": "qwen3-8b-q4", "default": true}, {"id": "qwen3-4b-q4"}]
+    },
+    {
+      "id": "translation",
+      "name": "Translation",
+      "description": "Translating text between languages.",
+      "capability": "textllm",
+      "models": [{"id": "qwen3-4b-q4", "default": true}, {"id": "qwen3-8b-q4"}, {"id": "qwen3-1.7b-q8"}]
+    },
+    {
+      "id": "summary",
+      "name": "Summaries",
+      "description": "Shortening documents, mails and web pages.",
+      "capability": "textllm",
+      "models": [{"id": "qwen3-1.7b-q8", "default": true}, {"id": "qwen3-4b-q4"}]
+    },
+    {
+      "id": "vision",
+      "name": "Pictures and documents",
+      "description": "Describing pictures and reading scanned pages.",
+      "capability": "textllm",
+      "models": [{"id": "gemma-3-4b-it-q4", "default": true}]
+    },
+    {
+      "id": "search",
+      "name": "Search and similarity",
+      "description": "Embeddings for finding related text.",
+      "capability": "embeddings",
+      "models": [{"id": "qwen3-embedding-0.6b-q8", "default": true}, {"id": "nomic-embed-text-v1.5-q8"}]
     }
   ]
 })json";

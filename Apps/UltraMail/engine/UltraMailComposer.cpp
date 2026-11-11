@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailComposer.cpp
+// Version: 0.2.0 - a reply or forward of encrypted mail starts encrypted
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposer.h"
@@ -81,6 +82,11 @@ Draft Composer::Reply(const SourceMessage& src, const std::string& selfName,
     d.fromName = selfName;
     d.fromAddr = selfAddr;
     d.subject  = ReplySubject(src.subject);
+    // An answer to encrypted mail is encrypted too: it quotes it.
+    if (!src.encryptedWith.empty()) {
+        d.secureMethod = src.encryptedWith;
+        d.encrypt = true;
+    }
 
     // Primary recipient: the original sender.
     AddUnique(d.to, src.fromAddr, selfAddr);
@@ -102,6 +108,10 @@ Draft Composer::Forward(const SourceMessage& src, const std::string& selfName,
     d.fromName = selfName;
     d.fromAddr = selfAddr;
     d.subject  = ForwardSubject(src.subject);
+    if (!src.encryptedWith.empty()) {
+        d.secureMethod = src.encryptedWith;
+        d.encrypt = true;
+    }
 
     std::ostringstream body;
     body << "\n\n---------- Forwarded message ----------\n"

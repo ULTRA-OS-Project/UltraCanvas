@@ -1,7 +1,10 @@
 // include/UltraCanvasAutoComplete.h
 // AutoComplete text input with popup suggestion list (inherits TextInput, uses ListView popup)
+// Version: 4.3.0 - AutoCompleteStyle::FromTheme, ApplyTheme: the list follows the theme with the field; a
+//                  SetAutocompleteStyle by hand stops the following
+// Version: 4.2.0 - onItemContextMenu: a right press on a suggestion, for a menu that acts on it
 // Version: 4.1.0
-// Last Modified: 2026-05-29
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -51,6 +54,13 @@ namespace UltraCanvas {
 
         // Scrollbar
         ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::DropDown());
+
+        // The theme's roles over a base's own metrics: the raised surface
+        // for the list with a hairline, the hover fill, ink, the interface
+        // font at the body size, the scrollbar from ScrollbarStyle::FromTheme
+        static AutoCompleteStyle FromTheme(const UltraCanvasTheme& theme, const AutoCompleteStyle& base);
+        static AutoCompleteStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, AutoCompleteStyle()); }
+        static AutoCompleteStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== AUTOCOMPLETE COMPONENT =====
@@ -64,6 +74,13 @@ namespace UltraCanvas {
         // Dynamic suggestion provider callback
         // Called with current text; should return filtered suggestions
         std::function<std::vector<AutoCompleteItem>(const std::string&)> onRequestSuggestions;
+
+        // A right press on a suggestion in the popup: the row's index and item,
+        // and the event (open an UltraCanvasMenu of type PopupMenu at
+        // event.pointerWindow). Unset, a right press picks the row like a left
+        // one. The popup closes as the press takes the focus; a handler that
+        // changes what would be suggested calls RefreshSuggestions afterwards.
+        std::function<void(int, const AutoCompleteItem&, const UCEvent&)> onItemContextMenu;
 
     private:
         std::shared_ptr<UltraCanvasListView> popupListView;
@@ -122,6 +139,8 @@ namespace UltraCanvas {
 
         // ===== STYLING =====
         void SetAutocompleteStyle(const AutoCompleteStyle& newStyle);
+        // The field from the text input's reader, the list from this one's
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         const AutoCompleteStyle& GetAutoCompleteStyle() const { return acStyle; }
 
         // ===== BEHAVIOR =====

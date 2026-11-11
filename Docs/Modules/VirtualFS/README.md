@@ -176,6 +176,50 @@ VirtualFS_CreateArchive("/home/user/new.zip",
 ```
 
 ```cpp
+// Create a .tar.xz the way `tar --format=gnu --exclude=.git -cf - src | xz -9 -T0` would
+VirtualFSOpenOptions options = VirtualFSOpenOptions::ForCreating();
+options.archiveWrite.filterLevel = 9;      // the compressor's own level
+options.archiveWrite.threads = 0;          // xz / zstd: one thread per core
+options.archiveWrite.tarFormat = VirtualFSTarFormat::Gnu;
+options.archiveWrite.excludePatterns = {".git", "*.tmp", "build/*.o"};
+VirtualFS_CreateArchive("/home/user/src.tar.xz", {"/home/user/src"}, options);
+```
+
+`VirtualFSOpenOptions::archiveWrite` (`VirtualFSArchiveWriteOptions`) tunes
+what `CreateArchive` writes: the level of the stream compressor of a
+`.tar.gz` / `.bz2` / `.xz` / `.zst` / `.lz4` (`filterLevel`; -1 takes the
+`compressionLevel` preset, which ZIP and 7-Zip follow too and whose `Normal`
+leaves every library at its default), the worker threads of xz and Zstandard (`threads`, 0 for
+one per core), Zstandard's long-distance window (`zstdLongWindowLog`, 27 =
+`--long=27`), the TAR header layout (`tarFormat`: pax, GNU or ustar), and
+what is stored of each file - its own modification time, permission bits
+and owner (`keepTimestamps`, `keepPermissions`, `keepOwner`), a symbolic
+link as a link or as what it points to (`storeSymlinks`), and the names
+left out of a packed folder (`excludePatterns`, `*` / `?`, case ignored,
+matched against the path below the folder when the pattern holds a `/`).
+By default each file keeps its time and permissions, its owner is left
+out, links stay links, and the compressor runs at its default level on one
+thread. File content is streamed, never read into memory whole.
+
+`VirtualFSOpenOptions::compressionMethod` picks what a ZIP or 7-Zip is
+compressed with (`Auto`: Deflate and LZMA, the libraries' defaults). ZIP
+takes `Store` and `Deflate` - and `BZip2`, `LZMA`, `XZ` and `Zstd` where
+libarchive is 3.8 or newer - and 7-Zip takes `Store`, `Deflate`, `BZip2`,
+`LZMA`, `LZMA2` and `PPMd`. A TAR is compressed by what its extension names,
+so the only method it accepts is that one (`Store` for a plain `.tar`). A
+method that cannot be written is refused with `NotSupported` and no file,
+never quietly replaced by another.
+
+Reading follows the symbolic links inside an archive
+(`VirtualFSOpenOptions::followSymlinks`, on by default), as a disk does:
+`ReadFile` on a link reads its target, `ListDirectory` on a link to a folder
+lists that folder (under the link's path), and a path may pass through linked
+folders. `GetInfo` and `Exists` still describe a link as the link it is. A
+link that points out of the archive - an absolute target, or one climbing
+above its root - is never followed, nor is a dangling one or a circle; such
+a link reads as itself, which is empty. Off, every link is just an entry.
+
+```cpp
 // UltraCanvas integration — drop-in compression
 #include <UltraCanvasVirtualFSBridge.h>
 using namespace UltraCanvas;
@@ -242,7 +286,7 @@ provides.
 
 VirtualFSRamDisk disk;
 if (VirtualFS_CreateRamDisk("scratch", 256 * 1024 * 1024, disk)
-        == VirtualFSResult::Success) {
+        == VirtualFSResult::Ok) {
 
     // A real path: any process, any API, not just VirtualFS_*
     std::ofstream out(disk.mountPath + "/frame.raw", std::ios::binary);
@@ -387,6 +431,16 @@ direct zlib calls throughout the codebase.
   written through a symbolic link the archive created. Refused entries are
   skipped, the rest extracts, and the result is `InvalidPath` with the names
   in the provider's last error.
+* **An extracted file keeps its dates.** `ExtractAll` and `ExtractFile` write
+  through libarchive's disk writer and give each file and folder the entry's
+  modification date (`VirtualFSExtractOptions::preserveTimestamps`, on by
+  default; off, a file is dated when it was written). A ZIP or 7z keeps a
+  third date, the file's creation date (7-Zip's CTime, the ZIP
+  extended-timestamp and NTFS fields), which libarchive reads as the change
+  time: the provider hands it to the disk writer as the creation date, which
+  Windows and macOS set (Linux cannot). Packing stores a file's modification
+  date and, in a ZIP or 7z, its creation date where the system reports one;
+  access and change times differ on every machine and are not stored.
 * **Entry names are UTF-8**, in listings, reads and on disk after
   `ExtractAll`, whatever the archive stored and whatever the process locale.
   A ZIP entry without the UTF-8 flag is read as IBM437 (the ZIP

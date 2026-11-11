@@ -1,0 +1,22 @@
+{
+  "@language": "hi",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "टेक्स्ट जोड़ा गया: इसे संपादित करने के लिए टेक्स्ट टूल से इस पर क्लिक करें, या इस पर डबल-क्लिक करें",
+  "Changed the text": "टेक्स्ट बदला गया",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "पेज पर क्लिक करके टाइप करें, या किसी टेक्स्ट को संपादित करने के लिए उस पर क्लिक करें; ऊपर का बार उसका फ़ॉन्ट, आकार, शैली, संरेखण और अंतराल तय करता है। Escape, Ctrl+Enter या बाहर क्लिक करने से समाप्त होता है",
+  "Delete Text": "टेक्स्ट हटाना",
+  "Edit Text": "टेक्स्ट संपादन",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "टेक्स्ट संपादित हो रहा है: Enter नई पंक्ति शुरू करता है; Escape, Ctrl+Enter या बाहर क्लिक करने से समाप्त होता है",
+  "Letter Spacing": "अक्षर अंतराल",
+  "Line Spacing": "पंक्ति अंतराल",
+  "Nothing was typed": "कुछ टाइप नहीं किया गया",
+  "Text Alignment": "टेक्स्ट संरेखण",
+  "Text Bold": "बोल्ड टेक्स्ट",
+  "Text Font": "टेक्स्ट फ़ॉन्ट",
+  "Text Italic": "इटैलिक टेक्स्ट",
+  "Text Size": "टेक्स्ट आकार",
+  "Text Strikethrough": "काटकर लिखा टेक्स्ट",
+  "Text Underline": "रेखांकित टेक्स्ट",
+  "The text was emptied, so it was deleted": "टेक्स्ट खाली हो गया, इसलिए उसे हटा दिया गया",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "नया टेक्स्ट टाइप हो रहा है: Enter नई पंक्ति शुरू करता है; Escape, Ctrl+Enter या बाहर क्लिक करने से समाप्त होता है"
+}

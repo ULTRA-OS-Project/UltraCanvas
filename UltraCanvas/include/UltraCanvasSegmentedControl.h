@@ -1,8 +1,14 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
+// Version: 1.6.0 - SegmentedControlStyle::FromTheme, ApplyTheme: the control follows the theme;
+//                  a SetStyle by hand stops the following
+// Version: 1.5.0 - SetSegmentTooltip: each segment its own tooltip, switched as the pointer
+//                 moves from segment to segment
+// Version: 1.4.0 - SegmentedControlStyle::iconAsMask: line icons in the segment's text colour;
+//                 an icon and a centred caption are centred together
 // Version: 1.3.0 - SetSegmentTextColor: one segment's own text colour
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -43,6 +49,8 @@ namespace UltraCanvas {
         // The segment's own text colour while it is not selected; alpha 0
         // (the default) uses the style's normal / hover text colour.
         Color textColor = Colors::Transparent;
+        // The segment's own tooltip; "" (the default) shows the control's.
+        std::string tooltip;
 
         SegmentData() = default;
         SegmentData(const std::string& txt, TextAlignment al) : text(txt), alignment(al) {}
@@ -85,12 +93,25 @@ namespace UltraCanvas {
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
 
+        // The theme's roles: the raised surface for a segment at rest, the
+        // accent with text on it for the selected one, the hover fill, the
+        // panel disabled, the control border and hairline separators; the
+        // interface font at the body size - over a base's own shape
+        // (padding, radius, icons, weight), or a default one
+        static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme, const SegmentedControlStyle& base);
+        static SegmentedControlStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SegmentedControlStyle()); }
+        static SegmentedControlStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
+
         // Animation
         bool enableAnimation = false;
         double animationDuration = 0.15f;
 
         // Icons
         int iconSize = 16;
+        // Draw each icon as a mask in its segment's text colour (white on the
+        // selected segment, grey when disabled), for one-colour line icons;
+        // false draws the icon's own colours.
+        bool iconAsMask = false;
 
         static SegmentedControlStyle Default() {
             return SegmentedControlStyle();
@@ -162,6 +183,7 @@ namespace UltraCanvas {
                 : UltraCanvasUIElement(identifier, x, y, w, h) {
 
             mouseCursor = UCMouseCursor::Hand;
+            ApplyThemeIfFollowing();
         }
 
         UltraCanvasSegmentedControl(const std::string &identifier, float w, float h)
@@ -195,6 +217,12 @@ namespace UltraCanvas {
         // option in red, say); selected, it takes selectedTextColor like the
         // rest. Colors::Transparent restores the style's colours.
         void SetSegmentTextColor(int index, const Color& color);
+        // A tooltip for one segment - an icon-only segment naming itself. It
+        // shows while the pointer is over that segment and changes as the
+        // pointer moves to the next; a segment without one shows the
+        // control's own (SetTooltip). "" removes it.
+        void SetSegmentTooltip(int index, const std::string& text);
+        std::string GetSegmentTooltip(int index) const;
         bool IsSegmentEnabled(int index) const;
         void SetSegmentWidth(int index, float width);
 
@@ -228,6 +256,7 @@ namespace UltraCanvas {
         // ===== STYLING =====
         void SetStyle(SegmentedControlStyle newStyle);
         SegmentedControlStyle GetStyle() const { return style; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(SegmentedControlStyle::FromTheme(theme, style)); }
 
         void SetWidthMode(SegmentWidthMode mode);
         SegmentWidthMode GetWidthMode() const { return widthMode; }
@@ -287,6 +316,12 @@ namespace UltraCanvas {
         bool HandleKeyDown(const UCEvent &event);
 
         int GetSegmentAtPosition(int x, int y) const;
+        // The tooltip for the segment under the pointer: the segment's own,
+        // else the control's; a tooltip already up or pending switches to it.
+        void UpdateSegmentTooltip(const UCEvent& event, int index);
+        std::string controlTooltip;   // the control's own, kept while a segment's shows
+        bool controlTooltipKept = false;
+        std::string lastSegmentTooltip;  // what UpdateSegmentTooltip last set
     };
 // ===== FACTORY FUNCTIONS =====
 

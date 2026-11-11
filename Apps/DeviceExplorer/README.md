@@ -17,7 +17,8 @@ Changelog and version: [`Docs/DeviceExplorer/CHANGELOG.md`](../../Docs/DeviceExp
 |---|---|
 | `ui/DeviceExplorerModel.*` | No UI: the `DeviceInventory` snapshot of IODeviceManager's registry, `GroupDevices` (category / connection / backend, with the filter), and the `PropertySection`s the details panel lists for a device, a group and the computer. `--list` and the test use it as well. Also `DescribePrinterStatus`, which formats a `PrinterStatusReport` |
 | `ui/DeviceExplorerPrinterQuery.*` | `QueryPrinterStatus` / `QueryAllPrinterStatus`: open a printer if it is not open, read `GetStatus()` and `GetSupplyLevels()`, close only what was opened. Kept apart from the model because `PrinterDevice` pulls in the whole print stack, which the model test does not link |
-| `ui/DeviceExplorerWindow.*` | The window: toolbar, the `UltraCanvasTreeView` of devices and the `UltraCanvasColumnsTreeView` of properties in an `UltraCanvasSplitPane`, the scan thread and the UI timer |
+| `ui/DeviceExplorerPanel.*` | The whole user interface as one container: the title row, the toolbar, the `UltraCanvasTreeView` of devices and the `UltraCanvasColumnsTreeView` of properties in an `UltraCanvasSplitPane`, the scan thread, the printer-status thread and the UI timer, all stopped by its destructor. The UltraCanvas demo's IODeviceManager page shows this same panel, compiled in from these files |
+| `ui/DeviceExplorerWindow.*` | The window: one `DeviceExplorerPanel` filling it |
 | `main.cpp` | GUI bootstrap and the command line: `--list`, `--details`, `--group`, `--show-serials`, `--version`, `--help` |
 | `DeviceExplorer.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/DeviceExplorer.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme |
 

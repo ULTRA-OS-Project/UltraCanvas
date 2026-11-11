@@ -18,7 +18,7 @@ fields give the position of - the small square of dots at the left of the
 selector bar in Xara, Illustrator, InDesign or Affinity.
 
 **File Location**: `include/UltraCanvasReferencePointPicker.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `ReferencePointPickerStyle::FromTheme`, `ApplyTheme`: the picker follows the theme
 **Author**: UltraCanvas Framework
 
 ## Use
@@ -66,6 +66,12 @@ const char* ReferencePointName(ReferencePoint point);       // "Top left", ...
 class UltraCanvasReferencePointPicker : public UltraCanvasUIElement {
     void SetPoint(ReferencePoint p, bool runCallback = false);
     ReferencePoint GetPoint() const;
+    // A point that is none of the nine, as fractions of the box: no point
+    // lit, a ring in its direction kept inside the frame. Clicking one of
+    // the nine (or SetPoint) clears it.
+    void SetFreePoint(const std::optional<Point2Dd>& fraction);
+    const std::optional<Point2Dd>& GetFreePoint() const;
+    bool HasFreePoint() const;
     ReferencePointPickerStyle& GetStyle();
     void SetStyle(const ReferencePointPickerStyle& s);
     std::function<void(ReferencePoint)> onPointChanged;   // the user picked a point
@@ -80,11 +86,32 @@ std::shared_ptr<UltraCanvasReferencePointPicker> CreateReferencePointPicker(
 selected, focus and disabled colours, the frame width and corner radius, and
 the side of a point and of the picked point.
 
+## Following the theme
+
+`ReferencePointPickerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border, faint ink for the points not picked, muted ink hovered, the
+accent picked, the focus ring, a hairline disabled. Under the theme policy a
+new picker follows the theme by itself (`ApplyTheme`); a `SetStyle` by hand
+stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto anchor = std::make_shared<UltraCanvasReferencePointPicker>("anchor", 48, 48);
+ReferencePointPickerStyle big = anchor->GetStyle();
+big.pointSize = 7;
+anchor->SetStyle(ReferencePointPickerStyle::FromTheme(UltraCanvasTheme::Current(), big));
+anchor->SetFollowTheme(true);
+```
+
 ## Notes
 
 - The grid is the largest square that fits the element, centred in it; 32 to
   48 px suits a two-row toolbar.
 - To assistive technology it is a group whose value is the picked point's
   name.
+- A free point stands for a point the user put somewhere else - ArtCreator's
+  rotation centre dragged off the nine points. Its fractions may lie outside
+  0..1; the ring is clamped to the frame, so it still shows which way the
+  point lies. To assistive technology its value is then "Free point".
 - ArtCreator's transform bar is the reference user
   (`Apps/ArtCreator/ArtCreatorWindow.cpp`, `BuildTransformBar`).

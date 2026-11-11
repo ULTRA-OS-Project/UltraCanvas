@@ -42,7 +42,7 @@ enum class IppTag : uint8_t {
     // Out-of-band values: a value that says why there is no value.
     Unsupported = 0x10,
     Unknown = 0x12,
-    NoValue = 0x13,
+    NoValueTag = 0x13,     // (not NoValue: X11's Xutil.h defines that)
 
     // Integers.
     Integer = 0x21,
@@ -76,7 +76,7 @@ struct IppAttribute;
 // One value of an attribute. Which fields mean something depends on the tag;
 // the rest stay at their defaults.
 struct IppValue {
-    IppTag tag = IppTag::NoValue;
+    IppTag tag = IppTag::NoValueTag;
 
     // Integer, Enum, Boolean (0 or 1), the lower bound of a RangeOfInteger,
     // the cross-feed resolution of a Resolution.

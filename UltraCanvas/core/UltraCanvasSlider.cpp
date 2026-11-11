@@ -4,7 +4,7 @@
 // Version: 1.5.0 - slider.handle, slider.handle-border
 // Version: 1.4.0 - SliderVisualStyle::FromTheme
 // Version: 1.3.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -29,6 +29,7 @@ namespace UltraCanvas {
         upperValue = maxValue;
 
         UpdateSliderState();
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasSlider::SetRange(float min, float max) {
@@ -650,13 +651,20 @@ namespace UltraCanvas {
         // The cross-axis thickness must fit whichever is larger — the handle or
         // the bar plus its border — so a palette-style bar thicker than the
         // handle is not clipped at the element edge.
+        // A value the slider shows is drawn above a horizontal bar and right
+        // of a vertical one, so the bar keeps to the far edge to leave it the
+        // room; with no value to show it is centred across the box, which puts
+        // it on the line of the labels a row centres beside it.
         int thickness = (int)std::ceil(std::max(style.handleSize,
                                                 style.trackHeight + 2.0f * style.borderWidth));
+        bool centred = (valueDisplay == SliderValueDisplay::NoDisplay);
         if (isVertical) {
-            return Rect2Di(bounds.x, bounds.y, thickness, bounds.height);
+            int x = centred ? bounds.x + (bounds.width - thickness) / 2 : bounds.x;
+            return Rect2Di(x, bounds.y, thickness, bounds.height);
         } else {
-            return Rect2Di(bounds.x, bounds.y + bounds.height - thickness,
-                           bounds.width, thickness);
+            int y = centred ? bounds.y + (bounds.height - thickness) / 2
+                            : bounds.y + bounds.height - thickness;
+            return Rect2Di(bounds.x, y, bounds.width, thickness);
         }
     }
 
@@ -976,6 +984,10 @@ namespace UltraCanvas {
     SliderVisualStyle SliderVisualStyle::FromTheme(const UltraCanvasTheme& theme, const SliderVisualStyle& base) {
         SliderVisualStyle s = base;
         const ThemeRoles& r = theme.roles;
+        // the value's text at the caption size
+        const FontStyle caption = theme.Font(ThemeTextRole::Caption);
+        s.fontStyle.fontFamily = caption.fontFamily;
+        s.fontStyle.fontSize = caption.fontSize;
         s.trackColor = r.pressed;
         s.activeTrackColor = r.accent;
         s.disabledTrackColor = r.line;

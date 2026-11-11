@@ -59,7 +59,6 @@
 #include <functional>
 #include <cmath>
 
-#undef None
 namespace UltraCanvas {
 
 // =============================================================================
@@ -94,7 +93,7 @@ enum class FlowChartConnectionStyle {
 };
 
 enum class FlowChartArrowStyle {
-    None,
+    NoArrow,
     Arrow,
     ArrowFilled,
     Diamond

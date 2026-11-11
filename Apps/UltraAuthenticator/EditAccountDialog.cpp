@@ -99,11 +99,13 @@ void EditAccountDialog::CreateEditAccountDialog(const Otp::Parameters& current) 
     issuerInput_ = std::make_shared<UltraCanvasTextInput>(
         "edit-issuer", margin, y, halfWidth, 28);
     issuerInput_->SetText(current.issuer);
+    Theme::StyleInput(issuerInput_);
     AddChild(issuerInput_);
 
     accountInput_ = std::make_shared<UltraCanvasTextInput>(
         "edit-account", margin + halfWidth + 14, y, halfWidth, 28);
     accountInput_->SetText(current.accountName);
+    Theme::StyleInput(accountInput_);
     AddChild(accountInput_);
     y += 44;
 
@@ -142,6 +144,7 @@ void EditAccountDialog::CreateEditAccountDialog(const Otp::Parameters& current) 
     digitsDrop_->SetSelectedIndex(
         static_cast<int>(current.digits) - static_cast<int>(Otp::kMinDigits),
         false);
+    Theme::StyleDropdown(digitsDrop_);
     AddChild(digitsDrop_);
 
     algorithmDrop_ = std::make_shared<UltraCanvasDropdown>(
@@ -150,6 +153,7 @@ void EditAccountDialog::CreateEditAccountDialog(const Otp::Parameters& current) 
     algorithmDrop_->AddItem("SHA-256");
     algorithmDrop_->AddItem("SHA-512");
     algorithmDrop_->SetSelectedIndex(static_cast<int>(current.algorithm), false);
+    Theme::StyleDropdown(algorithmDrop_);
     AddChild(algorithmDrop_);
     y += 44;
 
@@ -162,6 +166,7 @@ void EditAccountDialog::CreateEditAccountDialog(const Otp::Parameters& current) 
         periodInput_ = std::make_shared<UltraCanvasTextInput>(
             "edit-period", margin, y, halfWidth, 28);
         periodInput_->SetText(std::to_string(current.periodSeconds));
+        Theme::StyleInput(periodInput_);
         AddChild(periodInput_);
     } else {
         AddChild(FieldLabel("edit-counter-lbl", margin, y, halfWidth,
@@ -170,6 +175,7 @@ void EditAccountDialog::CreateEditAccountDialog(const Otp::Parameters& current) 
         counterInput_ = std::make_shared<UltraCanvasTextInput>(
             "edit-counter", margin, y, halfWidth, 28);
         counterInput_->SetText(std::to_string(current.counter));
+        Theme::StyleInput(counterInput_);
         AddChild(counterInput_);
 
         auto counterHelp = std::make_shared<UltraCanvasLabel>(
@@ -192,12 +198,14 @@ void EditAccountDialog::CreateEditAccountDialog(const Otp::Parameters& current) 
     auto saveBtn = std::make_shared<UltraCanvasButton>(
         "edit-ok", kDialogWidth - margin - 210, kDialogHeight - 54, 100, 32);
     saveBtn->SetText("Save");
+    Theme::StylePrimary(saveBtn);
     saveBtn->onClick = [this]() { Accept(); };
     AddChild(saveBtn);
 
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "edit-cancel", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
     cancelBtn->SetText("Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     AddChild(cancelBtn);
 }

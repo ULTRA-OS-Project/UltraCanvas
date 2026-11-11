@@ -42,11 +42,11 @@ namespace UltraCanvas {
             text = buffer.str();
         } else {
             debugOutput << "Failed to open changelog: " << filePath << std::endl;
-            text = "Could not load changelog file:\n" + filePath;
+            text = TrF("Could not load changelog file:\n{0}", filePath);
         }
 
         WindowConfig wc;
-        wc.title = "UltraCanvas - Changelog";
+        wc.title = Tr("UltraCanvas - Changelog");
         wc.width = 760;
         wc.height = 560;
         wc.resizable = true;
@@ -97,7 +97,7 @@ namespace UltraCanvas {
 
         // Configure the info window
         WindowConfig config;
-        config.title = "UltraCanvas Demo - Information";
+        config.title = Tr("UltraCanvas Demo - Information");
         config.width = 630;
         config.height = 625;
         config.resizable = false;
@@ -150,10 +150,10 @@ namespace UltraCanvas {
         AddChild(divider);
 
         infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1");
-        infoLabel1->SetText("UltraCanvas is a comprehensive, open source, cross-plattform,\n"
-                            "multi-programming-language GUI for programmers.\n"
-                            "UltraCanvas will be the main GUI for ULTRA OS.\n"
-                            "UltraCanvas will be available for both desktop as also mobile platforms.");
+        infoLabel1->SetText(Tr("UltraCanvas is a comprehensive, open source, cross-platform,\n"
+                               "multi-programming-language GUI for programmers.\n"
+                               "UltraCanvas will be the main GUI for ULTRA OS.\n"
+                               "UltraCanvas will be available for both desktop and mobile platforms."));
         infoLabel1->SetFontSize(11);
         infoLabel1->SetAlignment(TextAlignment::Center);
         infoLabel1->SetTextColor(Color(60, 60, 60, 255));
@@ -168,7 +168,7 @@ namespace UltraCanvas {
         AddChild(divider2);
 
 
-        infoLabel1_4 = CreateLabel("On the right side of the title of each UC element you can find these icons:");
+        infoLabel1_4 = CreateLabel(Tr("On the right side of the title of each UC element you can find these icons:"));
         infoLabel1_4->SetFontSize(12);
         infoLabel1_4->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_4->SetMargin(12,20,5,20);
@@ -186,7 +186,7 @@ namespace UltraCanvas {
         programmersGuideIcon->SetFitMode(ImageFitMode::Contain);
         doccontainer->AddChild(programmersGuideIcon);
 
-        infoLabel2 = CreateLabel("DocText", "a) Programmer's Guide");
+        infoLabel2 = CreateLabel("DocText", Tr("a) Programmer's Guide"));
         infoLabel2->SetFontSize(12);
         infoLabel2->SetFontWeight(FontWeight::Bold);
         infoLabel2->SetAlignment(TextAlignment::Left);
@@ -206,7 +206,7 @@ namespace UltraCanvas {
         exampleCodeIcon->SetFitMode(ImageFitMode::Contain);
         codeContainer->AddChild(exampleCodeIcon);
 
-        infoLabel3 = CreateLabel("CodeText", 0, 22, "b) Example Code");
+        infoLabel3 = CreateLabel("CodeText", 0, 22, Tr("b) Example Code"));
         infoLabel3->SetFontSize(12);
         infoLabel3->SetFontWeight(FontWeight::Bold);
         infoLabel3->SetAlignment(TextAlignment::Left);
@@ -218,7 +218,7 @@ namespace UltraCanvas {
 
         // Create additional info
         auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo");
-        additionalInfo->SetText("These icons provide quick access to documentation and source code.");
+        additionalInfo->SetText(Tr("These icons provide quick access to documentation and source code."));
         additionalInfo->SetFontSize(10);
         additionalInfo->SetAlignment(TextAlignment::Center);
         additionalInfo->SetTextColor(Color(100, 100, 100, 255));
@@ -231,7 +231,7 @@ namespace UltraCanvas {
             OpenURL("https://www.ultraos.eu");
         };
         infoLabel1_1 = std::make_shared<UltraCanvasLabel>();
-        infoLabel1_1->SetText("URL <span color=\"blue\">www.ultraos.eu</span>");
+        infoLabel1_1->SetText(TrF("URL {0}", "<span color=\"blue\">www.ultraos.eu</span>"));
         infoLabel1_1->SetFontSize(10);
         infoLabel1_1->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_1->SetTextIsMarkup(true);
@@ -241,7 +241,7 @@ namespace UltraCanvas {
 
         // link ULTRA OS Github
         infoLabel1_2 = std::make_shared<UltraCanvasLabel>();
-        infoLabel1_2->SetText("Github: <span color=\"blue\">github.com/ULTRA-OS-Project/UltraCanvas</span>");
+        infoLabel1_2->SetText(TrF("Github: {0}", "<span color=\"blue\">github.com/ULTRA-OS-Project/UltraCanvas</span>"));
         infoLabel1_2->SetFontSize(10);
         infoLabel1_2->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_2->SetMargin(2,20);
@@ -254,7 +254,7 @@ namespace UltraCanvas {
 
         // link Changelog
         infoLabel1_3 = std::make_shared<UltraCanvasLabel>();
-        infoLabel1_3->SetText("Changelog: <span color=\"blue\">view what's new in this version</span>");
+        infoLabel1_3->SetText(TrF("Changelog: {0}", "<span color=\"blue\">" + Tr("view what's new in this version") + "</span>"));
         infoLabel1_3->SetFontSize(10);
         infoLabel1_3->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_3->SetMargin(2,20);
@@ -273,7 +273,7 @@ namespace UltraCanvas {
 
         // Create OK button
         okButton = std::make_shared<UltraCanvasButton>("OkButton", 100, 35);
-        okButton->SetText("OK");
+        okButton->SetText(Tr("OK"));
         okButton->SetStyle(ButtonStyles::SuccessStyle());
         okButton->SetCornerRadius(4);
         okButton->SetMargin(10);
@@ -286,7 +286,7 @@ namespace UltraCanvas {
 
         AddChild(okButton);
 
-        auto verLabel = CreateLabel("VerText", std::string("UltraCanvas version ")+versionString);
+        auto verLabel = CreateLabel("VerText", TrF("UltraCanvas version {0}", versionString));
         verLabel->SetFontSize(10);
         verLabel->SetAlignment(TextAlignment::Center);
         verLabel->SetTextColor(Color(60, 60, 60, 255));

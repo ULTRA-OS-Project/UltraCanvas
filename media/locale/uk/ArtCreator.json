@@ -1,0 +1,22 @@
+{
+  "@language": "uk",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Текст додано: щоб змінити його, клацніть його інструментом «Текст» або двічі клацніть його",
+  "Changed the text": "Текст змінено",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Клацніть на сторінці й введіть текст або клацніть текст, щоб змінити його; панель вище задає його шрифт, розмір, стиль, вирівнювання та інтервали. Escape, Ctrl+Enter або клацання поза ним завершують введення",
+  "Delete Text": "Видалення тексту",
+  "Edit Text": "Редагування тексту",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Редагування тексту: Enter починає новий рядок; Escape, Ctrl+Enter або клацання поза ним завершують введення",
+  "Letter Spacing": "Міжлітерний інтервал",
+  "Line Spacing": "Міжрядковий інтервал",
+  "Nothing was typed": "Нічого не введено",
+  "Text Alignment": "Вирівнювання тексту",
+  "Text Bold": "Текст: жирний",
+  "Text Font": "Шрифт тексту",
+  "Text Italic": "Текст: курсив",
+  "Text Size": "Розмір тексту",
+  "Text Strikethrough": "Текст: закреслений",
+  "Text Underline": "Текст: підкреслений",
+  "The text was emptied, so it was deleted": "Текст став порожнім, тому його видалено",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Введення нового тексту: Enter починає новий рядок; Escape, Ctrl+Enter або клацання поза ним завершують введення"
+}

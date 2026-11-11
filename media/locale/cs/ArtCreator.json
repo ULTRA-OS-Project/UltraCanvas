@@ -1,0 +1,22 @@
+{
+  "@language": "cs",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Added the text: click it with the Text tool, or double-click it, to edit it": "Text přidán: chcete-li ho upravit, klikněte na něj nástrojem Text nebo na něj dvakrát klikněte",
+  "Changed the text": "Text změněn",
+  "Click on the page and type, or click a text to edit it; the bar above sets its font, size, style, alignment and spacing. Escape, Ctrl+Enter or a click outside finishes": "Klikněte na stránku a pište, nebo klikněte na text a upravte ho; lišta nahoře nastavuje jeho písmo, velikost, styl, zarovnání a mezery. Escape, Ctrl+Enter nebo kliknutí mimo psaní ukončí",
+  "Delete Text": "Odstranění textu",
+  "Edit Text": "Úprava textu",
+  "Editing the text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Úprava textu: Enter začne nový řádek; Escape, Ctrl+Enter nebo kliknutí mimo psaní ukončí",
+  "Letter Spacing": "Prostrkání",
+  "Line Spacing": "Řádkování",
+  "Nothing was typed": "Nic nebylo napsáno",
+  "Text Alignment": "Zarovnání textu",
+  "Text Bold": "Tučné písmo textu",
+  "Text Font": "Písmo textu",
+  "Text Italic": "Kurzíva textu",
+  "Text Size": "Velikost textu",
+  "Text Strikethrough": "Přeškrtnutí textu",
+  "Text Underline": "Podtržení textu",
+  "The text was emptied, so it was deleted": "Text byl vyprázdněn, proto byl odstraněn",
+  "Typing a new text: Enter starts a new line; Escape, Ctrl+Enter or a click outside finishes": "Psaní nového textu: Enter začne nový řádek; Escape, Ctrl+Enter nebo kliknutí mimo psaní ukončí"
+}

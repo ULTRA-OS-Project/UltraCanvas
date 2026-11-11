@@ -218,7 +218,12 @@ adb shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
 ```
 
 Create a second AVD with the hardware keyboard **off** for IME testing, and a
-third at a different density for the HiDPI path (§4).
+third at a different density for the HiDPI path (§4). **Status:** CI does
+the density one - the `emulator` job also runs the demo on the `pixel_6`
+profile (1080x2400, 420 dpi), and the smoke test requires the frame to fill
+the window to the pixel at scale density / 160 - which the backend's surface
+failed by a pixel at 2.625 until it took the window's own size (1080 -> 411
+logical -> 1079).
 
 ### 5.2 Install, launch, look
 
@@ -268,13 +273,19 @@ The stopgap this replaces, still worth knowing for a build that predates it:
 
 ## 6. CI
 
-**Do not add an emulator job yet.** The `android-check` job in
+**Written before there was an APK** (the job now exists - see the status
+below): do not add an emulator job yet. The `android-check` job in
 `.github/workflows/build.yml` is deliberately a *compile* gate, and adding a
 runtime job that can only ever be skipped would undo the discipline it encodes.
 The moment an APK is reproducible, the job below becomes worth its minutes.
-**Status:** it is now - `android-build.yml` packages `UltraCanvasDemo-x86_64.apk`
-on every run (`scripts/android-package-apk.sh`) - so the emulator job below is
-the next step, installing that artifact.
+**Status:** done. The `emulator` job in `.github/workflows/android-build.yml`
+installs the `UltraCanvasDemo-x86_64` artifact on an API 30 emulator and runs
+`scripts/android-emulator-smoke.sh`, which passes only on the window backend's
+`first frame presented: WxH, with content` logcat line (written once per
+process, straight to logcat), and uploads the screenshot and logcat as
+`android-emulator-smoke` whatever happens. Its first run earned its keep: the
+APK could not load at all (`libc++_shared.so` was not packaged), which no
+compile-time gate could have seen.
 
 GitHub-hosted `ubuntu-latest` x86_64 runners do expose `/dev/kvm`; they need
 the group-permission fix, which is the standard first step of every emulator

@@ -2,8 +2,11 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
+// Version: 2.19.0 - the shared page look (UltraCanvasDemoPageKit): the album and
+//                  its status in a card that fills the area, the options in a card
+//                  below; option rows wrap, labels and buttons grow with their text
 // Version: 2.18.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-23
 // V2.18.0: Video tile covers now come from the album widget itself
 //   (AlbumConfig::videoPosterFrames, on by default), which extracts a poster
 //   frame in the background and caches it in memory. The example no longer
@@ -95,6 +98,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasAlbum.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -112,9 +116,9 @@
 namespace UltraCanvas {
 
     namespace {
-        // A plain flex layout wrapper that must never scroll itself — the album
-        // is the single scroll region. Disabling scrollbars keeps these wrappers
-        // from ever showing a (spurious) scrollbar of their own.
+        // A plain flex layout wrapper that must never scroll itself (the video
+        // window's info bar). Disabling scrollbars keeps it from ever showing a
+        // (spurious) scrollbar of its own.
         std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
             auto c = std::make_shared<UltraCanvasContainer>(id);
             ContainerStyle st;
@@ -125,14 +129,20 @@ namespace UltraCanvas {
             return c;
         }
 
-        // A horizontal control line: shrink:0, stretched on the cross axis.
+        // A horizontal control line that wraps when the window is narrow or
+        // the texts are long.
         std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
-            auto row = MakeLayoutBox(id);
-            row->layout.SetFlexRow().SetFlexGap(6)
-                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            auto row = DemoKit::CreateRow(id, 6);
+            row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
             return row;
+        }
+
+        // A floor, not a size: the element keeps at least `width` (so the
+        // option rows line up) and grows when its text needs more.
+        void SetMinWidth(UltraCanvasUIElement& element, int width) {
+            CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+            limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(width));
+            element.boxConstraints = limits;
         }
 
         // Paint an option button in its normal or selected state. Mirrors the
@@ -149,7 +159,7 @@ namespace UltraCanvas {
             b->SetBorder(selected ? 2.0f : 1.0f, selected ? selBorder : baseBorder);
         }
 
-        // Append a bold label followed by a radio row of fixed-size buttons into
+        // Append a bold label followed by a radio row of buttons into
         // `row`. onPick(i) fires for button i; clicking a button highlights it and
         // clears its siblings, so the row always reflects the current selection.
         // `selectedIndex` marks the initially-active button (-1 = none). Returns
@@ -157,19 +167,14 @@ namespace UltraCanvas {
         template <typename Fn>
         std::vector<std::shared_ptr<UltraCanvasButton>> AppendLabeledButtons(
                                   const std::shared_ptr<UltraCanvasContainer>& row,
-                                  const std::string& idPrefix, const char* labelText,
+                                  const std::string& idPrefix, const std::string& labelText,
                                   int labelW, int btnW, int btnH,
-                                  const std::vector<const char*>& labels, Fn onPick,
+                                  const std::vector<std::string>& labels, Fn onPick,
                                   int selectedIndex = -1) {
-            auto lbl = std::make_shared<UltraCanvasLabel>(idPrefix + "lbl", 0, 0, labelW, btnH);
-            lbl->SetText(labelText);
-            lbl->SetFontSize(12);
+            auto lbl = DemoKit::CreateText(idPrefix + "lbl", labelText);
             lbl->SetFontWeight(FontWeight::Bold);
-            // Vertically centre the label text against the buttons (matches the
-            // slideshow example, where option labels are mid-aligned to their row).
-            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-            lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            row->AddChild(lbl);
+            SetMinWidth(*lbl, labelW);
+            DemoKit::Add(row, lbl);
 
             // Shared list of the row's buttons so a click can restyle siblings.
             auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
@@ -179,6 +184,8 @@ namespace UltraCanvas {
                         idPrefix + std::to_string(i), 0, 0, btnW, btnH, labels[i]);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
+                b->size.width = CSSLayout::Dimension::Auto();
+                SetMinWidth(*b, btnW);
                 StyleOptionButton(b.get(), static_cast<int>(i) == selectedIndex);
                 int idx = static_cast<int>(i);
                 auto* raw = b.get();
@@ -186,8 +193,7 @@ namespace UltraCanvas {
                     for (auto* gb : *group) StyleOptionButton(gb, gb == raw);
                     onPick(idx);
                 });
-                b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                row->AddChild(b);
+                DemoKit::Add(row, b);
                 group->push_back(raw);
                 buttons.push_back(b);
             }
@@ -219,7 +225,7 @@ namespace UltraCanvas {
                 info.title       = item.title;
                 info.subtitle    = item.subtitle;
                 info.description = item.description.empty()
-                        ? "No additional description for this photo."
+                        ? Tr("No additional description for this photo.")
                         : item.description;
                 // A dark canvas keeps the gallery look for opaque photos (matches
                 // the window chrome); the markdown viewer uses a white canvas for
@@ -239,7 +245,7 @@ namespace UltraCanvas {
                 }
 
                 WindowConfig cfg;
-                cfg.title     = item.title.empty() ? "Video" : item.title;
+                cfg.title     = item.title.empty() ? Tr("Video") : item.title;
                 cfg.width     = 960;
                 cfg.height    = 648;   // 600px video surface + the info bar below
                 cfg.type      = WindowType::Standard;
@@ -269,7 +275,7 @@ namespace UltraCanvas {
                 infoBar->SetPadding(8, 14, 10, 14);
 
                 auto titleLbl = std::make_shared<UltraCanvasLabel>("VideoTitle", 0, 0, 0, 22);
-                titleLbl->SetText(item.title.empty() ? "Video" : item.title);
+                titleLbl->SetText(item.title.empty() ? Tr("Video") : item.title);
                 titleLbl->SetFontSize(15);
                 titleLbl->SetFontWeight(FontWeight::Bold);
                 titleLbl->SetTextColor(Color(235, 235, 235, 255));
@@ -328,7 +334,7 @@ namespace UltraCanvas {
                 }
 
                 WindowConfig cfg;
-                cfg.title     = item.title.empty() ? "Audio" : item.title;
+                cfg.title     = item.title.empty() ? Tr("Audio") : item.title;
                 cfg.width     = 460;
                 cfg.height    = 168;
                 cfg.type      = WindowType::Standard;
@@ -341,7 +347,7 @@ namespace UltraCanvas {
                 window->SetPadding(16, 18, 16, 18);
 
                 auto titleLbl = std::make_shared<UltraCanvasLabel>("AudioTitle", 0, 0, 0, 24);
-                titleLbl->SetText(item.title.empty() ? "Audio" : item.title);
+                titleLbl->SetText(item.title.empty() ? Tr("Audio") : item.title);
                 titleLbl->SetFontSize(16);
                 titleLbl->SetFontWeight(FontWeight::Bold);
                 titleLbl->SetTextColor(Color(30, 30, 40, 255));
@@ -405,7 +411,7 @@ namespace UltraCanvas {
                 if (path.empty()) return;
 
                 WindowConfig cfg;
-                cfg.title     = item.title.empty() ? "Media viewer" : item.title;
+                cfg.title     = item.title.empty() ? Tr("Media viewer") : item.title;
                 cfg.width     = 960;
                 cfg.height    = 720;
                 cfg.type      = WindowType::Standard;
@@ -448,44 +454,21 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAlbumExamples() {
-        // Root: a flex column that fills the display area (DisplayDemoItem assigns
-        // it flex-grow + stretch). Header and controls are pinned (flex-shrink:0);
-        // the album grows to fill the middle and scrolls its tiles internally.
-        auto root = MakeLayoutBox("AlbumExamples");
-        root->layout.SetFlexColumn().SetFlexGap(8)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        root->SetPadding(10, 12, 10, 12);
+        auto page = DemoKit::CreatePage("AlbumExamples",
+                Tr("UltraCanvas Album — photo / video / music gallery with selectable designs"),
+                Tr("Switch the design with the buttons below. Click a photo to view it "
+                "full size, or a video / track to play it (or use the View / Play icon)."));
+        // The album scrolls its own tiles: the page is the area's height, the
+        // album card takes what the options leave.
+        page->SetFillsArea(true);
 
-        // ===== Header (pinned) =====
-        auto header = MakeLayoutBox("AlbumHeader");
-        header->layout.SetFlexColumn().SetFlexGap(4)
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        header->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        auto title = std::make_shared<UltraCanvasLabel>("AlbumTitle", 0, 0, 0, 28);
-        title->SetText("UltraCanvas Album — photo / video / music gallery with selectable designs");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        header->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("AlbumSubtitle", 0, 0, 0, 20);
-        subtitle->SetText("Switch the design with the buttons below. Click a photo to view it "
-                          "full size, or a video / track to play it (or use the View / Play icon).");
-        subtitle->SetFontSize(11);
-        subtitle->SetTextColor(Color(110, 110, 110, 255));
-        subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        header->AddChild(subtitle);
-        root->AddChild(header);
+        auto albumCard = DemoKit::CreateCard("AlbumCard");
+        DemoKit::Add(page, albumCard, 1);
 
         // ===== The album itself (grows to fill, scrolls internally) =====
         // No explicit size — flex sizes it. An explicit w/h would override the
-        // flex-grow / align-self: stretch the engine applies below.
+        // flex-grow / align-self: stretch the card gives it.
         auto album = CreateAlbum("media-album", 0, 0, 0, 0);
-        album->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         AlbumConfig cfg;
         cfg.layout        = AlbumLayout::Masonry;
@@ -516,8 +499,8 @@ namespace UltraCanvas {
         // Build a mixed media list from images that ship in media/images.
         const std::string mediaRoot = NormalizePath(GetResourcesDir() + "media/images/");
         struct Seed {
-            const char* file; const char* title; const char* subtitle;
-            AlbumMediaType type; bool featured; const char* description;
+            const char* file; std::string title; std::string subtitle;
+            AlbumMediaType type; bool featured; std::string description;
             const char* link;      // when set, the subtitle row is a clickable link
             const char* linkIcon;  // optional icon (under media/icons/) before the link
             bool isVideoFile;      // true: `file` is a real clip under media/videos/
@@ -534,44 +517,44 @@ namespace UltraCanvas {
         // (matching a search-results / gallery "image · source" layout); video /
         // music tiles keep a plain metadata subtitle with no link.
         const Seed seeds[] = {
-            { "artist.jpg",    "Artist",  "portrait.example",  AlbumMediaType::Photo, true,
-                    "Artist", "" },
-            { "charlie-chaplin-run.gif", "Charlie Chaplin run",
+            { "artist.jpg",    Tr("Artist"),  "portrait.example",  AlbumMediaType::Photo, true,
+                    Tr("Artist"), "" },
+            { "charlie-chaplin-run.gif", Tr("Charlie Chaplin run"),
               "Easy Street (1917) | Charlie Chaplin The Policeman [Original]",
               AlbumMediaType::Photo, false,
-              "Charlie Chaplin and a fellow citizen sprint down Easy Street with "
+              Tr("Charlie Chaplin and a fellow citizen sprint down Easy Street with "
               "the law in pursuit \xE2\x80\x94 an animated GIF from the 1917 silent "
-              "classic. Open the tile to watch it play in the lightbox." },
-            { "UOS phone.jpg",   "UltraOS phone",    "ultraos.eu",          AlbumMediaType::Photo, false,
-              "UltraOS running on a phone \xE2\x80\x94 the UltraCanvas UI stack on a "
-              "handheld form factor.", "https://www.ultraos.eu" },
-            { "portrait.jpg",    "Studio Portrait",  "studioshots.example", AlbumMediaType::Photo, false,
-              "A classic studio headshot taken with a fast 50mm lens and a single "
-              "softbox to camera-left for soft, directional light.",
+              "classic. Open the tile to watch it play in the lightbox.") },
+            { "UOS phone.jpg",   Tr("UltraOS phone"),    "ultraos.eu",          AlbumMediaType::Photo, false,
+              Tr("UltraOS running on a phone \xE2\x80\x94 the UltraCanvas UI stack on a "
+              "handheld form factor."), "https://www.ultraos.eu" },
+            { "portrait.jpg",    Tr("Studio Portrait"),  "studioshots.example", AlbumMediaType::Photo, false,
+              Tr("A classic studio headshot taken with a fast 50mm lens and a single "
+              "softbox to camera-left for soft, directional light."),
               "https://studioshots.example/portrait" },
-            { "Video A more competition.mp4", "Competition", "Video", AlbumMediaType::Video, false,
-              "A short competition clip bundled in media/videos.", "", "", true },
-            { "ship.jpg",        "Harbour",          "harbourlife.example", AlbumMediaType::Photo, false,
-              "Boats resting in the harbour during the golden hour, the warm light "
-              "reflecting off the still water.", "https://harbourlife.example/golden-hour" },
-            { "the_mountain-cinematic-489998.mp3", "The Mountain", "Music by Dmitrii Kolesnikov · Pixabay",
+            { "Video A more competition.mp4", Tr("Competition"), Tr("Video"), AlbumMediaType::Video, false,
+              Tr("A short competition clip bundled in media/videos."), "", "", true },
+            { "ship.jpg",        Tr("Harbour"),          "harbourlife.example", AlbumMediaType::Photo, false,
+              Tr("Boats resting in the harbour during the golden hour, the warm light "
+              "reflecting off the still water."), "https://harbourlife.example/golden-hour" },
+            { "the_mountain-cinematic-489998.mp3", "The Mountain", TrF("Music by {0} · {1}", "Dmitrii Kolesnikov", "Pixabay"),
               AlbumMediaType::Music, false,
-              "Cinematic track \"The Mountain\". Music by Dmitrii Kolesnikov from Pixabay.",
+              TrF("Cinematic track \"{0}\". Music by {1} from {2}.", "The Mountain", "Dmitrii Kolesnikov", "Pixabay"),
               "https://pixabay.com/users/the_mountain-3616498/?utm_source=link-attribution&utm_medium=referral&utm_campaign=music&utm_content=489998",
               "", false, true },
             { "Lola Lexy - No kings.mp4", "Lola Lexy - No kings", "youtube.com/LolaLexy", AlbumMediaType::Video, false,
-              "Linked from YouTube.", "https://www.youtube.com/watch?v=Tl15Os47lG0", "youtube.svg", true },
-            { "freepicOIP-3521821688.jpg", "Game Night",  "boardgames.example",  AlbumMediaType::Photo, false,
-              "Coloured dice mid-roll on game night — a quick macro grab to freeze "
-              "the action on the table.", "https://boardgames.example/game-night" },
-            { "3d-boxes.png",    "Renders",          "blenderhub.example",  AlbumMediaType::Photo, false,
-              "A set of stacked 3D boxes rendered in Blender to test material and "
-              "lighting setups.", "https://blenderhub.example/renders" },
-            { "fantasycutemonster.jpg",    "Fantasy cute monster",  "renders.example",          AlbumMediaType::Photo, false,
-                    "Fantasy cute monster", "" },
-            { "testcard_rgba.qoi", "Field Notes",    "filmdiary.example",   AlbumMediaType::Photo, false,
-              "Scanned 35mm film frame from a walk in the field — grainy, warm and "
-              "full of character.", "https://filmdiary.example/field-notes" },
+              Tr("Linked from YouTube."), "https://www.youtube.com/watch?v=Tl15Os47lG0", "youtube.svg", true },
+            { "freepicOIP-3521821688.jpg", Tr("Game Night"),  "boardgames.example",  AlbumMediaType::Photo, false,
+              Tr("Coloured dice mid-roll on game night — a quick macro grab to freeze "
+              "the action on the table."), "https://boardgames.example/game-night" },
+            { "3d-boxes.png",    Tr("Renders"),          "blenderhub.example",  AlbumMediaType::Photo, false,
+              Tr("A set of stacked 3D boxes rendered in Blender to test material and "
+              "lighting setups."), "https://blenderhub.example/renders" },
+            { "fantasycutemonster.jpg",    Tr("Fantasy cute monster"),  "renders.example",          AlbumMediaType::Photo, false,
+                    Tr("Fantasy cute monster"), "" },
+            { "testcard_rgba.qoi", Tr("Field Notes"),    "filmdiary.example",   AlbumMediaType::Photo, false,
+              Tr("Scanned 35mm film frame from a walk in the field — grainy, warm and "
+              "full of character."), "https://filmdiary.example/field-notes" },
         };
         // Video tiles backed by a real clip (Seed::isVideoFile) just point
         // mediaPath at media/videos: the album extracts their cover from the clip
@@ -593,9 +576,9 @@ namespace UltraCanvas {
             // initialization the missing ones are value-initialized to nullptr,
             // and assigning a null const char* into a std::string would call
             // strlen(nullptr). Guard each one, leaving the member empty when null.
-            if (s.title)       it.title = s.title;
-            if (s.subtitle)    it.subtitle = s.subtitle;
-            if (s.description) it.description = s.description;
+            it.title = s.title;
+            it.subtitle = s.subtitle;
+            it.description = s.description;
             it.mediaType = s.type;
             it.featured = s.featured;
             if (s.link)        it.link = s.link;
@@ -606,16 +589,11 @@ namespace UltraCanvas {
         }
 
         auto* albumPtr = album.get();
-        root->AddChild(album);
+        DemoKit::Add(albumCard, album, 1);
 
         // ===== Status (pinned) =====
-        auto status = std::make_shared<UltraCanvasLabel>("AlbumStatus", 0, 0, 0, 22);
-        status->SetText("Mode: Display · Layout: Masonry · click a tile to open, hover for actions");
-        status->SetFontSize(11);
-        status->SetTextColor(Color(120, 120, 120, 255));
-        status->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        root->AddChild(status);
+        auto status = DemoKit::AddCaption(albumCard, "AlbumStatus",
+                Tr("Mode: Display · Layout: Masonry · click a tile to open, hover for actions"));
         auto* statusPtr = status.get();
 
         // ===== Actions (gated per mode) =====
@@ -630,26 +608,23 @@ namespace UltraCanvas {
         auto openMedia = [albumPtr, statusPtr, viewer](size_t i) {
             const AlbumItem& it = albumPtr->GetItems()[i];
             if (it.mediaType == AlbumMediaType::Video) {
-                std::ostringstream o; o << "Playing video: " << it.title;
-                statusPtr->SetText(o.str());
+                statusPtr->SetText(TrF("Playing video: {0}", it.title));
                 viewer->ShowVideo(it);
                 return;
             }
             if (it.mediaType == AlbumMediaType::Music) {
-                std::ostringstream o; o << "Playing audio: " << it.title;
-                statusPtr->SetText(o.str());
+                statusPtr->SetText(TrF("Playing audio: {0}", it.title));
                 viewer->ShowAudio(it);
                 return;
             }
-            std::ostringstream o; o << "View full size: " << it.title;
-            statusPtr->SetText(o.str());
+            statusPtr->SetText(TrF("View full size: {0}", it.title));
             viewer->Show(it, albumPtr->GetWindow());
         };
 
         // "View full size" — photos only (gated by media type, so the icon is not
         // drawn on video / music tiles) and available in every mode.
         AlbumAction view;
-        view.id = "view"; view.label = "View full size";
+        view.id = "view"; view.label = Tr("View full size");
         view.iconPath = iconRoot + "view.svg";
         view.mediaTypes = { AlbumMediaType::Photo };
         view.inDisplay = true; view.inUserEdit = true; view.inAdmin = true;
@@ -661,7 +636,7 @@ namespace UltraCanvas {
         // in its own player window — a video surface for video, a small transport
         // window for audio — the same path as a double-click on the tile.
         AlbumAction play;
-        play.id = "play"; play.label = "Play";
+        play.id = "play"; play.label = Tr("Play");
         play.iconPath = iconRoot + "play.svg";
         play.mediaTypes = { AlbumMediaType::Video, AlbumMediaType::Music };
         play.inDisplay = true; play.inUserEdit = true; play.inAdmin = true;
@@ -669,29 +644,26 @@ namespace UltraCanvas {
         album->AddAction(play);
 
         AlbumAction comment;
-        comment.id = "comment"; comment.label = "Add comment";
+        comment.id = "comment"; comment.label = Tr("Add comment");
         comment.iconPath = iconRoot + "add_text.svg";
         comment.inDisplay = true; comment.inUserEdit = true; comment.inAdmin = true;
         AlbumAction edit;
-        edit.id = "edit"; edit.label = "Edit";
+        edit.id = "edit"; edit.label = Tr("Edit");
         edit.iconPath = iconRoot + "edit.svg";
         edit.inDisplay = false; edit.inUserEdit = true; edit.inAdmin = true;  // hidden from visitors
         AlbumAction del;
-        del.id = "delete"; del.label = "Delete";
+        del.id = "delete"; del.label = Tr("Delete");
         del.iconPath = iconRoot + "delete.svg";
         del.inDisplay = false; del.inUserEdit = true; del.inAdmin = true;     // hidden from visitors
 
         comment.onTrigger = [albumPtr, statusPtr](size_t i) {
-            std::ostringstream o; o << "Add comment: " << albumPtr->GetItems()[i].title;
-            statusPtr->SetText(o.str());
+            statusPtr->SetText(TrF("Add comment: {0}", albumPtr->GetItems()[i].title));
         };
         edit.onTrigger = [albumPtr, statusPtr](size_t i) {
-            std::ostringstream o; o << "Edit: " << albumPtr->GetItems()[i].title;
-            statusPtr->SetText(o.str());
+            statusPtr->SetText(TrF("Edit: {0}", albumPtr->GetItems()[i].title));
         };
         del.onTrigger = [albumPtr, statusPtr](size_t i) {
-            std::ostringstream o; o << "Deleted: " << albumPtr->GetItems()[i].title;
-            statusPtr->SetText(o.str());
+            statusPtr->SetText(TrF("Deleted: {0}", albumPtr->GetItems()[i].title));
             albumPtr->RemoveItem(i);
         };
         album->AddAction(comment);
@@ -703,8 +675,7 @@ namespace UltraCanvas {
         album->onLinkClicked = [albumPtr, statusPtr](size_t i) {
             const AlbumItem& it = albumPtr->GetItems()[i];
             if (it.link.empty()) return;
-            std::ostringstream o; o << "Opening link: " << it.link;
-            statusPtr->SetText(o.str());
+            statusPtr->SetText(TrF("Opening link: {0}", it.link));
             OpenURL(it.link);
         };
 
@@ -714,16 +685,11 @@ namespace UltraCanvas {
         // wiring it too would needlessly tear down and re-open the popup window.
         album->onItemClicked = openMedia;
         album->onItemsReordered = [statusPtr](size_t from, size_t to) {
-            std::ostringstream o; o << "Reordered item " << from << " -> " << to;
-            statusPtr->SetText(o.str());
+            statusPtr->SetText(TrF("Reordered item {0} -> {1}", from, to));
         };
 
         // ===== Controls (pinned) =====
-        auto controls = MakeLayoutBox("AlbumControls");
-        controls->layout.SetFlexColumn().SetFlexGap(4)
-                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        controls->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        auto controls = DemoKit::AddCard(page, "AlbumControls");
 
         const int kLabelW = 85;
         // Compact control buttons so the album gets more vertical room (two full
@@ -736,24 +702,23 @@ namespace UltraCanvas {
             AlbumLayout::Mosaic, AlbumLayout::Filmstrip, AlbumLayout::Cards
         };
         auto layoutRow = MakeRow("album_layout_row");
-        AppendLabeledButtons(layoutRow, "album_layout_", "Layout", kLabelW, 110, kBtnH,
-                      {"Uniform Grid", "Justified", "Masonry", "Mosaic", "Filmstrip", "Cards"},
+        AppendLabeledButtons(layoutRow, "album_layout_", Tr("Layout"), kLabelW, 110, kBtnH,
+                      {Tr("Uniform Grid"), Tr("Justified"), Tr("Masonry"), Tr("Mosaic"), Tr("Filmstrip"), Tr("Cards")},
                       [albumPtr, statusPtr, layoutVals](int i) {
                           albumPtr->SetLayout(layoutVals[i]);
-                          const char* names[] = {"Uniform Grid","Justified","Masonry",
-                                                 "Mosaic","Filmstrip","Cards"};
-                          std::ostringstream o; o << "Layout: " << names[i];
-                          statusPtr->SetText(o.str());
+                          const std::string names[] = {Tr("Uniform Grid"), Tr("Justified"), Tr("Masonry"),
+                                                       Tr("Mosaic"), Tr("Filmstrip"), Tr("Cards")};
+                          statusPtr->SetText(TrF("Layout: {0}", names[i]));
                       }, 2);  // Masonry is the default
-        controls->AddChild(layoutRow);
+        DemoKit::Add(controls, layoutRow);
 
         // ----- Crop-focus picker (built first so the image-fit callback can
         //       enable / disable it). The focus point only has a visible effect
         //       under the Crop / Zoom fits, so it is greyed out otherwise. -----
         auto focusRow = MakeRow("album_focus_row");
-        auto focusBtns = AppendLabeledButtons(focusRow, "album_focus_", "Crop focus",
+        auto focusBtns = AppendLabeledButtons(focusRow, "album_focus_", Tr("Crop focus"),
                       kLabelW, 110, kBtnH,
-                      {"Top-left", "Center", "Bottom-right"},
+                      {Tr("Top-left"), Tr("Center"), Tr("Bottom-right")},
                       [albumPtr](int i) {
                           const Point2Df fv[] = {{0.0f, 0.0f}, {0.5f, 0.5f}, {1.0f, 1.0f}};
                           albumPtr->SetAllItemsFocus(fv[i]);
@@ -768,57 +733,56 @@ namespace UltraCanvas {
             AlbumImageDisplay::Stretch, AlbumImageDisplay::Fit
         };
         auto fitRow = MakeRow("album_fit_row");
-        AppendLabeledButtons(fitRow, "album_fit_", "Image fit", kLabelW, 110, kBtnH,
-                      {"Crop", "Zoom", "Stretch", "Fit"},
+        AppendLabeledButtons(fitRow, "album_fit_", Tr("Image fit"), kLabelW, 110, kBtnH,
+                      {Tr("Crop"), Tr("Zoom"), Tr("Stretch"), Tr("Fit")},
                       [albumPtr, fitVals, setFocusEnabled](int i) {
                           albumPtr->SetImageDisplay(fitVals[i]);
                           // Crop focus applies to the Crop (and Zoom) fits only.
                           setFocusEnabled(fitVals[i] == AlbumImageDisplay::Crop ||
                                           fitVals[i] == AlbumImageDisplay::Zoom);
                       }, 0);  // Crop is the default image fit
-        controls->AddChild(fitRow);
+        DemoKit::Add(controls, fitRow);
 
         // Crop is the default image fit, so the focus picker starts enabled.
         setFocusEnabled(true);
-        controls->AddChild(focusRow);
+        DemoKit::Add(controls, focusRow);
 
         // ----- Mode picker -----
         const AlbumMode modeVals[] = { AlbumMode::Display, AlbumMode::UserEdit, AlbumMode::Admin };
         auto modeRow = MakeRow("album_mode_row");
-        AppendLabeledButtons(modeRow, "album_mode_", "Mode", kLabelW, 130, kBtnH,
-                      {"Visitor", "User", "Admin"},
+        AppendLabeledButtons(modeRow, "album_mode_", Tr("Mode"), kLabelW, 130, kBtnH,
+                      {Tr("Visitor"), Tr("User"), Tr("Admin")},
                       [albumPtr, statusPtr, modeVals](int i) {
                           albumPtr->SetMode(modeVals[i]);
                           AlbumConfig c = albumPtr->GetConfig();
                           c.allowSelection = (modeVals[i] != AlbumMode::Display);
                           albumPtr->SetConfig(c);
-                          const char* names[] = {"Display","User edit","Admin"};
-                          std::ostringstream o;
-                          o << "Mode: " << names[i]
-                            << (i == 0 ? " — view only" : " — drag to reorder, right-click for actions");
-                          statusPtr->SetText(o.str());
+                          const std::string names[] = {Tr("Display"), Tr("User edit"), Tr("Admin")};
+                          statusPtr->SetText(i == 0
+                                  ? TrF("Mode: {0} — view only", names[i])
+                                  : TrF("Mode: {0} — drag to reorder, right-click for actions", names[i]));
                       }, 0);  // Display (visitor) is the default
         modeRow->AddSpacer(24);
         // Which viewer a clicked tile opens in: the compact per-kind Mini
         // viewer windows (photo lightbox / video window / audio transport) or
         // the comprehensive Media viewer widget (UltraCanvasMediaViewer).
-        AppendLabeledButtons(modeRow, "album_viewer_", "Viewer", 56, 110, kBtnH,
-                      {"Mini viewer", "Media viewer"},
+        AppendLabeledButtons(modeRow, "album_viewer_", Tr("Viewer"), 56, 110, kBtnH,
+                      {Tr("Mini viewer"), Tr("Media viewer")},
                       [viewer, statusPtr](int i) {
                           viewer->SetViewerKind(i == 0
                                   ? AlbumPhotoViewer::ViewerKind::Mini
                                   : AlbumPhotoViewer::ViewerKind::Media);
                           statusPtr->SetText(i == 0
-                                  ? "Viewer: Mini — photo lightbox, video window, audio transport"
-                                  : "Viewer: Media — full media viewer (browse folder, slideshow, "
-                                    "zoom / rotate / adjust)");
+                                  ? Tr("Viewer: Mini — photo lightbox, video window, audio transport")
+                                  : Tr("Viewer: Media — full media viewer (browse folder, slideshow, "
+                                    "zoom / rotate / adjust)"));
                       }, 0);  // Mini viewer is the default
-        controls->AddChild(modeRow);
+        DemoKit::Add(controls, modeRow);
 
         // ----- Action-icon display picker -----
         auto actRow = MakeRow("album_act_row");
-        AppendLabeledButtons(actRow, "album_act_", "Show menu", kLabelW, 130, kBtnH,
-                      {"Always", "On hover", "Menu (+icon)", "Menu (no icon)", "Hidden"},
+        AppendLabeledButtons(actRow, "album_act_", Tr("Show menu"), kLabelW, 130, kBtnH,
+                      {Tr("Always"), Tr("On hover"), Tr("Menu (+icon)"), Tr("Menu (no icon)"), Tr("Hidden")},
                       [albumPtr](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
                           switch (i) {
@@ -830,7 +794,7 @@ namespace UltraCanvas {
                           }
                           albumPtr->SetConfig(c);
                       }, 1);  // On hover is the default
-        controls->AddChild(actRow);
+        DemoKit::Add(controls, actRow);
 
         // ----- Action-icon corner picker (image vs caption text-block) -----
         const AlbumActionAnchor anchorVals[] = {
@@ -840,9 +804,9 @@ namespace UltraCanvas {
             AlbumActionAnchor::BottomLeftTextBlock, AlbumActionAnchor::BottomRightTextBlock
         };
         auto anchorRow = MakeRow("album_anchor_row");
-        AppendLabeledButtons(anchorRow, "album_anchor_", "Icon corner", kLabelW, 70, kBtnH,
-                      {"Img TL", "Img TR", "Img BL", "Img BR",
-                       "Txt TL", "Txt TR", "Txt BL", "Txt BR"},
+        AppendLabeledButtons(anchorRow, "album_anchor_", Tr("Icon corner"), kLabelW, 70, kBtnH,
+                      {Tr("Img TL"), Tr("Img TR"), Tr("Img BL"), Tr("Img BR"),
+                       Tr("Txt TL"), Tr("Txt TR"), Tr("Txt BL"), Tr("Txt BR")},
                       [albumPtr, anchorVals](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
                           c.actionAnchor = anchorVals[i];
@@ -854,23 +818,23 @@ namespace UltraCanvas {
             AlbumActionIconBackground::Square,
             AlbumActionIconBackground::RoundedSquare
         };
-        AppendLabeledButtons(anchorRow, "album_iconbg_", "Icon bg", 56, 84, kBtnH,
-                      {"Round", "Square", "Rounded"},
+        AppendLabeledButtons(anchorRow, "album_iconbg_", Tr("Icon bg"), 56, 84, kBtnH,
+                      {Tr("Round"), Tr("Square"), Tr("Rounded")},
                       [albumPtr, iconBgVals](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
                           c.actionIconBackground = iconBgVals[i];
                           albumPtr->SetConfig(c);
                       }, 0);  // Round is the default
-        controls->AddChild(anchorRow);
+        DemoKit::Add(controls, anchorRow);
 
         // ----- Sizing + captions on one line -----
         auto sizeRow = MakeRow("album_size_row");
-        AppendLabeledButtons(sizeRow, "album_cols_", "Per row", kLabelW, 64, kBtnH,
+        AppendLabeledButtons(sizeRow, "album_cols_", Tr("Per row"), kLabelW, 64, kBtnH,
                       {"3", "4", "5", "6"},
                       [albumPtr](int i) { albumPtr->SetItemsPerRow(3 + i); }, 1);  // 4 per row
         sizeRow->AddSpacer(24);
-        AppendLabeledButtons(sizeRow, "album_cap_", "Caption", 70, 92, kBtnH,
-                      {"Below", "Overlay", "Hidden"},
+        AppendLabeledButtons(sizeRow, "album_cap_", Tr("Caption"), 70, 92, kBtnH,
+                      {Tr("Below"), Tr("Overlay"), Tr("Hidden")},
                       [albumPtr](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
                           c.captionPlacement = (i == 0) ? AlbumCaptionPlacement::BelowImage
@@ -879,8 +843,8 @@ namespace UltraCanvas {
                           albumPtr->SetConfig(c);
                       }, 0);  // Below is the default
         sizeRow->AddSpacer(24);
-        AppendLabeledButtons(sizeRow, "album_imgcorner_", "Corners", 64, 86, kBtnH,
-                      {"Square", "Rounded"},
+        AppendLabeledButtons(sizeRow, "album_imgcorner_", Tr("Corners"), 64, 86, kBtnH,
+                      {Tr("Square"), Tr("Rounded")},
                       [albumPtr](int i) {
                           AlbumConfig c = albumPtr->GetConfig();
                           // Square: flatten both the frame and the image corners.
@@ -889,11 +853,9 @@ namespace UltraCanvas {
                           c.imageCornerRadius = (i == 0) ? 0.0f : -1.0f;
                           albumPtr->SetConfig(c);
                       }, 1);  // Rounded is the default
-        controls->AddChild(sizeRow);
+        DemoKit::Add(controls, sizeRow);
 
-        root->AddChild(controls);
-
-        return root;
+        return page;
     }
 
 } // namespace UltraCanvas

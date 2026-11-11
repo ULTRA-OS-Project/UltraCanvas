@@ -4,12 +4,17 @@
 // drag feedback, readouts), hit testing and the interactions that turn into
 // reported changes. The model operations it previews with live in
 // UltraCanvasVideoTimelineModel.cpp.
+// Version: 1.5.0 - MakeVideoTimelineDescriptor / RegisterVideoTimelineElement ("video-timeline")
+// Version: 1.4.0 - filmstrips cover the whole clip at any zoom: time-aligned slots, asked for in chunks, only those in view
+// Version: 1.3.0 - the close-gap button in each gap of a free track
+// Version: 1.2.0 - the application's drop feedback, ring and marker in one (SetDropFeedback); DragLeave clears both
 // Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimeline.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasElementPlugins.h"
 
 #include <algorithm>
 #include <cmath>
@@ -30,6 +35,8 @@ constexpr float kFadeKnobHit = 7.0f;      // half the hit box of a fade knob
 constexpr float kFadeKnobRadius = 4.0f;   // drawn 8 px across
 constexpr float kMarkerStripHeight = 11.0f;
 constexpr float kTransitionHeight = 18.0f;
+constexpr float kGapButtonSize = 20.0f;     // the close-gap button, square
+constexpr float kGapButtonMargin = 4.0f;    // the least room either side of it inside the gap
 
 std::string SecondsLabel(double seconds) {
     char buffer[32];
@@ -143,6 +150,9 @@ VideoTimelineStyle VideoTimelineStyle::DarkPalette() {
 VideoTimelineStyle VideoTimelineStyle::FromTheme(const UltraCanvasTheme& t) {
     VideoTimelineStyle s = t.dark ? DarkPalette() : LightPalette();
     const ThemeRoles& r = t.roles;
+    // the theme's fonts; the sizes are pixels of the design
+    s.fontFamily = t.fonts.ui.fontFamily;
+    s.monoFamily = t.fonts.mono.fontFamily;
     s.background = r.panel;
     s.lane = r.well;
     s.laneAlternate = r.well;
@@ -195,6 +205,7 @@ VideoTimelineStyle VideoTimelineStyle::FromTheme(const UltraCanvasTheme& t) {
 UltraCanvasVideoTimeline::UltraCanvasVideoTimeline(const std::string& id, int x, int y, int w, int h)
     : UltraCanvasUIElement(id, x, y, w, h) {
     SetMouseCursor(UCMouseCursor::Default);
+    ApplyThemeIfFollowing();
 }
 
 void UltraCanvasVideoTimeline::SetModel(const TimelineModel& m) {
@@ -213,7 +224,7 @@ void UltraCanvasVideoTimeline::SetModel(const TimelineModel& m) {
     if (selectedTrack.empty()) {
         for (const TimelineTrack& t : model.tracks) if (t.kind == TimelineTrackKind::MainVideo) { selectedTrack = t.id; break; }
     }
-    drag = Drag::None;
+    drag = Drag::NoDrag;
     ClampScroll();
     RequestRedraw();
 }
@@ -268,7 +279,14 @@ void UltraCanvasVideoTimeline::SetShowBeats(bool on) {
     RequestRedraw();
 }
 
+void UltraCanvasVideoTimeline::SetShowGapButtons(bool on) {
+    showGapButtons = on;
+    if (!on && hover.kind == Hit::GapClose) hover = Hit();
+    RequestRedraw();
+}
+
 void UltraCanvasVideoTimeline::SetStyle(const VideoTimelineStyle& s) {
+    StyleSetByHand();
     style = s;
     RequestRedraw();
 }
@@ -285,6 +303,33 @@ std::vector<std::string> UltraCanvasVideoTimeline::GetSelection() const {
 
 void UltraCanvasVideoTimeline::SetSelectedTransition(const std::string& clipId) {
     selectedTransition = clipId;
+    RequestRedraw();
+}
+
+double UltraCanvasVideoTimeline::SetDropFeedback(const DropFeedback& feedback) {
+    dropTargetClip = feedback.clipId;
+    dropActive = false;
+    dropLabel.clear();
+    double at = -1.0;
+    for (size_t i = 0; i < model.tracks.size() && !feedback.trackId.empty(); ++i) {
+        if (model.tracks[i].id != feedback.trackId) continue;
+        at = DropTime(model.tracks[i], feedback.seconds);
+        dropActive = true;
+        dropTrackIndex = i;
+        dropSeconds = at;
+        dropCount = 0;
+        dropLabel = feedback.label;
+        break;
+    }
+    RequestRedraw();
+    return at;
+}
+
+void UltraCanvasVideoTimeline::ClearDropFeedback() {
+    if (!dropActive && dropLabel.empty() && dropTargetClip.empty()) return;
+    dropActive = false;
+    dropLabel.clear();
+    dropTargetClip.clear();
     RequestRedraw();
 }
 
@@ -447,6 +492,14 @@ UltraCanvasVideoTimeline::Hit UltraCanvasVideoTimeline::HitTest(float x, float y
                 return hit;
             }
         }
+        for (const GapButton& g : GapButtons(track, lane)) {
+            if (g.rect.Contains(Point2Df(x, y))) {
+                hit.kind = Hit::GapClose;
+                hit.clipId = g.gap.clipId;
+                hit.seconds = g.gap.start;
+                return hit;
+            }
+        }
         for (const TimelineClip& clip : track.clips) {
             const Rect2Df r = ClipRect(clip, lane);
             if (x < r.x || x > r.x + r.width) continue;
@@ -465,6 +518,31 @@ UltraCanvasVideoTimeline::Hit UltraCanvasVideoTimeline::HitTest(float x, float y
         return hit;
     }
     return hit;
+}
+
+std::vector<UltraCanvasVideoTimeline::GapButton> UltraCanvasVideoTimeline::GapButtons(const TimelineTrack& track,
+                                                                                    const TrackLayout& lane) const {
+    std::vector<GapButton> buttons;
+    if (!showGapButtons || track.locked || track.IsMagnetic()) return buttons;
+    const float size = std::min(kGapButtonSize, lane.height - 4.0f);
+    if (size < 10.0f) return buttons;
+    const Rect2Df body = BodyRect();
+    const double frame = 1.0 / std::max(1.0, model.frameRate);
+    for (const TimelineGap& gap : TimelineGaps(track, frame)) {
+        const float x0 = SecondsToX(gap.start);
+        const float x1 = SecondsToX(gap.end);
+        const float room = size + 2.0f * kGapButtonMargin;
+        if (x1 - x0 < room) continue;   // too narrow at this zoom
+        // the middle of the part of the gap on screen, so a long gap's button stays in reach
+        const float left = std::max(x0, body.x);
+        const float right = std::min(x1, body.x + body.width);
+        if (right - left < room) continue;
+        GapButton b;
+        b.rect = Rect2Df((left + right - size) / 2.0f, lane.top + (lane.height - size) / 2.0f, size, size);
+        b.gap = gap;
+        buttons.push_back(b);
+    }
+    return buttons;
 }
 
 bool UltraCanvasVideoTimeline::FadeKnobs(const TimelineClip& clip, const TimelineTrack& track, const TrackLayout& lane,
@@ -582,7 +660,7 @@ void UltraCanvasVideoTimeline::Render(IRenderContext* ctx, const Rect2Df& /*dirt
     ctx->PushState();
     ctx->ClipRect(Rect2Dd(body.x, 0.0, body.width, body.height));
     DrawPlayhead(ctx, Rect2Df(body.x, 0.0f, body.width, lanes.y + lanes.height));
-    if (drag != Drag::None && !dragReadout.empty()) DrawReadout(ctx, dragReadout, lastPointer.x, lastPointer.y);
+    if (drag != Drag::NoDrag && !dragReadout.empty()) DrawReadout(ctx, dragReadout, lastPointer.x, lastPointer.y);
     ctx->PopState();
     DrawScrollbar(ctx, body);
     // the timecode over the header column, where the ruler would be
@@ -649,7 +727,7 @@ void UltraCanvasVideoTimeline::DrawRuler(IRenderContext* ctx, const Rect2Df& rul
         ctx->SetTextPaint(style.onAccent);
         ctx->DrawTextInRect(m.label, Rect2Dd(x + 4.0, ruler.y + 1.0, w - 4.0, kMarkerStripHeight - 2.0));
     }
-    if (drag != Drag::None && dragSnapped) {
+    if (drag != Drag::NoDrag && dragSnapped) {
         const float x = SecondsToX(dragSnapTime);
         ctx->SetFillPaint(style.focus);
         ctx->FillLinePath({Point2Dd(x, bottom - 10.0), Point2Dd(x + 4.0, bottom - 6.0), Point2Dd(x, bottom - 2.0),
@@ -784,7 +862,7 @@ void UltraCanvasVideoTimeline::DrawLane(IRenderContext* ctx, const TimelineTrack
 
     // the track being dragged is drawn from its preview
     const TimelineTrack* shown = &track;
-    if (drag != Drag::None && dragTrackIndex == lane.index && !dragPreview.clips.empty()) shown = &dragPreview;
+    if (drag != Drag::NoDrag && dragTrackIndex == lane.index && !dragPreview.clips.empty()) shown = &dragPreview;
     ctx->PushState();
     if (track.locked || !track.visible) ctx->SetAlpha(0.4);
     for (const TimelineClip& clip : shown->clips) {
@@ -794,6 +872,33 @@ void UltraCanvasVideoTimeline::DrawLane(IRenderContext* ctx, const TimelineTrack
     }
     DrawTransitions(ctx, *shown, lane);
     ctx->PopState();
+    // the close-gap buttons; not on a lane being dragged, whose clips are shown where they would go
+    if (drag == Drag::NoDrag || dragTrackIndex != lane.index) DrawGapButtons(ctx, track, lane);
+}
+
+void UltraCanvasVideoTimeline::DrawGapButtons(IRenderContext* ctx, const TimelineTrack& track, const TrackLayout& lane) {
+    for (const GapButton& g : GapButtons(track, lane)) {
+        const Rect2Df& r = g.rect;
+        const bool hot = hover.kind == Hit::GapClose && hover.trackIndex == lane.index && hover.clipId == g.gap.clipId &&
+                         drag == Drag::NoDrag;
+        ctx->SetFillPaint(hot ? style.accentSoft : style.header);
+        ctx->FillRoundedRectangle(Rect2Dd(r.x, r.y, r.width, r.height), 3.0);
+        ctx->SetStrokePaint(hot ? style.accent : style.lineStrong);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(Rect2Dd(r.x + 0.5, r.y + 0.5, r.width - 1.0, r.height - 1.0), 3.0);
+        // |<- : a bar on the left, the place the clip goes to, and an arrow into it
+        const Color ink = hot ? style.accent : style.inkMuted;
+        const double u = r.width / 20.0;   // the glyph is drawn on a 20-unit square
+        const double x = r.x, y = r.y, mid = r.y + r.height / 2.0;
+        ctx->SetStrokePaint(ink);
+        ctx->SetStrokeWidth(static_cast<float>(1.6 * u));
+        ctx->SetLineCap(LineCap::Round);
+        ctx->SetLineJoin(LineJoin::Round);
+        ctx->DrawLine(Point2Dd(x + 5.5 * u, y + 5.0 * u), Point2Dd(x + 5.5 * u, y + 15.0 * u));
+        ctx->DrawLine(Point2Dd(x + 8.5 * u, mid), Point2Dd(x + 15.5 * u, mid));
+        ctx->DrawLinePath({Point2Dd(x + 12.0 * u, mid - 3.5 * u), Point2Dd(x + 8.5 * u, mid), Point2Dd(x + 12.0 * u, mid + 3.5 * u)},
+                          false);
+    }
 }
 
 void UltraCanvasVideoTimeline::DrawBadge(IRenderContext* ctx, const std::string& text, float right, float top,
@@ -817,7 +922,7 @@ void UltraCanvasVideoTimeline::DrawClip(IRenderContext* ctx, const TimelineTrack
     ClipFillAndEdge(clip, fill, edge);
     if (clip.kind == TimelineClipKind::Card && !track.collapsed) fill = FromRGB(clip.color);
     const bool selected = selection.count(clip.id) > 0;
-    const bool hovered = hover.IsClip() && hover.clipId == clip.id && drag == Drag::None;
+    const bool hovered = hover.IsClip() && hover.clipId == clip.id && drag == Drag::NoDrag;
     const bool fading = (drag == Drag::FadeIn || drag == Drag::FadeOut) && dragClipId == clip.id;
     const bool ghost = drag == Drag::MoveClip && dragClipId == clip.id;
     const bool trimmingLeft = drag == Drag::TrimLeft && dragClipId == clip.id;
@@ -934,21 +1039,56 @@ void UltraCanvasVideoTimeline::DrawFilmstrip(IRenderContext* ctx, const Timeline
     const int height = static_cast<int>(std::lround(content.height));
     if (height < 4 || clip.source.empty()) return;
     const int frameW = std::max(8, static_cast<int>(std::lround(height * 16.0 / 9.0)));
-    int frames = clip.kind == TimelineClipKind::Image ? 1 : static_cast<int>(std::ceil(content.width / frameW));
-    frames = std::clamp(frames, 1, 200);
-    if (clip.kind != TimelineClipKind::Image) frames = ((frames + 3) / 4) * 4;   // fewer distinct requests across zooms
-    const std::vector<UCPixmapPtr>* strip = Filmstrip(clip, frames, height);
-    if (!strip || strip->empty()) return;
-    float x = content.x;
-    for (size_t i = 0; i < strip->size() && x < content.x + content.width; ++i) {
-        const UCPixmapPtr& pix = (*strip)[i];
-        if (pix && pix->IsValid()) ctx->DrawPixmap(*pix, Rect2Dd(x, content.y, frameW, height), ImageFitMode::Cover);
-        x += frameW;
-        if (clip.kind == TimelineClipKind::Image) {   // one photo, repeated along the clip
-            while (x < content.x + content.width && pix && pix->IsValid()) {
-                ctx->DrawPixmap(*pix, Rect2Dd(x, content.y, frameW, height), ImageFitMode::Cover);
-                x += frameW;
-            }
+
+    if (clip.kind == TimelineClipKind::Image) {   // one photo, repeated along the clip
+        const std::vector<UCPixmapPtr>* strip = Filmstrip(clip.source, clip.sourceIn, clip.SourceOut(), 1, height);
+        if (!strip || strip->empty() || !strip->front() || !strip->front()->IsValid()) return;
+        for (float x = content.x; x < content.x + content.width; x += frameW)
+            ctx->DrawPixmap(*strip->front(), Rect2Dd(x, content.y, frameW, height), ImageFitMode::Cover);
+        return;
+    }
+
+    // A video: slots of about one frame's width, each showing the picture at
+    // its own moment, so a picture always sits where its time is on the
+    // ruler. The slot length in source seconds steps by a factor of root 2
+    // (the slots stretch a little between steps), so a zoom inside one step
+    // and every scroll reuse what was decoded. Only the slots in view are
+    // asked for, in chunks of kChunk aligned to the clip's start: a long clip
+    // zoomed in is covered to its end without decoding all of it.
+    constexpr int kChunk = 8;
+    const double speed = clip.speed > 0.0 ? clip.speed : 1.0;
+    const double sourceLength = clip.SourceOut() - clip.sourceIn;
+    const double rawSlot = frameW / pixelsPerSecond * speed;
+    if (!(rawSlot > 0.0) || !(sourceLength > 0.0)) return;
+    const double slotSeconds = std::pow(2.0, std::round(std::log2(rawSlot) * 2.0) / 2.0);
+    const double slotW = slotSeconds / speed * pixelsPerSecond;
+    if (slotW < 1.0) return;
+    const int slots = std::max(1, static_cast<int>(std::ceil(sourceLength / slotSeconds)));
+
+    const Rect2Df lanes = LanesRect();
+    const double viewLeft = std::max<double>(content.x, lanes.x);
+    const double viewRight = std::min<double>(content.x + content.width, lanes.x + lanes.width);
+    if (viewRight <= viewLeft) return;
+    const int first = std::clamp(static_cast<int>(std::floor((viewLeft - content.x) / slotW)), 0, slots - 1);
+    const int last = std::clamp(static_cast<int>(std::floor((viewRight - content.x) / slotW)), 0, slots - 1);
+
+    const double latest = std::max(clip.sourceIn, clip.SourceOut() - 0.05);   // the very last frame often cannot be read
+    for (int chunk = first / kChunk; chunk <= last / kChunk; ++chunk) {
+        const int s0 = chunk * kChunk;
+        const int s1 = std::min(slots - 1, s0 + kChunk - 1);
+        const int count = s1 - s0 + 1;
+        // the provider spreads `count` pictures evenly from `in` to `out`,
+        // both included: the first and the last slot's middles
+        const double in = std::min(latest, clip.sourceIn + (s0 + 0.5) * slotSeconds);
+        const double out = std::min(latest, clip.sourceIn + (s1 + 0.5) * slotSeconds);
+        const std::vector<UCPixmapPtr>* strip = Filmstrip(clip.source, in, out, count, height);
+        if (!strip) continue;
+        for (int i = 0; i < count && static_cast<size_t>(i) < strip->size(); ++i) {
+            const int slot = s0 + i;
+            if (slot < first || slot > last) continue;
+            const UCPixmapPtr& pix = (*strip)[static_cast<size_t>(i)];
+            if (pix && pix->IsValid())
+                ctx->DrawPixmap(*pix, Rect2Dd(content.x + slot * slotW, content.y, slotW, height), ImageFitMode::Cover);
         }
     }
 }
@@ -1041,7 +1181,7 @@ void UltraCanvasVideoTimeline::DrawGuides(IRenderContext* ctx, const Rect2Df& la
             ctx->DrawLine(Point2Dd(std::floor(x) + 0.5, lanes.y), Point2Dd(std::floor(x) + 0.5, lanes.y + lanes.height));
         }
     }
-    if (drag != Drag::None && dragSnapped) {
+    if (drag != Drag::NoDrag && dragSnapped) {
         const float x = SecondsToX(dragSnapTime);
         ctx->SetStrokePaint(style.focus);
         ctx->SetStrokeWidth(1.0f);
@@ -1096,11 +1236,12 @@ void UltraCanvasVideoTimeline::DrawDragFeedback(IRenderContext* ctx, const Rect2
         const double x = std::floor(SecondsToX(dropSeconds));
         ctx->SetFillPaint(style.focus);
         ctx->FillRectangle(Rect2Dd(x - 1.0, lane.top, 2.0, lane.height));
-        std::string text = dropCount > 0 ? std::to_string(dropCount) + (dropCount == 1 ? " file" : " files") + " at " : "Insert at ";
+        std::string text = !dropLabel.empty() ? dropLabel + " at "
+                           : dropCount > 0 ? std::to_string(dropCount) + (dropCount == 1 ? " file" : " files") + " at " : "Insert at ";
         text += TimelineTimecode(dropSeconds, model.frameRate);
         DrawReadout(ctx, text, static_cast<float>(x) + 8.0f, lane.top + 4.0f);
     }
-    if (tool == TimelineTool::Blade && drag == Drag::None && hover.kind == Hit::ClipBody) {
+    if (tool == TimelineTool::Blade && drag == Drag::NoDrag && hover.kind == Hit::ClipBody) {
         const double x = std::floor(lastPointer.x) + 0.5;
         ctx->SetStrokePaint(style.ink);
         ctx->SetStrokeWidth(1.0f);
@@ -1143,14 +1284,18 @@ void UltraCanvasVideoTimeline::DrawScrollbar(IRenderContext* ctx, const Rect2Df&
 // CACHES
 // ============================================================================
 
-const std::vector<UCPixmapPtr>* UltraCanvasVideoTimeline::Filmstrip(const TimelineClip& clip, int frames, int height) {
-    const FilmstripKey key{clip.source, clip.sourceIn, clip.SourceOut(), frames, height};
+const std::vector<UCPixmapPtr>* UltraCanvasVideoTimeline::Filmstrip(const std::string& source, double in, double out,
+                                                                    int frames, int height) {
+    const FilmstripKey key{source, in, out, frames, height};
     auto found = filmstrips.find(key);
     if (found != filmstrips.end()) return &found->second;
     if (!thumbnailProvider || filmstripsPending.count(key)) return nullptr;
+    // a long session of zooming leaves strips no zoom shows any more: past a
+    // bound, start over (what is in view is asked for again at once)
+    if (filmstrips.size() >= kMaxFilmstrips) filmstrips.clear();
     filmstripsPending.insert(key);
     std::weak_ptr<bool> alive = aliveToken;
-    thumbnailProvider(clip.source, clip.sourceIn, clip.SourceOut(), frames, height,
+    thumbnailProvider(source, in, out, frames, height,
                       [this, alive, key](std::vector<UCPixmapPtr> pixmaps) {
                           if (alive.expired()) return;
                           filmstripsPending.erase(key);
@@ -1203,6 +1348,7 @@ UCMouseCursor UltraCanvasVideoTimeline::GetMouseCursor() const {
             return UCMouseCursor::Default;
         case Hit::HeaderToggle:
         case Hit::Marker:
+        case Hit::GapClose:
             return UCMouseCursor::Hand;
         default:
             return UCMouseCursor::Default;
@@ -1224,7 +1370,8 @@ bool UltraCanvasVideoTimeline::OnEvent(const UCEvent& event) {
         case UCEventType::MouseWheel: return HandleWheel(event, x, y, false);
         case UCEventType::MouseWheelHorizontal: return HandleWheel(event, x, y, true);
         case UCEventType::MouseLeave:
-            if (drag == Drag::None && hover.kind != Hit::Nothing) {
+            if (drag == Drag::NoDrag && hover.kind != Hit::Nothing) {
+                if (hover.kind == Hit::GapClose) SetTooltip("");
                 hover = Hit();
                 RequestRedraw();
             }
@@ -1232,11 +1379,8 @@ bool UltraCanvasVideoTimeline::OnEvent(const UCEvent& event) {
         case UCEventType::KeyDown: return IsFocused() ? HandleKey(event) : false;
         case UCEventType::DragEnter:
         case UCEventType::DragOver: return HandleDrop(event, x, y, false);
-        case UCEventType::DragLeave:
-            if (dropActive) {
-                dropActive = false;
-                RequestRedraw();
-            }
+        case UCEventType::DragLeave:   // the system's drag, or the application's carried one
+            ClearDropFeedback();
             return false;
         case UCEventType::Drop: return HandleDrop(event, x, y, true);
         default: return false;
@@ -1335,6 +1479,12 @@ bool UltraCanvasVideoTimeline::HandleMouseDown(const UCEvent& event, float x, fl
             selectedTrack = model.tracks[hit.trackIndex].id;
             RequestRedraw();
             return true;
+        case Hit::GapClose:
+            selectedTrack = model.tracks[hit.trackIndex].id;
+            RequestCloseGap(hit.trackIndex, hit.clipId, event.shift);
+            hover = HitTest(x, y);   // the gap is gone when the application took the change
+            if (hover.kind != Hit::GapClose) SetTooltip("");
+            return true;
         case Hit::Lane:
             selectedTrack = model.tracks[hit.trackIndex].id;
             if (!event.shift && !event.ctrl) ClearSelection();
@@ -1415,12 +1565,16 @@ bool UltraCanvasVideoTimeline::HandleMouseDown(const UCEvent& event, float x, fl
     }
 }
 
-bool UltraCanvasVideoTimeline::HandleMouseMove(const UCEvent& event, float x, float y) {
+bool UltraCanvasVideoTimeline::HandleMouseMove(const UCEvent& /*event*/, float x, float y) {
     lastPointer = Point2Df(x, y);
-    if (drag == Drag::None) {
+    if (drag == Drag::NoDrag) {
         const Hit h = HitTest(x, y);
         const bool changed = h.kind != hover.kind || h.clipId != hover.clipId || h.trackIndex != hover.trackIndex ||
                              h.toggle != hover.toggle || tool == TimelineTool::Blade;
+        if (h.kind == Hit::GapClose && (hover.kind != Hit::GapClose || h.clipId != hover.clipId))
+            SetTooltip(GapTooltip(h));
+        else if (h.kind != Hit::GapClose && hover.kind == Hit::GapClose)
+            SetTooltip("");
         hover = h;
         if (changed) RequestRedraw();
         return h.kind != Hit::Nothing;
@@ -1571,7 +1725,7 @@ bool UltraCanvasVideoTimeline::HandleMouseMove(const UCEvent& event, float x, fl
 
 bool UltraCanvasVideoTimeline::HandleMouseUp(const UCEvent& event, float x, float y) {
     (void)event;
-    if (drag == Drag::None) return false;
+    if (drag == Drag::NoDrag) return false;
     FinishDrag(x, y);
     return true;
 }
@@ -1580,7 +1734,7 @@ void UltraCanvasVideoTimeline::FinishDrag(float x, float y) {
     (void)x;
     (void)y;
     const Drag finished = drag;
-    drag = Drag::None;
+    drag = Drag::NoDrag;
     dragReadout.clear();
     dragSnapped = false;
     if (dragTrackIndex >= model.tracks.size()) { RequestRedraw(); return; }
@@ -1663,7 +1817,7 @@ void UltraCanvasVideoTimeline::FinishDrag(float x, float y) {
 bool UltraCanvasVideoTimeline::HandleDoubleClick(const UCEvent& event, float x, float y) {
     if (event.button != UCMouseButton::Left && event.button != UCMouseButton::NoneButton) return false;
     const Hit hit = HitTest(x, y);
-    drag = Drag::None;
+    drag = Drag::NoDrag;
     switch (hit.kind) {
         case Hit::ClipBody:
         case Hit::ClipLeftEdge:
@@ -1817,6 +1971,39 @@ void UltraCanvasVideoTimeline::RequestMarkerAt(double seconds) {
     Request(change);
 }
 
+void UltraCanvasVideoTimeline::RequestCloseGap(size_t trackIndex, const std::string& clipId, bool ripple) {
+    if (trackIndex >= model.tracks.size()) return;
+    const TimelineTrack& track = model.tracks[trackIndex];
+    if (track.locked || track.IsMagnetic()) return;
+    TimelineTrack after = track;
+    std::vector<TimelineClip> moved;
+    if (!TimelineCloseGap(after, clipId, ripple, 1.0 / std::max(1.0, model.frameRate), &moved) || moved.empty()) return;
+    TimelineChange change;
+    change.kind = TimelineChangeKind::Move;
+    change.trackId = track.id;
+    for (const TimelineClip& c : moved)
+        if (const TimelineClip* was = track.FindClip(c.id)) change.before.push_back(*was);
+    change.after = moved;
+    change.at = moved.front().start;
+    change.ripple = ripple;
+    Request(change);
+}
+
+std::string UltraCanvasVideoTimeline::GapTooltip(const Hit& hit) const {
+    if (hit.trackIndex >= model.tracks.size()) return "";
+    const TimelineTrack& track = model.tracks[hit.trackIndex];
+    const TimelineClip* clip = track.FindClip(hit.clipId);
+    if (!clip) return "";
+    // the clip whose end the gap starts at, if any
+    const TimelineClip* before = nullptr;
+    for (const TimelineClip& c : track.clips)
+        if (c.id != clip->id && std::fabs(c.End() - hit.seconds) < 1e-6) before = &c;
+    std::string text = "Close the gap: move " + (clip->name.empty() ? std::string("the clip") : clip->name) +
+                       (before ? " to the end of " + (before->name.empty() ? std::string("the clip before") : before->name)
+                               : std::string(" to the start"));
+    return text + " (Shift: move everything after the gap with it)";
+}
+
 bool UltraCanvasVideoTimeline::HandleKey(const UCEvent& event) {
     const bool control = event.ctrl || event.meta;
     const double frame = 1.0 / std::max(1.0, model.frameRate);
@@ -1864,8 +2051,8 @@ bool UltraCanvasVideoTimeline::HandleKey(const UCEvent& event) {
             RequestDeleteSelection(event.shift);
             return true;
         case UCKeys::Escape:
-            if (drag != Drag::None) {
-                drag = Drag::None;
+            if (drag != Drag::NoDrag) {
+                drag = Drag::NoDrag;
                 dragPreview = TimelineTrack();
                 dragReadout.clear();
                 RequestRedraw();
@@ -1937,15 +2124,7 @@ bool UltraCanvasVideoTimeline::HandleDrop(const UCEvent& event, float x, float y
         return false;
     }
     const TimelineTrack& track = model.tracks[hit.trackIndex];
-    double seconds = std::max(0.0, hit.seconds);
-    if (track.IsMagnetic()) {   // the nearest cut
-        double best = track.End();
-        for (double cut : TimelineCuts(track)) if (std::fabs(cut - seconds) < std::fabs(best - seconds)) best = cut;
-        seconds = best;
-    } else {
-        bool snapped = false;
-        seconds = SnapTime(seconds, "", snapped);
-    }
+    const double seconds = DropTime(track, hit.seconds);
     if (drop) {
         dropActive = false;
         RequestRedraw();
@@ -1956,8 +2135,22 @@ bool UltraCanvasVideoTimeline::HandleDrop(const UCEvent& event, float x, float y
     dropTrackIndex = hit.trackIndex;
     dropSeconds = seconds;
     dropCount = static_cast<int>(event.droppedFiles.size());
+    dropLabel.clear();
     RequestRedraw();
     return true;
+}
+
+// Where a drop at `seconds` on the track lands: the nearest cut on a
+// magnetic track, the snap points (playhead, cuts, markers) otherwise
+double UltraCanvasVideoTimeline::DropTime(const TimelineTrack& track, double seconds) const {
+    seconds = std::max(0.0, seconds);
+    if (track.IsMagnetic()) {
+        double best = track.End();
+        for (double cut : TimelineCuts(track)) if (std::fabs(cut - seconds) < std::fabs(best - seconds)) best = cut;
+        return best;
+    }
+    bool snapped = false;
+    return SnapTime(seconds, "", snapped);
 }
 
 // ============================================================================
@@ -1966,6 +2159,24 @@ bool UltraCanvasVideoTimeline::HandleDrop(const UCEvent& event, float x, float y
 
 std::shared_ptr<UltraCanvasVideoTimeline> CreateVideoTimeline(const std::string& id, int x, int y, int w, int h) {
     return std::make_shared<UltraCanvasVideoTimeline>(id, x, y, w, h);
+}
+
+UCElementDescriptor MakeVideoTimelineDescriptor() {
+    UCElementDescriptor descriptor;
+    descriptor.typeName = "video-timeline";
+    descriptor.category = UCPluginCategory::Widget;
+    descriptor.displayName = "Video Timeline";
+    descriptor.description = "Media timeline editor: clips on tracks under a time ruler, with a playhead";
+    descriptor.version = "1.6.0";
+    descriptor.docPath = "Docs/UltraCanvas/UltraCanvasVideoTimeline.md";
+    descriptor.create = [](const std::string& id, int x, int y, int w, int h) {
+        return std::static_pointer_cast<UltraCanvasUIElement>(CreateVideoTimeline(id, x, y, w, h));
+    };
+    return descriptor;
+}
+
+void RegisterVideoTimelineElement() {
+    UltraCanvasElementRegistry::Register(MakeVideoTimelineDescriptor());
 }
 
 } // namespace UltraCanvas

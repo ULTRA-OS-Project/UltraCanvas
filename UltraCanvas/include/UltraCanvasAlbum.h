@@ -2,9 +2,12 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
+// Version: 1.13.0 - FromTheme sets the interface font's family; the SetConfig rule and the constructor tail
+// Version: 1.12.0 - Make/Register descriptor: "album" in the element registry, bundled or as a runtime module
+// Version: 1.11.0 - onItemPressed and ReleaseDrag: an owner carrying a tile's drag itself; onItemDraggedOut (1.9.0) gone
 // Version: 1.10.0 - AlbumConfig::FromTheme, ApplyTheme
 // Version: 1.9.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // V1.7.0: Automatic video poster frames (AlbumConfig::videoPosterFrames, on by
 //   default) — a Video item with no thumbnailPath now has its cover extracted
 //   from the clip itself on a background thread and cached in memory, so video
@@ -406,16 +409,21 @@ namespace UltraCanvas {
         void ClearSelection();
         bool IsSelected(size_t index) const;
 
+        // The owner carries the pressed tile itself (its drag, armed from
+        // onItemPressed, has started): the press is forgotten, so no click
+        // and no reorder follows it.
+        void ReleaseDrag();
+
         // ===== EVENTS =====
         std::function<void(size_t)> onItemClicked;        // single click / tap
+        // The left button pressed on a tile, before anything is decided:
+        // an app that carries the tile's drag itself arms it here and,
+        // once its drag starts, calls ReleaseDrag() so the album's own
+        // reorder (edit modes) does not follow the same press.
+        std::function<void(size_t)> onItemPressed;
         std::function<void(size_t)> onLinkClicked;        // subtitle link row clicked
         std::function<void(size_t)> onItemActivated;      // double-click: open / play
         std::function<void(size_t, size_t)> onItemsReordered;  // (from, to) — edit modes
-        // A tile dragged out of the album (edit modes): the album's own
-        // reorder ends and the app may carry the item elsewhere - a media
-        // bin's file onto a timeline, say - following the pointer from
-        // `windowPos` (window-relative) with the window's mouse events.
-        std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;
         std::function<void(size_t)> onItemRemoved;        // after RemoveItem
         std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 
@@ -669,7 +677,6 @@ namespace UltraCanvas {
         void TriggerAction(int actionIndex, size_t itemIndex);
         void ToggleSelection(size_t itemIndex);
         void FinishDrag();
-        void DragOut(const Point2Di& windowPos);   // hand a dragged tile to onItemDraggedOut
 
         // ===== PICTURES SAVED OVER =====
         // The still images the paint in progress drew (DrawImageInRect) and
@@ -693,5 +700,14 @@ namespace UltraCanvas {
             const std::string& identifier, float x, float y, float w, float h) {
         return std::make_shared<UltraCanvasAlbum>(identifier, x, y, w, h);
     }
+
+
+    // The element in the element registry (UltraCanvasElementPlugins.h) as
+    // "album" (category Widget): compiled into the core by default, or the
+    // ultracanvas-widget-album runtime module when ULTRACANVAS_WIDGETS leaves
+    // Album out.
+    struct UCElementDescriptor;
+    UCElementDescriptor MakeAlbumDescriptor();
+    void RegisterAlbumElement();
 
 } // namespace UltraCanvas

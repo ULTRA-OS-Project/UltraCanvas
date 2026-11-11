@@ -1,5 +1,7 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.11.0 - LoadFromPixmap: a picture already made (a file's icon or thumbnail)
+// Version: 1.10.0 - onContextMenu: a right-click on the image (it no longer counts as a click)
 // Version: 1.9.0 - SetBoxAspectRatio: the shape the box keeps when its height
 //                  follows its width (an <img> with width and height)
 // Version: 1.8.0 - an image to screen readers (name it with SetAccessibleName)
@@ -8,7 +10,7 @@
 // Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
 // Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
 // Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -51,6 +53,9 @@ class UltraCanvasImageElement : public UltraCanvasUIElement {
 private:
     // Image source
     std::shared_ptr<UCImage> loadedImage;
+    // A picture handed over already drawn (LoadFromPixmap): shown in place
+    // of loadedImage, scaled to the box like it.
+    std::shared_ptr<UCPixmap> pixmapSource;
     ImageLoadState loadState = ImageLoadState::NotLoaded;
     
     // Display properties
@@ -103,6 +108,9 @@ public:
     // status line where it goes).
     std::function<void()> onHoverEnter;
     std::function<void()> onHoverLeave;
+    // A right-click on the image: the host shows its menu (a linked picture's
+    // Copy link). A right-click never runs onClick.
+    std::function<void(const UCEvent&)> onContextMenu;
     std::function<void(const Point2Di&)> onImageDragged;
     
     // ===== CONSTRUCTOR =====
@@ -122,6 +130,11 @@ public:
     // clears the element, firing neither callback.
     bool LoadFromFile(const std::string& filePath, bool forceLoad = false);
     bool LoadFromImage(std::shared_ptr<UCImage> img);
+    // A picture already made - a file's icon or thumbnail
+    // (LoadHostFileIconPixmap, RenderFileThumbnail) - shown as it is,
+    // fitted to the box like a loaded image. Null clears the element.
+    // Fires onImageLoaded for a picture, neither callback for null.
+    bool LoadFromPixmap(std::shared_ptr<UCPixmap> pixmap);
 
     // Human-readable reason for the most recent failed load (e.g. the file was
     // locked, missing, or the format is unsupported). Empty on success.

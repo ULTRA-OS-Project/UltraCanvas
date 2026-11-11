@@ -2,11 +2,14 @@
 // Demonstration of UltraCanvasChip and UltraCanvasTagInput: filled/outlined
 // chips, closable chips, selectable filter chips, and a tag/token input field
 // (type + Enter to add, × or Backspace to remove) with wrapping.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  example, chips in wrapping rows, tag fields across the card
 // Version: 1.0.0
-// Last Modified: 2026-07-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasChip.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -15,61 +18,43 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChipExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("ChipExamples", 0, 0, 1000, 620);
-        container->SetPadding(0, 0, 10, 0);
-
-        auto title = CreateLabel("ChipTitle", 20, 10, 0, 30);
-        title->SetText("Chip / Tag Examples");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto subtitle = CreateLabel("ChipSubtitle", 20, 42, 940, 40);
-        subtitle->SetText("Compact chips (filled / outlined / closable / selectable) and a tag-input field: "
-                          "type and press Enter or comma to add a tag, click × or press Backspace to remove.");
-        subtitle->SetFontSize(12);
-        container->AddChild(subtitle);
-
-        auto section = [&](const std::string& id, const std::string& text, int y) {
-            auto l = CreateLabel(id, 20, y, 500, 20);
-            l->SetText(text);
-            l->SetFontWeight(FontWeight::Bold);
-            l->SetFontSize(12);
-            container->AddChild(l);
-        };
+        auto page = DemoKit::CreatePage("ChipExamples", Tr("Chip / Tag Examples"),
+                Tr("Compact chips (filled / outlined / closable / selectable) and a tag-input field: "
+                "type and press Enter or comma to add a tag, click × or press Backspace to remove."));
 
         // ===== 1. BASIC CHIPS (filled / outlined / closable) =====
-        section("ChL1", "Chips: filled, outlined, closable:", 92);
+        auto basicCard = DemoKit::AddCard(page, "ChL1", Tr("Chips: filled, outlined, closable:"));
+        // Chips size their own width to the label, so a row just lines them up.
+        auto basicRow = DemoKit::AddRow(basicCard, "ChBasicRow", 10);
 
-        auto c1 = CreateChip("Chip1", 20, 116, "Filled");
-        container->AddChild(c1);
+        auto c1 = CreateChip("Chip1", 0, 0, Tr("Filled"));
+        DemoKit::Add(basicRow, c1);
 
-        auto c2 = CreateChip("Chip2", 130, 116, "Outlined");
+        auto c2 = CreateChip("Chip2", 0, 0, Tr("Outlined"));
         c2->SetVariant(ChipVariant::Outlined);
-        container->AddChild(c2);
+        DemoKit::Add(basicRow, c2);
 
-        auto c3 = CreateChip("Chip3", 250, 116, "Removable", true);
+        auto c3 = CreateChip("Chip3", 0, 0, Tr("Removable"), true);
         c3->onClose = [c3 = c3.get()]() { c3->SetVisible(false); };
-        container->AddChild(c3);
+        DemoKit::Add(basicRow, c3);
 
-        auto c4 = CreateChip("Chip4", 390, 116, "Outlined ×", true);
+        auto c4 = CreateChip("Chip4", 0, 0, Tr("Outlined ×"), true);
         c4->SetVariant(ChipVariant::Outlined);
         c4->onClose = [c4 = c4.get()]() { c4->SetVisible(false); };
-        container->AddChild(c4);
+        DemoKit::Add(basicRow, c4);
 
         // ===== 2. FILTER CHIPS (selectable) =====
-        section("ChL2", "Filter chips (selectable — click to toggle):", 176);
-        auto filterReadout = CreateLabel("ChFilterOut", 20, 236, 900, 24);
-        filterReadout->SetText("Selected: (none)");
+        auto filterCard = DemoKit::AddCard(page, "ChL2", Tr("Filter chips (selectable — click to toggle):"));
+        auto filterRow = DemoKit::AddRow(filterCard, "ChFilterRow", 10);
+
+        auto filterReadout = DemoKit::CreateText("ChFilterOut", Tr("Selected: (none)"));
         filterReadout->SetBackgroundColor(Color(240, 240, 240));
         filterReadout->SetPadding(3);
-        container->AddChild(filterReadout);
 
-        std::vector<std::string> filters = {"Design", "Engineering", "Sales", "Support", "Research"};
+        std::vector<std::string> filters = {Tr("Design"), Tr("Engineering"), Tr("Sales"), Tr("Support"), Tr("Research")};
         auto selectedSet = std::make_shared<std::vector<std::string>>();
-        int fx = 20;
         for (size_t i = 0; i < filters.size(); ++i) {
-            auto fc = CreateFilterChip("ChFilter" + std::to_string(i), fx, 200, filters[i]);
+            auto fc = CreateFilterChip("ChFilter" + std::to_string(i), 0, 0, filters[i]);
             fc->SetVariant(ChipVariant::Outlined);
             std::string name = filters[i];
             fc->onSelectedChanged = [filterReadout, selectedSet, name](bool sel) {
@@ -77,60 +62,53 @@ namespace UltraCanvas {
                 else selectedSet->erase(std::remove(selectedSet->begin(), selectedSet->end(), name),
                                         selectedSet->end());
                 std::ostringstream oss;
-                oss << "Selected: ";
-                if (selectedSet->empty()) oss << "(none)";
                 for (size_t k = 0; k < selectedSet->size(); ++k) {
                     if (k) oss << ", ";
                     oss << (*selectedSet)[k];
                 }
-                filterReadout->SetText(oss.str());
+                filterReadout->SetText(selectedSet->empty() ? Tr("Selected: (none)")
+                                                            : TrF("Selected: {0}", oss.str()));
             };
-            container->AddChild(fc);
-            fx += static_cast<int>(name.size()) * 9 + 44;   // rough spacing for auto-width chips
+            DemoKit::Add(filterRow, fc);
         }
+        DemoKit::Add(filterCard, filterReadout);
 
         // ===== 3. TAG INPUT =====
-        section("ChL3", "Tag input (type + Enter / comma; × or Backspace to remove):", 288);
-        auto tagInput = CreateTagInput("ChTags", 20, 314, 620, 40);
+        auto tagCard = DemoKit::AddCard(page, "ChL3", Tr("Tag input (type + Enter / comma; × or Backspace to remove):"));
+        // The field grows its own height as the chips wrap; across the card
+        // it has the room to show that.
+        auto tagInput = CreateTagInput("ChTags", 0, 0, 620, 40);
         tagInput->SetTags({"c++", "ultracanvas", "ui"});
-        tagInput->SetPlaceholder("Add a tag…");
-        container->AddChild(tagInput);
+        tagInput->SetPlaceholder(Tr("Add a tag…"));
+        DemoKit::AddStretched(tagCard, tagInput);
 
-        auto tagReadout = CreateLabel("ChTagOut", 660, 322, 320, 24);
-        tagReadout->SetText("3 tags");
+        auto tagReadout = DemoKit::AddText(tagCard, "ChTagOut", Tr("3 tags"));
         tagReadout->SetBackgroundColor(Color(240, 240, 240));
         tagReadout->SetPadding(3);
-        container->AddChild(tagReadout);
         tagInput->onTagsChanged = [tagReadout](const std::vector<std::string>& tags) {
             std::ostringstream oss;
-            oss << tags.size() << (tags.size() == 1 ? " tag: " : " tags: ");
             for (size_t k = 0; k < tags.size(); ++k) { if (k) oss << ", "; oss << tags[k]; }
-            tagReadout->SetText(oss.str());
+            tagReadout->SetText(LocalisationDetail::Substitute(
+                    TrN("{n} tag: {0}", "{n} tags: {0}", static_cast<long long>(tags.size())), {oss.str()}));
         };
 
         // ===== 4. TAG INPUT WITH LIMIT / NO DUPLICATES =====
-        section("ChL4", "Tag input — max 5, no duplicates:", 420);
-        auto tagInput2 = CreateTagInput("ChTags2", 20, 446, 620, 40);
+        auto limitCard = DemoKit::AddCard(page, "ChL4", Tr("Tag input — max 5, no duplicates:"));
+        auto tagInput2 = CreateTagInput("ChTags2", 0, 0, 620, 40);
         tagInput2->SetMaxTags(5);
         tagInput2->SetAllowDuplicates(false);
-        tagInput2->SetPlaceholder("Up to 5 unique tags…");
-        container->AddChild(tagInput2);
+        tagInput2->SetPlaceholder(Tr("Up to 5 unique tags…"));
+        DemoKit::AddStretched(limitCard, tagInput2);
 
         // ===== INSTRUCTIONS =====
-        auto instructions = CreateLabel("ChipInstructions", 20, 520, 940, 80);
-        instructions->SetText(
-                "API:\n"
-                "\xE2\x80\xA2 Chip: CreateChip / CreateFilterChip; SetVariant(Filled|Outlined); "
-                "SetClosable / SetSelectable / SetIcon; onClick / onClose / onSelectedChanged\n"
-                "\xE2\x80\xA2 TagInput: CreateTagInput; AddTag / RemoveTag / SetTags / SetMaxTags / "
-                "SetAllowDuplicates / validator; onTagsChanged / onTagAdded / onTagRemoved\n"
-                "\xE2\x80\xA2 The tag field wraps chips across rows and grows its height to fit.");
-        instructions->SetFontSize(11);
-        instructions->SetBackgroundColor(Color(255, 255, 240));
-        instructions->SetPadding(6);
-        container->AddChild(instructions);
+        DemoKit::AddNotes(page, "ChipInstructions", Tr("API"), {
+                Tr("Chip: CreateChip / CreateFilterChip; SetVariant(Filled|Outlined); "
+                "SetClosable / SetSelectable / SetIcon; onClick / onClose / onSelectedChanged"),
+                Tr("TagInput: CreateTagInput; AddTag / RemoveTag / SetTags / SetMaxTags / "
+                "SetAllowDuplicates / validator; onTagsChanged / onTagAdded / onTagRemoved"),
+                Tr("The tag field wraps chips across rows and grows its height to fit.")});
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

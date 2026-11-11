@@ -30,8 +30,6 @@
 #include <functional>
 #include <cmath>
 
-#undef None
-
 namespace UltraCanvas {
 
 // =============================================================================

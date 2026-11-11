@@ -1,7 +1,7 @@
 // core/UltraCanvasTimePicker.cpp
 // Platform-independent time-of-day picker implementation.
 // Version: 1.2.0
-// Last Modified: 2026-08-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTimePicker.h"
@@ -9,6 +9,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <ctime>
 #include <cctype>
 #include <cstdio>
@@ -120,6 +121,7 @@ namespace UltraCanvas {
                                                        float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         value = UCTime(0, 0, 0);
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasTimeClockView::SetTime(const UCTime& t) {
@@ -534,6 +536,23 @@ namespace UltraCanvas {
             : UltraCanvasContainer(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
         BuildTextInput();
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasTimePicker::SetStyle(const TimePickerStyle& s) {
+        StyleSetByHand();
+        style = s;
+        if (textInput) {
+            TextInputStyle ts = textInput->GetStyle();
+            ts.textColor = style.textColor;
+            ts.caretColor = style.caretColor;
+            ts.placeholderColor = style.placeholderColor;
+            ts.fontStyle.fontFamily = style.fontFamily;
+            ts.fontStyle.fontSize = style.fontSize;
+            textInput->SetStyle(ts);
+        }
+        if (clockView) clockView->SetStyle(style);
+        RequestRedraw();
     }
 
     void UltraCanvasTimePicker::BuildTextInput() {
@@ -805,12 +824,12 @@ namespace UltraCanvas {
 
         // Footer: "Now" and "Clear".
         float footerY = rowY + spinH + footerGap;
-        auto nowBtn = std::make_shared<UltraCanvasButton>("TPnow", pad, footerY, 60.0f, footerH, "Now");
+        auto nowBtn = std::make_shared<UltraCanvasButton>("TPnow", pad, footerY, 60.0f, footerH, Tr("Now"));
         nowBtn->onClick = [this]() { SetNow(true); ClosePopup(); };
         popup->AddChild(nowBtn);
 
         auto clearBtn = std::make_shared<UltraCanvasButton>(
-                "TPclear", popupW - pad - 60.0f, footerY, 60.0f, footerH, "Clear");
+                "TPclear", popupW - pad - 60.0f, footerY, 60.0f, footerH, Tr("Clear"));
         clearBtn->onClick = [this]() { Clear(true); ClosePopup(); };
         popup->AddChild(clearBtn);
     }
@@ -855,12 +874,12 @@ namespace UltraCanvas {
         popup->AddChild(clockView);
 
         float footerY = clockH + footerGap;
-        auto nowBtn = std::make_shared<UltraCanvasButton>("TPnow", pad, footerY, 60.0f, footerH, "Now");
+        auto nowBtn = std::make_shared<UltraCanvasButton>("TPnow", pad, footerY, 60.0f, footerH, Tr("Now"));
         nowBtn->onClick = [this]() { SetNow(true); ClosePopup(); };
         popup->AddChild(nowBtn);
 
         auto clearBtn = std::make_shared<UltraCanvasButton>(
-                "TPclear", popupW - pad - 60.0f, footerY, 60.0f, footerH, "Clear");
+                "TPclear", popupW - pad - 60.0f, footerY, 60.0f, footerH, Tr("Clear"));
         clearBtn->onClick = [this]() { Clear(true); ClosePopup(); };
         popup->AddChild(clearBtn);
     }
@@ -1086,6 +1105,39 @@ namespace UltraCanvas {
         UCTime t = base.AddMinutes(event.wheelDelta > 0 ? minuteStep : -minuteStep);
         SetTime(t, true);
         return true;
+    }
+
+// ===== THE THEME =====
+    TimePickerStyle TimePickerStyle::FromTheme(const UltraCanvasTheme& theme, const TimePickerStyle& base) {
+        TimePickerStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.backgroundColor = r.well;
+        s.hoverColor = r.hover;
+        s.disabledColor = r.panel;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.textColor = r.ink;
+        s.placeholderColor = r.inkFaint;
+        s.disabledTextColor = r.inkFaint;
+        s.iconColor = r.inkMuted;
+        s.caretColor = r.ink;
+        s.popupBackgroundColor = r.raised;
+        s.popupBorderColor = r.line;
+        s.separatorTextColor = r.inkMuted;
+        s.footerTextColor = r.accent;
+        s.clockHeaderColor = r.accent;
+        s.clockHeaderTextColor = r.onAccent;
+        s.clockHeaderDimTextColor = r.onAccent.WithAlpha(150);
+        // the element's own role, for a design whose dial is not the pressed fill
+        s.clockFaceColor = theme.Role("time-picker.clock-face", r.pressed);
+        s.clockNumberColor = r.ink;
+        s.clockSelectionColor = r.accent;
+        s.clockSelectionTextColor = r.onAccent;
+        s.clockHoverColor = r.accent.WithAlpha(60);
+        return s;
     }
 
 } // namespace UltraCanvas

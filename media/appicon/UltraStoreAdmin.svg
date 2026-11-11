@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- UltraStoreAdmin: the store's tile in slate, the awning, and a pen over the shop: the publisher's side. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <path d="M48 92 L64 56 H192 L208 92 Z" fill="#ffffff"/>
+  <path d="M48 92 h32 a16 16 0 0 1 -32 0 Z M80 92 h32 a16 16 0 0 1 -32 0 Z M112 92 h32 a16 16 0 0 1 -32 0 Z M144 92 h32 a16 16 0 0 1 -32 0 Z M176 92 h32 a16 16 0 0 1 -32 0 Z" fill="#e2e8f0"/>
+  <rect x="64" y="108" width="128" height="92" rx="10" fill="#ffffff"/>
+  <!-- pen -->
+  <g transform="rotate(45 128 154)">
+    <rect x="118" y="112" width="20" height="60" rx="4" fill="#f59e0b"/>
+    <path d="M118 172 L128 192 L138 172 Z" fill="#92400e"/>
+    <rect x="118" y="108" width="20" height="10" rx="2" fill="#78350f"/>
+  </g>
+</svg>

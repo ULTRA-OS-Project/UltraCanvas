@@ -5,10 +5,14 @@
 // A rename or a delete of any name with a space in it used to fail with a
 // 550: the name was cut from the URL still percent-encoded and sent as it
 // was. And every command ran in the login folder, whatever folder the entry
-// was in, because libcurl sends them before it changes folder. And an SFTP server was sent FTP commands it does not speak. Both are
+// was in, because libcurl sends quote commands before it changes folder - FTP
+// commands now go after the change of folder and name the entry within it.
+// And an SFTP server was sent FTP commands it does not speak. All of it is
 // checked here, along with the line breaks that must never reach a server.
+// Version: 1.1.0 - FTP commands name the entry within its folder
+//                  (afterFolderChange)
 // Version: 1.0.0
-// Last Modified: 2026-09-27
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #include "UltraNetFtpQuote.h"
 
@@ -32,8 +36,10 @@ void CheckPlan(const std::string& url, Verb verb, const std::string& newName,
                const char* what) {
     Plan p;
     std::string error;
+    // FTP's commands go after libcurl's change into the folder, SFTP's with
+    // their full paths before it.
     const bool ok = Build(url, verb, newName, p, error) && p.parentUrl == parent &&
-                    p.commands == cmds;
+                    p.commands == cmds && p.afterFolderChange == !IsSftpUrl(url);
     std::printf("%s  %s", ok ? "  ok  " : " FAIL ", what);
     if (!ok) {
         std::printf("  (error \"%s\", parent \"%s\", commands:", error.c_str(),
@@ -56,26 +62,25 @@ bool Refused(const std::string& url, Verb verb, const std::string& newName = {})
 int main() {
     std::printf("FTP\n");
     CheckPlan("ftp://h/dir/plain.txt", Verb::Rename, "new.txt", "ftp://h/dir/",
-              {"RNFR dir/plain.txt", "RNTO dir/new.txt"},
-              "a plain rename, named from the login folder");
+              {"RNFR plain.txt", "RNTO new.txt"},
+              "a plain rename, named within its folder");
     CheckPlan("ftp://h/dir/My%20Photo%20(2).jpg", Verb::Rename, "Holiday 2.jpg",
-              "ftp://h/dir/", {"RNFR dir/My Photo (2).jpg", "RNTO dir/Holiday 2.jpg"},
+              "ftp://h/dir/", {"RNFR My Photo (2).jpg", "RNTO Holiday 2.jpg"},
               "the old name is decoded, the new one sent as typed");
     CheckPlan("ftp://h/%C3%9Cbersicht.pdf", Verb::Delete, {}, "ftp://h/",
               {"DELE \xC3\x9C" "bersicht.pdf"}, "UTF-8 is decoded to its bytes");
     CheckPlan("ftp://h/a%20b/c%20d", Verb::RemoveDirectory, {}, "ftp://h/a%20b/",
-              {"RMD a b/c d"}, "the parent URL stays encoded, for libcurl to decode");
+              {"RMD c d"}, "the parent URL stays encoded, for libcurl to decode");
     CheckPlan("ftp://h/a/new%20folder", Verb::MakeDirectory, {}, "ftp://h/a/",
-              {"MKD a/new folder"}, "make a folder where it was asked for");
+              {"MKD new folder"}, "make a folder in the folder it was asked for");
     CheckPlan("ftps://h:990/a/old", Verb::RemoveDirectory, {}, "ftps://h:990/a/",
-              {"RMD a/old"}, "a folder with a port");
+              {"RMD old"}, "a folder with a port");
     CheckPlan("ftp://h/a%2Bb%26c", Verb::Delete, {}, "ftp://h/", {"DELE a+b&c"},
               "'+' and '&'");
     CheckPlan("ftp://h/%2Fsrv/x.txt", Verb::Delete, {}, "ftp://h/%2Fsrv/",
-              {"DELE /srv/x.txt"}, "%2F first: an absolute path");
+              {"DELE x.txt"}, "%2F first: the absolute folder is libcurl's to change into");
     CheckPlan("ftp://h/base/deep/er/f", Verb::Rename, "g", "ftp://h/base/deep/er/",
-              {"RNFR base/deep/er/f", "RNTO base/deep/er/g"},
-              "a server base path and nested folders");
+              {"RNFR f", "RNTO g"}, "a server base path and nested folders");
 
     std::printf("SFTP\n");
     CheckPlan("sftp://h/home/u/My%20Photo.jpg", Verb::Rename, "Holiday.jpg",
@@ -105,6 +110,45 @@ int main() {
           "an encoded line break in the name");
     Check(Refused("ftp://h/a%00b", Verb::Delete), "a NUL in the name");
     Check(Refused("ftp://h/dir/..", Verb::Delete), "'..' is not a name");
+
+    std::printf("Dating an uploaded file\n");
+    {
+        // 2026-11-10 14:03:22 UTC, a Tuesday.
+        const int64_t when = 1794319402;
+        auto dated = [&](const std::string& url, const std::string& parent,
+                         const std::string& command, bool after, const char* what) {
+            Plan p;
+            std::string error;
+            const bool ok = BuildSetModificationTime(url, when, p, error) &&
+                            p.parentUrl == parent && p.commands.size() == 1 &&
+                            p.commands[0] == command && p.afterFolderChange == after;
+            std::printf("%s  %s", ok ? "  ok  " : " FAIL ", what);
+            if (!ok) std::printf("  (error \"%s\", command [%s])", error.c_str(),
+                                 p.commands.empty() ? "" : p.commands[0].c_str());
+            std::printf("\n");
+            if (!ok) ++failures;
+        };
+        dated("ftp://h/dir/My%20Photo.jpg", "ftp://h/dir/",
+              "*MFMT 20261110140322 My Photo.jpg", true,
+              "FTP: MFMT, in the file's folder, the name decoded, allowed to fail");
+        dated("sftp://h/~/up/a%20b.txt", "sftp://h/~/up/",
+              "*mtime \"Tue, 10 Nov 2026 14:03:22 GMT\" \"up/a b.txt\"", false,
+              "SFTP: mtime with an RFC 1123 date and the path, both quoted");
+        dated("sftp://h/srv/x", "sftp://h/srv/",
+              "*mtime \"Tue, 10 Nov 2026 14:03:22 GMT\" \"/srv/x\"", false,
+              "SFTP: an absolute path");
+        Plan p;
+        std::string error;
+        Check(!BuildSetModificationTime("ftp://h/a", 0, p, error), "no date, no command");
+        Check(!BuildSetModificationTime("ftp://h/dir/", when, p, error), "a folder URL");
+        Check(!BuildSetModificationTime("ftp://h/a%0D%0AX", when, p, error),
+              "a line break in the name");
+        int y, mo, d, h, mi, se, wd;
+        CivilFromUnix(951782400, y, mo, d, h, mi, se, wd);   // 2000-02-29 00:00:00, a Tuesday
+        Check(y == 2000 && mo == 2 && d == 29 && h == 0 && wd == 2, "a leap day");
+        CivilFromUnix(0, y, mo, d, h, mi, se, wd);
+        Check(y == 1970 && mo == 1 && d == 1 && wd == 4, "the epoch, a Thursday");
+    }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures,
                 failures == 1 ? "" : "s");

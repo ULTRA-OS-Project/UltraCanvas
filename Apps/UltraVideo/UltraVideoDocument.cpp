@@ -472,7 +472,14 @@ std::vector<double> Document::SegmentStarts() const {
     return starts;
 }
 
-std::vector<VideoFXSegment> Document::SegmentsForEngine() const {
+VideoFXOverlay TitleSpan::Look() const {
+    VideoFXOverlay o = look;
+    if (o.fontFamily.empty()) o.fontFamily = "Ubuntu";
+    if (o.lineSpacing <= 0.0) o.lineSpacing = 120.0;
+    return o;
+}
+
+std::vector<VideoFXSegment> Document::SegmentsForEngine(const std::string& hiddenTitle) const {
     std::vector<VideoFXSegment> segments = project.segments;
     if (titles.empty() && overlays.empty()) return segments;
     const std::vector<double> starts = SegmentStarts();
@@ -503,12 +510,14 @@ std::vector<VideoFXSegment> Document::SegmentsForEngine() const {
             o.fadeOut = b >= v.End() - 1e-6 ? std::min(v.fadeOut, b - a) : 0.0;
             segments[i].overlays.push_back(o);
         }
-        for (const TitleSpan& t : titles) {
+        for (size_t ti = 0; ti < titles.size(); ++ti) {
+            const TitleSpan& t = titles[ti];
             if (t.look.text.empty()) continue;
+            if (!hiddenTitle.empty() && t.id == hiddenTitle) continue;
             const double a = std::max(s, t.start);
             const double b = std::min(e, t.End());
             if (b - a < 0.04) continue;
-            VideoFXOverlay o = t.look;
+            VideoFXOverlay o = t.Look();
             o.kind = VideoFXOverlayKind::Text;
             o.start = a - s;
             o.end = b - s;
@@ -738,6 +747,12 @@ bool Document::Save(const std::string& toPath, std::string& error) {
         o.Set("margin", t.look.margin);
         o.Set("opacity", t.look.opacity);
         o.Set("fontPath", Relative(t.look.fontPath, base));
+        // The text bar's: the words as typed, the font, the alignment, the spacings
+        if (!t.look.richText.empty()) { o.Set("words", t.look.richText); o.Set("wordsHeight", t.look.richTextHeight); }
+        o.Set("font", t.Look().fontFamily);
+        o.Set("align", t.look.textAlign);
+        o.Set("lineSpacing", t.Look().lineSpacing);
+        o.Set("letterSpacing", t.look.letterSpacing);
         spans.Append(o);
     }
     root.Set("titles", spans);
@@ -899,6 +914,12 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
             t.look.margin = o.Get("margin").GetNumber(0.05);
             t.look.opacity = o.Get("opacity").GetNumber(1.0);
             t.look.fontPath = Absolute(o.Get("fontPath").GetString(), base);
+            t.look.richText = o.Get("words").GetString();
+            t.look.richTextHeight = static_cast<int>(std::clamp<int64_t>(o.Get("wordsHeight").GetInteger(1080), 16, 100000));
+            t.look.fontFamily = o.Get("font").GetString("Ubuntu");
+            t.look.textAlign = static_cast<int>(std::clamp<int64_t>(o.Get("align").GetInteger(1), 0, 2));
+            t.look.lineSpacing = std::clamp(o.Get("lineSpacing").GetNumber(120.0), 10.0, 1000.0);
+            t.look.letterSpacing = std::clamp(o.Get("letterSpacing").GetNumber(0.0), -1.0, 1.0);
             if (t.id.empty()) t.id = loaded.NewTitleId();
             loaded.titles.push_back(t);
         }

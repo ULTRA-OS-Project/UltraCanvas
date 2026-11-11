@@ -35,12 +35,14 @@
 // the build has it. Without UltraMessage the lock still stops a second copy;
 // it just cannot bring the first one forward, and Claim() answers
 // AlreadyRunning.
+// Version: 1.3.0 - Claim retakes the lock while it waits for an answer, so a
+//                  copy still ending does not make it say "already running"
 // Version: 1.2.0 - answered from the bus thread; Listen before the start-up
 //                  files are opened
 // Version: 1.1.0 - MakeOpenRequest / ListenOpen: the second start's files go
 //                  to the running copy, as absolute paths
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -77,8 +79,11 @@ namespace UltraCanvas {
 
         // Takes the lock - in `lockDirectory` when given, else in the per-user
         // settings folder. When another copy holds it, offers it `request`
-        // (an object; empty means "just come forward"), waiting up to ten
-        // seconds for a copy that is still starting. A lock that cannot be
+        // (an object; empty means "just come forward"), waiting up to fifteen
+        // seconds for a copy that is still starting. Meanwhile it tries the
+        // lock again: a copy whose window has closed but whose process is
+        // still ending does not answer, and once it has gone this start is
+        // the application (First). A lock that cannot be
         // taken for any other reason (an unwritable folder, a platform
         // without locks) does not stop the start: it answers First.
         Start Claim(const JSONValue& request = JSONValue::MakeObject(),
@@ -125,7 +130,10 @@ namespace UltraCanvas {
         const std::string& GetAppId() const { return appId_; }
 
     private:
-        bool HandOff(const JSONValue& request);
+        // Offers `request` to the running copy until the grace period ends,
+        // retaking the lock at `lockPath` between tries: HandedOff, First
+        // when the lock came free, else AlreadyRunning.
+        Start HandOff(const JSONValue& request, const std::string& lockPath);
 
         std::string appId_;
         std::string displayName_;

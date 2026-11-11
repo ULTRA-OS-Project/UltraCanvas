@@ -1,10 +1,12 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
+// Version: 3.8.0 - FromTheme sets the value's font at the caption size; the SetStyle rule and the constructor tail
+// Version: 3.7.1 - a slider that shows no value centres its bar across its box
 // Version: 3.7.0 - the handle as element roles (slider.handle, slider.handle-border)
 // Version: 3.6.0 - SliderVisualStyle::FromTheme, ApplyTheme
 // Version: 3.5.0 - a slider to screen readers, with a value they can read and set
 // Version: 3.3.1
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -272,6 +274,7 @@ namespace UltraCanvas {
         SliderVisualStyle& GetStyle() { return style; }
         const SliderVisualStyle& GetStyle() const { return style; }
         void SetStyle(const SliderVisualStyle& st) {
+            StyleSetByHand();
             style = st;
         }
 

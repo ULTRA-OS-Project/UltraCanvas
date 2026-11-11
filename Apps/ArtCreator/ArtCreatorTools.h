@@ -9,10 +9,16 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
+// Version: 1.7.0 - text is typed on the page: ArtToolContext::requestText starts typing at a
+//                  point or in a text; ArtToolOptions' text attributes are the window's text
+//                  bar's (italic, underline, strikethrough, alignment, line and letter spacing)
+// Version: 1.6.0 - ArtToolContext::setRotationHandleStyle
+// Version: 1.5.0 - ArtOptionWidgets::AddSection; AddSwitch takes icons
+// Version: 1.4.0 - ArtToolContext::iconPath; ArtOptionWidgets::AddIconBar and AddSwitch
 // Version: 1.3.0 - ArtToolContext::lockAspectRatio
 // Version: 1.2.0 - ArtToolContext::iconPixel
 // Version: 1.1.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -20,6 +26,9 @@
 #include "UltraCanvasBezierPath.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasToolbar.h"
 
 #include <functional>
 #include <memory>
@@ -70,9 +79,16 @@ struct ArtToolOptions {
     float lineArrowScale = 1.0f;
     int   lineProfile = 0;             // 0 none, 1 taper end, 2 taper start, 3 taper both, 4 bulge
     int   lineBrush = 0;               // 0 none, 1 dots, 2 dashes, 3 hearts
+    // The text bar: what a new text is set in, and what the bar shows.
     std::string textFont = "Sans";
-    int   textSize = 24;
+    float textSize = 24.0f;            // points (the drawing's units)
     bool  textBold = false;
+    bool  textItalic = false;
+    bool  textUnderline = false;
+    bool  textStrike = false;
+    int   textAlign = 0;               // 0 left, 1 centre, 2 right (VectorStorage::TextAnchor)
+    float textLineSpacing = 120.0f;    // % of the size from one baseline to the next
+    float textLetterSpacing = 0.0f;    // points added between letters
 };
 
 // The line gallery's named choices, shared by the Line panel and the
@@ -100,8 +116,12 @@ struct ArtToolContext {
     std::function<Color()> fillColor;      // the colour picker's foreground
     std::function<Color()> lineColor;      // its background
     std::function<void(const std::string&)> setStatus;
-    // The text tool asks the window to show its dialog for a document point.
-    std::function<void(double, double)> requestText;
+    // The text tool asks the window to start typing on the page: into
+    // `text` when one was clicked, else a new text whose first line's
+    // baseline starts at the document point.
+    // Its font, size, style, alignment and spacing are set on the window's
+    // text bar.
+    std::function<void(const Point2Dd&, const std::shared_ptr<VectorStorage::VectorText>&)> requestText;
     // A tool wants another tool (the selector hands a double-clicked path
     // to the shape editor).
     std::function<void(ArtToolId)> selectTool;
@@ -111,6 +131,11 @@ struct ArtToolContext {
     // The transform bar's ratio lock: the selector's handles scale width and
     // height alike (shift frees a corner handle for the drag).
     bool lockAspectRatio = false;
+    // A panel icon's full path from its name in media/icons/artcreator/.
+    std::function<std::string(const std::string&)> iconPath;
+    // The Selector's Dial / Stem switch: the window shows the rotation
+    // handle that way and keeps the choice in its settings.
+    std::function<void(VectorRotationHandleStyle)> setRotationHandleStyle;
 };
 
 class ArtTool {
@@ -180,8 +205,32 @@ namespace ArtOptionWidgets {
                      const std::vector<std::string>& items, int selected,
                      const std::function<void(int)>& onChange);
     void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text);
+    // A row of text buttons sharing the width equally.
     void AddButtonRow(UltraCanvasContainer& panel, const std::string& id,
                       const std::vector<std::pair<std::string, std::function<void()>>>& buttons);
+    // One flat 24 px icon button of an icon bar; an empty `icon` puts a
+    // divider between two groups instead.
+    struct IconAction {
+        std::string icon;          // full path
+        std::string tooltip;
+        std::function<void()> action;
+    };
+    // A row of flat icon buttons, as the Layers card's, each with its
+    // tooltip; returns the buttons in the order given (no dividers).
+    std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer& panel, const std::string& id,
+                                                               const std::vector<IconAction>& items);
+    // A section of a tool's options in a group box of its own, captioned
+    // `title` in small grey text; its content is a column. Add the
+    // section's rows to the returned box.
+    std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, const std::string& id,
+                                                     const std::string& title);
+    // A segmented switch between a few modes, `selected` lit; `icons`
+    // (full paths, one per item, or none) go before the captions, in the
+    // caption's colour.
+    std::shared_ptr<UltraCanvasSegmentedControl> AddSwitch(UltraCanvasContainer& panel, const std::string& id,
+                                                           const std::vector<std::string>& items, int selected,
+                                                           const std::function<void(int)>& onChange,
+                                                           const std::vector<std::string>& icons = {});
 }
 
 } // namespace UltraCanvas

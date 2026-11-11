@@ -23,7 +23,7 @@ Adjust and Filter menus is one PixelFX call chain:
 | Alpha | `Colour::Premultiply / Unpremultiply / AddAlpha / Flatten / HasAlpha` |
 | Text rasterisation | `Generate::Text` (Pango) — the text tool stamps its mask |
 | Region growing | `Draw::FloodFillTolerance`, `Draw::MagicWandMask` (kept as reference; the editor has its own so it works without libvips and on merged samples) |
-| Histogram / curves | `Colour::HistFind`, `MapLut` with `UltraCanvasToneCurve` LUTs |
+| Histogram / curves | `ComputeImageHistogram` (`UltraCanvasHistogramModel.h`) for the Curves backdrop, `MapLut` with `UltraCanvasToneCurve` LUTs |
 
 ## What the UI framework already covered
 

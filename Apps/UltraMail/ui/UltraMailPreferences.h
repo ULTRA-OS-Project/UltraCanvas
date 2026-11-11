@@ -4,6 +4,11 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.17.0 - sendNotification: a sent message is reported in a popup
+//                   window or in the status bar (Settings > Handling > Email
+//                   send notification)
+// Version: 0.16.0 - attachmentPlacement: a message's attachments under it or at
+//                   the right (Settings > Reading > Attachments)
 // Version: 0.15.0 - switchOnQuietSec: how long alerts about failed mail checks
 //                   wait after the computer was switched on (Settings > Mail >
 //                   Connection)
@@ -68,6 +73,19 @@ enum class LinkDisplay {
     Tooltip      // a tooltip over the hovered link; the status bar stays quiet
 };
 
+// Where a message's attachments are shown, in the reading pane and in the
+// compose window.
+enum class AttachmentPlacement {
+    Bottom,   // a row of chips under the message
+    Right     // a column of chips at the right of the message
+};
+
+// How UltraMail says that a message was sent.
+enum class SendNotification {
+    Popup,       // a popup window ("Message sent to ...") that is closed with OK
+    StatusBar    // the status bar says it; nothing to close
+};
+
 // The handful of app-wide view options. Add fields here (with a default) and a
 // matching key in Load/Save; unknown keys and a missing file are ignored so an
 // older/newer file never breaks startup.
@@ -121,6 +139,10 @@ struct Preferences {
     // only the one chosen in the account bar.
     FolderTreeContent folderTreeContent = FolderTreeContent::AllAccounts;
 
+    // Settings > Reading > Attachments: under the message, or at its right.
+    AttachmentPlacement attachmentPlacement = AttachmentPlacement::Bottom;
+    bool AttachmentsRight() const { return attachmentPlacement == AttachmentPlacement::Right; }
+
     // The accounts' order in the account bar and the folder tree, as the
     // reader dragged the account tiles: account ids, first to last. Accounts
     // it does not name (added since) follow, in the order they came.
@@ -173,6 +195,12 @@ struct Preferences {
     // the desktop's notification server - names the sender and subject (or
     // counts the messages), and a click on it opens the mail.
     bool notifyNewMail = true;
+
+    // Settings > Handling > Email send notification: a message sent
+    // successfully is reported in a popup window, or in the status bar. A
+    // message that could not be sent is always reported in a window: it
+    // needs an answer (Retry).
+    SendNotification sendNotification = SendNotification::Popup;
 
     // Settings > Spam/scam warnings: which kinds of warning the content scan
     // gives - phishing, romance scams, advance-fee letters, letters in an

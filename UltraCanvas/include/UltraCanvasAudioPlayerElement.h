@@ -2,8 +2,10 @@
 // Composite UI control wrapping UltraCanvasAudioPlayer, built from child widgets
 // (icon buttons, sliders, label) arranged by a flex row layout so the framework
 // owns alignment/centering instead of hand-computed draw offsets.
+// Version: 0.4.0 - AudioPlayerStyle::FromTheme, ApplyTheme: the bar follows the theme; a SetStyle by hand stops
+//                  the following
 // Version: 0.3.1
-// Last Modified: 2026-08-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,6 +78,14 @@ struct AudioPlayerStyle {
     bool  showLoopButton = false;
     bool  showWaveform = false;
     bool  compact = false;             // Icon-only layout
+
+    // The theme's roles over a base's own shape and flags: the panel with a
+    // hairline, the pressed fill for the track and the accent for its fill,
+    // the raised surface with the control border for the knob, ink, the
+    // icons in muted ink and the accent hovered
+    static AudioPlayerStyle FromTheme(const UltraCanvasTheme& theme, const AudioPlayerStyle& base);
+    static AudioPlayerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, AudioPlayerStyle()); }
+    static AudioPlayerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== AUDIO PLAYER UI ELEMENT =====
@@ -112,6 +122,7 @@ public:
 
     // ===== STYLE =====
     void SetStyle(const AudioPlayerStyle& s);
+    void ApplyTheme(const UltraCanvasTheme& theme) override;
     const AudioPlayerStyle& GetStyle() const { return style; }
     void SetTrackTitle(const std::string& title);
     const std::string& GetTrackTitle() const { return trackTitle; }

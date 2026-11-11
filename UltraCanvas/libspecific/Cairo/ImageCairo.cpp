@@ -1,5 +1,11 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.11.0 - the framework's JPEG XL loader and saver registered where libvips has none (VipsJxlPlugin)
+// Version: 2.10.0 - a picture without an alpha channel decodes to an RGB24 pixmap
+//                   (no alpha, a copy when composited); GetPixmap keeps a large
+//                   fitted pixmap on disk as a QOI blob between runs
+// Version: 2.9.1 - GetVImage of a pixel-made picture through the C call, for libvips 8.12 (Ubuntu 22.04)
+// Version: 2.9.0 - FromBgra / FromRgba: a picture from pixels, scaled from its own surface
 // Version: 2.8.0 - GIF through libvips everywhere: its gifsave, else the
 //                  framework's encoder registered as ucgifsave (VipsGifPlugin)
 // Version: 2.7.0 - VipsCanDecode asks libheif whether it decodes HEIC (HEVC) and
@@ -26,6 +32,8 @@
 #include "StbRasterDecode.h"
 #include "UltraCanvasCoderModuleRepair.h"
 #include "UltraCanvasFileStamp.h"
+#include "UltraCanvasThumbnailDiskCache.h"          // GetPixmap: large fitted pixmaps kept on disk
+#include "QoiPixmapCodec.h"
 #include "UltraCanvasVectorPreview.h"              // LoadVectorPreviewDocument, RenderVectorDocumentPixmap
 #include "DataFormats/UltraCanvasVectorStorage.h"  // VectorDocument::Size, GetBoundingBox
 // The bundled QOI file-format codec (always compiled) - see
@@ -35,6 +43,9 @@
 #include "VipsQoiLoader.h"
 #include "VipsIcoPlugin.h"
 #include "VipsGifPlugin.h"
+#ifdef HAS_LIBJXL
+#include "VipsJxlPlugin.h"                          // jxlload / jxlsave where libvips has none
+#endif
 #endif
 #ifdef HAS_LIBHEIF
 #include <libheif/heif.h>                          // VipsCanDecode: which codecs decode here
@@ -55,6 +66,7 @@
 #include <memory>
 #include <iostream>
 #include <unordered_map>
+#include <vector>
 #ifdef _WIN32
 #include <stdlib.h>
 #include <windows.h>
@@ -63,6 +75,9 @@
 #include "UltraCanvasDebug.h"
 
 #define HAS_PIXMAPS_CACHE 1
+// Raw pixels (width x height x scale^2) from which a fitted pixmap is kept
+// on disk between runs (GetPixmap): a window-sized picture, not an icon.
+static constexpr double kPersistedPixmapMinPixels = 640.0 * 480.0;
 
 namespace UltraCanvas {
     struct UCPixmapCairoCacheEntry {
@@ -88,6 +103,40 @@ namespace UltraCanvas {
 #endif
     UCCache<UCImageRaster, UCImageRasterCacheEntry> g_ImagesCache(50 * 1024 * 1024);
 
+    namespace {
+        // The name an image that arrived as bytes is known by. Never the
+        // address of the bytes: the caller's buffer is usually a temporary
+        // that is freed, and the allocator hands the same address to the
+        // next buffer of a similar size - two images under one name, and
+        // since the pixmap cache keys on the name (MakePixmapCacheKey), one
+        // drew the other's cached picture. A counter makes every in-memory
+        // image a name of its own, with or without libvips.
+        std::string NextMemoryImageName(size_t dataSize) {
+            static std::atomic<unsigned long long> s_memImageId{0};
+            return ":mem:" + std::to_string(s_memImageId.fetch_add(1)) + ":" +
+                   std::to_string(dataSize);
+        }
+
+        // What GetFromMemory files a buffer under: its content, not where it
+        // happens to live. 64-bit FNV-1a over eight bytes at a time - a
+        // decode costs orders of magnitude more than this pass - and a hit is
+        // checked against the bytes the cached image kept, so a collision
+        // costs a decode, never a wrong picture.
+        uint64_t HashImageBytes(const uint8_t* data, size_t size) {
+            uint64_t hash = 1469598103934665603ull;
+            constexpr uint64_t kPrime = 1099511628211ull;
+            size_t i = 0;
+            for (; i + 8 <= size; i += 8) {
+                uint64_t word;
+                std::memcpy(&word, data + i, 8);
+                hash = (hash ^ word) * kPrime;
+                hash ^= hash >> 29;
+            }
+            for (; i < size; ++i) hash = (hash ^ data[i]) * kPrime;
+            return hash ^ size;
+        }
+    } // namespace
+
 
     UCPixmapCairo::UCPixmapCairo(cairo_surface_t *surf) {
         surface = surf;
@@ -104,6 +153,14 @@ namespace UltraCanvas {
         Init(w, h);
     }
 
+    UCPixmapCairo::UCPixmapCairo(int w, int h, bool opaque) {
+        Init(w, h, opaque);
+    }
+
+    bool UCPixmapCairo::IsOpaque() const {
+        return surface && cairo_image_surface_get_format(surface) == CAIRO_FORMAT_RGB24;
+    }
+
     UCPixmapCairo::~UCPixmapCairo() {
         if (surface) {
             cairo_surface_destroy(surface);
@@ -111,7 +168,11 @@ namespace UltraCanvas {
     }
 
     bool UCPixmapCairo::Init(int w, int h) {
-        if (pixelsPtr && w == width && h == height) {
+        return Init(w, h, false);
+    }
+
+    bool UCPixmapCairo::Init(int w, int h, bool opaque) {
+        if (pixelsPtr && w == width && h == height && IsOpaque() == opaque) {
             Clear();
             return true;
         }
@@ -122,7 +183,7 @@ namespace UltraCanvas {
             cairo_surface_destroy(surface);
             surface = nullptr;
         }
-        surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        surface = cairo_image_surface_create(opaque ? CAIRO_FORMAT_RGB24 : CAIRO_FORMAT_ARGB32, width, height);
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UCPixmapCairo: Cant create surface" << std::endl;
             return false;
@@ -145,7 +206,10 @@ namespace UltraCanvas {
     }
     void UCPixmapCairo::Clear() {
         if (pixelsPtr) {
-            memset(pixelsPtr, 0, width * height * 4);
+            // Transparent, or for an opaque pixmap black with the unused top
+            // byte 0xFF (see IsOpaque)
+            if (IsOpaque()) std::fill_n(pixelsPtr, static_cast<size_t>(width) * height, 0xFF000000u);
+            else memset(pixelsPtr, 0, width * height * 4);
             cairo_surface_mark_dirty(surface);
         }
     }
@@ -172,6 +236,148 @@ namespace UltraCanvas {
         // by deviceScale to report logical units to drawing code.
     }
 
+
+    // ===== A PICTURE FROM PIXELS =====
+    // The box w x h, by the fit mode, with the libvips thumbnail path's
+    // meaning: Fill stretches to the box, Contain fits it, ScaleDown fits it
+    // but never past the natural size, Cover covers it and is cropped to it,
+    // NoScale is the natural size. Rendered at device pixels (`scale`). Shared
+    // by the pixel-made pictures and the build without libvips.
+    namespace {
+        std::shared_ptr<UCPixmapCairo> ScaleSurfaceToBox(cairo_surface_t* source, int sw, int sh, int w, int h,
+                                                         ImageFitMode fitMode, float scale) {
+            if (!source || sw <= 0 || sh <= 0 || w <= 0 || h <= 0) return nullptr;
+            if (scale <= 0.0f) scale = 1.0f;
+            const double sx = static_cast<double>(w) / sw;
+            const double sy = static_cast<double>(h) / sh;
+            double fx = 1.0, fy = 1.0;
+            switch (fitMode) {
+                case ImageFitMode::Fill:      fx = sx; fy = sy; break;
+                case ImageFitMode::Contain:   fx = fy = std::min(sx, sy); break;
+                case ImageFitMode::ScaleDown: fx = fy = std::min(1.0, std::min(sx, sy)); break;
+                case ImageFitMode::Cover:     fx = fy = std::max(sx, sy); break;
+                case ImageFitMode::NoScale:   break;
+            }
+            const int tw = std::max(1, static_cast<int>(std::lround(sw * fx * scale)));
+            const int th = std::max(1, static_cast<int>(std::lround(sh * fy * scale)));
+            // An opaque source (RGB24) scales to an opaque pixmap
+            const bool opaque = cairo_image_surface_get_format(source) == CAIRO_FORMAT_RGB24;
+            auto pm = std::make_shared<UCPixmapCairo>(tw, th, opaque);
+            if (!pm->IsValid()) return nullptr;
+            {
+                cairo_t* cr = cairo_create(pm->GetSurface());
+                cairo_scale(cr, static_cast<double>(tw) / sw, static_cast<double>(th) / sh);
+                cairo_set_source_surface(cr, source, 0, 0);
+                cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+                // The edge rows repeat outward: without it the filter blends
+                // the outermost pixels with the transparent nothing beyond
+                // them, and a scaled picture gets a soft, half-see-through rim
+                cairo_pattern_set_extend(cairo_get_source(cr), CAIRO_EXTEND_PAD);
+                cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+                cairo_paint(cr);
+                cairo_destroy(cr);
+            }
+            pm->MarkDirty();
+            pm->Flush();
+            if (fitMode == ImageFitMode::Cover && (tw > w * scale || th > h * scale)) {
+                // Centre crop to the box, in device pixels.
+                const int bw = std::max(1, static_cast<int>(std::lround(w * scale)));
+                const int bh = std::max(1, static_cast<int>(std::lround(h * scale)));
+                auto cropped = std::make_shared<UCPixmapCairo>(bw, bh, opaque);
+                if (!cropped->IsValid()) return nullptr;
+                cairo_t* cr = cairo_create(cropped->GetSurface());
+                cairo_set_source_surface(cr, pm->GetSurface(), -(tw - bw) / 2.0, -(th - bh) / 2.0);
+                cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+                cairo_paint(cr);
+                cairo_destroy(cr);
+                cropped->MarkDirty();
+                cropped->Flush();
+                pm = cropped;
+            }
+            if (scale != 1.0f) pm->SetDeviceScale(scale);
+            return pm;
+        }
+
+        // One premultiplied ARGB32 pixel (the native uint32 cairo reads) from
+        // straight channels
+        inline uint32_t PremultipliedPixel(unsigned r, unsigned g, unsigned b, unsigned a) {
+            if (a == 255) return 0xFF000000u | (r << 16) | (g << 8) | b;
+            if (a == 0) return 0;
+            r = (r * a + 127) / 255;
+            g = (g * a + 127) / 255;
+            b = (b * a + 127) / 255;
+            return (a << 24) | (r << 16) | (g << 8) | b;
+        }
+
+        std::shared_ptr<UCImageRaster> MakeFromPixels(const uint8_t* pixels, int width, int height, int stride,
+                                                      bool bgra, bool opaque, int& transparency,
+                                                      std::shared_ptr<UCPixmapCairo>& surface) {
+            static std::atomic<unsigned long long> s_pixel_image_id{0};
+            if (!pixels || width <= 0 || height <= 0 || stride < width * 4) return nullptr;
+            auto pm = std::make_shared<UCPixmapCairo>(width, height);
+            if (!pm->IsValid()) return nullptr;
+            cairo_surface_t* target = pm->GetSurface();
+            cairo_surface_flush(target);
+            unsigned char* data = cairo_image_surface_get_data(target);
+            const int targetStride = cairo_image_surface_get_stride(target);
+            bool seeThrough = false;
+            for (int y = 0; y < height; ++y) {
+                const uint8_t* src = pixels + static_cast<size_t>(y) * static_cast<size_t>(stride);
+                uint32_t* dst = reinterpret_cast<uint32_t*>(data + static_cast<size_t>(y) * targetStride);
+                for (int x = 0; x < width; ++x, src += 4) {
+                    const unsigned r = bgra ? src[2] : src[0];
+                    const unsigned g = src[1];
+                    const unsigned b = bgra ? src[0] : src[2];
+                    const unsigned a = opaque ? 255u : src[3];
+                    if (a != 255) seeThrough = true;
+                    dst[x] = PremultipliedPixel(r, g, b, a);
+                }
+            }
+            pm->MarkDirty();
+            pm->Flush();
+            char filename[64];
+            snprintf(filename, sizeof(filename), ":pix:%llu:%dx%d", s_pixel_image_id.fetch_add(1), width, height);
+            auto result = std::make_shared<UCImageRaster>(filename);
+            transparency = seeThrough ? 1 : 0;
+            surface = pm;
+            return result;
+        }
+    } // namespace
+
+    std::shared_ptr<UCImageRaster> UCImageRaster::FromBgra(const uint8_t* pixels, int width, int height, int stride,
+                                                           bool opaque) {
+        int transparency = 0;
+        std::shared_ptr<UCPixmapCairo> surface;
+        auto result = MakeFromPixels(pixels, width, height, stride, true, opaque, transparency, surface);
+        if (!result) return nullptr;
+        result->width = width;
+        result->height = height;
+        result->transparency = transparency;
+        result->pixelSource = surface;
+        return result;
+    }
+
+    std::shared_ptr<UCImageRaster> UCImageRaster::FromRgba(const uint8_t* pixels, int width, int height) {
+        int transparency = 0;
+        std::shared_ptr<UCPixmapCairo> surface;
+        auto result = MakeFromPixels(pixels, width, height, width * 4, false, false, transparency, surface);
+        if (!result) return nullptr;
+        result->width = width;
+        result->height = height;
+        result->transparency = transparency;
+        result->pixelSource = surface;
+        return result;
+    }
+
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapFromPixelSource(int w, int h, ImageFitMode fitMode,
+                                                                             float scale) {
+        if (!pixelSource) return nullptr;
+        if (w <= 0 || h <= 0) {
+            w = width;
+            h = height;
+        }
+        return ScaleSurfaceToBox(pixelSource->GetSurface(), width, height, w, h, fitMode, scale);
+    }
 
 #ifdef HAS_LIBVIPS
     bool UCImageRaster::InitializeImageSubsysterm(const char *programName) {
@@ -204,6 +410,9 @@ namespace UltraCanvas {
         vips_foreign_load_qoi_init_types();
         vips_foreign_ico_init_types();
         vips_foreign_gif_init_types();
+#ifdef HAS_LIBJXL
+        vips_foreign_jxl_init_types();
+#endif
         return true;
     }
 
@@ -289,6 +498,16 @@ namespace UltraCanvas {
         // the same, and says why vips_cache_drop_all() is not the call for it.
         // Nothing is lost but a few cached headers, and this runs only when a
         // file is known to have changed.
+        ReleaseCachedFiles();
+#endif
+    }
+
+    void UCImageRaster::ReleaseCachedFiles() {
+#ifdef HAS_LIBVIPS
+        // Trimmed to nothing and allowed to grow again: the finished
+        // operations go, and with them the files they hold. Not
+        // vips_cache_drop_all(), which frees the cache table itself (see
+        // PixelFX::ReleaseCachedFiles).
         const int maxOperations = vips_cache_get_max();
         vips_cache_set_max(0);
         vips_cache_set_max(maxOperations);
@@ -296,13 +515,27 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UCImageRaster> UCImageRaster::GetFromMemory(const uint8_t* data, size_t dataSize) {
-        char filename[200];
-        snprintf(filename, sizeof(filename), ":mem:%p:%ld", data, dataSize);
-        std::shared_ptr<UCImageRaster> im = g_ImagesCache.GetFromCache(filename);
+        if (!data || dataSize == 0) return LoadFromMemory(data, dataSize);
+        // Keyed by the bytes, not by their address: a buffer freed and
+        // another allocated at the same place with the same size found the
+        // first one's image here (see NextMemoryImageName).
+        char key[64];
+        snprintf(key, sizeof(key), ":memhash:%016llx:%zu",
+                 static_cast<unsigned long long>(HashImageBytes(data, dataSize)),
+                 dataSize);
+        std::shared_ptr<UCImageRaster> im = g_ImagesCache.GetFromCache(key);
+        // Two buffers can share a hash; the cached image kept its own copy of
+        // its bytes (an SVG decoded as a document is the exception), so a hit
+        // is only a hit when they are these bytes.
+        if (im && im->imgDataPtr &&
+            (im->imgDataSize != dataSize ||
+             std::memcmp(im->imgDataPtr, data, dataSize) != 0)) {
+            im = nullptr;
+        }
         if (!im) {
             im = UCImageRaster::LoadFromMemory(data, dataSize);
             if (im->IsValid()) {
-                g_ImagesCache.AddToCache(filename, im);
+                g_ImagesCache.AddToCache(key, im);
             }
         }
         return im;
@@ -603,6 +836,7 @@ namespace UltraCanvas {
     }
 
     bool UCImageRaster::HasTransparency() {
+        if (pixelSource) return transparency == 1;   // known since the pixels came in
         if (transparency >= 0) return transparency == 1;
         transparency = 0;
 #ifdef HAS_LIBRSVG
@@ -663,6 +897,41 @@ namespace UltraCanvas {
     }
 
     vips::VImage UCImageRaster::GetVImage() {
+        if (pixelSource) {
+            // The surface's premultiplied ARGB32 back to straight R, G, B, A
+            // rows, which libvips takes as an sRGB image with alpha
+            cairo_surface_t* surface = pixelSource->GetSurface();
+            cairo_surface_flush(surface);
+            const unsigned char* data = cairo_image_surface_get_data(surface);
+            const int stride = cairo_image_surface_get_stride(surface);
+            std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4);
+            for (int y = 0; y < height; ++y) {
+                const uint32_t* src = reinterpret_cast<const uint32_t*>(data + static_cast<size_t>(y) * stride);
+                uint8_t* dst = rgba.data() + static_cast<size_t>(y) * width * 4;
+                for (int x = 0; x < width; ++x, dst += 4) {
+                    const uint32_t p = src[x];
+                    const unsigned a = p >> 24;
+                    unsigned r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                    if (a != 0 && a != 255) {
+                        r = std::min(255u, (r * 255 + a / 2) / a);
+                        g = std::min(255u, (g * 255 + a / 2) / a);
+                        b = std::min(255u, (b * 255 + a / 2) / a);
+                    }
+                    dst[0] = static_cast<uint8_t>(r);
+                    dst[1] = static_cast<uint8_t>(g);
+                    dst[2] = static_cast<uint8_t>(b);
+                    dst[3] = static_cast<uint8_t>(a);
+                }
+            }
+            // The C call: VImage::new_from_memory_copy is newer than the
+            // libvips 8.12 of Ubuntu 22.04, which CI builds on. The copy
+            // lets the vector go at the end of this function.
+            VipsImage* raw = vips_image_new_from_memory_copy(rgba.data(), rgba.size(), width, height, 4,
+                                                              VIPS_FORMAT_UCHAR);
+            if (!raw) throw vips::VError();
+            vips::VImage image(raw);   // takes the reference
+            return image.copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB));
+        }
         if (imgDataPtr) { // Create VImage from memory buffer
             return vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "");
         } else { // Create VImage from file
@@ -672,16 +941,8 @@ namespace UltraCanvas {
 
 // With these two functions:
     std::shared_ptr<UCImageRaster> UCImageRaster::LoadFromMemory(const uint8_t* data, size_t dataSize) {
-        // Synthetic filename from a globally-unique id rather than the data POINTER: the
-        // caller's buffer is often a temporary that is freed and whose address the allocator
-        // then reuses, so two distinct in-memory images could end up with the same ":mem:ptr:size"
-        // fileName — and therefore the same shared pixmap-cache key (MakePixmapCacheKey embeds
-        // fileName). One image would then draw another's (or a stale/blank) cached pixmap. A
-        // monotonic id keeps every in-memory image's cache key distinct.
-        static std::atomic<unsigned long long> s_mem_image_id { 0 };
-        char filename[64];
-        snprintf(filename, sizeof(filename), ":mem:%llu:%zu", s_mem_image_id.fetch_add(1), dataSize);
-        auto result = std::make_shared<UCImageRaster>(filename);
+        // A name of its own, never the buffer's address (NextMemoryImageName).
+        auto result = std::make_shared<UCImageRaster>(NextMemoryImageName(dataSize));
 
         if (!data || dataSize == 0) {
             result->errorMessage = "Invalid data: null pointer or zero size";
@@ -774,9 +1035,8 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UCImageRaster> UCImageRaster::LoadFromMemory(const uint8_t* data, size_t dataSize) {
-        char filename[200];
-        snprintf(filename, sizeof(filename), ":mem:%p:%zu", data, dataSize);
-        auto result = std::make_shared<UCImageRaster>(filename);
+        // A name of its own, never the buffer's address (NextMemoryImageName).
+        auto result = std::make_shared<UCImageRaster>(NextMemoryImageName(dataSize));
         if (!data || dataSize == 0) {
             result->errorMessage = "Invalid data: null pointer or zero size";
             return result;
@@ -916,7 +1176,34 @@ namespace UltraCanvas {
         std::string key = MakePixmapCacheKey(w, h, fitMode, scale);
         std::shared_ptr<UCPixmapCairo> pm = g_PixmapsCache.GetFromCache(key);
         if (!pm) {
-            pm = CreatePixmap(w, h, fitMode, scale);
+            // A large picture fitted to a box - a desktop's wallpaper, a
+            // viewer's photo - keeps its fitted pixmap on disk as a QOI blob
+            // (the thumbnail cache's own form), so the next run inflates it
+            // in a fraction of the decode: no file decode, no resize. Only
+            // for a raster file on disk; small boxes (icons, thumbnails of
+            // the Filer, which has its own entries) are not worth a file.
+            const bool persist = ThumbnailDiskCache::IsEnabled() && !vectorDocument &&
+                                 fileName.compare(0, 5, ":mem:") != 0 &&
+                                 static_cast<double>(w) * h * scale * scale >= kPersistedPixmapMinPixels;
+            ThumbnailDiskCache::Request request;
+            ThumbnailDiskCache::SourceStamp madeFrom;
+            if (persist) {
+                request.sourcePath = fileName;
+                request.width = w;
+                request.height = h;
+                request.fit = static_cast<int>(fitMode);
+                request.scale = scale;
+                madeFrom = ThumbnailDiskCache::StampSource(fileName);
+                const std::vector<uint8_t> blob = ThumbnailDiskCache::Load(request);
+                if (!blob.empty()) pm = QoiDecompressPixmap(blob);
+            }
+            if (!pm) {
+                pm = CreatePixmap(w, h, fitMode, scale);
+                if (pm && persist && madeFrom.valid) {
+                    const std::vector<uint8_t> blob = QoiCompressPixmap(*pm);
+                    if (!blob.empty()) ThumbnailDiskCache::Store(request, blob, madeFrom);
+                }
+            }
             if (pm) {
                 g_PixmapsCache.AddToCache(key, pm);
             }
@@ -930,6 +1217,7 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
         if (scale <= 0.0f) scale = 1.0f;
+        if (pixelSource) return CreatePixmapFromPixelSource(w, h, fitMode, scale);
         if (vectorDocument) {
             return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
         }
@@ -1003,6 +1291,15 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    // RGBx bytes to cairo's native-endian xRGB words with the top byte 0xFF:
+    // no alpha, so nothing to premultiply.
+    void rgbx2bgrx(const uint32_t *src, uint32_t *dst, int n) {
+        for (int x = 0; x < n; x++) {
+            const uint32_t rgbx = GUINT32_FROM_BE(src[x]);
+            dst[x] = 0xFF000000u | ((rgbx >> 8) & 0x00FFFFFFu);
+        }
+    }
+
     void rgba2bgra_premultiplied(uint32_t *src, uint32_t *dst, int n) {
         for (int x = 0; x < n; x++) {
             uint32_t rgba = GUINT32_FROM_BE(src[x]);
@@ -1040,7 +1337,10 @@ namespace UltraCanvas {
 
         vipsImage = vipsImage.cast(VIPS_FORMAT_UCHAR);
 
-        // Add alpha channel if missing
+        // A picture without an alpha band stays without one: an RGB24
+        // pixmap (IsOpaque). The band is still joined so the decoded rows
+        // are four bytes a pixel, but the pixmap is a copy, not a blend.
+        const bool opaque = vipsImage.bands() == 3;
         if (vipsImage.bands() == 3) {
             vipsImage = vipsImage.bandjoin(255);
         } else {
@@ -1061,7 +1361,7 @@ namespace UltraCanvas {
             vips_error_clear();
             throw vips::VError("Failed to decode image pixels: " + why);
         }
-        cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w,h);
+        cairo_surface_t* surface = cairo_image_surface_create(opaque ? CAIRO_FORMAT_RGB24 : CAIRO_FORMAT_ARGB32, w,h);
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
             cairo_surface_destroy(surface);
             throw vips::VError("Failed to create Cairo surface");
@@ -1072,7 +1372,19 @@ namespace UltraCanvas {
             throw vips::VError("Failed to get surface data");
         }
 
-        rgba2bgra_premultiplied(src, dst, w * h);
+        // cairo's rows are padded to its stride; libvips' are not
+        const int stride = cairo_image_surface_get_stride(surface);
+        if (opaque) {
+            for (int y = 0; y < h; ++y) {
+                rgbx2bgrx(src + static_cast<size_t>(y) * w,
+                          reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(dst) + static_cast<size_t>(y) * stride), w);
+            }
+        } else {
+            for (int y = 0; y < h; ++y) {
+                rgba2bgra_premultiplied(src + static_cast<size_t>(y) * w,
+                                        reinterpret_cast<uint32_t*>(reinterpret_cast<uint8_t*>(dst) + static_cast<size_t>(y) * stride), w);
+            }
+        }
 
         cairo_surface_mark_dirty(surface);
 
@@ -1102,6 +1414,7 @@ namespace UltraCanvas {
     }
 #else
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
+        if (pixelSource) return CreatePixmapFromPixelSource(w, h, fitMode, scale);
         if (vectorDocument) {
             return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
         }
@@ -1119,61 +1432,8 @@ namespace UltraCanvas {
         }
         const int sw = cairo_image_surface_get_width(source);
         const int sh = cairo_image_surface_get_height(source);
-        if (sw <= 0 || sh <= 0) {
-            cairo_surface_destroy(source);
-            return nullptr;
-        }
-        // The box w x h, by the fit mode, with the libvips thumbnail path's
-        // meaning: Fill stretches to the box, Contain fits it, ScaleDown fits
-        // it but never past the natural size, Cover covers it and is cropped
-        // to it, NoScale is the natural size. Rendered at device pixels.
-        const double sx = static_cast<double>(w) / sw;
-        const double sy = static_cast<double>(h) / sh;
-        double fx = 1.0, fy = 1.0;
-        switch (fitMode) {
-            case ImageFitMode::Fill:      fx = sx; fy = sy; break;
-            case ImageFitMode::Contain:   fx = fy = std::min(sx, sy); break;
-            case ImageFitMode::ScaleDown: fx = fy = std::min(1.0, std::min(sx, sy)); break;
-            case ImageFitMode::Cover:     fx = fy = std::max(sx, sy); break;
-            case ImageFitMode::NoScale:   break;
-        }
-        const int tw = std::max(1, static_cast<int>(std::lround(sw * fx * scale)));
-        const int th = std::max(1, static_cast<int>(std::lround(sh * fy * scale)));
-        auto pm = std::make_shared<UCPixmapCairo>(tw, th);
-        if (!pm->IsValid()) {
-            cairo_surface_destroy(source);
-            return nullptr;
-        }
-        {
-            cairo_t* cr = cairo_create(pm->GetSurface());
-            cairo_scale(cr, static_cast<double>(tw) / sw, static_cast<double>(th) / sh);
-            cairo_set_source_surface(cr, source, 0, 0);
-            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
-            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(cr);
-            cairo_destroy(cr);
-        }
+        std::shared_ptr<UCPixmapCairo> pm = ScaleSurfaceToBox(source, sw, sh, w, h, fitMode, scale);
         cairo_surface_destroy(source);
-        pm->MarkDirty();
-        pm->Flush();
-        if (fitMode == ImageFitMode::Cover && (tw > w * scale || th > h * scale)) {
-            // Centre crop to the box, in device pixels.
-            const int bw = std::max(1, static_cast<int>(std::lround(w * scale)));
-            const int bh = std::max(1, static_cast<int>(std::lround(h * scale)));
-            auto cropped = std::make_shared<UCPixmapCairo>(bw, bh);
-            if (!cropped->IsValid()) return nullptr;
-            cairo_t* cr = cairo_create(cropped->GetSurface());
-            cairo_set_source_surface(cr, pm->GetSurface(), -(tw - bw) / 2.0, -(th - bh) / 2.0);
-            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(cr);
-            cairo_destroy(cr);
-            cropped->MarkDirty();
-            cropped->Flush();
-            pm = cropped;
-        }
-        if (scale != 1.0f) {
-            pm->SetDeviceScale(scale);
-        }
         return pm;
     }
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
@@ -1235,6 +1495,35 @@ namespace UltraCanvas {
             return err.what();
         }
         return ExportVImage(vImg, imagePath, opts);
+    }
+
+    // jxlsave on one libjxl thread. libvips 8.17+ writes JPEG XL a tile at a
+    // time through libjxl's chunked encoder, on a libjxl thread pool as large
+    // as vips_concurrency_get(), and its release_buffer callback drops each
+    // tile from the save's tile table without the lock that guards adding
+    // one (still so in 8.18.7 and on master, 2026-10). Two threads in that
+    // GHashTable at once corrupt it and GLib ends the process
+    // (g_hash_table_remove_node: "nnodes > 0") - seen on Windows x64 for a
+    // picture of four or more 2048-pixel tiles. One thread takes turns. The
+    // concurrency setting is process-wide, so saves are serialized and the
+    // setting restored after each; other pipelines started meanwhile run on
+    // one thread too, slower but correct. Older libvips encode the frame
+    // whole and keep their threads.
+    static void JxlSave(vips::VImage& vImg, const std::string& imagePath, const UCImageSave::JxlExportOptions& jxl) {
+        static std::mutex jxlSaveMutex;
+        std::lock_guard<std::mutex> lock(jxlSaveMutex);
+        const bool tiled = vips_version(0) > 8 || (vips_version(0) == 8 && vips_version(1) >= 17);
+        struct OneThread {
+            int threads = 0;
+            explicit OneThread(bool on) {
+                if (on) { threads = vips_concurrency_get(); vips_concurrency_set(1); }
+            }
+            ~OneThread() { if (threads > 0) vips_concurrency_set(threads); }
+        } oneThread(tiled);
+        vImg.jxlsave(imagePath.c_str(), vips::VImage::option()
+                ->set("Q", jxl.quality)
+                ->set("lossless", jxl.lossless)
+                ->set("effort", jxl.effort));
     }
 
     // The encoding half of ExportVImage. It writes wherever it is told, which
@@ -1376,10 +1665,7 @@ namespace UltraCanvas {
 
                 case UCImageSaveFormat::JXL: {
 //                    int jxlBitDepth = ColorDepthToBitDepth(opts.jxl.colorDepth);
-                    vImg.jxlsave(imagePath.c_str(), vips::VImage::option()
-                            ->set("Q", opts.jxl.quality)
-                            ->set("lossless", opts.jxl.lossless)
-                            ->set("effort", opts.jxl.effort));
+                    JxlSave(vImg, imagePath, opts.jxl);   // one libjxl thread - see JxlSave
                     break;
                 }
 

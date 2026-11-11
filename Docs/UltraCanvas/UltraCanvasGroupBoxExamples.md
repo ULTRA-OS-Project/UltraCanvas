@@ -12,10 +12,12 @@
   - [Factory Functions](#factory-functions)
   - [Key Methods](#key-methods)
   - [Callbacks](#callbacks)
+- [Following the theme](#following-the-theme)
 - [Usage Examples](#usage-examples)
   - [Basic framed group](#basic-framed-group)
   - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
   - [Switch-activated section with an info icon](#switch-activated-section-with-an-info-icon)
+  - [A panel the user closes](#a-panel-the-user-closes)
   - [Collapsible card](#collapsible-card)
   - [Sections of a window as cards](#sections-of-a-window-as-cards)
 - [Demo](#demo)
@@ -28,7 +30,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.3.0
+**Version:** 1.4.0 - `GroupBoxVisualStyle::FromTheme`, `ApplyTheme`: the group box follows the theme
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -52,6 +54,9 @@ interactive behaviour.
   children. It can be placed on the **left or right** side of the title bar.
 - **Info icon + help text**: an optional "ⓘ" icon (left or right) that reveals
   help text as a tooltip on hover.
+- **Close button**: an optional "x" at the right end of the title bar
+  (`SetCloseButton`, `onCloseClicked`) for a box that is a panel the user
+  dismisses.
 - **Collapsible**: a disclosure arrow collapses the box down to its title bar.
 - **Standard Container**: children are added with `AddChild()` and laid out by the
   CSS layout engine inside the frame, below the caption.
@@ -107,6 +112,10 @@ void SetInfoIcon(bool show);
 void SetInfoIconSide(GroupBoxIndicatorSide side);       // Left / Right
 void SetHelpText(const std::string& text);              // shows the info icon
 
+void SetCloseButton(bool show);                         // an "x" at the right end of the caption
+bool HasCloseButton() const;
+void SetCloseButtonTooltip(const std::string& text);    // "Close" (in the user's language) by default
+
 void SetCollapsible(bool collapsible);
 void SetCollapsed(bool collapsed);
 bool IsCollapsed() const;
@@ -117,6 +126,27 @@ bool IsCollapsed() const;
 ```cpp
 std::function<void(bool)> onCheckedChanged;     // new checked state
 std::function<void(bool)> onCollapsedChanged;   // new collapsed state
+std::function<void()>     onCloseClicked;       // the close button was clicked
+```
+
+## Following the theme
+
+`GroupBoxVisualStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (widths, radius,
+indents, padding, the caption's weight) and its fills: a filled frame or
+header takes the raised surface and the panel, a transparent one stays
+transparent; the frame in a hairline, the caption in ink at the body size,
+faint ink disabled; the activator's track in the accent and the control
+border with the raised surface for its knob; the info and close icons in
+muted ink, the accent and ink when hovered. Under the theme policy a new
+group box follows the theme by itself (`ApplyTheme`, its scrollbars with
+it); a `SetVisualStyle` by hand stops that, `SetFollowTheme(true)` after it
+keeps both.
+
+```cpp
+auto section = std::make_shared<UltraCanvasGroupBox>("section", 300, 200, "Messages");
+section->SetVisualStyle(GroupBoxVisualStyle::FromTheme(UltraCanvasTheme::Current(), GroupBoxVisualStyle::SectionCard()));   // the roles over the card
+section->SetFollowTheme(true);
 ```
 
 ## Usage Examples
@@ -161,6 +191,23 @@ gb->SetInfoIconSide(GroupBoxIndicatorSide::Left);         // ⓘ on the left
 gb->SetHelpText("Toggle the switch to enable or disable this section.");
 gb->AddChild(std::make_shared<UltraCanvasCheckbox>("autosave", "Save automatically"));
 gb->onCheckedChanged = [](bool on) { /* ... */ };
+```
+
+### A panel the user closes
+
+`SetCloseButton(true)` puts an **x** at the right end of the caption, hover-
+highlighted and with a tooltip. A click runs `onCloseClicked`; the box does
+not hide itself, so the host decides what closing means (hide it, remove
+it, ask first). Its colours are `closeIconColor`, `closeIconHoverColor` and
+`closeHoverBackgroundColor` in `GroupBoxVisualStyle`. The media viewer's
+Details panel is one.
+
+```cpp
+auto panel = CreateGroupBox("details", 20, 20, 360, 240, "Image information");
+panel->SetFrameStyle(GroupBoxFrameStyle::Header);
+panel->SetCloseButton(true);
+panel->SetCloseButtonTooltip("Close (Esc)");
+panel->onCloseClicked = [box = panel.get()] { box->SetVisible(false); };
 ```
 
 ### Collapsible card

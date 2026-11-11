@@ -6,6 +6,11 @@
 // keying (Colour to Alpha), text layers (UltraCanvasRasterText.h), the paint
 // surface's view through a resize, and the PNG and .ucraster round trips (the
 // last three only with libvips).
+// Version: 1.9.0 - TestFontListFollowsTheFonts: the text bar's Font list takes a font that
+//                  arrives while it exists
+// Version: 1.8.0 - TestRunLetterSpacing: a word's own letter spacing is drawn on it alone,
+//                  kept by *.ucd, and converted by the text bar
+// Version: 1.7.0 - TestTextLetterSpacing: a text layer's letter spacing is drawn and kept by *.ucd
 // Version: 1.6.0 - TestProtectedUCD: a password-protected *.ucd, saved, refused, opened, kept
 // Version: 1.5.0 - TestLayeredUCD: *.ucd keeps layers, blend modes and text layers as text
 // Version: 1.4.1 - TestSurfaceFollowsResize: a document change after a resize reports the move
@@ -14,7 +19,7 @@
 //                  text until their pixels change, and survive a project
 // Version: 1.2.0 - TestLinesCurvesArrows: polylines in one pass, curves, arrows
 // Version: 1.1.0 - TestListeners: several observers of one document
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterLayer.h"
@@ -22,10 +27,12 @@
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasBrushEngine.h"
 #include "UltraCanvasRasterText.h"
+#include "UltraCanvasTextFormatBar.h"   // TextFormatCharDelta, TextFormatAtCaret
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasImage.h"
-#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies
+#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies, GetFontSetGeneration
+#include "UltraCanvasConfig.h"        // GetResourcesDir
 #include "UltraCanvasPaintSurface.h"
 #include "UltraCanvasUCDContainer.h"
 
@@ -34,6 +41,9 @@
 #include <vips/vips8>
 #endif
 
+#if defined(__linux__)
+#include <fontconfig/fontconfig.h>
+#endif
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -1145,6 +1155,144 @@ static bool PngSize(const std::vector<uint8_t>& png, int& w, int& h) {
 // A UCD layered image (spec 4.7) keeps what a project keeps - layers, their
 // attributes, text layers as text - without libvips, and reads at every
 // depth: the thumbnail, the pixels, the words.
+// A text layer's letter spacing: drawn (the letters further apart), and kept
+// by a *.ucd - as a version 2 text frame - and drawn the same again.
+static void TestTextLetterSpacing() {
+    std::string err;
+    RasterTextContent tracked = MakeTextContent();
+    tracked.letterSpacingPx = 4.0f;
+    auto plain = RenderTextLayer(MakeTextContent(), 300, 150, err);
+    auto spaced = RenderTextLayer(tracked, 300, 150, err);
+    CHECK(plain && spaced);
+    if (!plain || !spaced) return;
+    CHECK(!SamePixels(*plain, *spaced));   // the letters moved apart
+
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-tracking";
+    std::filesystem::create_directories(dir);
+    UCRasterDocument doc(300, 150, RasterPixel(255, 255, 255, 255));
+    doc.AddLayer(spaced);
+    const std::string path = PathToUtf8(dir / "tracked.ucd");
+    CHECK(doc.SaveToFile(path, err));
+    UCRasterDocument loaded;
+    CHECK(loaded.LoadFromFile(path, err));
+    CHECK(loaded.GetLayerCount() == 2);
+    if (loaded.GetLayerCount() == 2) {
+        auto back = loaded.GetLayer(1);
+        CHECK(back->IsTextLayer() && back->text && back->text->letterSpacingPx == 4.0f);
+        if (back->text) {
+            auto again = RenderTextLayer(*back->text, 300, 150, err);
+            CHECK(again && SamePixels(*again, *spaced));
+        }
+    }
+    std::filesystem::remove_all(dir);
+}
+
+// A word's own letter spacing (RichTextRun::letterSpacingPt, what the text
+// bar gives the selected words): drawn on that word only, kept by *.ucd
+// (the layer's words are ODT there), and the bar's conversions both ways.
+static void TestRunLetterSpacing() {
+    std::string err;
+    RasterTextContent spacedWord = MakeTextContent();
+    auto words = std::make_shared<UCRichDocument>(*spacedWord.document);
+    words->blocks[0].runs[1].letterSpacingPt = 3.0f;                   // "world"
+    spacedWord.document = words;
+    auto plain = RenderTextLayer(MakeTextContent(), 300, 150, err);
+    auto spaced = RenderTextLayer(spacedWord, 300, 150, err);
+    CHECK(plain && spaced);
+    if (!plain || !spaced) return;
+    CHECK(!SamePixels(*plain, *spaced));                       // "world" spread out
+    // "Hello" (bold, 20 px, from x = 10) is untouched: its own pixels are
+    // where they were.
+    bool helloSame = true;
+    for (int y = 0; y < 40 && helloSame; ++y)
+        for (int x = 0; x < 50; ++x)
+            if (plain->GetPixel(x, y).a != spaced->GetPixel(x, y).a) { helloSame = false; break; }
+    CHECK(helloSame);
+    // The first line reaches further right.
+    auto inkRight = [](const UCRasterLayer& l) {
+        int right = 0;
+        for (int y = 0; y < 40; ++y)
+            for (int x = l.GetWidth() - 1; x > right; --x)
+                if (l.GetPixel(x, y).a) { right = x; break; }
+        return right;
+    };
+    CHECK(inkRight(*spaced) > inkRight(*plain) + 8);
+
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-word-spacing";
+    std::filesystem::create_directories(dir);
+    UCRasterDocument doc(300, 150, RasterPixel(255, 255, 255, 255));
+    doc.AddLayer(spaced);
+    const std::string path = PathToUtf8(dir / "word-spacing.ucd");
+    CHECK(doc.SaveToFile(path, err));
+    UCRasterDocument loaded;
+    CHECK(loaded.LoadFromFile(path, err));
+    if (loaded.GetLayerCount() == 2) {
+        auto back = loaded.GetLayer(1);
+        bool kept = false;
+        if (back->text && back->text->document)
+            for (const auto& block : back->text->document->blocks)
+                for (const auto& run : block.runs)
+                    if (run.text == "world" && run.letterSpacingPt && std::fabs(*run.letterSpacingPt - 3.0f) < 0.01f) kept = true;
+        CHECK(kept);
+        if (back->text) {
+            auto again = RenderTextLayer(*back->text, 300, 150, err);
+            CHECK(again && SamePixels(*again, *spaced));
+        }
+    } else {
+        CHECK(loaded.GetLayerCount() == 2);
+    }
+    std::filesystem::remove_all(dir);
+
+    // The text bar: letter spacing is a character attribute, in the bar's
+    // unit one way (4 px = 3 pt) and back.
+    CHECK(IsCharacterAttribute(TextFormatAttribute::LetterSpacing));
+    CHECK(!IsCharacterAttribute(TextFormatAttribute::LineSpacing));
+    TextFormat f;
+    f.letterSpacing = 4.0f;
+    const RichCharFormatDelta d = TextFormatCharDelta(TextFormatAttribute::LetterSpacing, f, 0.75f);
+    CHECK(d.setLetterSpacing && d.letterSpacingPt && std::fabs(*d.letterSpacingPt - 3.0f) < 1e-4f);
+    RichCharFormatState state;
+    state.letterSpacingPt = 3.0f;
+    TextFormat base;
+    CHECK(std::fabs(TextFormatAtCaret(state, base, 0.75f).letterSpacing - 4.0f) < 1e-4f);
+    state.letterSpacingMixed = true;
+    state.letterSpacingPt.reset();
+    base.letterSpacing = 1.5f;
+    CHECK(TextFormatAtCaret(state, base, 0.75f).letterSpacing == 1.5f);   // mixed: the text's own
+}
+
+// The text bar's Font list follows the fonts: a font that arrives while the
+// bar exists (the system fonts after a cold start on Windows, a registered
+// font file) joins the list when the window lays the bar out again - the
+// list made with the window held the bundled fonts alone.
+static void TestFontListFollowsTheFonts() {
+#if defined(__linux__)
+    const std::string file = GetResourcesDir() + "media/microtex/latinmodern-math.otf";
+    const std::string family = "Latin Modern Math";
+    std::error_code ec;
+    if (!std::filesystem::exists(PathFromUtf8(file), ec)) {
+        std::printf("  (skipped: %s not found)\n", file.c_str());
+        return;
+    }
+    auto bar = CreateTextFormatBar("font-list-test");
+    auto listed = [&]() {
+        const auto& families = bar->GetFontFamilies();
+        return std::find(families.begin(), families.end(), family) != families.end();
+    };
+    if (listed()) {
+        std::printf("  (skipped: %s is installed here already)\n", family.c_str());
+        return;
+    }
+    const unsigned long before = GetFontSetGeneration();
+    CHECK(FcConfigAppFontAddFile(FcConfigGetCurrent(), reinterpret_cast<const FcChar8*>(file.c_str())) == FcTrue);
+    RefreshFontConfiguration();
+    CHECK(GetFontSetGeneration() > before);       // the fonts changed
+    CHECK(!listed());                              // the list is as it was made ...
+    bar->InvalidateLayout();                       // ... until the bar is laid out again
+    CHECK(listed());
+#endif
+}
+
 static void TestLayeredUCD() {
     std::string err;
     const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultracanvas-raster-ucd";
@@ -1368,6 +1516,9 @@ int main() {
     TestTextLayers();
     TestSurfaceFollowsResize();
     TestLayeredUCD();
+    TestTextLetterSpacing();
+    TestRunLetterSpacing();
+    TestFontListFollowsTheFonts();
     TestProtectedUCD();
 #ifdef HAS_LIBVIPS
     TestTextLayerProject();

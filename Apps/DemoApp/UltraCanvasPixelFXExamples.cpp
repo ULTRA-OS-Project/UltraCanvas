@@ -8,12 +8,16 @@
 //                 or upload a custom one, choose a processing function from the
 //                 category tree in the middle, tune its options on the right
 //                 and watch the processed result on the left.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description above the tabs, which fill the rest of the area;
+//                  every playground label and button sized to its text
 // Version: 1.1.0 - the samples and Upload offer FileLoader's picture types
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasPathUtf8.h"
 
 #ifdef HAS_LIBVIPS
@@ -93,19 +97,19 @@ namespace {
     // vips composite2: Blend(top, bottom, mode) draws `top` onto `bottom`.
     const std::vector<std::pair<std::string, PixelFX::BlendMode>>& BlendModeChoices() {
         static const std::vector<std::pair<std::string, PixelFX::BlendMode>> modes = {
-            { "Over",          PixelFX::BlendMode::Over },
-            { "Multiply",      PixelFX::BlendMode::Multiply },
-            { "Screen",        PixelFX::BlendMode::Screen },
-            { "Overlay",       PixelFX::BlendMode::Overlay },
-            { "Darken",        PixelFX::BlendMode::Darken },
-            { "Lighten",       PixelFX::BlendMode::Lighten },
-            { "Colour dodge",  PixelFX::BlendMode::ColourDodge },
-            { "Colour burn",   PixelFX::BlendMode::ColourBurn },
-            { "Hard light",    PixelFX::BlendMode::HardLight },
-            { "Soft light",    PixelFX::BlendMode::SoftLight },
-            { "Difference",    PixelFX::BlendMode::Difference },
-            { "Exclusion",     PixelFX::BlendMode::Exclusion },
-            { "Add",           PixelFX::BlendMode::Add },
+            { Tr("Over"),          PixelFX::BlendMode::Over },
+            { Tr("Multiply"),      PixelFX::BlendMode::Multiply },
+            { Tr("Screen"),        PixelFX::BlendMode::Screen },
+            { Tr("Overlay"),       PixelFX::BlendMode::Overlay },
+            { Tr("Darken"),        PixelFX::BlendMode::Darken },
+            { Tr("Lighten"),       PixelFX::BlendMode::Lighten },
+            { Tr("Colour dodge"),  PixelFX::BlendMode::ColourDodge },
+            { Tr("Colour burn"),   PixelFX::BlendMode::ColourBurn },
+            { Tr("Hard light"),    PixelFX::BlendMode::HardLight },
+            { Tr("Soft light"),    PixelFX::BlendMode::SoftLight },
+            { Tr("Difference"),    PixelFX::BlendMode::Difference },
+            { Tr("Exclusion"),     PixelFX::BlendMode::Exclusion },
+            { Tr("Add"),           PixelFX::BlendMode::Add },
         };
         return modes;
     }
@@ -123,100 +127,100 @@ namespace {
         namespace FX = PixelFX;
 
         static const std::vector<EffectCategory> categories = {
-            { "colour", "Colour adjustments", {
-                { "brightness", "Brightness", "Multiplies every pixel by the chosen factor (Colour::Brightness).",
-                  { { "Factor", 0.1f, 3.0f, 1.4f, 0.05f } },
+            { "colour", Tr("Colour adjustments"), {
+                { "brightness", Tr("Brightness"), Tr("Multiplies every pixel by the chosen factor (Colour::Brightness)."),
+                  { { Tr("Factor"), 0.1f, 3.0f, 1.4f, 0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Colour::Brightness(src, p[0]); } },
-                { "contrast", "Contrast", "Scales the distance of every pixel from the image mean (Colour::Contrast).",
-                  { { "Factor", 0.1f, 3.0f, 1.5f, 0.05f } },
+                { "contrast", Tr("Contrast"), Tr("Scales the distance of every pixel from the image mean (Colour::Contrast)."),
+                  { { Tr("Factor"), 0.1f, 3.0f, 1.5f, 0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Colour::Contrast(src, p[0]); } },
-                { "saturation", "Saturation", "Scales chroma in LCh colour space (Colour::Saturation).",
-                  { { "Factor", 0.0f, 3.0f, 1.8f, 0.05f } },
+                { "saturation", Tr("Saturation"), Tr("Scales chroma in LCh colour space (Colour::Saturation)."),
+                  { { Tr("Factor"), 0.0f, 3.0f, 1.8f, 0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Colour::Saturation(src, p[0]); } },
-                { "gamma", "Gamma", "Applies a gamma curve to all channels (Colour::Gamma).",
-                  { { "Gamma", 0.2f, 3.0f, 2.2f, 0.05f } },
+                { "gamma", Tr("Gamma"), Tr("Applies a gamma curve to all channels (Colour::Gamma)."),
+                  { { Tr("Gamma"), 0.2f, 3.0f, 2.2f, 0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Colour::Gamma(src, p[0]); } },
-                { "invert", "Invert", "Photographic negative (Colour::Invert).", {},
+                { "invert", Tr("Invert"), Tr("Photographic negative (Colour::Invert)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Colour::Invert(src); } },
-                { "grayscale", "Grayscale", "Converts to single-band black & white (Colour::Grayscale).", {},
+                { "grayscale", Tr("Grayscale"), Tr("Converts to single-band black & white (Colour::Grayscale)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Colour::Grayscale(src); } },
-                { "sepia", "Sepia", "Classic warm sepia tone matrix (Colour::Sepia).", {},
+                { "sepia", Tr("Sepia"), Tr("Classic warm sepia tone matrix (Colour::Sepia)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Colour::Sepia(src); } },
-                { "histequal", "Histogram equalise", "Spreads the histogram for maximum global contrast (Colour::HistEqual).", {},
+                { "histequal", Tr("Histogram equalise"), Tr("Spreads the histogram for maximum global contrast (Colour::HistEqual)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Colour::HistEqual(src); } },
             } },
-            { "blur", "Blur & sharpen", {
-                { "gaussblur", "Gaussian blur", "Smooths the image with a Gaussian kernel (Convolution::GaussianBlur).",
-                  { { "Sigma", 0.5f, 20.0f, 5.0f, 0.5f } },
+            { "blur", Tr("Blur & sharpen"), {
+                { "gaussblur", Tr("Gaussian blur"), Tr("Smooths the image with a Gaussian kernel (Convolution::GaussianBlur)."),
+                  { { Tr("Sigma"), 0.5f, 20.0f, 5.0f, 0.5f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Convolution::GaussianBlur(src, p[0]); } },
-                { "boxblur", "Box blur", "Averages pixels inside a square window (Convolution::BoxBlur).",
-                  { { "Radius", 1.0f, 25.0f, 8.0f, 1.0f } },
+                { "boxblur", Tr("Box blur"), Tr("Averages pixels inside a square window (Convolution::BoxBlur)."),
+                  { { Tr("Radius"), 1.0f, 25.0f, 8.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Convolution::BoxBlur(src, static_cast<int>(p[0])); } },
-                { "median", "Median filter", "Rank filter that removes noise while keeping edges (Morphology::Median).",
-                  { { "Window size", 3.0f, 15.0f, 5.0f, 2.0f } },
+                { "median", Tr("Median filter"), Tr("Rank filter that removes noise while keeping edges (Morphology::Median)."),
+                  { { Tr("Window size"), 3.0f, 15.0f, 5.0f, 2.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       int size = static_cast<int>(p[0]) | 1;   // vips needs an odd window
                       return FX::Morphology::Median(src, size); } },
-                { "sharpen", "Sharpen", "Unsharp masking in LAB space (Convolution::Sharpen).",
-                  { { "Sigma", 0.5f, 10.0f, 2.0f, 0.5f } },
+                { "sharpen", Tr("Sharpen"), Tr("Unsharp masking in LAB space (Convolution::Sharpen)."),
+                  { { Tr("Sigma"), 0.5f, 10.0f, 2.0f, 0.5f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Convolution::Sharpen(src, p[0], 2.0, 1.0); } },
-                { "unsharp", "Unsharp mask", "Boosts local contrast by subtracting a blurred copy (Convolution::UnsharpMask).",
-                  { { "Sigma", 1.0f, 10.0f, 3.0f, 0.5f },
-                    { "Amount", 0.1f, 3.0f, 1.0f, 0.1f } },
+                { "unsharp", Tr("Unsharp mask"), Tr("Boosts local contrast by subtracting a blurred copy (Convolution::UnsharpMask)."),
+                  { { Tr("Sigma"), 1.0f, 10.0f, 3.0f, 0.5f },
+                    { Tr("Amount"), 0.1f, 3.0f, 1.0f, 0.1f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Convolution::UnsharpMask(src, p[0], p[1]); } },
             } },
-            { "edges", "Edge detection", {
-                { "sobel", "Sobel", "Classic gradient edge detector (Convolution::Sobel).", {},
+            { "edges", Tr("Edge detection"), {
+                { "sobel", Tr("Sobel"), Tr("Classic gradient edge detector (Convolution::Sobel)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Convolution::Sobel(src); } },
-                { "canny", "Canny", "Thin, precise edges after Gaussian smoothing (Convolution::Canny).",
-                  { { "Sigma", 0.5f, 5.0f, 1.4f, 0.1f } },
+                { "canny", Tr("Canny"), Tr("Thin, precise edges after Gaussian smoothing (Convolution::Canny)."),
+                  { { Tr("Sigma"), 0.5f, 5.0f, 1.4f, 0.1f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       // canny returns small float magnitudes — scale them into 0..255
                       return FX::Arithmetic::Multiply(FX::Convolution::Canny(src, p[0]), 64.0); } },
-                { "laplacian", "Laplacian", "Second-derivative edge detector (Convolution::Laplacian).", {},
+                { "laplacian", Tr("Laplacian"), Tr("Second-derivative edge detector (Convolution::Laplacian)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Convolution::Laplacian(src); } },
-                { "prewitt", "Prewitt", "Gradient magnitude from Prewitt kernels (Convolution::Prewitt).", {},
+                { "prewitt", Tr("Prewitt"), Tr("Gradient magnitude from Prewitt kernels (Convolution::Prewitt)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Convolution::Prewitt(src); } },
-                { "scharr", "Scharr", "Rotation-optimised gradient kernels (Convolution::Scharr).", {},
+                { "scharr", Tr("Scharr"), Tr("Rotation-optimised gradient kernels (Convolution::Scharr)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) {
                       // Scharr weights are ±10 — bring the magnitude back into range
                       return FX::Arithmetic::Multiply(FX::Convolution::Scharr(src), 0.1); } },
             } },
-            { "geometry", "Geometry & resample", {
-                { "rotate", "Rotate", "Rotates around the centre with bicubic resampling (Resample::Rotate).",
-                  { { "Angle °", -180.0f, 180.0f, 30.0f, 1.0f } },
+            { "geometry", Tr("Geometry & resample"), {
+                { "rotate", Tr("Rotate"), Tr("Rotates around the centre with bicubic resampling (Resample::Rotate)."),
+                  { { Tr("Angle °"), -180.0f, 180.0f, 30.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Resample::Rotate(src, p[0]); } },
-                { "fliph", "Flip horizontal", "Mirrors the image left to right (Resample::FlipHorizontal).", {},
+                { "fliph", Tr("Flip horizontal"), Tr("Mirrors the image left to right (Resample::FlipHorizontal)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipHorizontal(src); } },
-                { "flipv", "Flip vertical", "Mirrors the image top to bottom (Resample::FlipVertical).", {},
+                { "flipv", Tr("Flip vertical"), Tr("Mirrors the image top to bottom (Resample::FlipVertical)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) { return FX::Resample::FlipVertical(src); } },
-                { "scale", "Scale", "Resizes with a Lanczos3 kernel (Resample::Resize). The "
+                { "scale", Tr("Scale"), Tr("Resizes with a Lanczos3 kernel (Resample::Resize). The "
                   "preview grows or shrinks with the factor relative to the frame: 1.0 fits "
                   "the frame, below 1.0 shrinks centred, above 1.0 pins the width and grows "
-                  "taller (centre-cropped) up to the frame border.",
-                  { { "Factor", 0.1f, 3.0f, 1.0f, 0.05f } },
+                  "taller (centre-cropped) up to the frame border."),
+                  { { Tr("Factor"), 0.1f, 3.0f, 1.0f, 0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) { return FX::Resample::Resize(src, p[0]); } },
-                { "pixelate", "Pixelate", "Subsamples then zooms back up for a mosaic look (Conversion::Subsample + Zoom).",
-                  { { "Block size", 2.0f, 32.0f, 8.0f, 1.0f } },
+                { "pixelate", Tr("Pixelate"), Tr("Subsamples then zooms back up for a mosaic look (Conversion::Subsample + Zoom)."),
+                  { { Tr("Block size"), 2.0f, 32.0f, 8.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       int f = std::max(2, static_cast<int>(p[0]));
                       return FX::Conversion::Zoom(FX::Conversion::Subsample(src, f), f); } },
-                { "centercrop", "Center crop", "Keeps the chosen percentage of the image around its centre (Conversion::Crop).",
-                  { { "Keep %", 10.0f, 100.0f, 60.0f, 1.0f } },
+                { "centercrop", Tr("Center crop"), Tr("Keeps the chosen percentage of the image around its centre (Conversion::Crop)."),
+                  { { Tr("Keep %"), 10.0f, 100.0f, 60.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       int w = std::max(1, static_cast<int>(src.Width()  * p[0] / 100.0f));
                       int h = std::max(1, static_cast<int>(src.Height() * p[0] / 100.0f));
                       return FX::Conversion::Crop(src, (src.Width() - w) / 2, (src.Height() - h) / 2, w, h); } },
-                { "smartcrop", "Smart crop", "Attention-based crop that keeps the most interesting region (Conversion::SmartCrop).",
-                  { { "Width %",  10.0f, 100.0f, 50.0f, 1.0f },
-                    { "Height %", 10.0f, 100.0f, 50.0f, 1.0f } },
+                { "smartcrop", Tr("Smart crop"), Tr("Attention-based crop that keeps the most interesting region (Conversion::SmartCrop)."),
+                  { { Tr("Width %"),  10.0f, 100.0f, 50.0f, 1.0f },
+                    { Tr("Height %"), 10.0f, 100.0f, 50.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       int w = std::max(1, static_cast<int>(src.Width()  * p[0] / 100.0f));
                       int h = std::max(1, static_cast<int>(src.Height() * p[1] / 100.0f));
                       return FX::Conversion::SmartCrop(src, w, h); } },
-                { "similarity", "Similarity transform", "Combined scale + rotation around the centre in one resampling pass (Resample::Similarity).",
-                  { { "Scale", 0.2f, 2.0f, 0.8f, 0.05f },
-                    { "Angle °", -180.0f, 180.0f, 20.0f, 1.0f } },
+                { "similarity", Tr("Similarity transform"), Tr("Combined scale + rotation around the centre in one resampling pass (Resample::Similarity)."),
+                  { { Tr("Scale"), 0.2f, 2.0f, 0.8f, 0.05f },
+                    { Tr("Angle °"), -180.0f, 180.0f, 20.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       return FX::Resample::Similarity(src, p[0], p[1]); } },
             } },
@@ -224,40 +228,40 @@ namespace {
             // vips_morph, which only operates on binary (0/255) images. A rank
             // filter taking the neighbourhood minimum / maximum is the greyscale
             // equivalent and works on photographs.
-            { "morphology", "Morphology", {
-                { "erode", "Erode", "Shrinks bright regions — neighbourhood minimum (Morphology::Rank).",
-                  { { "Radius", 1.0f, 6.0f, 2.0f, 1.0f } },
+            { "morphology", Tr("Morphology"), {
+                { "erode", Tr("Erode"), Tr("Shrinks bright regions — neighbourhood minimum (Morphology::Rank)."),
+                  { { Tr("Radius"), 1.0f, 6.0f, 2.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       int size = static_cast<int>(p[0]) * 2 + 1;
                       return FX::Morphology::Rank(src, size, size, 0); } },
-                { "dilate", "Dilate", "Grows bright regions — neighbourhood maximum (Morphology::Rank).",
-                  { { "Radius", 1.0f, 6.0f, 2.0f, 1.0f } },
+                { "dilate", Tr("Dilate"), Tr("Grows bright regions — neighbourhood maximum (Morphology::Rank)."),
+                  { { Tr("Radius"), 1.0f, 6.0f, 2.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       int size = static_cast<int>(p[0]) * 2 + 1;
                       return FX::Morphology::Rank(src, size, size, size * size - 1); } },
-                { "open", "Open", "Erode then dilate — removes small bright specks (Morphology::Rank).",
-                  { { "Radius", 1.0f, 6.0f, 2.0f, 1.0f } },
+                { "open", Tr("Open"), Tr("Erode then dilate — removes small bright specks (Morphology::Rank)."),
+                  { { Tr("Radius"), 1.0f, 6.0f, 2.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       int size = static_cast<int>(p[0]) * 2 + 1;
                       PFXImage eroded = FX::Morphology::Rank(src, size, size, 0);
                       return FX::Morphology::Rank(eroded, size, size, size * size - 1); } },
-                { "close", "Close", "Dilate then erode — fills small dark holes (Morphology::Rank).",
-                  { { "Radius", 1.0f, 6.0f, 2.0f, 1.0f } },
+                { "close", Tr("Close"), Tr("Dilate then erode — fills small dark holes (Morphology::Rank)."),
+                  { { Tr("Radius"), 1.0f, 6.0f, 2.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext&) {
                       int size = static_cast<int>(p[0]) * 2 + 1;
                       PFXImage dilated = FX::Morphology::Rank(src, size, size, size * size - 1);
                       return FX::Morphology::Rank(dilated, size, size, 0); } },
             } },
-            { "draw", "Draw", {
-                { "floodfill", "Flood fill",
-                  "Paint-bucket fill around the picked point (Draw::MagicWandMask). The Fill "
+            { "draw", Tr("Draw"), {
+                { "floodfill", Tr("Flood fill"),
+                  Tr("Paint-bucket fill around the picked point (Draw::MagicWandMask). The Fill "
                   "mode chooses how the region grows: Gradient spreads while each pixel stays "
                   "within Tolerance of its neighbour (magic wand — follows smooth shading); "
                   "Global keeps pixels within Tolerance of the clicked colour; Exact takes "
                   "only the connected patch of the identical colour. Raising Tolerance always "
                   "enlarges the area. Choose the ink below, press “Set fill position” and "
-                  "click a spot in the image.",
-                  { { "Tolerance", 1.0f, 48.0f, 10.0f, 1.0f } },
+                  "click a spot in the image."),
+                  { { Tr("Tolerance"), 1.0f, 48.0f, 10.0f, 1.0f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext& ctx) {
                       PFXImage base = FX::Conversion::CastUchar(src);
                       if (FX::Colour::HasAlpha(base)) base = FX::Colour::Flatten(base);
@@ -279,13 +283,13 @@ namespace {
                             static_cast<double>(ctx.fillColor.g),
                             static_cast<double>(ctx.fillColor.b) });
                       return FX::Arithmetic::Ifthenelse(mask, ink, base); },
-                  "Fill mode", { "Gradient (neighbour)", "Global (seed colour)", "Exact colour" }, true },
+                  Tr("Fill mode"), { Tr("Gradient (neighbour)"), Tr("Global (seed colour)"), Tr("Exact colour") }, true },
             } },
-            { "compositing", "Compositing", {
-                { "blend", "Blend modes",
-                  "Blends a generated colour gradient over the image with the selected "
-                  "vips blend mode (Arithmetic::Blend + Generate::LinearGradient).",
-                  { { "Overlay opacity", 0.1f, 1.0f, 0.75f, 0.05f } },
+            { "compositing", Tr("Compositing"), {
+                { "blend", Tr("Blend modes"),
+                  Tr("Blends a generated colour gradient over the image with the selected "
+                  "vips blend mode (Arithmetic::Blend + Generate::LinearGradient)."),
+                  { { Tr("Overlay opacity"), 0.1f, 1.0f, 0.75f, 0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext& ctx) {
                       PFXImage base = FX::Conversion::CastUchar(src);
                       if (FX::Colour::HasAlpha(base)) base = FX::Colour::Flatten(base);
@@ -301,12 +305,12 @@ namespace {
                       const auto& modes = BlendModeChoices();
                       int m = std::clamp(ctx.choice, 0, static_cast<int>(modes.size()) - 1);
                       return FX::Arithmetic::Blend(overlay, base, modes[m].second); },
-                  "Blend mode", BlendModeNames() },
-                { "watermark", "Watermark",
-                  "Stamps the ULTRA OS logo onto the image with adjustable size and "
-                  "opacity (Arithmetic::Blend in Over mode).",
-                  { { "Size %",  10.0f, 60.0f, 25.0f, 1.0f },
-                    { "Opacity", 0.1f,  1.0f,  0.8f,  0.05f } },
+                  Tr("Blend mode"), BlendModeNames() },
+                { "watermark", Tr("Watermark"),
+                  Tr("Stamps the ULTRA OS logo onto the image with adjustable size and "
+                  "opacity (Arithmetic::Blend in Over mode)."),
+                  { { Tr("Size %"),  10.0f, 60.0f, 25.0f, 1.0f },
+                    { Tr("Opacity"), 0.1f,  1.0f,  0.8f,  0.05f } },
                   [](const PFXImage& src, const std::vector<float>& p, const EffectContext& ctx) {
                       PFXImage base = FX::Conversion::CastUchar(src);
                       if (FX::Colour::HasAlpha(base)) base = FX::Colour::Flatten(base);
@@ -334,12 +338,12 @@ namespace {
                                                               base.Width(), base.Height(),
                                                               PixelFX::Extend::Black);
                       return FX::Arithmetic::Blend(canvas, base, PixelFX::BlendMode::Over); },
-                  "Position", { "Bottom-right", "Bottom-left", "Top-right", "Top-left", "Centre" } },
+                  Tr("Position"), { Tr("Bottom-right"), Tr("Bottom-left"), Tr("Top-right"), Tr("Top-left"), Tr("Centre") } },
             } },
-            { "fourier", "Fourier", {
-                { "spectrum", "Power spectrum",
-                  "Log-scaled magnitude of the Fourier transform, wrapped so the DC "
-                  "component sits in the centre (Fourier::Spectrum).", {},
+            { "fourier", Tr("Fourier"), {
+                { "spectrum", Tr("Power spectrum"),
+                  Tr("Log-scaled magnitude of the Fourier transform, wrapped so the DC "
+                  "component sits in the centre (Fourier::Spectrum)."), {},
                   [](const PFXImage& src, const std::vector<float>&, const EffectContext&) {
                       return FX::Fourier::Spectrum(FX::Colour::Grayscale(FX::Conversion::CastUchar(src))); } },
             } },
@@ -410,7 +414,7 @@ namespace {
     // functions the playground does not demo (FileIO excluded — the File
     // Loader and Bitmap pages already cover it).
     std::string OthersInfoMarkdown() {
-        return
+        return Tr(
             "**Not demoed here**\n\n"
             "The PixelFX API offers many more functions than this playground shows:\n\n"
             "* **Arithmetic** — per-pixel add / subtract / multiply / divide, pow, exp, "
@@ -437,7 +441,7 @@ namespace {
             "* **Fourier** — forward / inverse FFT, frequency multiply, phase "
             "correlation (the power spectrum is demoed)\n"
             "* **Utility** — cache and concurrency tuning, version and operation "
-            "introspection, image-info extraction\n";
+            "introspection, image-info extraction\n");
     }
 
     // Longest edge the playground processes. Uploaded photos can be huge and
@@ -476,6 +480,16 @@ namespace {
         return names;
     }
 
+    // A button as wide as its text, at least `minWidth` (the width it had).
+    std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, float height,
+                                                  const std::string& text, float minWidth) {
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, height, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+        button->boxConstraints = limits;
+        return button;
+    }
+
     // ---- Overview tab: intro + diagram + playground category summary. ----
     std::shared_ptr<UltraCanvasUIElement> BuildOverviewTab() {
         const std::string base    = NormalizePath(GetResourcesDir() + "Docs/Modules/PixelFX/");
@@ -490,8 +504,8 @@ namespace {
             combined += "![PixelFX architecture](" + svgName + ")\n\n";
         }
 
-        combined += "## Playground functions\n\n"
-                    "| Category | Functions |\n|---|---|\n";
+        combined += "## " + Tr("Playground functions") + "\n\n"
+                    "| " + Tr("Category") + " | " + Tr("Functions") + " |\n|---|---|\n";
         for (const auto& cat : EffectCategories()) {
             combined += "| **" + cat.name + "** | ";
             for (size_t i = 0; i < cat.effects.size(); ++i) {
@@ -500,7 +514,7 @@ namespace {
             }
             combined += " |\n";
         }
-        combined += "\nSwitch to the *Examples* tab to try them on a sample or uploaded image.\n";
+        combined += "\n" + Tr("Switch to the *Examples* tab to try them on a sample or uploaded image.") + "\n";
 
         auto text = std::make_shared<UltraCanvasTextArea>("PixelFXOverview");
         text->size.width  = CSSLayout::Dimension::Pct(100);
@@ -545,13 +559,7 @@ namespace {
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
 
-        auto title = std::make_shared<UltraCanvasLabel>("PixelFXDemoTitle", 0, 0, 0, 26);
-        title->SetText("PixelFX playground");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
+        DemoKit::AddHeading(root, "PixelFXDemoTitle", Tr("PixelFX playground"))->SetFontSize(16);
 
         // ===== Three columns: image | function tree | options =====
         auto columns = std::make_shared<UltraCanvasContainer>("PixelFXColumns", 0, 0, 0, 0);
@@ -569,31 +577,18 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(leftCol);
 
-        auto sourceRow = std::make_shared<UltraCanvasContainer>("PixelFXSourceRow", 0, 0, 0, 34);
-        sourceRow->layout.SetFlexRow().SetFlexGap(8)
-                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        sourceRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        // This is a fixed-height strip holding the sample dropdown and the upload
-        // button; its contents are meant to stay put. Disable scrollbars so a
-        // narrow column never spawns a (horizontal) scrollbar across the block.
-        ContainerStyle sourceRowStyle;
-        sourceRowStyle.autoShowScrollbars = false;
-        sourceRow->SetContainerStyle(sourceRowStyle);
-        leftCol->AddChild(sourceRow);
+        // The sample dropdown and the upload button; they wrap onto a second
+        // line when the column is narrower than they are.
+        auto sourceRow = DemoKit::AddRow(leftCol, "PixelFXSourceRow", 8);
+        sourceRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        auto sourceLabel = std::make_shared<UltraCanvasLabel>("PixelFXSourceLabel", 0, 0, 96, 24);
-        sourceLabel->SetText("Sample image");
-        sourceLabel->SetFontSize(12);
-        sourceLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(sourceLabel);
+        DemoKit::Add(sourceRow, DemoKit::CreateText("PixelFXSourceLabel", Tr("Sample image")));
 
         auto sampleDropdown = std::make_shared<UltraCanvasDropdown>("PixelFXSample", 0, 0, 210, 30);
-        sampleDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(sampleDropdown);
+        DemoKit::AddFixed(sourceRow, sampleDropdown);
 
-        auto uploadBtn = std::make_shared<UltraCanvasButton>("PixelFXUpload", 0, 0, 130, 30, "Upload image");
-        uploadBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(uploadBtn);
+        auto uploadBtn = MakeButton("PixelFXUpload", 30, Tr("Upload image"), 130);
+        DemoKit::Add(sourceRow, uploadBtn);
 
         auto imageFrame = std::make_shared<UltraCanvasContainer>("PixelFXImageFrame", 0, 0, 0, 0);
         imageFrame->layout.SetFlexColumn()
@@ -611,12 +606,10 @@ namespace {
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         imageFrame->AddChild(imageView);
 
-        auto status = std::make_shared<UltraCanvasLabel>("PixelFXStatus", 0, 0, 0, 32);
+        // As tall as its wrapped lines
+        auto status = DemoKit::AddText(leftCol, "PixelFXStatus", "");
         status->SetFontSize(11);
         status->SetTextColor(Color(90, 90, 90, 255));
-        status->SetWrap(TextWrap::WrapWord);
-        status->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        leftCol->AddChild(status);
 
         // ----- Middle column: the processing-function tree -----
         auto treeCol = std::make_shared<UltraCanvasContainer>("PixelFXTreeCol", 0, 0, 250, 0);
@@ -626,12 +619,7 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(treeCol);
 
-        auto treeTitle = std::make_shared<UltraCanvasLabel>("PixelFXTreeTitle", 0, 0, 0, 22);
-        treeTitle->SetText("PixelFX functions");
-        treeTitle->SetFontSize(13);
-        treeTitle->SetFontWeight(FontWeight::Bold);
-        treeTitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        treeCol->AddChild(treeTitle);
+        DemoKit::AddHeading(treeCol, "PixelFXTreeTitle", Tr("PixelFX functions"));
 
         auto tree = std::make_shared<UltraCanvasTreeView>("PixelFXTree", 0, 0, 250, 0);
         tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -639,7 +627,7 @@ namespace {
         // Expanding a category jumps the selection to its first function entry.
         tree->SetShowFirstChildOnExpand(true);
 
-        TreeNodeData rootData("pixelfx_root", "PixelFX processing");
+        TreeNodeData rootData("pixelfx_root", Tr("PixelFX processing"));
         rootData.leftIcon = TreeNodeIcon(iconsDir + "image.png", 16, 16);
         tree->SetRootNode(rootData);
         for (const auto& cat : EffectCategories()) {
@@ -652,7 +640,7 @@ namespace {
                 tree->AddNode("cat_" + cat.id, fxData);
             }
         }
-        TreeNodeData othersData("others", "Others");
+        TreeNodeData othersData("others", Tr("Others"));
         othersData.leftIcon = TreeNodeIcon(iconsDir + "text.png", 16, 16);
         tree->AddNode("pixelfx_root", othersData);
         tree->ExpandAll();
@@ -666,12 +654,7 @@ namespace {
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(optionsCol);
 
-        auto optionsTitle = std::make_shared<UltraCanvasLabel>("PixelFXOptionsTitle", 0, 0, 0, 22);
-        optionsTitle->SetText("Options");
-        optionsTitle->SetFontSize(13);
-        optionsTitle->SetFontWeight(FontWeight::Bold);
-        optionsTitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        optionsCol->AddChild(optionsTitle);
+        DemoKit::AddHeading(optionsCol, "PixelFXOptionsTitle", Tr("Options"));
 
         auto optionsBox = std::make_shared<UltraCanvasContainer>("PixelFXOptionsBox", 0, 0, 0, 0);
         optionsBox->layout.SetFlexColumn().SetFlexGap(8)
@@ -727,9 +710,9 @@ namespace {
                 }
                 win->SelectMouseCursor(on ? UCMouseCursor::Cross : UCMouseCursor::Default);
             }
-            setStatus(on ? "Click in the image to fill from that point — click again to "
-                           "move the fill. Press Esc or right-click to finish."
-                         : "Fill-position picking finished.");
+            setStatus(on ? Tr("Click in the image to fill from that point — click again to "
+                           "move the fill. Press Esc or right-click to finish.")
+                         : Tr("Fill-position picking finished."));
         };
 
         // Encode a PFXImage to PNG and hand it to the image element. The PNG
@@ -743,8 +726,8 @@ namespace {
                 state->displayBuffer = PixelFX::FileIO::SaveToBuffer(display, ".png");
                 auto raster = UCImageRaster::LoadFromMemory(state->displayBuffer);
                 if (!raster || !raster->errorMessage.empty()) {
-                    setStatus("Could not decode processed image" +
-                              (raster ? ": " + raster->errorMessage : std::string(".")));
+                    setStatus(raster ? TrF("Could not decode processed image: {0}", raster->errorMessage)
+                                     : Tr("Could not decode processed image."));
                     return false;
                 }
                 imageView->contentW = display.Width();
@@ -752,7 +735,7 @@ namespace {
                 imageView->LoadFromImage(raster);
                 return true;
             } catch (const std::exception& e) {
-                setStatus(std::string("Display failed: ") + e.what());
+                setStatus(TrF("Display failed: {0}", e.what()));
                 return false;
             }
         };
@@ -796,7 +779,7 @@ namespace {
             if (!state->originalValid) return;
             if (!state->effect) {
                 if (showImage(state->original)) {
-                    setStatus("Original image — pick a function from the tree to process it.");
+                    setStatus(Tr("Original image — pick a function from the tree to process it."));
                 }
                 return;
             }
@@ -809,9 +792,9 @@ namespace {
                     int fh = static_cast<int>(imageView->GetHeight());
                     if (fw < 32 || fh < 32) { fw = 640; fh = 480; }   // pre-layout fallback
                     if (!showImage(frameScaled(state->original, state->params[0], fw, fh))) return;
-                    setStatus(state->effect->name + " (Factor = " + FormatParamValue(state->params[0]) +
-                              ") — display grows with the factor: width pinned to the frame, then "
-                              "taller to the border; below 1.0 it shrinks centred.");
+                    setStatus(TrF("{0} (Factor = {1}) — display grows with the factor: width pinned to the frame, then "
+                                  "taller to the border; below 1.0 it shrinks centred.",
+                                  state->effect->name, FormatParamValue(state->params[0])));
                     return;
                 }
                 PixelFX::PFXImage result = state->effect->apply(state->original, state->params, state->ctx);
@@ -828,7 +811,7 @@ namespace {
                 }
                 setStatus(text + " — " + state->effect->description);
             } catch (const std::exception& e) {
-                setStatus(std::string("Processing failed: ") + e.what());
+                setStatus(TrF("Processing failed: {0}", e.what()));
             }
         };
 
@@ -853,7 +836,7 @@ namespace {
                 applyCurrent();
             } catch (const std::exception& e) {
                 state->originalValid = false;
-                setStatus("Could not load " + path + "\n" + e.what());
+                setStatus(TrF("Could not load {0}", path) + "\n" + e.what());
             }
         };
 
@@ -877,40 +860,23 @@ namespace {
                                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
                 optionsBox->AddChild(info);
             } else if (!state->effect) {
-                auto hint = std::make_shared<UltraCanvasLabel>("PixelFXOptHint", 0, 0, 0, 60);
-                hint->SetText("Select a processing function in the tree to see its options.");
-                hint->SetFontSize(12);
+                auto hint = DemoKit::AddText(optionsBox, "PixelFXOptHint",
+                    Tr("Select a processing function in the tree to see its options."));
                 hint->SetTextColor(Color(120, 120, 120, 255));
-                hint->SetWrap(TextWrap::WrapWord);
-                hint->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(hint);
             } else {
                 const Effect& fx = *state->effect;
 
-                auto name = std::make_shared<UltraCanvasLabel>("PixelFXOptName", 0, 0, 0, 22);
-                name->SetText(fx.name);
-                name->SetFontSize(13);
-                name->SetFontWeight(FontWeight::Bold);
-                name->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(name);
+                DemoKit::AddHeading(optionsBox, "PixelFXOptName", fx.name);
 
-                auto desc = std::make_shared<UltraCanvasLabel>("PixelFXOptDesc", 0, 0, 0, 56);
-                desc->SetText(fx.description);
+                auto desc = DemoKit::AddText(optionsBox, "PixelFXOptDesc", fx.description);
                 desc->SetFontSize(11);
                 desc->SetTextColor(Color(110, 110, 110, 255));
-                desc->SetWrap(TextWrap::WrapWord);
-                desc->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(desc);
 
                 for (size_t i = 0; i < fx.params.size(); ++i) {
                     const EffectParam& param = fx.params[i];
 
-                    auto valueLabel = std::make_shared<UltraCanvasLabel>(
-                        "PixelFXOptLabel" + std::to_string(i), 0, 0, 0, 18);
-                    valueLabel->SetText(param.label + ": " + FormatParamValue(state->params[i]));
-                    valueLabel->SetFontSize(12);
-                    valueLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(valueLabel);
+                    auto valueLabel = DemoKit::AddText(optionsBox, "PixelFXOptLabel" + std::to_string(i),
+                        param.label + ": " + FormatParamValue(state->params[i]));
 
                     auto slider = CreateHorizontalSlider(
                         "PixelFXOptSlider" + std::to_string(i), 0, 0, 0, 24,
@@ -931,11 +897,7 @@ namespace {
 
                 // Optional dropdown (blend mode, watermark position, …)
                 if (!fx.choices.empty()) {
-                    auto choiceLabel = std::make_shared<UltraCanvasLabel>("PixelFXOptChoiceLabel", 0, 0, 0, 18);
-                    choiceLabel->SetText(fx.choiceLabel);
-                    choiceLabel->SetFontSize(12);
-                    choiceLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(choiceLabel);
+                    DemoKit::AddText(optionsBox, "PixelFXOptChoiceLabel", fx.choiceLabel);
 
                     auto choiceDropdown = std::make_shared<UltraCanvasDropdown>("PixelFXOptChoice", 0, 0, 0, 30);
                     for (const auto& c : fx.choices) choiceDropdown->AddItem(c);
@@ -951,11 +913,7 @@ namespace {
 
                 // Flood-fill extras: ink colour picker + click-to-set position
                 if (fx.usesFillColor) {
-                    auto colorLabel = std::make_shared<UltraCanvasLabel>("PixelFXOptColorLabel", 0, 0, 0, 18);
-                    colorLabel->SetText("Fill colour");
-                    colorLabel->SetFontSize(12);
-                    colorLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(colorLabel);
+                    DemoKit::AddText(optionsBox, "PixelFXOptColorLabel", Tr("Fill colour"));
 
                     auto picker = CreateColorPicker("PixelFXFillColor", state->ctx.fillColor, 0, 0, 286, 400);
                     picker->SetShowAlpha(false);
@@ -967,35 +925,31 @@ namespace {
                     };
                     optionsBox->AddChild(picker);
 
-                    auto pickBtn = std::make_shared<UltraCanvasButton>(
-                        "PixelFXPickPos", 0, 0, 170, 28, "Set fill position");
+                    auto pickBtn = MakeButton("PixelFXPickPos", 28, Tr("Set fill position"), 170);
                     pickBtn->SetIcon(iconsDir + "circle-empty.svg");
                     pickBtn->SetIconSize(14, 14);
-                    pickBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                     pickBtn->onClick = [setPick]() { (*setPick)(true); };
-                    optionsBox->AddChild(pickBtn);
+                    DemoKit::Add(optionsBox, pickBtn);
+                    pickBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
                 }
 
                 if (fx.params.empty() && fx.choices.empty() && !fx.usesFillColor) {
-                    auto none = std::make_shared<UltraCanvasLabel>("PixelFXOptNone", 0, 0, 0, 20);
-                    none->SetText("This function has no adjustable options.");
+                    auto none = DemoKit::AddText(optionsBox, "PixelFXOptNone",
+                        Tr("This function has no adjustable options."));
                     none->SetFontSize(11);
                     none->SetTextColor(Color(120, 120, 120, 255));
-                    none->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(none);
                 }
 
-                auto originalBtn = std::make_shared<UltraCanvasButton>(
-                    "PixelFXShowOriginal", 0, 0, 130, 28, "Show original");
-                originalBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                auto originalBtn = MakeButton("PixelFXShowOriginal", 28, Tr("Show original"), 130);
                 originalBtn->onClick = [state, showImage, setStatus]() {
                     if (!state->originalValid) return;
                     if (showImage(state->original)) {
-                        setStatus("Original image (function still selected — move a "
-                                  "slider or re-select it to process again).");
+                        setStatus(Tr("Original image (function still selected — move a "
+                                  "slider or re-select it to process again)."));
                     }
                 };
-                optionsBox->AddChild(originalBtn);
+                DemoKit::Add(optionsBox, originalBtn);
+                originalBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
             }
 
             optionsBox->InvalidateLayout();
@@ -1010,7 +964,7 @@ namespace {
                 state->infoMode = true;
                 (*rebuildOptions)();
                 if (state->originalValid && showImage(state->original)) {
-                    setStatus("Functions without a playground demo — see the panel on the right.");
+                    setStatus(Tr("Functions without a playground demo — see the panel on the right."));
                 }
                 return;
             }
@@ -1047,18 +1001,18 @@ namespace {
         // ----- Upload a custom image through the native file dialog -----
         uploadBtn->onClick = [state, sampleDropdown, loadSource, setStatus]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open image for PixelFX");
-            UltraCanvasFileLoader::AddLoadTypes(opts, "Bitmap images", {MediaFormatCategory::Bitmap});
-            opts.AddFilter("All files", "*");
+            opts.SetTitle(Tr("Open image for PixelFX"));
+            UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Bitmap images"), {MediaFormatCategory::Bitmap});
+            opts.AddFilter(Tr("All files"), "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [state, sampleDropdown, loadSource, setStatus](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        setStatus("Upload cancelled.");
+                        setStatus(Tr("Upload cancelled."));
                         return;
                     }
                     std::string name = PathToUtf8(PathFromUtf8(path).filename());
-                    sampleDropdown->AddItem(DropdownItem("Custom: " + name, path));
+                    sampleDropdown->AddItem(DropdownItem(TrF("Custom: {0}", name), path));
                     sampleDropdown->SetSelectedIndex(sampleDropdown->GetItemCount() - 1, false);
                     loadSource(path);
                 });
@@ -1070,7 +1024,7 @@ namespace {
             sampleDropdown->SetSelectedIndex(defaultIndex, false);
             loadSource(imagesDir + samples[defaultIndex]);
         } else {
-            setStatus("No sample images found in " + imagesDir);
+            setStatus(TrF("No sample images found in {0}", imagesDir));
         }
 
         return root;
@@ -1080,25 +1034,34 @@ namespace {
 
 // ===== PIXELFX MODULE DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePixelFXExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("PixelFXExamples", 0, 0, 1000, 720);
-        root->size.width  = CSSLayout::Dimension::Pct(100);
-        root->size.height = CSSLayout::Dimension::Pct(100);
-        root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        auto root = DemoKit::CreatePage("PixelFXExamples", Tr("PixelFX"),
+                Tr("Image processing on libvips: the module's overview and processing categories, "
+                "its documentation, and a playground that applies each function to a sample "
+                "or uploaded image."));
+        // The tabs' text areas and the playground scroll and size themselves:
+        // the page is the area's height and the tabs' card takes what the
+        // title leaves.
+        root->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("PixelFXCard");
+        card->SetPadding(4);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        DemoKit::Add(root, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PixelFXTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
-        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        tabs->AddTab("Overview", BuildOverviewTab());
-        tabs->AddTab("Details",  BuildDetailsTab());
-        tabs->AddTab("Examples", BuildExamplesTab());
+        tabs->AddTab(Tr("Overview"), BuildOverviewTab());
+        tabs->AddTab(Tr("Details"),  BuildDetailsTab());
+        tabs->AddTab(Tr("Examples"), BuildExamplesTab());
         tabs->SetActiveTab(0);
 
-        root->AddChild(tabs);
+        DemoKit::Add(card, tabs, 1);
+        tabs->layoutItem.SetFlexShrink(1);
         return root;
     }
 

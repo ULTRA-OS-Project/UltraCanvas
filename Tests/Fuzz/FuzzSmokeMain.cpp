@@ -116,8 +116,8 @@ public:
         : rng(seed), dictionary(std::move(dict)), maxLength(maxLen) {}
 
     Bytes Mutate(const std::vector<Bytes>& seeds) {
-        Bytes data = seeds.empty() ? Bytes{} : seeds[Below(seeds.size())];
-        const int steps = 1 + static_cast<int>(Below(4));
+        Bytes data = seeds.empty() ? Bytes{} : seeds[IndexBelow(seeds.size())];
+        const int steps = 1 + static_cast<int>(IndexBelow(4));
         for (int i = 0; i < steps; ++i) MutateOnce(data, seeds);
         if (data.size() > maxLength) data.resize(maxLength);
         return data;
@@ -128,43 +128,43 @@ private:
     std::vector<Bytes> dictionary;
     size_t maxLength;
 
-    size_t Below(size_t n) { return n == 0 ? 0 : std::uniform_int_distribution<size_t>(0, n - 1)(rng); }
+    size_t IndexBelow(size_t n) { return n == 0 ? 0 : std::uniform_int_distribution<size_t>(0, n - 1)(rng); }
 
     void MutateOnce(Bytes& data, const std::vector<Bytes>& seeds) {
-        const size_t at = Below(data.size() + 1);
-        switch (Below(8)) {
+        const size_t at = IndexBelow(data.size() + 1);
+        switch (IndexBelow(8)) {
             case 0:   // flip a bit
-                if (!data.empty()) data[Below(data.size())] ^= static_cast<uint8_t>(1u << Below(8));
+                if (!data.empty()) data[IndexBelow(data.size())] ^= static_cast<uint8_t>(1u << IndexBelow(8));
                 break;
             case 1:   // a random byte, often a structural one
                 if (!data.empty()) {
                     static const char kSpecial[] = "<>/=\"'{}();:,#.[]*!@%-\\&\0\n ";
-                    data[Below(data.size())] = Below(2) ? static_cast<uint8_t>(Below(256))
-                                                        : static_cast<uint8_t>(kSpecial[Below(sizeof(kSpecial) - 1)]);
+                    data[IndexBelow(data.size())] = IndexBelow(2) ? static_cast<uint8_t>(IndexBelow(256))
+                                                        : static_cast<uint8_t>(kSpecial[IndexBelow(sizeof(kSpecial) - 1)]);
                 }
                 break;
             case 2:   // insert a dictionary token
             case 3:
                 if (!dictionary.empty()) {
-                    const Bytes& token = dictionary[Below(dictionary.size())];
+                    const Bytes& token = dictionary[IndexBelow(dictionary.size())];
                     data.insert(data.begin() + static_cast<std::ptrdiff_t>(at), token.begin(), token.end());
                 }
                 break;
             case 4: { // delete a range
                 if (data.empty()) break;
-                const size_t from = Below(data.size());
-                const size_t len = 1 + Below(std::min<size_t>(64, data.size() - from));
+                const size_t from = IndexBelow(data.size());
+                const size_t len = 1 + IndexBelow(std::min<size_t>(64, data.size() - from));
                 data.erase(data.begin() + static_cast<std::ptrdiff_t>(from),
                            data.begin() + static_cast<std::ptrdiff_t>(from + len));
                 break;
             }
             case 5: { // repeat a range many times (deep nesting, long lists)
                 if (data.empty()) break;
-                const size_t from = Below(data.size());
-                const size_t len = 1 + Below(std::min<size_t>(16, data.size() - from));
+                const size_t from = IndexBelow(data.size());
+                const size_t len = 1 + IndexBelow(std::min<size_t>(16, data.size() - from));
                 const Bytes slice(data.begin() + static_cast<std::ptrdiff_t>(from),
                                   data.begin() + static_cast<std::ptrdiff_t>(from + len));
-                const size_t times = 1 + Below(Below(2) ? 8 : 4000);
+                const size_t times = 1 + IndexBelow(IndexBelow(2) ? 8 : 4000);
                 Bytes repeated;
                 for (size_t t = 0; t < times && repeated.size() < maxLength; ++t)
                     repeated.insert(repeated.end(), slice.begin(), slice.end());
@@ -173,17 +173,17 @@ private:
             }
             case 6: { // splice in part of another seed
                 if (seeds.empty()) break;
-                const Bytes& other = seeds[Below(seeds.size())];
+                const Bytes& other = seeds[IndexBelow(seeds.size())];
                 if (other.empty()) break;
-                const size_t from = Below(other.size());
-                const size_t len = 1 + Below(other.size() - from);
+                const size_t from = IndexBelow(other.size());
+                const size_t len = 1 + IndexBelow(other.size() - from);
                 data.insert(data.begin() + static_cast<std::ptrdiff_t>(at),
                             other.begin() + static_cast<std::ptrdiff_t>(from),
                             other.begin() + static_cast<std::ptrdiff_t>(from + len));
                 break;
             }
             default:  // cut it short
-                if (!data.empty()) data.resize(Below(data.size()));
+                if (!data.empty()) data.resize(IndexBelow(data.size()));
                 break;
         }
     }

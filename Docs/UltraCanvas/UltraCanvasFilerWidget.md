@@ -37,6 +37,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Long names](#long-names)
 - [File extensions](#file-extensions)
 - [File icons](#file-icons)
+- [Following the theme](#following-the-theme)
 - [Name tooltips](#name-tooltips)
 - [Context menu](#context-menu)
 - [Programs inside archives](#programs-inside-archives)
@@ -48,12 +49,14 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Native application icons](#native-application-icons)
   - [Thumbnail memory](#thumbnail-memory)
   - [Thumbnails between runs](#thumbnails-between-runs)
+  - [A file's picture outside the Filer](#a-files-picture-outside-the-filer)
 - [Shortcuts](#shortcuts)
   - [Windows shortcuts (.lnk)](#windows-shortcuts-lnk)
   - [Desktop entries (.desktop)](#desktop-entries-desktop)
   - [macOS shortcuts and application bundles](#macos-shortcuts-and-application-bundles)
   - [What the host sees](#what-the-host-sees)
 - [Selection info bar](#selection-info-bar)
+  - [Showing the line in the host's status bar](#showing-the-line-in-the-hosts-status-bar)
 - [Files in use](#files-in-use)
 - [Remote folders](#remote-folders)
   - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
@@ -87,6 +90,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Selection after a delete](#selection-after-a-delete)
 - [Watching the shown folder](#watching-the-shown-folder)
 - [Compressing and extracting](#compressing-and-extracting)
+  - [How a TAR is packed](#how-a-tar-is-packed)
 - [Clipboard interop with other programs](#clipboard-interop-with-other-programs)
   - [The operation dialog](#the-operation-dialog)
   - [Name conflicts](#name-conflicts)
@@ -183,14 +187,13 @@ The three column-based views carry draggable splitters between their columns.
 They are `UltraCanvasSplitPane` dividers in look and feel — the style is a
 `SplitPaneStyle` (`FilerStyle::columnSplitter`), the hovered and dragged
 divider highlight the same way, the cursor turns into the `SizeWE` resize
-cursor, and a drag re-splits the two neighbouring columns instead of moving the
-whole table. They are painted by the widget itself (like the rows, the hover
+cursor. They are painted by the widget itself (like the rows, the hover
 icon menu and the scrollbar) rather than being child elements, so a folder with
 thousands of entries stays as cheap as before.
 
 | View | Splitters | Dragging one |
 |---|---|---|
-| `Details` | On the right edge of every column, inside the header strip (the rows stay fully clickable). A guide line follows the drag down the entries. | Moves width between that column and the one after it, so the table keeps spanning the widget. The Name column is the flexible one: it absorbs whatever the others leave, so dragging the first splitter widens or narrows the name. |
+| `Details` | On the right edge of every column, inside the header strip (the rows stay fully clickable). A guide line follows the drag down the entries. | By default (`FilerColumnResizeMode::PushFollowing`) resizes that column alone: the columns after it move along and keep their widths, and a table wider than the view gets a horizontal scrollbar (Shift+wheel or a sideways wheel scrolls it; the header scrolls with the rows). The Name column starts out flexible — it fills what the others leave — and is pinned at its width by the first drag; `ResetDetailsColumnWidths()` makes it flexible again. `SplitWithNeighbour` moves width between the column and the one after it instead, so the table keeps spanning the widget; the last column then has no splitter. |
 | `List` | In every gap between the flowing columns, full height. | Re-widths **all** columns (the list columns are uniform) and reflows the entries. |
 | `BarSize` | Between the name column and the bar, and between the bar and the size label, full height. | Resizes the name / label column; the bar takes what is left between them. |
 
@@ -209,6 +212,9 @@ filer->SetBarSizeValueColumnWidth(0);    // 0 = auto (fits the widest size)
 
 filer->onColumnWidthsChanged = [] { /* persist the layout */ };
 filer->SetColumnResizeEnabled(false);    // fixed columns
+
+// Details: split-pane resizing instead of pushing the following columns.
+filer->SetDetailsColumnResizeMode(FilerColumnResizeMode::SplitWithNeighbour);
 ```
 
 `FilerDetailsColumn` names the Details columns left to right: `Name`, `Path`,
@@ -256,7 +262,10 @@ being cut off after one:
   the name off the caption, the name is re-broken with mid-word breaks allowed
   (and the case rule off) and the version showing more of it wins.
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
-  restores the old single-line caption).
+  restores the old single-line caption; `0` lifts the limit, so the full name
+  is always shown over as many lines as it needs). `SetCaptionMaxLines(n)`
+  changes just that value and relays the grid out — UltraFiler's
+  *Settings > Display > File names* drives it.
 - A name that fits its lines completely is broken **balanced**, not greedily:
   the break points are chosen so the lines come out near equal instead of the
   first line taking everything that fits and leaving a stub behind:
@@ -370,6 +379,14 @@ pixmap. Until an answer lands — and on a system that has no icon for the type,
 or no desktop to ask at all — the simple icon is drawn, so the display never
 waits on a lookup and never shows an empty box.
 
+On Windows a type no program is registered for counts as one the system has
+no icon for. Explorer draws such a file - a `.7z`, `.tar`, `.tar.xz` or
+`.tar.zst` on a machine without 7-Zip - as a blank page that says nothing
+about it, so the display draws its own icon for the type instead: the archive
+sheet with `7Z`, `TAR`, `XZ` or `ZST` on it. A type that is registered keeps
+Explorer's icon, and installing a program for it switches it over the next
+time the display resolves its icons (`RefreshHostIcons()`, or a restart).
+
 `AreHostFileIconsAvailable()` reports whether there is a desktop to ask
 (false on WebAssembly and Android): a settings page should say so rather than
 offer a choice that changes nothing. `RefreshHostIcons()` throws the resolved
@@ -392,6 +409,29 @@ in the listing's colours (the Save dialog's big type logo).
 <!-- doc-check: UltraCanvasFilerWidget* filer; IRenderContext* ctx; -->
 ```cpp
 filer->DrawTypeIcon(ctx, "holiday.jpg", false, Rect2Di(4, 4, 24, 24));
+```
+
+## Following the theme
+
+`FilerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the well for the file
+area, ink and muted ink for the names and their details, the panel for the
+header, the info bar and a bar's background with ink on it, hairlines for
+the grid, the hover fill, the soft accent for the selection with the accent
+round it, the accent for the bars and the loading bar, the well with the
+accent for the rename editor; the interface font at the body size, the
+small text at the caption size. The hover icon menu and the extension tag
+keep their dark overlays unless the theme names `filer.icon-menu`,
+`filer.on-icon-menu`, `filer.icon-menu-done`, `filer.extension-bar`,
+`filer.extension-tag` and `filer.on-extension-tag`. Under the theme policy
+a new widget follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+FilerStyle roomy = filer->GetStyle();
+roomy.tileGap = 16;
+filer->SetStyle(FilerStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+filer->SetFollowTheme(true);
 ```
 
 ## Name tooltips
@@ -431,6 +471,8 @@ Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 Copy / Cut / Paste / Delete / Delete Permanently / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
+Refresh           the folder on display, or the one folder right-clicked,
+                  read again (onRefreshRequested)
 ──────────
 Compress / Extract
 ──────────
@@ -474,9 +516,38 @@ Notes:
 - **Paste** is enabled while the filer clipboard holds entries (shared between
   all filer instances) or the system clipboard offers files, an image or text —
   see [Clipboard interop](#clipboard-interop-with-other-programs).
+- **A copy keeps the original's dates.** Every file and folder a paste, a
+  drop, a *Duplicate* or a move between drives writes gets the original's
+  modification and access dates and, on Windows and macOS, its creation date
+  (`CopyFileTimes`, `UltraCanvasFileTimes.h`); a folder's are set after its
+  contents, which would otherwise make it "modified now". Linux and the BSDs
+  give a program no way to set a creation date, so there a copy is created
+  when it was made, as with `cp -p`. A move within a drive is a rename and
+  never touched the dates. A new file made from a template is new, and is
+  dated so. Copies to and from a remote drive keep them too - each UltraCloud
+  provider sends the file's dates with an upload and dates a download with
+  the server's (see *A transfer keeps the file's dates* in
+  `Docs/Modules/UltraCloud/README.md`) - and so does *Extract*: a file
+  unpacked from an archive has the date the archive gives it, and from a ZIP
+  or 7z its creation date as well, on Windows and macOS.
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Refresh** is for the one folder entry the menu was opened on, or else
+  the folder on display. Without a hook it re-reads the folder on display
+  (`Refresh()`). With `onRefreshRequested` set, the host is handed that
+  folder and carries the refresh out itself, this display's re-read
+  included: a host that answers remote folders from a cache
+  (`remoteListing`) asks the server again first, and one with a folder tree
+  brings its rows in line. UltraFiler does both, the same as its tree's
+  *Refresh*.
+
+  ```cpp
+  filer->onRefreshRequested = [display = filer.get()](const std::string& folder) {
+      // drop or re-ask what a cache holds for `folder`, then:
+      if (folder == display->GetPath()) display->Refresh();
+  };
+  ```
 - **Open with** is the first entry — opening a file is what the menu is
   opened for most often — and the entry itself is clickable: it opens the
   whole selection with the OS default application, the same thing a
@@ -534,6 +605,9 @@ Notes:
   drag retargets the destination exactly like compressing. Both go through
   `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
+  Each format's entry has a tooltip with the parameters it packs with, as
+  the equivalent command line - see
+  [How a TAR is packed](#how-a-tar-is-packed).
   `CompressSelection(extension)` / `ExtractSelection()` perform the immediate
   operations for programmatic use — `ExtractSelection()` asks (Keep both /
   Extract into the existing folder / Skip) when the destination folder name
@@ -955,6 +1029,14 @@ showed the old picture. The decode itself reads images with
 a file that changed since it was cached again; plain `UCImage::Get()` never
 looks at the disk.
 
+**Not only the Filer's thumbnails live there.** `UCImage::GetPixmap` keeps a
+raster file's fitted pixmap in the same cache when the box is at least
+640 × 480 raw pixels - a desktop's wallpaper, a viewer's photo - stored as
+the same QOI blob after the first decode and inflated on the next run
+instead of decoding and resizing the file; a picture without an alpha
+channel is stored and inflated opaque (RGB24). The same stamp and the same
+sweep apply.
+
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
 (`ThumbnailDiskCache::kRendererGeneration`), and an entry of another
@@ -997,6 +1079,25 @@ shown, or it looks like a fault.
 A disk cache is an optimisation and never a requirement: a full disk, a
 read-only cache directory or a platform with nowhere to write costs a
 re-decode, never a missing thumbnail.
+
+### A file's picture outside the Filer
+
+`RenderFileThumbnail(path, width, height, scale)` (a free function in
+`UltraCanvasFilerWidget.h`) makes the picture a tile would show, for a caller
+that has no Filer: the image itself, a PDF's first page, a book's cover, a 3D
+model, a font specimen, a video's poster frame, an embedded preview - and for
+a text document (Word, LibreOffice, Markdown, a spreadsheet, plain text) a
+small page with its first lines, which the tiles draw as text themselves. It
+is the switch the thumbnail workers run, so the two never disagree about
+what a format looks like. It blocks - call it from a worker thread - and
+answers nullptr where this build can make no picture (an archive, a
+program, audio); the caller then shows the type's icon. UltraDesktop's
+Sticker board draws its cards' thumbnails with it.
+
+<!-- doc-check: std::string path; -->
+```cpp
+std::shared_ptr<UCPixmap> picture = RenderFileThumbnail(path, 116, 58, 2.0f);
+```
 
 ## Shortcuts
 
@@ -1104,15 +1205,58 @@ also toggled by Display > Info-Bar) describes the current selection:
   - **bitmaps**: pixel dimensions (`1920 × 1080 px`), parsed from the file
     header for PNG / JPEG / GIF / BMP / WebP / TIFF / QOI / ICO (other formats
     fall back to the shared `UCImage` cache);
-  - **audio / video**: play length and codec (`3:45 · H.264`), parsed from the
-    container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 / M4A / MOV / AVI /
-    MKV / WebM / WMV — no decoding, only a few bounded reads. When nothing can
-    be probed the entry's `info` value (e.g. from `infoProvider`) is shown.
+  - **audio / video**: play length and codec (`3:45 · AAC LC`), and for a
+    film its picture size as shown between them (`1:23 · 1920 × 1080 · H.264`;
+    a phone's portrait clip upright, an anamorphic one at its display width),
+    parsed from the container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 /
+    M4A / MOV / AVI / MKV / WebM / WMV — no decoding, only a few bounded reads.
+    MP4 / MOV / 3GP, Matroska / WebM and AVI are read by `ReadVideoFileInfo`
+    (`UltraCanvasVideoFileInfo.h`), the reader the media viewer's Details
+    use, so the two never disagree about a file. When nothing can be probed
+    the entry's `info` value (e.g. from `infoProvider`) is shown.
 - **Single folder** — recursive file / folder counts and total size (capped at
   50 000 entries for safety; a `≥` prefix marks a capped result).
 - **Multiple items** — item counts and the summed size of the selection
   (folders counted recursively).
 - **No selection** — a summary of the displayed folder (entry counts + size).
+
+Sizes are written with one decimal below a gigabyte and two from there on
+(`103.6 KB`, `2.41 GB`). A host that describes the same entries elsewhere - a
+status bar, a tooltip of its own - formats them with the static
+`UltraCanvasFilerWidget::FormatSizeText(bytes)`, so the two never round one
+selection two ways:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; uint64_t bytes = 0; -->
+```cpp
+statusLabel->SetText("1 item selected (" +
+                     UltraCanvasFilerWidget::FormatSizeText(bytes) + ")");
+```
+
+### Showing the line in the host's status bar
+
+A host with a status bar of its own can show the info bar's line there and
+turn the bar off, so the window does not say the same thing twice. The display
+keeps working the line out: `GetSelectionInfo(primary, secondary)` returns it
+whether or not the bar is up - `primary` is the bold lead (the selected
+entry's name, or *"3 items selected"*; empty when nothing is selected),
+`secondary` the details or the folder summary. Folder sizes and media details
+arrive from the background worker after the selection, so the line grows on
+its own; `onSelectionInfoChanged` says when (posted to the UI thread after the
+paint that noticed it, so setting a label from it is safe).
+`SetInfoBarMenuItemVisible(false)` takes the Display > Info-Bar switch out of
+the context menu, where turning the bar back on would only repeat the status
+bar. UltraFiler does this for every file display of the window.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; -->
+```cpp
+filer->SetSelectionInfoVisible(false);
+filer->SetInfoBarMenuItemVisible(false);
+filer->onSelectionInfoChanged = [filer, statusLabel] {
+    std::string primary, secondary;
+    filer->GetSelectionInfo(primary, secondary);
+    statusLabel->SetText(primary.empty() ? secondary : primary + "  ·  " + secondary);
+};
+```
 
 Recursive folder statistics are computed **asynchronously** on a background
 worker: selecting a folder shows `…` (or a `≥` lower bound for multi
@@ -1459,12 +1603,24 @@ silently. (`None` and `Always` are X11 macros, hence the spelled-out
 enumerators — the same reason `FilerExtensionBadge::NoneBadge` is spelled that
 way.)
 
-While something IS held back, a strip across the foot of the display reads
-*"3 items are hidden here"* and carries a **Show hidden files** button that
-does exactly what the `Display > Hidden files` context-menu entry does — for
-this display, leaving `SetShowHiddenFiles` elsewhere alone. The strip
-disappears as soon as nothing is held back (including the moment its own
-button is pressed).
+While something IS held back, one centred line at the foot of the file area
+reads *"3 items are hidden here"* next to a blue **Show hidden files** button.
+It sits on the display's own background with no rule or fill of its own, so it
+reads as part of the folder, not as another status bar. The button does
+exactly what the `Display > Hidden files` context-menu entry does — for this
+display, leaving `SetShowHiddenFiles` elsewhere alone. The line disappears as
+soon as nothing is held back (including the moment its own button is
+pressed).
+
+A host whose settings decide what is held back sets `onHiddenNoticeSettings`;
+a gear button then sits right of **Show hidden files** and a click on it runs
+the callback. Unset, there is no gear. It may be set at any time - the gear
+follows on the next paint:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; void OpenHomeFolderSettings(); -->
+```cpp
+filer->onHiddenNoticeSettings = [] { OpenHomeFolderSettings(); };
+```
 
 `GetHiddenItemCount()` counts what the current listing leaves out: the hidden
 entries, the names the ignore patterns drop, and the subfolders a curated home
@@ -1476,9 +1632,8 @@ listing is built — after it, the dropped entries are gone.
 The strip takes its height out of the file area, exactly as the selection info
 bar does (it sits directly above it), so no entry is ever drawn under it, and
 it is left out of the whole-area views (`GourceTree`, `View3D`) and of a pane
-too short to hold both files and strip. Its colours come from the same
-`FilerStyle` fields as the info bar (`infoBarBackground`, `gridLineColor`,
-`secondaryTextColor`).
+too short to hold both files and strip. The count is drawn in
+`secondaryTextColor` on `backgroundColor`.
 
 Hosts pick the mode per folder. The UltraFiler uses `WhenAnyHidden` in the home
 folder — the one folder where every filter bites at once: the profile's hidden
@@ -1874,7 +2029,17 @@ Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
 item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
 turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
 `FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
-so no icon assets are required.
+so no icon assets are required; Rename is a serif *T* beside a text caret, as
+it edits the name rather than the file. Each button's tooltip says what it does
+and gives its shortcut - *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
+(Ctrl+X)*, *Rename (F2)*, *Delete (Del)*. Pressing Copy or Cut answers on the button: it
+flashes green (`FilerStyle::iconMenuDoneColor`) with a checkmark that pops in,
+then fades back to its glyph within 0.7 s - a copy changes nothing else on
+screen. On a drive Cut is greyed out and does nothing,
+as it is in the context menu - its tooltip says to copy, then delete. On a drive
+whose host did not wire `remoteRename` / `remoteDelete`, Rename / Delete are
+greyed out the same way, in the hover strip and in the context menu (F2 and Del
+still report why).
 
 A button acts on the hovered entry — or on the **whole selection** when the
 hovered entry is part of it — and, like a drag, **never changes the selection**:
@@ -2113,7 +2278,13 @@ beside them:
   `"X" is write-protected.` — with **Skip** (the default) / **Delete anyway**
   (red) and an *Apply to all remaining write-protected items* checkbox.
   Delete-anyway lifts the protection first, so it also works on Windows, where
-  a read-only file can never be removed directly.
+  a read-only file can never be removed directly. A read-only **folder** is
+  not asked about on Windows: the attribute protects nothing there, and
+  Windows sets it itself on a folder with a `desktop.ini` and on folders
+  copied off a CD or a camera card, so Explorer deletes such a folder without
+  a word - and so does the widget, lifting the attribute as it goes. On Linux
+  and macOS a folder without write permission is a real protection (nothing
+  in it can be deleted) and is asked about.
 - A **failed delete** asks *afterwards* — `"X" could not be deleted.` with
   *Reason: Permission denied* — with **Try again** (the default) / **Skip**
   and an *Apply to all later failures* checkbox. A stored try-again-for-all
@@ -2123,23 +2294,37 @@ beside them:
 - A failure **inside a folder** is reported for the file that refused, not
   the folder: the question reads `"libvips-42.dll" in "lib" could not be
   deleted.` and the facts add a *Stopped at:* line with the file's path under
-  the folder's. A read-only file inside a folder is not a failure at all: it
-  is lifted and removed, as *Delete anyway* lifts the entry's own protection,
-  so a folder unpacked with its read-only bits goes in one pass.
-- A file **a running program holds** — its executable, a DLL it has loaded —
-  answers "Access is denied" on Windows too, but no administrator can delete
-  it either. The worker asks the [lock probe](UltraCanvasFileLock.md) (the
-  Restart Manager) before it decides, and such a file gets **Delete: a file
+  the folder's. A read-only file **or folder** inside a folder is not a
+  failure at all: it is lifted and removed, as *Delete anyway* lifts the
+  entry's own protection, so a folder unpacked with its read-only bits - or
+  copied off a CD or a camera card, or carrying a `desktop.ini` - goes in one
+  pass, as it does in Explorer. Every entry is removed through
+  [`UltraCanvasFileRemoval`](UltraCanvasFileRemoval.md), which also counts
+  an entry Windows still lists as **delete pending** (deleted, but held open
+  by a virus scanner or the indexer) as gone, and waits a moment for the
+  folder it empties.
+- A file **a running program holds** — its executable, a DLL it has loaded, a
+  picture an image library has memory-mapped — answers "Access is denied" on
+  Windows too, but no administrator can delete it either. `UltraCanvasFileRemoval`
+  tells it apart: the system granted the delete access, and only then refused
+  the delete. The program holding it may be this one - the thumbnails and
+  folder previews of the pictures being deleted are decoded by libvips, which
+  keeps what it read mapped - so the widget first lets go of those
+  (`UCImage::ReleaseCachedFiles`) and tries once more on its own. What is
+  still held asks the [lock probe](UltraCanvasFileLock.md) (the Restart
+  Manager) who holds it, and gets **Delete: a file
   in the folder is in use** — `"libvips-42.dll" in "lib" is in use by another
   program.` with *In use by: UltraFiler (4120)* among the facts — with
   **Skip** (the default) / **Try again** and an *Apply to all later files in
   use* checkbox, and no administrator button. When the holder is the running
   application itself the note says so and tells the user to close it and
   delete from elsewhere.
-- A delete that fails with **"Access is denied"** on Windows and is held by
-  nobody is the one Explorer
+- A delete the **access list** refuses (`FileRemovalProblem::NotPermitted` -
+  "Access is denied" before anything was attempted) is the one Explorer
   answers with its shield button: the entry is deletable, just not by this
-  user. Where the host has wired
+  user. Every "Access is denied" used to be taken for this one, and a
+  picture held by the Filer's own thumbnails was handed to the administrator,
+  who got the same answer. Where the host has wired
   [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
   (UltraFiler has), the dialog is **Delete: administrator permission needed** —
   "Windows asks you to confirm once, at the end, for every item handed to the
@@ -2151,7 +2336,9 @@ beside them:
   Administrator" progress window stands in for the wait, and the widget stays
   responsive because the helper is waited for off the UI thread. What the
   helper still could not delete comes back in the [summary](#the-summary-at-the-end)
-  (*Delete finished*) with the system's reason beside each entry; a declined
+  (*Delete finished*) with the system's reason beside each entry - naming the
+  file inside that refused, and saying "in use by a program" when one holds
+  it; a declined
   prompt is reported through
   `onError` and leaves the entries in place. Sharing violations ("in use by
   another program") are not permission failures and keep the plain dialog,
@@ -2241,11 +2428,11 @@ filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
 ```
 
 Where the operating system can report changes itself the widget uses that —
-inotify on Linux, `ReadDirectoryChangesW` on Windows, through
+inotify on Linux, `ReadDirectoryChangesW` on Windows, FSEvents on macOS, through
 [`UltraCanvasFolderWatcher`](UltraCanvasFolderWatcher.md). A change is then seen
 the moment it happens, and an idle folder costs nothing at all.
 
-Where no backend exists (macOS, Android, WebAssembly) it falls back to polling:
+Where no backend exists (Android, WebAssembly) it falls back to polling:
 a background worker re-fingerprints the folder every interval — its own
 modification time folded together with each entry's name, size and modification
 time — and raises a flag when the number moves. The scan never runs on the UI
@@ -2256,6 +2443,12 @@ has no folder whose changes would mean anything. The interval governs detection
 only while polling; with a native watcher it bounds just how quickly the UI
 applies what the watcher already reported.
 
+A rescan of the folder already being watched keeps its watch running, and a
+change reported while the rescan was running is not discarded - it triggers one
+more rescan. A save is usually several steps (a browser writes a placeholder,
+then a `.part` file, then renames it), and the first step's rescan must not
+swallow the rest.
+
 A native watch can also die after it started — the volume the folder is on is
 unmounted, the share drops, the handle goes bad. The widget is told (the
 watcher's failure callback) and moves that folder to polling, so it keeps
@@ -2263,6 +2456,36 @@ noticing changes instead of quietly freezing on a listing that no longer
 exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
 folder even while it is gone, which is what makes the same stick plugged back
 in re-list itself rather than needing a manual refresh.
+
+A folder that is gone while its volume is still there was deleted or renamed,
+from the other pane or by another program, and is not coming back. On its
+next `Refresh()` (what the watch calls when it notices) the display **moves up
+to the nearest folder above it that is still there**, through `SetPath`, so
+`onPathChanged` tells the host. It no longer sits on an empty listing of a
+folder that does not exist. The two cases are told apart by what is left:
+
+- **Windows:** a pulled stick or a dropped share takes its drive root
+  (`E:\`, `\\server\share`) with it, so nothing above the folder is left.
+- **Linux and macOS:** the stick's mount point vanishes too, and the folder
+  left above it is on another device than the one the folder was listed from.
+
+In both cases the display stays and waits, as before. Only a folder the last
+scan listed as a real directory is moved up from. A folder that answers
+neither "there" nor "gone" — one Windows still lists as delete pending, a
+network share that did not reply — is left for the next look. An archive
+interior, a remote drive and a file list never move.
+
+A delete, a move and a folder rename take an
+[`UltraCanvasFolderWatchHold`](UltraCanvasFolderWatcher.md#letting-go-of-a-folder-about-to-change)
+on the folders they change, for as long as they run. Every watch in the
+process on one of those folders or below it lets go, and none starts there
+until the operation ends. That includes another display, such as the second
+pane of a split view, showing a subfolder of the folder being deleted. On
+Windows that watch held the subfolder open. On a FAT or exFAT drive the deleted
+folder then stayed listed as *delete pending*, and on any drive a folder above
+it could not be moved, not even to the Recycle Bin. The display whose watch was
+released moves to polling, as for a lost watch, and so notices that its folder
+is gone.
 
 The rescan itself is held back while the user is busy: no auto-refresh
 interrupts an open rename editor, a running drag or marquee, a context menu, a
@@ -2306,6 +2529,52 @@ at all still reports `Extraction failed for <archive>` there, now followed by
 the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`
 parameter, not the bridge's shared `GetLastError()`, because extractions run on
 worker threads.
+
+### How a TAR is packed
+
+The TAR entries of Compress - `.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`,
+`.tar.zst` - pack with the host's `FilerTarSettings` (UltraFiler: Settings >
+Archives > TAR); ZIP and 7-Zip pack at libarchive's defaults. The defaults
+are the compressors' own levels on every core, each file's own modification
+time and permission bits without its owner, and symbolic links stored as
+links:
+
+<!-- doc-check: UltraCanvasFilerWidget* filer; -->
+```cpp
+FilerTarSettings tar;
+tar.xzLevel = 9;                     // xz -9 (0-9)
+tar.zstdLevel = 19;                  // zstd -19 (1-19)
+tar.threads = 0;                     // xz / zstd -T0: one thread per core
+tar.zstdLongMode = true;             // zstd --long=27
+tar.headerFormat = FilerTarHeaderFormat::Gnu;
+tar.keepOwner = true;                // owner and group, with their names
+tar.storeSymlinks = false;           // tar -h: what a link points to
+tar.excludePatterns = {".git", "node_modules", "*.tmp", "build/*.o"};
+filer->SetTarSettings(tar);
+
+// The tooltip of the Compress menu's "TAR + xz (.tar.xz)":
+std::string text = UltraCanvasFilerWidget::DescribeCompressParameters("tar.xz", tar);
+// tar --format=gnu -h --exclude='.git' ... -cf - <files> | xz -9 -T0
+// Each file: own modification time, own permissions, owner and group;
+//            links as the files they point to
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `gzipLevel` / `bzip2Level` / `xzLevel` / `zstdLevel` | 6 / 9 / 6 / 3 | The compressor's own level: gzip and bzip2 1-9, xz 0-9, Zstandard 1-19 |
+| `threads` | 0 | Worker threads of xz and Zstandard; 0 is one per core (`-T0`) |
+| `zstdLongMode` | off | Zstandard long-distance matching over 128 MB (`--long=27`); any zstd from 1.3.2 unpacks it without options |
+| `headerFormat` | `Pax` | `Pax` (POSIX.1-2001, extensions only where needed), `Gnu`, or `Ustar` (names to 255 bytes, files to 8 GB) |
+| `keepTimestamps` | on | Off: every entry carries the time it was packed |
+| `keepPermissions` | on | Off: files 0644, folders 0755 |
+| `keepOwner` | off | On: the owner and group, by number and name; off: 0 without names |
+| `storeSymlinks` | on | Off: the file or folder a link points to is stored instead (a link pointing nowhere stays a link) |
+| `excludePatterns` | none | `*` / `?` patterns, case ignored, matched against each name inside a packed folder - or, holding a `/`, against its path there. A matching folder goes with all it holds; a selected item is always packed |
+
+xz's extreme mode (`-e`) is not available: libarchive does not offer it. The
+settings are handed to `UCVFSBridge::CreateArchive` as
+`UCVFSCompressionOptions::archive`, which is VirtualFS's
+`VirtualFSOpenOptions::archiveWrite`.
 
 ## Clipboard interop with other programs
 
@@ -2717,6 +2986,32 @@ filer->onFolderModified = [this](const std::string& folder) {
 };
 ```
 
+**Changes the widget did not make** arrive through
+`onFolderChangedOnDisk(folderPath)` instead. The folder watch (see
+[Watching the shown folder](#watching-the-shown-folder)) noticed the shown
+folder change on disk, and the display re-listed it. Navigation, sorting and a
+plain `Refresh()` never fire it, and nothing goes to a "worked in" list. Its
+cases are:
+
+- Another program created, deleted or renamed something in the folder.
+- An entry this widget deleted went at last. On Windows, a folder whose last
+  file a program still held, perhaps the locked file a delete stopped at,
+  stays listed as *delete pending* until the program lets go. So when the
+  delete reported the folder through `onFolderModified`, the folder was still
+  there.
+- The shown folder itself was deleted. The display has already
+  [moved up](#watching-the-shown-folder), and the argument is the folder that
+  went.
+
+A host's folder tree should re-sync that folder's rows from both callbacks.
+UltraFiler's tree kept a deleted subfolder's row for good while it listened to
+`onFolderModified` alone.
+
+```cpp
+filer->onFolderModified      = [this](const std::string& f) { tree.Resync(f); history.Record(f); };
+filer->onFolderChangedOnDisk = [this](const std::string& f) { tree.Resync(f); };
+```
+
 ### Finished copies and moves
 
 `onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
@@ -2905,6 +3200,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderRefreshed()` | After every (re)scan of the shown folder — the listing changed (file operation, drop, rename, `Refresh()`) |
 | `onListingPendingChanged(status)` | A remote folder's fetch status changed (`remoteListingStatus`): set when a fetch is waited for, updated as it goes, `""` once the listing is in — for the host's status line (see [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)) |
 | `onFolderModified(folderPath)` | The **user** changed a folder's content through the widget — see [Folder modifications](#folder-modifications) |
+| `onFolderChangedOnDisk(folderPath)` | The folder watch saw the shown folder change on disk and the display re-listed it: another program's change, an entry deleted here that Windows listed until a program let go, or the folder itself gone (the display has moved up) — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |

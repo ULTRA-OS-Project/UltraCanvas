@@ -10,12 +10,15 @@
 //
 // One thread waits on that plus a self-pipe, so Stop() wakes it immediately
 // instead of leaving a thread parked in poll() until the next mount.
+// Version: 1.1.0 - a look every two seconds at the GVFS places (ListGvfsVolumes),
+//                  which change without the mount table changing
 // Version: 1.0.0
 // Last Modified: 2026-09-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVolumeMonitor.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <set>
@@ -89,6 +92,8 @@ namespace UltraCanvas {
 
                 callback = std::move(onChanged);
                 stopping.store(false);
+                // The GVFS places there now are not news; one that appears is.
+                gvfsPlaces = GvfsPlaces();
                 worker = std::thread([this]() { Run(); });
                 return true;
             }
@@ -141,13 +146,24 @@ namespace UltraCanvas {
                     fds[1].events = POLLIN;
                     fds[1].revents = 0;
 
-                    const int ready = ::poll(fds, 2, -1);
+                    // Woken every couple of seconds as well: the places the
+                    // desktop mounts through GVFS - a phone, a camera, a share
+                    // (ListGvfsVolumes) - come and go inside one FUSE mount, so
+                    // the mount table never changes for them.
+                    const int ready = ::poll(fds, 2, kGvfsCheckMs);
                     if (ready < 0) {
                         if (errno == EINTR) continue;
                         return;                  // unusable; the caller polls
                     }
                     if (stopping.load()) return;
                     if (fds[1].revents & POLLIN) return;   // Stop() woke us
+                    if (ready == 0) {
+                        std::vector<std::string> now = GvfsPlaces();
+                        if (now == gvfsPlaces) continue;
+                        gvfsPlaces = std::move(now);
+                        if (!stopping.load() && callback) callback();
+                        continue;
+                    }
 
                     if (!(fds[0].revents & (POLLPRI | POLLERR))) continue;
 
@@ -158,6 +174,16 @@ namespace UltraCanvas {
                     if (!stopping.load() && callback) callback();
                 }
             }
+
+            // The GVFS places as last seen: their paths, sorted.
+            static std::vector<std::string> GvfsPlaces() {
+                std::vector<std::string> paths;
+                for (const MountedVolume& v : ListGvfsVolumes()) paths.push_back(v.path);
+                std::sort(paths.begin(), paths.end());
+                return paths;
+            }
+            static constexpr int kGvfsCheckMs = 2000;
+            std::vector<std::string> gvfsPlaces;   // worker thread only
 
             int mountFd = -1;
             int wakePipe[2] = {-1, -1};

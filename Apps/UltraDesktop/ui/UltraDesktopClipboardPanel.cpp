@@ -1,10 +1,13 @@
 // Apps/UltraDesktop/ui/UltraDesktopClipboardPanel.cpp
 // The clipboard quick panel. See UltraDesktopClipboardPanel.h.
+// Version: 0.2.0 - SetParentWindow (the desktop window places the panel on Wayland)
+// Version: 0.1.2 - SetScreenArea
 // Version: 0.1.1 - the row's icons follow the history's iconSide (left or right of the text)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopClipboardPanel.h"
+#include "UltraDesktopPanelTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -33,12 +36,6 @@ constexpr size_t kFoundShown = 40;
 constexpr size_t kTargetShown = 3;    // under "For <program>"
 
 // The right bar's palette (UltraDesktopWindow.cpp): the panel belongs to it.
-const Color kPanel(31, 31, 31);
-const Color kInset(20, 20, 20);
-const Color kBar(74, 74, 74);
-const Color kRaised(46, 46, 46);
-const Color kText(242, 242, 242);
-const Color kMuted(140, 140, 140);
 
 } // namespace
 
@@ -68,6 +65,10 @@ void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
     WindowConfig config;
     config.title = "Clipboard";
     config.type = WindowType::Borderless;
+#if defined(ULTRACANVAS_DISPLAY_WAYLAND)
+    // A child of the desktop window: the one way to be placed on Wayland.
+    config.parentWindow = parent_;
+#endif
     config.width = kPanelWidth;
     config.height = kPanelHeight;
     config.resizable = false;
@@ -75,21 +76,24 @@ void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
     config.maximizable = false;
     config.minWidth = kPanelWidth;
     config.minHeight = kPanelHeight;
-    config.backgroundColor = kPanel;
-    int screenW = 0, screenH = 0;
-    UltraCanvasDesktopShell::GetScreenSize(screenW, screenH);
+    config.backgroundColor = PanelColors().panel;
+    int areaX = areaX_, areaY = areaY_, areaW = areaW_, areaH = areaH_;
+    if (areaW <= 0 || areaH <= 0) {
+        areaX = areaY = 0;
+        UltraCanvasDesktopShell::GetScreenSize(areaW, areaH);
+    }
     window_ = CreateWindow(config);
     if (!window_) return;
     const int physW = window_->LogicalToPhysical(kPanelWidth);
     const int physH = window_->LogicalToPhysical(kPanelHeight);
     int x = rightX - physW;
     int y = topY;
-    if (rightX < 0 && topY < 0 && screenW > 0) {
-        x = (screenW - physW) / 2;
-        y = (screenH - physH) / 3;
+    if (rightX < 0 && topY < 0 && areaW > 0) {
+        x = areaX + (areaW - physW) / 2;
+        y = areaY + (areaH - physH) / 3;
     }
-    if (screenW > 0) x = std::clamp(x, 0, std::max(0, screenW - physW));
-    if (screenH > 0) y = std::clamp(y, 0, std::max(0, screenH - physH));
+    if (areaW > 0) x = std::clamp(x, areaX, std::max(areaX, areaX + areaW - physW));
+    if (areaH > 0) y = std::clamp(y, areaY, std::max(areaY, areaY + areaH - physH));
     window_->SetWindowPosition(x, y);
 
     Build();
@@ -108,6 +112,13 @@ void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
     window_->Show();
     window_->RaiseAndFocus();
     search_->SetFocus(true);
+}
+
+void UltraDesktopClipboardPanel::SetScreenArea(int x, int y, int width, int height) {
+    areaX_ = x;
+    areaY_ = y;
+    areaW_ = width;
+    areaH_ = height;
 }
 
 void UltraDesktopClipboardPanel::Close() {
@@ -132,7 +143,7 @@ void UltraDesktopClipboardPanel::Build() {
     UltraCanvasWindow* window = window_.get();
     window->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window->SetPadding(14, 12, 12, 12);
-    window->SetBackgroundColor(kPanel);
+    window->SetBackgroundColor(PanelColors().panel);
 
     // Title, and the shortcut that opens this.
     auto header = std::make_shared<UltraCanvasContainer>("cbp.header");
@@ -141,12 +152,12 @@ void UltraDesktopClipboardPanel::Build() {
     auto title = CreateLabel("cbp.title", 0, 0, 200, 22, "Clipboard");
     title->SetFontSize(11.5f);
     title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(kText);
+    title->SetTextColor(PanelColors().text);
     title->layoutItem.SetFlexGrow(1);
     header->AddChild(title);
     auto shortcut = CreateLabel("cbp.shortcut", 0, 0, 70, 22, "Super+V");
     shortcut->SetFontSize(8.5f);
-    shortcut->SetTextColor(Color(200, 200, 200));
+    shortcut->SetTextColor(PanelColors().muted);
     shortcut->SetAlignment(TextAlignment::Right);
     header->AddChild(shortcut);
     window->AddChild(header);
@@ -155,12 +166,12 @@ void UltraDesktopClipboardPanel::Build() {
     search_->SetPlaceholder("Type to search");
     search_->SetShowPlaceholderAlways(true);
     TextInputStyle searchStyle = search_->GetStyle();
-    searchStyle.backgroundColor = kInset;
-    searchStyle.borderColor = kBar;
+    searchStyle.backgroundColor = PanelColors().inset;
+    searchStyle.borderColor = PanelColors().edge;
     searchStyle.focusBorderColor = Colors::Selection;
-    searchStyle.textColor = kText;
-    searchStyle.placeholderColor = kMuted;
-    searchStyle.caretColor = kText;
+    searchStyle.textColor = PanelColors().text;
+    searchStyle.placeholderColor = PanelColors().muted;
+    searchStyle.caretColor = PanelColors().text;
     searchStyle.borderRadius = 6;
     searchStyle.paddingLeft = 10;
     search_->SetStyle(searchStyle);
@@ -169,7 +180,7 @@ void UltraDesktopClipboardPanel::Build() {
     window->AddChild(search_);
 
     model_ = std::make_shared<ClipboardHistoryListModel>();
-    rows_ = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::Dark());
+    rows_ = std::make_shared<ClipboardHistoryRowDelegate>(PanelColors().light ? ClipboardRowStyle::Light() : ClipboardRowStyle::Dark());
     list_ = std::make_shared<UltraCanvasListView>("cbp.list");
     ListViewStyle listStyle;
     listStyle.backgroundColor = rows_->Style().listBackground;
@@ -179,7 +190,7 @@ void UltraDesktopClipboardPanel::Build() {
     list_->SetModel(model_);
     list_->SetDelegate(rows_);
     list_->SetVariableRowHeights(true);
-    list_->SetBackgroundColor(kPanel);
+    list_->SetBackgroundColor(PanelColors().panel);
     list_->SetBorders(0);
     list_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     list_->onCellHovered = [this](int row, int, const Point2Di& at) {
@@ -218,13 +229,13 @@ void UltraDesktopClipboardPanel::Build() {
     footer->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     footer->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     footer->SetPadding(8, 0, 0, 0);
-    footer->SetBorderTop(1, Color(58, 58, 58));
+    footer->SetBorderTop(1, PanelColors().edge);
     const bool paused = history_ ? history_->GetPolicy().recordingPaused : false;
     recording_ = UltraCanvasSwitch::Create("cbp.recording", 0, 0, "Recording", !paused);
     recording_->layoutItem.SetFlexShrink(0);
     SwitchVisualStyle switchStyle = recording_->GetVisualStyle();
-    switchStyle.base.textColor = kText;
-    switchStyle.base.textHoverColor = kText;
+    switchStyle.base.textColor = PanelColors().text;
+    switchStyle.base.textHoverColor = PanelColors().text;
     recording_->SetVisualStyle(switchStyle);
     recording_->onStateChanged = [this](CheckedState, CheckedState now) {
         if (!history_) return;
@@ -235,18 +246,18 @@ void UltraDesktopClipboardPanel::Build() {
     footer->AddChild(recording_);
     status_ = CreateLabel("cbp.status", 0, 0, 40, 24, "");
     status_->SetFontSize(8.5f);
-    status_->SetTextColor(kMuted);
+    status_->SetTextColor(PanelColors().muted);
     status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     footer->AddChild(status_);
     undo_ = std::make_shared<UltraCanvasButton>("cbp.undo", 0, 0, 56, 28, "Undo");
     ButtonStyle undoStyle = undo_->GetStyle();
-    undoStyle.normalColor = kRaised;
-    undoStyle.hoverColor = kBar;
-    undoStyle.pressedColor = kBar;
-    undoStyle.normalTextColor = Color(147, 197, 253);
-    undoStyle.hoverTextColor = Color(191, 219, 254);
-    undoStyle.pressedTextColor = Color(191, 219, 254);
-    undoStyle.borderColor = kBar;
+    undoStyle.normalColor = PanelColors().raised;
+    undoStyle.hoverColor = PanelColors().edge;
+    undoStyle.pressedColor = PanelColors().edge;
+    undoStyle.normalTextColor = PanelColors().link;
+    undoStyle.hoverTextColor = PanelColors().linkHover;
+    undoStyle.pressedTextColor = PanelColors().linkHover;
+    undoStyle.borderColor = PanelColors().edge;
     undoStyle.cornerRadius = 6;
     undo_->SetStyle(undoStyle);
     undo_->SetOnClick([this]() { Undo(); });
@@ -256,13 +267,13 @@ void UltraDesktopClipboardPanel::Build() {
     auto openApp = std::make_shared<UltraCanvasButton>("cbp.open", 0, 0, 196, 30, "Open UltraClipboard");
     openApp->layoutItem.SetFlexShrink(0);
     ButtonStyle openStyle = openApp->GetStyle();
-    openStyle.normalColor = kRaised;
-    openStyle.hoverColor = Color(58, 58, 58);
-    openStyle.pressedColor = kBar;
-    openStyle.normalTextColor = kText;
-    openStyle.hoverTextColor = kText;
-    openStyle.pressedTextColor = kText;
-    openStyle.borderColor = kBar;
+    openStyle.normalColor = PanelColors().raised;
+    openStyle.hoverColor = PanelColors().raisedHover;
+    openStyle.pressedColor = PanelColors().edge;
+    openStyle.normalTextColor = PanelColors().text;
+    openStyle.hoverTextColor = PanelColors().text;
+    openStyle.pressedTextColor = PanelColors().text;
+    openStyle.borderColor = PanelColors().edge;
     openStyle.cornerRadius = 6;
     openStyle.useIconAsMask = true;
     openApp->SetStyle(openStyle);

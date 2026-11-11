@@ -1,5 +1,10 @@
 // Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
 // Matrix diagram examples: L, T, X, Y and House arrangements with live presentation controls
+// Version: 1.7.1 - Save JSON... writes through UltraCanvasFileLoader::SaveFile,
+//                  as every user file is, and names the reason a save failed
+// Version: 1.7.0 - the shared page look (UltraCanvasDemoPageKit): sidebar and
+//                  diagram cards, every caption sized to its text, file
+//                  buttons as wide as their text
 // Version: 1.6.0 - C-Shaped (Cube) tab; the read-out names a cube cell's slice and a clicked slice's total
 // Version: 1.5.0 - Attribute columns switch (the Improvement Tools departments carry two)
 // Version: 1.4.0 - Pan & zoom and Editable switches; Open JSON... and Save JSON...
@@ -7,10 +12,11 @@
 // Version: 1.2.0 - House of Quality tab; numbers-or-bars roll-up control
 // Version: 1.1.0 - X and Y tabs; hub, header band and cell tint controls
 // Version: 1.0.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasButton.h"
@@ -21,7 +27,6 @@
 #include "UltraCanvasConfig.h"     // GetResourcesDir
 #include "UltraCanvasUtils.h"      // NormalizePath
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8 / PathFromUtf8 for the file name
-#include "DataFormats/UltraCanvasJSON.h"
 #include <memory>
 #include <sstream>
 #include <string>
@@ -30,141 +35,128 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMatrixDiagramExamples() {
-        // Children placed directly inside a sidebar/panel container are inset
-        // explicitly instead of using SetPadding() - the same pattern the
-        // fishbone/SWOT/Quadrant demos use - so absolutely-positioned children
-        // are not clipped by the container's content area.
-        const int PAD = 15;
         const int SIDEBAR_W = 170;
+        // The sidebar's card width before it wraps under the diagram: room
+        // for the 170 px controls and the card's padding.
+        const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("matrixMain", 0, 0, 1140, 800);
-        mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
+        auto mainContainer = DemoKit::CreatePage("matrixMain", Tr("Matrix Diagram"),
+                Tr("Relationships between two to four ordered lists, marked from a named "
+                "scale and rolled up into weighted row and column totals"));
 
-        auto headerContainer = std::make_shared<UltraCanvasContainer>("matrixHeader", 0, 0, 1140, 90);
-        headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
-        mainContainer->AddChild(headerContainer);
+        // Controls | diagram tabs and read-out. The sidebar keeps its width;
+        // on a narrow window the cards wrap under each other.
+        auto contentContainer = DemoKit::AddRow(mainContainer, "matrixContent");
 
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("matrixTitle", 30, 15, 1080, 35);
-        mainTitle->SetText("Matrix Diagram");
-        mainTitle->SetFontSize(22);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetAlignment(TextAlignment::Left);
-        mainTitle->SetTextColor(Color(33, 37, 41, 255));
-        headerContainer->AddChild(mainTitle);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("matrixSubtitle", 30, 52, 1000, 30);
-        subtitle->SetText("Relationships between two to four ordered lists, marked from a named "
-                          "scale and rolled up into weighted row and column totals");
-        subtitle->SetFontSize(13);
-        subtitle->SetAlignment(TextAlignment::Left);
-        subtitle->SetTextColor(Color(108, 117, 125, 255));
-        headerContainer->AddChild(subtitle);
-
-        auto contentContainer = std::make_shared<UltraCanvasContainer>("matrixContent", 0, 90, 1140, 710);
-        mainContainer->AddChild(contentContainer);
+        // The small upper-case heading of a panel.
+        auto makeSectionTitle = [](const std::string& id, const std::string& text) {
+            auto title = DemoKit::CreateText(id, text);
+            title->SetFontSize(11);
+            title->SetFontWeight(FontWeight::Bold);
+            title->SetTextColor(Color(73, 80, 87, 255));
+            return title;
+        };
 
         // ===== LEFT SIDEBAR (controls) =====
-        auto leftSidebar = std::make_shared<UltraCanvasContainer>("matrixLeft", 20, 20, 200, 670);
-        leftSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(leftSidebar);
+        auto leftSidebar = DemoKit::AddCard(contentContainer, "matrixLeft", "", "", SIDEBAR_CARD_W);
+        leftSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        auto controlsTitle = std::make_shared<UltraCanvasLabel>("matrixControlsTitle", PAD, PAD, SIDEBAR_W, 22);
-        controlsTitle->SetText("CONTROLS");
-        controlsTitle->SetFontSize(11);
-        controlsTitle->SetFontWeight(FontWeight::Bold);
-        controlsTitle->SetTextColor(Color(73, 80, 87, 255));
-        controlsTitle->SetAlignment(TextAlignment::Left);
-        leftSidebar->AddChild(controlsTitle);
+        DemoKit::Add(leftSidebar, makeSectionTitle("matrixControlsTitle", Tr("CONTROLS")));
 
-        auto addDropdown = [&](const std::string& id, const std::string& caption, int y) {
-            auto label = std::make_shared<UltraCanvasLabel>(id + "Label", PAD, y, SIDEBAR_W, 18);
-            label->SetText(caption);
+        auto addDropdown = [&](const std::string& id, const std::string& caption) {
+            auto label = DemoKit::CreateText(id + "Label", caption);
             label->SetFontSize(10);
             label->SetFontWeight(FontWeight::Bold);
-            label->SetAlignment(TextAlignment::Left);
-            leftSidebar->AddChild(label);
+            DemoKit::Add(leftSidebar, label);
 
-            auto dropdown = std::make_shared<UltraCanvasDropdown>(id, PAD, y + 19, SIDEBAR_W, 26);
-            leftSidebar->AddChild(dropdown);
+            auto dropdown = std::make_shared<UltraCanvasDropdown>(id, 0, 0, SIDEBAR_W, 26);
+            DemoKit::AddStretched(leftSidebar, dropdown);
             return dropdown;
         };
 
-        auto addSwitch = [&](const std::string& id, const std::string& caption, int y) {
-            auto label = std::make_shared<UltraCanvasLabel>(id + "Label", PAD, y, SIDEBAR_W - 50, 22);
-            label->SetText(caption);
-            label->SetFontSize(11);
-            label->SetAlignment(TextAlignment::Left);
-            leftSidebar->AddChild(label);
+        // The caption takes the row's width and wraps; the switch keeps its
+        // size at the right.
+        auto addSwitch = [&](const std::string& id, const std::string& caption) {
+            auto row = DemoKit::CreateRow(id + "Row", 8, false);
+            DemoKit::Add(leftSidebar, row);
 
-            auto toggle = std::make_shared<UltraCanvasSwitch>(id, PAD + SIDEBAR_W - 46, y, 42, 22);
-            leftSidebar->AddChild(toggle);
+            auto label = DemoKit::CreateText(id + "Label", caption);
+            label->SetFontSize(11);
+            DemoKit::Add(row, label, 1);
+
+            auto toggle = std::make_shared<UltraCanvasSwitch>(id, 0, 0, 42, 22);
+            DemoKit::AddFixed(row, toggle);
             return toggle;
         };
 
-        auto themeSelector = addDropdown("matrixTheme", "Theme", 44);
-        themeSelector->AddItem("Light", "light");
-        themeSelector->AddItem("Dark", "dark");
+        auto themeSelector = addDropdown("matrixTheme", Tr("Theme"));
+        themeSelector->AddItem(Tr("Light"), "light");
+        themeSelector->AddItem(Tr("Dark"), "dark");
         themeSelector->SetSelectedIndex(0);
 
-        auto totalsSelector = addDropdown("matrixTotals", "Roll-up totals", 96);
-        totalsSelector->AddItem("Both axes", "both");
-        totalsSelector->AddItem("Rows only", "rows");
-        totalsSelector->AddItem("Columns only", "columns");
-        totalsSelector->AddItem("None", "none");
+        auto totalsSelector = addDropdown("matrixTotals", Tr("Roll-up totals"));
+        totalsSelector->AddItem(Tr("Both axes"), "both");
+        totalsSelector->AddItem(Tr("Rows only"), "rows");
+        totalsSelector->AddItem(Tr("Columns only"), "columns");
+        totalsSelector->AddItem(Tr("None"), "none");
         totalsSelector->SetSelectedIndex(0);
 
-        auto headerSelector = addDropdown("matrixHeaderFit", "Column headers", 148);
-        headerSelector->AddItem("Auto", "auto");
-        headerSelector->AddItem("Horizontal", "horizontal");
-        headerSelector->AddItem("Wrapped", "wrapped");
-        headerSelector->AddItem("Rotated 45", "r45");
-        headerSelector->AddItem("Rotated 90", "r90");
+        auto headerSelector = addDropdown("matrixHeaderFit", Tr("Column headers"));
+        headerSelector->AddItem(Tr("Auto"), "auto");
+        headerSelector->AddItem(Tr("Horizontal"), "horizontal");
+        headerSelector->AddItem(Tr("Wrapped"), "wrapped");
+        headerSelector->AddItem(Tr("Rotated 45"), "r45");
+        headerSelector->AddItem(Tr("Rotated 90"), "r90");
         headerSelector->SetSelectedIndex(0);
 
-        auto legendSelector = addDropdown("matrixLegendPos", "Legend", 200);
-        legendSelector->AddItem("Bottom", "bottom");
-        legendSelector->AddItem("Top", "top");
-        legendSelector->AddItem("Right", "right");
+        auto legendSelector = addDropdown("matrixLegendPos", Tr("Legend"));
+        legendSelector->AddItem(Tr("Bottom"), "bottom");
+        legendSelector->AddItem(Tr("Top"), "top");
+        legendSelector->AddItem(Tr("Right"), "right");
         legendSelector->SetSelectedIndex(0);
 
-        auto hubSelector = addDropdown("matrixHub", "X hub", 252);
-        hubSelector->AddItem("Captions", "captions");
-        hubSelector->AddItem("Blank", "blank");
+        auto hubSelector = addDropdown("matrixHub", Tr("X hub"));
+        hubSelector->AddItem(Tr("Captions"), "captions");
+        hubSelector->AddItem(Tr("Blank"), "blank");
         hubSelector->SetSelectedIndex(0);
 
-        auto rollUpSelector = addDropdown("matrixRollUp", "Column totals as", 304);
-        rollUpSelector->AddItem("Bars with ranks", "bars");
-        rollUpSelector->AddItem("Numbers", "numbers");
+        auto rollUpSelector = addDropdown("matrixRollUp", Tr("Column totals as"));
+        rollUpSelector->AddItem(Tr("Bars with ranks"), "bars");
+        rollUpSelector->AddItem(Tr("Numbers"), "numbers");
         rollUpSelector->SetSelectedIndex(0);
 
-        auto swBands = addSwitch("matrixBands", "Row banding", 362);
-        auto swLabelFill = addSwitch("matrixLabelFill", "Filled label band", 390);
-        auto swValues = addSwitch("matrixValues", "Cell weights", 418);
-        auto swAxisTitles = addSwitch("matrixAxisTitles", "Axis titles", 446);
-        auto swTint = addSwitch("matrixTint", "Tint cells", 474);
-        auto swHeaderBand = addSwitch("matrixHeaderBand", "Form header", 502);
-        auto swPanZoom = addSwitch("matrixPanZoom", "Pan & zoom", 530);
-        auto swEditable = addSwitch("matrixEditable", "Editable", 558);
-        auto swAttributes = addSwitch("matrixAttributes", "Attribute columns", 586);
+        auto swBands = addSwitch("matrixBands", Tr("Row banding"));
+        auto swLabelFill = addSwitch("matrixLabelFill", Tr("Filled label band"));
+        auto swValues = addSwitch("matrixValues", Tr("Cell weights"));
+        auto swAxisTitles = addSwitch("matrixAxisTitles", Tr("Axis titles"));
+        auto swTint = addSwitch("matrixTint", Tr("Tint cells"));
+        auto swHeaderBand = addSwitch("matrixHeaderBand", Tr("Form header"));
+        auto swPanZoom = addSwitch("matrixPanZoom", Tr("Pan & zoom"));
+        auto swEditable = addSwitch("matrixEditable", Tr("Editable"));
+        auto swAttributes = addSwitch("matrixAttributes", Tr("Attribute columns"));
 
         // ===== DIAGRAM TABS =====
+        // The diagrams have a fixed size; the card is at least as wide as the
+        // tabs and takes the width the sidebar leaves.
+        auto centerCard = DemoKit::AddCard(contentContainer, "matrixCenter", "", "",
+                                           800 + 2 * DemoKit::kCardPadding + 2);
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
-                "matrixTabs", 240, 20, 800, 566);
-        contentContainer->AddChild(tabbedContainer);
+                "matrixTabs", 0, 0, 800, 566);
+        DemoKit::AddFixed(centerCard, tabbedContainer);
 
         struct TabSpec {
             const char* id;
-            const char* tabTitle;
+            std::string tabTitle;
             MatrixModel (*build)();
         };
         const std::vector<TabSpec> specs = {
-                {"matrixTools",     "Improvement Tools", &MatrixSamples::ImprovementTools},
-                {"matrixEmployees", "T-Shaped",          &MatrixSamples::EmployeeAllocation},
-                {"matrixQfd",       "Weighted (QFD)",    &MatrixSamples::QualityFunctionDeployment},
-                {"matrixSupply",    "X-Shaped",          &MatrixSamples::SupplyChain},
-                {"matrixTrace",     "Y-Shaped",          &MatrixSamples::DesignTraceability},
-                {"matrixHouse",     "House of Quality",  &MatrixSamples::HouseOfQuality},
-                {"matrixCube",      "C-Shaped (Cube)",   &MatrixSamples::DefectCube},
+                {"matrixTools",     Tr("Improvement Tools"), &MatrixSamples::ImprovementTools},
+                {"matrixEmployees", Tr("T-Shaped"),          &MatrixSamples::EmployeeAllocation},
+                {"matrixQfd",       Tr("Weighted (QFD)"),    &MatrixSamples::QualityFunctionDeployment},
+                {"matrixSupply",    Tr("X-Shaped"),          &MatrixSamples::SupplyChain},
+                {"matrixTrace",     Tr("Y-Shaped"),          &MatrixSamples::DesignTraceability},
+                {"matrixHouse",     Tr("House of Quality"),  &MatrixSamples::HouseOfQuality},
+                {"matrixCube",      Tr("C-Shaped (Cube)"),   &MatrixSamples::DefectCube},
         };
 
         // Shared, because an import adds a diagram after the controls below
@@ -186,31 +178,37 @@ namespace UltraCanvas {
         }
 
         // ===== STATUS / READ-OUT =====
-        auto readoutPanel = std::make_shared<UltraCanvasContainer>("matrixReadout", 240, 602, 800, 88);
-        readoutPanel->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(readoutPanel);
+        // Under the tabs: the heading with the file buttons beside it (they
+        // wrap under it when the texts grow), then the read-out lines, each as
+        // tall as its wrapped text.
+        auto readoutPanel = DemoKit::CreateColumn("matrixReadout", 6);
+        DemoKit::Add(centerCard, readoutPanel);
 
-        auto readoutTitle = std::make_shared<UltraCanvasLabel>("matrixReadoutTitle", PAD, 10, 160, 20);
-        readoutTitle->SetText("SELECTION");
-        readoutTitle->SetFontSize(11);
-        readoutTitle->SetFontWeight(FontWeight::Bold);
-        readoutTitle->SetTextColor(Color(73, 80, 87, 255));
-        readoutTitle->SetAlignment(TextAlignment::Left);
-        readoutPanel->AddChild(readoutTitle);
+        auto readoutHeader = DemoKit::CreateRow("matrixReadoutHeader", 8);
+        readoutHeader->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::Add(readoutPanel, readoutHeader);
 
-        auto readoutText = std::make_shared<UltraCanvasLabel>("matrixReadoutText", PAD, 34, 770, 24);
-        readoutText->SetText("Click a cell to read its relationship, a row or column header for its total, "
-                             "or a legend entry to filter the marks.");
-        readoutText->SetFontSize(12);
-        readoutText->SetAlignment(TextAlignment::Left);
+        auto readoutTitle = makeSectionTitle("matrixReadoutTitle", Tr("SELECTION"));
+        DemoKit::Add(readoutHeader, readoutTitle, 1);
+
+        auto readoutText = DemoKit::CreateText("matrixReadoutText",
+                Tr("Click a cell to read its relationship, a row or column header for its total, "
+                "or a legend entry to filter the marks."));
         readoutText->SetTextColor(Color(73, 80, 87, 255));
-        readoutPanel->AddChild(readoutText);
+        DemoKit::Add(readoutPanel, readoutText);
 
-        auto rankingText = std::make_shared<UltraCanvasLabel>("matrixRanking", PAD, 58, 770, 26);
-        rankingText->SetFontSize(12);
-        rankingText->SetAlignment(TextAlignment::Left);
+        auto rankingText = DemoKit::CreateText("matrixRanking", "");
         rankingText->SetTextColor(Color(33, 37, 41, 255));
-        readoutPanel->AddChild(rankingText);
+        DemoKit::Add(readoutPanel, rankingText);
+
+        // A file button: as wide as its text, at least the old 145 px.
+        auto makeFileButton = [](const std::string& id, const std::string& text) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 26, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(145);
+            button->boxConstraints = limits;
+            return button;
+        };
 
         auto activeDiagram = [tabbedContainer, allDiagrams]() -> std::shared_ptr<UltraCanvasMatrixDiagram> {
             int index = tabbedContainer->GetActiveTab();
@@ -230,13 +228,12 @@ namespace UltraCanvas {
 
             std::vector<int> ranked = model.RankColumns(0);
             std::ostringstream out;
-            out << "Top columns by weighted score: ";
             for (size_t i = 0; i < ranked.size() && i < 4; ++i) {
                 if (i > 0) out << "   ";
                 out << (i + 1) << ". " << cols->items[static_cast<size_t>(ranked[i])].label
                     << " (" << static_cast<long>(model.ColumnScore(0, ranked[i])) << ")";
             }
-            rankingText->SetText(out.str());
+            rankingText->SetText(TrF("Top columns by weighted score: {0}", out.str()));
         };
 
         // The read-out callbacks every diagram gets - the samples now, an
@@ -260,36 +257,30 @@ namespace UltraCanvas {
                 if (depths && ref.depth >= 0 && ref.depth < depths->Count()) {
                     out << "  x  " << depths->items[static_cast<size_t>(ref.depth)].label;
                 }
-                out << "   ->   " << (level.empty() ? std::string("no relationship") : level);
+                out << "   ->   " << (level.empty() ? Tr("no relationship") : level);
                 readoutText->SetText(out.str());
             };
 
             diagram->onSliceClick = [weak, readoutText](int panel, int depth, const MatrixItem& item) {
                 auto d = weak.lock();
                 if (!d) return;
-                std::ostringstream out;
-                out << "Slice '" << item.label << "' scores "
-                    << static_cast<long>(d->GetModel().DepthScore(panel, depth));
-                readoutText->SetText(out.str());
+                readoutText->SetText(TrF("Slice '{0}' scores {1}", item.label,
+                                         static_cast<long>(d->GetModel().DepthScore(panel, depth))));
             };
 
             diagram->onColumnClick = [weak, readoutText](int panel, int index, const MatrixItem& item) {
                 auto d = weak.lock();
                 if (!d) return;
-                std::ostringstream out;
-                out << "Column '" << item.label << "' scores "
-                    << static_cast<long>(d->GetModel().ColumnScore(panel, index));
-                readoutText->SetText(out.str());
+                readoutText->SetText(TrF("Column '{0}' scores {1}", item.label,
+                                         static_cast<long>(d->GetModel().ColumnScore(panel, index))));
             };
 
             diagram->onRowClick = [weak, readoutText](int panel, int index, const MatrixItem& item) {
                 auto d = weak.lock();
                 if (!d) return;
-                std::ostringstream out;
-                out << "Row '" << item.label << "' scores "
-                    << static_cast<long>(d->GetModel().RowScore(panel, index))
-                    << "   (importance " << item.importance << ")";
-                readoutText->SetText(out.str());
+                readoutText->SetText(TrF("Row '{0}' scores {1}   (importance {2})", item.label,
+                                         static_cast<long>(d->GetModel().RowScore(panel, index)),
+                                         item.importance));
             };
         };
         for (auto& diagram : *allDiagrams) wireDiagram(diagram);
@@ -417,9 +408,8 @@ namespace UltraCanvas {
         // labels down the side, a mark in each cell - read by
         // ImportMatrixTable into an "Imported" tab. Two sample sheets ship in
         // media/diagrams/matrix/, where the dialog opens.
-        auto importButton = std::make_shared<UltraCanvasButton>("matrixImport", 640, 6, 145, 26,
-                                                                "Import table");
-        readoutPanel->AddChild(importButton);
+        // Added to the header after Open JSON / Save JSON, as it was placed.
+        auto importButton = makeFileButton("matrixImport", Tr("Import table"));
 
         // Puts an imported model in the "Imported" tab - added on the first
         // import, dressed like the other tabs, reused after.
@@ -446,7 +436,7 @@ namespace UltraCanvas {
                         "matrixImportedTab", 0, 0, 790, 516);
                 tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
                 tabContent->AddChild(target);
-                tabbedContainer->AddTab("Imported", tabContent);
+                tabbedContainer->AddTab(Tr("Imported"), tabContent);
                 allDiagrams->push_back(target);
                 wireDiagram(target);
             } else {
@@ -459,10 +449,10 @@ namespace UltraCanvas {
 
         importButton->onClick = [showImported, readoutText]() {
             FileDialogOptions opts;
-            opts.SetTitle("Import a matrix table")
-                .AddFilter("Comma-separated values (*.csv)", "csv")
-                .AddFilter("Text (*.txt)", "txt")
-                .AddFilter("All files", "*")
+            opts.SetTitle(Tr("Import a matrix table"))
+                .AddFilter(Tr("Comma-separated values (*.csv)"), "csv")
+                .AddFilter(Tr("Text (*.txt)"), "txt")
+                .AddFilter(Tr("All files"), "*")
                 .SetInitialDirectory(NormalizePath(GetResourcesDir() + "media/diagrams/matrix/"));
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
@@ -473,7 +463,7 @@ namespace UltraCanvas {
                 // takes a gzipped sheet or a URL.
                 const FileBytesResult loaded = UltraCanvasFileLoader::LoadFile(path);
                 if (!loaded.success) {
-                    readoutText->SetText("Could not open " + path + ": " + loaded.error);
+                    readoutText->SetText(TrF("Could not open {0}: {1}", path, loaded.error));
                     return;
                 }
                 const std::string text(loaded.bytes.begin(), loaded.bytes.end());
@@ -481,35 +471,36 @@ namespace UltraCanvas {
                 // The sheet does not say which scale its marks belong to, so
                 // try the presets in turn and keep the first that reads every
                 // mark: numbers 9/3/1 land on QFD, names like "medium" on 5/3/1.
-                struct Candidate { const char* name; MatrixScale scale; };
+                struct Candidate { std::string name; MatrixScale scale; };
                 const Candidate candidates[] = {
-                        {"QFD 9/3/1", MatrixScale::QFD()},
-                        {"strong/medium/weak 5/3/1", MatrixScale::Strength531()},
-                        {"high/medium/low", MatrixScale::HighMediumLow()},
-                        {"presence", MatrixScale::Presence()},
+                        {Tr("QFD 9/3/1"), MatrixScale::QFD()},
+                        {Tr("strong/medium/weak 5/3/1"), MatrixScale::Strength531()},
+                        {Tr("high/medium/low"), MatrixScale::HighMediumLow()},
+                        {Tr("presence"), MatrixScale::Presence()},
                 };
                 MatrixModel model;
                 std::string error, firstError;
-                const char* used = nullptr;
+                const std::string* used = nullptr;
                 for (const Candidate& c : candidates) {
-                    if (ImportMatrixTable(text, c.scale, model, "Rows", "Columns", &error)) {
-                        used = c.name;
+                    if (ImportMatrixTable(text, c.scale, model, Tr("Rows"), Tr("Columns"), &error)) {
+                        used = &c.name;
                         break;
                     }
                     if (firstError.empty()) firstError = error;
                 }
                 const std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
                 if (!used) {
-                    readoutText->SetText("Could not import " + fileName + ": " + firstError);
+                    readoutText->SetText(TrF("Could not import {0}: {1}", fileName, firstError));
                     return;
                 }
 
                 model.title = fileName;
-                model.subtitle = std::to_string(model.sets[0].Count()) + " rows x "
-                                 + std::to_string(model.sets[1].Count()) + " columns, read on the "
-                                 + used + " scale";
+                model.subtitle = TrF("{0} x {1}, read on the {2} scale",
+                                     TrN("{n} row", "{n} rows", static_cast<long long>(model.sets[0].Count())),
+                                     TrN("{n} column", "{n} columns", static_cast<long long>(model.sets[1].Count())),
+                                     *used);
 
-                showImported(model, "Imported " + fileName + " - " + model.subtitle + ".");
+                showImported(model, TrF("Imported {0} - {1}.", fileName, model.subtitle));
             });
         };
 
@@ -517,34 +508,33 @@ namespace UltraCanvas {
         // The whole model - every panel, scale, cell and header field - where
         // the table import carries one panel. Open JSON... shares the
         // Imported tab; Save JSON... writes whichever tab is showing.
-        auto openJsonButton = std::make_shared<UltraCanvasButton>("matrixOpenJson", 335, 6, 145, 26,
-                                                                  "Open JSON");
-        readoutPanel->AddChild(openJsonButton);
-        auto saveJsonButton = std::make_shared<UltraCanvasButton>("matrixSaveJson", 487, 6, 145, 26,
-                                                                  "Save JSON");
-        readoutPanel->AddChild(saveJsonButton);
+        auto openJsonButton = makeFileButton("matrixOpenJson", Tr("Open JSON"));
+        DemoKit::Add(readoutHeader, openJsonButton);
+        auto saveJsonButton = makeFileButton("matrixSaveJson", Tr("Save JSON"));
+        DemoKit::Add(readoutHeader, saveJsonButton);
+        DemoKit::Add(readoutHeader, importButton);
 
         openJsonButton->onClick = [showImported, readoutText]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open a matrix diagram")
-                .AddFilter("Matrix diagram (*.json)", "json")
-                .AddFilter("All files", "*");
+            opts.SetTitle(Tr("Open a matrix diagram"))
+                .AddFilter(Tr("Matrix diagram (*.json)"), "json")
+                .AddFilter(Tr("All files"), "*");
             UltraCanvasFileLoader::OpenFileDialog(opts,
                     [showImported, readoutText](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
                 const FileBytesResult loaded = UltraCanvasFileLoader::LoadFile(path);
                 if (!loaded.success) {
-                    readoutText->SetText("Could not open " + path + ": " + loaded.error);
+                    readoutText->SetText(TrF("Could not open {0}: {1}", path, loaded.error));
                     return;
                 }
                 MatrixModel model;
                 std::string error;
                 const std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
                 if (!ImportMatrixJson(std::string(loaded.bytes.begin(), loaded.bytes.end()), model, &error)) {
-                    readoutText->SetText("Could not read " + fileName + ": " + error);
+                    readoutText->SetText(TrF("Could not read {0}: {1}", fileName, error));
                     return;
                 }
-                showImported(model, "Opened " + fileName + ".");
+                showImported(model, TrF("Opened {0}.", fileName));
             });
         };
 
@@ -552,8 +542,8 @@ namespace UltraCanvas {
             auto diagram = activeDiagram();
             if (!diagram) return;
             FileDialogOptions opts;
-            opts.SetTitle("Save the matrix diagram")
-                .AddFilter("Matrix diagram (*.json)", "json")
+            opts.SetTitle(Tr("Save the matrix diagram"))
+                .AddFilter(Tr("Matrix diagram (*.json)"), "json")
                 .SetDefaultExtension("json")
                 .SetDefaultFileName("matrix.json");
             // The model is copied now: the dialog names a file later, and an
@@ -562,31 +552,28 @@ namespace UltraCanvas {
             UltraCanvasFileLoader::SaveFileDialog(opts,
                     [model, readoutText](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
-                JSONSerializeOptions pretty;
-                pretty.pretty = true;
-                pretty.indentWidth = 2;
-                const bool saved = JSON::SerializeToFile(path, MatrixModelToJson(model), pretty);
-                readoutText->SetText(saved ? "Saved " + path : "Could not write " + path);
+                // Through the loader, as every user file is: the text is
+                // written beside the path and moved there when complete.
+                const std::string text = ExportMatrixJson(model, true);
+                std::string error;
+                if (UltraCanvasFileLoader::SaveFile(path, std::vector<uint8_t>(text.begin(), text.end()), error)) {
+                    readoutText->SetText(TrF("Saved {0}", path));
+                } else {
+                    readoutText->SetText(TrF("Could not write {0}: {1}", path, error));
+                }
             });
         };
 
         // ===== ABOUT =====
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("matrixAboutTitle", PAD, 590, SIDEBAR_W, 20);
-        aboutTitle->SetText("ABOUT");
-        aboutTitle->SetFontSize(11);
-        aboutTitle->SetFontWeight(FontWeight::Bold);
-        aboutTitle->SetTextColor(Color(73, 80, 87, 255));
-        aboutTitle->SetAlignment(TextAlignment::Left);
-        leftSidebar->AddChild(aboutTitle);
+        // Under the switches (it used to overlap the last one).
+        DemoKit::Add(leftSidebar, makeSectionTitle("matrixAboutTitle", Tr("ABOUT")));
 
-        auto aboutText = std::make_shared<UltraCanvasLabel>("matrixAbout", PAD, 610, SIDEBAR_W, 56);
-        aboutText->SetText("Click a cell, then use the arrow keys and Tab. With Editable on, "
-                           "Space or a click steps a cell's level; Delete clears it.");
-        aboutText->SetFontSize(10);
-        aboutText->SetAlignment(TextAlignment::Left);
+        auto aboutText = DemoKit::CreateCaption("matrixAbout",
+                Tr("Click a cell, then use the arrow keys and Tab. With Editable on, "
+                "Space or a click steps a cell's level; Delete clears it."));
         aboutText->SetWrap(TextWrap::WrapWordChar);
         aboutText->SetTextColor(Color(108, 117, 125, 255));
-        leftSidebar->AddChild(aboutText);
+        DemoKit::Add(leftSidebar, aboutText);
 
         // The ranking belongs to whichever tab is showing, so recompute it on
         // every tab change as well as at construction.

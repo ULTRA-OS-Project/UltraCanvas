@@ -74,7 +74,7 @@ Controls where slice labels are drawn.
 
 ```cpp
 enum class LabelPosition {
-    None,
+    NoLabels,
     Inside,
     Outside,
     Edge,
@@ -435,7 +435,7 @@ labelPosDropdown->onSelectionChanged = [pieChart1, pieChart2](int index, const D
         case 1: pos = LabelPosition::Inside; break;
         case 2: pos = LabelPosition::Outside; break;
         case 3: pos = LabelPosition::Edge; break;
-        case 4: pos = LabelPosition::None; break;
+        case 4: pos = LabelPosition::NoLabels; break;
         default: pos = LabelPosition::Auto;
     }
     pieChart1->SetLabelPosition(pos);

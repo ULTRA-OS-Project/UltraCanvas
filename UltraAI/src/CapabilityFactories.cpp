@@ -25,6 +25,9 @@
 #include "UltraAIMockTextToSpeech.h"
 #include "UltraAIMockImageGen.h"
 #include "UltraAIMockVisionAnalyzer.h"
+#ifdef ULTRAAI_HAS_ANTHROPIC_ADAPTER
+#include "UltraAIAnthropicVisionAnalyzer.h"
+#endif
 #include "UltraAIMockTranslator.h"
 #include "UltraAIMockVideoGen.h"
 #include "UltraAIMockMusicGen.h"
@@ -90,7 +93,7 @@ std::unique_ptr<Interface> Create(Registry<Interface, Config>& r,
             return nullptr;
         }
         auto inst = it->second(cfg, err);
-        if (!inst && err->code == ErrorCode::None) {
+        if (!inst && err->code == ErrorCode::Ok) {
             err->code    = ErrorCode::ProviderError;
             err->message = "Provider '" + cfg.providerId +
                            "' factory returned null";
@@ -109,7 +112,7 @@ std::unique_ptr<Interface> Create(Registry<Interface, Config>& r,
         auto inst = r.providers[id](cfg, err);
         if (inst) return inst;
     }
-    if (err->code == ErrorCode::None) {
+    if (err->code == ErrorCode::Ok) {
         err->code    = ErrorCode::ModelNotFound;
         err->message = registered.empty()
             ? "No provider registered"
@@ -203,6 +206,15 @@ Registry<ISpeechToText, SpeechToTextConfig>& SttReg() {
                 };
             }
 #endif
+#ifdef ULTRAAI_HAS_OPENAI_ADAPTER
+            // The audio API (a cloud provider: used when chosen; a custom
+            // baseUrl points it at a self-hosted whisper server).
+            if (!r.providers.count("openai")) {
+                r.providers["openai"] = [](const SpeechToTextConfig& cfg, Error* err) {
+                    return CreateOpenAISpeechToText(cfg, err);
+                };
+            }
+#endif
         };
     });
     return r;
@@ -286,6 +298,14 @@ Registry<IVisionAnalyzer, VisionAnalyzerConfig>& VisReg() {
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const VisionAnalyzerConfig&, Error*) {
                     return CreateMockVisionAnalyzer();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_ANTHROPIC_ADAPTER
+            // OCR through Claude (a cloud provider: used when chosen).
+            if (!r.providers.count("anthropic")) {
+                r.providers["anthropic"] = [](const VisionAnalyzerConfig& cfg, Error* err) {
+                    return CreateAnthropicVisionAnalyzer(cfg, err);
                 };
             }
 #endif

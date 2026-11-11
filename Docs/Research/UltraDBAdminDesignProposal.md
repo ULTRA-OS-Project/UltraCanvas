@@ -1,8 +1,8 @@
 # UltraDBAdmin — a phpMyAdmin-style manager for UltraDatabase (Investigation and Proposal)
 
 **Date:** 2026-10-20
-**Status:** Proposal — investigation only, no implementation yet. Decisions
-2026-10-20: see §9.
+**Status:** Implemented in stages - every stage of §8 is built, with what
+remains listed there. Decisions 2026-10-20: see §9.
 **Scope:** a new application, `Apps/UltraDBAdmin`, that does for
 every database UltraDatabase can reach what phpMyAdmin does for MySQL: browse
 and edit rows, see and change table structure, run SQL, search, import and
@@ -154,7 +154,7 @@ completion — which are the parts phpMyAdmin is weakest at.
 | Named connection registry | yes; register, open, close, info by name | `include/UltraDatabase/UltraDatabaseConnection.h` |
 | Enumerate registered connections | **no** — `UltraDb_GetConnectionInfo` needs the name | same |
 | Drivers | `sqlite` (bundled), `postgresql` (when libpq is found) | `core/UltraDatabase/UltraDatabase{Sqlite,Postgres}Driver.cpp` |
-| MySQL / MariaDB | **no** — Stage 2 plan | `Docs/Modules/UltraDatabase/README.md`, `master_dependencies.yaml` |
+| MySQL / MariaDB | **no** — Stage 2 plan (since added: UltraDatabase 0.5.0, stage 3 below) | `Docs/Modules/UltraDatabase/README.md`, `master_dependencies.yaml` |
 | Parameterised query, exec, prepared statements | yes | `UltraDatabaseQuery.h` |
 | Transactions | yes, handle-based | `UltraDatabaseTransaction.h` |
 | Versioned migrations | yes | `UltraDatabaseMigrate.h` |
@@ -265,7 +265,7 @@ second customer besides this app.
 | SQL editor | `UltraCanvasTextArea` with `SetProgrammingLanguage("SQL")` (rules in `UltraCanvasSyntaxTokenizer.h`, `CreateSqlRules`) and `ShowAutoComplete(suggestions)` | exists |
 | Insert / edit row form | `CreateFormGrid` / `AddFormRow` (`UltraCanvasFormLayout.h`), date and number pickers | exists |
 | Relations / designer | `UltraCanvasERDiagram` (`Plugins/Diagrams/UltraCanvasERDiagram.h`: `AddEntity`, `AddAttribute`, `AddRelationship`, layouts, Crow's Foot) | exists; **no** import from a database yet |
-| Server monitor charts | `UltraCanvasLineChartElement` and the chart plugins | exists |
+| Server monitor charts | `UltraCanvasEngineLineChart` (the chart engine) | exists |
 | CSV import / export dialogs | `UltraCanvasCSVImportDialog`, `UltraCanvasCSVExportDialog` | exist, but bound to an `UltraCanvasSpreadsheet` source |
 | BLOB viewer | `UltraCanvasMediaViewer` (image, PDF, text …); `UltraCanvasTextArea` in `TextAreaEditingMode::Hex` | both exist |
 | Open / save `.sql`, `.csv`, `.xlsx`, `.json` | `UltraCanvasFileLoader` — dialogs, readers/writers, format inventory | dialogs and text formats exist and are required by the house rules; XLSX / ODS are written today only by `UltraCanvasSpreadsheet::SaveToFile`, so a table export to them needs F2 |
@@ -518,12 +518,131 @@ with their vault, the tree, Browse, Structure and the SQL console with Stop.
 **Stage 2 has begun with row editing** (UltraDBAdmin 0.2): Browse stages
 edits, new rows and deletions by primary key, previews them as SQL and
 commits them in one transaction (§5.3), with the destructive guard for
-deletions and production connections. Structure editing, the SQLite
-rebuild and import are still to come.
+deletions and production connections. **Structure editing followed**:
+columns added, changed, renamed and dropped, indexes
+added and dropped and the table renamed, staged, previewed as DDL and
+applied in one transaction - `ALTER TABLE` on PostgreSQL, and on SQLite its
+own `ALTER TABLE` plus the documented 12-step rebuild, working from the
+table's own `CREATE TABLE` so nothing introspection cannot see (CHECK, table
+options) is lost. **Import followed**: rows from CSV files
+and workbooks through FileLoader's spreadsheet formats and the framework's
+Text Import dialog, mapped onto a table and inserted all or none; SQL files
+(`.sql`, `.sql.gz`) summarised and run on the console as one transaction.
+**The rest of stage 2 followed**: Browse filters per column (bound
+values), editing a cell in place, blobs viewed (picture, text or hex), saved
+and loaded, and rows copied as CSV, JSON or INSERT statements - stage 2 is
+complete.
+**Export, stage 1's last item, followed**: a table through a cursor, or a
+query's rows, to CSV / TSV (the framework's Text Export dialog and writer),
+JSON, SQL INSERTs (with a SQLite table's own CREATE TABLE) or a workbook.
+**The rest of stages 1 and 2 followed** (UltraDBAdmin 0.3): a tab per open
+object, each keeping its page, filters and staged changes; the SQL log of
+every statement the app runs (UltraDatabase 0.4.0's statement observers,
+`UltraDb_AddStatementObserver`); the tree's context menu with the
+Operations of 5.2 - create, copy (structure, or structure and rows), rename,
+empty and drop a table, SQLite's VACUUM, ANALYZE, integrity and quick check,
+optimize and journal mode, PostgreSQL's VACUUM (ANALYZE) and ANALYZE - each
+shown as SQL first; Search across every table of a schema; a schema exported
+as one SQL file (structure, data, DROP IF EXISTS), a PostgreSQL table's
+definition read from its catalog; the console's Run statement, Explain and
+saved snippets; the row form's field per type and its value functions; and
+auto-commit per connection.
 
-MySQL stays at stage 3, after editing: it is not the priority (decided
-2026-10-20). Stage 1 alone already replaces the "install DB Browser for
-SQLite" step for supporting ULTRA OS apps.
+**Stage 4 followed, before stage 3** (decided 2026-10-23): the Relations
+tab - the ER diagram filled from the schema introspection
+(`UltraCanvasERDiagram`, crow's foot or Chen; the tables in layers, parents
+first; a table double-clicked opens) - the ER diagram's X4, the live
+import; the Triggers / Routines tab - triggers on both engines,
+PostgreSQL's functions, procedures and aggregates, each edited as its own
+CREATE OR REPLACE in the SQL tab, dropped, or started from a template; and
+the Server tab for PostgreSQL - sessions with Stop query and End session,
+settings with a filter, the sizes of databases and tables - and SQLite's
+file. Read straight from the catalogs (`pg_stat_activity`, `pg_settings`,
+`pg_proc`, `pg_trigger`, `sqlite_master`, PRAGMAs) rather than through a
+G10 module extension; the module gains one when MySQL needs the same views.
+SSH tunnels (G9) and monitor charts are still to come.
+
+**Stage 3 followed** (UltraDatabase 0.5.0): the MySQL / MariaDB driver
+(G8) over MariaDB Connector/C, linked dynamically (LGPL-2.1), with its
+introspection, cancel, cursors and a script splitter that reads `DELIMITER`
+as the mysql client does; and G10 after all - the server administration
+(`UltraDatabaseServer.h`: sessions, settings, sizes, a session stopped) in
+the module, filled by the PostgreSQL and the MySQL driver alike, which the
+Server tab now reads for both instead of its own catalog queries. The app
+needed more than DDL spellings: backtick quoting everywhere it builds SQL
+(the engine passed to every name it quotes), `LIKE ... ESCAPE '!'` and
+`CAST AS CHAR` for the filters and Search, `MODIFY COLUMN` restating a
+column (its `AUTO_INCREMENT`, collation and comment), and DDL run statement
+by statement - MySQL commits around each, so no plan of Structure or the
+operations can promise all-or-nothing there, and each says so. The dump is
+mysqldump's shape; routines are edited as `DROP` and `CREATE` between
+`DELIMITER` lines. MariaDB 10.11 locally and MySQL 8 in CI run the same
+tests.
+
+**SSH tunnels (G9) followed** (UltraDatabase 0.6.0): the UltraNet SSH
+plug-in forwards a local port (`UltraNet_OpenSshTunnel`) and now checks
+every server's host key - known_hosts or a fingerprint the user trusted - which
+it did not before; UltraDatabase opens a connection's tunnel before its
+driver connects, from the connection's `ssh_*` options as planned, through an
+opener the application installs (`UltraDatabaseSshTunnel.h` over UltraNet), so
+the module links no network library; and UltraDBAdmin's connection dialog has
+the bastion, the sign-in (agent, password or key file, in the vault) and the
+host key, trusted on first use as ssh does.
+
+**Monitor charts followed**: UltraDatabase gained the status a monitor
+samples (`UltraDb_ServerStatus`: sessions, statements, transactions, rows
+read and written, buffer cache reads and misses, traffic - each engine what
+it keeps), and the Server tab a **Monitor** view - an area chart per measure
+on the chart engine, read every two seconds while shown, counters turned into
+rates and the cache's misses into a hit ratio (`engine/DbAdminMonitor`). The
+engine's line chart gained `SetValueAtLeast`, so a quiet server's chart keeps
+a readable axis.
+
+**Stage 5 began with schema-aware completion**: the SQL tab offers tables,
+columns, aliases, schemas and keywords where each fits - read from
+`information_schema.COLUMNS` (SQLite: `pragma_table_info`) once per
+connection and schema (`engine/DbAdminCompletion`). `UltraCanvasTextArea`'s
+`ShowAutoComplete`, a placeholder until then, became the list at the caret
+that any editor can fill.
+
+**Data compare followed**: a table's menu sets its rows beside another
+table's on any connection - across engines - matched by the primary key, a
+number compared by its value so PostgreSQL's 10.50 is MySQL's 10.5; and the
+statements that make the other table the same, previewed and run as one
+transaction (`engine/DbAdminCompare`). The other table is held in memory (up
+to 500,000 rows) while the first streams past it through a cursor.
+
+**Stage 6, the browser build, followed** (§8.1): UltraDatabase gained a
+`relay` driver and `UltraDbRelayServer` (`UltraDatabaseRelay.h`), the app
+compiles to `UltraDBAdmin.html`, and `ultradbadmin-relay` serves it. Where
+it differs from §8.1, as built:
+
+- **The seam is UltraDatabase's, not the app's.** Instead of an
+  `IDbAdminBackend` in `engine/`, the relay is a driver: every `UltraDb_*`
+  call of a `relay` connection goes over the wire, so the engine and the UI
+  are the same code in both builds, and any UltraDatabase program can use a
+  relay. The desktop build reaches a relay too.
+- **Users sign in with a token or an OpenID Connect provider.** The relay
+  knows each user by the SHA-256 of a long random token an administrator
+  hands out, or signs them in with an OpenID Connect provider (`[signin]`,
+  `relay/RelaySignIn`): the relay is the provider's client - authorization
+  code with PKCE, the ID token's signature checked against the provider's
+  keys with its issuer, audience, expiry and nonce - and finds the user by
+  verified email or subject, handing the page a ticket. The ULTRA account is
+  one such provider once it exists; the UltraNet OAuth2 sign-in service
+  brokers third-party providers for desktop apps and is not used, as the
+  relay is a client of its own. Read or write access is per connection;
+  there is no *admin* level: write access is the connection's own rights.
+- **TLS is the proxy's.** The relay listens on loopback and refuses a
+  network address unless told the network is trusted; the web server that
+  serves the page terminates TLS and passes the WebSocket on, and its
+  `X-Forwarded-For` names the visitor in the audit log.
+- **The limits** are rows per page and per result, requests a minute,
+  sessions per user, and a statement time-out (300 s unless set): a request
+  still running then is cancelled on the database.
+
+Stage 1 alone already replaces the "install DB Browser for SQLite" step for
+supporting ULTRA OS apps.
 
 ### 8.1 The browser build and its relay
 

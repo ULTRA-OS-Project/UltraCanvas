@@ -20,6 +20,7 @@
   - [Styling](#styling)
   - [Theme Application](#theme-application)
   - [Scrolling](#scrolling)
+  - [Auto-Completion](#auto-completion)
 - [Callbacks](#callbacks)
 - [Event Handling](#event-handling)
   - [Keyboard Events](#keyboard-events)
@@ -51,8 +52,8 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.1.0 - `ApplyTheme`  
-**Last Modified:** 2026-10-10  
+**Version:** 3.15.0 - auto-completion  
+**Last Modified:** 2026-10-24  
 **Author:** UltraCanvas Framework  
 
 <!-- doc-check: void SendChatText(); void SaveNote(const std::string& text); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
@@ -117,6 +118,9 @@ struct TextAreaStyle {
 
     // Placeholder hint shown when the document is empty
     Color placeholderColor = Color(150, 150, 150, 255);
+
+    // Marks drawn over spaces, tabs and line ends (SetShowHiddenCharacters)
+    Color hiddenCharacterColor = Color(150, 150, 150, 200);
     
     // Line numbers
     bool showLineNumbers;
@@ -468,6 +472,18 @@ viewer->SetDisplayOnly(true);          // read-only AND not focusable
 viewer->SetText(logContents);
 ```
 
+A display-only area never gets the copy keys, so a right-click on it - and on
+any read-only area - opens a small menu of its own: **Copy** (Ctrl+C, dimmed
+without a selection) and **Select All** (Ctrl+A). It opens only when neither
+`onContextMenu` nor the spell checker took the click, so a host with a menu of
+its own keeps it. A host that drives a display-only area's keys (as
+`UltraCanvasMediaViewer` does) calls `CopySelection()` / `SelectAll()` itself.
+
+```cpp
+viewer->SetReadOnlyContextMenu(false); // right-click does nothing, as before
+bool on = viewer->GetReadOnlyContextMenu();
+```
+
 #### SetWordWrap
 ```cpp
 void SetWordWrap(bool wrap);
@@ -485,6 +501,41 @@ Enables or disables current line highlighting.
 void SetShowLineNumbers(bool show);
 ```
 Shows or hides line numbers.
+
+#### SetShowHiddenCharacters
+```cpp
+void SetShowHiddenCharacters(bool show);
+bool GetShowHiddenCharacters() const;
+```
+Shows the characters that print nothing as faint marks in
+`style.hiddenCharacterColor`, the way a code editor's *Show Whitespace* does:
+
+| Character | Mark |
+|---|---|
+| space, ideographic space (U+3000) | a dot in the middle of the space |
+| tab | an arrow across the tab's width |
+| no-break space (U+00A0, U+202F) | a small ring |
+| zero-width space and joiners (U+200B-U+200D), word joiner (U+2060), byte order mark (U+FEFF), soft hyphen (U+00AD) | a short vertical tick |
+| end of a line | a pilcrow (¶) after the last character |
+
+The marks are drawn over the laid-out text, so they follow word wrap,
+horizontal scrolling and right-to-left runs; the text, the caret and the
+selection are unchanged. In Markdown mode they are drawn on the lines that
+show their own text (paragraphs, lists, quotes, code blocks), not on tables,
+rules, formulas or pictures. Off by default; `ApplyLightTheme`,
+`ApplyDarkTheme` and `ApplyTheme` set the colour.
+
+Resting the pointer on a mark shows a tooltip (through
+`UltraCanvasTooltipManager`) with the character's Unicode name, its code
+(`U+00A0`), its decimal value and its UTF-8 bytes. Over a pilcrow it names the
+document's line ending (`LF`, `CRLF` or `CR`, see `GetLineEnding()`) and its
+codes. A zero-width character is found within a few pixels of its tick.
+
+```cpp
+auto editor = std::make_shared<UltraCanvasTextArea>("Editor", 0, 0, 800, 600);
+editor->SetShowHiddenCharacters(true);
+editor->GetStyle().hiddenCharacterColor = Color(200, 120, 120, 180);
+```
 
 #### SetTabSize
 ```cpp
@@ -578,6 +629,40 @@ Scrolls horizontally by specified number of characters.
 void EnsureCursorVisible();
 ```
 Automatically scrolls to make cursor visible.
+
+### Auto-Completion
+
+```cpp
+void ShowAutoComplete(const std::vector<std::string>& suggestions);
+void HideAutoComplete();
+void AcceptAutoComplete();
+bool IsAutoCompleteOpen() const;
+std::string GetAutoCompletePrefix() const;
+```
+
+`ShowAutoComplete` opens a list of suggestions just under the caret (above
+it near the window's bottom), the first one highlighted; an empty list hides
+it. While it is open, Up, Down, Page Up and Page Down move in it; Enter or Tab
+puts the highlighted suggestion in place of the word before the caret
+(`GetAutoCompletePrefix()`: letters, digits, `_`, `$` and any character beyond
+ASCII) and closes it, as a click on a suggestion does; Escape closes it. Every
+other key edits as usual and leaves the list alone, so the host narrows it
+from `onTextChanged`:
+
+```cpp
+auto editor = std::make_shared<UltraCanvasTextArea>("code");
+const std::vector<std::string> names = { "customers", "customer_id", "orders" };
+editor->SetOnTextChanged([editor, names](const std::string&) {
+    const std::string typed = editor->GetAutoCompletePrefix();
+    std::vector<std::string> matches;
+    for (const std::string& name : names)
+        if (typed.size() >= 2 && name.rfind(typed, 0) == 0) matches.push_back(name);
+    editor->ShowAutoComplete(matches);        // none: the list closes
+});
+```
+
+UltraDBAdmin's SQL tab builds its suggestions from the connection's tables and
+columns (`Apps/UltraDBAdmin/engine/DbAdminCompletion`).
 
 ## Callbacks
 
@@ -1048,6 +1133,8 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks, with each one's name and code in a tooltip
+- **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`
 - **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
 - **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
 - **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`

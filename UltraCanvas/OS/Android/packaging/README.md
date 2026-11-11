@@ -4,7 +4,7 @@
 manifest is complete and every attribute in it is load-bearing (each is
 annotated with what breaks without it). `vcpkg.json` and
 `scripts/android-bootstrap-sysroot.sh` cross-compile cairo, pango, glib,
-harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips for `arm64-v8a` and
+harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips (SVG through librsvg) for `arm64-v8a` and
 `x86_64`: `.github/workflows/android-build.yml` runs them on every pull request
 that touches the Android build, compiles the core library against the result,
 links the demo into `libUltraCanvasDemo.so`, the library the manifest here
@@ -92,7 +92,11 @@ scripts/android-package-apk.sh --abi x86_64 \
 3. `aapt2 link` writes the manifest here, with `minSdk 28` and
    `targetSdk 34`, the icon and the assets.
 4. The library goes in stripped (the NDK's Release build keeps its debug
-   information) and stored, under `lib/<abi>/`.
+   information) and stored, under `lib/<abi>/`, with every shared library it
+   needs that a device lacks: its `NEEDED` entries are read, an API 28 system
+   library is left to the device, one the NDK ships (`libc++_shared.so`) is
+   copied in, and anything else stops the packaging. Without
+   `libc++_shared.so` the activity cannot even load the app.
 5. `zipalign` puts the library on a page boundary, and `apksigner` signs with
    a key made for the run: a debug APK for a test install, not one for a
    store. The script then verifies the signature and prints what a device
@@ -104,7 +108,11 @@ video ones, plus `Docs/` and the demo's own sources for its source viewer.
 The script lists them; another app would pass its own.
 
 Install one with `adb install UltraCanvasDemo-x86_64.apk` on an x86_64
-emulator, or the `arm64-v8a` one on a phone.
+emulator, or the `arm64-v8a` one on a phone. CI does the first on every run:
+`scripts/android-emulator-smoke.sh APK OUT_DIR` installs and starts it on
+whatever device `adb` sees and passes only when the app presents a first frame
+with something drawn in it - run it against a local emulator for the same
+check, with the screenshot and logcat left in `OUT_DIR`.
 
 ## What already works without packaging
 

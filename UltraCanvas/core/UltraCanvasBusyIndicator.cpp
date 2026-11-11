@@ -1,7 +1,7 @@
 // core/UltraCanvasBusyIndicator.cpp
 // Platform-independent busy indicator (ring, dual ring, dots, bar, pulse, dot ring) implementation.
 // Version: 1.2.0
-// Last Modified: 2026-10-04
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBusyIndicator.h"
@@ -35,6 +35,7 @@ namespace UltraCanvas {
                                                        float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasBusyIndicator::~UltraCanvasBusyIndicator() {
@@ -73,6 +74,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasBusyIndicator::SetStyle(const BusyIndicatorStyle& s) {
+        StyleSetByHand();
         const bool wasRunning = IsRunning();
         const bool intervalChanged = s.frameIntervalMs != style.frameIntervalMs;
         if (wasRunning && intervalChanged) Stop();
@@ -321,4 +323,15 @@ namespace UltraCanvas {
         return dotHues[i];
     }
 
+
+// ===== THE THEME =====
+    BusyIndicatorStyle BusyIndicatorStyle::FromTheme(const UltraCanvasTheme& theme, const BusyIndicatorStyle& base) {
+        BusyIndicatorStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.arcColor = r.accent;
+        // the element's own role: the inner arc keeps its orange unless a theme names another
+        s.secondArcColor = theme.Role("busy-indicator.second-arc", base.secondArcColor);
+        s.trackColor = r.ink.WithAlpha(base.trackColor.a);
+        return s;
+    }
 } // namespace UltraCanvas

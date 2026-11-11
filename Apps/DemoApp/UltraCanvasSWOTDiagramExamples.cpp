@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
 // SWOT diagram examples: corner badges, matrix, cards, diamond, rows, columns
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): controls, tabs
+//                  and statistics in cards that wrap, every text sized to fit,
+//                  buttons as wide as their text
 // Version: 1.0.0
-// Last Modified: 2026-07-28
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasSWOTDiagram.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasButton.h"
@@ -17,19 +21,26 @@
 
 namespace UltraCanvas {
 
-    static const char* kSWOTQuadrantNames[4] = {
-            "Strengths", "Weaknesses", "Opportunities", "Threats"};
+    // A quadrant's name as the page shows it.
+    static std::string SWOTQuadrantName(int q) {
+        switch (q) {
+            case 0: return Tr("Strengths");
+            case 1: return Tr("Weaknesses");
+            case 2: return Tr("Opportunities");
+            default: return Tr("Threats");
+        }
+    }
 
     // Short phrases used by the "Add Random Item" button
     static std::string RandomSWOTItemText(SWOTQuadrant q) {
-        static const char* strengths[] = {
-                "Skilled workforce", "Solid cash reserves", "Modern tooling", "Fast delivery"};
-        static const char* weaknesses[] = {
-                "Slow release cycle", "High staff turnover", "Weak online presence", "Manual processes"};
-        static const char* opportunities[] = {
-                "New export markets", "Automation potential", "Industry consolidation", "Green energy demand"};
-        static const char* threats[] = {
-                "Currency volatility", "New market entrants", "Talent shortage", "Cyber attacks"};
+        const std::string strengths[] = {
+                Tr("Skilled workforce"), Tr("Solid cash reserves"), Tr("Modern tooling"), Tr("Fast delivery")};
+        const std::string weaknesses[] = {
+                Tr("Slow release cycle"), Tr("High staff turnover"), Tr("Weak online presence"), Tr("Manual processes")};
+        const std::string opportunities[] = {
+                Tr("New export markets"), Tr("Automation potential"), Tr("Industry consolidation"), Tr("Green energy demand")};
+        const std::string threats[] = {
+                Tr("Currency volatility"), Tr("New market entrants"), Tr("Talent shortage"), Tr("Cyber attacks")};
 
         int pick = rand() % 4;
         switch (q) {
@@ -42,181 +53,134 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSWOTDiagramExamples() {
-        // Children placed directly inside a sidebar/panel container are inset
-        // explicitly instead of using SetPadding() - the same pattern the
-        // Quadrant/Sankey/Venn demos use - so absolutely-positioned children
-        // are not clipped by the container's content area.
-        const int PAD = 15;
+        const int SIDEBAR_W = 170;
+        // A sidebar card's width before it wraps under the tabs: room for the
+        // 170 px controls and the card's padding.
+        const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("swotMainContainer", 0, 0, 1140, 800);
-        mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
+        auto mainContainer = DemoKit::CreatePage("swotMainContainer", Tr("SWOT Diagram Infographic"),
+                Tr("Classic four-panel SWOT analysis with six design presets, light/dark themes and interactive items"));
 
-        auto headerContainer = std::make_shared<UltraCanvasContainer>("swotHeader", 0, 0, 1140, 90);
-        headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
-        mainContainer->AddChild(headerContainer);
+        // Controls | diagram tabs and status | statistics. The sidebars keep
+        // their width; on a narrow window the cards wrap under each other.
+        auto contentContainer = DemoKit::AddRow(mainContainer, "swotContent");
 
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("swotMainTitle", 30, 15, 1080, 35);
-        mainTitle->SetText("SWOT Diagram Infographic");
-        mainTitle->SetFontSize(22);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetAlignment(TextAlignment::Left);
-        mainTitle->SetTextColor(Color(33, 37, 41, 255));
-        headerContainer->AddChild(mainTitle);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("swotSubtitle", 30, 52, 900, 30);
-        subtitle->SetText("Classic four-panel SWOT analysis with six design presets, light/dark themes and interactive items");
-        subtitle->SetFontSize(13);
-        subtitle->SetAlignment(TextAlignment::Left);
-        subtitle->SetTextColor(Color(108, 117, 125, 255));
-        headerContainer->AddChild(subtitle);
-
-        auto contentContainer = std::make_shared<UltraCanvasContainer>("swotContent", 0, 90, 1140, 710);
-        mainContainer->AddChild(contentContainer);
+        // The small upper-case heading of a panel.
+        auto makeSectionTitle = [](const std::string& id, const std::string& text) {
+            auto title = DemoKit::CreateText(id, text);
+            title->SetFontSize(11);
+            title->SetFontWeight(FontWeight::Bold);
+            title->SetTextColor(Color(73, 80, 87, 255));
+            return title;
+        };
 
         // ===== LEFT SIDEBAR (controls) =====
-        auto leftSidebar = std::make_shared<UltraCanvasContainer>("swotLeftSidebar", 20, 20, 200, 670);
-        leftSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(leftSidebar);
+        // As wide as its widest button text, at least the old sidebar width.
+        auto leftSidebar = DemoKit::AddCard(contentContainer, "swotLeftSidebar", "", "", SIDEBAR_CARD_W);
+        leftSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                               .SetFlexBasis(CSSLayout::Dimension::Auto());
+        CSSLayout::BoxConstraints sidebarLimits;
+        sidebarLimits.minWidth = CSSLayout::Dimension::Px(SIDEBAR_CARD_W);
+        leftSidebar->boxConstraints = sidebarLimits;
 
-        const int SIDEBAR_W = 170;   // usable child width inside the 200px sidebar
+        DemoKit::Add(leftSidebar, makeSectionTitle("swotControlsTitle", Tr("CONTROLS")));
 
-        auto controlsTitle = std::make_shared<UltraCanvasLabel>("swotControlsTitle", PAD, PAD, SIDEBAR_W, 22);
-        controlsTitle->SetText("CONTROLS");
-        controlsTitle->SetFontSize(11);
-        controlsTitle->SetFontWeight(FontWeight::Bold);
-        controlsTitle->SetTextColor(Color(73, 80, 87, 255));
-        controlsTitle->SetAlignment(TextAlignment::Left);
-        leftSidebar->AddChild(controlsTitle);
+        auto addDropdown = [&](const std::string& id, const std::string& labelId,
+                               const std::string& caption) {
+            auto label = DemoKit::CreateText(labelId, caption);
+            label->SetFontSize(10);
+            label->SetFontWeight(FontWeight::Bold);
+            DemoKit::Add(leftSidebar, label);
 
-        auto themeLabel = std::make_shared<UltraCanvasLabel>("swotThemeLabel", PAD, 55, SIDEBAR_W, 20);
-        themeLabel->SetText("Theme");
-        themeLabel->SetFontSize(10);
-        themeLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(themeLabel);
+            auto dropdown = std::make_shared<UltraCanvasDropdown>(id, 0, 0, SIDEBAR_W, 28);
+            DemoKit::AddStretched(leftSidebar, dropdown);
+            return dropdown;
+        };
 
-        auto themeSelector = std::make_shared<UltraCanvasDropdown>("swotThemeSelector", PAD, 78, SIDEBAR_W, 28);
-        themeSelector->AddItem("Light", "light");
-        themeSelector->AddItem("Dark", "dark");
+        auto themeSelector = addDropdown("swotThemeSelector", "swotThemeLabel", Tr("Theme"));
+        themeSelector->AddItem(Tr("Light"), "light");
+        themeSelector->AddItem(Tr("Dark"), "dark");
         themeSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(themeSelector);
 
-        auto badgesLabel = std::make_shared<UltraCanvasLabel>("swotBadgesLabel", PAD, 118, SIDEBAR_W, 20);
-        badgesLabel->SetText("Letter Badges");
-        badgesLabel->SetFontSize(10);
-        badgesLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(badgesLabel);
-
-        auto badgesSelector = std::make_shared<UltraCanvasDropdown>("swotBadgesSelector", PAD, 141, SIDEBAR_W, 28);
-        badgesSelector->AddItem("Shown", "on");
-        badgesSelector->AddItem("Hidden", "off");
+        auto badgesSelector = addDropdown("swotBadgesSelector", "swotBadgesLabel", Tr("Letter Badges"));
+        badgesSelector->AddItem(Tr("Shown"), "on");
+        badgesSelector->AddItem(Tr("Hidden"), "off");
         badgesSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(badgesSelector);
 
-        auto centerLabel = std::make_shared<UltraCanvasLabel>("swotCenterLabel", PAD, 181, SIDEBAR_W, 20);
-        centerLabel->SetText("Center Element");
-        centerLabel->SetFontSize(10);
-        centerLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(centerLabel);
-
-        auto centerSelector = std::make_shared<UltraCanvasDropdown>("swotCenterSelector", PAD, 204, SIDEBAR_W, 28);
-        centerSelector->AddItem("Shown", "on");
-        centerSelector->AddItem("Hidden", "off");
+        auto centerSelector = addDropdown("swotCenterSelector", "swotCenterLabel", Tr("Center Element"));
+        centerSelector->AddItem(Tr("Shown"), "on");
+        centerSelector->AddItem(Tr("Hidden"), "off");
         centerSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(centerSelector);
 
-        auto bulletsLabel = std::make_shared<UltraCanvasLabel>("swotBulletsLabel", PAD, 244, SIDEBAR_W, 20);
-        bulletsLabel->SetText("Item Bullets");
-        bulletsLabel->SetFontSize(10);
-        bulletsLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(bulletsLabel);
-
-        auto bulletsSelector = std::make_shared<UltraCanvasDropdown>("swotBulletsSelector", PAD, 267, SIDEBAR_W, 28);
-        bulletsSelector->AddItem("Shown", "on");
-        bulletsSelector->AddItem("Hidden", "off");
+        auto bulletsSelector = addDropdown("swotBulletsSelector", "swotBulletsLabel", Tr("Item Bullets"));
+        bulletsSelector->AddItem(Tr("Shown"), "on");
+        bulletsSelector->AddItem(Tr("Hidden"), "off");
         bulletsSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(bulletsSelector);
 
-        auto btnAddItem = std::make_shared<UltraCanvasButton>("swotBtnAddItem", PAD, 313, SIDEBAR_W, 32);
-        btnAddItem->SetText("Add Random Item");
-        btnAddItem->SetBackgroundColor(Color(13, 110, 253, 255));
-        leftSidebar->AddChild(btnAddItem);
+        // The action buttons: across the sidebar, as tall as before; a longer
+        // text makes the sidebar wider rather than being cut.
+        auto addButton = [&](const std::string& id, const std::string& text, const Color& color) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 32, text);
+            button->SetBackgroundColor(color);
+            DemoKit::Add(leftSidebar, button);
+            return button;
+        };
 
-        auto btnRemove = std::make_shared<UltraCanvasButton>("swotBtnRemove", PAD, 350, SIDEBAR_W, 32);
-        btnRemove->SetText("Remove Selected");
-        btnRemove->SetBackgroundColor(Color(220, 53, 69, 255));
-        leftSidebar->AddChild(btnRemove);
+        auto btnAddItem = addButton("swotBtnAddItem", Tr("Add Random Item"), Color(13, 110, 253, 255));
+        auto btnRemove = addButton("swotBtnRemove", Tr("Remove Selected"), Color(220, 53, 69, 255));
+        auto btnReload = addButton("swotBtnReload", Tr("Reload Sample Data"), Color(25, 135, 84, 255));
+        auto btnReset = addButton("swotBtnReset", Tr("Reset View"), Color(108, 117, 125, 255));
 
-        auto btnReload = std::make_shared<UltraCanvasButton>("swotBtnReload", PAD, 387, SIDEBAR_W, 32);
-        btnReload->SetText("Reload Sample Data");
-        btnReload->SetBackgroundColor(Color(25, 135, 84, 255));
-        leftSidebar->AddChild(btnReload);
-
-        auto btnReset = std::make_shared<UltraCanvasButton>("swotBtnReset", PAD, 424, SIDEBAR_W, 32);
-        btnReset->SetText("Reset View");
-        btnReset->SetBackgroundColor(Color(108, 117, 125, 255));
-        leftSidebar->AddChild(btnReset);
-
-        auto helpBox = std::make_shared<UltraCanvasLabel>("swotHelpBox", PAD, 475, SIDEBAR_W, 120);
-        helpBox->SetText("INTERACTION TIPS\n\n"
-                         "- Click an item to select\n"
-                         "- Click empty space to\n"
-                         "  clear the selection\n"
-                         "- Hover for full text\n"
-                         "- Double-click an item");
+        // Short lines, so the tips do not widen the sidebar; they wrap if a
+        // translation is longer.
+        auto helpBox = DemoKit::CreateText("swotHelpBox",
+                Tr("INTERACTION TIPS\n\n"
+                "- Click an item to select\n"
+                "- Click empty space to\n"
+                "  clear the selection\n"
+                "- Hover for full text\n"
+                "- Double-click an item"));
         helpBox->SetFontSize(9);
-        helpBox->SetAlignment(TextAlignment::Left);
         helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
         helpBox->SetPadding(10);
-        leftSidebar->AddChild(helpBox);
+        DemoKit::Add(leftSidebar, helpBox);
 
         // ===== TABS =====
-        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("swotTabs", 240, 20, 660, 580);
+        // The diagrams have a fixed size; the card is at least as wide as the
+        // tabs and takes the width the sidebars leave.
+        auto centerCard = DemoKit::AddCard(contentContainer, "swotCenter", "", "",
+                                           660 + 2 * DemoKit::kCardPadding + 2);
+        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("swotTabs", 0, 0, 660, 580);
         tabbedContainer->SetTabPosition(TabPosition::Top);
-        contentContainer->AddChild(tabbedContainer);
+        DemoKit::AddFixed(centerCard, tabbedContainer);
 
-        // ===== RIGHT SIDEBAR (stats + about) =====
-        auto rightSidebar = std::make_shared<UltraCanvasContainer>("swotRightSidebar", 920, 20, 200, 580);
-        rightSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(rightSidebar);
-
-        auto statsTitle = std::make_shared<UltraCanvasLabel>("swotStatsTitle", PAD, PAD, SIDEBAR_W, 24);
-        statsTitle->SetText("STATISTICS");
-        statsTitle->SetFontSize(11);
-        statsTitle->SetFontWeight(FontWeight::Bold);
-        statsTitle->SetTextColor(Color(73, 80, 87, 255));
-        statsTitle->SetAlignment(TextAlignment::Left);
-        rightSidebar->AddChild(statsTitle);
-
-        auto statsPanel = std::make_shared<UltraCanvasLabel>("swotStatsPanel", PAD, 48, SIDEBAR_W, 200);
-        statsPanel->SetFontSize(10);
-        statsPanel->SetAlignment(TextAlignment::Left);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-        statsPanel->SetPadding(12);
-        rightSidebar->AddChild(statsPanel);
-
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("swotAboutTitle", PAD, 268, SIDEBAR_W, 24);
-        aboutTitle->SetText("ABOUT THIS DESIGN");
-        aboutTitle->SetFontSize(11);
-        aboutTitle->SetFontWeight(FontWeight::Bold);
-        aboutTitle->SetTextColor(Color(73, 80, 87, 255));
-        aboutTitle->SetAlignment(TextAlignment::Left);
-        rightSidebar->AddChild(aboutTitle);
-
-        auto aboutPanel = std::make_shared<UltraCanvasLabel>("swotAboutPanel", PAD, 300, SIDEBAR_W, 220);
-        aboutPanel->SetFontSize(9);
-        aboutPanel->SetAlignment(TextAlignment::Left);
-        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-        aboutPanel->SetPadding(12);
-        rightSidebar->AddChild(aboutPanel);
-
-        auto statusBar = std::make_shared<UltraCanvasLabel>("swotStatusBar", 240, 610, 660, 60);
-        statusBar->SetText("Ready - click items to select them, hover for tooltips");
+        auto statusBar = DemoKit::CreateText("swotStatusBar",
+                Tr("Ready - click items to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
-        statusBar->SetAlignment(TextAlignment::Left);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);
         statusBar->SetTextColor(Color(73, 80, 87, 255));
-        contentContainer->AddChild(statusBar);
+        DemoKit::Add(centerCard, statusBar);
+
+        // ===== RIGHT SIDEBAR (stats + about) =====
+        auto rightSidebar = DemoKit::AddCard(contentContainer, "swotRightSidebar", "", "", SIDEBAR_CARD_W);
+        rightSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+
+        DemoKit::Add(rightSidebar, makeSectionTitle("swotStatsTitle", Tr("STATISTICS")));
+
+        auto statsPanel = DemoKit::CreateText("swotStatsPanel", "");
+        statsPanel->SetFontSize(10);
+        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        statsPanel->SetPadding(12);
+        DemoKit::Add(rightSidebar, statsPanel);
+
+        DemoKit::Add(rightSidebar, makeSectionTitle("swotAboutTitle", Tr("ABOUT THIS DESIGN")));
+
+        auto aboutPanel = DemoKit::CreateText("swotAboutPanel", "");
+        aboutPanel->SetFontSize(9);
+        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        aboutPanel->SetPadding(12);
+        DemoKit::Add(rightSidebar, aboutPanel);
 
         // Diagram geometry inside each tab
         const int DIAG_X = 20, DIAG_Y = 15, DIAG_W = 620, DIAG_H = 510;
@@ -227,25 +191,31 @@ namespace UltraCanvas {
             std::string about;
         };
         const std::vector<TabSpec> tabSpecs = {
-                {"Corner Badges", SWOTDesign::CornerBadges,
-                 "Corner Badges\n\nVivid filled panels with\nS/W/O/T letter badges\nat the outer corners and\na central SWOT circle -\nthe classic infographic\npresentation."},
-                {"Matrix", SWOTDesign::Matrix,
-                 "Classic Matrix\n\nContiguous 2x2 grid,\nthe textbook SWOT form.\n\nAxis captions (helpful/\nharmful, internal/\nexternal) are enabled\non this tab."},
-                {"Cards", SWOTDesign::Cards,
-                 "Cards\n\nFour separated rounded\ncards with colored\nheader bars - reads as\nfour independent tiles."},
-                {"Diamond", SWOTDesign::CenterDiamond,
-                 "Center Diamond\n\nA central rotated square\nof four letter triangles\nwith clean text blocks\nat the surrounding\ncorners."},
-                {"Rows", SWOTDesign::Rows,
-                 "Rows\n\nFour stacked horizontal\nbands with big letter\nblocks - the list-style\npresentation that suits\nlonger item texts."},
-                {"Columns", SWOTDesign::Columns,
-                 "Columns\n\nFour side-by-side\ncolumns with header\nchips - good for\nportrait layouts."}};
+                {Tr("Corner Badges"), SWOTDesign::CornerBadges,
+                 Tr("Corner Badges\n\nVivid filled panels with S/W/O/T letter badges at the outer corners "
+                 "and a central SWOT circle - the classic infographic presentation.")},
+                {Tr("Matrix"), SWOTDesign::Matrix,
+                 Tr("Classic Matrix\n\nContiguous 2x2 grid, the textbook SWOT form.\n\n"
+                 "Axis captions (helpful/harmful, internal/external) are enabled on this tab.")},
+                {Tr("Cards"), SWOTDesign::Cards,
+                 Tr("Cards\n\nFour separated rounded cards with colored header bars - reads as "
+                 "four independent tiles.")},
+                {Tr("Diamond"), SWOTDesign::CenterDiamond,
+                 Tr("Center Diamond\n\nA central rotated square of four letter triangles with clean "
+                 "text blocks at the surrounding corners.")},
+                {Tr("Rows"), SWOTDesign::Rows,
+                 Tr("Rows\n\nFour stacked horizontal bands with big letter blocks - the list-style "
+                 "presentation that suits longer item texts.")},
+                {Tr("Columns"), SWOTDesign::Columns,
+                 Tr("Columns\n\nFour side-by-side columns with header chips - good for portrait "
+                 "layouts.")}};
 
         std::vector<std::shared_ptr<UltraCanvasSWOTDiagram>> allDiagrams;
         for (const auto& spec : tabSpecs) {
             auto diagram = CreateSWOTDiagramElement(
                     "swotDiagram" + std::to_string(allDiagrams.size()),
                     DIAG_X, DIAG_Y, DIAG_W, DIAG_H, spec.design);
-            diagram->SetTitle("SWOT Analysis");
+            diagram->SetTitle(Tr("SWOT Analysis"));
             diagram->LoadSampleData();
             if (spec.design == SWOTDesign::Matrix) diagram->SetShowAxisCaptions(true);
 
@@ -270,17 +240,17 @@ namespace UltraCanvas {
             if (!diagram) return;
 
             std::ostringstream oss;
-            oss << "Total Items: " << diagram->CountAllItems() << "\n\n";
+            oss << TrF("Total Items: {0}", diagram->CountAllItems()) << "\n\n";
             for (int q = 0; q < 4; ++q) {
-                oss << kSWOTQuadrantNames[q] << ": "
-                    << diagram->CountItems(static_cast<SWOTQuadrant>(q)) << "\n";
+                oss << TrF("{0}: {1}", SWOTQuadrantName(q),
+                           diagram->CountItems(static_cast<SWOTQuadrant>(q))) << "\n";
             }
             auto sel = diagram->GetSelectedItem();
-            oss << "\nSelected: ";
+            oss << "\n";
             if (sel.IsValid()) {
-                oss << kSWOTQuadrantNames[sel.quadrant] << " #" << (sel.item + 1);
+                oss << TrF("Selected: {0} #{1}", SWOTQuadrantName(sel.quadrant), sel.item + 1);
             } else {
-                oss << "none";
+                oss << TrF("Selected: {0}", Tr("none"));
             }
             statsPanel->SetText(oss.str());
         };
@@ -298,17 +268,17 @@ namespace UltraCanvas {
         // ===== DIAGRAM CALLBACKS =====
         for (auto& diagram : allDiagrams) {
             diagram->onItemSelect = [statusBar, updateStats](SWOTQuadrant q, size_t, const SWOTItem& item) {
-                statusBar->SetText("Selected [" +
-                        std::string(kSWOTQuadrantNames[static_cast<int>(q)]) + "] " + item.text);
+                statusBar->SetText(TrF("Selected [{0}] {1}",
+                        SWOTQuadrantName(static_cast<int>(q)), item.text));
                 updateStats();
             };
             diagram->onItemHover = [statusBar](SWOTQuadrant q, size_t, const SWOTItem& item) {
-                statusBar->SetText("Hovering [" +
-                        std::string(kSWOTQuadrantNames[static_cast<int>(q)]) + "] " + item.text);
+                statusBar->SetText(TrF("Hovering [{0}] {1}",
+                        SWOTQuadrantName(static_cast<int>(q)), item.text));
             };
             diagram->onItemDoubleClick = [statusBar](SWOTQuadrant q, size_t, const SWOTItem& item) {
-                statusBar->SetText("Double-clicked [" +
-                        std::string(kSWOTQuadrantNames[static_cast<int>(q)]) + "] " + item.text);
+                statusBar->SetText(TrF("Double-clicked [{0}] {1}",
+                        SWOTQuadrantName(static_cast<int>(q)), item.text));
             };
             diagram->onSelectionChange = updateStats;
         }
@@ -350,8 +320,8 @@ namespace UltraCanvas {
 
             std::string text = RandomSWOTItemText(q);
             diagram->AddItem(q, text);
-            statusBar->SetText("Added [" +
-                    std::string(kSWOTQuadrantNames[static_cast<int>(q)]) + "] " + text);
+            statusBar->SetText(TrF("Added [{0}] {1}",
+                    SWOTQuadrantName(static_cast<int>(q)), text));
             updateStats();
         };
 
@@ -361,12 +331,12 @@ namespace UltraCanvas {
 
             auto sel = diagram->GetSelectedItem();
             if (!sel.IsValid()) {
-                statusBar->SetText("Nothing selected - click an item first");
+                statusBar->SetText(Tr("Nothing selected - click an item first"));
                 return;
             }
             diagram->RemoveItem(static_cast<SWOTQuadrant>(sel.quadrant),
                                 static_cast<size_t>(sel.item));
-            statusBar->SetText("Removed the selected item");
+            statusBar->SetText(Tr("Removed the selected item"));
             updateStats();
         };
 
@@ -374,7 +344,7 @@ namespace UltraCanvas {
             auto diagram = activeDiagram();
             if (!diagram) return;
             diagram->LoadSampleData();
-            statusBar->SetText("Sample data reloaded for the active diagram");
+            statusBar->SetText(Tr("Sample data reloaded for the active diagram"));
             updateStats();
         };
 
@@ -394,7 +364,7 @@ namespace UltraCanvas {
                 diagram->LoadSampleData();
             }
 
-            statusBar->SetText("View reset - all diagrams restored to their defaults");
+            statusBar->SetText(Tr("View reset - all diagrams restored to their defaults"));
             updateStats();
         };
 

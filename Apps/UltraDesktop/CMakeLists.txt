@@ -6,6 +6,7 @@
 # One target, the desktop application; the headless modes (--windows, --apps,
 # --devices, --screenshot) come from the module and need nothing this file adds.
 #
+# Version: 0.2.0 - the clock, popup and volume panels
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -19,13 +20,24 @@ endif()
 
 add_executable(UltraDesktop
     main.cpp
+    ui/UltraDesktopAppCatalogue.cpp
+    ui/UltraDesktopAppCategories.cpp
     ui/UltraDesktopAppStarter.cpp
+    ui/UltraDesktopBluetoothPanel.cpp
     ui/UltraDesktopCategoryBoard.cpp
     ui/UltraDesktopClipboardPanel.cpp
+    ui/UltraDesktopClockPanel.cpp
+    ui/UltraDesktopDevicePanel.cpp
+    ui/UltraDesktopPanelTheme.cpp
+    ui/UltraDesktopPopupPanel.cpp
     ui/UltraDesktopSettings.cpp
     ui/UltraDesktopStickerboard.cpp
+    ui/UltraDesktopDesktopIcons.cpp
     ui/UltraDesktopTasksWindow.cpp
+    ui/UltraDesktopVolumePanel.cpp
+    ui/UltraDesktopWifiPanel.cpp
     ui/UltraDesktopWindow.cpp
+    ui/UltraDesktopWindowPreviews.cpp
 )
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols

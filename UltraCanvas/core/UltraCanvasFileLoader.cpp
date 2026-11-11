@@ -1,6 +1,7 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.9.0 - SaveFile
 // Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
 // Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
 //                  password-protected .docx
@@ -39,6 +40,7 @@
 #include <fstream>
 #include <iterator>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // FileWriteFailureReason
 
 #ifdef ULTRACANVAS_HAS_NET
 #include "UltraNet/UltraNetHttp.h"
@@ -46,12 +48,6 @@
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
 #include <VirtualFS/VirtualFSCompression.h>
-// Xlib.h (pulled in via UltraCanvasCommonTypes.h) defines Success as a
-// macro, colliding with VirtualFSResult::Success used below. This file
-// uses no X11 API, so the macro can be dropped for the rest of the TU.
-#ifdef Success
-#undef Success
-#endif
 #endif
 
 namespace UltraCanvas {
@@ -81,7 +77,7 @@ namespace UltraCanvas {
             std::vector<uint8_t> plain;
             if (VirtualFS::VirtualFS_DecompressBuffer(out.bytes.data(), out.bytes.size(),
                                                       plain, method)
-                    == VirtualFS::VirtualFSResult::Success) {
+                    == VirtualFS::VirtualFSResult::Ok) {
                 // gzip and zlib both decode through Deflate; report gzip by
                 // its distinct magic so callers see the on-disk format
                 if (method == VirtualFS::VirtualFSCompressionMethod::Deflate &&
@@ -154,6 +150,38 @@ namespace UltraCanvas {
         out.success = true;
         MaybeDecompress(out, autoDecompress);
         return out;
+    }
+
+    bool UltraCanvasFileLoader::SaveFile(const std::string& path, const std::vector<uint8_t>& bytes,
+                                         std::string& error) {
+        error.clear();
+        if (path.empty()) { error = "empty path"; return false; }
+        if (IsUrl(path)) { error = "a URL cannot be saved to"; return false; }
+        const std::filesystem::path target = PathFromUtf8(path);
+        std::filesystem::path partial = target;
+        partial += ".part";
+        {
+            std::ofstream out(partial, std::ios::binary | std::ios::trunc);
+            if (!out) { error = "cannot write " + path; return false; }
+            if (!bytes.empty()) out.write(reinterpret_cast<const char*>(bytes.data()),
+                                          static_cast<std::streamsize>(bytes.size()));
+            out.close();
+            if (!out) {
+                std::error_code ignored;
+                std::filesystem::remove(partial, ignored);
+                error = "the file could not be completed (is the disk full?)";
+                return false;
+            }
+        }
+        std::error_code ec;
+        std::filesystem::rename(partial, target, ec);
+        if (ec) {
+            std::error_code ignored;
+            std::filesystem::remove(partial, ignored);
+            error = "cannot put the file in place: " + ec.message();
+            return false;
+        }
+        return true;
     }
 
     // ===== FILE DIALOGS =====
@@ -596,8 +624,11 @@ namespace UltraCanvas {
             collected.push_back(n);
         });
         if (!ok) {
-            outError = "Could not save the file";
-            if (!collected.empty()) outError += ": " + collected.front();
+            // The writer's own reason when it gave one (the file writers say
+            // why the file could not be created or written), else what the
+            // destination says.
+            outError = "Could not save the file: " +
+                       (!collected.empty() ? collected.front() : FileWriteFailureReason(filePath, 0));
         }
         if (notes) *notes = std::move(collected);
         return ok;

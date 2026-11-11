@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore - Categories</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="Main.dc.html" aria-label="UltraStore home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+</a>
+<nav aria-label="Store sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Discover</a>
+<a href="Categories.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 600; color: #1d4ed8; background: #dbeafe">Categories</a>
+<a href="#installed" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Installed</a>
+<a href="#updates" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Updates <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700">3</span></a>
+</nav>
+<form role="search" style="flex: 1 1 240px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9; border: 1px solid transparent">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-cat" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search apps</label>
+<input id="search-cat" type="search" placeholder="Search apps, publishers, tags" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<button type="button" style="height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Sign in</button>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 36px; font-weight: 800; letter-spacing: -0.03em">Browse apps</h1>
+<p style="margin: 0; color: #64748b">Every app in the signed catalog, by category. Pick a category and a price to narrow the list.</p>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+
+<aside style="flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+<nav aria-label="Categories" style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Category</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{cats}}" as="cat" hint-placeholder-count="9">
+<button type="button" onClick="{{cat.pick}}" aria-pressed="{{cat.selected}}" style="{{cat.chipStyle}}">{{cat.label}} <span style="{{cat.countStyle}}">{{cat.count}}</span></button>
+</sc-for>
+</div>
+</nav>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Price</h2>
+<div role="group" aria-label="Price" style="display: flex; padding: 4px; border-radius: 999px; background: #f1f5f9">
+<sc-for list="{{prices}}" as="p" hint-placeholder-count="3">
+<button type="button" onClick="{{p.pick}}" aria-pressed="{{p.selected}}" style="{{p.style}}">{{p.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Runs on</h2>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">Linux</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">macOS</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">Windows</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">Raspberry Pi</label>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">More</h2>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">Open source only</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">Hide installed</label>
+</div>
+</aside>
+
+<section aria-live="polite" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">{{heading}} <span style="color: #64748b; font-weight: 600; font-size: 16px">· {{count}} apps</span></h2>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #475569">Sort by
+<select style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a">
+<option>Newest release</option>
+<option>Name A to Z</option>
+<option>Price, low to high</option>
+</select>
+</label>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 18px">
+<sc-for list="{{apps}}" as="app" hint-placeholder-count="12">
+<article style="flex: 1 1 250px; max-width: 420px; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; background: #ffffff">
+<div style="display: flex; gap: 14px; align-items: center">
+<img src="{{app.icon}}" alt="" style="width: 60px; height: 60px; border-radius: 15px; flex: 0 0 auto">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="{{app.href}}" style="font-family: Manrope, Inter, sans-serif; font-weight: 700; font-size: 17px; color: #0f172a; text-decoration: none">{{app.name}}</a>
+<span style="color: #64748b; font-size: 13px">{{app.meta}}</span>
+</div>
+</div>
+<p style="margin: 0; color: #334155; font-size: 14px; min-height: 42px">{{app.summary}}</p>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto">
+<span style="{{app.priceStyle}}">{{app.price}}</span>
+<button type="button" style="{{app.buttonStyle}}">{{app.action}}</button>
+</div>
+</article>
+</sc-for>
+</div>
+
+<sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+<div style="padding: 48px 24px; border-radius: 20px; background: #f8fafc; text-align: center; color: #64748b">No apps match these filters yet.</div>
+</sc-if>
+</section>
+
+</div>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore</span>
+<span>· the ULTRA OS app store</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#publishers" style="color: #475569; text-decoration: none; font-weight: 500">For publishers</a>
+<a href="#support" style="color: #475569; text-decoration: none; font-weight: 500">Support</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+<a href="#language" style="color: #475569; text-decoration: none; font-weight: 500">English</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1720}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { cat: 'all', price: 'all' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#2563eb';
+    const B = '/_blob/';
+    const CATS = [
+      { id: 'all', label: 'All apps' },
+      { id: 'creative', label: 'Creative & media' },
+      { id: 'documents', label: 'Documents & files' },
+      { id: 'web', label: 'Web & publishing' },
+      { id: 'communication', label: 'Communication' },
+      { id: 'security', label: 'Security' },
+      { id: 'ai', label: 'AI' },
+      { id: 'business', label: 'Business' },
+      { id: 'system', label: 'Desktop & system' },
+      { id: 'developer', label: 'Developer' }
+    ];
+    const APPS = [
+      { id: 'ultravideo', name: 'UltraVideo', cat: 'creative', ver: '0.7.0', price: '29.90 EUR', paid: true, summary: 'Video editor with a timeline and one-button export.', icon: B + '023cd138f38912c764ae7c221c087db6', href: 'AppDetail.dc.html' },
+      { id: 'ultrapaint', name: 'UltraPaint', cat: 'creative', ver: '0.2.25', price: 'Free', summary: 'Bitmap editor with layers, brushes and the PixelFX filter stack.', icon: B + '451050dafeeb42579ba048b1a08f78fa' },
+      { id: 'artcreator', name: 'ArtCreator', cat: 'creative', ver: '0.7.3', price: '[PRICE] EUR', paid: true, summary: 'Vector drawing with bezier tools, text on paths and live effects.', icon: B + '0d8f1d55bd369843755da72b7a7fbd33' },
+      { id: 'ultraviewer', name: 'UltraViewer', cat: 'creative', ver: '1.0.7', price: 'Free', summary: 'Opens pictures, video, audio, PDFs and e-books in one window.', icon: B + '05ae627f527f163025af07e9a4228fc4' },
+      { id: 'ultrasnip', name: 'UltraSnip', cat: 'creative', ver: '0.3.0', price: 'Free', summary: 'Capture a region, a window or the screen and annotate it.', icon: B + '2a23005da8e1e896df09b451fcedae79' },
+      { id: 'texter', name: 'Texter', cat: 'documents', ver: '1.67', price: 'Free', summary: 'Text, code and word-processing editor with Markdown preview.', icon: B + '693816119a6f2ec456eb26c1c05fd97a' },
+      { id: 'ultrafiler', name: 'UltraFiler', cat: 'documents', ver: '1.75.0', price: 'Free', installed: true, summary: 'Two-pane file manager with cloud drives, archives and previews.', icon: B + '0339854b95aaa1785eff13f10f2fce1c' },
+      { id: 'anchorpoint', name: 'AnchorPoint', cat: 'documents', ver: '0.2.4', price: 'Free', summary: 'Send files machine to machine, end-to-end encrypted, no server.', icon: B + 'eb53611555a40a4f89409ce13e6ce00c' },
+      { id: 'ultraweb', name: 'UltraWeb', cat: 'web', ver: '0.8.3', price: 'Free', summary: 'Browser for web pages and WebAssembly apps.', icon: B + '9339098138c28559209f05450b47c180' },
+      { id: 'ultrapress', name: 'UltraPress', cat: 'web', ver: '0.8.2', price: '[PRICE] EUR', paid: true, summary: 'Website and shop builder that publishes to UltraCloud.', icon: B + '9f46fbb5f61e6ff5f3160c323225c3d3' },
+      { id: 'ultramail', name: 'UltraMail', cat: 'communication', ver: '0.10.59', price: 'Free', summary: 'Fast email for IMAP and Exchange, with an encrypted local vault.', icon: B + 'bafbc6e21d0bfb6f2d3d60d6d272ad66' },
+      { id: 'emailcleaner', name: 'EmailCleaner', cat: 'communication', ver: '0.4.8', price: 'Free', summary: 'Analyses a mailbox and clears out what you no longer need.', icon: B + 'fdf2f8dafee1b10effdd57f30c2e4037' },
+      { id: 'ultrasocial', name: 'UltraSocial', cat: 'communication', ver: '0.2.2', price: 'Free', summary: 'Write once, post to every social network you use.', icon: B + 'd919f5092ad77a08c45dde5ff8c48797' },
+      { id: 'chatcube', name: 'ChatCube', cat: 'communication', ver: '0.1.0', price: 'Free', summary: 'Team chat with rooms, threads and file drops.', icon: B + 'b4d3985fdfe86bd3ea2fcdd94dcd3425' },
+      { id: 'ultrapassword', name: 'UltraPassword', cat: 'security', ver: '0.1.4', price: 'Free', summary: 'Password vault sealed with Argon2id and XChaCha20.', icon: B + 'a59673ce6edcb56f9629a3733d04bc3c' },
+      { id: 'ultraauthenticator', name: 'UltraAuthenticator', cat: 'security', ver: '0.2.8', price: 'Free', summary: 'TOTP and HOTP two-factor codes, backed up encrypted.', icon: B + 'ee8d25a781cc2a803bc6dce46ffb3a8e' },
+      { id: 'ultraclaude', name: 'UltraClaude', cat: 'ai', ver: '0.4.2', price: 'Free', summary: 'Desktop chat with Claude on your Pro or Max subscription.', icon: B + '0ff3e14cb1fc27dfb3ebc15b0315f22f' },
+      { id: 'ultraai', name: 'UltraAI', cat: 'ai', ver: '0.1.15', price: 'Free', summary: 'Dashboard for the local UltraAI services and models.', icon: B + 'f4ba4727fc2023735981031b16e08964' },
+      { id: 'ultrafibu', name: 'UltraFIBU', cat: 'business', ver: '0.24.5', price: '[PRICE] EUR', paid: true, summary: 'German double-entry bookkeeping with DATEV export.', icon: B + 'c5402e04d2949ef467a6e80deabd4144' },
+      { id: 'ultradesktop', name: 'UltraDesktop', cat: 'system', ver: '0.4.1', price: 'Free', summary: 'The ULTRA OS desktop shell: panel, launcher, windows.', icon: B + '90eb60090b672bec83f5ce0aa977c5a0' },
+      { id: 'ultracleaner', name: 'UltraCleaner', cat: 'system', ver: '0.66', price: 'Free', summary: 'Removes caches, temporary files and leftovers.', icon: B + '51239c2aff5d2daea6499e95b26434cd' },
+      { id: 'ultraclipboard', name: 'UltraClipboard', cat: 'system', ver: '0.1.5', price: 'Free', summary: 'Clipboard history with search and pinned snippets.', icon: B + 'af5fce512947c6e87522bb7e0ef04080' },
+      { id: 'ultranetmonitor', name: 'UltraNetMonitor', cat: 'system', ver: '0.17', price: 'Free', summary: 'Which process holds which network connection, live.', icon: B + '94e5f60f5056aac33b2e136d329737b3' },
+      { id: 'deviceexplorer', name: 'DeviceExplorer', cat: 'system', ver: '0.2.2', price: 'Free', summary: 'Printers, scanners and cameras in one place.', icon: B + '2e6a1f53164c10cfa6769251b9f13925' }
+    ];
+    const sel = this.state.cat;
+    const priceSel = this.state.price;
+    const matchPrice = (a) => priceSel === 'all' || (priceSel === 'free' ? !a.paid : !!a.paid);
+    const chipBase = 'display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer; ';
+    const cats = CATS.map((c) => {
+      const selected = c.id === sel;
+      const count = APPS.filter((a) => (c.id === 'all' || a.cat === c.id) && matchPrice(a)).length;
+      return {
+        ...c,
+        selected,
+        count,
+        chipStyle: chipBase + (selected
+          ? 'border: 1px solid ' + accent + '; background: ' + accent + '; color: #ffffff; font-weight: 700'
+          : 'border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; font-weight: 600'),
+        countStyle: 'font-size: 12px; font-weight: 700; ' + (selected ? 'color: #bfdbfe' : 'color: #64748b'),
+        pick: () => this.setState({ cat: c.id })
+      };
+    });
+    const segBase = 'flex: 1 1 0; height: 36px; border-radius: 999px; border: 0; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; ';
+    const prices = [
+      { id: 'all', label: 'All' },
+      { id: 'free', label: 'Free' },
+      { id: 'paid', label: 'Paid' }
+    ].map((p) => ({
+      ...p,
+      selected: p.id === priceSel,
+      style: segBase + (p.id === priceSel ? 'background: #ffffff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,0.12)' : 'background: transparent; color: #475569'),
+      pick: () => this.setState({ price: p.id })
+    }));
+    const catLabel = (id) => (CATS.find((c) => c.id === id) || CATS[0]).label;
+    const apps = APPS.filter((a) => (sel === 'all' || a.cat === sel) && matchPrice(a)).map((a) => ({
+      ...a,
+      href: a.href || ('#' + a.id),
+      meta: 'ULTRA OS Project · ' + a.ver,
+      priceStyle: 'font-weight: 700; ' + (a.installed ? 'color: #15803d' : (a.paid ? 'color: #0f172a' : 'color: #15803d')),
+      price: a.installed ? 'Installed' : a.price,
+      action: a.installed ? 'Open' : (a.paid ? 'Try' : 'Install'),
+      buttonStyle: 'height: 40px; padding: 0 18px; border-radius: 999px; font: inherit; font-weight: 700; cursor: pointer; ' + (a.installed ? 'border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a' : 'border: 0; background: #dbeafe; color: #1d4ed8')
+    }));
+    return {
+      accent,
+      cats,
+      prices,
+      apps,
+      count: apps.length,
+      empty: apps.length === 0,
+      heading: sel === 'all' ? 'All apps' : catLabel(sel)
+    };
+  }
+}
+</script>
+</body>
+</html>

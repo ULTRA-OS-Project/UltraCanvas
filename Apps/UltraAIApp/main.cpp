@@ -3,10 +3,11 @@
 // one per AI capability. Clicking an icon opens a modal dialog
 // driven by the matching in-process mock adapter — no network or
 // external models required.
+// Version: 0.1.4 - --agents opens the Agents dialog at start
 // Version: 0.1.3 - one UltraAI per user: a second start brings the running
 //                  dashboard forward instead of opening another copy
 // Version: 0.1.2
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-09
 // Author: UltraAI Module
 
 #include "UltraAIDashboard.h"
@@ -58,17 +59,41 @@ void PrintUsage(const char* prog) {
     std::cout << "UltraAI — choose-a-service dashboard demo.\n"
               << "Usage: " << prog << " [options]\n"
               << "  -h, --help     show this message\n"
-              << "  -v, --version  show version\n";
+              << "  -v, --version  show version\n"
+              << "  --settings [page]  open the settings window at start; page is one of\n"
+              << "                 default-providers, local-models, topics, local-and-cloud, endpoints\n"
+              << "  --get-local-model  open the \"Get a local model\" dialog at start, as\n"
+              << "                 Chat does when its model is not installed\n"
+              << "  --agents       open the Agents dialog at start\n";
 }
 
 } // namespace
 
 int main(int argc, char* argv[]) {
+    // --settings [page]: the settings window opens with the dashboard, on
+    // the page named - for a screenshot or a quick check of one page.
+    bool openSettings = false;
+    bool openGetModel = false;
+    bool openAgents = false;
+    UltraAIApp::UltraAISettingsWindow::Page settingsPage =
+        UltraAIApp::UltraAISettingsWindow::Page::Default;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "-h" || a == "--help")    { PrintUsage(argv[0]); return 0; }
         if (a == "-v" || a == "--version") {
             std::cout << "UltraAI app " << ULTRAAI_APP_VERSION << "\n"; return 0;
+        }
+        if (a == "--get-local-model") openGetModel = true;
+        if (a == "--agents") openAgents = true;
+        if (a == "--settings") {
+            openSettings = true;
+            const std::string page = i + 1 < argc ? argv[i + 1] : "";
+            using Page = UltraAIApp::UltraAISettingsWindow::Page;
+            if (page == "default-providers") { settingsPage = Page::DefaultProviders; ++i; }
+            else if (page == "local-models") { settingsPage = Page::LocalModels; ++i; }
+            else if (page == "topics") { settingsPage = Page::Topics; ++i; }
+            else if (page == "local-and-cloud") { settingsPage = Page::LocalAndCloud; ++i; }
+            else if (page == "endpoints") { settingsPage = Page::Endpoints; ++i; }
         }
     }
 
@@ -152,6 +177,9 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         dashboard.Show();
+        if (openSettings) dashboard.OpenSettingsDialog(settingsPage);
+        if (openGetModel) dashboard.OpenLocalModelDialog();
+        if (openAgents) dashboard.OpenAgentDialog();
         instance.ListenRaise();   // a later start brings the dashboard forward
 
         app.Run();

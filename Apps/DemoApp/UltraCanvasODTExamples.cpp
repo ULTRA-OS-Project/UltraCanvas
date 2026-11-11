@@ -8,12 +8,16 @@
 // document's own page size, margins, headers and footers, like Writer's
 // print layout. A standard sample document is loaded from
 // media/docs/document.odt on entry.
+// Version: 1.5.0 - the shared page look (UltraCanvasDemoPageKit): the view
+//                  fills the page area and scrolls inside, the button and the
+//                  status sized to their text
 // Version: 1.4.0 - Open offers what LoadTextDocument reads (AddTextDocumentLoadTypes)
 // Version: 1.3.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -40,7 +44,7 @@ namespace UltraCanvas {
             std::shared_ptr<UCRichDocument> document =
                 UltraCanvasFileLoader::LoadTextDocument(path, error);
             if (!document) {
-                status->SetText("Could not open document: " + error);
+                status->SetText(TrF("Could not open document: {0}", error));
                 status->RequestRedraw();
                 return false;
             }
@@ -50,14 +54,15 @@ namespace UltraCanvas {
             view->RequestRedraw();
 
             std::string name = PathToUtf8(PathFromUtf8(path).filename());
-            std::string details = std::to_string(document->blocks.size()) + " blocks";
+            std::string details = TrN("{n} block", "{n} blocks", static_cast<long long>(document->blocks.size()));
             if (!document->media.empty()) {
-                details += ", " + std::to_string(document->media.size()) + " images";
+                details = TrF("{0}, {1}", details,
+                              TrN("{n} image", "{n} images", static_cast<long long>(document->media.size())));
             }
             if (!document->metadata.title.empty()) {
-                details += ", title: " + document->metadata.title;
+                details = TrF("{0}, title: {1}", details, document->metadata.title);
             }
-            status->SetText("Loaded: " + name + " (" + details + ")");
+            status->SetText(TrF("Loaded: {0} ({1})", name, details));
             status->RequestRedraw();
             return true;
         }
@@ -65,38 +70,33 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateODTExamples() {
-        // The document view shows the document's pages on a desk, each at
-        // 96 DPI: a whole DIN A4 page (794 x 1123 px) plus the desk around
-        // it, so a letter is on display at once. Further pages scroll inside
-        // the view.
-        const int kPageWidth  = 794 + 2 * 24;   // A4 at 96 DPI, and desk at the sides
-        const int kPageHeight = 1123 + 2 * 16;  // and above and below
-        const int kWidth   = 1020;
-        const int kViewTop = 92;
-        const int kHeight  = kViewTop + kPageHeight + 16;
-        const int kViewLeft = (kWidth - kPageWidth) / 2;
+        auto page = DemoKit::CreatePage("ODTExamples", Tr("OpenDocument Text (.odt) / Word (.docx) Documents"),
+                Tr("Documents parsed by UltraCanvasFileLoader::LoadTextDocument and shown read-only "
+                "in the WYSIWYG view, in the document's own page size, margins, headers and footers"));
+        // The document view scrolls its pages itself: the page is the area's
+        // height and the view takes what the title and the toolbar leave.
+        page->SetFillsArea(true);
 
-        auto root = std::make_shared<UltraCanvasContainer>("ODTExamples", 0, 0, kWidth, kHeight);
-        // Neutral desk color around the white page, document-viewer style.
-        root->SetBackgroundColor(Color(235, 236, 239, 255));
-
-        // ===== TITLE =====
-        auto title = std::make_shared<UltraCanvasLabel>("odtTitle", 20, 12, 900, 28);
-        title->SetText("OpenDocument Text (.odt) / Word (.docx) Documents");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        root->AddChild(title);
+        auto card = DemoKit::CreateCard("odtCard");
+        card->SetPadding(4);
+        DemoKit::Add(page, card, 1);
 
         // ===== TOOLBAR: Open button + status label =====
-        auto openBtn = std::make_shared<UltraCanvasButton>("odtOpenBtn", 20, 50, 180, 30,
-                                                           "Open Document");
-        root->AddChild(openBtn);
+        auto toolbar = DemoKit::AddRow(card, "odtToolbar");
+        toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        toolbar->SetPadding(6);
 
-        auto status = std::make_shared<UltraCanvasLabel>("odtStatus", 210, 56, kWidth - 230, 22);
-        status->SetText("Supported formats: .odt, .docx, .doc, .tex, .md");
-        status->SetFontSize(12);
+        // As wide as its text, at least the width it had.
+        auto openBtn = std::make_shared<UltraCanvasButton>("odtOpenBtn", Tr("Open Document"));
+        CSSLayout::BoxConstraints openLimits;
+        openLimits.minWidth = CSSLayout::Dimension::Px(180);
+        openLimits.minHeight = CSSLayout::Dimension::Px(30);
+        openBtn->boxConstraints = openLimits;
+        DemoKit::Add(toolbar, openBtn);
+
+        auto status = DemoKit::CreateText("odtStatus", Tr("Supported formats: .odt, .docx, .doc, .tex, .md"));
         status->SetTextColor(Color(90, 90, 90, 255));
-        root->AddChild(status);
+        DemoKit::Add(toolbar, status, 1);
 
         // ===== DOCUMENT VIEW =====
         // The parsed UCRichDocument goes to the WYSIWYG element as it is: no
@@ -105,22 +105,23 @@ namespace UltraCanvas {
         // column widths and cell alignment all display. Read-only: this page
         // is a viewer (the WYSIWYG Editor page edits). Page view lays the
         // text out in the document's own page and margins, with its headers
-        // and footers.
-        auto view = CreateRichTextEdit("odtView", kViewLeft, kViewTop, kPageWidth, kPageHeight);
+        // and footers, each page at 96 DPI on a neutral desk.
+        auto view = CreateRichTextEdit("odtView", 0, 0, 0, 0);
         RichTextEditStyle pageStyle = view->GetStyle();
         pageStyle.padding = 0.0f;              // the pages bring their own margins
         pageStyle.deskColor = Color(235, 236, 239, 255);
         view->SetStyle(pageStyle);
         view->SetReadOnly(true);
         view->SetPageView(true);
-        root->AddChild(view);
+        view->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        DemoKit::Add(card, view, 1);
 
         // ===== STANDARD SAMPLE DOCUMENT =====
         const std::string samplePath =
             NormalizePath(GetResourcesDir() + "media/docs/document.odt");
         if (!ShowDocumentInView(samplePath, view, status)) {
-            view->SetMarkdown("No sample document found.\n\nExpected: " + samplePath
-                              + "\n\nUse **Open Document** to load an .odt, .docx or .doc file.");
+            view->SetMarkdown(TrF("No sample document found.\n\nExpected: {0}"
+                                  "\n\nUse **Open Document** to load an .odt, .docx or .doc file.", samplePath));
         }
 
         // ===== OPEN -> FileLoader::OpenTextDocument-style flow =====
@@ -128,14 +129,14 @@ namespace UltraCanvas {
         // callback; both are also owned by the container (no ownership cycle).
         openBtn->onClick = [view, status]() {
             FileDialogOptions opts;
-            opts.SetTitle("Open Document");
+            opts.SetTitle(Tr("Open Document"));
             UltraCanvasFileLoader::AddTextDocumentLoadTypes(opts);
-            opts.AddFilter("All files", "*");
+            opts.AddFilter(Tr("All files"), "*");
 
             UltraCanvasFileLoader::OpenFileDialog(opts,
                 [view, status](DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        status->SetText("Open cancelled.");
+                        status->SetText(Tr("Open cancelled."));
                         status->RequestRedraw();
                         return;
                     }
@@ -143,7 +144,7 @@ namespace UltraCanvas {
                 });
         };
 
-        return root;
+        return page;
     }
 
 } // namespace UltraCanvas

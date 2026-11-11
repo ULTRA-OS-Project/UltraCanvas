@@ -14,10 +14,22 @@
 // track places clips freely. That is the shape of an engine whose export is
 // a list of segments (VideoFX) with free overlays and music beside it.
 //
+// Gaps: an empty stretch before a clip on a free track (left behind when a
+// clip is cut and a part deleted, say) shows a small |<- button in the middle
+// of the part of it that is on screen. A click moves the clip after the gap
+// left to the end of the clip before it (or to 0); Shift+click moves every
+// clip after the gap with it. Both are reported as one Move change.
+//
+// Version: 1.7.0 - FromTheme takes the theme's families; the SetStyle rule and the constructor tail
+// Version: 1.6.0 - MakeVideoTimelineDescriptor / RegisterVideoTimelineElement: the element in
+//                  the element registry as "video-timeline", bundled or as a runtime module
+// Version: 1.5.0 - filmstrips cover the whole clip at any zoom (time-aligned slots, only those in view)
+// Version: 1.4.0 - the close-gap button: a |<- in each gap of a free track moves the clip after it left to close it
+// Version: 1.3.0 - SetDropFeedback: the ring and the insertion marker of a drop the application carries, in one call; a DragLeave clears them
 // Version: 1.2.0 - SetDropTargetClip: the clip an application-carried drop (an effect) would land on
 // Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -160,6 +172,8 @@ public:
     bool GetSnapping() const { return snapping; }
     void SetShowBeats(bool on);
     bool GetShowBeats() const { return showBeats; }
+    void SetShowGapButtons(bool on);                    // the |<- in each gap of a free track; on by default
+    bool GetShowGapButtons() const { return showGapButtons; }
     void SetStyle(const VideoTimelineStyle& s);
     const VideoTimelineStyle& GetStyle() const { return style; }
     void SetSelection(const std::vector<std::string>& clipIds);
@@ -179,6 +193,25 @@ public:
     // cleared with "". The element's own drop path (files) does not use it.
     void SetDropTargetClip(const std::string& clipId);
     std::string GetDropTargetClip() const { return dropTargetClip; }
+    // What the element shows for a drop the application carries itself (a
+    // title style or an effect dragged from its bin), one call per pointer
+    // move: the clip it would land on, ringed as SetDropTargetClip rings it,
+    // and the lane and time it would land at, with the insertion line and
+    // readout the element draws for files it is handed - the time snapped as
+    // a file drop is (the nearest cut on a magnetic track, the snap points
+    // otherwise), the readout "<label> at <timecode>". Either part may be
+    // empty. Returns the snapped time of the marker, -1 without one (a
+    // track not in the model shows no marker). ClearDropFeedback, or a
+    // DragLeave event, takes both away.
+    struct DropFeedback {
+        std::string clipId;      // the clip to ring, "" for none
+        std::string trackId;     // the lane of the insertion marker, "" for none
+        double seconds = 0.0;    // where on it
+        std::string label;       // the readout's name for what is dropped
+    };
+    double SetDropFeedback(const DropFeedback& feedback);
+    void ClearDropFeedback();
+    bool HasDropFeedback() const { return dropActive || !dropTargetClip.empty(); }
 
     // ===== PROVIDERS =====
     TimelineThumbnailProvider thumbnailProvider;
@@ -221,7 +254,8 @@ private:
     struct Hit {
         enum Kind { Nothing, Ruler, Marker, HeaderName, HeaderToggle, Lane, ClipBody, ClipLeftEdge, ClipRightEdge,
                     FadeInKnob, FadeOutKnob,   // an audio clip's fade handles, at the top of its ramps
-                    TransitionBody, TransitionLeftEdge, TransitionRightEdge, Scrollbar } kind = Nothing;
+                    TransitionBody, TransitionLeftEdge, TransitionRightEdge, Scrollbar,
+                    GapClose } kind = Nothing;   // the |<- button in a gap; clipId is the clip after the gap
         bool IsClip() const {
             return kind == ClipBody || kind == ClipLeftEdge || kind == ClipRightEdge || kind == FadeInKnob || kind == FadeOutKnob;
         }
@@ -231,7 +265,7 @@ private:
         TimelineTrackToggle toggle = TimelineTrackToggle::Visible;
         double seconds = 0.0;
     };
-    enum class Drag { None, Playhead, MoveClip, TrimLeft, TrimRight, FadeIn, FadeOut, Transition, RubberBand, Scrollbar };
+    enum class Drag { NoDrag, Playhead, MoveClip, TrimLeft, TrimRight, FadeIn, FadeOut, Transition, RubberBand, Scrollbar };
 
     Rect2Df BodyRect() const;          // the lanes and the ruler, right of the header column
     Rect2Df LanesRect() const;         // the lanes only
@@ -242,6 +276,12 @@ private:
     // An audio clip's fade knobs: the top of each ramp. False when the clip has none to show.
     bool FadeKnobs(const TimelineClip& clip, const TimelineTrack& track, const TrackLayout& lane, Point2Df& in, Point2Df& out) const;
     Rect2Df TransitionRect(const TimelineTrack& track, const TimelineTransition& t, const TrackLayout& lane) const;
+    // The close-gap buttons of a lane: where each is drawn and the gap it closes
+    struct GapButton {
+        Rect2Df rect;
+        TimelineGap gap;
+    };
+    std::vector<GapButton> GapButtons(const TimelineTrack& track, const TrackLayout& lane) const;
     std::vector<double> SnapCandidates(const std::string& ignoreClipId) const;
     double SnapTime(double seconds, const std::string& ignoreClipId, bool& snapped) const;
     double VisibleSeconds() const;
@@ -257,6 +297,7 @@ private:
     void DrawFilmstrip(IRenderContext* ctx, const TimelineClip& clip, const Rect2Df& content);
     void DrawPeaks(IRenderContext* ctx, const TimelineClip& clip, const Rect2Df& content);
     void DrawTransitions(IRenderContext* ctx, const TimelineTrack& track, const TrackLayout& lane);
+    void DrawGapButtons(IRenderContext* ctx, const TimelineTrack& track, const TrackLayout& lane);
     void DrawGuides(IRenderContext* ctx, const Rect2Df& lanes);
     void DrawPlayhead(IRenderContext* ctx, const Rect2Df& body);
     void DrawDragFeedback(IRenderContext* ctx, const Rect2Df& lanes);
@@ -286,6 +327,8 @@ private:
     void RequestDuplicateSelection();
     void RequestNudgeSelection(int frames);
     void RequestMarkerAt(double seconds);
+    void RequestCloseGap(size_t trackIndex, const std::string& clipId, bool ripple);
+    std::string GapTooltip(const Hit& hit) const;
     std::string NextCut(double from, bool forward) const;
     std::string ReadoutText() const;
 
@@ -300,7 +343,10 @@ private:
             return height < o.height;
         }
     };
-    const std::vector<UCPixmapPtr>* Filmstrip(const TimelineClip& clip, int frames, int height);
+    // the pictures of `frames` evenly spread moments from `in` to `out` of
+    // `source` (both included), from the cache or asked of thumbnailProvider
+    const std::vector<UCPixmapPtr>* Filmstrip(const std::string& source, double in, double out, int frames, int height);
+    static constexpr size_t kMaxFilmstrips = 1024;
     const WaveformChannelData* Peaks(const TimelineClip& clip);
 
     // ---- state ----
@@ -313,13 +359,14 @@ private:
     TimelineTool tool = TimelineTool::Select;
     bool snapping = true;
     bool showBeats = false;
+    bool showGapButtons = true;
     std::set<std::string> selection;
     std::string selectedTransition;
     std::string selectedTrack;
 
     Point2Df lastPointer;
     Hit hover;
-    Drag drag = Drag::None;
+    Drag drag = Drag::NoDrag;
     Point2Df dragStart;
     bool dragMoved = false;
     std::string dragClipId;
@@ -338,6 +385,8 @@ private:
     double dropSeconds = 0.0;
     int dropCount = 0;
     std::string dropTargetClip;        // SetDropTargetClip
+    std::string dropLabel;             // SetDropFeedback's readout; empty for a file drop
+    double DropTime(const TimelineTrack& track, double seconds) const;   // where a drop on the track lands
     double scrollDragStart = 0.0;
 
     std::shared_ptr<bool> aliveToken = std::make_shared<bool>(true);   // providers answering after the element is gone are ignored
@@ -348,5 +397,15 @@ private:
 };
 
 std::shared_ptr<UltraCanvasVideoTimeline> CreateVideoTimeline(const std::string& id, int x, int y, int w, int h);
+
+// The element in the element registry (UltraCanvasElementPlugins.h), under the
+// type name "video-timeline" (category Widget). A core built with VideoTimeline
+// in ULTRACANVAS_WIDGETS (the default, "all") registers it from
+// UltraCanvas_RegisterSelectedWidgets(); otherwise the
+// ultracanvas-widget-video-timeline runtime module registers the same
+// descriptor through the plugin loader.
+struct UCElementDescriptor;
+UCElementDescriptor MakeVideoTimelineDescriptor();
+void RegisterVideoTimelineElement();
 
 } // namespace UltraCanvas

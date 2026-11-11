@@ -14,12 +14,17 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
+// Version: 1.5.0 - the Font list shows each font in itself (DropdownItem::fontFamily)
+// Version: 1.4.0 - the shared page look (UltraCanvasDemoPageKit): both pages fill the
+//                  page area with the toolbars and the editor in one card, the
+//                  editor takes the height left, status and notes wrap
 // Version: 1.3.0 - Open, Save as and Insert image offer FileLoader's types; saves through SaveTextDocument
 // Version: 1.2.2
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -166,19 +171,19 @@ namespace UltraCanvas {
             }
 
             const UCRichDocumentEditor& core = edit->GetEditor();
-            std::string summary = std::to_string(core.GetBlockCount()) + " blocks";
+            std::string summary = TrN("{n} block", "{n} blocks", core.GetBlockCount());
             if (edit->HasSelection()) {
-                summary += ", selection: " + std::to_string(core.RangeToPlainText(
-                        core.GetSelectionRange()).size()) + " bytes";
+                summary += ", " + TrN("selection: {n} byte", "selection: {n} bytes",
+                        static_cast<long long>(core.RangeToPlainText(core.GetSelectionRange()).size()));
             } else {
-                summary += ", caret in block " + std::to_string(core.GetCaret().blockIndex + 1);
+                summary += ", " + TrF("caret in block {0}", core.GetCaret().blockIndex + 1);
             }
             if (state.bold == RichCharFormatState::Tri::Mixed
                 || state.italic == RichCharFormatState::Tri::Mixed
                 || state.fontSizeMixed || state.colorMixed || state.fontFamilyMixed) {
-                summary += " — mixed formatting";
+                summary += " — " + Tr("mixed formatting");
             }
-            summary += edit->IsModified() ? " • modified" : " • unmodified";
+            summary += " • " + (edit->IsModified() ? Tr("modified") : Tr("unmodified"));
             SetStatus(summary);
         }
 
@@ -399,8 +404,9 @@ namespace UltraCanvas {
             button->SetAcceptsFocus(false);
         }
 
-        std::shared_ptr<UltraCanvasToolbar> MakeToolbar(const std::string& id, float y) {
-            auto toolbar = std::make_shared<UltraCanvasToolbar>(id, 20, y, 960, 40);
+        // Built 40 px tall; the page stretches it across the card.
+        std::shared_ptr<UltraCanvasToolbar> MakeToolbar(const std::string& id) {
+            auto toolbar = std::make_shared<UltraCanvasToolbar>(id, 0, 0, 960, 40);
             toolbar->SetAppearance(ToolbarAppearance::Default());
             return toolbar;
         }
@@ -423,79 +429,71 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWYSIWYGExamples() {
-        const float kWidth = 1020.0f;
-        const float kHeight = 780.0f;
-
-        auto root = std::make_shared<UltraCanvasContainer>("WYSIWYGExamples", 0, 0, kWidth, kHeight);
-        root->SetBackgroundColor(Color(248, 248, 250, 255));
+        // ===== HEADER =====
+        auto root = DemoKit::CreatePage("WYSIWYGExamples", Tr("WYSIWYG Editor — UltraCanvasRichTextEdit"),
+                Tr("The caret sits in rendered text and bold is a state of the selection. "
+                "Edits a UCRichDocument, so .odt / .docx round-trip with their formatting intact."));
+        // The editor scrolls itself: the page is the area's height and the
+        // editor takes what the toolbars, status and notes leave.
+        root->SetFillsArea(true);
+        auto card = DemoKit::CreateCard("wysiwygCard");
+        DemoKit::Add(root, card, 1);
 
         auto page = std::make_shared<WysiwygPage>();
 
-        // ===== HEADER =====
-        auto title = std::make_shared<UltraCanvasLabel>("wysiwygTitle", 20, 12, 960, 28);
-        title->SetText("WYSIWYG Editor — UltraCanvasRichTextEdit");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        root->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("wysiwygSubtitle", 20, 44, 960, 20);
-        subtitle->SetText("The caret sits in rendered text and bold is a state of the selection. "
-                          "Edits a UCRichDocument, so .odt / .docx round-trip with their formatting intact.");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100, 255));
-        root->AddChild(subtitle);
-
         // ===== THE EDITOR =====
-        auto edit = CreateRichTextEdit("wysiwygEditor", 20, 212, 960, 460);
+        // Added under the toolbars below; built first because they drive it.
+        auto edit = CreateRichTextEdit("wysiwygEditor", 0, 0, 960, 460);
         edit->SetDocument(BuildSampleDocument());
         edit->SetModified(false);
-        root->AddChild(edit);
         page->edit = edit.get();
 
         auto* raw = page.get();
 
         // ===== ROW 1: DOCUMENT AND STRUCTURE =====
-        auto documentBar = MakeToolbar("wysiwygDocumentBar", 72);
+        auto documentBar = MakeToolbar("wysiwygDocumentBar");
 
-        MakeToolbarButton(documentBar->AddButton("wysiwygOpen", "Open", Icon("folder-open.svg"),
+        MakeToolbarButton(documentBar->AddButton("wysiwygOpen", Tr("Open"), Icon("folder-open.svg"),
             [raw]() {
                 FileDialogOptions options;
-                options.SetTitle("Open Document");
+                options.SetTitle(Tr("Open Document"));
                 UltraCanvasFileLoader::AddTextDocumentLoadTypes(options);
-                options.AddFilter("All files", "*");
+                options.AddFilter(Tr("All files"), "*");
 
                 UltraCanvasFileLoader::OpenFileDialog(options,
                     [raw](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) {
-                            raw->SetStatus("Open cancelled.");
+                            raw->SetStatus(Tr("Open cancelled."));
                             return;
                         }
                         std::string error;
                         auto document = UltraCanvasFileLoader::LoadTextDocument(path, error);
                         if (!document) {
-                            raw->SetStatus("Could not open document: " + error);
+                            raw->SetStatus(TrF("Could not open document: {0}", error));
                             return;
                         }
                         raw->edit->SetDocument(document);
                         raw->edit->SetModified(false);
                         raw->edit->ScrollToTop();
                         raw->Sync();
-                        raw->SetStatus("Loaded " + PathToUtf8(PathFromUtf8(path).filename())
-                                       + " — " + std::to_string(document->blocks.size()) + " blocks, "
-                                       + std::to_string(document->media.size()) + " images");
+                        raw->SetStatus(TrF("Loaded {0} — {1}, {2}", PathToUtf8(PathFromUtf8(path).filename()),
+                                           TrN("{n} block", "{n} blocks",
+                                               static_cast<long long>(document->blocks.size())),
+                                           TrN("{n} image", "{n} images",
+                                               static_cast<long long>(document->media.size()))));
                     });
-            }), "Open a document: ODT, DOCX, DOC, LaTeX, Markdown or text");
+            }), Tr("Open a document: ODT, DOCX, DOC, LaTeX, Markdown or text"));
 
-        MakeToolbarButton(documentBar->AddButton("wysiwygSave", "Save as", Icon("save.svg"),
+        MakeToolbarButton(documentBar->AddButton("wysiwygSave", Tr("Save as"), Icon("save.svg"),
             [raw]() {
                 FileDialogOptions options;
-                options.SetTitle("Save Document As").SetDefaultFileName("document.odt");
+                options.SetTitle(Tr("Save Document As")).SetDefaultFileName("document.odt");
                 UltraCanvasFileLoader::AddTextDocumentSaveTypes(options);
 
                 UltraCanvasFileLoader::SaveFileDialog(options,
                     [raw](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) {
-                            raw->SetStatus("Save cancelled.");
+                            raw->SetStatus(Tr("Save cancelled."));
                             return;
                         }
                         // The element does no file I/O of its own: it hands
@@ -503,65 +501,65 @@ namespace UltraCanvas {
                         // takes it from there.
                         std::string error;
                         if (!UltraCanvasFileLoader::SaveTextDocument(*raw->edit->GetDocument(), path, error)) {
-                            raw->SetStatus("Could not save: " + error);
+                            raw->SetStatus(TrF("Could not save: {0}", error));
                             return;
                         }
                         raw->edit->SetModified(false);
-                        raw->SetStatus("Saved " + PathToUtf8(PathFromUtf8(path).filename()));
+                        raw->SetStatus(TrF("Saved {0}", PathToUtf8(PathFromUtf8(path).filename())));
                         raw->Sync();
                     });
-            }), "Save the edited document as .odt or .docx");
+            }), Tr("Save the edited document as .odt or .docx"));
 
         documentBar->AddSeparator();
 
         MakeToolbarButton(documentBar->AddButton("wysiwygUndo", "", Icon("undo.svg"),
-            [raw]() { raw->edit->Undo(); raw->Sync(); }), "Undo (Ctrl+Z)");
+            [raw]() { raw->edit->Undo(); raw->Sync(); }), Tr("Undo (Ctrl+Z)"));
         MakeToolbarButton(documentBar->AddButton("wysiwygRedo", "", Icon("redo.svg"),
-            [raw]() { raw->edit->Redo(); raw->Sync(); }), "Redo (Ctrl+Y)");
+            [raw]() { raw->edit->Redo(); raw->Sync(); }), Tr("Redo (Ctrl+Y)"));
 
         documentBar->AddSeparator();
 
-        MakeToolbarButton(documentBar->AddButton("wysiwygRule", "Rule", "",
-            [raw]() { raw->edit->InsertHorizontalRule(); raw->Sync(); }), "Insert a horizontal rule");
-        MakeToolbarButton(documentBar->AddButton("wysiwygPageBreak", "Page break", "",
-            [raw]() { raw->edit->InsertPageBreak(); raw->Sync(); }), "Insert a page break");
+        MakeToolbarButton(documentBar->AddButton("wysiwygRule", Tr("Rule"), "",
+            [raw]() { raw->edit->InsertHorizontalRule(); raw->Sync(); }), Tr("Insert a horizontal rule"));
+        MakeToolbarButton(documentBar->AddButton("wysiwygPageBreak", Tr("Page break"), "",
+            [raw]() { raw->edit->InsertPageBreak(); raw->Sync(); }), Tr("Insert a page break"));
         MakeToolbarButton(documentBar->AddButton("wysiwygImage", "", Icon("md-image.svg"),
             [raw]() {
                 FileDialogOptions options;
-                options.SetTitle("Insert Image");
-                UltraCanvasFileLoader::AddLoadTypes(options, "Images", {MediaFormatCategory::Bitmap});
-                options.AddFilter("All files", "*");
+                options.SetTitle(Tr("Insert Image"));
+                UltraCanvasFileLoader::AddLoadTypes(options, Tr("Images"), {MediaFormatCategory::Bitmap});
+                options.AddFilter(Tr("All files"), "*");
                 UltraCanvasFileLoader::OpenFileDialog(options,
                     [raw](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) return;
                         if (!raw->edit->InsertImageFromFile(path,
                                 PathToUtf8(PathFromUtf8(path).filename()))) {
-                            raw->SetStatus("Could not read the image: " + path);
+                            raw->SetStatus(TrF("Could not read the image: {0}", path));
                             return;
                         }
                         raw->Sync();
                     });
-            }), "Insert a picture (copied into the document)");
+            }), Tr("Insert a picture (copied into the document)"));
         MakeToolbarButton(documentBar->AddButton("wysiwygLink", "", Icon("md-link.svg"),
             [raw]() {
                 if (!raw->edit->HasSelection()) {
-                    raw->SetStatus("Select the text the link should cover first.");
+                    raw->SetStatus(Tr("Select the text the link should cover first."));
                     return;
                 }
                 raw->edit->SetLink("https://github.com/ULTRA-OS-Project/UltraCanvas");
                 raw->Sync();
-            }), "Make the selection a hyperlink");
+            }), Tr("Make the selection a hyperlink"));
 
         documentBar->AddSeparator();
 
-        MakeToolbarButton(documentBar->AddButton("wysiwygClear", "Clear formatting", "",
+        MakeToolbarButton(documentBar->AddButton("wysiwygClear", Tr("Clear formatting"), "",
             [raw]() { raw->edit->ClearFormatting(); raw->Sync(); }),
-            "Strip every character attribute from the selection");
+            Tr("Strip every character attribute from the selection"));
 
-        root->AddChild(documentBar);
+        DemoKit::AddStretched(card, documentBar);
 
         // ===== ROW 2: CHARACTER FORMATTING =====
-        auto characterBar = MakeToolbar("wysiwygCharacterBar", 118);
+        auto characterBar = MakeToolbar("wysiwygCharacterBar");
 
         auto addToggle = [&](const std::string& id, const std::string& text,
                              const std::string& icon, const std::string& tooltip,
@@ -572,19 +570,19 @@ namespace UltraCanvas {
             return button;
         };
 
-        auto boldButton = addToggle("wysiwygBold", "", Icon("md-bold.svg"), "Bold (Ctrl+B)",
+        auto boldButton = addToggle("wysiwygBold", "", Icon("md-bold.svg"), Tr("Bold (Ctrl+B)"),
                                     [raw]() { raw->edit->ToggleBold(); raw->Sync(); });
-        auto italicButton = addToggle("wysiwygItalic", "", Icon("md-italic.svg"), "Italic (Ctrl+I)",
+        auto italicButton = addToggle("wysiwygItalic", "", Icon("md-italic.svg"), Tr("Italic (Ctrl+I)"),
                                       [raw]() { raw->edit->ToggleItalic(); raw->Sync(); });
-        auto underlineButton = addToggle("wysiwygUnderline", "U", "", "Underline (Ctrl+U)",
+        auto underlineButton = addToggle("wysiwygUnderline", "U", "", Tr("Underline (Ctrl+U)"),
                                          [raw]() { raw->edit->ToggleUnderline(); raw->Sync(); });
-        auto strikeButton = addToggle("wysiwygStrike", "S", "", "Strikethrough",
+        auto strikeButton = addToggle("wysiwygStrike", "S", "", Tr("Strikethrough"),
                                       [raw]() { raw->edit->ToggleStrikethrough(); raw->Sync(); });
-        auto codeButton = addToggle("wysiwygCode", "", Icon("md-code.svg"), "Inline code",
+        auto codeButton = addToggle("wysiwygCode", "", Icon("md-code.svg"), Tr("Inline code"),
                                     [raw]() { raw->edit->ToggleInlineCode(); raw->Sync(); });
-        auto subButton = addToggle("wysiwygSub", "", Icon("md-subscript.svg"), "Subscript",
+        auto subButton = addToggle("wysiwygSub", "", Icon("md-subscript.svg"), Tr("Subscript"),
                                    [raw]() { raw->edit->ToggleSubscript(); raw->Sync(); });
-        auto superButton = addToggle("wysiwygSuper", "", Icon("md-superscript.svg"), "Superscript",
+        auto superButton = addToggle("wysiwygSuper", "", Icon("md-superscript.svg"), Tr("Superscript"),
                                      [raw]() { raw->edit->ToggleSuperscript(); raw->Sync(); });
 
         page->bold = boldButton.get();
@@ -599,9 +597,18 @@ namespace UltraCanvas {
 
         page->fonts = {"", "Sans", "Serif", "Monospace", "Georgia", "Verdana"};
         auto fontBox = AddBox(characterBar, "wysiwygFont",
-                              {"Document font", "Sans", "Serif", "Monospace", "Georgia", "Verdana"},
-                              "Font family of the selection (\"Document font\" = inherit)");
+                              {Tr("Document font"), "Sans", "Serif", "Monospace", "Georgia", "Verdana"},
+                              Tr("Font family of the selection (\"Document font\" = inherit)"));
         if (fontBox) {
+            // Each font shown in itself ("Document font" in the bar's own).
+            fontBox->ClearItems();
+            fontBox->AddItem(Tr("Document font"), "");
+            for (size_t i = 1; i < page->fonts.size(); ++i) {
+                DropdownItem item(page->fonts[i], page->fonts[i]);
+                item.fontFamily = page->fonts[i];
+                fontBox->AddItem(item);
+            }
+            fontBox->SetSelectedIndex(0, false);
             fontBox->onSelectionChanged = [raw](int index, const DropdownItem&) {
                 if (index < 0 || index >= static_cast<int>(raw->fonts.size())) return;
                 raw->edit->SetFontFamily(raw->fonts[static_cast<size_t>(index)]);
@@ -612,8 +619,8 @@ namespace UltraCanvas {
 
         page->sizes = {0.0f, 9.0f, 10.0f, 11.0f, 12.0f, 14.0f, 16.0f, 18.0f, 24.0f, 32.0f};
         auto sizeBox = AddBox(characterBar, "wysiwygSize",
-                              {"Document size", "9", "10", "11", "12", "14", "16", "18", "24", "32"},
-                              "Font size in points (\"Document size\" = inherit)");
+                              {Tr("Document size"), "9", "10", "11", "12", "14", "16", "18", "24", "32"},
+                              Tr("Font size in points (\"Document size\" = inherit)"));
         if (sizeBox) {
             sizeBox->onSelectionChanged = [raw](int index, const DropdownItem&) {
                 if (index < 0 || index >= static_cast<int>(raw->sizes.size())) return;
@@ -625,8 +632,9 @@ namespace UltraCanvas {
 
         page->colors = {"", "#000000", "#CC0000", "#E07000", "#1E7A1E", "#0066CC", "#7A2E9D", "#808080"};
         auto colorBox = AddBox(characterBar, "wysiwygColor",
-                               {"Automatic", "Black", "Red", "Orange", "Green", "Blue", "Purple", "Grey"},
-                               "Text colour of the selection");
+                               {Tr("Automatic"), Tr("Black"), Tr("Red"), Tr("Orange"), Tr("Green"), Tr("Blue"),
+                                Tr("Purple"), Tr("Grey")},
+                               Tr("Text colour of the selection"));
         if (colorBox) {
             colorBox->onSelectionChanged = [raw](int index, const DropdownItem&) {
                 if (index < 0 || index >= static_cast<int>(raw->colors.size())) return;
@@ -636,15 +644,15 @@ namespace UltraCanvas {
             page->colorBox = colorBox.get();
         }
 
-        root->AddChild(characterBar);
+        DemoKit::AddStretched(card, characterBar);
 
         // ===== ROW 3: PARAGRAPH FORMATTING =====
-        auto paragraphBar = MakeToolbar("wysiwygParagraphBar", 164);
+        auto paragraphBar = MakeToolbar("wysiwygParagraphBar");
 
         auto styleBox = AddBox(paragraphBar, "wysiwygStyle",
-                               {"Body text", "Heading 1", "Heading 2", "Heading 3", "Heading 4",
-                                "Code block", "Block quote"},
-                               "Paragraph style of every block the selection touches");
+                               {Tr("Body text"), Tr("Heading 1"), Tr("Heading 2"), Tr("Heading 3"), Tr("Heading 4"),
+                                Tr("Code block"), Tr("Block quote")},
+                               Tr("Paragraph style of every block the selection touches"));
         if (styleBox) {
             styleBox->onSelectionChanged = [raw](int index, const DropdownItem&) {
                 switch (index) {
@@ -668,8 +676,8 @@ namespace UltraCanvas {
         }
 
         auto alignBox = AddBox(paragraphBar, "wysiwygAlign",
-                               {"Align left", "Centre", "Align right", "Justify"},
-                               "Paragraph alignment");
+                               {Tr("Align left"), Tr("Centre"), Tr("Align right"), Tr("Justify")},
+                               Tr("Paragraph alignment"));
         if (alignBox) {
             alignBox->onSelectionChanged = [raw](int index, const DropdownItem&) {
                 RichTextAlign align = RichTextAlign::Left;
@@ -685,50 +693,50 @@ namespace UltraCanvas {
         paragraphBar->AddSeparator();
 
         MakeToolbarButton(paragraphBar->AddButton("wysiwygBullets", "", Icon("md-list-unordered.svg"),
-            [raw]() { raw->edit->ToggleBulletList(); raw->Sync(); }), "Bulleted list");
+            [raw]() { raw->edit->ToggleBulletList(); raw->Sync(); }), Tr("Bulleted list"));
         MakeToolbarButton(paragraphBar->AddButton("wysiwygNumbers", "", Icon("md-list-ordered.svg"),
-            [raw]() { raw->edit->ToggleNumberedList(); raw->Sync(); }), "Numbered list");
+            [raw]() { raw->edit->ToggleNumberedList(); raw->Sync(); }), Tr("Numbered list"));
         MakeToolbarButton(paragraphBar->AddButton("wysiwygOutdent", "", Icon("arrow_left.svg"),
-            [raw]() { raw->edit->OutdentList(); raw->Sync(); }), "Outdent (Shift+Tab, inside a list)");
+            [raw]() { raw->edit->OutdentList(); raw->Sync(); }), Tr("Outdent (Shift+Tab, inside a list)"));
         MakeToolbarButton(paragraphBar->AddButton("wysiwygIndent", "", Icon("arrow_right.svg"),
-            [raw]() { raw->edit->IndentList(); raw->Sync(); }), "Indent (Tab, inside a list)");
+            [raw]() { raw->edit->IndentList(); raw->Sync(); }), Tr("Indent (Tab, inside a list)"));
 
         paragraphBar->AddSeparator();
 
         MakeToolbarButton(paragraphBar->AddButton("wysiwygQuote", "", Icon("md-quote.svg"),
-            [raw]() { raw->edit->ToggleBlockQuote(); raw->Sync(); }), "Block quote");
+            [raw]() { raw->edit->ToggleBlockQuote(); raw->Sync(); }), Tr("Block quote"));
         MakeToolbarButton(paragraphBar->AddButton("wysiwygCodeBlock", "", Icon("code2.svg"),
-            [raw]() { raw->edit->ToggleCodeBlock("cpp"); raw->Sync(); }), "Code block");
+            [raw]() { raw->edit->ToggleCodeBlock("cpp"); raw->Sync(); }), Tr("Code block"));
 
         paragraphBar->AddStretch(1.0f);
 
-        MakeToolbarButton(paragraphBar->AddButton("wysiwygReadOnly", "Read-only", "",
+        MakeToolbarButton(paragraphBar->AddButton("wysiwygReadOnly", Tr("Read-only"), "",
             [raw]() {
                 bool readOnly = !raw->edit->IsReadOnly();
                 raw->edit->SetReadOnly(readOnly);
                 raw->SetStatus(readOnly
-                    ? "Read-only: no caret and no keys, still selectable and scrollable — "
-                      "the shortest path to an .odt / .docx preview pane."
-                    : "Editing again.");
-            }), "Toggle the read-only rendering mode");
+                    ? Tr("Read-only: no caret and no keys, still selectable and scrollable — "
+                      "the shortest path to an .odt / .docx preview pane.")
+                    : Tr("Editing again."));
+            }), Tr("Toggle the read-only rendering mode"));
 
-        root->AddChild(paragraphBar);
+        DemoKit::AddStretched(card, paragraphBar);
+
+        edit->size.width = CSSLayout::Dimension::Auto();
+        edit->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        DemoKit::Add(card, edit, 1);
 
         // ===== STATUS AND NOTES =====
-        auto status = std::make_shared<UltraCanvasLabel>("wysiwygStatus", 20, 680, 960, 22);
-        status->SetFontSize(12);
+        auto status = DemoKit::AddText(card, "wysiwygStatus", "");
         status->SetTextColor(Color(70, 70, 70, 255));
-        root->AddChild(status);
         page->status = status.get();
 
-        auto notes = std::make_shared<UltraCanvasLabel>("wysiwygNotes", 20, 704, 960, 56);
-        notes->SetText("Known limits: columns in a multi-column section are not balanced, a right-to-left "
-                       "paragraph keeps left-to-right indents, the input method's candidate window is not "
-                       "placed at the caret, and screen readers are tested on Linux only so far (the Windows "
-                       "and macOS bridges are untested). See UltraCanvasRichTextEdit.md.");
+        auto notes = DemoKit::AddCaption(root, "wysiwygNotes",
+                Tr("Known limits: columns in a multi-column section are not balanced, a right-to-left "
+                "paragraph keeps left-to-right indents, the input method's candidate window is not "
+                "placed at the caret, and screen readers are tested on Linux only so far (the Windows "
+                "and macOS bridges are untested). See UltraCanvasRichTextEdit.md."));
         notes->SetFontSize(11);
-        notes->SetTextColor(Color(120, 120, 120, 255));
-        root->AddChild(notes);
 
         // ===== KEEPING THE TOOLBARS IN STEP =====
         // The element owns these callbacks, so capturing `page` here is what
@@ -737,7 +745,7 @@ namespace UltraCanvas {
         edit->onSelectionChanged = [page]() { page->Sync(); };
         edit->onDocumentChanged = [page]() { page->Sync(); };
         edit->onLinkClicked = [page](const std::string& target) {
-            page->SetStatus("Opening " + target);
+            page->SetStatus(TrF("Opening {0}", target));
             OpenURL(target);
             return true;
         };
@@ -912,35 +920,22 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWYSIWYGInternationalExamples() {
-        const float kWidth = 1020.0f;
-        const float kHeight = 780.0f;
-
-        auto root = std::make_shared<UltraCanvasContainer>("WYSIWYGIntlExamples", 0, 0, kWidth, kHeight);
-        root->SetBackgroundColor(Color(248, 248, 250, 255));
-
-        auto title = std::make_shared<UltraCanvasLabel>("wysiwygIntlTitle", 20, 12, 960, 28);
-        title->SetText("WYSIWYG Editor — Chinese, Arabic & Myanmar");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        root->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("wysiwygIntlSubtitle", 20, 44, 960, 20);
-        subtitle->SetText("Chinese lines break between any two characters; Arabic paragraphs start at the right; "
-                          "Myanmar syllables are shaped from stacked letters. Click in and type, or use the arrow keys.");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100, 255));
-        root->AddChild(subtitle);
+        auto root = DemoKit::CreatePage("WYSIWYGIntlExamples", Tr("WYSIWYG Editor — Chinese, Arabic & Myanmar"),
+                Tr("Chinese lines break between any two characters; Arabic paragraphs start at the right; "
+                "Myanmar syllables are shaped from stacked letters. Click in and type, or use the arrow keys."));
+        // The editor scrolls itself and takes the height the rest leaves.
+        root->SetFillsArea(true);
+        auto card = DemoKit::CreateCard("wysiwygIntlCard");
+        DemoKit::Add(root, card, 1);
 
         RegisterMyanmarFont();
-        auto edit = CreateRichTextEdit("wysiwygIntlEditor", 20, 120, 960, 560);
+        // Added under the toolbar below.
+        auto edit = CreateRichTextEdit("wysiwygIntlEditor", 0, 0, 960, 560);
         edit->SetDocument(BuildInternationalDocument());
         edit->SetModified(false);
-        root->AddChild(edit);
 
-        auto status = std::make_shared<UltraCanvasLabel>("wysiwygIntlStatus", 20, 688, 960, 22);
-        status->SetFontSize(12);
+        auto status = DemoKit::CreateText("wysiwygIntlStatus", "");
         status->SetTextColor(Color(70, 70, 70, 255));
-        root->AddChild(status);
 
         // Raw pointers only: the root owns both, and the callbacks below live
         // exactly as long as it does.
@@ -948,59 +943,64 @@ namespace UltraCanvas {
         UltraCanvasLabel* statusLabel = status.get();
         auto describe = [editor, statusLabel]() {
             const RichDocPosition caret = editor->GetEditor().GetCaret();
-            std::string text = "Paragraph " + std::to_string(caret.blockIndex + 1) + ": "
-                             + (editor->IsRightToLeft() ? "right to left" : "left to right");
-            if (!editor->GetCompositionText().empty()) text += " — composing \"" + editor->GetCompositionText() + "\"";
+            std::string text = TrF("Paragraph {0}: {1}", caret.blockIndex + 1,
+                                   editor->IsRightToLeft() ? Tr("right to left") : Tr("left to right"));
+            if (!editor->GetCompositionText().empty()) {
+                text += " — " + TrF("composing \"{0}\"", editor->GetCompositionText());
+            }
             statusLabel->SetText(text);
         };
 
-        auto bar = MakeToolbar("wysiwygIntlBar", 72);
-        MakeToolbarButton(bar->AddButton("wysiwygIntlDirection", "Right-to-left", "",
+        auto bar = MakeToolbar("wysiwygIntlBar");
+        MakeToolbarButton(bar->AddButton("wysiwygIntlDirection", Tr("Right-to-left"), "",
             [editor, describe]() {
                 editor->SetRightToLeft(!editor->IsRightToLeft());
                 describe();
-            }), "Toggle the caret paragraph's direction");
-        MakeToolbarButton(bar->AddButton("wysiwygIntlPageView", "Page view", "",
+            }), Tr("Toggle the caret paragraph's direction"));
+        MakeToolbarButton(bar->AddButton("wysiwygIntlPageView", Tr("Page view"), "",
             [editor]() { editor->SetPageView(!editor->IsPageView()); }),
-            "Show the pages (the footnote goes to the foot of its page)");
+            Tr("Show the pages (the footnote goes to the foot of its page)"));
         bar->AddSeparator();
         MakeToolbarButton(bar->AddButton("wysiwygIntlBold", "", Icon("md-bold.svg"),
-            [editor]() { editor->ToggleBold(); }), "Bold (Ctrl+B)");
+            [editor]() { editor->ToggleBold(); }), Tr("Bold (Ctrl+B)"));
         MakeToolbarButton(bar->AddButton("wysiwygIntlItalic", "", Icon("md-italic.svg"),
-            [editor]() { editor->ToggleItalic(); }), "Italic (Ctrl+I)");
+            [editor]() { editor->ToggleItalic(); }), Tr("Italic (Ctrl+I)"));
         MakeToolbarButton(bar->AddButton("wysiwygIntlUndo", "", Icon("undo.svg"),
-            [editor]() { editor->Undo(); }), "Undo (Ctrl+Z)");
+            [editor]() { editor->Undo(); }), Tr("Undo (Ctrl+Z)"));
         MakeToolbarButton(bar->AddButton("wysiwygIntlRedo", "", Icon("redo.svg"),
-            [editor]() { editor->Redo(); }), "Redo (Ctrl+Y)");
+            [editor]() { editor->Redo(); }), Tr("Redo (Ctrl+Y)"));
         bar->AddSeparator();
-        MakeToolbarButton(bar->AddButton("wysiwygIntlSave", "Save as", Icon("save.svg"),
+        MakeToolbarButton(bar->AddButton("wysiwygIntlSave", Tr("Save as"), Icon("save.svg"),
             [editor, statusLabel]() {
                 FileDialogOptions options;
-                options.SetTitle("Save Document As").SetDefaultFileName("multilingual.odt");
+                options.SetTitle(Tr("Save Document As")).SetDefaultFileName("multilingual.odt");
                 UltraCanvasFileLoader::AddTextDocumentSaveTypes(options);
                 UltraCanvasFileLoader::SaveFileDialog(options,
                     [editor, statusLabel](DialogResult result, const std::string& path) {
                         if (result != DialogResult::OK || path.empty()) return;
                         std::string error;
                         if (!UltraCanvasFileLoader::SaveTextDocument(*editor->GetDocument(), path, error)) {
-                            statusLabel->SetText("Could not save: " + error);
+                            statusLabel->SetText(TrF("Could not save: {0}", error));
                             return;
                         }
                         editor->SetModified(false);
-                        statusLabel->SetText("Saved " + PathToUtf8(PathFromUtf8(path).filename())
-                                             + " — the paragraph directions go with it");
+                        statusLabel->SetText(TrF("Saved {0} — the paragraph directions go with it",
+                                                 PathToUtf8(PathFromUtf8(path).filename())));
                     });
-            }), "Save as .odt or .docx");
-        root->AddChild(bar);
+            }), Tr("Save as .odt or .docx"));
+        DemoKit::AddStretched(card, bar);
 
-        auto notes = std::make_shared<UltraCanvasLabel>("wysiwygIntlNotes", 20, 712, 960, 48);
-        notes->SetText("Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
-                       "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
-                       "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar is set in Noto Sans "
-                       "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi.");
+        edit->size.width = CSSLayout::Dimension::Auto();
+        edit->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        DemoKit::Add(card, edit, 1);
+        DemoKit::Add(card, status);
+
+        auto notes = DemoKit::AddCaption(root, "wysiwygIntlNotes",
+                Tr("Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
+                "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
+                "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar is set in Noto Sans "
+                "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi."));
         notes->SetFontSize(11);
-        notes->SetTextColor(Color(120, 120, 120, 255));
-        root->AddChild(notes);
 
         edit->onSelectionChanged = describe;
         describe();

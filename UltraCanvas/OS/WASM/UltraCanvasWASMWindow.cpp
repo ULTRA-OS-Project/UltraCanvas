@@ -1,5 +1,6 @@
 // OS/WASM/UltraCanvasWASMWindow.cpp
 // WebAssembly (Emscripten) platform window implementation
+// Version: 2.3.0 - a dialog's frame: a title bar above its canvas, dragged to move it
 // Version: 2.2.0 - a click leaves the keyboard with the input method textarea
 //   while the window types through it; that focus move is not a window blur
 // Version: 2.1.0 - the first presented frame is logged with its time since navigation start
@@ -12,12 +13,40 @@
 #include "UltraCanvasWASMApplication.h"
 #include "../../include/UltraCanvasDebug.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <map>
+
+namespace UltraCanvas {
+    namespace {
+        // The windows by id, for the page's title bars to report a drag to.
+        std::map<unsigned long, UltraCanvasWASMWindow*>& WindowsById() {
+            static std::map<unsigned long, UltraCanvasWASMWindow*> windows;
+            return windows;
+        }
+    }
+}
+
+// Called from a dialog's title bar in the page when a drag ends.
+extern "C" EMSCRIPTEN_KEEPALIVE void UltraCanvasWASM_FrameMoved(int id, int x, int y) {
+    UltraCanvas::UltraCanvasWASMWindow::FrameMoved(static_cast<unsigned long>(id), x, y);
+}
 
 namespace UltraCanvas {
 
     unsigned long UltraCanvasWASMWindow::lastWindowId = 0;
+
+    void UltraCanvasWASMWindow::FrameMoved(unsigned long id, int x, int y) {
+        const auto it = WindowsById().find(id);
+        if (it == WindowsById().end()) return;
+        UltraCanvasWASMWindow* win = it->second;
+        // As a window system reports a move: the base keeps config_.x / y
+        // and tells onWindowMove.
+        UCEvent event = win->MakeInputEvent(UCEventType::WindowMove);
+        event.pointer = { x, y };
+        win->PushToApplication(event);
+    }
 
 // ===== CONSTRUCTOR / DESTRUCTOR =====
 
@@ -35,6 +64,7 @@ namespace UltraCanvas {
         }
 
         windowId = ++lastWindowId;
+        WindowsById()[windowId] = this;
         canvasId = "ultracanvas-window-" + std::to_string(windowId);
         canvasSelector = "#" + canvasId;
 
@@ -70,13 +100,16 @@ namespace UltraCanvas {
         }
         DestroyCanvasElement();
         canvasCreated = false;
+        WindowsById().erase(windowId);
     }
 
 // ===== CANVAS ELEMENT =====
 
     void UltraCanvasWASMWindow::CreateCanvasElement() {
         const int x = (config_.x >= 0) ? config_.x : 0;
-        const int y = (config_.y >= 0) ? config_.y : 0;
+        // A dialog's title bar stays on the page, above its canvas.
+        const int y = std::max(config_.y >= 0 ? config_.y : 0, HasFrame() ? kTitleBarHeight : 0);
+        config_.y = y;
         EM_ASM({
             var id = UTF8ToString($0);
             var canvas = document.getElementById(id);
@@ -96,15 +129,88 @@ namespace UltraCanvas {
             canvas.style.zIndex = window.__ultracanvasZ;
             canvas.oncontextmenu = function(e) { e.preventDefault(); };
         }, canvasId.c_str(), x, y);
+        if (HasFrame()) CreateTitleBar();
         UpdateCanvasElementGeometry();
+    }
+
+    void UltraCanvasWASMWindow::CreateTitleBar() {
+        EM_ASM({
+            var id = UTF8ToString($0);
+            var canvas = document.getElementById(id);
+            if (!canvas) return;
+            var height = $3;
+            var bar = document.createElement('div');
+            bar.id = id + '-titlebar';
+            var s = bar.style;
+            s.position = 'absolute';
+            s.left = canvas.style.left;
+            s.top = (parseFloat(canvas.style.top) - height) + 'px';
+            s.height = height + 'px';
+            s.boxSizing = 'border-box';
+            s.padding = '0 12px';
+            s.display = 'none';                     // shown with the canvas
+            s.alignItems = 'center';
+            s.background = '#e8ecf2';
+            s.color = '#1f2933';
+            s.font = '600 13px system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif';
+            s.borderRadius = '6px 6px 0 0';
+            s.boxShadow = '0 0 0 1px #c3cad4';
+            s.cursor = 'move';
+            s.userSelect = 'none';
+            s.whiteSpace = 'nowrap';
+            s.overflow = 'hidden';
+            s.textOverflow = 'ellipsis';
+            s.touchAction = 'none';
+            s.zIndex = canvas.style.zIndex;
+            bar.textContent = UTF8ToString($2);
+            canvas.style.boxShadow = '0 0 0 1px #c3cad4, 0 12px 32px rgba(0, 0, 0, 0.28)';
+            document.body.appendChild(bar);
+            // Dragged: the bar and its canvas move together, kept where the
+            // bar can still be reached; the window learns its place at the end.
+            var windowId = $1;
+            bar.onpointerdown = function(e) {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                window.__ultracanvasZ = (window.__ultracanvasZ || 1000) + 1;
+                canvas.style.zIndex = bar.style.zIndex = window.__ultracanvasZ;
+                canvas.focus();
+                bar.setPointerCapture(e.pointerId);
+                var startX = e.clientX;
+                var startY = e.clientY;
+                var left = parseFloat(canvas.style.left);
+                var top = parseFloat(canvas.style.top);
+                var width = parseFloat(canvas.style.width) || 200;
+                var place = function(m) {
+                    var x = Math.round(left + m.clientX - startX);
+                    var y = Math.round(top + m.clientY - startY);
+                    x = Math.min(Math.max(x, 80 - width), window.innerWidth - 80);
+                    y = Math.min(Math.max(y, height), window.innerHeight - 8);
+                    canvas.style.left = bar.style.left = x + 'px';
+                    canvas.style.top = y + 'px';
+                    bar.style.top = (y - height) + 'px';
+                    return { x: x };    // y is read back from the canvas
+                };
+                bar.onpointermove = function(m) { place(m); };
+                bar.onpointerup = bar.onpointercancel = function(m) {
+                    var at = place(m);
+                    bar.onpointermove = bar.onpointerup = bar.onpointercancel = null;
+                    if (bar.hasPointerCapture(m.pointerId)) bar.releasePointerCapture(m.pointerId);
+                    var moved = typeof _UltraCanvasWASM_FrameMoved === 'function'
+                                    ? _UltraCanvasWASM_FrameMoved : Module['_UltraCanvasWASM_FrameMoved'];
+                    if (moved) moved(windowId, at.x, parseFloat(canvas.style.top));
+                };
+            };
+        }, canvasId.c_str(), static_cast<int>(windowId), config_.title.c_str(), kTitleBarHeight);
     }
 
     void UltraCanvasWASMWindow::DestroyCanvasElement() {
         EM_ASM({
-            var canvas = document.getElementById(UTF8ToString($0));
-            if (canvas && canvas.parentNode) {
-                canvas.parentNode.removeChild(canvas);
-            }
+            var id = UTF8ToString($0);
+            var remove = function(element) {
+                if (element && element.parentNode) element.parentNode.removeChild(element);
+            };
+            remove(document.getElementById(id));
+            remove(document.getElementById(id + '-titlebar'));
         }, canvasId.c_str());
     }
 
@@ -120,6 +226,8 @@ namespace UltraCanvas {
             canvas.height = $2;
             canvas.style.width = $3 + 'px';
             canvas.style.height = $4 + 'px';
+            var bar = document.getElementById(UTF8ToString($0) + '-titlebar');
+            if (bar) bar.style.width = $3 + 'px';
         }, canvasId.c_str(), physW, physH, config_.width, config_.height);
     }
 
@@ -236,6 +344,8 @@ namespace UltraCanvas {
         EM_ASM({
             var canvas = document.getElementById(UTF8ToString($0));
             if (canvas) canvas.style.display = 'block';
+            var bar = document.getElementById(UTF8ToString($0) + '-titlebar');
+            if (bar) bar.style.display = 'flex';
         }, canvasId.c_str());
 
         if (config_.type == WindowType::Fullscreen) {
@@ -257,6 +367,8 @@ namespace UltraCanvas {
         EM_ASM({
             var canvas = document.getElementById(UTF8ToString($0));
             if (canvas) canvas.style.display = 'none';
+            var bar = document.getElementById(UTF8ToString($0) + '-titlebar');
+            if (bar) bar.style.display = 'none';
         }, canvasId.c_str());
 
         _windowVisible = false;
@@ -272,12 +384,22 @@ namespace UltraCanvas {
             if (!canvas) return;
             window.__ultracanvasZ = (window.__ultracanvasZ || 1000) + 1;
             canvas.style.zIndex = window.__ultracanvasZ;
+            var bar = document.getElementById(UTF8ToString($0) + '-titlebar');
+            if (bar) bar.style.zIndex = window.__ultracanvasZ;
             canvas.focus();
         }, canvasId.c_str());
     }
 
     void UltraCanvasWASMWindow::SetWindowTitle(const std::string& title) {
         config_.title = title;
+        if (HasFrame()) {
+            // A dialog's title is its title bar's; the page's stays the application's.
+            EM_ASM({
+                var bar = document.getElementById(UTF8ToString($0) + '-titlebar');
+                if (bar) bar.textContent = UTF8ToString($1);
+            }, canvasId.c_str(), title.c_str());
+            return;
+        }
         EM_ASM({
             document.title = UTF8ToString($0);
         }, title.c_str());
@@ -306,6 +428,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWASMWindow::SetWindowPosition(int x, int y) {
+        if (HasFrame()) y = std::max(y, kTitleBarHeight);
         config_.x = x;
         config_.y = y;
         EM_ASM({
@@ -313,7 +436,12 @@ namespace UltraCanvas {
             if (!canvas) return;
             canvas.style.left = $1 + 'px';
             canvas.style.top = $2 + 'px';
-        }, canvasId.c_str(), x, y);
+            var bar = document.getElementById(UTF8ToString($0) + '-titlebar');
+            if (bar) {
+                bar.style.left = $1 + 'px';
+                bar.style.top = ($2 - $3) + 'px';
+            }
+        }, canvasId.c_str(), x, y, kTitleBarHeight);
     }
 
     void UltraCanvasWASMWindow::SetResizable(bool resizable) {

@@ -1,5 +1,6 @@
 // Apps/EmailCleaner/engine/EmailCleanerRules.cpp
 // The built-in keyword table and the plain-text rule file format.
+// Version: 0.1.1 - loan, credit and project-funding offers (FinancialScam)
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerRules.h"
@@ -158,6 +159,25 @@ const BuiltInRow kBuiltIn[] = {
     { MessageCategory::FinancialScam, "confidential business proposal", 3.5, MatchField::Any },
     { MessageCategory::FinancialScam, "urgent assistance needed", 2.5, MatchField::Any },
     { MessageCategory::FinancialScam, "bank account details", 2.5, MatchField::Any },
+    // Loans, credit and "project funding" offered to strangers: banks do not
+    // write out of the blue, the "lender" takes a fee and the loan never comes.
+    // A single phrase stays below the threshold (a bank's own "loan offer");
+    // the scam letters pile them up.
+    { MessageCategory::FinancialScam, "loan facility",      3.0, MatchField::Any },
+    { MessageCategory::FinancialScam, "loan facilities",    3.0, MatchField::Any },
+    { MessageCategory::FinancialScam, "credit loan",        2.5, MatchField::Any },
+    { MessageCategory::FinancialScam, "loan funding",       3.0, MatchField::Any },
+    { MessageCategory::FinancialScam, "financing offer",    2.5, MatchField::Any },
+    { MessageCategory::FinancialScam, "funding offer",      2.5, MatchField::Any },
+    { MessageCategory::FinancialScam, "loan offer",         2.0, MatchField::Any },
+    { MessageCategory::FinancialScam, "loan program",       2.0, MatchField::Any },
+    { MessageCategory::FinancialScam, "private lender",     2.5, MatchField::Any },
+    { MessageCategory::FinancialScam, "offer loans",        2.5, MatchField::Any },
+    { MessageCategory::FinancialScam, "need a loan",        2.0, MatchField::Any },
+    { MessageCategory::FinancialScam, "fund your project",  2.5, MatchField::Any },
+    { MessageCategory::FinancialScam, "viable projects",    2.0, MatchField::Any },
+    { MessageCategory::FinancialScam, "yearly repayment",   2.0, MatchField::Any },
+    { MessageCategory::FinancialScam, "return on investment", 1.0, MatchField::Any },
 
     // ---- Attachment-borne risk ---------------------------------------------
     // The classifier also flags risky extensions structurally; these catch the

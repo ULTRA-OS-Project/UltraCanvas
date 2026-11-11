@@ -1,6 +1,39 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.24.0 - video: ShownVideoInfo reads the clip's headers once per file
+//                   (ReadVideoFileInfo) and fills the gaps from the backend's stream
+//                   info; the info bar and the Details panel are built from it
+// Version: 1.23.1 - the Curves dialog's histogram is counted by UltraCanvasHistogramModel, as
+//                   UltraPaint's is; transparent pixels are left out
+// Version: 1.23.0 - copying text: a press in the text view or the Details panel focuses
+//                   the widget; Ctrl+C / Ctrl+Insert copy the selection (by key code, not
+//                   the character Ctrl turns into a control code), Ctrl+A selects all
+// Version: 1.22.0 - OpenFileWhenShown and its kin: a turning ring and the file's name
+//                   while a file is on its way, opened after a frame of that is drawn;
+//                   "No media" only when nothing was asked for; onCurrentFileChanged
+// Version: 1.21.0 - the Details panel is a group box (the title as its caption, a close
+//                   button), its text a size smaller, and a GIF's colour table under it
+// Version: 1.20.1 - an opened attachment is kept in the per-user cache (opened-attachments),
+//                   not the shared temporary folder, and its folder is swept a day later
+//                   (DiskCache::SweepFolders, once a process)
+// Version: 1.20.0 - Outlook messages (.msg) shown as messages; a message's attachments
+//                   open (in a viewer window, else the system's application - never a
+//                   program or script) and save from their links
+// Version: 1.19.0 - saved web pages (.mht / .mhtml) shown as the page, from their own
+//                   parts; Apple Mail messages (.emlx) as messages
+// Version: 1.18.0 - e-mail messages (.eml) are shown as the message: its header, its
+//                   body rendered (embedded pictures shown, remote ones never fetched)
+//                   and its attachments listed
+// Version: 1.17.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
+//                   in a web view (local files only, web links to the browser), not
+//                   as their source - the Texter shows the source
+// Version: 1.16.0 - TransparentImageBackground::Auto (the default): a backdrop picked per
+//                   file from its pixels, under a picture and behind a drawing in the
+//                   vector view, which the backdrop strip now serves too; the zoom box
+//                   shows the zoom on show
+// Version: 1.15.1 - a drawing in the vector view or a plugin's element (CorelDRAW) is
+//                   named in the info bar and Details, not reported as "No media"
 // Version: 1.15.0 - SetSettingsAction: a gear in the info bar for the host's settings
 // Version: 1.14.0 - Unlock's passwords are forgotten, and an unlocked file locked again,
 //                   when the session locks or the window has been idle (ten minutes by
@@ -23,7 +56,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-10
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -62,6 +95,8 @@
 #include "UltraCanvasSlider.h"
 #include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
 #include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
+#include "UltraCanvasBusyIndicator.h"   // the ring while a file is on its way
+#include "UltraCanvasGroupBox.h"        // the Details panel's frame, caption and close button
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir, for the toolbar icons
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
@@ -69,6 +104,18 @@
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
 #include "UltraCanvasModelPreview.h"    // which 3D formats this build reads
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
+#include "UltraCanvasWebView.h"       // HTML pages, rendered
+#include "UltraCanvasUtils.h"         // OpenURL, for a page's web links
+#include "UltraCanvasOutlookMessage.h" // an Outlook .msg read as a message
+#include "UltraCanvasCompoundFile.h"   // ... which is a compound file
+#include "UltraCanvasMediaViewerWindow.h" // an attachment opened in a window of its own
+#include "UltraCanvasFileAssociations.h"  // ... or in the application the system opens it with
+#include "UltraCanvasAlert.h"
+#include "UltraCanvasDiskCache.h"     // where an opened attachment is kept, and swept
+#include "UltraCanvasTextUtils.h"     // Base64Encode, for a message's pictures
+#ifdef ULTRACANVAS_HAS_NET
+#include "UltraNet/UltraNetMime.h"    // an .eml read as a message
+#endif
 #include "UltraCanvasLanguageDetect.h" // the language of a .txt
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
@@ -96,16 +143,19 @@
 // Always: file classification asks the codec registry what this build can
 // play, and with neither backend compiled in it correctly answers "nothing".
 #include "UltraCanvasMediaCodecRegistry.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -125,6 +175,12 @@ static std::string LowerExt(const std::string& path) {
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return (char)std::tolower(c); });
     return ext;
+}
+
+static std::string LowerAscii(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return (char)std::tolower(c); });
+    return text;
 }
 
 static std::string BaseName(const std::string& path) {
@@ -251,6 +307,577 @@ static bool ReadTextFile(const std::string& path, std::string& out,
         out += "\n\n[... truncated ...]";
     }
     return true;
+}
+
+// ----- HTML PAGES (the web view's local-file services) -----
+// The viewer renders an HTML page from disk through UltraCanvasWebView, which
+// reads pages by URL. These turn a path into a file:// URL and back, read a
+// link against the page it is on, and answer the view's fetches from the
+// disk - local files only: the viewer has no network, and a web link goes to
+// the browser instead.
+
+// A path as a file:// URL: absolute, '/' separated, every byte but the
+// unreserved ones percent-escaped (so any file name survives the trip).
+static std::string FileUrlFromPath(const std::string& path) {
+    std::error_code ec;
+    std::filesystem::path p = std::filesystem::absolute(UltraCanvas::PathFromUtf8(path), ec);
+    if (ec) p = UltraCanvas::PathFromUtf8(path);
+    std::string text = UltraCanvas::PathToUtf8(p.lexically_normal());
+#ifdef _WIN32
+    std::replace(text.begin(), text.end(), '\\', '/');
+#endif
+    if (text.empty() || text[0] != '/') text = "/" + text;        // C:/x -> /C:/x
+    std::string url = "file://";
+    for (unsigned char c : text) {
+        if (std::isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == ':') {
+            url += static_cast<char>(c);
+        } else {
+            char escaped[4];
+            std::snprintf(escaped, sizeof(escaped), "%%%02X", c);
+            url += escaped;
+        }
+    }
+    return url;
+}
+
+// %XX escapes undone (a URL's path, a cid: reference).
+static std::string PercentDecode(const std::string& text) {
+    auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '%' && i + 2 < text.size() && hex(text[i + 1]) >= 0 && hex(text[i + 2]) >= 0) {
+            out += static_cast<char>(hex(text[i + 1]) * 16 + hex(text[i + 2]));
+            i += 2;
+        } else {
+            out += text[i];
+        }
+    }
+    return out;
+}
+
+// A file:// URL's path: query and fragment cut, percent-escapes undone.
+static std::string PathFromFileUrl(const std::string& url) {
+    std::string raw = url.substr(7);
+    const size_t cut = raw.find_first_of("?#");
+    if (cut != std::string::npos) raw.resize(cut);
+    // file://host/path: the host part is not a folder.
+    if (!raw.empty() && raw[0] != '/') {
+        const size_t slash = raw.find('/');
+        raw = slash == std::string::npos ? std::string("/") : raw.substr(slash);
+    }
+    std::string path = PercentDecode(raw);
+#ifdef _WIN32
+    if (path.size() >= 3 && path[0] == '/' && path[2] == ':') path.erase(0, 1);   // /C:/x -> C:/x
+#endif
+    return path;
+}
+
+// `ref` read against `base` (RFC 3986 reference resolution) - a file://
+// URL, or the web address a saved page (.mht) came from. A reference with a
+// scheme of its own stands as it is.
+static bool ResolveUrl(const std::string& base, const std::string& ref, std::string& out) {
+    const size_t colon = ref.find(':');
+    if (colon != std::string::npos && colon > 1 && std::isalpha(static_cast<unsigned char>(ref[0])) &&
+        std::all_of(ref.begin(), ref.begin() + static_cast<std::ptrdiff_t>(colon), [](char c) {
+            return std::isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '-' || c == '.';
+        })) {
+        out = ref;
+        return true;
+    }
+    const size_t schemeEnd = base.find("://");
+    if (schemeEnd == std::string::npos) return false;
+    const std::string document = base.substr(0, base.find('#'));
+    if (ref.empty()) { out = document; return true; }
+    if (ref[0] == '#') { out = document + ref; return true; }
+    if (ref.size() > 1 && ref[0] == '/' && ref[1] == '/') { out = base.substr(0, schemeEnd + 1) + ref; return true; }
+    // "file://" or "https://host", then the path ("/" when there is none).
+    const std::string withoutQuery = document.substr(0, document.find('?'));
+    const size_t pathAt = withoutQuery.find('/', schemeEnd + 3);
+    const std::string origin = withoutQuery.substr(0, pathAt);
+    const std::string basePath = pathAt == std::string::npos ? std::string("/") : withoutQuery.substr(pathAt);
+    if (ref[0] == '?') { out = origin + basePath + ref; return true; }
+
+    const size_t tailAt = ref.find_first_of("?#");
+    const std::string refPath = ref.substr(0, tailAt);
+    const std::string tail = tailAt == std::string::npos ? std::string() : ref.substr(tailAt);
+    std::string merged = refPath[0] == '/' ? refPath
+                                           : basePath.substr(0, basePath.rfind('/') + 1) + refPath;
+    if (merged[0] != '/') merged.insert(merged.begin(), '/');
+    // The dot segments removed: "a/./b" is "a/b", "a/b/../c" is "a/c".
+    std::vector<std::string> segments;
+    size_t start = 1;
+    bool trailingSlash = false;
+    while (start <= merged.size()) {
+        size_t end = merged.find('/', start);
+        if (end == std::string::npos) end = merged.size();
+        const std::string segment = merged.substr(start, end - start);
+        const bool last = end == merged.size();
+        if (segment == "..") {
+            if (!segments.empty()) segments.pop_back();
+            trailingSlash = last;
+        } else if (segment == ".") {
+            trailingSlash = last;
+        } else {
+            segments.push_back(segment);
+            trailingSlash = false;
+        }
+        start = end + 1;
+    }
+    std::string path;
+    for (const auto& segment : segments) path += "/" + segment;
+    if (path.empty() || trailingSlash) path += "/";
+    out = origin + path + tail;
+    return true;
+}
+
+// Whether the text starts as an XHTML document does: past the XML
+// declaration, processing instructions and comments, an HTML DOCTYPE or an
+// <html> root element (with or without a namespace prefix).
+static bool LooksLikeXhtml(const std::string& text) {
+    const std::string lower = LowerAscii(text);
+    size_t i = 0;
+    if (lower.compare(0, 3, "\xEF\xBB\xBF") == 0) i = 3;    // UTF-8 BOM
+    while (i < lower.size()) {
+        while (i < lower.size() && std::isspace(static_cast<unsigned char>(lower[i]))) ++i;
+        if (i >= lower.size() || lower[i] != '<') return false;
+        if (lower.compare(i, 2, "<?") == 0) {
+            const size_t end = lower.find("?>", i + 2);
+            if (end == std::string::npos) return false;
+            i = end + 2;
+        } else if (lower.compare(i, 4, "<!--") == 0) {
+            const size_t end = lower.find("-->", i + 4);
+            if (end == std::string::npos) return false;
+            i = end + 3;
+        } else if (lower.compare(i, 9, "<!doctype") == 0) {
+            const size_t end = lower.find('>', i);
+            const std::string doctype = lower.substr(i + 9, end == std::string::npos ? std::string::npos
+                                                                                      : end - i - 9);
+            // "<!DOCTYPE html ..." - HTML5 or the XHTML 1.x DTDs.
+            size_t n = 0;
+            while (n < doctype.size() && std::isspace(static_cast<unsigned char>(doctype[n]))) ++n;
+            return doctype.compare(n, 4, "html") == 0 &&
+                   (n + 4 == doctype.size() || !std::isalnum(static_cast<unsigned char>(doctype[n + 4])));
+        } else {
+            size_t end = i + 1;
+            while (end < lower.size() && !std::isspace(static_cast<unsigned char>(lower[end])) &&
+                   lower[end] != '>' && lower[end] != '/') ++end;
+            std::string name = lower.substr(i + 1, end - i - 1);
+            const size_t prefix = name.find(':');
+            if (prefix != std::string::npos) name.erase(0, prefix + 1);
+            return name == "html";
+        }
+    }
+    return false;
+}
+
+// The first `maxBytes` of a file ("" when it cannot be read).
+static std::string ReadFileHead(const std::string& path, size_t maxBytes) {
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
+    if (!f) return std::string();
+    std::string head(maxBytes, '\0');
+    f.read(&head[0], static_cast<std::streamsize>(maxBytes));
+    head.resize(static_cast<size_t>(f.gcount()));
+    return head;
+}
+
+// ----- E-MAIL MESSAGES -----
+// A message is shown as a mail program shows it: one page with its header
+// (subject, from, to, cc, date), its body - the HTML one rendered, else the
+// text - and its attachments listed, each with Open and Save links
+// (ucattachment:open/N, ucattachment:save/N - the viewer's OpenAttachment /
+// SaveAttachment). Pictures the message carries (cid: references) are put in
+// as data: URLs; a remote picture is never fetched (the preview reads local
+// files only), so opening a message tells its sender nothing. An .eml / .emlx
+// is read by UltraNet's MIME reader, an Outlook .msg by UCOutlookMessage.
+
+// One part a message carries: an attachment, or a picture its body shows.
+struct MailPart {
+    std::string filename;
+    std::string mediaType;
+    std::string contentId;
+    bool isInline = false;          // shown in the body, not sent as a file
+    bool embeddedMessage = false;   // an attached message: listed, nothing to open
+    std::vector<uint8_t> data;
+};
+
+// What a message shows, whatever file it came from.
+struct MailPage {
+    std::string subject, from, date;
+    std::vector<std::string> to, cc;
+    std::string body;
+    bool isHtml = false;
+    std::vector<MailPart> parts;
+};
+
+static std::string DataUrl(const MailPart& part) {
+    return "data:" + (part.mediaType.empty() ? std::string("application/octet-stream") : part.mediaType) +
+           ";base64," + Base64Encode(part.data, false);
+}
+
+// The body's cid: references replaced by the parts they name (RFC 2392: a
+// Content-ID, percent-escaped). `used` collects the Content-IDs shown.
+static std::string InlineContentIds(const std::string& html, const std::vector<MailPart>& parts,
+                                    std::set<std::string>& used) {
+    const std::string lower = LowerAscii(html);
+    std::string out;
+    out.reserve(html.size());
+    size_t i = 0;
+    for (size_t at = lower.find("cid:"); at != std::string::npos; at = lower.find("cid:", i)) {
+        size_t end = at + 4;
+        while (end < html.size() && html[end] != '"' && html[end] != '\'' && html[end] != ')' &&
+               html[end] != '>' && !std::isspace(static_cast<unsigned char>(html[end]))) ++end;
+        const std::string id = LowerAscii(PercentDecode(html.substr(at + 4, end - at - 4)));
+        out.append(html, i, at - i);
+        const MailPart* named = nullptr;
+        for (const auto& part : parts) {
+            if (!part.contentId.empty() && LowerAscii(part.contentId) == id) { named = &part; break; }
+        }
+        if (named) {
+            out += DataUrl(*named);
+            used.insert(id);
+        } else {
+            out.append(html, at, end - at);
+        }
+        i = end;
+    }
+    out.append(html, i, std::string::npos);
+    return out;
+}
+
+// A file that is not what its name says, shown as its text.
+static std::string RawTextPage(const std::string& raw, const std::string& title) {
+    return "<!DOCTYPE html><html><head><title>" + HTML::EscapeText(title) + "</title></head><body>"
+           "<pre style=\"white-space:pre-wrap\">" + HTML::EscapeText(raw) + "</pre></body></html>";
+}
+
+// The page a message is shown as. The attachments it lists are appended to
+// `attachments`; their links name them by position there.
+static std::string MailPageAsHtml(const MailPage& message, std::vector<MailPart>& attachments) {
+    auto join = [](const std::vector<std::string>& list) {
+        std::string text;
+        for (const auto& item : list) text += (text.empty() ? "" : ", ") + item;
+        return text;
+    };
+    auto row = [](const char* label, const std::string& value) {
+        if (value.empty()) return std::string();
+        return "<tr><td style=\"color:#666;padding:1px 12px 1px 0;vertical-align:top\">" + std::string(label) +
+               "</td><td style=\"padding:1px 0\">" + HTML::EscapeText(value) + "</td></tr>";
+    };
+    const std::string subject = message.subject.empty() ? std::string("(no subject)") : message.subject;
+
+    std::string body = message.body;
+    std::set<std::string> used;
+    if (message.isHtml) body = InlineContentIds(body, message.parts, used);
+    else if (!body.empty())
+        body = "<pre style=\"white-space:pre-wrap;font-family:sans-serif;margin:0\">" +
+               HTML::EscapeText(body) + "</pre>";
+
+    // What the body did not show: pictures sent along inline (Apple Mail
+    // puts them after the text), then everything else, listed.
+    std::string pictures, listed;
+    for (const auto& part : message.parts) {
+        if (!part.contentId.empty() && used.count(LowerAscii(part.contentId))) continue;
+        if (part.isInline && part.mediaType.rfind("image/", 0) == 0 && !part.data.empty()) {
+            pictures += "<p><img src=\"" + DataUrl(part) + "\" style=\"max-width:100%\"></p>";
+            continue;
+        }
+        const std::string name = HTML::EscapeText(part.filename.empty() ? std::string("(unnamed)") : part.filename);
+        if (part.embeddedMessage || part.data.empty()) {
+            listed += "<li>" + name + " <span style=\"color:#666\">(" +
+                      (part.embeddedMessage ? "attached message" : "empty") + ")</span></li>";
+            continue;
+        }
+        const std::string n = std::to_string(attachments.size());
+        attachments.push_back(part);
+        listed += "<li><a href=\"ucattachment:open/" + n + "\">" + name + "</a> <span style=\"color:#666\">(" +
+                  HTML::EscapeText(HumanSize(part.data.size())) + ")</span> &middot; "
+                  "<a href=\"ucattachment:save/" + n + "\">Save</a></li>";
+    }
+
+    std::string html =
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + HTML::EscapeText(subject) +
+        "</title></head><body style=\"margin:0\">"
+        "<div style=\"background:#f3f4f6;border-bottom:1px solid #d0d4da;padding:12px 16px;"
+        "font-family:sans-serif;font-size:13px;color:#222\">"
+        "<div style=\"font-size:17px;font-weight:bold;margin-bottom:6px\">" + HTML::EscapeText(subject) + "</div>"
+        "<table style=\"border-collapse:collapse\">" +
+        row("From", message.from) + row("To", join(message.to)) + row("Cc", join(message.cc)) +
+        row("Date", message.date) + "</table>";
+    if (!listed.empty()) {
+        html += "<div style=\"margin-top:6px;color:#666\">Attachments</div>"
+                "<ul style=\"margin:2px 0 0 0\">" + listed + "</ul>";
+    }
+    // The message's own HTML follows as it is: the parser takes a second
+    // <html> / <body> inside this one, and its <style> rules still apply.
+    html += "</div><div style=\"padding:12px 16px\">" + body + pictures + "</div></body></html>";
+    return html;
+}
+
+// An Outlook .msg's message.
+static MailPage MailPageFromOutlook(const UCOutlookMessage& msg) {
+    MailPage page;
+    page.subject = msg.subject;
+    page.from = msg.from;
+    page.to = msg.to;
+    page.cc = msg.cc;
+    page.date = msg.date;
+    page.isHtml = !msg.bodyHtml.empty();
+    page.body = page.isHtml ? msg.bodyHtml : msg.bodyText;
+    for (const auto& attachment : msg.attachments) {
+        MailPart part;
+        part.filename = attachment.filename;
+        part.mediaType = attachment.mediaType;
+        part.contentId = attachment.contentId;
+        part.isInline = attachment.hidden;
+        part.embeddedMessage = attachment.embeddedMessage;
+        part.data = attachment.data;
+        page.parts.push_back(std::move(part));
+    }
+    return page;
+}
+
+#ifdef ULTRACANVAS_HAS_NET
+// An .eml's message, read by UltraNet's MIME reader; false when it has no
+// header and body to tell apart.
+static bool MailPageFromMime(const std::string& raw, MailPage& page) {
+    UltraNetMimeMessage message;
+    if (!UltraNet_MimeParse(raw, message)) return false;
+    page.subject = message.subject;
+    page.from = message.from;
+    page.to = message.to;
+    page.cc = message.cc;
+    page.date = message.date;
+    UltraNet_MimeGetDisplayBody(message, page.body, page.isHtml);
+    std::vector<UltraNetMimeAttachmentView> views;
+    UltraNet_MimeCollectAttachments(message, views, /*includeInline=*/true);
+    for (auto& view : views) {
+        MailPart part;
+        part.filename = view.filename;
+        part.mediaType = view.mediaType;
+        part.contentId = view.contentId;
+        part.isInline = view.isInline;
+        part.data = std::move(view.data);
+        page.parts.push_back(std::move(part));
+    }
+    return true;
+}
+
+// An Apple Mail .emlx: a line with the message's length in bytes, the
+// message, then Mail's own property list - the message is what is shown.
+static std::string MessageOfEmlx(const std::string& raw) {
+    const size_t lineEnd = raw.find('\n');
+    if (lineEnd == std::string::npos) return raw;
+    const std::string count = raw.substr(0, lineEnd);
+    size_t length = 0;
+    bool digits = false;
+    for (char c : count) {
+        if (std::isdigit(static_cast<unsigned char>(c))) { length = length * 10 + static_cast<size_t>(c - '0'); digits = true; }
+        else if (!std::isspace(static_cast<unsigned char>(c))) return raw;   // not an .emlx after all
+        if (length > raw.size()) break;
+    }
+    if (!digits) return raw;
+    return raw.substr(lineEnd + 1, length);
+}
+
+// ----- SAVED WEB PAGES (.mht / .mhtml) -----
+// A web page saved with everything it shows: its HTML, style sheets and
+// pictures as the parts of one MIME message, each under the address it was
+// saved from (Content-Location) or a Content-ID. The page is shown as it
+// was: its links read against the address it came from, and what it asks
+// for answered from those parts - the network is never asked.
+static std::string HeaderOf(const UltraNetMimePart& part, const std::string& name) {
+    for (const auto& [key, value] : part.headers) {
+        if (LowerAscii(key) != LowerAscii(name)) continue;
+        size_t b = 0, e = value.size();
+        while (b < e && std::isspace(static_cast<unsigned char>(value[b]))) ++b;
+        while (e > b && std::isspace(static_cast<unsigned char>(value[e - 1]))) --e;
+        return value.substr(b, e - b);
+    }
+    return std::string();
+}
+
+static void CollectLeaves(const UltraNetMimePart& part, std::vector<const UltraNetMimePart*>& out) {
+    if (!part.isMultipart) { out.push_back(&part); return; }
+    for (const auto& child : part.children) CollectLeaves(child, out);
+}
+
+// The page a saved web page is shown as; `parts` gets what it refers to, by
+// absolute address without a fragment.
+static std::string WebArchiveAsHtml(const std::string& raw, const std::string& fileUrl,
+                                    std::map<std::string, HTML::FetchResult>& parts,
+                                    std::vector<MailPart>& attachments) {
+    UltraNetMimeMessage message;
+    if (!UltraNet_MimeParse(raw, message)) return RawTextPage(raw, "Web archive");
+    std::vector<const UltraNetMimePart*> leaves;
+    CollectLeaves(message.root, leaves);
+    // The page: the first HTML part (the archive's start). An archive with
+    // none is shown as the message it also is.
+    const UltraNetMimePart* page = nullptr;
+    for (const auto* leaf : leaves) {
+        if (leaf->mediaType == "text/html") { page = leaf; break; }
+    }
+    if (!page) {
+        MailPage mail;
+        MailPageFromMime(raw, mail);
+        return MailPageAsHtml(mail, attachments);
+    }
+
+    std::string html = UltraNet_ConvertToUtf8(std::string(page->body.begin(), page->body.end()), page->charset);
+    std::string location = HeaderOf(*page, "Content-Location");
+    if (location.empty()) location = HeaderOf(message.root, "Content-Location");
+    std::string base = fileUrl;
+    if (!location.empty()) ResolveUrl(fileUrl, location, base);
+
+    std::vector<MailPart> byContentId;
+    for (const auto* leaf : leaves) {
+        if (leaf == page) continue;
+        if (!leaf->contentId.empty()) {
+            MailPart part;
+            part.mediaType = leaf->mediaType;
+            part.contentId = leaf->contentId;
+            part.data = leaf->body;
+            byContentId.push_back(std::move(part));
+        }
+        const std::string saved = HeaderOf(*leaf, "Content-Location");
+        std::string address;
+        if (saved.empty() || !ResolveUrl(base, saved, address)) continue;
+        HTML::FetchResult part;
+        part.ok = true;
+        part.status = 200;
+        part.finalUrl = address;
+        part.contentType = leaf->mediaType + (leaf->charset.empty() ? std::string() : "; charset=" + leaf->charset);
+        part.body = leaf->body;
+        parts[address.substr(0, address.find('#'))] = std::move(part);
+    }
+    std::set<std::string> used;
+    html = InlineContentIds(html, byContentId, used);
+    // Its links and pictures read against where it was saved from (a
+    // <base> of the page's own comes first and wins).
+    if (base != fileUrl) html = "<base href=\"" + HTML::EscapeText(base) + "\">" + html;
+    return html;
+}
+#endif
+
+// The largest page or resource the preview reads (PageLoaderLimits'
+// maxDocumentBytes): a bigger file is refused before it is read. A message
+// or a saved web page may be larger - attachments are listed, not put in
+// the page, and a saved page's pictures are served on their own.
+static constexpr uintmax_t kMaxPageFileBytes = 16u * 1024u * 1024u;
+static constexpr uintmax_t kMaxMailFileBytes = 64u * 1024u * 1024u;
+
+// The parts of the saved web page on show (.mht), by the address each was
+// saved from: what its style sheets and pictures are answered with.
+// And the message on show's attachments, which its Open and Save links name.
+struct MediaViewerWebArchive {
+    std::map<std::string, HTML::FetchResult> parts;
+    std::vector<MailPart> attachments;
+    void Clear() { parts.clear(); attachments.clear(); }
+};
+
+// Files read as messages: e-mail (MIME or Outlook's) and saved web pages.
+static bool IsMessageFileExtension(const std::string& ext) {
+    return ext == "eml" || ext == "emlx" || ext == "msg" || ext == "mht" || ext == "mhtml";
+}
+
+// The attachments the viewer opens are files of its own: one folder each
+// (so the program that opens one shows its own name) in the per-user cache,
+// not the shared temporary folder. A folder goes a day after it was made -
+// by then the program that opened it has long read it; one still held open
+// (Windows will not delete it) goes on a later sweep.
+static constexpr const char* kOpenedAttachmentsCache = "opened-attachments";
+static constexpr auto kOpenedAttachmentMaxAge = std::chrono::hours(24);
+
+// Once per process: what earlier sessions opened and is a day old is swept.
+// A cache never used is not made just to be looked at.
+static void SweepOpenedAttachmentsOnce() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        const std::string root = DiskCache::Root();
+        if (root.empty()) return;
+        const fs::path cachePath = PathFromUtf8(root) / PathFromUtf8(kOpenedAttachmentsCache);
+        std::error_code ec;
+        if (!fs::is_directory(cachePath, ec)) return;
+        DiskCache::SweepFolders(PathToUtf8(cachePath),
+                                std::chrono::duration_cast<std::chrono::seconds>(kOpenedAttachmentMaxAge));
+    });
+}
+
+// What the web view asks the viewer for: a page, or one of its style sheets
+// or pictures - read from the disk, file:// only. A saved web page's parts
+// go to `archive`.
+static HTML::FetchResult FetchLocalFile(const std::string& url, MediaViewerWebArchive* archive) {
+    HTML::FetchResult result;
+    if (url.size() < 7 || LowerAscii(url.substr(0, 7)) != "file://") {
+        result.error = "The viewer shows local files only.";
+        return result;
+    }
+    const std::string path = PathFromFileUrl(url);
+    std::error_code ec;
+    const auto fsPath = UltraCanvas::PathFromUtf8(path);
+    if (!std::filesystem::is_regular_file(fsPath, ec)) {
+        result.error = "There is no file " + path + ".";
+        return result;
+    }
+    const std::string ext = LowerExt(path);
+    const uintmax_t size = std::filesystem::file_size(fsPath, ec);
+    if (!ec && size > (IsMessageFileExtension(ext) ? kMaxMailFileBytes : kMaxPageFileBytes)) {
+        result.tooLarge = true;
+        result.error = "The file " + path + " is too large to show.";
+        return result;
+    }
+    std::ifstream f(fsPath, std::ios::binary);
+    if (!f) {
+        result.error = "The file " + path + " could not be read.";
+        return result;
+    }
+    result.body.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    result.ok = true;
+    result.status = 200;
+    // The loader tells a page by its name or its first bytes; an .xml says
+    // which it is by its content: XHTML a page, anything else its text.
+    // A message, or a saved web page: the page it is shown as.
+    MediaViewerWebArchive none;
+    MediaViewerWebArchive& into = archive ? *archive : none;
+    std::string page;
+    if (ext == "msg") {
+        UCOutlookMessage msg;
+        std::string why;
+        page = msg.LoadFromMemory(result.body, why)
+                   ? MailPageAsHtml(MailPageFromOutlook(msg), into.attachments)
+                   : RawTextPage("This file is not an Outlook message (" + why + ").", "Message");
+    }
+#ifdef ULTRACANVAS_HAS_NET
+    else if (ext == "mht" || ext == "mhtml") {
+        page = WebArchiveAsHtml(std::string(result.body.begin(), result.body.end()), url, into.parts,
+                                into.attachments);
+    } else if (ext == "eml" || ext == "emlx") {
+        const std::string raw(result.body.begin(), result.body.end());
+        MailPage mail;
+        page = MailPageFromMime(ext == "emlx" ? MessageOfEmlx(raw) : raw, mail)
+                   ? MailPageAsHtml(mail, into.attachments)
+                   : RawTextPage(raw, "Message");
+    }
+#endif
+    if (!page.empty()) {
+        result.body.assign(page.begin(), page.end());
+        result.contentType = "text/html; charset=utf-8";
+        return result;
+    }
+    if (ext == "xml" || ext == "xht" || ext == "xhtml") {
+        const std::string head(result.body.begin(),
+                               result.body.begin() + static_cast<std::ptrdiff_t>(
+                                   std::min<size_t>(result.body.size(), 4096)));
+        result.contentType = (ext != "xml" || LooksLikeXhtml(head)) ? "application/xhtml+xml" : "text/plain";
+    } else if (ext == "html" || ext == "htm" || ext == "shtml") {
+        result.contentType = "text/html";
+    }
+    return result;
 }
 
 // ----- UCD v2 CONTAINER -----
@@ -701,9 +1328,11 @@ void UltraCanvasMediaSurface::DrawBackdrop(IRenderContext* ctx, const Rect2Df& b
 
     ctx->PushState();
     if (alpha < 0.999) ctx->SetAlpha(alpha);
-    if (transparentBackground == TransparentImageBackground::SolidColor) {
+    if (transparentBackground != TransparentImageBackground::Checkered) {
         ctx->DrawFilledRectangle(Rect2Dd(x0, y0, x1 - x0, y1 - y0),
-                                 transparentColor, 0.0f);
+                                 transparentBackground == TransparentImageBackground::Auto
+                                         ? autoBackdropColor : transparentColor,
+                                 0.0f);
     } else {
         constexpr double kCell = 12.0;                   // square size (px)
         const Color light(255, 255, 255, 255);
@@ -747,7 +1376,8 @@ void UltraCanvasMediaSurface::DrawCurrent(IRenderContext* ctx, const Rect2Df& b)
     if (!image || !image->IsValid()) {
         // A picture whose pixels would not decode says so; the reason is in
         // the info bar and the Details panel.
-        const char* text = HasDecodeFailure() ? "Cannot decode this picture" : "No media";
+        const std::string text = HasDecodeFailure() ? std::string("Cannot decode this picture") : emptyText;
+        if (text.empty()) return;
         ctx->SetFontSize(16);
         ctx->SetTextPaint(Color(130, 130, 140, 255));
         Point2Dd p = ctx->CalculateCenteredTextPosition(
@@ -1083,6 +1713,9 @@ UltraCanvasMediaViewer::UltraCanvasMediaViewer(const std::string& identifier,
                                                float x, float y, float w, float h)
     : UltraCanvasContainer(identifier, x, y, w, h) {
     BuildUI(w, h);
+    // The attachments an earlier session opened, a day old, go now - not
+    // only when this session opens one too.
+    SweepOpenedAttachmentsOnce();
 }
 
 UltraCanvasMediaViewer::~UltraCanvasMediaViewer() {
@@ -1224,7 +1857,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                     double sec = std::atof(s.c_str());
                     if (sec > 0) SetSlideshowIntervalSeconds(sec);
                 });
-        dd->SetTooltip("Slideshow interval");
+        dd->SetTooltip(Tr("Slideshow interval"));
         dd->SetSelectedIndex(1, false);      // 5 s, the default
     }
     {
@@ -1240,7 +1873,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
                     else if (s == "Zoom")        t = MediaTransition::ZoomFade;
                     SetTransition(t);
                 });
-        dd->SetTooltip("Slideshow transition");
+        dd->SetTooltip(Tr("Slideshow transition"));
         dd->SetSelectedIndex(1, false);      // Cross fade, the default
     }
     toolbar->AddSeparator("mv_sep2");
@@ -1253,7 +1886,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
             [this](const std::string& s) {
                 if (s == "Fit") ZoomFitAction();
                 else            ZoomPercentAction(std::atof(s.c_str()));
-            })->SetTooltip("Zoom level");
+            })->SetTooltip(Tr("Zoom level"));
     IconOnly(toolbar->AddButton("mv_zoomin", "", ViewerIconPath("zoom-in.svg"),
                                  [this] { ZoomInAction(); }),
              "Zoom in (+)");
@@ -1344,6 +1977,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
 
     // ----- CENTRAL IMAGE SURFACE -----
     surface = std::make_shared<UltraCanvasMediaSurface>("MV_Surface");
+    surface->SetEmptyText(Tr("No media"));
     surface->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     surface->onNavigate = [this](int d) { if (d < 0) Previous(); else Next(); };
@@ -1358,6 +1992,9 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         HandleDroppedFiles(files);
     };
     surface->SetAdjustments(adjustments);
+    // Every file gets a backdrop that suits it until the user (or the host)
+    // picks one.
+    surface->SetTransparentBackground(TransparentImageBackground::Auto);
     AddChild(surface);
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -1419,6 +2056,66 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(textView);
     }
 
+    // ----- HTML PAGE VIEW (rendered, display only) -----
+    // An HTML page - or XML that holds XHTML - is shown as a browser shows
+    // it, in the text view's place. Local files only: its style sheets and
+    // pictures are read from the disk beside it, a link to another local
+    // page opens here, and a web link opens in the browser. A preview sends
+    // no forms and plays nothing.
+    {
+        auto wv = std::make_shared<UltraCanvasWebView>("MV_Web", 0, 0);
+        wv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        HTML::PageLoaderServices services;
+        // A page replaces the saved web page's parts; what a page asks for
+        // is answered from them first, else from the disk.
+        auto archive = webArchive = std::make_shared<MediaViewerWebArchive>();
+        services.fetch = [archive](const std::string& url, std::function<void(HTML::FetchResult)> done) {
+            archive->Clear();
+            done(FetchLocalFile(url, archive.get()));
+        };
+        services.fetchResource = [archive](const std::string& url, const std::string& /*pageUrl*/,
+                                           std::function<void(HTML::FetchResult)> done) {
+            auto saved = archive->parts.find(url.substr(0, url.find('#')));
+            if (saved != archive->parts.end()) { done(saved->second); return; }
+            done(FetchLocalFile(url, nullptr));
+        };
+        services.resolve = ResolveUrl;
+        wv->SetServices(std::move(services));
+        wv->SetInteractiveForms(false);
+        wv->SetMediaPlayback(false);
+        wv->SetOpensWebLinks(false);
+        // A link that leaves for the web or mail opens in the system's
+        // program - but one to a place in the page on show (a saved page's
+        // #fragment reads against the address it was saved from) scrolls,
+        // and a message's attachment links open or save it.
+        UltraCanvasWebView* view = wv.get();
+        wv->onExternalLink = [this, view](const std::string& url) {
+            if (LowerAscii(url.substr(0, 13)) == "ucattachment:") {
+                const std::string what = url.substr(13);
+                const size_t slash = what.find('/');
+                const std::string action = what.substr(0, slash);
+                const size_t index = slash == std::string::npos
+                                         ? std::string::npos
+                                         : static_cast<size_t>(std::strtoul(what.c_str() + slash + 1, nullptr, 10));
+                if (action == "open") OpenAttachment(index);
+                else if (action == "save") SaveAttachment(index);
+                return;
+            }
+            const HTML::LoadedPage* shown = view->GetPage();
+            const size_t hash = url.find('#');
+            if (shown && hash != std::string::npos && !shown->baseUrl.empty() &&
+                url.compare(0, hash, shown->baseUrl.substr(0, shown->baseUrl.find('#'))) == 0) {
+                view->ScrollToFragment(url.substr(hash + 1));
+                return;
+            }
+            OpenURL(url);
+        };
+        wv->SetVisible(false);
+        webView = wv;
+        AddChild(webView);
+    }
+
     // ----- NOTE VIEW (the viewer's own words about a file) -----
     // A *.ucd without a picture to show, a PDF that needs its password: what
     // the viewer says about them reads in its own dark colours, laid out as
@@ -1478,6 +2175,17 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         vv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         vv->SetVisible(false);
+        // The status bar and the zoom box carry the drawing's zoom, as they do
+        // a picture's. The fit the view makes once it has its size is made
+        // from its Render(), after the toolbar above it was painted in that
+        // frame - so the refresh waits for the next turn of the loop, or the
+        // zoom box would keep showing the zoom from before the fit.
+        vv->SetOnZoomChangeCallback([this](float) {
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (!app) { UpdateInfoBar(); return; }
+            std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+            app->PostToUIThread([this, self]() { if (!self.expired()) UpdateInfoBar(); });
+        });
         vectorView = vv;
         AddChild(vectorView);
     }
@@ -1525,6 +2233,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     // colours. The strip sizes its own swatches to the width it gets, so it
     // fits a narrow preview pane as well as a full window.
     backdropBar = CreateBackdropSwatchBar("MV_Backdrop", 0, 0, 0, 28);
+    backdropBar->SetShowAutoEntry(true);
     {
         ColorSwatchBarStyle bs = backdropBar->GetStyle();
         bs.background     = Color(30, 30, 36, 255);
@@ -1541,6 +2250,13 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         SetTransparentColor(c);
         if (onTransparentBackgroundChanged) {
             onTransparentBackgroundChanged(TransparentImageBackground::SolidColor, c);
+        }
+    };
+    backdropBar->onAutoSelected = [this]() {
+        SetTransparentBackground(TransparentImageBackground::Auto);
+        if (onTransparentBackgroundChanged) {
+            onTransparentBackgroundChanged(TransparentImageBackground::Auto,
+                                           GetAutoBackdropColor());
         }
     };
     backdropBar->onCheckeredSelected = [this]() {
@@ -1561,7 +2277,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     bottomBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    infoLabel = std::make_shared<UltraCanvasLabel>("MV_InfoLabel", 0, 0, 0, 20, "No media");
+    infoLabel = std::make_shared<UltraCanvasLabel>("MV_InfoLabel", 0, 0, 0, 20, Tr("No media"));
     infoLabel->SetFontSize(11);
     infoLabel->SetTextColor(Color(200, 200, 206, 255));
     infoLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -1570,13 +2286,13 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     // Up only while the shown file is password-protected and not unlocked:
     // in the info bar, so a host that hides the top bars (a preview pane)
     // still offers it.
-    unlockButton = std::make_shared<UltraCanvasButton>("MV_Unlock", 0, 0, 78, 20, "Unlock");
+    unlockButton = std::make_shared<UltraCanvasButton>("MV_Unlock", 0, 0, 78, 20, Tr("Unlock"));
     unlockButton->SetIcon(ViewerIconPath("unlock.svg"));
     unlockButton->SetIconSize(14, 14);
     unlockButton->SetIconPosition(ButtonIconPosition::Left);
     unlockButton->SetUseIconAsMask(true);
     unlockButton->SetFontSize(11);
-    unlockButton->SetTooltip("Unlock: show this password-protected file (Enter)");
+    unlockButton->SetTooltip(Tr("Unlock: show this password-protected file (Enter)"));
     unlockButton->onClick = [this] { Unlock(); };
     unlockButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     unlockButton->SetVisible(false);
@@ -1588,7 +2304,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     detailsBtn->SetIconPosition(ButtonIconPosition::Center);
     detailsBtn->SetIconSpacing(0);
     detailsBtn->SetUseIconAsMask(true);
-    detailsBtn->SetTooltip("Details");
+    detailsBtn->SetTooltip(Tr("Details"));
     detailsBtn->onClick = [this] { ToggleDetails(); };
     detailsBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bottomBar->AddChild(detailsBtn);
@@ -1600,7 +2316,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     settingsButton->SetIconPosition(ButtonIconPosition::Center);
     settingsButton->SetIconSpacing(0);
     settingsButton->SetUseIconAsMask(true);
-    settingsButton->SetTooltip("Settings");
+    settingsButton->SetTooltip(Tr("Settings"));
     settingsButton->onClick = [this] { if (settingsAction) settingsAction(); };
     settingsButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     settingsButton->SetVisible(false);
@@ -1608,26 +2324,133 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     AddChild(bottomBar);
 
     // ----- DETAILS PANEL (over the display area) -----
-    // Out of the flex flow (absolute) and above every view; Arrange() fits it
-    // over whichever view is active. Display-only like the text view, so it
-    // never takes the keyboard from the browsing keys; the wheel scrolls it and
-    // HandleViewerKey() gives it Up / Down / PageUp / PageDown while open.
+    // A group box out of the flex flow (absolute) and above every view;
+    // Arrange() fits it over whichever view is active. Its caption is the
+    // title of what is shown ("Image information"), its close button hides
+    // it. Inside: the facts as Markdown in a text area, display-only like the
+    // text view so it never takes the keyboard from the browsing keys (the
+    // wheel scrolls it and HandleViewerKey() gives it Up / Down / PageUp /
+    // PageDown while open), and under it a GIF's palette.
     {
-        auto dv = std::make_shared<UltraCanvasTextArea>("MV_Details_Panel", 0, 0, 0, 0);
-        dv->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
-        dv->SetZIndex(OverlayZOrder::Overlays);
+        const Color panelBg(22, 22, 28, 255);
+        auto panel = std::make_shared<UltraCanvasGroupBox>("MV_Details_Panel", 0, 0, 0, 0, "");
+        panel->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        panel->SetZIndex(OverlayZOrder::Overlays);
+        panel->SetFrameStyle(GroupBoxFrameStyle::Header);
+        GroupBoxVisualStyle look = GroupBoxVisualStyle::Default();
+        look.backgroundColor       = panelBg;
+        look.headerBackgroundColor = Color(34, 34, 42, 255);
+        look.borderColor           = Color(255, 255, 255, 50);
+        look.cornerRadius          = 8.0f;
+        look.titleFont.fontSize    = 12.0f;
+        look.titleFont.fontWeight  = FontWeight::Bold;
+        look.titleColor            = Color(232, 232, 238, 255);
+        look.titleVerticalPadding  = 5.0f;
+        look.contentPadding        = 4.0f;
+        look.closeIconColor            = Color(170, 170, 182, 255);
+        look.closeIconHoverColor       = Color(255, 255, 255, 255);
+        look.closeHoverBackgroundColor = Color(255, 255, 255, 36);
+        panel->SetVisualStyle(look);
+        panel->SetCloseButton(true);
+        panel->SetCloseButtonTooltip(Tr("Close (Esc)"));
+        panel->onCloseClicked = [this] { SetDetailsVisible(false); };
+        panel->layout.SetFlexColumn().SetFlexGap(4);
+        panel->SetVisible(false);
+
+        auto dv = std::make_shared<UltraCanvasTextArea>("MV_Details_Text", 0, 0, 0, 0);
+        dv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         dv->ApplyDarkTheme();
-        dv->SetBackgroundColor(Color(22, 22, 28, 255));
-        dv->SetBorders(1.0f, Color(255, 255, 255, 50), 8.0f);
-        dv->SetFontSize(12);
+        dv->SetBackgroundColor(panelBg);
+        dv->SetBorders(0.0f, Colors::Transparent);
+        dv->SetFontSize(11);
         dv->SetWordWrap(true);
         dv->SetShowLineNumbers(false);
         dv->SetHighlightSyntax(false);
         dv->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         dv->SetDisplayOnly(true);
-        dv->SetVisible(false);
-        detailsView = dv;
+        {
+            // The section headings ("Metadata", "EXIF") a step above the text,
+            // not the document-sized ones a Markdown page has.
+            MarkdownHybridStyle md = dv->GetMarkdownStyle();
+            md.headerSizeMultipliers = {1.35f, 1.2f, 1.1f, 1.05f, 1.0f, 1.0f};
+            md.tableHeaderBackground = Color(44, 44, 54, 255);
+            md.tableBorderColor      = Color(78, 78, 90, 255);
+            dv->SetMarkdownStyle(md);
+        }
+        detailsText = dv;
+        panel->AddChild(detailsText);
+        // The caption and the swatches line up with the tables' text: the text
+        // area's padding plus a table cell's.
+        const float textInset = dv->GetStyle().textPadding + dv->GetMarkdownStyle().tableCellPadding;
+
+        auto caption = std::make_shared<UltraCanvasLabel>("MV_Details_PaletteCaption", 0, 0, 0, 18, "");
+        caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        caption->SetFontSize(11);
+        caption->SetFontWeight(FontWeight::Bold);
+        caption->SetTextColor(Color(220, 220, 228, 255));
+        caption->SetMargin(0, textInset, 0, textInset);
+        caption->SetVisible(false);
+        detailsPaletteCaption = caption;
+        panel->AddChild(detailsPaletteCaption);
+
+        auto swatches = std::make_shared<UltraCanvasColorSwatchBar>("MV_Details_Palette", 0, 0, 0, 10);
+        swatches->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        swatches->SetWrap(true);
+        ColorSwatchBarStyle sw = swatches->GetStyle();
+        sw.swatchSize    = 14.0f;
+        sw.minSwatchSize = 10.0f;
+        sw.spacing       = 2.0f;
+        sw.padding       = 2.0f;
+        sw.cornerRadius  = 1.0f;
+        sw.border        = Color(255, 255, 255, 40);
+        swatches->SetStyle(sw);
+        swatches->SetMargin(0, textInset - sw.padding, 0, textInset - sw.padding);
+        // The entry under the pointer (or the one clicked) is named in the
+        // caption: its index and its value.
+        auto describe = [this](int index) {
+            auto* cap = static_cast<UltraCanvasLabel*>(detailsPaletteCaption.get());
+            auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+            if (!cap || !bar) return;
+            if (index < 0 || index >= bar->GetColorCount()) {
+                cap->SetText(detailsPaletteText);
+                return;
+            }
+            const Color& c = bar->GetColors()[static_cast<size_t>(index)];
+            char buf[96];
+            snprintf(buf, sizeof(buf), "#%02X%02X%02X", c.r, c.g, c.b);
+            cap->SetText(TrF("Entry {0}:  {1}   (R {2}, G {3}, B {4})", index, std::string(buf),
+                             int(c.r), int(c.g), int(c.b)));
+        };
+        swatches->onColorHovered = describe;
+        swatches->onColorSelected = [this, describe](const Color&) {
+            auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+            if (bar) describe(bar->GetSelectedIndex());
+        };
+        swatches->SetVisible(false);
+        detailsPalette = swatches;
+        panel->AddChild(detailsPalette);
+
+        detailsView = panel;
         AddChild(detailsView);
+    }
+
+    // ----- LOADING RING (OpenFileWhenShown) -----
+    // Over the middle of the display while a file is on its way; Arrange()
+    // centres it.
+    {
+        auto ring = CreateBusyIndicator("MV_Loading", 0, 0, 44, 44, BusyIndicatorKind::Ring);
+        BusyIndicatorStyle ringStyle = ring->GetStyle();
+        ringStyle.arcColor   = Color(200, 200, 212, 255);
+        ringStyle.trackColor = Color(255, 255, 255, 28);
+        ring->SetStyle(ringStyle);
+        ring->SetAccessibleName("Loading");
+        ring->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        ring->SetZIndex(OverlayZOrder::Controls);
+        ring->SetVisible(false);
+        loadingIndicator = ring;
+        AddChild(loadingIndicator);
     }
 
     // Nothing is on show yet, so no view / edit tool applies until a file loads.
@@ -1761,7 +2584,8 @@ bool UltraCanvasMediaViewer::IsImageFile(const std::string& path) {
 static const std::vector<std::string>& PlainTextExtensions() {
     static const std::vector<std::string> exts = {
         "txt", "text", "log", "md", "markdown", "rst", "json", "xml",
-        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "css",
+        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "xhtml",
+        "xht", "shtml", "eml", "emlx", "msg", "mht", "mhtml", "css",
         "tex", "srt", "vtt", "diff", "patch"
     };
     return exts;
@@ -1780,6 +2604,140 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     // harmless here since we only need the match result.
     static SyntaxTokenizer tokenizer;
     return tokenizer.SetLanguageByExtension(e);
+}
+
+bool UltraCanvasMediaViewer::IsHtmlFile(const std::string& path) {
+    const std::string e = LowerExt(path);
+    if (e == "html" || e == "htm" || e == "xhtml" || e == "xht" || e == "shtml") return true;
+    if (e != "xml") return false;
+    // An .xml is a page when its content is XHTML; data XML is shown as text.
+    return LooksLikeXhtml(ReadFileHead(path, 4096));
+}
+
+// ----- A MESSAGE'S ATTACHMENTS -----
+
+// A name an attachment can be written under: its own, without folders or
+// characters a file system refuses ("attachment" when it has none).
+static std::string AttachmentFileName(const std::string& name) {
+    std::string safe;
+    for (unsigned char c : name) {
+        if (c < 0x20 || c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' ||
+            c == '<' || c == '>' || c == '|') safe.push_back('_');
+        else safe.push_back(static_cast<char>(c));
+    }
+    while (!safe.empty() && (safe.back() == '.' || safe.back() == ' ')) safe.pop_back();
+    while (!safe.empty() && (safe.front() == '.' || safe.front() == ' ')) safe.erase(0, 1);
+    return safe.empty() ? std::string("attachment") : safe;
+}
+
+void UltraCanvasMediaViewer::OpenAttachment(size_t index) {
+    if (!webArchive || index >= webArchive->attachments.size()) return;
+    const MailPart part = webArchive->attachments[index];
+    const std::string name = AttachmentFileName(part.filename);
+    // A program or script would run if it were opened (FileAssociations).
+    if (FileAssociations::RunsCodeWhenOpened(name)) {
+        UltraCanvasAlert::Confirm(
+            "\"" + name + "\" is a program or a script, which would run if it were opened. "
+            "The preview does not open it.\n\nWould you like to save it instead?",
+            "Open attachment", [this, index](bool save) { if (save) SaveAttachment(index); }, GetWindow());
+        return;
+    }
+    // Written to a folder of its own in the viewer's cache (a file of the
+    // viewer's own, not one the user saves), under its own name, so the
+    // program that opens it shows that name. Swept a day later.
+    SweepOpenedAttachmentsOnce();
+    const std::string cache = DiskCache::Directory(kOpenedAttachmentsCache);
+    if (cache.empty()) {
+        UltraCanvasAlert::Error("There is no folder to open \"" + name + "\" from: the cache folder cannot be made.",
+                                "Open attachment", nullptr, GetWindow());
+        return;
+    }
+    std::error_code ec;
+    const fs::path folder = PathFromUtf8(cache) / PathFromUtf8(
+        std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+    fs::create_directories(folder, ec);
+    const fs::path file = folder / PathFromUtf8(name);
+    {
+        std::ofstream out(file, std::ios::binary);
+        out.write(reinterpret_cast<const char*>(part.data.data()), static_cast<std::streamsize>(part.data.size()));
+        if (!out) {
+            UltraCanvasAlert::Error("\"" + name + "\" could not be written to " + PathToUtf8(folder) + ".",
+                                    "Open attachment", nullptr, GetWindow());
+            return;
+        }
+    }
+    const std::string path = PathToUtf8(file);
+    // What the viewer shows itself opens in a window of its own; anything
+    // else in the application the system opens it with.
+    if (IsSupportedMedia(path)) {
+        if (!attachmentWindow) attachmentWindow = std::make_shared<UltraCanvasMediaViewerWindow>();
+        MediaViewerWindowOptions options;
+        options.title = name;
+        options.browseFolder = false;
+        if (attachmentWindow->Show(path, GetWindow(), options)) return;
+    }
+    if (FileAssociations::HasDefaultApplication(path)) {
+        std::string error;
+        if (!FileAssociations::OpenWithDefaultApplication({ path }, error)) {
+            UltraCanvasAlert::Error(error.empty() ? "The system could not open \"" + name + "\"." : error,
+                                    "Open attachment", nullptr, GetWindow());
+        }
+        return;
+    }
+    UltraCanvasAlert::Confirm("No application opens \"" + name + "\".\n\nWould you like to save it instead?",
+                              "Open attachment", [this, index](bool save) { if (save) SaveAttachment(index); },
+                              GetWindow());
+}
+
+void UltraCanvasMediaViewer::SaveAttachment(size_t index) {
+    if (!webArchive || index >= webArchive->attachments.size()) return;
+    const MailPart part = webArchive->attachments[index];
+    const std::string name = AttachmentFileName(part.filename);
+    FileDialogOptions opts;
+    opts.SetTitle("Save attachment").SetDefaultFileName(name).SetParentWindow(GetWindow());
+    for (const UserFolderInfo& folder : GetWellKnownUserFolders()) {
+        if (folder.kind == UserFolderKind::Downloads) { opts.SetInitialDirectory(folder.path); break; }
+    }
+    // Its own type first, then any name.
+    const std::string ext = LowerExt(name);
+    if (!ext.empty() && ext.find('/') == std::string::npos)
+        opts.AddFilter(part.mediaType.empty() ? "*." + ext : part.mediaType, ext);
+    opts.AddFilter("All files", "*");
+    opts.saveSettingsButton = false;   // written as it is, not by a format's writer
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, part, name](DialogResult result, const std::string& chosen) {
+        if (result != DialogResult::OK || chosen.empty()) return;
+        std::string error;
+        if (!UltraCanvasFileLoader::SaveFile(chosen, part.data, error)) {
+            UltraCanvasAlert::Error("\"" + name + "\" could not be written to " + chosen +
+                                    (error.empty() ? std::string(".") : ": " + error),
+                                    "Save attachment", nullptr, GetWindow());
+            return;
+        }
+        UltraCanvasFileLoader::NotifyRecentFile(chosen);
+        if (infoLabel) infoLabel->SetText("Saved: " + BaseName(chosen));
+    });
+}
+
+bool UltraCanvasMediaViewer::IsMailMessageFile(const std::string& path) {
+    const std::string e = LowerExt(path);
+    // An Outlook message is a compound file; another program's .msg (a
+    // message catalogue, say) is text and is shown as text.
+    if (e == "msg") return UCCompoundFileReader::HasSignature(path);
+#ifdef ULTRACANVAS_HAS_NET
+    return e == "eml" || e == "emlx";
+#else
+    return false;   // no MIME reader in this build: an .eml is shown as its text
+#endif
+}
+
+bool UltraCanvasMediaViewer::IsWebArchiveFile(const std::string& path) {
+#ifdef ULTRACANVAS_HAS_NET
+    const std::string e = LowerExt(path);
+    return e == "mht" || e == "mhtml";
+#else
+    (void)path;
+    return false;
+#endif
 }
 
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
@@ -1887,7 +2845,12 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
             out.push_back(f);
         }
     }
-    if (out.empty()) return;
+    if (out.empty()) {
+        // Nothing here to show: a loading ring for it would turn forever.
+        EndLoading();
+        if (playlist.empty()) ReportCurrentFile(std::string());
+        return;
+    }
     KeepPasswordsOnlyFor(PathToUtf8(UltraCanvas::PathFromUtf8(out.front()).parent_path()));
     playlist = std::move(out);
     currentIndex = std::min(startIndex, playlist.size() - 1);
@@ -1899,6 +2862,115 @@ void UltraCanvasMediaViewer::SetFiles(const std::vector<std::string>& files, siz
     UpdateBreadcrumb();
     LoadCurrent(false);
     if (slideshowPlaying) { PauseSlideshow(); PlaySlideshow(); }
+}
+
+// ===== OPENING ONCE THE WINDOW SHOWS =====
+
+void UltraCanvasMediaViewer::OpenFileWhenShown(const std::string& filePath) {
+    BeginLoading(filePath, [this, filePath] { OpenFile(filePath); });
+}
+
+void UltraCanvasMediaViewer::OpenFolderWhenShown(const std::string& folderPath,
+                                                 const std::string& selectFile) {
+    BeginLoading(selectFile.empty() ? folderPath : selectFile,
+                 [this, folderPath, selectFile] { OpenFolder(folderPath, selectFile); });
+}
+
+void UltraCanvasMediaViewer::SetFilesWhenShown(const std::vector<std::string>& files,
+                                               size_t startIndex) {
+    if (files.empty()) return;
+    const std::string& shown = files[std::min(startIndex, files.size() - 1)];
+    BeginLoading(shown, [this, files, startIndex] { SetFiles(files, startIndex); });
+}
+
+void UltraCanvasMediaViewer::BeginLoading(const std::string& path, std::function<void()> open) {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) {
+        // No application, so no event loop to come back from (a test, a
+        // tool): open now. One that is not running yet - a window set up
+        // before Run() - opens on its first turn.
+        EndLoading();
+        open();
+        return;
+    }
+    // Nothing of the previous file stays on show under the ring.
+    StopPlayback();
+    ReleaseViewBackends();
+    playlist.clear();
+    currentIndex = 0;
+    ShowView(MediaKind::Image);
+    loadingPath = path;
+    pendingOpen = std::move(open);
+    pendingOpenScheduled = false;
+    const unsigned generation = ++openGeneration;
+    if (surface) surface->SetEmptyText("");
+    if (loadingIndicator) {
+        loadingIndicator->SetVisible(true);
+        static_cast<UltraCanvasBusyIndicator*>(loadingIndicator.get())->Start();
+    }
+    UpdateToolAvailability();
+    UpdateTransparencyPalette();
+    UpdateInfoBar();
+    if (IsDetailsVisible()) UpdateDetailedInfo();
+    ReportCurrentFile(path);
+    InvalidateLayout();
+    RequestRedraw();
+    // Render() opens it after the first frame; this is for a viewer that is
+    // not drawn (hidden, or its window not up yet), which still gets its file.
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    app->StartTimer(400, false, [self, this, generation](TimerId) {
+        if (self.expired()) return;
+        RunPendingOpen(generation);
+    });
+}
+
+void UltraCanvasMediaViewer::SchedulePendingOpen(unsigned delayMs) {
+    if (!pendingOpen || pendingOpenScheduled) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    pendingOpenScheduled = true;
+    const unsigned generation = openGeneration;
+    std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+    app->StartTimer(delayMs, false, [self, this, generation](TimerId) {
+        if (self.expired()) return;
+        RunPendingOpen(generation);
+    });
+}
+
+void UltraCanvasMediaViewer::RunPendingOpen(unsigned generation) {
+    // Replaced or already opened meanwhile.
+    if (generation != openGeneration || !pendingOpen) return;
+    auto open = std::move(pendingOpen);
+    pendingOpen = nullptr;
+    open();          // its LoadCurrent ends the loading state
+    EndLoading();    // ... and so does a list with nothing in it to show
+}
+
+void UltraCanvasMediaViewer::EndLoading() {
+    pendingOpen = nullptr;
+    pendingOpenScheduled = false;
+    if (loadingPath.empty()) return;
+    loadingPath.clear();
+    if (surface) surface->SetEmptyText(Tr("No media"));
+    if (loadingIndicator) {
+        static_cast<UltraCanvasBusyIndicator*>(loadingIndicator.get())->Stop();
+        loadingIndicator->SetVisible(false);
+    }
+    UpdateInfoBar();
+    RequestRedraw();
+}
+
+void UltraCanvasMediaViewer::ReportCurrentFile(const std::string& path) {
+    if (path == lastReportedFile) return;
+    lastReportedFile = path;
+    if (onCurrentFileChanged) onCurrentFileChanged(path);
+}
+
+void UltraCanvasMediaViewer::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+    UltraCanvasContainer::Render(ctx, dirtyRect);
+    // A frame of the loading state is on screen: now the file can be opened
+    // (on the next turn of the event loop, not inside the paint).
+    if (pendingOpen && !pendingOpenScheduled) SchedulePendingOpen(0);
 }
 
 void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
@@ -1932,6 +3004,7 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     if (fontView) static_cast<UltraCanvasFontViewer*>(fontView.get())->CloseFont();
     if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
     if (noteView) static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
+    if (webView) static_cast<UltraCanvasWebView*>(webView.get())->Clear();
     // The document can be a large drawing; a closed preview must not keep it.
     if (vectorView) static_cast<UltraCanvasVectorElement*>(vectorView.get())->ClearDocument();
     DropPluginView();
@@ -2020,7 +3093,7 @@ void UltraCanvasMediaViewer::ShowOpenDialog() {
     }
 
     FileDialogOptions opts;
-    opts.SetTitle("Open media").SetFilterToggles(true);
+    opts.SetTitle(Tr("Open media")).SetFilterToggles(true);
     // A kind this build cannot show at all (no video backend) gets no button.
     for (int g = 0; g < GroupCount; ++g) {
         if (!groups[g].empty()) opts.AddFilter(groupNames[g], groups[g]);
@@ -2041,7 +3114,7 @@ void UltraCanvasMediaViewer::ShowSaveDialog() {
     if (!tools.save || !surface || !surface->GetImage() || !surface->GetImage()->IsValid()) return;
 
     FileDialogOptions opts;
-    opts.SetTitle("Save image as")
+    opts.SetTitle(Tr("Save image as"))
         .SetDefaultFileName(SaveNameFor(GetCurrentPath()))
         .SetParentWindow(GetWindow());
     UltraCanvasFileLoader::AddImageSaveTypes(opts);
@@ -2070,7 +3143,7 @@ void UltraCanvasMediaViewer::ShowSaveDialog() {
                     if (infoLabel) infoLabel->SetText("Save failed: " + err);
                     UltraCanvasDialogManager::ShowError(
                             "Could not save \"" + BaseName(path) + "\".\n" + err,
-                            "Save image", nullptr, GetWindow());
+                            Tr("Save image"), nullptr, GetWindow());
                 };
                 // The dialog asked before replacing `chosen`; a name given its
                 // extension here is another file, so that one is asked about.
@@ -2080,7 +3153,7 @@ void UltraCanvasMediaViewer::ShowSaveDialog() {
                     UltraCanvasDialogManager::ShowConfirmation(
                             "\"" + BaseName(path) + "\" already exists.\n"
                             "Do you want to replace it?",
-                            "Replace File",
+                            Tr("Replace File"),
                             [save, path](bool replace) { if (replace) save(path); },
                             GetWindow());
                     return;
@@ -2126,6 +3199,11 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (textView)    textView->SetVisible(kind == MediaKind::Text);
     noteShown = false;   // ShowNote puts it up in the text view's place
     if (noteView)    noteView->SetVisible(false);
+    // An HTML page is shown there too; whatever comes next, it is let go.
+    if (webView && webShown) static_cast<UltraCanvasWebView*>(webView.get())->Clear();
+    if (webArchive) webArchive->Clear();
+    webShown = false;
+    if (webView)     webView->SetVisible(false);
     if (bookView)    bookView->SetVisible(kind == MediaKind::Book);
     if (fontView)    fontView->SetVisible(kind == MediaKind::Font);
     if (vectorView)  vectorView->SetVisible(kind == MediaKind::Vector && !pluginView);
@@ -2155,6 +3233,9 @@ void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
 
 void UltraCanvasMediaViewer::SetTransparentBackground(TransparentImageBackground mode) {
     if (surface) surface->SetTransparentBackground(mode);
+    // Auto is worked out only while it is in force: chosen now, it is
+    // worked out for the file already on show.
+    RefreshAutoBackdrop();
     SyncBackdropSelection();
 }
 
@@ -2165,7 +3246,12 @@ TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() co
 
 void UltraCanvasMediaViewer::SetTransparentColor(const Color& c) {
     if (surface) surface->SetTransparentColor(c);
+    ApplyDrawingBackdrop();
     SyncBackdropSelection();
+}
+
+Color UltraCanvasMediaViewer::GetAutoBackdropColor() const {
+    return surface ? surface->GetAutoBackdropColor() : Color(255, 255, 255, 255);
 }
 
 void UltraCanvasMediaViewer::SetTransparencyPaletteVisible(bool visible) {
@@ -2181,8 +3267,14 @@ void UltraCanvasMediaViewer::SetTransparencyPaletteVisible(bool visible) {
 
 void UltraCanvasMediaViewer::SyncBackdropSelection() {
     if (!backdropBar || !surface) return;
-    if (surface->GetTransparentBackground() == TransparentImageBackground::Checkered) {
-        backdropBar->SelectCheckered();
+    const TransparentImageBackground mode = surface->GetTransparentBackground();
+    if (mode == TransparentImageBackground::Auto) {
+        backdropBar->SelectAuto();
+    } else if (mode == TransparentImageBackground::Checkered) {
+        // The drawing view has no checkered swatch to mark (it shows the
+        // Auto colour meanwhile).
+        if (backdropBar->GetShowCheckeredEntry()) backdropBar->SelectCheckered();
+        else backdropBar->ClearSelection();
     } else {
         // A colour the palette does not hold (one picked in a settings dialog)
         // simply leaves no swatch marked.
@@ -2192,12 +3284,18 @@ void UltraCanvasMediaViewer::SyncBackdropSelection() {
 
 void UltraCanvasMediaViewer::UpdateTransparencyPalette() {
     if (!backdropBar) return;
-    bool show = transparencyPaletteEnabled && activeKind == MediaKind::Image &&
-                surface != nullptr;
-    if (show) {
+    // A drawing in the vector view has nothing behind it but the backdrop,
+    // so it always takes one - but not the checkerboard, which that view
+    // cannot draw.
+    const UltraCanvasVectorElement* vv = ActiveVectorView();
+    const bool drawing = vv && vv->GetDocument();
+    bool show = transparencyPaletteEnabled && surface != nullptr &&
+                (drawing || activeKind == MediaKind::Image);
+    if (show && !drawing) {
         auto img = surface->GetImage();
         show = img && img->IsValid() && img->HasTransparency();
     }
+    backdropBar->SetShowCheckeredEntry(!drawing);
     if (show != backdropBar->IsVisible()) {
         backdropBar->SetVisible(show);
         RequestRedraw();
@@ -2236,6 +3334,8 @@ void UltraCanvasMediaViewer::UpdateBreadcrumb() {
 
 void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (!surface) return;
+    // Whatever was on its way is here now - or was replaced by this.
+    EndLoading();
 
     // Stop any media that was playing before we switch away from it.
     StopVideoClipTimer();
@@ -2257,6 +3357,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         UpdateInfoBar();
         if (IsDetailsVisible()) UpdateDetailedInfo();
         UpdateAbsenceWatch();          // kept passwords may still be held
+        ReportCurrentFile(std::string());
         return;
     }
     if (currentIndex >= playlist.size()) currentIndex = playlist.size() - 1;
@@ -2307,6 +3408,21 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         auto* mv = static_cast<UltraCanvasSTLElement*>(modelView.get());
         if (!mv->LoadFromFile(path) && infoLabel)
             infoLabel->SetText("Failed to open 3D model: " + BaseName(path));
+        handled = true;
+    }
+    if (!handled && kind == MediaKind::Text && webView && (IsHtmlFile(path) || IsMailMessageFile(path) ||
+                                                        IsWebArchiveFile(path))) {
+        // An HTML page - and XML that holds XHTML - is shown rendered, as a
+        // browser shows it; its source is what the Texter is for. An e-mail
+        // message is shown as the message, a saved web page (.mht) as the
+        // page it saved (FetchLocalFile builds both).
+        ShowView(MediaKind::Text);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        if (textView) textView->SetVisible(false);
+        auto* wv = static_cast<UltraCanvasWebView*>(webView.get());
+        wv->SetVisible(true);
+        webShown = true;
+        wv->Navigate(FileUrlFromPath(path));
         handled = true;
     }
     if (!handled && kind == MediaKind::Text && textView) {
@@ -2558,7 +3674,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // for a file the curves do not apply to).
     if (auto dlg = curvesDialog.lock()) FillCurveHistograms(*dlg);
     // The strip of backdrop colours belongs to the file just loaded: up for a
-    // transparent image, gone for everything else.
+    // transparent image or a drawing, gone for everything else - and Auto
+    // picks its colour for this file.
+    RefreshAutoBackdrop();
     UpdateTransparencyPalette();
     UpdateInfoBar();
     // The Details text costs a metadata read of the file; it is built only
@@ -2568,6 +3686,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // or one that opened another file here - shows without asking again.
     if (IsLocked()) UnlockFromRememberedPasswords();
     UpdateAbsenceWatch();
+    ReportCurrentFile(GetCurrentPath());
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
@@ -2696,7 +3815,7 @@ void UltraCanvasMediaViewer::AskForPassword(const std::string& note) {
                 });
             } else if (result == MediaUnlockResult::Failed) {
                 UltraCanvasDialogManager::ShowError("Could not open " + BaseName(path) + "\n" + error,
-                                                    "Unlock", nullptr, GetWindow());
+                                                    Tr("Unlock"), nullptr, GetWindow());
             }
         }, GetWindow());
 }
@@ -2934,10 +4053,7 @@ void UltraCanvasMediaViewer::ResetAdjustments() {
 void UltraCanvasMediaViewer::FillCurveHistograms(UltraCanvasCurvesDialog& dialog) const {
     // The previous picture's histogram goes first: a file the curves do not
     // apply to (a drawing, a video, a PDF) gets none rather than a stale one.
-    for (ToneCurveChannel channel : { ToneCurveChannel::RGB, ToneCurveChannel::Red,
-                                      ToneCurveChannel::Green, ToneCurveChannel::Blue }) {
-        dialog.SetHistogram(channel, {});
-    }
+    dialog.SetHistograms(ImageHistogram());
     if (!tools.colour) return;
 #ifdef HAS_LIBVIPS
     if (!surface) return;
@@ -2947,27 +4063,31 @@ void UltraCanvasMediaViewer::FillCurveHistograms(UltraCanvasCurvesDialog& dialog
         vips::VImage v = img->GetVImage();
         PixelFX::PFXImage p(v);
         // Histograms describe the tones the curve maps, so they are taken in
-        // sRGB — the space the lookup tables are applied in.
-        p = PixelFX::Colour::ToSrgb(p);
-        PixelFX::PFXImage hist = PixelFX::Colour::HistFind(p);
-        if (hist.bands() <= 0) return;
-
-        std::vector<uint32_t> master(256, 0), red(256, 0), green(256, 0), blue(256, 0);
-        for (int level = 0; level < 256; ++level) {
-            std::vector<double> counts = PixelFX::Arithmetic::GetPoint(hist, level, 0);
-            if (counts.empty()) continue;
-            double r = counts[0];
-            double g = counts.size() > 1 ? counts[1] : counts[0];
-            double b = counts.size() > 2 ? counts[2] : counts[0];
-            red[level]    = static_cast<uint32_t>(std::max(0.0, r));
-            green[level]  = static_cast<uint32_t>(std::max(0.0, g));
-            blue[level]   = static_cast<uint32_t>(std::max(0.0, b));
-            master[level] = red[level] + green[level] + blue[level];
+        // sRGB, 8 bits a channel - the space and the levels the lookup tables
+        // are applied in.
+        p = PixelFX::Conversion::CastUchar(PixelFX::Colour::ToSrgb(p));
+        HistogramPixelFormat format;
+        if (p.Bands() >= 4) {
+            p = PixelFX::Colour::ExtractBand(p, 0, 4);       // red, green, blue, alpha
+            format = HistogramPixelFormat::RGBA8;
+        } else if (p.Bands() == 3) {
+            format = HistogramPixelFormat::RGB8;
+        } else {
+            return;
         }
-        dialog.SetHistogram(ToneCurveChannel::RGB,   master);
-        dialog.SetHistogram(ToneCurveChannel::Red,   red);
-        dialog.SetHistogram(ToneCurveChannel::Green, green);
-        dialog.SetHistogram(ToneCurveChannel::Blue,  blue);
+        // Counted by UltraCanvasHistogramModel - the counting UltraPaint's
+        // Curves dialog uses too - a strip of rows at a time, so a large
+        // photograph is never copied out whole.
+        const int width = p.Width(), height = p.Height(), bytesPerPixel = p.Bands();
+        constexpr int kStripRows = 256;
+        ImageHistogram histogram;
+        for (int top = 0; top < height; top += kStripRows) {
+            const int rows = std::min(kStripRows, height - top);
+            const std::vector<uint8_t> strip =
+                PixelFX::Conversion::ToMemory(PixelFX::Conversion::ExtractArea(p, 0, top, width, rows));
+            histogram.Add(ComputeImageHistogram(strip.data(), width, rows, width * bytesPerPixel, format));
+        }
+        dialog.SetHistograms(histogram);
     } catch (...) {
         // A colourspace the histogram pass cannot handle simply leaves the
         // curve grid without its backdrop.
@@ -2982,7 +4102,7 @@ void UltraCanvasMediaViewer::ShowCurvesDialog() {
     // and a drawing's pixels are only a rendering of it. The toolbar hides
     // the button then; this guards any other way in.
     if (!tools.colour) {
-        if (infoLabel) infoLabel->SetText("Curves apply to bitmap images only");
+        if (infoLabel) infoLabel->SetText(Tr("Curves apply to bitmap images only"));
         return;
     }
 
@@ -3129,10 +4249,223 @@ void UltraCanvasMediaViewer::ZoomPercentAction(double percent) {
     if (activeKind == MediaKind::Image && surface) surface->SetZoomPercent(percent);
 }
 
+// ===== AUTOMATIC BACKDROP =====
+
+namespace {
+    // WCAG relative luminance of an sRGB colour, 0 (black) .. 1 (white).
+    double RelativeLuminance(const Color& c) {
+        static const auto linear = [] {
+            std::array<double, 256> t{};
+            for (int i = 0; i < 256; ++i) {
+                const double v = i / 255.0;
+                t[static_cast<size_t>(i)] = v <= 0.04045 ? v / 12.92
+                                                         : std::pow((v + 0.055) / 1.055, 2.4);
+            }
+            return t;
+        }();
+        return 0.2126 * linear[c.r] + 0.7152 * linear[c.g] + 0.0722 * linear[c.b];
+    }
+}
+
+Color UltraCanvasMediaViewer::ContrastingBackdropFor(const std::vector<Color>& pixels) {
+    // In the order a tie goes: the brighter backdrop first.
+    static const Color candidates[] = {
+        Color(255, 255, 255, 255), Color(153, 153, 153, 255), Color(51, 51, 51, 255)
+    };
+    constexpr int kCount = 3;
+    // A contrast of 4.5:1 reads clearly (the WCAG text threshold); more than
+    // that buys nothing, so a backdrop is judged by how much of the artwork
+    // reaches it - which is what makes artwork in black AND white land on mid
+    // grey rather than on white with its white half lost. The mean log
+    // contrast only breaks a tie (black line art reads on white and on mid
+    // grey alike; white shows it best).
+    constexpr double kEnough = 4.5;
+    double backdropL[kCount];
+    for (int i = 0; i < kCount; ++i) backdropL[i] = RelativeLuminance(candidates[i]);
+    double reached[kCount] = {0.0, 0.0, 0.0};
+    double logContrast[kCount] = {0.0, 0.0, 0.0};
+    double weight = 0.0;
+    for (const Color& p : pixels) {
+        if (p.a == 0) continue;
+        const double w = p.a / 255.0;
+        const double l = RelativeLuminance(p);
+        weight += w;
+        for (int i = 0; i < kCount; ++i) {
+            const double contrast = (std::max(l, backdropL[i]) + 0.05) /
+                                    (std::min(l, backdropL[i]) + 0.05);
+            reached[i] += w * std::min(contrast, kEnough) / kEnough;
+            logContrast[i] += w * std::log(contrast);
+        }
+    }
+    if (weight < 1.0) return candidates[0];
+    int best = 0;
+    for (int i = 1; i < kCount; ++i) {
+        const double a = reached[i] / weight, b = reached[best] / weight;
+        if (a > b + 1e-9 || (std::fabs(a - b) <= 1e-9 && logContrast[i] > logContrast[best]))
+            best = i;
+    }
+    return candidates[best];
+}
+
+void UltraCanvasMediaViewer::RefreshAutoBackdrop() {
+    if (!surface) return;
+    if (surface->GetTransparentBackground() == TransparentImageBackground::Auto) {
+        // A small copy of what is on show is enough to judge it by.
+        constexpr int kSample = 64;
+        std::vector<Color> pixels;
+        if (const UltraCanvasVectorElement* vv = ActiveVectorView()) {
+            if (auto doc = vv->GetDocument()) {
+                const Size2Dd page = vv->GetDocumentSize();
+                VectorRasterOptions opts;
+                if (page.width > 0 && page.height > 0) {
+                    const double s = kSample / std::max(page.width, page.height);
+                    opts.width  = std::max(1, static_cast<int>(std::lround(page.width * s)));
+                    opts.height = std::max(1, static_cast<int>(std::lround(page.height * s)));
+                } else {
+                    opts.width = opts.height = kSample;
+                }
+                std::string error;
+                if (auto layer = RasterizeVectorDocument(*doc, opts, error)) {
+                    pixels.reserve(static_cast<size_t>(layer->GetWidth()) * layer->GetHeight());
+                    for (int y = 0; y < layer->GetHeight(); ++y)
+                        for (int x = 0; x < layer->GetWidth(); ++x)
+                            pixels.push_back(layer->GetPixel(x, y).ToColor());
+                }
+            }
+        } else if (activeKind == MediaKind::Image) {
+            // An opaque picture covers its backdrop: nothing to judge.
+            auto img = surface->GetImage();
+            if (img && img->IsValid() && !surface->HasDecodeFailure() && img->HasTransparency()) {
+                if (auto pm = img->GetPixmap(kSample, kSample, ImageFitMode::Contain)) {
+                    const int w = pm->GetRawWidth(), h = pm->GetRawHeight();
+                    pixels.reserve(static_cast<size_t>(w) * h);
+                    for (int y = 0; y < h; ++y) {
+                        for (int x = 0; x < w; ++x) {
+                            // Cairo's premultiplied ARGB32, straightened.
+                            const uint32_t v = pm->GetPixel(x, y);
+                            const int a = static_cast<int>(v >> 24);
+                            if (a == 0) continue;
+                            auto un = [a](uint32_t c) {
+                                return static_cast<uint8_t>(std::min(255u, (c * 255u + a / 2) / a));
+                            };
+                            pixels.emplace_back(un((v >> 16) & 0xFF), un((v >> 8) & 0xFF),
+                                                un(v & 0xFF), static_cast<uint8_t>(a));
+                        }
+                    }
+                }
+            }
+        }
+        surface->SetAutoBackdropColor(ContrastingBackdropFor(pixels));
+    }
+    ApplyDrawingBackdrop();
+}
+
+void UltraCanvasMediaViewer::ApplyDrawingBackdrop() {
+    if (!vectorView || !surface) return;
+    auto* vv = static_cast<UltraCanvasVectorElement*>(vectorView.get());
+    // A solid colour picked in the strip is the user's; Auto, and the
+    // checkerboard the vector view cannot draw, take the Auto colour.
+    vv->SetBackgroundColor(
+            surface->GetTransparentBackground() == TransparentImageBackground::SolidColor
+                    ? surface->GetTransparentColor() : surface->GetAutoBackdropColor());
+}
+
+void UltraCanvasMediaViewer::UpdateZoomBox() {
+    if (!toolbar) return;
+    auto box = std::dynamic_pointer_cast<UltraCanvasDropdown>(toolbar->GetWidget("mv_zoom"));
+    if (!box) return;
+    double percent = -1.0;
+    bool fit = false;
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (activeKind == MediaKind::Document && pdfView) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        if (pv->HasDocument()) percent = pv->GetZoomPercent();
+    }
+#endif
+    if (activeKind == MediaKind::Book && bookView) {
+        auto* bv = static_cast<UltraCanvasEBookViewer*>(bookView.get());
+        if (bv->IsDocumentLoaded()) percent = bv->GetZoomPercent();
+    }
+    if (const UltraCanvasVectorElement* vv = ActiveVectorView()) {
+        if (vv->GetDocument()) {
+            percent = vv->GetZoom() * 100.0;
+            fit = vv->IsAtFit();
+        }
+    }
+    if (activeKind == MediaKind::Image && surface && tools.zoom) {
+        percent = surface->GetZoomPercent();
+        fit = surface->IsAutoFit();
+    }
+    // The box's items are "Fit" and whole percentages ("25%" ...).
+    int index = -1;
+    if (fit) {
+        index = 0;
+    } else if (percent > 0.0) {
+        const long rounded = std::lround(percent);
+        for (int i = 1; i < box->GetItemCount(); ++i)
+            if (std::lround(std::atof(box->GetItem(i)->text.c_str())) == rounded) index = i;
+    }
+    box->SetSelectedIndex(index, false);
+    char text[32] = "";
+    if (index < 0 && percent > 0.0) snprintf(text, sizeof(text), "%.0f%%", percent);
+    box->SetPlaceholderText(text);
+}
+
+const VideoFileInfo& UltraCanvasMediaViewer::ShownVideoInfo(const std::string& path) {
+    // The headers are read once per file; a file rewritten in place (same
+    // path, new size) is read again.
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+    if (path != videoFileInfoPath || (!ec && size != videoFileInfoSize)) {
+        videoFileInfoPath = path;
+        videoFileInfoSize = ec ? 0 : size;
+        if (!ReadVideoFileInfo(path, videoFileInfo)) videoFileInfo = VideoFileInfo{};
+    }
+    shownVideoInfo = videoFileInfo;
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    // A container the reader does not know (WMV, MPEG-TS, ...), or a fact its
+    // header leaves out: what the playback backend found, once it has the file.
+    if (videoPlayer) {
+        auto* vp = static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get());
+        if (auto p = vp->GetPlayer()) {
+            const VideoStreamInfo& si = p->GetStreamInfo();
+            VideoFileInfo& vi = shownVideoInfo;
+            if (vi.width <= 0 && si.width > 0 && si.height > 0) {
+                vi.width = vi.displayWidth = si.width;
+                vi.height = vi.displayHeight = si.height;
+                vi.hasVideo = true;
+            }
+            if (vi.frameRate <= 0 && si.frameRate > 0) vi.frameRate = si.frameRate;
+            if (vi.duration <= 0 && si.duration > 0) vi.duration = si.duration;
+            if (vi.container.empty() && si.hasAudio) vi.hasAudio = true;
+            if (vi.videoCodec.empty()) {
+                switch (si.codec) {
+                    case VideoCodec::H264:  vi.videoCodec = "H.264"; break;
+                    case VideoCodec::H265:  vi.videoCodec = "H.265"; break;
+                    case VideoCodec::VP8:   vi.videoCodec = "VP8"; break;
+                    case VideoCodec::VP9:   vi.videoCodec = "VP9"; break;
+                    case VideoCodec::AV1:   vi.videoCodec = "AV1"; break;
+                    case VideoCodec::MJPEG: vi.videoCodec = "Motion JPEG"; break;
+                    default: break;
+                }
+            }
+            if (vi.overallBitRate <= 0 && vi.duration > 0 && !ec)
+                vi.overallBitRate = int64_t(double(size) * 8.0 / vi.duration);
+        }
+    }
+#endif
+    return shownVideoInfo;
+}
+
 void UltraCanvasMediaViewer::UpdateInfoBar() {
+    UpdateZoomBox();
     if (!infoLabel) return;
     if (playlist.empty()) {
-        infoLabel->SetText("No media");
+        // "No media" is for a viewer that was asked for nothing; one with a
+        // file on its way names it.
+        infoLabel->SetText(loadingPath.empty()
+                ? Tr("No media")
+                : BaseName(loadingPath) + "   \xC2\xB7   " + Tr("loading"));
         return;
     }
     const std::string& path = playlist[currentIndex];
@@ -3211,20 +4544,88 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
 
+    if (activeKind == MediaKind::Video) {
+        // What a clip is at a glance: its picture size, frame rate, codec and
+        // sound - the numbers two copies of a film are told apart by.
+        const VideoFileInfo& vi = ShownVideoInfo(path);
+        const char* sep = "   \xC2\xB7   ";
+        std::ostringstream os;
+        os << BaseName(path) << sep << "VIDEO";
+        if (vi.width > 0 && vi.height > 0) {
+            os << sep << vi.width << " x " << vi.height;
+            if (vi.displayWidth > 0 && vi.displayHeight > 0 &&
+                (vi.displayWidth != vi.width || vi.displayHeight != vi.height))
+                os << " (" << vi.displayWidth << " x " << vi.displayHeight << ")";
+        }
+        if (vi.frameRate > 0) os << sep << FormatFrameRate(vi.frameRate) << " fps";
+        if (!vi.videoCodec.empty()) os << sep << vi.videoCodec;
+        if (vi.hasAudio) {
+            std::string audio = vi.audioCodec.empty() ? std::string("audio") : vi.audioCodec;
+            if (vi.sampleRate > 0) audio += " " + FormatSampleRate(vi.sampleRate);
+            const std::string channels = DescribeAudioChannels(vi.channels);
+            if (!channels.empty()) audio += " " + channels;
+            os << sep << audio;
+        } else if (!vi.container.empty()) {
+            os << sep << "no audio";   // the header was read and has no sound track
+        }
+        if (vi.duration > 0) os << sep << FormatMediaDuration(vi.duration);
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << sep << HumanSize(sz);
+        if (vi.rotation) os << sep << vi.rotation << "\xC2\xB0";
+        os << sep << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
+
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
         activeKind == MediaKind::Text || activeKind == MediaKind::Book ||
-        activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
-        std::string kindLabel = activeKind == MediaKind::Video ? "VIDEO"
-                              : activeKind == MediaKind::Audio ? "AUDIO"
+        activeKind == MediaKind::Audio) {
+        std::string kindLabel = activeKind == MediaKind::Audio ? "AUDIO"
                               : activeKind == MediaKind::Model ? "3D MODEL"
                               : activeKind == MediaKind::Book  ? "EBOOK"
-                              : activeKind == MediaKind::Text  ? "TEXT" : "SHEET";
+                              : activeKind == MediaKind::Text  ? (!webShown ? "TEXT"
+                                                                  : IsMailMessageFile(path) ? "EMAIL"
+                                                                  : IsWebArchiveFile(path) ? "WEB ARCHIVE" : "HTML")
+                                                               : "SHEET";
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
         std::error_code ec;
         auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
+
+    if (activeKind == MediaKind::Vector) {
+        // A drawing shown by the vector view or by a plugin's own element
+        // (CorelDRAW through libcdr): there is no bitmap on the image surface,
+        // so the branch below would call it "No media".
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   DRAWING";
+        std::string ext = LowerExt(path);
+        if (!ext.empty()) {
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return (char)std::toupper(c); });
+            os << " (" << ext << ")";
+        }
+        auto* vv = ActiveVectorView();
+        if (vv && vv->GetDocument()) {
+            const Size2Dd ds = vv->GetDocumentSize();
+            if (ds.width > 0 && ds.height > 0)
+                os << "   \xC2\xB7   " << static_cast<long>(std::lround(ds.width))
+                   << " x " << static_cast<long>(std::lround(ds.height));
+        }
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        if (vv && vv->GetDocument()) {
+            char zbuf[32];
+            snprintf(zbuf, sizeof(zbuf), "%.0f%%", vv->GetZoom() * 100.0);
+            os << "   \xC2\xB7   " << zbuf;
+        }
         infoLabel->SetText(os.str());
         return;
     }
@@ -3244,7 +4645,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
     if (!surface || !surface->GetImage() || !surface->GetImage()->IsValid()) {
-        infoLabel->SetText("No media");
+        // A drawing this build has no reader for and that stores no preview
+        // is a file that is there, not an absence of media.
+        infoLabel->SetText(IsVectorDocumentFile(path)
+                ? TrF("{0} - no preview stored in this vector document", BaseName(path))
+                : Tr("No media"));
         return;
     }
     auto img = surface->GetImage();
@@ -3275,10 +4680,61 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     infoLabel->SetText(os.str());
 }
 
+namespace {
+// The colour table of a GIF: the global one, or - for a file that has none -
+// the first image's local one; `isGlobal` says which. Empty for a file that
+// is not a GIF or has neither. Read from the file's own bytes: the 13-byte
+// header and the table after it, or the extension blocks before the first
+// image when the table is a local one.
+std::vector<Color> ReadGifPalette(const std::string& path, bool& isGlobal) {
+    std::vector<Color> out;
+    isGlobal = false;
+    std::FILE* f = OpenFileUtf8(path, "rb");
+    if (!f) return out;
+    struct Closer { std::FILE* f; ~Closer() { std::fclose(f); } } closer{f};
+    unsigned char header[13];
+    if (std::fread(header, 1, sizeof(header), f) != sizeof(header)) return out;
+    if (std::memcmp(header, "GIF87a", 6) != 0 && std::memcmp(header, "GIF89a", 6) != 0) return out;
+    auto readTable = [&](unsigned char packed) {
+        const size_t n = size_t(1) << ((packed & 7) + 1);
+        std::vector<unsigned char> rgb(n * 3);
+        if (std::fread(rgb.data(), 1, rgb.size(), f) != rgb.size()) return;
+        out.reserve(n);
+        for (size_t i = 0; i < n; ++i) out.emplace_back(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2], 255);
+    };
+    if (header[10] & 0x80) {
+        isGlobal = true;
+        readTable(header[10]);
+        return out;
+    }
+    // No global table: past the extensions (comments, the animation's loop
+    // and frame controls) to the first image descriptor and its local table.
+    for (int blocks = 0; blocks < 1024; ++blocks) {
+        const int introducer = std::fgetc(f);
+        if (introducer == 0x2C) {
+            unsigned char descriptor[9];
+            if (std::fread(descriptor, 1, sizeof(descriptor), f) != sizeof(descriptor)) return out;
+            if (descriptor[8] & 0x80) readTable(descriptor[8]);
+            return out;
+        }
+        if (introducer != 0x21 || std::fgetc(f) == EOF) return out;   // the trailer, or not a GIF
+        for (;;) {   // the extension's data sub-blocks, up to the empty one
+            const int length = std::fgetc(f);
+            if (length == EOF) return out;
+            if (length == 0) break;
+            if (std::fseek(f, length, SEEK_CUR) != 0) return out;
+        }
+    }
+    return out;
+}
+} // namespace
+
 void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     if (!surface) return;
     if (playlist.empty()) {
-        ShowDetailsText("No media\n");
+        ShowDetailsText(loadingPath.empty()
+                ? std::string("No media\n")
+                : "Loading\n\nFile: " + BaseName(loadingPath) + "\nPath: " + loadingPath + "\n");
         return;
     }
     const std::string& path = playlist[currentIndex];
@@ -3354,18 +4810,99 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     }
 #endif
 
+    if (activeKind == MediaKind::Video) {
+        const VideoFileInfo& vi = ShownVideoInfo(path);
+        std::ostringstream vos;
+        vos << "Video information\n\n";
+        vos << "File: " << BaseName(path) << "\n";
+        vos << "Path: " << path << "\n";
+        std::error_code vec;
+        auto vsz = fs::file_size(UltraCanvas::PathFromUtf8(path), vec);
+        if (!vec) vos << "Size: " << HumanSize(vsz) << "\n";
+        std::string ext = LowerExt(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return (char)std::toupper(c); });
+        vos << "Type: Video (" << ext << ")\n";
+        if (!vi.container.empty()) {
+            vos << "Container: " << vi.container;
+            if (!vi.brand.empty()) vos << " (brand " << vi.brand << ")";
+            vos << "\n";
+        }
+        if (vi.duration > 0) vos << "Duration: " << FormatMediaDuration(vi.duration, true) << "\n";
+        if (vi.overallBitRate > 0) vos << "Overall bit rate: " << FormatBitRate(vi.overallBitRate) << "\n";
+        if (!vi.title.empty()) vos << "Title: " << vi.title << "\n";
+        if (!vi.encoder.empty()) vos << "Encoder: " << vi.encoder << "\n";
+        if (!vi.creationTime.empty()) vos << "Created: " << vi.creationTime << " UTC\n";
+
+        vos << "\n## Video\n";
+        if (!vi.hasVideo && vi.width <= 0) {
+            vos << (vi.container.empty() ? "Not known for this kind of file.\n"
+                                         : "No picture track was found in the file's header.\n");
+        } else {
+            if (!vi.videoCodec.empty()) vos << "Codec: " << vi.videoCodec << "\n";
+            if (!vi.videoProfile.empty()) vos << "Profile: " << vi.videoProfile << "\n";
+            if (vi.width > 0 && vi.height > 0) {
+                vos << "Dimensions: " << vi.width << " x " << vi.height << " px\n";
+                if (vi.displayWidth > 0 && vi.displayHeight > 0 &&
+                    (vi.displayWidth != vi.width || vi.displayHeight != vi.height))
+                    vos << "Display size: " << vi.displayWidth << " x " << vi.displayHeight << " px\n";
+                const std::string aspect = DescribeAspectRatio(
+                        vi.displayWidth > 0 ? vi.displayWidth : vi.width,
+                        vi.displayHeight > 0 ? vi.displayHeight : vi.height);
+                if (!aspect.empty()) vos << "Aspect ratio: " << aspect << "\n";
+            }
+            if (vi.frameRate > 0) vos << "Frame rate: " << FormatFrameRate(vi.frameRate) << " fps\n";
+            if (vi.frameCount > 0) vos << "Frames: " << vi.frameCount << "\n";
+            if (vi.videoBitRate > 0) vos << "Bit rate: " << FormatBitRate(vi.videoBitRate) << "\n";
+            if (vi.bitDepth > 0) vos << "Bit depth: " << vi.bitDepth << " bits\n";
+            if (vi.rotation) vos << "Rotation: " << vi.rotation << "\xC2\xB0 clockwise\n";
+        }
+
+        vos << "\n## Audio\n";
+        if (!vi.hasAudio) {
+            vos << (vi.container.empty() ? "Not known for this kind of file.\n"
+                                         : "No sound track.\n");
+        } else {
+            if (!vi.audioCodec.empty()) vos << "Codec: " << vi.audioCodec << "\n";
+            if (vi.sampleRate > 0) vos << "Sample rate: " << FormatSampleRate(vi.sampleRate) << "\n";
+            if (vi.channels > 0) {
+                vos << "Channels: " << vi.channels;
+                if (vi.channels <= 2 || vi.channels == 6 || vi.channels == 8)
+                    vos << " (" << DescribeAudioChannels(vi.channels) << ")";
+                vos << "\n";
+            }
+            if (vi.bitsPerSample > 0) vos << "Bit depth: " << vi.bitsPerSample << " bits\n";
+            if (vi.audioBitRate > 0) vos << "Bit rate: " << FormatBitRate(vi.audioBitRate) << "\n";
+            if (!vi.audioLanguage.empty()) vos << "Language: " << vi.audioLanguage << "\n";
+        }
+
+        if (vi.videoTracks > 1 || vi.audioTracks > 1 || vi.subtitleTracks > 0) {
+            vos << "\n## Tracks\n";
+            vos << "Video tracks: " << vi.videoTracks << "\n";
+            vos << "Audio tracks: " << vi.audioTracks << "\n";
+            vos << "Subtitle tracks: " << vi.subtitleTracks << "\n";
+        }
+        ShowDetailsText(vos.str());
+        return;
+    }
+
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
-        activeKind == MediaKind::Text || activeKind == MediaKind::Video ||
-        activeKind == MediaKind::Audio) {
-        const char* heading = activeKind == MediaKind::Video ? "Video information\n\n"
-                            : activeKind == MediaKind::Audio ? "Audio information\n\n"
+        activeKind == MediaKind::Text ||
+        activeKind == MediaKind::Audio || activeKind == MediaKind::Vector) {
+        const char* heading = activeKind == MediaKind::Audio ? "Audio information\n\n"
+                            : activeKind == MediaKind::Vector ? "Drawing information\n\n"
                             : activeKind == MediaKind::Model ? "3D model information\n\n"
-                            : activeKind == MediaKind::Text  ? "Text information\n\n"
+                            : activeKind == MediaKind::Text  ? (!webShown ? "Text information\n\n"
+                                                                : IsMailMessageFile(path) ? "Message information\n\n"
+                                                                : "Page information\n\n")
                                                              : "Spreadsheet information\n\n";
-        const char* typeName = activeKind == MediaKind::Video ? "Video"
-                             : activeKind == MediaKind::Audio ? "Audio"
+        const char* typeName = activeKind == MediaKind::Audio ? "Audio"
+                             : activeKind == MediaKind::Vector ? "Vector drawing"
                              : activeKind == MediaKind::Model ? "3D model"
-                             : activeKind == MediaKind::Text  ? "Text" : "Spreadsheet";
+                             : activeKind == MediaKind::Text  ? (!webShown ? "Text"
+                                                               : IsMailMessageFile(path) ? "E-mail message"
+                                                               : IsWebArchiveFile(path) ? "Saved web page" : "HTML page")
+                                                              : "Spreadsheet";
         std::ostringstream mos;
         mos << heading;
         mos << "File: " << BaseName(path) << "\n";
@@ -3399,6 +4936,15 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         }
     }
 
+    // A GIF's colour table, shown as swatches under the text.
+    bool paletteGlobal = false;
+    const std::vector<Color> palette = ReadGifPalette(path, paletteGlobal);
+    const std::string paletteSize = std::to_string(palette.size()) +
+                                    (palette.size() == 1 ? " colour" : " colours");
+    if (!palette.empty())
+        os << "Palette: " << paletteSize
+           << (paletteGlobal ? " (global colour table)\n" : " (first frame's colour table)\n");
+
 #ifdef HAS_LIBVIPS
     try {
         PixelFX::PXImageFileInfo fi = PixelFX::ExtractImageInfo(path);
@@ -3424,6 +4970,8 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         os << "\n## Metadata\n";
         for (const auto& e : entries) {
             if (e.group == "Image") continue;
+            // The Palette row above, and the swatches, already say it.
+            if (!palette.empty() && e.key == "GIF palette") continue;
             ++total;
             if (shown >= kMaxEntries) continue;
             if (e.group != group) {
@@ -3443,6 +4991,9 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 #endif
 
     ShowDetailsText(os.str());
+    if (!palette.empty())
+        ShowDetailsPalette(palette, TrN("Palette - {n} colour", "Palette - {n} colours",
+                                        static_cast<long long>(palette.size())));
 }
 
 // ===== DETAILS PANEL =====
@@ -3469,8 +5020,10 @@ std::string EscapeDetailsCell(const std::string& text) {
 // The details builders write "Title\n\nKey: value" lines, the form the text
 // view and a log read well. The panel shows them as Markdown: the title as a
 // heading, each run of "Key: value" lines as a two-column table, "## " /
-// "### " lines as section headings and anything else as a paragraph.
-std::string DetailsToMarkdown(const std::string& plain) {
+// "### " lines as section headings and anything else as a paragraph. With
+// `title` given, the title is handed back there instead of becoming a
+// heading (the Details panel shows it as its caption).
+std::string DetailsToMarkdown(const std::string& plain, std::string* title = nullptr) {
     std::istringstream in(plain);
     std::ostringstream md;
     std::string line;
@@ -3480,14 +5033,18 @@ std::string DetailsToMarkdown(const std::string& plain) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (first) {
             if (line.empty()) continue;
-            md << "## " << EscapeDetailsCell(line) << "\n\n";
+            if (title) *title = line;
+            else md << "## " << EscapeDetailsCell(line) << "\n\n";
             first = false;
             continue;
         }
         if (line.empty()) { endTable(); continue; }
         if (line.rfind("## ", 0) == 0 || line.rfind("### ", 0) == 0) {
             endTable();
-            md << "\n" << line << "\n\n";
+            // A section heading with its title as the caption is one level
+            // down, so "Metadata" stays above "EXIF" but below nothing big.
+            if (title) md << "\n#" << line << "\n\n";
+            else       md << "\n" << line << "\n\n";
             continue;
         }
         const size_t colon = line.find(": ");
@@ -3508,11 +5065,30 @@ std::string DetailsToMarkdown(const std::string& plain) {
 } // namespace
 
 void UltraCanvasMediaViewer::ShowDetailsText(const std::string& plain) {
-    detailsMarkdown = DetailsToMarkdown(plain);
-    if (!detailsView) return;
-    auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+    std::string title;
+    detailsMarkdown = DetailsToMarkdown(plain, &title);
+    ShowDetailsPalette({}, "");
+    if (!detailsView || !detailsText) return;
+    static_cast<UltraCanvasGroupBox*>(detailsView.get())->SetTitle(title.empty() ? Tr("Details") : title);
+    auto* dv = static_cast<UltraCanvasTextArea*>(detailsText.get());
     dv->SetText(detailsMarkdown);
     dv->ScrollTo(0);
+}
+
+void UltraCanvasMediaViewer::ShowDetailsPalette(const std::vector<Color>& colours,
+                                                const std::string& caption) {
+    if (!detailsPalette || !detailsPaletteCaption) return;
+    auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+    auto* cap = static_cast<UltraCanvasLabel*>(detailsPaletteCaption.get());
+    const bool show = !colours.empty();
+    bar->SetColors(colours);
+    bar->ClearSelection();
+    bar->SetVisible(show);
+    detailsPaletteText = caption;
+    cap->SetText(caption);
+    cap->SetVisible(show);
+    InvalidateLayout();
+    RequestRedraw();
 }
 
 void UltraCanvasMediaViewer::ShowNote(const std::string& plain) {
@@ -3552,6 +5128,13 @@ void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
             UpdateInfoBar();
         }
     }
+    if (loadingIndicator && loadingIndicator->IsVisible() && surface) {
+        const Rect2Df s = surface->GetBounds();
+        constexpr float kRing = 44.0f;
+        loadingIndicator->Arrange(Rect2Df(s.x + std::max(0.0f, (s.width - kRing) * 0.5f),
+                                          s.y + std::max(0.0f, (s.height - kRing) * 0.5f),
+                                          kRing, kRing), ctx);
+    }
     if (!IsDetailsVisible()) return;
     // Over the active view, inset a little, and no wider than a table of
     // tags and values reads comfortably.
@@ -3562,6 +5145,19 @@ void UltraCanvasMediaViewer::Arrange(const Rect2Df& finalRect,
     float w = std::min(kMaxWidth, area.width - 2 * kInset);
     float h = area.height - 2 * kInset;
     if (w < 60.0f || h < 60.0f) return;
+    // A palette takes the height its swatches need at the panel's inner
+    // width, but never more than half the panel: the text keeps the rest.
+    if (detailsPalette && detailsPalette->IsVisible()) {
+        auto* panel = static_cast<UltraCanvasGroupBox*>(detailsView.get());
+        const GroupBoxVisualStyle& look = panel->GetVisualStyle();
+        auto* bar = static_cast<UltraCanvasColorSwatchBar*>(detailsPalette.get());
+        auto* text = static_cast<UltraCanvasTextArea*>(detailsText.get());
+        const float margin = text->GetStyle().textPadding + text->GetMarkdownStyle().tableCellPadding -
+                             bar->GetStyle().padding;
+        const float inner = std::max(10.0f, w - 2.0f * (look.borderWidth + look.contentPadding + margin));
+        const float barH = std::min(bar->HeightForWidth(inner), h * 0.5f);
+        bar->SetElementSize(Size2Df(inner, barH));
+    }
     detailsView->Arrange(Rect2Df(area.x + kInset, area.y + kInset, w, h), ctx);
 }
 
@@ -3759,7 +5355,8 @@ UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
         case MediaKind::Document: return pdfView.get();
         case MediaKind::Sheet:    return sheetView.get();
         case MediaKind::Model:    return modelView.get();
-        case MediaKind::Text:     return noteShown ? noteView.get() : textView.get();
+        case MediaKind::Text:     return noteShown ? noteView.get()
+                                       : webShown  ? webView.get() : textView.get();
         case MediaKind::Book:     return bookView.get();
         case MediaKind::Font:     return fontView.get();
         case MediaKind::Vector:   return pluginView ? pluginView.get()
@@ -3771,12 +5368,21 @@ UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
     }
 }
 
+bool UltraCanvasMediaViewer::IsInWebView(const UltraCanvasUIElement* element) const {
+    // The page is built of many elements (labels, pictures, tables), any of
+    // which a click can focus; they are all part of the one display view.
+    for (const UltraCanvasUIElement* e = element; e && webView; e = e->GetParentContainer()) {
+        if (e == webView.get()) return true;
+    }
+    return false;
+}
+
 bool UltraCanvasMediaViewer::IsDisplayView(const UltraCanvasUIElement* element) const {
     if (!element) return false;
     return element == surface.get()     || element == pdfView.get() ||
            element == sheetView.get()   || element == modelView.get() ||
            element == textView.get()    || element == bookView.get() ||
-           element == noteView.get()    ||
+           element == noteView.get()    || IsInWebView(element) ||
            element == vectorView.get()  || element == pluginView.get() ||
            element == videoPlayer.get() || element == audioPlayer.get();
 }
@@ -3815,7 +5421,73 @@ void UltraCanvasMediaViewer::SetWindow(UltraCanvasWindowBase* win) {
     if (grabFocusOnAttach) FocusForKeyboard();
 }
 
+UltraCanvasTextArea* UltraCanvasMediaViewer::SelectableTextAt(const Point2Di& windowPoint) const {
+    const Point2Df p(static_cast<float>(windowPoint.x), static_cast<float>(windowPoint.y));
+    auto under = [&](const std::shared_ptr<UltraCanvasUIElement>& e) -> UltraCanvasTextArea* {
+        if (!e || !e->IsVisible()) return nullptr;
+        for (const UltraCanvasUIElement* a = e->GetParentContainer(); a; a = a->GetParentContainer())
+            if (!a->IsVisible()) return nullptr;
+        return e->GetBoundsInWindow().Contains(p) ? static_cast<UltraCanvasTextArea*>(e.get()) : nullptr;
+    };
+    // The Details panel floats over the view, so it is asked first.
+    if (IsDetailsVisible())
+        if (auto* ta = under(detailsText)) return ta;
+    if (activeKind != MediaKind::Text || webShown) return nullptr;
+    return under(noteShown ? noteView : textView);
+}
+
+bool UltraCanvasMediaViewer::HandleTextCopyKey(const UCEvent& event) {
+    if (event.type != UCEventType::KeyDown || event.alt || event.shift) return false;
+    const bool command = event.ctrl || event.meta;
+    if (!command) return false;
+    const bool copy = event.virtualKey == UCKeys::C ||
+                      (event.ctrl && event.virtualKey == UCKeys::Insert);
+    const bool all  = event.virtualKey == UCKeys::A;
+    if (!copy && !all) return false;
+
+    auto* details = IsDetailsVisible() && detailsText
+        ? static_cast<UltraCanvasTextArea*>(detailsText.get()) : nullptr;
+    UltraCanvasTextArea* shown = nullptr;
+    if (activeKind == MediaKind::Text && !webShown) {
+        UltraCanvasUIElement* e = noteShown ? noteView.get() : textView.get();
+        if (e && e->IsVisible()) shown = static_cast<UltraCanvasTextArea*>(e);
+    }
+
+    if (copy) {
+        for (UltraCanvasTextArea* ta : {details, shown}) {
+            if (ta && ta->HasSelection()) {
+                ta->CopySelection();
+                return true;
+            }
+        }
+        return false;
+    }
+    // Select All acts on the area the user last worked in, when it is still
+    // on show; otherwise on the open Details panel, then the text view.
+    UltraCanvasTextArea* target = nullptr;
+    if (lastPressedText && (lastPressedText == details || lastPressedText == shown))
+        target = lastPressedText;
+    if (!target) target = details ? details : shown;
+    if (!target) return false;
+    target->SelectAll();
+    return true;
+}
+
 bool UltraCanvasMediaViewer::HandleFilteredKey(const UCEvent& event) {
+    if (event.type == UCEventType::MouseDown) {
+        // A press in a display-only text area (to select, or to open its
+        // Copy menu) brings the keyboard here, so the copy keys reach
+        // HandleTextCopyKey. The press itself goes on to the area.
+        if (!IsEffectivelyVisible()) return false;
+        auto* win = GetWindow();
+        if (!win || win->GetActivePopupElement()) return false;
+        if (event.button != UCMouseButton::Left && event.button != UCMouseButton::Right) return false;
+        if (UltraCanvasTextArea* ta = SelectableTextAt(event.pointerWindow)) {
+            lastPressedText = ta;
+            if (!IsFocused()) FocusForKeyboard();
+        }
+        return false;
+    }
     if (event.type != UCEventType::KeyDown) return false;
     if (!IsEffectivelyVisible()) return false;
     auto* win = GetWindow();
@@ -3835,10 +5507,13 @@ bool UltraCanvasMediaViewer::HandleFilteredKey(const UCEvent& event) {
 bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
     if (event.type != UCEventType::KeyDown) return false;
 
+    // Copy / Select All in the text the viewer shows.
+    if (HandleTextCopyKey(event)) return true;
+
     // The open Details panel takes Escape and the scrolling keys; Left / Right
     // keep browsing, and the panel follows the file.
-    if (IsDetailsVisible()) {
-        auto* dv = static_cast<UltraCanvasTextArea*>(detailsView.get());
+    if (IsDetailsVisible() && detailsText) {
+        auto* dv = static_cast<UltraCanvasTextArea*>(detailsText.get());
         switch (event.virtualKey) {
             case UCKeys::Escape:   SetDetailsVisible(false); return true;
             case UCKeys::Up:       dv->ScrollUp(1);          return true;
@@ -3875,6 +5550,23 @@ bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
         return true;
     }
 
+    // A rendered page scrolls by the same keys: the viewer keeps the
+    // keyboard, so Left / Right still browse.
+    if (activeKind == MediaKind::Text && webShown && webView) {
+        auto* wv = static_cast<UltraCanvasWebView*>(webView.get());
+        const int line = 40;
+        const int page = std::max(line, static_cast<int>(wv->GetHeight()) - line);
+        switch (event.virtualKey) {
+            case UCKeys::Up:       wv->ScrollBy(-line);   return true;
+            case UCKeys::Down:     wv->ScrollBy(line);    return true;
+            case UCKeys::PageUp:   wv->ScrollBy(-page);   return true;
+            case UCKeys::PageDown: wv->ScrollBy(page);    return true;
+            case UCKeys::Space:    wv->ScrollBy(event.shift ? -page : page); return true;
+            default: break;
+        }
+        return false;
+    }
+
     // The text view (or a note in its place) is display-only, so scrolling
     // it is the widget's job.
     UltraCanvasUIElement* shownText = noteShown ? noteView.get() : textView.get();
@@ -3886,10 +5578,6 @@ bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
             case UCKeys::PageUp:   ta->ScrollUp(10);    return true;
             case UCKeys::PageDown: ta->ScrollDown(10);  return true;
             default: break;
-        }
-        if (event.ctrl && (event.character == 'c' || event.character == 'C')) {
-            ta->CopySelection();
-            return true;
         }
         return false;
     }

@@ -17,10 +17,6 @@
 #include <cmath>
 #include <algorithm>
 
-// X11 defines `None` as a macro that clobbers our enumerators.
-#ifdef None
-#undef None
-#endif
 
 namespace UltraCanvas {
 
@@ -51,7 +47,7 @@ namespace UltraCanvas {
         Inside,         // Label inside the shape
         Outside,        // Label outside the shape
         Tooltip,        // Label shown on hover only
-        None            // No labels
+        NoLabels            // No labels
     };
 
 /// Predefined color themes for the chart

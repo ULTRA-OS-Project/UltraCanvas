@@ -1,3 +1,521 @@
+#### 2026-11-11 *1.107.11*
+- **Copying and pasting keeps the files' original dates.** A pasted, dropped
+  or duplicated file - and a file moved to another drive - was dated the
+  moment of the copy: on Windows its *Created* date, on Linux and macOS every
+  date, and a large file or a folder lost all of them on every system. Copies
+  now keep the original's modified and accessed dates everywhere and its
+  created date on Windows and macOS (Linux lets no program set a creation
+  date). A folder's dates are set after its contents are copied in.
+- **Settings > Extras > Proxy.** FTP, SFTP, WebDAV and the cloud drives go
+  through the proxy every ULTRA OS application shares - the system's until
+  another is chosen - and the page opens the Proxy settings dialog to choose
+  one: none, or an HTTP or SOCKS proxy with the hosts reached directly and a
+  sign-in. Before, a remote drive never went through a proxy.
+- **Files copied to or from a remote drive, or extracted from an archive, keep
+  their dates.** An upload to an FTP, SFTP, WebDAV, Nextcloud, Dropbox,
+  Google Drive or OneDrive drive was dated the moment it arrived, and a file
+  copied off one the moment it landed. Now an upload keeps the file's
+  modified date (and its created date on Nextcloud, Google Drive and OneDrive)
+  and a download gets the date the server holds. *Extract* gives an
+  unpacked file its date from the archive and, from a ZIP or 7z, its created
+  date as well on Windows and macOS.
+- **A video's details now say what the clip is.** The preview's Details panel
+  showed only a video's name, path, size and type, and the status bar its
+  name, size and position in the folder. Both now read the clip's own headers
+  (MP4 / MOV, MKV / WebM, AVI) through the framework's new
+  `ReadVideoFileInfo`: the status bar adds the picture size, frame rate, video
+  codec, the sound (codec, sample rate, channels - or *no audio*) and the
+  length; the Details panel adds the container, exact duration, bit rates,
+  codec profile and level, display size and aspect ratio, frame count, bit
+  depth, rotation, the sound's channels and language, the track counts and
+  the file's title, encoder and creation time.
+- **The file list names a film's picture size.** A video's line under its icon
+  (the Length field) and in the status bar now reads
+  `1:23 · 1920 × 1080 · H.264` - a phone's portrait clip upright, an
+  anamorphic one at its display width - from the same header reader the
+  preview's Details use, so the two never disagree; before it said the length
+  and the codec only, from a parser of the list's own.
+
+#### 2026-11-10 *1.107.10*
+- **A file on a drive with no preview opens in its program.** Double-clicking
+  a document, a spreadsheet, an archive or anything else on a drive that the
+  preview pane does not show did nothing: the system's opener was handed the
+  drive's path and found no file. It is now fetched like any download, with
+  its progress on the status line, into UltraCanvas's cache folder
+  (`remote-opened`, one folder per file and version) and opened with the
+  program this computer opens its type with (`OpenRemoteFile`). The status
+  line says changes to the copy are not saved to the drive. Opened again
+  while the file on the server is unchanged, the same copy opens without a
+  request; a fetch that did not finish is never opened. A program, a script,
+  an installer or a launcher is not started from a drive - the dialog says to
+  copy it to this computer first - since on Windows the system's opener runs
+  such a file. A fetch that fails says so in a dialog, a file no longer there
+  as *File not found* with its folder read again.
+- **A drive's folder fetched a while ago is asked for again when opened.**
+  Within a session a listing was served from the cache for good, so leaving
+  a folder and coming back never showed a file another device had added or
+  deleted. A listing older than two minutes (`kRemoteListingFreshFor`) is now
+  shown as it was and fetched again behind it when its folder is listed, as
+  a listing kept from the last run is; within the two minutes, and for a
+  subfolder fetched ahead, it costs no request.
+- **Configure drive saves while the server is out of reach.** Save always
+  signed in first, so a drive whose server could not be reached could not
+  even be renamed. Once that sign-in fails, *Save without signing in* appears
+  beside Cancel and stores the settings as they are, to be tried the next
+  time the drive is opened.
+
+#### 2026-11-10 *1.107.9*
+- **The path bar names a drive by its volume, and a setting says whether.**
+  The path bar above the file display called a drive "D:" while the folder
+  tree and the Computer page call it "My Passport Ultra (D:)". It now shows
+  the same name, on the drive's own node and in the list of drives under its
+  Computer entry, also over each pane of the split view. Settings > Display
+  > Path bar turns it off, for a shorter strip with the letter alone (saved
+  as `display.pathbar.volume.names`, on by default). The names are the ones
+  the tree has already read, so the strip never waits on a disk; a drive
+  whose volume has no name, and a network drive, keep the letter.
+
+#### 2026-11-10 *1.107.8*
+- **A remote drive that can no longer sign in can be deleted or mended.**
+  Its row under *Remote Drives* kept *Delete* greyed out, like every root of
+  the tree, and nothing offered to change its settings, so a drive whose
+  password was changed on the server stayed in the tree for good, failing.
+  - *Delete* on a drive's row now deletes the drive from UltraFiler, after a
+    question that says the files on the server are not touched: its account
+    and saved password go (`UltraFilerRemoteDrives::RemoveDrive`), and so do
+    its cached listings and the requests still waiting for it - the question
+    counts the uploads and downloads that are dropped. A display on the drive
+    moves to Home.
+  - *Configure drive* beside it opens the add-drive form filled in with the
+    drive's settings (UltraCloud's new `ShowEditAccountDialog`): the kind of
+    server fixed, the protocol, server, port, user, key file and folder as
+    stored, and the password field empty, which keeps the saved password
+    unless a new one is typed. Saving signs in first and stores only what the
+    server accepts; the drive keeps its id, so open folders and pins on it
+    still work, and is read again with the new settings. Its sign-ins are in
+    the connection log as *Configure drive*.
+- **Refresh on every folder.** A drive's folders are shown from a cache, so
+  a file uploaded or deleted from another device did not show, even after
+  leaving the folder and coming back. *Refresh* is now in the folder tree's
+  context menu for every folder and drive row, and in the folder display's
+  context menu for the folder shown or the folder right-clicked: the folder
+  is read again with its tree rows and every display showing it, and on a
+  drive the server is asked again, ahead of the queue, while the files it
+  showed stay on screen (`RefreshFolderEverywhere`,
+  `UltraFilerRemoteDrives::RefreshFolder`). The toolbar's *Refresh* does the
+  same on a drive instead of blanking the folder until the answer is in.
+- **A file deleted on a drive says so in a dialog.** Selecting such a file -
+  a picture on Google Drive deleted from another device, say - only put
+  *No preview of ...* on the status line. A preview fetch that fails now
+  carries what kind of failure it was (`RemoteFailure`): a file that is not
+  there opens *File not found* and its folder is read again, so the file
+  leaves the display; a refused sign-in or another refusal opens *Cannot open
+  the file*, pointing to the connection log. A network that does not answer
+  or a service that asks to wait stays a note on the status line, and the
+  dialog comes once per selection, not at every update of the pane.
+
+#### 2026-11-10 *1.107.7*
+- **The Computer page lists the remote drives and the RAM discs too.** Under
+  Drives, a "Remote Drives" section has a card for each FTP / SFTP server and
+  cloud account, and a "RAM Discs" section one for each RAM disc - the same
+  card a drive has, opening the drive when clicked. A section shows only
+  while it has a card. A RAM disc that is also a drive letter (ImDisk) is
+  under RAM Discs, not Drives. A remote drive's ring stays neutral: UltraCloud
+  does not say how full a server or an account is. The page's headings are
+  translated now as well.
+- **A drive shows its name, as Explorer does.** The folder tree and the
+  drive cards on the Computer page used to call a drive by its letter alone
+  ("D:"); they now show the volume's own name with it - "My Passport Ultra
+  (D:)", "Windows-SSD (C:)". The name is read off the UI thread, so the
+  letters show first and the names follow a moment later; a renamed volume
+  is picked up on the next drive refresh. Network drives keep their letter.
+- **An external USB drive no longer appears twice.** A drive such as a
+  "My Passport Ultra" showed both as its letter (D:) and as a portable
+  device under its own name, reached through an `ultracloud://device-…`
+  path that lists the folders but draws no thumbnails and copies every file
+  over WPD. Only the drive letter is listed now; phones, cameras and players
+  (MTP / PTP) still come in as before.
+- **The "New RAM disc" dialog shows its whole note.** The explanation under
+  the size ran to more lines than its fixed box held, so its last line was
+  cut off just above the buttons. The note is now measured and as tall as
+  its text, the window grows to fit it, and Create and Cancel sit at the
+  bottom right (`UltraFilerRamDiskDialog.cpp` 1.1.2).
+- **The rest of the "New RAM disc" dialog is translated.** The notes on how
+  the memory is used, how much is free, and that everything is lost on
+  eject, and the messages for a missing, too long or wrongly spelt name,
+  were English in every language; they now go through `Tr` (German
+  included, the other languages follow with the next catalogue draft).
+- **The tree's Cloud Storage, Remote Drives and RAM Discs rows do something.**
+  Selecting one changed nothing. Each now opens the Computer page with its
+  own section alone: the cloud folders, the remote drives' cards, or the RAM
+  discs' cards. The Computer row, the breadcrumb and the Up button still show
+  the whole page.
+
+#### 2026-11-06 *1.107.6*
+- **A failed cloud operation or listing says why in your language.** A
+  download, upload, delete or rename that fails on a remote drive, and a
+  folder that cannot be listed, used to show only the provider's English
+  text ("cannot list this folder: 530 Login incorrect"). They now lead with
+  a sentence in the reader's language picked by the failure's kind -
+  sign-in refused, server unreachable, not found, the server's error with
+  its HTTP status, rate limited - through UltraCloud's `DescribeResult`,
+  and keep the provider's own words in brackets, since "550 Permission
+  denied" still tells the user what to change
+  (`UltraFilerRemoteDrives.cpp` 1.14.2).
+
+#### 2026-11-06 *1.107.5*
+- **Text selected in the preview pane can be copied.** Ctrl+C after
+  selecting text in a previewed text file or in the Details panel copied the
+  selected files instead (the file display still held the keyboard). A press
+  in the text now moves the keyboard to the preview, so Ctrl+C copies the
+  text, Ctrl+A selects all of it, and a right-click opens Copy / Select All.
+
+#### 2026-11-05 *1.107.4*
+- **The folder tree drops a folder deleted in the file pane, even when the
+  delete stopped at a locked file first.** Windows kept such a folder listed
+  until the program holding the file let go. The tree looked at the folder
+  the moment the delete reported, saw it still there, and kept its row. The
+  tree now also follows what a pane's folder watch sees change on disk. A
+  folder that goes later, or that another program deletes or creates in a
+  folder a pane shows, is brought in line as soon as the pane re-lists it.
+
+#### 2026-11-04 *1.107.3*
+- **UltraFiler in every language.** The settings window's last English
+  texts - the folder tree's colours and width, the file-operation and
+  thumbnail-cache captions, the cache figures, the TAR page's labels - go
+  through `Tr`, the counts through `TrN`; a cache note that translated only
+  its first half is one sentence now; the conflict choices' element ids no
+  longer change with the language. And UltraFiler's own catalogue
+  (`media/locale/<lang>/UltraFiler.json`) now exists in all thirty
+  languages: until now every one of its texts - the toolbar, the menus,
+  the dialogs, the status line, the whole settings window - showed in
+  English whatever the language.
+
+#### 2026-11-04 *1.107.2*
+- **Deleting a folder on an external drive no longer ends in "could not be
+  deleted even with administrator permission".** Windows answers "Access is
+  denied" for several things that are not about permission. Read-only
+  folders inside the one being deleted are one of them. So is a picture
+  UltraFiler itself still held from drawing its thumbnail. UltraFiler now
+  handles each of these as Explorer does, and asks for administrator rights
+  only when the access list says no. The framework change is
+  `UltraCanvasFileRemoval`; see the framework changelog.
+- **Deleting, moving or renaming a folder while the other pane shows a
+  subfolder of it works as it does with one pane.** The other pane's folder
+  watch no longer holds the subfolder open while the operation runs.
+- **A read-only folder is deleted without the "write-protected?" question on
+  Windows**, as Explorer deletes it.
+- **A pane whose folder is deleted - from the other pane or by another
+  program - moves up to the nearest folder that is still there**, instead of
+  showing an empty folder that no longer exists. A USB stick pulled out is
+  still waited for, so plugging it back in shows its folder again.
+
+#### 2026-11-04 *1.107.1*
+- Seventeen more texts go through `Tr`: the settings window's and the
+  properties' buttons, the Run Windows program dialog's environment item
+  and its Wine note, the folder tree's section names, the upload
+  conflict's and the eject question's buttons, the CSV export filter.
+
+#### 2026-11-04 *1.107.0*
+- **UltraFiler speaks the chosen language.** Its own texts - the toolbar's
+  tooltips and drop-downs, the menus, the dialogs (Find text, New RAM disc,
+  Run Windows program, the connection log, the properties), the status
+  line's messages and the whole settings window - go through `Tr`, so they
+  follow the language set in UOS-Settings; `media/locale/en/UltraFiler.json`
+  is its set, over the *Computer* base set and the standard set. The
+  settings window's start page gains **Translate UltraFiler...**, which
+  opens the localisation editor on UltraFiler's own set in the language it
+  runs in. Texts built from pieces in the deeper code paths (the remote
+  drives' and the RAM discs' error reports) stay English until their pass.
+#### 2026-11-04 *1.106.0*
+- **The preview pane shows a loading ring while a file opens.** Selecting a
+  file showed the previous one until the new one had been read and decoded -
+  for a large picture, PDF or video long enough to look like the wrong file
+  was selected, with the window not answering meanwhile. The pane now shows
+  a turning ring and the file's name at once and reads the file after that
+  frame (the viewer's `OpenFileWhenShown`); selections made while one loads
+  replace it instead of queuing behind it, so holding an arrow key through a
+  folder decodes only the file it stops on. The pane is compared with the
+  file on its way (`PreviewPanePath`), so a refresh during the load does not
+  start it over.
+
+#### 2026-11-03 *1.105.0*
+- **A file opened in its own viewer window shows a loading ring and its name
+  until it is open**, not *No media*, and the window title follows the file
+  as the arrow keys browse the folder (it was fixed to the first file). See
+  the framework changelog (`OpenFileWhenShown`, `onCurrentFileChanged`).
+
+#### 2026-11-02 *1.104.0*
+- **Windows: "Linux" and "Network" in the folder tree.** Two sections after
+  Computer, where Explorer has them. *Linux* lists the WSL distributions
+  (`\\wsl$\Ubuntu`), each opened like a drive - and not touched before it is
+  opened, since touching one starts it. *Network* lists the computers of the
+  workgroup or domain and the servers of your connections; opening one lists
+  its shared folders under its row and in the folder display, read off the UI
+  thread. Typing `\\NAS` into the path bar opens that computer too, and it is
+  kept in the section, so a NAS the network list does not show stays one
+  click away. Rests on the framework's new `UltraCanvasNetworkPlaces` - see
+  the UltraCanvas changelog.
+- **Windows: the Network section finds the computers Explorer finds.** It
+  showed only the computers of the old network browser list, which a current
+  network (SMB 1 off) leaves short or empty; it now also lists the computers
+  that announce themselves through WS-Discovery - other Windows PCs, NAS
+  boxes running wsdd - as Explorer does. A computer on another subnet is still
+  opened by typing `\\NAS` into the path bar and kept in the section.
+
+#### 2026-11-01 *1.103.0*
+- **The settings window is built on the framework's settings page kit**
+  (`UltraCanvasSettingsPageKit`, framework changelog `settings-page-kit`):
+  the window, the page skeleton and the controls come from it, where they
+  were this window's own. Nothing changes on screen.
+
+#### 2026-11-01 *1.102.0*
+- **A folder of programs no longer shows one program's icon on all of them
+  when it is first opened.** On Windows the programs that were still
+  loading their icon, and the console tools that have none, drew the icon of
+  whichever program came first (ArtCreator's, in the report) instead of the
+  generic application icon. Fixed in the framework (see its changelog,
+  `HostFileIconProbeName`).
+
+#### 2026-11-01 *1.101.0*
+- **Phones and cameras show up under Computer.** A phone, camera or media
+  player plugged in over USB (MTP / PTP) has no drive letter, so UltraFiler
+  never listed it while Explorer did. On Windows it now appears under
+  Computer in the tree and as a card on the Computer page - with its used
+  and free space, internal storage and SD card together, like a drive's card
+  - as soon as it is plugged in, and goes when it is pulled out (a display showing it goes Home).
+  It is browsed through the remote-drive machinery - folders from a cache
+  filled by a worker, previews, copying off and onto the phone, rename,
+  delete, new folder - and its account is never saved. A locked phone, or
+  one on "charging only", says to unlock it and choose File transfer instead
+  of showing an empty folder. On macOS an iPhone, iPad or camera appears the
+  same way through Image Capture, read-only: its photos and videos open,
+  preview and copy off. On Linux the phones, cameras and shares the
+  desktop mounted through GVFS are listed with the drives under readable
+  names. Both rest on framework changes - see the UltraCanvas changelog
+  entries "UltraCanvasPortableDevices" and "Linux: the phones, cameras and
+  shares the desktop mounted are volumes".
+
+#### 2026-11-01 *1.100.0*
+- **Settings > Display > New tab** decides what the "+" at the end of the tab
+  strip opens: **Show current folder** (the default, as before), **Show Home
+  folder**, or the new **Show Computer** - the Computer page with the drives
+  and their free space, Home and the cloud folders, with the Home folder
+  behind it in the new tab. The choice used to sit under Handling > Tabs with
+  only the first two; a choice made there carries over.
+
+#### 2026-10-31 *1.99.0*
+- **macOS: an application could be pinned into the folder tree, and the
+  tree pinned it to the wrong Favorites tab.** The tree lists every
+  directory, an `.app` included. Its "Pin > To Treeview" put the application
+  into the tree's Pinned section as a folder row whose click opened the
+  inside of the bundle, and its "Pin > To Favorites" filed it under Folders
+  rather than Apps. An application now never goes into the Pinned section -
+  not from the tree's menu, the file display's Pin menu, or a drop on the
+  section - and the tree pins it under Favorites > Apps like the file display
+  does. Applications pinned into the tree before move to Favorites > Apps at
+  the next start, with the date they were pinned.
+- **macOS: the folder tree listed every application as a folder.** An `.app`
+  is a directory on disk, so `/Applications` opened onto a column of
+  expandable folder rows that led into the inside of each bundle - where the
+  Finder's sidebar and column view show none. The tree now leaves application
+  bundles out, as it leaves hidden folders out; the file display still shows
+  them and starts them on a double-click. A folder that only ends in ".app"
+  (no `Contents/Info.plist`) and other bundle kinds stay in the tree.
+
+#### 2026-10-30 *1.98.0*
+- **On macOS a saved file now appears at once** instead of on the next poll of
+  the folder, and on every platform a file saved while a folder was being
+  opened is no longer missed. Both are framework changes - see the UltraCanvas
+  changelog entries "macOS gets a native folder watch (FSEvents)" and "A file
+  saved into a folder just opened in the Filer was missed".
+- **A file saved into the open folder by another program (a Firefox "Save
+  Image As", for one) did not appear** until the folder was refreshed by hand.
+  Fixed in the framework's Filer widget - see the UltraCanvas changelog entry
+  "The Filer missed a file saved into the open folder".
+- **macOS: a double-click on an application in the folder display did
+  nothing.** An `.app` is a folder on disk that the file display launches
+  instead of entering, and UltraFiler's double-click handler skipped every
+  folder before looking at what it was. The application now starts, as it does
+  in the Finder and already did in the preview pane's folder peek, and the
+  History lists it under Apps rather than Folders.
+- **macOS: a pinned application went to the Favorites' Folders tab.** Pinning
+  now files an `.app` under Apps, beside the other applications, and its heart
+  mark and Unpin find it there. Applications pinned earlier are moved from
+  Folders to Apps at the next start, keeping the date they were pinned - left
+  where they were, they could no longer have been unpinned
+  (`UltraFilerFavorites::Reclassify`).
+- **A double-click on a picture, an audio file or a video starts UltraViewer
+  with it.** It comes first - before the registered program and before the
+  preview pane - in every folder display, the split view's right-hand one and
+  the folder peek in the preview pane included; a running UltraViewer shows the
+  file in place of what it showed. When UltraViewer cannot be found or started,
+  or the file is inside an archive or on a remote drive, the file opens the way
+  it did before and the status bar says why, so a double-click never comes to
+  nothing. *Settings > Handling > Opening files* has the new checkbox "Open
+  pictures, audio and video in UltraViewer" (on by default;
+  `handling.files.media.ultraviewer` in the settings file). Finding UltraViewer
+  inside its own app bundle on macOS is a framework change - see the
+  UltraCanvas changelog entry "`FindProgram` / `LaunchProgram` find a sibling
+  application on macOS".
+
+#### 2026-10-30 *1.97.0*
+- **Settings > Archives > TAR** sets how Compress packs a `.tar`,
+  `.tar.gz`, `.tar.bz2`, `.tar.xz` and `.tar.zst`: the compression level of
+  gzip, bzip2, xz and Zstandard (their own defaults - 6, 9, 6, 3 - until
+  changed), the threads of xz and Zstandard (every core by default),
+  Zstandard's long mode (`--long=27`), the header format (PAX, GNU tar or
+  ustar), whether each file keeps its modification time, permissions and
+  owner, whether a symbolic link is stored as a link or as what it points
+  to, and patterns of names to leave out (`.git`, `*.tmp`, `build/*.o`).
+  *Restore defaults* puts them all back.
+- **Pointing at an entry of the Compress menu shows what it packs with** -
+  the equivalent command line, e.g.
+  `tar --format=pax --owner=0 --group=0 --numeric-owner -cf - <files> | xz -6 -T0`,
+  and what is kept of each file - so the TAR settings can be read off the
+  menu itself.
+- Packed files keep their own modification time and permissions (they used
+  to carry the time they were packed and 0644) - see the framework
+  changelog.
+- **7-Zip and TAR archives get an archive icon on Windows.** Without 7-Zip
+  or another program registered for them, `.7z`, `.tar`, `.tar.gz`,
+  `.tar.bz2`, `.tar.xz` and `.tar.zst` files were drawn as a blank page;
+  they now show UltraFiler's own archive icon with the extension on it,
+  while `.zip` and every other registered type keep Explorer's icon - see
+  the framework changelog.
+
+#### 2026-10-30 *1.96.0*
+- **Widening a column in the Details view moves the columns after it**
+  instead of taking the width from the column on its right - dragging the
+  divider at a column's right edge in the header resizes that column alone,
+  and a table that grows past the window scrolls sideways (Shift+wheel, a
+  sideways wheel or the scrollbar under the rows). This is the default now;
+  it comes from the framework's `UltraCanvasFilerWidget` (see
+  `Docs/UltraCanvas/changelog.d/filer-details-push-columns.md`).
+- **The "Drive" button sits at the right end of the toolbar**, just left of
+  the Settings gear, instead of between the Favorites heart and the path bar.
+- **Settings > Display > File names.** How much of a long name a thumbnail
+  tile shows is now a choice: *Full name* (as many rows as the name needs),
+  or at most *2*, *3* or *4 rows*. With a limit, a name that needs more rows
+  keeps its end - the start of the last row gives way to "…" so the extension
+  stays readable - and hovering the tile shows the whole name. Every tile of a
+  grid row is as tall as its longest caption, so the rows grow and shrink with
+  the choice; the Details, List and Size bars views keep one line per file. The
+  treemap's cells follow the same limit within the room a cell has. The
+  default stays at 2 rows, the caption earlier releases drew; the choice is
+  saved to `config.ini` (`display.file.names.lines` = `full`, `2`, `3` or `4`)
+  and applied to every file display of the window. Needs the framework's
+  `UltraCanvasFilerWidget::SetCaptionMaxLines` (see
+  `Docs/UltraCanvas/changelog.d/filer-caption-max-lines.md`).
+
+#### 2026-10-28 *1.95.0*
+- **Home and Computer lead the navigation row.** The Home button moved from
+  after Refresh to the first place, and a new **Computer** button beside it
+  opens the Computer page (the main folders and a card per drive) in one
+  click, the way the tree's Computer row and the breadcrumb's first node do.
+  Both are flat, like the split-view, History and Favorites buttons: no frame,
+  tinted only under the pointer. The Computer icon is a new line-style
+  `media/icons/computer.svg` drawn to match `home.svg`.
+- **Extras > Open location** opens the folders a user is sent to and cannot
+  easily find, in the active tab. The *UltraCanvas* block lists where the
+  framework writes: **Crash dumps** (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`,
+  or `ULTRACANVAS_CRASH_DUMP_DIR`; Windows only), **Settings**, **UltraFiler
+  settings** and **Cache**. The *System* block lists the operating system's
+  places: application data, temporary files, crash reports, logs, startup
+  programs, fonts and `/etc` / `drivers\etc`, chosen per platform:
+  - Windows: Windows Error Reporting's dumps and report archive, the Start
+    menu and Startup folders, Program Files.
+  - macOS: `~/Library/Logs/DiagnosticReports`, Preferences, LaunchAgents.
+  - Linux: the XDG folders, `/var/crash`, the systemd core dumps.
+
+  A folder that does not exist yet is listed greyed out, so "there are no
+  crash dumps" reads at a glance. Hovering an entry shows the full path it
+  opens, a greyed-out one included.
+- **Enter location…** (also **Ctrl+L**, wherever the focus is) opens a
+  typed folder or file the way the system writes it. It expands `%VAR%` on
+  Windows (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`), `$VAR` / `${VAR}`
+  elsewhere, and a leading `~`. It strips the quotes "Copy as path" adds, and
+  reads a relative path from the folder on screen. A file opens its folder
+  with the file selected.
+- A location that does not exist is reported with the path it expanded to,
+  so an unset variable shows. The last ten locations that opened are kept,
+  as typed, in the submenu's *Recent* block, with **Clear recent locations**.
+
+#### 2026-10-27 *1.94.0*
+- **The preview pane picks a backdrop that suits each transparent picture or
+  drawing** (the media viewer's new Auto backdrop), and remembers the auto
+  swatch like any other choice (`preview.transparent.auto`). An existing
+  settings file with no such line starts on Auto; picking a colour or the
+  checkerboard in the strip under the preview switches it off again.
+
+#### 2026-10-25 *1.93.0*
+- **Starting UltraFiler after closing it said "UltraFiler is already
+  running"** on Windows, and the old copy - no window, still in Task Manager -
+  had to be ended by hand. UltraFiler hosts the per-user message bus when it is
+  started first, and the bus's clean-up at exit could wait for ever inside
+  Windows' process shutdown, holding the lock that lets only one UltraFiler
+  run; that clean-up no longer runs there. Whatever else keeps a closed
+  UltraFiler from ending, the framework's exit watchdog now ends it ten
+  seconds after its window closed and leaves `UltraFiler-exit-*.txt` in
+  `%LOCALAPPDATA%\UltraCanvas\CrashDumps` naming the step it was stuck in, and
+  a start made meanwhile waits for it and opens.
+
+#### 2026-10-24 *1.92.0*
+- **The status bar and the info bar agree on a selection's size.** The status
+  bar said `103.59 KB` where the info bar and the preview said `103.6 KB`; it
+  now uses the filer widget's own formatting.
+- **The "items are hidden here" notice is part of the folder view**, on its
+  white background instead of a grey strip, and a **gear** right of
+  *Show hidden files* opens Settings straight on *Display > Home folder* (in
+  any other folder: *Display > Ignored files*, the setting that hid something
+  there).
+- **One status bar instead of three.** The file display's own info bar is
+  gone; its line - the selected file's name, type, size, pixels, date and
+  attributes, or the folder's counts and size - is now the left half of the
+  window's status bar, with "1 of 404 selected" beside it. What is happening
+  (a drive at work, a copy that ended, a print or share result, an error, the
+  sub-folder search) sits on the right and stays until the next action, so a
+  message no longer hides the folder's counts. Several selected read
+  "3 of 404 selected"; an error from a drive is red.
+
+#### 2026-10-22 *1.91.0*
+- **A remote drive's path bar shows the drive, not a broken local path.** The
+  path bar read an FTP / SFTP / cloud drive's path as a folder on this
+  computer: on Windows it showed *Computer > C: > Users > <name> >
+  ultracloud:*, and the *ultracloud:* node opened a local folder that does
+  not exist - an empty display, with that path in the title and the tab. A
+  drive's path bar is now *Computer > FTP: <drive> > <folder> > ...*, each
+  node opening that folder on the drive; the split view's pane headers
+  follow it.
+- **A tab on a drive's top folder is titled with the drive's name** instead of
+  its raw `ultracloud://<account>/` address; a tab deeper in the drive keeps
+  the folder's name.
+
+#### 2026-10-22 *1.90.0*
+- **The Rename button on a hovered file shows a "T", not a pencil.** The
+  pencil looked like "edit the file"; the button renames it, so it now draws
+  a text glyph. The strip's tooltips also name each button's keyboard
+  shortcut (Ctrl+C, Ctrl+X, F2, Del). UltraCanvasFilerWidget does this
+  (framework changelog: `filer-rename-text-glyph`).
+- **Cut on a hovered file is greyed out on a drive**, as it is in the
+  right-click menu: the hover button had started a cut there that could not
+  be completed.
+- **Copy and Cut on a hovered file flash a green checkmark** once the files
+  are on the clipboard, so a press visibly landed.
+
+#### 2026-10-21 *1.89.0*
+- **Changes on an FTP drive go on the connection already open.** A delete, a
+  rename, a new folder - and the rename that puts an upload in place - each
+  logged in on a connection of their own: a second login per change, and on
+  a server that allows one connection per address the change got in only by
+  closing the drive's listing connection first (1.86.0). Now a change goes
+  on the connection the drive has open, like a listing or an upload - the
+  connection log shows *Using the open connection* and no new login. Two
+  drives on such a server as different accounts still need a connection
+  each, and now take turns for listings and transfers too: one turned away at
+  the login closes the other's and gets in. UltraNet does this (framework
+  changelog: `ftp-change-on-kept-connection`).
+
 #### 2026-10-21 *1.88.0*
 - **Ctrl-selecting several files leaves the preview pane as it is.** The
   pane shows a single file or folder, so the second file picked with

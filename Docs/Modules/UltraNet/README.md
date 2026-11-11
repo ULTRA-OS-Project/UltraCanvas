@@ -24,6 +24,8 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 - [Architecture](#architecture)
 - [Quick examples](#quick-examples)
 - [Module layout](#module-layout)
+- [Proxies](#proxies)
+- [SSH tunnels](#ssh-tunnels)
 - [Debugging a mail connection](#debugging-a-mail-connection)
 - [The FTP session log](#the-ftp-session-log)
 - [Integration with sibling modules](#integration-with-sibling-modules)
@@ -76,10 +78,11 @@ planned (see the status table below).
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
+| Cookies | A browser's cookie jar with the rules in the open (RFC 6265bis): what `Set-Cookie` stores and the `Cookie` header a request carries, `Domain` / `Path` / `Secure` / `SameSite` / prefixes, expiry, no third-party cookies, kept in a text file - for a client that follows redirects itself and must apply each hop's cookies (UltraWeb) | `UltraNet/UltraNetCookieJar.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
-| Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
+| Proxy | The operating system's proxy by default (the environment, GNOME / KDE, Windows' WPAD and PAC, macOS' PAC), or HTTP / HTTPS / SOCKS4 / SOCKS5 with exceptions and a sign-in; decided per URL and applied to every libcurl transfer - HTTP, WebSocket, FTP / SFTP and the mail plug-ins (see [Proxies](#proxies)) | `UltraNet/UltraNetCore.h`, `UltraNet/UltraNetCurlProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build; text in any charset iconv knows (ISO-2022-JP - also raw in headers -, Shift_JIS, GB18030, KOI8-R, windows-125x, ...) converted to UTF-8, UTF-8 and Latin-1 without iconv; unlabelled 8-bit header text read in the body's charset or the best-scoring guess | `UltraNet/UltraNetMime.h` |
 
@@ -92,12 +95,18 @@ planned (see the status table below).
 `UltraNet/UltraNetPlugins.h`.
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
-`UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
+`UltraNet_RefreshPlugins()` from `UltraNet_GetPluginDirectory()`. Until an
+application sets another with `UltraNet_SetPluginDirectory()`, that is
+`Plugins/UltraNet` beside the executable, or one or two folders above it,
+whichever holds a plug-in. It is never the working directory, unless the
+executable's own path is unknown: a packaged Windows application starts in
+System32. A plug-in reaches the core **only through the host
 table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
 `UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
-format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+format of every mail plug-in that sends; a message whose `rawMessage` is set -
+one already signed or encrypted - is sent as those bytes, unchanged), `UltraNet_HttpGet` / `HttpRequest`,
 `UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
 plug-in's push), ... Plug-in sources
 call those functions as usual;
@@ -226,11 +235,25 @@ UltraNet_HttpRequest(up, upResp);
 ```cpp
 #include <UltraNet/UltraNetWebSocket.h>
 
-UltraNetHandle ws = UltraNet_WebSocketConnect("wss://stream.example.com");
+UltraNetWebSocketOptions options;
+options.pingIntervalMs = 25000;     // ping, and notice a peer that went silent
+UltraNetHandle ws = UltraNet_WebSocketConnect("wss://stream.example.com", options);
 UltraNet_WebSocketSendText(ws, R"({"subscribe":"BTCUSD"})");
-// inbound frames arrive via onWebSocketText / onWebSocketBinary callbacks
+// inbound messages arrive whole via the onText / onBinary callbacks
 UltraNet_WebSocketClose(ws);
 ```
+
+A connection is kept alive by itself: the server's PINGs are answered with
+PONGs (a server that pings and closes an unanswered connection - uvicorn
+does, every 20 s - no longer drops an idle one), and with `pingIntervalMs`
+the client pings too and takes a peer that sends nothing at all for two
+intervals as gone - `onError` once, so the owner can reconnect rather than
+wait on a dead connection. A message reaches `onText` / `onBinary` whole,
+however many reads it took, up to `maxMessageBytes` (64 MB unless set, 0 for
+no limit): a larger one ends the connection with close 1009 before it is
+assembled. Reconnecting is the owner's - a handle is one connection - on
+`onClose` / `onError`. Sends from any thread are safe while the
+receiver reads: one mutex covers every read and write of the connection.
 
 ```cpp
 #include <UltraNet/UltraNetDns.h>
@@ -318,11 +341,13 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetTls.h
 │   ├── UltraNetDns.h
 │   ├── UltraNetCookies.h
+│   ├── UltraNetCookieJar.h
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
 │   ├── UltraNetOAuth2Service.h
-│   ├── UltraNetProxy.h
+│   ├── UltraNetCurlProxy.h       (header-only, the proxy on a libcurl handle)
 │   ├── UltraNetUrl.h
+│   ├── UltraNetSsh.h             (SSH tunnels, through the ssh plug-in)
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
 │   ├── UltraNetCurlDebug.h       (header-only, opt-in protocol trace)
 │   └── UltraNetPlugins.h
@@ -338,6 +363,138 @@ UltraCanvas/                      (or wherever the build places it)
 CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
 
 ---
+
+## Proxies
+
+Every connection UltraNet makes through libcurl - the HTTP verbs (sync,
+async, SSE), WebSocket, FTP / FTPS / SFTP, and the IMAP, SMTP, POP3,
+WebDAV, LDAP, Telnet, RTSP and gRPC plug-ins - asks
+`UltraNet_ResolveProxy(url, requested)` which proxy to use and hands the
+answer to libcurl (`UltraNet/UltraNetCurlProxy.h`; a plug-in reaches the
+resolver through its host table, ABI 4).
+
+A raw TCP connection (`UltraNetSocket.h`) goes through a proxy only when
+asked - `UltraNetSocketOptions::proxy`, or `useProxySetting` for the
+module-wide setting - because a raw socket is mostly a device or a peer on
+the local network (ChatCube's LAN peers stay direct). UltraNet then speaks
+the proxy's handshake itself: SOCKS 5 (with its user name and password, the
+name sent for the proxy to look up unless `remoteDns` is off), SOCKS 4 / 4a,
+or an HTTP `CONNECT` tunnel with Basic sign-in; `UltraNet_TcpOpen` says why
+one failed (`AuthenticationRequired` for a proxy that asks for a sign-in).
+The SSH plug-in follows the setting that way: libssh cannot talk to a proxy,
+so the connection is made by UltraNet and handed over
+(`UltraNet_SocketDetach`, libssh's `SSH_OPTIONS_FD`); known_hosts is still
+looked up by the server's name. The RTMP plug-in plays `rtmp://` with a
+client of its own over such a connection (libcurl, which dropped librtmp,
+serves only `rtmps` / `rtmpt` where the libcurl loaded still has it); the UDP
+protocols (CoAP, SNMP, SIP, RTP, mDNS) never go through a proxy.
+
+The setting is `UltraNetConfig::proxy` (`UltraNet_SetGlobalProxy`), or a
+request's own `UltraNetHttpOptions::proxy`:
+
+| `UltraNetProxyType` | Meaning |
+|---|---|
+| `System` (the default) | The operating system's proxy for that address - see below; direct when it names none |
+| `NoProxy` | Module-wide: every connection direct, the `*_proxy` environment ignored as well. On a request: the module-wide setting applies |
+| `Direct` | On a request: direct, whatever the module-wide setting says |
+| `Http`, `Https`, `Socks4`, `Socks5` | That proxy (`Https` = TLS to the proxy itself). SOCKS lets the proxy look the name up (`remoteDns`, socks5h / socks4a) unless told otherwise |
+
+The machine itself (`localhost`, `127.0.0.0/8`, `::1`) is always reached
+directly - a local model server or a test server never goes through a
+proxy - and so is every host `noProxyHosts` names: a name and its
+subdomains (`example.com`), a pattern (`*.example.com`, `192.168.*`), a
+leading-dot suffix, an IPv4 range (`10.0.0.0/8`), `*`, or `<local>` (a
+name without a dot). `UltraNet_HostMatchesNoProxy` and
+`UltraNet_ParseNoProxyList` are the same rules for a caller.
+
+**The operating system's proxy** (`UltraNet_DetectSystemProxyFor`, asked at
+most once a minute per scheme and host; `UltraNet_ForgetSystemProxy` asks
+again):
+
+| Platform | Read from |
+|---|---|
+| Linux | `http_proxy` / `https_proxy` / `ftp_proxy` / `all_proxy` / `no_proxy` when any is set (as libcurl and the command line read them); else GNOME's settings (GSettings, through GIO opened at run time; "automatic" asks GIO's resolver, which runs a PAC script where glib-networking can) or KDE's (`kioslaverc`, manual) |
+| Windows | The user's Internet settings through WinHTTP: automatic detection (WPAD) and a setup script (PAC) evaluated per address, else the manual proxy and its bypass list; a company proxy that asks who connects is answered as the signed-in user (Negotiate / NTLM) |
+| macOS | System Settings > Network > Proxies through CFNetwork, the exceptions applied by it; a PAC script fetched (directly) and run per address |
+
+The web's proxy (HTTP, HTTPS - and WebSocket, as the page address it
+upgrades) is used only for those; mail and other protocols use the system's
+SOCKS proxy (or `all_proxy`) - a proxy that lets CONNECT through to port 443
+only would otherwise cut off a mail server that was reached directly. A
+proxy set explicitly (`Http`, `Socks5`, ...) carries everything, the HTTP
+kind as a CONNECT tunnel.
+
+`UltraNetProxyConfig::autoConfigUrl` names a PAC script to run instead of
+the system's settings, where this build can (`UltraNet_CanEvaluateProxyScript`:
+Windows and macOS).
+
+```cpp
+UltraNetProxyConfig socks;
+socks.type = UltraNetProxyType::Socks5;
+socks.host = "localhost";
+socks.port = 10808;
+socks.noProxyHosts = UltraNet_ParseNoProxyList("*.example.com, 192.168.*");
+UltraNet_SetGlobalProxy(socks);              // every connection from now on
+
+UltraNetProxyConfig used = UltraNet_ResolveProxy("imaps://mail.example.org/INBOX");
+// used.type == Socks5; UltraNet_DescribeProxy(used) == "socks5h://localhost:10808"
+```
+
+An application built on UltraCanvas does not set this itself: the
+framework's shared proxy settings (`UltraCanvasProxySettings.h`, the dialog
+in `UltraCanvasProxySettingsDialog.h`) keep the choice in `Proxy.conf` and
+hand it to UltraNet through `UltraNet_SetGlobalProxySource`, so every
+application follows one setting, and a change saved in one is used by the
+others from their next connection.
+
+---
+
+## SSH tunnels
+
+`UltraNet_OpenSshTunnel` (`UltraNet/UltraNetSsh.h`) forwards a local port:
+it signs in at an SSH server, listens on a free port of 127.0.0.1, and
+carries every connection made to that port, each on a channel of its own, to
+a host and port the SSH server reaches - a database behind a bastion, the
+case UltraDatabase uses it for (`UltraDatabaseSshTunnel.h`). The `ssh`
+plug-in (libssh) does the work and is loaded on first use; without it the
+call fails with `PluginNotFound`.
+
+```cpp
+#include <UltraNet/UltraNetSsh.h>
+
+UltraNetSshTunnelOptions tunnel;
+tunnel.url = "ssh://deploy@bastion.example.com";
+tunnel.remote.privateKeyPem = key;     // or remote.credentials.password; neither: the agent, the default keys
+tunnel.remote.hostKeyFingerprint = trusted;   // "SHA256:..."
+tunnel.targetHost = "db.internal";
+tunnel.targetPort = 5432;
+UltraNetHandle handle = UltraNetInvalidHandle;
+UltraNetSshTunnelInfo info;
+if (UltraNet_OpenSshTunnel(tunnel, handle, info)) {
+    // connect to 127.0.0.1:info.localPort
+    UltraNet_CloseSshTunnel(handle);
+}
+```
+
+**The host key is checked before anything is sent**, by the shell
+(`OpenShell`) and the tunnel alike: it must be the fingerprint the caller
+trusted, or - when none is given - the key `known_hosts` holds for the host.
+A key nobody knows fails with `SshHostKeyUnknown`, its fingerprint in
+`UltraNetSshTunnelInfo`, for the application to show and, once the user
+agrees, to pass back as `hostKeyFingerprint`; one that differs from the key
+known fails with `SshHostKeyChanged` and is never accepted. Until 0.2.0 the
+plug-in checked no host key at all.
+
+The tunnel's SSH session belongs to one thread, which accepts, opens the
+channels and copies bytes both ways; a channel the SSH server cannot open
+(the far end refuses, forwarding is not allowed) ends that one connection,
+and the tunnel stays up for the next. Closing the tunnel ends every
+connection through it.
+
+Tested against a real sshd (`Tests/UltraNet/test_extra_plugins.cpp`,
+`ULTRANET_TEST_SSH_URL` / `_KEY`, required in CI): an unknown key, a changed
+one and a failed sign-in refused, three connections of half a megabyte each
+way at once, a far end that is not there, and a closed tunnel.
 
 ## Debugging a mail connection
 
@@ -437,6 +594,19 @@ every call it makes stopped at once, set that one check. UltraFiler's drive
 worker uses it to stop a preview download the user is no longer waiting for,
 on an FTP drive or a cloud drive, and every transfer when the window closes.
 
+A transfer can keep the file's date. On an upload,
+`UltraNetFtpOptions::setRemoteModificationTime` (Unix seconds, UTC) is given
+to the file once it is written - `MFMT YYYYMMDDHHMMSS name` on FTP, libcurl's
+`mtime` quote command on SFTP - so the server's copy shows the date the file
+was made, not the moment it arrived. The command is sent with libcurl's `*`
+prefix: a server without `MFMT`, or one that refuses it, still has the file
+and the upload still succeeds. On a download, `onRemoteModificationTime` is
+told the server's date of the file (`MDTM` on FTP, the stat on SFTP,
+through `CURLOPT_FILETIME`) once it has arrived, for the caller to give the
+local copy - UltraNet writes the bytes and leaves the local file's dates to
+the caller (UltraCloud's FTP provider sets them with
+`UltraCanvas::SetFileTimes`). A server that does not say is not a failure.
+
 What a failure says, whether or not anyone reads the log:
 
 - `message` is libcurl's specific reason (its error buffer, not just the error
@@ -471,19 +641,25 @@ closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
 whose network has since gone away waits up to two minutes for its reply.
 (One pool per thread: libcurl does not support sharing connections between
 threads that transfer at the same time.) A change - delete, rename, create or
-remove a folder - is the exception on FTP: it always logs in on a connection
-of its own and closes it, because libcurl sends those commands before it
-changes folder, and they name the entry from the folder a login lands in; on
-a kept connection that a listing left in a subfolder they would name another
-file. A server that takes one connection per address or user (vsftpd's
-`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
-away - *421 There are too many connections from your internet address.*,
-or a 530 saying the maximum number of clients is reached - while the
-thread's kept one is open. Turned away so before any of its commands was
-sent, the change closes the kept connection and is sent again: at once, and
-after 0.3 s and 1 s more if the server is still counting the closed one
-(the waits end early when the call is called off). The log says *The server
-takes one connection at a time: closing the one kept open and trying again*.
+remove a folder - takes up the kept connection too. Its commands (`DELE`,
+`RNFR` / `RNTO`, `MKD`, `RMD`) go once libcurl has changed into the entry's
+folder (`CURLOPT_POSTQUOTE`) and name the entry within it; libcurl goes back
+to the folder that connection's login landed in first, so it does not matter
+where the last listing left it. (Sent before the change of folder, as they
+once were, they ran wherever the connection was, and a change needed a
+connection of its own: a second login each time.)
+
+A server that takes one connection per address (vsftpd's `max_per_ip`,
+ProFTPD's `MaxClientsPerHost`) still turns away a call that needs a new one
+while the thread keeps another open - one as another account on that server,
+which libcurl does not take up for this one: *421 There are too many
+connections from your internet address.*, or a 530 saying the maximum number
+of clients is reached. Turned away so at the greeting or the login, before
+anything was asked and with no byte moved, any FTP call closes the thread's
+kept connection and is made again: at once, and after 0.3 s and 1 s more if
+the server is still counting the closed one (the waits end early when the
+call is called off). The log says *The server takes one connection at a
+time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.

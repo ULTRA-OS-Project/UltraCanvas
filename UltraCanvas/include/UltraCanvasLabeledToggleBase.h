@@ -1,10 +1,11 @@
 // UltraCanvasLabeledToggleBase.h
 // Abstract base for labeled toggle controls (checkbox, radio, switch).
 // Owns label/layout/event/state plumbing; subclasses provide indicator drawing.
+// Version: 1.3.0 - LabeledToggleVisualStyle::FromTheme: the label, the focus ring and the body font from the theme
 // Version: 1.2.0 - toggles take the keyboard focus (Tab reaches them, Space activates
 //                 them, a click focuses them); SetAcceptsFocus(false) opts one out
 // Version: 1.1.0 - a checkbox to screen readers: name, toggle state and action
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -43,6 +44,23 @@ namespace UltraCanvas {
         bool hasFocusRing = true;
         Color focusRingColor = Color(0, 120, 215, 128);
         float focusRingWidth = 2.0f;
+
+        // The theme's roles for the label and the focus ring - ink, faint
+        // ink disabled, the focus colour at half alpha - and its interface
+        // font at the body size, over a base's own shape (spacing, weight,
+        // flags); the checkbox, the radio and the switch start from it
+        static LabeledToggleVisualStyle FromTheme(const UltraCanvasTheme& theme, const LabeledToggleVisualStyle& base) {
+            LabeledToggleVisualStyle s = base;
+            const ThemeRoles& r = theme.roles;
+            const FontStyle body = theme.Font(ThemeTextRole::Body);
+            s.fontFamily = body.fontFamily;
+            s.fontSize = static_cast<float>(body.fontSize);
+            s.textColor = r.ink;
+            s.textHoverColor = r.ink;
+            s.textDisabledColor = r.inkFaint;
+            s.focusRingColor = r.focus.WithAlpha(128);
+            return s;
+        }
     };
 
 // ===== ABSTRACT BASE =====

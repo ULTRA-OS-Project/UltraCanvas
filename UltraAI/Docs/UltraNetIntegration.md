@@ -175,7 +175,7 @@ UltraAI::ChatResponse AnthropicTextLLM::Chat(const ChatRequest& request) {
     req.url    = baseUrl_ + "/v1/messages";
     req.method = UltraNetHttpMethod::Post;
     req.headers.Set("x-api-key", ResolveApiKey());           // see §9
-    req.headers.Set("anthropic-version", "2023-06-01");
+    req.headers.Set("anthropic-version", "2026-10-21");
     req.headers.Set("content-type", "application/json");
     req.body   = SerializeAnthropicMessages(request);
     req.options.timeoutMs = config_.timeoutMs;

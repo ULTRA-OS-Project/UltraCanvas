@@ -1,0 +1,19 @@
+{
+  "@language": "ru",
+  "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "Colour title": "Цвет титра",
+  "Edit Title": "Изменение титра",
+  "The title is in the video": "Титр помещён в видео",
+  "The title is unchanged": "Титр не изменён",
+  "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "Титр стал пустым: его текст сохранён (чтобы убрать титр, удалите его на его дорожке)",
+  "Title Alignment": "Выравнивание титра",
+  "Title Bold": "Титр: полужирный",
+  "Title Font": "Шрифт титра",
+  "Title Italic": "Титр: курсив",
+  "Title Letter Spacing": "Межбуквенный интервал титра",
+  "Title Line Spacing": "Межстрочный интервал титра",
+  "Title Size": "Размер титра",
+  "Title Strikethrough": "Титр: зачёркнутый",
+  "Title Underline": "Титр: подчёркнутый",
+  "Typing the title on the frame: Escape, Ctrl+Enter or a click outside puts it in the video": "Ввод титра на кадре: Escape, Ctrl+Enter или щелчок снаружи помещают его в видео"
+}

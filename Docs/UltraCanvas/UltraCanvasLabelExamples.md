@@ -10,6 +10,7 @@
   - [The theme and the label's variant](#the-theme-and-the-labels-variant)
 - [Methods](#methods)
   - [Text](#text)
+  - [Where the text ends](#where-the-text-ends)
   - [Style and font](#style-and-font)
   - [From UltraCanvasUIElement](#from-ultracanvasuielement)
   - [Text links](#text-links)
@@ -152,6 +153,36 @@ void SetTextIsMarkup(bool markup);          // the text is Pango markup (<b>, <s
 ```
 
 To clear a label, `SetText("")`; to append, `SetText(label->GetText() + more)`.
+
+### Where the text ends
+
+```cpp
+float GetNaturalTextWidth();   // the text's own width in px, without padding or border
+```
+
+A label given a fixed box is usually wider than its text, and something meant
+to sit *after the text* - a copy button after a code, a badge after a name -
+belongs where the text ends, not where the box does. `GetNaturalTextWidth`
+measures the text as the label lays it out (its font, markup and inline
+images; line breaks kept, the widest line counted), so the answer holds for
+any font the platform substitutes. In a left-aligned label the text starts at
+the border and padding:
+
+```cpp
+auto code = std::make_shared<UltraCanvasLabel>("code", 20, 20, 240, 36, "123 456");
+window->AddChild(code);   // measured through the window's render context
+auto copy = std::make_shared<UltraCanvasButton>("copy", 0, 23, 30, 30);
+window->AddChild(copy);
+
+// After the text, not after the 240 px box.
+const float textEnd = code->GetX() + code->GetBorderLeftWidth() +
+                      code->GetPaddingLeft() + code->GetNaturalTextWidth();
+copy->SetPosition(textEnd + 8, 23);
+```
+
+It returns 0 for an empty text and for a label that cannot reach a render
+context yet (not in a window), so measure after `AddChild`, and again after a
+`SetText` whose width can change.
 
 ### Style and font
 

@@ -8,7 +8,8 @@
 `UltraCanvasMessageCenter` is the desktop message centre as one composite
 element: every chat message, mail and system notification on the UltraMessage
 feed (`Masterfile_modules.md` §13, `Docs/Modules/UltraMessage/README.md`) in
-one structured view, for any application to embed — the ULTRA OS desktop,
+one structured view, for any application to embed — UltraNotifications
+(which is this element in a window of its own), the ULTRA OS desktop,
 UltraMail's toolbox, the DemoApp page. It is built from catalogue elements
 only and it is a client of the bus and nothing else: it never talks to a
 messenger or a mail server.

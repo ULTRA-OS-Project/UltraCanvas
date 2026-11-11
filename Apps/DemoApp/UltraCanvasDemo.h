@@ -1,5 +1,8 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.11 - CreateHistogramChartExamples
+// Version: 1.0.10 - AddControlChartCard (the Line Chart page's control chart)
+// Version: 1.0.9 - CreateTernaryChartExamples
 // Version: 1.0.8 - treeFilterInput: a filter field over the component tree,
 //                 with a "Reset" button inside it (OnTreeFilterChanged)
 // Version: 1.0.7 - CreateListViewDashboardExamples is gone: the domain dashboard
@@ -11,7 +14,7 @@
 // Version: 1.0.3 - CreateDomainTableDemo is gone with UltraCanvasTableDemo.cpp, which
 //                 was in no build
 // Version: 1.0.2
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-03
 // Author: UltraCanvas Framework
 //
 // One rule that every example file here follows, because the demo is the
@@ -53,6 +56,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // Tr for the shell's texts
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
 #include "Plugins/Diagrams/UltraCanvasGourceTree.h"
 #include <memory>
@@ -180,6 +184,10 @@ namespace UltraCanvas {
         void CreateSourceWindow(const std::string& content, const std::string& title);
         void CreateDocumentationWindow(const std::string& content, const std::string& title);
     };
+    // The control chart card the Line Chart page ends with
+    // (UltraCanvasControlChartExamples.cpp).
+    void AddControlChartCard(const std::shared_ptr<UltraCanvasContainer>& page);
+
 // ===== MAIN DEMO APPLICATION CLASS =====
     class DemoCategoryBuilder;
 
@@ -195,7 +203,6 @@ namespace UltraCanvas {
         std::shared_ptr<DemoHeaderContainer> headerContainer;  // Header with title and buttons
         std::shared_ptr<UltraCanvasContainer> displayContainer;  // Content display area
         std::shared_ptr<DemoLegendContainer> legendContainer;  // Legend container for status icons
-        std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasLabel> descriptionLabel;
 
         // Demo items registry
@@ -226,23 +233,28 @@ namespace UltraCanvas {
         void RegisterDemoItem(std::unique_ptr<DemoItem> item);
         void DisplayDemoItem(const std::string& itemId);
         // Show an item the way a click on the tree would: the display, the tree
-        // selection, the header title and the status line all move together.
+        // selection and the header title move together.
         // Returns false for an unknown item id.
         bool SelectDemoItem(const std::string& itemId);
+        // --audit-layout: open every page (or only `onlyPage`), lay it out and
+        // list the text that does not fit and what a parent cuts off; with
+        // pseudoLocalize every text first ~40% longer. 0: nothing found.
+        int RunLayoutAudit(bool pseudoLocalize, const std::string& onlyPage);
+        // Every text of the page on show ~40% longer, as a translation is
+        // (--pseudo-loc with --component, to look at the result).
+        void PseudoLocalizeCurrentPage();
         void ClearDisplay();
-        void UpdateStatusDisplay(const std::string& itemId);
         void UpdateHeaderDisplay(const std::string& itemId);
 
         // ===== EVENT HANDLERS =====
         void OnTreeNodeSelected(TreeNode* node);
         // The filter field's text changed: narrow the tree to it (empty: the
-        // whole tree again) and say in the status line how much it found.
+        // whole tree again).
         void OnTreeFilterChanged(const std::string& text);
         void OnWindowResize(int newWidth, int newHeight);
 
         // ===== UTILITY METHODS =====
         std::string GetStatusIcon(ImplementationStatus status) const;
-        Color GetStatusColor(ImplementationStatus status) const;
         std::string GetCategoryDisplayName(DemoCategory category) const;
 
         // ===== DEMO CREATION METHODS =====
@@ -260,6 +272,10 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateRatingExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateStepperExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateChipExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateChipGroupExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateCardExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateCollapsiblePanelExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSidebarNavigationExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMessageCenterExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBadgeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBusyIndicatorExamples();
@@ -288,6 +304,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateListViewExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMenuConfigExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSettingsPageKitExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateLocalisationEditorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSegmentedControlExamples();
@@ -366,6 +384,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateJitterPlotExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBubbleChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQuadrantChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateImportancePerformanceChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateTernaryChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateHistogramChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGanttChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateKanbanBoardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();
@@ -384,6 +405,7 @@ namespace UltraCanvas {
 
         std::shared_ptr<UltraCanvasUIElement> CreateVennDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSWOTDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreatePerformanceMatrixExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateParliamentDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateFishboneDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMatrixDiagramExamples();
@@ -425,6 +447,7 @@ namespace UltraCanvas {
         // FileLoader module page: Overview / Details / Examples tabs, the last one
         // an interactive Open / Save playground across the supported file families.
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateLocalisationExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSystemDialogsExamples();
 #ifdef HAS_LIBVIPS
         // PixelFX module page: Overview / Details / Examples tabs, the last one an
@@ -445,6 +468,11 @@ namespace UltraCanvas {
         // diagram is skipped gracefully, so the screen degrades to a plain README
         // view until those assets are added.
         std::shared_ptr<UltraCanvasUIElement> CreateModuleDocScreen(const std::string& moduleDir);
+#ifdef ULTRACANVAS_DEMO_HAS_SMARTHOME
+        // The Smart Home module's panel on its simulated home
+        // (UltraCanvasSmartHomeExamples.cpp); built when SmartHomeUI is.
+        std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeExamples();
+#endif
         // Overview page for the "ULTRA OS modules" category node itself: the ULTRA OS
         // diagram (media/diagrams/ULTRA-OS.svg) plus the descriptive overview text.
         std::shared_ptr<UltraCanvasUIElement> CreateUltraOSInfoScreen();

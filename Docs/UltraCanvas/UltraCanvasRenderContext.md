@@ -218,6 +218,8 @@ breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
 ```cpp
 double GetCapCentreOffset(const FontStyle& font);                    // layout top → middle of a capital
 int    TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+int    TextTopCentredOnCaps(const Rect2Dd& row);                     // in the current font (GetFontStyle)
+const FontStyle& GetFontStyle();                                     // the font DrawText draws in now
 double ITextLayout::GetCapHeight();                                  // baseline → cap top, pixels
 ```
 
@@ -235,6 +237,16 @@ ctx->SetFontStyle(font);
 int y = ctx->TextTopCentredOnCaps(rowRect, font);   // same centre line as a box centred on rowRect
 ctx->DrawText(label, Point2Di(x, y));
 ```
+
+Code that only set a size or weight (`SetFontSize`, `SetFontWeight`) and
+draws in whatever family the context holds asks in the current font:
+`ctx->TextTopCentredOnCaps(rowRect)` measures `ctx->GetFontStyle()`.
+
+`GetCapHeight` measures the font the layout's text starts in: the layout's
+own font, with any family, size, weight or style attribute over its first
+character (`ChangeAttribute`). A layout sized by an attribute used to be
+measured in its base font - 12 pt - so a larger caption centred with
+`VerticalAlignment::Middle` sat high.
 
 The cap height is measured once per font from the ink of a capital H and
 cached, so asking per row costs a map lookup. The caches belong to the
@@ -313,6 +325,51 @@ alpha (`CompositeToSurfaceWithOpacity`, which leaves the destination under
 transparent pixels alone at every step). A window puts its popups on with
 `CompositeToSurfaceWithOpacity`, so a popup with rounded corners - a menu -
 shows the window behind its corners while it fades in and after.
+
+## The layouts the context keeps
+
+Two caches hold shaped text, and they are keyed differently.
+
+**The context's own cache** serves `DrawText`, `DrawTextInRect`,
+`GetTextLineDimensions` and the other measures that take a string: a
+process-wide store (20 MB, shared by every context) looked up by a key the
+backend builds from the call and the render state. The key holds:
+
+- the text (its first 300 bytes) and whether it is markup;
+- the size asked for (`DrawTextInRect`'s rectangle, 0 x 0 for `DrawText`),
+  which also decides the end-ellipsis a rectangle gets;
+- the font: family, size, weight and slant;
+- the text style: alignment, vertical alignment, indent, wrap, line height;
+- the pinned Pango resolution, so a layout made at one point-to-pixel ratio
+  is never reused at another.
+
+The key holds no transform, and none is needed: a layout is shaped once at
+the context's resolution and drawn through whatever transform is current, so
+text drawn under a zoom is as wide as the same text measured unscaled, times
+the zoom, to within a pixel of antialiasing at each end.
+`Tests/TextMeasureZoomTest.cpp` holds the backend to that from a zoom of 0.4
+to 3.0. An element that lays out at one zoom and draws at another - a node
+diagram, a drawing, a map - can therefore size its boxes from
+`GetTextLineDimensions` and trust them at every zoom; what it must allow for
+is only its own rounding, a measurement in whole pixels against a box in
+fractions.
+
+Left out on purpose: the device scale (a layout's extents are in logical
+units and, with hint metrics off, the same at any scale - only the paint
+differs), and the process-wide font options (antialias, hint style, hint
+metrics - changing one clears the whole cache, so no entry survives them).
+The same word in two fonts is therefore two entries, and
+`TextLayoutCacheTest` checks that it measures differently in each.
+
+**An element's own layout** (`CreateTextLayout`) is not in that store: it
+belongs to the element, which keeps it between draws through
+`UltraCanvasTextLayoutCache` (`UltraCanvasTextLayoutCache.h`) keyed on what
+it was built from - the text, the font, the wrap, the alignment, the
+shortening, the width - and rebuilds it only when one of those changed.
+The label, the button, the text input, the dropdown and the menu keep
+theirs this way. `TextLayoutsCreated()` counts the layouts
+`CreateTextLayout` made on a context, which is how a test tells "ten draws,
+one layout" from "a layout per draw".
 
 ## Tests
 

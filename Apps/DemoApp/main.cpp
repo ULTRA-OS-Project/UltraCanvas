@@ -1,4 +1,7 @@
 // UltraCanvas Framework Demonstration Program Entry Point
+// Version: 1.0.7 - Initialize is given the name "UltraCanvasDemo", not argv[0]
+// Version: 1.0.6 - --audit-layout runs in the bundled Ubuntu 12, whatever the desktop's font
+// Version: 1.0.5 - --audit-layout [--pseudo-loc] [--audit-page <id>]
 // Version: 1.0.4 - Builds for Android: the body is ultracanvas_app_main(),
 //                 which OS/Android's android_main() calls, and the X11 and
 //                 signal setup stay on desktop Linux
@@ -214,6 +217,9 @@ int main(int argc, char* argv[]) {
         bool testMode = false;
         bool showAbout = true;
         std::string startupComponent = "";
+        bool auditLayout = false;
+        bool auditPseudoLoc = false;
+        std::string auditPage;
 
 #ifdef __EMSCRIPTEN__
         // A page has no command line; its query string carries the same two
@@ -245,6 +251,12 @@ int main(int argc, char* argv[]) {
                 }
             } else if (arg == "--no-about") {
                 showAbout = false;
+            } else if (arg == "--audit-layout") {
+                auditLayout = true;
+            } else if (arg == "--pseudo-loc") {
+                auditPseudoLoc = true;
+            } else if (arg == "--audit-page" && i + 1 < argc) {
+                auditPage = argv[++i];
             } else if (arg == "--help" || arg == "-h") {
                 std::cout << "UltraCanvas Demo Application" << std::endl;
                 std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
@@ -254,6 +266,11 @@ int main(int argc, char* argv[]) {
                 std::cout << "  -c, --component   Start with specific component selected" << std::endl;
                 std::cout << "                    (implies --no-about)" << std::endl;
                 std::cout << "      --no-about    Start without the \"About UltraCanvas\" window" << std::endl;
+                std::cout << "      --audit-layout  Open every page and list text that does not fit" << std::endl;
+                std::cout << "                    and content a parent cuts off; exit 1 when found" << std::endl;
+                std::cout << "      --pseudo-loc  Every text ~40% longer first, as a translation is" << std::endl;
+                std::cout << "                    (with --audit-layout, or --component to look at it)" << std::endl;
+                std::cout << "      --audit-page <id>  With --audit-layout: that page only" << std::endl;
                 std::cout << "  -h, --help        Show this help message" << std::endl;
                 return 0;
             } else {
@@ -264,8 +281,22 @@ int main(int argc, char* argv[]) {
 
 
         // Initialize system
-        if (!InitializeSystem(g_app, argv[0])) {
+        if (!InitializeSystem(g_app, "UltraCanvasDemo")) {
             return EXIT_FAILURE;
+        }
+
+        // The layout audit measures text, so it runs in the bundled Ubuntu 12
+        // and Ubuntu Mono 12 whatever the desktop's font is - the pages are
+        // laid out for those, and a runner's font must not move the result.
+        if (auditLayout) {
+            FontStyle ui;
+            ui.fontFamily = "Ubuntu";
+            ui.fontSize = 12.0;
+            g_app.SetSystemFontStyle(ui);
+            FontStyle code;
+            code.fontFamily = "Ubuntu Mono";
+            code.fontSize = 12.0;
+            g_app.SetDefaultMonospacedFontStyle(code);
         }
 
         // Create and initialize demo application
@@ -288,6 +319,8 @@ int main(int argc, char* argv[]) {
             if (!g_demoApp->SelectDemoItem(startupComponent)) {
                 debugOutput << "Unknown component: " << startupComponent
                             << " (starting on the default page)" << std::endl;
+            } else if (auditPseudoLoc) {
+                g_demoApp->PseudoLocalizeCurrentPage();
             }
         }
 
@@ -303,6 +336,12 @@ int main(int argc, char* argv[]) {
         debugOutput << "  📋 Planned for future release" << std::endl;
         debugOutput << "• Close the window or press Ctrl+C to exit" << std::endl;
         debugOutput << std::endl;
+
+        if (auditLayout) {
+            const int result = g_demoApp->RunLayoutAudit(auditPseudoLoc, auditPage);
+            ShutdownSystem();
+            return result;
+        }
 
         // Run the demo application
         g_demoApp->Run(showAbout);

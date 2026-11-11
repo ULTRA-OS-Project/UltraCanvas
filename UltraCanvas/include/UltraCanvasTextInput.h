@@ -1,11 +1,13 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
+// Version: 1.14.0 - FromTheme sets the body font; the SetStyle rule and the constructor tail
+// Version: 1.13.0 - the text and the placeholder are shaped once and kept (UltraCanvasTextLayoutCache)
 // Version: 1.12.0 - SetClearButtonText: the clear button can carry a word
 //                  ("Reset") instead of the cross; TextInputType::Search shows
 //                  the clear button, as its description always said
 // Version: 1.11.0 - TextInputStyle::FromTheme, ApplyTheme
 // Version: 1.10.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-10
 // V1.10.0: An input method's composition (pre-edit text) is drawn in the field,
 //   underlined at the caret, instead of in the input method's own window
 //   (DrawsTextComposition, GetCompositionText). It is never part of the text.
@@ -43,6 +45,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasEvent.h"
 #include <optional>
 #include <string>
@@ -374,6 +377,13 @@ private:
     // ===== SCROLLING (for long text) =====
     int scrollOffset;
     int maxScrollOffset;
+
+    // The painted text's layout and the placeholder's, kept from draw to
+    // draw and rebuilt when the text, the font, the alignment or the room
+    // changes (UltraCanvasTextLayoutCache); the caret moves and the field
+    // scrolls without reshaping the text.
+    UltraCanvasTextLayoutCache textLayout_;
+    UltraCanvasTextLayoutCache placeholderLayout_;
     
     // ===== UNDO/REDO =====
     std::vector<TextInputState> undoStack;

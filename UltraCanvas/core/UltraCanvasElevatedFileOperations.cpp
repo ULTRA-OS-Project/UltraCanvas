@@ -4,10 +4,16 @@
 // every platform), the command-line and report encodings the two processes
 // agree on, and the fallbacks for platforms without a backend. Every
 // operating-system call lives in OS/<Platform>/.
+// Version: 1.2.0 - the helper removes through UltraCanvasFileRemoval: read-only
+//                  folders lifted too, delete-pending entries a success, and
+//                  a failure names the entry inside that refused and says
+//                  when a program holds it
+// Version: 1.1.0 - IsAvailable() asks NativeCanStartElevatedCopy (MSIX packages)
 // Version: 1.0.0
-// Last Modified: 2026-09-17
+// Last Modified: 2026-11-04
 // Author: UltraCanvas Framework
 #include "UltraCanvasElevatedFileOperations.h"
+#include "UltraCanvasFileRemoval.h"   // RemoveFileSystemTree
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include <filesystem>
@@ -32,32 +38,12 @@ namespace UltraCanvas {
             fs::path PathFromUtf8(const std::string& utf8) {
                 return std::filesystem::path(std::u8string(utf8.begin(), utf8.end()));   // path-string-ok: char8_t is UTF-8 by definition
             }
-
-            // Lift the write protection of `p` and, for a folder, of everything
-            // in it: a read-only file cannot be removed on Windows, and the
-            // helper's whole point is to get things out of the way. Errors
-            // are ignored here - the delete that follows reports the real one.
-            void LiftReadOnly(const fs::path& p) {
-                std::error_code ec;
-                fs::permissions(p, fs::perms::owner_write, fs::perm_options::add, ec);
-                if (!fs::is_directory(fs::symlink_status(p, ec))) return;
-                // Not following directory symlinks / junctions: the delete
-                // removes the link, not what it points at, and so must this.
-                fs::recursive_directory_iterator it(
-                        p, fs::directory_options::skip_permission_denied, ec);
-                if (ec) return;
-                for (const fs::recursive_directory_iterator end; it != end; it.increment(ec)) {
-                    if (ec) break;
-                    std::error_code pec;
-                    fs::permissions(it->path(), fs::perms::owner_write,
-                                    fs::perm_options::add, pec);
-                }
-            }
         }
 
         // ===== NO-BACKEND FALLBACKS =====
 #if !defined(_WIN32) && !defined(_WIN64)
         bool NativeProcessIsElevated() { return false; }
+        bool NativeCanStartElevatedCopy() { return false; }
 
         bool NativeIsPermissionFailure(const std::error_code& ec) {
             return ec == std::errc::permission_denied ||
@@ -106,7 +92,7 @@ namespace UltraCanvas {
 
         bool IsAvailable() {
 #if defined(_WIN32) || defined(_WIN64)
-            return helperInstalled && !NativeProcessIsElevated();
+            return helperInstalled && !NativeProcessIsElevated() && NativeCanStartElevatedCopy();
 #else
             return false;
 #endif
@@ -152,10 +138,26 @@ namespace UltraCanvas {
                     failures.push_back({utf8, "Not an absolute path"});
                     continue;
                 }
-                LiftReadOnly(p);
+                // Through UltraCanvasFileRemoval: read-only files and folders
+                // are lifted as it goes, an entry already gone - or deleted
+                // and only waiting for a program to let go - is a success.
                 std::error_code ec;
-                fs::remove_all(p, ec);   // an entry already gone is a success
-                if (ec) failures.push_back({utf8, ec.message()});
+                FileRemovalProblem problem = FileRemovalProblem::NoProblem;
+                fs::path stoppedAt;
+                if (RemoveFileSystemTree(p, ec, &problem, &stoppedAt)) continue;
+                // The reason names the entry inside that refused, and says
+                // so when a program holds it: that is the one thing an
+                // administrator cannot get past, and the summary is where
+                // the user learns it.
+                std::string reason = ec.message();
+                if (problem == FileRemovalProblem::InUse)
+                    reason = "in use by a program (" + reason + ")";
+                if (!stoppedAt.empty() && stoppedAt != p) {
+                    const fs::path inside = stoppedAt.lexically_relative(p);
+                    if (!inside.empty())
+                        reason = PathToUtf8(inside) + ": " + reason;
+                }
+                failures.push_back({utf8, reason});
             }
             return failures.empty() ? kHelperExitOk : kHelperExitPartial;
         }

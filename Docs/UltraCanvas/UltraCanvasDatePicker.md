@@ -7,6 +7,10 @@ design brief was *good usability above all*, so this document first surveys the
 common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
 
+**File Location**: `include/UltraCanvasDatePicker.h`
+**Version**: 1.5.0 - `FromTheme` on both styles, `ApplyTheme`: the pickers and the calendar follow the theme
+**Author**: UltraCanvas Framework
+
 ## Contents
 
 - [1. Selection philosophies surveyed](#1-selection-philosophies-surveyed)
@@ -116,7 +120,7 @@ Useful methods:
 | `SetSelectionMode(mode)` | `Single` (typeable) / `Range` / `Multiple` / `Week` |
 | `SetDateFormat(fmt)` | Display & parse format (`yyyy MM dd` tokens) |
 | `SetAllowTextInput(bool)` | Toggle free-text entry (default on for `Single`) |
-| `SetPlaceholder(text)` | Empty-state hint |
+| `SetPlaceholder(text)` / `GetPlaceholder()` | Empty-state hint, set at any time |
 | `SetMinDate/SetMaxDate` | Hard bounds |
 | `SetDateEnabledPredicate(fn)` | Arbitrary per-date enable/disable |
 | `SetFirstDayOfWeek(0..6)` | 0=Sunday (default), 1=Monday |
@@ -125,6 +129,28 @@ Useful methods:
 Interaction: click the field to type, click the button (or press ↑/↓) to open
 the calendar; selecting a single date commits and closes; completing a range
 commits and closes; `Esc` cancels.
+
+**Following the theme.** `DatePickerStyle::FromTheme` and
+`CalendarStyle::FromTheme` put the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink and the caret in ink,
+faint ink for the hint, muted ink for the glyph; the raised panel for the
+calendar with ink for the cells, the accent with text on it for the
+selected day, today's ring and the footer, the soft accent for a range,
+danger for a blocked day's strike; the weekends keep their red unless the
+theme names `calendar.weekend`; the interface font at the body size. Under
+the theme policy a new picker, range picker or calendar view follows the
+theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto when = std::make_shared<UltraCanvasDatePicker>("when");
+DatePickerStyle compact = when->GetStyle();
+compact.calendarStyle = CalendarStyles::Compact();
+when->SetStyle(DatePickerStyle::FromTheme(UltraCanvasTheme::Current(), compact));   // the roles over the compact calendar
+when->SetFollowTheme(true);
+calendar->SetStyle(CalendarStyle::FromTheme());                                     // an inline calendar, the current theme
+```
 
 ## 5. `UltraCanvasCalendarView` (inline)
 
@@ -146,7 +172,7 @@ Selection callbacks:
 Appearance: `SetStyle(CalendarStyle)` with predefined `CalendarStyles::Default()`,
 `CalendarStyles::Compact()` and `CalendarStyles::Dark()`; or tweak any colour /
 metric on `CalendarStyle` directly. `SetShowFooter`, `SetShowAdjacentMonthDays`,
-`SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest.
+`SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest. Without them the names are the standard set's `weekday|Mo`, `month|May` and `month-short|May` entries in the current language (UltraLocalisation), and a language switched at run time re-reads them in every open picker; names the application set stay through a switch; `GetWeekdayNames`, `GetMonthNamesLong` and `GetMonthNamesShort` read the names in use (`Tests/DatePickerLanguageTest.cpp` holds the rule).
 
 ## 6. Date range picking & blocked dates
 

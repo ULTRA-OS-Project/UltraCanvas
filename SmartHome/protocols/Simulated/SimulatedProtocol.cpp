@@ -153,7 +153,7 @@ public:
     // battery change, under the lock.
     std::string id, name, room, manufacturer = "UltraHome Demo", model, firmware = "1.0.0", serial;
     SmartHomeDeviceCategory category = SmartHomeDeviceCategory::Unknown;
-    DeviceCapability caps = DeviceCapability::None;
+    DeviceCapability caps = DeviceCapability::NoCapabilities;
     std::vector<std::string> tags;
     int linkQuality = 200;
 
@@ -382,7 +382,7 @@ private:
 
 // What is plugged in decides how a metered plug draws power.
 enum class SimulatedLoad {
-    None,           // an unmetered switch
+    Unmetered,           // an unmetered switch
     Steady,         // a constant draw with a little noise: a TV, a computer
     Fridge,         // always on; the compressor cycles between 95 W and 2 W
     Kettle          // heats at full power for a minute, then keeps warm
@@ -391,10 +391,10 @@ enum class SimulatedLoad {
 class SimulatedPlug : public SimulatedDeviceBase<ISmartSwitch> {
 public:
     SimulatedPlug(SimulatedLoad kind, double ratedWatts) : load(kind), rated(ratedWatts) {
-        category = kind == SimulatedLoad::None ? SmartHomeDeviceCategory::Switch : SmartHomeDeviceCategory::Plug;
+        category = kind == SimulatedLoad::Unmetered ? SmartHomeDeviceCategory::Switch : SmartHomeDeviceCategory::Plug;
         caps = DeviceCapability::OnOff;
         tags = {"switch"};
-        if (kind != SimulatedLoad::None) {
+        if (kind != SimulatedLoad::Unmetered) {
             caps = caps | DeviceCapability::Power | DeviceCapability::Energy;
             tags.push_back("power");
             tags.push_back("energy");
@@ -407,7 +407,7 @@ public:
     bool TurnOff() override { return Command("turnOff", {}); }
     bool Toggle() override { return Command("toggle", {}); }
     bool IsOn() const override { std::lock_guard<std::mutex> l(m); return on; }
-    bool SupportsPowerMonitoring() const override { return load != SimulatedLoad::None; }
+    bool SupportsPowerMonitoring() const override { return load != SimulatedLoad::Unmetered; }
     float GetPower() const override { std::lock_guard<std::mutex> l(m); return static_cast<float>(watts); }
     float GetVoltage() const override { return SupportsPowerMonitoring() ? 230.0f : 0.0f; }
     float GetCurrent() const override { return GetPower() / 230.0f; }
@@ -415,7 +415,7 @@ public:
 
     bool Advance(double seconds, std::mt19937& random) override {
         std::lock_guard<std::mutex> l(m);
-        if (load == SimulatedLoad::None) return false;
+        if (load == SimulatedLoad::Unmetered) return false;
         energy += watts * seconds / 3600000.0;
         phase += seconds;
         sinceNoise += seconds;
@@ -446,7 +446,7 @@ public:
     void FillState(Params& state) const override {
         std::lock_guard<std::mutex> l(m);
         state["on"] = on ? "true" : "false";
-        if (load != SimulatedLoad::None) {
+        if (load != SimulatedLoad::Unmetered) {
             state["power"] = FormatNumber(watts);
             state["energy"] = FormatNumber(energy, 3);
         }
@@ -1302,7 +1302,7 @@ void SimulatedProtocol::FurnishSampleHome() {
     AddDevice(officeHeat);
 
     // ----- Garden
-    auto pathLights = Make<SimulatedPlug>("Path lights", "Garden", "SIM-W100 relay", SimulatedLoad::None, 0.0);
+    auto pathLights = Make<SimulatedPlug>("Path lights", "Garden", "SIM-W100 relay", SimulatedLoad::Unmetered, 0.0);
     pathLights->Preset(false);
     AddDevice(pathLights);
     auto backGate = Make<SimulatedLock>("Garden gate", "Garden", "SIM-K100 lock");

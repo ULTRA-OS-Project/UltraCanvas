@@ -20,7 +20,7 @@ helpers are still to come.
   a real end-to-end DSO load of two test plugins built as MODULE libraries
 
 **Version:** 1.0.0
-**Last Modified:** 2026-08-01
+**Last Modified:** 2026-11-09
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -118,11 +118,44 @@ ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)
 ```
 
 The macro defines the one exported symbol, `UltraCanvas_PluginInit`, with the
-handshake already in place: it verifies the host's `abiVersion`, compares the
-host's `frameworkAbiTag` (compiler + standard library + C++ standard +
-descriptor version, e.g. `gcc-libstdc++-cxx20-uc1`) against the plugin's own,
-and fences exceptions. A mismatched or unhappy plugin is skipped with a log
-line — never half-registered. One DSO may register many descriptors.
+handshake already in place: it requires the host's table (`abiVersion`) to be
+at least the one the plugin was built for - the table only grows at its end,
+so a newer host still loads an older plugin, while a plugin built for a newer
+table than the host's refuses instead of calling members that are not there -
+compares the host's `frameworkAbiTag` (compiler + standard library + C++
+standard + descriptor version, e.g. `gcc-libstdc++-cxx20-uc1`) against the
+plugin's own, and fences exceptions. A mismatched or unhappy plugin is skipped
+with a log line — never half-registered. One DSO may register many
+descriptors.
+
+Changing the header is changing that contract: append a member to
+`UltraCanvasPluginHost` and bump `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION`, or
+change a type that crosses to the plug-ins (`UCElementDescriptor` and friends)
+and bump the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG`, then run
+`python3 scripts/check_plugin_abi.py --update`. CI (`plugin-abi.yml`) fails
+a change to the header that moves neither; a change that is not part of the
+contract is recorded with `--update --no-abi-change "why"`.
+
+**The classes themselves.** What a plugin's `create` returns is a class
+derived from `UltraCanvasUIElement` - often from a deeper framework class,
+as the charts derive from the chart engine's element - and the host calls
+its virtual functions and reads its members at places and offsets the
+framework's headers fix. Those headers change all the time and carry no
+version anybody bumps, so neither number above covers them. Instead CMake
+writes `UltraCanvasFrameworkHeadersId.h` when it configures: a hash of every
+header under `include/`, `libspecific/` and `OS/` (the way a framework DLL's
+build id is taken, `cmake/UltraCanvasLibraryBuildId.cmake`), in the build's
+`generated/include`, which the library's interface carries and the install
+puts beside the other headers. The macro exports it as a second symbol,
+`UltraCanvas_PluginHeadersId`, and the loader reads that before anything
+else: a plugin that answers another id, `"unknown"` (compiled without the
+generated header), or nothing (built before the symbol existed) is skipped -
+`UltraCanvas_PluginInit` is never called - with a log line naming both ids and
+saying to rebuild it. A plugin built separately from the framework therefore
+works with exactly the framework build whose headers it was compiled
+against, and is rebuilt for any other; one built in the same tree always
+matches. Like the DLL build id the hash is taken at configure time, so a
+header edited without a reconfigure leaves the id as it was on both sides.
 
 ## Loader behaviour
 
@@ -150,6 +183,78 @@ int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implici
   so without the anchor the linker strips the engine and a runtime chart module
   fails at `dlopen` with an undefined base-class symbol. Shared-core builds
   need no anchor - modules link the DLL/so directly.
+
+## Widgets as runtime modules
+
+Widgets follow the chart selection. `ULTRACANVAS_WIDGETS` (CMake cache: `all`,
+the default, empty, or a `;`-list of keys) names the selectable widgets
+compiled into the core. Every one not named is built as its own module,
+`ultracanvas-widget-<kebab-name>`, in `<build>/Plugins/Elements`
+(`ULTRACANVAS_WIDGET_RUNTIME_MODULES`, on by default; off on WASM and Android;
+on Windows the module needs the shared core). The table:
+
+| Key | Type name | Module | Applications that need it compiled in |
+|---|---|---|---|
+| `VideoTimeline` | `video-timeline` | `ultracanvas-widget-video-timeline` | UltraVideo, DemoApp |
+| `Slideshow` | `slideshow` | `ultracanvas-widget-slideshow` | DemoApp |
+| `Album` | `album` | `ultracanvas-widget-album` | UltraVideo, DemoApp |
+| `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
+| `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
+
+```cpp
+// At startup - registers the widgets compiled in. In a static core it also
+// keeps in the executable the core objects the widget modules need.
+UltraCanvas_RegisterSelectedWidgets();
+
+UltraCanvas_AddPluginDirectory(GetExecutableDir() + "/Plugins/Elements");
+auto timeline = UltraCanvasElementRegistry::Create("video-timeline", "tl", 0, 0, 800, 200);
+auto album    = UltraCanvasElementRegistry::Create("album", "pics", 0, 220, 800, 400);
+```
+
+The default build is unchanged: every widget is compiled in. A lean build
+leaves them out, with the applications that use them:
+
+```
+cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF \
+      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF
+```
+
+An application that uses a widget's typed API (its class, its `Create…`
+function, its style) needs that widget compiled in. The top-level
+`CMakeLists.txt` says which widgets each application uses
+(`ultracanvas_require_widgets`) and stops the configure, naming the widgets,
+when one it builds would not link. A host that loads widget modules from a
+static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
+modules' hosts.
+
+`ElementModulesTest` creates every selectable widget, and the chart of the
+chart module, by name in whichever form the build has them. Loading a module
+also checks that it carries the framework headers id the loader insists on.
+The *Element modules* workflow (`.github/workflows/element-modules.yml`)
+builds this lean configuration on every pull request that touches the
+framework, runs `ElementModulesTest`, `UltraCanvasThemeTest` and
+`VectorEditTest` against it, and checks that the configure refuses an
+application whose widgets are left out. `build.yml` compiles every widget
+in, so this is the only CI row that builds the modules.
+
+**Adding a widget to the table** (`UltraCanvas/CMakeLists.txt`, "WIDGET SYSTEM"):
+
+1. Give it a `Make<Widget>Descriptor()` and `Register<Widget>Element()`
+   beside its typed factory.
+2. Write a module entry in `UltraCanvas/Plugins/Widgets/` that registers the
+   descriptor through `host->RegisterElement` (see
+   `UltraCanvasVideoTimelinePlugin.cpp`).
+3. Take its sources out of `ULTRACANVAS_CORE_SOURCES` and add a row:
+   `_KEBAB`, `_SOURCES`, `_PLUGIN`, `_HEADER`, `_REGISTER`, and `_ANCHORS`
+   (with the headers in `_ANCHOR_INCLUDES`): one expression for each core
+   object file the module needs that a host with a UI may not link anyway - a
+   function, a member function or `&typeid(Class)` defined there.
+4. Add the widget to `ElementModulesTest`'s list in `Tests/CMakeLists.txt`
+   and build with the widget left out. A missing anchor fails the test with
+   the undefined symbol; `nm` on the archive names its object file.
+5. Add it to `ultracanvas_require_widgets` for every application that uses
+   its typed API, and guard every test that does by
+   `ULTRACANVAS_WIDGETS_COMPILED_IN` (a global CMake property).
 
 ## Best Practices
 

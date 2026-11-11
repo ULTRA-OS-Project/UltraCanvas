@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
 // Demo examples for UltraCanvasAdjacencyDiagram — architectural space-planning
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a card
+//                  that fills the area, every tab's description wraps above its diagram
 // Version: 1.1.1
-// Last Modified: 2026-06-04
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasAdjacencyDiagram.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -13,6 +16,24 @@
 #include <sstream>
 
 namespace UltraCanvas {
+
+    // A tab's page: its description, wrapped, above the diagram. The tab
+    // gives it its exact size; a diagram taller than that scrolls.
+    static std::shared_ptr<UltraCanvasContainer> MakeTabPage(
+            const std::string& id, const std::string& descId, const std::string& text)
+    {
+        auto tab = std::make_shared<UltraCanvasContainer>(id);
+        // The diagram keeps its size; a tab shorter or narrower than it
+        // scrolls rather than cutting the bottom rows off.
+        ContainerStyle scrolling = tab->GetContainerStyle();
+        scrolling.autoShowScrollbars = true;
+        tab->SetContainerStyle(scrolling);
+        tab->SetPadding(8, 10, 8, 10);
+        tab->layout.SetFlexColumn().SetFlexGap(6)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        DemoKit::AddText(tab, descId, text)->SetFontSize(11);
+        return tab;
+    }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 1 — Library branch  (image 1 — DCPL adjacency diagram)
@@ -27,19 +48,19 @@ namespace UltraCanvas {
     {
         // Rooms — position in diagram local coordinates; CenterContent() below
         // shifts the bounding box of all rooms to the widget center.
-        diagram->AddRoom("lobby",    "Lobby / Entry",      80,   0,    0,  RoomFunctionType::Circulation);
-        diagram->AddRoom("circ",     "Circulation\nDesk",  35,  120,  -80, RoomFunctionType::Public);
-        diagram->AddRoom("staff",    "Staff Work\nRoom",   60,  150,   40, RoomFunctionType::Private);
-        diagram->AddRoom("fiction",  "Adult Fiction",     140,  300,  -90, RoomFunctionType::Public);
-        diagram->AddRoom("nonfic",   "Adult\nNon-Fiction", 120, 400,   20, RoomFunctionType::Public);
-        diagram->AddRoom("youngadl", "Young Adult",        60,  350,  110, RoomFunctionType::Public);
-        diagram->AddRoom("children", "Children\n(3 zones)",350, -200,  60, RoomFunctionType::Public);
-        diagram->AddRoom("meeting",  "Meeting Room",      180, -120,  130, RoomFunctionType::Public);
-        diagram->AddRoom("childprog","Children's\nProgram", 40, -260, 140, RoomFunctionType::Public);
-        diagram->AddRoom("print",    "Print / Copy",       18,   60, -150, RoomFunctionType::Support);
-        diagram->AddRoom("toilets",  "Public\nRestrooms",  30,   80,  160, RoomFunctionType::Support);
-        diagram->AddRoom("storage",  "Storage",            20,  -20,  190, RoomFunctionType::Service);
-        diagram->AddRoom("lounge",   "Staff Lounge",       20,  220,   90, RoomFunctionType::Private);
+        diagram->AddRoom("lobby",    Tr("Lobby / Entry"),      80,   0,    0,  RoomFunctionType::Circulation);
+        diagram->AddRoom("circ",     Tr("Circulation\nDesk"),  35,  120,  -80, RoomFunctionType::Public);
+        diagram->AddRoom("staff",    Tr("Staff Work\nRoom"),   60,  150,   40, RoomFunctionType::Private);
+        diagram->AddRoom("fiction",  Tr("Adult Fiction"),     140,  300,  -90, RoomFunctionType::Public);
+        diagram->AddRoom("nonfic",   Tr("Adult\nNon-Fiction"), 120, 400,   20, RoomFunctionType::Public);
+        diagram->AddRoom("youngadl", Tr("Young Adult"),        60,  350,  110, RoomFunctionType::Public);
+        diagram->AddRoom("children", Tr("Children\n(3 zones)"),350, -200,  60, RoomFunctionType::Public);
+        diagram->AddRoom("meeting",  Tr("Meeting Room"),      180, -120,  130, RoomFunctionType::Public);
+        diagram->AddRoom("childprog",Tr("Children's\nProgram"), 40, -260, 140, RoomFunctionType::Public);
+        diagram->AddRoom("print",    Tr("Print / Copy"),       18,   60, -150, RoomFunctionType::Support);
+        diagram->AddRoom("toilets",  Tr("Public\nRestrooms"),  30,   80,  160, RoomFunctionType::Support);
+        diagram->AddRoom("storage",  Tr("Storage"),            20,  -20,  190, RoomFunctionType::Service);
+        diagram->AddRoom("lounge",   Tr("Staff Lounge"),       20,  220,   90, RoomFunctionType::Private);
 
         // Direct adjacency links
         diagram->AddLink("lobby",   "circ",     AdjacencyLinkType::Direct);
@@ -63,7 +84,7 @@ namespace UltraCanvas {
         // Single ground-floor zone
         AdjacencyZone zone;
         zone.id    = "gf";
-        zone.label = "Ground floor";
+        zone.label = Tr("Ground floor");
         zone.roomIds = {"lobby","circ","staff","fiction","nonfic","youngadl",
                         "children","meeting","childprog","print","toilets","storage","lounge"};
         zone.borderColor = Color(120, 120, 180, 160);
@@ -78,12 +99,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeLibraryTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjLibTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjLibDesc", 10, 8, 900, 22);
-        desc->SetText("Library branch adjacency: circles sized by floor area. Solid = direct adjacency, dashed = secondary access.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjLibTab", "AdjLibDesc",
+                Tr("Library branch adjacency: circles sized by floor area. Solid = direct adjacency, dashed = secondary access."));
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "LibDiagram", 10, 34, 990, 654);
@@ -94,13 +111,11 @@ namespace UltraCanvas {
         diagram->SetLegendPosition(ChartLegendPosition::InsetTopRight);
 
         diagram->onRoomClick = [statusLabel](int, const AdjacencyRoom& r) {
-            std::ostringstream ss;
-            ss << r.label << "  " << static_cast<int>(r.areaSqM) << " m²";
-            statusLabel->SetText(ss.str());
+            statusLabel->SetText(TrF("{0}  {1} m²", r.label, static_cast<int>(r.areaSqM)));
         };
 
         diagram->CenterContent();
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -111,14 +126,10 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeLibraryMatrixTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjMatrixTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjMatrixDesc", 10, 8, 980, 22);
-        desc->SetText("The same library programme as an adjacency matrix — identical rooms and links, "
-                      "only the view differs. Each space is crossed against every other; the upper "
-                      "triangle carries the requirement.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjMatrixTab", "AdjMatrixDesc",
+                Tr("The same library programme as an adjacency matrix — identical rooms and links, "
+                "only the view differs. Each space is crossed against every other; the upper "
+                "triangle carries the requirement."));
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "LibMatrix", 10, 34, 990, 654);
@@ -147,7 +158,7 @@ namespace UltraCanvas {
                                  "fiction", "nonfic", "youngadl", "print", "toilets",
                                  "staff", "lounge", "storage"});
 
-        diagram->SetAttributeColumns({"m²", "Public"});
+        diagram->SetAttributeColumns({"m²", Tr("Public")});
         for (int i = 0; i < diagram->GetRoomCount(); ++i) {
             const AdjacencyRoom* room = diagram->GetRoom(i);
             if (!room) continue;
@@ -169,11 +180,11 @@ namespace UltraCanvas {
             std::ostringstream ss;
             ss << rowId << " — " << colId << "   "
                << (link ? UltraCanvasAdjacencyDiagram::PriorityLabel(link->priority)
-                        : "no requirement");
+                        : Tr("no requirement"));
             statusLabel->SetText(ss.str());
         };
 
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -187,13 +198,9 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeTriangleTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjTriTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjTriDesc", 10, 8, 980, 22);
-        desc->SetText("The classic rotated triangle: each pair of spaces meets where their 45° "
-                      "diagonals cross. Same data model as the staircase — only the geometry differs.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjTriTab", "AdjTriDesc",
+                Tr("The classic rotated triangle: each pair of spaces meets where their 45° "
+                "diagonals cross. Same data model as the staircase — only the geometry differs."));
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "TriMatrix", 10, 34, 990, 654);
@@ -201,30 +208,30 @@ namespace UltraCanvas {
         // A waterfront community centre. Attributes are parallel to the
         // headers set below: Public? / Loud? / floor area.
         struct Space {
-            const char* id; const char* label; float area;
+            const char* id; std::string label; float area;
             RoomFunctionType type;
             const char* isPublic; const char* isLoud; const char* sqft;
         };
-        static const Space spaces[] = {
-            {"lobby",    "Lobby",                    120, RoomFunctionType::Circulation, "Y", "S", "1200"},
-            {"gallery",  "Gallery Space",             90, RoomFunctionType::Public,      "Y", "N", "900"},
-            {"workshop", "Workshops",                 80, RoomFunctionType::Public,      "Y", "Y", "850"},
-            {"lecture",  "Lecture Hall / Classroom", 110, RoomFunctionType::Public,      "Y", "S", "1100"},
-            {"library",  "Library",                  100, RoomFunctionType::Public,      "Y", "N", "1000"},
-            {"gym",      "Gymnasium / Basketball",   200, RoomFunctionType::Public,      "Y", "Y", "2000"},
-            {"offices",  "Offices (Admin, Meeting)",  70, RoomFunctionType::Private,     "N", "N", "700"},
-            {"storage",  "Storage",                   40, RoomFunctionType::Service,     "N", "N", "400"},
-            {"mech",     "Mechanical",                35, RoomFunctionType::Service,     "N", "Y", "350"},
-            {"bath",     "Bathrooms",                 45, RoomFunctionType::Support,     "Y", "N", "450"},
-            {"garden",   "Community Garden",          80, RoomFunctionType::Public,      "Y", "N", "800"},
-            {"elev",     "Elevators / Stairs",        30, RoomFunctionType::Circulation, "Y", "N", "300"},
-            {"pool",     "Pool",                     150, RoomFunctionType::Public,      "Y", "Y", "1500"},
-            {"pier",     "Kayaking Pier",             60, RoomFunctionType::Public,      "Y", "S", "600"},
-            {"green",    "Green / Waterfront Space", 160, RoomFunctionType::Public,      "Y", "S", "1600"},
-            {"field",    "Outdoor Field",            180, RoomFunctionType::Public,      "Y", "Y", "1800"},
-            {"counsel",  "Counseling Rooms",          50, RoomFunctionType::Private,     "N", "N", "500"},
-            {"children", "Children's Rooms",          75, RoomFunctionType::Public,      "Y", "Y", "750"},
-            {"fitness",  "Fitness Rooms",             85, RoomFunctionType::Public,      "Y", "Y", "850"},
+        const Space spaces[] = {
+            {"lobby",    Tr("Lobby"),                    120, RoomFunctionType::Circulation, "Y", "S", "1200"},
+            {"gallery",  Tr("Gallery Space"),             90, RoomFunctionType::Public,      "Y", "N", "900"},
+            {"workshop", Tr("Workshops"),                 80, RoomFunctionType::Public,      "Y", "Y", "850"},
+            {"lecture",  Tr("Lecture Hall / Classroom"), 110, RoomFunctionType::Public,      "Y", "S", "1100"},
+            {"library",  Tr("Library"),                  100, RoomFunctionType::Public,      "Y", "N", "1000"},
+            {"gym",      Tr("Gymnasium / Basketball"),   200, RoomFunctionType::Public,      "Y", "Y", "2000"},
+            {"offices",  Tr("Offices (Admin, Meeting)"),  70, RoomFunctionType::Private,     "N", "N", "700"},
+            {"storage",  Tr("Storage"),                   40, RoomFunctionType::Service,     "N", "N", "400"},
+            {"mech",     Tr("Mechanical"),                35, RoomFunctionType::Service,     "N", "Y", "350"},
+            {"bath",     Tr("Bathrooms"),                 45, RoomFunctionType::Support,     "Y", "N", "450"},
+            {"garden",   Tr("Community Garden"),          80, RoomFunctionType::Public,      "Y", "N", "800"},
+            {"elev",     Tr("Elevators / Stairs"),        30, RoomFunctionType::Circulation, "Y", "N", "300"},
+            {"pool",     Tr("Pool"),                     150, RoomFunctionType::Public,      "Y", "Y", "1500"},
+            {"pier",     Tr("Kayaking Pier"),             60, RoomFunctionType::Public,      "Y", "S", "600"},
+            {"green",    Tr("Green / Waterfront Space"), 160, RoomFunctionType::Public,      "Y", "S", "1600"},
+            {"field",    Tr("Outdoor Field"),            180, RoomFunctionType::Public,      "Y", "Y", "1800"},
+            {"counsel",  Tr("Counseling Rooms"),          50, RoomFunctionType::Private,     "N", "N", "500"},
+            {"children", Tr("Children's Rooms"),          75, RoomFunctionType::Public,      "Y", "Y", "750"},
+            {"fitness",  Tr("Fitness Rooms"),             85, RoomFunctionType::Public,      "Y", "Y", "850"},
         };
         for (const Space& s : spaces) {
             AdjacencyRoom room;
@@ -235,7 +242,7 @@ namespace UltraCanvas {
             room.attributes = {s.isPublic, s.isLoud, s.sqft};
             diagram->AddRoom(room);
         }
-        diagram->SetAttributeColumns({"Public", "Loud", "Sq Ft"});
+        diagram->SetAttributeColumns({Tr("Public"), Tr("Loud"), Tr("Sq Ft")});
 
         // The programme, straight in priority terms.
         diagram->AddLink("lobby",    "gallery",  AdjacencyPriority::Must);
@@ -280,11 +287,11 @@ namespace UltraCanvas {
             std::ostringstream ss;
             ss << rowId << " — " << colId << "   "
                << (link ? UltraCanvasAdjacencyDiagram::PriorityLabel(link->priority)
-                        : "no requirement");
+                        : Tr("no requirement"));
             statusLabel->SetText(ss.str());
         };
 
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -295,33 +302,29 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeResidenceTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjResTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjResDesc", 10, 8, 900, 22);
-        desc->SetText("Multi-floor residence: three floor zones. Arrows show directed circulation routes between floors.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjResTab", "AdjResDesc",
+                Tr("Multi-floor residence: three floor zones. Arrows show directed circulation routes between floors."));
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "ResDiagram", 10, 34, 990, 654);
 
         // ── Ground floor ──
-        diagram->AddRoom("gf_dining",    "Dining",          30,  -120,  60, RoomFunctionType::Public);
-        diagram->AddRoom("gf_kitchen",   "Kitchen",         25,  -40,  110, RoomFunctionType::Service);
-        diagram->AddRoom("gf_opencook",  "Open Kitchen",    20,  -80,  110, RoomFunctionType::Service);
-        diagram->AddRoom("gf_theater",   "Home Theater",    40,  -30,   50, RoomFunctionType::Private);
-        diagram->AddRoom("gf_outdoor",   "Outdoor Dining",  60, -200,   70, RoomFunctionType::Public);
+        diagram->AddRoom("gf_dining",    Tr("Dining"),          30,  -120,  60, RoomFunctionType::Public);
+        diagram->AddRoom("gf_kitchen",   Tr("Kitchen"),         25,  -40,  110, RoomFunctionType::Service);
+        diagram->AddRoom("gf_opencook",  Tr("Open Kitchen"),    20,  -80,  110, RoomFunctionType::Service);
+        diagram->AddRoom("gf_theater",   Tr("Home Theater"),    40,  -30,   50, RoomFunctionType::Private);
+        diagram->AddRoom("gf_outdoor",   Tr("Outdoor Dining"),  60, -200,   70, RoomFunctionType::Public);
 
         // ── 1F ──
-        diagram->AddRoom("1f_lobby",     "Lobby",          120,  140,  -20, RoomFunctionType::Circulation);
-        diagram->AddRoom("1f_elev",      "Elevator",        10,   80,  -20, RoomFunctionType::Support);
-        diagram->AddRoom("1f_service",   "Service",         10,  200,  -20, RoomFunctionType::Service);
+        diagram->AddRoom("1f_lobby",     Tr("Lobby"),          120,  140,  -20, RoomFunctionType::Circulation);
+        diagram->AddRoom("1f_elev",      Tr("Elevator"),        10,   80,  -20, RoomFunctionType::Support);
+        diagram->AddRoom("1f_service",   Tr("Service"),         10,  200,  -20, RoomFunctionType::Service);
 
         // ── 2F ──
-        diagram->AddRoom("2f_library",   "Library",         80,  130, -160, RoomFunctionType::Private);
-        diagram->AddRoom("2f_lounge",    "Lounge",          60,  240, -160, RoomFunctionType::Public);
-        diagram->AddRoom("2f_meeting",   "Meeting Rm",      35,  200, -100, RoomFunctionType::Public);
-        diagram->AddRoom("2f_hall",      "Hall",            20,  130, -100, RoomFunctionType::Circulation);
+        diagram->AddRoom("2f_library",   Tr("Library"),         80,  130, -160, RoomFunctionType::Private);
+        diagram->AddRoom("2f_lounge",    Tr("Lounge"),          60,  240, -160, RoomFunctionType::Public);
+        diagram->AddRoom("2f_meeting",   Tr("Meeting Rm"),      35,  200, -100, RoomFunctionType::Public);
+        diagram->AddRoom("2f_hall",      Tr("Hall"),            20,  130, -100, RoomFunctionType::Circulation);
 
         // Links
         diagram->AddLink("gf_dining",    "gf_kitchen",   AdjacencyLinkType::Direct);
@@ -347,26 +350,24 @@ namespace UltraCanvas {
             return z;
         };
 
-        diagram->AddZone(makeZone("gf", "GF",
+        diagram->AddZone(makeZone("gf", Tr("GF"),
                                   {"gf_dining","gf_kitchen","gf_opencook","gf_theater","gf_outdoor"},
                                   Color(100, 160, 100, 160), Color(200, 240, 200, 35)));
 
-        diagram->AddZone(makeZone("1f", "1F",
+        diagram->AddZone(makeZone("1f", Tr("1F"),
                                   {"1f_lobby","1f_elev","1f_service"},
                                   Color(100, 130, 200, 160), Color(200, 215, 245, 35)));
 
-        diagram->AddZone(makeZone("2f", "2F",
+        diagram->AddZone(makeZone("2f", Tr("2F"),
                                   {"2f_library","2f_lounge","2f_meeting","2f_hall"},
                                   Color(160, 100, 180, 160), Color(230, 210, 245, 35)));
 
         diagram->onRoomClick = [statusLabel](int, const AdjacencyRoom& r) {
-            std::ostringstream ss;
-            ss << r.label << "  " << static_cast<int>(r.areaSqM) << " m²";
-            statusLabel->SetText(ss.str());
+            statusLabel->SetText(TrF("{0}  {1} m²", r.label, static_cast<int>(r.areaSqM)));
         };
 
         diagram->CenterContent();
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -377,32 +378,28 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeOfficeTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("AdjOfficeTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("AdjOfficeDesc", 10, 8, 900, 22);
-        desc->SetText("Design studio program: public-facing vs. back-of-house zones. Drag rooms to adjust the layout.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("AdjOfficeTab", "AdjOfficeDesc",
+                Tr("Design studio program: public-facing vs. back-of-house zones. Drag rooms to adjust the layout."));
 
         auto diagram = std::make_shared<UltraCanvasAdjacencyDiagram>(
                 "OfficeDiagram", 10, 34, 990, 654);
 
         // Public zone
-        diagram->AddRoom("entry",     "Entry",          25,  -200, -100, RoomFunctionType::Public);
-        diagram->AddRoom("lobby",     "Lobby",          50,  -100, -100, RoomFunctionType::Public);
-        diagram->AddRoom("reception", "Reception",      30,  -60,  -150, RoomFunctionType::Public);
-        diagram->AddRoom("conf1",     "Conference A",   40,   60,  -150, RoomFunctionType::Public);
-        diagram->AddRoom("conf2",     "Conference B",   40,  140,  -100, RoomFunctionType::Public);
-        diagram->AddRoom("showroom",  "Showroom",       90,   40,   -80, RoomFunctionType::Public);
+        diagram->AddRoom("entry",     Tr("Entry"),          25,  -200, -100, RoomFunctionType::Public);
+        diagram->AddRoom("lobby",     Tr("Lobby"),          50,  -100, -100, RoomFunctionType::Public);
+        diagram->AddRoom("reception", Tr("Reception"),      30,  -60,  -150, RoomFunctionType::Public);
+        diagram->AddRoom("conf1",     Tr("Conference A"),   40,   60,  -150, RoomFunctionType::Public);
+        diagram->AddRoom("conf2",     Tr("Conference B"),   40,  140,  -100, RoomFunctionType::Public);
+        diagram->AddRoom("showroom",  Tr("Showroom"),       90,   40,   -80, RoomFunctionType::Public);
 
         // Staff zone
-        diagram->AddRoom("openplan",  "Open Studio",   120,    0,    20, RoomFunctionType::Private);
-        diagram->AddRoom("principal", "Principal Off.", 35,  -80,    80, RoomFunctionType::Private);
-        diagram->AddRoom("bookkeeper","Bookkeeper",     18,   80,    90, RoomFunctionType::Private);
-        diagram->AddRoom("server",    "Server Room",    12,  160,    50, RoomFunctionType::Service);
-        diagram->AddRoom("files",     "File Room",      14,  140,   100, RoomFunctionType::Support);
-        diagram->AddRoom("kitchen",   "Kitchenette",    15,  -80,   140, RoomFunctionType::Service);
-        diagram->AddRoom("toilets",   "Toilets",        16,   20,   160, RoomFunctionType::Support);
+        diagram->AddRoom("openplan",  Tr("Open Studio"),   120,    0,    20, RoomFunctionType::Private);
+        diagram->AddRoom("principal", Tr("Principal Off."), 35,  -80,    80, RoomFunctionType::Private);
+        diagram->AddRoom("bookkeeper",Tr("Bookkeeper"),     18,   80,    90, RoomFunctionType::Private);
+        diagram->AddRoom("server",    Tr("Server Room"),    12,  160,    50, RoomFunctionType::Service);
+        diagram->AddRoom("files",     Tr("File Room"),      14,  140,   100, RoomFunctionType::Support);
+        diagram->AddRoom("kitchen",   Tr("Kitchenette"),    15,  -80,   140, RoomFunctionType::Service);
+        diagram->AddRoom("toilets",   Tr("Toilets"),        16,   20,   160, RoomFunctionType::Support);
 
         // Adjacency
         diagram->AddLink("entry",     "lobby",     AdjacencyLinkType::Direct);
@@ -418,7 +415,7 @@ namespace UltraCanvas {
         diagram->AddLink("server",    "files",     AdjacencyLinkType::ServiceOnly);
 
         AdjacencyZone pubZone;
-        pubZone.id = "pub"; pubZone.label = "Public";
+        pubZone.id = "pub"; pubZone.label = Tr("Public");
         pubZone.roomIds = {"entry","lobby","reception","conf1","conf2","showroom"};
         pubZone.borderColor = Color(80, 120, 200, 160);
         pubZone.fillColor   = Color(210, 225, 255,  35);
@@ -426,7 +423,7 @@ namespace UltraCanvas {
         diagram->AddZone(pubZone);
 
         AdjacencyZone staffZone;
-        staffZone.id = "staff"; staffZone.label = "Staff / Back-of-house";
+        staffZone.id = "staff"; staffZone.label = Tr("Staff / Back-of-house");
         staffZone.roomIds = {"openplan","principal","bookkeeper","server","files","kitchen","toilets"};
         staffZone.borderColor = Color(160, 100,  80, 160);
         staffZone.fillColor   = Color(255, 228, 215,  35);
@@ -434,19 +431,17 @@ namespace UltraCanvas {
         diagram->AddZone(staffZone);
 
         diagram->onRoomClick = [statusLabel](int, const AdjacencyRoom& r) {
-            std::ostringstream ss;
-            ss << r.label << "  " << static_cast<int>(r.areaSqM) << " m²";
-            statusLabel->SetText(ss.str());
+            statusLabel->SetText(TrF("{0}  {1} m²", r.label, static_cast<int>(r.areaSqM)));
         };
         diagram->onLinkClick = [statusLabel](int, const AdjacencyLink& l) {
             std::string typeStr =
-                    (l.type == AdjacencyLinkType::Secondary)  ? "secondary"  :
-                    (l.type == AdjacencyLinkType::ServiceOnly) ? "service"    : "direct";
+                    (l.type == AdjacencyLinkType::Secondary)  ? Tr("secondary")  :
+                    (l.type == AdjacencyLinkType::ServiceOnly) ? Tr("service")    : Tr("direct");
             statusLabel->SetText(l.sourceId + " — " + l.targetId + " (" + typeStr + ")");
         };
 
         diagram->CenterContent();
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -456,72 +451,39 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateAdjacencyDiagramExamples()
     {
-        // No fixed size: the host display area stretches `main` (it applies
-        // flex-grow + align-self:stretch), so the Fr content column grows with
-        // the window and the subtitle re-wraps on resize.
-        auto main = std::make_shared<UltraCanvasContainer>("AdjDiagExamples");
-        main->SetPadding(5,5,0,5);
+        auto page = DemoKit::CreatePage("AdjDiagExamples", Tr("Architectural Adjacency Diagram"),
+                Tr("Rooms as area-proportional circles, colored by function. Solid = direct adjacency, "
+                "dashed = secondary, dotted = service"));
+        // The tabs fill the area, as the diagrams did before.
+        page->SetFillsArea(true);
 
-        // 3-row × 2-column grid: title/subtitle in the left column, status box in
-        // the right column spanning both top rows, tabs filling the bottom row.
-        // Fixed pixel heights on the label rows (Auto rows measure unwrapped text
-        // and would clip the subtitle's second wrapped line).
-        main->layout.SetGrid()
-                .SetGridColumns({
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                                 .value = CSSLayout::Dimension::Fr(1)},
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(350)}})
-                .SetGridRows({
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(34)},  // title row
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(44)},  // subtitle (room for 2 lines)
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                                 .value = CSSLayout::Dimension::Fr(1)}})   // tabs fill
-                .SetGridGap(6)
-                .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
-                .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
+        auto card = DemoKit::CreateCard("AdjDiagCard");
+        DemoKit::Add(page, card, 1);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        auto title = std::make_shared<UltraCanvasLabel>("AdjDiagTitle");
-        title->SetText("Architectural Adjacency Diagram");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(40, 100, 60));
-        main->AddChild(title);
-        title->layoutItem.SetGridRowColSimplified(0, 0);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("AdjDiagSub");
-        subtitle->SetText("Rooms as area-proportional circles, colored by function. Solid = direct adjacency, dashed = secondary, dotted = service");
-        subtitle->SetFontSize(11);
-        subtitle->SetWrap(TextWrap::WrapWord);
-        subtitle->SetTextColor(Color(90, 90, 90));
-        main->AddChild(subtitle);
-        subtitle->layoutItem.SetGridRowColSimplified(1, 0);
-
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("AdjDiagStatus");
-        statusLabel->SetText("Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag.");
-        statusLabel->SetFontSize(10);
+        auto statusLabel = DemoKit::CreateCaption("AdjDiagStatus",
+                Tr("Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag."));
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(6.0f);
-        statusLabel->SetAlignment(TextAlignment::Center);
-        main->AddChild(statusLabel);
-        statusLabel->layoutItem.SetGridRowColSimplified(0, 1, 2, 1);
+        statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
+        DemoKit::Add(card, statusLabel);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("AdjDiagTabs");
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
 
-        tabs->AddTab("Library branch",    MakeLibraryTab(statusLabel));
-        tabs->AddTab("Matrix view",       MakeLibraryMatrixTab(statusLabel));
-        tabs->AddTab("Triangle 45°",      MakeTriangleTab(statusLabel));
-        tabs->AddTab("Multi-floor villa", MakeResidenceTab(statusLabel));
-        tabs->AddTab("Design studio",     MakeOfficeTab(statusLabel));
+        tabs->AddTab(Tr("Library branch"),    MakeLibraryTab(statusLabel));
+        tabs->AddTab(Tr("Matrix view"),       MakeLibraryMatrixTab(statusLabel));
+        tabs->AddTab(Tr("Triangle 45°"),      MakeTriangleTab(statusLabel));
+        tabs->AddTab(Tr("Multi-floor villa"), MakeResidenceTab(statusLabel));
+        tabs->AddTab(Tr("Design studio"),     MakeOfficeTab(statusLabel));
 
-        main->AddChild(tabs);
-        tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);
-        return main;
+        DemoKit::Add(card, tabs, 1);
+        // From nothing, not from the diagrams' height: the tabs take the
+        // card's room and each tab scrolls its diagram.
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        return page;
     }
 
 } // namespace UltraCanvas

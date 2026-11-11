@@ -32,7 +32,7 @@ struct AiStatus {
     // gemini); Assistant::Other has none and is absent.
     std::map<Assistant, AssistantStatus> assistants;
 
-    const AssistantStatus* Status(Assistant assistant) const;
+    const AssistantStatus* StatusOf(Assistant assistant) const;
 };
 
 AiStatus DetectAi(const SystemProfile& profile);

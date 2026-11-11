@@ -17,12 +17,16 @@
 // The actions are painted into the row, as UltraMail's contact list paints its
 // bin, and hit-tested through onCellClicked; the keyboard reaches them too
 // (Enter copies, F2 edits, Delete deletes - the window handles those keys).
+// Version: 1.4.0 - ClipboardRowStyle::FromTheme: the rows from the theme over Light() or Dark()
+// Version: 1.3.0 - the text in the person's language (Tr); ClipboardEntryKindLabel,
+//                  ClipboardEntryDisplayTitle
 // Version: 1.2.0 - ClipboardRowAction::SaveAs, shown with ClipboardRowStyle::saveAction;
 //                  the icons left of the text (ClipboardRowStyle::actionsLeftOfText)
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasClipboardHistory.h"
 #include "UltraCanvasListDelegate.h"
 #include "UltraCanvasListModel.h"
@@ -113,6 +117,16 @@ struct ClipboardRowStyle {
 
     static ClipboardRowStyle Light();
     static ClipboardRowStyle Dark();   // the desktop's bar colours, compact
+    // The theme's roles over a base's own shape (heights, sizes, flags):
+    // the well for the list, ink and muted ink, text on the accent for the
+    // selected row, the panel for the header and a tile with hairlines, the
+    // actions in faint ink and ink when active with the hover fill, danger
+    // for delete, the accent for the pin, the selection and the hover fill;
+    // the "copied" green keeps its meaning. Without a base: Dark() or
+    // Light() by the theme's flag
+    static ClipboardRowStyle FromTheme(const UltraCanvasTheme& theme, const ClipboardRowStyle& base);
+    static ClipboardRowStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, theme.dark ? Dark() : Light()); }
+    static ClipboardRowStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 class ClipboardHistoryRowDelegate : public IItemDelegate {
@@ -168,8 +182,17 @@ private:
                    FontWeight weight, const Color& color, bool monospace) const;
 };
 
+// Everything below is in the person's language (Tr): the English shown in
+// the examples is what an untranslated build shows.
+//
 // The meta line under a title: "Text · 2 lines · 29 characters · UltraMail · 5 min ago".
 std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t nowMs, bool compact);
+// A kind's name to show: "Text", "Formatted text", "Image" ... (ClipboardEntryKindName
+// is the English one search matches against).
+std::string ClipboardEntryKindLabel(ClipboardEntryKind kind);
+// The title to show for an entry: its stored title, but an image's "Image"
+// and copied files' "a, b and 2 more" made again in the person's language.
+std::string ClipboardEntryDisplayTitle(const ClipboardHistoryEntry& entry);
 // "just now", "5 min ago", "2 h ago", "today 09:41", "yesterday 16:20", "3 Oct", "3 Oct 2025".
 std::string FormatClipboardAge(int64_t whenMs, int64_t nowMs);
 // "512 bytes", "412 KB", "2.4 MB".

@@ -6,6 +6,8 @@
 // matrix (special bits like setuid are preserved), reduced to a single
 // "Read-only" switch on Windows, where only the write bits map onto the
 // filesystem attribute.
+// Version: 1.0.3 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
+// Version: 1.0.2 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.1 - Read-only works on a name outside the Windows code page
 // Last Modified: 2026-10-07
 // Author: UltraCanvas Framework
@@ -20,6 +22,7 @@
 #include "UltraCanvasShellLink.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cstdio>
 #include <ctime>
@@ -181,7 +184,7 @@ namespace {
         bottom->SetPadding(8, 12, 8, 12);
         bottom->SetBorderTop(1, Color(225, 225, 230, 255));
         UltraCanvasWindow* raw = window.get();
-        bottom->AddChild(MakeButton(idPrefix + "-close", "Close", 90,
+        bottom->AddChild(MakeButton(idPrefix + "-close", Tr("Close"), 90,
                 [raw]() { raw->Close(); }));
         window->AddChild(bottom);
 
@@ -254,9 +257,8 @@ namespace {
         }
 
         if (st->status) {
-            std::string text = "Applied to " + std::to_string(applied) +
-                    (applied == 1 ? " item." : " items.");
-            if (!firstError.empty()) text = "Error: " + firstError;
+            std::string text = TrN("Applied to {n} item.", "Applied to {n} items.", applied);
+            if (!firstError.empty()) text = TrF("Error: {0}", firstError);
             st->status->SetText(text);
             st->status->RequestRedraw();
         }
@@ -422,7 +424,7 @@ void UltraFilerPropertiesDialogs::ShowAccess(
 
 #ifdef _WIN32
     state->readOnlyBox = UltraCanvasCheckbox::CreateCheckbox(
-            "ufl-acc-readonly", -1, -1, 200, 22, "Read-only", first.isReadOnly);
+            "ufl-acc-readonly", -1, -1, 200, 22, Tr("Read-only"), first.isReadOnly);
     state->readOnlyBox->SetFontSize(kFontSize);
     state->readOnlyBox->size.width  = CSSLayout::Dimension::Px(200);
     state->readOnlyBox->size.height = CSSLayout::Dimension::Px(22);
@@ -471,7 +473,7 @@ void UltraFilerPropertiesDialogs::ShowAccess(
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     buttonRow->size.height = CSSLayout::Dimension::Px(34);
     AccessState* raw = state.get();
-    buttonRow->AddChild(MakeButton("ufl-acc-apply", "Apply", 90,
+    buttonRow->AddChild(MakeButton("ufl-acc-apply", Tr("Apply"), 90,
             [raw]() { ApplyAccess(raw); }));
     content->AddChild(buttonRow);
 

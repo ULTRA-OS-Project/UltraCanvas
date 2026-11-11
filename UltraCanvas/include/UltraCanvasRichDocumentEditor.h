@@ -15,6 +15,11 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
+// Version: 1.3.0 - a run's own letter spacing as a format: RichCharFormatDelta::
+//                  setLetterSpacing, RichCharFormatState::letterSpacingPt
+// Version: 1.2.0 - the highlight colour (background behind the text) as a
+//                  format: RichCharFormatDelta::setHighlight, SetHighlightColor,
+//                  RichCharFormatState::highlightColor
 // Version: 1.1.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -99,6 +104,9 @@ struct RichCharFormatDelta {
     bool setFontFamily = false;    std::string fontFamily;
     bool setFontSize = false;      float fontSizePt = 0.0f;
     bool setColor = false;         std::string color;        // "#RRGGBB", empty = inherit
+    bool setHighlight = false;     std::string highlightColor; // "#RRGGBB", empty = none
+    // A run's own letter spacing in points; unset = the view's own.
+    bool setLetterSpacing = false; std::optional<float> letterSpacingPt;
     bool setLink = false;          std::string linkTarget;   // empty = remove the link
     int addComment = -1;           // put the text under this comment
     int removeComment = -1;        // take it out from under this one
@@ -106,7 +114,7 @@ struct RichCharFormatDelta {
     bool IsEmpty() const {
         return !setBold && !setItalic && !setUnderline && !setStrikethrough && !setCode
             && !setSubscript && !setSuperscript && !setFontFamily && !setFontSize
-            && !setColor && !setLink && addComment < 0 && removeComment < 0;
+            && !setColor && !setHighlight && !setLetterSpacing && !setLink && addComment < 0 && removeComment < 0;
     }
     // Applies this delta to one run's attributes.
     void ApplyTo(RichTextRun& run) const;
@@ -132,6 +140,10 @@ struct RichCharFormatState {
     bool fontSizeMixed = false;
     std::string color;
     bool colorMixed = false;
+    std::string highlightColor;     // the background behind the text; empty = none
+    bool highlightMixed = false;
+    std::optional<float> letterSpacingPt;   // unset when the runs inherit it, or disagree
+    bool letterSpacingMixed = false;
     std::string linkTarget;
     bool linkMixed = false;
 
@@ -300,6 +312,8 @@ public:
     void SetFontFamily(const std::string& family);
     void SetFontSize(float pt);
     void SetTextColor(const std::string& hexColor);
+    // The background behind the text ("#RRGGBB"; empty removes it).
+    void SetHighlightColor(const std::string& hexColor);
     void SetLink(const std::string& target);
     void ClearFormatting();          // back to plain text, keeping the characters
 

@@ -19,6 +19,8 @@
 //
 // One window per user: a second start of the window brings the running one
 // forward and ends (UltraCanvasSingleInstance.h). Commands are not affected.
+// Version: 0.2.4 - the list opened last lives in the framework's settings file (UltraCanvasAppSettings)
+// Version: 0.2.3 - the bookkeepings opened last are remembered for the start window
 // Version: 0.2.2 - one UltraFIBU window per user: a second start brings the
 //                  running window forward instead of opening another copy
 // Version: 0.2.1
@@ -27,7 +29,9 @@
 #include "UltraFIBUStart.h"
 #include "UltraFIBUCli.h"
 
+#include "UltraCanvasAppSettings.h"   // the files opened last
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasPathUtf8.h"      // PathToUtf8
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"   // GetResourcesDir, NormalizePath
 
@@ -36,6 +40,9 @@
 #include <string>
 
 namespace {
+
+// The key of the files opened last in the program's settings file.
+const char* const kZuletzt = "zuletzt";
 
 // Whether these arguments ask for the window rather than a command. The window
 // takes at most one argument, the file; a command word, an option, or more
@@ -86,13 +93,28 @@ int main(int argc, char** argv) {
     UltraFIBU::FibuApp fibu;
     UltraFIBU::StartFenster start;
 
+    // The program's settings - <settings folder>/UltraFIBU/settings.json,
+    // the framework's file for every application's preferences - hold the
+    // files opened last under "zuletzt", the last opened first, eight at
+    // most. Read again before each write: the main window may have written
+    // its own preferences meanwhile.
+    auto merken = [](const std::string& pfad, bool vergessen) {
+        UltraCanvas::UltraCanvasAppSettings einstellungen("UltraFIBU");
+        einstellungen.Load();
+        if (vergessen) einstellungen.Forget(kZuletzt, pfad);
+        else einstellungen.Remember(kZuletzt, pfad);
+        einstellungen.Save();
+    };
+
     // Open a file in the main window. Returns why not, or an empty string.
     // The main window is built and shown here, before anything closes the
-    // start window: the application ends when it has no window left.
-    auto oeffne = [&fibu](const std::string& pfad) -> std::string {
+    // start window: the application ends when it has no window left. A file
+    // that opened is remembered for the start window's list.
+    auto oeffne = [&fibu, merken](const std::string& pfad) -> std::string {
         std::string fehler;
         if (!fibu.Initialisieren(pfad, fehler)) return fehler;
         fibu.FensterBauen()->Show();
+        merken(UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(pfad).lexically_normal()), false);
         return std::string();
     };
 
@@ -124,7 +146,10 @@ int main(int argc, char** argv) {
     }
 
     start.onDateiGewaehlt = oeffne;
-    start.Bauen(hinweis, datenbank)->Show();
+    start.onDateiVergessen = [merken](const std::string& pfad) { merken(pfad, true); };
+    UltraCanvas::UltraCanvasAppSettings einstellungen("UltraFIBU");
+    einstellungen.Load();
+    start.Bauen(hinweis, datenbank, einstellungen.GetList(kZuletzt))->Show();
     instanz.ListenRaise();   // a later start brings the window forward
     app.Run();
     instanz.Close();         // before the windows go

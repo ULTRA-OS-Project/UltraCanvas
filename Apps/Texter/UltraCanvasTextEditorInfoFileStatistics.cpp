@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
 // File statistics dialog for the text editor.
+// Version: 1.3.0 - the dialog's texts go through Tr / TrF / TrN
 // Version: 1.2.0
 // Last Modified: 2026-06-07
 // Author: UltraCanvas Framework
@@ -19,6 +20,7 @@
 #include <sstream>
 #include <algorithm>
 #include "UltraCanvasTextEditor.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #if defined(__linux__)
 #include <fcntl.h>
@@ -103,7 +105,7 @@ static std::string GetFileCreatedTimeString(const std::string &filePath) {
         oss << std::put_time(tm, "%Y-%m-%d  %H:%M:%S");
         return oss.str();
     }
-    return "Not available";
+    return Tr("Not available");
 #elif defined(_WIN32)
     WIN32_FILE_ATTRIBUTE_DATA fad;
     std::wstring wpath(filePath.begin(), filePath.end());
@@ -120,7 +122,7 @@ static std::string GetFileCreatedTimeString(const std::string &filePath) {
             << std::setw(2) << std::setfill('0') << st.wSecond;
         return oss.str();
     }
-    return "Not available";
+    return Tr("Not available");
 #elif defined(__APPLE__)
     struct stat st;
     if (stat(filePath.c_str(), &st) == 0) {
@@ -130,9 +132,9 @@ static std::string GetFileCreatedTimeString(const std::string &filePath) {
         oss << std::put_time(tm, "%Y-%m-%d  %H:%M:%S");
         return oss.str();
     }
-    return "Not available";
+    return Tr("Not available");
 #else
-    return "Not available";
+    return Tr("Not available");
 #endif
 }
 
@@ -250,7 +252,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
     // ===== BUILD DIALOG =====
     DialogConfig dlgConfig;
-    dlgConfig.title = "File Statistics";
+    dlgConfig.title = Tr("File Statistics");
     dlgConfig.dialogType = DialogType::Custom;
     dlgConfig.buttons = DialogButtons::NoButtons;
     dlgConfig.width = dialogWidth;
@@ -263,9 +265,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     fileStatsDialog->SetPadding(dialogPadding);
 
     // ===== TITLE =====
-    std::string titleText = "File Statistics  —  "
-                            + std::to_string(rowCount)
-                            + (rowCount == 1 ? " file open" : " files open");
+    std::string titleText = TrN("File Statistics  —  {n} file open", "File Statistics  —  {n} files open", rowCount);
     auto titleLabel = std::make_shared<UltraCanvasLabel>(
             "StatsTitle", 0, 0, gridWidth, titleHeight);
     titleLabel->SetText(titleText);
@@ -328,19 +328,19 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     };
 
     addHeaderCell(0, "",         TextAlignment::Center);
-    addHeaderCell(1, "File Name", TextAlignment::Left);
-    addHeaderCell(2, "Size",     TextAlignment::Right);
-    addHeaderCell(3, "Charset",  TextAlignment::Center);
-    addHeaderCell(4, "Words",    TextAlignment::Right);
-    addHeaderCell(5, "Chars",    TextAlignment::Right);
-    addHeaderCell(6, "Modified", TextAlignment::Center);
-    addHeaderCell(7, "Status",   TextAlignment::Center);
+    addHeaderCell(1, Tr("File Name"), TextAlignment::Left);
+    addHeaderCell(2, Tr("Size"),     TextAlignment::Right);
+    addHeaderCell(3, Tr("Charset"),  TextAlignment::Center);
+    addHeaderCell(4, Tr("Words"),    TextAlignment::Right);
+    addHeaderCell(5, Tr("Chars"),    TextAlignment::Right);
+    addHeaderCell(6, Tr("Modified"), TextAlignment::Center);
+    addHeaderCell(7, Tr("Status"),   TextAlignment::Center);
 
     // ----- Data rows -----
     if (rowCount == 0) {
         auto empty = std::make_shared<UltraCanvasLabel>(
                 "StatsEmpty", 0, 0, gridWidth, rowHeight);
-        empty->SetText("No files open");
+        empty->SetText(Tr("No files open"));
         empty->SetFontSize(11);
         empty->SetTextColor(Color(120, 120, 120));
         empty->SetBackgroundColor(Colors::White);
@@ -393,7 +393,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
                     Color(30, 30, 30), s.isActive, nameTooltip);
 
             addCell(2, s.sizeStr,                  TextAlignment::Right,  Color(30, 30, 30), false,
-                    s.sizeBytes > 0 ? (std::to_string(s.sizeBytes) + " bytes") : "");
+                    s.sizeBytes > 0 ? TrF("{0} bytes", s.sizeBytes) : std::string());
             addCell(3, s.charset,                  TextAlignment::Center);
             addCell(4, std::to_string(s.wordCount), TextAlignment::Right);
             addCell(5, std::to_string(s.charCount), TextAlignment::Right);

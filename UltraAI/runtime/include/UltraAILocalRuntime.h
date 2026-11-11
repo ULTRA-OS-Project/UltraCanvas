@@ -24,10 +24,22 @@
 // process start) and is meant for adapters and worker threads, never for a
 // UI thread.
 //
+// Topics: what a model is used for - chat, code, translation, summaries,
+// pictures, search. The model server (Server/UltraAIModelServer) publishes
+// topics.json beside the gallery index, naming the models it offers for
+// each topic and its default; the user keeps that default or picks another
+// model per topic, and says whether new models the server publishes are
+// downloaded on their own (TopicPreferences). An application asks
+// ModelForTopic("translation"), or hands the `local` provider
+// providerOptions["topic"].
+//
 // Nothing here draws. The framework's "Get a local model" dialog and the
-// dashboard's Local models page are built on top of it.
+// dashboard's Local models and Model topics pages are built on top of it.
+// Version: 0.2.0 - topics: the server's topics.json, the user's model per
+//                  topic, new models (ListTopics, ModelForTopic,
+//                  TopicPreferences, NewModels, ApplyTopicUpdates)
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-06
 // Author: UltraAI Module
 #pragma once
 
@@ -207,6 +219,52 @@ struct LocalRuntimeSettings {
     int            startTimeoutSeconds = 0;     // 0 = scaled with model size
 };
 
+// One model a topic offers, as the server lists it.
+struct TopicModelRef {
+    std::string modelId;
+    bool        isDefault = false;      // the server's choice for the topic
+};
+
+// What a model is used for. From the server's topics.json (beside the
+// gallery index), or the copy shipped with the framework.
+struct ModelTopic {
+    std::string id;                     // "chat", "code", "translation", "summary", "vision", "search", ...
+    std::string name;                   // "General chat"
+    std::string description;
+    std::string capability;             // "textllm", "embeddings", ...
+    std::vector<TopicModelRef> models;  // the server's order, best first
+
+    // The model the server names as the default ("" when it offers none).
+    std::string ServerDefault() const;
+};
+
+// What happens when the server publishes a model the user has not seen.
+enum class NewModelPolicy {
+    Ignore,      // nothing; the Local models page still lists it
+    Notify,      // NewModels() reports it until MarkModelsSeen
+    Automatic    // also downloaded, when it is the default of a topic the user follows
+};
+
+// The user's choice for one topic.
+struct TopicChoice {
+    // The model used for the topic; "" follows the server's default (and
+    // moves with it when the server changes it).
+    std::string modelId;
+    // While following the server: download the server's default for this
+    // topic when it is not installed (ApplyTopicUpdates). Off, the default
+    // is still used once the user installs it.
+    bool autoInstall = true;
+};
+
+// The user's topic settings. Persisted to <root>/UltraAI/topic-preferences.json.
+struct TopicPreferences {
+    std::map<std::string, TopicChoice> choices;     // by topic id; absent = follow, autoInstall
+    NewModelPolicy newModels = NewModelPolicy::Notify;
+    // Catalogue ids the user has been told of. Filled with the whole
+    // catalogue the first time, so only models published later count as new.
+    std::vector<std::string> seenModels;
+};
+
 // Downloads a URL to a local file. The production fetch is
 // UltraNet_HttpDownloadFile; a test injects a copy. `resume` asks for the
 // bytes after the file's current size. `onProgress` reports (done, total;
@@ -225,6 +283,7 @@ struct LocalRuntimeOptions {
     FetchFileFn fetch;                           // null = UltraNet download
     std::string galleryJson;                     // "" = the built-in index
     std::string catalogueJson;                   // "" = the built-in catalogue
+    std::string topicsJson;                      // "" = the built-in topics
     // Engines already on this machine, by engine id: the folder holding the
     // executable, or the executable itself. A developer's own llama.cpp
     // build, or a test's fake engine. The environment variable
@@ -350,6 +409,34 @@ public:
     // the user's registration; "" when unknown.
     std::string CapabilityOf(const std::string& modelId) const;
 
+    // ----- Topics -----
+
+    // The topics, in the server's order. RefreshGallery() fetches
+    // topics.json from beside the index; until then the built-in copy.
+    std::vector<ModelTopic> ListTopics() const;
+    bool FindTopic(const std::string& topicId, ModelTopic& out) const;
+    TopicPreferences GetTopicPreferences() const;
+    void SetTopicPreferences(const TopicPreferences& preferences);   // persisted
+    // Pick the model for one topic ("" = follow the server). Persisted.
+    void SetTopicModel(const std::string& topicId, const std::string& modelId);
+    // The model a topic uses on this computer: the user's choice when it is
+    // known and fits; else the server's default when it fits; else an
+    // installed model the topic offers; else the first offered that fits;
+    // else Recommend(capability). "" for an unknown topic with no model of
+    // its capability.
+    std::string ModelForTopic(const std::string& topicId) const;
+    // Catalogue models the user has not been told of (NewModelPolicy
+    // Notify / Automatic), in catalogue order. Installed ones are left out.
+    std::vector<LocalModelInfo> NewModels() const;
+    // Remember these ids as seen; MarkModelsSeen({}) marks the whole catalogue.
+    void MarkModelsSeen(const std::vector<std::string>& modelIds);
+    // Queue the installs the topic settings call for: for every topic the
+    // user follows with autoInstall on, the model ModelForTopic picks when
+    // it is not installed and fits this computer; with the Automatic policy
+    // the new models that are a topic's default as well. Does nothing under
+    // DownloadPolicy::Never. Returns the job ids (InstallModel).
+    std::vector<std::string> ApplyTopicUpdates(InstallProgressCallback onProgress);
+
     class Impl;
 private:
     std::unique_ptr<Impl> impl_;
@@ -360,5 +447,7 @@ const char* ToString(DownloadPolicy policy);
 bool ParseDownloadPolicy(const std::string& text, DownloadPolicy& out);
 const char* ToString(ModelFit fit);
 const char* ToString(InstallProgress::State state);
+const char* ToString(NewModelPolicy policy);
+bool ParseNewModelPolicy(const std::string& text, NewModelPolicy& out);
 
 } // namespace UltraAI

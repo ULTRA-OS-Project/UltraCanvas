@@ -33,6 +33,10 @@
 #  undef CreateDirectory
 #endif
 
+// After UltraNetPlugins.h and the #undef above: it includes <curl/curl.h>,
+// and with it <windows.h>, which must not rename the interface's methods.
+#include <UltraNet/UltraNetCurlProxy.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -63,7 +67,7 @@ std::size_t ReadFile(char* p, std::size_t s, std::size_t n, void* ud) {
 UltraNetResultCode MapCurlError(CURLcode rc, long status) {
     if (rc == CURLE_OK) {
         if (status >= 400) return UltraNetResultCode::HttpError;
-        return UltraNetResultCode::Success;
+        return UltraNetResultCode::Ok;
     }
     switch (rc) {
         case CURLE_URL_MALFORMAT:           return UltraNetResultCode::InvalidUrl;
@@ -84,7 +88,9 @@ std::string ToHttpUrl(const std::string& url) {
     return url;
 }
 
-void ApplyCommon(CURL* h, const UltraNetFileShareOptions& o) {
+void ApplyCommon(CURL* h, const std::string& url, const UltraNetFileShareOptions& o) {
+    // The proxy setting (the operating system's by default).
+    ultranet_curlproxy::ApplyFor(h, url, /*tunnel=*/false);
     if (!o.credentials.username.empty()) {
         curl_easy_setopt(h, CURLOPT_HTTPAUTH, CURLAUTH_BASIC | CURLAUTH_DIGEST);
         curl_easy_setopt(h, CURLOPT_USERNAME, o.credentials.username.c_str());
@@ -104,7 +110,7 @@ UltraNetResult Run(CURL* h, const std::string& url) {
     UltraNetResult r;
     r.url = url; r.httpStatus = static_cast<int>(status);
     r.code = MapCurlError(rc, status);
-    r.success = (r.code == UltraNetResultCode::Success);
+    r.success = (r.code == UltraNetResultCode::Ok);
     if (!r.success && rc != CURLE_OK) r.message = curl_easy_strerror(rc);
     else if (!r.success) r.message = "HTTP " + std::to_string(status);
     return r;
@@ -256,12 +262,12 @@ public:
                              static_cast<long>(std::strlen(kBody)));
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
-            ApplyCommon(h.get(), opt);
+            ApplyCommon(h.get(), listUrl, opt);
 
             UltraNetResult r = Run(h.get(), listUrl);
             // PROPFIND returns 207 Multi-Status on success; map that to ok.
             if (r.httpStatus == 207) {
-                r.code = UltraNetResultCode::Success;
+                r.code = UltraNetResultCode::Ok;
                 r.success = true;
                 r.message.clear();
             }
@@ -285,7 +291,7 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_URL, u.c_str());
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteFile);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, fp);
-            ApplyCommon(h.get(), opt);
+            ApplyCommon(h.get(), u, opt);
             UltraNetResult r = Run(h.get(), u);
             std::fclose(fp);
             return r;
@@ -313,7 +319,7 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_READDATA, fp);
             curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
                              static_cast<curl_off_t>(size > 0 ? size : 0));
-            ApplyCommon(h.get(), opt);
+            ApplyCommon(h.get(), u, opt);
             UltraNetResult r = Run(h.get(), u);
             std::fclose(fp);
             return r;
@@ -361,7 +367,7 @@ private:
         curl_easy_setopt(h.get(), CURLOPT_URL, u.c_str());
         curl_easy_setopt(h.get(), CURLOPT_CUSTOMREQUEST, method);
         curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
-        ApplyCommon(h.get(), opt);
+        ApplyCommon(h.get(), u, opt);
         return Run(h.get(), u);
     }
 
@@ -384,7 +390,7 @@ private:
         curl_easy_setopt(h.get(), CURLOPT_CUSTOMREQUEST, method);
         curl_easy_setopt(h.get(), CURLOPT_HTTPHEADER, hdrs);
         curl_easy_setopt(h.get(), CURLOPT_NOBODY, 1L);
-        ApplyCommon(h.get(), opt);
+        ApplyCommon(h.get(), srcUrl, opt);
         return Run(h.get(), srcUrl);
     }
 };

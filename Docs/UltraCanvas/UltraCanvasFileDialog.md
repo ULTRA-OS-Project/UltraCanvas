@@ -96,7 +96,7 @@ A config starts without filters: the dialog then lists every file under an
 | `FileDialogConfig` field | |
 |---|---|
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
-| `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
+| `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory - but the home folder when the working directory is the root of the drive (where Finder starts a macOS application) or the Windows folder (where a packaged Windows application starts: System32). A relative folder is read against the working directory, under the same rule |
 | `defaultFileName` | Put into the name field (Save) |
 | `defaultExtension` | Save: added to a name that still has no extension after the chosen type's - under All files, or with no filters (undotted, e.g. `"png"`) |
 | `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
@@ -323,7 +323,7 @@ the types):
 | `GetSaveSettings(extensionOrPath)` | Every setting's value: the user's where they set it, the default elsewhere |
 | `HasStoredSaveSettings(extensionOrPath)` | The user has set any of them |
 | `SetSaveSettings(settings)` / `ResetSaveSettings(extensionOrPath)` | Store (merged over what was there; a value is clamped or replaced by the default when it is not one the setting can hold, and a key the format lacks is dropped) / forget |
-| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` - or a `FileSavePicture`, which may be [a drawing](#a-drawing) - also the [Size row](#the-pictures-size), `onClosed` getting the size chosen |
+| `ShowSaveSettingsDialog(extensionOrPath, parent, onClosed)` | The settings dialog the Settings button opens; with `pictureWidth, pictureHeight, size` - or a `FileSavePicture`, which may be [a drawing](#a-drawing) - also the [Size row](#the-pictures-size), `onClosed` getting the size chosen; the `FileSavePicture` form takes a `fontSize` last, [the type size of a settings window](#opened-from-a-settings-window) it is opened from |
 | `RegisterSaveFormat(format)` | A plugin's or an application's own format (or one replacing a built-in one: same first extension) |
 | `GetImageExportOptions(path, options)` | The image writer's `UCImageSave::ImageExportOptions` for `path`, from its format's settings; `GetImageExportOptions(path, size, options)` at a [chosen size](#the-pictures-size) too |
 | `SetImageExportOptions(options)` | The other way: `options.format`'s quality, compression, colour depth ... and transparency stored as that format's settings (not the size) |
@@ -458,6 +458,26 @@ UltraCanvasFileLoader::SaveFileDialog(opts, [w, h](DialogResult r, const std::st
 `ShowSaveSettingsDialog(extensionOrPath, picture, size, parent, onClosed)`
 takes the same as a `FileSavePicture` (`width`, `height`, `drawing`). The
 media viewer offers an SVG this way and draws it again at the size chosen.
+
+#### Opened from a settings window
+
+The dialog is drawn in its own type size (12) unless it is given another:
+the last argument of the `FileSavePicture` overload, `fontSize`, draws its
+captions, controls and buttons at the size of the window it is opened from,
+its rows and columns scaled to match. Whatever the size, the window is as
+wide as its captions and controls need, and the Defaults button as wide as
+its label. A settings window built on `SettingsPageKit` opens it through
+`SettingsPageKit::ShowSaveSettingsDialog(extensionOrPath, parent)`, which
+passes the window's `kTextFontSize` - UltraSnip's *File type* page does:
+
+<!-- doc-check: std::string pictureType; UltraCanvasWindowBase* settingsWindow = nullptr; -->
+```cpp
+// The type's settings, in the settings window's 10-point text
+SettingsPageKit::ShowSaveSettingsDialog(pictureType, settingsWindow);
+// The same, by hand: no size row (a picture without a size), font size 10
+UltraCanvasFileLoader::ShowSaveSettingsDialog(pictureType, FileSavePicture(), FileSaveImageSize(),
+                                              settingsWindow, nullptr, 10.0f);
+```
 
 ## Filter toggles
 

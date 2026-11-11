@@ -1,7 +1,10 @@
 // UltraCanvas/core/UltraCanvasVirtualFSBridge.cpp
 // Implementation of VirtualFS bridge for UltraCanvas
+// Version: 1.2.0 - CreateArchive hands options.archive.method on as the archive's
+//                  compressionMethod (refusing a type no archive can be written in)
+// Version: 1.1.0 - CreateArchive hands options.archive on to VirtualFS
 // Version: 1.0.0
-// Last Modified: 2026-01-10
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVirtualFSBridge.h"
@@ -51,7 +54,7 @@ bool UltraCanvasVirtualFSBridge::Initialize() {
     }
     
     auto result = VirtualFS::VirtualFS_Initialize();
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         SetError("Failed to initialize VirtualFS: " + 
                  VirtualFS::VirtualFS_GetErrorMessage(result));
         return false;
@@ -103,7 +106,7 @@ bool UltraCanvasVirtualFSBridge::CompressWithOptions(
     }
     
     switch (options.type) {
-        case UCVFSCompressionType::None:
+        case UCVFSCompressionType::Uncompressed:
             output = input;
             return true;
             
@@ -147,7 +150,7 @@ bool UltraCanvasVirtualFSBridge::Decompress(
     }
     
     switch (type) {
-        case UCVFSCompressionType::None:
+        case UCVFSCompressionType::Uncompressed:
             output = input;
             return true;
             
@@ -175,7 +178,7 @@ bool UltraCanvasVirtualFSBridge::DecompressAuto(
     
     UCVFSCompressionType detected = DetectCompressionFormat(input);
     
-    if (detected == UCVFSCompressionType::None) {
+    if (detected == UCVFSCompressionType::Uncompressed) {
         // Not compressed or unknown format
         output = input;
         return true;
@@ -673,7 +676,7 @@ bool UltraCanvasVirtualFSBridge::ReadFileFromArchive(
     std::string virtualPath = archivePath + "/" + entryPath;
     auto result = VirtualFS::VirtualFS_ReadFile(virtualPath, output);
     
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         SetError(VirtualFS::VirtualFS_GetErrorMessage(result));
         return false;
     }
@@ -691,7 +694,7 @@ bool UltraCanvasVirtualFSBridge::ReadVirtualFile(
     
     auto result = VirtualFS::VirtualFS_ReadFile(virtualPath, output);
     
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         SetError(VirtualFS::VirtualFS_GetErrorMessage(result));
         return false;
     }
@@ -748,7 +751,7 @@ bool UltraCanvasVirtualFSBridge::ExtractArchive(
         VirtualFS::VirtualFSExtractOptions::Default(),
         vfsCallback, &detail);
     
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         // The provider's own account (which entries were skipped, and why)
         // says more than the result code's generic text.
         if (detail.empty()) detail = VirtualFS::VirtualFS_GetErrorMessage(result);
@@ -796,6 +799,44 @@ bool UltraCanvasVirtualFSBridge::CreateArchive(
             break;
     }
     
+    const UCVFSArchiveWriteOptions& write = options.archive;
+    if (write.method) {
+        using M = VirtualFS::VirtualFSCompressionMethod;
+        switch (*write.method) {
+            case UCVFSCompressionType::Uncompressed: vfsOptions.compressionMethod = M::Store;   break;
+            case UCVFSCompressionType::Deflate:
+            case UCVFSCompressionType::GZIP:         vfsOptions.compressionMethod = M::Deflate; break;
+            case UCVFSCompressionType::LZMA:         vfsOptions.compressionMethod = M::LZMA;    break;
+            case UCVFSCompressionType::LZMA2:        vfsOptions.compressionMethod = M::LZMA2;   break;
+            case UCVFSCompressionType::BZip2:        vfsOptions.compressionMethod = M::BZip2;   break;
+            case UCVFSCompressionType::XZ:           vfsOptions.compressionMethod = M::XZ;      break;
+            case UCVFSCompressionType::Zstd:         vfsOptions.compressionMethod = M::Zstd;    break;
+            case UCVFSCompressionType::LZ4:          vfsOptions.compressionMethod = M::LZ4;     break;
+            case UCVFSCompressionType::Brotli:       vfsOptions.compressionMethod = M::Brotli;  break;
+            case UCVFSCompressionType::LZX:
+            case UCVFSCompressionType::MSZip:
+            case UCVFSCompressionType::Quantum:
+                // Cabinet codecs: read through libmspack, written by nothing.
+                SetError("No archive can be written with a cabinet (LZX / MS-ZIP / "
+                         "Quantum) method");
+                return false;
+        }
+    }
+    VirtualFS::VirtualFSArchiveWriteOptions& vfsWrite = vfsOptions.archiveWrite;
+    vfsWrite.filterLevel = write.filterLevel;
+    vfsWrite.threads = write.threads;
+    vfsWrite.zstdLongWindowLog = write.zstdLongWindowLog;
+    switch (write.tarFormat) {
+        case UCVFSTarFormat::Pax:   vfsWrite.tarFormat = VirtualFS::VirtualFSTarFormat::Pax;   break;
+        case UCVFSTarFormat::Gnu:   vfsWrite.tarFormat = VirtualFS::VirtualFSTarFormat::Gnu;   break;
+        case UCVFSTarFormat::Ustar: vfsWrite.tarFormat = VirtualFS::VirtualFSTarFormat::Ustar; break;
+    }
+    vfsWrite.keepTimestamps = write.keepTimestamps;
+    vfsWrite.keepPermissions = write.keepPermissions;
+    vfsWrite.keepOwner = write.keepOwner;
+    vfsWrite.storeSymlinks = write.storeSymlinks;
+    vfsWrite.excludePatterns = write.excludePatterns;
+
     VirtualFS::VirtualFSProgressCallback vfsCallback = nullptr;
     if (progressCallback) {
         vfsCallback = [&progressCallback](const VirtualFS::VirtualFSProgress& progress) -> bool {
@@ -809,7 +850,7 @@ bool UltraCanvasVirtualFSBridge::CreateArchive(
     auto result = VirtualFS::VirtualFS_CreateArchive(
         archivePath, sourcePaths, vfsOptions, vfsCallback);
     
-    if (result != VirtualFS::VirtualFSResult::Success) {
+    if (result != VirtualFS::VirtualFSResult::Ok) {
         SetError(VirtualFS::VirtualFS_GetErrorMessage(result));
         return false;
     }
@@ -833,7 +874,7 @@ UCVFSCompressionType UltraCanvasVirtualFSBridge::DetectCompressionFormat(
     const std::vector<uint8_t>& data) {
     
     if (data.size() < 4) {
-        return UCVFSCompressionType::None;
+        return UCVFSCompressionType::Uncompressed;
     }
     
     // GZIP: 1F 8B
@@ -870,7 +911,7 @@ UCVFSCompressionType UltraCanvasVirtualFSBridge::DetectCompressionFormat(
     // Raw DEFLATE is harder to detect - no magic number
     // Would need to try decompressing
     
-    return UCVFSCompressionType::None;
+    return UCVFSCompressionType::Uncompressed;
 }
 
 float UltraCanvasVirtualFSBridge::GetCompressionRatio(
@@ -921,7 +962,7 @@ std::vector<std::string> UltraCanvasVirtualFSBridge::GetSupportedAlgorithms() {
 
 std::string UltraCanvasVirtualFSBridge::CompressionTypeToString(UCVFSCompressionType type) {
     switch (type) {
-        case UCVFSCompressionType::None: return "None";
+        case UCVFSCompressionType::Uncompressed: return "None";
         case UCVFSCompressionType::Deflate: return "Deflate";
         case UCVFSCompressionType::GZIP: return "GZIP";
         case UCVFSCompressionType::LZMA: return "LZMA";
