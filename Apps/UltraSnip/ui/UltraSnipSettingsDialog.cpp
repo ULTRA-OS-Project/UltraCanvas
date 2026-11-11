@@ -2,6 +2,7 @@
 // See the header. The window, the page skeleton and the controls come from
 // the framework's UltraCanvasSettingsPageKit, which UltraFiler's settings
 // window is built on too, so the two read as one family.
+// Version: 0.4.0 - After a snip: the Print Screen key starts a snip
 // Version: 0.3.0 - the texts go through Tr (UltraLocalisation); "Translate UltraSnip..." on the
 //                  start page opens the localisation editor on UltraSnip's own set
 // Version: 0.2.0 - on UltraCanvasSettingsPageKit
@@ -85,6 +86,7 @@ struct DialogState : public UltraCanvasSettingsWindow {
     std::shared_ptr<UltraCanvasRadio> showWindowRadio;
     std::shared_ptr<UltraCanvasRadio> stayHiddenRadio;
     UltraCanvasRadioGroup afterGroup;
+    std::shared_ptr<UltraCanvasCheckbox> printKeyBox;
 
     UltraSnipSettings* settings = nullptr;
     std::function<void()> onChanged;
@@ -649,11 +651,21 @@ std::shared_ptr<UltraCanvasContainer> BuildAfterSnipPage(DialogState* d) {
         d->settings->showWindowAfterSnip = selected == d->showWindowRadio;
         ApplyAndSave(d);
     };
+    AddBodyCaption(parts, "snip-set-printkey-caption", Tr("The Print Screen key:"));
+    d->printKeyBox = MakeCheckbox("snip-set-printkey",
+                                  Tr("Starts a snip while UltraSnip runs, instead of the system's screenshot tool"),
+                                  kTextWidth, d->settings->takePrintKey, [d](bool on) {
+        if (!d->settings) return;
+        d->settings->takePrintKey = on;
+        ApplyAndSave(d);
+    });
+    parts.body->AddChild(d->printKeyBox);
     d->resets[kPageAfterSnip] = PageReset{Tr("Restore defaults"), 170, [d]() {
         if (!d->settings) return;
         d->settings->ResetBehaviour();
         d->syncing = true;
         if (d->showWindowRadio) d->showWindowRadio->SetChecked(true);
+        if (d->printKeyBox) d->printKeyBox->SetChecked(d->settings->takePrintKey);
         d->syncing = false;
         ApplyAndSave(d);
     }};
@@ -661,6 +673,10 @@ std::shared_ptr<UltraCanvasContainer> BuildAfterSnipPage(DialogState* d) {
             Tr("A snip taken from the window itself always comes back to the window. Out of the way, a "
                "picture is saved and copied as the Saving page says and nothing else appears; a "
                "recording still shows its bar, and its window stays hidden after Stop."));
+    AddNote(parts, "snip-set-printkey-note",
+            Tr("The Print Screen key takes the shape, kind and delay chosen on the bar, as Start does. It is "
+               "UltraSnip's only while UltraSnip runs; on Windows it no longer opens the Snipping Tool then, "
+               "and Alt+Print Screen and Win+Print Screen stay the system's."));
     return parts.page;
 }
 

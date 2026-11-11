@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.6.0 - the Print Screen key starts a snip, taken from the system (StartExclusive)
 // Version: 0.5.1 - the Start button as wide as its measured icon and text
 // Version: 0.5.0 - opens at the top centre of the screen over the screen already dimmed
 //                  (Arm); the delay a segmented choice like the shape and the kind;
@@ -40,6 +41,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <iostream>
 #include <utility>
 #include <vector>
 
@@ -94,6 +96,7 @@ int IndexOf(const int* values, size_t count, int value) {
 UltraSnipWindow::UltraSnipWindow(UltraCanvasApplication& app) : app_(app) {}
 
 UltraSnipWindow::~UltraSnipWindow() {
+    printKey_.Stop();   // no press reaches a window being taken down
     UltraSnipSettingsDialog::Shutdown();
     if (delayTimer_) app_.StopTimer(delayTimer_);
     if (recordingTimer_) app_.StopTimer(recordingTimer_);
@@ -339,6 +342,34 @@ void UltraSnipWindow::ApplySettingsToControls() {
     if (modes_) modes_->SetSelectedIndex(settings_.mode == SnipMode::Window ? 1 : settings_.mode == SnipMode::FullScreen ? 2 : 0);
     if (kinds_) kinds_->SetSelectedIndex(settings_.kind == SnipKind::Video ? 1 : 0);
     if (delays_) delays_->SetSelectedIndex(IndexOf(kDelays, 4, settings_.delaySeconds));
+    ApplyPrintKey();
+}
+
+// ===== THE PRINT SCREEN KEY =====
+// Taken from the system while UltraSnip runs (StartExclusive: on Windows a
+// low-level hook swallows it, so the Snipping Tool does not open as well).
+// Without a way to take it - another program holds it, a platform with no
+// global shortcuts - the key stays the system's, and UltraSnip says so only
+// in its log: it is a convenience, not something to stop for.
+void UltraSnipWindow::ApplyPrintKey() {
+    if (!settings_.takePrintKey) {
+        printKey_.Stop();
+        return;
+    }
+    if (printKey_.IsRunning()) return;
+    std::string error;
+    const bool taken = printKey_.StartExclusive("Print", [this]() {
+        app_.PostToUIThread([this]() { OnPrintKey(); });   // the shortcut's thread
+    }, &error);
+    if (!taken) std::cerr << "UltraSnip: the Print Screen key stays the system's: " << error << std::endl;
+}
+
+// A snip as Start takes it, with the shape, kind and delay on the bar. One
+// already under way - the screen dimmed for a choice, the delay running, a
+// recording - is left to finish.
+void UltraSnipWindow::OnPrintKey() {
+    if (armed_ || capturing_ || (recorder_ && recorder_->IsRecording())) return;
+    StartCapture(RequestFromControls());
 }
 
 void UltraSnipWindow::OpenSettings() {
