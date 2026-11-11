@@ -1,3 +1,27 @@
+#### 2026-11-11 *0.1.18*
+- **Settings > Appearance > Look: *System*.** Beside *Light* and *Dark*, the
+  computer's own look - its light or dark mode, and the Look page of
+  UOS-Settings over it - is the default. The theme is set under the
+  application's `Own` policy with `ThemeFor` as the provider; the look is
+  still decided when ChatCube starts, and the fonts are the desktop's.
+
+#### 2026-11-11 *0.1.17*
+- **A right click on a message opens a menu.**
+  - **Open** and **Save as** for a picture, a video or a file, received or
+    sent: *Save as* puts a copy where you choose, fetching the file first
+    when it is not on this computer yet.
+  - **Delete for me** removes the message from your side only.
+  - **Delete for everyone** removes it from the other side too, and asks
+    first because it cannot be undone.
+  - The menu shows what the chat's messenger allows for that message. In a
+    ChatCube chat: a text you sent can be deleted for everyone until the
+    other person has read it, afterwards only for yourself; a picture, a
+    video or a file you sent at any time; in a group, any message of yours
+    at any time. A file deleted for everyone is also removed from the other
+    person's ChatCube. Matrix offers *for everyone* only, Telegram both.
+  - Needs the framework's UltraIM delete scope (its changelog:
+    `ultraim-delete-scope`).
+
 #### 2026-11-11 *0.1.16*
 - **Settings > Networks > Proxy.** Matrix and the ChatCube relay are reached
   through the proxy every ULTRA OS application shares, and the page opens
