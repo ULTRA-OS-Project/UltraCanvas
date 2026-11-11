@@ -1197,6 +1197,58 @@ int main() {
              startY < 40.0f && largestGap > 80.0f);
     }
 
+    // ===== FRAMES IN THE HEADER =====
+    std::cerr << "\n--- Frames in the header ---" << std::endl;
+    {
+        // A letterhead: the sender block is a frame in the header, placed
+        // from the page beside the top of the body; the body wraps round it.
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame sender;
+        RichDocBlock senderLine;
+        RichTextRun senderText;
+        senderText.text = "Sender";
+        senderLine.runs = {senderText};
+        sender.blocks = {senderLine};
+        document->frames.push_back(sender);
+        RichTextRun box;
+        box.text = RichTextRun::kObjectReplacement;
+        box.frameIndex = 0;
+        box.imageWidthPt = 150.0f;
+        box.imageHeightPt = 150.0f;
+        box.imageWrap = RichTextRun::ImageWrap::Square;
+        box.imageFloatAlign = RichTextAlign::Default;
+        box.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+        box.floatVerticalFrom = RichTextRun::FloatOrigin::Page;
+        box.imageOffsetXPt = 380.0f;
+        box.imageOffsetYPt = 56.7f;                    // the body's top (2 cm margins)
+        RichDocBlock headerParagraph;
+        headerParagraph.runs = {box};
+        document->pageFurniture.header = {headerParagraph};
+        RichDocBlock paragraph;
+        RichTextRun words;
+        for (int i = 0; i < 200; i++) words.text += "word" + std::to_string(i) + " ";
+        paragraph.runs = {words};
+        document->blocks = {paragraph};
+        edit->SetDocument(document);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float besideRight = 0.0f, belowRight = 0.0f, firstTop = -1.0f;
+        const int length = static_cast<int>(editor.BlockText(0).size());
+        for (int offset = 3; offset <= length; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const Rect2Df caret = edit->GetCaretRectForTest();
+            if (firstTop < 0.0f) firstTop = caret.y;
+            if (caret.y < firstTop + 150.0f) besideRight = std::max(besideRight, caret.x);
+            else if (caret.y > firstTop + 230.0f && caret.y < 540.0f) belowRight = std::max(belowRight, caret.x);
+        }
+        TEST("The body wraps round a frame in the header: beside it to " + std::to_string(besideRight)
+             + ", below it to " + std::to_string(belowRight),
+             besideRight > 200.0f && besideRight < 500.0f && belowRight > 600.0f);
+        edit->SetPageView(false);
+    }
+
     // ===== BLOCKS RUNNING OVER PAGES =====
     std::cerr << "\n--- Page splitting ---" << std::endl;
     {

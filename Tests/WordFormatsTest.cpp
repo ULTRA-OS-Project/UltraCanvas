@@ -233,6 +233,34 @@ static void CheckPositionedFrames(const UCRichDocument& d, const std::string& la
               label + ": frames in the plain text");
 }
 
+// Tests/fixtures/word-header-frames: a letterhead whose logo and sender
+// block are floats in the header, placed from the page: the logo 2.5 cm /
+// 0.8 cm from the page's corner over the text, the sender frame 13 cm /
+// 2.5 cm with text flowing beside it.
+static void CheckHeaderFrames(const UCRichDocument& d, const std::string& label) {
+    using Origin = RichTextRun::FloatOrigin;
+    const RichTextRun* logo = nullptr;
+    const RichTextRun* sender = nullptr;
+    for (const RichDocBlock& b : d.pageFurniture.header) {
+        for (const RichTextRun& run : b.runs) {
+            if (run.IsFloatingImage()) logo = &run;
+            if (run.IsTextFrame()) sender = &run;
+        }
+    }
+    CHECK_MSG(logo && logo->floatHorizontalFrom == Origin::Page && logo->floatVerticalFrom == Origin::Page
+              && Near(logo->imageOffsetXPt, 70.9f) && Near(logo->imageOffsetYPt, 22.7f)
+              && logo->imageWrap == RichTextRun::ImageWrap::InFrontOfText, label + ": logo in the header");
+    const RichTextFrame* frame = sender ? d.FrameFor(*sender) : nullptr;
+    std::string text;
+    if (frame) for (const RichDocBlock& b : frame->blocks) text += UCRichDocument::ConcatenateRunText(b.runs) + "|";
+    CHECK_MSG(text == "Sender Company GmbH|Example Street 1|12345 Sample Town|", label + ": sender frame in the header");
+    CHECK_MSG(sender && sender->floatHorizontalFrom == Origin::Page && sender->floatVerticalFrom == Origin::Page
+              && Near(sender->imageOffsetXPt, 368.5f) && Near(sender->imageOffsetYPt, 70.9f)
+              && sender->imageWrap == RichTextRun::ImageWrap::Square, label + ": sender frame placed from the page");
+    CHECK_MSG(!d.blocks.empty() && UCRichDocument::ConcatenateRunText(d.blocks.front().runs) == "Recipient Name",
+              label + ": the body starts with the address");
+}
+
 // Highlight, fixed line heights and paragraph frames.
 static void CheckHighlightAndFrames(const UCRichDocument& d, const std::string& label) {
     const RichDocBlock* marked = FindBlock(d, "marked");
@@ -676,6 +704,26 @@ int main(int argc, char** argv) {
                 UCRichDocument back;
                 CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
                 CheckPositionedFrames(back, std::string(name) + " -> " + ext, docFile);
+            }
+        }
+    }
+#endif
+
+    // ===== 5d2. Frames in the header: the same letterhead as .odt, .docx, .doc =====
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        for (const char* name : {"word-header-frames.odt", "word-header-frames.docx", "word-header-frames.doc"}) {
+            const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
+            UCRichDocument imported;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, imported, err), err);
+            CheckHeaderFrames(imported, name);
+            for (const char* ext : {".odt", ".docx"}) {
+                const std::string saved = TmpPath(std::string("resaved-") + name + ext);
+                CHECK_MSG(UCWordDocumentIO::Save(saved, imported, err), err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+                CheckHeaderFrames(back, std::string(name) + " -> " + ext);
             }
         }
     }

@@ -574,8 +574,16 @@ DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
 (`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
 write back out; HTML output floats them with CSS. A floating picture is
-selected, resized and described like any other. In a table cell or a header
-it stays in the line.
+selected, resized and described like any other. In a table cell it stays in
+the line.
+
+**In a header or footer** a floating picture or frame floats too: on every
+page it is placed from that page (or from its header paragraph), drawn with
+the header - under the body's text, as in Word - and the page's body wraps
+round it like round one of its own. That is how a Word letterhead keeps its
+logo and sender block in the header. A frame there shows each page's page
+number and page count. It cannot be selected or resized from the page; edit
+the header for that.
 
 The wrap works line by line, as in Writer: a paragraph beside a picture is
 narrowed only for the lines level with it, and its lines below the picture
@@ -602,8 +610,9 @@ text box: a `RichTextFrame`'s paragraphs with its `backgroundColor`,
 `imageWidthPt` (half the column when 0) and its height is its text's, at
 least `imageHeightPt`. ODT `draw:text-box`, DOCX `wps:txbx` and VML text
 boxes, and DOC text boxes read into it, and both writers save it. In a
-header, a footer or a table cell a frame does not float: the header shows
-its text in line, a cell drops it.
+header or footer it floats as described above; in a table cell or inside
+another frame it does not (a cell drops it, a frame shows its text in
+line).
 
 ```cpp
 auto document = std::make_shared<UCRichDocument>();
@@ -1240,8 +1249,8 @@ Honest limits of this first version — none of them silently misbehave:
   next to the caret, on X11 and Windows. On macOS and in the browser it opens
   at the caret (where the composition starts).
 - **A text frame's text cannot be edited**, and a frame cannot be moved or
-  resized; clicks go to the text underneath. Frames in headers, footers and
-  table cells do not float (see *Floating pictures*).
+  resized; clicks go to the text underneath. Frames in table cells and in
+  other frames do not float (see *Floating pictures*).
 
 ## Related
 

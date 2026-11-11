@@ -797,7 +797,9 @@ private:
     };
     // A text frame's paragraphs laid out `width` pixels wide (its inner
     // width, inside padding and border).
-    std::shared_ptr<FurnitureLayout> LayoutTextFrame(IRenderContext* ctx, int frameIndex, float width);
+    // With a page number, page fields in it show that page's.
+    std::shared_ptr<FurnitureLayout> LayoutTextFrame(IRenderContext* ctx, int frameIndex, float width,
+                                                     int pageNumber = 0, int pageCount = 0);
     // The room a text frame's border and padding take on each side (pixels).
     float TextFrameInset(int frameIndex) const;
     void DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target);
@@ -850,7 +852,16 @@ private:
         float footerTop = 0.0f;
         std::shared_ptr<FurnitureLayout> header;
         std::shared_ptr<FurnitureLayout> footer;
+        // The header's and footer's floating pictures and text frames on
+        // this page (blockIndex -1), which the page's body wraps round.
+        std::vector<PlacedFloat> furnitureFloats;
     };
+    PlacedFloat PlaceFloat(IRenderContext* ctx, const BlockLayout::InlineImage& image, float paragraphTop,
+                           float paragraphHeight, const PageFrame* page, int pageNumber = 0, int pageCount = 0);
+    void PlaceFurnitureFloats(IRenderContext* ctx, PageFrame& frame, int pageNumber, int pageCount);
+    void DrawPlacedFloat(IRenderContext* ctx, const PlacedFloat& placed);
+    // Set while a header or footer is laid out: its floats float too.
+    bool layingOutFurniture = false;
     // ===== NOTES =====
     // A footnote or endnote laid out where it is drawn: `top` in content
     // coordinates; `ruleAbove` for the first footnote of a page and the first

@@ -100,7 +100,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. |
 | Picture on its own line | yes | yes | yes | yes | yes | |
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
-| Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames in headers, footers and table cells are drawn in line; see the gaps below. |
+| Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
 | Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | no | no | no | no | no | |
 | Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
@@ -163,17 +163,16 @@ fields and page view. Since then: blocks split across pages (widow and
 orphan control, repeated table header rows), footnotes and endnotes, zoom
 and sideways scrolling, and (2026-11) positioned frames, text boxes and
 floating pictures placed from the page, text wrapping round them line by
-line, and zoom to the page's width or the whole page
+line, frames and floating pictures in headers and footers (DOC included),
+and zoom to the page's width or the whole page
 (`UltraCanvasRichTextEdit::SetZoomFit`).
 
-1. **Frames in headers and footers** (a Word letterhead's logo and sender
-   block often live there), and **DOC shapes in headers** (`PlcSpaHdr`).
-2. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
+1. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
    (their text lies after the main text in the piece table: `ccpFtn`,
    `ccpEdn`), comments and revision marks, sections and their columns,
    bookmarks and caption / cross-reference fields. ODT and DOCX read all of
    these.
-3. Shapes and charts: read-only display first.
+2. Shapes and charts: read-only display first.
 
 Each can be checked against a LibreOffice-generated fixture the way
 `Tests/fixtures/word97-formatting.*` is.
@@ -187,9 +186,11 @@ model or a reader can already carry, or that a document needs, but
 - **A frame's distance from the text is a fixed 9 pt**, whatever the
   document says, and text wraps round a frame's rectangle, not round a
   picture's outline (Writer's contour wrap).
-- **Frames in headers, footers, table cells and other frames** do not
-  float: their text is drawn in line where they are anchored (cells drop
-  it).
+- **Frames in table cells and in other frames** do not float: a cell drops
+  a frame's text, a frame shows a nested frame's text in line. Frames in
+  headers and footers cannot be selected or moved on the page, and are
+  drawn under the body's text (Word's order; Writer draws a frame set in
+  front of the text over it).
 - **A frame's text cannot be edited**, and a frame cannot be moved or
   resized; clicks pass through it to the text underneath.
 - **Group shapes and drawn shapes** (lines, arrows, WordArt) are not shown;

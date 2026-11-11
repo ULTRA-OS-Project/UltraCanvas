@@ -1109,13 +1109,17 @@ public:
         const uint32_t ccpAtn = cslw > 7 ? ReadU32(word_, lw + 2 + 7 * 4) : 0;
         const uint32_t ccpEdn = cslw > 8 ? ReadU32(word_, lw + 2 + 8 * 4) : 0;
         const uint32_t ccpTxbx = cslw > 9 ? ReadU32(word_, lw + 2 + 9 * 4) : 0;
+        const uint32_t ccpHdrTxbx = cslw > 10 ? ReadU32(word_, lw + 2 + 10 * 4) : 0;
 
         // The main text, then the footnotes, the header/footer stories, the
         // comments, the endnotes and the text boxes' text - one run of
         // character positions through the piece table.
         std::vector<DocChar> allChars;
-        if (!ReadPieces(ccpText + ccpFtn + ccpHdd + ccpAtn + ccpEdn + ccpTxbx, allChars, error)) return false;
+        if (!ReadPieces(ccpText + ccpFtn + ccpHdd + ccpAtn + ccpEdn + ccpTxbx + ccpHdrTxbx, allChars, error)) {
+            return false;
+        }
         textBoxStoryStart_ = static_cast<size_t>(ccpText) + ccpFtn + ccpHdd + ccpAtn + ccpEdn;
+        headerTextBoxStoryStart_ = textBoxStoryStart_ + ccpTxbx;
         std::vector<DocChar> chars(allChars.begin(),
                                    allChars.begin() + static_cast<std::ptrdiff_t>(std::min<size_t>(ccpText, allChars.size())));
 
@@ -1132,13 +1136,15 @@ public:
         }
 
         LoadOfficeArt();
-        LoadShapeAnchors();
-        bodyStory_ = true;
+        LoadShapeAnchors(40, anchors_);            // PlcSpaMom: the main text's shapes
+        LoadShapeAnchors(41, headerAnchors_);      // PlcSpaHdr: the headers' and footers'
+        activeAnchors_ = &anchors_;
+        anchorCpBase_ = 0;
         BuildBlocks(chars);
-        bodyStory_ = false;
-        LoadTextBoxStories(allChars);
+        activeAnchors_ = nullptr;
         LoadSection();
         LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
+        LoadTextBoxStories(allChars);
         return true;
     }
 
@@ -1196,7 +1202,11 @@ public:
             // The stories are read with the body's machinery, into their own list.
             std::vector<RichDocBlock> body = std::move(doc_.blocks);
             doc_.blocks.clear();
+            // Shapes anchored in it: PlcSpaHdr counts from the header stories' start.
+            activeAnchors_ = &headerAnchors_;
+            anchorCpBase_ = begin;
             BuildBlocks(text);
+            activeAnchors_ = nullptr;
             out = std::move(doc_.blocks);
             doc_.blocks = std::move(body);
             while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
@@ -1286,11 +1296,15 @@ private:
         int bx = 0, by = 0, wr = 0;
         bool belowText = false;
     };
-    std::map<size_t, std::vector<Anchor>> anchors_;   // by CP of the 0x08 character
-    struct PendingTextBox { int frameIndex = -1; int story = -1; };
+    std::map<size_t, std::vector<Anchor>> anchors_;          // main text, by CP of the 0x08 character
+    std::map<size_t, std::vector<Anchor>> headerAnchors_;    // headers and footers, by CP in their story
+    // While a story is read: its anchors, and the CP of its first character.
+    const std::map<size_t, std::vector<Anchor>>* activeAnchors_ = nullptr;
+    size_t anchorCpBase_ = 0;
+    struct PendingTextBox { int frameIndex = -1; int story = -1; bool header = false; };
     std::vector<PendingTextBox> pendingTextBoxes_;
     size_t textBoxStoryStart_ = 0;
-    bool bodyStory_ = false;
+    size_t headerTextBoxStoryStart_ = 0;
 
     // DggInfo: an OfficeArtDggContainer (holding the BStore), then per
     // drawing a one-byte label and an OfficeArtDgContainer of shapes.
@@ -1403,9 +1417,9 @@ private:
         if (haveSpid) shapes_[spid] = shape;
     }
 
-    // PlcSpaMom: the main text's shapes, by the CP of their anchor.
-    void LoadShapeAnchors() {
-        const uint32_t fc = FcAt(40), lcb = LcbAt(40);
+    // PlcSpaMom / PlcSpaHdr: shapes by the CP of their anchor.
+    void LoadShapeAnchors(size_t fibIndex, std::map<size_t, std::vector<Anchor>>& anchors) {
+        const uint32_t fc = FcAt(fibIndex), lcb = LcbAt(fibIndex);
         if (lcb < 4 + 30 || static_cast<size_t>(fc) + lcb > table_.size()) return;
         const size_t count = (lcb - 4) / 30;
         const size_t data = fc + (count + 1) * 4;
@@ -1423,14 +1437,14 @@ private:
             anchor.by = (flags >> 3) & 0x3;
             anchor.wr = (flags >> 5) & 0xF;
             anchor.belowText = (flags & 0x4000) != 0;
-            anchors_[cp].push_back(anchor);
+            anchors[cp].push_back(anchor);
         }
     }
 
     // The floating pictures and text boxes anchored at `cp`, as runs.
     void AppendShapes(std::vector<RichTextRun>& runs, size_t cp, bool lineBreak) {
-        auto found = anchors_.find(cp);
-        if (found == anchors_.end()) return;
+        auto found = activeAnchors_->find(cp);
+        if (found == activeAnchors_->end()) return;
         for (const Anchor& anchor : found->second) {
             auto shapeIt = shapes_.find(anchor.spid);
             if (shapeIt == shapes_.end()) continue;
@@ -1450,7 +1464,8 @@ private:
                 }
                 frame.paddingPt = std::max(0.0f, static_cast<float>(shape.textLeft) / 12700.0f);
                 run.frameIndex = static_cast<int>(doc_.frames.size());
-                pendingTextBoxes_.push_back({run.frameIndex, (shape.textId >> 16) - 1});
+                pendingTextBoxes_.push_back({run.frameIndex, (shape.textId >> 16) - 1,
+                                             activeAnchors_ == &headerAnchors_});
                 doc_.frames.push_back(std::move(frame));
             } else if (shape.pib > 0 && shape.pib <= blips_.size() && blips_[shape.pib - 1].stream) {
                 const BlipRef& blip = blips_[shape.pib - 1];
@@ -1522,14 +1537,16 @@ private:
 
     // The text boxes' text (PlcftxbxTxt: CPs into the text-box story), read
     // with the body's machinery into each text frame.
+    // The headers' text boxes have a story of their own (PlcfHdrtxbxTxt).
     void LoadTextBoxStories(const std::vector<DocChar>& allChars) {
-        const uint32_t fc = FcAt(56), lcb = LcbAt(56);
-        if (pendingTextBoxes_.empty() || lcb < 4 + 26 || static_cast<size_t>(fc) + lcb > table_.size()) return;
-        const size_t count = (lcb - 4) / 26;
         for (const PendingTextBox& pending : pendingTextBoxes_) {
+            const uint32_t fc = FcAt(pending.header ? 58 : 56), lcb = LcbAt(pending.header ? 58 : 56);
+            if (lcb < 4 + 26 || static_cast<size_t>(fc) + lcb > table_.size()) continue;
+            const size_t count = (lcb - 4) / 26;
+            const size_t storyStart = pending.header ? headerTextBoxStoryStart_ : textBoxStoryStart_;
             if (pending.story < 0 || static_cast<size_t>(pending.story) >= count) continue;
-            const size_t begin = textBoxStoryStart_ + ReadU32(table_, fc + static_cast<size_t>(pending.story) * 4);
-            const size_t end = textBoxStoryStart_ + ReadU32(table_, fc + (static_cast<size_t>(pending.story) + 1) * 4);
+            const size_t begin = storyStart + ReadU32(table_, fc + static_cast<size_t>(pending.story) * 4);
+            const size_t end = storyStart + ReadU32(table_, fc + (static_cast<size_t>(pending.story) + 1) * 4);
             if (end <= begin || end > allChars.size()) continue;
             std::vector<DocChar> text(allChars.begin() + static_cast<std::ptrdiff_t>(begin),
                                       allChars.begin() + static_cast<std::ptrdiff_t>(end));
@@ -1778,8 +1795,8 @@ private:
             }
             if (ch == 0x08) {
                 // A drawn object's anchor: the floating picture or text box
-                // anchored here (main text only - a header's are not read).
-                if (bodyStory_) AppendShapes(runs, i, lineBreak);
+                // anchored here (in the main text or a header or footer).
+                if (activeAnchors_) AppendShapes(runs, anchorCpBase_ + i, lineBreak);
                 lineBreak = false;
                 continue;
             }

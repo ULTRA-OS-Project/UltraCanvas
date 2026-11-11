@@ -28,6 +28,13 @@
   Writer. A top-and-bottom picture set lower down in its paragraph keeps the
   lines that fit above it there and continues the paragraph below it. Before,
   the whole paragraph was narrowed, or moved below the picture.
+- **Frames and floating pictures in headers and footers float.** A Word
+  letterhead's logo and sender block, kept in the header, now stand at their
+  place on every page instead of being drawn in line in the header, and the
+  page's body wraps round them. A frame in a header shows each page's page
+  number and page count. The DOC reader reads shapes in headers and footers
+  too (`PlcSpaHdr` and the header text-box story). New fixture
+  `Tests/fixtures/word-header-frames.*`.
 - **`UltraCanvasRichTextEdit::SetZoomFit`: page width and whole page.** In
   page view the zoom follows the element's size, so a narrow window shows the
   whole page. `SetZoom` and Ctrl+wheel end it; printing stays at 100 %.
