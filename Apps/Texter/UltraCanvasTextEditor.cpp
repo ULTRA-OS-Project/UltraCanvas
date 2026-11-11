@@ -1163,7 +1163,7 @@ namespace {
         int languageDropdownWidth = 140;
         int encodingDropdownWidth = 160;
         int eolDropdownWidth = 80;
-        int zoomDropdownWidth = 80;
+        int zoomDropdownWidth = 104;     // "Page width" / "Whole page" as well as "150%"
         int gap = 4;
 
         // Flex-row container holding the status controls; the window column places it at
@@ -1310,6 +1310,9 @@ namespace {
             auto zoomValue = fmt::format("{}", config.fontZoomPercents[i]);
             zoomDropdown->AddItem(zoomLabel, zoomValue);
         }
+        // Word-processing tabs can follow the window instead.
+        zoomDropdown->AddItem(Tr("Page width"), "fit:width");
+        zoomDropdown->AddItem(Tr("Whole page"), "fit:page");
         UpdateZoomDropdownSelection();
 
         DropdownStyle zoomStyle = zoomDropdown->GetStyle();
@@ -1318,7 +1321,8 @@ namespace {
         zoomDropdown->SetStyle(zoomStyle);
 
         zoomDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
-            SetFontZoomPercent(std::stoi(item.value));
+            if (item.value.rfind("fit:", 0) == 0) SetPageZoomFit(item.value.substr(4));
+            else SetFontZoomPercent(std::stoi(item.value));
         };
         zoomDropdown->SetTooltip(Tr("Zoom Level"));
 
@@ -2484,6 +2488,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // turned that off.
             view->SetZoom(static_cast<float>(config.fontZoomPercent) / 100.0f);
             view->SetPageView(config.documentPageLayout);
+            ApplyPageZoomFit(*view);
 
             // Swap the editor slot inside the tab rather than the whole tab
             // content: editorArea is the flex row that also holds the
@@ -4450,6 +4455,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 fontZoomPercentIdx = static_cast<int>(i);
             }
         }
+        // The two fitting entries follow the percentages.
+        if (config.pageZoomFit == "width") fontZoomPercentIdx = static_cast<int>(config.fontZoomPercents.size());
+        if (config.pageZoomFit == "page") fontZoomPercentIdx = static_cast<int>(config.fontZoomPercents.size()) + 1;
 
         zoomDropdown->SetSelectedIndex(fontZoomPercentIdx, false);
     }
@@ -5456,10 +5464,29 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::SetDefaultFontSize(float size) {
         config.defaultFontSize = std::max(4.0f, std::min(72.0f, size));
+        const std::string fit = config.pageZoomFit;      // a new font size keeps a fitting zoom
         SetFontZoomPercent(config.fontZoomPercent);
+        if (!fit.empty()) SetPageZoomFit(fit);
+    }
+
+    void UltraCanvasTextEditor::SetPageZoomFit(const std::string& fit) {
+        config.pageZoomFit = (fit == "width" || fit == "page") ? fit : std::string();
+        for (auto& doc : documents) {
+            if (doc->richEdit) ApplyPageZoomFit(*doc->richEdit);
+        }
+        UpdateZoomDropdownSelection();
+        UpdateStatusBar();
+        SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::ApplyPageZoomFit(UltraCanvasRichTextEdit& view) const {
+        using Fit = UltraCanvasRichTextEdit::ZoomFit;
+        if (config.pageZoomFit == "width") view.SetZoomFit(Fit::PageWidth);
+        else if (config.pageZoomFit == "page") view.SetZoomFit(Fit::WholePage);
     }
 
     void UltraCanvasTextEditor::SetFontZoomPercent(int percent) {
+        config.pageZoomFit.clear();           // a percentage replaces a fitting zoom
         config.fontZoomPercent = percent;
         float fontSize = config.defaultFontSize * percent / 100.0;
         fontSize = std::max(4.0f, std::min(72.0f, fontSize));
@@ -6108,6 +6135,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.documentPageLayout = configFile.GetBool("documentPageLayout", config.documentPageLayout);
         config.defaultFontSize = configFile.GetInt("defaultFontSize", config.defaultFontSize);
         config.fontZoomPercent = configFile.GetInt("fontZoomPercent", 100);
+        config.pageZoomFit = configFile.GetString("pageZoomFit", "");
         // config.maxRecentFiles = configFile.GetInt("maxRecentFiles", config.maxRecentFiles);
         config.enableAutosave = configFile.GetBool("enableAutosave", config.enableAutosave);
         config.autosaveIntervalSeconds = configFile.GetInt("autosaveInterval", config.autosaveIntervalSeconds);
@@ -6127,6 +6155,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("documentPageLayout", config.documentPageLayout);
         configFile.SetInt("defaultFontSize", config.defaultFontSize);
         configFile.SetInt("fontZoomPercent", config.fontZoomPercent);
+        configFile.SetString("pageZoomFit", config.pageZoomFit);
         // configFile.SetInt("maxRecentFiles", config.maxRecentFiles);
         configFile.SetBool("enableAutosave", config.enableAutosave);
         configFile.SetInt("autosaveInterval", config.autosaveIntervalSeconds);
