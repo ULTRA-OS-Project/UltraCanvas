@@ -545,6 +545,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+- **UltraCanvasFileTimes** (`UltraCanvasFileTimes.h`) — a file's dates read,
+  set, and carried to a copy. `FileTimes` (created / modified / accessed,
+  nanoseconds since 1970, 0 = unknown), `GetFileTimes(path, out)`,
+  `SetFileTimes(path, times)` (0 leaves a date alone),
+  `CopyFileTimes(from, to)` (files or folders; true when at least the
+  modification date was set), `CanCopyCreationTime()`. Backends:
+  `OS/MSWindows/UltraCanvasWindowsFileTimes.cpp` (GetFileTime / SetFileTime:
+  created, modified, accessed), `OS/MacOS/UltraCanvasMacOSFileTimes.cpp`
+  (utimensat, then setattrlist `ATTR_CMN_CRTIME`), and
+  `OS/Linux/UltraCanvasLinuxFileTimes.cpp` (utimensat: modified and accessed -
+  the kernel keeps the creation date to itself). Android and WebAssembly copy
+  the modification date through `std::filesystem` in
+  `core/UltraCanvasFileTimes.cpp` (`ULTRACANVAS_HAS_NATIVE_FILE_TIMES` unset).
+  `UltraCanvasFilerWidget` calls it after every file and folder it copies;
+  UltraCloud's providers read a file's dates for an upload and set the
+  server's on a download with it (UltraNet stays free of it: its FTP options
+  carry the date to set, `setRemoteModificationTime`, and report the server's,
+  `onRemoteModificationTime`).
 
 - **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
   copy of an application per user. `InstanceLock::Acquire(path)` answers
@@ -2655,7 +2673,10 @@ target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
 
 **Not the player.** Playback, recording and thumbnails for the UI stay in the
 core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
-`UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
+`UltraCanvasVideoThumbnail`, on the platform media frameworks), and so does
+reading a clip's technical facts for display: `ReadVideoFileInfo` /
+`VideoFileInfo` (`UltraCanvasVideoFileInfo.h`) parse MP4 / MOV, Matroska /
+WebM and AVI headers without FFmpeg. VideoFX is
 headless and has no UltraCanvas UI dependency; applications call it from a
 worker thread or through `VideoFXExportJob`. It is a shared library of its
 own (`libVideoFX.so` / `.dylib` / `.dll`, `VIDEOFX_BUILD_SHARED`, default ON

@@ -111,6 +111,45 @@ int main() {
     Check(Refused("ftp://h/a%00b", Verb::Delete), "a NUL in the name");
     Check(Refused("ftp://h/dir/..", Verb::Delete), "'..' is not a name");
 
+    std::printf("Dating an uploaded file\n");
+    {
+        // 2026-11-10 14:03:22 UTC, a Tuesday.
+        const int64_t when = 1794319402;
+        auto dated = [&](const std::string& url, const std::string& parent,
+                         const std::string& command, bool after, const char* what) {
+            Plan p;
+            std::string error;
+            const bool ok = BuildSetModificationTime(url, when, p, error) &&
+                            p.parentUrl == parent && p.commands.size() == 1 &&
+                            p.commands[0] == command && p.afterFolderChange == after;
+            std::printf("%s  %s", ok ? "  ok  " : " FAIL ", what);
+            if (!ok) std::printf("  (error \"%s\", command [%s])", error.c_str(),
+                                 p.commands.empty() ? "" : p.commands[0].c_str());
+            std::printf("\n");
+            if (!ok) ++failures;
+        };
+        dated("ftp://h/dir/My%20Photo.jpg", "ftp://h/dir/",
+              "*MFMT 20261110140322 My Photo.jpg", true,
+              "FTP: MFMT, in the file's folder, the name decoded, allowed to fail");
+        dated("sftp://h/~/up/a%20b.txt", "sftp://h/~/up/",
+              "*mtime \"Tue, 10 Nov 2026 14:03:22 GMT\" \"up/a b.txt\"", false,
+              "SFTP: mtime with an RFC 1123 date and the path, both quoted");
+        dated("sftp://h/srv/x", "sftp://h/srv/",
+              "*mtime \"Tue, 10 Nov 2026 14:03:22 GMT\" \"/srv/x\"", false,
+              "SFTP: an absolute path");
+        Plan p;
+        std::string error;
+        Check(!BuildSetModificationTime("ftp://h/a", 0, p, error), "no date, no command");
+        Check(!BuildSetModificationTime("ftp://h/dir/", when, p, error), "a folder URL");
+        Check(!BuildSetModificationTime("ftp://h/a%0D%0AX", when, p, error),
+              "a line break in the name");
+        int y, mo, d, h, mi, se, wd;
+        CivilFromUnix(951782400, y, mo, d, h, mi, se, wd);   // 2000-02-29 00:00:00, a Tuesday
+        Check(y == 2000 && mo == 2 && d == 29 && h == 0 && wd == 2, "a leap day");
+        CivilFromUnix(0, y, mo, d, h, mi, se, wd);
+        Check(y == 1970 && mo == 1 && d == 1 && wd == 4, "the epoch, a Thursday");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures,
                 failures == 1 ? "" : "s");
     return failures ? 1 : 0;

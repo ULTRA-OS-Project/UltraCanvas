@@ -488,6 +488,40 @@ if(ULTRACANVAS_HAS_NATIVE_TRASH AND UNIX AND NOT APPLE)
     message(STATUS "    Test registered: TrashTest")
 endif()
 
+# ===== FILE TIMES TEST =====
+# CopyFileTimes (UltraCanvasFileTimes.h): a copy given the original's dates, a
+# file and a folder, in a private temporary folder. Built from the core file
+# plus this platform's backend - or the core file's std::filesystem fallback
+# where there is none - so each CI row tests what its library ships.
+message(STATUS "  Building FileTimesTest...")
+set(_file_times_test_sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileTimesTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasFileTimes.cpp)
+if(ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+    if(WIN32)
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFileTimes.cpp)
+    elseif(APPLE)
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MacOS/UltraCanvasMacOSFileTimes.cpp)
+    else()
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFileTimes.cpp)
+    endif()
+endif()
+add_executable(FileTimesTest ${_file_times_test_sources})
+target_include_directories(FileTimesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FileTimesTest PRIVATE cxx_std_20)
+if(ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+    target_compile_definitions(FileTimesTest PRIVATE ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+endif()
+set_target_properties(FileTimesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FileTimesTest COMMAND FileTimesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FileTimesTest")
+
 # ===== PORTABLE DEVICES TEST =====
 # The platform-independent half of UltraCanvasPortableDevices - its path rules
 # and what a build without a backend answers - from the core file alone, with
@@ -1683,6 +1717,25 @@ set_target_properties(VideoTimelineModelTest PROPERTIES
 add_test(NAME VideoTimelineModelTest COMMAND VideoTimelineModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VideoTimelineModelTest")
+
+# ===== VIDEO FILE INFO TEST =====
+# ReadVideoFileInfo (UltraCanvasVideoFileInfo.h): MP4, fragmented MP4, WebM and
+# AVI headers built in memory, read back, and the formatting helpers. The
+# reader has no framework dependency, so the test compiles its source directly
+# and links nothing; it needs no media assets and no display.
+message(STATUS "  Building VideoFileInfoTest...")
+add_executable(VideoFileInfoTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/VideoFileInfoTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasVideoFileInfo.cpp
+)
+target_include_directories(VideoFileInfoTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VideoFileInfoTest PRIVATE cxx_std_20)
+set_target_properties(VideoFileInfoTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VideoFileInfoTest COMMAND VideoFileInfoTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VideoFileInfoTest")
 
 # ===== THEME TEST =====
 # UltraCanvasTheme without a display: the presets, element roles, the
@@ -4017,6 +4070,45 @@ if(LIBARCHIVE_TEST_FOUND)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: VirtualFSExtractSafetyTest")
+
+    # A file taken out of an archive keeps its dates: ExtractFile and
+    # ExtractAll give it the entry's modification date (and follow
+    # preserveTimestamps), from a ZIP, a 7z and a tar; a packed file's date
+    # survives the round trip.
+    message(STATUS "  Building VirtualFSExtractDatesTest...")
+    add_executable(VirtualFSExtractDatesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSExtractDatesTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSExtractDatesTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSExtractDatesTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSExtractDatesTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSExtractDatesTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSExtractDatesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSExtractDatesTest
+        COMMAND VirtualFSExtractDatesTest ${CMAKE_BINARY_DIR}/vfs-extract-dates-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSExtractDatesTest")
 else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()

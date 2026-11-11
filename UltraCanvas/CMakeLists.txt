@@ -786,6 +786,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Move to the Recycle Bin / Trash. Platform backend under
         # OS/<Platform>/; Android and WebAssembly get the fallback in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTrash.cpp
+        # A copy keeps the original's dates (created / modified / accessed).
+        # Platform backend under OS/<Platform>/UltraCanvas<Platform>FileTimes.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileTimes.cpp
         # "Delete as administrator": the UAC relaunch behind a permission
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
@@ -921,6 +924,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimecodeField.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideo.cpp
+        # A clip's technical facts from its container headers (no decoder)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoFileInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoThumbnail.cpp
@@ -2599,6 +2604,11 @@ endif()
 # leave "Move to Trash" out where there is none.
 if(ULTRACANVAS_HAS_NATIVE_TRASH)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_TRASH)
+endif()
+# Copied dates: the same arrangement for UltraCanvasFileTimes. Only its core
+# file reads the define, so it stays PRIVATE.
+if(ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
 endif()
 # Native volume monitoring: the same arrangement for UltraCanvasVolumeMonitor.
 # PUBLIC so an app can tell a device notification from the polling fallback.

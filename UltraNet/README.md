@@ -593,6 +593,19 @@ every call it makes stopped at once, set that one check. UltraFiler's drive
 worker uses it to stop a preview download the user is no longer waiting for,
 on an FTP drive or a cloud drive, and every transfer when the window closes.
 
+A transfer can keep the file's date. On an upload,
+`UltraNetFtpOptions::setRemoteModificationTime` (Unix seconds, UTC) is given
+to the file once it is written - `MFMT YYYYMMDDHHMMSS name` on FTP, libcurl's
+`mtime` quote command on SFTP - so the server's copy shows the date the file
+was made, not the moment it arrived. The command is sent with libcurl's `*`
+prefix: a server without `MFMT`, or one that refuses it, still has the file
+and the upload still succeeds. On a download, `onRemoteModificationTime` is
+told the server's date of the file (`MDTM` on FTP, the stat on SFTP,
+through `CURLOPT_FILETIME`) once it has arrived, for the caller to give the
+local copy - UltraNet writes the bytes and leaves the local file's dates to
+the caller (UltraCloud's FTP provider sets them with
+`UltraCanvas::SetFileTimes`). A server that does not say is not a failure.
+
 What a failure says, whether or not anyone reads the log:
 
 - `message` is libcurl's specific reason (its error buffer, not just the error

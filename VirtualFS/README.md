@@ -430,6 +430,16 @@ direct zlib calls throughout the codebase.
   written through a symbolic link the archive created. Refused entries are
   skipped, the rest extracts, and the result is `InvalidPath` with the names
   in the provider's last error.
+* **An extracted file keeps its dates.** `ExtractAll` and `ExtractFile` write
+  through libarchive's disk writer and give each file and folder the entry's
+  modification date (`VirtualFSExtractOptions::preserveTimestamps`, on by
+  default; off, a file is dated when it was written). A ZIP or 7z keeps a
+  third date, the file's creation date (7-Zip's CTime, the ZIP
+  extended-timestamp and NTFS fields), which libarchive reads as the change
+  time: the provider hands it to the disk writer as the creation date, which
+  Windows and macOS set (Linux cannot). Packing stores a file's modification
+  date and, in a ZIP or 7z, its creation date where the system reports one;
+  access and change times differ on every machine and are not stored.
 * **Entry names are UTF-8**, in listings, reads and on disk after
   `ExtractAll`, whatever the archive stored and whatever the process locale.
   A ZIP entry without the UTF-8 flag is read as IBM437 (the ZIP
