@@ -1,8 +1,9 @@
 // Tests/UltraStoreAdmin/test_pages.cpp
 // The frame of the pages the publish folder carries: the stylesheet
 // inline, the mark from media/ with a dark variant, the landing page in
-// it, the marks copied beside the pages when the framework's media folder
-// has them.
+// it, the join and retired pages too, the marks copied beside the pages
+// when the framework's media folder has them.
+// Version: 0.1.1 - the join and retired pages
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "admin_helpers.h"
@@ -43,6 +44,33 @@ TEST(the_landing_page_is_in_the_frame) {
     REQUIRE(page.find("class=\"button\" href=\"ultrastore://code/ANNA-20\"") != std::string::npos);
     REQUIRE(page.find("<footer>UltraStore, the ULTRA OS app store. https://store.example/v1</footer>") != std::string::npos);
     REQUIRE(page.find("../../media/ultraos-logo-light.png") != std::string::npos);
+}
+
+TEST(the_join_and_retired_pages_are_in_the_frame) {
+    Affiliate anna;
+    anna.id = "aff-anna";
+    anna.name = "Anna & Co";
+    anna.enabled = true;
+    anna.contact = "anna@example.com";
+    const std::string join = JoinPage(anna, "partners@store.example", "https://store.example/v1/");
+    REQUIRE(join.find("<title>Become an UltraStore partner - UltraStore</title>") != std::string::npos);
+    REQUIRE(join.find("<h1>Become an UltraStore partner</h1>") != std::string::npos);
+    REQUIRE(join.find("<main>") != std::string::npos);
+    REQUIRE(join.find("<code>aff-anna</code>") != std::string::npos);
+    REQUIRE(join.find("<p class=\"muted\">Questions about the programme go to Anna &amp; Co: anna@example.com</p>") != std::string::npos);
+    REQUIRE(join.find("<footer>UltraStore, the ULTRA OS app store. https://store.example/v1</footer>") != std::string::npos);
+    // join/<affiliate>/ is two levels under the publish folder, like go/<CODE>/.
+    REQUIRE(join.find("../../media/ultraos-logo-light.png") != std::string::npos);
+    REQUIRE(join.find("<script") == std::string::npos);
+    anna.enabled = false;
+    const std::string closed = JoinPage(anna, "", "https://store.example/v1");
+    REQUIRE(closed.find("<h1>This invitation is closed</h1>") != std::string::npos);
+    REQUIRE(closed.find("../../media/ultraos-logo-dark.png") != std::string::npos);
+    const std::string retired = RetiredCodePage("anna-20", "https://store.example/v1");
+    REQUIRE(retired.find("<h1>This code is no longer valid</h1>") != std::string::npos);
+    REQUIRE(retired.find("<code>ANNA-20</code>") != std::string::npos);
+    REQUIRE(retired.find("<footer>UltraStore, the ULTRA OS app store. https://store.example/v1</footer>") != std::string::npos);
+    REQUIRE(retired.find("../../media/ultraos-logo-light.png") != std::string::npos);
 }
 
 TEST(the_marks_are_copied_beside_the_pages_when_the_framework_has_them) {
