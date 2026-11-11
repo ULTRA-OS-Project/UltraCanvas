@@ -876,6 +876,10 @@ for (const std::string& line : lines) {
 }
 ```
 
+`SyntaxTokenizer::Tokenize(text)` does the same over a whole text: it splits it
+at `\n` (or `\r\n`), carries the state from line to line, and puts one
+`TokenType::Newline` token at each break - the tokens the text area colours.
+
 A string ends at its line unless the language lets it run on. Five switches
 in `SyntaxTokenizationRules` say which strings do:
 

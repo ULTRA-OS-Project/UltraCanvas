@@ -14,7 +14,8 @@
 // SetLanguageByTag, which names a Markdown fence's language; block comments
 // whose opener starts with the line-comment marker (Lua's --[[); C++ raw
 // strings, R"delim( ... )delim"; Lua's long brackets at any level,
-// --[==[ ... ]==] and [==[ ... ]==].
+// --[==[ ... ]==] and [==[ ... ]==]; and the whole-text Tokenize, which
+// must give the same tokens.
 // Version: 1.1.0
 // Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
@@ -307,6 +308,53 @@ int main() {
         Expect(half[1], "return", TokenType::Keyword, "--[= without a second [ is a line comment");
         auto index = Highlight(tk, {{"x = a[b] return x"}, {}});
         Expect(index[0], "b", TokenType::Identifier, "a[b] is an index, not a long bracket");
+    }
+
+    std::cout << "Tokenize: the whole text, as the text area sees it\n";
+    {
+        // Every language and construct the line state covers, through
+        // Tokenize, must match TokenizeLine line by line with the state.
+        struct Case { const char* language; std::string text; };
+        const std::vector<Case> cases = {
+            {"Lua", "--[==[ a\n]] still\n]==] return x\nlocal s = [=[ a\n]=] .. y"},
+            {"Python", "doc = \"\"\"a\nreturn\n\"\"\" + x\ns = \"abc\\\ndef\""},
+            {"C++", "auto s = R\"x(a\n)\" )x\";\n/* c\nd */ int y;"},
+            {"CSS", "a {\n  color: red; }\n/* x\ny */ b { top: 0 }"},
+            {"JavaScript", "const t = `a\r\n\r\nb`; return t;"},
+        };
+        for (const Case& c : cases) {
+            tk.SetLanguage(c.language);
+            auto whole = tk.Tokenize(c.text);
+            std::vector<SyntaxTokenizer::Token> expected;
+            SyntaxLineState state;
+            size_t start = 0;
+            while (true) {
+                size_t end = c.text.find('\n', start);
+                std::string line = c.text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                auto lt = tk.TokenizeLine(line, state);
+                expected.insert(expected.end(), lt.begin(), lt.end());
+                if (end == std::string::npos) break;
+                expected.push_back({TokenType::Newline, "\n", 1});
+                state = state.AtLineBreak();
+                start = end + 1;
+            }
+            bool same = whole.size() == expected.size();
+            for (size_t i = 0; same && i < whole.size(); ++i)
+                same = whole[i].type == expected[i].type && whole[i].text == expected[i].text;
+            Check(same, std::string(c.language) + ": Tokenize matches line-by-line highlighting");
+        }
+        tk.SetLanguage("Lua");
+        auto lua = tk.Tokenize("--[==[ a\n]] still\n]==] return x");
+        size_t newlines = 0;
+        bool middleComment = false, returnKeyword = false;
+        for (const auto& t : lua) {
+            if (t.type == TokenType::Newline) newlines++;
+            if (t.text == "]] still" && t.type == TokenType::Comment) middleComment = true;
+            if (t.text == "return" && t.type == TokenType::Keyword) returnKeyword = true;
+        }
+        Check(newlines == 2, "Tokenize: one Newline token per line break");
+        Check(middleComment && returnKeyword, "Tokenize: a levelled Lua comment over three lines");
     }
 
     std::cout << (g_failures ? "FAILED: " + std::to_string(g_failures) : std::string("PASSED")) << "\n";

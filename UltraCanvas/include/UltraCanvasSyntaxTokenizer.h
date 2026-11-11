@@ -191,6 +191,9 @@ namespace UltraCanvas {
 //        void LoadLightTheme();
 
         // Tokenization
+        // A whole text, line by line with the line state carried between
+        // lines - the same tokens the text area colours - and one Newline
+        // token at each line break.
         std::vector<Token> Tokenize(const std::string &text) const;
         // One line on its own: a line inside a block comment that neither
         // opens nor closes it on this line is not seen as comment.
@@ -207,7 +210,6 @@ namespace UltraCanvas {
         bool IsType(const std::string &word) const;
         bool IsOperator(const std::string &text) const;
         bool IsNumber(const std::string &text) const;
-        bool IsIdentifier(const std::string &text) const;
         bool IsRegister(const std::string &text) const;
         bool IsInstruction(const std::string &text) const;
         bool IsBuiltin(const std::string& word) const;
@@ -219,15 +221,9 @@ namespace UltraCanvas {
 
         TokenType ClassifyWord(const std::string &word) const;
 
-        std::pair<size_t, TokenType> ParseCharacter(const std::string& text, size_t pos) const;
         std::pair<size_t, TokenType> ParseCharacterInLine(const std::string& line, size_t pos) const;
-        std::pair<size_t, TokenType> ParseString(const std::string &text, size_t pos, char delimiter) const;
-        std::pair<size_t, TokenType> ParseStringInLine(const std::string& line, size_t pos, char delimiter) const;
-        std::pair<size_t, TokenType> ParseComment(const std::string &text, size_t pos) const;
-        std::pair<size_t, TokenType> ParsePreprocessor(const std::string& text, size_t pos) const;
         std::pair<size_t, TokenType> ParseNumber(const std::string &text, size_t pos) const;
         std::pair<size_t, TokenType> ParseNumberInLine(const std::string& line, size_t pos) const;
-        std::pair<size_t, TokenType> ParseWord(const std::string &text, size_t pos) const;
         std::pair<size_t, TokenType> ParseWordInLine(const std::string &text, size_t pos) const;
         std::pair<size_t, TokenType> ParseOperator(const std::string &text, size_t pos) const;
         std::pair<size_t, TokenType> ParseOperatorInLine(const std::string& line, size_t pos) const;
