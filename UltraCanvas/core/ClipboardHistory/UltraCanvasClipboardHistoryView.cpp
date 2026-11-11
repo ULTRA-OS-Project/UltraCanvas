@@ -4,7 +4,7 @@
 // Version: 1.3.0 - every text through Tr (UltraLocalisation): sections, sizes, ages, the
 //                  description line, the action tooltips, an image's and files' titles
 // Version: 1.2.0 - the Save as action (ClipboardRowStyle::saveAction)
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistoryView.h"
@@ -718,4 +718,29 @@ void ClipboardHistoryRowDelegate::RenderItem(IRenderContext* ctx, const IListMod
     }
 }
 
+
+// ===== THE THEME =====
+ClipboardRowStyle ClipboardRowStyle::FromTheme(const UltraCanvasTheme& theme, const ClipboardRowStyle& base) {
+    ClipboardRowStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.titleColor = r.ink;
+    s.metaColor = r.inkMuted;
+    s.selectedTitleColor = r.onAccent;
+    s.selectedMetaColor = r.onAccent.WithAlpha(220);
+    s.headerColor = r.inkMuted;
+    s.headerBackground = r.panel;
+    s.divider = r.line;
+    s.actionColor = r.inkFaint;
+    s.actionActiveColor = r.ink;
+    s.actionHoverBackground = r.hover;
+    s.deleteHoverColor = r.danger;
+    s.deleteHoverBackground = r.danger.WithAlpha(40);
+    s.pinColor = r.accent;
+    s.tileBackground = r.panel;
+    s.tileBorder = r.line;
+    s.selectionBackground = r.accent;
+    s.hoverBackground = r.hover;
+    s.listBackground = r.well;
+    return s;
+}
 } // namespace UltraCanvas

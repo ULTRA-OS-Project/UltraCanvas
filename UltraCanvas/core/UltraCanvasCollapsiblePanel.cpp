@@ -23,6 +23,12 @@ namespace UltraCanvas {
         Build();
         SetTitle(title);
         ApplyHeight();
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasCollapsiblePanel::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasContainer::ApplyTheme(theme);
+        SetStyle(CollapsiblePanelStyle::FromTheme(theme, style));
     }
 
     void UltraCanvasCollapsiblePanel::Build() {
@@ -146,6 +152,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasCollapsiblePanel::SetStyle(const CollapsiblePanelStyle& newStyle) {
+        StyleSetByHand();
         style = newStyle;
         SetBackgroundColor(style.backgroundColor);
         SetBorders(style.borderWidth, style.borderColor, style.cornerRadius);
@@ -282,4 +289,25 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+
+// ===== THE THEME =====
+    CollapsiblePanelStyle CollapsiblePanelStyle::FromTheme(const UltraCanvasTheme& theme, const CollapsiblePanelStyle& base) {
+        CollapsiblePanelStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body), caption = theme.Font(ThemeTextRole::Caption);
+        s.titleFont.fontFamily = body.fontFamily;
+        s.titleFont.fontSize = body.fontSize;
+        s.detailFont.fontFamily = caption.fontFamily;
+        s.detailFont.fontSize = caption.fontSize;
+        s.backgroundColor = r.raised;
+        s.headerBackgroundColor = r.panel;
+        s.headerHoverColor = r.hover;
+        s.borderColor = r.line;
+        s.separatorColor = r.line;
+        s.chevronColor = r.inkMuted;
+        s.titleColor = r.ink;
+        s.detailColor = r.inkMuted;
+        s.gripColor = r.accent;
+        return s;
+    }
 } // namespace UltraCanvas
