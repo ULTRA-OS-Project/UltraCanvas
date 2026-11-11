@@ -8,7 +8,8 @@
 //     used to fall through to the default colour);
 //   - in Markdown mode, a block comment inside a ``` code fence colours all of
 //     its lines, ends at the fence, and never leaks into the raw line the
-//     cursor is editing (read with the Markdown rules, not the fence's).
+//     cursor is editing (read with the Markdown rules, not the fence's);
+//   - a fence in a language the tokenizer does not know is shown plain.
 //
 // Every token class is painted one pure colour so a pixel says which class
 // covers it. Runs headless under Xvfb; skips when there is no display.
@@ -164,6 +165,12 @@ int main() {
     area->SetText("```cpp\n/* never closed\n```\n\n```cpp\nwhile return while\n```");
     Counts nextBlock = CountPixels(window, area);
     TEST("A comment left open in one fence does not run into the next", nextBlock.code > 200);
+
+    // An unknown language shows plain - not in the previous fence's language.
+    area->SetText("```cpp\nwhile return while\n```\n\n```foo\nwhile return while\n```");
+    Counts unknownLang = CountPixels(window, area);
+    TEST("A fence in an unknown language is not highlighted as the one before it",
+         std::abs(unknownLang.code - fencedCode.code) < fencedCode.code / 10);
 
     // Editing: the line under the cursor is shown raw and read with the
     // Markdown rules. It must not take a C++ comment state from the code line

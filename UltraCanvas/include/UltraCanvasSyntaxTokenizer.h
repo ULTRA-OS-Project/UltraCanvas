@@ -70,6 +70,20 @@ namespace UltraCanvas {
         std::vector<std::pair<std::string, std::string>> attributeDelimiters;
         std::vector<std::pair<std::string, std::string>> interpolationDelimiters;
 
+        // Strings that may run across lines. Every other string ends at the
+        // end of its line, closed or not.
+        //   multiLineStrings: opening and closing delimiters of a string that
+        //     may span lines - Python's """ and ''', Kotlin's """, Lua's [[ ]].
+        //   multiLineStringDelimiters: string delimiters (also listed in
+        //     stringDelimiters) whose strings may span lines as written - the
+        //     template literal `...` of JavaScript, Go's raw `...`, any quote
+        //     in a shell script.
+        //   stringLineContinuation: a backslash as the last character of a
+        //     line continues an open string onto the next (C, Python).
+        std::vector<std::pair<std::string, std::string>> multiLineStrings;
+        std::vector<char> multiLineStringDelimiters;
+        bool stringLineContinuation = false;
+
         bool hasRawStrings = false;
         bool hasEscapeSequences = true;
         bool hasAttributes = false;
@@ -122,6 +136,14 @@ namespace UltraCanvas {
 
         // Back to plain text: no language, nothing highlighted.
         void ClearLanguage() { currentRules = nullptr; }
+
+        // A language as people name it by hand - a Markdown fence's info
+        // string ("python", "C++", "js", "{.rust}"): the first word, matched
+        // against the languages' names in any case, then file extensions,
+        // then common aliases ("golang", "shell", "csharp"). An unknown or
+        // empty tag clears the language and returns false, so its code shows
+        // plain rather than in whatever language was set before.
+        bool SetLanguageByTag(const std::string &tag);
 
         // Some extensions are shared by two languages: .cls is a VBA class
         // module or a LaTeX class, .m MATLAB or Objective-C, .pl Perl or
@@ -422,6 +444,46 @@ namespace UltraCanvas {
         return false;
     }
 
+    inline bool SyntaxTokenizer::SetLanguageByTag(const std::string &tag) {
+        // The first word, without the {.lang} decoration some writers use.
+        size_t start = tag.find_first_not_of(" \t{.");
+        size_t end = start == std::string::npos ? start : tag.find_first_of(" \t,{}", start);
+        std::string word = start == std::string::npos ? std::string()
+                                                      : tag.substr(start, end == std::string::npos ? end : end - start);
+        std::transform(word.begin(), word.end(), word.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        if (word.empty()) {
+            ClearLanguage();
+            return false;
+        }
+        for (auto &[name, rules]: languagesRules) {
+            std::string lower = name;
+            std::transform(lower.begin(), lower.end(), lower.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            if (lower == word) {
+                currentRules = &rules;
+                return true;
+            }
+        }
+        if (SetLanguageByExtension(word)) return true;
+        static const std::unordered_map<std::string, std::string> aliases = {
+                {"python3", "Python"}, {"py3", "Python"},
+                {"node", "JavaScript"}, {"ecmascript", "JavaScript"},
+                {"shell", "Shell Script"}, {"shellscript", "Shell Script"},
+                {"console", "Shell Script"}, {"terminal", "Shell Script"},
+                {"golang", "Go"}, {"csharp", "C#"}, {"cplusplus", "C++"},
+                {"delphi", "Pascal"}, {"objectpascal", "Pascal"},
+                {"x86", "x86 Assembly"}, {"nasm", "x86 Assembly"}, {"arm", "ARM Assembly"},
+                {"postgresql", "SQL"}, {"postgres", "SQL"}, {"mysql", "SQL"},
+                {"sqlite", "SQL"}, {"plsql", "SQL"}, {"tsql", "SQL"},
+                {"elisp", "Lisp"}, {"vb", "VBA"}, {"visualbasic", "VBA"},
+        };
+        auto alias = aliases.find(word);
+        if (alias != aliases.end() && SetLanguage(alias->second)) return true;
+        ClearLanguage();
+        return false;
+    }
+
     inline std::vector<std::string> SyntaxTokenizer::GetSupportedLanguages() const {
         std::vector<std::string> result;
         for (const auto &[name, rules]: languagesRules) {
@@ -602,6 +664,7 @@ namespace UltraCanvas {
         rules.attributeDelimiters = {{"[[", "]]"}};
         rules.numberSuffixes = {"f", "F", "l", "L", "u", "U", "ul", "UL", "ll", "LL"};
 
+        rules.stringLineContinuation = true;
         return rules;
     }
 
@@ -709,6 +772,7 @@ namespace UltraCanvas {
         rules.hasRawStrings = true;
         rules.rawStringPrefix = "\"\"\"";
 
+        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
         return rules;
     }
 
@@ -862,6 +926,7 @@ namespace UltraCanvas {
                                          {"`",  "`"},
                                          {"$",  ""}};
 
+        rules.multiLineStringDelimiters = {'"', '\''};     // quotes span lines
         return rules;
     }
 
@@ -900,6 +965,7 @@ namespace UltraCanvas {
         rules.hasPreprocessor = true;
         rules.numberSuffixes = {"f", "F", "l", "L", "u", "U", "ul", "UL", "ll", "LL"};
 
+        rules.stringLineContinuation = true;
         return rules;
     }
 
@@ -1016,6 +1082,7 @@ namespace UltraCanvas {
         rules.hasAttributes = true;
         rules.attributeDelimiters = {{"@", ""}};
 
+        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
         return rules;
     }
 
@@ -1061,6 +1128,7 @@ namespace UltraCanvas {
         rules.hasStringInterpolation = true;
         rules.interpolationDelimiters = {{"${", "}"}};
 
+        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
         return rules;
     }
 
@@ -1106,6 +1174,8 @@ namespace UltraCanvas {
         rules.hasStringInterpolation = true;
         rules.interpolationDelimiters = {{"{", "}"}};
 
+        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}, {"'''", "'''"}};
+        rules.stringLineContinuation = true;
         return rules;
     }
 
@@ -1256,6 +1326,7 @@ namespace UltraCanvas {
         rules.hasRawStrings = true;
         rules.rawStringPrefix = "[[";
 
+        rules.multiLineStrings = {{"[[", "]]"}};          // long strings
         return rules;
     }
 
@@ -1455,6 +1526,7 @@ namespace UltraCanvas {
                                          {"$",  ""},
                                          {"@",  ""}};
 
+        rules.multiLineStringDelimiters = {'"', '\''};
         return rules;
     }
 
@@ -1495,6 +1567,7 @@ namespace UltraCanvas {
         rules.hasStringInterpolation = true;
         rules.interpolationDelimiters = {{"#{", "}"}};
 
+        rules.multiLineStringDelimiters = {'"', '\''};
         return rules;
     }
 
@@ -1535,6 +1608,7 @@ namespace UltraCanvas {
         rules.stringDelimiters = {'"', '`'};
         rules.characterDelimiters = {'\''};
 
+        rules.multiLineStringDelimiters = {'`'};          // raw strings
         return rules;
     }
 
@@ -1578,6 +1652,7 @@ namespace UltraCanvas {
         rules.hasStringInterpolation = true;
         rules.interpolationDelimiters = {{"\\(", ")"}};
 
+        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
         return rules;
     }
 
@@ -1627,6 +1702,7 @@ namespace UltraCanvas {
         rules.interpolationDelimiters = {{"${", "}"},
                                          {"$",  ""}};
 
+        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
         return rules;
     }
 
@@ -1671,6 +1747,7 @@ namespace UltraCanvas {
         rules.interpolationDelimiters = {{"${", "}"},
                                          {"$",  ""}};
 
+        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}, {"'''", "'''"}};
         return rules;
     }
 
@@ -1715,6 +1792,7 @@ namespace UltraCanvas {
         rules.hasRawStrings = true;
         rules.rawStringPrefix = "r";
 
+        rules.multiLineStringDelimiters = {'"'};
         return rules;
     }
 
@@ -1768,6 +1846,7 @@ namespace UltraCanvas {
         rules.hasStringInterpolation = true;
         rules.interpolationDelimiters = {{"#{", "}"}};
 
+        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
         return rules;
     }
 
@@ -2519,6 +2598,7 @@ namespace UltraCanvas {
                                          {"{$", "}"},
                                          {"$",  ""}};
 
+        rules.multiLineStringDelimiters = {'"', '\''};
         return rules;
     }
 
@@ -2565,6 +2645,8 @@ namespace UltraCanvas {
         rules.hasStringInterpolation = true;
         rules.interpolationDelimiters = {{"${", "}"}};
 
+        rules.multiLineStringDelimiters = {'`'};          // template literals
+        rules.stringLineContinuation = true;
         return rules;
     }
 

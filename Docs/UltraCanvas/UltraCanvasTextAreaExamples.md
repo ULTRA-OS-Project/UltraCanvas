@@ -876,9 +876,18 @@ for (const std::string& line : lines) {
 }
 ```
 
-Strings do not continue across a real line break, so C's `\`-continued
-strings and Python's triple-quoted strings are still coloured on their first
-line only.
+A string ends at its line unless the language lets it run on. Three switches
+in `SyntaxTokenizationRules` say which strings do:
+
+| Rule | Languages | Example |
+|---|---|---|
+| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, C#, Elixir (`"""`); Lua (`[[ ]]`) | a docstring |
+| `multiLineStringDelimiters` (quotes whose strings span lines) | JavaScript / TypeScript, Go (`` ` ``); Shell, Ruby, PHP, Perl (`"`, `'`); Rust (`"`) | a template literal |
+| `stringLineContinuation` (a `\` ends the line) | C, C++, Python, JavaScript / TypeScript | `"abc\` then `def"` |
+
+A string the language does not let span lines - an unclosed `"` in Java -
+still ends at the line, so a typo colours one line rather than the rest of the
+file.
 
 In Markdown mode the lines of a fenced code block (```` ```cpp ````) carry the
 state the same way, with the fence's language: a `/* comment */` over several
@@ -887,6 +896,13 @@ so a comment left open in one block ends at its closing fence. The raw line
 under the cursor is read with the Markdown rules and starts empty too - it
 never takes a code block's state. Indented (four-space) code blocks are not
 highlighted.
+
+The fence's info string names the language through
+`SyntaxTokenizer::SetLanguageByTag`: its first word, matched against the
+language names in any case (`python`, `C++`), then file extensions (`py`,
+`cpp`, `js`), then common aliases (`golang`, `shell`, `csharp`); `{.rust}`
+works too. A tag that names no known language, such as `foo` or `text`,
+clears the language, and the block is shown plain.
 
 ### Single Selection
 The text area has one cursor and one selection; there is no multi-cursor API.

@@ -236,6 +236,37 @@ namespace UltraCanvas {
         return line.length();
     }
 
+// The same for a string closed by a multi-character delimiter (""", ]]).
+    static size_t FindLongStringEnd(const std::string& line, size_t from, const std::string& endDelim,
+                                    bool escapes, bool& closed) {
+        size_t i = from;
+        while (i < line.length()) {
+            if (escapes && line[i] == '\\' && i + 1 < line.length()) { i += 2; continue; }
+            if (line.compare(i, endDelim.length(), endDelim) == 0) {
+                closed = true;
+                return i + endDelim.length();
+            }
+            i++;
+        }
+        closed = false;
+        return line.length();
+    }
+
+// Does a string opened with `delimiter` and still open at the end of `line`
+// carry on into the next line? Per language: a quote whose strings span lines,
+// or a backslash continuation (an odd run of backslashes ends the line).
+    static bool StringContinuesPastLine(const SyntaxTokenizationRules& rules,
+                                        const std::string& line, char delimiter) {
+        if (std::find(rules.multiLineStringDelimiters.begin(), rules.multiLineStringDelimiters.end(),
+                      delimiter) != rules.multiLineStringDelimiters.end()) {
+            return true;
+        }
+        if (!rules.stringLineContinuation) return false;
+        size_t backslashes = 0;
+        for (size_t i = line.length(); i > 0 && line[i - 1] == '\\'; --i) backslashes++;
+        return backslashes % 2 == 1;
+    }
+
 // Tokenize a single line with no knowledge of the lines around it
     std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeLine(const std::string& line, int /*lineNumber*/) const {
         if (!currentRules || line.empty()) {
@@ -282,13 +313,27 @@ namespace UltraCanvas {
             tokens.push_back({TokenType::Comment, line, line.length()});
             return tokens;
         }
+        if (state.openLongString >= 0 &&
+            state.openLongString < static_cast<int>(currentRules->multiLineStrings.size())) {
+            bool closed = false;
+            size_t end = FindLongStringEnd(line, 0, currentRules->multiLineStrings[state.openLongString].second,
+                                           currentRules->hasEscapeSequences, closed);
+            tokens.push_back({TokenType::String, line.substr(0, end), end});
+            if (!closed) return tokens;
+            position = end;
+        }
+        state.openLongString = -1;
         if (state.openString) {
             bool closed = false;
             size_t end = FindStringEnd(line, 0, state.openString, currentRules->hasEscapeSequences, closed);
             tokens.push_back({TokenType::String, line.substr(0, end), end});
-            if (!closed) return tokens;
+            if (!closed) {
+                state.openStringSpansLines = StringContinuesPastLine(*currentRules, line, state.openString);
+                return tokens;
+            }
             position = end;
             state.openString = 0;
+            state.openStringSpansLines = false;
         }
 
         while (position < line.length()) {
@@ -357,6 +402,31 @@ namespace UltraCanvas {
 
             if (foundComment) continue;
 
+            // Strings that may span lines and open with more than one
+            // character (""", [[): before the one-character delimiters,
+            // which would read """ as an empty string and a quote.
+            bool foundLongString = false;
+            for (size_t k = 0; k < currentRules->multiLineStrings.size(); ++k) {
+                const auto& [openDelim, closeDelim] = currentRules->multiLineStrings[k];
+                if (line.compare(position, openDelim.length(), openDelim) != 0) continue;
+                bool closed = false;
+                size_t end = FindLongStringEnd(line, position + openDelim.length(), closeDelim,
+                                               currentRules->hasEscapeSequences, closed);
+                token.type = TokenType::String;
+                token.length = end - position;
+                token.text = line.substr(position, token.length);
+                tokens.push_back(token);
+                if (!closed) {
+                    state.openLongString = static_cast<int8_t>(k);
+                    return tokens;
+                }
+                currentColumn += token.length;
+                position = end;
+                foundLongString = true;
+                break;
+            }
+            if (foundLongString) continue;
+
             // Try to match strings
             if (IsStringDelimiter(line[position])) {
                 bool closed = false;
@@ -368,6 +438,7 @@ namespace UltraCanvas {
                 tokens.push_back(token);
                 if (!closed) {
                     state.openString = line[position];
+                    state.openStringSpansLines = StringContinuesPastLine(*currentRules, line, line[position]);
                     return tokens;
                 }
 

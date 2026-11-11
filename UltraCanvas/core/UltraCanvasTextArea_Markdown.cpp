@@ -1510,9 +1510,9 @@ namespace UltraCanvas {
                     codeBlockTokenizer = std::make_unique<SyntaxTokenizer>();
                 }
                 if (codeBlockTokenizerLang != cl->codeblockLanguage) {
-                    if (!codeBlockTokenizer->SetLanguage(cl->codeblockLanguage)) {
-                        codeBlockTokenizer->SetLanguageByExtension(cl->codeblockLanguage);
-                    }
+                    // An unknown tag leaves the tokenizer with no language, so the
+                    // block shows plain - not in the previous fence's language.
+                    codeBlockTokenizer->SetLanguageByTag(cl->codeblockLanguage);
                     codeBlockTokenizerLang = cl->codeblockLanguage;
                 }
                 SyntaxLineState state = SyntaxStateBefore(lineIndex);

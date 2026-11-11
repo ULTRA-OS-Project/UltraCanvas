@@ -8,8 +8,12 @@
 // split into segments lost its colour at the cut - which, for a minified
 // stylesheet split every 8000 characters, restarted the CSS scanner from a
 // guess on every segment.
-// Version: 1.0.0
-// Last Modified: 2026-09-25
+//
+// Also: strings each language lets run across lines (Python's """, the
+// JavaScript template literal, a C string continued with a backslash), and
+// SetLanguageByTag, which names a Markdown fence's language.
+// Version: 1.1.0
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSyntaxTokenizer.h"
@@ -156,6 +160,84 @@ int main() {
         Expect(t[3], "auto", TokenType::Constant, "value continues across the cut");
         Expect(t[3], ":hover", TokenType::Builtin, "selector after the value");
         Expect(t[3], "#fff", TokenType::Number, "colour");
+    }
+
+    std::cout << "Strings that span lines, per language\n";
+    {
+        tk.SetLanguage("Python");
+        auto t = Highlight(tk, {{"doc = \"\"\"first line", "return while if", "end\"\"\" + name", "return x"}, {}});
+        Expect(t[1], "return while if", TokenType::String, "Python: inside a \"\"\" string");
+        Expect(t[2], "end\"\"\"", TokenType::String, "Python: the closing \"\"\"");
+        Expect(t[2], "name", TokenType::Identifier, "Python: code after it");
+        Expect(t[3], "return", TokenType::Keyword, "Python: next line is code");
+        auto q = Highlight(tk, {{"x = '''a", "b''' + c"}, {}});
+        Expect(q[1], "b'''", TokenType::String, "Python: ''' too");
+        auto one = Highlight(tk, {{"x = \"\"\"inline\"\"\" + y"}, {}});
+        Expect(one[0], "\"\"\"inline\"\"\"", TokenType::String, "Python: \"\"\" closed on its own line");
+        Expect(one[0], "y", TokenType::Identifier, "Python: code after it");
+        auto plain = Highlight(tk, {{"s = \"unclosed", "return 1"}, {}});
+        Expect(plain[1], "return", TokenType::Keyword, "Python: an ordinary string ends at the line");
+        auto cont = Highlight(tk, {{"s = \"abc\\", "def\" + x"}, {}});
+        Expect(cont[1], "def\"", TokenType::String, "Python: a backslash continues the string");
+        Expect(cont[1], "x", TokenType::Identifier, "Python: code after the continued string");
+
+        tk.SetLanguage("C");
+        auto c = Highlight(tk, {{"char* s = \"abc\\", "def\"; return 0;"}, {}});
+        Expect(c[1], "def\"", TokenType::String, "C: a backslash continues the string");
+        Expect(c[1], "return", TokenType::Keyword, "C: code after it");
+        auto even = Highlight(tk, {{"char* s = \"abc\\\\", "return 0;"}, {}});
+        Expect(even[1], "return", TokenType::Keyword, "C: an escaped backslash does not continue");
+
+        tk.SetLanguage("JavaScript");
+        auto js = Highlight(tk, {{"const t = `first", "", "last` + x; return t;"}, {}});
+        Expect(js[2], "last`", TokenType::String, "JavaScript: a template literal spans lines, empty ones too");
+        Expect(js[2], "return", TokenType::Keyword, "JavaScript: code after it");
+        auto jsq = Highlight(tk, {{"const s = 'unclosed", "return s;"}, {}});
+        Expect(jsq[1], "return", TokenType::Keyword, "JavaScript: a quoted string ends at the line");
+
+        tk.SetLanguage("Go");
+        auto go = Highlight(tk, {{"s := `raw", "text` + x", "return"}, {}});
+        Expect(go[1], "text`", TokenType::String, "Go: a raw string spans lines");
+        Expect(go[2], "return", TokenType::Keyword, "Go: code after it");
+
+        tk.SetLanguage("Kotlin");
+        auto kt = Highlight(tk, {{"val s = \"\"\"", "  return", "\"\"\""}, {}});
+        Expect(kt[1], "  return", TokenType::String, "Kotlin: inside a \"\"\" string");
+
+        tk.SetLanguage("Shell Script");
+        auto sh = Highlight(tk, {{"echo \"one", "two\"; exit"}, {}});
+        Expect(sh[1], "two\"", TokenType::String, "Shell: a quoted string spans lines");
+
+        tk.SetLanguage("Java");
+        auto java = Highlight(tk, {{"String s = \"unclosed", "return s;"}, {}});
+        Expect(java[1], "return", TokenType::Keyword, "Java: a quoted string ends at the line");
+    }
+
+    std::cout << "Languages named by a fence tag\n";
+    {
+        auto expectLang = [&](const std::string& tag, const std::string& expected) {
+            tk.SetLanguage("Python");            // something set before
+            tk.SetLanguageByTag(tag);
+            const std::string got = tk.GetCurrentProgrammingLanguage();
+            Check(got == expected, "\"" + tag + "\" -> " + expected + " (got " + got + ")");
+        };
+        expectLang("cpp", "C++");
+        expectLang("C++", "C++");
+        expectLang("javascript", "JavaScript");
+        expectLang("js", "JavaScript");
+        expectLang("Rust", "Rust");
+        expectLang("{.rust}", "Rust");
+        expectLang("golang", "Go");
+        expectLang("shell", "Shell Script");
+        expectLang("bash", "Shell Script");
+        expectLang("csharp", "C#");
+        expectLang("json copy", "JSON");
+        expectLang("foo", "Plain Text");
+        expectLang("text", "Plain Text");
+        expectLang("", "Plain Text");
+        tk.SetLanguageByTag("foo");
+        Check(tk.TokenizeLine(std::string("int x = 0;")).empty(),
+              "an unknown tag highlights nothing");
     }
 
     std::cout << (g_failures ? "FAILED: " + std::to_string(g_failures) : std::string("PASSED")) << "\n";
