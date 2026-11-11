@@ -79130,8 +79130,8 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.14.0 - the setting: Appearance.conf over the host, and the settings watcher that makes a change live (T5)
-**Last Modified:** 2026-11-10
+**Version:** 1.15.0 - TakeHostFonts for an Own provider; the four Own applications on the policy (T6)
+**Last Modified:** 2026-11-11
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -79462,12 +79462,21 @@ on every change when it gave one. An application that calls `SetCurrent`
 itself under another policy has taken over: the policy does not put its
 theme back over it.
 
+An `Own` provider builds the application's theme and takes the host's
+fonts onto it with `TakeHostFonts` - the interface and monospace fonts
+where the host names one, the text scale where it is positive, as
+`FromHost` does - so the application's colours come with the desktop's
+fonts. UltraVideo, UltraPress, ChatCube and UltraDBAdmin do this: their
+`ThemeFor` / `AppTheme` is the provider, the look picked from their own
+setting (`system`, which follows the desktop, `light` or `dark`) where
+they have one.
+
 ```cpp
 app->SetThemePolicy(ThemePolicy::Own);
 app->SetThemeProvider([](const HostAppearance& host) {
     UltraCanvasTheme theme = host.dark ? UltraCanvasTheme::Dark() : UltraCanvasTheme::Light();
     theme.name = "My app";
-    theme.fonts.ui = host.uiFont;
+    theme.TakeHostFonts(host);
     return theme;
 });
 ThemePolicy policy = app->GetThemePolicy();
@@ -111430,8 +111439,13 @@ From top to bottom: the **app bar** with the project's name, its size, frame
 rate and *Saved* or *Edited* state, undo and redo, open, save, import,
 *Make a story*, the light-or-dark switch and **Export**; the **media bin**, the **viewer** and
 the **inspector** side by side in panes you can drag; the **timeline** with
-its toolbar under them. The design's dark palette is the default; the eye
-button in the app bar switches to the light one.
+its toolbar under them. The palette follows the desktop - the dark one on
+a dark desktop or under *Dark* on UOS-Settings' Look page, the light one
+on a light desktop - until the eye button in the app bar picks one: from
+then on the look is the project's, saved with it (`view.dark`), whatever
+the desktop does; a project that never picked keeps following. The
+palette is the framework theme under the application's `Own` policy
+(`UltraVideoTheme.h`, `ThemeFor`), with the desktop's fonts.
 
 ### The media bin
 
@@ -111715,6 +111729,18 @@ headless, the player part skips itself without GStreamer plugins).
 The proposal's roadmap (§11) has the order.
 
 ==============================================================================
+FILE: Docs/UltraVideo/changelog.d/host-theme-policy.md
+==============================================================================
+
+- **The palette follows the desktop until the eye picks one.** The theme
+  is set under the application's `Own` policy with `ThemeFor` as the
+  provider: the dark palette on a dark desktop (or under *Dark* on
+  UOS-Settings' Look page), the light one on a light desktop, and a change
+  while UltraVideo runs is taken at once. The eye button makes the look the
+  project's, saved with it (`view.dark`); a project that never picked keeps
+  following. The fonts are the desktop's.
+
+==============================================================================
 FILE: Docs/UltraPress/README.md
 ==============================================================================
 
@@ -111797,12 +111823,18 @@ site* writes the folder (`ui/UltraPressWindow.h`).
 The window has two looks. Its colours are a framework theme
 (`Apps/UltraPress/ui/UltraPressTheme.h`, `ThemeFor(dark)`: the brand's red accent, its
 ink and paper on the framework's light preset; the red lifted on the dark
-one), and every element of the columns and the dialogs follows that theme,
-so *Dark look* / *Light look* in the side column switches them all at
-once; the side column keeps its night blue in both, through the theme's
+one), set under the application's `Own` theme policy with `ThemeFor` as
+the provider (`ui/main.cpp`): until a look is chosen the editor follows
+the desktop - a dark desktop, or *Dark* on UOS-Settings' Look page, gives
+the dark look, and a change while the editor runs is taken at once - and
+the fonts are the desktop's. Every element of the columns and the dialogs
+follows that theme, so *Dark look* / *Light look* in the side column
+switches them all at once and makes the look the editor's own from then
+on; the side column keeps its night blue in both, through the theme's
 own `press.*` roles, and the page in the middle keeps the site's colours,
-because it is the site. The choice is remembered with the program's other
-settings - the sites opened last, the editor window's size - in
+because it is the site. The choice (`look`: `system`, `light` or `dark`)
+is remembered with the program's other settings - the sites opened last,
+the editor window's size - in
 `<settings folder>/UltraPress/settings.json` (`ui/UltraPressSettings.h`)
 and read before the window opens.
 
@@ -112026,6 +112058,17 @@ and its reference from the shadow, the newsletter's e-mail mode of the
 emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.
+
+==============================================================================
+FILE: Docs/UltraPress/changelog.d/host-theme-policy.md
+==============================================================================
+
+- **The look follows the desktop until one is chosen.** The theme is set
+  under the application's `Own` policy with `ThemeFor` as the provider: a
+  dark desktop, or *Dark* on UOS-Settings' Look page, gives the dark look
+  (`look=system`, the new default), and a change while the editor runs is
+  taken at once; *Dark look* / *Light look* in the side column still picks
+  one for good (`look=light` / `look=dark`). The fonts are the desktop's.
 
 ==============================================================================
 FILE: Docs/Legal/Privacy/README.md
