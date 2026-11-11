@@ -1,3 +1,17 @@
+#### 2026-11-11 *1.107.12*
+- **The toolbar's dropdowns show their entries whole.** The View, Order by
+  and Video dropdowns had widths sized for the English entries, so a longer
+  translation was cut off - the Video mode read *Automatisch al…* in German.
+  Each now widens to its longest entry where a translation needs it, and
+  keeps its width where the entries fit.
+- **The toolbar's captions show in full, and *Sort* reads *Order by*.** The
+  captions in front of the View, Order by and Video dropdowns had a fixed
+  width, so a longer translation was cut off at every window size - German
+  read *Sortie…*. Each caption now takes the width of its text and shows
+  whole wherever the window has room; only when the bar is too narrow for
+  everything does it shorten, after the search field has given way first.
+  The sort caption is *Order by* in English (*Sortieren nach* in German).
+
 #### 2026-11-11 *1.107.11*
 - **Copying and pasting keeps the files' original dates.** A pasted, dropped
   or duplicated file - and a file moved to another drive - was dated the
