@@ -94406,8 +94406,14 @@ once a rule asks for connection state, so on a machine with no firewall
 the source binds and nothing arrives. Its `LastError()` says so; the
 monitor never adds a rule. The message parser
 (`NetworkMonitorConntrack.h`) is pure and tested from captured bytes on
-every platform; the Windows source is compiled on CI and, like the DNS
-client source, awaits its first elevated run. eBPF stays the proposal's
+every platform, and so is the Windows provider's payload parser
+(`NetworkMonitorKernelNetwork.h`): each TCP event is read by its own
+template — a connect or accept carries the TCP options, a send its start
+and end time, between the ports and the connection id — so the sends and
+receives summed on a connection meet the disconnect that reports them.
+The Windows source is compiled on CI and, like the DNS client source,
+awaits its first elevated run: *Windows: the first elevated run* below is
+that run, as a script with a verdict. eBPF stays the proposal's
 open question (§10.3): the tracker gives Linux events without vendoring
 libbpf or shipping CO-RE objects, at the price of needing root and an
 active tracker.
@@ -94473,9 +94479,11 @@ falling behind. `NetworkMonitor_WaitForNames(ms)` waits for its queue.
 The Windows source is a real-time ETW session on
 `Microsoft-Windows-DNS-Client` (event 3008, *DNS query completed*), whose
 payload carries the name and the answers and whose header the PID. It
-needs an elevated token and reports `PermissionDenied` without one. It is
-compiled on the Windows CI rows; it has not yet been exercised at run
-time — treat the first elevated run as its acceptance test.
+needs an elevated token and reports `PermissionDenied` without one, and
+names the asking process from the same Toolhelp list as the socket table
+and the network events. It is compiled on the Windows CI rows; it has not
+yet been exercised at run time — *Windows: the first elevated run* below
+is its acceptance test.
 
 An application that has a better source (a browser extension, an
 enterprise resolver's log) implements `INameSource` and registers it; the
@@ -94590,6 +94598,7 @@ UltraCanvas/include/NetworkMonitor/
     NetworkMonitorDns.h           the DNS wire format (internal, pure)
     NetworkMonitorEvents.h        IConnectionEventSource, the registry, the ring, the differ
     NetworkMonitorConntrack.h     the conntrack netlink messages (internal, pure)
+    NetworkMonitorKernelNetwork.h the Windows kernel network ETW payloads (internal, pure)
     NetworkMonitorCsv.h           RFC 4180 field quoting and the UTC timestamp every CSV shares (internal)
 UltraCanvas/core/NetworkMonitor/
     NetworkMonitorCore.cpp        NetworkMonitor_* functions, filters, names, roll-up, null backend
@@ -94601,6 +94610,8 @@ UltraCanvas/core/NetworkMonitor/
     NetworkMonitorDnsProxy.cpp    the local DNS proxy source (BSD sockets, Winsock shims)
     NetworkMonitorEvents.cpp      the event registry, attribution, the snapshot differ
     NetworkMonitorConntrack.cpp   conntrack message parsing, bounds-checked
+    NetworkMonitorKernelNetwork.cpp
+                                  kernel network payload parsing, one template per event id
 UltraCanvas/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
                                   netlink sock_diag, the /proc/net fallback, the /proc walk
 UltraCanvas/OS/Linux/UltraCanvasLinuxNetworkMonitorEvents.cpp
@@ -94611,6 +94622,9 @@ UltraCanvas/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp
                                   the DNS client's ETW events as a name source
 UltraCanvas/OS/MSWindows/UltraCanvasWindowsNetworkMonitorEvents.cpp
                                   the kernel network ETW events as an event source
+UltraCanvas/OS/MSWindows/UltraCanvasWindowsProcessNames.h
+                                  the Toolhelp process list the three Windows sources name from
+scripts/netmon-etw-acceptance.ps1 the first elevated run of the two ETW sources, with a verdict
 UltraCanvas/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp
                                   libproc: PROC_PIDLISTFDS / PROC_PIDFDSOCKETINFO per process
 Tests/NetworkMonitorTests.cpp     target NetworkMonitorTests (ctest)
@@ -94664,6 +94678,50 @@ identity for it when the table has the socket. `allUsers` is whether
 the monitor's own token is elevated. Byte counters and events are the ETW
 work of a later increment.
 
+### Windows: the first elevated run
+
+The two ETW sources — the kernel's network events and the DNS client's —
+are compiled on CI, parsed from fixture bytes in the tests, and start only
+for an administrator, so they have had no run against the real providers
+until one is made on a Windows machine. `scripts/netmon-etw-acceptance.ps1`
+is that run as a test with a verdict. From an elevated PowerShell, with a
+built or installed `UltraNetMonitor.exe`:
+
+```powershell
+.\scripts\netmon-etw-acceptance.ps1 -Path .\build\UltraNetMonitor.exe
+```
+
+It prints `--capabilities`, records for twenty seconds with the snapshot
+differ and reverse DNS off (`--record --no-diff --no-rdns`, so everything
+recorded comes from the ETW sources), connects to a listener of its own
+over loopback, sends 100 000 bytes and closes, resolves `example.com`
+through the system resolver, then reads the recording back
+(`--events-history`, `--dns`) and checks six things:
+
+| Check | What it proves |
+|---|---|
+| an *opened* on the loopback port, attributed to `powershell` / `pwsh` by name | the session starts, the provider is enabled, a connect's template is read right (the PID and the endpoints), the Toolhelp list names the PID |
+| an *accepted* on the same port, same process | the accept template, and the listener's side of a loopback connection |
+| a *closed* on the port | the disconnect template |
+| the *closed* carries bytes | sends and receives are keyed by the connection id that the disconnect carries, so the sums meet their close |
+| `example.com` among the DNS observations, from *DNS client events* | the DNS session starts and event 3008's payload is read right |
+| that observation attributed to `powershell` / `pwsh` | the header's PID, named from the Toolhelp list |
+
+Each prints `PASS` or `FAIL`; the exit code is 0, 1 on a failed check, 2
+when the run could not be made (not elevated, no executable). The
+recording and the recorder's own output stay in the temporary folder the
+script names, for the report. The script changes nothing on the machine:
+no firewall rule, no resolver setting, and the ETW sessions it starts are
+the monitor's own, stopped when it exits.
+
+What a failure means: no event at all with `--capabilities` saying the
+events source is running points at the provider's keywords or the session
+(both sources enable every keyword); an *opened* with the wrong port or a
+`pid N` name at the template; a *closed* without bytes at the connection
+id; a missing name with the resolver answering at the DNS session or the
+3008 layout. The first run's output, pass or fail, belongs in the pull
+request that reacts to it.
+
 ### macOS: sockets are found through their owners
 
 There is no system-wide table. `proc_listpids` lists every process,
@@ -94697,6 +94755,9 @@ and its listener, the reverse DNS source's address filters, the proxy end
 to end over UDP and TCP against a fake resolver on loopback, and the
 store's names, observations, CSV, roll-up and the version-1 migration.
 Events: the conntrack parser against a captured NEW and DESTROY, the
+Windows kernel network payload parser against payloads built per template
+(connect, send, receive, disconnect, an IPv6 accept with a 32-bit pointer,
+short and foreign payloads refused), the
 registry's ring, listener, naming and both-orientation attribution against
 sockets the test opens, the differ reporting opened, accepted and closed
 for a loopback connection attributed to the test's PID, the platform
