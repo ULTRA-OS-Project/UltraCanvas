@@ -1,8 +1,14 @@
 // Apps/UltraStoreAdmin/ui/AdminTheme.h
-// The admin window's colours, sizes and the few helpers every page uses: a
-// wrapping text, a heading, a caption, a styled button, a plain row or
-// column. Nothing here paints; the elements do.
-// (The store window's StoreTheme.h, with Field.)
+// The admin window's look, after the UltraStore shop design (the canvas
+// "UltraStore Shop Design", 2026-11-05, its admin artboards): the same
+// tokens as the store's StoreTheme.h - a white ground, ink text, the
+// UltraStore blue as the one accent, Manrope for display text over Inter
+// for body text (both in media/fonts), rounded surfaces and pill buttons -
+// at the denser sizes a form of sixty fields needs. The few helpers every
+// page uses: a wrapping text, a heading, a caption, a styled button, a
+// plain row or column, a surface, and Field (a labelled control). Nothing
+// here paints; the elements do.
+// Version: 0.2.0 - the shop design's tokens, fonts and pills
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -19,28 +25,41 @@
 
 namespace UltraStoreAdmin::Ui::Theme {
 
-inline const UltraCanvas::Color kPageBackground {245, 246, 248};
+// ===== colours (the design's tokens) =====
+inline const UltraCanvas::Color kPageBackground {255, 255, 255};   // the ground
 inline const UltraCanvas::Color kSurface        {255, 255, 255};
-inline const UltraCanvas::Color kBorder         {226, 229, 234};
-inline const UltraCanvas::Color kTextPrimary    { 24,  28,  35};
-inline const UltraCanvas::Color kTextSecondary  {104, 112, 125};
-inline const UltraCanvas::Color kTextMuted      {142, 150, 163};
-inline const UltraCanvas::Color kAccent         { 37,  99, 235};
+inline const UltraCanvas::Color kSurfaceSoft    {248, 250, 252};   // #F8FAFC
+inline const UltraCanvas::Color kSurfaceMuted   {241, 245, 249};   // #F1F5F9
+inline const UltraCanvas::Color kBorder         {226, 232, 240};   // #E2E8F0
+inline const UltraCanvas::Color kBorderStrong   {203, 213, 225};   // #CBD5E1
+inline const UltraCanvas::Color kTextPrimary    { 15,  23,  42};   // #0F172A, the ink
+inline const UltraCanvas::Color kTextBody       { 51,  65,  85};   // #334155
+inline const UltraCanvas::Color kTextSecondary  {100, 116, 139};   // #64748B
+inline const UltraCanvas::Color kTextMuted      {148, 163, 184};   // #94A3B8
+inline const UltraCanvas::Color kAccent         { 37,  99, 235};   // #2563EB
 inline const UltraCanvas::Color kAccentHover    { 29,  78, 216};
 inline const UltraCanvas::Color kAccentPressed  { 30,  64, 175};
-inline const UltraCanvas::Color kRowHover       {243, 245, 248};
-inline const UltraCanvas::Color kRowSelected    {226, 236, 253};
+inline const UltraCanvas::Color kAccentSoft     {219, 234, 254};   // #DBEAFE
+inline const UltraCanvas::Color kAccentSoftText { 29,  78, 216};
+inline const UltraCanvas::Color kRowHover       {241, 245, 249};
+inline const UltraCanvas::Color kRowSelected    {219, 234, 254};
 inline const UltraCanvas::Color kDanger         {220,  38,  38};
 inline const UltraCanvas::Color kDangerHover    {185,  28,  28};
 inline const UltraCanvas::Color kDangerPressed  {153,  27,  27};
-inline const UltraCanvas::Color kSuccess        { 22, 163,  74};
-inline const UltraCanvas::Color kTrack          {230, 232, 236};
+inline const UltraCanvas::Color kSuccess        { 21, 128,  61};
+inline const UltraCanvas::Color kTrack          {226, 232, 240};
 
-constexpr float kPagePadding   = 16.0f;
-constexpr float kGap           = 10.0f;
-constexpr float kInnerGap      = 6.0f;
-constexpr float kControlHeight = 26.0f;
-constexpr float kControlRadius = 5.0f;
+// ===== type =====
+inline const char* kDisplayFont = "Manrope";
+inline const char* kBodyFont    = "Inter";
+
+// ===== sizes: the store's, a notch denser for the forms =====
+constexpr float kPagePadding   = 24.0f;
+constexpr float kGap           = 12.0f;
+constexpr float kInnerGap      = 8.0f;
+constexpr float kControlHeight = 34.0f;   // a pill button, a field
+constexpr float kControlRadius = 17.0f;   // half the height: a pill
+constexpr float kSurfaceRadius = 16.0f;
 constexpr float kHeaderHeight  = 44.0f;
 constexpr float kStatusHeight  = 24.0f;
 
@@ -66,33 +85,39 @@ inline std::string Icon(const char* name) {
 
 // A label that wraps to the width it is given and sizes to its lines.
 inline std::shared_ptr<UltraCanvas::UltraCanvasLabel> Text(const std::string& id, const std::string& text,
-                                                           float size = 12.0f,
+                                                           float size = 13.0f,
                                                            UltraCanvas::FontWeight weight = UltraCanvas::FontWeight::Normal,
-                                                           const UltraCanvas::Color& color = kTextPrimary) {
+                                                           const UltraCanvas::Color& color = kTextPrimary,
+                                                           const char* family = kBodyFont) {
     auto label = std::make_shared<UltraCanvas::UltraCanvasLabel>(id, text);
-    label->SetFontSize(size);
-    label->SetFontWeight(weight);
+    label->SetFont(family, size, weight);
     label->SetTextColor(color);
     label->SetWrap(UltraCanvas::TextWrap::WrapWordChar);
     label->SetAlignment(UltraCanvas::TextAlignment::Left, UltraCanvas::VerticalAlignment::Top);
     return Pin(label);
 }
 
+// A page's heading, in Manrope.
 inline std::shared_ptr<UltraCanvas::UltraCanvasLabel> Heading(const std::string& id, const std::string& text) {
-    return Text(id, text, 18.0f, UltraCanvas::FontWeight::Bold);
+    return Text(id, text, 24.0f, UltraCanvas::FontWeight::Bold, kTextPrimary, kDisplayFont);
 }
 
 inline std::shared_ptr<UltraCanvas::UltraCanvasLabel> Caption(const std::string& id, const std::string& text) {
-    return Text(id, text, 11.0f, UltraCanvas::FontWeight::Normal, kTextSecondary);
+    return Text(id, text, 12.0f, UltraCanvas::FontWeight::Normal, kTextSecondary);
 }
 
+// Primary: the accent, white text. Secondary: white with a border. Danger:
+// red. All pills, in Inter.
 enum class ButtonKind { Primary, Secondary, Danger };
 
 inline UltraCanvas::ButtonStyle ButtonStyleFor(ButtonKind kind) {
     UltraCanvas::ButtonStyle s;
     s.borderWidth  = kind == ButtonKind::Secondary ? 1.0f : 0.0f;
     s.cornerRadius = kControlRadius;
-    s.fontSize     = 12.0f;
+    s.fontFamily   = kBodyFont;
+    s.fontSize     = 13.0f;
+    s.fontWeight   = UltraCanvas::FontWeight::Bold;
+    s.focusedColor = kAccent;
     switch (kind) {
         case ButtonKind::Primary:
             s.normalColor = kAccent; s.hoverColor = kAccentHover; s.pressedColor = kAccentPressed;
@@ -108,10 +133,10 @@ inline UltraCanvas::ButtonStyle ButtonStyleFor(ButtonKind kind) {
             break;
         case ButtonKind::Secondary:
             s.normalColor = kSurface; s.hoverColor = kRowHover; s.pressedColor = kRowSelected;
-            s.disabledColor = kPageBackground;
+            s.disabledColor = kSurfaceMuted;
             s.normalTextColor = s.hoverTextColor = s.pressedTextColor = kTextPrimary;
             s.disabledTextColor = kTextMuted;
-            s.borderColor = kBorder;
+            s.borderColor = kBorderStrong;
             break;
     }
     return s;
@@ -153,12 +178,12 @@ inline std::shared_ptr<UltraCanvas::UltraCanvasContainer> Column(const std::stri
     return Pin(col);
 }
 
-// A white rounded surface, a column.
+// A white rounded surface with the design's corners, a column.
 inline std::shared_ptr<UltraCanvas::UltraCanvasContainer> Surface(const std::string& id, float gap = kInnerGap) {
     auto col = Column(id, gap);
     col->SetBackgroundColor(kSurface);
-    col->SetBorders(1.0f, kBorder, 8.0f);
-    col->SetPadding(12.0f);
+    col->SetBorders(1.0f, kBorder, kSurfaceRadius);
+    col->SetPadding(20.0f);
     return col;
 }
 
@@ -167,7 +192,7 @@ inline std::shared_ptr<UltraCanvas::UltraCanvasContainer> Field(const std::strin
                                                                 const std::shared_ptr<UltraCanvas::UltraCanvasUIElement>& control,
                                                                 bool grow = false) {
     auto row = Row(id, kGap);
-    auto text = Text(id + ".label", label, 12.0f);
+    auto text = Text(id + ".label", label, 13.0f, UltraCanvas::FontWeight::Normal, kTextBody);
     text->SetElementSize(UltraCanvas::CSSLayout::Dimension::Px(180), UltraCanvas::CSSLayout::Dimension::Auto());
     row->AddChild(text);
     Pin(control);

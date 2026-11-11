@@ -76,6 +76,9 @@ Result<void> AdminDatabase::Open(const std::string& databasePathUtf8) {
         " amount TEXT NOT NULL DEFAULT '0', currency TEXT NOT NULL DEFAULT '', affiliate TEXT NOT NULL DEFAULT '',"
         " recruiter TEXT NOT NULL DEFAULT '', affiliate_credit TEXT NOT NULL DEFAULT '0', recruiter_credit TEXT NOT NULL DEFAULT '0',"
         " reference TEXT NOT NULL DEFAULT '')",
+        // schema 4
+        "CREATE TABLE IF NOT EXISTS published_pages ("
+        " path TEXT PRIMARY KEY, kind TEXT NOT NULL, first_published_at TEXT NOT NULL)",
     };
     for (const char* sql : kTables) {
         if (const UltraDbResult r = UltraDb_Exec(connection_, sql); !r) {
@@ -273,6 +276,26 @@ Result<KeyRecord> AdminDatabase::AddKey(const std::string& name, const std::stri
     if (!r) return DbFailure<KeyRecord>(r, "add the key " + key.name);
     key.id = r.lastInsertId;
     return Result<KeyRecord>::Succeed(std::move(key));
+}
+
+Result<void> AdminDatabase::RememberPage(const std::string& path, const std::string& kind) {
+    if (path.empty() || kind.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "A published page needs a path and a kind");
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT OR IGNORE INTO published_pages (path, kind, first_published_at) VALUES (?, ?, ?)",
+        {UltraDbValue(path), UltraDbValue(kind), UltraDbValue(NowIso8601())});
+    if (!r) return DbFailure<void>(r, "remember the page " + path);
+    return Result<void>::Succeed();
+}
+
+Result<std::vector<PublishedPage>> AdminDatabase::PublishedPages() const {
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_, "SELECT path, kind, first_published_at FROM published_pages ORDER BY path", rs); !r) return DbFailure<std::vector<PublishedPage>>(r, "read its published pages");
+    std::vector<PublishedPage> out;
+    for (size_t i = 0; i < rs.Size(); ++i) {
+        const UltraDbRow& row = rs.Row(i);
+        out.push_back({Str(row, "path"), Str(row, "kind"), Str(row, "first_published_at")});
+    }
+    return Result<std::vector<PublishedPage>>::Succeed(std::move(out));
 }
 
 Result<std::vector<KeyRecord>> AdminDatabase::Keys() const {

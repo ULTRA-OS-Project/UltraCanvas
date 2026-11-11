@@ -4,6 +4,7 @@
 // one shape - releases with packages per target - and a release names the
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
+// Version: 0.6.0 - featured: the admin's pick for the store's hero and Editor's picks
 // Version: 0.5.0 - payment_url and licence_key: the payment service the store buys through
 // Version: 0.4.0 - codes: the discount and affiliate codes the store applies
 // Version: 0.3.0 - schema 2: trusted_keys, the keys that may sign the next catalogs
@@ -126,6 +127,7 @@ struct Component {
     std::string ageRating;                // "3", "7", "12", "16", "18" (PEGI-like), empty: everyone
     bool requiresAccount = false;         // the app needs a user account of its own to be useful
     bool openSource = false;              // sourceUrl shows where
+    bool featured = false;                // the admin's pick: the store's hero and its Editor's picks
     std::string sourceUrl, supportUrl, privacyUrl;
     std::vector<std::string> tags;        // free-form, for search ("accounting", "german")
     std::vector<Release> releases;        // newest first after parsing

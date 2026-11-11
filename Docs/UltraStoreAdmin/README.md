@@ -21,7 +21,7 @@ store itself is [`Docs/UltraStore/README.md`](../UltraStore/README.md).
 | Where is the signing key? | **Generated on the publishing machine, its seed sealed in the database** with a passphrase: Argon2id derives the key, XChaCha20-Poly1305 seals the 32-byte seed with the cost and the salt in the authenticated header (UltraPassword's vault scheme, through UltraCrypt). The seed is in memory for the moment of signing. The public half is exported as a `.pub` file for `Apps/UltraStore/keys/`. A second machine means a second key, which the store trusts beside the first; a key is retired here and dropped from the store's next release. Every publish lists the active keys in the catalog's `trusted_keys` (schema 2), so a new key is announced by the first publish after `key new` and signs from the next one on, and the stores that saw that catalog accept it before the binary that carries it ships; a retired key drops out of the list. |
 | How is the packages server reached? (the store's open question) | **By what the catalog says, with the paid packages behind the server.** The publish folder has `packages/` for the packages of free apps - plain files, fetched by URL, which is what a signed catalog needs and no more - and `restricted/` for the packages of paid apps. The web server serves `packages/` and `media/` to everyone and `restricted/` to nobody directly: a buyer's store gets a **short-lived signed URL** for a restricted file from the payment service (the payment milestone), the way the other stores do it (a CDN with signed URLs per user and download, tokens that expire). No bearer token in the binary: there is nothing to leak, and a leaked signed URL dies in minutes. The catalog itself, the media and the free packages are public and need no secret. |
 | How do the files reach the server? | **`upload`, from the publish folder, over what UltraNet speaks**: SFTP (a password or a key file), FTPS, FTP, or HTTPS with one PUT per file (a WebDAV folder). What changed since the last upload to that server goes up - `upload-state.json` in the store folder keeps each file's SHA-256 per target - the packages and the media first, the signature, and `catalog.json` last, so a store fetching in between sees the old catalog whole or the new one whole. An upload that breaks off goes on from where it stopped. A file gone from the folder is named, not deleted on the server: a store half-way through a download needs it. The publish folder can still be the server's document root, or be copied by other means. |
-| Affiliates and codes | **Two tiers, no more.** A partner has codes (in the catalog, with what they take off) and a share of each sale made with them; a partner recruited by another names the recruiter, who earns a recruit share of the recruit's sales, once, one level up - the recruiter's recruiter nothing; a partner may use their own code. The shares, the contact and who recruited whom stay in `admin.sqlite`; the catalog carries only the codes. Sales are recorded by hand until the payment service reports them, and `affiliate report` says what each partner is owed. QR codes encode `<catalog base>/go/<CODE>` (a page the publish folder carries) and `<catalog base>/join/<affiliate>`. The store's README, *Affiliates and codes*. |
+| Affiliates and codes | **Two tiers, no more.** A partner has codes (in the catalog, with what they take off) and a share of each sale made with them; a partner recruited by another names the recruiter, who earns a recruit share of the recruit's sales, once, one level up - the recruiter's recruiter nothing; a partner may use their own code. The shares, the contact and who recruited whom stay in `admin.sqlite`; the catalog carries only the codes. Sales are recorded by hand until the payment service reports them, and `affiliate report` says what each partner is owed. QR codes encode `<catalog base>/go/<CODE>` and `<catalog base>/join/<affiliate>`, both pages the publish folder carries (`go/<CODE>/index.html`, `join/<affiliate>/index.html`). The store's README, *Affiliates and codes*. |
 | Translations | **UltraAI**, the `ITranslator` of the module, with the provider the settings name (`ai.provider`: `qwen`, `llama-cpp`, a configured endpoint; empty follows the routing policy, local first). The creator writes at least one language; `translate` fills every language of `texts.languages` (the official languages, by default) the component lacks, from its `source_language`, and lists them under `machine_translated`. A text a person wrote is never overwritten; a machine one is redone on `--redo`. |
 | Which languages? | The EU's 24 official languages, the EFTA countries' and the UK's, then the other markets the apps ship to (Ukrainian, Turkish, Serbian, Russian, Arabic, Hebrew, Hindi, Indonesian, Japanese, Korean, Thai, Vietnamese, Chinese simplified and traditional, Brazilian Portuguese): `Translation.cpp`, narrowed or widened by the setting. |
 
@@ -30,7 +30,7 @@ store itself is [`Docs/UltraStore/README.md`](../UltraStore/README.md).
 ```
 Apps/UltraStoreAdmin/
   core/                          UltraStoreAdminCore (static), on UltraStoreCore, UltraDatabase, UltraCrypt, UltraAI
-    AdminDatabase.h/.cpp         admin.sqlite: settings, publishers, components (whole), package files, keys, the sequence
+    AdminDatabase.h/.cpp         admin.sqlite: settings, publishers, components (whole), package files, keys, the pages ever published, the sequence
     KeyVault.h/.cpp              the seed sealed with the passphrase; a new pair
     PackageStore.h/.cpp          a build into the package store under its hash; the archive's listing; the entry
     CatalogPublisher.h/.cpp      the catalog from the database, laid out, signed, verified; the publish folder
@@ -58,7 +58,10 @@ table with *Add an app or a component*, an app's form, Sales, Finance and
 Publish.
 
 `ultrastoreadmin` alone, or `ultrastoreadmin --store <dir>` alone, opens
-the window on the store (the default store is
+the window on the store. It wears the store's look (the UltraStore shop
+design: a white ground, ink text, the UltraStore blue, Manrope over Inter,
+rounded surfaces and pill buttons - `AdminTheme.h`, the store's
+`StoreTheme.h` a notch denser) (the default store is
 `<data folder>/UltraStoreAdmin`, created on the first start). A sidebar
 (`UltraCanvasSidebarNavigation`) lists the store's pages and then every
 app and every runtime or library the database has, an item marked
@@ -97,6 +100,7 @@ The settings in `admin.sqlite`:
 |---|---|
 | `catalog.base_url` | where `catalog.json` will be served: `https://store.example/v1` |
 | `packages.base_url` | where `packages/` and `restricted/` are served; the catalog's URL when unset |
+| `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages |
 | `texts.languages` | the languages `translate` fills, codes separated by spaces; set by `init` to the official list |
 | `ai.provider`, `ai.base_url`, `ai.model` | the UltraAI translator's provider, server and model |
 | `catalog.sequence`, `catalog.published_at` | the last publish; set by `publish`, never by hand |
@@ -116,7 +120,7 @@ app new <id> <name> [--kind app|runtime|library] [--publisher <id>]
 app set <id> <field> <value>                             name publisher license homepage support_url privacy_url
                                                          source_url icon source_language categories tags screenshots
                                                          visibility lifecycle successor age_rating requires_account
-                                                         open_source pricing.model price currency trial_days
+                                                         open_source featured pricing.model price currency trial_days
                                                          updates.period updates.until
 app text <id> summary|description <lang> <text or @file>
 app media <id> icon|screenshot <file>
@@ -200,7 +204,17 @@ Hello.
   have one, is enabled too; a code naming an app the catalog does not list
   is warned about. A page per code is written as `go/<CODE>/index.html`,
   so the QR code's link `<catalog base>/go/<CODE>` is served by a plain
-  static web server with no rewrite rule.
+  static web server with no rewrite rule; a page per partner as
+  `join/<affiliate>/index.html` behind the join QR code's link, naming who
+  invites, what a partner earns, the id to name when signing up and the
+  store's contact (`store.contact`). The uploader never deletes on the
+  server, so a page once published stays reachable; `admin.sqlite`
+  remembers every page ever published (`published_pages`, schema 4), and
+  each publish writes one for every entry: the current page, or - for a
+  code that left the catalog, a partner switched off, a code or a partner
+  removed outright - a page that says the code is no longer valid or the
+  invitation is closed, which the next upload puts in place of the stale
+  one.
 - The catalog is schema 2 and announces every active key (`trusted_keys`):
   to rotate, `key new`, publish once with the old key, then with the new
   one; `key retire` the old one afterwards.

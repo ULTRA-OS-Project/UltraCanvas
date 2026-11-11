@@ -1,23 +1,31 @@
 // Apps/UltraStore/ui/StoreWindow.h
-// The store's window: a sidebar (Discover, Categories, Installed, Updates;
-// Settings), the page it selects, the download queue in a collapsible panel
-// along the bottom, a status line. Every operation goes through the core
-// (StoreEngine, CatalogClient), run on one worker thread at a time, so the
-// window and the command line never disagree; the window only shows what
-// the core reports and asks it for the next thing.
+// The store's window after the UltraStore shop design: a header with the
+// wordmark, the sections as pills (Discover, Categories, Installed,
+// Updates), the search pill and Settings; the page it selects; the download
+// queue in a collapsible panel along the bottom; a status line. Every
+// operation goes through the core (StoreEngine, CatalogClient), run on one
+// worker thread at a time, so the window and the command line never
+// disagree; the window only shows what the core reports and asks it for
+// the next thing.
 //
 // Pages (StoreWindow.cpp):
-//  - Discover: a search field, every app of the catalog as a card with its
-//    icon, publisher, summary, price or state, and the action that fits
-//    (Install, Open, Update, Remove). The card's surface opens the details.
-//  - Categories: the catalog's categories as a single-select chip group
-//    over the same cards.
-//  - Installed: the installed apps, the runtimes and libraries under them,
-//    and the clean-up (garbage collection).
+//  - Discover: the featured app (the newest release in the catalog) as a
+//    hero, the categories as pills, "New and updated" as a numbered list,
+//    "Free essentials" as cards, the four reasons for the store, and the
+//    partner / discount code. A search in the header turns the page into
+//    the results, as cards.
+//  - Categories: the filters on the left (the catalog's categories with
+//    their counts, free or paid, open source only, hide installed), the
+//    heading with the count and the sort order, and the cards in a grid.
+//  - Installed: the installed apps as cards, the runtimes and libraries
+//    under them, and the clean-up (garbage collection).
 //  - Updates: the installed apps a newer release exists for, one by one or
-//    all at once.
-//  - Details: one app - icon, texts, screenshots, release notes, what it
-//    needs, links - with a way back.
+//    all at once; the header pill carries the count.
+//  - Details: one app, the shop's app page - the breadcrumb, the icon, the
+//    name, the facts, the actions, what this machine downloads, the
+//    screenshots, the description, what is new and the version history,
+//    what it installs, the information column with the links, more from
+//    the same publisher.
 //  - Settings (StoreSettingsPage.cpp): channel, language, servers, the keys
 //    the user trusts beside the compiled-in ones, the machine the store
 //    detected, the catalog's state, the store folder.
@@ -30,6 +38,7 @@
 //
 // Pictures (icons, screenshots) come through AssetCache on a second thread
 // and are set on the cards when they arrive.
+// Version: 0.5.0 - the shop design: the header, the Discover sections, the Categories filters, the app page
 // Version: 0.4.0 - the open order resumed, the update terms
 // Version: 0.3.0 - Buy through the payment service; the licences
 // Version: 0.2.0 - codes and ultrastore:// links
@@ -40,6 +49,7 @@
 #include "AssetCache.h"
 #include "Catalog.h"
 #include "CatalogClient.h"
+#include "PackageResolver.h"
 #include "PlatformInfo.h"
 #include "Purchase.h"
 #include "StoreEngine.h"
@@ -47,6 +57,7 @@
 #include "StoreSettings.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCard.h"
 #include "UltraCanvasCheckbox.h"
@@ -56,7 +67,6 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
-#include "UltraCanvasSidebarNavigation.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
@@ -107,9 +117,12 @@ public:
 private:
     // ===== shell (StoreWindow.cpp) =====
     void BuildShell();
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildListPage(const std::string& id, const std::string& title,
-                                                                     std::shared_ptr<UltraCanvas::UltraCanvasContainer>& header,
-                                                                     std::shared_ptr<UltraCanvas::UltraCanvasContainer>& list);
+    void BuildHeader();
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeNavButton(const std::string& id, const std::string& text, float width);
+    // A page: a column with the gutter, scrolled as one; the body is where
+    // the sections go.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildScrollPage(const std::string& id,
+                                                                       std::shared_ptr<UltraCanvas::UltraCanvasContainer>& body);
     void ShowPage(const std::string& id);
     void LayoutForSize(float width, float height);
     void SetStatus(const std::string& text, bool isError = false);
@@ -126,6 +139,23 @@ private:
     std::string Today() const;              // "YYYY-MM-DD", UTC
     const PromoCode* CodeInForce() const;   // the settings' code when the catalog knows it and it is valid today
     const PromoCode* CodeFor(const Component& app) const;   // CodeInForce() when it applies to the app
+    // The apps of the catalog this machine lists, with the filter.
+    std::vector<AppListing> Listings(const ListingFilter& filter) const;
+    // Sorted: 0 newest release first, 1 by name, 2 price low to high.
+    static void SortListings(std::vector<AppListing>& apps, int mode);
+    // The admin's picks (the catalog's `featured`), newest release first.
+    std::vector<AppListing> EditorsPicks() const;
+    // The app the Discover hero shows: the admin's newest pick this machine
+    // can install, else the newest release in the catalog.
+    std::optional<AppListing> FeaturedApp() const;
+    // What this machine would download for the app's release, with what it
+    // already has; nothing when there is no package for it.
+    std::optional<InstallPlan> PlanFor(const AppListing& l) const;
+    std::string CategoryOf(const Component& app) const;    // the first category, or ""
+    std::string PublisherName(const Component& app) const; // the catalog's name for the publisher id, else the id
+    const Publisher* PublisherOf(const Component& app) const;
+    std::string LanguagesOf(const Component& app) const;   // "English, Deutsch, +6"
+    std::string PriceText(const Component& app) const;     // "Free", "29.90 EUR", with the code in force; no trial note
 
     // ===== pages =====
     void RebuildAllPages();
@@ -133,15 +163,30 @@ private:
     void RebuildCategories();
     void RebuildInstalled();
     void RebuildUpdates();
-    void FillList(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& list, const std::vector<AppListing>& apps,
+    // The cards of the apps into a wrapping grid, or the empty text.
+    void FillGrid(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& grid, const std::vector<AppListing>& apps,
                   const std::string& idPrefix, const std::string& emptyText);
     std::shared_ptr<UltraCanvas::UltraCanvasCard> MakeAppCard(const AppListing& l, const std::string& id);
+    // A numbered row of "New and updated": the icon, the name, the version
+    // line, the action.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeAppRow(const AppListing& l, const std::string& id, int number);
+    // A compact row of "More from the publisher".
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeAppLink(const AppListing& l, const std::string& id);
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeHero(const AppListing& l);
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeCategoryPills();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeWhyStrip();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeCodeRow();
+    // A picture element that loads from the cache, or asks for the URL.
+    std::shared_ptr<UltraCanvas::UltraCanvasImageElement> MakePicture(const std::string& id, const std::string& url, float w, float h);
     // Install / Try / Buy, Open, Update, Remove - what fits the app's state.
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasButton>> PrimaryActions(const AppListing& l, const std::string& id);
     void ShowDetails(const std::string& appId);
     void HideDetails();
     void RebuildDetails();
     std::string StateLine(const AppListing& l) const;
+    // The facts under an app's name: the trial, the licence, the age, the
+    // account, the update period.
+    std::vector<std::string> FactsOf(const AppListing& l) const;
 
     // ===== actions =====
     void InstallApp(const std::string& appId);
@@ -243,7 +288,11 @@ private:
     // the shell
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
-    std::shared_ptr<UltraCanvas::UltraCanvasSidebarNavigation> sidebar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> header_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> logoButton_;
+    std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasButton>> navButtons_;   // page id -> pill
+    std::shared_ptr<UltraCanvas::UltraCanvasBadge> updatesBadge_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> pageHost_;
     std::shared_ptr<UltraCanvas::UltraCanvasCollapsiblePanel> downloads_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> queueList_;
@@ -253,20 +302,25 @@ private:
     std::string pageBeforeDetails_ = "discover";
 
     // Discover
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> discoverList_;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel> discoverNote_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> discoverBody_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> codeInput_;
     std::string search_;
     // Categories
     std::shared_ptr<UltraCanvas::UltraCanvasChipGroup> categoryChips_;
     std::vector<std::string> categories_;
     std::string category_;
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> categoryList_;
+    std::string priceFilter_ = "all";       // "all", "free", "paid"
+    std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasButton>> priceButtons_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> openSourceBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> hideInstalledBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> sortDropdown_;
+    int sortMode_ = 0;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> categoryHeading_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> categoryGrid_;
     // Installed
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> installedList_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> installedBody_;
     // Updates
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> updatesList_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> updatesBody_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> updateAllButton_;
     // Details
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> detailsPage_;
@@ -298,8 +352,8 @@ private:
     std::map<std::string, std::string> picturePaths_;                                            // url -> file
     std::map<std::string, std::vector<std::weak_ptr<UltraCanvas::UltraCanvasUIElement>>> pictureWaiters_;
 
-    static constexpr int kMinWidth = 760;
-    static constexpr int kMinHeight = 480;
+    static constexpr int kMinWidth = 900;
+    static constexpr int kMinHeight = 560;
 };
 
 } // namespace UltraStore::Ui

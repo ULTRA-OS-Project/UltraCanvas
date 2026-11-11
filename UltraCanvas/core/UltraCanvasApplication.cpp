@@ -244,6 +244,9 @@ namespace UltraCanvas {
     }
 
     const char* const kEmbeddedAllFonts[] = {
+        // Manrope (display) and Inter (body), the UltraStore shop design's
+        // type; variable fonts, one file each, SIL Open Font License.
+        "Manrope-Variable.ttf", "Inter-Variable.ttf",
         "Ubuntu-R.ttf", "Ubuntu-B.ttf",
         "Ubuntu-RI.ttf", "Ubuntu-BI.ttf",
         "Ubuntu-C.ttf", "Ubuntu-L.ttf",
