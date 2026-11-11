@@ -1,3 +1,13 @@
+#### 2026-11-11 *0.1.9*
+- **Categories from the store's fixed list.** The form offers the store's
+  categories as chips to pick (Music and audio, Video, Graphics and photos,
+  Office, ...) instead of free words typed into a field, and
+  `PutComponent` and `app set <id> categories` refuse a word that is not on
+  the list, naming the list - the store names each category in the buyer's
+  language, which it cannot do for a word it does not know. A component
+  saved before keeps loading; its old words are not offered and a save keeps
+  only the list's.
+
 #### 2026-11-11 *0.1.8*
 - **The join and retired pages in the page frame.** The partner join page
   and the pages a withdrawn code or a closed invitation leave behind wear

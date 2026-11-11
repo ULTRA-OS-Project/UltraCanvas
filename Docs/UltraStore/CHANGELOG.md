@@ -1,3 +1,76 @@
+#### 2026-11-11 *0.1.12*
+- **Categories in the person's language.** The category chips, the pills on
+  Discover, a card's and a row's category and the app page's breadcrumb
+  showed the words the admin typed into the catalog ("graphics",
+  "office"). Categories come from one fixed list now (audio, video,
+  graphics, office, communication, internet, development, education,
+  science, finance, security, games, system, utilities), each shown by its
+  name in the person's language ("Grafik und Fotos", "グラフィック・写真"),
+  in the list's order; the search finds an app by its category's name too.
+  A catalog from before the list is read case-insensitively ("Office" files
+  under office); an id a later list adds is kept and not shown, so this
+  store still reads a newer catalog.
+- **The header fits the window at its narrowest.** At the 900 px minimum
+  the header ran past the window's edge even in English: Refresh and
+  Settings were cut off. In less room it now takes its compact forms one at
+  a time - Refresh as its icon, then the wordmark as the app icon, then
+  Settings as a gear - as far as it has to and no further. The store
+  measures what the header needs after each frame that laid it out (the
+  buttons as wide as their texts, the search field at its least, 120 px)
+  and goes back to the fuller form when the window is wide enough again, so
+  it works for every language without a width guessed per language. The
+  icon-only buttons keep their tooltips, which name them for a screen
+  reader.
+- **The Settings page's last English labels follow the language.** Its
+  title, the Catalog and Servers headings, the Channel caption and its
+  Stable choice, and the Save, Revert and Proxy settings buttons were
+  plain literals, so they stayed English in a translated store. They go
+  through `Tr` now: Settings, Save and Proxy settings show translated in
+  every language of the standard set at once; Catalog, Channel, Stable,
+  Servers and Revert are UltraStore's own texts, translated with the rest
+  of its catalogue.
+- **UltraStore is translated into the suite's 29 languages.** Every text the
+  window shows goes through `Tr` now - the navigation, the filters, the
+  buttons and badges, the facts and the information column, the download
+  queue, the prices ("4.90 EUR / month", "(30-day trial)"), the code
+  messages and the sizes - and `media/locale/<lang>/UltraStore.json` carries
+  the store's own texts for ar, ca, cs, da, de, el, es, fi, fr, he, hi, hu,
+  id, it, ja, ko, nb, nl, pl, pt, ro, ru, sv, th, tr, uk, vi, zh-Hans and
+  zh-Hant (machine drafts, marked for review).
+- **The core's messages are whole sentences in the person's language.** A
+  refused install ("UltraVideo is a paid app: buy it first, then install"),
+  a missing dependency, a catalog that does not verify, a failed download
+  or a registry error was glued from English pieces; each is one `TrF`
+  sentence with its names as placeholders, so a translation can order them
+  as its grammar needs. The command line stays English (it runs before a
+  language is loaded).
+- **Dates and sizes follow the language.** A release date is the standard
+  set's short month in the language's order ("22. Okt. 2026",
+  "2026年10月22日") instead of "22 Oct 2026" everywhere; KB, MB and GB are the
+  language's units ("12.3 Mo", "1.5 ГБ").
+- **Fixed: Update all counted an update to buy by its English message.** An
+  update outside a purchase is now told by the licence's terms, so the "to
+  buy anew" count stays right in every language.
+- **Fixed: a heading in another script.** The small upper-case headings
+  (CATEGORY, PRICE, VERSION HISTORY) upper-cased ASCII letters only, so
+  "Catégorie" came out "CATéGORIE"; they upper-case any letter now. A
+  shortened summary or release note no longer cuts a character in two.
+- **Counts take the language's plural forms.** The Update all summary
+  ("3 apps updated, 1 failed"), the download queue's waiting and finished
+  counts, the catalog's app and component counts and every trial length
+  ("14-day free trial") are plural entries now, so Russian, Polish, Czech,
+  Arabic and the rest say "21 день", "3 dni", not one form for every number.
+- **A discount code has a word of its own.** The code field and a code
+  without a discount used the suite's "Code", which several languages
+  translate as program code; the store's entry is the discount or partner
+  code.
+- **Fixed: a longer translation covered the last header tab.** A
+  fixed-width button widened for its text, but its row kept the width it
+  measured first, so "Updates" in German slid under the search field and
+  "Clear finished" ran off the Downloads panel. The framework now lays such
+  a row out again at the next frame (UltraCanvas changelog), and the search
+  field gives way down to 120 px.
+
 #### 2026-11-11 *0.1.11*
 - **The payment service runs on PostgreSQL in production**; SQLite is for
   tests and development only. `ULTRASTORE_PAY_DB` is a database URL, one
