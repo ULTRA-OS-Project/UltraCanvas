@@ -748,6 +748,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+- **UltraCanvasFileTimes** (`UltraCanvasFileTimes.h`) — a file's dates read,
+  set, and carried to a copy. `FileTimes` (created / modified / accessed,
+  nanoseconds since 1970, 0 = unknown), `GetFileTimes(path, out)`,
+  `SetFileTimes(path, times)` (0 leaves a date alone),
+  `CopyFileTimes(from, to)` (files or folders; true when at least the
+  modification date was set), `CanCopyCreationTime()`. Backends:
+  `OS/MSWindows/UltraCanvasWindowsFileTimes.cpp` (GetFileTime / SetFileTime:
+  created, modified, accessed), `OS/MacOS/UltraCanvasMacOSFileTimes.cpp`
+  (utimensat, then setattrlist `ATTR_CMN_CRTIME`), and
+  `OS/Linux/UltraCanvasLinuxFileTimes.cpp` (utimensat: modified and accessed -
+  the kernel keeps the creation date to itself). Android and WebAssembly copy
+  the modification date through `std::filesystem` in
+  `core/UltraCanvasFileTimes.cpp` (`ULTRACANVAS_HAS_NATIVE_FILE_TIMES` unset).
+  `UltraCanvasFilerWidget` calls it after every file and folder it copies;
+  UltraCloud's providers read a file's dates for an upload and set the
+  server's on a download with it (UltraNet stays free of it: its FTP options
+  carry the date to set, `setRemoteModificationTime`, and report the server's,
+  `onRemoteModificationTime`).
 
 - **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
   copy of an application per user. `InstanceLock::Acquire(path)` answers
@@ -2858,7 +2876,10 @@ target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
 
 **Not the player.** Playback, recording and thumbnails for the UI stay in the
 core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
-`UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
+`UltraCanvasVideoThumbnail`, on the platform media frameworks), and so does
+reading a clip's technical facts for display: `ReadVideoFileInfo` /
+`VideoFileInfo` (`UltraCanvasVideoFileInfo.h`) parse MP4 / MOV, Matroska /
+WebM and AVI headers without FFmpeg. VideoFX is
 headless and has no UltraCanvas UI dependency; applications call it from a
 worker thread or through `VideoFXExportJob`. It is a shared library of its
 own (`libVideoFX.so` / `.dylib` / `.dll`, `VIDEOFX_BUILD_SHARED`, default ON
@@ -33278,6 +33299,20 @@ Notes:
 - **Paste** is enabled while the filer clipboard holds entries (shared between
   all filer instances) or the system clipboard offers files, an image or text —
   see [Clipboard interop](#clipboard-interop-with-other-programs).
+- **A copy keeps the original's dates.** Every file and folder a paste, a
+  drop, a *Duplicate* or a move between drives writes gets the original's
+  modification and access dates and, on Windows and macOS, its creation date
+  (`CopyFileTimes`, `UltraCanvasFileTimes.h`); a folder's are set after its
+  contents, which would otherwise make it "modified now". Linux and the BSDs
+  give a program no way to set a creation date, so there a copy is created
+  when it was made, as with `cp -p`. A move within a drive is a rename and
+  never touched the dates. A new file made from a template is new, and is
+  dated so. Copies to and from a remote drive keep them too - each UltraCloud
+  provider sends the file's dates with an upload and dates a download with
+  the server's (see *A transfer keeps the file's dates* in
+  `Docs/Modules/UltraCloud/README.md`) - and so does *Extract*: a file
+  unpacked from an archive has the date the archive gives it, and from a ZIP
+  or 7z its creation date as well, on Windows and macOS.
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
@@ -33953,10 +33988,15 @@ also toggled by Display > Info-Bar) describes the current selection:
   - **bitmaps**: pixel dimensions (`1920 × 1080 px`), parsed from the file
     header for PNG / JPEG / GIF / BMP / WebP / TIFF / QOI / ICO (other formats
     fall back to the shared `UCImage` cache);
-  - **audio / video**: play length and codec (`3:45 · H.264`), parsed from the
-    container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 / M4A / MOV / AVI /
-    MKV / WebM / WMV — no decoding, only a few bounded reads. When nothing can
-    be probed the entry's `info` value (e.g. from `infoProvider`) is shown.
+  - **audio / video**: play length and codec (`3:45 · AAC LC`), and for a
+    film its picture size as shown between them (`1:23 · 1920 × 1080 · H.264`;
+    a phone's portrait clip upright, an anamorphic one at its display width),
+    parsed from the container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 /
+    M4A / MOV / AVI / MKV / WebM / WMV — no decoding, only a few bounded reads.
+    MP4 / MOV / 3GP, Matroska / WebM and AVI are read by `ReadVideoFileInfo`
+    (`UltraCanvasVideoFileInfo.h`), the reader the media viewer's Details
+    use, so the two never disagree about a file. When nothing can be probed
+    the entry's `info` value (e.g. from `infoProvider`) is shown.
 - **Single folder** — recursive file / folder counts and total size (capped at
   50 000 entries for safety; a `≥` prefix marks a capped result).
 - **Multiple items** — item counts and the summed size of the selection
@@ -51193,6 +51233,23 @@ close button or the Details button again closes it. Left / Right keep
 browsing, and the panel follows to the next file. The panel's text is built
 only while it is open (on opening, then for each file loaded): browsing with
 it closed reads no metadata.
+
+A **video** is read through `ReadVideoFileInfo` (`UltraCanvasVideoFileInfo.h`,
+see `UltraCanvasVideo.md`): its headers once per file, so MP4 / MOV,
+Matroska / WebM and AVI say the same on every platform. The info bar carries
+the picture size (with the display size after it when the pixels are not
+square), frame rate, video codec, the sound (codec, sample rate, channels -
+or *no audio*), the length, the file size and a rotation:
+`clip.mp4 · VIDEO · 1920 x 1080 · 29.97 fps · H.264 · AAC LC 48 kHz Stereo ·
+1:23 · 17.5 MB · 2 / 2`. The Details panel (*Video information*) adds the
+container and brand, exact duration, overall bit rate, title, encoder and
+creation time, then a *Video* section (codec, profile and level, dimensions,
+display size, aspect ratio, frame rate, frames, bit rate, bit depth,
+rotation), an *Audio* section (codec, sample rate, channels, bit depth, bit
+rate, language) and, for a file with more than one video or sound track or
+with subtitles, a *Tracks* section. For a container the reader does not know
+(WMV, MPEG-TS) the size, frame rate and length come from the playback
+backend's `VideoStreamInfo` once it has opened the file.
 
 A picture whose header reads but whose pixels do not decode (a HEIC on a
 build without an HEVC decoder, a truncated file) says so instead of leaving
@@ -86425,6 +86482,7 @@ and composite UI elements, all behind a pluggable platform backend.
 - [Public API surface](#public-api-surface)
   - [Frame resource — `UltraCanvasVideo.h`](#frame-resource-—-ultracanvasvideoh)
   - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual-—-ultracanvasvideoplayerh)
+  - [File facts — `UltraCanvasVideoFileInfo.h`](#file-facts-—-ultracanvasvideofileinfoh)
   - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames-—-ultracanvasvideothumbnailh)
   - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
   - [UI elements](#ui-elements)
@@ -86496,6 +86554,44 @@ Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`.
 Frame access: `GetCurrentFrame()` (thread-safe).
 Callbacks: `onLoaded`, `onPlaybackStateChanged`, `onFrameReady`,
 `onPositionChanged`, `onEnded`, `onError`.
+
+### File facts — `UltraCanvasVideoFileInfo.h`
+
+`ReadVideoFileInfo(path, info)` reads a clip's technical facts from its
+container headers - no decoder, no playback, the same answer on every
+platform (the backend's `VideoStreamInfo` depends on the backend: Media
+Foundation fills only the size and the duration). It reads ISO base media
+(MP4, M4V, MOV, 3GP, fragmented MP4 included), Matroska / WebM and AVI, and
+returns `false` for anything else. `VideoFileInfo` holds the container and
+brand, duration, overall bit rate; the first video track's codec and profile
+(`"High, level 4.1"`, `"Main 10, level 5.1"`), coded and display size, frame
+rate, frame count, bit rate, bit depth and clockwise rotation; the first
+sound track's codec (`"AAC LC"`, `"HE-AAC"`, `"Opus"`, `"AC-3"`), sample
+rate, channels, bit depth (PCM), bit rate and language; the track counts;
+and the file's title, encoder and creation time. A fact the file does not
+state is 0 or empty.
+
+```cpp
+#include "UltraCanvasVideoFileInfo.h"
+using namespace UltraCanvas;
+
+VideoFileInfo info;
+if (ReadVideoFileInfo("clip.mp4", info) && info.hasVideo) {
+    std::string line = std::to_string(info.width) + " x " + std::to_string(info.height) +
+                       ", " + FormatFrameRate(info.frameRate) + " fps, " + info.videoCodec;
+    if (info.hasAudio)
+        line += ", " + info.audioCodec + " " + FormatSampleRate(info.sampleRate) +
+                " " + DescribeAudioChannels(info.channels);
+    // "1920 x 1080, 29.97 fps, H.264, AAC LC 48 kHz Stereo"
+}
+```
+
+The formatting helpers beside it - `FormatBitRate` (`"1.68 Mb/s"`),
+`FormatFrameRate`, `FormatSampleRate`, `DescribeAspectRatio` (`"16:9"`),
+`DescribeAudioChannels` (`"5.1"`), `FormatMediaDuration` (`"1:02:03"`) - are
+dot-decimal whatever the locale. `UltraCanvasMediaViewer` uses it for a
+video's Details panel and status bar, falling back on the player's
+`VideoStreamInfo` for a container it does not read (WMV, MPEG-TS).
 
 ### Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`
 
@@ -97587,6 +97683,29 @@ within a fraction of a second, the sign-in ends as `ResultCode::Cancelled`,
 and `CloudService::AddAccount` / `SignInAccount` store no account. The
 dialog's *Cancel* and close box set it, and so does `watch.cancelled`.
 
+## A transfer keeps the file's dates
+
+A file copied to a drive keeps the date it was made, and a file copied off
+one is given the date the server holds - before, an upload was dated the
+moment it arrived and a download the moment it was written. Every provider
+reads the local file's dates (`UltraCanvas::GetFileTimes`) for an upload and
+sets the server's on a downloaded file (`UltraCanvas::SetFileTimes`); a
+service that cannot keep a date, or refuses, leaves the transfer a success.
+
+| Provider | Upload sends | Download takes |
+|---|---|---|
+| FTP / SFTP | modified - `MFMT` / SFTP `mtime` after the file is written (`UltraNetFtpOptions::setRemoteModificationTime`) | modified - `MDTM` / the SFTP stat |
+| WebDAV, Nextcloud | modified and created - `X-OC-Mtime` / `X-OC-CTime`, which Nextcloud and ownCloud keep; other WebDAV servers have no way and ignore them | modified - `Last-Modified` |
+| Dropbox | modified - `client_modified` (Dropbox keeps no creation date) | modified - `client_modified` of `Dropbox-API-Result` |
+| Google Drive | modified and created - `modifiedTime` / `createdTime` in the metadata (a replaced file: modified, in a metadata update after the bytes) | modified and created - the file's metadata |
+| OneDrive | modified and created - `fileSystemInfo` (with the upload session's item, or an update of the item after a simple upload) | modified and created - the item's `fileSystemInfo` |
+| Memory (demo) | modified and created | modified and created |
+
+A creation date is set on the local copy where the system lets a program set
+one (Windows, macOS). `HttpProviderBase::DownloadToFile` hands back the
+answer's headers (`answered`) for the providers that read the date there.
+`Tests/UltraCloud/test_file_dates.cpp` checks each row.
+
 ## Uploads to a server that writes them as they arrive
 
 An FTP, FTPS or SFTP server writes an upload into the file as it comes in
@@ -102287,6 +102406,19 @@ every call it makes stopped at once, set that one check. UltraFiler's drive
 worker uses it to stop a preview download the user is no longer waiting for,
 on an FTP drive or a cloud drive, and every transfer when the window closes.
 
+A transfer can keep the file's date. On an upload,
+`UltraNetFtpOptions::setRemoteModificationTime` (Unix seconds, UTC) is given
+to the file once it is written - `MFMT YYYYMMDDHHMMSS name` on FTP, libcurl's
+`mtime` quote command on SFTP - so the server's copy shows the date the file
+was made, not the moment it arrived. The command is sent with libcurl's `*`
+prefix: a server without `MFMT`, or one that refuses it, still has the file
+and the upload still succeeds. On a download, `onRemoteModificationTime` is
+told the server's date of the file (`MDTM` on FTP, the stat on SFTP,
+through `CURLOPT_FILETIME`) once it has arrived, for the caller to give the
+local copy - UltraNet writes the bytes and leaves the local file's dates to
+the caller (UltraCloud's FTP provider sets them with
+`UltraCanvas::SetFileTimes`). A server that does not say is not a failure.
+
 What a failure says, whether or not anyone reads the log:
 
 - `message` is libcurl's specific reason (its error buffer, not just the error
@@ -105565,6 +105697,16 @@ direct zlib calls throughout the codebase.
   written through a symbolic link the archive created. Refused entries are
   skipped, the rest extracts, and the result is `InvalidPath` with the names
   in the provider's last error.
+* **An extracted file keeps its dates.** `ExtractAll` and `ExtractFile` write
+  through libarchive's disk writer and give each file and folder the entry's
+  modification date (`VirtualFSExtractOptions::preserveTimestamps`, on by
+  default; off, a file is dated when it was written). A ZIP or 7z keeps a
+  third date, the file's creation date (7-Zip's CTime, the ZIP
+  extended-timestamp and NTFS fields), which libarchive reads as the change
+  time: the provider hands it to the disk writer as the creation date, which
+  Windows and macOS set (Linux cannot). Packing stores a file's modification
+  date and, in a ZIP or 7z, its creation date where the system reports one;
+  access and change times differ on every machine and are not stored.
 * **Entry names are UTF-8**, in listings, reads and on disk after
   `ExtractAll`, whatever the archive stored and whatever the process locale.
   A ZIP entry without the UTF-8 flag is read as IBM437 (the ZIP
@@ -106769,14 +106911,6 @@ without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
-
-==============================================================================
-FILE: Docs/UltraClipboard/changelog.d/proxy-settings.md
-==============================================================================
-
-- **Proxy settings** at the foot of the settings dialog: text recognition by
-  a cloud model goes through the proxy every ULTRA OS application shares,
-  and the button opens the dialog that sets it.
 
 ==============================================================================
 FILE: Docs/UltraNotifications/README.md
@@ -110598,16 +110732,6 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/proxy-settings.md
-==============================================================================
-
-- **Settings > Mail > Proxy.** IMAP, SMTP, JMAP and the sign-in go through
-  the proxy every ULTRA OS application shares, and the page opens the Proxy
-  settings dialog to choose it. An HTTP proxy carries the mail connections
-  as a CONNECT tunnel; the system's web proxy is not used for mail, its
-  SOCKS proxy is.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
