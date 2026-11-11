@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.5.1 - the Start button as wide as its measured icon and text
 // Version: 0.5.0 - opens at the top centre of the screen over the screen already dimmed
 //                  (Arm); the delay a segmented choice like the shape and the kind;
 //                  each segment its own tooltip
@@ -183,8 +184,13 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     bar->SetPadding(0, 10, 0, 10);
     bar->SetBackgroundColor(kChrome);
 
-    startButton_ = MakeButton("snip.start", Tr("Start"), 72, [this]() { StartCapture(RequestFromControls()); },
+    // As wide as its icon and its word in the language shown, measured in its
+    // own font when the bar is laid out (the button grows to its text, and a
+    // width of 1 leaves it nothing else): "Start" and "開始" are no longer
+    // padded out to the same 72 px, and "Démarrer" is not cut
+    startButton_ = MakeButton("snip.start", Tr("Start"), 1, [this]() { StartCapture(RequestFromControls()); },
                               "scissors.svg");
+    startButton_->SetGrowToFitText(true);
     startButton_->SetTooltip(Tr("Take a snip with the shape, kind and delay chosen here (Ctrl+N)"));
     bar->AddChild(startButton_);
 
