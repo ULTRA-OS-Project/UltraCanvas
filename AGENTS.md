@@ -398,6 +398,15 @@ starts a run with the full matrix.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 
+**Downloads in CI retry.** Apt installs go through `ci-apt.sh`; every other
+download a CI step makes retries too: a file through
+`curl -fsSL --retry 5 --retry-all-errors` into a file (never piped straight
+into `tar`), and a tool with no retry of its own - a `git clone`, a
+submodule update, `emsdk install`, an installer script - through
+`scripts/ci-retry.sh [--clean DIR] -- <command>`, three tries 30 s and 60 s
+apart, `--clean` emptying a clone's folder between them. A bare `wget` of
+`llvm.sh` once failed both Linux legs in under a second.
+
 **Cloud sessions.** The Claude Code cloud image is a general Ubuntu 24.04
 without most of the libraries CI installs, and CMake leaves a missing optional
 library out without a word - so `.claude/settings.json` also runs
