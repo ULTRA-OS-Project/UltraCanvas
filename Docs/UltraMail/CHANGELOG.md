@@ -1,3 +1,10 @@
+#### 2026-11-11 *0.10.87*
+- **Settings > Mail > Proxy.** IMAP, SMTP, JMAP and the sign-in go through
+  the proxy every ULTRA OS application shares, and the page opens the Proxy
+  settings dialog to choose it. An HTTP proxy carries the mail connections
+  as a CONNECT tunnel; the system's web proxy is not used for mail, its
+  SOCKS proxy is.
+
 #### 2026-11-09 *0.10.86*
 - **An account's card counted 0 new, 0 unread and 0 waiting although its
   inbox was full of unread mail.** The counters count the mail of the folder

@@ -1,3 +1,41 @@
+#### 2026-11-11 *1.107.11*
+- **Copying and pasting keeps the files' original dates.** A pasted, dropped
+  or duplicated file - and a file moved to another drive - was dated the
+  moment of the copy: on Windows its *Created* date, on Linux and macOS every
+  date, and a large file or a folder lost all of them on every system. Copies
+  now keep the original's modified and accessed dates everywhere and its
+  created date on Windows and macOS (Linux lets no program set a creation
+  date). A folder's dates are set after its contents are copied in.
+- **Settings > Extras > Proxy.** FTP, SFTP, WebDAV and the cloud drives go
+  through the proxy every ULTRA OS application shares - the system's until
+  another is chosen - and the page opens the Proxy settings dialog to choose
+  one: none, or an HTTP or SOCKS proxy with the hosts reached directly and a
+  sign-in. Before, a remote drive never went through a proxy.
+- **Files copied to or from a remote drive, or extracted from an archive, keep
+  their dates.** An upload to an FTP, SFTP, WebDAV, Nextcloud, Dropbox,
+  Google Drive or OneDrive drive was dated the moment it arrived, and a file
+  copied off one the moment it landed. Now an upload keeps the file's
+  modified date (and its created date on Nextcloud, Google Drive and OneDrive)
+  and a download gets the date the server holds. *Extract* gives an
+  unpacked file its date from the archive and, from a ZIP or 7z, its created
+  date as well on Windows and macOS.
+- **A video's details now say what the clip is.** The preview's Details panel
+  showed only a video's name, path, size and type, and the status bar its
+  name, size and position in the folder. Both now read the clip's own headers
+  (MP4 / MOV, MKV / WebM, AVI) through the framework's new
+  `ReadVideoFileInfo`: the status bar adds the picture size, frame rate, video
+  codec, the sound (codec, sample rate, channels - or *no audio*) and the
+  length; the Details panel adds the container, exact duration, bit rates,
+  codec profile and level, display size and aspect ratio, frame count, bit
+  depth, rotation, the sound's channels and language, the track counts and
+  the file's title, encoder and creation time.
+- **The file list names a film's picture size.** A video's line under its icon
+  (the Length field) and in the status bar now reads
+  `1:23 · 1920 × 1080 · H.264` - a phone's portrait clip upright, an
+  anamorphic one at its display width - from the same header reader the
+  preview's Details use, so the two never disagree; before it said the length
+  and the codec only, from a parser of the list's own.
+
 #### 2026-11-10 *1.107.10*
 - **A file on a drive with no preview opens in its program.** Double-clicking
   a document, a spreadsheet, an archive or anything else on a drive that the

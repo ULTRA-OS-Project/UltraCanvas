@@ -1,3 +1,9 @@
+#### 2026-11-11 *0.1.25*
+- **Settings > Services > Proxy.** The cloud providers are reached through
+  the proxy every ULTRA OS application shares - the system's until another
+  is chosen - and the page opens the Proxy settings dialog to choose one; a
+  local model on this machine is never reached through it.
+
 #### 2026-11-10 *0.1.24*
 - **Speech to text for UltraCanvas applications.**
   `RegisterUltraAISpeechTranscription()` (`UltraAISpeechTranscription.h`, in

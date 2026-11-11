@@ -1,3 +1,8 @@
+#### 2026-11-11 *0.1.16*
+- **Settings > Networks > Proxy.** Matrix and the ChatCube relay are reached
+  through the proxy every ULTRA OS application shares, and the page opens
+  the Proxy settings dialog to choose it.
+
 #### 2026-11-04 *0.1.15*
 - **Your e-mail address is confirmed by a link.** Right after you make your
   ChatCube ID, the relay e-mails a link to the address you gave; opening it

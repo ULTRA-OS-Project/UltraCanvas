@@ -1,3 +1,148 @@
+#### 2026-11-11 *0.9.528*
+- **A copied file keeps its original's dates.** The Filer copied with
+  `std::filesystem::copy_file`, which on Windows sets a copy's creation date
+  to the moment of the copy and on Linux and macOS keeps no date at all; a
+  file over the chunking threshold, copied in pieces for the progress ring,
+  and every copied folder lost all of them. New `UltraCanvasFileTimes.h`
+  (`CopyFileTimes`, `CanCopyCreationTime`) carries them over: created,
+  modified and accessed on Windows (SetFileTime) and macOS (setattrlist +
+  utimensat), modified and accessed on Linux and the BSDs (utimensat - the
+  kernel lets no program set a creation date), the modification date through
+  `std::filesystem` elsewhere. `UltraCanvasFilerWidget` calls it after every
+  file and every folder (after its contents) it copies - paste, drop,
+  *Duplicate* and a move between drives. `FileTimesTest` checks a file and a
+  folder against the platform's backend.
+- **Every connection goes through the system's proxy by default, and one
+  dialog sets the proxy for every application.** UltraNet had a proxy
+  setting that nothing used: only its HTTP client read it, nothing set it,
+  and an FTP, WebSocket or mail connection never went through a proxy at all.
+  - `UltraNet_ResolveProxy(url)` decides per address and every libcurl
+    connection asks it - the HTTP verbs (sync, async, SSE), WebSocket, FTP /
+    FTPS / SFTP, and the IMAP, SMTP, POP3, WebDAV, LDAP, Telnet and gRPC
+    plug-ins, which reach it through the plug-in host table (ABI 4, so a
+    plug-in built from this tree needs a host from it) and put the answer on
+    the handle with `UltraNet/UltraNetCurlProxy.h`. An HTTP proxy carries
+    anything that is not HTTP as a CONNECT tunnel. A direct connection now
+    really is direct: libcurl no longer reads `*_proxy` from the environment
+    behind the setting's back.
+  - The default (`UltraNetProxyType::System`) is the operating system's
+    proxy: on Linux the `*_proxy` variables, else GNOME's settings (through
+    GIO, opened at run time - "automatic" runs the PAC script where
+    glib-networking can) or KDE's `kioslaverc`; on Windows the Internet
+    settings through WinHTTP, with automatic detection (WPAD) and a setup
+    script (PAC) evaluated per address, and a company proxy answered as the
+    signed-in user; on macOS System Settings through CFNetwork, PAC
+    included. The web's proxy is used for the web; mail uses the system's
+    SOCKS proxy or `all_proxy`, so a proxy that only lets port 443 through
+    no longer cuts off a mail server reached directly before.
+  - Windows' `https=` entry and macOS' "Secure web proxy" were taken for a
+    proxy reached over TLS; they are a plain HTTP proxy that carries https://
+    traffic.
+  - The machine itself (`localhost`, `127.0.0.0/8`, `::1`) is never reached
+    through a proxy - a local model server stays local - and exceptions take
+    patterns (`*.example.com`, `192.168.*`), IPv4 ranges and `<local>`
+    (`UltraNet_HostMatchesNoProxy`, `UltraNet_ParseNoProxyList`).
+    `UltraNetProxyType::Direct` connects one request directly whatever the
+    setting, `remoteDns` lets a SOCKS proxy look the name up (socks5h, the
+    default), `autoConfigUrl` names a PAC script, and
+    `UltraNet_SetGlobalProxySource` supplies the setting from outside.
+- **`UltraCanvasProxySettings` and the Proxy settings dialog.** The choice -
+  the system's proxy, no proxy, or HTTP / SOCKS with a host, a port, the
+  hosts reached directly and a sign-in - is `Proxy.conf` in the shared
+  settings folder, with a remembered password in an encrypted device-key
+  vault and never in the file. `UltraCanvasApplicationBase::Initialize`
+  makes UltraNet follow the file (`UseSharedProxySettings`), so every
+  application uses one setting and a change saved in one is used by the
+  others from their next connection. `ShowProxySettingsDialog` edits it -
+  with *Check connection*, which opens an address with the settings as they
+  stand and says whether it went through the proxy - and
+  `MakeProxySettingsPage` is its page for a settings window. Docs:
+  `Docs/UltraCanvas/UltraCanvasProxySettings.md`, the UltraNet module's
+  *Proxies*. Tests: `ProxySettingsTest`, `UltraNetTests` (`test_proxy.cpp`).
+- **A raw TCP connection can go through a proxy, and SSH and RTSP follow the
+  setting.** `UltraNetSocketOptions::proxy` (or `useProxySetting`, the
+  module-wide setting) connects through SOCKS 5 - with its user name and
+  password, the name looked up by the proxy - SOCKS 4 / 4a, or an HTTP
+  `CONNECT` tunnel with Basic sign-in, the handshakes spoken by UltraNet;
+  off by default, since a raw socket is mostly a peer on the local network.
+  `UltraNet_TcpOpen` says why a connection failed; `UltraNet_SocketDetach`
+  hands the operating-system socket to a library that runs its own protocol.
+  The SSH plug-in uses both: libssh is given a connection made through the
+  proxy, so SSH tunnels and shells (UltraDBAdmin's tunnels among them) go
+  where the setting says. The RTSP plug-in's DESCRIBE goes through it as
+  well. Tests: seven loopback handshakes in `UltraNetTests`
+  (`test_proxy.cpp`), and the SSH tunnel tests passed against an sshd
+  reached through a SOCKS 5 proxy.
+- **The RTMP plug-in plays `rtmp://` again, with a client of its own.** It
+  relied on libcurl's librtmp support, which the libcurl UltraNet is built
+  with does not have (libcurl dropped librtmp), so `OpenStream` never
+  connected. It now speaks RTMP itself over a connection UltraNet makes
+  through the proxy setting: the handshake, the chunk stream (any chunk size
+  the server sets, every header form, extended timestamps, Window
+  Acknowledgement Size with Acknowledgements, a ping answered), AMF0
+  `connect` / `createStream` / `play` with the server's refusal reported,
+  and `ReadFrame` gives the stream back as FLV as librtmp did - the header,
+  then one tag per audio, video or data message, an aggregate split into
+  its tags, the publisher's `@setDataFrame` taken off the metadata.
+  `rtmps` / `rtmpe` / `rtmpt` are offered, through libcurl, only where the
+  libcurl loaded has RTMP. Tested against a server of the test's own in
+  `UltraNetTests`, and against FFmpeg serving RTMP - directly and through a
+  SOCKS 5 proxy - with FFmpeg reading back the FLV it gave, audio and video,
+  without an error.
+- **`test_extra_plugins.cpp` builds a plug-in it cannot find as CMake does.**
+  The fallback compile left out the host shim and the shared plug-in
+  headers, so it could never succeed - the mDNS test printed a compiler
+  error on every machine without the CMake-built plug-in, then skipped. It
+  now compiles the shim in with the entry point the only symbol exported,
+  and keeps the compiler's output in a log it names; a backend library that
+  is missing (Avahi) is a one-line skip.
+- **A file copied to or from a drive, or out of an archive, keeps its dates.**
+  An upload was dated the moment it arrived and a download the moment it was
+  written, on every provider; a file taken out of an archive with
+  `ExtractFile` was dated now; and a ZIP's or 7z's creation date was dropped
+  on unpacking.
+  - `UltraCanvasFileTimes.h` gains `FileTimes`, `GetFileTimes` and
+    `SetFileTimes` (nanoseconds since 1970, 0 = unknown / leave alone) beside
+    `CopyFileTimes`; the std::filesystem fallback converts exactly (libc++'s
+    file clock is the Unix epoch, libstdc++ and MSVC convert).
+  - UltraNet FTP / SFTP: `UltraNetFtpOptions::setRemoteModificationTime`
+    dates an uploaded file (`MFMT`, SFTP `mtime`, sent with libcurl's `*` so a
+    server that refuses still has the file), `onRemoteModificationTime`
+    reports the server's date of a download (`CURLOPT_FILETIME`: `MDTM` /
+    stat). `UltraNetFtpQuote.h`'s `BuildSetModificationTime` makes the
+    command.
+  - UltraCloud: every provider sends the local file's dates with an upload
+    and dates a download with the server's - FTP / SFTP (modified), WebDAV and
+    Nextcloud (`X-OC-Mtime` / `X-OC-CTime`; `Last-Modified`), Dropbox
+    (`client_modified`), Google Drive (`modifiedTime` / `createdTime`) and
+    OneDrive (`fileSystemInfo`), the last two with the creation date too.
+    `HttpProviderBase::DownloadToFile` hands back the answer's headers
+    (`answered`).
+  - VirtualFS: `ExtractFile` writes through libarchive's disk writer (the
+    entry's dates and, when asked, permissions); `ExtractAll` follows
+    `preserveTimestamps`; a ZIP's or 7z's creation date - read by libarchive
+    as the change time - is restored as the creation date on Windows and
+    macOS, and stored when packing a ZIP or 7z.
+  - Tests: `test_file_dates.cpp` (UltraCloud, every provider),
+    `VirtualFSExtractDatesTest`, `UltraNetFtpQuoteTest` (the dating command),
+    `FileTimesTest` (get / set).
+- **A video's Details panel and status bar now say what the clip is.** The
+  media viewer (UltraFiler's preview, UltraViewer) showed only a video's file
+  name, path, size and type: the playback backends fill `VideoStreamInfo`
+  unevenly, and Media Foundation reports nothing but the size and the length.
+  New `UltraCanvasVideoFileInfo.h` - `ReadVideoFileInfo` / `VideoFileInfo` -
+  reads MP4 / MOV / 3GP (fragmented too), Matroska / WebM and AVI headers
+  directly, with no decoder: container and brand, duration, overall and
+  per-track bit rates, video codec with profile and level, coded and display
+  size, aspect ratio, frame rate, frame count, bit depth, rotation, audio
+  codec (AAC LC / HE-AAC told apart), sample rate, channels, language, track
+  counts, title, encoder and creation time. The status bar now reads
+  `clip.mp4 · VIDEO · 1920 x 1080 · 29.97 fps · H.264 · AAC LC 48 kHz Stereo ·
+  1:23 · 17.5 MB · 2 / 2`; the Details panel gets *Video*, *Audio* and
+  *Tracks* sections. A container the reader does not know (WMV, MPEG-TS) falls
+  back on the backend's stream info. `VideoFileInfoTest` checks it against
+  MP4, fragmented MP4, MOV, Matroska and AVI headers built in memory.
+
 #### 2026-11-11 *0.9.527*
 - **CI: every download retries, not only the Clang install.** After the
   `llvm.sh` fix, six more network steps still failed a job on the first

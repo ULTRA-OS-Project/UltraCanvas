@@ -1,3 +1,9 @@
+#### 2026-11-11 *0.21.0*
+- **Network > Proxy.** The proxy every ULTRA OS application connects
+  through: the system's (the default), none, or an HTTP or SOCKS proxy with
+  the hosts reached directly and a sign-in, set in the Proxy settings
+  dialog and used by every application from its next connection.
+
 #### 2026-11-09 *0.20.0*
 - **Desktop: a *Theme* choice** - *Dark* or *Light* bars for UltraDesktop
   (`theme` in `desktop.json`), under *Taskbar*. A running desktop follows it

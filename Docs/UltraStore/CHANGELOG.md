@@ -1,3 +1,8 @@
+#### 2026-11-11 *0.1.10*
+- **Proxy settings** on the Settings page: the catalog, the downloads and
+  the purchases go through the proxy every ULTRA OS application shares, and
+  the button opens the dialog that sets it.
+
 #### 2026-11-11 *0.1.9*
 - The README and `Apps/UltraStore/keys/README.md` describe what a build
   now trusts: the production server as `ULTRASTORE_SERVERS`'s default and
