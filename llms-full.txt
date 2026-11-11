@@ -1107,6 +1107,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   rule that makes Pango's `emoji` runs use it.
   See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
 
+  The proxy every application connects through
+  (`UltraCanvasProxySettings.h`: `ProxySettings` - `ProxyMode` System /
+  NoProxy / Manual, `ProxyKind` Http / Socks, host, port, exceptions, a
+  sign-in - `Load` / `Save` on `Proxy.conf` in the UltraCanvas settings
+  folder, a remembered password in a device-key vault, `ToUltraNet`,
+  `CheckProxyConnection`; `UseSharedProxySettings()`, run by
+  `UltraCanvasApplicationBase::Initialize`, makes UltraNet follow the file, a
+  change saved by another application included). One dialog edits it for
+  every application (`UltraCanvasProxySettingsDialog.h`:
+  `ShowProxySettingsDialog`, `MakeProxySettingsPage` for a settings window,
+  `DescribeProxySettings`); UltraFiler, UltraMail, UltraAI, ChatCube,
+  UOS-Settings, UltraClipboard and UltraStore offer it.
+  See `Docs/UltraCanvas/UltraCanvasProxySettings.md`.
+
   A click on an application's notification that reaches it outside the bus
   - on Windows a toast clicked in the Action Center after the broker host
   quit, or with the application closed, which Windows then starts - comes to
@@ -1960,8 +1974,13 @@ future.
   `UltraNetFtpLogLine` steps, commands with the password masked, replies with
   their codes, the error with libcurl's number); connections kept open
   between calls on one thread, closed by `UltraNet_FtpCloseIdleConnections`
-- `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
-  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
+- `UltraNet_TcpConnect`, `UltraNet_TcpOpen` (the same with the reason it
+  failed), `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
+  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`,
+  `UltraNet_SocketDetach` (the OS socket handed to a library that runs its
+  own protocol); a TCP connection through a proxy when asked
+  (`UltraNetSocketOptions::proxy` / `useProxySetting`: SOCKS 5, 4 / 4a, HTTP
+  CONNECT)
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
   `UltraNet_OAuth2GenerateState`, `UltraNet_OAuth2BuildAuthUrl`,
   `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
@@ -1995,6 +2014,18 @@ future.
   challenge and collects the code, and the exchange and the refresh go
   through the service, which adds the secret. UltraMail signs in through
   `https://oauth-callback.ultraos.eu` this way
+- `UltraNet_ResolveProxy`, `UltraNet_DetectSystemProxy`,
+  `UltraNet_DetectSystemProxyFor`, `UltraNet_CanEvaluateProxyScript`,
+  `UltraNet_SetGlobalProxy`, `UltraNet_GetGlobalProxy`, `UltraNet_DisableProxy`,
+  `UltraNet_SetGlobalProxySource`, `UltraNet_ForgetSystemProxy`,
+  `UltraNet_HostMatchesNoProxy`, `UltraNet_ParseNoProxyList`,
+  `UltraNet_DescribeProxy` — the proxy of every libcurl connection (HTTP,
+  WebSocket, FTP / SFTP, the mail and file plug-ins): the operating system's
+  by default (`UltraNetProxyType::System` - the environment, GNOME / KDE,
+  Windows' WPAD and PAC, macOS' PAC), none, or HTTP / HTTPS / SOCKS with
+  exceptions; the machine itself always direct. `UltraNet/UltraNetCurlProxy.h`
+  puts the answer on a libcurl handle; the plug-ins reach the resolver through
+  the host table (ABI 4)
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -61226,6 +61257,232 @@ Covered by `Tests/MacBundleTest.cpp`, which builds an XML plist and a binary
 one byte by byte (including the long-string length form) and reads both back.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasProxySettings.md
+==============================================================================
+
+# UltraCanvas Proxy Settings Documentation
+
+## Overview
+
+**UltraCanvasProxySettings** is the proxy every UltraCanvas application
+connects through, chosen once for all of them: the operating system's proxy
+(the default), no proxy, or a proxy the person names - HTTP or SOCKS, a
+host and a port, the hosts reached directly, and a sign-in.
+**ShowProxySettingsDialog** is the one dialog that edits it, and
+**MakeProxySettingsPage** the page an application's settings window shows
+for it.
+
+UltraNet follows the setting on every connection it makes through libcurl -
+HTTP and HTTPS (and so every UltraAI provider), WebSocket, FTP / SFTP, the
+IMAP, SMTP, POP3, WebDAV, LDAP, Telnet, RTSP and gRPC plug-ins, and SSH
+(the SSH plug-in is handed a connection made through the proxy); UltraClaude
+passes it to the `claude` CLI in its environment. How UltraNet
+decides, and what "the operating system's proxy" is on each platform, is
+the UltraNet module's *Proxies* section (`Docs/Modules/UltraNet/README.md`).
+
+**File Location**: `include/UltraCanvasProxySettings.h`,
+`include/UltraCanvasProxySettingsDialog.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ **The system's proxy by default** - nothing to set up where the desktop
+  already names one (Windows WPAD / PAC included)
+- ✅ **One setting for every application**: `Proxy.conf` in the shared
+  settings folder; a change saved in one application is used by the others
+  from their next connection
+- ✅ **HTTP or SOCKS** (SOCKS 5, names looked up by the proxy), an exception
+  list (`*.example.com, 192.168.*`), and a sign-in
+- ✅ **The password never in the file**: remembered, it is in an encrypted
+  device-key vault; otherwise only the application it was typed into uses it
+- ✅ **A PAC address** instead of the system's settings, where the platform
+  can run one (Windows, macOS)
+- ✅ **Check connection**: opens an address with the settings as they stand
+  in the dialog and says whether it went through the proxy or directly
+- ✅ The machine itself is always reached directly - a local model server
+  never goes through the proxy
+
+## The file
+
+`Proxy.conf` in the UltraCanvas settings folder (`UltraCanvasSettingsFolder.h`:
+`%APPDATA%\UltraCanvas`, `~/Library/Application Support/UltraCanvas`,
+`~/.config/UltraCanvas`), one `key=value` per line:
+
+```
+mode=manual
+pac-enabled=0
+pac=
+type=socks
+host=localhost
+port=10808
+no-proxy=*.example.com, 192.168.*
+auth=0
+user=
+remember=0
+saved=1762780000000
+```
+
+| Key | Values |
+|---|---|
+| `mode` | `system` (the default), `none`, `manual` |
+| `pac-enabled`, `pac` | `system`: run the PAC script at that address instead of the system's settings |
+| `type` | `manual`: `http` or `socks` |
+| `host`, `port` | `manual`: the proxy; port 0 or missing is the type's own (80, 1080) |
+| `no-proxy` | hosts reached directly - commas, semicolons or spaces between them |
+| `auth`, `user`, `remember` | sign in to the proxy as `user`; keep the password for the next start |
+| `saved` | when it was written (ms since 1970): every save changes the file |
+
+A missing file is the defaults. The remembered password is in
+`<settings folder>/Proxy/` (an UltraVault device-key vault).
+
+## API
+
+```cpp
+enum class ProxyMode { System, NoProxy, Manual };
+enum class ProxyKind { Http, Socks };
+
+struct ProxySettings {
+    ProxyMode mode = ProxyMode::System;
+    bool useAutoConfigUrl = false;
+    std::string autoConfigUrl;
+    ProxyKind kind = ProxyKind::Http;
+    std::string host;
+    int port = 0;
+    std::string noProxyFor;
+    bool authenticate = false;
+    std::string user;
+    std::string password;            // never written to the file
+    bool rememberPassword = false;
+    std::int64_t savedAt = 0;
+
+    int EffectivePort() const;
+    static ProxySettings Parse(const std::string& text);
+    std::string Serialize() const;
+    static std::filesystem::path FilePath();
+    static ProxySettings Load(bool withPassword = true);   // the file, and the password
+    bool Save();                     // the file, the vault, and every application follows
+    static bool ForgetPasswords();   // "Clear passwords"
+    static bool CanUseAutoConfigUrl();
+    UltraNetProxyConfig ToUltraNet() const;   // with UltraNet in the build
+};
+
+void UseSharedProxySettings();       // UltraNet follows Proxy.conf (called by Initialize)
+ProxyCheckResult CheckProxyConnection(const ProxySettings& settings, const std::string& url);
+
+void ShowProxySettingsDialog(UltraCanvasWindowBase* parent,
+                             std::function<void(const ProxySettings&)> onSaved = {});
+std::string DescribeProxySettings(const ProxySettings& settings);
+std::shared_ptr<UltraCanvasContainer> MakeProxySettingsPage(const std::string& id,
+                                                            UltraCanvasWindowBase* parent);
+```
+
+## Usage
+
+An application does nothing to follow the setting:
+`UltraCanvasApplicationBase::Initialize` calls `UseSharedProxySettings()`,
+and from then on UltraNet reads `Proxy.conf` again whenever two seconds have
+passed since it last looked. A command-line tool without an application
+object calls it itself.
+
+The dialog, from a menu or a button:
+
+<!-- doc-check: UltraCanvasWindowBase* window; -->
+```cpp
+ShowProxySettingsDialog(window, [](const ProxySettings& saved) {
+    // already saved and in force; saved.mode, saved.host ...
+});
+```
+
+A settings window built on `UltraCanvasSettingsPageKit` (or one with the
+same look) gives it a page: what the setting does now, and a *Change*
+button opening the dialog. UltraFiler, UltraMail, UltraAI, ChatCube and
+UOS-Settings show it that way:
+
+<!-- doc-check: SettingsPageKit::UltraCanvasSettingsWindow d; -->
+```cpp
+d.AddTreeNode("extras", "extras/proxy", "Proxy");
+d.AddPage("extras/proxy", MakeProxySettingsPage("app-set-proxy", d.window.get()));
+```
+
+Set from code - the same file the dialog writes, so every application
+follows:
+
+```cpp
+ProxySettings proxy = ProxySettings::Load();
+proxy.mode = ProxyMode::Manual;
+proxy.kind = ProxyKind::Socks;
+proxy.host = "localhost";
+proxy.port = 10808;
+proxy.noProxyFor = "*.example.com, 192.168.*";
+proxy.Save();
+```
+
+Checking a connection with settings that are not saved (blocking - the
+dialog runs it on a worker thread):
+
+```cpp
+ProxySettings trial;
+trial.mode = ProxyMode::Manual;
+trial.host = "proxy.example.com";
+trial.port = 3128;
+ProxyCheckResult r = CheckProxyConnection(trial, "https://www.example.com/");
+// r.success, r.route ("http://proxy.example.com:3128"), r.httpStatus, r.message
+```
+
+## The dialog
+
+```
+( ) No proxy
+(o) Use system proxy settings
+      The system's proxy now: http://proxy.corp.example:3128
+      [ ] Automatic proxy configuration URL  [                    ]
+          Example: https://example.com/wpad.pac
+( ) Manual proxy configuration
+      (o) HTTP  ( ) SOCKS
+      Host name      [ localhost              ]
+      Port           [ 10808 ^v ]
+      No proxy for   [                        ]
+                     Example: *.example.com, 192.168.*
+      [ ] Proxy authentication
+          User       [                        ]
+          Password   [                        ]
+                     [ ] Remember   [ Clear passwords ]
+[ Check connection ]                         [ OK ] [ Cancel ]
+```
+
+One form grid holds every row, so the captions share one column and the
+fields start at one x in any language. What the chosen mode does not use is
+greyed out, not hidden, so the dialog does not jump while choosing. Choosing
+SOCKS changes the port from 8080 to 1080 unless one was typed. OK refuses a
+manual proxy without a host and a PAC choice without an address, and says
+why in the dialog. *Check connection* asks for an address (the last one
+offered again), opens it with a HEAD request through the settings as they
+stand, and reports the route and the server's HTTP status - any answer
+counts, since it proves the way there works - or the error; a proxy asking
+for a sign-in (HTTP 407) is named as such.
+
+## Notes
+
+- The PAC row is disabled where the platform cannot run a script
+  (`CanUseAutoConfigUrl`, Linux and the BSDs); the system's own automatic
+  setting still applies there through GIO.
+- A password that is not remembered is used only by the application it was
+  typed into, until it ends: another application connects without it.
+- `ProxySettingsTest` (`Tests/ProxySettingsTest.cpp`) covers the file, the
+  vault, UltraNet following a change another application saved, and the
+  check through a proxy on 127.0.0.1; `UltraNetTests` (`test_proxy.cpp`)
+  covers the resolver.
+
+## Related
+
+- `Docs/Modules/UltraNet/README.md` - *Proxies*: the resolver, the
+  exceptions, the operating system's proxy per platform
+- `UltraCanvasSettingsPageKit.h` - the settings window the page is made for
+- `UltraCanvasSettingsFolder.h` - the folder `Proxy.conf` is in
+- `UltraVault/UltraVaultDeviceKeyVault.h` - where a remembered password is kept
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPyramidChart.md
 ==============================================================================
 
@@ -84302,6 +84559,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
 | The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
+| The proxy every application connects through - the system's (the default), none, or HTTP / SOCKS with exceptions and a sign-in, Check connection; one setting (`Proxy.conf`) for every application ([doc](UltraCanvasProxySettings.md)); `MakeProxySettingsPage` is its page for a settings window | `ShowProxySettingsDialog`, `MakeProxySettingsPage` (`ProxySettings`, the setting without UI) | `UltraCanvasProxySettingsDialog.h` |
 | One file format's save settings (JPEG quality, PNG compression, TIFF codec ...), kept for every application - and, for a picture, the size to write it at this once | `UltraCanvasFileLoader::ShowSaveSettingsDialog` ([doc](UltraCanvasFileDialog.md#save-settings)) | `UltraCanvasFileLoader.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Save a bitmap with per-format options - opened on the format's save settings (and the format the file name has), which Save stores back | `UltraCanvasImageExportDialog` ([save settings](UltraCanvasFileDialog.md#save-settings)) | `dialogs/UltraCanvasImageExportDialog.h` |
@@ -101459,6 +101717,7 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 - [Architecture](#architecture)
 - [Quick examples](#quick-examples)
 - [Module layout](#module-layout)
+- [Proxies](#proxies)
 - [SSH tunnels](#ssh-tunnels)
 - [Debugging a mail connection](#debugging-a-mail-connection)
 - [The FTP session log](#the-ftp-session-log)
@@ -101516,7 +101775,7 @@ planned (see the status table below).
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
-| Proxy | HTTP / HTTPS / SOCKS4 / SOCKS5 / system | `UltraNet/UltraNetProxy.h` |
+| Proxy | The operating system's proxy by default (the environment, GNOME / KDE, Windows' WPAD and PAC, macOS' PAC), or HTTP / HTTPS / SOCKS4 / SOCKS5 with exceptions and a sign-in; decided per URL and applied to every libcurl transfer - HTTP, WebSocket, FTP / SFTP and the mail plug-ins (see [Proxies](#proxies)) | `UltraNet/UltraNetCore.h`, `UltraNet/UltraNetCurlProxy.h` |
 | URL | Parse, build, encode, query strings | `UltraNet/UltraNetUrl.h` |
 | MIME | base64 / quoted-printable, RFC 2047 headers, multipart parse + build; text in any charset iconv knows (ISO-2022-JP - also raw in headers -, Shift_JIS, GB18030, KOI8-R, windows-125x, ...) converted to UTF-8, UTF-8 and Latin-1 without iconv; unlabelled 8-bit header text read in the body's charset or the best-scoring guess | `UltraNet/UltraNetMime.h` |
 
@@ -101779,7 +102038,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
 │   ├── UltraNetOAuth2Service.h
-│   ├── UltraNetProxy.h
+│   ├── UltraNetCurlProxy.h       (header-only, the proxy on a libcurl handle)
 │   ├── UltraNetUrl.h
 │   ├── UltraNetSsh.h             (SSH tunnels, through the ssh plug-in)
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
@@ -101795,6 +102054,91 @@ UltraCanvas/                      (or wherever the build places it)
 ```
 
 CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
+
+---
+
+## Proxies
+
+Every connection UltraNet makes through libcurl - the HTTP verbs (sync,
+async, SSE), WebSocket, FTP / FTPS / SFTP, and the IMAP, SMTP, POP3,
+WebDAV, LDAP, Telnet, RTSP and gRPC plug-ins - asks
+`UltraNet_ResolveProxy(url, requested)` which proxy to use and hands the
+answer to libcurl (`UltraNet/UltraNetCurlProxy.h`; a plug-in reaches the
+resolver through its host table, ABI 4).
+
+A raw TCP connection (`UltraNetSocket.h`) goes through a proxy only when
+asked - `UltraNetSocketOptions::proxy`, or `useProxySetting` for the
+module-wide setting - because a raw socket is mostly a device or a peer on
+the local network (ChatCube's LAN peers stay direct). UltraNet then speaks
+the proxy's handshake itself: SOCKS 5 (with its user name and password, the
+name sent for the proxy to look up unless `remoteDns` is off), SOCKS 4 / 4a,
+or an HTTP `CONNECT` tunnel with Basic sign-in; `UltraNet_TcpOpen` says why
+one failed (`AuthenticationRequired` for a proxy that asks for a sign-in).
+The SSH plug-in follows the setting that way: libssh cannot talk to a proxy,
+so the connection is made by UltraNet and handed over
+(`UltraNet_SocketDetach`, libssh's `SSH_OPTIONS_FD`); known_hosts is still
+looked up by the server's name. The RTMP plug-in plays `rtmp://` with a
+client of its own over such a connection (libcurl, which dropped librtmp,
+serves only `rtmps` / `rtmpt` where the libcurl loaded still has it); the UDP
+protocols (CoAP, SNMP, SIP, RTP, mDNS) never go through a proxy.
+
+The setting is `UltraNetConfig::proxy` (`UltraNet_SetGlobalProxy`), or a
+request's own `UltraNetHttpOptions::proxy`:
+
+| `UltraNetProxyType` | Meaning |
+|---|---|
+| `System` (the default) | The operating system's proxy for that address - see below; direct when it names none |
+| `NoProxy` | Module-wide: every connection direct, the `*_proxy` environment ignored as well. On a request: the module-wide setting applies |
+| `Direct` | On a request: direct, whatever the module-wide setting says |
+| `Http`, `Https`, `Socks4`, `Socks5` | That proxy (`Https` = TLS to the proxy itself). SOCKS lets the proxy look the name up (`remoteDns`, socks5h / socks4a) unless told otherwise |
+
+The machine itself (`localhost`, `127.0.0.0/8`, `::1`) is always reached
+directly - a local model server or a test server never goes through a
+proxy - and so is every host `noProxyHosts` names: a name and its
+subdomains (`example.com`), a pattern (`*.example.com`, `192.168.*`), a
+leading-dot suffix, an IPv4 range (`10.0.0.0/8`), `*`, or `<local>` (a
+name without a dot). `UltraNet_HostMatchesNoProxy` and
+`UltraNet_ParseNoProxyList` are the same rules for a caller.
+
+**The operating system's proxy** (`UltraNet_DetectSystemProxyFor`, asked at
+most once a minute per scheme and host; `UltraNet_ForgetSystemProxy` asks
+again):
+
+| Platform | Read from |
+|---|---|
+| Linux | `http_proxy` / `https_proxy` / `ftp_proxy` / `all_proxy` / `no_proxy` when any is set (as libcurl and the command line read them); else GNOME's settings (GSettings, through GIO opened at run time; "automatic" asks GIO's resolver, which runs a PAC script where glib-networking can) or KDE's (`kioslaverc`, manual) |
+| Windows | The user's Internet settings through WinHTTP: automatic detection (WPAD) and a setup script (PAC) evaluated per address, else the manual proxy and its bypass list; a company proxy that asks who connects is answered as the signed-in user (Negotiate / NTLM) |
+| macOS | System Settings > Network > Proxies through CFNetwork, the exceptions applied by it; a PAC script fetched (directly) and run per address |
+
+The web's proxy (HTTP, HTTPS - and WebSocket, as the page address it
+upgrades) is used only for those; mail and other protocols use the system's
+SOCKS proxy (or `all_proxy`) - a proxy that lets CONNECT through to port 443
+only would otherwise cut off a mail server that was reached directly. A
+proxy set explicitly (`Http`, `Socks5`, ...) carries everything, the HTTP
+kind as a CONNECT tunnel.
+
+`UltraNetProxyConfig::autoConfigUrl` names a PAC script to run instead of
+the system's settings, where this build can (`UltraNet_CanEvaluateProxyScript`:
+Windows and macOS).
+
+```cpp
+UltraNetProxyConfig socks;
+socks.type = UltraNetProxyType::Socks5;
+socks.host = "localhost";
+socks.port = 10808;
+socks.noProxyHosts = UltraNet_ParseNoProxyList("*.example.com, 192.168.*");
+UltraNet_SetGlobalProxy(socks);              // every connection from now on
+
+UltraNetProxyConfig used = UltraNet_ResolveProxy("imaps://mail.example.org/INBOX");
+// used.type == Socks5; UltraNet_DescribeProxy(used) == "socks5h://localhost:10808"
+```
+
+An application built on UltraCanvas does not set this itself: the
+framework's shared proxy settings (`UltraCanvasProxySettings.h`, the dialog
+in `UltraCanvasProxySettingsDialog.h`) keep the choice in `Proxy.conf` and
+hand it to UltraNet through `UltraNet_SetGlobalProxySource`, so every
+application follows one setting, and a change saved in one is used by the
+others from their next connection.
 
 ---
 
@@ -106427,6 +106771,14 @@ encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
 
 ==============================================================================
+FILE: Docs/UltraClipboard/changelog.d/proxy-settings.md
+==============================================================================
+
+- **Proxy settings** at the foot of the settings dialog: text recognition by
+  a cloud model goes through the proxy every ULTRA OS application shares,
+  and the button opens the dialog that sets it.
+
+==============================================================================
 FILE: Docs/UltraNotifications/README.md
 ==============================================================================
 
@@ -110246,6 +110598,16 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/proxy-settings.md
+==============================================================================
+
+- **Settings > Mail > Proxy.** IMAP, SMTP, JMAP and the sign-in go through
+  the proxy every ULTRA OS application shares, and the page opens the Proxy
+  settings dialog to choose it. An HTTP proxy carries the mail connections
+  as a CONNECT tunnel; the system's web proxy is not used for mail, its
+  SOCKS proxy is.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
