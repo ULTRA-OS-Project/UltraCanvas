@@ -1,8 +1,9 @@
 // core/UltraCanvasSettingsWatcher.cpp
 // The settings folder watched, the handlers run once per burst for the files
 // that changed (UltraCanvasSettingsWatcher.h).
+// Version: 1.0.1 - the file name joined through PathFromUtf8 (UTF-8 on Windows)
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #include "UltraCanvasSettingsWatcher.h"
 #include "UltraCanvasPathUtf8.h"
@@ -27,7 +28,7 @@ namespace UltraCanvas {
 
     void UltraCanvasSettingsWatcher::Remember(Entry& entry) const {
         std::error_code ec;
-        const std::filesystem::path path = folder / entry.fileName;
+        const std::filesystem::path path = folder / PathFromUtf8(entry.fileName);
         entry.exists = std::filesystem::is_regular_file(path, ec) && !ec;
         if (entry.exists) {
             entry.modified = std::filesystem::last_write_time(path, ec);
