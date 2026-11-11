@@ -909,8 +909,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with
   `SetThemeProvider`) applies it in `Initialize` and on every host change,
   a window built with the default background taking the theme's ground.
-  Phases T1 to T3 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
-  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
+  `Appearance.conf` (`UltraCanvasAppearanceSettings.h`: `AppearanceSettings`
+  `Parse` / `Serialize` / `ApplyTo` / `Load` / `Save` - look, accent, font,
+  size, scale, contrast, each `system` when the host decides) is applied
+  over the host on every read, before the override, and
+  `UltraCanvasSettingsWatcher` (`UltraCanvasSettingsWatcher.h`, one folder
+  watcher on the settings folder owned by the application base, a poll where
+  the build has no backend) makes a change to it live; UOS-Settings >
+  Appearance > Look writes it, and the DemoApp page *ULTRA OS modules >
+  Theme* (`Apps/DemoApp/UltraCanvasThemeExamples.cpp`) shows the roles, the
+  policy and the host, the fonts by role and the file. `SettingsWatcherTest`
+  covers the watcher. Phases T1 to T5 of
+  `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`; see
+  `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
   `Docs/UltraCanvas/UltraCanvasTheme.md`.
 
   Emoji come from a bundled font the emoji setting picks
