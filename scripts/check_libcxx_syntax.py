@@ -10,8 +10,9 @@ that ("call to 'to_string' is ambiguous").
 
 Every C++ translation unit of the build's compile database
 (build/compile_commands.json - CMake writes it with
--DCMAKE_EXPORT_COMPILE_COMMANDS=ON, and this script adds that to an existing
-build directory itself) is compiled again with the flags the build gave it,
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, and this script adds that to a build
+directory configured without it, going by its cache: a plain configure leaves
+a file of a few entries behind, which is not the tree's) is compiled again with the flags the build gave it,
 by clang++ with -stdlib=libc++ and -fsyntax-only. C sources and the Linux,
 macOS and Android OS arms (never compiled on Windows) are left out, as is
 anything generated under build/. Only errors are printed: the Windows build
@@ -75,21 +76,35 @@ def check_toolchain(cxx, work):
     return True
 
 
+def exports_compile_commands(build):
+    """Whether the build directory was configured to write the database.
+    The file's presence does not say: a plain configure leaves one of a
+    handful of entries behind (a sub-build of the UltraCanvas tree writes
+    its own), which would pass for the whole tree's."""
+    cache = build / "CMakeCache.txt"
+    if not cache.exists():
+        return False
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("CMAKE_EXPORT_COMPILE_COMMANDS:") and line.split("=", 1)[1].strip().upper() in ("ON", "1", "TRUE", "YES"):
+            return True
+    return False
+
+
 def load_database(path):
-    """The compile database, written first when the build directory has none."""
-    if not path.exists():
-        build = path.parent
-        if (build / "CMakeCache.txt").exists():
-            print("check_libcxx_syntax: %s has no compile database - configuring it with "
-                  "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" % build.relative_to(ROOT))
-            r = subprocess.run(["cmake", "-S", str(ROOT), "-B", str(build), "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"],
-                               capture_output=True, text=True)
-            if r.returncode != 0:
-                print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
-                return None
-        if not path.exists():
-            print("check_libcxx_syntax: no %s - configure a build first "
-                  "(cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)" % path, file=sys.stderr)
+    """The compile database, written first when the build directory was
+    configured without it."""
+    build = path.parent
+    if not exports_compile_commands(build):
+        if not (build / "CMakeCache.txt").exists():
+            print("check_libcxx_syntax: no build in %s - configure one first "
+                  "(cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)" % build, file=sys.stderr)
+            return None
+        print("check_libcxx_syntax: %s was configured without a compile database - configuring it with "
+              "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" % build.relative_to(ROOT))
+        r = subprocess.run(["cmake", "-S", str(ROOT), "-B", str(build), "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"],
+                           capture_output=True, text=True)
+        if r.returncode != 0 or not path.exists():
+            print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
             return None
     with open(path, encoding="utf-8") as f:
         return json.load(f)
