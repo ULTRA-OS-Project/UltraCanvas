@@ -1,3 +1,10 @@
+#### 2026-11-11 *1.79*
+- **The zoom box offers "Page width" and "Whole page".** A word-processing
+  tab in page layout then zooms with the window: the page fills its width,
+  or the whole page is in view. Text tabs keep their percentage. The choice
+  is remembered (`pageZoomFit` in `config.ini`); picking a percentage ends
+  it. The zoom box is a little wider so the new entries fit.
+
 #### 2026-11-06 *1.78*
 - **Crash recovery no longer asks.** Files autosaved in a session that did not
   end cleanly are reopened at startup straight away, each in its own tab and
