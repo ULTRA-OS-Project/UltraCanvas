@@ -33,9 +33,9 @@
   without a discount used the suite's "Code", which several languages
   translate as program code; the store's entry is the discount or partner
   code.
-- **Fixed: a longer translation covered the last header tab.** The section
-  pills, Refresh, Settings and the Downloads panel's Clear finished button
-  had fixed widths; a button widened for its text, but its row kept the
-  width it measured first, so "Updates" in German slid under the search
-  field and "Clear finished" ran off the panel. They take their text's
-  width now, and the search field gives way down to 120 px.
+- **Fixed: a longer translation covered the last header tab.** A
+  fixed-width button widened for its text, but its row kept the width it
+  measured first, so "Updates" in German slid under the search field and
+  "Clear finished" ran off the Downloads panel. The framework now lays such
+  a row out again at the next frame (UltraCanvas changelog), and the search
+  field gives way down to 120 px.

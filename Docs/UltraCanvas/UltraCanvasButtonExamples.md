@@ -2,8 +2,8 @@
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.3.0 - `SetWrap`: the text on several lines  
-**Last Modified:** 2026-11-01  
+**Version:** 1.3.1 - a container sized to its content grows with a button grown to its text  
+**Last Modified:** 2026-11-11  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -491,6 +491,14 @@ absolutely placed buttons it can then reach its neighbour; lay such rows out
 with a flex container (see the Layout documentation) so the buttons after it
 move along. Buttons without text (icon-only tools) are not affected.
 
+A container sized to its content grows with its buttons. The first layout
+reads a button's given width before the button has measured its text, so a
+group of buttons in a header row comes out as wide as the English labels; the
+button then asks for one more layout pass, and the window runs it at the next
+frame (it wakes its event loop for it rather than waiting for one), so the
+group, and whatever follows it in the row, take the grown widths. Nothing in
+the application has to change for it.
+
 ### Split Button (a primary action plus a menu)
 
 A split button is one button with two sections: the primary one runs the
@@ -580,6 +588,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3.1 | 2026-11-11 | A container sized to its content grows with its buttons: one more layout pass, run at the next frame (A Fixed Width Is a Minimum) |
 | 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |
 | 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
 | 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
