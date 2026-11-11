@@ -1,3 +1,8 @@
+#### 2026-11-11 *0.9.526*
+- **`ImageHistogram::ClippedRange`.** The levels a channel spans once a fraction
+  of its pixels is let go at each end - what an auto contrast stretches to fill
+  the scale. Test: `HistogramModelTest`. Guide: `UltraCanvasHistogramChart.md`.
+
 #### 2026-11-11 *0.9.525*
 - **The badge, card, chips, panels, sidebar, busy indicator, auto-complete,
   new-document dialog and reference point picker follow the theme (T4 of
