@@ -5,13 +5,15 @@
 // DWM's 0xAARRGGBB, TextScaleFactor), the colour-as-text helpers, the
 // ULTRACANVAS_HOST_APPEARANCE override in every form it takes and the ones
 // it must ignore, the report line, and equality.
+// Version: 1.2.0 - Appearance.conf: Parse, Serialize, ApplyTo over the host, the override still winning
 // Version: 1.1.0 - the Linux readers: the XSETTINGS decoder in both byte orders, the
 //                  theme-name, colour-scheme, portal, kdeglobals and GNOME accent rules,
 //                  the composer's precedence per session
 // Version: 1.0.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostAppearance.h"
+#include "UltraCanvasAppearanceSettings.h"
 
 #include <algorithm>
 #include <cmath>
@@ -296,6 +298,46 @@ int main() {
         Sources scale; scale.gsTextScale = 9.0;
         CHECK(Near(HostAppearanceFromSources(scale).textScale, 1.0), "a text scale outside 0.5-4 is ignored");
         CHECK(HostAppearanceFromSources(kdeSrc).uiFont.fontFamily == "Ubuntu", "the composer leaves the fonts to the font detectors");
+    }
+
+    std::printf("Appearance.conf\n");
+    {
+        const AppearanceSettings none;
+        CHECK(none.IsSystem() && none.look == "system" && none.fontSize == 0.0 && none.scale == 1.0, "the defaults say system everywhere");
+        CHECK(AppearanceSettings::Parse("").IsSystem() && AppearanceSettings::Parse("nonsense\n") .IsSystem(), "an empty or unknown file is the defaults");
+        const AppearanceSettings s = AppearanceSettings::Parse("look=Dark\r\naccent=#E95420\nfont=Noto Sans\nfontsize=10.5\nscale=1.25\ncontrast=high\nunknown=1\n");
+        CHECK(s.look == "dark" && s.accent == "#e95420" && s.font == "Noto Sans" && Near(s.fontSize, 10.5) && Near(s.scale, 1.25) && s.contrast == "high",
+              "every line read: the look lowered, the accent normalised, the size and scale as numbers");
+        const AppearanceSettings bad = AppearanceSettings::Parse("look=blue\naccent=red\nfontsize=-3\nscale=9\ncontrast=loud\n");
+        CHECK(bad.IsSystem(), "a value the file cannot mean keeps the default");
+        CHECK(AppearanceSettings::Parse(s.Serialize()) == s, "Serialize and Parse round-trip");
+        CHECK(none.Serialize() == "look=system\naccent=system\nfont=system\nfontsize=system\nscale=1\ncontrast=system\n", "the defaults serialise as the documented file");
+        HostAppearance host = DefaultHostAppearance();
+        CHECK(!none.ApplyTo(host) && host == DefaultHostAppearance(), "the defaults change nothing");
+        CHECK(s.ApplyTo(host) && host.dark && host.accent && Same(*host.accent, Color(0xe9, 0x54, 0x20)) && host.uiFont.fontFamily == "Noto Sans"
+              && Near(host.uiFont.fontSize, 10.5) && Near(host.textScale, 1.25) && host.highContrast && host.source == "default+settings",
+              "the choices over the host: the look, the accent, the font, the size, the scale over the host's, high contrast, the source");
+        HostAppearance scaled = DefaultHostAppearance();
+        scaled.textScale = 1.5;
+        AppearanceSettings onlyScale;
+        onlyScale.scale = 2.0;
+        onlyScale.ApplyTo(scaled);
+        CHECK(Near(scaled.textScale, 3.0) && scaled.uiFont.fontFamily == "Ubuntu", "the scale multiplies the host's, the rest untouched");
+        HostAppearance light = DefaultHostAppearance();
+        light.dark = true;
+        AppearanceSettings forceLight;
+        forceLight.look = "light";
+        forceLight.contrast = "normal";
+        light.highContrast = true;
+        forceLight.ApplyTo(light);
+        CHECK(!light.dark && !light.highContrast, "light and normal contrast overrule a dark, high-contrast host");
+        // the one run's override still wins over the file
+        AppearanceSettings dark;
+        dark.look = "dark";
+        HostAppearance run = DefaultHostAppearance();
+        dark.ApplyTo(run);
+        ApplyHostAppearanceOverride(run, "light");
+        CHECK(!run.dark && run.source == "default+settings+override", "ULTRACANVAS_HOST_APPEARANCE wins over Appearance.conf for the run");
     }
 
     std::printf("\n%d of %d checks passed\n", testCount - failCount, testCount);

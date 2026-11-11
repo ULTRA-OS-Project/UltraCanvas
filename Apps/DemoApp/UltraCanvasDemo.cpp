@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.25 - Modules > Theme (UltraCanvasThemeExamples.cpp)
 // Version: 1.0.24 - Android: the tree filter's place and text are logged for the emulator test
 // Version: 1.0.23 - Charts > Histogram Chart (UltraCanvasHistogramChart)
 // Version: 1.0.22 - Charts > Line Chart: the Control Chart variant
@@ -2186,6 +2187,15 @@ namespace UltraCanvas {
                                [this]() { return CreateLocalisationExamples(); },
                                "DemoApp/UltraCanvasLocalisationExamples.cpp",
                                "Docs/Modules/UltraLocalisation/README.md");
+        // The theme: the roles as swatches, the policy and the host, the
+        // fonts by role, elements following by default, Appearance.conf.
+        modulesBuilder.AddItem("theme", Tr("Theme"),
+                               Tr("UltraCanvasTheme - the roles of the current theme, what it follows and "
+                               "what the host said, the fonts by role, elements following it, Appearance.conf"),
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateThemeExamples(); },
+                               "DemoApp/UltraCanvasThemeExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasTheme.md");
         // Built into the core (core/IODeviceManager + OS backends): printers on
         // Linux, macOS and Windows plus IPP everywhere, scanners on Linux plus
         // eSCL, webcams on Linux; the other categories and platform backends are
