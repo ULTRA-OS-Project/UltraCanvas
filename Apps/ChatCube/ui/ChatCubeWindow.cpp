@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.8 - a message's right-click menu: its file opened or saved, the message deleted for oneself or
+//                  for everyone, as its messenger allows
 // Version: 0.2.7 - recovery by the link e-mailed to the ID's address: the window waits for it and signs in
 // Version: 0.2.6 - "Recover my ChatCube ID": the codes sent to the e-mail and phone bring an ID back
 // Version: 0.2.5 - an e-mail address and a phone number for a new ID, a password and/or an
@@ -38,12 +40,15 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSelection.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasMenu.h"
+#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasVideoTile.h"
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMCore.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "Plugins/QRCode/UltraCanvasQRCode.h"
 
 #include <algorithm>
@@ -652,6 +657,9 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     messageList_->onCellClicked = [this](int row, int, const Point2Di& posInCell) {
         Rect2Di media;
         if (bubbles_->MediaRect(messages_.get(), row, media) && media.Contains(posInCell)) OpenAttachment(row);
+    };
+    messageList_->onContextMenu = [this](int row, const UCEvent& event) {
+        ShowMessageMenu(row, event.pointerWindow.x, event.pointerWindow.y);
     };
     pane->AddChild(messageList_);
 
@@ -1868,6 +1876,104 @@ void ChatCubeWindow::ShowAttachment(const std::string& path) {
     MediaViewerWindowOptions options;
     options.browseFolder = false;       // the provider's cache is no album
     if (!viewer_.Show(path, window_.get(), options)) SetStatus("Could not open " + path);
+}
+
+// A message's right-click menu. What it offers is what is true of this
+// message now: a file to open or save when it has one, and the deletes its
+// messenger allows - ChatCube's own, Matrix's and Telegram's differ.
+void ChatCubeWindow::ShowMessageMenu(int row, int windowX, int windowY) {
+    const auto& rows = messages_->Rows();
+    if (!window_ || row < 0 || row >= static_cast<int>(rows.size()) ||
+        rows[static_cast<size_t>(row)].kind != MessageRow::Kind::Message)
+        return;
+    const UltraIMMessage message = rows[static_cast<size_t>(row)].message;
+    const bool hasFile = message.type != UltraIMMessageType::Text && message.type != UltraIMMessageType::SystemEvent;
+    const bool sent = message.deliveryStatus != UltraIMDeliveryStatus::Sending &&
+                      message.deliveryStatus != UltraIMDeliveryStatus::Failed;
+    const UltraIMDeleteChoices choices =
+        UltraIM_GetDeleteChoices(activeProvider_, message.conversationId, message.messageId);
+
+    messageMenu_ = std::make_shared<UltraCanvasMenu>("cc-message-menu", 0, 0, 220, 0);
+    messageMenu_->SetMenuType(MenuType::PopupMenu);
+    int entries = 0;
+    if (hasFile && (sent || message.attachment.isDownloaded)) {
+        messageMenu_->AddItem(MenuItemData::Action(Tr("Open"), [this, row]() { OpenAttachment(row); }));
+        messageMenu_->AddItem(MenuItemData::Action(Tr("Save as"), [this, message]() { SaveAttachment(message); }));
+        entries += 2;
+    }
+    if (entries && (choices.forMe || choices.forEveryone)) messageMenu_->AddItem(MenuItemData::Separator());
+    if (choices.forMe) {
+        messageMenu_->AddItem(MenuItemData::Action(Tr("Delete for me"), [this, message]() {
+            DeleteMessage(message, UltraIMDeleteScope::ForMe);
+        }));
+        ++entries;
+    }
+    if (choices.forEveryone) {
+        messageMenu_->AddItem(MenuItemData::Action(Tr("Delete for everyone"), [this, message]() {
+            DeleteMessage(message, UltraIMDeleteScope::ForEveryone);
+        }));
+        ++entries;
+    }
+    if (!entries) {
+        messageMenu_.reset();
+        return;
+    }
+    PopupElementSettings settings;
+    messageMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+void ChatCubeWindow::SaveAttachment(const UltraIMMessage& message) {
+    const UltraIMAttachment& a = message.attachment;
+    const std::string name = a.fileName.empty() ? Tr("the file") : a.fileName;
+    if (a.isDownloaded && !a.localPath.empty()) {
+        SaveAttachmentAs(a.localPath, a.fileName);
+        return;
+    }
+    SetStatus(TrF("Fetching {0}\xE2\x80\xA6", name));
+    UltraIM_DownloadAttachment(activeProvider_, message.conversationId, message.messageId,
+                               [this, name](const UltraIMResult& r, const UltraIMAttachment& fetched) {
+        if (!r) {
+            SetStatus(TrF("Could not fetch {0}: {1}", name, r.message));
+            return;
+        }
+        SetStatus("");
+        SaveAttachmentAs(fetched.localPath, fetched.fileName);
+    });
+}
+
+void ChatCubeWindow::SaveAttachmentAs(const std::string& path, const std::string& name) {
+    if (path.empty()) return;
+    const std::string suggested = name.empty() ? PathToUtf8(PathFromUtf8(path).filename()) : name;
+    FileDialogOptions opts;
+    opts.SetTitle(Tr("Save the file"))
+        .SetDefaultFileName(suggested)
+        .AddFilter(Tr("All files"), std::vector<std::string>{"*"})
+        .SetParentWindow(window_.get());
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, path](DialogResult result, const std::string& target) {
+        if (result != DialogResult::OK || target.empty()) return;
+        // The bytes as they were received: a copy, nothing converted.
+        std::error_code ec;
+        std::filesystem::copy_file(PathFromUtf8(path), PathFromUtf8(target),
+                                   std::filesystem::copy_options::overwrite_existing, ec);
+        SetStatus(ec ? TrF("Could not save to {0}", target) : TrF("Saved to {0}", target));
+    });
+}
+
+void ChatCubeWindow::DeleteMessage(const UltraIMMessage& message, UltraIMDeleteScope scope) {
+    const std::string provider = activeProvider_;
+    const auto remove = [this, provider, message, scope]() {
+        const UltraIMResult r = UltraIM_DeleteMessage(provider, message.conversationId, message.messageId, scope);
+        // The row goes when the provider says the message is gone (MessageDelete).
+        SetStatus(r ? std::string() : TrF("Could not delete the message: {0}", r.message));
+    };
+    if (scope == UltraIMDeleteScope::ForMe) {
+        remove();
+        return;
+    }
+    // For everyone cannot be taken back, so it asks first.
+    UltraCanvasDialogManager::ShowConfirmation(
+        Tr("This message will be removed for everyone in the conversation. This cannot be undone."),
+        Tr("Delete for everyone"), [remove](bool confirmed) { if (confirmed) remove(); }, window_.get());
 }
 
 // =================================================================== calls

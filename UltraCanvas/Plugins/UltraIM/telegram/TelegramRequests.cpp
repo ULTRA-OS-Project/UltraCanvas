@@ -240,6 +240,18 @@ TdObject SendTyping(int64_t chatId, bool typing) {
     return o;
 }
 
+TdObject SearchChatMessages(int64_t chatId, const std::string& query, int64_t fromMessageId, int32_t limit,
+                            const std::string& filter) {
+    TdObject o = Make("searchChatMessages");
+    o.Set("chat_id", TdObject(chatId));
+    o.Set("query", TdObject(query));
+    o.Set("from_message_id", TdObject(fromMessageId));
+    o.Set("offset", TdObject(0));
+    o.Set("limit", TdObject(static_cast<int64_t>(limit)));
+    o.Set("filter", Make(filter.c_str()));
+    return o;
+}
+
 TdObject SearchPublicChat(const std::string& username) {
     TdObject o = Make("searchPublicChat");
     o.Set("username", TdObject(username));

@@ -1,5 +1,8 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.10 - UltraIM_DeleteMessage takes a scope; UltraIM_GetDeleteChoices
+// Version: 0.1.9 - UltraIM_SearchMessages; for providers and lists: UltraIM_MessageMatchesSearch,
+//                  UltraIM_ExtractLinks, UltraIM_FoldCase, UltraIM_SearchByFetching
 // Version: 0.1.8 - account recovery by an e-mailed link: UltraIM_FinishRecovery asks whether it was approved
 // Version: 0.1.7 - UltraIM_VerifyContact, _ResendContactCode, _SetRecoveryEnabled, _StartRecovery, _FinishRecovery
 // Version: 0.1.6 - the account's profile (UltraIM_FetchAccountProfile, UltraIM_UpdateAccountProfile) and its
@@ -10,7 +13,7 @@
 // Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,6 +79,42 @@ void UltraIM_FetchMessages(const std::string& providerId,
                            const std::string& beforeMessageId,
                            int limit,
                            UltraIMMessagesCallback onResult);
+// ---- Searching the history -----------------------------------------------------
+// The messages of providerId matching search - words, or everything of one
+// kind (pictures, videos, files, links) - newest first, a page at a time:
+// pass the page's nextCursor as search.cursor for the older ones, until it
+// comes back empty. CapabilityMissing for a provider without the
+// SearchMessages capability, or one asked for every conversation at once
+// (search.conversationId "") that can only search one.
+//
+// Where the answer comes from differs, and so does how words match: ChatCube
+// Direct and Matrix match on this device - the words anywhere in the text,
+// in any case (UltraIM_MessageMatchesSearch); Telegram asks Telegram, which
+// matches whole words as its own apps do.
+void UltraIM_SearchMessages(const std::string& providerId, const UltraIMMessageSearch& search,
+                            UltraIMSearchCallback onResult);
+// Whether a message is one the search is for: its kind, and every word of
+// search.text in its text or its attachment's file name (conversationId,
+// cursor and limit are not looked at). The one matcher the providers that
+// search on the device share, and what a list filters its loaded rows with.
+bool UltraIM_MessageMatchesSearch(const UltraIMMessage& message, const UltraIMMessageSearch& search);
+// The links in a text, in order: what starts with http:// or https://, or
+// with www. at the start of a word, up to the next space, without the
+// punctuation a sentence puts after it.
+std::vector<std::string> UltraIM_ExtractLinks(const std::string& text);
+// UTF-8 text in lower case for comparing: the Latin, Greek and Cyrillic
+// letters folded one to one (never by the locale), everything else as it is.
+std::string UltraIM_FoldCase(const std::string& text);
+// For providers: SearchMessages answered by reading one conversation's
+// history through fetchPage (the provider's own FetchMessages), newest page
+// first, and keeping what UltraIM_MessageMatchesSearch accepts. Stops when
+// the page is full, the history ends, or after about two thousand messages
+// (nextCursor then says where to go on). fetchPage must not be called again
+// after the provider shut down: the provider's FetchMessages already holds
+// to that.
+void UltraIM_SearchByFetching(UltraIMFetchPage fetchPage, const UltraIMMessageSearch& search,
+                              UltraIMSearchCallback onResult);
+
 void UltraIM_FetchContacts(const std::string& providerId, UltraIMContactsCallback onResult);
 // People on the local network who are not contacts yet (NearbyChange: fetch again).
 void UltraIM_FetchNearbyContacts(const std::string& providerId, UltraIMContactsCallback onResult);
@@ -114,8 +153,17 @@ void          UltraIM_DownloadAttachment(const std::string& providerId, const st
 UltraIMResult UltraIM_SendVoiceNote(const std::string& providerId, const std::string& conversationId,
                                     const std::string& localPath,
                                     const UltraIMSendOptions& options = UltraIMSendOptions());
+// Deletes a message for everyone, or for this account alone; a
+// MessageDelete event follows where it is gone. Each messenger has its own
+// rules for who may do which and until when: UltraIM_GetDeleteChoices says
+// what is possible for one message now (nothing for a provider without the
+// DeleteMessage capability), and a delete outside them answers
+// PermissionDenied.
 UltraIMResult UltraIM_DeleteMessage(const std::string& providerId, const std::string& conversationId,
-                                    const std::string& messageId);
+                                    const std::string& messageId,
+                                    UltraIMDeleteScope scope = UltraIMDeleteScope::ForEveryone);
+UltraIMDeleteChoices UltraIM_GetDeleteChoices(const std::string& providerId, const std::string& conversationId,
+                                              const std::string& messageId);
 UltraIMResult UltraIM_EditMessage(const std::string& providerId, const std::string& conversationId,
                                   const std::string& messageId, const std::string& newText);
 UltraIMResult UltraIM_MarkRead(const std::string& providerId, const std::string& conversationId,
