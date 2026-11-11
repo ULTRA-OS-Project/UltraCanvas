@@ -1,7 +1,10 @@
 {
   "@language": "en",
   "@inherited": [
-    "Install"
+    "Install",
+    "Proxy settings",
+    "Save",
+    "Settings"
   ],
   "\"{0}\" is still running. Cancel it and close UltraStore?\nA download continues where it stopped the next time; nothing is left half installed.": "\"{0}\" is still running. Cancel it and close UltraStore?\nA download continues where it stopped the next time; nothing is left half installed.",
   "(from the command line)": "(from the command line)",
@@ -58,6 +61,7 @@
   "Cancelled before it started": "Cancelled before it started",
   "Cancelled; nothing was charged unless Skrill says so": "Cancelled; nothing was charged unless Skrill says so",
   "Cannot read {0}": "Cannot read {0}",
+  "Catalog": "Catalog",
   "Catalog sequence {0}, fetched {1} from {2}": "Catalog sequence {0}, fetched {1} from {2}",
   "Catalog updated: {0} apps, sequence {1}, from {2}": "Catalog updated: {0} apps, sequence {1}, from {2}",
   "Catalog: {0}": "Catalog: {0}",
@@ -169,10 +173,12 @@
   "Removing {0}": "Removing {0}",
   "Results for \"{0}\"": "Results for \"{0}\"",
   "Resume buying {0}": "Resume buying {0}",
+  "Revert": "Revert",
   "Runs on": "Runs on",
   "runs under Rosetta": "runs under Rosetta",
   "Runtimes and libraries": "Runtimes and libraries",
   "Search apps, publishers, tags": "Search apps, publishers, tags",
+  "Servers": "Servers",
   "Settings file: {0}": "Settings file: {0}",
   "Settings read again": "Settings read again",
   "Settings saved": "Settings saved",
