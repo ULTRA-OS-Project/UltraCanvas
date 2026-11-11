@@ -787,8 +787,17 @@ and never introduce a new literal copy of one:
    Writing a number into a file format or a protocol? Read it with
    `TryParseFloat` / `ParseFloatClassic` and write it with
    `FormatFloatClassic`, never `std::stof` / `atof` / `std::to_string(double)`
-   / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
-   that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
+   / `snprintf("%g")`. Streaming it instead of formatting it to a string?
+   Hold a `ClassicNumbers` (same header) over the stream for as long as you
+   are writing: a stream renders through the *C++ global* locale, which is a
+   different switch from the C one and the one a host sets to honour the
+   desktop's language, and `<<` of a plain `int` is grouped by it as well - a
+   STEP entity id or an OBJ face index written as `1.000` breaks a file that
+   carries no decimal number anywhere. Run
+   `python3 scripts/check_locale_numbers.py`; CI runs that too, but it reads
+   one file at a time and cannot see the locale of a stream a writer was
+   handed, so `Tests/ModelLocaleDecimalTest.cpp` is what holds the model
+   writers to it. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
    `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
    `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI

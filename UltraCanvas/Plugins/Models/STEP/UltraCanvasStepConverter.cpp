@@ -9,6 +9,7 @@
 
 #include "Models/STEP/UltraCanvasStepConverter.h"
 #include "Models/STEP/UltraCanvasStepFile.h"
+#include "UltraCanvasTextUtils.h"   // ClassicNumbers - Part 21 numbers are dot-decimal
 
 #include <algorithm>
 #include <cmath>
@@ -1297,7 +1298,12 @@ void Reader::Run() {
 class Writer {
 public:
     Writer(std::ostream& out, const ModelDocument& document, const ConversionOptions& options)
-            : out_(out), document_(document), options_(options) {}
+            : out_(out), document_(document), options_(options) {
+        // body_ is the Writer's own, so it is imbued once here rather than
+        // guarded: there is no caller's locale to give back. Every instance
+        // number in the file is written through it.
+        body_.imbue(std::locale::classic());
+    }
 
     bool Run(const std::string& name);
 
@@ -1341,6 +1347,11 @@ private:
 
 std::string Writer::Number(double value) const {
     std::ostringstream text;
+    // ISO 10303-21 reals are dot-decimal, and the separator between a
+    // parameter and the next is a comma - so a locale-rendered 1,5 does not
+    // merely misstate a coordinate, it changes CARTESIAN_POINT's arity and no
+    // CAD system will open the file.
+    text.imbue(std::locale::classic());
     // STEP reals must carry a decimal point. Unlike the mesh formats, there is
     // no six-digit mode here: the reason to write STEP at all is that the
     // numbers are exact, and a NURBS weight of cos(45 degrees) rounded to six
@@ -1800,6 +1811,11 @@ void Writer::Styles(const std::vector<std::pair<int, int>>& itemsAndMaterials) {
 }
 
 bool Writer::Run(const std::string& name) {
+    // The destination belongs to the caller, so it is guarded rather than
+    // imbued: the instance numbers below reach it through body_, but the
+    // header lines are written straight to it.
+    const ClassicNumbers dotDecimal(out_);
+
     const BrepData& brep = document_.Brep;
     if (brep.Solids.empty()) return false;
 

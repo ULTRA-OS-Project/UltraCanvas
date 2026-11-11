@@ -15,18 +15,30 @@
 // in the "C" locale and once in a comma-decimal one, and the two meshes must
 // match vertex for vertex. Where no comma-decimal locale is installed the
 // comparison is reported as skipped rather than passed.
+//
+// The writers are held to the same thing, through the other locale switch. A
+// stream renders its numbers through the C++ global locale, not the C one, so
+// a writer leaks into its file whatever a host set with std::locale::global -
+// `v 1,5 0 2`, which every other tool reads as a different vertex, or
+// `element vertex 12.227` for a mesh of 12227, which no reader accepts at
+// all. Each text writer's output is compared byte for byte between the two
+// locales; none of them embeds a date, so the two runs agree exactly unless
+// the locale leaked in.
+// Version: 1.1.0 - the writers too, byte for byte between the two locales
 // Version: 1.0.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModelPreview.h"
 #include "Models/UltraCanvasModelFormatsPlugin.h"
 #include "Models/UltraCanvasModelMesh3D.h"
 
+#include <algorithm>
 #include <clocale>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <locale>
 #include <string>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
@@ -62,6 +74,44 @@ ModelPreviewProvider RealProvider() {
     };
     return provider;
 }
+
+// Both locales at once, for the length of a scope: the C one that strtod,
+// atof and snprintf read, and the C++ global one that a stream copies when it
+// is constructed. They are separate switches and each reaches half of the
+// problem - setlocale alone leaves `stream << 1.5` writing `1.5`, which is why
+// the writers below need the global one to be tested at all. A host that calls
+// std::locale::global(std::locale("")) - the usual way an application honours
+// the desktop's language - sets it for everything loaded into that process,
+// this framework's writers included.
+class InLocale {
+public:
+    explicit InLocale(const char* name) : saved_(SavedCLocale()) {
+        std::setlocale(LC_ALL, name);
+        try {
+            std::locale::global(std::locale(name));
+            global_ = true;
+        } catch (const std::exception&) {
+            global_ = false;   // the C half alone; the stream half cannot be tested
+        }
+    }
+    ~InLocale() {
+        if (global_) std::locale::global(savedGlobal_);
+        std::setlocale(LC_ALL, saved_.c_str());
+    }
+    bool HasGlobal() const { return global_; }
+    InLocale(const InLocale&) = delete;
+    InLocale& operator=(const InLocale&) = delete;
+
+private:
+    static std::string SavedCLocale() {
+        const char* current = std::setlocale(LC_ALL, nullptr);
+        return current ? current : "C";
+    }
+
+    std::string saved_;
+    std::locale savedGlobal_;
+    bool global_ = false;
+};
 
 // A locale whose decimal point is a comma, or nullptr.
 const char* CommaDecimalLocale() {
@@ -145,11 +195,12 @@ int main(int argc, char** argv) {
             continue;
         }
         Mesh3D inC, inComma;
-        std::setlocale(LC_ALL, "C");
         const bool readC = provider.Load(path.string(), inC);
-        std::setlocale(LC_ALL, comma);
-        const bool readComma = provider.Load(path.string(), inComma);
-        std::setlocale(LC_ALL, "C");
+        bool readComma = false;
+        {
+            const InLocale german(comma);
+            readComma = provider.Load(path.string(), inComma);
+        }
         if (!readC) {
             Check(false, relative + " reads in \"C\"");
             continue;
@@ -159,6 +210,83 @@ int main(int argc, char** argv) {
         Check(readComma && SameMesh(inC, inComma, why),
               relative + ": the same " + std::to_string(inC.positions.size()) +
               " vertices in both" + (why.empty() ? "" : " - " + why));
+    }
+
+    // ===== THE WRITERS =====
+    //
+    // PreferBinary is off throughout: the binary encodings hold IEEE bytes and
+    // never met the locale, and PLY's default is binary, so the text writer
+    // this is here for would otherwise not run at all.
+    struct WriteCase {
+        const char* source;        // a document to write, read in "C"
+        const char* extension;     // the writer to write it with
+    };
+    // .wrl is missing on purpose: the X3D converter picks its classic VRML
+    // encoding from the file name, which ExportToMemory has none of, so it
+    // would only exercise the XML writer a second time.
+    const std::vector<WriteCase> writers = {
+        {"OBJ/E-45-Aircraft.obj", "obj"},
+        {"OBJ/E-45-Aircraft.obj", "ply"},
+        {"OBJ/E-45-Aircraft.obj", "x3d"},
+        {"OBJ/E-45-Aircraft.obj", "dae"},
+        {"STEP/Box.step", "step"},   // solids, not a mesh: STEP writes exact bodies
+    };
+    for (const WriteCase& test : writers) {
+        const fs::path path = media / test.source;
+        const std::string what = std::string(test.extension) + " written from " + test.source;
+        if (!fs::exists(UltraCanvas::PathFromUtf8(path))) {
+            std::printf("  [SKIP] %s (source not in this checkout)\n", what.c_str());
+            continue;
+        }
+        auto writer = UltraCanvasModelFormatsPlugin::CreateConverterForExtension(test.extension);
+        if (!writer || !writer->CanExport()) {
+            std::printf("  [SKIP] %s (no writer in this build)\n", what.c_str());
+            continue;
+        }
+
+        ConversionOptions options;
+        options.PreferBinary = false;
+        auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(path.string(), options);
+        if (!document) {
+            std::printf("  [SKIP] %s (the source does not read in this build)\n", what.c_str());
+            continue;
+        }
+
+        std::vector<uint8_t> inC, inComma;
+        const bool wroteC = writer->ExportToMemory(*document, inC, options);
+        bool wroteComma = false;
+        {
+            const InLocale german(comma);
+            if (!german.HasGlobal()) {
+                // Without the C++ global locale a stream still writes '.', so
+                // the comparison would pass whatever the writer does.
+                std::printf("  [SKIP] %s (\"%s\" is not a C++ locale here)\n",
+                            what.c_str(), comma);
+                continue;
+            }
+            wroteComma = writer->ExportToMemory(*document, inComma, options);
+        }
+        if (!wroteC) {
+            Check(false, what + " in \"C\"");
+            continue;
+        }
+        Check(wroteComma, what + " in \"" + comma + "\"");
+        std::string why;
+        if (wroteComma && inC != inComma) {
+            const size_t at = static_cast<size_t>(
+                    std::mismatch(inC.begin(), inC.end(), inComma.begin(), inComma.end()).first -
+                    inC.begin());
+            const size_t from = at > 40 ? at - 40 : 0;
+            const auto piece = [&](const std::vector<uint8_t>& bytes) {
+                return std::string(bytes.begin() + static_cast<long>(from),
+                                   bytes.begin() + static_cast<long>(std::min(bytes.size(),
+                                                                              at + 20)));
+            };
+            why = " - they part at byte " + std::to_string(at) + ": \"" + piece(inC) +
+                  "\" against \"" + piece(inComma) + "\"";
+        }
+        Check(wroteComma && inC == inComma,
+              what + ": the same " + std::to_string(inC.size()) + " bytes in both" + why);
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",

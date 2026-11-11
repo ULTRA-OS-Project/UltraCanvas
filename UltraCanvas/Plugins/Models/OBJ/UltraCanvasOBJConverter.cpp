@@ -675,6 +675,15 @@ private:
 
 void WriteGeometry(const ModelDocument& document, std::ostream& out,
                    const std::string& materialLibrary, const ConversionOptions& options) {
+    // The whole file, not only the coordinate blocks: ScopedPrecision below
+    // pins the decimal point as well, but it is taken per block, and the face
+    // lines are written between them. A face is all integers, so it looked
+    // like the one part of an OBJ that could not care about numbers - until a
+    // host set the C++ global locale and `f 1000/1000/1000` went out as
+    // `f 1.000/1.000/1.000`, because digit grouping is that locale's business
+    // too. Nothing reads that file.
+    const ClassicNumbers dotDecimal(out);
+
     out << "# Wavefront OBJ written by " << options.Generator << "\n";
     if (!document.Title.empty()) out << "# " << document.Title << "\n";
     if (!materialLibrary.empty()) out << "mtllib " << materialLibrary << "\n";

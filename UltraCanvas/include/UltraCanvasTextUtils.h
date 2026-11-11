@@ -17,6 +17,7 @@
 // Base32; the one crypto-relevant variant — decoding straight into a zeroizing
 // buffer — remains there as UltraCrypt_Base32Decode and calls the decoder below.
 //
+// Version: 1.2.0 - ClassicNumbers, for a stream a format is written THROUGH
 // Version: 1.1.0 - DecodeWindowsCodePage (moved from the .xls reader, for the .msg reader too)
 // Version: 1.0.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -26,6 +27,8 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <ios>
+#include <locale>
 #include <string>
 #include <vector>
 
@@ -138,6 +141,51 @@ bool TryParseFloat(const std::string& text, double& out);
 // Numbers shown to a person are the opposite case - a German reader expects
 // "12,5" - so leave display formatting to the locale.
 std::string FormatFloatClassic(double value, int precision = 6);
+
+// The same problem once more, for a writer that does not build its numbers as
+// strings but streams them. A stream renders every `<<` through its OWN
+// locale, copied from the C++ global locale when the stream was constructed -
+// which is a different switch from the C locale that strtod and snprintf
+// read, and is not the one setlocale() moves. It is the one a host sets with
+// std::locale::global(std::locale("")) to honour the desktop's language, and
+// it then applies to every writer loaded into that process.
+//
+// Hold one of these for as long as the writer is writing and the stream's
+// numbers are the format's: '.' for the decimal point and no digit grouping.
+// The stream gets its own locale back afterwards, because the stream usually
+// belongs to the caller - an application that hands a writer its std::ostream
+// has not asked for that stream to be changed.
+//
+//     bool Writer::Run(std::ostream& out) {
+//         const ClassicNumbers dotDecimal(out);   // until Run returns
+//         out << std::setprecision(9) << vertex.x << ' ' << vertex.y;
+//
+// Digit grouping is the half that is easy to miss, and it bites a format with
+// no floating-point number in it at all: under de_DE `out << 123456` writes
+// `123.456`, so a vertex count, a face index or a STEP entity id comes out
+// decorated with dots and the file is unreadable.
+//
+// For a stream the writer owns and nobody else sees, imbue it once where it is
+// declared (`stream.imbue(std::locale::classic())`) rather than guarding it -
+// there is no caller's locale to restore. This class is for the other case.
+//
+// It takes std::ios_base, so it guards an input stream the same way: a reader
+// extracting with `>>` reads through the same locale, where '.' is a digit
+// group separator and `1.5` fails to extract at all.
+class ClassicNumbers {
+public:
+    explicit ClassicNumbers(std::ios_base& stream)
+            : stream_(stream), previous_(stream.getloc()) {
+        stream_.imbue(std::locale::classic());
+    }
+    ~ClassicNumbers() { stream_.imbue(previous_); }
+    ClassicNumbers(const ClassicNumbers&) = delete;
+    ClassicNumbers& operator=(const ClassicNumbers&) = delete;
+
+private:
+    std::ios_base& stream_;
+    std::locale previous_;
+};
 
 // ---------------------------------------------------------------------------
 // Base64 (RFC 4648 §4)

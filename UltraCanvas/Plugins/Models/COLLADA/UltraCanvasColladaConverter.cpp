@@ -22,7 +22,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/COLLADA/UltraCanvasColladaConverter.h"
-#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat / ClassicNumbers
 
 #include "tinyxml2.h"
 
@@ -63,6 +63,13 @@ std::vector<double> ParseNumbers(const XMLElement* element) {
     std::vector<double> values;
     if (!element || !element->GetText()) return values;
     std::istringstream stream(element->GetText());
+    // A float_array is XML Schema doubles, and `>>` reads them through the
+    // stream's locale: where ',' is the decimal point, '.' is a digit-group
+    // separator instead, `1.5` fails to extract and the extraction stops
+    // there - so a <source> read under a host's own locale came back short or
+    // empty rather than slightly wrong. The stream is this function's own, so
+    // it is imbued here rather than guarded.
+    stream.imbue(std::locale::classic());
     double value = 0.0;
     while (stream >> value) values.push_back(value);
     return values;
@@ -72,6 +79,10 @@ std::vector<int> ParseIntegers(const XMLElement* element) {
     std::vector<int> values;
     if (!element || !element->GetText()) return values;
     std::istringstream stream(element->GetText());
+    // <p> and <vcount> are integers, and grouping is the same locale's
+    // business: a 1.000 that the writer meant as one thousand reads back as 1
+    // followed by 000, and the triangle list silently shifts.
+    stream.imbue(std::locale::classic());
     int value = 0;
     while (stream >> value) values.push_back(value);
     return values;
@@ -1181,6 +1192,12 @@ public:
 
     void Run(std::ostream& out) {
         ReportLosses();
+        // COLLADA's float_array and <matrix> are XML Schema doubles: dot
+        // decimal, no grouping, whatever the desktop is set to. ScopedPrecision
+        // below shapes how many digits each number gets; this decides what
+        // they are written with, which is the half that decides whether
+        // another tool can read the file at all.
+        const ClassicNumbers dotDecimal(out);
         ScopedPrecision digits(out, options_.Precision, true);
         out << std::fixed;
         out.unsetf(std::ios::fixed);   // default float format at the chosen precision
