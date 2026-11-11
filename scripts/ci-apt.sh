@@ -28,15 +28,28 @@
 # downloading packages it had downloaded the day before. With the .deb files
 # of the last run on main restored first, apt fetches only what changed.
 #
+# And the package lists with them: on 2026-11-11 azure.archive.ubuntu.com
+# could not even be resolved for a quarter of an hour, and every Linux job
+# stopped at `apt-get update` although the packages it needed were all in
+# the cache - apt will not use a package it has no list for. cache-out keeps
+# /var/lib/apt/lists beside the packages (the lists those packages came
+# from), cache-in puts them aside, and an `update` that cannot reach the
+# mirror in its attempts falls back to them with a warning (without them, to
+# the lists the runner image has). A failed update so never stops a job by
+# itself: the cached packages install without the mirror, and a package that
+# is not cached still needs it and fails at its install, naming it.
+#
 # Usage: scripts/ci-apt.sh update
 #        scripts/ci-apt.sh install [apt-get install options] package...
 #        scripts/ci-apt.sh cache-in DIR    the .deb files in DIR into apt's cache
 #        scripts/ci-apt.sh cache-out DIR   apt's cache, as installed, into DIR;
 #                                          prints a hash of the file names
 #
+# Version: 1.2.0 - the package lists kept with the packages; update falls back to
+#                  them when the mirror cannot be reached
 # Version: 1.1.0 - cache-in, cache-out: the downloaded packages kept between runs
 # Version: 1.0.0
-# Last Modified: 2026-10-24
+# Last Modified: 2026-11-11
 # Author: UltraCanvas Framework
 set -euo pipefail
 
@@ -47,6 +60,9 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 archives=/var/cache/apt/archives
+lists=/var/lib/apt/lists
+# Where cache-in puts the cached package lists until an update needs them
+fallback_lists=/var/lib/ci-apt/lists
 
 idle_limit="${CI_APT_IDLE:-120}"
 attempts="${CI_APT_ATTEMPTS:-3}"
@@ -114,7 +130,7 @@ fetch() {
             sleep 10
         fi
     done
-    echo "::error::apt-get did not complete in $attempts attempts: apt-get $*" >&2
+    echo "::${fetch_failure_level:-error}::apt-get did not complete in $attempts attempts: apt-get $*" >&2
     return 1
 }
 
@@ -122,7 +138,23 @@ command="${1:-}"
 shift || true
 case "$command" in
     update)
-        fetch update "$@"
+        # A failed update never stops a job by itself: the install that needs
+        # a package the job cannot get is what fails, and says which.
+        if fetch_failure_level=warning fetch update "$@"; then
+            exit 0
+        fi
+        # The mirror cannot be reached: the lists the cached packages came
+        # from, so that those install. A package not in the cache still fails.
+        if [[ -d "$fallback_lists" ]] && compgen -G "$fallback_lists/*_Packages*" >/dev/null; then
+            find "$lists" -maxdepth 1 -type f ! -name lock -delete
+            rm -rf "$lists/partial"
+            mkdir -p "$lists/partial"
+            cp -a "$fallback_lists"/. "$lists"/
+            echo "::warning::apt-get update could not reach the mirror: using the package lists kept with the package cache" >&2
+        else
+            echo "::warning::apt-get update could not reach the mirror: going on with the package lists the runner has" >&2
+        fi
+        exit 0
         ;;
     install)
         fetch install -y --download-only "$@"
@@ -149,11 +181,19 @@ case "$command" in
         # apt checks each file against the index before it uses it, so a
         # stale or damaged one is downloaded again rather than installed.
         echo "ci-apt: $restored package files restored into $archives"
+        # The lists those packages came from, kept aside for an update that
+        # cannot reach the mirror (see update).
+        if [[ -f "$dir/lists.tar" ]]; then
+            rm -rf "$fallback_lists"
+            mkdir -p "$fallback_lists"
+            tar -xf "$dir/lists.tar" -C "$fallback_lists"
+            echo "ci-apt: package lists kept aside ($(ls "$fallback_lists" | wc -l) files)"
+        fi
         ;;
     cache-out)
         dir="${1:?cache-out needs a folder}"
         mkdir -p "$dir"
-        rm -f "$dir"/*.deb
+        rm -f "$dir"/*.deb "$dir/lists.tar"
         # Only the version of each package now installed: an older one would
         # never be used again and would only grow the cache.
         kept=0
@@ -167,6 +207,10 @@ case "$command" in
                 kept=$(( kept + 1 ))
             fi
         done
+        # The lists these packages were installed from, for a later run whose
+        # update cannot reach the mirror (see update). Not part of the hash:
+        # the same packages are the same cache, and its lists are theirs.
+        tar -cf "$dir/lists.tar" -C "$lists" --exclude=lock --exclude=partial .
         if [[ -n "${SUDO_UID:-}" ]]; then
             chown -R "$SUDO_UID:${SUDO_GID:-$SUDO_UID}" "$dir"
         fi
