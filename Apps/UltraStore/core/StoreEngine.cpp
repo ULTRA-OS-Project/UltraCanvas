@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/StoreEngine.cpp
 // Install, update, remove, collect (StoreEngine.h).
+// Version: 0.4.0 - SyncLicences
 // Version: 0.3.0 - the update terms of a purchase, the licence file
 // Version: 0.2.0 - the URL signer for restricted packages
 // Version: 0.1.0
@@ -113,6 +114,17 @@ Result<void> StoreEngine::WriteLicenceFile(std::string_view appId) {
     const auto licence = registry_.GetLicence(appId);
     if (!licence) return Result<void>::Failure(licence.error.code, licence.error.message, licence.error.detail);
     return UltraStore::WriteLicenceFile(LicenceFilePath(root_, std::string(appId)), licence.Value().token);
+}
+
+Result<LicenceSync> StoreEngine::SyncLicences(const std::string& paymentUrl, const std::string& licenceKeyHex, const HttpCall& http) {
+    const auto sync = UltraStore::SyncLicences(registry_, paymentUrl, licenceKeyHex, http);
+    if (!sync) return sync;
+    std::error_code ec;
+    for (const std::string& app : sync.Value().revoked) fs::remove(PathFromUtf8(LicenceFilePath(root_, app)), ec);
+    for (const std::string& app : sync.Value().renewed) {
+        if (fs::is_regular_file(PathFromUtf8(LicenceFilePath(root_, app)), ec)) WriteLicenceFile(app);   // installed: the file follows
+    }
+    return sync;
 }
 
 Result<InstallOutcome> StoreEngine::Install(const Catalog& catalog, std::string_view appId, const PlatformInfo& platform,

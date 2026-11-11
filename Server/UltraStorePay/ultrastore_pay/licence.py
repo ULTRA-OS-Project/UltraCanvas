@@ -4,7 +4,11 @@ A licence is "ULIC1." + base64url(payload JSON) + "." + base64url(Ed25519
 signature over the payload bytes), signed with this service's licence key;
 the public half is GET /v1/keys, which the store trusts (through the catalog
 in a later schema). The payload names the licence, the app, the order, the
-day and what the purchase includes, so the app verifies it offline."""
+day and what the purchase includes, so the app verifies it offline. A
+subscription's licence names the day it is valid until (`valid_until`,
+the paid period plus the grace days); each renewal re-issues it with a
+later day, and the store fetches the new token when it syncs its
+licences."""
 
 from __future__ import annotations
 
@@ -44,10 +48,13 @@ class LicenceKey:
     def public_hex(self) -> str:
         return self._key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw).hex()
 
-    def issue(self, *, licence_id: str, app: str, order_id: str, issued: str, updates: str, updates_until: str = "") -> str:
+    def issue(self, *, licence_id: str, app: str, order_id: str, issued: str, updates: str, updates_until: str = "",
+              valid_until: str = "") -> str:
         payload = {"v": 1, "licence": licence_id, "app": app, "order": order_id, "issued": issued, "updates": updates}
         if updates_until:
             payload["updates_until"] = updates_until
+        if valid_until:
+            payload["valid_until"] = valid_until
         body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
         return PREFIX + _b64(body) + "." + _b64(self._key.sign(body))
 

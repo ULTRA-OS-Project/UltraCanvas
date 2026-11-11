@@ -31,7 +31,11 @@ class Settings:
     skrill_pay_to_email: str = ""         # the merchant account
     skrill_secret_word: str = ""          # signs the status report (md5sig)
     skrill_merchant_id: str = ""          # part of that signature
-    skrill_api_password: str = ""         # the API / MQI password (status queries, refunds; not used yet)
+    skrill_api_password: str = ""         # the API / MQI password: refunds, cancelling a recurring payment
+    skrill_api_url: str = "https://www.skrill.com/app"   # the Automated Payments Interface (refund.pl, query.pl)
+    # A subscription's licence stays valid this many days past the paid
+    # period, while Skrill retries a failed renewal.
+    subscription_grace_days: int = 7
     # The signed catalog this service prices from, and the keys it trusts.
     catalog_url: str = ""                 # the base: <url>/catalog.json and .sig
     catalog_keys: list[str] = field(default_factory=list)   # hex Ed25519 public keys
@@ -62,6 +66,8 @@ class Settings:
         s.skrill_secret_word = env("ULTRASTORE_SKRILL_SECRET_WORD", "")
         s.skrill_merchant_id = env("ULTRASTORE_SKRILL_MERCHANT_ID", "").strip()
         s.skrill_api_password = env("ULTRASTORE_SKRILL_API_PASSWORD", "")
+        s.skrill_api_url = env("ULTRASTORE_SKRILL_API_URL", s.skrill_api_url).rstrip("/")
+        s.subscription_grace_days = int(env("ULTRASTORE_PAY_GRACE_DAYS", s.subscription_grace_days))
         s.catalog_url = env("ULTRASTORE_PAY_CATALOG_URL", "").rstrip("/")
         s.catalog_keys = _list("ULTRASTORE_PAY_CATALOG_KEYS")
         s.catalog_ttl_seconds = int(env("ULTRASTORE_PAY_CATALOG_TTL", s.catalog_ttl_seconds))

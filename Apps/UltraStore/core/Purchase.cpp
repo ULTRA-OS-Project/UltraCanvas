@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Purchase.cpp
 // Buying through the payment service (Purchase.h).
+// Version: 0.3.0 - subscriptions, revoked licences, SyncLicences
 // Version: 0.2.0 - what the purchase includes, the licence file
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -70,6 +71,12 @@ Order OrderOf(const UltraCanvas::JSONValue& v) {
     o.licenceId = v.Get("licence_id").GetString();
     o.licence = v.Get("licence").GetString();
     o.receiptNo = static_cast<int>(v.Get("receipt_no").GetInteger(0));
+    o.cycle = v.Get("cycle").GetString();
+    o.paidUntil = v.Get("paid_until").GetString();
+    o.validUntil = v.Get("valid_until").GetString();
+    o.subscriptionStatus = v.Get("subscription_status").GetString();
+    o.revoked = v.Get("revoked").GetBoolean(false);
+    o.revokedReason = v.Get("revoked_reason").GetString();
     return o;
 }
 
@@ -143,6 +150,16 @@ Result<Order> OrderStatus(const std::string& paymentUrl, const std::string& orde
     return R::Succeed(std::move(order));
 }
 
+Result<Order> CancelSubscription(const std::string& paymentUrl, const std::string& orderId, const std::string& secret, const HttpCall& http) {
+    using R = Result<Order>;
+    const auto answer = Answer(http("POST", TrimSlash(paymentUrl) + "/v1/orders/" + Encode(orderId) + "/subscription/cancel?secret=" + Encode(secret), "{}"),
+                               "cancel");
+    if (!answer) return R::Failure(answer.error.code, answer.error.message, answer.error.detail);
+    Order order = OrderOf(answer.Value());
+    order.secret = secret;
+    return R::Succeed(std::move(order));
+}
+
 Result<std::string> SignedDownloadUrl(const std::string& paymentUrl, const std::string& orderId, const std::string& secret,
                                       const std::string& file, const HttpCall& http) {
     using R = Result<std::string>;
@@ -179,6 +196,10 @@ bool Licence::Covers(const std::string& releaseDate) const {
     if (updates == "never") return issued.empty() || releaseDate <= issued;
     if (updates == "until") return updatesUntil.empty() || releaseDate <= updatesUntil;
     return true;   // a term this store does not know: not its place to refuse
+}
+
+bool Licence::ValidOn(const std::string& day) const {
+    return validUntil.empty() || day.empty() || day <= validUntil;
 }
 
 std::string Licence::UpdateTerms() const {
@@ -218,6 +239,7 @@ Result<Licence> ParseLicence(const std::string& token) {
     l.app = v.Get("app").GetString();
     l.orderId = v.Get("order").GetString();
     l.issued = v.Get("issued").GetString();
+    l.validUntil = v.Get("valid_until").GetString();   // a subscription's licence
     l.updates = v.Get("updates").GetString();
     l.updatesUntil = v.Get("updates_until").GetString();
     if (l.licenceId.empty() || l.app.empty()) return R::Failure(ErrorCode::ParseError, "The licence names no app");
@@ -293,6 +315,35 @@ LicenceRecord LicenceRecordOf(const Order& order, const Licence& licence) {
     r.currency = order.currency;
     r.receiptNo = order.receiptNo;
     return r;
+}
+
+Result<LicenceSync> SyncLicences(SqliteRegistry& registry, const std::string& paymentUrl, const std::string& licenceKeyHex, const HttpCall& http) {
+    using R = Result<LicenceSync>;
+    if (paymentUrl.empty()) return R::Failure(ErrorCode::NotAvailable, "The catalog names no payment service");
+    const auto all = registry.Licences();
+    if (!all) return R::Failure(all.error.code, all.error.message, all.error.detail);
+    LicenceSync sync;
+    for (const LicenceRecord& record : all.Value()) {
+        const auto now = OrderStatus(paymentUrl, record.orderId, record.orderSecret, http);
+        if (!now) { sync.failed.emplace_back(record.app, now.error); continue; }
+        const Order& order = now.Value();
+        if (order.revoked || order.status == "refunded" || order.status == "chargeback") {
+            if (const auto gone = registry.RemoveLicence(record.app); !gone) { sync.failed.emplace_back(record.app, gone.error); continue; }
+            sync.revoked.push_back(record.app);
+            continue;
+        }
+        if (!order.Paid() || order.licence.empty() || order.licence == record.token) continue;
+        // A re-issued token: the same licence, a later day.
+        if (!licenceKeyHex.empty()) {
+            if (const auto verified = VerifyLicence(order.licence, licenceKeyHex); !verified) { sync.failed.emplace_back(record.app, verified.error); continue; }
+        }
+        LicenceRecord renewed = record;
+        renewed.token = order.licence;
+        if (!order.licenceId.empty()) renewed.licenceId = order.licenceId;
+        if (const auto kept = registry.PutLicence(renewed); !kept) { sync.failed.emplace_back(record.app, kept.error); continue; }
+        sync.renewed.push_back(record.app);
+    }
+    return R::Succeed(std::move(sync));
 }
 
 } // namespace UltraStore
