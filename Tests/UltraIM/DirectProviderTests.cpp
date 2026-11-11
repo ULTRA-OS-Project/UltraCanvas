@@ -5,6 +5,8 @@
 // Version: 0.1.8 - the authenticator's setup code waits for a 30-second step with room left: computed a
 //                  step back and checked after the password work, it was refused when a step boundary
 //                  passed in between, and the wrong codes it then counted paused the rest
+// Version: 0.1.8 - the relay's WebSocket probed once it is up: a uvicorn without a WebSocket library fails
+//                  the suite with one line naming the package, not with every relayed check
 // Version: 0.1.7 - the e-mail confirmed by the link the relay e-mails; recovery by an e-mailed link, approved on
 //                  its page while the new computer asks (FinishRecovery: NeedsInput until then)
 // Version: 0.1.6 - the e-mail and phone confirmed with the relay's codes, recovery on, and the ID recovered on a
@@ -55,6 +57,7 @@
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -276,12 +279,54 @@ int FreePort(int from) {
     return from;
 }
 
+// Why the relay's WebSocket cannot be used, or empty when it can. One raw
+// upgrade of /v1/ws without a token: a relay that speaks WebSocket refuses
+// it (403), while a uvicorn without a WebSocket library answers 404 (it says
+// so once in its log, and every relayed check would fail after it: no
+// presence, no push, no calls).
+std::string WebSocketProblem(int port) {
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return "no socket for the WebSocket probe";
+    timeval timeout{};
+    timeout.tv_sec = 5;
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    std::string problem;
+    if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0) {
+        problem = "the relay's port does not answer the WebSocket probe";
+    } else {
+        const std::string request = "GET /v1/ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+                                    "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                                    "Sec-WebSocket-Version: 13\r\n\r\n";
+        if (::send(fd, request.data(), request.size(), 0) != static_cast<ssize_t>(request.size())) {
+            problem = "the WebSocket upgrade was not sent";
+        } else {
+            char buffer[256] = {};
+            const ssize_t n = ::recv(fd, buffer, sizeof buffer - 1, 0);
+            const std::string head = n > 0 ? std::string(buffer, static_cast<size_t>(n)) : std::string();
+            if (head.rfind("HTTP/1.", 0) != 0 || head.size() < 12)
+                problem = "no HTTP answer to the WebSocket upgrade";
+            else if (head.compare(9, 3, "404") == 0)
+                problem = "the relay's uvicorn has no WebSocket library: pip install 'uvicorn[standard]'";
+        }
+    }
+    ::close(fd);
+    return problem;
+}
+
 struct Relay {
     pid_t pid = -1;
     std::string url;
+    std::string problem;   // why Start failed, for the one line that reports it
 
     bool Start(const fs::path& dataDir) {
-        if (std::system("python3 -c 'import fastapi, uvicorn, cryptography' >/dev/null 2>&1") != 0) return false;
+        if (std::system("python3 -c 'import fastapi, uvicorn, cryptography' >/dev/null 2>&1") != 0) {
+            problem = "no python3 with fastapi, uvicorn, cryptography";
+            return false;
+        }
         // Three tries: the port is probed free, but another process can
         // still take it between the probe and the relay's bind.
         for (int attempt = 0; attempt < 3; ++attempt) {
@@ -305,7 +350,12 @@ struct Relay {
                 UltraNetResponse response;
                 UltraNetHttpOptions options;
                 options.timeoutMs = 1000;
-                if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 200) return true;
+                if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 200) {
+                    problem = WebSocketProblem(port);
+                    if (problem.empty()) return true;
+                    Stop();   // no port can mend a missing library
+                    return false;
+                }
                 int status = 0;
                 if (waitpid(pid, &status, WNOHANG) == pid) { pid = -1; break; }   // gone: the bind failed, or no module
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -313,6 +363,7 @@ struct Relay {
             Stop();
             std::printf("DirectProviderTests: the relay did not come up on port %d (try %d)\n", port, attempt + 1);
         }
+        problem = "the relay did not come up";
         return false;
     }
     void Stop() {
@@ -1094,8 +1145,7 @@ void TestEndToEnd() {
     if (!relay.Start(base)) {
         // CI sets the variable: there a skip would read as a pass.
         const bool required = !UltraCanvas::GetEnvUtf8("ULTRAIM_TEST_RELAY_REQUIRED").empty();
-        std::printf("DirectProviderTests: %s end to end (no python3 with fastapi, uvicorn, cryptography)\n",
-                    required ? "FAIL" : "SKIP");
+        std::printf("DirectProviderTests: %s end to end (%s)\n", required ? "FAIL" : "SKIP", relay.problem.c_str());
         CHECK(!required);
         return;
     }
