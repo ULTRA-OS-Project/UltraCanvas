@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.7.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
 // Version: 0.7.0 - resident (--background, started by UltraDesktop): a close hides the window
 // Version: 0.6.0 - the Print Screen key starts a snip, taken from the system (StartExclusive)
 // Version: 0.5.1 - the Start button as wide as its measured icon and text
@@ -161,7 +162,7 @@ std::shared_ptr<UltraCanvasSegmentedControl> MakeIconChoice(const std::string& i
                                                             const std::vector<std::pair<std::string, std::string>>& segments) {
     auto control = CreateSegmentedControl(id, 0, 0, static_cast<long>(segments.size()) * kChoiceWidth, kControlHeight);
     SegmentedControlStyle look = control->GetStyle();
-    look.fontSize = SettingsPageKit::kTextFontSize;
+    look.fontSize = SettingsPageKit::TextFontSize();
     look.iconSize = 16;
     look.iconAsMask = true;
     look.paddingHorizontal = 6;
@@ -227,7 +228,7 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     for (int seconds : kDelays) delayItems.push_back(TrF("{0} s", seconds));
     delays_ = CreateSegmentedControl("snip.delay", 0, 0, 0, kControlHeight);
     SegmentedControlStyle delayLook = delays_->GetStyle();
-    delayLook.fontSize = SettingsPageKit::kTextFontSize;
+    delayLook.fontSize = SettingsPageKit::TextFontSize();
     delayLook.paddingHorizontal = 6;
     delayLook.paddingVertical = 4;
     delayLook.cornerRadius = 4.0f;
@@ -289,7 +290,7 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     // lines in any language; the saved file's whole path is the tooltip
     status_ = CreateLabel("snip.status", "");
     status_->SetTextColor(kStatusText);
-    status_->SetFontSize(SettingsPageKit::kNoteFontSize);
+    status_->SetFontSize(SettingsPageKit::NoteFontSize());
     status_->SetWrap(TextWrap::WrapWord);
     status_->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     status_->size.height = CSSLayout::Dimension::Px(kBarHeight);
