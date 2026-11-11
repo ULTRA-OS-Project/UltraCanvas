@@ -577,9 +577,14 @@ write back out; HTML output floats them with CSS. A floating picture is
 selected, resized and described like any other. In a table cell or a header
 it stays in the line.
 
-The wrap works a paragraph at a time: a paragraph that starts beside a picture
-is narrowed as a whole, so a long one beside a short picture stays narrow below
-it too.
+The wrap works line by line, as in Writer: a paragraph beside a picture is
+narrowed only for the lines level with it, and its lines below the picture
+take the column's full width again. A top-and-bottom picture set lower down
+in its own paragraph (`imageOffsetYPt`) keeps the lines that fit above it
+there and continues the paragraph below it. (Such a paragraph is laid out in
+two parts joined into one layout, so the caret, clicks and selection treat
+it as one.) A paragraph that would be left too narrow beside a picture
+starts below it instead.
 
 **Placed from the page.** By default a float counts across from the text
 column and down from its paragraph. `floatHorizontalFrom` and

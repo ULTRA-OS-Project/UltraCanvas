@@ -1106,6 +1106,7 @@ int main() {
         box.text = RichTextRun::kObjectReplacement;
         box.frameIndex = 0;
         box.imageWidthPt = 300.0f;
+        box.imageHeightPt = 400.0f;                    // taller than the paragraph
         box.imageWrap = RichTextRun::ImageWrap::Square;
         box.imageFloatAlign = RichTextAlign::Right;
         RichTextRun words;
@@ -1126,6 +1127,74 @@ int main() {
              rightmost > 100.0f && rightmost < 380.0f);
         TEST("Plain text spells the frame's text before its paragraph",
              document->ToPlainText().rfind("Sender Company", 0) == 0);
+
+        // A short frame (a single line's height): only the lines level with
+        // it are narrowed, the ones below take the column's full width.
+        RichTextRun shortBox = box;
+        shortBox.imageHeightPt = 12.0f;
+        RichDocBlock longParagraph;
+        RichTextRun longWords;
+        for (int i = 0; i < 120; i++) longWords.text += "word" + std::to_string(i) + " ";
+        longParagraph.runs = {shortBox, longWords};
+        document->frames[0].blocks.front().runs.front().text = "S";
+        document->blocks = {longParagraph};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float firstLineRight = 0.0f, laterRight = 0.0f;
+        const int longLength = static_cast<int>(editor.BlockText(0).size());
+        float firstTop = -1.0f;
+        for (int offset = 3; offset <= longLength; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const Rect2Df caret = edit->GetCaretRectForTest();
+            if (firstTop < 0.0f) firstTop = caret.y;
+            if (std::abs(caret.y - firstTop) < 2.0f) firstLineRight = std::max(firstLineRight, caret.x);
+            else if (caret.y > firstTop + 60.0f) laterRight = std::max(laterRight, caret.x);
+        }
+        TEST("Beside a short frame only its own lines are narrowed: first line to " + std::to_string(firstLineRight)
+             + ", later lines to " + std::to_string(laterRight),
+             firstLineRight < 380.0f && laterRight > 600.0f);
+        // A click on a later line lands in the text below the frame.
+        editor.SetCaret(RichDocPosition(0, longLength));
+        window->UpdateAndRender();
+        const Rect2Df end = edit->GetCaretRectForTest();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, static_cast<int>(end.x) - 1, static_cast<int>(end.y + end.height / 2)));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, static_cast<int>(end.x) - 1, static_cast<int>(end.y + end.height / 2)));
+        window->UpdateAndRender();
+        TEST("...and clicks there land in it", editor.GetCaret().blockIndex == 0
+             && editor.GetCaret().byteOffset > longLength - 8);
+
+        // A top-and-bottom picture set lower down in its paragraph: the lines
+        // above it stay above, the rest go on below it.
+        RichTextRun picture;
+        picture.text = RichTextRun::kObjectReplacement;
+        picture.mediaIndex = document->AddMedia("dot.png", "image/png", kDotPng);
+        picture.imageWidthPt = 60.0f;
+        picture.imageHeightPt = 60.0f;                 // 80 px
+        picture.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+        picture.imageFloatAlign = RichTextAlign::Right;
+        picture.imageOffsetYPt = 40.0f;                // 53 px down: two lines fit above
+        RichDocBlock withPicture;
+        withPicture.runs = {picture, longWords};
+        document->blocks = {withPicture};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 4));
+        window->UpdateAndRender();
+        const float startY = edit->GetCaretRectForTest().y;
+        float largestGap = 0.0f, previous = startY;
+        for (int offset = 4; offset <= longLength; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const float y = edit->GetCaretRectForTest().y;
+            largestGap = std::max(largestGap, y - previous);
+            previous = y;
+        }
+        TEST("Text starts above a picture set lower in its paragraph and goes on below it: first line at "
+             + std::to_string(startY) + ", gap " + std::to_string(largestGap),
+             startY < 40.0f && largestGap > 80.0f);
     }
 
     // ===== BLOCKS RUNNING OVER PAGES =====

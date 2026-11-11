@@ -98,6 +98,10 @@ namespace UltraCanvas {
 
         const std::vector<int> fontZoomPercents = {50,65,80,90,100,110,125,150,175,200};
         int fontZoomPercent = 100;
+        // A word-processing tab's zoom following the window in page view:
+        // "width" (the page fills the width), "page" (the whole page in
+        // view), or empty for fontZoomPercent.
+        std::string pageZoomFit;
         float defaultFontSize = 10.0;
 
         // Autosave settings
@@ -807,6 +811,10 @@ namespace UltraCanvas {
          */
         void SetDefaultFontSize(float fontSize);
         void SetFontZoomPercent(int percent);
+        // "width" or "page": word-processing tabs zoom to the page's width or
+        // the whole page (see config.pageZoomFit); text tabs keep their zoom.
+        void SetPageZoomFit(const std::string& fit);
+        void ApplyPageZoomFit(UltraCanvasRichTextEdit& view) const;
 
         /**
          * @brief Get current font size

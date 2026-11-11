@@ -22,6 +22,12 @@
   - Markdown, HTML and plain text spell a frame's text before its paragraph
     (`UCRichDocument::WithFramesInline`).
   - New fixture `Tests/fixtures/word-frames.*`.
+- **`UltraCanvasRichTextEdit`: text wraps round floats line by line.** A
+  paragraph beside a floating picture or frame is narrowed only for the lines
+  level with it; its lines below take the column's full width again, as in
+  Writer. A top-and-bottom picture set lower down in its paragraph keeps the
+  lines that fit above it there and continues the paragraph below it. Before,
+  the whole paragraph was narrowed, or moved below the picture.
 - **`UltraCanvasRichTextEdit::SetZoomFit`: page width and whole page.** In
   page view the zoom follows the element's size, so a narrow window shows the
   whole page. `SetZoom` and Ctrl+wheel end it; printing stays at 100 %.

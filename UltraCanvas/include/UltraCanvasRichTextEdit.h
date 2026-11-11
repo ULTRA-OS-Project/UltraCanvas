@@ -705,6 +705,13 @@ private:
         // beside this block (pixels); set by the placement pass.
         float intrudeLeft = 0.0f;
         float intrudeRight = 0.0f;
+        // How far down the block (layout pixels) that room is taken; 0 = all
+        // of it. Lines below take the column's full width again.
+        float intrudeUntil = 0.0f;
+        // Its own top-and-bottom picture lower down in it: the lines below
+        // `jumpFrom` (layout pixels) go on from `jumpTo`, under the picture.
+        float jumpFrom = 0.0f;
+        float jumpTo = 0.0f;
         // Page view: the pieces of a block that runs over a page end, one per
         // page - layout y range [from, to) drawn at content y `top`, below a
         // repeat of the table's header rows `headerHeight` tall. Empty = the
@@ -800,6 +807,8 @@ private:
     // beside a square one - relaying it out when that changes). Returns the
     // block's top.
     float FlowAroundFloats(IRenderContext* ctx, int index, float top, std::vector<PlacedFloat>& pageFloats);
+    void SplitBesideFloat(IRenderContext* ctx, const RichDocBlock& block, int blockIndex, BlockLayout& bl,
+                          float fullIndent);
     void DrawFloats(IRenderContext* ctx, bool behindText);
 
     // ===== EDITING A HEADER OR FOOTER =====

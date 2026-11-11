@@ -112,12 +112,12 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Page size, margins, orientation | yes | yes | yes | yes | yes | 2026-09. `UCRichDocument::page` (`RichPageSetup`): size, margins and header/footer distances, from the ODF page layout, DOCX `w:sectPr` and the DOC section (SEP). Page view draws the pages and uses the page's text column. Both writers save it. Only the first section's page is read. |
 | Headers and footers | yes | yes | yes | yes | yes | 2026-09. `pageFurniture` and `firstPageFurniture` (another first page: ODF `style:header-first` or a first master page with a next style, DOCX `w:titlePg`, DOC first-page stories). Drawn on every page in page view, and above and below the body otherwise. Both writers save them. Even/odd headers are not read. |
 | Page number and page count fields | yes | yes | yes | yes | yes | 2026-09. `RichTextRun::field`: ODF `text:page-number` / `text:page-count`, DOCX `PAGE` / `NUMPAGES` / `SECTIONPAGES` (complex and simple fields), DOC field codes. Page view fills in each page's numbers in headers and footers. |
-| Dates and other fields | *partial* | *partial* | *partial* | — | — | Their last displayed value is kept as text. |
+| Dates and other fields | *partial* | *partial* | *partial* | no | — | Their last displayed value is kept as text. Captions and cross-references are real fields (see below). |
 | Footnotes / endnotes | yes | yes | no | yes | yes | `UCRichDocument::notes` with numbered reference runs; footnotes at the foot of their page in page view, endnotes after the body. DOC: the note text is not read yet. |
-| Table of contents and indexes | yes | no | *partial* | — | — | ODT: the generated text (`text:index-body`) is read (2026-09). DOCX TOCs are fields inside `w:sdt`. DOC shows the field result. |
-| Sections, multiple columns | *partial* | no | no | no | no | Hidden sections are dropped; columns are flattened. |
-| Comments, tracked changes | no | *partial* | no | no | no | DOCX keeps inserted text. |
-| Bookmarks, cross references | no | no | no | no | no | The reference text itself comes through. |
+| Table of contents and indexes | yes | yes | *partial* | yes | yes | Contents entries are `RichDocBlock::tocLevel` paragraphs whose page numbers are `PageReference` fields; `UpdateTableOfContents` rebuilds them. ODT: the generated text (`text:index-body`) of every index is read; only a table of contents gets `tocLevel`. DOCX: "TOC 1-9" paragraphs, also inside `w:sdt`. DOC shows the field result. Both writers save a table of contents. Alphabetical and other indexes are plain text. |
+| Sections, multiple columns | yes | yes | no | yes | *partial* | `RichSectionSetup` (columns, gap, new page) in `UCRichDocument::firstSection` and `RichDocBlock::sectionStart` / `section`; ODF `text:section` with `style:columns`, DOCX `w:sectPr` with `w:cols` / `w:type`. Page view flows a section column by column; the continuous view draws one column. Unequal column widths become equal, and a section's own page size is not read. Hidden ODT sections are dropped. Both writers save them. |
+| Comments, tracked changes | yes | yes | no | yes | yes | Comments: `UCRichDocument::comments` (`RichComment`), anchored by `RichTextRun::commentIds`; ODF `office:annotation`, DOCX `comments.xml`. Tracked changes: `RichTextRun::change` / `revision` into `UCRichDocument::revisions`; ODF `text:tracked-changes`, DOCX `w:ins` / `w:del` / `w:moveTo` / `w:moveFrom`. The view shades commented text with a comment pane beside it, underlines insertions and strikes through deletions. Both writers save them. Format changes are not kept. DOC does not read comments or revision marks. |
+| Bookmarks, cross references | yes | yes | no | yes | yes | `RichDocBlock::bookmarks` (paragraph-level; where a bookmark ends is not kept) and `RichTextRun::Field` `Sequence` / `Reference` / `PageReference` with `fieldArgument`; ODF `text:bookmark`, `text:sequence`, `text:bookmark-ref`; DOCX `w:bookmarkStart`, `SEQ` / `REF` / `PAGEREF`. `UpdateFields` renumbers captions and references; page view fills in page references. Both writers save them. DOC: only the field's result text. |
 | Document metadata | yes | yes | no | yes | — | |
 
 ## Checked against real documents
@@ -162,17 +162,18 @@ and the page model: page size, margins, headers, footers, page number
 fields and page view. Since then: blocks split across pages (widow and
 orphan control, repeated table header rows), footnotes and endnotes, zoom
 and sideways scrolling, and (2026-11) positioned frames, text boxes and
-floating pictures placed from the page, and zoom to the page's width or the
-whole page (`UltraCanvasRichTextEdit::SetZoomFit`).
+floating pictures placed from the page, text wrapping round them line by
+line, and zoom to the page's width or the whole page
+(`UltraCanvasRichTextEdit::SetZoomFit`).
 
-1. **Text wrapping line by line round a frame.** Today the whole paragraph
-   beside a square-wrapped frame or picture is narrowed; Writer narrows only
-   the lines beside it and gives the rest the full width.
-2. **Frames in headers and footers** (a Word letterhead's logo and sender
+1. **Frames in headers and footers** (a Word letterhead's logo and sender
    block often live there), and **DOC shapes in headers** (`PlcSpaHdr`).
-3. **DOC merged cells and footnotes** (the footnote text lies after the main
-   text in the piece table: `ccpFtn`).
-4. Comments, tracked changes, shapes, charts: read-only display first.
+2. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
+   (their text lies after the main text in the piece table: `ccpFtn`,
+   `ccpEdn`), comments and revision marks, sections and their columns,
+   bookmarks and caption / cross-reference fields. ODT and DOCX read all of
+   these.
+3. Shapes and charts: read-only display first.
 
 Each can be checked against a LibreOffice-generated fixture the way
 `Tests/fixtures/word97-formatting.*` is.
@@ -183,10 +184,9 @@ Found while checking real documents against Writer. Each is something the
 model or a reader can already carry, or that a document needs, but
 `UltraCanvasRichTextEdit` does not draw or edit:
 
-- **Text wraps round a frame or floating picture paragraph by paragraph.**
-  A paragraph beside one is narrowed for all of its lines, and one that
-  overlaps a top-and-bottom picture starts below it; Writer does both line
-  by line. A frame's distance from the text is a fixed 9 pt.
+- **A frame's distance from the text is a fixed 9 pt**, whatever the
+  document says, and text wraps round a frame's rectangle, not round a
+  picture's outline (Writer's contour wrap).
 - **Frames in headers, footers, table cells and other frames** do not
   float: their text is drawn in line where they are anchored (cells drop
   it).
