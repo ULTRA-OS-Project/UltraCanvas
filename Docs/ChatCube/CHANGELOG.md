@@ -1,3 +1,10 @@
+#### 2026-11-11 *0.1.18*
+- **Settings > Appearance > Look: *System*.** Beside *Light* and *Dark*, the
+  computer's own look - its light or dark mode, and the Look page of
+  UOS-Settings over it - is the default. The theme is set under the
+  application's `Own` policy with `ThemeFor` as the provider; the look is
+  still decided when ChatCube starts, and the fonts are the desktop's.
+
 #### 2026-11-11 *0.1.17*
 - **A right click on a message opens a menu.**
   - **Open** and **Save as** for a picture, a video or a file, received or
