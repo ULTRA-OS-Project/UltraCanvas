@@ -1,9 +1,10 @@
 // Plugins/UltraIM/direct/DirectStore.h
 // ChatCube Direct - the device's own record: contacts and their keys,
 // conversations, message history and the outbox (SQLite via UltraDatabase)
+// Version: 0.1.2 - Search; the messages with a link in them noted by id (the links table)
 // Version: 0.1.1 - a message's attachment kept with it; the parts of a file on its way in
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -72,6 +73,10 @@ public:
     // Oldest first; beforeClientId "" = the newest page.
     std::vector<UltraIMMessage> Messages(const std::string& conversationId,
                                          const std::string& beforeClientId, int limit);
+    // What a search is for, newest first (UltraIMMessageSearch: one
+    // conversation or, with conversationId "", all of them). The cursor is
+    // the place in the history the page before stopped at.
+    UltraIMSearchPage Search(const UltraIMMessageSearch& search);
     // Own messages in the conversation that the peer has not read yet, and
     // incoming ones not reported read.
     std::vector<std::string> UnreadIncoming(const std::string& conversationId);

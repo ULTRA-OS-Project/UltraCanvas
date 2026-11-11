@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.8 - ABI 4: SearchMessages (words, pictures, files and links in the history)
 // Version: 0.1.7 - ABI 3: confirming the e-mail (by a link) and the phone (by a code), and account recovery
 //                  by a link e-mailed to the owner (FinishRecovery asks whether it was approved)
 // Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
@@ -10,7 +11,7 @@
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
 // Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -317,6 +318,20 @@ public:
         if (onResult) onResult(Unsupported("account recovery"));
     }
 
+    // ---- Searching the history ---------------------------------------------------
+    // (SearchMessages capability.) The messages matching search, newest
+    // first, a page at a time (UltraIMMessageSearch, UltraIMSearchPage). Each
+    // provider answers from wherever its history lives: its own database
+    // (ChatCube Direct), its service's search (Telegram), or the history read
+    // page by page and matched on this device, which is the only way into an
+    // encrypted conversation (Matrix - UltraIM_SearchByFetching does it for
+    // any provider with FetchMessages). NotFound for a conversation the
+    // provider does not have.
+    virtual void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) {
+        (void)search;
+        if (onResult) onResult(Unsupported("searching messages"), UltraIMSearchPage());
+    }
+
 protected:
     static UltraIMResult Unsupported(const std::string& what) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
@@ -352,9 +367,10 @@ protected:
 // sign-in protection, UltraIMCredentials::email - and the version check.
 // Version 3 (2026-11): the profile's verified flags and recovery state,
 // confirming the e-mail and phone, account recovery by an e-mailed link.
+// Version 4 (2026-11): SearchMessages and its types.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 3;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 4;
 
 struct UltraIMPluginHost {
     int abiVersion;

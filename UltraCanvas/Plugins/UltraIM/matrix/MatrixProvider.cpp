@@ -113,7 +113,7 @@ UltraIMCapabilityFlags MatrixProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     const F flags = F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
                     F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-                    F::CreateGroup | F::ImageMessages | F::FileTransfer;
+                    F::CreateGroup | F::ImageMessages | F::FileTransfer | F::SearchMessages;
     return OlmAvailable() ? flags | F::E2EEncryption : flags;
 }
 
@@ -1204,6 +1204,35 @@ void MatrixProvider::FetchMessages(const std::string& conversationId, const std:
         FlushDownloads();
         onResult(r.Ok() ? UltraIMResult::Ok() : HttpError(r, UltraIMResultCode::NetworkError), slice());
     });
+}
+
+void MatrixProvider::FetchPageForSearch(const std::string& conversationId, const std::string& beforeMessageId,
+                                        int limit, int tries, UltraIMMessagesCallback onResult) {
+    FetchMessages(conversationId, beforeMessageId, limit,
+                  [this, conversationId, beforeMessageId, limit, tries, onResult](
+                      const UltraIMResult& result, const std::vector<UltraIMMessage>& messages) {
+                      bool more = false;
+                      if (result && messages.empty() && tries < 8) {
+                          std::lock_guard<std::mutex> lock(mutex_);
+                          auto it = rooms_.find(conversationId);
+                          more = it != rooms_.end() && !it->second.historyComplete && !it->second.prevBatch.empty() &&
+                                 !it->second.invited;
+                      }
+                      if (more) {
+                          FetchPageForSearch(conversationId, beforeMessageId, limit, tries + 1, onResult);
+                          return;
+                      }
+                      onResult(result, messages);
+                  });
+}
+
+void MatrixProvider::SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) {
+    // The server's own search cannot read an encrypted room and finds whole
+    // words only; reading the history here gives one answer for every room.
+    UltraIM_SearchByFetching(
+        [this](const std::string& conversationId, const std::string& beforeMessageId, int limit,
+               UltraIMMessagesCallback done) { FetchPageForSearch(conversationId, beforeMessageId, limit, 0, done); },
+        search, std::move(onResult));
 }
 
 // ============================================================================

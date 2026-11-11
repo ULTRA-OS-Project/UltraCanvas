@@ -912,6 +912,56 @@ void Handle(Client& c, const JSONValue& r) {
         answer.Set("messages", list);
         return Answer(c, extra, answer);
     }
+    if (type == "searchChatMessages") {
+        // Telegram's search of a chat: newest first, older than
+        // from_message_id, the filter's kind, the query's words in the text
+        // or the file's name; next_from_message_id while there is more.
+        ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
+        if (!chat) return fail(400, "Chat not found");
+        const int64_t from = r["from_message_id"].GetInteger(0);
+        const int64_t limit = std::min<int64_t>(r["limit"].GetInteger(20), 100);
+        if (limit <= 0) return fail(400, "Parameter limit must be positive");
+        const std::string filter = r["filter"]["@type"].GetString();
+        const auto lower = [](std::string text) {
+            for (char& ch : text) {
+                if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch + 32);
+            }
+            return text;
+        };
+        const std::string query = lower(r["query"].GetString());
+        const auto wanted = [&](const Message& m) {
+            if (filter == "searchMessagesFilterPhoto" && m.media != "messagePhoto") return false;
+            if (filter == "searchMessagesFilterVideo" && m.media != "messageVideo") return false;
+            if (filter == "searchMessagesFilterPhotoAndVideo" && m.media != "messagePhoto" && m.media != "messageVideo")
+                return false;
+            if (filter == "searchMessagesFilterDocument" && m.media != "messageDocument") return false;
+            const std::string text = lower(m.text);
+            if (filter == "searchMessagesFilterUrl" && text.find("http://") == std::string::npos &&
+                text.find("https://") == std::string::npos && text.find("www.") == std::string::npos)
+                return false;
+            return query.empty() || text.find(query) != std::string::npos ||
+                   lower(m.fileName).find(query) != std::string::npos;
+        };
+        JSONValue list = JSONValue::MakeArray();
+        int64_t total = 0, last = 0;
+        bool more = false;
+        for (auto it = chat->messages.rbegin(); it != chat->messages.rend(); ++it) {
+            if (!wanted(*it)) continue;
+            ++total;
+            if (from && it->id >= from) continue;
+            if (list.GetSize() >= static_cast<size_t>(limit)) {
+                more = true;
+                continue;
+            }
+            list.Append(MessageObject(*chat, *it, c.user));
+            last = it->id;
+        }
+        JSONValue answer = Obj("foundChatMessages");
+        answer.Set("total_count", JSONValue(total));
+        answer.Set("messages", list);
+        answer.Set("next_from_message_id", JSONValue(more ? last : static_cast<int64_t>(0)));
+        return Answer(c, extra, answer);
+    }
     return fail(400, "Unknown method " + type);
 }
 

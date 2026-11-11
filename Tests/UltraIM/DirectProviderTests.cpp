@@ -2,6 +2,8 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.9 - TestStoreSearch: words, kinds, links and pages from the store; the links table filled for
+//                  a history from before it
 // Version: 0.1.8 - the authenticator's setup code waits for a 30-second step with room left: computed a
 //                  step back and checked after the password work, it was refused when a step boundary
 //                  passed in between, and the wrong codes it then counted paused the rest
@@ -18,7 +20,7 @@
 // Version: 0.1.3 - the relay's port probed free, three tries
 // Version: 0.1.2 - the plaintext check on the sealed bytes
 // Version: 0.1.1 - TestRelayRedirect: the relay behind a redirector
-// Last Modified: 2026-10-22
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "DirectCrypto.h"
@@ -27,6 +29,7 @@
 #include "DirectStore.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraDatabase/UltraDatabase.h"
 #include "UltraCrypt/OtpAuthUri.h"
 #include "UltraCrypt/UltraOtp.h"
 #include "UltraIM/UltraIMCore.h"
@@ -184,6 +187,132 @@ void TestStore() {
     CHECK(store.UnreadIncoming("bob").size() == 4);
     CHECK(store.UnreadIncoming("bob").empty());     // reported once
     store.Close();
+}
+
+std::string Ids(const UltraIMSearchPage& page) {
+    std::string ids;
+    for (const auto& m : page.messages) ids += (ids.empty() ? "" : " ") + m.clientMessageId;
+    return ids;
+}
+
+void TestStoreSearch() {
+    Store store;
+    std::string error;
+    const fs::path dir = TempDir("store-search");
+    const std::string path = UltraCanvas::PathToUtf8(dir / "s.sqlite3");
+    CHECK(store.Open(path, "direct", error));
+    for (const char* id : {"bob", "carol"}) {
+        UltraIMConversation c;
+        c.conversationId = id;
+        c.title = id;
+        store.UpsertConversation(c);
+    }
+    int64_t clock = 100;
+    const auto add = [&](const std::string& conversation, const std::string& id, const std::string& text,
+                         UltraIMMessageType type = UltraIMMessageType::Text, const std::string& fileName = "") {
+        UltraIMMessage m;
+        m.conversationId = conversation;
+        m.clientMessageId = id;
+        m.senderId = "someone";
+        m.text = text;
+        m.type = type;
+        m.timestampMs = ++clock;
+        if (!fileName.empty()) {
+            m.attachment.fileName = fileName;
+            m.attachment.remoteUrl = "file-" + id;
+        }
+        CHECK(store.AddMessage(m));
+    };
+    add("bob", "b1", "Lunch at the Übersee café?");
+    add("bob", "b2", "the menu: https://example.com/menu.");
+    add("bob", "b3", "the harbour", UltraIMMessageType::Image, "harbour.jpg");
+    add("carol", "c1", "ÜBERSEE again, see www.example.org/lunch");
+    add("bob", "b4", "", UltraIMMessageType::Video, "ferry.mp4");
+    add("bob", "b5", "", UltraIMMessageType::File, "Lunch-Invoice.PDF");
+    add("bob", "b6", "Bob left the lunch group", UltraIMMessageType::SystemEvent);
+    add("carol", "c2", "awww.nothing and an http: that is no link");
+    add("bob", "b7", "lunch was good");
+
+    const auto find = [&](const std::string& conversation, const std::string& text,
+                          UltraIMSearchKind kind = UltraIMSearchKind::AnyKind, int limit = 50,
+                          const std::string& cursor = "") {
+        UltraIMMessageSearch s;
+        s.conversationId = conversation;
+        s.text = text;
+        s.kind = kind;
+        s.limit = limit;
+        s.cursor = cursor;
+        return store.Search(s);
+    };
+    // Words: newest first, any case (beyond ASCII too), the file's name
+    // counted, a system line never; one conversation or all of them.
+    CHECK(Ids(find("bob", "lunch")) == "b7 b5 b1");
+    CHECK(Ids(find("bob", "ÜBERSEE lunch")) == "b1");
+    CHECK(Ids(find("", "übersee")) == "c1 b1");
+    CHECK(Ids(find("", "lunch")) == "b7 b5 c1 b1");
+    CHECK(Ids(find("carol", "invoice")).empty());
+    CHECK(Ids(find("nobody", "lunch")).empty());
+    CHECK(find("bob", "lunch").messages[1].attachment.fileName == "Lunch-Invoice.PDF");
+    CHECK(find("bob", "lunch").messages[0].providerId == "direct");
+    // Kinds.
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Images)) == "b3");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Videos)) == "b4");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Media)) == "b4 b3");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Files)) == "b5");
+    CHECK(Ids(find("bob", "harbour", UltraIMSearchKind::Media)) == "b3");
+    CHECK(Ids(find("", "", UltraIMSearchKind::AnyKind)) == "b7 c2 b5 b4 c1 b3 b2 b1");
+    // Links: the messages the links table names - not c2, which only looks like one.
+    CHECK(Ids(find("", "", UltraIMSearchKind::Links)) == "c1 b2");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Links)) == "b2");
+    CHECK(Ids(find("", "LUNCH", UltraIMSearchKind::Links)) == "c1");
+    CHECK(UltraIM_ExtractLinks(find("bob", "", UltraIMSearchKind::Links).messages[0].text) ==
+          std::vector<std::string>{"https://example.com/menu"});
+    // Pages: the cursor goes on where the page before stopped, to the start.
+    UltraIMSearchPage page = find("", "", UltraIMSearchKind::AnyKind, 3);
+    CHECK(Ids(page) == "b7 c2 b5" && !page.nextCursor.empty());
+    page = find("", "", UltraIMSearchKind::AnyKind, 3, page.nextCursor);
+    CHECK(Ids(page) == "b4 c1 b3" && !page.nextCursor.empty());
+    page = find("", "", UltraIMSearchKind::AnyKind, 3, page.nextCursor);
+    CHECK(Ids(page) == "b2 b1" && page.nextCursor.empty());
+    page = find("bob", "lunch", UltraIMSearchKind::AnyKind, 1);
+    CHECK(Ids(page) == "b7" && !page.nextCursor.empty());
+    page = find("bob", "lunch", UltraIMSearchKind::AnyKind, 1, page.nextCursor);
+    CHECK(Ids(page) == "b5");
+    CHECK(find("bob", "lunch", UltraIMSearchKind::AnyKind, 1, "not a cursor").messages.empty());
+    // More matches than one read of the database brings (a few among many).
+    for (int i = 0; i < 700; ++i) add("bob", "n" + std::to_string(i), i % 100 == 0 ? "needle" : "hay");
+    page = find("bob", "needle", UltraIMSearchKind::AnyKind, 5);
+    CHECK(Ids(page) == "n600 n500 n400 n300 n200" && !page.nextCursor.empty());
+    page = find("bob", "needle", UltraIMSearchKind::AnyKind, 5, page.nextCursor);
+    CHECK(Ids(page) == "n100 n0" && page.nextCursor.empty());
+
+    // A conversation removed takes its links along.
+    CHECK(store.RemoveConversation("carol"));
+    CHECK(Ids(find("", "", UltraIMSearchKind::Links)) == "b2");
+    store.Close();
+
+    // A history from before the links table: opening it notes the messages
+    // with a link, so they are found without being sent again.
+    {
+        UltraDbConnectionConfig config;
+        config.name = "store-search-raw";
+        config.driver = "sqlite";
+        config.database = path;
+        CHECK(UltraDb_RegisterConnection(config));
+        CHECK(UltraDb_Exec("store-search-raw", "DROP TABLE links"));
+        CHECK(UltraDb_Exec("store-search-raw", "DROP INDEX messages_by_type"));
+        CHECK(UltraDb_Exec("store-search-raw", "DELETE FROM ultradb_schema_version WHERE version >= 3"));
+        UltraDb_CloseConnection("store-search-raw");
+    }
+    Store reopened;
+    CHECK(reopened.Open(path, "direct", error));
+    UltraIMMessageSearch links;
+    links.kind = UltraIMSearchKind::Links;
+    CHECK(Ids(reopened.Search(links)) == "b2");
+    links.conversationId = "bob";
+    links.text = "menu";
+    CHECK(Ids(reopened.Search(links)) == "b2");
+    reopened.Close();
 }
 
 // ============================================================================
@@ -1321,6 +1450,35 @@ void TestEndToEnd() {
         CHECK(history[1].type == UltraIMMessageType::Image && history[1].attachment.isDownloaded);
         CHECK(history[3].type == UltraIMMessageType::File && history[3].attachment.fileName == "notes.pdf");
     }
+    // And searched there: by words, by kind, across every conversation.
+    CHECK(UltraIM_HasCapability(bob->GetCapabilities(), UltraIMCapabilityFlags::SearchMessages));
+    {
+        UltraIMResult result;
+        UltraIMSearchPage found;
+        const auto take = [&](const UltraIMResult& r, const UltraIMSearchPage& p) {
+            result = r;
+            found = p;
+        };
+        UltraIMMessageSearch search;
+        search.conversationId = aliceId;
+        search.text = "DATA channel";
+        bob->SearchMessages(search, take);
+        CHECK(result && found.messages.size() == 1 && found.nextCursor.empty());
+        if (!found.messages.empty()) CHECK(found.messages[0].text == "hello over the data channel");
+        search.text.clear();
+        search.kind = UltraIMSearchKind::Files;
+        bob->SearchMessages(search, take);
+        CHECK(result && found.messages.size() == 1);
+        if (!found.messages.empty()) CHECK(found.messages[0].attachment.fileName == "notes.pdf");
+        search.kind = UltraIMSearchKind::AnyKind;
+        search.conversationId.clear();
+        search.text = "hello";
+        bob->SearchMessages(search, take);         // the direct chat and the group
+        CHECK(result && found.messages.size() == 2);
+        search.conversationId = "nobody";
+        bob->SearchMessages(search, take);
+        CHECK(!result && result.code == UltraIMResultCode::NotFound && found.messages.empty());
+    }
 
     alice->Shutdown();
     bob->Shutdown();
@@ -1522,6 +1680,7 @@ void TestSignInProtection() {
 int main() {
     TestEnvelope();
     TestStore();
+    TestStoreSearch();
     TestEndToEnd();
 #if !defined(_WIN32)
     UltraNet_Initialize();

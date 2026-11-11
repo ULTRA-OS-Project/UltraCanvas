@@ -1,7 +1,8 @@
 // Plugins/UltraIM/direct/DirectStore.cpp
 // ChatCube Direct - the device's own record (SQLite via UltraDatabase)
+// Version: 0.1.1 - Search; schema 3: the links table (message ids only) and messages by type
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "DirectStore.h"
@@ -48,6 +49,16 @@ const std::vector<UltraDbMigration>& Migrations() {
          "CREATE TABLE parts("
          "  file_id TEXT NOT NULL, seq INTEGER NOT NULL, data TEXT NOT NULL,"
          "  PRIMARY KEY(file_id, seq));"},
+        // Which messages have a link in them: the message's seq and nothing
+        // else - the link itself is read out of the text when it is shown
+        // (UltraIM_ExtractLinks), so no address is stored twice. Filled here
+        // for the history already there, generously (any "www."): a search
+        // checks each candidate's text anyway.
+        {3, "the messages with a link, and messages by type",
+         "CREATE TABLE links(msg_seq INTEGER PRIMARY KEY);"
+         "INSERT INTO links(msg_seq) SELECT seq FROM messages"
+         "  WHERE text LIKE '%http://%' OR text LIKE '%https://%' OR text LIKE '%www.%';"
+         "CREATE INDEX messages_by_type ON messages(conv, type, seq);"},
     };
     return steps;
 }
@@ -288,6 +299,7 @@ std::vector<UltraIMConversation> Store::ListConversations() {
 bool Store::RemoveConversation(const std::string& id) {
     std::lock_guard<std::mutex> lock(mutex_);
     UltraDbResult r = UltraDb_Exec(connection_, "DELETE FROM conversations WHERE id=?", {id});
+    UltraDb_Exec(connection_, "DELETE FROM links WHERE msg_seq IN (SELECT seq FROM messages WHERE conv=?)", {id});
     UltraDb_Exec(connection_, "DELETE FROM messages WHERE conv=?", {id});
     UltraDb_Exec(connection_, "DELETE FROM outbox WHERE conv=?", {id});
     return r && r.affectedRows > 0;
@@ -310,6 +322,11 @@ bool Store::AddMessage(const UltraIMMessage& m) {
          m.text, m.replyTo.messageId, static_cast<int>(m.deliveryStatus), m.isOwn ? 1 : 0,
          AttachmentToJson(m.attachment), m.attachment.remoteUrl});
     if (!r || r.affectedRows == 0) return false;
+    if (!UltraIM_ExtractLinks(m.text).empty()) {
+        UltraDb_Exec(connection_,
+                     "INSERT OR IGNORE INTO links(msg_seq) SELECT seq FROM messages WHERE conv=? AND client_id=?",
+                     {m.conversationId, m.clientMessageId});
+    }
     UltraDb_Exec(connection_,
                  "UPDATE conversations SET last_ts=MAX(last_ts, ?), snippet=?, unread=unread+? WHERE id=?",
                  {m.timestampMs, Snippet(m), m.isOwn ? 0 : 1, m.conversationId});
@@ -410,6 +427,63 @@ std::vector<UltraIMMessage> Store::Messages(const std::string& conversationId,
     for (const auto& r : rows) out.push_back(MessageFromRow(r, providerId_));
     std::reverse(out.begin(), out.end());
     return out;
+}
+
+UltraIMSearchPage Store::Search(const UltraIMMessageSearch& search) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraIMSearchPage page;
+    const int limit = search.limit > 0 ? search.limit : 50;
+    // The database narrows by conversation and kind (an index each); the
+    // words are matched here, where upper and lower case are known for more
+    // than ASCII, which is all SQLite's LIKE folds.
+    std::string from = "messages m";
+    std::string where;
+    using T = UltraIMMessageType;
+    const auto type = [](T t) { return std::to_string(static_cast<int>(t)); };
+    switch (search.kind) {
+        case UltraIMSearchKind::AnyKind: where = "m.type <> " + type(T::SystemEvent); break;
+        case UltraIMSearchKind::Images:  where = "m.type = " + type(T::Image); break;
+        case UltraIMSearchKind::Videos:  where = "m.type = " + type(T::Video); break;
+        case UltraIMSearchKind::Media:   where = "m.type IN (" + type(T::Image) + "," + type(T::Video) + ")"; break;
+        case UltraIMSearchKind::Files:   where = "m.type = " + type(T::File); break;
+        case UltraIMSearchKind::Links:
+            from = "links l JOIN messages m ON m.seq = l.msg_seq";
+            where = "m.type <> " + type(T::SystemEvent);
+            break;
+    }
+    if (!search.conversationId.empty()) where += " AND m.conv = ?";
+    const std::string sql = "SELECT m.* FROM " + from + " WHERE " + where + " AND m.seq < ? ORDER BY m.seq DESC LIMIT ?";
+
+    int64_t before = INT64_MAX;
+    if (!search.cursor.empty()) {
+        before = 0;
+        for (char c : search.cursor) {
+            if (c < '0' || c > '9' || before > (INT64_MAX - 9) / 10) return page;   // not one of ours: nothing
+            before = before * 10 + (c - '0');
+        }
+    }
+    const int batch = 200;
+    for (;;) {
+        UltraDbResultSet rows;
+        std::vector<UltraDbValue> values;
+        if (!search.conversationId.empty()) values.emplace_back(search.conversationId);
+        values.emplace_back(before);
+        values.emplace_back(batch);
+        if (!UltraDb_Query(connection_, sql, values, rows)) return page;
+        int read = 0;
+        for (const auto& r : rows) {
+            ++read;
+            before = r["seq"].AsInt64();
+            UltraIMMessage m = MessageFromRow(r, providerId_);
+            if (!UltraIM_MessageMatchesSearch(m, search)) continue;
+            page.messages.push_back(std::move(m));
+            if (static_cast<int>(page.messages.size()) >= limit) {
+                page.nextCursor = std::to_string(before);
+                return page;
+            }
+        }
+        if (read < batch) return page;      // the beginning of the history
+    }
 }
 
 std::vector<std::string> Store::UnreadIncoming(const std::string& conversationId) {

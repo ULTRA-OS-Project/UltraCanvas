@@ -9,6 +9,7 @@
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
 // username or phone number, new groups.
+// Version: 0.1.4 - SearchMessages: Telegram's own search of a chat (searchChatMessages)
 // Version: 0.1.3 - sign-in by a QR code (requestQrCodeAuthentication), at the start or in place of a code
 // Version: 0.1.2 - where the code went said plainly; the code asked for another way (resendAuthenticationCode)
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
@@ -78,6 +79,9 @@ public:
     void FetchConversations(UltraIMConversationsCallback onResult) override;
     void FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                        UltraIMMessagesCallback onResult) override;
+    // One chat at a time, answered by Telegram's search (whole words, as in
+    // its own apps); the cursor is the message the page before ended at.
+    void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) override;
     void FetchContacts(UltraIMContactsCallback onResult) override;
     // address: "@username", "username", "t.me/username" or "+phone".
     void AddContact(const std::string& address, UltraIMConversationCallback onResult) override;

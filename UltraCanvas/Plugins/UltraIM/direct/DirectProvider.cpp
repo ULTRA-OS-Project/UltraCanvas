@@ -162,7 +162,7 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::E2EEncryption |
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
            F::CreateGroup | F::VoiceCalls | F::VideoCalls | F::ImageMessages | F::FileTransfer |
-           F::AccountProfile | F::SignInProtection | F::AccountRecovery;
+           F::AccountProfile | F::SignInProtection | F::AccountRecovery | F::SearchMessages;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -1390,6 +1390,16 @@ void DirectProvider::FetchConversations(UltraIMConversationsCallback onResult) {
 void DirectProvider::FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                                    UltraIMMessagesCallback onResult) {
     onResult(UltraIMResult::Ok(), store_.Messages(conversationId, beforeMessageId, limit));
+}
+
+// The history is all on this device, in the store: one conversation or all.
+void DirectProvider::SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) {
+    UltraIMConversation conversation;
+    if (!search.conversationId.empty() && !store_.GetConversation(search.conversationId, conversation)) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::NotFound, "No such conversation"), UltraIMSearchPage());
+        return;
+    }
+    onResult(UltraIMResult::Ok(), store_.Search(search));
 }
 
 void DirectProvider::FetchContacts(UltraIMContactsCallback onResult) {

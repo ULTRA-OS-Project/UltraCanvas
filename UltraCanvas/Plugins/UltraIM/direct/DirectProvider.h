@@ -17,6 +17,7 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.6 - SearchMessages: the history searched in the store, one conversation or all
 // Version: 0.1.5 - the e-mail address confirmed by the link the relay e-mails; recovery by an e-mailed link
 //                  (POST /v1/recovery/poll with the token only this computer holds)
 // Version: 0.1.4 - confirming the e-mail and phone with the relay's codes; account recovery (the relay
@@ -123,6 +124,7 @@ public:
     void FetchConversations(UltraIMConversationsCallback onResult) override;
     void FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                        UltraIMMessagesCallback onResult) override;
+    void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) override;
     void FetchContacts(UltraIMContactsCallback onResult) override;
     void FetchNearbyContacts(UltraIMContactsCallback onResult) override;
     void AddContact(const std::string& address, UltraIMConversationCallback onResult) override;

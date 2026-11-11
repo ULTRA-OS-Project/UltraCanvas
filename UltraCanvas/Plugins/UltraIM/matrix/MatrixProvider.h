@@ -10,6 +10,7 @@
 // are fetched as the message arrives, the rest when asked for, and a local
 // file is uploaded as a photo, a video or a file - encrypted (AES-256-CTR,
 // the m.file format) in an encrypted room.
+// Version: 0.2.3 - SearchMessages: a room's history read page by page and matched on this device
 // Version: 0.2.2 - preview pictures sent along; SetCreateEncrypted (tests)
 // Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
@@ -70,6 +71,10 @@ public:
     void FetchConversations(UltraIMConversationsCallback onResult) override;
     void FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                        UltraIMMessagesCallback onResult) override;
+    // One room at a time: its history is read back page by page (decrypted
+    // here, so an encrypted room is searched like any other) and matched on
+    // this device.
+    void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) override;
     void FetchContacts(UltraIMContactsCallback onResult) override;
     // address: "@user:server" - opens (or finds) a direct chat with them.
     void AddContact(const std::string& address, UltraIMConversationCallback onResult) override;
@@ -167,6 +172,11 @@ private:
     };
 
     // ---- helpers --------------------------------------------------------------
+    // A page of history for a search: FetchMessages, asked again while a
+    // page from the server held nothing to show (state changes only) and the
+    // room has more behind it.
+    void FetchPageForSearch(const std::string& conversationId, const std::string& beforeMessageId, int limit,
+                            int tries, UltraIMMessagesCallback onResult);
     void Emit(const UltraIMEvent& event);
     // The MessageDelivered event of our own message.
     void Delivered(const std::string& conversationId, const std::string& clientId, UltraIMDeliveryStatus status,
