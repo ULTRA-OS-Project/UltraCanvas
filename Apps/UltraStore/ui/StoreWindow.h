@@ -118,6 +118,16 @@ private:
     // ===== shell (StoreWindow.cpp) =====
     void BuildShell();
     void BuildHeader();
+    // The header in less room: 0 everything with its text; 1 Refresh as its
+    // icon; 2 the wordmark as the app icon too; 3 Settings as its icon too.
+    // After a frame that laid out, FitHeader measures what the header needs
+    // at the level it is at (its buttons as wide as their texts, the search
+    // field at its least) and moves a level when that does not fit, or back
+    // when the fuller level measured earlier fits again - in any language,
+    // with no width guessed per language.
+    void FitHeader();
+    void ApplyHeaderLevel(int level);
+    float HeaderNeed() const;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeNavButton(const std::string& id, const std::string& text, float width);
     // A page: a column with the gutter, scrolled as one; the body is where
     // the sections go.
@@ -293,6 +303,13 @@ private:
     std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasButton>> navButtons_;   // page id -> pill
     std::shared_ptr<UltraCanvas::UltraCanvasBadge> updatesBadge_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> refreshButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> settingsButton_;
+    static constexpr int kHeaderLevels = 4;
+    static constexpr float kSearchMinWidth = 120.0f;
+    int headerLevel_ = 0;
+    float headerNeed_[kHeaderLevels] = {0, 0, 0, 0};   // measured per level, 0 not yet
+    bool headerLevelPosted_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> pageHost_;
     std::shared_ptr<UltraCanvas::UltraCanvasCollapsiblePanel> downloads_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> queueList_;

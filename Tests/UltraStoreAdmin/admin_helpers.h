@@ -60,7 +60,7 @@ inline UltraStore::Component HelloApp() {
     c.description.byLanguage["en"] = "A tiny program that prints a greeting.";
     c.sourceLanguage = "en";
     c.machineTranslated = {"de"};
-    c.categories = {"Tools"};
+    c.categories = {"utilities"};
     c.tags = {"demo"};
     c.pricing.model = UltraStore::PricingModel::Free;
     UltraStore::Release r;

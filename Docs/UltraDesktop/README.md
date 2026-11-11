@@ -530,6 +530,7 @@ shows first - each ticked one that is not running yet is started:
 | UltraMail | `--minimized` | new mail is fetched and counted on the mail icon |
 | UltraClipboard | `--background` | no window; opens at once from the clipboard panel |
 | UltraNotifications (ticked by default) | `--background` | no window; counts the unread on the bell, opens at once |
+| UltraSnip (ticked by default) | `--background` | no window; the Print Screen key snips (taken from the system, so not the Windows Snipping Tool), the screenshot button and Super+Shift+S open at once |
 | Sticker board | - | the desktop's own board: its window and file thumbnails are made, not shown, so the first click shows it at once |
 
 A minimized program that is running already is left alone, since a second
@@ -537,10 +538,11 @@ start of these single-copy programs would only bring their window forward; a
 second `--background` start reaches the running copy, which takes it as
 nothing to do. Ticking one in the menu starts it at once as well.
 
-UltraNotifications is ticked from the start, so the bell counts from the
-first sign-in; the others are off until ticked. A settings file from before
-that default gets UltraNotifications added once (`startupDefaults` in the
-file records it), and unticking it afterwards holds.
+UltraNotifications and UltraSnip are ticked from the start, so the bell
+counts and the Print Screen key snips from the first sign-in; the others are
+off until ticked. A settings file from before a default gets that program
+added once (`startupDefaults` in the file records how many defaults it has
+had: 1 UltraNotifications, 2 UltraSnip), and unticking it afterwards holds.
 
 ## How the mail count gets there
 

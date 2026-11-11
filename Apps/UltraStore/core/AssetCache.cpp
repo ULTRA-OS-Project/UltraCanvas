@@ -1,4 +1,5 @@
 // Apps/UltraStore/core/AssetCache.cpp
+// Version: 0.1.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "AssetCache.h"
@@ -6,6 +7,7 @@
 #include "Verifier.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetHttp.h>
 
@@ -15,6 +17,9 @@
 #include <system_error>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -72,7 +77,7 @@ AssetFetcher UltraNetAssetFetcher() {
         UltraNetResponse response;
         const UltraNetResult r = UltraNet_HttpGet(url, response, options);
         if (!r && r.code != UltraNetResultCode::HttpError) {
-            error = r.message.empty() ? "no answer" : r.message;
+            error = r.message.empty() ? Tr("no answer") : r.message;
             return false;
         }
         if (!response.IsComplete()) { error = response.transferError; return false; }
@@ -96,25 +101,25 @@ bool AssetCache::Has(const std::string& url) const {
 
 Result<std::string> AssetCache::Fetch(const std::string& url) {
     using R = Result<std::string>;
-    if (url.empty()) return R::Failure(ErrorCode::InvalidArgument, "no URL");
+    if (url.empty()) return R::Failure(ErrorCode::InvalidArgument, Tr("no URL"));
     const std::string path = PathFor(url);
     if (Has(url)) return R::Succeed(path);
     std::string body, error;
-    if (!fetcher_ || !fetcher_(url, body, error)) return R::Failure(ErrorCode::NetworkError, "could not fetch " + url, error);
+    if (!fetcher_ || !fetcher_(url, body, error)) return R::Failure(ErrorCode::NetworkError, TrF("could not fetch {0}", url), error);
     std::error_code ec;
     std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir_), ec);
     const std::filesystem::path target = UltraCanvas::PathFromUtf8(path);
     const std::filesystem::path temp = UltraCanvas::PathFromUtf8(path + ".tmp");
     {
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) return R::Failure(ErrorCode::IoError, "cannot write " + path);
+        if (!out) return R::Failure(ErrorCode::IoError, TrF("cannot write {0}", path));
         out.write(body.data(), static_cast<std::streamsize>(body.size()));
-        if (!out) return R::Failure(ErrorCode::IoError, "cannot write " + path);
+        if (!out) return R::Failure(ErrorCode::IoError, TrF("cannot write {0}", path));
     }
     std::filesystem::remove(target, ec);
     ec.clear();
     std::filesystem::rename(temp, target, ec);
-    if (ec) return R::Failure(ErrorCode::IoError, "cannot place " + path, ec.message());
+    if (ec) return R::Failure(ErrorCode::IoError, TrF("cannot place {0}", path), ec.message());
     return R::Succeed(path);
 }
 

@@ -1,5 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.13.1 - a width grown while a layout pass measured the button asks for one more pass,
+//                  so a row sized to its content takes the grown width too
 // Version: 2.13.0 - FromTheme sets the interface font at the body size; a SetStyle by hand stops the following;
 //                  a new button that follows by default takes the theme in its constructor
 // Version: 2.12.0 - ButtonStyle::wrap / SetWrap: the text on several lines (a tile's name under its icon)
@@ -190,6 +192,10 @@ namespace UltraCanvas {
         float grownWidth = -1.f;
         float fitMinWidth = -1.f;   // the min-width the fit set, -1 when none
         float relayoutForMinWidth = -1.f;   // the minimum a relayout was last asked for
+        // The width grew while a layout pass measured the button - after
+        // its parent had read the width it was given - so the next frame asks
+        // for one more pass, which reads the grown width from the start.
+        bool grewDuringLayout = false;
 
         // Cached layout calculations
         Rect2Df iconRect;
