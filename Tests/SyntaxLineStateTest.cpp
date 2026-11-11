@@ -13,7 +13,8 @@
 // JavaScript template literal, a C string continued with a backslash), and
 // SetLanguageByTag, which names a Markdown fence's language; block comments
 // whose opener starts with the line-comment marker (Lua's --[[); C++ raw
-// strings, R"delim( ... )delim".
+// strings, R"delim( ... )delim"; Lua's long brackets at any level,
+// --[==[ ... ]==] and [==[ ... ]==].
 // Version: 1.1.0
 // Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
@@ -281,6 +282,31 @@ int main() {
         tk.SetLanguage("C");
         auto c = Highlight(tk, {{"char* s = R\"(not raw in C", "return 0;"}, {}});
         Expect(c[1], "return", TokenType::Keyword, "C has no raw strings");
+    }
+
+    std::cout << "Lua long brackets at any level\n";
+    {
+        tk.SetLanguage("Lua");
+        auto c = Highlight(tk, {{"--[==[ a comment", "]] is not its end", "]==] return x"}, {}});
+        Expect(c[1], "]] is not its end", TokenType::Comment, "--[==[: a plain ]] does not close it");
+        Expect(c[2], "]==]", TokenType::Comment, "--[==[: closed by ]==]");
+        Expect(c[2], "return", TokenType::Keyword, "--[==[: code after it");
+        auto one = Highlight(tk, {{"--[=[ inline ]=] return y"}, {}});
+        Expect(one[0], "--[=[ inline ]=]", TokenType::Comment, "--[=[ ]=] closed on its own line");
+        Expect(one[0], "return", TokenType::Keyword, "code after it");
+        auto s = Highlight(tk, {{"local s = [[first", "return\\n", "last]] .. t"}, {}});
+        Expect(s[1], "return\\n", TokenType::String, "[[ string over three lines, no escapes");
+        Expect(s[2], "last]]", TokenType::String, "[[ closed by ]]");
+        Expect(s[2], "t", TokenType::Identifier, "code after the long string");
+        auto lvl = Highlight(tk, {{"local s = [=[ a ]] b", "]=] + 1"}, {}});
+        Expect(lvl[1], "]=]", TokenType::String, "[=[ closed only by ]=]");
+        Expect(lvl[1], "1", TokenType::Number, "code after it");
+        auto space = Highlight(tk, {{"-- [[ a line comment, not a block", "return z"}, {}});
+        Expect(space[1], "return", TokenType::Keyword, "-- [[ with a space is a line comment");
+        auto half = Highlight(tk, {{"--[= not a bracket", "return w"}, {}});
+        Expect(half[1], "return", TokenType::Keyword, "--[= without a second [ is a line comment");
+        auto index = Highlight(tk, {{"x = a[b] return x"}, {}});
+        Expect(index[0], "b", TokenType::Identifier, "a[b] is an index, not a long bracket");
     }
 
     std::cout << (g_failures ? "FAILED: " + std::to_string(g_failures) : std::string("PASSED")) << "\n";

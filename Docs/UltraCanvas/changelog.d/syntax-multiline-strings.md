@@ -4,7 +4,7 @@
   backslash was coloured on its first line only, and the lines after it as
   code. Three rules in `SyntaxTokenizationRules` now say which strings span
   lines: `multiLineStrings` (`"""` / `'''` in Python and Dart, `"""` in Kotlin,
-  Swift, Java, Scala, C# and Elixir, `[[ ]]` in Lua), `multiLineStringDelimiters`
+  Swift, Java, Scala, C# and Elixir), `multiLineStringDelimiters`
   (the backtick in JavaScript, TypeScript and Go; both quotes in Shell, Ruby,
   PHP and Perl; `"` in Rust) and `stringLineContinuation` (a trailing `\` in C,
   C++, Python and JavaScript). Elsewhere an unclosed string still stops at its

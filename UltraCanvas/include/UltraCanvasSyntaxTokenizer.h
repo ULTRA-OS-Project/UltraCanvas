@@ -87,6 +87,13 @@ namespace UltraCanvas {
         //     optional u8 / u / U / L prefix, which end at their own marker
         //     ")delim\"" and may span lines.
         bool delimitedRawStrings = false;
+        //   levelledLongBrackets: Lua's long brackets - [[ ... ]], [==[ ... ]==]
+        //     with any number of '=' - open a string, and after "--" a block
+        //     comment; each ends only at the bracket with the same number of
+        //     '=', with no escapes, and may span lines. When set, they take
+        //     the place of fixed "[[" entries in multiLineStrings and
+        //     multiLineComments for line-by-line highlighting.
+        bool levelledLongBrackets = false;
 
         bool hasRawStrings = false;
         bool hasEscapeSequences = true;
@@ -1326,12 +1333,12 @@ namespace UltraCanvas {
         };
 
         rules.singleLineComments = {"--"};
-        rules.multiLineComments = {{"--[[", "]]"}};
+        rules.multiLineComments = {{"--[[", "]]"}};       // the whole-text Tokenize only
         rules.stringDelimiters = {'"', '\''};
         rules.hasRawStrings = true;
         rules.rawStringPrefix = "[[";
 
-        rules.multiLineStrings = {{"[[", "]]"}};          // long strings
+        rules.levelledLongBrackets = true;                // --[==[ ]==], [==[ ]==]
         return rules;
     }
 

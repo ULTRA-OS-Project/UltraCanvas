@@ -876,23 +876,25 @@ for (const std::string& line : lines) {
 }
 ```
 
-A string ends at its line unless the language lets it run on. Four switches
+A string ends at its line unless the language lets it run on. Five switches
 in `SyntaxTokenizationRules` say which strings do:
 
 | Rule | Languages | Example |
 |---|---|---|
-| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, C#, Elixir (`"""`); Lua (`[[ ]]`) | a docstring |
+| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, C#, Elixir (`"""`) | a docstring |
 | `multiLineStringDelimiters` (quotes whose strings span lines) | JavaScript / TypeScript, Go (`` ` ``); Shell, Ruby, PHP, Perl (`"`, `'`); Rust (`"`) | a template literal |
 | `stringLineContinuation` (a `\` ends the line) | C, C++, Python, JavaScript / TypeScript | `"abc\` then `def"` |
 | `delimitedRawStrings` (`R"delim( … )delim"`, optional `u8` / `u` / `U` / `L`) | C++ | a raw string ends only at its own `)delim"` |
+| `levelledLongBrackets` (`[[ … ]]`, `[==[ … ]==]`, and after `--` a comment) | Lua | `[==[` ends only at `]==]` |
 
 A string the language does not let span lines - an unclosed `"` in Java -
 still ends at the line, so a typo colours one line rather than the rest of the
 file.
 
 Block comments are matched before line comments, so a block opener that
-starts with the line-comment marker - Lua's `--[[ … ]]`, MATLAB's `%{ … %}` -
-opens the block rather than being read as a line comment.
+starts with the line-comment marker - Lua's `--[[ … ]]` (at any level,
+`--[==[ … ]==]`), MATLAB's `%{ … %}` - opens the block rather than being read
+as a line comment.
 
 In Markdown mode the lines of a fenced code block (```` ```cpp ````) carry the
 state the same way, with the fence's language: a `/* comment */` over several

@@ -28,9 +28,14 @@ namespace UltraCanvas {
         // Index into the language's multiLineStrings of the string still open
         // at the end of the line (Python's """); -1 when none is.
         int8_t openLongString = -1;
-        // The end marker of a C++ raw string still open at the end of the
-        // line (")xy\"" for R"xy( ... ); empty when none is.
+        // The end marker of a string that closes only at its own marker -
+        // a C++ raw string (")xy\"" for R"xy( ... ) or a Lua long string
+        // ("]==]" for [==[) - still open at the end of the line; empty when
+        // none is. No escapes apply inside either.
         std::string rawStringEnd;
+        // The same for a block comment whose end marker depends on its
+        // opening: Lua's --[==[ ... ]==] ("]==]"); empty when none is.
+        std::string blockCommentEnd;
 
         // CSS: the context the line ended in and the blocks still open.
         // cssStack holds one bit per open block, 1 = the block was opened
@@ -56,7 +61,7 @@ namespace UltraCanvas {
             return blockComment == o.blockComment && openString == o.openString &&
                    openStringSpansLines == o.openStringSpansLines &&
                    lineComment == o.lineComment && openLongString == o.openLongString &&
-                   rawStringEnd == o.rawStringEnd &&
+                   rawStringEnd == o.rawStringEnd && blockCommentEnd == o.blockCommentEnd &&
                    cssContext == o.cssContext &&
                    cssPreludeParent == o.cssPreludeParent && cssDepth == o.cssDepth &&
                    cssStack == o.cssStack && cssExpectProperty == o.cssExpectProperty &&

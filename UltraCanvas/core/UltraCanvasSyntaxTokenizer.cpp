@@ -279,6 +279,20 @@ namespace UltraCanvas {
         return true;
     }
 
+// A Lua long bracket opening at `pos`: '[', any number of '=', '['. On a
+// match, `bodyStart` is just past it and `endMarker` is ']', as many '=', ']'.
+    static bool MatchLongBracket(const std::string& line, size_t pos,
+                                 size_t& bodyStart, std::string& endMarker) {
+        if (pos >= line.length() || line[pos] != '[') return false;
+        size_t i = pos + 1;
+        while (i < line.length() && line[i] == '=') i++;
+        if (i >= line.length() || line[i] != '[') return false;
+        const size_t level = i - pos - 1;
+        endMarker = "]" + std::string(level, '=') + "]";
+        bodyStart = i + 1;
+        return true;
+    }
+
 // Does a string opened with `delimiter` and still open at the end of `line`
 // carry on into the next line? Per language: a quote whose strings span lines,
 // or a backslash continuation (an odd run of backslashes ends the line).
@@ -336,6 +350,17 @@ namespace UltraCanvas {
             tokens.push_back({TokenType::Comment, line.substr(0, position), position});
         }
         state.blockComment = -1;
+        if (!state.blockCommentEnd.empty()) {
+            size_t endPos = line.find(state.blockCommentEnd, position);
+            if (endPos == std::string::npos) {
+                tokens.push_back({TokenType::Comment, line.substr(position), line.length() - position});
+                return tokens;
+            }
+            size_t end = endPos + state.blockCommentEnd.length();
+            tokens.push_back({TokenType::Comment, line.substr(position, end - position), end - position});
+            position = end;
+            state.blockCommentEnd.clear();
+        }
         if (state.lineComment) {
             tokens.push_back({TokenType::Comment, line, line.length()});
             return tokens;
@@ -401,6 +426,24 @@ namespace UltraCanvas {
             // block opener starts with the line-comment marker (Lua's --[[
             // after --, MATLAB's %{ after %), and the line comment would take
             // it and the rest of the line, leaving the block never opened.
+            if (currentRules->levelledLongBrackets && line.compare(position, 2, "--") == 0) {
+                size_t bodyStart = 0;
+                std::string endMarker;
+                if (MatchLongBracket(line, position + 2, bodyStart, endMarker)) {
+                    size_t endPos = line.find(endMarker, bodyStart);
+                    size_t end = endPos == std::string::npos ? line.length() : endPos + endMarker.length();
+                    token.type = TokenType::Comment;
+                    token.length = end - position;
+                    token.text = line.substr(position, token.length);
+                    tokens.push_back(token);
+                    if (endPos == std::string::npos) {
+                        state.blockCommentEnd = endMarker;
+                        return tokens;
+                    }
+                    position = end;
+                    continue;
+                }
+            }
             bool foundComment = false;
             for (size_t k = 0; k < currentRules->multiLineComments.size(); ++k) {
                 const auto& [startDelim, endDelim] = currentRules->multiLineComments[k];
@@ -440,6 +483,27 @@ namespace UltraCanvas {
                     tokens.push_back(token);
                     state.lineComment = true;
                     return tokens; // Rest of line is comment
+                }
+            }
+
+            // Lua long strings: like raw strings, no escapes and their own end.
+            if (currentRules->levelledLongBrackets) {
+                size_t bodyStart = 0;
+                std::string endMarker;
+                if (MatchLongBracket(line, position, bodyStart, endMarker)) {
+                    size_t endPos = line.find(endMarker, bodyStart);
+                    size_t end = endPos == std::string::npos ? line.length() : endPos + endMarker.length();
+                    token.type = TokenType::String;
+                    token.length = end - position;
+                    token.text = line.substr(position, token.length);
+                    tokens.push_back(token);
+                    if (endPos == std::string::npos) {
+                        state.rawStringEnd = endMarker;
+                        return tokens;
+                    }
+                    currentColumn += token.length;
+                    position = end;
+                    continue;
                 }
             }
 
