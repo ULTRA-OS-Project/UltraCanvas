@@ -144,7 +144,7 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
             if (!fetched) return fail(fetched.error);
             result.catalog = std::make_shared<const Catalog>(fetched.Value());
             result.state = client_->State();
-            result.message = TrF("Catalog updated: {0} apps, sequence {1}, from {2}", fetched.Value().apps.size(), fetched.Value().sequence, result.state.fetchedFrom);
+            result.message = TrF("Catalog updated: {0}, sequence {1}, from {2}", TrN("{n} app", "{n} apps", static_cast<long long>(fetched.Value().apps.size())), fetched.Value().sequence, result.state.fetchedFrom);
             return result;
         }
         case JobKind::Reload:
@@ -194,8 +194,9 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                 else if (!outcome.Value().installed.empty()) ++updated;
             }
             result.ok = failed == 0;
-            result.message = TrF("{0} updated", updated) + (failed ? ", " + TrF("{0} failed", failed) : std::string()) +
-                             (toBuy ? ", " + TrF("{0} to buy anew", toBuy) : std::string());
+            result.message = TrN("{n} app updated", "{n} apps updated", static_cast<long long>(updated)) +
+                             (failed ? ", " + TrN("{n} failed", "{n} failed", static_cast<long long>(failed)) : std::string()) +
+                             (toBuy ? ", " + TrN("{n} to buy anew", "{n} to buy anew", static_cast<long long>(toBuy)) : std::string());
             return result;
         }
         case JobKind::Remove: {
@@ -426,8 +427,8 @@ void StoreWindow::UpdateQueueSummary() {
         if (running->paused) detail += " " + Tr("(paused)");
         else if (running->fraction >= 0.0) detail += " " + Percent(running->fraction);
     }
-    if (waiting) detail += (detail.empty() ? "" : " · ") + TrF("{0} waiting", waiting);
-    if (!running && !waiting) detail = finished ? TrF("{0} finished", finished) : Tr("Nothing queued");
+    if (waiting) detail += (detail.empty() ? "" : " · ") + TrN("{n} waiting", "{n} waiting", static_cast<long long>(waiting));
+    if (!running && !waiting) detail = finished ? TrN("{n} finished", "{n} finished", static_cast<long long>(finished)) : Tr("Nothing queued");
     downloads_->SetDetail(detail);
 }
 

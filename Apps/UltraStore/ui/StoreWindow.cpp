@@ -1024,7 +1024,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeCodeRow() {
     auto row = Theme::Row("usCode.row", Theme::kInnerGap, true);
     codeInput_ = Theme::Pin(CreateTextInput("usCode.input", 0, 0, 220, Theme::kControlHeight));
     codeInput_->SetStyle(Theme::SearchStyle(codeInput_->GetStyle()));
-    codeInput_->SetPlaceholder(Tr("Code"));
+    codeInput_->SetPlaceholder(TrC("discount code", "Code"));
     codeInput_->SetText(settings_.code);
     row->AddChild(codeInput_);
     auto apply = Theme::Button("usCode.apply", Tr("Apply"), 88, Theme::ButtonKind::Primary);
@@ -1343,7 +1343,7 @@ std::vector<std::string> StoreWindow::FactsOf(const AppListing& l) const {
     const Component& app = *l.app;
     std::vector<std::string> facts;
     if (app.pricing.model != PricingModel::Free && app.pricing.trialDays > 0 && !Bought(app.id))
-        facts.push_back(TrF("{0}-day free trial", app.pricing.trialDays));
+        facts.push_back(TrN("{n}-day free trial", "{n}-day free trial", app.pricing.trialDays));
     if (app.openSource) facts.push_back(Tr("Open source") + (app.license.empty() ? std::string() : " · " + app.license));
     else if (!app.license.empty()) facts.push_back(app.license);
     if (l.resolution.release) {
@@ -1400,7 +1400,7 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
     const bool paid = pricing.model != PricingModel::Free;
     if ((!paid || pricing.trialDays > 0) && !Bought(appId)) {
         auto install = Theme::Button(id + ".install", paid ? Tr("Try free") : Tr("Install"), paid ? 96 : 88, paid ? Theme::ButtonKind::Primary : Theme::ButtonKind::Soft);
-        if (paid) install->SetTooltip(TrF("Installs the full app for {0} days", pricing.trialDays));
+        if (paid) install->SetTooltip(TrN("Installs the full app for {n} day", "Installs the full app for {n} days", pricing.trialDays));
         install->onClick = [this, appId]() { InstallApp(appId); };
         install->SetDisabled(busy || storeError_.size() > 0);
         out.push_back(install);
@@ -1456,7 +1456,7 @@ std::shared_ptr<UltraCanvasCard> StoreWindow::MakeAppCard(const AppListing& l, c
     if (!summary.empty()) card->AddContent(Theme::Text(id + ".summary", summary, 14.0f, FontWeight::Normal, Theme::kTextBody));
     std::string state = StateLine(l);
     if (!l.Installed() && app.pricing.model != PricingModel::Free && app.pricing.trialDays > 0 && !Bought(app.id))
-        state += " · " + TrF("{0}-day free trial", app.pricing.trialDays);
+        state += " · " + TrN("{n}-day free trial", "{n}-day free trial", app.pricing.trialDays);
     card->AddContent(Theme::Caption(id + ".state", state));
 
     // Along the bottom: "Free", the price or "Installed" on the left, and
@@ -1801,7 +1801,7 @@ void StoreWindow::RebuildDetails() {
             if (!app->license.empty()) info->AddChild(FactLine("usX.i.licence", Tr("Licence"), app->license));
             info->AddChild(FactLine("usX.i.price", Tr("Price"), app->pricing.model == PricingModel::Free ? Tr("Free") : TrF("{0}, one-time", PriceText(*app))));
             if (app->pricing.model != PricingModel::Free && app->pricing.trialDays > 0)
-                info->AddChild(FactLine("usX.i.trial", Tr("Trial"), TrF("{0} days, full app", app->pricing.trialDays)));
+                info->AddChild(FactLine("usX.i.trial", Tr("Trial"), TrN("{n} day, full app", "{n} days, full app", app->pricing.trialDays)));
             if (app->pricing.model != PricingModel::Free) {
                 const std::string updates = app->updates.period == UpdatePeriod::Until ? TrF("Free until {0}", PrettyDate(app->updates.until))
                                           : app->updates.period == UpdatePeriod::Never ? Tr("The bought version only") : Tr("Free, always");

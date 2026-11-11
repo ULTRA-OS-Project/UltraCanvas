@@ -235,7 +235,8 @@ void StoreWindow::RefreshSettingsInfo() {
     text += "\n" + TrF("Settings file: {0}", UltraCanvasAppSettings("UltraStore").File());
     text += "\n" + TrF("Catalog: {0}", catalogNote_.empty() ? Tr("none") : catalogNote_);
     if (catalog_) {
-        text += "\n  " + TrF("{0} apps, {1} components, schema {2}", catalog_->apps.size(), catalog_->components.size(), catalog_->schema);
+        text += "\n  " + TrF("{0}, {1}, schema {2}", TrN("{n} app", "{n} apps", static_cast<long long>(catalog_->apps.size())),
+                                  TrN("{n} component", "{n} components", static_cast<long long>(catalog_->components.size())), catalog_->schema);
         if (!catalog_->trustedKeys.empty()) {
             text += "\n  " + TrN("announces {n} key that may sign the next catalogs", "announces {n} keys that may sign the next catalogs", static_cast<long long>(catalog_->trustedKeys.size()));
         }

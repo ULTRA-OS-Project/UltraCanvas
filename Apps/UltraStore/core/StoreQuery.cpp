@@ -16,7 +16,9 @@
 namespace UltraStore {
 
 using UltraCanvas::Tr;
+using UltraCanvas::TrC;
 using UltraCanvas::TrF;
+using UltraCanvas::TrN;
 
 namespace {
 
@@ -149,7 +151,7 @@ CodeCheck CheckCode(const Catalog& catalog, const std::string& text, const std::
     if (!code->validUntil.empty() && today > code->validUntil) { out.message = TrF("Expired on {0}", code->validUntil); return out; }
     out.code = code;
     std::string what = DiscountLabel(*code);
-    if (what.empty()) what = code->kind == CodeKind::Affiliate ? Tr("Partner code") : Tr("Code");
+    if (what.empty()) what = code->kind == CodeKind::Affiliate ? Tr("Partner code") : TrC("discount code", "Code");
     if (code->apps.empty()) what = TrF("{0} on every app", what);
     else {
         std::string names;
@@ -207,7 +209,7 @@ std::string PriceLabel(const Pricing& pricing, const PromoCode* code) {
     const std::string discounted = DiscountedPrice(pricing, code);
     std::string label = PeriodPrice(pricing, discounted);
     if (discounted != pricing.price) label += " " + TrF("(was {0})", pricing.price);
-    if (pricing.trialDays > 0) label += " " + TrF("({0}-day trial)", pricing.trialDays);
+    if (pricing.trialDays > 0) label += " " + TrN("({n}-day trial)", "({n}-day trial)", pricing.trialDays);
     return label;
 }
 

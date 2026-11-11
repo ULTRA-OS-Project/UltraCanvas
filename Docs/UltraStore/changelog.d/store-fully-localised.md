@@ -24,3 +24,12 @@
   (CATEGORY, PRICE, VERSION HISTORY) upper-cased ASCII letters only, so
   "Catégorie" came out "CATéGORIE"; they upper-case any letter now. A
   shortened summary or release note no longer cuts a character in two.
+- **Counts take the language's plural forms.** The Update all summary
+  ("3 apps updated, 1 failed"), the download queue's waiting and finished
+  counts, the catalog's app and component counts and every trial length
+  ("14-day free trial") are plural entries now, so Russian, Polish, Czech,
+  Arabic and the rest say "21 день", "3 dni", not one form for every number.
+- **A discount code has a word of its own.** The code field and a code
+  without a discount used the suite's "Code", which several languages
+  translate as program code; the store's entry is the discount or partner
+  code.

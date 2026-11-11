@@ -5,7 +5,6 @@
     "Cancel",
     "Cancelled",
     "Category",
-    "Code",
     "day, month and year|{0} {1} {2}",
     "Details",
     "Downloads",
@@ -47,7 +46,10 @@
   "(the catalog does not know it)": "(the catalog does not know it)",
   "(the licence is kept unverified: the catalog names no licence key)": "(the licence is kept unverified: the catalog names no licence key)",
   "(was {0})": "(was {0})",
-  "({0}-day trial)": "({0}-day trial)",
+  "({n}-day trial)": {
+    "one": "({n}-day trial)",
+    "other": "({n}-day trial)"
+  },
   ", use {0}": ", use {0}",
   "64 hex digits per line": "64 hex digits per line",
   "A code from a partner's QR code or page, or a discount code: the prices show what it takes off, for {0} days, and the partner is credited when you buy.": "A code from a partner's QR code or page, or a discount code: the prices show what it takes off, for {0} days, and the partner is credited when you buy.",
@@ -137,7 +139,7 @@
   "cannot write {0}": "cannot write {0}",
   "Catalog": "Catalog",
   "Catalog sequence {0}, fetched {1} from {2}": "Catalog sequence {0}, fetched {1} from {2}",
-  "Catalog updated: {0} apps, sequence {1}, from {2}": "Catalog updated: {0} apps, sequence {1}, from {2}",
+  "Catalog updated: {0}, sequence {1}, from {2}": "Catalog updated: {0}, sequence {1}, from {2}",
   "Catalog: {0}": "Catalog: {0}",
   "Categories": "Categories",
   "Channel": "Channel",
@@ -153,6 +155,7 @@
   "could not fetch {0}": "could not fetch {0}",
   "Could not start {0}: {1}": "Could not start {0}: {1}",
   "Deprecated": "Deprecated",
+  "discount code|Code": "Code",
   "Discover": "Discover",
   "Download for this machine: {0}.": "Download for this machine: {0}.",
   "Downloading {0}: {1}": "Downloading {0}: {1}",
@@ -190,7 +193,10 @@
   "Installed {0} ({1} downloaded)": "Installed {0} ({1} downloaded)",
   "Installed {0} · not in the current catalog": "Installed {0} · not in the current catalog",
   "Installed: {0}, {1}": "Installed: {0}, {1}",
-  "Installs the full app for {0} days": "Installs the full app for {0} days",
+  "Installs the full app for {n} day": {
+    "one": "Installs the full app for {n} day",
+    "other": "Installs the full app for {n} days"
+  },
   "Language of the texts": "Language of the texts",
   "Languages": "Languages",
   "Licence": "Licence",
@@ -421,11 +427,7 @@
   "{0} %": "{0} %",
   "{0} / month": "{0} / month",
   "{0} / year": "{0} / year",
-  "{0} apps, {1} components, schema {2}": "{0} apps, {1} components, schema {2}",
   "{0} available": "{0} available",
-  "{0} days, full app": "{0} days, full app",
-  "{0} failed": "{0} failed",
-  "{0} finished": "{0} finished",
   "{0} GB": "{0} GB",
   "{0} has no release for your system any more": "{0} has no release for your system any more",
   "{0} is a paid app: buy it first, then install": "{0} is a paid app: buy it first, then install",
@@ -439,15 +441,12 @@
   "{0} off": "{0} off",
   "{0} on every app": "{0} on every app",
   "{0} on {1}": "{0} on {1}",
-  "{0} to buy anew": "{0} to buy anew",
-  "{0} updated": "{0} updated",
-  "{0} waiting": "{0} waiting",
   "{0} was already installed": "{0} was already installed",
   "{0} was not bought here": "{0} was not bought here",
   "{0}% off": "{0}% off",
   "{0}, one-time": "{0}, one-time",
   "{0}, until {1}": "{0}, until {1}",
-  "{0}-day free trial": "{0}-day free trial",
+  "{0}, {1}, schema {2}": "{0}, {1}, schema {2}",
   "{0}: the catalog's signature could not be fetched": "{0}: the catalog's signature could not be fetched",
   "{0}: the catalog's signature could not be fetched ({1})": "{0}: the catalog's signature could not be fetched ({1})",
   "{0}: the catalog's signature file is not a signature": "{0}: the catalog's signature file is not a signature",
@@ -465,12 +464,40 @@
     "one": "{n} app on this machine, with the runtimes and libraries it shares.",
     "other": "{n} apps on this machine, with the runtimes and libraries they share."
   },
+  "{n} app updated": {
+    "one": "{n} app updated",
+    "other": "{n} apps updated"
+  },
   "{n} component": {
     "one": "{n} component",
     "other": "{n} components"
   },
+  "{n} day, full app": {
+    "one": "{n} day, full app",
+    "other": "{n} days, full app"
+  },
+  "{n} failed": {
+    "one": "{n} failed",
+    "other": "{n} failed"
+  },
+  "{n} finished": {
+    "one": "{n} finished",
+    "other": "{n} finished"
+  },
   "{n} key is compiled into this build (": {
     "one": "{n} key is compiled into this build (",
     "other": "{n} keys are compiled into this build ("
+  },
+  "{n} to buy anew": {
+    "one": "{n} to buy anew",
+    "other": "{n} to buy anew"
+  },
+  "{n} waiting": {
+    "one": "{n} waiting",
+    "other": "{n} waiting"
+  },
+  "{n}-day free trial": {
+    "one": "{n}-day free trial",
+    "other": "{n}-day free trial"
   }
 }
