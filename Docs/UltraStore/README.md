@@ -27,6 +27,7 @@ The brief's open questions, answered on 2026-10-24:
 | UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
 | The services' databases | **PostgreSQL in production, SQLite for tests and development only** (decided 2026-11-10). The payment service and the operator tier's marketplace service run on PostgreSQL; SQLite is what the tests and a developer's machine use, behind the same database layer, and never a production store. The files on a user's or a merchant's own machine (`registry.sqlite`, `admin.sqlite`) are UltraDatabase files, not servers, and stay as they are. |
 | Who checks for updates? | **One App manager for the whole machine, never the apps** (decided 2026-11-11). ULTRA OS keeps network traffic down, so one program asks the server: it fetches the one signed catalog and compares it with the registry for every installed app, runtime and library at once. An application has no update check, no "check for updates" menu item and no update server of its own, and contacts no server to learn its latest version. **The scheme:** a separate **App manager** application (to be built, on this page's core: `CatalogClient`, `SqliteRegistry`, `StoreEngine`) owns the update check, the updates and the list of what is installed; it is later integrated into the OS manager / settings (UOS-Settings). Until it exists, UltraStore's Updates page and `ultrastore update` do the job with the same engine; the store itself stays the place to discover, buy and install. See *The App manager (later)*. |
+| How does the store reach a machine, and how is it updated? | **As one of its own apps** (2026-11-11). UltraStore is installed into the tree it manages (`apps/org.ultraos.ultrastore/<version>/`, its runtime under `components/`), so the first install and every update are the engine's ordinary Install and Update. A small **setup program**, `ultrastore-setup`, does the first install; the store updates itself from then on. Both read the **store's own catalog**, `ultrastore.json`: the store's entry and what it runs on, signed with the same keys, at a schema that stays put - so a store too old to read `catalog.json` still finds its update. See *The store installs and updates itself*. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
 What the brief listed as the first catalog's apps, the final name, the
@@ -53,11 +54,14 @@ Apps/UltraStore/
     Registry.h/.cpp             SqliteRegistry: what is installed, on UltraDatabase
     Installer.h/.cpp            ArchiveInstaller: unpack through VirtualFS, the tree, the collector
     StoreEngine.h/.cpp          install / update / remove / gc for the command line and the window
+    SelfUpdate.h/.cpp           the store as one of its own apps: its own catalog, the version it runs from, install-or-update
+    Launcher.h/.cpp             the entry in the system's application menu for an installed program
     StoreQuery.h/.cpp           what the pages list: the catalog joined with what is installed, filtered
     AssetCache.h/.cpp           icons and screenshots, fetched once into the cache
     StoreSettings.h/.cpp        channel, language, servers, trusted keys, the window's size (UltraCanvasAppSettings)
     UltraStoreBuiltin.h.in      -> the compiled-in keys (keys/*.pub) and servers (ULTRASTORE_SERVERS)
   cli/Commands.h/.cpp           ultrastore <command>
+  setup/main.cpp                ultrastore-setup, the first installer: the core and no window
   ui/                           the window: StoreWindow (shell, pages, details), StoreJobs (the
                                 worker thread and the Downloads panel), StoreSettingsPage, StoreTheme, main
   keys/                         the public keys a build trusts out of the box (README.md there)
@@ -482,6 +486,109 @@ The part that turns a plan into installed software, behind the interfaces of
   every version of an app and collects. Callbacks report each step, the
   bytes of its download and the files of its unpacking.
 
+## The store installs and updates itself
+
+UltraStore is one of the apps in its own catalog, `org.ultraos.ultrastore`,
+and lives in its own tree like the rest:
+
+```
+<root>/apps/org.ultraos.ultrastore/<version>/...   the store, one folder per version
+<root>/apps/org.ultraos.ultrastore/current         -> the version in use
+<root>/components/<runtime id>/<version>/...       what it runs on, shared with the other apps
+<root>/cache/self/                                 its own catalog, kept apart from the catalog's cache
+```
+
+So putting it on a machine is `StoreEngine::Install` and moving it on is
+`StoreEngine::Update`; `SelfUpdate.h` adds the three things that make that
+work for the program doing it.
+
+**The store's own catalog.** `ultrastore.json` with `ultrastore.json.sig`
+sits beside `catalog.json` on every server. It is a catalog - the same
+format, the same parser, signed with the same keys, with its own sequence
+and cache - cut down to the store's app entry and the components its
+releases depend on (`ExtractSelfCatalog`); the admin backend's `publish`
+writes it whenever the catalog lists the store, and `ultrastore
+self-catalog` cuts it by hand. **Its schema stays at 2**
+(`kSelfCatalogSchema`), whatever `catalog.json` has moved to: members are
+added, never changed, so every store from this one on reads it. That is
+what it is for. A `catalog.json` with a newer schema cannot be read by an
+older store (`SchemaTooNew`), so it cannot tell that store where its update
+is; this file can. Should schema 2 ever become impossible to keep, the new
+format gets a new file name and `ultrastore.json` goes on serving the
+store that can read the new one.
+
+**The first install: `ultrastore-setup`.** A console program built from the
+core and nothing of the window. It fetches the store's own catalog from the
+servers the build names (`ULTRASTORE_SERVERS`), checks it against the keys
+the build trusts (`keys/*.pub`), installs the store and its runtime into
+the per-user store folder, writes the application-menu entry and starts
+the store. Run again, it updates an installed store or does nothing.
+
+```
+ultrastore-setup [--check] [--channel beta] [--root <dir>] [--server <url>] [--key <hex>]
+                 [--catalog <ultrastore.json>] [--no-menu] [--no-start]
+```
+
+It links what the core links. With the shared UltraCanvas library of the
+shipping configuration that library travels beside it; a static
+configuration (`-DULTRACANVAS_BUILD_SHARED=OFF`) gives one file of about
+3 MB on Linux x86_64 (the store itself is about 63 MB there) that needs
+only the system's network, archive, crypto and database libraries, not the
+UI's: on Linux it is linked `--as-needed`.
+
+**The version that is running.** A store started from the tree names its
+own version to the installer (`ProtectRunningInstall`,
+`ArchiveInstaller::SetInUse`). That version is never removed and the
+collector keeps it and what it was installed with, so an update unpacks the
+new version beside it, moves `current`, and the running copy keeps its
+files; removing the store from inside itself answers `InUse` and removes
+nothing. The next start, from the new version, takes the old one away
+(`RemoveOldStoreVersions`). An update done by another program - the setup
+program run again, `ultrastore self-update` from elsewhere - leaves the
+version that was current in the same way, since a window may be running
+from it.
+
+**In the window.** A refresh that fails with `SchemaTooNew` starts the
+*Update UltraStore* job by itself; Settings has the same job as a button;
+and the store is also an ordinary row of the Updates page whenever the
+catalog lists a newer release of it. After any of them, when the current
+version is no longer the one the window runs from, the window offers to
+restart: it closes, releases its single-instance lock and starts the new
+version. When the servers offer no store newer than the running one and
+the catalog is still too new, it says so. None of this is a second update
+check: the store's own catalog is fetched only when the catalog could not
+be read or the person asks, in keeping with *Who checks for updates?*.
+
+**A store that is not in the tree** - from a distribution package, an MSIX,
+a build folder - is not managed: Settings says so, *Update UltraStore* only
+reports what the servers have, and it is updated the way it was installed
+(or replaced by running `ultrastore-setup`).
+
+**The menu entry** (`Launcher.h`), per user: a desktop entry under
+`~/.local/share/applications` on Linux, a shortcut in the Start menu's
+Programs folder on Windows, a link in `~/Applications` to the bundle on
+macOS. It names the version folder (`current` is a plain file where no
+symlink can be made), so it is rewritten after an update - only when it is
+there: someone who ran the setup with `--no-menu` or deleted the entry gets
+none back.
+
+Not done yet, in the order they matter:
+
+- **The store's package and the runtime's are not built by anything in the
+  repository.** The admin has to import a build of the store as
+  `org.ultraos.ultrastore` with its `entry`, depending on the runtime
+  component, before `publish` has an `ultrastore.json` to write. Until then
+  the servers have none, and the setup program and the self-update report
+  that the file could not be fetched.
+- **The Windows shortcut and the macOS link are written but have not been
+  run**: the tests run the Linux entry. The engine and the store's own
+  catalog are platform-neutral and tested.
+- **The other installed apps still get no menu entry.** `WriteLauncher`
+  takes any program; filling the menus for every app is the App manager's.
+- **One file for the download.** A static build gives one; the shipping
+  shared configuration needs the library beside the setup program, so the
+  download there is a small archive or a platform installer around it.
+
 ## On disk
 
 The brief's `~/.local/share/ultrastore` predates the framework's rule; the
@@ -636,6 +743,9 @@ ultrastore update <catalog.json> [<app-id>] [--root <dir>]
 ultrastore remove <app-id> [--root <dir>]
 ultrastore installed [--root <dir>]
 ultrastore gc [--root <dir>]
+ultrastore self-update [--catalog <ultrastore.json>] [--server <url>] [--key <hex>] [--channel beta] [--root <dir>] [--check]
+                                                         UltraStore itself, from its own catalog
+ultrastore self-catalog <catalog.json> [-o <ultrastore.json>]   the store's own catalog cut out of a catalog
 ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]   through the payment service
 ultrastore licences [--root <dir>]                        the apps bought here
 ultrastore licence <app-id> [--root <dir>] [--key <hex>]    one purchase's terms; with the key, the licence file verified
@@ -647,7 +757,7 @@ ultrastore --version | --help
 
 ```
 cmake -S . -B build -DBUILD_ULTRASTORE=ON -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON
-cmake --build build --target ultrastore UltraStoreCoreTests
+cmake --build build --target ultrastore ultrastore-setup UltraStoreCoreTests
 (cd build && ctest -R '^UltraStoreCore$' --output-on-failure)
 ```
 
@@ -689,8 +799,10 @@ What follows from it, so the step is small when it comes:
   second).
 - **Nothing new goes into the store's window for updates.** Its Updates and
   Installed pages stay until the App manager replaces them; new work on
-  updating (a schedule, notifications, the store's own update) belongs to
-  the App manager.
+  updating (a schedule, notifications, menu entries for every app) belongs
+  to the App manager. The store's own update is already in the core
+  (`SelfUpdate.h`, *The store installs and updates itself*), so the App
+  manager calls it as the store does.
 
 Open, to be decided when it is built: its name and folder, whether it
 checks on a schedule or only when opened, and whether the store keeps a
@@ -762,7 +874,12 @@ them, every report about them with the reporter removed, and their standing.
    notices, terms and the audit log; the merchant backend's `submit` and
    its notices banner; the operator's window on the service; the report
    form on the store's app page.
-9. **The App manager** (*The App manager*, later): a separate application
+9. **The store installs and updates itself** (*The store installs and
+   updates itself*): the store's own catalog `ultrastore.json`, the setup
+   program `ultrastore-setup`, the running version kept through an update,
+   the restart, the menu entry; the admin backend's publish writes the
+   store's own catalog.
+10. **The App manager** (*The App manager*, later): a separate application
    on the store's core that owns the update check, the updates and the
    list of what is installed; then its integration into the OS manager /
    settings (UOS-Settings).

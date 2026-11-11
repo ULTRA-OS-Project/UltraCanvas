@@ -1,6 +1,7 @@
 // Apps/UltraStore/ui/StoreWindow.cpp
 // The shell, the pages and the app page after the shop design; the jobs are
 // in StoreJobs.cpp, the settings page in StoreSettingsPage.cpp.
+// Version: 0.6.0 - the store updates itself: its running version protected at start, the restart offer
 // Version: 0.5.0 - the shop design: the header, the Discover sections, the Categories filters, the app page
 // Version: 0.4.0 - the open order resumed, the update terms
 // Version: 0.3.0 - Buy through the payment service; the licences
@@ -591,8 +592,15 @@ void StoreWindow::OpenStore() {
     engine_ = std::make_unique<StoreEngine>(root);
     if (const auto opened = engine_->Open(); !opened) {
         storeError_ = opened.error.message + (opened.error.detail.empty() ? "" : " (" + opened.error.detail + ")");
-    } else if (const auto all = engine_->Installed()) {
-        installed_ = all.Value();
+    } else {
+        // A store installed in its own folder: its version is the one thing
+        // no job removes, and what an update left behind for the copy that
+        // was running then goes now (core/SelfUpdate.h). A program that runs
+        // from another app's folder is protected too, but is not the store.
+        storeInstall_ = ProtectRunningInstall(*engine_);
+        if (storeInstall_.id != kStoreAppId) storeInstall_ = {};
+        if (storeInstall_.Managed()) RemoveOldStoreVersions(*engine_);
+        if (const auto all = engine_->Installed()) installed_ = all.Value();
         if (const auto bought = engine_->Registry().Licences()) licences_ = bought.Value();
     }
     assets_ = std::make_unique<AssetCache>(PathToUtf8(PathFromUtf8(engine_->CacheDir()) / "assets"));
@@ -1899,6 +1907,43 @@ void StoreWindow::Collect() {
     job.kind = JobKind::Collect;
     job.title = Tr("Clean up unused components");
     Enqueue(std::move(job));
+}
+
+void StoreWindow::UpdateStoreItself(bool catalogTooNew) {
+    if (!storeError_.empty()) { Alert(TrF("The store folder could not be opened: {0}", storeError_)); return; }
+    if (localCatalog_) { SetStatus(Tr("A local catalog is shown (--catalog); UltraStore's own update comes from the servers.")); return; }
+    if (const std::string note = ServerNote(); !note.empty()) { SetStatus(note, true); return; }
+    for (const Job& j : pending_) if (j.kind == JobKind::SelfUpdate) return;
+    if (running_ && running_->kind == JobKind::SelfUpdate) return;
+    Job job;
+    job.kind = JobKind::SelfUpdate;
+    job.appId = kStoreAppId;
+    job.title = Tr("Update UltraStore");
+    job.catalogTooNew = catalogTooNew;
+    Enqueue(std::move(job));
+}
+
+void StoreWindow::OfferRestartIfUpdated() {
+    if (!storeInstall_.Managed() || !engine_ || !restartPath_.empty()) return;
+    const Result<InstalledRecord> current = engine_->Registry().Current(storeInstall_.id);
+    if (!current || VersionEqual(current.Value().version, storeInstall_.version)) return;
+    if (restartOffered_ == current.Value().version) return;
+    restartOffered_ = current.Value().version;
+    const std::string path = LaunchPath(current.Value());
+    if (path.empty()) return;
+    RefreshStoreLauncher(*engine_);   // the menu entry follows the store to its new version
+    UltraCanvasDialogManager::ShowConfirmation(
+        TrF("UltraStore {0} is installed. This window is still version {1}.\nRestart UltraStore now to use the new version?", current.Value().version, storeInstall_.version),
+        Tr("UltraStore was updated"),
+        [this, path](bool confirmed) {
+            if (!confirmed) { SetStatus(Tr("The new UltraStore starts the next time you open it.")); return; }
+            if (Busy()) { SetStatus(Tr("A job is still running: close UltraStore when it is done, the new version starts next time."), true); return; }
+            restartPath_ = path;
+            settings_.Save();
+            app_.RequestExit();
+            window_->Close();
+        },
+        window_.get());
 }
 
 void StoreWindow::RefreshCatalog() {

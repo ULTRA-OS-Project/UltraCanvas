@@ -11,6 +11,10 @@
 #                    UltraCanvasJSON and the VirtualFS bridge, UltraNet,
 #                    UltraCrypt and UltraDatabase, but opens no window, so the
 #                    command line and the tests use it headless.
+#   ultrastore-setup the first installer (setup/main.cpp): a console program
+#                    that fetches the store's own signed catalog and installs
+#                    UltraStore into the per-user store folder, from where it
+#                    updates itself (core/SelfUpdate.h).
 #   ultrastore       the program: the window when started plainly, the
 #                    commands when given one (one program, since a
 #                    case-insensitive file system cannot tell `ultrastore`
@@ -22,6 +26,7 @@
 # that cannot verify or cannot remember: -DBUILD_ULTRASTORE=OFF builds the
 # rest of the tree without it.
 #
+# Version: 0.4.0 - ultrastore-setup; SelfUpdate and Launcher in the core
 # Version: 0.3.0 - the window; built-in keys and servers (UltraStoreBuiltin.h)
 # Version: 0.2.0 - UltraInstaller
 # Version: 0.1.0
@@ -94,6 +99,8 @@ add_library(UltraStoreCore STATIC
     core/AssetCache.cpp
     core/StoreSettings.cpp
     core/Purchase.cpp
+    core/SelfUpdate.cpp
+    core/Launcher.cpp
 )
 set_target_properties(UltraStoreCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -107,7 +114,28 @@ target_include_directories(UltraStoreCore PRIVATE
 # The module homes resolve to the shared core, or to their archives under a
 # static one; UltraCanvasJSON lives in the core either way.
 target_link_libraries(UltraStoreCore PUBLIC ${ULTRACANVAS_LIBRARY} UltraNet UltraCrypt UltraDatabase)
+if(WIN32)
+    # Launcher.cpp writes the Start menu shortcut through the shell (IShellLinkW).
+    target_link_libraries(UltraStoreCore PRIVATE ole32 shell32 uuid)
+endif()
 message(STATUS "  [✓] UltraStore core - ENABLED")
+
+# The first installer: the core and nothing of the window. It links what the
+# core links, so with the shared UltraCanvas library of the shipping
+# configuration that library travels beside it; a static configuration
+# (-DULTRACANVAS_BUILD_SHARED=OFF) gives one file.
+add_executable(ultrastore-setup setup/main.cpp)
+target_include_directories(ultrastore-setup PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+target_link_libraries(ultrastore-setup PRIVATE UltraStoreCore ${ULTRACANVAS_LIBRARY})
+target_compile_features(ultrastore-setup PRIVATE cxx_std_20)
+target_compile_definitions(ultrastore-setup PRIVATE ULTRASTORE_VERSION="${ULTRASTORE_VERSION}")
+# Only the system libraries its code calls: under a static core the link line
+# names everything the UI library uses (GTK, the media codecs ...), which a
+# machine without the store need not have and the setup program never calls.
+if(UNIX AND NOT APPLE)
+    target_link_options(ultrastore-setup PRIVATE "LINKER:--as-needed")
+endif()
+message(STATUS "  [✓] ultrastore-setup (the first installer) - ENABLED")
 
 # The program: the window (ui/) when started plainly, the commands (cli/)
 # when given one. The window needs the UI library; the core requires it anyway

@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
+// Version: 0.7.0 - ultrastore.json: the store's own catalog, signed beside the catalog
 // Version: 0.6.0 - the mark for the pages under go/
 // Version: 0.5.0 - a restricted package on an app with a trial
 // Version: 0.4.0 - payment_url and licence_key from the settings
@@ -12,6 +13,7 @@
 #include "PageFrame.h"
 
 #include "KeyVault.h"
+#include "SelfUpdate.h"
 #include "Verifier.h"
 
 #include "UltraCanvasPathUtf8.h"
@@ -323,8 +325,24 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
     // The catalog and its signature over those exact bytes.
     const std::string bytes = UltraStore::SerializeCatalog(catalog);
     const auto signature = UltraStore::SignCatalog(bytes, seed.Value());
+    // The store's own catalog, signed with the same seed while it is open:
+    // UltraStore's entry and what it runs on, at the schema every store
+    // reads (UltraStore::kSelfCatalogSchema).
+    std::string selfBytes, selfSignatureText;
+    bool selfSigned = true;
+    UltraStore::Error selfError;
+    if (const auto self = UltraStore::ExtractSelfCatalog(catalog)) {
+        selfBytes = UltraStore::SerializeCatalog(self.Value());
+        const auto selfSignature = UltraStore::SignCatalog(selfBytes, seed.Value());
+        if (selfSignature) selfSignatureText = UltraStore::ToHex(selfSignature.Value()) + "\n";
+        else { selfSigned = false; selfError = selfSignature.error; }
+    } else {
+        report.warnings.push_back(std::string("the catalog does not list UltraStore (") + UltraStore::kStoreAppId +
+                                  "): no ultrastore.json is written, so the setup program and the store's own update have nothing to fetch");
+    }
     UltraCrypt_SecureZero(seed.Value().data(), seed.Value().size());
     if (!signature) return R::Failure(signature.error.code, signature.error.message, signature.error.detail);
+    if (!selfSigned) return R::Failure(selfError.code, selfError.message, selfError.detail);
     const std::string signatureText = UltraStore::ToHex(signature.Value()) + "\n";
 
     // Verified the way the store verifies before it is called published.
@@ -336,6 +354,29 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
         return R::Failure(ErrorCode::SignatureInvalid, "The signature does not verify with the key's public half", verified.error.message);
     }
     if (const auto parsed = UltraStore::ParseCatalog(bytes); !parsed) return R::Failure(parsed.error.code, parsed.error.message, parsed.error.detail);
+
+    // The store's own catalog, checked the same way and written first: a
+    // store never finds a catalog that names a newer store than
+    // ultrastore.json offers.
+    if (!selfBytes.empty()) {
+        std::vector<uint8_t> selfSignature;
+        if (!UltraStore::ParseSignatureFile(selfSignatureText, selfSignature)) return R::Failure(ErrorCode::Internal, "The store's own signature file would not read back");
+        if (const auto verified = UltraStore::VerifyCatalogSignature(selfBytes, selfSignature, {publicKey}); !verified) {
+            return R::Failure(ErrorCode::SignatureInvalid, "The store's own catalog does not verify with the key's public half", verified.error.message);
+        }
+        const auto selfParsed = UltraStore::ParseCatalog(selfBytes);
+        if (!selfParsed) return R::Failure(selfParsed.error.code, selfParsed.error.message, selfParsed.error.detail);
+        if (selfParsed.Value().schema > UltraStore::kSelfCatalogSchema) {
+            return R::Failure(ErrorCode::Internal, "The store's own catalog was written with a schema older stores cannot read",
+                              "schema " + std::to_string(selfParsed.Value().schema));
+        }
+        const fs::path selfPath = out / UltraStore::kSelfCatalogFile;
+        const fs::path selfSignaturePath = out / UltraCanvas::PathFromUtf8(std::string(UltraStore::kSelfCatalogFile) + ".sig");
+        if (!WriteFileAtomically(selfPath, selfBytes, error)) return R::Failure(ErrorCode::IoError, error);
+        if (!WriteFileAtomically(selfSignaturePath, selfSignatureText, error)) return R::Failure(ErrorCode::IoError, error);
+        report.selfCatalogPath = UltraCanvas::PathToUtf8(selfPath);
+        report.selfSignaturePath = UltraCanvas::PathToUtf8(selfSignaturePath);
+    }
 
     const fs::path catalogPath = out / "catalog.json";
     const fs::path signaturePath = out / "catalog.json.sig";

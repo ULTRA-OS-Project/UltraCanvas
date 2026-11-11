@@ -7,6 +7,7 @@
 // catalog announces (trusted_keys, schema 2) are remembered with the cache
 // and trusted beside the configured ones for the next catalog, which is how
 // a signing key is rotated without a new store binary.
+// Version: 0.3.0 - fileName: the same client fetches the store's own catalog (SelfUpdate.h)
 // Version: 0.2.0 - the announced keys
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -44,6 +45,10 @@ struct CatalogClientConfig {
     std::vector<std::string> baseUrls;
     PublicKeys trustedKeys;     // compiled in, and the ones the person added: never dropped by a catalog
     std::string cacheDir;       // UTF-8 folder for catalog.json, .sig and state.json
+    // The document's name on the server, "<base>/<fileName>" and
+    // "<base>/<fileName>.sig". The store's own catalog (SelfUpdate.h) is
+    // another name beside the catalog, with a cache folder of its own.
+    std::string fileName = "catalog.json";
 };
 
 // What the client remembers between runs.
@@ -84,6 +89,7 @@ public:
 private:
     Result<Catalog> Accept(const std::string& catalogBytes, const std::vector<uint8_t>& signature,
                            const std::string& etag, const std::string& baseUrl);
+    std::string RemoteName() const;
     bool WriteCache(const std::string& catalogBytes, const std::vector<uint8_t>& signature,
                     const CatalogState& state, std::string& error) const;
 

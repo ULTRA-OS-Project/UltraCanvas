@@ -38,6 +38,7 @@
 //
 // Pictures (icons, screenshots) come through AssetCache on a second thread
 // and are set on the cards when they arrive.
+// Version: 0.6.0 - the store updates itself: the SelfUpdate job, the restart offer, RestartPath for main
 // Version: 0.5.0 - the shop design: the header, the Discover sections, the Categories filters, the app page
 // Version: 0.4.0 - the open order resumed, the update terms
 // Version: 0.3.0 - Buy through the payment service; the licences
@@ -52,6 +53,7 @@
 #include "PackageResolver.h"
 #include "PlatformInfo.h"
 #include "Purchase.h"
+#include "SelfUpdate.h"
 #include "StoreEngine.h"
 #include "StoreQuery.h"
 #include "StoreSettings.h"
@@ -113,6 +115,12 @@ public:
     // catalog, kept in force for StoreSettings::kCodeDays, shown in the
     // prices. An empty text forgets the code.
     void ApplyCode(const std::string& text);
+
+    // The program to start once the window is gone: the store's new version,
+    // when it updated itself and the person agreed to the restart. Empty
+    // otherwise. main reads it after the single-instance lock is released,
+    // so the new copy does not find this one still running.
+    const std::string& RestartPath() const { return restartPath_; }
 
 private:
     // ===== shell (StoreWindow.cpp) =====
@@ -198,6 +206,12 @@ private:
     void Collect();
     void RefreshCatalog();
     void ReloadInstalled();
+    // UltraStore itself, from its own catalog (core/SelfUpdate.h): asked for
+    // in Settings, and started by a catalog this store is too old to read.
+    void UpdateStoreItself(bool catalogTooNew = false);
+    // After a job: when the store's current version is no longer the one
+    // this window runs from, offer to start the new one (once per version).
+    void OfferRestartIfUpdated();
 
     // ===== pictures =====
     void RequestPicture(const std::string& url, const std::weak_ptr<UltraCanvas::UltraCanvasUIElement>& target);
@@ -205,7 +219,7 @@ private:
     void StopPictureThread();
 
     // ===== jobs (StoreJobs.cpp) =====
-    enum class JobKind { Refresh, Reload, Install, Update, UpdateAll, Remove, Collect, Buy };
+    enum class JobKind { Refresh, Reload, Install, Update, UpdateAll, Remove, Collect, Buy, SelfUpdate };
     struct Job {
         uint64_t id = 0;
         JobKind kind = JobKind::Reload;
@@ -213,9 +227,11 @@ private:
         std::string title;
         bool showInQueue = true;
         bool resume = false;   // Buy: the settings' open order, not a new one
+        bool catalogTooNew = false;   // SelfUpdate: started by a catalog this store cannot read
     };
     struct JobResult {
         bool ok = true;
+        ErrorCode code = ErrorCode::Ok;            // of the failure, when !ok
         std::string message;                       // for the status line
         bool haveInstalled = false;
         std::vector<InstalledRecord> installed;
@@ -271,6 +287,9 @@ private:
     std::unique_ptr<CatalogClient> client_;
     std::unique_ptr<AssetCache> assets_;
     std::string storeError_;                // the engine could not open
+    RunningInstall storeInstall_;        // the installed version this program runs from; unmanaged when it is outside the store folder
+    std::string restartOffered_;            // the version the restart was offered for
+    std::string restartPath_;               // set when the person agreed: main starts it after the window is gone
     std::shared_ptr<const Catalog> catalog_;
     std::string catalogNote_;               // where the catalog came from, or why there is none
     CatalogState catalogState_;

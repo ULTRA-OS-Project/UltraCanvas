@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/ui/AdminWindow.cpp
 // The shell, the store's pages (Overview, Settings, Keys, Publish) and the
 // worker thread; the component form is in AdminComponentPage.cpp.
+// Version: 0.5.0 - Publish names the store's own catalog
 // Version: 0.4.0 - the payment settings and Sync sales
 // Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
@@ -649,6 +650,7 @@ void AdminWindow::PublishNow() {
                       std::to_string(r.joinPages) + " join page(s), " + std::to_string(r.retiredPages) + " retired page(s)";
         out.lines.push_back(r.catalogPath);
         out.lines.push_back(r.signaturePath);
+        if (!r.selfCatalogPath.empty()) { out.lines.push_back(r.selfCatalogPath); out.lines.push_back(r.selfSignaturePath); }
         out.lines.push_back("key " + r.publicKeyHex);
         for (const std::string& w : r.warnings) out.lines.push_back("warning: " + w);
         return out;

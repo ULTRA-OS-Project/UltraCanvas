@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/CatalogClient.cpp
 // Fetching, verifying and caching the catalog (CatalogClient.h).
+// Version: 0.3.0 - the document's name on the server from the configuration
 // Version: 0.2.0 - the announced keys
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -63,7 +64,7 @@ bool WriteFileAtomically(const std::filesystem::path& path, const std::string& b
     return true;
 }
 
-std::string JoinUrl(const std::string& base, const char* name) {
+std::string JoinUrl(const std::string& base, const std::string& name) {
     if (base.empty()) return name;
     return base.back() == '/' ? base + name : base + "/" + name;
 }
@@ -110,6 +111,10 @@ Fetcher UltraNetFetcher() {
 
 CatalogClient::CatalogClient(CatalogClientConfig config, Fetcher fetcher)
     : config_(std::move(config)), fetcher_(std::move(fetcher)) {}
+
+std::string CatalogClient::RemoteName() const {
+    return config_.fileName.empty() ? std::string(kCatalogFile) : config_.fileName;
+}
 
 CatalogState CatalogClient::State() const {
     CatalogState state;
@@ -194,7 +199,7 @@ Result<Catalog> CatalogClient::Refresh() {
     for (const std::string& base : config_.baseUrls) {
         // The ETag belongs to the server it came from.
         const std::string etag = previous.fetchedFrom == base ? previous.etag : std::string();
-        const FetchResponse catalogResponse = fetcher_(JoinUrl(base, kCatalogFile), etag);
+        const FetchResponse catalogResponse = fetcher_(JoinUrl(base, RemoteName()), etag);
         if (!catalogResponse.error.empty() || catalogResponse.status == 0) {
             lastError = base + ": " + (catalogResponse.error.empty() ? "no answer" : catalogResponse.error);
             continue;
@@ -203,12 +208,12 @@ Result<Catalog> CatalogClient::Refresh() {
             Result<Catalog> cached = LoadCached();
             if (cached) return cached;
             // The cache is gone or bad: fetch afresh.
-            const FetchResponse again = fetcher_(JoinUrl(base, kCatalogFile), std::string());
+            const FetchResponse again = fetcher_(JoinUrl(base, RemoteName()), std::string());
             if (!again.error.empty() || again.status != 200) {
                 lastError = base + ": " + (again.error.empty() ? "HTTP " + std::to_string(again.status) : again.error);
                 continue;
             }
-            const FetchResponse sig = fetcher_(JoinUrl(base, kSignatureFile), std::string());
+            const FetchResponse sig = fetcher_(JoinUrl(base, RemoteName() + ".sig"), std::string());
             std::vector<uint8_t> signature;
             if (!sig.error.empty() || sig.status != 200 || !ParseSignatureFile(sig.body, signature)) {
                 lastError = base + ": the catalog's signature could not be fetched";
@@ -220,7 +225,7 @@ Result<Catalog> CatalogClient::Refresh() {
             lastError = base + ": HTTP " + std::to_string(catalogResponse.status);
             continue;
         }
-        const FetchResponse sig = fetcher_(JoinUrl(base, kSignatureFile), std::string());
+        const FetchResponse sig = fetcher_(JoinUrl(base, RemoteName() + ".sig"), std::string());
         std::vector<uint8_t> signature;
         if (!sig.error.empty() || sig.status != 200) {
             lastError = base + ": the catalog's signature could not be fetched (" +

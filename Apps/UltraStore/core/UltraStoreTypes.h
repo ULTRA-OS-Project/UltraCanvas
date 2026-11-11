@@ -3,6 +3,7 @@
 // (os / arch / variants), versions and how they compare, localized text, and
 // Result<T>, which every fallible call returns - an error code and a message
 // a person can read, never an exception across the core boundary.
+// Version: 0.2.0 - ErrorCode::InUse
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -76,6 +77,7 @@ enum class ErrorCode {
     NetworkError,
     IoError,
     CryptoUnavailable,   // UltraCrypt has no backend here
+    InUse,               // the version is the one this program runs from
     Internal
 };
 std::string ErrorCodeName(ErrorCode code);

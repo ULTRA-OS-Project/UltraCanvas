@@ -3,6 +3,7 @@
 // and posts progress and the outcome to the UI thread; the Downloads panel
 // shows the queue. The engine and the client are touched by the worker only
 // while a job runs and by the UI thread only while none does.
+// Version: 0.4.0 - the SelfUpdate job; a catalog too new for this store starts it
 // Version: 0.3.0 - the open order kept and resumed, the licence file
 // Version: 0.2.0 - the Buy job
 // Version: 0.1.0
@@ -106,6 +107,7 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
     JobResult result;
     auto fail = [&result](const Error& e) {
         result.ok = false;
+        result.code = e.code;
         result.message = e.message + (e.detail.empty() ? "" : " (" + e.detail + ")");
         return result;
     };
@@ -262,6 +264,38 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                              (catalog->licenceKey.empty() ? " " + Tr("(the licence is kept unverified: the catalog names no licence key)") : std::string());
             return result;
         }
+        case JobKind::SelfUpdate: {
+            // The store's own catalog, from the servers and with the keys
+            // the catalog client has; then the engine's install or update of
+            // the store's own app.
+            if (!client_) return fail(Error{ErrorCode::Internal, Tr("No catalog client")});
+            progress(Tr("Asking the servers for the newest UltraStore"), -1.0);
+            CatalogClient self(SelfCatalogConfig(*client_));
+            const Result<Catalog> fetched = self.Refresh();
+            if (!fetched) return fail(fetched.error);
+            const Result<SelfUpdateCheck> check = CheckSelfUpdate(fetched.Value(), *engine_, platform_, {});
+            if (!check) return fail(check.error);
+            if (!storeInstall_.Managed()) {
+                // From a package or a build folder: it is updated the way it came.
+                result.message = VersionLess(ULTRASTORE_VERSION, check.Value().newestVersion)
+                    ? TrF("UltraStore {0} is available. This copy ({1}) was not installed by UltraStore's setup: update it the way it was installed, or run ultrastore-setup.", check.Value().newestVersion, ULTRASTORE_VERSION)
+                    : TrF("UltraStore {0} is up to date.", ULTRASTORE_VERSION);
+                return result;
+            }
+            if (!check.Value().available) {
+                // The servers' catalog is ahead of the newest store they offer.
+                if (job.catalogTooNew) {
+                    return fail(Error{ErrorCode::SchemaTooNew, TrF("The catalog needs a newer UltraStore than the servers offer yet (this is {0}, the newest). Try again later.", check.Value().installedVersion), {}});
+                }
+                result.message = TrF("UltraStore {0} is up to date.", check.Value().installedVersion);
+                return result;
+            }
+            const Result<SelfUpdateOutcome> done = InstallOrUpdateStore(*engine_, fetched.Value(), platform_, {}, callbacks);
+            takeInstalled();
+            if (!done) return fail(cancelRunning_ ? Error{ErrorCode::NetworkError, "Cancelled"} : done.error);
+            result.message = TrF("UltraStore {0} is installed: restart UltraStore to use it", done.Value().version);
+            return result;
+        }
         case JobKind::Collect: {
             progress(Tr("Looking for unused components"), -1.0);
             const auto removed = engine_->CollectGarbage();
@@ -307,10 +341,24 @@ void StoreWindow::JobFinished(uint64_t jobId, JobResult result) {
     if (result.haveInstalled) SetInstalled(std::move(result.installed));
     if (result.haveLicences) licences_ = std::move(result.licences);
     SetStatus(result.message, !result.ok);
-    if (!result.ok && job && job->kind != JobKind::Reload && !cancelRunning_) Alert(job->title + ": " + result.message);
+    // A catalog this store is too old to read: the store's own catalog,
+    // which every store reads, says where the newer store is. A store that
+    // runs from its own folder fetches it at once; any other is told how.
+    const bool tooOld = !result.ok && job && job->kind == JobKind::Refresh && result.code == ErrorCode::SchemaTooNew;
+    if (tooOld && storeInstall_.Managed()) {
+        SetStatus(Tr("The catalog needs a newer UltraStore: updating UltraStore…"));
+    } else if (tooOld) {
+        Alert(Tr("The catalog needs a newer UltraStore. This copy was not installed by UltraStore's setup: update it the way it was installed, or run ultrastore-setup."));
+    } else if (!result.ok && job && job->kind != JobKind::Reload && !cancelRunning_) {
+        Alert(job->title + ": " + result.message);
+    }
     cancelRunning_ = false;
     RebuildQueuePanel();
     RebuildAllPages();
+    if (tooOld && storeInstall_.Managed()) UpdateStoreItself(true);
+    if (result.ok && job && (job->kind == JobKind::SelfUpdate || job->kind == JobKind::Update || job->kind == JobKind::UpdateAll)) {
+        OfferRestartIfUpdated();
+    }
     RunNextJob();
 }
 

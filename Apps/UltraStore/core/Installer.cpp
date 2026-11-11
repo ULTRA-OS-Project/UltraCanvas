@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Installer.cpp
 // Unpacking and removing installed versions (Installer.h).
+// Version: 0.2.0 - SetInUse
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Installer.h"
@@ -48,6 +49,15 @@ void MakeExecutable(const fs::path& p) {
 
 ArchiveInstaller::ArchiveInstaller(std::string rootUtf8, IInstallRegistry& registry)
     : root_(std::move(rootUtf8)), registry_(registry) {}
+
+void ArchiveInstaller::SetInUse(std::string id, std::string version) {
+    inUseId_ = std::move(id);
+    inUseVersion_ = std::move(version);
+}
+
+bool ArchiveInstaller::IsInUse(std::string_view id, std::string_view version) const {
+    return !inUseId_.empty() && id == inUseId_ && VersionEqual(version, inUseVersion_);
+}
 
 bool ArchiveInstaller::SupportsFormat(const std::string& format) {
     if (format == "appimage") return true;
@@ -201,6 +211,9 @@ Result<void> ArchiveInstaller::Remove(std::string_view id, std::string_view vers
     const InstalledRecord* row = nullptr;
     for (const InstalledRecord& r : rows.Value()) if (VersionEqual(r.version, version)) row = &r;
     if (!row) return Result<void>::Failure(ErrorCode::NotFound, std::string(id) + " " + std::string(version) + " is not installed");
+    if (IsInUse(id, version)) {
+        return Result<void>::Failure(ErrorCode::InUse, std::string(id) + " " + std::string(version) + " is running and stays until it is closed");
+    }
 
     std::error_code ec;
     const fs::path folder = row->folder.empty() ? PathFromUtf8(FolderFor(row->kind, id, version)) : PathFromUtf8(row->folder);
@@ -240,7 +253,8 @@ Result<std::vector<InstalledRecord>> ArchiveInstaller::CollectGarbage() {
     std::set<std::string> keep;
     std::vector<const InstalledRecord*> frontier;
     for (const InstalledRecord& r : rows) {
-        if (r.kind == ComponentKind::App && r.current) { keep.insert(r.id + "@" + r.version); frontier.push_back(&r); }
+        const bool running = r.kind == ComponentKind::App && IsInUse(r.id, r.version);
+        if ((r.kind == ComponentKind::App && r.current) || running) { keep.insert(r.id + "@" + r.version); frontier.push_back(&r); }
     }
     while (!frontier.empty()) {
         const InstalledRecord* r = frontier.back();

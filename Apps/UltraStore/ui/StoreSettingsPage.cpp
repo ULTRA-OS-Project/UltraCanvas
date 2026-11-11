@@ -2,6 +2,7 @@
 // The Settings page: the channel, the texts' language, the servers, the keys
 // the user trusts beside the compiled-in ones, and what the store knows
 // about this machine, its folder and the catalog it has.
+// Version: 0.4.0 - Update UltraStore, and how this copy is updated
 // Version: 0.3.0 - Proxy settings: the shared dialog, for the proxy the catalog,
 //                  the downloads and the purchases go through
 // Version: 0.2.0 - the announced keys in the catalog state
@@ -148,6 +149,10 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
     auto reload = Theme::Button("usS.reload", Tr("Reload installed apps"), 160);
     reload->onClick = [this]() { ReloadInstalled(); };
     maintenance->AddChild(reload);
+    auto selfUpdate = Theme::Button("usS.selfUpdate", Tr("Update UltraStore"), 150);
+    selfUpdate->SetTooltip(Tr("Asks the servers for the newest UltraStore and installs it"));
+    selfUpdate->onClick = [this]() { UpdateStoreItself(false); };
+    maintenance->AddChild(selfUpdate);
     auto forgetCode = Theme::Button("usS.forgetCode", Tr("Forget the code"), 130);
     forgetCode->SetTooltip(Tr("The discount or partner code entered on Discover stops counting"));
     forgetCode->onClick = [this]() { ApplyCode(""); };
@@ -230,6 +235,9 @@ void StoreWindow::RefreshSettingsInfo() {
     text += "\n" + TrF("Texts in: {0}", lang_);
     text += "\n" + TrF("Store folder: {0}", engine_ ? engine_->Root() : std::string("-"));
     if (!storeError_.empty()) text += "\n  " + TrF("could not be opened: {0}", storeError_);
+    text += "\n" + (storeInstall_.Managed()
+        ? TrF("This UltraStore: {0}, installed in the store folder (it updates itself)", storeInstall_.version)
+        : TrF("This UltraStore: {0}, not installed by its setup (it is updated the way it was installed)", ULTRASTORE_VERSION));
     text += "\n" + TrF("Settings file: {0}", UltraCanvasAppSettings("UltraStore").File());
     text += "\n" + TrF("Catalog: {0}", catalogNote_.empty() ? Tr("none") : catalogNote_);
     if (catalog_) {

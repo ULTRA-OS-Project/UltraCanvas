@@ -1,5 +1,6 @@
 // Apps/UltraStoreAdmin/core/Uploader.cpp
 // The publish folder onto the host (Uploader.h).
+// Version: 0.2.0 - the store's own catalog goes after the packages, before the catalog
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Uploader.h"
@@ -28,6 +29,10 @@ namespace {
 
 constexpr const char* kCatalog = "catalog.json";
 constexpr const char* kSignature = "catalog.json.sig";
+// The store's own catalog (UltraStore's SelfUpdate.h): after the packages it
+// names, before the catalog.
+constexpr const char* kSelfCatalog = "ultrastore.json";
+constexpr const char* kSelfSignature = "ultrastore.json.sig";
 
 std::string Lower(std::string s) {
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -228,11 +233,13 @@ Result<std::vector<std::string>> FilesToSend(const std::string& publishDirUtf8) 
         if (!it->is_regular_file(ec)) continue;
         std::string relative = UltraCanvas::PathToUtf8(std::filesystem::relative(it->path(), root, ec));
         std::replace(relative.begin(), relative.end(), '\\', '/');
-        if (relative == kCatalog || relative == kSignature) continue;
+        if (relative == kCatalog || relative == kSignature || relative == kSelfCatalog || relative == kSelfSignature) continue;
         files.push_back(std::move(relative));
     }
     if (ec) return R::Failure(ErrorCode::IoError, "The publish folder could not be read", ec.message());
     std::sort(files.begin(), files.end());
+    if (std::filesystem::is_regular_file(root / kSelfSignature, ec)) files.push_back(kSelfSignature);
+    if (std::filesystem::is_regular_file(root / kSelfCatalog, ec)) files.push_back(kSelfCatalog);
     if (std::filesystem::is_regular_file(root / kSignature, ec)) files.push_back(kSignature);
     if (std::filesystem::is_regular_file(root / kCatalog, ec)) files.push_back(kCatalog);
     return R::Succeed(std::move(files));

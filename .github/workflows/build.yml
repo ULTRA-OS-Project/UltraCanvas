@@ -1704,6 +1704,11 @@ jobs:
           store=build/ultrastore
           [ "${{ runner.os }}" = "Windows" ] && store="$store.exe"
           "$store" --version
+          # The first installer answers too (it links the core alone, and
+          # on Windows the shell's shortcut interfaces).
+          setup=build/ultrastore-setup
+          [ "${{ runner.os }}" = "Windows" ] && setup="$setup.exe"
+          "$setup" --version
           "$store" platform
           "$store" installed --root "$RUNNER_TEMP/ultrastore-smoke"
           # The admin backend's core: the database, the sealed key, the

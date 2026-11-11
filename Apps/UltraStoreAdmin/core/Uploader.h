@@ -8,6 +8,7 @@
 // in the tests. What each server already has is kept per target URL in the
 // store folder (upload-state.json: file -> SHA-256), written after every
 // file, so an upload that broke off goes on from where it stopped.
+// Version: 0.2.0 - ultrastore.json in the order
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -74,8 +75,9 @@ struct UploadReport {
 };
 
 // The files of the publish folder, in the order they are sent: everything
-// but the catalog and its signature, sorted; then catalog.json.sig; then
-// catalog.json. Relative paths with '/'.
+// but the two catalogs and their signatures, sorted; then the store's own
+// catalog (ultrastore.json.sig, ultrastore.json); then catalog.json.sig;
+// then catalog.json. Relative paths with '/'.
 Result<std::vector<std::string>> FilesToSend(const std::string& publishDirUtf8);
 
 // Sends what the target lacks. Stops at the first failure - what was sent

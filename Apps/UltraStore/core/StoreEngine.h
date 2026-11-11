@@ -4,6 +4,7 @@
 // collect what nothing uses any more. Resolves with PackageResolver, fetches
 // with Downloader, unpacks with ArchiveInstaller, remembers in
 // SqliteRegistry; the layout is Installer.h's under one root.
+// Version: 0.4.0 - the version this program runs from (ArchiveInstaller::SetInUse) is left by Update and refused by Remove
 // Version: 0.3.0 - the update terms of a purchase, the licence file
 // Version: 0.2.0 - the URL signer for restricted packages
 // Version: 0.1.0
@@ -77,7 +78,8 @@ public:
         const Catalog& catalog, const PlatformInfo& platform, const EngineCallbacks& callbacks = {});
 
     // Removes every installed version of the app, then the components nothing
-    // depends on any more.
+    // depends on any more. InUse, with nothing removed, when one of the
+    // versions is the one this program runs from.
     Result<std::vector<InstalledRecord>> Remove(std::string_view appId);
 
     Result<std::vector<InstalledRecord>> CollectGarbage() { return installer_->CollectGarbage(); }

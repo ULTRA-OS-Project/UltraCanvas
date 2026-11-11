@@ -34,6 +34,7 @@
 //
 // --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
 //
+// Version: 0.6.0 - self-update, self-catalog; update, remove and gc leave the version this program runs from
 // Version: 0.5.0 - licence
 // Version: 0.4.0 - buy, licences
 // Version: 0.3.0 - code
@@ -49,6 +50,7 @@
 #include "PackageResolver.h"
 #include "PlatformInfo.h"
 #include "Purchase.h"
+#include "SelfUpdate.h"
 #include "StoreEngine.h"
 #include "StoreQuery.h"
 #include "StoreSettings.h"
@@ -93,6 +95,12 @@ int UltraStore::Cli::Usage(FILE* to) {
         "  ultrastore remove <app-id> [--root <dir>]\n"
         "  ultrastore installed [--root <dir>]\n"
         "  ultrastore gc [--root <dir>]\n"
+        "  ultrastore self-update [--catalog <ultrastore.json>] [--server <url>] [--key <hex>] [--channel stable|beta]\n"
+        "                         [--root <dir>] [--check]\n"
+        "                                     UltraStore itself, from its own signed catalog on the servers of the settings;\n"
+        "                                     --check (last) only says what there is\n"
+        "  ultrastore self-catalog <catalog.json> [-o <ultrastore.json>]\n"
+        "                                     the store's own catalog cut out of a catalog (sign it with `sign`)\n"
         "  ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]\n"
         "                                     through the catalog's payment service: the browser pays, the licence is kept\n"
         "  ultrastore licences [--root <dir>]  the apps bought here\n"        "  ultrastore licence <app-id> [--root <dir>] [--key <hex>]\n"
@@ -404,6 +412,7 @@ int CmdUpdate(const std::vector<std::string>& args) {
     if (!LoadCatalog(pos[1], catalog)) return 1;
     StoreEngine engine(StoreRoot(args));
     if (const auto r = engine.Open(); !r) return Fail(r.error);
+    ProtectRunningInstall(engine);   // a store run from the store folder keeps its own version
     engine.SetUrlSigner(LicensedUrlSigner(engine.Registry(), catalog.paymentUrl));
     const PlatformInfo platform = PlatformInfo::Detect();
     if (pos.size() >= 3) {
@@ -429,6 +438,7 @@ int CmdRemove(const std::vector<std::string>& args) {
     if (pos.size() < 2) return Usage(stderr);
     StoreEngine engine(StoreRoot(args));
     if (const auto r = engine.Open(); !r) return Fail(r.error);
+    ProtectRunningInstall(engine);   // a store run from the store folder keeps its own version
     const auto removed = engine.Remove(pos[1]);
     if (!removed) return Fail(removed.error);
     for (const InstalledRecord& r : removed.Value()) {
@@ -454,12 +464,97 @@ int CmdInstalled(const std::vector<std::string>& args) {
 int CmdGc(const std::vector<std::string>& args) {
     StoreEngine engine(StoreRoot(args));
     if (const auto r = engine.Open(); !r) return Fail(r.error);
+    ProtectRunningInstall(engine);   // a store run from the store folder keeps its own version
     const auto removed = engine.CollectGarbage();
     if (!removed) return Fail(removed.error);
     for (const InstalledRecord& r : removed.Value()) {
         std::printf("removed %-9s %s %s\n", ComponentKindName(r.kind).c_str(), r.id.c_str(), r.version.c_str());
     }
     if (removed.Value().empty()) std::printf("nothing to remove\n");
+    return 0;
+}
+
+// self-update: UltraStore itself. Its own catalog (ultrastore.json, SelfUpdate.h)
+// from the servers and keys of the settings - or the file given, unsigned,
+// for trying out - then the engine's install or update of the store's own
+// app. The version that was current stays for a window still running from
+// it; the store removes it at its next start.
+int CmdSelfUpdate(const std::vector<std::string>& args) {
+    bool checkOnly = false;
+    for (const std::string& a : args) if (a == "--check") checkOnly = true;
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const RunningInstall running = ProtectRunningInstall(engine);
+    const PlatformInfo platform = PlatformInfo::Detect();
+
+    Catalog catalog;
+    const std::string file = Option(args, "--catalog");
+    if (!file.empty()) {
+        if (!LoadCatalog(file, catalog)) return 1;
+    } else {
+        const StoreSettings settings = StoreSettings::Load();
+        CatalogClientConfig config;
+        config.baseUrls = Options(args, "--server");
+        if (config.baseUrls.empty()) config.baseUrls = settings.Servers();
+        config.trustedKeys = settings.TrustedKeys();
+        if (!KeysFrom(args, config.trustedKeys)) return 2;
+        config.cacheDir = engine.CacheDir();
+        if (config.baseUrls.empty()) return Fail("no store server is configured (the settings, or a build with ULTRASTORE_SERVERS)");
+        if (config.trustedKeys.empty()) return Fail("no signing key is trusted (the settings, or a build with keys/*.pub)");
+        // The keys the last catalog announced count too: a rotated key signs
+        // the store's own catalog as it signs the catalog.
+        const CatalogClient main(config);
+        CatalogClient self(SelfCatalogConfig(main));
+        const Result<Catalog> fetched = self.Refresh();
+        if (!fetched) return Fail(fetched.error);
+        catalog = fetched.Value();
+    }
+
+    const Result<SelfUpdateCheck> check = CheckSelfUpdate(catalog, engine, platform, Option(args, "--channel"));
+    if (!check) return Fail(check.error);
+    const SelfUpdateCheck& c = check.Value();
+    if (c.installedVersion.empty()) {
+        std::printf("UltraStore is not installed in %s (this program is %s); %s is available\n", engine.Root().c_str(),
+                    ULTRASTORE_VERSION, c.newestVersion.c_str());
+    } else if (c.available) {
+        std::printf("UltraStore %s is installed; %s is available\n", c.installedVersion.c_str(), c.newestVersion.c_str());
+    } else {
+        std::printf("UltraStore %s is installed and up to date\n", c.installedVersion.c_str());
+    }
+    if (checkOnly) return 0;
+    if (c.installedVersion.empty() && !running.Managed()) {
+        // A store from a package or a build folder is updated the way it
+        // came; it does not move itself into the store folder unasked.
+        std::printf("this UltraStore does not run from the store folder: update it the way it was installed,\n"
+                    "or run ultrastore-setup to install the self-updating one\n");
+        return 0;
+    }
+    if (!c.available) return 0;
+
+    const Result<SelfUpdateOutcome> done = InstallOrUpdateStore(engine, catalog, platform, Option(args, "--channel"), ConsoleCallbacks());
+    if (!done) { std::fprintf(stderr, "\n"); return Fail(done.error); }
+    PrintOutcome(done.Value().install);
+    if (const std::string menu = RefreshStoreLauncher(engine); !menu.empty()) std::printf("application menu: %s\n", menu.c_str());
+    std::printf("UltraStore %s is installed: %s\n", done.Value().version.c_str(), done.Value().launchPath.c_str());
+    if (running.Managed()) std::printf("start UltraStore again to use it\n");
+    return 0;
+}
+
+// self-catalog <catalog.json> [-o <ultrastore.json>]: the store's own
+// catalog cut out of a catalog, for a publish done by hand.
+int CmdSelfCatalog(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    Catalog catalog;
+    if (!LoadCatalog(pos[1], catalog)) return 1;
+    const Result<Catalog> self = ExtractSelfCatalog(catalog);
+    if (!self) return Fail(self.error);
+    const std::string bytes = SerializeCatalog(self.Value());
+    const std::string out = Option(args, "-o");
+    if (out.empty()) { std::fwrite(bytes.data(), 1, bytes.size(), stdout); return 0; }
+    if (!WriteFile(out, bytes)) return Fail("cannot write " + out);
+    std::printf("wrote %s: UltraStore and %zu component(s), sequence %llu\n", out.c_str(), self.Value().components.size(),
+                static_cast<unsigned long long>(self.Value().sequence));
     return 0;
 }
 
@@ -608,6 +703,8 @@ int UltraStore::Cli::Run(const std::vector<std::string>& args) {
     if (cmd == "remove")   return CmdRemove(args);
     if (cmd == "installed") return CmdInstalled(args);
     if (cmd == "gc")       return CmdGc(args);
+    if (cmd == "self-update")  return CmdSelfUpdate(args);
+    if (cmd == "self-catalog") return CmdSelfCatalog(args);
     if (cmd == "code")     return CmdCode(args);
     if (cmd == "buy")      return CmdBuy(args);
     if (cmd == "licences") return CmdLicences(args);

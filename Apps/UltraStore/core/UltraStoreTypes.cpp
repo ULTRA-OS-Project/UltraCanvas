@@ -163,6 +163,7 @@ std::string ErrorCodeName(ErrorCode code) {
         case ErrorCode::InvalidArgument:   return "InvalidArgument";
         case ErrorCode::ParseError:        return "ParseError";
         case ErrorCode::SchemaTooNew:      return "SchemaTooNew";
+        case ErrorCode::InUse:             return "InUse";
         case ErrorCode::SignatureInvalid:  return "SignatureInvalid";
         case ErrorCode::SequenceRollback:  return "SequenceRollback";
         case ErrorCode::NotFound:          return "NotFound";

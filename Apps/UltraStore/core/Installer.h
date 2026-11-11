@@ -9,6 +9,13 @@
 // renames it into place when complete, so a failure leaves nothing half
 // installed; zip, 7z and tar.* go through VirtualFS (libarchive), an
 // AppImage is copied and made executable.
+// A program that runs from the tree it manages - the store, once it is
+// installed like any other app - names its own version with SetInUse: that
+// version is not removed and the collector keeps it and what it was
+// installed with, so an update of the store never takes the files away
+// from under the copy that is running. The next start, from the new
+// version, collects the old one.
+// Version: 0.2.0 - SetInUse: the running program's own version is kept
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -44,12 +51,21 @@ public:
 
     const std::string& Root() const { return root_; }
 
+    // The version this process runs from (an app's id and version), or two
+    // empty strings for none. Remove answers InUse for it; CollectGarbage
+    // keeps it and its dependencies.
+    void SetInUse(std::string id, std::string version);
+    bool IsInUse(std::string_view id, std::string_view version) const;
+    const std::string& InUseId() const { return inUseId_; }
+    const std::string& InUseVersion() const { return inUseVersion_; }
+
 private:
     Result<void> PointCurrentAt(std::string_view id, std::string_view version);
     void ClearCurrent(std::string_view id);
 
     std::string root_;
     IInstallRegistry& registry_;
+    std::string inUseId_, inUseVersion_;
 };
 
 } // namespace UltraStore

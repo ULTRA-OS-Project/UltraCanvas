@@ -28,6 +28,7 @@
 // A passphrase comes from --passphrase, else ULTRASTOREADMIN_PASSPHRASE, else
 // a line on standard input.
 //
+// Version: 0.6.0 - publish names the store's own catalog
 // Version: 0.5.0 - sale sync
 // Version: 0.4.0 - affiliate, code, sale
 // Version: 0.3.0 - upload
@@ -632,6 +633,7 @@ int CmdPublish(Store& store, const std::vector<std::string>& args) {
     std::printf("published sequence %llu: %zu app(s), %zu component(s), %zu package file(s), %zu picture(s), %zu code page(s), %zu join page(s), %zu retired page(s)\n  %s\n  %s\n  key %s\n",
                 static_cast<unsigned long long>(r.sequence), r.apps, r.components, r.packagesCopied, r.mediaCopied, r.codePages, r.joinPages, r.retiredPages,
                 r.catalogPath.c_str(), r.signaturePath.c_str(), r.publicKeyHex.c_str());
+    if (!r.selfCatalogPath.empty()) std::printf("  UltraStore's own catalog:\n  %s\n  %s\n", r.selfCatalogPath.c_str(), r.selfSignaturePath.c_str());
     return 0;
 }
 

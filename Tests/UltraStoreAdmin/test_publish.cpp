@@ -8,6 +8,7 @@
 #include "CatalogPublisher.h"
 #include "KeyVault.h"
 #include "PackageStore.h"
+#include "SelfUpdate.h"
 #include "Verifier.h"
 
 #include "UltraCrypt/UltraCryptCore.h"
@@ -124,6 +125,12 @@ TEST(publish_writes_what_the_store_reads_and_verifies) {
     for (const std::string& w : r.warnings) if (w.find("shot.png") != std::string::npos) warnedShot = true;
     REQUIRE(warnedShot);
     REQUIRE_EQ(db.Sequence(), uint64_t(1));
+    // The catalog does not list UltraStore: no catalog of its own, and said so.
+    REQUIRE(r.selfCatalogPath.empty());
+    REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "ultrastore.json"))));
+    bool warnedStore = false;
+    for (const std::string& w : r.warnings) if (w.find("ultrastore.json") != std::string::npos) warnedStore = true;
+    REQUIRE(warnedStore);
     REQUIRE_EQ(db.Setting("catalog.published_at"), std::string("2026-10-27T10:00:00Z"));
     REQUIRE_EQ(ReadFile(Join(options.outDirUtf8, "packages/" + f.sha256 + ".zip")), std::string("hello bytes"));
     REQUIRE_EQ(ReadFile(Join(options.outDirUtf8, "media/org.ultraos.hello/icon.png")), std::string("PNG"));
@@ -156,8 +163,29 @@ TEST(publish_writes_what_the_store_reads_and_verifies) {
     const auto next = NewSigningKey("next", KeyCost::Fast());
     const auto nextAdded = db.AddKey("next", next.Value().publicKeyHex, next.Value().sealed.Bytes());
     REQUIRE(nextAdded.Ok());
+    // UltraStore itself joins the catalog: from this publish on its own
+    // catalog is written beside it - the store alone, signed with the same
+    // key, at the schema every store reads.
+    UltraStore::Component store = hello;
+    store.id = UltraStore::kStoreAppId;
+    store.name = "UltraStore";
+    REQUIRE(db.PutComponent(store).Ok());
     const auto second = Publish(db, added.Value().id, "pass", options);
     REQUIRE_EQ(second.Value().sequence, uint64_t(2));
+    REQUIRE(!second.Value().selfCatalogPath.empty());
+    const std::string selfBytes = ReadFile(second.Value().selfCatalogPath);
+    std::vector<uint8_t> selfSignature;
+    REQUIRE(UltraStore::ParseSignatureFile(ReadFile(second.Value().selfSignaturePath), selfSignature));
+    REQUIRE(UltraStore::VerifyCatalogSignature(selfBytes, selfSignature, {publicKey}).Ok());
+    REQUIRE(!UltraStore::VerifyCatalogSignature(bytes, selfSignature, {publicKey}).Ok());   // its own signature, not the catalog's
+    const auto self = UltraStore::ParseCatalog(selfBytes);
+    REQUIRE(self.Ok());
+    REQUIRE_EQ(self.Value().schema, UltraStore::kSelfCatalogSchema);
+    REQUIRE_EQ(self.Value().sequence, uint64_t(2));
+    REQUIRE_EQ(self.Value().apps.size(), size_t(1));
+    REQUIRE_EQ(self.Value().apps[0].id, std::string(UltraStore::kStoreAppId));
+    REQUIRE_EQ(self.Value().apps[0].releases[0].packages[0].url, "https://store.example/v1/packages/" + f.sha256 + ".zip");
+    REQUIRE_EQ(self.Value().trustedKeys.size(), size_t(2));
     const auto announced = UltraStore::ParseCatalog(ReadFile(second.Value().catalogPath)).Value().trustedKeys;
     REQUIRE_EQ(announced.size(), size_t(2));
     REQUIRE(std::find(announced.begin(), announced.end(), next.Value().publicKeyHex) != announced.end());

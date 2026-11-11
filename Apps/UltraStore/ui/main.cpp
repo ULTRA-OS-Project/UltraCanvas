@@ -6,6 +6,7 @@
 // (UltraCanvasSingleInstance.h): a second start brings the running window
 // forward. The commands never initialise the application, so they run on a
 // headless machine and in CI as before.
+// Version: 0.3.0 - starts the new version after the store updated itself
 // Version: 0.2.0 - ultrastore:// links, handed to the running copy
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -117,6 +118,14 @@ int main(int argc, char** argv) {
         std::cerr << "Fatal: unknown exception\n";
         return EXIT_FAILURE;
     }
+    // The store updated itself and the person agreed to the restart: the new
+    // version starts now, after the single-instance lock went with
+    // instance.Close(), so it does not hand over to this copy and quit.
+    const std::string restart = window ? window->RestartPath() : std::string();
     window.reset();   // joins the worker threads before the application goes
+    if (!restart.empty()) {
+        std::string error;
+        if (!LaunchDetachedProcess({restart}, {}, error)) std::cerr << "UltraStore could not be restarted: " << error << "\n";
+    }
     return EXIT_SUCCESS;
 }

@@ -224,6 +224,16 @@ Hello.
   look where the browser asks for one); the mark comes from the
   framework's `media/icons/desktop/` and is copied to the publish folder's
   `media/` when publish finds it there.
+- When the catalog lists UltraStore itself (`org.ultraos.ultrastore`),
+  publish also writes **the store's own catalog**, `ultrastore.json` with
+  `ultrastore.json.sig`: the store's entry and the components it depends
+  on, cut out of the catalog, at schema 2 whatever the catalog's schema
+  is, signed with the same key and verified the same way before it is
+  written. The setup program installs the store from it and a store too
+  old to read `catalog.json` updates itself from it
+  ([UltraStore's README](../UltraStore/README.md), *The store installs and
+  updates itself*). A catalog without the store is warned about and gets
+  none. The upload sends it after the packages and before the catalog.
 - The sequence is recorded only after the files are in place, so a failed
   publish leaves the next one at the same number.
 

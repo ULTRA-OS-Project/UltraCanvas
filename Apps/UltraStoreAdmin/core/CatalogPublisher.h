@@ -8,11 +8,19 @@
 //
 // The publish folder is what the web server serves:
 //   <out>/catalog.json, catalog.json.sig    the signed catalog
+//   <out>/ultrastore.json, ultrastore.json.sig
+//                                           the store's own catalog (UltraStore's SelfUpdate.h): the
+//                                           store's app entry and the components it runs on, cut out
+//                                           of the catalog and signed with the same key - what the
+//                                           setup program installs the store from and what a store
+//                                           too old for catalog.json updates itself from. Written
+//                                           when the catalog lists org.ultraos.ultrastore.
 //   <out>/media/<id>/<file>                 icons and screenshots (relative URLs in the catalog)
 //   <out>/packages/<sha256>.<format>        the packages everyone may fetch (free apps)
 //   <out>/restricted/<sha256>.<format>      the packages of paid apps - the server hands
 //                                           these out only through a buyer's short-lived
 //                                           signed URL (the access scheme, see the README)
+// Version: 0.4.0 - ultrastore.json, the store's own catalog
 // Version: 0.3.2 - a join page per partner, join/<affiliate>/index.html, behind the join QR code; a closed or
 //                  no-longer-valid page replaces the page of a partner or code switched off or removed (the database remembers
 //                  every page ever published), since the uploader never deletes
@@ -46,6 +54,8 @@ struct PublishReport {
     uint64_t sequence = 0;
     std::string catalogPath;         // UTF-8
     std::string signaturePath;
+    std::string selfCatalogPath;     // UTF-8, ultrastore.json; empty when the catalog does not list UltraStore
+    std::string selfSignaturePath;
     std::string publicKeyHex;
     size_t apps = 0, components = 0, packagesCopied = 0, mediaCopied = 0;
     size_t codePages = 0;            // go/<CODE>/index.html written, one per code in the catalog

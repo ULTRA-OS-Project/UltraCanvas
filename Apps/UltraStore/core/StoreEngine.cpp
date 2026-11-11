@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/StoreEngine.cpp
 // Install, update, remove, collect (StoreEngine.h).
+// Version: 0.4.0 - the running version: left by Update, refused by Remove
 // Version: 0.3.0 - the update terms of a purchase, the licence file
 // Version: 0.2.0 - the URL signer for restricted packages
 // Version: 0.1.0
@@ -160,7 +161,7 @@ Result<InstallOutcome> StoreEngine::Update(const Catalog& catalog, std::string_v
     const auto rows = registry_.Of(appId);
     if (rows) {
         for (const InstalledRecord& r : rows.Value()) {
-            if (!r.current) installer_->Remove(r.id, r.version);
+            if (!r.current) installer_->Remove(r.id, r.version);   // the running version answers InUse and stays
         }
     }
     installer_->CollectGarbage();
@@ -185,6 +186,13 @@ Result<std::vector<InstalledRecord>> StoreEngine::Remove(std::string_view appId)
     const auto rows = registry_.Of(appId);
     if (!rows) return R::Failure(rows.error.code, rows.error.message, rows.error.detail);
     if (rows.Value().empty()) return R::Failure(ErrorCode::NotFound, std::string(appId) + " is not installed");
+    // The program doing the removing is not removed from under itself, and
+    // not by halves: nothing goes when one version is the running one.
+    for (const InstalledRecord& r : rows.Value()) {
+        if (installer_->IsInUse(r.id, r.version)) {
+            return R::Failure(ErrorCode::InUse, std::string(appId) + " " + r.version + " is running and stays until it is closed");
+        }
+    }
     std::vector<InstalledRecord> removed;
     for (const InstalledRecord& r : rows.Value()) {
         if (const auto res = installer_->Remove(r.id, r.version); !res) return R::Failure(res.error.code, res.error.message, res.error.detail);

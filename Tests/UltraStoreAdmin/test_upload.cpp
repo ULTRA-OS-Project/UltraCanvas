@@ -53,6 +53,20 @@ TEST(the_catalog_goes_last_and_an_unchanged_file_is_not_sent_again) {
     REQUIRE_EQ(files.Value()[2], std::string("catalog.json.sig"));
     REQUIRE_EQ(files.Value()[3], std::string("catalog.json"));
 
+    // The store's own catalog: after the packages it names, before the catalog.
+    {
+        const std::string withStore = PublishFolder(TempDir("upload-self"));
+        REQUIRE(WriteFile(Join(withStore, "ultrastore.json"), "{\"schema\": 2}"));
+        REQUIRE(WriteFile(Join(withStore, "ultrastore.json.sig"), "abcd"));
+        const auto order = FilesToSend(withStore);
+        REQUIRE(order.Ok());
+        REQUIRE_EQ(order.Value().size(), size_t(6));
+        REQUIRE_EQ(order.Value()[2], std::string("ultrastore.json.sig"));
+        REQUIRE_EQ(order.Value()[3], std::string("ultrastore.json"));
+        REQUIRE_EQ(order.Value()[4], std::string("catalog.json.sig"));
+        REQUIRE_EQ(order.Value()[5], std::string("catalog.json"));
+    }
+
     UploadOptions options;
     options.publishDirUtf8 = out;
     options.stateFileUtf8 = UploadStatePath(dir);
