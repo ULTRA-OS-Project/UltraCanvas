@@ -12,6 +12,7 @@
 // ULTRASTORE_SERVERS, through the generated UltraStoreBuiltin.h. Until the
 // admin backend publishes the first catalog both are empty, and the window
 // says so on its Discover page.
+// Version: 0.4.0 - the reports sent to the marketplace service
 // Version: 0.3.0 - the open order
 // Version: 0.2.0 - the code in force
 // Version: 0.1.0
@@ -60,6 +61,18 @@ struct StoreSettings {
     static constexpr int kOrderDays = 2;
     // The open order when it was started within kOrderDays of today, else an empty one.
     OpenOrder OrderToResume(const std::string& today) const;
+
+    // The problems reported from the app page (Report.h): the service's id
+    // and the secret that fetches the outcome, kept so the page can show
+    // what became of them; the last kMaxReports are kept.
+    struct SentReport {
+        std::string id, secret, app, kind, sentAt;   // sentAt "YYYY-MM-DD"
+        std::string state, outcome;                  // as last fetched; empty until then
+        bool Closed() const { return state == "resolved" || state == "dismissed"; }
+    };
+    std::vector<SentReport> reports;
+    static constexpr size_t kMaxReports = 20;
+    void RememberReport(const SentReport& report);   // adds, the oldest dropped past kMaxReports
 
     // The texts' language: the setting, else the system's.
     std::string Language() const;

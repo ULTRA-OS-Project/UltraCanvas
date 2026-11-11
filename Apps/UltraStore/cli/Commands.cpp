@@ -34,6 +34,7 @@
 //
 // --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
 //
+// Version: 0.7.0 - report, reports: a problem to the marketplace service, the outcomes
 // Version: 0.6.0 - licences --sync, unsubscribe; a subscription's day on licence
 // Version: 0.5.0 - licence
 // Version: 0.4.0 - buy, licences
@@ -50,6 +51,7 @@
 #include "PackageResolver.h"
 #include "PlatformInfo.h"
 #include "Purchase.h"
+#include "Report.h"
 #include "StoreEngine.h"
 #include "StoreQuery.h"
 #include "StoreSettings.h"
@@ -569,6 +571,50 @@ int CmdLicences(const std::vector<std::string>& args) {
 
 // unsubscribe <catalog.json> <app-id>: the payment service ends the
 // subscription; the licence lasts until the paid period ends.
+// report <catalog.json> <app-id> <kind> <text>: a problem to the catalog's
+// marketplace service; the receipt is kept in the settings for `reports`.
+int CmdReport(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 5) return Usage(stderr);
+    Catalog catalog;
+    if (!LoadCatalog(pos[1], catalog)) return 1;
+    if (catalog.marketUrl.empty()) return Fail("The catalog names no marketplace service to report to");
+    StoreSettings settings = StoreSettings::Load();
+    std::string reporter;
+    {
+        StoreEngine engine(StoreRoot(args));
+        if (engine.Open()) if (const auto licence = engine.Registry().GetLicence(pos[2])) reporter = licence.Value().licenceId;
+    }
+    std::string text;
+    for (size_t i = 4; i < pos.size(); ++i) text += (text.empty() ? "" : " ") + pos[i];
+    const auto sent = SendReport(catalog.marketUrl, "app", pos[2], pos[3], text, reporter, UltraNetHttpCall());
+    if (!sent) return Fail(sent.error);
+    settings.RememberReport({sent.Value().id, sent.Value().secret, pos[2], pos[3], NowIso8601Utc().substr(0, 10), "open", ""});
+    if (!settings.Save()) std::fprintf(stderr, "warning: the settings file could not be written; `reports` will not know this one\n");
+    std::printf("reported %s as %s; the outcome: ultrastore reports %s\n", pos[2].c_str(), sent.Value().id.c_str(), pos[1].c_str());
+    return 0;
+}
+
+// reports <catalog.json>: the reports sent from this machine, their outcome fetched.
+int CmdReports(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    Catalog catalog;
+    if (!LoadCatalog(pos[1], catalog)) return 1;
+    StoreSettings settings = StoreSettings::Load();
+    if (settings.reports.empty()) { std::printf("no report was sent from this machine\n"); return 0; }
+    const HttpCall http = UltraNetHttpCall();
+    for (StoreSettings::SentReport& r : settings.reports) {
+        if (!r.Closed() && !catalog.marketUrl.empty()) {
+            if (const auto now = FetchReportOutcome(catalog.marketUrl, r.id, r.secret, http)) { r.state = now.Value().state; r.outcome = now.Value().outcome; }
+        }
+        std::printf("%s  %-32s %-12s %s  %s%s\n", r.id.c_str(), r.app.c_str(), r.kind.c_str(), r.sentAt.c_str(), r.state.empty() ? "sent" : r.state.c_str(),
+                    r.outcome.empty() ? "" : (": " + r.outcome).c_str());
+    }
+    settings.Save();
+    return 0;
+}
+
 int CmdUnsubscribe(const std::vector<std::string>& args) {
     const auto pos = Positional(args);
     if (pos.size() < 3) return Usage(stderr);
@@ -650,6 +696,8 @@ int UltraStore::Cli::Run(const std::vector<std::string>& args) {
     if (cmd == "licences") return CmdLicences(args);
     if (cmd == "licence")  return CmdLicence(args);
     if (cmd == "unsubscribe") return CmdUnsubscribe(args);
+    if (cmd == "report")   return CmdReport(args);
+    if (cmd == "reports")  return CmdReports(args);
     std::fprintf(stderr, "ultrastore: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }

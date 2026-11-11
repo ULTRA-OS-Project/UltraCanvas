@@ -7,6 +7,7 @@ The operator (Authorization: Bearer <operator token>):
   GET  /v1/submissions[?state=&merchant=&app=]; GET /v1/submissions/{id}
   POST /v1/submissions/{id}/decide      {action: start_review|release|request_changes|reject, message, sequence?}
   GET  /v1/released                     what the catalog is generated from
+  POST /v1/publish                      the catalog generated from it and signed into the publish folder (publish.py)
   GET  /v1/reports[?state=]; GET /v1/reports/{id}; POST /v1/reports/{id}/assign {assignee}; /resolve, /dismiss {findings, outcome}
   POST /v1/notices                      {kind, subject, text, clause, recipients}; GET /v1/notices
   POST /v1/terms                        {text, changes, in_force_from, version?}
@@ -22,6 +23,7 @@ A merchant (Authorization: Merchant <id>:<timestamp>:<signature>, auth.py):
   POST /v1/terms/accept                 {version, accepted_by}
   POST /v1/reports                      a merchant reporting (the store's door is the same URL, unsigned)
 Public:
+  GET  /v1/publish/key                  the operator's signing key (public half), for a store's trusted_keys
   POST /v1/reports                      {target_kind, target, kind, text, attachments?, reporter?} -> {id, secret}
   GET  /v1/reports/{id}/outcome?secret= the one line the reporter learns
   GET  /v1/terms, GET /v1/terms/current
@@ -29,6 +31,7 @@ Public:
 
 Errors are {"error", "error_description"} with a 4xx status.
 
+Version: 0.2.0 - the publish, the signing key
 Version: 0.1.0
 """
 
@@ -45,6 +48,7 @@ from pydantic import BaseModel, Field
 from . import __version__
 from .auth import parse_merchant_header, verify_bytes, verify_request
 from .config import Settings
+from .publish import SigningKey, publish
 from .store import NOTICE_KINDS, MarketStore, Merchant, canonical, today
 
 
@@ -125,8 +129,18 @@ class AcceptBody(BaseModel):
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
     store = MarketStore(settings.database)
+    # The operator's signing key: from the environment, else made once and kept.
+    if settings.signing_seed:
+        signing = SigningKey(bytes.fromhex(settings.signing_seed))
+    elif store.meta("signing_seed"):
+        signing = SigningKey(bytes.fromhex(store.meta("signing_seed")))
+    else:
+        signing = SigningKey.generate()
+        store.set_meta("signing_seed", signing.seed_hex)
+
     app = FastAPI(title="UltraStore marketplace service", version=__version__)
     app.state.store = store
+    app.state.signing_key = signing
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException):
@@ -319,6 +333,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def released(authorization: str | None = Header(default=None)) -> dict[str, Any]:
         operator(authorization)
         return {"released": store.released(today()), "sequence": int(store.meta("catalog_sequence") or "0")}
+
+    @app.post("/v1/publish")
+    async def publish_catalog(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        """The catalog from the released submissions, signed into the publish folder."""
+        actor = operator(authorization)
+        if not settings.publish_dir:
+            raise error(503, "not_configured", "ULTRASTORE_MARKET_PUBLISH_DIR names where the catalog goes")
+        report = publish(store, signing, settings.publish_dir, day=today(), extra_trusted_keys=settings.trusted_keys, payment_url=settings.payment_url,
+                         licence_key=settings.licence_key, market_url=settings.public_base_url, actor=actor)
+        return {"sequence": report.sequence, "apps": report.apps, "components": report.components, "publishers": report.publishers,
+                "left_out": report.left_out, "files": report.files, "public_key": report.public_key}
+
+    @app.get("/v1/publish/key")
+    async def publish_key() -> dict[str, Any]:
+        return {"public_key": signing.public_hex, "trusted_keys": [signing.public_hex] + [k for k in settings.trusted_keys if k != signing.public_hex]}
 
     # ----- reports: three doors -----
     @app.post("/v1/reports")

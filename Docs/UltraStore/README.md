@@ -103,6 +103,7 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
   "trusted_keys": ["0415eff8…fba970e", "9c2b…"],
   "payment_url": "https://store.example",
   "licence_key": "e52d4fca…40c1ab",
+  "market_url": "https://store.example/market",
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -664,7 +665,10 @@ ultrastore remove <app-id> [--root <dir>]
 ultrastore installed [--root <dir>]
 ultrastore gc [--root <dir>]
 ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]   through the payment service
-ultrastore licences [--root <dir>]                        the apps bought here
+ultrastore licences [--sync <catalog.json>] [--root <dir>]  the apps bought here; --sync asks the payment service about each
+ultrastore unsubscribe <catalog.json> <app-id> [--root <dir>]   ends a subscription
+ultrastore report <catalog.json> <app-id> <kind> <text>   a problem with an app to the catalog's marketplace service
+ultrastore reports <catalog.json>                         what became of the reports sent from this machine
 ultrastore licence <app-id> [--root <dir>] [--key <hex>]    one purchase's terms; with the key, the licence file verified
 ultrastore code [<CODE> | clear] [--cache <dir>]          the code in force
 ultrastore --version | --help
@@ -737,9 +741,14 @@ by hand and by the policy, the terms versions and acceptances with the
 `GET /v1/released` is what the catalog is generated from. The merchant
 backend's side (its README, *The command line*): `market submit`, the
 notices banner, the terms accepted from the *Marketplace* page, the
-standing and the reports. Still to come: the operator's window, the
-store's report form, the publish that signs the catalog from the released
-submissions, the packages uploaded with a submission, the review pipeline.
+standing and the reports. The store's door for reports: the app page's *Report a problem* (the
+kind, the text; the licence as the reporter when the app was bought here)
+when the catalog names the service (`market_url`), the outcome line on
+the page once the operator answers, `ultrastore report` and `reports`
+from the command line. The publish: `POST /v1/publish` generates and
+signs the catalog from the released submissions (the service's README,
+*The publish*). Still to come: the operator's window, the packages
+uploaded with a submission, the review pipeline.
 
 ## Milestones
 
