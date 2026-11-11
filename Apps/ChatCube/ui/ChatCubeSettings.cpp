@@ -1,7 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeSettings.cpp
 // ChatCube's preferences in <settings folder>/ChatCube/settings.json.
+// Version: 0.2.0 - the look is system, light or dark
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettings.h"
@@ -35,7 +36,8 @@ void Settings::Load() {
     UltraCanvas::UltraCanvasAppSettings file(kApp);
     file.Load();                // a missing file: the defaults below
     const Settings defaults;
-    dark = file.GetString("appearance.look", defaults.dark ? "dark" : "light") == "dark";
+    look = file.GetString("appearance.look", defaults.look);
+    if (look != "light" && look != "dark") look = "system";
     clock24 = file.GetString("appearance.clock", defaults.clock24 ? "24h" : "12h") != "12h";
     dateStyle = DateStyleFromKey(file.GetString("appearance.date", DateStyleKey(defaults.dateStyle)));
     ctrlEnterSends = file.GetString("messages.send-key", defaults.ctrlEnterSends ? "ctrl-enter" : "enter")
@@ -48,7 +50,7 @@ void Settings::Load() {
 bool Settings::Save() const {
     UltraCanvas::UltraCanvasAppSettings file(kApp);
     file.Load();                // keeps whatever else the file holds
-    file.Set("appearance.look", dark ? "dark" : "light");
+    file.Set("appearance.look", look);
     file.Set("appearance.clock", clock24 ? "24h" : "12h");
     file.Set("appearance.date", DateStyleKey(dateStyle));
     file.Set("messages.send-key", ctrlEnterSends ? "ctrl-enter" : "enter");

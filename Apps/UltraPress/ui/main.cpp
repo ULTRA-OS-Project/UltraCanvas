@@ -20,6 +20,7 @@
 // ultrafibu, started with nothing it opens a window rather than printing
 // its usage: a double-click on Windows gave that usage a console that
 // closed before it could be read, which looked like a crash.
+// Version: 0.9.0 - the theme under the Own policy: ThemeFor over the settings' look and the desktop, the host's fonts
 // Version: 0.8.6 - the settings read once, written once as the editor closes
 // Version: 0.8.4 - the settings in one file; the editor window's size remembered
 // Version: 0.8.2 - the sites opened last are remembered for the start window
@@ -30,7 +31,7 @@
 // Version: 0.4.1 - one program: the commands and the window
 // Version: 0.3.0 - editing: blocks added, moved, removed and their properties changed; Save
 // Version: 0.2.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressBlocks.h"
 #include "UltraPressCli.h"
@@ -122,7 +123,7 @@ UltraPress::UltraPressSettings g_settings;
 
 // Opens the editor on a loaded site: the main window at the size it had
 // last, the look, the site. Why not, as one line, or an empty string.
-std::string OpenEditor(const std::string& siteDir, UltraPress::Site site, bool dark) {
+std::string OpenEditor(const std::string& siteDir, UltraPress::Site site) {
     for (const UltraPress::ValidationIssue& issue : UltraPress::ValidateSite(site)) {
         std::fprintf(stderr, "%s %s: %s\n", issue.page.c_str(), issue.path.c_str(), issue.message.c_str());
     }
@@ -145,11 +146,17 @@ std::string OpenEditor(const std::string& siteDir, UltraPress::Site site, bool d
             g_settings.windowWidth = width;
             g_settings.windowHeight = height;
         }
-        if (g_editor) g_settings.dark = g_editor->IsDark();
         g_settings.Save(g_settingsDir);
     };
     g_editor = std::make_unique<UltraPress::EditorWindow>(std::move(site), siteDir);
-    g_editor->SetDark(dark);
+    g_editor->SetDark(UltraCanvasTheme::Current().dark);
+    // The side column's toggle: the choice is written and the policy's
+    // theme built again from it; the change handler below hands it on.
+    g_editor->onLookChosen = [](bool dark) {
+        g_settings.look = dark ? "dark" : "light";
+        g_settings.Save(g_settingsDir);
+        if (UltraCanvasApplication* app = UltraCanvasApplication::GetInstance()) app->ApplyThemePolicy();
+    };
     g_editor->Build(window);
 #if defined(__EMSCRIPTEN__)
     window->Maximize();
@@ -192,20 +199,30 @@ int main(int argc, char* argv[]) {
     static UltraCanvasApplication app;
     if (!app.Initialize(argv[0])) return 1;
 
-    // The settings - the look the user chose last, before any window is
-    // built, so that every element that follows the theme is born in it.
+    // The settings - the look chosen last, or the desktop's - before any
+    // window is built, so that every element that follows the theme is born
+    // in it: the app's own theme under the policy, built from the settings
+    // over the host and again on every change of the desktop, with the
+    // host's fonts. The editor takes the look the theme has.
     g_settingsDir = UltraPress::UltraPressSettings::Directory();
     g_settings = UltraPress::UltraPressSettings::Load(g_settingsDir);
-    const bool dark = g_settings.dark;
-    UltraCanvasTheme::SetCurrent(UltraPress::ThemeFor(dark));
+    app.SetThemePolicy(ThemePolicy::Own);
+    app.SetThemeProvider([](const HostAppearance& host) {
+        UltraCanvasTheme theme = UltraPress::ThemeFor(g_settings.DarkFor(host.dark));
+        theme.TakeHostFonts(host);
+        return theme;
+    });
+    UltraCanvasTheme::AddChangeHandler([](const UltraCanvasTheme& theme) {
+        if (g_editor && g_editor->IsDark() != theme.dark) g_editor->SetDark(theme.dark);
+    });
 
     // Open a site folder in the editor; why not, or an empty string. A site
     // that opened is remembered for the start window's list.
-    auto open = [dark](const std::string& dir) -> std::string {
+    auto open = [](const std::string& dir) -> std::string {
         UltraPress::Site site;
         std::vector<std::string> errors;
         if (!UltraPress::LoadSite(dir, site, errors)) return FirstError(errors, dir);
-        const std::string error = OpenEditor(dir, std::move(site), dark);
+        const std::string error = OpenEditor(dir, std::move(site));
         if (error.empty()) {
             g_settings.RememberSite(dir);
             g_settings.Save(g_settingsDir);

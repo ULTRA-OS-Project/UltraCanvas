@@ -1,12 +1,13 @@
 // Apps/UltraVideo/UltraVideoDocument.cpp
 // The document and the .ultravideo file (UltraVideoDocument.h).
+// Version: 0.8.0 - "dark" written only once the look is the project's; read as chosen
 // Version: 0.7.0 - an overlay clip's effects (EffectTarget, EffectsOf), kept in
 //                 the file
 // Version: 0.6.1 - paths written with '/' on every system (FileText)
 // Version: 0.6.0 - DraftSettings
 // Version: 0.5.0 - KindOfPath from the engine's and FileLoader's lists (UltraVideoFormats)
 // Version: 0.4.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoFormats.h"
@@ -811,7 +812,7 @@ bool Document::Save(const std::string& toPath, std::string& error) {
     v.Set("playhead", view.playhead);
     v.Set("rangeIn", view.rangeIn);
     v.Set("rangeOut", view.rangeOut);
-    v.Set("dark", view.dark);
+    if (view.darkChosen) v.Set("dark", view.dark);   // a project that follows the desktop says nothing
     v.Set("binWidth", view.binWidth);
     v.Set("inspectorWidth", view.inspectorWidth);
     v.Set("dockPercent", view.dockPercent);
@@ -1047,6 +1048,7 @@ bool Document::Load(const std::string& fromPath, Document& doc, std::string& err
         loaded.view.playhead = v.Get("playhead").GetNumber(0.0);
         loaded.view.rangeIn = v.Get("rangeIn").GetNumber(0.0);
         loaded.view.rangeOut = v.Get("rangeOut").GetNumber(0.0);
+        loaded.view.darkChosen = v.Contains("dark");
         loaded.view.dark = v.Get("dark").GetBoolean(true);
         loaded.view.binWidth = static_cast<int>(v.Get("binWidth").GetInteger(280));
         loaded.view.inspectorWidth = static_cast<int>(v.Get("inspectorWidth").GetInteger(300));

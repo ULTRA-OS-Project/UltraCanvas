@@ -5,6 +5,7 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.9.0 - the look is the policy's theme; the toggle asks the program through onLookChosen
 // Version: 0.8.6 - SetDark writes no file: the look is saved with the window's size on close
 // Version: 0.8.3 - the address checked as typed (IsSiteAddress), said under the field
 // Version: 0.8.2 - the site's settings in the property pane: ShowSiteSettings, SetSiteProperty
@@ -15,7 +16,7 @@
 // Version: 0.6.0 - the media library: Pick... on a picture property, Media library... in the side column
 // Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -108,12 +109,15 @@ public:
     bool SetSiteProperty(const std::string& name, const std::string& value);
 
     // The look: the light or the dark theme (UltraPressTheme.h) on the
-    // window and its dialogs; the page keeps the site's colours. The choice
-    // is the editor's state (IsDark); the program writes it to the settings
-    // with the window's size when the editor closes (ui/main.cpp), so a
-    // click writes no file.
+    // window and its dialogs; the page keeps the site's colours. The theme
+    // is the application's policy's (ui/main.cpp: the settings' look over
+    // the desktop's); SetDark is the window taking the look the theme has,
+    // and the side column's toggle asks the program for the other one
+    // through onLookChosen, which writes the settings and re-applies the
+    // policy.
     void SetDark(bool dark);
     bool IsDark() const { return dark; }
+    std::function<void(bool dark)> onLookChosen;
 
     const Site& CurrentSite() const { return site; }
     const std::string& CurrentPage() const { return current; }

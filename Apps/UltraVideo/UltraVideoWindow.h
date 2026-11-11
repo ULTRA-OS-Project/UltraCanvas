@@ -8,6 +8,7 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.7.0 - the theme under the Own policy: the palette from the project's look or the desktop, the host's fonts
 // Version: 0.10.0 - ColourTitle: the Clip panel's colour for the selected words of a title being typed
 // Version: 0.9.0 - titles typed on the frame with the text bar (BeginTitleEdit ... CommitTitleEdit)
 // Version: 0.8.1 - WrapToWidth for the bin notes; BeginBinDrag gone, a tile's press arms the drag
@@ -16,7 +17,7 @@
 // Version: 0.6.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.5.0 - OpenFiles: files handed over by a second start
 // Version: 0.4.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -84,7 +85,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> BuildMediaBin();
     std::shared_ptr<Container> BuildTimelineDock();
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> BuildTimelineToolbar();
-    void ApplyPalette();
+    void ApplyPalette();        // the policy's theme again (the provider picks the palette), then the app's own looks
+    void ApplyOwnLooks();       // the window's own surfaces and styles from the current palette
 
     // the document
     // `mergeKey`: a slider being dragged, whose edits fold into one undo step
@@ -210,6 +212,8 @@ private:
     int proxiesMade_ = 0;              // since the queue last ran dry: for one message, not one per clip
     bool dark_ = true;
     const Palette* palette_ = &Tokens::Dark;
+    bool built_ = false;                  // Create finished: the theme handler may restyle
+    int themeHandler_ = 0;                // UltraCanvasTheme change handler
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     // app bar

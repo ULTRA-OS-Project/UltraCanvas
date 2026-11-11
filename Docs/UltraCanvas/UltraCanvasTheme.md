@@ -20,8 +20,8 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.14.0 - the setting: Appearance.conf over the host, and the settings watcher that makes a change live (T5)
-**Last Modified:** 2026-11-10
+**Version:** 1.15.0 - TakeHostFonts for an Own provider; the four Own applications on the policy (T6)
+**Last Modified:** 2026-11-11
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -352,12 +352,21 @@ on every change when it gave one. An application that calls `SetCurrent`
 itself under another policy has taken over: the policy does not put its
 theme back over it.
 
+An `Own` provider builds the application's theme and takes the host's
+fonts onto it with `TakeHostFonts` - the interface and monospace fonts
+where the host names one, the text scale where it is positive, as
+`FromHost` does - so the application's colours come with the desktop's
+fonts. UltraVideo, UltraPress, ChatCube and UltraDBAdmin do this: their
+`ThemeFor` / `AppTheme` is the provider, the look picked from their own
+setting (`system`, which follows the desktop, `light` or `dark`) where
+they have one.
+
 ```cpp
 app->SetThemePolicy(ThemePolicy::Own);
 app->SetThemeProvider([](const HostAppearance& host) {
     UltraCanvasTheme theme = host.dark ? UltraCanvasTheme::Dark() : UltraCanvasTheme::Light();
     theme.name = "My app";
-    theme.fonts.ui = host.uiFont;
+    theme.TakeHostFonts(host);
     return theme;
 });
 ThemePolicy policy = app->GetThemePolicy();
