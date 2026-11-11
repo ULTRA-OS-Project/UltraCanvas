@@ -8,6 +8,7 @@
 // use - so the window and the command line never disagree. The slow ones
 // (a new key's Argon2id seal, a publish, a translation) run on a worker
 // thread and report through UltraCanvasApplication::PostToUIThread.
+// Version: 0.3.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
 // Version: 0.1.0
@@ -20,6 +21,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraCanvasChipGroup.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
@@ -167,11 +169,13 @@ private:
     bool draftDirty_ = false;
     std::string formLanguage_ = "en";
     std::shared_ptr<TextInput> fId_, fName_, fLicense_, fHomepage_, fSupport_, fPrivacy_, fSource_, fSuccessor_,
-                               fCategories_, fTags_, fSourceLanguage_, fPrice_, fCurrency_, fTrialDays_, fUntil_, fIcon_,
+                               fTags_, fSourceLanguage_, fPrice_, fCurrency_, fTrialDays_, fUntil_, fIcon_,
                                fSummary_, fNewLanguage_;
     std::shared_ptr<TextArea> fDescription_;
     std::shared_ptr<Dropdown> fKind_, fPublisher_, fVisibility_, fLifecycle_, fAgeRating_, fPricingModel_, fUpdatePeriod_, fLanguage_;
     std::shared_ptr<Checkbox> fOpenSource_, fRequiresAccount_, fFeatured_;
+    // The store's fixed categories (UltraStore::StoreCategories), any number.
+    std::shared_ptr<UltraCanvas::UltraCanvasChipGroup> fCategories_;
     std::shared_ptr<Container> fScreenshots_, fTexts_, fReleases_;
     std::shared_ptr<Label> fMachineNote_;
     // the add-release and add-package editors

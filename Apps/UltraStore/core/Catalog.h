@@ -4,6 +4,7 @@
 // one shape - releases with packages per target - and a release names the
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
+// Version: 0.7.0 - categories from one fixed list (StoreCategories), read case-insensitively
 // Version: 0.6.0 - featured: the admin's pick for the store's hero and Editor's picks
 // Version: 0.5.0 - payment_url and licence_key: the payment service the store buys through
 // Version: 0.4.0 - codes: the discount and affiliate codes the store applies
@@ -98,6 +99,23 @@ std::string VisibilityName(Visibility visibility);
 enum class Lifecycle { Active, Deprecated, Withdrawn };
 Lifecycle   ParseLifecycle(std::string_view text);        // "active" / "deprecated" / "withdrawn"
 std::string LifecycleName(Lifecycle lifecycle);
+
+// ===== CATEGORIES =====
+// An app is listed under categories from one fixed list, so the store can
+// name each in the person's language (CategoryName, StoreQuery.h): the
+// catalog writes these ids, in this order of the store's browser.
+//   audio video graphics office communication internet development
+//   education science finance security games system utilities
+// A catalog from before the list may name one in other case or with spaces
+// around it ("Office"): CategoryId reads it as the id. An id this store does
+// not know - a later list's - is kept, and the store does not show it; the
+// admin backend writes only the list's (CheckCategories).
+const std::vector<std::string>& StoreCategories();
+std::string CategoryId(std::string_view text);     // " Office" -> "office"
+bool        IsStoreCategory(std::string_view id);
+// Ok when every one is a StoreCategories id; else InvalidArgument naming the
+// first that is not, the list in the detail.
+Result<void> CheckCategories(const std::vector<std::string>& categories);
 
 // An app or a component: the id is reverse-DNS, stable forever, the key of
 // the local registry and the install folder's name.

@@ -1,6 +1,7 @@
 // Apps/UltraStore/ui/StoreWindow.cpp
 // The shell, the pages and the app page after the shop design; the jobs are
 // in StoreJobs.cpp, the settings page in StoreSettingsPage.cpp.
+// Version: 0.6.0 - the categories by their names in the person's language, from the catalog's fixed list
 // Version: 0.5.2 - the header in less room: Refresh, the wordmark and Settings as their icons, as far as it needs
 // Version: 0.5.1 - every text through Tr: the header, the filters, the buttons, the facts; dates in the language's order
 // Version: 0.5.0 - the shop design: the header, the Discover sections, the Categories filters, the app page
@@ -836,7 +837,7 @@ std::string StoreWindow::PublisherName(const Component& app) const {
 }
 
 std::string StoreWindow::CategoryOf(const Component& app) const {
-    return app.categories.empty() ? std::string() : app.categories.front();
+    return PrimaryCategory(app);
 }
 
 std::string StoreWindow::LanguagesOf(const Component& app) const {
@@ -1050,7 +1051,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeCategoryPills() {
     auto row = Theme::Row("usCats", Theme::kInnerGap, true);
     int n = 0;
     for (const std::string& c : categories_) {
-        auto pill = Theme::Button("usCats." + std::to_string(n++), c, static_cast<float>(28 + c.size() * 8), Theme::ButtonKind::Secondary);
+        auto pill = Theme::Button("usCats." + std::to_string(n++), CategoryName(c), 40, Theme::ButtonKind::Secondary);
         const std::string category = c;
         pill->onClick = [this, category]() {
             category_ = category;
@@ -1208,7 +1209,7 @@ void StoreWindow::RebuildCategories() {
     // its count under the price filter; rebuilt only when the categories
     // changed, so a click does not rebuild the row under the pointer.
     std::vector<std::string> wanted = {Tr("All apps")};
-    wanted.insert(wanted.end(), categories_.begin(), categories_.end());
+    for (const std::string& id : categories_) wanted.push_back(CategoryName(id));
     bool same = categoryChips_->GetChipCount() == static_cast<int>(wanted.size());
     for (int i = 0; same && i < categoryChips_->GetChipCount(); ++i) same = categoryChips_->IndexOf(wanted[i]) == i;
     if (!same) {
@@ -1236,7 +1237,7 @@ void StoreWindow::RebuildCategories() {
         }
         SortListings(apps, sortMode_);
     }
-    categoryHeading_->SetText((category_.empty() ? Tr("All apps") : category_) + " · " + TrN("{n} app", "{n} apps", static_cast<long long>(apps.size())));
+    categoryHeading_->SetText((category_.empty() ? Tr("All apps") : CategoryName(category_)) + " · " + TrN("{n} app", "{n} apps", static_cast<long long>(apps.size())));
     std::string empty;
     if (!catalog_) empty = catalogNote_;
     else if (category_.empty() && priceFilter_ == "all") empty = Tr("The catalog lists no app.");
@@ -1501,7 +1502,7 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
 std::shared_ptr<UltraCanvasCard> StoreWindow::MakeAppCard(const AppListing& l, const std::string& id) {
     const Component& app = *l.app;
     std::string meta = PublisherName(app);
-    if (const std::string category = CategoryOf(app); !category.empty()) meta += (meta.empty() ? "" : " · ") + category;
+    if (const std::string category = CategoryOf(app); !category.empty()) meta += (meta.empty() ? "" : " · ") + CategoryName(category);
     auto card = Theme::Pin(CreateCard(id, app.name, meta));
     card->SetStyle(CardStyleFor());
     card->SetElementSize(CSSLayout::Dimension::Px(Theme::kCardWidth), CSSLayout::Dimension::Auto());
@@ -1557,7 +1558,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeAppRow(const AppListing& 
     std::string line;
     if (l.resolution.release) line = l.resolution.release->version;
     else if (!app.releases.empty()) line = app.releases.front().version;
-    if (const std::string category = CategoryOf(app); !category.empty()) line += (line.empty() ? "" : " · ") + category;
+    if (const std::string category = CategoryOf(app); !category.empty()) line += (line.empty() ? "" : " · ") + CategoryName(category);
     const std::string date = l.resolution.release ? l.resolution.release->date : (app.releases.empty() ? std::string() : app.releases.front().date);
     if (!date.empty()) line += (line.empty() ? "" : " · ") + PrettyDate(date);
     if (app.pricing.model != PricingModel::Free) line += (line.empty() ? "" : " · ") + PriceText(app);
@@ -1645,7 +1646,7 @@ void StoreWindow::RebuildDetails() {
         crumbs->AddChild(home);
         if (!category.empty()) {
             crumbs->AddChild(Theme::Caption("usX.crumb.sep1", "  /  "));
-            auto cat = Theme::Button("usX.crumb.cat", category, static_cast<float>(24 + category.size() * 8), Theme::ButtonKind::Ghost, 32);
+            auto cat = Theme::Button("usX.crumb.cat", CategoryName(category), 40, Theme::ButtonKind::Ghost, 32);
             cat->onClick = [this, category]() {
                 category_ = category;
                 detailsAppId_.clear();
@@ -1742,7 +1743,7 @@ void StoreWindow::RebuildDetails() {
             if (!release->date.empty()) facts2->AddChild(FactLine("usX.f.date", Tr("Released"), PrettyDate(release->date)));
             facts2->AddChild(FactLine("usX.f.channel", Tr("Channel"), release->channel == "beta" ? Tr("Beta") : Tr("Stable")));
         }
-        if (!category.empty()) facts2->AddChild(FactLine("usX.f.category", Tr("Category"), category));
+        if (!category.empty()) facts2->AddChild(FactLine("usX.f.category", Tr("Category"), CategoryName(category)));
         if (release) {
             std::string runs;
             std::set<std::string> seen;

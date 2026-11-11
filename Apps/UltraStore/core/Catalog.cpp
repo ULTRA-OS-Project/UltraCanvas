@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
+// Version: 0.6.0 - categories from one fixed list: StoreCategories, CategoryId, CheckCategories; read case-insensitively
 // Version: 0.5.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.5.0 - payment_url, licence_key
 // Version: 0.4.0 - codes
@@ -179,7 +180,10 @@ Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, c
     c.description = ReadText(v.Get("description"));
     c.sourceLanguage = v.Get("source_language").GetString();
     c.machineTranslated = ReadStrings(v.Get("machine_translated"));
-    c.categories = ReadStrings(v.Get("categories"));
+    for (const std::string& written : ReadStrings(v.Get("categories"))) {
+        const std::string id = CategoryId(written);
+        if (!id.empty() && std::find(c.categories.begin(), c.categories.end(), id) == c.categories.end()) c.categories.push_back(id);
+    }
     c.screenshots = ReadStrings(v.Get("screenshots"));
     c.tags = ReadStrings(v.Get("tags"));
     if (v.Contains("pricing")) {
@@ -393,6 +397,38 @@ std::string LifecycleName(Lifecycle lifecycle) {
         case Lifecycle::Active: break;
     }
     return "active";
+}
+
+const std::vector<std::string>& StoreCategories() {
+    static const std::vector<std::string> kCategories = {
+        "audio", "video", "graphics", "office", "communication", "internet", "development",
+        "education", "science", "finance", "security", "games", "system", "utilities",
+    };
+    return kCategories;
+}
+
+std::string CategoryId(std::string_view text) {
+    size_t begin = 0, end = text.size();
+    while (begin < end && std::isspace(static_cast<unsigned char>(text[begin]))) ++begin;
+    while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) --end;
+    std::string id(text.substr(begin, end - begin));
+    for (char& ch : id) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return id;
+}
+
+bool IsStoreCategory(std::string_view id) {
+    const auto& all = StoreCategories();
+    return std::find(all.begin(), all.end(), id) != all.end();
+}
+
+Result<void> CheckCategories(const std::vector<std::string>& categories) {
+    for (const std::string& c : categories) {
+        if (IsStoreCategory(c)) continue;
+        std::string list;
+        for (const std::string& id : StoreCategories()) list += (list.empty() ? "" : " ") + id;
+        return Result<void>::Failure(ErrorCode::InvalidArgument, TrF("\"{0}\" is not one of the store's categories", c), list);
+    }
+    return Result<void>::Succeed();
 }
 
 std::string ComponentKindName(ComponentKind kind) {
