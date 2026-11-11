@@ -1,3 +1,38 @@
+#### 2026-11-11 *0.9.534*
+- **`scripts/check_libcxx_syntax.py` 2.0.0: the whole tree against
+  libc++, from the build's compile database.** The shell script of 1.0.0
+  checked VideoFX with a flag block of its own; the Python one reads
+  `build/compile_commands.json` (adding `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
+  to an existing build directory itself) and compiles every C++ unit the
+  Windows build would see - the Linux, macOS and Android OS arms, C sources
+  and generated files left out - with `clang++ -stdlib=libc++ -fsyntax-only`
+  and the flags the build gave it. A path argument narrows it to a module
+  or a file: VideoFX in ten seconds, the 1539 units of the tree in twenty
+  minutes on four cores, all of which compile today.
+- **Windows: the kernel network ETW source reads each event by its own
+  template.** Microsoft-Windows-Kernel-Network lays its TCP events out in
+  three templates that share a prefix (PID, size, the endpoints) and differ
+  in what sits before the trailing seqnum and connection id: a connect or
+  accept carries the TCP options (16 bytes), a send its start and end time
+  (8 bytes), a receive or disconnect nothing. The source read every event
+  by the last layout, so a connect's connection id was 16 bytes of options
+  and a send's was its times, and the bytes summed per connection could
+  never meet the disconnect that reports them. The parser is now
+  `NetworkMonitorKernelNetwork.h` in the core - pure, one template per
+  event id, every length checked - and tested from payloads built per
+  template on every platform, like the conntrack parser.
+  - Both ETW sources enable the provider with every keyword rather than a
+    mask of zero, and the DNS client source names the asking process from
+    the Toolhelp process list, as the network source and the socket table
+    do, instead of `pid N`.
+  - `scripts/netmon-etw-acceptance.ps1` is the first elevated run as a test
+    with a verdict: it records with the ETW sources alone, makes a loopback
+    connection and a DNS query of its own, reads the recording back and
+    checks the opened, accepted and closed events (with bytes) and the DNS
+    observation, each attributed to the PowerShell that made them.
+    *Windows: the first elevated run* in the module README is the
+    procedure and what each failure would mean.
+
 #### 2026-11-11 *0.9.533*
 - **UltraRTC: `UltraRtcApiStatus` reports what every function does in this
   build, on this machine.** The module's proposal asked each phase to ship
