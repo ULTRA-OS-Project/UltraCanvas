@@ -1,10 +1,10 @@
 # UltraWeb
 
 **Status:** Phases 1 and 2 under way. UltraWeb 0.3.0 runs WebAssembly
-apps on Linux, with timers, fetch, storage and the clipboard, and shows web
-pages through the HTML reader, with cookies, video and audio, without
-JavaScript.
-**Last Modified:** 2026-10-22
+apps on Linux, with timers, fetch, storage, the clipboard, WebSockets and
+peer-to-peer data channels, and shows web pages through the HTML reader,
+with cookies, video and audio, without JavaScript.
+**Last Modified:** 2026-11-11
 **Author:** UltraCanvas Framework / ULTRA OS
 
 UltraWeb is the ULTRA OS browser. It shows **web pages** - HTML and CSS
@@ -16,7 +16,9 @@ that build their UI out of UltraCanvas elements**: a URL or a file names a
 UltraCanvas elements — containers, labels, buttons, text inputs, checkboxes —
 through the *element ABI*, holding only handles to them. Beside its
 elements an app may start timers, fetch from the network under a browser's
-rules, keep data across runs and copy text to the clipboard. React or
+rules, keep data across runs, copy text to the clipboard, talk over
+WebSockets, and connect to another app peer to peer over WebRTC data
+channels (UltraRTC). React or
 Angular apps, through a JavaScript engine compiled to WebAssembly, come in
 later phases: the plan, the measurements behind it and the
 architecture are in [`UltraWebProposal.md`](UltraWebProposal.md). The same
@@ -171,6 +173,8 @@ both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
 | Talk to its server, and to others that allow it | `uc_fetch`: http(s) through UltraNet, TLS verified, no cookies — same origin freely, other origins under CORS (below) |
 | Remember things across runs | `uc_storage_*`: key/value bytes, 5 MB per origin, kept on disk |
 | Copy text for the user | `uc_clipboard_write`, only while it handles a click, a toggle or an edit |
+| Keep a connection to its server open | `uc_ws_*`: WebSockets (ws / wss) through UltraNet, TLS verified, no cookies, the app's origin in an `Origin` header (below) |
+| Talk to another app directly | `uc_rtc_*`: WebRTC peer connections and data channels through UltraRTC, DTLS-encrypted; the app does its own signalling (below) |
 | Log | `uc_log` (stderr in this version, where UltraWeb also says why it refused a fetch or a clipboard write) |
 | Clocks, random numbers, stdout/stderr | WASI preview 1 |
 
@@ -180,7 +184,8 @@ fetch rules below forbid, or touch an element it did not create. Limits per
 app: **2 s per call** into it (a call that runs longer is interrupted and the
 app stopped), **256 MB** of memory (a `memory.grow` past it fails),
 **20,000 elements**, **1 MB** per text property, **16 fetches** open at
-once (a finished one counts until it is closed). An app that traps, or is
+once (a finished one counts until it is closed), **8 WebSockets**, **4
+peers** with **16 channels** each. An app that traps, or is
 stopped, is torn down and its error shown in its place; it cannot crash or
 freeze the browser.
 
@@ -226,6 +231,52 @@ are bytes. A store is written a turn after a change and when the app
 closes, through a temporary file and a rename. Keys up to 1 KB; 5 MB per
 store, keys and values counted plus 32 bytes per key; a `uc_storage_set`
 that would go past it fails and leaves the old value.
+
+#### WebSockets
+
+`uc_ws_open` takes a `ws:` or `wss:` address (an `http(s):` one counts as
+`ws(s):`), or one relative to the app's address, and a comma-separated list
+of subprotocols. The rules are a browser's: there is no CORS for
+WebSockets, so the request carries the app's origin in an `Origin` header
+(`null` for an app from a file or about:) and the **server** decides
+whether to accept it; no cookies are sent; an https app opens `wss:` only.
+`UC_EVENT_WS` comes when the socket opens, when it closes or fails, and when
+a message arrives while none was waiting - the app reads with
+`uc_ws_receive` until `UC_ERR_NOT_FOUND`, so a burst of messages is one call
+into it, not one each. A message is 1 MB at most either way, and up to 4 MB
+of unread messages wait (past that the oldest go, and the console says
+so). `uc_ws_state` is `UC_WS_CONNECTING`, `UC_WS_OPEN`, `UC_WS_CLOSED` (with
+`uc_ws_close_code` the code the other side gave) or the failure
+(`UC_ERR_NETWORK`, `UC_ERR_LIMIT` for a message over 1 MB). `uc_ws_close`
+sends 1000 or an application code (3000-4999) and forgets the socket. A
+handshake blocks, so each socket connects on a thread of its own; UltraNet
+reports every socket of the process through one set of callbacks, which
+UltraWeb's router fronts, handing other modules' sockets on
+(`host/UltraWebNetworkSocket.cpp`).
+
+#### Peer connections
+
+`uc_rtc_peer_open` takes an `RTCConfiguration`-shaped JSON
+(`{"iceServers": [{"urls": ..., "username": ..., "credential": ...}]}`; up
+to 8 `stun:`, `turn:` or `turns:` addresses) and opens a peer on UltraRTC;
+`uc_rtc_channel_open` opens a data channel (ordered or not, reliable or
+with a resend limit). Negotiation is automatic: the first channel makes the
+offer, a remote offer makes the answer. **The app does the signalling**: it
+sends what `UC_RTC_LOCAL_DESCRIPTION` and `UC_RTC_CANDIDATE` events carry to
+the other side - over a WebSocket or a fetch - and hands what comes back to
+`uc_rtc_set_remote` and `uc_rtc_add_candidate`, untouched, so the DTLS
+fingerprint check holds end to end. Every event of a peer - descriptions,
+candidates, the connection state, channels opening and closing, messages -
+waits in the peer's queue: `UC_EVENT_RTC` (detail: the peer) says there is
+one, and `uc_rtc_poll` reads them, as `uc_ws_receive` reads messages. An app
+from the network connects through **TURN relays only**, so the other side
+never learns this machine's local addresses (browsers hide them behind mDNS
+names, which UltraRTC cannot yet); an app from a file or about: may connect
+directly. Limits: 256 KB a message, 1,000 events waiting a peer (past that
+the oldest messages go). The engine's events are posted to the UI thread;
+UltraWeb installs no process-wide dispatcher (`host/UltraWebNetworkRtc.cpp`).
+Audio and video tracks are the next step
+([`UltraWebRTCIntegration.md`](UltraWebRTCIntegration.md)).
 
 ## Writing an app
 
@@ -349,7 +400,7 @@ newer ABI can export `uc_abi_version()`, returning the `UC_ABI_VERSION` it
 needs; an older UltraWeb then refuses it with a message instead of failing
 in the middle.
 
-### Element ABI v2 at a glance
+### Element ABI at a glance (v3)
 
 | Kind (`uc_create`) | Text properties | Number properties | Events |
 |---|---|---|---|
@@ -373,15 +424,18 @@ the next one starts from the window's defaults. `uc_get_number` of
 app area — both as of the last layout pass, so not yet right after a change
 (a synchronous layout flush is Phase 4 of the plan). Colours are `0xRRGGBBAA`.
 
-| Service (v2) | Imports | Arrives as |
+| Service | Imports | Arrives as |
 |---|---|---|
 | Timers | `uc_timer_start(delayMs, repeat)` → id, `uc_timer_stop(id)` | `uc_event(0, UC_EVENT_TIMER, id)` |
 | Fetch | `uc_fetch(url, method, body, contentType)` → id; `uc_fetch_status`, `uc_fetch_body`, `uc_fetch_header`, `uc_fetch_close` | `uc_event(0, UC_EVENT_FETCH, id)` once, finished or failed |
 | Storage | `uc_storage_get`, `uc_storage_set`, `uc_storage_remove`, `uc_storage_key(index)`, `uc_storage_clear` | — |
 | Clipboard | `uc_clipboard_write(text)` | — |
+| WebSockets (v3) | `uc_ws_open(url, protocols)` → id; `uc_ws_state`, `uc_ws_send(data, binary)`, `uc_ws_receive`, `uc_ws_close_code`, `uc_ws_close(code, reason)` | `uc_event(0, UC_EVENT_WS, id)`: opened, closed or failed, or a message while none waited |
+| Peers (v3) | `uc_rtc_peer_open(config)` → id; `uc_rtc_set_remote`, `uc_rtc_add_candidate`, `uc_rtc_channel_open` → channel id, `uc_rtc_send`, `uc_rtc_channel_close`, `uc_rtc_poll`, `uc_rtc_peer_close` | `uc_event(0, UC_EVENT_RTC, peer)` when an event waits where none did |
 
-The results a service adds to the element ABI's: `UC_ERR_NOT_FOUND` (no such
-key, header, timer or fetch), `UC_ERR_DENIED` (the sandbox does not allow
+An app that uses the v3 services exports `uc_abi_version` returning 3. The
+results a service adds to the element ABI's: `UC_ERR_NOT_FOUND` (no such
+key, header, timer, fetch, socket, peer or channel, or nothing waiting), `UC_ERR_DENIED` (the sandbox does not allow
 it, or this UltraWeb lacks the service), `UC_ERR_NETWORK` (no complete
 answer). `uc_fetch_status` is the HTTP status (an error status such as 404
 is an answer, not a failure), 0 while running, or the failure. Everything
@@ -400,6 +454,10 @@ Apps/UltraWeb/
     ├── UltraWebGuest.*       the bridge: handle table, the imports, events → uc_event, timers, fetches
     ├── UltraWebFetch.*       the fetch rules (origin, mixed content, CORS)
     ├── UltraWebNetworkFetch.cpp  the UltraNet service that sends an app's fetch
+    ├── UltraWebSocket.*      the WebSocket rules (ws / wss, mixed content, origin, subprotocols)
+    ├── UltraWebNetworkSocket.cpp  the UltraNet service that opens an app's WebSockets
+    ├── UltraWebRtc.*         the peer interface and its rules (configuration, TURN-only from the network)
+    ├── UltraWebNetworkRtc.cpp  the UltraRTC service behind an app's peers
     ├── UltraWebStorage.*     the per-origin store and its file
     ├── UltraWebLoader.*      address → module bytes (about:, file, file://, http(s) via UltraNet)
     ├── UltraWebPages.*       the page services (UltraNet, files, URLs, charsets, redirects); app or page?
@@ -431,16 +489,21 @@ UltraCanvas/{include,core}/WasmHost/   the WebAssembly runner (Masterfile_module
   an element a guest releases while its own callback runs (a button removing
   itself) is kept alive until that call has unwound.
 - The services are handed to the bridge (`GuestServices`): the window gives
-  it the application's timers, UltraNet, a store on disk and the system
-  clipboard; the tests give it fakes. Timer and network callbacks hold the
-  guest weakly, and its destructor stops its timers, cancels its fetches and
-  writes its store, so nothing reaches an app that is gone.
+  it the application's timers, UltraNet, a store on disk, the system
+  clipboard and UltraRTC; the tests give it fakes. Timer and network
+  callbacks hold the guest weakly, and its destructor stops its timers,
+  cancels its fetches, closes its sockets ("going away") and its peers (a
+  closed tab is a hung-up call) and writes its store, so nothing reaches an
+  app that is gone.
 - Tests: `Tests/WasmHostTest.cpp` (the runner) and
   `Tests/UltraWebGuestTest.cpp` (the bridge, the fetch rules, the store and
   the loader, against inline guests and `about:demo`, with fake timers,
   network and clipboard); neither needs a display, a network or a wasm
   toolchain. Pages: `Tests/HTMLPageLoaderTest.cpp` and
-  `Tests/WebViewTest.cpp`, against a fake web; `Tests/HTMLMediaTest.cpp`,
+  `Tests/WebViewTest.cpp`, against a fake web; `Tests/UltraWebRealtimeTest.cpp`,
+  WebSockets and peers - the rules, guests against fake services, then
+  UltraNet against a loopback WebSocket server and two UltraRTC peers
+  exchanging data-channel messages in one process; `Tests/HTMLMediaTest.cpp`,
   video and audio; `Tests/UltraWebCookiesTest.cpp`, the page services with
   cookies against a loopback server (the jar's rules:
   `Tests/UltraNet/test_cookie_jar.cpp`).
@@ -457,6 +520,7 @@ macOS, Windows and packaging builds. For pages (Phase 2): bookmarks, a
 history, the downloads list and the open tabs kept across runs; a cookie
 manager (one site's cookies, blocking a site); a `<video>`'s poster and
 text tracks; then modern layout beyond flex and grid, the live DOM, and
-JavaScript. Real-time calls (WebRTC) through UltraRTC are planned in
-[`UltraWebRTCIntegration.md`](UltraWebRTCIntegration.md): first for
-WebAssembly apps, then for pages once JavaScript arrives.
+JavaScript. For real-time apps ([`UltraWebRTCIntegration.md`](UltraWebRTCIntegration.md)):
+audio and video tracks, a `VideoTile` element kind and the permission bar
+for the camera and the microphone (W3), then WebRTC for pages once
+JavaScript arrives.
