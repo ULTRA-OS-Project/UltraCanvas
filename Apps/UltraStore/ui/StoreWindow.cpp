@@ -1,6 +1,7 @@
 // Apps/UltraStore/ui/StoreWindow.cpp
 // The shell, the pages and the app page after the shop design; the jobs are
 // in StoreJobs.cpp, the settings page in StoreSettingsPage.cpp.
+// Version: 0.5.2 - the header's buttons as wide as their text, so a translation never covers the next
 // Version: 0.5.1 - every text through Tr: the header, the filters, the buttons, the facts; dates in the language's order
 // Version: 0.5.0 - the shop design: the header, the Discover sections, the Categories filters, the app page
 // Version: 0.4.0 - the open order resumed, the update terms
@@ -126,6 +127,14 @@ std::string LanguageName(const std::string& code) {
     };
     const auto it = kNames.find(code);
     return it == kNames.end() ? code : it->second;
+}
+
+// A button in a row with no room to spare (the header, a panel's header):
+// as wide as its text, which the row measures before it places the rest. A
+// fixed width that grows for a longer translation is drawn wider, but the
+// row keeps the width it measured first, so the next item covers the end.
+void HugText(const std::shared_ptr<UltraCanvasButton>& b) {
+    if (b) b->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(b->GetHeight()));
 }
 
 std::shared_ptr<UltraCanvasBadge> Badge(const std::string& id, const std::string& text, BadgeVariant variant) {
@@ -288,6 +297,7 @@ void StoreWindow::Show() {
 
 std::shared_ptr<UltraCanvasButton> StoreWindow::MakeNavButton(const std::string& id, const std::string& text, float width) {
     auto b = Theme::Button("usNav." + id, text, width, Theme::ButtonKind::Ghost);
+    HugText(b);
     b->onClick = [this, id]() {
         if (currentPage_ == id) return;
         detailsAppId_.clear();
@@ -345,6 +355,10 @@ void StoreWindow::BuildHeader() {
     searchInput_->SetFontSize(15.0f);
     searchInput_->SetPlaceholder(Tr("Search apps, publishers, tags"));
     searchInput_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    // The pill gives way first when the labels around it are long (a
+    // translation): it may shrink to this, the sections and buttons never.
+    searchInput_->boxConstraints = CSSLayout::BoxConstraints{};
+    searchInput_->boxConstraints->minWidth = CSSLayout::Dimension::Px(120);
     searchInput_->onTextChanged = [this](const std::string& text) {
         search_ = text;
         if (!search_.empty() && currentPage_ != kDiscover) {
@@ -357,6 +371,7 @@ void StoreWindow::BuildHeader() {
 
     auto refresh = Theme::Button("usRefresh", Tr("Refresh"), 96, Theme::ButtonKind::Ghost);
     refresh->SetIcon(Theme::Icon("rotate-right.svg"));
+    HugText(refresh);
     refresh->SetTooltip(Tr("Fetch the catalog from the store's servers"));
     refresh->onClick = [this]() { RefreshCatalog(); };
     header_->AddChild(refresh);
@@ -364,6 +379,7 @@ void StoreWindow::BuildHeader() {
     // Where the design puts "Sign in": the store has no accounts, so the
     // settings live here instead.
     auto settings = Theme::Button("usSettings", Tr("Settings"), 104, Theme::ButtonKind::Secondary);
+    HugText(settings);
     settings->onClick = [this]() {
         if (currentPage_ == kSettings) return;
         detailsAppId_.clear();
@@ -504,7 +520,7 @@ void StoreWindow::BuildShell() {
     downloads_->SetExpandedHeight(static_cast<float>(std::max(100, settings_.downloadsHeight)));
     downloads_->SetExpanded(settings_.downloadsExpanded);
     downloads_->SetDetail(Tr("Nothing queued"));
-    downloads_->AddHeaderButton("usClearFinished", Tr("Clear finished"), [this]() { DismissFinished(); }, 112);
+    HugText(downloads_->AddHeaderButton("usClearFinished", Tr("Clear finished"), [this]() { DismissFinished(); }, 112));
     downloads_->onExpandedChanged = [this](bool expanded) {
         if (autoExpanding_) return;
         settings_.downloadsExpanded = expanded;
