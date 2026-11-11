@@ -4275,10 +4275,13 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // glance.
     row->AddChild(MakeToolLabel("ufl-view-lbl", Tr("View")));
 
-    // Wide enough for the longest entry ("Extra large icons") once the icon
-    // column and the arrow have taken their share - the button clips its text.
+    // 152 is wide enough for the longest English entry ("Extra large icons")
+    // once the icon column and the arrow have taken their share; a longer
+    // translation widens the button (SetFitWidthToItems) rather than being
+    // cut off - the button clips its text.
     viewDropdown = CreateDropdown("ufl-view", 0, 0, 152, 26);
     ApplyDropdownFontSize(viewDropdown.get());
+    viewDropdown->SetFitWidthToItems(true);
     // Each entry carries a glyph of the layout it selects, so the dropdown
     // reads as a set of layouts rather than a list of names. The value stays
     // the entry text - only onSelectionChanged's index is used.
@@ -4311,6 +4314,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     sortDropdown = CreateDropdown("ufl-sort", 0, 0, 128, 26);
     ApplyDropdownFontSize(sortDropdown.get());
+    sortDropdown->SetFitWidthToItems(true);   // a longer translation widens it
     sortDropdown->AddItem(Tr("Name"));
     sortDropdown->AddItem(Tr("Size"));
     sortDropdown->AddItem(Tr("Type"));
@@ -4355,6 +4359,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     videoModeDropdown = CreateDropdown("ufl-video-mode", 0, 0, 104, 26);
     ApplyDropdownFontSize(videoModeDropdown.get());
+    // 104 fits the English entries; "Automatisch abspielen" and the like
+    // widen the button instead of reading "Automatisch al…".
+    videoModeDropdown->SetFitWidthToItems(true);
     videoModeDropdown->AddItem(Tr("Autoplay"));
     videoModeDropdown->AddItem(Tr("5 s clip"));
     videoModeDropdown->AddItem(Tr("Still image"));
