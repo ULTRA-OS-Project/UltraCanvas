@@ -21,6 +21,7 @@
 #include "UltraSnipTypes.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasWindow.h"
 
 #include <cstdint>
@@ -65,6 +66,10 @@ private:
     // The bar alone (no snip yet), or the bar with the snip under it
     void SetCompact(bool compact);
     void ApplySettingsToControls();
+    // The Print Screen key, held while the setting says so (and given back
+    // when it does not); a press starts a snip as Start does
+    void ApplyPrintKey();
+    void OnPrintKey();
     SnipRequest RequestFromControls() const;
 
     // The capture, step by step
@@ -100,6 +105,7 @@ private:
     UltraCanvas::UltraCanvasApplication& app_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     UltraSnipSettings settings_;
+    UltraCanvas::UltraCanvasGlobalShortcut printKey_;   // the Print Screen key, taken from the system
 
     // The bar
     std::shared_ptr<UltraCanvas::UltraCanvasButton> startButton_;
