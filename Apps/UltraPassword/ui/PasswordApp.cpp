@@ -1,4 +1,5 @@
 // Apps/UltraPassword/ui/PasswordApp.cpp
+// Version: 0.2.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (Theme.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "PasswordApp.h"
@@ -18,6 +19,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -93,7 +95,7 @@ bool PasswordApp::Create() {
     config.width  = kWindowWidth;
     config.height = kWindowHeight;
     config.minWidth = 640;
-    config.backgroundColor = Theme::kPageBackground;
+    config.backgroundColor = Theme::PageBackground();
     window_ = CreateWindow(config);
     if (!window_) return false;
 
@@ -156,34 +158,34 @@ void PasswordApp::ResizeViews(float width, float height) {
 
 std::shared_ptr<UltraCanvasContainer> PasswordApp::BuildToolbar() {
     auto bar = CreateContainer("upwToolbar", 0, 0, 0, Theme::kToolbarHeight + 12);
-    bar->SetBackgroundColor(Theme::kCardBackground);
-    bar->SetBorders(0.0f, Theme::kCardBorder, 0.0f);
+    bar->SetBackgroundColor(Theme::CardBackground());
+    bar->SetBorders(0.0f, Theme::CardBorder(), 0.0f);
     bar->SetPadding(6, Theme::kPagePadding);
     bar->layout.SetFlexRow()
                .SetFlexGap(Theme::kInnerGap)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     bar->layoutItem.SetFlexShrink(0);
 
-    auto add = Theme::MakeButton("upwAddEntry", "New password", 110, /*primary=*/true);
+    auto add = Theme::MakeButton("upwAddEntry", Tr("New password"), 110, /*primary=*/true);
     add->onClick = [this]() { AddEntry(); };
     bar->AddChild(add);
 
-    auto addGroup = Theme::MakeButton("upwAddGroup", "New group", 90);
-    addGroup->SetTooltip("Add a group inside the selected one");
+    auto addGroup = Theme::MakeButton("upwAddGroup", Tr("New group"), 90);
+    addGroup->SetTooltip(Tr("Add a group inside the selected one"));
     addGroup->onClick = [this]() { AddGroup(); };
     bar->AddChild(addGroup);
 
-    auto rename = Theme::MakeButton("upwRenameGroup", "Rename", 70);
-    rename->SetTooltip("Rename the selected group (or the vault, at the top)");
+    auto rename = Theme::MakeButton("upwRenameGroup", Tr("Rename"), 70);
+    rename->SetTooltip(Tr("Rename the selected group (or the vault, at the top)"));
     rename->onClick = [this]() { RenameGroup(); };
     bar->AddChild(rename);
 
-    auto delGroup = Theme::MakeButton("upwDeleteGroup", "Delete group", 90);
+    auto delGroup = Theme::MakeButton("upwDeleteGroup", Tr("Delete group"), 90);
     delGroup->onClick = [this]() { DeleteGroup(); };
     bar->AddChild(delGroup);
 
     searchInput_ = CreateTextInput("upwSearch", 0, 0, 200, Theme::kControlHeight);
-    searchInput_->SetPlaceholder("Search title, website, user name");
+    searchInput_->SetPlaceholder(Tr("Search title, website, user name"));
     Theme::StyleInput(searchInput_);
     searchInput_->onTextChanged = [this](const std::string& text) { SetSearch(text); };
     searchInput_->layoutItem.SetFlexShrink(1);
@@ -191,20 +193,20 @@ std::shared_ptr<UltraCanvasContainer> PasswordApp::BuildToolbar() {
 
     bar->AddStretchSpacer(1);
 
-    auto import = Theme::MakeButton("upwImport", "Import…", 70);
-    import->SetTooltip("Add passwords from a vault file or a CSV export");
+    auto import = Theme::MakeButton("upwImport", Tr("Import…"), 70);
+    import->SetTooltip(Tr("Add passwords from a vault file or a CSV export"));
     import->onClick = [this]() { Import(); };
     bar->AddChild(import);
 
-    auto exportBtn = Theme::MakeButton("upwExport", "Export…", 70);
+    auto exportBtn = Theme::MakeButton("upwExport", Tr("Export…"), 70);
     exportBtn->onClick = [this]() { Export(); };
     bar->AddChild(exportBtn);
 
-    auto master = Theme::MakeButton("upwMaster", "Master password…", 120);
+    auto master = Theme::MakeButton("upwMaster", Tr("Master password…"), 120);
     master->onClick = [this]() { ChangeMasterPassword(); };
     bar->AddChild(master);
 
-    auto lock = Theme::MakeButton("upwLock", "Lock", 60);
+    auto lock = Theme::MakeButton("upwLock", Tr("Lock"), 60);
     lock->onClick = [this]() { Lock("Locked."); };
     bar->AddChild(lock);
     return bar;
@@ -212,7 +214,7 @@ std::shared_ptr<UltraCanvasContainer> PasswordApp::BuildToolbar() {
 
 std::shared_ptr<UltraCanvasContainer> PasswordApp::BuildVaultView() {
     auto view = CreateContainer("upwVaultView", 0, 0, 0, 0);
-    view->SetBackgroundColor(Theme::kPageBackground);
+    view->SetBackgroundColor(Theme::PageBackground());
     view->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     view->AddChild(BuildToolbar());
@@ -222,7 +224,7 @@ std::shared_ptr<UltraCanvasContainer> PasswordApp::BuildVaultView() {
     SplitPaneStyle splitStyle;
     splitStyle.splitterThickness = 6;
     splitStyle.splitterHitMargin = 3;
-    splitStyle.splitterColor     = Theme::kDivider;
+    splitStyle.splitterColor     = Theme::Divider();
     split->SetSplitPaneStyle(splitStyle);
 
     // ----- left: the group tree -----
@@ -230,15 +232,15 @@ std::shared_ptr<UltraCanvasContainer> PasswordApp::BuildVaultView() {
     split->SetPaneFixedSize(0, kTreeWidth);
     split->SetPaneMinSize(0, 180);
     treePane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    treePane->SetBackgroundColor(Theme::kSidebar);
+    treePane->SetBackgroundColor(Theme::Sidebar());
 
     tree_ = std::make_shared<UltraCanvasTreeView>("upwTree");
     tree_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     tree_->SetRowHeight(24);
-    tree_->SetFontSize(Theme::kSizeBody);
+    tree_->SetFontSize(Theme::SizeBody());
     tree_->SetSelectionMode(TreeSelectionMode::Single);
-    tree_->SetSelectionColor(Theme::kRowSelected);
-    tree_->SetHoverColor(Theme::kRowHover);
+    tree_->SetSelectionColor(Theme::RowSelected());
+    tree_->SetHoverColor(Theme::RowHover());
     tree_->SetShowFirstChildOnExpand(false);
     tree_->onNodeSelected  = [this](TreeNode* node) { OnTreeSelection(node); };
     tree_->onNodeExpanded  = [this](TreeNode* node) { if (node) expandedNodes_.insert(node->data.nodeId); };
@@ -251,11 +253,11 @@ std::shared_ptr<UltraCanvasContainer> PasswordApp::BuildVaultView() {
     cardsSide->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     cardsSide->SetPadding(Theme::kPagePadding);
 
-    paneTitle_ = Theme::MakeLine("upwPaneTitle", "", 24, Theme::kSizeTitle, Theme::kTextPrimary,
+    paneTitle_ = Theme::MakeLine("upwPaneTitle", "", 24, Theme::SizeTitle(), Theme::TextPrimary(),
                                  FontWeight::Bold);
     paneTitle_->layoutItem.SetFlexShrink(0);
     cardsSide->AddChild(paneTitle_);
-    paneSummary_ = Theme::MakeLine("upwPaneSummary", "", 20, Theme::kSizeBody, Theme::kTextSecondary);
+    paneSummary_ = Theme::MakeLine("upwPaneSummary", "", 20, Theme::SizeBody(), Theme::TextSecondary());
     paneSummary_->layoutItem.SetFlexShrink(0);
     cardsSide->AddChild(paneSummary_);
 
@@ -273,7 +275,7 @@ std::shared_ptr<UltraCanvasContainer> PasswordApp::BuildVaultView() {
     view->AddChild(split);
 
     // ----- status line -----
-    statusLabel_ = Theme::MakeLine("upwStatus", "", 22, Theme::kSizeSmall, Theme::kTextMuted);
+    statusLabel_ = Theme::MakeLine("upwStatus", "", 22, Theme::SizeSmall(), Theme::TextMuted());
     statusLabel_->SetPadding(0, Theme::kPagePadding);
     statusLabel_->layoutItem.SetFlexShrink(0);
     view->AddChild(statusLabel_);
@@ -287,8 +289,8 @@ void PasswordApp::ShowStartPage(StartPage::Mode mode, const std::string& detail)
     if (auto page = startPage_.Container()) page->SetVisible(true);
     std::string text = detail;
     if (mode == StartPage::Mode::Unlock) {
-        const std::string where = "Vault: " + FileNameOf(vaultPath_) + ".";
-        text = detail.empty() ? "Enter your master password to unlock the vault. " + where
+        const std::string where = TrF("Vault: {0}.", FileNameOf(vaultPath_));
+        text = detail.empty() ? Tr("Enter your master password to unlock the vault.") + " " + where
                               : detail + " " + where;
     }
     startPage_.SetMode(mode, text);
@@ -305,7 +307,7 @@ void PasswordApp::ShowVaultView() {
     expandedNodes_ = {GroupNode(kRootGroupId)};
     RebuildTree();
     RebuildCards();
-    SetStatus("Unlocked. Locks after 5 minutes without input, or when minimised.");
+    SetStatus(Tr("Unlocked. Locks after 5 minutes without input, or when minimised."));
 }
 
 // ===========================================================================
@@ -327,20 +329,20 @@ void PasswordApp::CreateVault(const std::string& name, const std::string& passwo
         PasswordVault fresh;
         fresh.SetName(name);
         // Two starting groups, so the tree shows what it is for.
-        fresh.AddGroup("Personal");
-        fresh.AddGroup("Work");
+        fresh.AddGroup(Tr("Personal"));
+        fresh.AddGroup(Tr("Work"));
         VaultResult r = file_.Create(vaultPath_, *secret, fresh, KdfParamsFor(profile));
         secret->Clear();
         if (!r) {
             ShowStartPage(StartPage::Mode::Create);
-            Alert("The vault could not be created.\n" + r.message);
+            Alert(Tr("The vault could not be created.") + "\n" + r.message);
             return;
         }
         vault_ = std::move(fresh);
         unlocked_ = true;
         throttle_.RecordSuccess();
         ShowVaultView();
-        SetStatus("Vault created: " + vaultPath_);
+        SetStatus(TrF("Vault created: {0}", vaultPath_));
     });
 }
 
@@ -376,8 +378,8 @@ void PasswordApp::Unlock(const std::string& password) {
 void PasswordApp::OpenOtherVault() {
     FileDialogOptions opts;
     opts.SetInitialDirectory(HomeDirectory());
-    opts.SetTitle("Open a password vault")
-        .AddFilter("UltraPassword vault", kVaultExtension)
+    opts.SetTitle(Tr("Open a password vault"))
+        .AddFilter(Tr("UltraPassword vault"), kVaultExtension)
         .SetRegisterAsRecent(false)
         .SetParentWindow(window_.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
@@ -403,8 +405,8 @@ void PasswordApp::Lock(const std::string& reason) {
 bool PasswordApp::SaveVault() {
     VaultResult r = file_.Save(vault_);
     if (!r) {
-        Alert("The vault could not be saved. Your last change is only in memory.\n" + r.message);
-        SetStatus("Save failed: " + r.message, true);
+        Alert(Tr("The vault could not be saved. Your last change is only in memory.") + "\n" + r.message);
+        SetStatus(TrF("Save failed: {0}", r.message), true);
         return false;
     }
     return true;
@@ -419,7 +421,7 @@ void PasswordApp::RebuildTree() {
     TreeNodeData root(GroupNode(kRootGroupId),
                       vault_.GetName().empty() ? "Vault" : vault_.GetName());
     root.leftIcon = TreeNodeIcon(Icon("folder-open.svg"), 16, 16);
-    root.textColor = Theme::kTextPrimary;
+    root.textColor = Theme::TextPrimary();
     root.showFirstChildOnExpand = false;
     tree_->SetRootNode(root);
     AddGroupNodes(kRootGroupId, GroupNode(kRootGroupId));
@@ -444,7 +446,7 @@ void PasswordApp::AddGroupNodes(const std::string& parentGroupId, const std::str
     for (const PasswordGroup* g : vault_.ChildGroups(parentGroupId)) {
         TreeNodeData data(GroupNode(g->id), g->name);
         data.leftIcon = TreeNodeIcon(Icon("folder.png"), 16, 16);
-        data.textColor = Theme::kTextPrimary;
+        data.textColor = Theme::TextPrimary();
         data.showFirstChildOnExpand = false;
         tree_->AddNode(parentNodeId, data);
         AddGroupNodes(g->id, data.nodeId);
@@ -453,7 +455,7 @@ void PasswordApp::AddGroupNodes(const std::string& parentGroupId, const std::str
         TreeNodeData data(EntryNode(e->id), e->title);
         data.leftIcon = TreeNodeIcon(Icon("key.svg"), 14, 14);
         const auto& info = GetSignInMethodInfo(e->method);
-        data.textColor = Theme::kTextSecondary;
+        data.textColor = Theme::TextSecondary();
         data.tooltip = std::string(info.name) + " - " + SecurityLevelName(info.level);
         tree_->AddNode(parentNodeId, data);
     }
@@ -502,9 +504,10 @@ void PasswordApp::RebuildCards() {
 
     if (!searchText_.empty()) {
         shown = vault_.Search(searchText_);
-        title = "Search: \"" + searchText_ + "\"";
-        summary = shown.empty() ? "Nothing matches." : Plural(shown.size(), "match", "matches") +
-                                                       " in the whole vault.";
+        title = TrF("Search: \"{0}\"", searchText_);
+        summary = shown.empty() ? Tr("Nothing matches.")
+                                : TrN("{n} match in the whole vault.", "{n} matches in the whole vault.",
+                                      static_cast<long long>(shown.size()));
     } else if (!selectedEntry_.empty() && vault_.FindEntry(selectedEntry_)) {
         shown = {vault_.FindEntry(selectedEntry_)};
         title = shown.front()->title;
@@ -535,8 +538,8 @@ void PasswordApp::RebuildCards() {
     }
     if (shown.empty() && searchText_.empty()) {
         auto hint = Theme::MakeLine("upwEmptyHint",
-            "No passwords here yet. \"New password\" adds one to this group; "
-            "\"New group\" adds a group inside it.", 40, Theme::kSizeBody, Theme::kTextMuted);
+            Tr("No passwords here yet. \"New password\" adds one to this group; "
+               "\"New group\" adds a group inside it."), 40, Theme::SizeBody(), Theme::TextMuted());
         hint->SetWrap(TextWrap::WrapWord);
         cardsPane_->AddChild(hint);
     }
@@ -553,7 +556,7 @@ void PasswordApp::AddEntry() {
     draft.groupId = selectedGroup_;
     EntryDialog::Show(window_.get(), vault_, draft, [this](PasswordEntry& entry) {
         const std::string id = vault_.AddEntry(entry);
-        if (id.empty()) { Alert("The group for this password no longer exists."); return; }
+        if (id.empty()) { Alert(Tr("The group for this password no longer exists.")); return; }
         if (!SaveVault()) return;
         selectedGroup_ = entry.groupId;
         selectedEntry_ = id;
@@ -569,7 +572,7 @@ void PasswordApp::EditEntry(const std::string& entryId) {
     if (!stored) return;
     PasswordEntry copy = *stored;
     EntryDialog::Show(window_.get(), vault_, copy, [this](PasswordEntry& entry) {
-        if (!vault_.UpdateEntry(entry)) { Alert("The password could not be updated."); return; }
+        if (!vault_.UpdateEntry(entry)) { Alert(Tr("The password could not be updated.")); return; }
         if (!SaveVault()) return;
         selectedGroup_ = entry.groupId;
         expandedNodes_.insert(GroupNode(entry.groupId));
@@ -602,11 +605,11 @@ void PasswordApp::AddGroup() {
     const std::string where = parent == kRootGroupId ? "at the top level"
                                                      : "inside \"" + vault_.GroupPath(parent) + "\"";
     UltraCanvasDialogManager::ShowInputDialog(
-        "Name of the new group, " + where + ":", "New group", "", InputType::Text,
+        "Name of the new group, " + where + ":", Tr("New group"), "", InputType::Text,
         [this, parent](DialogResult result, const std::string& name) {
             if (result != DialogResult::OK || name.empty()) return;
             const std::string id = vault_.AddGroup(name, parent);
-            if (id.empty()) { Alert("The parent group no longer exists."); return; }
+            if (id.empty()) { Alert(Tr("The parent group no longer exists.")); return; }
             if (!SaveVault()) return;
             expandedNodes_.insert(GroupNode(parent));
             selectedGroup_ = id;
@@ -643,7 +646,7 @@ void PasswordApp::DeleteGroup() {
     const std::string id = selectedGroup_;
     const PasswordGroup* g = vault_.FindGroup(id);
     if (!g) {
-        SetStatus("Select a group in the tree first - the vault itself cannot be deleted.", true);
+        SetStatus(Tr("Select a group in the tree first - the vault itself cannot be deleted."), true);
         return;
     }
     // Count what goes with it, so the question says what is at stake.
@@ -655,7 +658,7 @@ void PasswordApp::DeleteGroup() {
         entries += vault_.EntriesIn(current).size();
         for (const PasswordGroup* c : vault_.ChildGroups(current)) { ++groups; stack.push_back(c->id); }
     }
-    std::string message = "Delete the group \"" + g->name + "\"";
+    std::string message = Tr("Delete the group \"") + g->name + "\"";
     if (entries + groups > 0)
         message += " with " + Plural(entries, "password", "passwords") +
                    (groups ? " and " + Plural(groups, "sub-group", "sub-groups") : "") + " in it";
@@ -690,9 +693,9 @@ void PasswordApp::Export() {
 void PasswordApp::ExportCopy() {
     FileDialogOptions opts;
     opts.SetInitialDirectory(HomeDirectory());
-    opts.SetTitle("Export the vault")
+    opts.SetTitle(Tr("Export the vault"))
         .SetDefaultFileName(vault_.GetName() + " export." + kVaultExtension)
-        .AddFilter("UltraPassword vault", kVaultExtension)
+        .AddFilter(Tr("UltraPassword vault"), kVaultExtension)
         .SetRegisterAsRecent(false)
         .SetParentWindow(window_.get());
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult result, const std::string& path) {
@@ -705,32 +708,32 @@ void PasswordApp::ExportCopy() {
 
 void PasswordApp::ExportWithPassword() {
     UltraCanvasDialogManager::ShowInputDialog(
-        "Password for the exported file (at least " +
-            std::to_string(kMinMasterPasswordLength) + " characters):",
-        "Export password", "", InputType::Password,
+        TrF("Password for the exported file (at least {0} characters):",
+            std::to_string(kMinMasterPasswordLength)),
+        Tr("Export password"), "", InputType::Password,
         [this](DialogResult result, const std::string& first) {
             if (result != DialogResult::OK) return;
             if (first.size() < kMinMasterPasswordLength) {
-                Alert("The export password needs at least " +
-                      std::to_string(kMinMasterPasswordLength) + " characters.");
+                Alert(TrF("The export password needs at least {0} characters.",
+                          std::to_string(kMinMasterPasswordLength)));
                 return;
             }
             auto secret = std::make_shared<UltraCryptSecureBuffer>(AdoptPassword(first));
             UltraCanvasDialogManager::ShowInputDialog(
-                "Type the export password again:", "Export password", "", InputType::Password,
+                Tr("Type the export password again:"), Tr("Export password"), "", InputType::Password,
                 [this, secret](DialogResult again, const std::string& second) {
                     if (again != DialogResult::OK) { secret->Clear(); return; }
                     if (!UltraCrypt_ConstantTimeEquals(secret->Data(), secret->GetSize(),
                                                        second.data(), second.size())) {
                         secret->Clear();
-                        Alert("The two passwords are not the same. Nothing was exported.");
+                        Alert(Tr("The two passwords are not the same. Nothing was exported."));
                         return;
                     }
                     FileDialogOptions opts;
                     opts.SetInitialDirectory(HomeDirectory());
-    opts.SetTitle("Export the vault")
+    opts.SetTitle(Tr("Export the vault"))
                         .SetDefaultFileName(vault_.GetName() + " shared." + kVaultExtension)
-                        .AddFilter("UltraPassword vault", kVaultExtension)
+                        .AddFilter(Tr("UltraPassword vault"), kVaultExtension)
                         .SetRegisterAsRecent(false)
                         .SetParentWindow(window_.get());
                     UltraCanvasFileLoader::SaveFileDialog(opts,
@@ -742,7 +745,7 @@ void PasswordApp::ExportWithPassword() {
                             UltraCryptKdfParams cost;
                             cost.iterations = file_.GetKdfIterations();
                             cost.memoryKiB  = file_.GetKdfMemoryKiB();
-                            SetStatus("Exporting - deriving the export key…");
+                            SetStatus(Tr("Exporting - deriving the export key…"));
                             RunAfterPaint([this, secret, path, cost]() {
                                 VaultResult r = VaultFile::ExportWithPassword(path, *secret, vault_, cost);
                                 secret->Clear();
@@ -758,17 +761,17 @@ void PasswordApp::ExportWithPassword() {
 
 void PasswordApp::ExportCsv() {
     UltraCanvasAlert::Confirm(
-        "A CSV file is NOT encrypted. Every password in it can be read by anyone and "
-        "any program that gets the file. Use it only to import into another password "
-        "manager, and delete it afterwards.\n\nExport as plain CSV anyway?",
+        Tr("A CSV file is NOT encrypted. Every password in it can be read by anyone and "
+           "any program that gets the file. Use it only to import into another password "
+           "manager, and delete it afterwards.") + "\n\n" + Tr("Export as plain CSV anyway?"),
         "Unencrypted export",
         [this](bool yes) {
             if (!yes) return;
             FileDialogOptions opts;
             opts.SetInitialDirectory(HomeDirectory());
-    opts.SetTitle("Export as plain CSV")
+    opts.SetTitle(Tr("Export as plain CSV"))
                 .SetDefaultFileName(vault_.GetName() + " passwords.csv")
-                .AddFilter("CSV file", "csv")
+                .AddFilter(Tr("CSV file"), "csv")
                 .SetRegisterAsRecent(false)
                 .SetParentWindow(window_.get());
             UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult result, const std::string& path) {
@@ -785,10 +788,10 @@ void PasswordApp::Import() {
     if (!unlocked_) return;
     FileDialogOptions opts;
     opts.SetInitialDirectory(HomeDirectory());
-    opts.SetTitle("Import passwords")
-        .AddFilter("UltraPassword vault or CSV", std::vector<std::string>{kVaultExtension, "csv"})
-        .AddFilter("UltraPassword vault", kVaultExtension)
-        .AddFilter("CSV from a browser or password manager", "csv")
+    opts.SetTitle(Tr("Import passwords"))
+        .AddFilter(Tr("UltraPassword vault or CSV"), std::vector<std::string>{kVaultExtension, "csv"})
+        .AddFilter(Tr("UltraPassword vault"), kVaultExtension)
+        .AddFilter(Tr("CSV from a browser or password manager"), "csv")
         .SetRegisterAsRecent(false)
         .SetParentWindow(window_.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
@@ -802,7 +805,7 @@ void PasswordApp::Import() {
 
 void PasswordApp::ImportVaultFile(const std::string& path) {
     UltraCanvasDialogManager::ShowInputDialog(
-        "Password of \"" + FileNameOf(path) + "\":", "Import vault", "", InputType::Password,
+        "Password of \"" + FileNameOf(path) + "\":", Tr("Import vault"), "", InputType::Password,
         [this, path](DialogResult result, const std::string& typed) {
             if (result != DialogResult::OK || typed.empty()) return;
             auto secret = std::make_shared<UltraCryptSecureBuffer>(AdoptPassword(typed));
@@ -853,34 +856,34 @@ void PasswordApp::ChangeMasterPassword() {
     UltraCanvasDialogManager::ShowInputDialog(
         "New master password (at least " + std::to_string(kMinMasterPasswordLength) +
             " characters):",
-        "Change master password", "", InputType::Password,
+        Tr("Change master password"), "", InputType::Password,
         [this](DialogResult result, const std::string& first) {
             if (result != DialogResult::OK) return;
             if (first.size() < kMinMasterPasswordLength) {
-                Alert("The master password needs at least " +
-                      std::to_string(kMinMasterPasswordLength) + " characters.");
+                Alert(TrF("The master password needs at least {0} characters.",
+                          std::to_string(kMinMasterPasswordLength)));
                 return;
             }
             auto secret = std::make_shared<UltraCryptSecureBuffer>(AdoptPassword(first));
             UltraCanvasDialogManager::ShowInputDialog(
-                "Type the new master password again:", "Change master password", "",
+                Tr("Type the new master password again:"), Tr("Change master password"), "",
                 InputType::Password,
                 [this, secret](DialogResult again, const std::string& second) {
                     if (again != DialogResult::OK) { secret->Clear(); return; }
                     if (!UltraCrypt_ConstantTimeEquals(secret->Data(), secret->GetSize(),
                                                        second.data(), second.size())) {
                         secret->Clear();
-                        Alert("The two passwords are not the same. The master password "
-                              "was not changed.");
+                        Alert(Tr("The two passwords are not the same. The master password "
+                                 "was not changed."));
                         return;
                     }
-                    SetStatus("Re-encrypting the vault with the new password…");
+                    SetStatus(Tr("Re-encrypting the vault with the new password…"));
                     RunAfterPaint([this, secret]() {
                         VaultResult r = file_.ChangePassword(*secret, vault_);
                         secret->Clear();
-                        if (!r) { Alert("The master password was not changed.\n" + r.message); return; }
-                        SetStatus("Master password changed. Exports made earlier still open "
-                                  "with the old one.");
+                        if (!r) { Alert(Tr("The master password was not changed.") + "\n" + r.message); return; }
+                        SetStatus(Tr("Master password changed. Exports made earlier still open "
+                                  "with the old one."));
                     });
                 },
                 window_.get());
@@ -895,15 +898,15 @@ void PasswordApp::CopyToClipboard(const std::string& text, const std::string& wh
     // a history that had recorded it would keep it.
     const bool isPassword = what == "Password";
     if (!SetClipboardText(text, isPassword ? ClipboardHint::Secret : ClipboardHint::Normal)) {
-        SetStatus("The clipboard is not available.", true);
+        SetStatus(Tr("The clipboard is not available."), true);
         return;
     }
     if (isPassword) {
         WipeString(clipboardText_);
         clipboardText_ = text;
         clipboardClearAt_ = NowSeconds() + kClipboardSeconds;
-        SetStatus("Password copied. The clipboard is cleared in " +
-                  std::to_string(kClipboardSeconds) + " seconds.");
+        SetStatus(TrN("Password copied. The clipboard is cleared in {n} second.",
+                      "Password copied. The clipboard is cleared in {n} seconds.", kClipboardSeconds));
     } else {
         SetStatus(what + " copied.");
     }
@@ -954,7 +957,7 @@ void PasswordApp::ClearClipboardIfOurs() {
     std::string current;
     if (GetClipboardText(current) && current == clipboardText_) {
         SetClipboardText("");
-        if (unlocked_) SetStatus("Clipboard cleared.");
+        if (unlocked_) SetStatus(Tr("Clipboard cleared."));
     }
     WipeString(current);
     WipeString(clipboardText_);
@@ -964,7 +967,7 @@ void PasswordApp::ClearClipboardIfOurs() {
 void PasswordApp::SetStatus(const std::string& text, bool isError) {
     if (!statusLabel_) return;
     statusLabel_->SetText(text);
-    statusLabel_->SetTextColor(isError ? Theme::kDanger : Theme::kTextMuted);
+    statusLabel_->SetTextColor(isError ? Theme::Danger() : Theme::TextMuted());
 }
 
 void PasswordApp::Alert(const std::string& message, bool isError) {
