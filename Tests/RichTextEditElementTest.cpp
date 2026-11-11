@@ -1087,6 +1087,47 @@ int main() {
         TEST("...addressed by its place in the text", edit->GetSelectedImage() == RichDocPosition(0, 0));
     }
 
+    // ===== TEXT FRAMES =====
+    std::cerr << "\n--- Text frames ---" << std::endl;
+    {
+        // A text box 300 pt (400 px) wide at the column's right edge: the
+        // paragraph anchoring it wraps in the room left of it.
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame frame;
+        RichDocBlock inFrame;
+        RichTextRun frameWords;
+        frameWords.text = "Sender Company";
+        inFrame.runs = {frameWords};
+        frame.blocks = {inFrame};
+        frame.backgroundColor = "#eeeeee";
+        document->frames.push_back(frame);
+        RichDocBlock paragraph;
+        RichTextRun box;
+        box.text = RichTextRun::kObjectReplacement;
+        box.frameIndex = 0;
+        box.imageWidthPt = 300.0f;
+        box.imageWrap = RichTextRun::ImageWrap::Square;
+        box.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun words;
+        for (int i = 0; i < 40; i++) words.text += "word" + std::to_string(i) + " ";
+        paragraph.runs = {box, words};
+        document->blocks.push_back(paragraph);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float rightmost = 0.0f;
+        const int length = static_cast<int>(editor.BlockText(0).size());
+        for (int offset = 3; offset <= length; offset += 5) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            rightmost = std::max(rightmost, edit->GetCaretRectForTest().x);
+        }
+        TEST("Text beside a text frame wraps short of it: rightmost caret at " + std::to_string(rightmost),
+             rightmost > 100.0f && rightmost < 380.0f);
+        TEST("Plain text spells the frame's text before its paragraph",
+             document->ToPlainText().rfind("Sender Company", 0) == 0);
+    }
+
     // ===== BLOCKS RUNNING OVER PAGES =====
     std::cerr << "\n--- Page splitting ---" << std::endl;
     {
@@ -1148,6 +1189,20 @@ int main() {
         window->UpdateAndRender();
         window->UpdateAndRender();
         TEST("...and not when it fits", edit->GetHorizontalScrollOffset() == 0.0f);
+
+        // Fitting zooms follow the element's size.
+        edit->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);
+        window->UpdateAndRender();
+        const float wholePage = edit->GetZoom();
+        TEST("Whole page fits an A4 page into the view: " + std::to_string(wholePage),
+             wholePage > 0.3f && wholePage < 0.55f);
+        edit->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::PageWidth);
+        window->UpdateAndRender();
+        const float pageWidth = edit->GetZoom();
+        TEST("Page width fills the width: " + std::to_string(pageWidth), pageWidth > wholePage && pageWidth < 1.0f);
+        TEST("...with no sideways scrolling", edit->GetHorizontalScrollOffset() == 0.0f);
+        edit->SetZoom(1.0f);
+        TEST("A chosen zoom ends the fitting one", edit->GetZoomFit() == UltraCanvasRichTextEdit::ZoomFit::Off);
         edit->SetPageView(false);
         edit->SetZoom(1.0f);
         window->UpdateAndRender();

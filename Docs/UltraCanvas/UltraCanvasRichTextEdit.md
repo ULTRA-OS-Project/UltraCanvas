@@ -581,6 +581,54 @@ The wrap works a paragraph at a time: a paragraph that starts beside a picture
 is narrowed as a whole, so a long one beside a short picture stays narrow below
 it too.
 
+**Placed from the page.** By default a float counts across from the text
+column and down from its paragraph. `floatHorizontalFrom` and
+`floatVerticalFrom` (`RichTextRun::FloatOrigin`: `Paragraph`, `Margin`,
+`Page`) make the offsets and the alignment count from the page's text area or
+from the page's edges instead, and `floatVerticalAlign` (`Top`, `Middle`,
+`Bottom`) aligns it down that area. In page view it then sits on the page its
+paragraph is on - a letterhead's sender block 13 cm from the page's left edge
+stays there whatever the margins. Outside page view a page-placed float sits
+at its paragraph.
+
+**Text frames.** A run with `frameIndex` (into `UCRichDocument::frames`) is a
+text box: a `RichTextFrame`'s paragraphs with its `backgroundColor`,
+`border` and `paddingPt`, floating like a picture. Its width is
+`imageWidthPt` (half the column when 0) and its height is its text's, at
+least `imageHeightPt`. ODT `draw:text-box`, DOCX `wps:txbx` and VML text
+boxes, and DOC text boxes read into it, and both writers save it. In a
+header, a footer or a table cell a frame does not float: the header shows
+its text in line, a cell drops it.
+
+```cpp
+auto document = std::make_shared<UCRichDocument>();
+RichTextFrame sender;
+RichDocBlock line;
+RichTextRun text;
+text.text = "Example Company";
+line.runs = {text};
+sender.blocks = {line};
+sender.backgroundColor = "#eeeeee";
+document->frames.push_back(sender);
+
+RichTextRun box;
+box.text = RichTextRun::kObjectReplacement;
+box.frameIndex = 0;
+box.imageWidthPt = 170.0f;
+box.imageWrap = RichTextRun::ImageWrap::Square;
+box.imageFloatAlign = RichTextAlign::Default;
+box.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+box.floatVerticalFrom = RichTextRun::FloatOrigin::Page;
+box.imageOffsetXPt = 368.5f;          // 13 cm from the page's left edge
+box.imageOffsetYPt = 56.7f;           // 2 cm from its top
+RichDocBlock address;
+RichTextRun name;
+name.text = "Recipient Name";
+address.runs = {box, name};
+document->blocks.push_back(address);
+editor->SetDocument(document);
+```
+
 ### Check lists
 
 ```cpp
@@ -1149,7 +1197,15 @@ back. `ExportToPdf` is built on the same three.
 editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
 editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
+editor->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);   // or PageWidth
 ```
+
+`SetZoomFit` makes the zoom follow the element's size in page view, like a
+word processor's "Page width" (the page and the desk either side fill the
+width) and "Whole page" (all of the page is in view). It is worked out again
+whenever the element is resized; `SetZoom`, Ctrl+wheel and `ZoomFit::Off`
+end it, and printing and PDF export stay at 100 %. Outside page view there is
+no page to fit and the zoom stays as it is.
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
 rewraps to the zoomed width; in page view the page is simply larger, and when
@@ -1178,6 +1234,9 @@ Honest limits of this first version — none of them silently misbehave:
 - **The input method's candidate window** is placed by the input method, not
   next to the caret, on X11 and Windows. On macOS and in the browser it opens
   at the caret (where the composition starts).
+- **A text frame's text cannot be edited**, and a frame cannot be moved or
+  resized; clicks go to the text underneath. Frames in headers, footers and
+  table cells do not float (see *Floating pictures*).
 
 ## Related
 

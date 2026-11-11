@@ -504,6 +504,14 @@ public:
     // text lying on a zoomable canvas - a bitmap editor's text layer - follows
     // the canvas's zoom, which goes well past a word processor's 0.25 to 5.
     void SetZoomRange(float minimum, float maximum);
+    // Zoom that follows the element's size, as a word processor's "Page
+    // width" and "Whole page": the page (with the desk either side) fills the
+    // width, or the whole page fits in the view. It is worked out again
+    // whenever the element is resized; SetZoom, Ctrl+wheel and Off end it.
+    // Only page view has a page to fit; outside it the zoom stays as it is.
+    enum class ZoomFit { Off, PageWidth, WholePage };
+    void SetZoomFit(ZoomFit fit);
+    ZoomFit GetZoomFit() const { return zoomFit; }
     std::function<void(float zoom)> onZoomChanged;
 
     // ===== SCROLLING =====
@@ -680,6 +688,14 @@ private:
             RichTextAlign floatAlign = RichTextAlign::Left;
             float offsetX = 0.0f;                 // pixels
             float offsetY = 0.0f;
+            // What the offsets count from (the column and paragraph, the
+            // page's text area, or the page) and the vertical alignment.
+            RichTextRun::FloatOrigin horizontalFrom = RichTextRun::FloatOrigin::Margin;
+            RichTextRun::FloatOrigin verticalFrom = RichTextRun::FloatOrigin::Paragraph;
+            RichTextRun::FloatVerticalAlign verticalAlign = RichTextRun::FloatVerticalAlign::Top;
+            // A text frame (UCRichDocument::frames) instead of a picture:
+            // `height` is its least height until its text is laid out.
+            int frameIndex = -1;
         };
         std::vector<InlineImage> inlineImages;
         // A display formula (MathBlock) typeset whole, centred in the column;
@@ -757,6 +773,7 @@ private:
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
 
+    struct FurnitureLayout;                       // below, with the pages
     // ===== FLOATING PICTURES =====
     // A floating picture where the placement pass put it: x from the text
     // column's left edge, y in content coordinates.
@@ -767,7 +784,16 @@ private:
         RichTextRun::ImageWrap wrap = RichTextRun::ImageWrap::Square;
         bool beside = true;                       // text flows beside it (else above and below)
         std::shared_ptr<UCImage> image;
+        // A text frame: its look and its laid-out paragraphs.
+        int frameIndex = -1;
+        std::shared_ptr<FurnitureLayout> frameContent;
     };
+    // A text frame's paragraphs laid out `width` pixels wide (its inner
+    // width, inside padding and border).
+    std::shared_ptr<FurnitureLayout> LayoutTextFrame(IRenderContext* ctx, int frameIndex, float width);
+    // The room a text frame's border and padding take on each side (pixels).
+    float TextFrameInset(int frameIndex) const;
+    void DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target);
     std::vector<PlacedFloat> placedFloats;
     // Places block `index`'s floats at `top` and fits the block round the
     // floats placed so far (moving it below a top-and-bottom one, narrowing it
@@ -1006,6 +1032,9 @@ private:
     float scrollOffset = 0.0f;
     float hScrollOffset = 0.0f;       // document pixels, page view only
     float zoom = 1.0f;
+    ZoomFit zoomFit = ZoomFit::Off;
+    // The zoom zoomFit asks for at the element's present size (0 = none).
+    float FitZoom() const;
     float minZoom = 0.25f;
     float maxZoom = 5.0f;
     bool needsHorizontalScrollbar = false;

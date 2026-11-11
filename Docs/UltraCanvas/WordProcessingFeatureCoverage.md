@@ -56,7 +56,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 |---|---|---|---|---|---|---|
 | Headings 1–6 | yes | yes | yes | yes | yes | DOC: built-in Heading styles and outline level. |
 | Alignment (left/centre/right/justify) | yes | yes | yes | yes | yes | |
-| Paragraph style → character formatting | yes | *partial* | yes | yes | yes | A "Standard + bold 14pt" title arrives as bold 14pt runs. DOCX: the style's size and font (and `w:docDefaults`) reach text without its own (2026-09); bold and colour from a style do not yet. |
+| Paragraph style → character formatting | yes | yes | yes | yes | yes | A "Standard + bold 14pt" title arrives as bold 14pt runs. DOCX: the paragraph style's character properties (bold, italic, underline, colour, size, font, and `w:docDefaults`) reach text without its own. |
 | Paragraph font (empty lines) | yes | yes | yes | yes | yes | 2026-09. `RichDocBlock::paragraphFontSizePt` / `paragraphFontFamily`: the style's font, or the paragraph mark's for an empty paragraph, so blank lines are as tall as in Writer. A contract's blank lines drew at the view's 12 pt instead of 11 pt and pushed its last line onto a second page. |
 | Block quote, preformatted | yes | yes | yes | yes | yes | By style name / monospace style font. |
 | Line breaks, page breaks | yes | yes | yes | yes | yes | In page view a page break starts a new page (2026-09); the continuous view draws it as a dashed rule. |
@@ -99,8 +99,8 @@ View = `UltraCanvasRichTextEdit` draws it.
 |---|---|---|---|---|---|---|
 | Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. |
 | Picture on its own line | yes | yes | yes | yes | yes | |
-| Floating / page-anchored pictures and frames | *partial* | *partial* | no | no | no | Written out in reading order. There is no position or text wrap. |
-| Text boxes | *partial* | *partial* | no | no | no | Their paragraphs follow the anchoring paragraph. |
+| Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
+| Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames in headers, footers and table cells are drawn in line; see the gaps below. |
 | Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | no | no | no | no | no | |
 | Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
@@ -113,7 +113,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Headers and footers | yes | yes | yes | yes | yes | 2026-09. `pageFurniture` and `firstPageFurniture` (another first page: ODF `style:header-first` or a first master page with a next style, DOCX `w:titlePg`, DOC first-page stories). Drawn on every page in page view, and above and below the body otherwise. Both writers save them. Even/odd headers are not read. |
 | Page number and page count fields | yes | yes | yes | yes | yes | 2026-09. `RichTextRun::field`: ODF `text:page-number` / `text:page-count`, DOCX `PAGE` / `NUMPAGES` / `SECTIONPAGES` (complex and simple fields), DOC field codes. Page view fills in each page's numbers in headers and footers. |
 | Dates and other fields | *partial* | *partial* | *partial* | — | — | Their last displayed value is kept as text. |
-| Footnotes / endnotes | *partial* | no | no | no | no | ODT: placed inline in parentheses. |
+| Footnotes / endnotes | yes | yes | no | yes | yes | `UCRichDocument::notes` with numbered reference runs; footnotes at the foot of their page in page view, endnotes after the body. DOC: the note text is not read yet. |
 | Table of contents and indexes | yes | no | *partial* | — | — | ODT: the generated text (`text:index-body`) is read (2026-09). DOCX TOCs are fields inside `w:sdt`. DOC shows the field result. |
 | Sections, multiple columns | *partial* | no | no | no | no | Hidden sections are dropped; columns are flattened. |
 | Comments, tracked changes | no | *partial* | no | no | no | DOCX keeps inserted text. |
@@ -142,9 +142,12 @@ View = `UltraCanvasRichTextEdit` draws it.
   date tables no longer show grid lines. In page view (2026-09) the bank
   footer sits at the foot of page one only, and the following pages carry
   the "Seite N / M" header with their own numbers. Because the sender block
-  still flows in the text instead of standing beside the address, the
-  signature's last two lines move to a second page; Writer fits the letter
-  on one.
+  still flowed in the text instead of standing beside the address, the
+  signature's last two lines moved to a second page; Writer fits the letter
+  on one. Positioned frames (2026-11) put a page-anchored sender block
+  beside the address; that was checked on `Tests/fixtures/word-frames`, a
+  page of the same shape, against LibreOffice's rendering - the original
+  letter itself has not been re-checked.
 
 ## Roadmap, in priority order
 
@@ -156,16 +159,19 @@ mapping, table cell borders and backgrounds, list number formats,
 multi-level labels and document bullets, highlight, paragraph borders and
 backgrounds, table width, position, cell padding and vertical alignment,
 and the page model: page size, margins, headers, footers, page number
-fields and page view.
+fields and page view. Since then: blocks split across pages (widow and
+orphan control, repeated table header rows), footnotes and endnotes, zoom
+and sideways scrolling, and (2026-11) positioned frames, text boxes and
+floating pictures placed from the page, and zoom to the page's width or the
+whole page (`UltraCanvasRichTextEdit::SetZoomFit`).
 
-1. **Positioned frames and floating pictures** (anchor, x/y, wrap). Page
-   view gives them a page to stand on; this is the only way a letterhead can
-   look like the original.
-2. **Pagination inside blocks**: split long paragraphs and tables across
-   pages (with widow/orphan control and repeated table header rows).
-3. **Footnotes and endnotes** as real notes, and **DOC merged cells and
-   footnotes** (the footnote text lies after the main text in the piece
-   table: `ccpFtn`).
+1. **Text wrapping line by line round a frame.** Today the whole paragraph
+   beside a square-wrapped frame or picture is narrowed; Writer narrows only
+   the lines beside it and gives the rest the full width.
+2. **Frames in headers and footers** (a Word letterhead's logo and sender
+   block often live there), and **DOC shapes in headers** (`PlcSpaHdr`).
+3. **DOC merged cells and footnotes** (the footnote text lies after the main
+   text in the piece table: `ccpFtn`).
 4. Comments, tracked changes, shapes, charts: read-only display first.
 
 Each can be checked against a LibreOffice-generated fixture the way
@@ -177,21 +183,20 @@ Found while checking real documents against Writer. Each is something the
 model or a reader can already carry, or that a document needs, but
 `UltraCanvasRichTextEdit` does not draw or edit:
 
-- **Blocks are not split across pages.** A paragraph or table that does not
-  fit moves whole to the next page, leaving the rest of the page empty; a
-  block taller than a page runs past its bottom margin. No widow/orphan
-  control, no keep-with-next, no repeated table header rows.
-- **Headers and footers cannot be edited**, only shown. The caret never
-  enters them.
-- **Page number fields in the body** show the number they were saved with;
-  only headers and footers are numbered per page.
-- **No zoom and no horizontal scrolling.** A page wider than the element is
-  cut at the right; the page is drawn at 96 DPI.
-- **One page setup per document.** Sections with their own size, margins or
-  orientation, and even/odd headers, are not modelled.
-- **Positioned frames and floating pictures** are drawn in reading order,
-  not at their place on the page.
-- **Border line styles** (double, dotted, dashed) are drawn solid.
+- **Text wraps round a frame or floating picture paragraph by paragraph.**
+  A paragraph beside one is narrowed for all of its lines, and one that
+  overlaps a top-and-bottom picture starts below it; Writer does both line
+  by line. A frame's distance from the text is a fixed 9 pt.
+- **Frames in headers, footers, table cells and other frames** do not
+  float: their text is drawn in line where they are anchored (cells drop
+  it).
+- **A frame's text cannot be edited**, and a frame cannot be moved or
+  resized; clicks pass through it to the text underneath.
+- **Group shapes and drawn shapes** (lines, arrows, WordArt) are not shown;
+  only a shape's picture or text box is.
+- **One page setup per document.** Sections can have their own columns, but
+  not their own size, margins or orientation; even/odd headers are not
+  modelled.
 - **Picture bullets** and **numbered headings** (chapter numbering) are not
   drawn.
 - **Merged cells in DOC** are not read (the model and view support them).
@@ -207,6 +212,10 @@ soffice --headless --convert-to odt word97-formatting.fodt
 soffice --headless --convert-to "doc:MS Word 97" word97-formatting.fodt
 soffice --headless --convert-to docx word97-formatting.fodt
 ```
+
+`word-frames.fodt` (a letterhead-like page: a page-anchored sender frame
+beside the address, a note box a paragraph wraps round, a floating picture)
+is converted the same way to `word-frames.odt`, `.doc` and `.docx`.
 
 `WordFormatsTest` checks that all three readers recover the same structure and
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it
