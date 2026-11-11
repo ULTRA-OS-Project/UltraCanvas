@@ -1,3 +1,9 @@
+#### 2026-11-11 *0.1.11*
+- **The payment service runs on PostgreSQL in production**; SQLite is for
+  tests and development only. `ULTRASTORE_PAY_DB` is a database URL, one
+  database layer hides the two engines, and the tests run the whole
+  purchase on both, PostgreSQL through a service container in CI.
+
 #### 2026-11-11 *0.1.10*
 - **Proxy settings** on the Settings page: the catalog, the downloads and
   the purchases go through the proxy every ULTRA OS application shares, and
