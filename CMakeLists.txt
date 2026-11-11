@@ -1477,10 +1477,10 @@ if(ULTRACANVAS_BUILD_HEIF_TESTS AND NOT BUILD_TESTS)
 endif()
 
 # ===== START PAGE AND APP SETTINGS TESTS WITHOUT THE FULL SUITE =====
-# StartPageTest and AppSettingsTest alone, for builds that leave BUILD_TESTS
+# StartPageTest, AppSettingsTest and ProxySettingsTest alone, for builds that leave BUILD_TESTS
 # off (the macOS and Windows CI rows): every application's start page and its
 # settings file, on the platform's own path rules and settings folder.
-option(ULTRACANVAS_BUILD_STARTPAGE_TESTS "Build StartPageTest and AppSettingsTest without BUILD_TESTS" OFF)
+option(ULTRACANVAS_BUILD_STARTPAGE_TESTS "Build StartPageTest, AppSettingsTest and ProxySettingsTest without BUILD_TESTS" OFF)
 if(ULTRACANVAS_BUILD_STARTPAGE_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/StartPageTests.cmake)

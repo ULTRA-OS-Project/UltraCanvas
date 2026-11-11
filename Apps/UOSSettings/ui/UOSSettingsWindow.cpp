@@ -1,6 +1,8 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.13.0 - Network > Proxy: the proxy every ULTRA OS application connects
+//                  through (Proxy.conf, the shared proxy settings dialog)
 // Version: 0.12.0 - Desktop: where files dropped on the wallpaper go
 // Version: 0.11.0 - Desktop: the bars' theme (dark or light)
 // Version: 0.10.0 - on UltraCanvasSettingsPageKit (the window, the tree, the bottom bar,
@@ -42,6 +44,7 @@
 #include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
@@ -116,6 +119,8 @@ namespace {
     constexpr const char* kPageRegistrations  = "notifications/registrations";
     constexpr const char* kSectionDevices     = "devices";
     constexpr const char* kPageCertificates   = "devices/certificates";
+    constexpr const char* kSectionNetwork     = "network";
+    constexpr const char* kPageProxy          = "network/proxy";
 
     // Notification registrations table: the application column is fixed, the
     // click handler takes the rest.
@@ -290,6 +295,8 @@ bool UOSSettingsWindow::Create() {
     AddTreeNode(kSectionNotifications, kPageRegistrations, Tr("Registrations"));
     AddTreeNode("settings", kSectionDevices, Tr("Devices"));
     AddTreeNode(kSectionDevices, kPageCertificates, Tr("Trusted certificates"));
+    AddTreeNode("settings", kSectionNetwork, Tr("Network"));
+    AddTreeNode(kSectionNetwork, kPageProxy, Tr("Proxy"));
 
     BuildDesktopPage();
     BuildLastFolderPage();
@@ -298,6 +305,7 @@ bool UOSSettingsWindow::Create() {
     BuildEmojiPage();
     BuildNotificationsPage();
     BuildCertificatesPage();
+    AddPage(kPageProxy, MakeProxySettingsPage("uos-proxy", window.get()));
 
     // Another application may have written a page's file since it was
     // built: a page is re-read on the way in, shown as it is now.

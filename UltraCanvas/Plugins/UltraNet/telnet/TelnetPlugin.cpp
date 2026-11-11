@@ -18,6 +18,7 @@
 #include "UltraNetPluginHostShim.h"
 
 #include <curl/curl.h>
+#include <UltraNet/UltraNetCurlProxy.h>   // after UltraNetPlugins.h: it brings <windows.h>
 
 #include <atomic>
 #include <cstdio>
@@ -147,6 +148,7 @@ public:
             UploadCursor cursor{body.data(), body.size()};
 
             curl_easy_setopt(h.get(), CURLOPT_URL,           s->url.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), s->url, /*tunnel=*/true);   // the proxy setting
             curl_easy_setopt(h.get(), CURLOPT_UPLOAD,        1L);
             curl_easy_setopt(h.get(), CURLOPT_READFUNCTION,  &ReadCallback);
             curl_easy_setopt(h.get(), CURLOPT_READDATA,      &cursor);

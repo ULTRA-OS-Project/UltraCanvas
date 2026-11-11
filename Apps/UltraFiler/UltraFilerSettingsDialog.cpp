@@ -74,6 +74,7 @@
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasSlider.h"
@@ -133,6 +134,7 @@ namespace {
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "extras/history-favorites";
     constexpr const char* kPageCache = "extras/cache";
+    constexpr const char* kPageProxy = "extras/proxy";
     constexpr const char* kPageArchives = "archives";
     constexpr const char* kPageTar = "archives/tar";
     // The page shown while nothing is selected - the window opens with every
@@ -2617,6 +2619,7 @@ namespace {
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, Tr("Open prompt"));
         AddTreeNode(d, kPageExtras, kPageLists, Tr("History & Favorites"));
         AddTreeNode(d, kPageExtras, kPageCache, Tr("Cache"));
+        AddTreeNode(d, kPageExtras, kPageProxy, Tr("Proxy"));
 
         // ----- pages -----
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
@@ -2643,6 +2646,9 @@ namespace {
         AddPage(d, kPageLists, BuildListsPage(d));
         AddPage(d, kPageTar, BuildTarPage(d));
         AddPage(d, kPageCache, BuildCachePage(d));
+        // The proxy every ULTRA OS application connects through: FTP, SFTP,
+        // WebDAV and the cloud drives go through it.
+        AddPage(d, kPageProxy, MakeProxySettingsPage("ufl-set-proxy", d->window.get()));
         AddPage(d, kPageStart, BuildStartPage(d));
 
         // Nothing is selected while every section is closed, so the page

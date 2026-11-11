@@ -29,6 +29,8 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.18.0 - Mail > Proxy: the proxy the mail servers are reached through,
+//                  shared by every ULTRA OS application (MakeProxySettingsPage)
 // Version: 1.17.0 - Handling > Email send notification: a popup window or the
 //                   status bar
 // Version: 1.16.0 - Privacy > Primary Password: set, change and remove it
@@ -67,6 +69,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasTreeView.h"
@@ -112,6 +115,7 @@ namespace {
     constexpr const char* kPageMail        = "mail";
     constexpr const char* kPageNewMail     = "mail/new-mail";
     constexpr const char* kPageConnection  = "mail/connection";
+    constexpr const char* kPageProxy       = "mail/proxy";
     constexpr const char* kPageReading     = "reading";
     constexpr const char* kPageLayout      = "reading/layout";
     constexpr const char* kPageMessages    = "reading/messages";
@@ -1462,6 +1466,7 @@ namespace {
         AddTreeNode(d, "settings", kPageMail, "Mail", "section-mail");
         AddTreeNode(d, kPageMail, kPageNewMail, "New mail");
         AddTreeNode(d, kPageMail, kPageConnection, "Connection");
+        AddTreeNode(d, kPageMail, kPageProxy, "Proxy");
         AddTreeNode(d, "settings", kPageReading, "Reading", "section-reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
@@ -1495,6 +1500,9 @@ namespace {
 
         AddPage(d, kPageNewMail, BuildNewMailPage(d));
         AddPage(d, kPageConnection, BuildConnectionPage(d));
+        // IMAP, SMTP, JMAP and the sign-in go through it; an HTTP proxy
+        // carries the mail connections as a CONNECT tunnel.
+        AddPage(d, kPageProxy, MakeProxySettingsPage("um-set-proxy", d->window.get()));
         AddPage(d, kPageLayout, BuildLayoutPage(d));
         AddPage(d, kPageMessages, BuildMessagesPage(d));
         AddPage(d, kPageWaiting, BuildWaitingPage(d));

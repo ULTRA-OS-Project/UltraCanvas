@@ -36,6 +36,7 @@
 
 #include "UltraNet/UltraNetFtp.h"
 #include "UltraNet/UltraNetCurlError.h"   // error buffer detail + diagnostics chain
+#include "UltraNet/UltraNetCurlProxy.h"   // the proxy setting on every handle
 #include "UltraNetHttpEasy.h"   // MapCurlError (private helpers)
 #include "UltraNetFtpQuote.h"   // the text of DELE / RNFR-RNTO / MKD / RMD
 #include "UltraNetFtpLog.h"     // the session log
@@ -416,6 +417,10 @@ UltraNetResultCode MapFtpError(CURLcode rc) {
 // with the server's refusal added, and the diagnostics chain.
 UltraNetResult Perform(CURL* h, const std::string& url, const UltraNetFtpOptions& opt,
                        Transcript& log, CURLcode* rcOut = nullptr) {
+    // The proxy setting (the operating system's by default): an HTTP proxy
+    // as a CONNECT tunnel for the control and the data connections, a SOCKS
+    // proxy as it is. SFTP goes the same way.
+    ultranet_curlproxy::ApplyFor(h, url, /*tunnel=*/true);
     curl_easy_setopt(h, CURLOPT_DEBUGFUNCTION, &FeedTranscript);
     curl_easy_setopt(h, CURLOPT_DEBUGDATA, &log);
     curl_easy_setopt(h, CURLOPT_VERBOSE, 1L);

@@ -904,6 +904,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   rule that makes Pango's `emoji` runs use it.
   See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
 
+  The proxy every application connects through
+  (`UltraCanvasProxySettings.h`: `ProxySettings` - `ProxyMode` System /
+  NoProxy / Manual, `ProxyKind` Http / Socks, host, port, exceptions, a
+  sign-in - `Load` / `Save` on `Proxy.conf` in the UltraCanvas settings
+  folder, a remembered password in a device-key vault, `ToUltraNet`,
+  `CheckProxyConnection`; `UseSharedProxySettings()`, run by
+  `UltraCanvasApplicationBase::Initialize`, makes UltraNet follow the file, a
+  change saved by another application included). One dialog edits it for
+  every application (`UltraCanvasProxySettingsDialog.h`:
+  `ShowProxySettingsDialog`, `MakeProxySettingsPage` for a settings window,
+  `DescribeProxySettings`); UltraFiler, UltraMail, UltraAI, ChatCube,
+  UOS-Settings, UltraClipboard and UltraStore offer it.
+  See `Docs/UltraCanvas/UltraCanvasProxySettings.md`.
+
   A click on an application's notification that reaches it outside the bus
   - on Windows a toast clicked in the Action Center after the broker host
   quit, or with the application closed, which Windows then starts - comes to
@@ -1757,8 +1771,13 @@ future.
   `UltraNetFtpLogLine` steps, commands with the password masked, replies with
   their codes, the error with libcurl's number); connections kept open
   between calls on one thread, closed by `UltraNet_FtpCloseIdleConnections`
-- `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
-  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
+- `UltraNet_TcpConnect`, `UltraNet_TcpOpen` (the same with the reason it
+  failed), `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
+  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`,
+  `UltraNet_SocketDetach` (the OS socket handed to a library that runs its
+  own protocol); a TCP connection through a proxy when asked
+  (`UltraNetSocketOptions::proxy` / `useProxySetting`: SOCKS 5, 4 / 4a, HTTP
+  CONNECT)
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
   `UltraNet_OAuth2GenerateState`, `UltraNet_OAuth2BuildAuthUrl`,
   `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
@@ -1792,6 +1811,18 @@ future.
   challenge and collects the code, and the exchange and the refresh go
   through the service, which adds the secret. UltraMail signs in through
   `https://oauth-callback.ultraos.eu` this way
+- `UltraNet_ResolveProxy`, `UltraNet_DetectSystemProxy`,
+  `UltraNet_DetectSystemProxyFor`, `UltraNet_CanEvaluateProxyScript`,
+  `UltraNet_SetGlobalProxy`, `UltraNet_GetGlobalProxy`, `UltraNet_DisableProxy`,
+  `UltraNet_SetGlobalProxySource`, `UltraNet_ForgetSystemProxy`,
+  `UltraNet_HostMatchesNoProxy`, `UltraNet_ParseNoProxyList`,
+  `UltraNet_DescribeProxy` — the proxy of every libcurl connection (HTTP,
+  WebSocket, FTP / SFTP, the mail and file plug-ins): the operating system's
+  by default (`UltraNetProxyType::System` - the environment, GNOME / KDE,
+  Windows' WPAD and PAC, macOS' PAC), none, or HTTP / HTTPS / SOCKS with
+  exceptions; the machine itself always direct. `UltraNet/UltraNetCurlProxy.h`
+  puts the answer on a libcurl handle; the plug-ins reach the resolver through
+  the host table (ABI 4)
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
