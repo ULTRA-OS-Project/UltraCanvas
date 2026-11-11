@@ -349,6 +349,14 @@ private:
                     // read told, so the Closed names the peer too.
                     if (auto earlier = previous.find(key); earlier != previous.end()) {
                         const NetworkConnection& was = earlier->second;
+                        // The owner goes the same way. A socket closed between
+                        // this read of the table and the scan that attributes
+                        // it - or lingering ownerless afterwards - reads
+                        // without a process; overwriting what was known sent
+                        // its Closed out unattributed. The gap is microseconds
+                        // on a quiet machine and tens of milliseconds on one
+                        // with thousands of sockets.
+                        if (!c.process && was.process) c.process = was.process;
                         if (!c.localPeer && was.localPeer) {
                             c.localPeer = was.localPeer;
                             if (c.loopbackRole == LoopbackRole::NotLoopback) c.loopbackRole = was.loopbackRole;

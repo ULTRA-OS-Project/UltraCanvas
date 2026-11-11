@@ -312,11 +312,17 @@ static const NetworkConnection* FindTcp(const std::vector<NetworkConnection>& co
     return nullptr;
 }
 
-static bool HasTcpOnPort(const std::vector<NetworkConnection>& connections, uint16_t port) {
+// A loopback TCP socket on this local port, or nullptr. The port alone does
+// not identify a socket of this test: the snapshot lists every process on the
+// machine, and a socket on 127.0.0.1:P coexists with another process's socket
+// on <another address>:P. Matching by port only made the loopback-filter
+// check below fail whenever a busy machine (a CI runner) had such a socket.
+static const NetworkConnection* FindLoopbackTcpOnPort(const std::vector<NetworkConnection>& connections,
+                                                      uint16_t port) {
     for (const auto& c : connections) {
-        if (c.transport == NetworkTransport::Tcp && c.localPort == port) return true;
+        if (c.transport == NetworkTransport::Tcp && c.localPort == port && c.IsLoopback()) return &c;
     }
-    return false;
+    return nullptr;
 }
 
 static void TestLiveSnapshot() {
@@ -441,8 +447,19 @@ static void TestLiveSnapshot() {
     noLoopback.includeLoopback = false;
     std::vector<NetworkConnection> filtered;
     NetworkMonitor_ListConnections(filtered, noLoopback);
-    CHECK(!HasTcpOnPort(filtered, listenerPort) && !HasTcpOnPort(filtered, clientPort),
-          "includeLoopback = false removes both");
+    const NetworkConnection* keptListener = FindLoopbackTcpOnPort(filtered, listenerPort);
+    const NetworkConnection* keptClient = FindLoopbackTcpOnPort(filtered, clientPort);
+    CHECK(!keptListener && !keptClient, "includeLoopback = false removes both");
+    for (const NetworkConnection* kept : {keptListener, keptClient}) {
+        if (kept) {
+            std::printf("  still listed: %s -> %s\n", kept->LocalEndpoint().c_str(),
+                        kept->RemoteEndpoint().c_str());
+        }
+    }
+    // The filter's own contract, whatever else the machine is doing.
+    bool anyLoopback = false;
+    for (const auto& c : filtered) anyLoopback = anyLoopback || c.IsLoopback();
+    CHECK(!anyLoopback, "and leaves no loopback connection of any process");
 
     NetworkMonitorOptions noListeners;
     noListeners.includeListening = false;
@@ -1417,7 +1434,20 @@ static void TestSnapshotDiff() {
     CHECK(waitFor(NetworkEventKind::Accepted, 40), "the server side appears as accepted, since the port was listening");
     CloseSocket(client);
     CloseSocket(accepted);
-    CHECK(waitFor(NetworkEventKind::Closed, 60), "and closing them is reported");
+    const bool closedReported = waitFor(NetworkEventKind::Closed, 60);
+    CHECK(closedReported, "and closing them is reported");
+    if (!closedReported) {
+        // What the differ did say about this connection, so a failure names
+        // its cause: no event at all, or one that lost its process.
+        std::vector<NetworkConnectionEvent> recent;
+        NetworkMonitor_RecentEvents(recent);
+        for (const auto& r : recent) {
+            if (r.localPort != serverPort && r.remotePort != serverPort) continue;
+            std::printf("  event: %s %u -> %u, process %s\n", NetworkMonitor_EventKindName(r.kind),
+                        static_cast<unsigned>(r.localPort), static_cast<unsigned>(r.remotePort),
+                        r.process ? std::to_string(r.process->pid).c_str() : "none");
+        }
+    }
     CloseSocket(server);
 
     std::vector<EventSourceStatus> sources;
