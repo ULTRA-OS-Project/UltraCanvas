@@ -1,14 +1,20 @@
 // Apps/UltraStore/core/Verifier.cpp
 // Signatures and hashes (Verifier.h), on UltraCrypt.
+// Version: 0.1.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Verifier.h"
+
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include "UltraCrypt/UltraCryptCore.h"
 
 #include <cctype>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -25,7 +31,7 @@ Result<void> CryptoResult(const UltraCryptResult& r, ErrorCode onFailure, const 
     if (r) return Result<void>::Succeed();
     if (r.code == UltraCryptResultCode::BackendUnavailable) {
         return Result<void>::Failure(ErrorCode::CryptoUnavailable,
-                                     "UltraCrypt has no cryptographic backend in this build", r.message);
+                                     Tr("UltraCrypt has no cryptographic backend in this build"), r.message);
     }
     return Result<void>::Failure(onFailure, message, r.message);
 }
@@ -37,29 +43,29 @@ Result<void> VerifyCatalogSignature(const std::string& catalogBytes,
                                     const PublicKeys& keys) {
     if (!UltraCrypt_IsAvailable()) {
         return Result<void>::Failure(ErrorCode::CryptoUnavailable,
-                                     "UltraCrypt has no cryptographic backend in this build");
+                                     Tr("UltraCrypt has no cryptographic backend in this build"));
     }
     if (keys.empty()) {
-        return Result<void>::Failure(ErrorCode::InvalidArgument, "No public key to check the catalog against");
+        return Result<void>::Failure(ErrorCode::InvalidArgument, Tr("No public key to check the catalog against"));
     }
     if (signature.size() != UltraCrypt_GetSignatureSize(kAlgorithm)) {
-        return Result<void>::Failure(ErrorCode::InvalidArgument, "The catalog signature has the wrong size",
+        return Result<void>::Failure(ErrorCode::InvalidArgument, Tr("The catalog signature has the wrong size"),
                                      std::to_string(signature.size()) + " bytes");
     }
     std::string lastDetail;
     for (const auto& key : keys) {
         if (key.size() != UltraCrypt_GetSignaturePublicKeySize(kAlgorithm)) {
-            return Result<void>::Failure(ErrorCode::InvalidArgument, "A public key has the wrong size",
+            return Result<void>::Failure(ErrorCode::InvalidArgument, Tr("A public key has the wrong size"),
                                          std::to_string(key.size()) + " bytes");
         }
         const UltraCryptResult r = UltraCrypt_Verify(kAlgorithm, key, catalogBytes.data(),
                                                      catalogBytes.size(), signature);
         if (r) return Result<void>::Succeed();
-        if (r.code == UltraCryptResultCode::BackendUnavailable) return CryptoResult(r, ErrorCode::Internal, "");
+        if (r.code == UltraCryptResultCode::BackendUnavailable) return CryptoResult(r, ErrorCode::Internal, Tr(""));
         lastDetail = r.message;
     }
     return Result<void>::Failure(ErrorCode::SignatureInvalid,
-                                 "The catalog's signature does not match any key this UltraStore trusts",
+                                 Tr("The catalog's signature does not match any key this UltraStore trusts"),
                                  lastDetail);
 }
 
@@ -101,11 +107,11 @@ bool PackageHashMatches(const std::string& fileSha256Hex, const std::string& cat
 Result<void> GenerateSigningKey(std::vector<uint8_t>& outSeed, std::vector<uint8_t>& outPublicKey) {
     UltraCryptSecureBuffer seed;
     UltraCryptResult r = UltraCrypt_RandomSecureBuffer(UltraCrypt_GetSignatureSeedSize(kAlgorithm), seed);
-    if (!r) return CryptoResult(r, ErrorCode::Internal, "No random bytes for a new key");
+    if (!r) return CryptoResult(r, ErrorCode::Internal, Tr("No random bytes for a new key"));
     std::vector<uint8_t> pk;
     UltraCryptSecureBuffer sk;
     r = UltraCrypt_SignatureKeyPairFromSeed(kAlgorithm, seed, pk, sk);
-    if (!r) return CryptoResult(r, ErrorCode::Internal, "The key pair could not be made");
+    if (!r) return CryptoResult(r, ErrorCode::Internal, Tr("The key pair could not be made"));
     outSeed.assign(seed.Data(), seed.Data() + seed.GetSize());
     outPublicKey = std::move(pk);
     return Result<void>::Succeed();
@@ -113,14 +119,14 @@ Result<void> GenerateSigningKey(std::vector<uint8_t>& outSeed, std::vector<uint8
 
 Result<std::vector<uint8_t>> PublicKeyOfSeed(const std::vector<uint8_t>& seed) {
     if (seed.size() != UltraCrypt_GetSignatureSeedSize(kAlgorithm)) {
-        return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, "The seed must be 32 bytes");
+        return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, Tr("The seed must be 32 bytes"));
     }
     UltraCryptSecureBuffer seedBuffer(seed.data(), seed.size());
     std::vector<uint8_t> pk;
     UltraCryptSecureBuffer sk;
     const UltraCryptResult r = UltraCrypt_SignatureKeyPairFromSeed(kAlgorithm, seedBuffer, pk, sk);
     if (!r) {
-        const Result<void> c = CryptoResult(r, ErrorCode::Internal, "The key pair could not be made");
+        const Result<void> c = CryptoResult(r, ErrorCode::Internal, Tr("The key pair could not be made"));
         return Result<std::vector<uint8_t>>::Failure(c.error.code, c.error.message, c.error.detail);
     }
     return Result<std::vector<uint8_t>>::Succeed(std::move(pk));
@@ -128,20 +134,20 @@ Result<std::vector<uint8_t>> PublicKeyOfSeed(const std::vector<uint8_t>& seed) {
 
 Result<std::vector<uint8_t>> SignCatalog(const std::string& catalogBytes, const std::vector<uint8_t>& seed) {
     if (seed.size() != UltraCrypt_GetSignatureSeedSize(kAlgorithm)) {
-        return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, "The seed must be 32 bytes");
+        return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, Tr("The seed must be 32 bytes"));
     }
     UltraCryptSecureBuffer seedBuffer(seed.data(), seed.size());
     std::vector<uint8_t> pk;
     UltraCryptSecureBuffer sk;
     UltraCryptResult r = UltraCrypt_SignatureKeyPairFromSeed(kAlgorithm, seedBuffer, pk, sk);
     if (!r) {
-        const Result<void> c = CryptoResult(r, ErrorCode::Internal, "The key pair could not be made");
+        const Result<void> c = CryptoResult(r, ErrorCode::Internal, Tr("The key pair could not be made"));
         return Result<std::vector<uint8_t>>::Failure(c.error.code, c.error.message, c.error.detail);
     }
     std::vector<uint8_t> signature;
     r = UltraCrypt_Sign(kAlgorithm, sk, catalogBytes.data(), catalogBytes.size(), signature);
     if (!r) {
-        const Result<void> c = CryptoResult(r, ErrorCode::Internal, "The catalog could not be signed");
+        const Result<void> c = CryptoResult(r, ErrorCode::Internal, Tr("The catalog could not be signed"));
         return Result<std::vector<uint8_t>>::Failure(c.error.code, c.error.message, c.error.detail);
     }
     return Result<std::vector<uint8_t>>::Succeed(std::move(signature));

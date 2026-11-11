@@ -1,10 +1,12 @@
 // Apps/UltraStore/core/StoreQuery.cpp
+// Version: 0.2.1 - the code, price and size texts through Tr
 // Version: 0.2.0 - codes
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreQuery.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,6 +14,9 @@
 #include <set>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -137,24 +142,24 @@ std::vector<InstalledRecord> InstalledComponents(const std::vector<InstalledReco
 
 CodeCheck CheckCode(const Catalog& catalog, const std::string& text, const std::string& today) {
     CodeCheck out;
-    if (NormalizeCode(text).empty()) { out.message = "Enter a code"; return out; }
+    if (NormalizeCode(text).empty()) { out.message = Tr("Enter a code"); return out; }
     const PromoCode* code = catalog.FindCode(text);
-    if (!code) { out.message = "Unknown code"; return out; }
-    if (!code->validFrom.empty() && today < code->validFrom) { out.message = "Valid from " + code->validFrom; return out; }
-    if (!code->validUntil.empty() && today > code->validUntil) { out.message = "Expired on " + code->validUntil; return out; }
+    if (!code) { out.message = Tr("Unknown code"); return out; }
+    if (!code->validFrom.empty() && today < code->validFrom) { out.message = TrF("Valid from {0}", code->validFrom); return out; }
+    if (!code->validUntil.empty() && today > code->validUntil) { out.message = TrF("Expired on {0}", code->validUntil); return out; }
     out.code = code;
     std::string what = DiscountLabel(*code);
-    if (what.empty()) what = code->kind == CodeKind::Affiliate ? "Partner code" : "Code";
-    if (code->apps.empty()) what += " on every app";
+    if (what.empty()) what = code->kind == CodeKind::Affiliate ? Tr("Partner code") : Tr("Code");
+    if (code->apps.empty()) what = TrF("{0} on every app", what);
     else {
         std::string names;
         for (const std::string& id : code->apps) {
             const Component* app = catalog.FindApp(id);
             names += (names.empty() ? "" : ", ") + (app ? app->name : id);
         }
-        what += " on " + names;
+        what = TrF("{0} on {1}", what, names);
     }
-    if (!code->validUntil.empty()) what += ", until " + code->validUntil;
+    if (!code->validUntil.empty()) what = TrF("{0}, until {1}", what, code->validUntil);
     out.message = what;
     return out;
 }
@@ -192,31 +197,42 @@ std::string DiscountedPrice(const Pricing& pricing, const PromoCode* code) {
 }
 
 std::string DiscountLabel(const PromoCode& code) {
-    if (code.discountPercent > 0) return std::to_string(code.discountPercent) + "% off";
-    if (!code.discountAmount.empty()) return code.discountAmount + (code.currency.empty() ? "" : " " + code.currency) + " off";
+    if (code.discountPercent > 0) return TrF("{0}% off", code.discountPercent);
+    if (!code.discountAmount.empty()) return TrF("{0} off", code.discountAmount + (code.currency.empty() ? "" : " " + code.currency));
     return {};
 }
 
 std::string PriceLabel(const Pricing& pricing, const PromoCode* code) {
-    if (pricing.model == PricingModel::Free) return "Free";
+    if (pricing.model == PricingModel::Free) return Tr("Free");
     const std::string discounted = DiscountedPrice(pricing, code);
-    std::string label = discounted;
+    std::string label = PeriodPrice(pricing, discounted);
+    if (discounted != pricing.price) label += " " + TrF("(was {0})", pricing.price);
+    if (pricing.trialDays > 0) label += " " + TrF("({0}-day trial)", pricing.trialDays);
+    return label;
+}
+
+std::string PeriodPrice(const Pricing& pricing, const std::string& amount) {
+    std::string label = amount;
     if (!pricing.currency.empty()) label += " " + pricing.currency;
-    if (pricing.model == PricingModel::Monthly) label += " / month";
-    else if (pricing.model == PricingModel::Yearly) label += " / year";
-    if (discounted != pricing.price) label += " (was " + pricing.price + ")";
-    if (pricing.trialDays > 0) label += " (" + std::to_string(pricing.trialDays) + "-day trial)";
+    if (pricing.model == PricingModel::Monthly) return TrF("{0} / month", label);
+    if (pricing.model == PricingModel::Yearly) return TrF("{0} / year", label);
     return label;
 }
 
 std::string FormatBytes(uint64_t bytes) {
+    // The units in the person's language (the standard set's "{0} MB" ...);
+    // the number dot-decimal until the locale's number formatting exists.
     char buffer[32];
-    // locale-ok: a size shown to the user, in the classic form every store uses
-    if (bytes >= (uint64_t(1) << 30)) std::snprintf(buffer, sizeof(buffer), "%.1f GB", bytes / double(uint64_t(1) << 30));
-    else if (bytes >= (uint64_t(1) << 20)) std::snprintf(buffer, sizeof(buffer), "%.1f MB", bytes / double(uint64_t(1) << 20));
-    else if (bytes >= 1024) std::snprintf(buffer, sizeof(buffer), "%llu KB", static_cast<unsigned long long>(bytes / 1024));
-    else std::snprintf(buffer, sizeof(buffer), "%llu bytes", static_cast<unsigned long long>(bytes));
-    return buffer;
+    if (bytes >= (uint64_t(1) << 30)) {
+        std::snprintf(buffer, sizeof(buffer), "%.1f", bytes / double(uint64_t(1) << 30));   // locale-ok: a size shown to the user, in the classic form every store uses
+        return TrF("{0} GB", std::string(buffer));
+    }
+    if (bytes >= (uint64_t(1) << 20)) {
+        std::snprintf(buffer, sizeof(buffer), "%.1f", bytes / double(uint64_t(1) << 20));   // locale-ok: as above
+        return TrF("{0} MB", std::string(buffer));
+    }
+    if (bytes >= 1024) return TrF("{0} KB", static_cast<unsigned long long>(bytes / 1024));
+    return TrF("{0} bytes", static_cast<unsigned long long>(bytes));
 }
 
 std::string LaunchPath(const InstalledRecord& record) {

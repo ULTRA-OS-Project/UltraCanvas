@@ -282,8 +282,14 @@ the original a click away; a translation the creator later supplies replaces
 the machine's and leaves the list. For ULTRA OS apps the same service reads
 the app's own localisation folder, so the app's strings get the same
 treatment as its description. The store's own interface strings are not in
-the catalog; they follow the framework's translation facility when it
-exists (none does today) and a local table in the app until then.
+the catalog: they go through the framework's `Tr` (UltraLocalisation), from
+`media/locale/<lang>/UltraStore.json` over the standard set, in the
+language the desktop or `Language.conf` picks - every page, button, fact,
+price, date (the language's month names and order), size unit and the
+messages of the core (a refused install, a catalog that does not verify, a
+failed download) the window shows. The command line (`ultrastore list`,
+`install` ...) stays English: its output is read by scripts and logs, and it
+runs before any language is loaded.
 
 ### Affiliates and codes
 

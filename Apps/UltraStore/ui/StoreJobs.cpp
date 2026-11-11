@@ -3,6 +3,7 @@
 // and posts progress and the outcome to the UI thread; the Downloads panel
 // shows the queue. The engine and the client are touched by the worker only
 // while a job runs and by the UI thread only while none does.
+// Version: 0.3.1 - every text through Tr; an update to buy is told by the licence, not the message
 // Version: 0.3.0 - the open order kept and resumed, the licence file
 // Version: 0.2.0 - the Buy job
 // Version: 0.1.0
@@ -25,7 +26,7 @@ namespace UltraStore::Ui {
 namespace {
 
 std::string Percent(double fraction) {
-    return std::to_string(static_cast<int>(fraction * 100.0 + 0.5)) + " %";
+    return TrF("{0} %", static_cast<int>(fraction * 100.0 + 0.5));
 }
 
 } // namespace
@@ -47,7 +48,7 @@ void StoreWindow::Enqueue(Job job) {
         QueueEntry entry;
         entry.jobId = job.id;
         entry.title = job.title;
-        entry.status = "Waiting";
+        entry.status = Tr("Waiting");
         queue_.push_back(entry);
         if (downloads_ && !downloads_->IsExpanded()) {
             // Opened for the job, not remembered: the user's own fold is the setting.
@@ -67,7 +68,7 @@ void StoreWindow::RunNextJob() {
     pending_.pop_front();
     if (QueueEntry* e = FindEntry(running_->id)) {
         e->state = QueueState::Running;
-        e->status = "Starting";
+        e->status = Tr("Starting");
     }
     cancelRunning_ = false;
     if (jobThread_.joinable()) jobThread_.join();   // the previous one has posted its result; it is done
@@ -154,7 +155,7 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
             if (!catalog) return fail(Error{ErrorCode::NotFound, Tr("No catalog")});
             const Result<InstallOutcome> outcome = engine_->Install(*catalog, job.appId, platform_, channel, callbacks);
             takeInstalled();
-            if (!outcome) return fail(cancelRunning_ ? Error{ErrorCode::NetworkError, "Cancelled"} : outcome.error);
+            if (!outcome) return fail(cancelRunning_ ? Error{ErrorCode::NetworkError, Tr("Cancelled")} : outcome.error);
             const InstallOutcome& o = outcome.Value();
             if (o.installed.empty()) result.message = TrF("{0} was already installed", nameOf(job.appId));
             else result.message = TrF("Installed {0} ({1} downloaded)", nameOf(job.appId) + (o.plan.steps.empty() ? "" : " " + o.plan.steps.back().release->version), FormatBytes(o.bytesDownloaded));
@@ -164,7 +165,7 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
             if (!catalog) return fail(Error{ErrorCode::NotFound, Tr("No catalog")});
             const Result<InstallOutcome> outcome = engine_->Update(*catalog, job.appId, platform_, {}, callbacks);
             takeInstalled();
-            if (!outcome) return fail(cancelRunning_ ? Error{ErrorCode::NetworkError, "Cancelled"} : outcome.error);
+            if (!outcome) return fail(cancelRunning_ ? Error{ErrorCode::NetworkError, Tr("Cancelled")} : outcome.error);
             const InstallOutcome& o = outcome.Value();
             if (o.installed.empty()) result.message = TrF("{0} is up to date", nameOf(job.appId));
             else if (o.plan.steps.empty()) result.message = TrF("Updated {0}", nameOf(job.appId));
@@ -176,9 +177,19 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
             const auto all = engine_->UpdateAll(*catalog, platform_, callbacks);
             takeInstalled();
             if (!all) return fail(all.error);
+            // An update the purchase does not cover is one to buy, not a
+            // failure: asked of the licence, since the message is in the
+            // person's language.
+            auto outsidePurchase = [&](const std::string& id) {
+                const Component* app = catalog->FindApp(id);
+                const auto current = engine_->Registry().Current(id);
+                if (!app || !current) return false;
+                const Resolution res = PackageResolver::Resolve(*app, platform_, current.Value().channel);
+                return res.release && !engine_->PurchaseCovers(id, *res.release);
+            };
             size_t updated = 0, failed = 0, toBuy = 0;
             for (const auto& [id, outcome] : all.Value()) {
-                if (!outcome && outcome.error.code == ErrorCode::NotAvailable && outcome.error.message.find("not in your purchase") != std::string::npos) ++toBuy;
+                if (!outcome && outcome.error.code == ErrorCode::NotAvailable && outsidePurchase(id)) ++toBuy;
                 else if (!outcome) ++failed;
                 else if (!outcome.Value().installed.empty()) ++updated;
             }
@@ -318,7 +329,7 @@ void StoreWindow::CancelJob(uint64_t jobId) {
     if (running_ && running_->id == jobId) {
         cancelRunning_ = true;
         if (engine_) engine_->Downloads().Cancel();
-        if (QueueEntry* e = FindEntry(jobId)) e->status = "Cancelling…";
+        if (QueueEntry* e = FindEntry(jobId)) e->status = Tr("Cancelling…");
         RebuildQueuePanel();
         return;
     }
@@ -338,7 +349,7 @@ void StoreWindow::TogglePause(uint64_t jobId) {
     e->paused = !e->paused;
     if (e->paused) engine_->Downloads().Pause();
     else engine_->Downloads().Resume();
-    if (auto button = e->pauseButton.lock()) button->SetText(e->paused ? "Resume" : "Pause");
+    if (auto button = e->pauseButton.lock()) button->SetText(e->paused ? Tr("Resume") : Tr("Pause"));
     if (auto label = e->statusLabel.lock()) label->SetText(e->paused ? TrF("Paused - {0}", e->status) : e->status);
     UpdateQueueSummary();
 }
@@ -383,13 +394,13 @@ void StoreWindow::RebuildQueuePanel() {
 
         const uint64_t jobId = e.jobId;
         if (e.state == QueueState::Running) {
-            auto pause = Theme::Button(id + ".pause", e.paused ? "Resume" : "Pause", 72);
+            auto pause = Theme::Button(id + ".pause", e.paused ? Tr("Resume") : Tr("Pause"), 72);
             pause->onClick = [this, jobId]() { TogglePause(jobId); };
             card->AddAction(pause);
             e.pauseButton = pause;
         }
         if (e.state == QueueState::Running || e.state == QueueState::Waiting) {
-            auto cancel = Theme::Button(id + ".cancel", "Cancel", 72, Theme::ButtonKind::Danger);
+            auto cancel = Theme::Button(id + ".cancel", Tr("Cancel"), 72, Theme::ButtonKind::Danger);
             cancel->onClick = [this, jobId]() { CancelJob(jobId); };
             card->AddAction(cancel);
         }
