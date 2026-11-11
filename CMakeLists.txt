@@ -268,6 +268,7 @@ if(ANDROID)
     # stop this configure, and the Android store is a later milestone.
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRASTOREOPERATOR OFF CACHE BOOL "Build the UltraStoreOperator application")
     set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
@@ -350,6 +351,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRASTOREOPERATOR OFF CACHE BOOL "Build the UltraStoreOperator application")
     set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
@@ -941,6 +943,19 @@ if(BUILD_ULTRASTOREADMIN AND TARGET UltraStoreCore)
     message(STATUS "")
     message(STATUS "── Building UltraStoreAdmin ──")
     add_subdirectory(Apps/UltraStoreAdmin)
+endif()
+
+# ===== ULTRASTOREOPERATOR =====
+# The operator's window and command line on the marketplace service
+# (Server/UltraStoreMarket): the merchants, the review and the publish, the
+# reports, the notices, the terms, the audit log
+# (Docs/UltraStoreOperator/README.md). On the admin backend's core (the
+# shared HTTP call), so it is built where the admin backend is.
+option(BUILD_ULTRASTOREOPERATOR "Build the UltraStoreOperator application" ON)
+if(BUILD_ULTRASTOREOPERATOR AND TARGET UltraStoreAdminCore)
+    message(STATUS "")
+    message(STATUS "── Building UltraStoreOperator ──")
+    add_subdirectory(Apps/UltraStoreOperator)
 endif()
 
 # ===== ULTRAAI SERVERADMIN =====
@@ -1818,6 +1833,18 @@ if(ULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS AND TARGET UltraStoreAdminCore)
     add_subdirectory(Tests/UltraStoreAdmin)
     message(STATUS "")
     message(STATUS "── UltraStoreAdmin core test suite enabled (target: UltraStoreAdminCoreTests) ──")
+endif()
+
+# ===== ULTRASTOREOPERATOR CORE TESTS =====
+# The operator's client against a fake service: the bearer header, the
+# bodies the service reads, the records parsed from its answers, the
+# settings file. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRASTOREOPERATOR_TESTS "Build the UltraStoreOperator core test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASTOREOPERATOR_TESTS AND TARGET UltraStoreOperatorCore)
+    enable_testing()
+    add_subdirectory(Tests/UltraStoreOperator)
+    message(STATUS "")
+    message(STATUS "── UltraStoreOperator core test suite enabled (target: UltraStoreOperatorCoreTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====

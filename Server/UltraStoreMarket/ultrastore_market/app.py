@@ -332,7 +332,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/v1/released")
     async def released(authorization: str | None = Header(default=None)) -> dict[str, Any]:
         operator(authorization)
-        return {"released": store.released(today()), "sequence": int(store.meta("catalog_sequence") or "0")}
+        # `sequence`: the last release's; `published`: the last publish's (a release past it waits for the next publish).
+        return {"released": store.released(today()), "sequence": int(store.meta("catalog_sequence") or "0"),
+                "published": int(store.meta("publish_sequence") or "0")}
 
     @app.post("/v1/publish")
     async def publish_catalog(authorization: str | None = Header(default=None)) -> dict[str, Any]:

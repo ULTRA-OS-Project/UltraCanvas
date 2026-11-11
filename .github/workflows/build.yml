@@ -1309,6 +1309,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREOPERATOR_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_JXL_TESTS=ON \
@@ -1352,6 +1353,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREOPERATOR_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
@@ -1715,6 +1717,14 @@ jobs:
           "$admin" --version
           "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" init
           "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" app list
+          # The operator's client against a fake service: the bearer header,
+          # the bodies, the records, the settings file; then the program.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreOperatorCore$")
+          op=build/ultrastoreop
+          [ "${{ runner.os }}" = "Windows" ] && op="$op.exe"
+          "$op" --version
+          "$op" --settings "$RUNNER_TEMP/ultrastoreop-smoke.json" settings set url https://market.example
+          "$op" --settings "$RUNNER_TEMP/ultrastoreop-smoke.json" settings
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version

@@ -175,7 +175,7 @@ def test_submissions_are_checked_reviewed_released_and_withdrawn(service):
     assert client.get("/v1/submissions/nope", headers=OP).status_code == 404
     # What the catalog is generated from.
     rel = client.get("/v1/released", headers=OP).json()
-    assert rel["sequence"] == 1 and [r["app"] for r in rel["released"]] == ["org.example.hello"] and rel["released"][0]["submission"] == sid
+    assert rel["sequence"] == 1 and rel["published"] == 0 and [r["app"] for r in rel["released"]] == ["org.example.hello"] and rel["released"][0]["submission"] == sid
     # A resubmission answers the released one; changes are requested; it is withdrawn by the merchant.
     comp2 = component("org.example.hello", "1.1.0")
     assert anna.request("POST", "/v1/submissions", {"component": comp2, "signature": anna.sign_component(comp2), "packages": packages, "answers": "s-00000099"}).status_code == 400
@@ -359,6 +359,7 @@ def test_the_catalog_is_published_from_the_released_submissions_and_signed(servi
     assert [c["id"] for c in catalog["components"]] == ["org.example.runtime"]   # Bob's app is out: suspended
     # Again: the next sequence; the audit log has both publishes.
     assert client.post("/v1/publish", headers=OP).json()["sequence"] == 6
+    assert client.get("/v1/released", headers=OP).json()["published"] == 6
     assert [a["action"] for a in client.get("/v1/audit", headers=OP).json()["audit"]].count("publish") == 2
     # A merchant whose contact is a URL becomes the publisher's URL; Bob reinstated is back in.
     client.post(f"/v1/merchants/{bob.id}/reinstate", json={}, headers=OP)
