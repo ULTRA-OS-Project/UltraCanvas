@@ -112,7 +112,7 @@ int main() {
         Check(need > 104.f, "the long item needs more than the 104 px given");
         Check(r.dropdown->GetWidth() >= need - 0.5f, "the button is as wide as the long item needs");
         Check(r.dropdown->GetWidth() <= need + 4.f, "and not much wider");
-        Check(r.after->GetX() >= r.dropdown->GetX() + r.dropdown->GetWidth() - 0.5f,
+        Check(r.after->finalBounds.x >= r.dropdown->GetX() + r.dropdown->GetWidth() - 0.5f,
               "the next control moves along rather than being overlapped");
 
         r.dropdown->RemoveItem(1);
