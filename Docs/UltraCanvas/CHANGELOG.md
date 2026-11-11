@@ -1,3 +1,58 @@
+#### 2026-11-11 *0.9.536*
+- **UltraIM: a message deleted for oneself or for everyone, by each
+  messenger's own rules.** `UltraIM_DeleteMessage` takes a scope
+  (`UltraIMDeleteScope::ForEveryone`, as before, or `ForMe`), and the new
+  `UltraIM_GetDeleteChoices(provider, conversation, message)` says what is
+  possible for one message now, so an application's menu offers exactly
+  that instead of deciding it. A delete outside the rules answers
+  `PermissionDenied`.
+  - **ChatCube Direct can delete messages** (it could not at all; the
+    `DeleteMessage` capability is new for it). Anyone deletes any message
+    for themselves. For everyone, the sender deletes a text until the other
+    person has read it, a picture, video or file at any time, and anything
+    in a group at any time. The others are told with a signed `delete`
+    body, over the link or through the relay's queue; the receiving side
+    checks the same rules itself, so a text already read there stays. The
+    file a deleted message brought into the cache is removed with it -
+    never the sender's own file - and what was deleted before it had fully
+    arrived is dropped when the rest comes (store schema 4).
+  - **Matrix** deletes one's own messages for everyone, as before, and
+    answers `CapabilityMissing` to "for me", which it does not have.
+  - **Telegram** now deletes for oneself too; until now every delete was
+    for everyone.
+- **UltraIM plug-in ABI 5.** `DeleteMessage` gained the scope and the
+  interface `GetDeleteChoices`, so `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 5.
+- **UltraIM: searching the history, one call for every network.**
+  `UltraIM_SearchMessages(provider, search, callback)` finds messages by
+  their words, or everything of one kind - pictures, videos, pictures and
+  videos, files, links (`UltraIMSearchKind`) - newest first, a page at a
+  time with a cursor for the older ones (`UltraIMMessageSearch`,
+  `UltraIMSearchPage`). A provider says it can with the new `SearchMessages`
+  capability and answers through the new `SearchMessages` method of the
+  provider interface, each from wherever its history lives:
+  - **ChatCube Direct** queries its own database - one conversation or all
+    of them. Which messages hold a link is noted in a new `links` table by
+    the message's id alone; the address stays in the message's text and is
+    read out of it when shown, so it is not stored twice. The table is
+    filled as messages are stored, and once for the existing history when
+    an older store is opened (schema 3).
+  - **Matrix** reads a room's history back page by page and matches it on
+    this device, so an encrypted room - which the homeserver's own search
+    cannot read - is searched like any other.
+  - **Telegram** asks Telegram's own search (`searchChatMessages`, with its
+    filters), which covers the whole history without downloading it and
+    matches whole words as Telegram's apps do.
+- **UltraIM: the pieces of a search, for providers and lists.**
+  `UltraIM_MessageMatchesSearch` is the one matcher the on-device providers
+  share (every word, anywhere in the text or the attachment's file name, in
+  any case - Latin, Greek and Cyrillic folded by `UltraIM_FoldCase`, never
+  by the locale); `UltraIM_ExtractLinks` gives the links in a text;
+  `UltraIM_SearchByFetching` answers `SearchMessages` for any provider from
+  nothing but its `FetchMessages`.
+- **UltraIM plug-in ABI 4.** The provider interface gained a method and
+  `UltraIMTypes.h` its types, so `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 4: a
+  provider module built for 3 is skipped until it is rebuilt.
+
 #### 2026-11-11 *0.9.535*
 - **`UltraCanvasDropdown::SetFitWidthToItems`: a dropdown as wide as its
   widest item.** A dropdown sized for its English entries cut a longer
