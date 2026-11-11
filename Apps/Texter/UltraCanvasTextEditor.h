@@ -1,11 +1,13 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.5.0 - the look is the framework theme's (the desktop's, Appearance.conf over it): ApplyDarkTheme / ApplyLightTheme,
+//                  TextEditorConfig::darkTheme, onThemeChanged and CreateDarkTextEditor retired; ToggleTheme writes Appearance.conf
 // Version: 2.4.0 - HasOpenFile: whether a file is open in one of this window's
 //                  tabs, so a file handed over by a second start is not
 //                  opened twice across windows
 // Version: 2.3.0 - DialogFileFilters: the Word Processing filter is FileLoader's text document types
 // Version: 2.2.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -78,7 +80,6 @@ namespace UltraCanvas {
 
         // Editor settings
         std::string defaultLanguage = "Plain Text";
-        bool darkTheme = false;
         bool wordWrap = true;
         // Spaces, tabs and line ends drawn as faint marks in text tabs.
         bool showHiddenCharacters = false;
@@ -284,7 +285,8 @@ namespace UltraCanvas {
     private:
         // ===== CONFIGURATION =====
         TextEditorConfig config;
-        bool isDarkTheme;
+        bool isDarkTheme;                 // the current theme's flag
+        int themeChangeHandler = 0;       // UltraCanvasTheme change handler: the look follows the theme
 
         // ===== UI COMPONENTS =====
         std::shared_ptr<UltraCanvasMenu> menuBar;
@@ -783,25 +785,29 @@ namespace UltraCanvas {
         // ===== THEME =====
 
         /**
-         * @brief Apply dark theme
-         */
-        void ApplyDarkTheme();
-
-        /**
-         * @brief Apply light theme
-         */
-        void ApplyLightTheme();
-
-        /**
-         * @brief Toggle between dark and light theme
+         * @brief View > Theme: the other look, for every UltraCanvas
+         * application. The look is the framework theme's (the desktop's,
+         * or Appearance.conf's over it): the toggle writes the other one to
+         * Appearance.conf (UltraCanvasAppearanceSettings.h) and asks the
+         * application to read the host again, so this window, the other
+         * windows and every other application follow; a run started with
+         * --dark (ThemePolicy::Dark) toggles the policy instead.
          */
         void ToggleTheme();
 
         /**
-         * @brief Check if dark theme is active
-         * @return true if dark theme
+         * @brief Whether the window paints its dark look: the current
+         * theme's flag, taken again on every theme change
          */
         bool IsDarkTheme() const { return isDarkTheme; }
+
+        /**
+         * @brief The look follows the theme from here: a change of the
+         * desktop, of Appearance.conf, or View > Theme in any window
+         * repaints this one. Called once by the factory after the window
+         * is created; the handler goes with the window.
+         */
+        void FollowTheme();
 
         // ===== FONT SIZE =====
 
@@ -893,9 +899,6 @@ namespace UltraCanvas {
         /// @param screenY Screen Y where the drag ended
         std::function<void(std::shared_ptr<DocumentTab> doc, int screenX, int screenY)> onTabDraggedOut;
 
-        /// Callback when theme is toggled (for syncing across windows)
-        std::function<void(bool isDark)> onThemeChanged;
-
         /// Callback to check if this window can close when empty (i.e. other windows exist)
         /// Return true to allow auto-close, false to keep window open with a new document
         std::function<bool()> canCloseEmptyWindow;
@@ -924,6 +927,5 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasTextEditor> CreateTextEditor(
             const TextEditorConfig& config = TextEditorConfig());
 
-    std::shared_ptr<UltraCanvasTextEditor> CreateDarkTextEditor();
 
 } // namespace UltraCanvas
