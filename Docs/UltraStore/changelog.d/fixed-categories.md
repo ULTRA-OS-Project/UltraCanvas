@@ -4,7 +4,7 @@
   "office"). Categories come from one fixed list now (audio, video,
   graphics, office, communication, internet, development, education,
   science, finance, security, games, system, utilities), each shown by its
-  name in the person's language ("Grafik und Fotos", "グラフィックと写真"),
+  name in the person's language ("Grafik und Fotos", "グラフィック・写真"),
   in the list's order; the search finds an app by its category's name too.
   A catalog from before the list is read case-insensitively ("Office" files
   under office); an id a later list adds is kept and not shown, so this
