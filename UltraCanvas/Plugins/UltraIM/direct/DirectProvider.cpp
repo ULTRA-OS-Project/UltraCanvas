@@ -162,7 +162,7 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::E2EEncryption |
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
            F::CreateGroup | F::VoiceCalls | F::VideoCalls | F::ImageMessages | F::FileTransfer |
-           F::AccountProfile | F::SignInProtection | F::AccountRecovery;
+           F::AccountProfile | F::SignInProtection | F::AccountRecovery | F::SearchMessages | F::DeleteMessage;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -1392,6 +1392,16 @@ void DirectProvider::FetchMessages(const std::string& conversationId, const std:
     onResult(UltraIMResult::Ok(), store_.Messages(conversationId, beforeMessageId, limit));
 }
 
+// The history is all on this device, in the store: one conversation or all.
+void DirectProvider::SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) {
+    UltraIMConversation conversation;
+    if (!search.conversationId.empty() && !store_.GetConversation(search.conversationId, conversation)) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::NotFound, "No such conversation"), UltraIMSearchPage());
+        return;
+    }
+    onResult(UltraIMResult::Ok(), store_.Search(search));
+}
+
 void DirectProvider::FetchContacts(UltraIMContactsCallback onResult) {
     std::vector<UltraIMContact> out;
     for (const auto& c : store_.ListContacts()) {
@@ -1671,6 +1681,10 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
         HandleFileBody(envelope, body);
         return;
     }
+    if (type == "delete") {
+        HandleDeleteBody(envelope, body);
+        return;
+    }
     if (type != "text") return;
 
     const bool group = IsGroupId(envelope.conversation);
@@ -1709,6 +1723,7 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
     message.replyTo.messageId = body["reply_to"].GetString();
     message.deliveryStatus = UltraIMDeliveryStatus::Delivered;
     message.isOwn = false;
+    if (IsDeletedBeforeArrival(message)) return;
     if (!store_.AddMessage(message)) return;    // seen already (it came by two paths)
 
     UltraIMEvent received;
@@ -1998,6 +2013,12 @@ void DirectProvider::HandleFileBody(const Envelope& envelope, const JSONValue& b
     message.attachment.fileSizeBytes = body["size"].GetInteger(0);
     message.attachment.width = static_cast<int>(body["w"].GetInteger(0));
     message.attachment.height = static_cast<int>(body["h"].GetInteger(0));
+    if (IsDeletedBeforeArrival(message)) {
+        // Its parts, here already or still to come, are not wanted either.
+        store_.NoteDeleted(Store::DeletedFileKey(fileId), NowMs());
+        store_.RemoveParts(fileId);
+        return;
+    }
     const std::string preview = body["preview"].GetString();
     if (!preview.empty()) {
         const std::string path = MediaPath(fileId, ".preview.jpg");
@@ -2027,6 +2048,7 @@ void DirectProvider::HandleChunkBody(const JSONValue& body) {
     const int64_t seq = body["seq"].GetInteger(-1);
     const std::string data = body["data"].GetString();
     if (fileId.empty() || seq < 0 || seq >= 1000000 || data.empty()) return;
+    if (store_.IsDeleted(Store::DeletedFileKey(fileId))) return;      // deleted while it was arriving
     store_.AddPart(fileId, static_cast<int>(seq), data);
     TryAssemble(fileId);
 }
@@ -2152,6 +2174,136 @@ UltraIMResult DirectProvider::SendText(const std::string& conversationId, const 
     store_.GetConversation(conversationId, updated.conversation);
     Emit(updated);
     return UltraIMResult::Ok();
+}
+
+// ============================================================================
+// DELETING
+// ============================================================================
+
+namespace {
+
+// A message that is, or carries, a file: a picture, a video, a document, a
+// voice note, a sticker.
+// A message its sender deleted before it got here (the "delete" came by
+// another path first): the key it is noted under.
+std::string DeletedMessageKey(const std::string& conversationId, const std::string& senderId, const std::string& id) {
+    return "m/" + conversationId + "/" + senderId + "/" + id;
+}
+
+bool HasFile(const UltraIMMessage& m) {
+    return m.type != UltraIMMessageType::Text && m.type != UltraIMMessageType::SystemEvent;
+}
+
+// The rules, in one place for the menu, the request and the other side's check.
+UltraIMDeleteChoices ChoicesFor(const UltraIMMessage& m, bool group) {
+    UltraIMDeleteChoices choices;
+    choices.forMe = true;
+    choices.forEveryone = m.isOwn && (group || HasFile(m) || m.deliveryStatus != UltraIMDeliveryStatus::Read);
+    return choices;
+}
+
+} // namespace
+
+UltraIMDeleteChoices DirectProvider::GetDeleteChoices(const std::string& conversationId,
+                                                      const std::string& messageId) const {
+    UltraIMMessage message;
+    if (!store_.FindMessage(conversationId, messageId, message)) return UltraIMDeleteChoices();
+    return ChoicesFor(message, IsGroupId(conversationId));
+}
+
+bool DirectProvider::IsDeletedBeforeArrival(const UltraIMMessage& message) {
+    return store_.IsDeleted(DeletedMessageKey(message.conversationId, message.senderId, message.clientMessageId));
+}
+
+bool DirectProvider::IsMediaFile(const std::string& path) const {
+    if (path.empty()) return false;
+    namespace fs = std::filesystem;
+    const fs::path media = UltraCanvas::PathFromUtf8(MediaPath("x", "")).parent_path();
+    return UltraCanvas::PathFromUtf8(path).parent_path().lexically_normal() == media.lexically_normal();
+}
+
+bool DirectProvider::RemoveLocally(const std::string& conversationId, const std::string& clientId) {
+    UltraIMMessage removed;
+    if (!store_.RemoveMessage(conversationId, clientId, removed)) return false;
+    // The file it brought here goes with it. A file that was sent lies
+    // where its owner keeps it and is none of ours to remove.
+    std::error_code ec;
+    for (const std::string& path : {removed.attachment.localPath, removed.attachment.thumbnailPath}) {
+        if (IsMediaFile(path)) std::filesystem::remove(UltraCanvas::PathFromUtf8(path), ec);
+    }
+    UltraIMEvent gone;
+    gone.type = UltraIMEventType::MessageDelete;
+    gone.providerId = providerId_;
+    gone.conversationId = conversationId;
+    gone.message.providerId = providerId_;
+    gone.message.conversationId = conversationId;
+    gone.message.messageId = clientId;
+    gone.message.clientMessageId = clientId;
+    Emit(gone);
+    UltraIMEvent updated;
+    updated.type = UltraIMEventType::ConversationUpdate;
+    updated.providerId = providerId_;
+    updated.conversationId = conversationId;
+    if (store_.GetConversation(conversationId, updated.conversation)) Emit(updated);
+    return true;
+}
+
+UltraIMResult DirectProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                            UltraIMDeleteScope scope) {
+    UltraIMConversation conversation;
+    UltraIMMessage message;
+    if (!store_.GetConversation(conversationId, conversation) || !store_.FindMessage(conversationId, messageId, message))
+        return UltraIMResult::Error(UltraIMResultCode::NotFound, "No such message");
+    if (scope == UltraIMDeleteScope::ForMe) {
+        RemoveLocally(conversationId, messageId);
+        return UltraIMResult::Ok();
+    }
+    if (!identity_.IsValid() || state_ == UltraIMConnectionState::Disconnected)
+        return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in");
+    if (!ChoicesFor(message, conversation.isGroup).forEveryone) {
+        return UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                    message.isOwn ? "This message has been read: it can only be deleted for you now"
+                                                  : "Only its sender can delete a message for everyone");
+    }
+    std::vector<std::string> recipients;
+    if (conversation.isGroup) {
+        for (const auto& m : conversation.memberIds) {
+            if (m != identity_.userId) recipients.push_back(m);
+        }
+    } else {
+        recipients.push_back(conversationId);
+    }
+    RemoveLocally(conversationId, messageId);
+    // The others are told like a message is sent: over the link, else
+    // through the relay's queue, so someone away hears of it when back.
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("type", JSONValue("delete"));
+    JSONValue ids = JSONValue::MakeArray();
+    ids.Append(JSONValue(messageId));
+    body.Set("ids", ids);
+    if (!recipients.empty())
+        QueueBody(conversation.isGroup ? conversationId : kDirectConversation, recipients,
+                  "d-" + UltraIM_NewClientMessageId(), UltraCanvas::JSON::Serialize(body), NowMs());
+    return UltraIMResult::Ok();
+}
+
+void DirectProvider::HandleDeleteBody(const Envelope& envelope, const JSONValue& body) {
+    const bool group = IsGroupId(envelope.conversation);
+    const std::string conversationId = group ? envelope.conversation : envelope.from;
+    for (const auto& id : body["ids"].GetElements()) {
+        UltraIMMessage message;
+        if (!store_.FindMessage(conversationId, id.GetString(), message)) {
+            // Not here yet: it is not to appear when it comes.
+            if (!id.GetString().empty())
+                store_.NoteDeleted(DeletedMessageKey(conversationId, envelope.from, id.GetString()), NowMs());
+            continue;
+        }
+        // Only what the asker sent, and by the same rules they were held to:
+        // a text read here stays here, whatever the other side says.
+        if (message.isOwn || message.senderId != envelope.from) continue;
+        if (!group && !HasFile(message) && store_.IsReadReported(conversationId, message.clientMessageId)) continue;
+        RemoveLocally(conversationId, message.clientMessageId);
+    }
 }
 
 UltraIMResult DirectProvider::MarkRead(const std::string& conversationId, const std::string& upToMessageId) {

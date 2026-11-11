@@ -1,3 +1,117 @@
+#### 2026-11-11 *0.9.537*
+- **`UltraCanvasTheme::TakeHostFonts`, and the four applications with a
+  theme of their own on the policy (T6 of the host theme proposal, first
+  part).** `TakeHostFonts(host)` puts the host's interface and monospace
+  fonts and its text scale onto a theme, as `FromHost` does (which now goes
+  through it), so an `Own` provider's colours come with the desktop's
+  fonts. UltraVideo, UltraPress, ChatCube and UltraDBAdmin set
+  `ThemePolicy::Own` with their `ThemeFor` / `AppTheme` as the provider
+  instead of `SetCurrent` at start: a change of the desktop reaches them;
+  UltraPress and ChatCube gain `system` as their look setting's default
+  (the desktop's look), UltraVideo's palette follows the desktop until the
+  eye picks the project's. `UltraCanvasThemeTest` covers `TakeHostFonts`;
+  `UltraCanvasTheme.md` 1.15.0.
+
+#### 2026-11-11 *0.9.536*
+- **UltraIM: a message deleted for oneself or for everyone, by each
+  messenger's own rules.** `UltraIM_DeleteMessage` takes a scope
+  (`UltraIMDeleteScope::ForEveryone`, as before, or `ForMe`), and the new
+  `UltraIM_GetDeleteChoices(provider, conversation, message)` says what is
+  possible for one message now, so an application's menu offers exactly
+  that instead of deciding it. A delete outside the rules answers
+  `PermissionDenied`.
+  - **ChatCube Direct can delete messages** (it could not at all; the
+    `DeleteMessage` capability is new for it). Anyone deletes any message
+    for themselves. For everyone, the sender deletes a text until the other
+    person has read it, a picture, video or file at any time, and anything
+    in a group at any time. The others are told with a signed `delete`
+    body, over the link or through the relay's queue; the receiving side
+    checks the same rules itself, so a text already read there stays. The
+    file a deleted message brought into the cache is removed with it -
+    never the sender's own file - and what was deleted before it had fully
+    arrived is dropped when the rest comes (store schema 4).
+  - **Matrix** deletes one's own messages for everyone, as before, and
+    answers `CapabilityMissing` to "for me", which it does not have.
+  - **Telegram** now deletes for oneself too; until now every delete was
+    for everyone.
+- **UltraIM plug-in ABI 5.** `DeleteMessage` gained the scope and the
+  interface `GetDeleteChoices`, so `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 5.
+- **UltraIM: searching the history, one call for every network.**
+  `UltraIM_SearchMessages(provider, search, callback)` finds messages by
+  their words, or everything of one kind - pictures, videos, pictures and
+  videos, files, links (`UltraIMSearchKind`) - newest first, a page at a
+  time with a cursor for the older ones (`UltraIMMessageSearch`,
+  `UltraIMSearchPage`). A provider says it can with the new `SearchMessages`
+  capability and answers through the new `SearchMessages` method of the
+  provider interface, each from wherever its history lives:
+  - **ChatCube Direct** queries its own database - one conversation or all
+    of them. Which messages hold a link is noted in a new `links` table by
+    the message's id alone; the address stays in the message's text and is
+    read out of it when shown, so it is not stored twice. The table is
+    filled as messages are stored, and once for the existing history when
+    an older store is opened (schema 3).
+  - **Matrix** reads a room's history back page by page and matches it on
+    this device, so an encrypted room - which the homeserver's own search
+    cannot read - is searched like any other.
+  - **Telegram** asks Telegram's own search (`searchChatMessages`, with its
+    filters), which covers the whole history without downloading it and
+    matches whole words as Telegram's apps do.
+- **UltraIM: the pieces of a search, for providers and lists.**
+  `UltraIM_MessageMatchesSearch` is the one matcher the on-device providers
+  share (every word, anywhere in the text or the attachment's file name, in
+  any case - Latin, Greek and Cyrillic folded by `UltraIM_FoldCase`, never
+  by the locale); `UltraIM_ExtractLinks` gives the links in a text;
+  `UltraIM_SearchByFetching` answers `SearchMessages` for any provider from
+  nothing but its `FetchMessages`.
+- **UltraIM plug-in ABI 4.** The provider interface gained a method and
+  `UltraIMTypes.h` its types, so `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 4: a
+  provider module built for 3 is skipped until it is rebuilt.
+
+#### 2026-11-11 *0.9.535*
+- **`UltraCanvasDropdown::SetFitWidthToItems`: a dropdown as wide as its
+  widest item.** A dropdown sized for its English entries cut a longer
+  translation off - the button clips its text, so UltraFiler's video mode
+  read *Automatisch al…* in German. On, the button takes the width its
+  widest item needs (icon, text and arrow) and follows the items, the
+  placeholder and the font as they change; the width given stays the least
+  it takes, so a layout made for the English text does not move where that
+  text fits. Off by default. `DropdownFitWidthTest` covers it.
+
+#### 2026-11-11 *0.9.534*
+- **`scripts/check_libcxx_syntax.py` 2.0.0: the whole tree against
+  libc++, from the build's compile database.** The shell script of 1.0.0
+  checked VideoFX with a flag block of its own; the Python one reads
+  `build/compile_commands.json` (adding `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
+  to an existing build directory itself) and compiles every C++ unit the
+  Windows build would see - the Linux, macOS and Android OS arms, C sources
+  and generated files left out - with `clang++ -stdlib=libc++ -fsyntax-only`
+  and the flags the build gave it. A path argument narrows it to a module
+  or a file: VideoFX in ten seconds, the 1539 units of the tree in twenty
+  minutes on four cores, all of which compile today.
+- **Windows: the kernel network ETW source reads each event by its own
+  template.** Microsoft-Windows-Kernel-Network lays its TCP events out in
+  three templates that share a prefix (PID, size, the endpoints) and differ
+  in what sits before the trailing seqnum and connection id: a connect or
+  accept carries the TCP options (16 bytes), a send its start and end time
+  (8 bytes), a receive or disconnect nothing. The source read every event
+  by the last layout, so a connect's connection id was 16 bytes of options
+  and a send's was its times, and the bytes summed per connection could
+  never meet the disconnect that reports them. The parser is now
+  `NetworkMonitorKernelNetwork.h` in the core - pure, one template per
+  event id, every length checked - and tested from payloads built per
+  template on every platform, like the conntrack parser.
+  - Both ETW sources enable the provider with every keyword rather than a
+    mask of zero, and the DNS client source names the asking process from
+    the Toolhelp process list, as the network source and the socket table
+    do, instead of `pid N`.
+  - `scripts/netmon-etw-acceptance.ps1` is the first elevated run as a test
+    with a verdict: it records with the ETW sources alone, makes a loopback
+    connection and a DNS query of its own, reads the recording back and
+    checks the opened, accepted and closed events (with bytes) and the DNS
+    observation, each attributed to the PowerShell that made them.
+    *Windows: the first elevated run* in the module README is the
+    procedure and what each failure would mean.
+
 #### 2026-11-11 *0.9.533*
 - **UltraRTC: `UltraRtcApiStatus` reports what every function does in this
   build, on this machine.** The module's proposal asked each phase to ship

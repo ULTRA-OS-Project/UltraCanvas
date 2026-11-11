@@ -4797,6 +4797,20 @@ add_test(NAME ButtonGrowToFitTest COMMAND ButtonGrowToFitTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonGrowToFitTest")
 
+message(STATUS "  Building DropdownFitWidthTest...")
+add_executable(DropdownFitWidthTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DropdownFitWidthTest.cpp
+)
+target_include_directories(DropdownFitWidthTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(DropdownFitWidthTest PRIVATE cxx_std_20)
+target_link_libraries(DropdownFitWidthTest PRIVATE UltraCanvas)
+set_target_properties(DropdownFitWidthTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DropdownFitWidthTest COMMAND DropdownFitWidthTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DropdownFitWidthTest")
+
 message(STATUS "  Building SpreadsheetSortMenuTest...")
 add_executable(SpreadsheetSortMenuTest
     ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetSortMenuTest.cpp

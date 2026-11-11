@@ -13,10 +13,11 @@
 // sidebar), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.3.0 - Appearance > Look: System beside Light and Dark
 // Version: 0.2.0 - Networks > Proxy: the proxy Matrix and the relay are
 //                  reached through, shared by every ULTRA OS application
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettingsWindow.h"
@@ -110,7 +111,7 @@ struct ChatCubeSettingsWindow::State {
     std::string                           shownPage;
 
     // Appearance > Look
-    std::shared_ptr<UltraCanvasRadio> lightRadio, darkRadio;
+    std::shared_ptr<UltraCanvasRadio> systemRadio, lightRadio, darkRadio;
     UltraCanvasRadioGroup             lookGroup;
     // Appearance > Time & date
     std::shared_ptr<UltraCanvasRadio> clock24Radio, clock12Radio;
@@ -300,25 +301,32 @@ std::shared_ptr<UltraCanvasSwitch> MakeSwitch(const std::string& id, const std::
 
 std::shared_ptr<UltraCanvasContainer> BuildLookPage(State* d) {
     PageParts parts = MakePage("cc-set-page-look", "Look", "The colours of the ChatCube window:");
-    d->lightRadio = MakeChoice("cc-set-look-light", "Light - dark text on warm white", !d->settings->dark);
-    d->darkRadio = MakeChoice("cc-set-look-dark", "Dark - light text on a dark ground", d->settings->dark);
+    d->systemRadio = MakeChoice("cc-set-look-system", "System - the computer's look, light or dark",
+                                d->settings->look == "system");
+    d->lightRadio = MakeChoice("cc-set-look-light", "Light - dark text on warm white", d->settings->look == "light");
+    d->darkRadio = MakeChoice("cc-set-look-dark", "Dark - light text on a dark ground", d->settings->look == "dark");
+    d->lookGroup.AddRadioButton(d->systemRadio);
     d->lookGroup.AddRadioButton(d->lightRadio);
     d->lookGroup.AddRadioButton(d->darkRadio);
     d->lookGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
         if (!selected) return;
-        d->settings->dark = selected.get() == d->darkRadio.get();
+        d->settings->look = selected.get() == d->darkRadio.get() ? "dark"
+                          : selected.get() == d->lightRadio.get() ? "light" : "system";
         ApplyAndSave(d);
     };
+    parts.body->AddChild(d->systemRadio);
     parts.body->AddChild(d->lightRadio);
     parts.body->AddChild(d->darkRadio);
     d->resets[kPageLook] = [d]() {
-        d->settings->dark = false;
-        d->lookGroup.SelectButton(d->lightRadio);
+        d->settings->look = "system";
+        d->lookGroup.SelectButton(d->systemRadio);
     };
 
     AddNote(parts, "cc-set-look-note1",
             "The look is chosen when ChatCube starts, since every part of the window takes its colours as "
-            "it is built: a change here shows the next time ChatCube is started.");
+            "it is built: a change here, or of the computer's look under System, shows the next time "
+            "ChatCube is started. System is the computer's own light or dark mode, and the Look page of "
+            "UOS-Settings over it.");
     AddNote(parts, "cc-set-look-note2",
             "Started with --dark, ChatCube is dark whatever is chosen here.");
     return parts.page;
