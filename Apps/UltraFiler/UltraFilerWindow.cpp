@@ -763,6 +763,30 @@ namespace {
         return b;
     }
 
+    // A caption in front of a command-bar control ("View", "Order by",
+    // "Video"). It takes the width of its text, so a longer translation
+    // ("Sortieren nach") shows whole wherever the window leaves room - a fixed
+    // width cut it to "Sortie…" at any window size. When the bar is too
+    // narrow for everything it gives way, ending in "…", but far more slowly
+    // than the search field beside it, which is the control meant to shrink.
+    // The padding on the left keeps it clear of the control before it.
+    std::shared_ptr<UltraCanvasLabel> MakeToolLabel(const std::string& id,
+                                                    const std::string& text) {
+        auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 24);
+        l->SetText(text);
+        l->SetFontSize(kUiFontSize);
+        l->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+        l->SetPadding(0, 0, 0, 6);
+        l->size.width = CSSLayout::Dimension::Auto();
+        CSSLayout::BoxConstraints limits =
+                l->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(30.0f);
+        l->boxConstraints = limits;
+        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0.15f)
+                     .SetAlignSelf(CSSLayout::AlignSelf::Center);
+        return l;
+    }
+
     // A round icon button that floats over the edge of a pane rather than
     // sitting in a row: no label, a full circle, and a light border so it
     // stays legible over whatever it overlays.
@@ -4249,11 +4273,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // It sits ahead of the sort controls: picking the layout is the more
     // frequent choice, and the icon in each entry makes it findable at a
     // glance.
-    auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 44, 24);
-    viewLbl->SetText(Tr("View"));
-    viewLbl->SetFontSize(kUiFontSize);
-    viewLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    row->AddChild(viewLbl);
+    row->AddChild(MakeToolLabel("ufl-view-lbl", Tr("View")));
 
     // Wide enough for the longest entry ("Extra large icons") once the icon
     // column and the arrow have taken their share - the button clips its text.
@@ -4287,11 +4307,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->AddChild(viewDropdown);
 
     // Sort field + direction. The dropdown mirrors FilerSortField order.
-    auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
-    sortLbl->SetText(Tr("Sort"));
-    sortLbl->SetFontSize(kUiFontSize);
-    sortLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    row->AddChild(sortLbl);
+    row->AddChild(MakeToolLabel("ufl-sort-lbl", Tr("Order by")));
 
     sortDropdown = CreateDropdown("ufl-sort", 0, 0, 128, 26);
     ApplyDropdownFontSize(sortDropdown.get());
@@ -4335,11 +4351,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     // How the preview treats video files: full playback with sound (default),
     // a 5 second muted clip (album hover-preview style) or a still frame.
-    auto videoLbl = std::make_shared<UltraCanvasLabel>("ufl-video-lbl", 0, 0, 44, 24);
-    videoLbl->SetText(Tr("Video"));
-    videoLbl->SetFontSize(kUiFontSize);
-    videoLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    row->AddChild(videoLbl);
+    row->AddChild(MakeToolLabel("ufl-video-lbl", Tr("Video")));
 
     videoModeDropdown = CreateDropdown("ufl-video-mode", 0, 0, 104, 26);
     ApplyDropdownFontSize(videoModeDropdown.get());
