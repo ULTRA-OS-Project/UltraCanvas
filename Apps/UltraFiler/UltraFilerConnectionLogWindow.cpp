@@ -3,13 +3,15 @@
 // the error report's headings, tables and code blocks out, and being real
 // text areas they scroll, select and copy without any of that written here.
 // Built the way UltraCanvasMetadataDialog is.
+// Version: 1.1.0 - the colours are the theme's (UltraFilerLook.h)
 // Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
-// Last Modified: 2026-10-04
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraFilerConnectionLogWindow.h"
 #include "UltraFilerTabStripStyle.h"
+#include "UltraFilerLook.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
@@ -58,7 +60,7 @@ UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWind
     config_.deleteOnClose = true;
 
     SetPadding(kPadding);
-    SetBackgroundColor(Color(250, 250, 252, 255));
+    SetBackgroundColor(Look().ground);
     layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     tabs = std::make_shared<UltraCanvasTabbedContainer>("ConnectionLogTabs");
@@ -91,7 +93,7 @@ UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWind
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     summaryLabel = std::make_shared<UltraCanvasLabel>("ConnectionLogSummary", 0, 0, 0, 20);
-    summaryLabel->SetTextColor(Color(70, 70, 76, 255));
+    summaryLabel->SetTextColor(Look().inkMuted);
     summaryLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     summaryLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     footer->AddChild(summaryLabel);
