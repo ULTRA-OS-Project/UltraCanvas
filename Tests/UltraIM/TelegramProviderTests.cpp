@@ -10,6 +10,7 @@
 // picture fetched, a photo, a video and a file sent and received - the photo
 // and the video's preview picture arriving by themselves, the video when
 // asked for.
+// Version: 0.1.6 - what can be deleted (for oneself, one's own for everyone)
 // Version: 0.1.5 - searching a chat: words, kinds, pages
 // Version: 0.1.4 - avatars, photos, videos and files
 // Version: 0.1.3 - sign-in by a QR code
@@ -459,7 +460,13 @@ void TestTelegram() {
     UltraIMEvent oops;
     CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }, &oops));
     CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }, &oops));
-    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId));
+    // Telegram's rules: anything for oneself, one's own for everyone.
+    UltraIMDeleteChoices choices = alice->GetDeleteChoices(dm.conversationId, oops.message.messageId);
+    CHECK(choices.forMe && choices.forEveryone);
+    choices = bob->GetDeleteChoices(got.conversationId, oops.message.messageId);
+    CHECK(choices.forMe && !choices.forEveryone);
+    CHECK(!bob->GetDeleteChoices(got.conversationId, "424242").forMe);     // no such message
+    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId, UltraIMDeleteScope::ForEveryone));
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
         return e.type == UltraIMEventType::MessageDelete && e.message.messageId == oops.message.messageId;
     }));

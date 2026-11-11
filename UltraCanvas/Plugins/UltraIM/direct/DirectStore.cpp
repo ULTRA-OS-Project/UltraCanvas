@@ -1,5 +1,6 @@
 // Plugins/UltraIM/direct/DirectStore.cpp
 // ChatCube Direct - the device's own record (SQLite via UltraDatabase)
+// Version: 0.1.2 - RemoveMessage, IsReadReported, NoteDeleted / IsDeleted; schema 4: the deleted table
 // Version: 0.1.1 - Search; schema 3: the links table (message ids only) and messages by type
 // Version: 0.1.0
 // Last Modified: 2026-11-11
@@ -59,6 +60,11 @@ const std::vector<UltraDbMigration>& Migrations() {
          "INSERT INTO links(msg_seq) SELECT seq FROM messages"
          "  WHERE text LIKE '%http://%' OR text LIKE '%https://%' OR text LIKE '%www.%';"
          "CREATE INDEX messages_by_type ON messages(conv, type, seq);"},
+        // What was deleted before it was all here - a file with parts still
+        // on their way, a message its "delete" overtook: dropped when it
+        // does arrive instead of appearing after all, or waiting for ever.
+        {4, "what was deleted while it was arriving",
+         "CREATE TABLE deleted(key TEXT PRIMARY KEY, ts INTEGER NOT NULL);"},
     };
     return steps;
 }
@@ -355,6 +361,64 @@ bool Store::UpdateAttachment(const std::string& conversationId, const std::strin
     UltraDbResult r = UltraDb_Exec(connection_, "UPDATE messages SET attachment=?, file_id=? WHERE conv=? AND client_id=?",
                                    {AttachmentToJson(attachment), attachment.remoteUrl, conversationId, clientId});
     return r && r.affectedRows > 0;
+}
+
+bool Store::RemoveMessage(const std::string& conversationId, const std::string& clientId, UltraIMMessage& removed) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDbResultSet rows;
+    if (!UltraDb_Query(connection_, "SELECT * FROM messages WHERE conv=? AND client_id=?", {conversationId, clientId},
+                       rows) ||
+        rows.Empty())
+        return false;
+    const UltraDbRow& row = *rows.begin();
+    removed = MessageFromRow(row, providerId_);
+    const int64_t seq = row["seq"].AsInt64();
+    const bool unread = row["own"].AsInt() == 0 && row["read_reported"].AsInt() == 0;
+    const std::string fileId = row["file_id"].AsString();
+
+    UltraDb_Exec(connection_, "DELETE FROM links WHERE msg_seq=?", {seq});
+    UltraDb_Exec(connection_, "DELETE FROM messages WHERE seq=?", {seq});
+    // What of it has not left yet stays here.
+    UltraDb_Exec(connection_, "DELETE FROM outbox WHERE client_id=?", {clientId});
+    if (!fileId.empty()) {
+        const std::string partIds = "c-" + fileId + "-";
+        UltraDb_Exec(connection_, "DELETE FROM outbox WHERE substr(client_id, 1, ?)=?",
+                     {static_cast<int64_t>(partIds.size()), partIds});
+        UltraDb_Exec(connection_, "DELETE FROM parts WHERE file_id=?", {fileId});
+        UltraDb_Exec(connection_, "INSERT OR IGNORE INTO deleted(key, ts) VALUES(?, ?)",
+                     {DeletedFileKey(fileId), removed.timestampMs});
+    }
+    // The conversation's last line is the message before it now.
+    UltraDbResultSet last;
+    std::string snippet;
+    if (UltraDb_Query(connection_, "SELECT * FROM messages WHERE conv=? ORDER BY seq DESC LIMIT 1", {conversationId},
+                      last) &&
+        !last.Empty())
+        snippet = Snippet(MessageFromRow(*last.begin(), providerId_));
+    UltraDb_Exec(connection_, "UPDATE conversations SET snippet=?, unread=MAX(0, unread-?) WHERE id=?",
+                 {snippet, unread ? 1 : 0, conversationId});
+    return true;
+}
+
+bool Store::IsReadReported(const std::string& conversationId, const std::string& clientId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDbResultSet rows;
+    if (!UltraDb_Query(connection_, "SELECT read_reported FROM messages WHERE conv=? AND client_id=?",
+                       {conversationId, clientId}, rows) ||
+        rows.Empty())
+        return false;
+    return (*rows.begin())["read_reported"].AsInt() != 0;
+}
+
+void Store::NoteDeleted(const std::string& key, int64_t timestampMs) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDb_Exec(connection_, "INSERT OR IGNORE INTO deleted(key, ts) VALUES(?, ?)", {key, timestampMs});
+}
+
+bool Store::IsDeleted(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDbResultSet rows;
+    return UltraDb_Query(connection_, "SELECT 1 FROM deleted WHERE key=?", {key}, rows) && !rows.Empty();
 }
 
 bool Store::FindMessageByFile(const std::string& fileId, UltraIMMessage& out) {

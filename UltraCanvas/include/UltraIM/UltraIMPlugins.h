@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.9 - ABI 5: DeleteMessage takes a scope (for everyone, for me); GetDeleteChoices
 // Version: 0.1.8 - ABI 4: SearchMessages (words, pictures, files and links in the history)
 // Version: 0.1.7 - ABI 3: confirming the e-mail (by a link) and the phone (by a code), and account recovery
 //                  by a link e-mailed to the owner (FinishRecovery asks whether it was approved)
@@ -159,10 +160,24 @@ public:
     }
 
     // ---- Message actions -----------------------------------------------------
+    // Deletes a message for everyone or for this account alone
+    // (UltraIMDeleteScope); a MessageDelete event follows where it is gone.
+    // PermissionDenied when the messenger's rules do not allow that scope
+    // for this message now - GetDeleteChoices says beforehand, so a menu
+    // offers only what will work. CapabilityMissing for a scope the
+    // messenger does not have at all.
     virtual UltraIMResult DeleteMessage(const std::string& conversationId,
-                                        const std::string& messageId) {
-        (void)conversationId; (void)messageId;
+                                        const std::string& messageId,
+                                        UltraIMDeleteScope scope) {
+        (void)conversationId; (void)messageId; (void)scope;
         return Unsupported("deleting messages");
+    }
+    // What DeleteMessage would accept for this message now; nothing for a
+    // message the provider does not know.
+    virtual UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
+                                                  const std::string& messageId) const {
+        (void)conversationId; (void)messageId;
+        return UltraIMDeleteChoices();
     }
     virtual UltraIMResult EditMessage(const std::string& conversationId,
                                       const std::string& messageId,
@@ -368,9 +383,10 @@ protected:
 // Version 3 (2026-11): the profile's verified flags and recovery state,
 // confirming the e-mail and phone, account recovery by an e-mailed link.
 // Version 4 (2026-11): SearchMessages and its types.
+// Version 5 (2026-11): DeleteMessage's scope, GetDeleteChoices.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 4;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 5;
 
 struct UltraIMPluginHost {
     int abiVersion;

@@ -2,6 +2,8 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.10 - deleting: the store's RemoveMessage; end to end by the rules (a read text, an unread one,
+//                   a file, a group), the other side's own check
 // Version: 0.1.9 - TestStoreSearch: words, kinds, links and pages from the store; the links table filled for
 //                  a history from before it
 // Version: 0.1.8 - the authenticator's setup code waits for a 30-second step with room left: computed a
@@ -286,6 +288,46 @@ void TestStoreSearch() {
     page = find("bob", "needle", UltraIMSearchKind::AnyKind, 5, page.nextCursor);
     CHECK(Ids(page) == "n100 n0" && page.nextCursor.empty());
 
+    // A message removed: its note in the links table, its unsent copies and
+    // the parts of its file go with it; the conversation's last line and
+    // unread count follow.
+    {
+        UltraIMConversation carol;
+        CHECK(store.GetConversation("carol", carol) && carol.unreadCount == 2);
+        CHECK(carol.lastMessageSnippet == "awww.nothing and an http: that is no link");
+        UltraIMMessage removed;
+        CHECK(!store.IsReadReported("carol", "c2"));
+        CHECK(store.RemoveMessage("carol", "c2", removed) && removed.text.rfind("awww", 0) == 0);
+        CHECK(!store.RemoveMessage("carol", "c2", removed));        // once
+        CHECK(store.GetConversation("carol", carol) && carol.unreadCount == 1);
+        CHECK(carol.lastMessageSnippet == "ÜBERSEE again, see www.example.org/lunch");
+        CHECK(store.UnreadIncoming("carol").size() == 1 && store.IsReadReported("carol", "c1"));
+        CHECK(store.RemoveMessage("carol", "c1", removed));
+        CHECK(Ids(find("", "", UltraIMSearchKind::Links)) == "b2");  // no longer found by its link
+        CHECK(store.GetConversation("carol", carol) && carol.lastMessageSnippet.empty() && carol.unreadCount == 1);
+        add("carol", "c1", "ÜBERSEE again, see www.example.org/lunch");     // (back, for what follows)
+
+        OutboxEntry entry;
+        entry.conversation = "dm";
+        entry.recipient = "bob";
+        entry.body = "{}";
+        for (const char* id : {"b4", "c-file-b4-0", "c-file-b4-1", "c-file-b40-0", "other"}) {
+            entry.clientId = id;
+            store.AddOutbox(entry);
+        }
+        store.AddPart("file-b4", 0, "AAAA");
+        CHECK(!store.IsDeleted(Store::DeletedFileKey("file-b4")));
+        CHECK(store.RemoveMessage("bob", "b4", removed) && removed.attachment.fileName == "ferry.mp4");
+        CHECK(store.Outbox().size() == 2);                          // another file's part, another message
+        CHECK(store.CountParts("file-b4") == 0);
+        CHECK(store.IsDeleted(Store::DeletedFileKey("file-b4")) && !store.IsDeleted(Store::DeletedFileKey("file-b5")));
+        CHECK(Ids(find("bob", "", UltraIMSearchKind::Media)) == "b3");
+        store.RemoveOutbox("c-file-b40-0", "bob");
+        store.RemoveOutbox("other", "bob");
+        store.NoteDeleted("m/bob/bob/late", 1);
+        CHECK(store.IsDeleted("m/bob/bob/late") && !store.IsDeleted("m/bob/bob/other"));
+    }
+
     // A conversation removed takes its links along.
     CHECK(store.RemoveConversation("carol"));
     CHECK(Ids(find("", "", UltraIMSearchKind::Links)) == "b2");
@@ -301,6 +343,7 @@ void TestStoreSearch() {
         CHECK(UltraDb_RegisterConnection(config));
         CHECK(UltraDb_Exec("store-search-raw", "DROP TABLE links"));
         CHECK(UltraDb_Exec("store-search-raw", "DROP INDEX messages_by_type"));
+        CHECK(UltraDb_Exec("store-search-raw", "DROP TABLE deleted"));
         CHECK(UltraDb_Exec("store-search-raw", "DELETE FROM ultradb_schema_version WHERE version >= 3"));
         UltraDb_CloseConnection("store-search-raw");
     }
@@ -1478,6 +1521,112 @@ void TestEndToEnd() {
         search.conversationId = "nobody";
         bob->SearchMessages(search, take);
         CHECK(!result && result.code == UltraIMResultCode::NotFound && found.messages.empty());
+    }
+
+    // Deleting, by ChatCube's rules. For oneself: always. For everyone, by
+    // the sender: a text until it was read, a file at any time, anything in
+    // a group - and the other side lets go only of what those rules allow.
+    CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::DeleteMessage));
+    {
+        // (The calls ended with Bob away.)
+        if (bob->GetConnectionState() != UltraIMConnectionState::Connected)
+            CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->SignIn(bobLogin, cb); }, r) && r);
+        const auto deleted = [](const std::string& conversation, const std::string& id) {
+            return [conversation, id](const UltraIMEvent& e) {
+                return e.type == UltraIMEventType::MessageDelete && e.conversationId == conversation &&
+                       e.message.messageId == id;
+            };
+        };
+        const auto ids = [](DirectProvider& p, const std::string& conversation) {
+            std::string out;
+            p.FetchMessages(conversation, "", 50, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& m) {
+                for (const auto& message : m) out += message.messageId + " ";
+            });
+            return out;
+        };
+        const auto has = [&](DirectProvider& p, const std::string& conversation, const std::string& id) {
+            return ids(p, conversation).find(id + " ") != std::string::npos;
+        };
+        const std::string pictureId = history.size() == 4 ? history[1].messageId : std::string();
+        const std::string bobsCopy = history.size() == 4 ? history[1].attachment.localPath : std::string();
+        CHECK(!pictureId.empty() && fs::exists(UltraCanvas::PathFromUtf8(bobsCopy)));
+
+        // A text Bob has read: Alice's to delete for herself only.
+        UltraIMDeleteChoices choices = alice->GetDeleteChoices(bobId, "msg-p2p");
+        CHECK(choices.forMe && !choices.forEveryone);
+        CHECK(alice->DeleteMessage(bobId, "msg-p2p", UltraIMDeleteScope::ForEveryone).code ==
+              UltraIMResultCode::PermissionDenied);
+        CHECK(has(*alice, bobId, "msg-p2p"));
+        CHECK(alice->DeleteMessage(bobId, "msg-p2p", UltraIMDeleteScope::ForMe));
+        CHECK(aliceEvents.WaitFor(deleted(bobId, "msg-p2p")));
+        CHECK(!has(*alice, bobId, "msg-p2p"));
+        CHECK(!alice->GetDeleteChoices(bobId, "msg-p2p").forMe);       // gone: nothing to offer
+        CHECK(alice->DeleteMessage(bobId, "msg-p2p", UltraIMDeleteScope::ForMe).code == UltraIMResultCode::NotFound);
+
+        // What someone else sent is theirs to delete for everyone.
+        choices = bob->GetDeleteChoices(aliceId, "msg-offline");
+        CHECK(choices.forMe && !choices.forEveryone);
+        CHECK(bob->DeleteMessage(aliceId, "msg-offline", UltraIMDeleteScope::ForEveryone).code ==
+              UltraIMResultCode::PermissionDenied);
+
+        // A text not read yet: gone from both.
+        choices = alice->GetDeleteChoices(bobId, "msg-offline");
+        CHECK(choices.forMe && choices.forEveryone);
+        CHECK(alice->DeleteMessage(bobId, "msg-offline", UltraIMDeleteScope::ForEveryone));
+        CHECK(aliceEvents.WaitFor(deleted(bobId, "msg-offline")));
+        CHECK(bobEvents.WaitFor(deleted(aliceId, "msg-offline")));
+        CHECK(!has(*alice, bobId, "msg-offline") && !has(*bob, aliceId, "msg-offline"));
+
+        // A picture, read long ago: still the sender's to take back, and
+        // Bob's copy of the file goes with it - Alice's own file does not.
+        choices = alice->GetDeleteChoices(bobId, pictureId);
+        CHECK(choices.forMe && choices.forEveryone);
+        CHECK(alice->DeleteMessage(bobId, pictureId, UltraIMDeleteScope::ForEveryone));
+        CHECK(bobEvents.WaitFor(deleted(aliceId, pictureId)));
+        CHECK(!has(*bob, aliceId, pictureId) && !has(*alice, bobId, pictureId));
+        CHECK(!fs::exists(UltraCanvas::PathFromUtf8(bobsCopy)));
+        CHECK(fs::exists(UltraCanvas::PathFromUtf8(picture)));
+        // Bob kept the text Alice deleted for herself alone, and the file.
+        CHECK(has(*bob, aliceId, "msg-p2p") && has(*bob, aliceId, "msg-file-offline"));
+        UltraIMConversation withAlice;
+        bob->FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& list) {
+            for (const auto& c : list) {
+                if (c.conversationId == aliceId) withAlice = c;
+            }
+        });
+        CHECK(withAlice.lastMessageSnippet == "[file] notes.pdf");      // the last message left
+
+        // Read while the read receipt could not reach Alice (Bob is away):
+        // to her it is unread, so she may ask - and Bob's side, which knows
+        // better, keeps it. The rule holds where the reading happened.
+        UltraIMSendOptions oRead;
+        oRead.clientMessageId = "msg-read";
+        CHECK(alice->SendText(bobId, "read me", oRead));
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "read me"); }));
+        bob->SignOut();
+        CHECK(bob->MarkRead(aliceId, ""));
+        CHECK(alice->GetDeleteChoices(bobId, "msg-read").forEveryone);
+        CHECK(alice->DeleteMessage(bobId, "msg-read", UltraIMDeleteScope::ForEveryone));
+        UltraIMSendOptions oAfter;
+        oAfter.clientMessageId = "msg-after";
+        CHECK(alice->SendText(bobId, "after that", oAfter));
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->SignIn(bobLogin, cb); }, r) && r);
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "after that"); }));
+        CHECK(has(*bob, aliceId, "msg-read") && !has(*alice, bobId, "msg-read"));
+        // Once Alice knows it was read, the menu says so too.
+        CHECK(bob->MarkRead(aliceId, ""));
+        CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsDelivered(e, "msg-after", UltraIMDeliveryStatus::Read); }));
+        choices = alice->GetDeleteChoices(bobId, "msg-after");
+        CHECK(choices.forMe && !choices.forEveryone);
+
+        // In a group the sender may at any time.
+        choices = alice->GetDeleteChoices(group.conversationId, "msg-group");
+        CHECK(choices.forMe && choices.forEveryone);
+        CHECK(!bob->GetDeleteChoices(group.conversationId, "msg-group").forEveryone);
+        CHECK(bob->MarkRead(group.conversationId, ""));
+        CHECK(alice->DeleteMessage(group.conversationId, "msg-group", UltraIMDeleteScope::ForEveryone));
+        CHECK(bobEvents.WaitFor(deleted(group.conversationId, "msg-group")));
+        CHECK(!has(*bob, group.conversationId, "msg-group") && !has(*alice, group.conversationId, "msg-group"));
     }
 
     alice->Shutdown();

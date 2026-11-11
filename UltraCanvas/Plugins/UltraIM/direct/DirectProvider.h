@@ -17,6 +17,8 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.7 - DeleteMessage / GetDeleteChoices: for oneself always; for everyone the sender's text until
+//                  it is read, a file at any time, anything in a group
 // Version: 0.1.6 - SearchMessages: the history searched in the store, one conversation or all
 // Version: 0.1.5 - the e-mail address confirmed by the link the relay e-mails; recovery by an e-mailed link
 //                  (POST /v1/recovery/poll with the token only this computer holds)
@@ -151,6 +153,15 @@ public:
     // it is here.
     void DownloadAttachment(const std::string& conversationId, const std::string& messageId,
                             UltraIMAttachmentCallback onResult) override;
+    // ChatCube's own rules. For oneself: any message, any time. For
+    // everyone, by its sender: a text until the other person has read it, a
+    // picture, video or file at any time, and anything in a group at any
+    // time (a group has no read receipts). The other side checks the same
+    // before it lets a message go.
+    UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                UltraIMDeleteScope scope) override;
+    UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
+                                          const std::string& messageId) const override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
@@ -259,6 +270,16 @@ private:
     // The "file" and "chunk" bodies.
     void HandleFileBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
     void HandleChunkBody(const UltraCanvas::JSONValue& body);
+    // A "delete" from the sender of the messages it names.
+    void HandleDeleteBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    // A message out of this device's record, with the file it brought into
+    // the cache (never a file of the user's own that was sent from where it
+    // lies); MessageDelete and ConversationUpdate follow.
+    bool RemoveLocally(const std::string& conversationId, const std::string& clientId);
+    // Whether its sender deleted an arriving message before it got here.
+    bool IsDeletedBeforeArrival(const UltraIMMessage& message);
+    // Whether a path is one of the files this provider keeps (MediaPath).
+    bool IsMediaFile(const std::string& path) const;
 
     // ---- outgoing ---------------------------------------------------------------
     void QueueBody(const std::string& conversation, const std::vector<std::string>& recipients,
@@ -276,7 +297,7 @@ private:
     ProviderTimings timings_;
 
     std::atomic<UltraIMConnectionState> state_{UltraIMConnectionState::Disconnected};
-    Store           store_;
+    mutable Store   store_;         // (its reads lock and are not const)
     bool            storeOpen_ = false;
     UltraVault::DeviceKeyVault vault_;
     bool            vaultOpen_ = false;

@@ -2908,6 +2908,8 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_SetEventDispatcher`, `UltraIM_Subscribe`, `UltraIM_Unsubscribe`
 - `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
 - `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
+- `UltraIM_GetDeleteChoices` (what `UltraIM_DeleteMessage` can do to one
+  message now - for oneself, for everyone - by its messenger's own rules)
 - `UltraIM_SearchMessages` (words, or everything of one kind - pictures,
   videos, files, links - in a provider's history, a page at a time),
   `UltraIM_MessageMatchesSearch`, `UltraIM_ExtractLinks`, `UltraIM_FoldCase`

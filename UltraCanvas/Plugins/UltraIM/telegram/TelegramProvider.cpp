@@ -1950,11 +1950,26 @@ UltraIMResult TelegramProvider::EditMessage(const std::string& conversationId, c
     return UltraIMResult::Ok();
 }
 
-UltraIMResult TelegramProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId) {
+UltraIMDeleteChoices TelegramProvider::GetDeleteChoices(const std::string& conversationId,
+                                                        const std::string& messageId) const {
+    UltraIMDeleteChoices choices;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto chat = chats_.find(ToId(conversationId));
+    if (chat == chats_.end()) return choices;
+    for (const auto& m : chat->second.recent) {
+        if (m.messageId != messageId || m.type == UltraIMMessageType::SystemEvent) continue;
+        choices.forMe = true;
+        choices.forEveryone = m.isOwn;      // (Telegram has the last word: it may still refuse)
+    }
+    return choices;
+}
+
+UltraIMResult TelegramProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                              UltraIMDeleteScope scope) {
     int64_t chatId = 0;
     const UltraIMResult r = Connected(chatId, conversationId);
     if (!r) return r;
-    Client()->Send(Request::DeleteMessages(chatId, {ToId(messageId)}, true));
+    Client()->Send(Request::DeleteMessages(chatId, {ToId(messageId)}, scope == UltraIMDeleteScope::ForEveryone));
     return UltraIMResult::Ok();
 }
 

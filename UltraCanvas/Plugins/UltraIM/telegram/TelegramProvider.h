@@ -9,6 +9,7 @@
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
 // username or phone number, new groups.
+// Version: 0.1.5 - DeleteMessage's scope (deleteMessages' revoke), GetDeleteChoices
 // Version: 0.1.4 - SearchMessages: Telegram's own search of a chat (searchChatMessages)
 // Version: 0.1.3 - sign-in by a QR code (requestQrCodeAuthentication), at the start or in place of a code
 // Version: 0.1.2 - where the code went said plainly; the code asked for another way (resendAuthenticationCode)
@@ -106,7 +107,11 @@ public:
                             UltraIMAttachmentCallback onResult) override;
     UltraIMResult EditMessage(const std::string& conversationId, const std::string& messageId,
                               const std::string& newText) override;
-    UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId) override;
+    // Telegram's own two: for everyone (one's own messages) or for oneself.
+    UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                UltraIMDeleteScope scope) override;
+    UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
+                                          const std::string& messageId) const override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 

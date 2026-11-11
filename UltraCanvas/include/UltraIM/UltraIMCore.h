@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.10 - UltraIM_DeleteMessage takes a scope; UltraIM_GetDeleteChoices
 // Version: 0.1.9 - UltraIM_SearchMessages; for providers and lists: UltraIM_MessageMatchesSearch,
 //                  UltraIM_ExtractLinks, UltraIM_FoldCase, UltraIM_SearchByFetching
 // Version: 0.1.8 - account recovery by an e-mailed link: UltraIM_FinishRecovery asks whether it was approved
@@ -152,8 +153,17 @@ void          UltraIM_DownloadAttachment(const std::string& providerId, const st
 UltraIMResult UltraIM_SendVoiceNote(const std::string& providerId, const std::string& conversationId,
                                     const std::string& localPath,
                                     const UltraIMSendOptions& options = UltraIMSendOptions());
+// Deletes a message for everyone, or for this account alone; a
+// MessageDelete event follows where it is gone. Each messenger has its own
+// rules for who may do which and until when: UltraIM_GetDeleteChoices says
+// what is possible for one message now (nothing for a provider without the
+// DeleteMessage capability), and a delete outside them answers
+// PermissionDenied.
 UltraIMResult UltraIM_DeleteMessage(const std::string& providerId, const std::string& conversationId,
-                                    const std::string& messageId);
+                                    const std::string& messageId,
+                                    UltraIMDeleteScope scope = UltraIMDeleteScope::ForEveryone);
+UltraIMDeleteChoices UltraIM_GetDeleteChoices(const std::string& providerId, const std::string& conversationId,
+                                              const std::string& messageId);
 UltraIMResult UltraIM_EditMessage(const std::string& providerId, const std::string& conversationId,
                                   const std::string& messageId, const std::string& newText);
 UltraIMResult UltraIM_MarkRead(const std::string& providerId, const std::string& conversationId,

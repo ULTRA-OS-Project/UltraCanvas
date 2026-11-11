@@ -127,6 +127,19 @@ The first ChatCube draft, which this replaces, is kept under
    pictures are their avatars in the sidebar, the header and, in a group,
    beside their bubbles.
 
+   A right click on a message opens its menu. A picture, a video or a file
+   has **Open** and **Save as** (a copy where you say, fetched first when it
+   is not on this computer yet). **Delete for me** removes a message from
+   your side only; **Delete for everyone** removes it from the other side
+   too and asks first, since it cannot be taken back. The menu offers what
+   the chat's messenger allows for that message. In a ChatCube chat you can
+   delete a text you sent for everyone until the other person has read it -
+   after that only for yourself - while a picture, a video or a file you
+   sent can be taken back at any time, and in a group so can any message of
+   yours. A file deleted for everyone is removed from the other person's
+   ChatCube as well; a copy they saved elsewhere is theirs. Matrix deletes
+   for everyone only; Telegram has both.
+
 6. **Call** rings the open contact, **Video** makes it a video call (1:1;
    the buttons are off for groups and while not connected). A bar across
    the top shows the call: *Accept* / *Decline* when it rings here, *Mute*,

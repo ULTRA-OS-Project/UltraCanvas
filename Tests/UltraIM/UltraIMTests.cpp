@@ -467,6 +467,14 @@ void TestSearchThroughManager() {
     UltraIM_SearchMessages("searching", SearchFor("", UltraIMSearchKind::Images), take);
     dispatcher.Drain();
     CHECK(answers == 4 && result && page.messages.empty());
+    // Deleting: a provider without it offers nothing and says so when asked.
+    UltraIMDeleteChoices choices = UltraIM_GetDeleteChoices("plain", "room", "h1");
+    CHECK(!choices.forMe && !choices.forEveryone);
+    CHECK(!UltraIM_GetDeleteChoices("nobody", "room", "h1").forMe);
+    CHECK(UltraIM_DeleteMessage("plain", "room", "h1").code == UltraIMResultCode::CapabilityMissing);
+    CHECK(UltraIM_DeleteMessage("plain", "room", "h1", UltraIMDeleteScope::ForMe).code ==
+          UltraIMResultCode::CapabilityMissing);
+    CHECK(UltraIM_DeleteMessage("nobody", "room", "h1").code == UltraIMResultCode::ProviderNotFound);
     UltraIM_SearchMessages("searching", search, nullptr);       // no callback: nothing to crash on
     dispatcher.Drain();
     UltraIM_SetEventDispatcher(nullptr);

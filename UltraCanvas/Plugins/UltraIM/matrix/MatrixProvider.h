@@ -10,6 +10,7 @@
 // are fetched as the message arrives, the rest when asked for, and a local
 // file is uploaded as a photo, a video or a file - encrypted (AES-256-CTR,
 // the m.file format) in an encrypted room.
+// Version: 0.2.4 - DeleteMessage's scope (for everyone only), GetDeleteChoices
 // Version: 0.2.3 - SearchMessages: a room's history read page by page and matched on this device
 // Version: 0.2.2 - preview pictures sent along; SetCreateEncrypted (tests)
 // Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
@@ -99,7 +100,11 @@ public:
                             UltraIMAttachmentCallback onResult) override;
     UltraIMResult EditMessage(const std::string& conversationId, const std::string& messageId,
                               const std::string& newText) override;
-    UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId) override;
+    // Matrix deletes for everyone (a redaction) or not at all: one's own messages.
+    UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                UltraIMDeleteScope scope) override;
+    UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
+                                          const std::string& messageId) const override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 

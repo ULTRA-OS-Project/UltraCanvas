@@ -1890,7 +1890,21 @@ UltraIMResult MatrixProvider::EditMessage(const std::string& conversationId, con
     return UltraIMResult::Ok();
 }
 
-UltraIMResult MatrixProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId) {
+UltraIMDeleteChoices MatrixProvider::GetDeleteChoices(const std::string& conversationId,
+                                                      const std::string& messageId) const {
+    UltraIMDeleteChoices choices;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = rooms_.find(conversationId);
+    if (it == rooms_.end()) return choices;
+    for (const auto& m : it->second.timeline) {
+        if (m.messageId == messageId) choices.forEveryone = m.isOwn && m.type != UltraIMMessageType::SystemEvent;
+    }
+    return choices;
+}
+
+UltraIMResult MatrixProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                            UltraIMDeleteScope scope) {
+    if (scope == UltraIMDeleteScope::ForMe) return Unsupported("deleting a message for yourself alone");
     std::shared_ptr<MatrixHttp> http = Http();
     if (!http) return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix");
     // The redaction arrives back through the sync as a MessageDelete.

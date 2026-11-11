@@ -59,6 +59,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.2.9 - a message's right-click menu: its file opened or saved, the message deleted for oneself or
+//                  for everyone, as its messenger allows
 // Version: 0.2.8 - recovery by the link e-mailed to the ID's address: ChatCube waits for it to be opened
 //                  and signs in by itself
 // Version: 0.2.7 - "Recover my ChatCube ID" on the sign-in page: the codes sent to the e-mail and phone
@@ -105,6 +107,7 @@ class UltraCanvasDropdown;
 class UltraCanvasImageElement;
 class UltraCanvasLabel;
 class UltraCanvasListView;
+class UltraCanvasMenu;
 class UltraCanvasQRCode;
 class UltraCanvasTextArea;
 class UltraCanvasTextInput;
@@ -208,6 +211,16 @@ private:
     // first when the provider has not yet (a video, a file).
     void OpenAttachment(int row);
     void ShowAttachment(const std::string& path);
+    // A right click on a message: its file opened or saved to a place of
+    // the user's choosing, and the message deleted - for oneself, for
+    // everyone - as far as its messenger's rules allow now
+    // (UltraIM_GetDeleteChoices).
+    void ShowMessageMenu(int row, int windowX, int windowY);
+    // The message's file copied to where the user says, fetched first when
+    // it is not on this computer yet.
+    void SaveAttachment(const UltraIMMessage& message);
+    void SaveAttachmentAs(const std::string& path, const std::string& name);
+    void DeleteMessage(const UltraIMMessage& message, UltraIMDeleteScope scope);
     void UpdateHeader();
     // The status line: what the last action said, then every network's own
     // state - "Added Bob · ChatCube: connected · Telegram: waiting for the
@@ -337,6 +350,7 @@ private:
     std::vector<StagedAttachment>                      staged_;
     int                                                stagedCount_ = 0;   // ids for the tiles
     UltraCanvas::UltraCanvasMediaViewerWindow          viewer_;         // a picture or a video, full size
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu>      messageMenu_;    // a message's right-click menu
     std::unique_ptr<ChatCubeProfileWindow>             profileWindow_;  // Edit profile
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
     std::string actionStatus_;

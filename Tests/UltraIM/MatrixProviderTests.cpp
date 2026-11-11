@@ -13,6 +13,7 @@
 // python3), unless ULTRAIM_TEST_MATRIX_REQUIRED is set (CI); the nio part
 // skips without matrix-nio[e2e] in that python, unless
 // ULTRAIM_TEST_MATRIX_NIO_REQUIRED is set.
+// Version: 0.2.4 - what can be deleted (one's own, for everyone only)
 // Version: 0.2.3 - searching a room (an encrypted one): words and kinds
 // Version: 0.2.2 - the same in a room created unencrypted, so both paths run in one build
 // Version: 0.2.1 - a picture, a video and a file each way
@@ -790,7 +791,15 @@ void TestEndToEnd() {
     CHECK(alice->SendText(dm.conversationId, "oops", o2));
     UltraIMEvent oops;
     CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }, &oops));
-    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId));
+    // Matrix's rules: one's own message, for everyone (a redaction) - there is no "for me".
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }));
+    UltraIMDeleteChoices choices = alice->GetDeleteChoices(dm.conversationId, oops.message.messageId);
+    CHECK(choices.forEveryone && !choices.forMe);
+    choices = bob->GetDeleteChoices(dm.conversationId, oops.message.messageId);
+    CHECK(!choices.forEveryone && !choices.forMe);
+    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId, UltraIMDeleteScope::ForMe).code ==
+          UltraIMResultCode::CapabilityMissing);
+    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId, UltraIMDeleteScope::ForEveryone));
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
         return e.type == UltraIMEventType::MessageDelete && e.message.messageId == oops.message.messageId;
     }));

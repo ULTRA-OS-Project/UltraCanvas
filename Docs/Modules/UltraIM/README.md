@@ -123,6 +123,28 @@ hand `UltraIM_SignIn("telegram", ...)` - set once on the server, never built
 into the application or typed by the user. `NotFound` when the service keeps
 none, `CapabilityMissing` from a provider without a service.
 
+**Deleting a message.** `UltraIM_DeleteMessage(provider, conversation, message, scope)`
+deletes for everyone (`UltraIMDeleteScope::ForEveryone`, the default) or for
+this account alone (`ForMe`); a `MessageDelete` event follows where the
+message is gone. Who may do which, and until when, is each messenger's own
+business, so an application does not decide it: it asks
+`UltraIM_GetDeleteChoices(provider, conversation, message)` what is possible
+for this message now and offers that - a delete outside it answers
+`PermissionDenied`, a scope the messenger does not have `CapabilityMissing`.
+
+```cpp
+const UltraIMDeleteChoices choices = UltraIM_GetDeleteChoices("direct", message.conversationId, message.messageId);
+if (choices.forMe)       { /* menu: Delete for me */ }
+if (choices.forEveryone) { /* menu: Delete for everyone */ }
+UltraIMResult r = UltraIM_DeleteMessage("direct", message.conversationId, message.messageId, UltraIMDeleteScope::ForMe);
+```
+
+| Provider | For me | For everyone |
+|---|---|---|
+| ChatCube Direct | any message, any time | the sender: a text until the other person has read it; a picture, video or file at any time; anything in a group at any time |
+| Matrix | not available | the sender, any time (a redaction) |
+| Telegram | any message | the sender (Telegram has the last word and may refuse) |
+
 **Searching the history.** `UltraIM_SearchMessages(provider, search, cb)`
 finds messages by their words, or everything of one kind - the
 *Media / Files / Links* tabs of a conversation - for a provider with the
@@ -322,7 +344,8 @@ version 2 (2026-11) added the account profile and the sign-in protection,
 `UltraIMCredentials::email`, and the check itself (version 1 had grown
 three interface methods with no bump); version 3 confirming the e-mail (by
 a link) and the phone (by a code), and account recovery by an e-mailed link;
-version 4 `SearchMessages` and its types.
+version 4 `SearchMessages` and its types; version 5 `DeleteMessage`'s
+scope and `GetDeleteChoices`.
 
 ## Provider: ChatCube Direct
 
@@ -352,6 +375,21 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
 - **Local record:** contacts and their keys, conversations, history and the
   outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
   `FetchMessages` answers from it; nothing waits for the network.
+- **Deleting** (`DeleteMessage`, `GetDeleteChoices`): anyone deletes any
+  message for themselves. For everyone, its sender deletes a text until
+  the other person has read it, a picture, video or file at any time, and
+  anything in a group at any time (a group has no read receipts). The
+  message leaves the record with its note in the `links` table, the copies
+  and file parts still in the outbox and the file it brought into the cache
+  (never a file of the user's own that was sent from where it lies); the
+  conversation's last line and unread count follow. The others are told
+  with a `delete` body - sealed and signed like a message, over the link or
+  through the relay's queue, so someone away hears of it when back. The
+  receiving side holds the request to the same rules: only what the asker
+  sent, and a text already read here stays here - reading that happened
+  while the read receipt could not travel still counts. A message or a file
+  deleted before all of it arrived is noted (`deleted`), and dropped when
+  the rest comes.
 - **Search:** `SearchMessages` is a query on that record - one conversation
   or all of them, narrowed in the database by conversation and kind (an
   index each) and matched by words on the way out, where upper and lower

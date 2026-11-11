@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.8 - deleting a message for oneself or for everyone: UltraIMDeleteScope, UltraIMDeleteChoices
 // Version: 0.1.7 - searching messages: UltraIMSearchKind, UltraIMMessageSearch, UltraIMSearchPage,
 //                  UltraIMSearchCallback, the SearchMessages capability
 // Version: 0.1.6 - account recovery by a link e-mailed to the confirmed address (UltraIMRecoveryAnswer
@@ -91,6 +92,27 @@ struct UltraIMMessage {
     UltraIMDeliveryStatus deliveryStatus = UltraIMDeliveryStatus::Sent;
 
     std::vector<std::pair<std::string, int>> reactions; // emoji -> count
+};
+
+// ============================================================================
+// DELETING MESSAGES
+// ============================================================================
+
+// Whom a message is deleted for (UltraIM_DeleteMessage).
+enum class UltraIMDeleteScope {
+    ForEveryone,    // gone from every member's device (and the service, where it keeps one)
+    ForMe           // gone from this account's own history; the others keep it
+};
+
+// What can be done to one message now (UltraIM_GetDeleteChoices). Every
+// messenger has rules of its own, so the provider says: ChatCube Direct
+// lets the sender delete a text for everyone until the other person has read
+// it and a picture, video or file at any time, in a group always, and
+// anyone delete anything for themselves; Matrix knows only "for everyone".
+// A menu offers what is true here and nothing else.
+struct UltraIMDeleteChoices {
+    bool forMe = false;
+    bool forEveryone = false;
 };
 
 // ============================================================================

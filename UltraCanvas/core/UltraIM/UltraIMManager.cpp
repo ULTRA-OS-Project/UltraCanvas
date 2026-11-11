@@ -1,5 +1,6 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.6 - UltraIM_DeleteMessage's scope, UltraIM_GetDeleteChoices
 // Version: 0.1.5 - UltraIM_SearchMessages
 // Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
 // Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
@@ -710,10 +711,17 @@ void UltraIM_DownloadAttachment(const std::string& providerId, const std::string
 }
 
 UltraIMResult UltraIM_DeleteMessage(const std::string& providerId, const std::string& conversationId,
-                                    const std::string& messageId) {
+                                    const std::string& messageId, UltraIMDeleteScope scope) {
     ProviderPtr provider = FindProvider(providerId);
     if (!provider) return NotFound(providerId);
-    return provider->DeleteMessage(conversationId, messageId);
+    return provider->DeleteMessage(conversationId, messageId, scope);
+}
+
+UltraIMDeleteChoices UltraIM_GetDeleteChoices(const std::string& providerId, const std::string& conversationId,
+                                              const std::string& messageId) {
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return UltraIMDeleteChoices();
+    return provider->GetDeleteChoices(conversationId, messageId);
 }
 
 UltraIMResult UltraIM_EditMessage(const std::string& providerId, const std::string& conversationId,
