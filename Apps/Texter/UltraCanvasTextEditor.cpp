@@ -1,5 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.6.0 - the look is the framework theme's: taken at construction and on every theme change; ToggleTheme writes
+//                  Appearance.conf's look (or flips the Light / Dark policy of a --dark run); darkTheme no longer saved
 // Version: 2.5.1 - a failed save says why in a whole translated sentence (SaveFailureReason no longer puts an English phrase into "The file {0}.")
 // Version: 2.5.0 - every text a person reads goes through Tr / TrF / TrN (the menus,
 //                  the toolbars' tooltips, the dialogs, the status line, the About box);
@@ -16,13 +18,15 @@
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasTextEditor.h"
+#include "UltraCanvasAppearanceSettings.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasLanguageDetect.h"
 #include "UltraCanvasDataFolder.h"   // UltraCanvasDataFolder
 #include "UltraCanvasMenu.h"
@@ -322,6 +326,7 @@ namespace {
 
 // ===== DESTRUCTOR =====
     UltraCanvasTextEditor::~UltraCanvasTextEditor() {
+        if (themeChangeHandler) UltraCanvasTheme::RemoveChangeHandler(themeChangeHandler);
         CancelAsyncMatchCount();
         ShutdownSpellChecker();
     }
@@ -418,7 +423,7 @@ namespace {
             const TextEditorConfig& cfg)
             : UltraCanvasWindow()
             , config(cfg)
-            , isDarkTheme(cfg.darkTheme)
+            , isDarkTheme(UltraCanvasTheme::Current().dark)
             , isDocumentClosing(false)
             , nextDocumentId(0)
             , activeDocumentIndex(-1)
@@ -5435,22 +5440,39 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         return doc ? doc->language : "Plain Text";
     }
 
-    void UltraCanvasTextEditor::ApplyDarkTheme() {
-        isDarkTheme = true;
-        ApplyThemeToAllDocuments();
-    }
-
-    void UltraCanvasTextEditor::ApplyLightTheme() {
-        isDarkTheme = false;
-        ApplyThemeToAllDocuments();
+    void UltraCanvasTextEditor::FollowTheme() {
+        if (themeChangeHandler) return;
+        themeChangeHandler = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme& theme) {
+            if (isDarkTheme == theme.dark) return;
+            isDarkTheme = theme.dark;
+            ApplyThemeToAllDocuments();
+            RequestRedraw();
+        });
     }
 
     void UltraCanvasTextEditor::ToggleTheme() {
-        isDarkTheme = !isDarkTheme;
-        ApplyThemeToAllDocuments();
-        SaveConfig();
-        if (onThemeChanged) {
-            onThemeChanged(isDarkTheme);
+        // The look is the theme's: the other one is asked of the policy,
+        // which every window of this program and every other application
+        // follow. Under the Light or Dark policy (--dark) the policy itself
+        // flips for this run; under FollowHost the choice goes into
+        // Appearance.conf, where UOS-Settings' Look page keeps it, and the
+        // host is read again at once (the settings watcher would too).
+        UltraCanvasApplication* app = UltraCanvasApplication::GetInstance();
+        const bool wantDark = !isDarkTheme;
+        if (app && (app->GetThemePolicy() == ThemePolicy::Light || app->GetThemePolicy() == ThemePolicy::Dark)) {
+            app->SetThemePolicy(wantDark ? ThemePolicy::Dark : ThemePolicy::Light);
+            return;
+        }
+        AppearanceSettings settings = AppearanceSettings::Load();
+        settings.look = wantDark ? "dark" : "light";
+        if (settings.Save()) {
+            if (app) app->RefreshHostAppearance();
+        } else {
+            // No settings folder to write: this run's theme flips for its
+            // windows, as a choice nobody else can see.
+            UltraCanvasTheme theme = wantDark ? UltraCanvasTheme::Dark() : UltraCanvasTheme::Light();
+            if (app) theme.TakeHostFonts(app->GetHostAppearance());
+            UltraCanvasTheme::SetCurrent(theme);
         }
     }
 
@@ -5783,12 +5805,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         windowConfig.title = cfg.title;
         windowConfig.width = cfg.width;
         windowConfig.height = cfg.height;
-        windowConfig.backgroundColor = cfg.darkTheme ? Color(30, 30, 30) : Color(240, 240, 240);
+        windowConfig.backgroundColor = UltraCanvasTheme::Current().dark ? Color(30, 30, 30) : Color(240, 240, 240);
         windowConfig.deleteOnClose = true;
         if (!editor->Create(windowConfig)) {
             return false;
         }
-        editor->SetBackgroundColor(cfg.darkTheme ? Color(30, 30, 30, 255) : Color(240, 240, 240, 255));
+        editor->SetBackgroundColor(UltraCanvasTheme::Current().dark ? Color(30, 30, 30, 255) : Color(240, 240, 240, 255));
+        editor->FollowTheme();
         editor->Show();
         return true;
     }
@@ -5803,16 +5826,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         return editor;
     }
 
-    std::shared_ptr<UltraCanvasTextEditor> CreateDarkTextEditor()
-    {
-        TextEditorConfig config;
-        config.darkTheme = true;
-        auto editor = std::make_shared<UltraCanvasTextEditor>(config);
-        if (!InitTextEditorWindow(editor, config)) {
-            return nullptr;
-        }
-        return editor;
-    }
 
     void UltraCanvasTextEditor::HandleDragEnter(const UCEvent& event) {
         isDragOverActive = true;
@@ -6101,7 +6114,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.Load();
 
         // Apply loaded settings to TextEditorConfig
-        config.darkTheme = configFile.GetBool("darkTheme", config.darkTheme);
         config.showLineNumbers = configFile.GetBool("showLineNumbers", config.showLineNumbers);
         config.wordWrap = configFile.GetBool("wordWrap", config.wordWrap);
         config.showHiddenCharacters = configFile.GetBool("showHiddenCharacters", config.showHiddenCharacters);
@@ -6120,7 +6132,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::SaveConfig() {
-        configFile.SetBool("darkTheme", isDarkTheme);
         configFile.SetBool("showLineNumbers", config.showLineNumbers);
         configFile.SetBool("wordWrap", config.wordWrap);
         configFile.SetBool("showHiddenCharacters", config.showHiddenCharacters);
