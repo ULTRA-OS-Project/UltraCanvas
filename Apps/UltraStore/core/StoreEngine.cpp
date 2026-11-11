@@ -146,7 +146,7 @@ Result<InstallOutcome> StoreEngine::Update(const Catalog& catalog, std::string_v
     }
     if (!PurchaseCovers(appId, *res.release)) {
         const auto licence = registry_.GetLicence(appId);
-        const auto terms = licence ? ParseLicence(licence.Value().token) : Result<Licence>::Failure(ErrorCode::NotFound, Tr(""));
+        const auto terms = licence ? ParseLicence(licence.Value().token) : Result<Licence>::Failure(ErrorCode::NotFound, "");
         return R::Failure(ErrorCode::NotAvailable, TrF("{0} is not in your purchase: buy the update to install it", app->name + " " + res.release->version),
                           terms ? terms.Value().UpdateTerms() : std::string());
     }

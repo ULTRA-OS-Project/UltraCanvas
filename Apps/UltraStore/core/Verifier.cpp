@@ -61,7 +61,7 @@ Result<void> VerifyCatalogSignature(const std::string& catalogBytes,
         const UltraCryptResult r = UltraCrypt_Verify(kAlgorithm, key, catalogBytes.data(),
                                                      catalogBytes.size(), signature);
         if (r) return Result<void>::Succeed();
-        if (r.code == UltraCryptResultCode::BackendUnavailable) return CryptoResult(r, ErrorCode::Internal, Tr(""));
+        if (r.code == UltraCryptResultCode::BackendUnavailable) return CryptoResult(r, ErrorCode::Internal, "");
         lastDetail = r.message;
     }
     return Result<void>::Failure(ErrorCode::SignatureInvalid,

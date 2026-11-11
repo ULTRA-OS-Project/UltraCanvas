@@ -39,7 +39,6 @@
     "{0} KB",
     "{0} MB"
   ],
-  "": "",
   "\"{0}\" is still running. Cancel it and close UltraStore?\nA download continues where it stopped the next time; nothing is left half installed.": "\"{0}\" is still running. Cancel it and close UltraStore?\nA download continues where it stopped the next time; nothing is left half installed.",
   "(from the command line)": "(from the command line)",
   "(in force)": "(in force)",
