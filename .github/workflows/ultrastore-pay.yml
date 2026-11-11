@@ -1,5 +1,6 @@
 # The UltraStore payment service (Server/UltraStorePay): its tests, on
-# every change to it. Pure Python, no system packages.
+# every change to it, on both databases: SQLite (tests and development)
+# and PostgreSQL (production), the latter as a service container.
 name: UltraStore payment service
 
 on:
@@ -12,13 +13,28 @@ on:
 jobs:
   test:
     runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ultrastore_pay
+          POSTGRES_PASSWORD: ultrastore_pay
+          POSTGRES_DB: ultrastore_pay_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ultrastore_pay"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: Server/UltraStorePay
+    env:
+      ULTRASTORE_PAY_TEST_PG_URL: postgresql://ultrastore_pay:ultrastore_pay@127.0.0.1:5432/ultrastore_pay_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -e '.[test]'
+      - run: pip install -e '.[test,postgres]'
       - run: python -m pytest -q
