@@ -480,11 +480,23 @@ void TestStartupDefaults() {
     Check(!reread.StartsWithDesktop("UltraNotifications") && reread.StartsWithDesktop("UltraMail"),
           "UltraNotifications unticked stays unticked");
 
-    // An empty list written with the default applied means none.
+    // A file from after UltraNotifications' default but before UltraSnip's
+    // gains UltraSnip once, and keeps it unticked after that.
+    DesktopSettings level1;
+    Check(level1.FromJson(R"({"startWithDesktop":["UltraMail"],"startupDefaults":1})", &error) &&
+              level1.StartsWithDesktop("UltraSnip") && level1.StartsWithDesktop("UltraMail") &&
+              !level1.StartsWithDesktop("UltraNotifications"),
+          "a file at the first default gains UltraSnip once, and nothing else");
+    level1.SetStartsWithDesktop("UltraSnip", false);
+    DesktopSettings level1Again;
+    Check(level1Again.FromJson(level1.ToJson(), &error) && !level1Again.StartsWithDesktop("UltraSnip"),
+          "UltraSnip unticked stays unticked");
+
+    // An empty list written with the defaults applied means none.
     DesktopSettings none;
-    Check(none.FromJson(R"({"startWithDesktop":[],"startupDefaults":1})", &error) &&
+    Check(none.FromJson(R"({"startWithDesktop":[],"startupDefaults":2})", &error) &&
               none.startWithDesktop.empty(),
-          "an empty list, the default applied, starts nothing");
+          "an empty list, the defaults applied, starts nothing");
 }
 
 int main() {
