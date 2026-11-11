@@ -878,8 +878,15 @@ for (const std::string& line : lines) {
 
 Strings do not continue across a real line break, so C's `\`-continued
 strings and Python's triple-quoted strings are still coloured on their first
-line only. Fenced code blocks in Markdown mode are highlighted line by line
-without state.
+line only.
+
+In Markdown mode the lines of a fenced code block (```` ```cpp ````) carry the
+state the same way, with the fence's language: a `/* comment */` over several
+lines is coloured on all of them. The opening fence starts every block empty,
+so a comment left open in one block ends at its closing fence. The raw line
+under the cursor is read with the Markdown rules and starts empty too - it
+never takes a code block's state. Indented (four-space) code blocks are not
+highlighted.
 
 ### Single Selection
 The text area has one cursor and one selection; there is no multi-cursor API.

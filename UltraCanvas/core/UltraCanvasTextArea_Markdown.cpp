@@ -1501,6 +1501,9 @@ namespace UltraCanvas {
 
             // Apply per-token syntax highlighting on code-content lines using the shared
             // codeBlockTokenizer (lazy-created, language switched only when it changes).
+            // Each line continues from what the line above left open (a /* comment */
+            // over several lines); the opening fence leaves nothing open, so a block
+            // never inherits state from the one before it.
             if (cl->layoutType == LineLayoutType::CodeblockContent &&
                 !cl->codeblockLanguage.empty()) {
                 if (!codeBlockTokenizer) {
@@ -1512,7 +1515,11 @@ namespace UltraCanvas {
                     }
                     codeBlockTokenizerLang = cl->codeblockLanguage;
                 }
-                auto tokens = codeBlockTokenizer->TokenizeLine(rawLine);
+                SyntaxLineState state = SyntaxStateBefore(lineIndex);
+                cl->syntaxEntry = state;
+                cl->syntaxTracked = true;
+                auto tokens = codeBlockTokenizer->TokenizeLine(rawLine, state);
+                cl->syntaxExit = state;
                 int currentByte = 0;
                 for (const auto& token : tokens) {
                     int startByte = currentByte;
