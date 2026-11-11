@@ -139,6 +139,13 @@ code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy
 code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>
 sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list
 sale sync [--from <url>] [--token <t>]                   the paid orders and the subscriptions' renewals from the payment service, once each
+market standing                                          where this merchant stands at the marketplace: active, paused (terms), suspended; strikes
+market submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]
+                                                         the app as saved here, signed, to the operator's review
+market submissions | withdraw <submission>               every submission with its last decision; one taken back
+market notices [--all] | ack <notice>                    the operator's notices (the unacknowledged, or all); one acknowledged
+market terms [accept <version> --by <name>]              the terms in force; an acceptance
+market reports                                           the reports about this merchant, the reporter removed by the service
 ```
 
 The payment service is named in the settings: `payment.url` (its base,
@@ -148,6 +155,24 @@ public half of its licence key, `GET /v1/keys`, published as
 bearer token for `sale sync`, or `ULTRASTORE_PAY_ADMIN_TOKEN`), and
 `payment.sales_seq`, which `sale sync` keeps for itself. The window's
 *Affiliates and codes* page has *Sync sales*.
+
+**The marketplace** (`Market.h`; the marketplace service, `Server/UltraStoreMarket`,
+its README) is named by `market.url` (the service's base) and
+`market.merchant_id` (the id the operator registered this backend under,
+with the public half of its key); `market.key` names the key that signs,
+the first active one when empty. Every `market` request is signed with
+that key - `Authorization: Merchant <id>:<timestamp>:<signature>` over
+the method, the path, the timestamp and the body, as the service's
+`auth.py` verifies it - so the passphrase is asked for as it is for
+`publish`. A submission carries the app's component object as
+`PutComponent` reads it back, a signature over its canonical JSON (keys
+sorted, no spaces, UTF-8 as it is: `CanonicalJson`, the same bytes the
+service's `canonical()` writes), and the packages by file (the path
+under the packages server), SHA-256 and size. The window's *Marketplace*
+page does the same with a passphrase field - the standing, the notices
+with *Acknowledge*, the terms with *Accept the terms*, *Submit a release*,
+the submissions, the reports - and the operator's unacknowledged notices
+show as a banner above every page until acknowledged.
 
 A passphrase comes from `--passphrase`, else `ULTRASTOREADMIN_PASSPHRASE`,
 else a line on standard input; the upload's password from `--password`,
@@ -243,7 +268,11 @@ Hello.
    *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
    sales into the ledger, the catalog naming the service from the
    `payment.*` settings.
-6. **The marketplace** (the store's README, *The operator tier*): `submit`
-   sends a release to the operator's service signed with this backend's
-   key; the notices banner and the *Terms* page read from it; `publish`
-   stays for a private or test catalog.
+6. **The marketplace** (the store's README, *The operator tier*): the
+   `market` commands and the window's *Marketplace* page (*The command
+   line*): `market submit` sends a release to the operator's service
+   signed with this backend's key, the notices show as a banner until
+   acknowledged, the terms are read and accepted there, the standing and
+   the reports about this merchant are shown; `publish` stays for a
+   private or test catalog. Next: the packages uploaded into the
+   operator's package store with the submission.

@@ -734,10 +734,12 @@ from the merchant and an outcome line for the reporter, the notices and
 the strikes, the enforcement policy as a settings record, the suspensions
 by hand and by the policy, the terms versions and acceptances with the
 *paused* standing, and the hash-chained audit log with its verification;
-`GET /v1/released` is what the catalog is generated from. Still to come:
-the merchant backend's `submit` and its notices banner and *Terms* page,
-the operator's window, the store's report form, the publish that signs
-the catalog from the released submissions, the review pipeline.
+`GET /v1/released` is what the catalog is generated from. The merchant
+backend's side (its README, *The command line*): `market submit`, the
+notices banner, the terms accepted from the *Marketplace* page, the
+standing and the reports. Still to come: the operator's window, the
+store's report form, the publish that signs the catalog from the released
+submissions, the packages uploaded with a submission, the review pipeline.
 
 ## Milestones
 
