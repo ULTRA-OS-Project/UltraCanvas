@@ -1,7 +1,8 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
 // Version: 2.12.2 - alwaysOnTop and SetTransientParent say what each is for: a dialog is
-//                  kept above its parent, not above every application
+//                  kept above its parent, not above every application (on macOS too, as
+//                  the parent's child window)
 // Version: 2.12.1 - popups and the tooltip in windows of their own on macOS too; screen
 //                  coordinates are top-left there as everywhere
 // Version: 2.12.0 - every popup in a window of its own (WindowType::Popup) above every other
@@ -668,8 +669,10 @@ namespace UltraCanvas {
         // Declare this window a transient child of `parent` (dialogs, alerts).
         // Records the parent in the config; platform backends additionally tell
         // the window manager (X11 WM_TRANSIENT_FOR, the owner window on
-        // Windows) so the window is kept above its parent - and only above
-        // it - and treated as belonging to the parent's monitor.
+        // Windows; on macOS a dialog becomes a child window of the parent's
+        // NSWindow while both are shown, and moves with it) so the window is
+        // kept above its parent - and only above it - and treated as
+        // belonging to the parent's monitor.
         virtual void SetTransientParent(UltraCanvasWindowBase* parent);
 
         // Method chaining for fluent interface

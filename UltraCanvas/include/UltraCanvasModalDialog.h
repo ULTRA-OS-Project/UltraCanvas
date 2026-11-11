@@ -3,6 +3,7 @@
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
 // Version: 3.10.1 - DialogConfig is no longer alwaysOnTop: a dialog stayed above every other
 //                  application's windows on X11, macOS and Windows; it is kept above its parent
+//                  (WM_TRANSIENT_FOR, the owner window, a child window on macOS)
 // Version: 3.10.0 - FromTheme sets the message and details sizes; the SetStyle rule; a dialog that follows
 //                   by default takes the theme once built (a file dialog again after its browser)
 // Version: 3.9.1 - The dialog enums and FileFilter moved to UltraCanvasDialogTypes.h
@@ -174,8 +175,9 @@ namespace UltraCanvas {
             // windows (_NET_WM_STATE_ABOVE, WS_EX_TOPMOST, the floating
             // level), and a dialog belongs above its own window only. That
             // is the transient parent ShowModal gives it (WM_TRANSIENT_FOR on
-            // X11, the owner window on Windows), and a click on another of
-            // the application's windows raises the modal again.
+            // X11, the owner window on Windows, a child window of the
+            // parent's NSWindow on macOS), and a click on another of the
+            // application's windows raises the modal again.
             modal = true;
             deleteOnClose = true;
             backgroundColor = Colors::White;
