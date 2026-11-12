@@ -14,7 +14,6 @@
 // through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
-// Version: 0.4.1 - every text goes through Tr (UltraLocalisation)
 // Version: 0.4.0 - Networks > Relay: the relay server, no longer asked on the sign-in page
 // Version: 0.3.0 - Appearance > Look: System beside Light and Dark
 // Version: 0.2.0 - Networks > Proxy: the proxy Matrix and the relay are
@@ -41,7 +40,6 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
-#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cctype>
 #include <functional>
@@ -330,11 +328,11 @@ std::shared_ptr<UltraCanvasTextInput> MakeTextField(const std::string& id, const
 // ===== APPEARANCE > LOOK =====
 
 std::shared_ptr<UltraCanvasContainer> BuildLookPage(State* d) {
-    PageParts parts = MakePage("cc-set-page-look", Tr("Look"), Tr("The colours of the ChatCube window:"));
-    d->systemRadio = MakeChoice("cc-set-look-system", Tr("System - the computer's look, light or dark"),
+    PageParts parts = MakePage("cc-set-page-look", "Look", "The colours of the ChatCube window:");
+    d->systemRadio = MakeChoice("cc-set-look-system", "System - the computer's look, light or dark",
                                 d->settings->look == "system");
-    d->lightRadio = MakeChoice("cc-set-look-light", Tr("Light - dark text on warm white"), d->settings->look == "light");
-    d->darkRadio = MakeChoice("cc-set-look-dark", Tr("Dark - light text on a dark ground"), d->settings->look == "dark");
+    d->lightRadio = MakeChoice("cc-set-look-light", "Light - dark text on warm white", d->settings->look == "light");
+    d->darkRadio = MakeChoice("cc-set-look-dark", "Dark - light text on a dark ground", d->settings->look == "dark");
     d->lookGroup.AddRadioButton(d->systemRadio);
     d->lookGroup.AddRadioButton(d->lightRadio);
     d->lookGroup.AddRadioButton(d->darkRadio);
@@ -353,22 +351,22 @@ std::shared_ptr<UltraCanvasContainer> BuildLookPage(State* d) {
     };
 
     AddNote(parts, "cc-set-look-note1",
-            Tr("The look is chosen when ChatCube starts, since every part of the window takes its colours as "
+            "The look is chosen when ChatCube starts, since every part of the window takes its colours as "
             "it is built: a change here, or of the computer's look under System, shows the next time "
             "ChatCube is started. System is the computer's own light or dark mode, and the Look page of "
-            "UOS-Settings over it."));
+            "UOS-Settings over it.");
     AddNote(parts, "cc-set-look-note2",
-            Tr("Started with --dark, ChatCube is dark whatever is chosen here."));
+            "Started with --dark, ChatCube is dark whatever is chosen here.");
     return parts.page;
 }
 
 // ===== APPEARANCE > TIME & DATE =====
 
 std::shared_ptr<UltraCanvasContainer> BuildTimePage(State* d) {
-    PageParts parts = MakePage("cc-set-page-time", Tr("Time & date"),
-                               Tr("How a message's time is written, in the bubbles and the list of conversations:"));
-    d->clock24Radio = MakeChoice("cc-set-clock-24", Tr("14:05  (24-hour clock)"), d->settings->clock24);
-    d->clock12Radio = MakeChoice("cc-set-clock-12", Tr("2:05 PM  (12-hour clock)"), !d->settings->clock24);
+    PageParts parts = MakePage("cc-set-page-time", "Time & date",
+                               "How a message's time is written, in the bubbles and the list of conversations:");
+    d->clock24Radio = MakeChoice("cc-set-clock-24", "14:05  (24-hour clock)", d->settings->clock24);
+    d->clock12Radio = MakeChoice("cc-set-clock-12", "2:05 PM  (12-hour clock)", !d->settings->clock24);
     d->clockGroup.AddRadioButton(d->clock24Radio);
     d->clockGroup.AddRadioButton(d->clock12Radio);
     d->clockGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -379,7 +377,7 @@ std::shared_ptr<UltraCanvasContainer> BuildTimePage(State* d) {
     parts.body->AddChild(d->clock24Radio);
     parts.body->AddChild(d->clock12Radio);
 
-    AddBodyCaption(parts, "cc-set-date-caption", Tr("How a date is written, over the messages of each day:"));
+    AddBodyCaption(parts, "cc-set-date-caption", "How a date is written, over the messages of each day:");
     const DateStyle styles[] = {DateStyle::DayMonthYear, DateStyle::YearMonthDay, DateStyle::MonthDayYear};
     int n = 0;
     for (DateStyle style : styles) {
@@ -403,17 +401,17 @@ std::shared_ptr<UltraCanvasContainer> BuildTimePage(State* d) {
     };
 
     AddNote(parts, "cc-set-time-note1",
-            Tr("Times are this computer's local time. A change shows at once, in the open conversation too."));
+            "Times are this computer's local time. A change shows at once, in the open conversation too.");
     return parts.page;
 }
 
 // ===== MESSAGES > SENDING =====
 
 std::shared_ptr<UltraCanvasContainer> BuildSendingPage(State* d) {
-    PageParts parts = MakePage("cc-set-page-sending", Tr("Sending"), Tr("The key that sends what is typed in the message field:"));
-    d->enterRadio = MakeChoice("cc-set-send-enter", Tr("Enter sends - Shift+Enter starts a new line"),
+    PageParts parts = MakePage("cc-set-page-sending", "Sending", "The key that sends what is typed in the message field:");
+    d->enterRadio = MakeChoice("cc-set-send-enter", "Enter sends - Shift+Enter starts a new line",
                                !d->settings->ctrlEnterSends);
-    d->ctrlEnterRadio = MakeChoice("cc-set-send-ctrl", Tr("Ctrl+Enter sends - Enter starts a new line"),
+    d->ctrlEnterRadio = MakeChoice("cc-set-send-ctrl", "Ctrl+Enter sends - Enter starts a new line",
                                    d->settings->ctrlEnterSends);
     d->sendKeyGroup.AddRadioButton(d->enterRadio);
     d->sendKeyGroup.AddRadioButton(d->ctrlEnterRadio);
@@ -430,24 +428,24 @@ std::shared_ptr<UltraCanvasContainer> BuildSendingPage(State* d) {
     };
 
     AddNote(parts, "cc-set-send-note1",
-            Tr("Ctrl+Enter suits long messages of several paragraphs: Enter then breaks the line, as in a "
-            "text editor, and nothing goes before it is finished."));
+            "Ctrl+Enter suits long messages of several paragraphs: Enter then breaks the line, as in a "
+            "text editor, and nothing goes before it is finished.");
     AddNote(parts, "cc-set-send-note2",
-            Tr("The send button beside the field sends either way, with the pictures and files waiting above it."));
+            "The send button beside the field sends either way, with the pictures and files waiting above it.");
     return parts.page;
 }
 
 // ===== MESSAGES > TYPING =====
 
 std::shared_ptr<UltraCanvasContainer> BuildTypingPage(State* d) {
-    PageParts parts = MakePage("cc-set-page-typing", Tr("Typing"), Tr("What \"typing\xE2\x80\xA6\" tells, either way:"));
-    d->sendTypingSwitch = MakeSwitch("cc-set-typing-send", Tr("Tell the other side while I am typing"),
+    PageParts parts = MakePage("cc-set-page-typing", "Typing", "What \"typing\xE2\x80\xA6\" tells, either way:");
+    d->sendTypingSwitch = MakeSwitch("cc-set-typing-send", "Tell the other side while I am typing",
                                      d->settings->sendTyping, [d](bool on) {
         d->settings->sendTyping = on;
         ApplyAndSave(d);
     });
     parts.body->AddChild(d->sendTypingSwitch);
-    d->showTypingSwitch = MakeSwitch("cc-set-typing-show", Tr("Show when the other side is typing"),
+    d->showTypingSwitch = MakeSwitch("cc-set-typing-show", "Show when the other side is typing",
                                      d->settings->showTyping, [d](bool on) {
         d->settings->showTyping = on;
         ApplyAndSave(d);
@@ -461,11 +459,11 @@ std::shared_ptr<UltraCanvasContainer> BuildTypingPage(State* d) {
     };
 
     AddNote(parts, "cc-set-typing-note1",
-            Tr("Off, the other side sees nothing of your typing - only the message once it is sent. Every "
-            "network passes it on: ChatCube Direct, Matrix and Telegram."));
+            "Off, the other side sees nothing of your typing - only the message once it is sent. Every "
+            "network passes it on: ChatCube Direct, Matrix and Telegram.");
     AddNote(parts, "cc-set-typing-note2",
-            Tr("\"typing\xE2\x80\xA6\" shows under the name in the conversation's header, for a few seconds "
-               "after the other side's last key."));
+            "\"typing\xE2\x80\xA6\" shows under the name in the conversation's header, for a few seconds after "
+            "the other side's last key.");
     return parts.page;
 }
 
@@ -493,12 +491,12 @@ void FillAccounts(State* d) {
         if (account.providerId == "direct") {
             const std::string myId = d->hooks->myId ? d->hooks->myId() : std::string();
             if (!myId.empty()) {
-                auto idText = MakeText(id + "-id", TrF("My ChatCube ID: {0}", GroupUserId(myId)), kTextWidth - 26);
+                auto idText = MakeText(id + "-id", "My ChatCube ID: " + GroupUserId(myId), kTextWidth - 26);
                 idText->SetSelectable(true);
                 block->AddChild(idText);
                 auto row = MakeButtonRow(id + "-row");
                 row->size.width = CSSLayout::Dimension::Px(kTextWidth - 26);
-                row->AddChild(MakeButton(id + "-copy", Tr("Copy my ID"), 130, [d]() {
+                row->AddChild(MakeButton(id + "-copy", "Copy my ID", 130, [d]() {
                     if (d->hooks->copyMyId) d->hooks->copyMyId();
                 }, "copy"));
                 block->AddChild(row);
@@ -508,11 +506,11 @@ void FillAccounts(State* d) {
             row->size.width = CSSLayout::Dimension::Px(kTextWidth - 26);
             const std::string providerId = account.providerId;
             const std::string networkName = account.name;
-            row->AddChild(MakeButton(id + "-signout", Tr("Sign out"), 110, [d, providerId, networkName]() {
+            row->AddChild(MakeButton(id + "-signout", "Sign out", 110, [d, providerId, networkName]() {
                 UltraCanvasAlert::Confirm(
-                    TrF("Sign out of {0}? Its conversations leave the list, and signing in again asks for the "
-                        "password or the code once more.", networkName),
-                    Tr("ChatCube - Sign out"),
+                    "Sign out of " + networkName + "? Its conversations leave the list, and signing in again "
+                    "asks for the password or the code once more.",
+                    "ChatCube - Sign out",
                     [d, providerId](bool yes) {
                         if (!yes || d->closed) return;
                         if (d->hooks->signOut) d->hooks->signOut(providerId);
@@ -528,7 +526,7 @@ void FillAccounts(State* d) {
 }
 
 std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
-    PageParts parts = MakePage("cc-set-page-accounts", Tr("Accounts"), Tr("The networks ChatCube talks through, and where each stands:"));
+    PageParts parts = MakePage("cc-set-page-accounts", "Accounts", "The networks ChatCube talks through, and where each stands:");
     d->accountsBox = std::make_shared<UltraCanvasContainer>("cc-set-accounts");
     d->accountsBox->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Start);
     d->accountsBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -536,20 +534,20 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
     FillAccounts(d);
 
     AddNote(parts, "cc-set-accounts-note1",
-            Tr("Signing in to Matrix or Telegram is done from the sidebar, with the Matrix and Telegram buttons "
-            "under your ChatCube ID."));
+            "Signing in to Matrix or Telegram is done from the sidebar, with the Matrix and Telegram buttons "
+            "under your ChatCube ID.");
     AddNote(parts, "cc-set-accounts-note2",
-            Tr("Your ChatCube ID is a key made on this computer and has no password; there is nothing to sign "
-            "out of. Send the ID to the people who should reach you."));
+            "Your ChatCube ID is a key made on this computer and has no password; there is nothing to sign "
+            "out of. Send the ID to the people who should reach you.");
     return parts.page;
 }
 
 // ===== NETWORKS > RELAY =====
 
 std::shared_ptr<UltraCanvasContainer> BuildRelayPage(State* d) {
-    PageParts parts = MakePage("cc-set-page-relay", Tr("Relay"),
-                               Tr("The relay server ChatCube Direct signs in through:"));
-    d->relayInput = MakeTextField("cc-set-relay", Tr("e.g. https://relay.example.org"), kTextWidth);
+    PageParts parts = MakePage("cc-set-page-relay", "Relay",
+                               "The relay server ChatCube Direct signs in through:");
+    d->relayInput = MakeTextField("cc-set-relay", "e.g. https://relay.example.org", kTextWidth);
     d->relayInput->SetText(d->settings->relayServer);
     // Saved as it is typed; used from the next sign-in.
     d->relayInput->onTextChanged = [d](const std::string& text) {
@@ -567,21 +565,21 @@ std::shared_ptr<UltraCanvasContainer> BuildRelayPage(State* d) {
     };
 
     AddNote(parts, "cc-set-relay-note1",
-            TrF("The relay connects you with your contacts, keeps messages for the people who are offline and "
-                "sends the links that bring an ID back. Messages are end-to-end encrypted: the relay cannot read "
-                "them. ULTRA OS's own relay is {0}.", Settings::kDefaultRelay));
+            std::string("The relay connects you with your contacts, keeps messages for the people who are "
+                        "offline and sends the links that bring an ID back. Messages are end-to-end encrypted: "
+                        "the relay cannot read them. ULTRA OS's own relay is ") + Settings::kDefaultRelay + ".");
     AddNote(parts, "cc-set-relay-note2",
-            Tr("A change is used from the next sign-in - the next start of ChatCube. Empty: the relay this "
-            "computer used last, or, when there was none, the local network only."));
+            "A change is used from the next sign-in - the next start of ChatCube. Empty: the relay this "
+            "computer used last, or, when there was none, the local network only.");
     return parts.page;
 }
 
 // ===== NETWORKS > LOCAL NETWORK =====
 
 std::shared_ptr<UltraCanvasContainer> BuildLocalNetworkPage(State* d) {
-    PageParts parts = MakePage("cc-set-page-local", Tr("Local network"),
-                               Tr("The ChatCubes on this network that are not your contacts yet:"));
-    d->showNearbySwitch = MakeSwitch("cc-set-nearby", Tr("List them in the sidebar, under \"On this network\""),
+    PageParts parts = MakePage("cc-set-page-local", "Local network",
+                               "The ChatCubes on this network that are not your contacts yet:");
+    d->showNearbySwitch = MakeSwitch("cc-set-nearby", "List them in the sidebar, under \"On this network\"",
                                      d->settings->showNearby, [d](bool on) {
         d->settings->showNearby = on;
         ApplyAndSave(d);
@@ -593,33 +591,33 @@ std::shared_ptr<UltraCanvasContainer> BuildLocalNetworkPage(State* d) {
     };
 
     AddNote(parts, "cc-set-local-note1",
-            Tr("Each one listed has an Add button, so a person in the same room or office becomes a contact "
-            "without typing their ID."));
+            "Each one listed has an Add button, so a person in the same room or office becomes a contact "
+            "without typing their ID.");
     AddNote(parts, "cc-set-local-note2",
-            Tr("Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is "
+            "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is "
             "made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they "
-            "are still found - only not listed."));
+            "are still found - only not listed.");
     return parts.page;
 }
 
 // ===== EXTRAS > DATA FOLDER =====
 
 std::shared_ptr<UltraCanvasContainer> BuildDataFolderPage(State* d) {
-    PageParts parts = MakePage("cc-set-page-data", Tr("Data folder"), Tr("Where ChatCube keeps what is yours:"));
+    PageParts parts = MakePage("cc-set-page-data", "Data folder", "Where ChatCube keeps what is yours:");
     auto path = MakeText("cc-set-data-path", d->dataFolder);
     path->SetFontWeight(FontWeight::Bold);
     path->SetSelectable(true);
     parts.body->AddChild(path);
     auto row = MakeButtonRow("cc-set-data-row");
-    row->AddChild(MakeButton("cc-set-data-open", Tr("Open the folder"), 150, [d]() {
+    row->AddChild(MakeButton("cc-set-data-open", "Open the folder", 150, [d]() {
         std::string error;
         const bool opened = FileAssociations::OpenWithDefaultApplication({d->dataFolder}, error);
-        d->dataStatus->SetText(opened ? std::string() : TrF("The folder could not be opened: {0}", error));
+        d->dataStatus->SetText(opened ? std::string() : "The folder could not be opened: " + error);
         if (d->window) d->window->RequestRedraw();
     }));
-    row->AddChild(MakeButton("cc-set-data-copy", Tr("Copy the path"), 140, [d]() {
-        d->dataStatus->SetText(SetClipboardText(d->dataFolder) ? Tr("The path is on the clipboard.")
-                                                               : Tr("The clipboard could not be written."));
+    row->AddChild(MakeButton("cc-set-data-copy", "Copy the path", 140, [d]() {
+        d->dataStatus->SetText(SetClipboardText(d->dataFolder) ? "The path is on the clipboard."
+                                                               : "The clipboard could not be written.");
         if (d->window) d->window->RequestRedraw();
     }, "copy"));
     parts.body->AddChild(row);
@@ -628,26 +626,26 @@ std::shared_ptr<UltraCanvasContainer> BuildDataFolderPage(State* d) {
 
     const std::string settingsFile = Settings::File();
     if (!settingsFile.empty()) {
-        AddBodyCaption(parts, "cc-set-data-settings-caption", Tr("These settings are kept in:"));
+        AddBodyCaption(parts, "cc-set-data-settings-caption", "These settings are kept in:");
         auto file = MakeText("cc-set-data-settings", settingsFile);
         file->SetSelectable(true);
         parts.body->AddChild(file);
     }
 
     AddNote(parts, "cc-set-data-note1",
-            Tr("The data folder holds your ChatCube ID's key vault, your contacts and the history of your "
+            "The data folder holds your ChatCube ID's key vault, your contacts and the history of your "
             "conversations, the Matrix and Telegram sessions, and in cache/ the pictures and files of the "
-            "messages."));
+            "messages.");
     AddNote(parts, "cc-set-data-note2",
-            Tr("Keep it safe: the key vault is your ChatCube ID. Copied to another computer with the folder, "
-            "the ID moves with it."));
+            "Keep it safe: the key vault is your ChatCube ID. Copied to another computer with the folder, "
+            "the ID moves with it.");
     return parts.page;
 }
 
 // ===== EXTRAS > ABOUT =====
 
 std::shared_ptr<UltraCanvasContainer> BuildAboutPage(State* d) {
-    PageParts parts = MakePage("cc-set-page-about", Tr("About"), Tr("ChatCube - the ULTRA OS messenger"));
+    PageParts parts = MakePage("cc-set-page-about", "About", "ChatCube - the ULTRA OS messenger");
     auto row = std::make_shared<UltraCanvasContainer>("cc-set-about-row");
     row->layout.SetFlexRow().SetFlexGap(14).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -664,35 +662,35 @@ std::shared_ptr<UltraCanvasContainer> BuildAboutPage(State* d) {
     auto name = MakeLabel("cc-set-about-name", "ChatCube " + d->version, 13.0f);
     name->SetFontWeight(FontWeight::Bold);
     column->AddChild(name);
-    column->AddChild(MakeLabel("cc-set-about-line", Tr("UltraCanvas Framework / ULTRA OS"), kTextFontSize, L().inkMuted));
+    column->AddChild(MakeLabel("cc-set-about-line", "UltraCanvas Framework / ULTRA OS", kTextFontSize, L().inkMuted));
     row->AddChild(column);
     parts.body->AddChild(row);
 
     AddNote(parts, "cc-set-about-note1",
-            Tr("Chat directly with the people you know - end-to-end encrypted, peer to peer when both of you "
+            "Chat directly with the people you know - end-to-end encrypted, peer to peer when both of you "
             "are online, through a relay when the other person is not. There is no account and no "
-            "password: your ChatCube ID is a key made on this computer."));
+            "password: your ChatCube ID is a key made on this computer.");
     AddNote(parts, "cc-set-about-note2",
-            Tr("Matrix and Telegram join the same list. Each network is an UltraIM module beside the program "
-            "(Plugins/UltraIM)."));
+            "Matrix and Telegram join the same list. Each network is an UltraIM module beside the program "
+            "(Plugins/UltraIM).");
     return parts.page;
 }
 
 // ===== START PAGE =====
 
 std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
-    PageParts parts = MakePage("cc-set-page-start", Tr("Settings"), Tr("Open a section on the left and choose the page to set:"));
+    PageParts parts = MakePage("cc-set-page-start", "Settings", "Open a section on the left and choose the page to set:");
     AddNote(parts, "cc-set-start-note1",
-            Tr("Appearance - the light or the dark look, and how times and dates are written."));
+            "Appearance - the light or the dark look, and how times and dates are written.");
     AddNote(parts, "cc-set-start-note2",
-            Tr("Messages - the key that sends, and whether typing is shown, to the other side and to you."));
+            "Messages - the key that sends, and whether typing is shown, to the other side and to you.");
     AddNote(parts, "cc-set-start-note3",
-            Tr("Networks - your ChatCube ID, the Matrix and Telegram accounts and signing out of them, the "
-            "people on this network, the proxy and the relay server."));
+            "Networks - your ChatCube ID, the Matrix and Telegram accounts and signing out of them, the "
+            "people on this network, the proxy and the relay server.");
     AddNote(parts, "cc-set-start-note4",
-            Tr("Extras - the folder ChatCube keeps your identity, contacts and history in, and the version."));
+            "Extras - the folder ChatCube keeps your identity, contacts and history in, and the version.");
     AddNote(parts, "cc-set-start-note5",
-            Tr("Every change applies straight away and is saved; there is nothing to confirm."));
+            "Every change applies straight away and is saved; there is nothing to confirm.");
     return parts.page;
 }
 
@@ -719,7 +717,7 @@ void AddPage(State* d, const char* pageId, const std::shared_ptr<UltraCanvasCont
     d->pageArea->AddChild(page);
 }
 
-void AddTreeNode(State* d, const char* parentId, const char* id, const std::string& text) {
+void AddTreeNode(State* d, const char* parentId, const char* id, const char* text) {
     TreeNodeData data;
     data.nodeId = id;
     data.text = text;
@@ -728,7 +726,7 @@ void AddTreeNode(State* d, const char* parentId, const char* id, const std::stri
 
 void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     WindowConfig wc;
-    wc.title = Tr("ChatCube - Settings");
+    wc.title = "ChatCube - Settings";
     wc.width = kWindowWidth;
     wc.height = kWindowHeight;
     wc.resizable = true;
@@ -768,22 +766,22 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
 
     TreeNodeData rootData;
     rootData.nodeId = "settings";
-    rootData.text = Tr("Settings");
+    rootData.text = "Settings";
     d->tree->SetRootNode(rootData);
-    AddTreeNode(d, "settings", kPageAppearance, Tr("Appearance"));
-    AddTreeNode(d, kPageAppearance, kPageLook, Tr("Look"));
-    AddTreeNode(d, kPageAppearance, kPageTime, Tr("Time & date"));
-    AddTreeNode(d, "settings", kPageMessages, Tr("Messages"));
-    AddTreeNode(d, kPageMessages, kPageSending, Tr("Sending"));
-    AddTreeNode(d, kPageMessages, kPageTyping, Tr("Typing"));
-    AddTreeNode(d, "settings", kPageNetworks, Tr("Networks"));
-    AddTreeNode(d, kPageNetworks, kPageAccounts, Tr("Accounts"));
-    AddTreeNode(d, kPageNetworks, kPageLocal, Tr("Local network"));
-    AddTreeNode(d, kPageNetworks, kPageProxy, Tr("Proxy"));
-    AddTreeNode(d, kPageNetworks, kPageRelay, Tr("Relay"));
-    AddTreeNode(d, "settings", kPageExtras, Tr("Extras"));
-    AddTreeNode(d, kPageExtras, kPageDataFolder, Tr("Data folder"));
-    AddTreeNode(d, kPageExtras, kPageAbout, Tr("About"));
+    AddTreeNode(d, "settings", kPageAppearance, "Appearance");
+    AddTreeNode(d, kPageAppearance, kPageLook, "Look");
+    AddTreeNode(d, kPageAppearance, kPageTime, "Time & date");
+    AddTreeNode(d, "settings", kPageMessages, "Messages");
+    AddTreeNode(d, kPageMessages, kPageSending, "Sending");
+    AddTreeNode(d, kPageMessages, kPageTyping, "Typing");
+    AddTreeNode(d, "settings", kPageNetworks, "Networks");
+    AddTreeNode(d, kPageNetworks, kPageAccounts, "Accounts");
+    AddTreeNode(d, kPageNetworks, kPageLocal, "Local network");
+    AddTreeNode(d, kPageNetworks, kPageProxy, "Proxy");
+    AddTreeNode(d, kPageNetworks, kPageRelay, "Relay");
+    AddTreeNode(d, "settings", kPageExtras, "Extras");
+    AddTreeNode(d, kPageExtras, kPageDataFolder, "Data folder");
+    AddTreeNode(d, kPageExtras, kPageAbout, "About");
     // After the nodes: hiding the root makes the sections the top level.
     d->tree->SetRootVisible(false);
     content->AddChild(d->tree);
@@ -819,7 +817,7 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     auto bottomLeft = std::make_shared<UltraCanvasContainer>("cc-set-bottom-left");
     bottomLeft->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
     bottomLeft->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    d->restoreButton = MakeButton("cc-set-restore", Tr("Restore defaults"), 150, [d]() {
+    d->restoreButton = MakeButton("cc-set-restore", "Restore defaults", 150, [d]() {
         auto it = d->resets.find(d->shownPage);
         if (it == d->resets.end()) return;
         // The controls are set with the handlers quiet, then saved and
@@ -833,7 +831,7 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     d->restoreButton->SetVisible(false);
     bottomLeft->AddChild(d->restoreButton);
     bottom->AddChild(bottomLeft);
-    bottom->AddChild(MakeButton("cc-set-close", Tr("Close"), 90, [d]() {
+    bottom->AddChild(MakeButton("cc-set-close", "Close", 90, [d]() {
         if (d->window) d->window->Close();
     }));
     d->window->AddChild(bottom);
