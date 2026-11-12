@@ -17,6 +17,8 @@
 // Base32; the one crypto-relevant variant — decoding straight into a zeroizing
 // buffer — remains there as UltraCrypt_Base32Decode and calls the decoder below.
 //
+// Version: 1.4.0 - FormatFixedClassic, for the drawing formats' fixed-point numbers
+// Version: 1.3.0 - ScopedPrecision, the digit half, shared by the five writers that had a copy
 // Version: 1.2.0 - ClassicNumbers, for a stream a format is written THROUGH
 // Version: 1.1.0 - DecodeWindowsCodePage (moved from the .xls reader, for the .msg reader too)
 // Version: 1.0.0
@@ -29,6 +31,7 @@
 #include <cstdint>
 #include <ios>
 #include <locale>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -142,6 +145,22 @@ bool TryParseFloat(const std::string& text, double& out);
 // "12,5" - so leave display formatting to the locale.
 std::string FormatFloatClassic(double value, int precision = 6);
 
+// The fixed-point sibling, which is what the drawing formats want: PDF, EPS
+// and DXF all state coordinates to a set number of decimal places rather than
+// significant digits, so that a number far from the origin keeps the same
+// resolution as one near it. The PDF, EPS and DXF writers each had their own
+// snprintf("%.3f") / snprintf("%.6f") copy of this, and every one of them
+// wrote `420,5` into the file on a comma-decimal desktop - which in a PDF
+// content stream or a `%%HiResBoundingBox` is not a rounded number but a
+// syntax error, since both separate their operands with spaces and count
+// them.
+//
+// Trailing zeros go, because a drawing is mostly round numbers and the file is
+// mostly these: `40.000` is written `40`. `keepPoint` keeps one zero behind
+// the point instead - `40.0` - which is what DXF wants, where a group-code
+// value that looks like an integer can be read as one.
+std::string FormatFixedClassic(double value, int decimals, bool keepPoint = false);
+
 // The same problem once more, for a writer that does not build its numbers as
 // strings but streams them. A stream renders every `<<` through its OWN
 // locale, copied from the C++ global locale when the stream was constructed -
@@ -185,6 +204,42 @@ public:
 private:
     std::ios_base& stream_;
     std::locale previous_;
+};
+
+// Both halves of a number's shape in a text format, for as long as it is in
+// scope: the decimal point (always the classic one, as above) and how many
+// digits each value gets. The OBJ, X3D and COLLADA writers each had their own
+// copy of this, and STEP the same logic inlined; all four set the digits and
+// none of them set the decimal point when the problem was first looked at.
+// OBJ's was then fixed in a scope too small to cover its own file - the guard
+// was taken per coordinate block, and the face lines are written between the
+// blocks - which is the other reason this is one class and not four.
+//
+// `digits` is a number of significant digits, as std::setprecision takes it,
+// and the digit policy stays with the format rather than moving in here - a
+// format decides what "enough" means. The usual pair is
+// std::numeric_limits<double>::max_digits10 (17: value -> text -> value
+// returns the identical value) against the stream's own default of 6, which is
+// what a deliverable wants; STEP wants 15 even in its compact mode, because
+// the reason to write STEP at all is that the numbers are exact. Pass 0 or
+// less to leave the stream's precision alone and take only the locale.
+//
+// The locale is restored last, after the precision, so a caller's stream comes
+// back exactly as it was lent.
+class ScopedPrecision {
+public:
+    ScopedPrecision(std::ostream& stream, int digits)
+            : locale_(stream), stream_(stream), previous_(stream.precision()) {
+        if (digits > 0) stream_.precision(digits);
+    }
+    ~ScopedPrecision() { stream_.precision(previous_); }
+    ScopedPrecision(const ScopedPrecision&) = delete;
+    ScopedPrecision& operator=(const ScopedPrecision&) = delete;
+
+private:
+    ClassicNumbers locale_;   // declared first: restored after the precision
+    std::ostream& stream_;
+    std::streamsize previous_;
 };
 
 // ---------------------------------------------------------------------------

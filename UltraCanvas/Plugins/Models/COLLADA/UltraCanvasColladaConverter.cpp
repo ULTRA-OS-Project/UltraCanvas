@@ -1151,21 +1151,6 @@ std::string MakeId(const char* prefix, size_t index) {
     return std::string(prefix) + std::to_string(index);
 }
 
-class ScopedPrecision {
-public:
-    ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
-            : stream_(stream), previous_(stream.precision()) {
-        stream_.precision(precision == NumericPrecision::Full ? (forDouble ? 17 : 9) : 6);
-    }
-    ~ScopedPrecision() { stream_.precision(previous_); }
-    ScopedPrecision(const ScopedPrecision&) = delete;
-    ScopedPrecision& operator=(const ScopedPrecision&) = delete;
-
-private:
-    std::ostream& stream_;
-    std::streamsize previous_;
-};
-
 // One mesh's primitives merged into parallel per-vertex arrays, which is what
 // lets every <input> share offset 0.
 struct MergedMesh {
@@ -1193,12 +1178,10 @@ public:
     void Run(std::ostream& out) {
         ReportLosses();
         // COLLADA's float_array and <matrix> are XML Schema doubles: dot
-        // decimal, no grouping, whatever the desktop is set to. ScopedPrecision
-        // below shapes how many digits each number gets; this decides what
-        // they are written with, which is the half that decides whether
-        // another tool can read the file at all.
-        const ClassicNumbers dotDecimal(out);
-        ScopedPrecision digits(out, options_.Precision, true);
+        // decimal, no grouping, whatever locale the host set. ScopedPrecision
+        // pins both halves - the decimal point and the digit count - for as
+        // long as the writer is writing.
+        ScopedPrecision digits(out, DigitsFor(options_.Precision, true));
         out << std::fixed;
         out.unsetf(std::ios::fixed);   // default float format at the chosen precision
 

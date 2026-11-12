@@ -15,7 +15,6 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
-#include <iomanip>
 #include <limits>
 #include <map>
 #include <set>
@@ -1347,18 +1346,19 @@ private:
 
 std::string Writer::Number(double value) const {
     std::ostringstream text;
-    // ISO 10303-21 reals are dot-decimal, and the separator between a
+    // ISO 10303-21 reals are dot-decimal, and the separator between one
     // parameter and the next is a comma - so a locale-rendered 1,5 does not
     // merely misstate a coordinate, it changes CARTESIAN_POINT's arity and no
-    // CAD system will open the file.
-    text.imbue(std::locale::classic());
-    // STEP reals must carry a decimal point. Unlike the mesh formats, there is
-    // no six-digit mode here: the reason to write STEP at all is that the
-    // numbers are exact, and a NURBS weight of cos(45 degrees) rounded to six
-    // significant digits is no longer a circular arc. Compact means fifteen
-    // digits — every digit a double is guaranteed to carry — and Full means
-    // the seventeen that round-trip the bits themselves.
-    text << std::setprecision(options_.Precision == NumericPrecision::Full ? 17 : 15);
+    // CAD system will open the file. That is the locale half of the guard.
+    //
+    // The digit half is STEP's own, which is why DigitsFor is not used here:
+    // unlike the mesh formats there is no six-digit mode, because the reason
+    // to write STEP at all is that the numbers are exact, and a NURBS weight
+    // of cos(45 degrees) rounded to six significant digits is no longer a
+    // circular arc. Compact means fifteen digits - every digit a double is
+    // guaranteed to carry - and Full the seventeen that round-trip the bits.
+    const ScopedPrecision digits(
+            text, options_.Precision == NumericPrecision::Full ? 17 : 15);
     if (value == 0.0) return "0.";
     text << value;
     std::string out = text.str();
