@@ -5530,7 +5530,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::IncreaseFontZoom() {
-        for(int i = 0; i < config.fontZoomPercents.size() - 2; i++) {
+        for(int i = 0; i + 1 < static_cast<int>(config.fontZoomPercents.size()); i++) {
             if (config.fontZoomPercents[i] == config.fontZoomPercent) {
                 SetFontZoomPercent(config.fontZoomPercents[i+1]);
                 break;
@@ -5539,7 +5539,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::DecreaseFontZoom() {
-        for(int i = config.fontZoomPercents.size(); i > 1; i--) {
+        for(int i = static_cast<int>(config.fontZoomPercents.size()) - 1; i > 0; i--) {
             if (config.fontZoomPercents[i] == config.fontZoomPercent) {
                 SetFontZoomPercent(config.fontZoomPercents[i-1]);
                 break;
