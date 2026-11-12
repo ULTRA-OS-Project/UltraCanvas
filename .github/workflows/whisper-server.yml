@@ -89,11 +89,11 @@ jobs:
         if: runner.os == 'macOS'
         run: command -v ninja || brew install ninja
 
-      - name: Linux - Vulkan headers, glslc, Mesa's software device for the test
+      - name: Linux - Vulkan and SPIR-V headers, glslc, Mesa's software device for the test
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build libvulkan-dev glslc mesa-vulkan-drivers
+          sudo apt-get install -y --no-install-recommends ninja-build libvulkan-dev glslc spirv-headers mesa-vulkan-drivers
 
       - name: Windows - Vulkan SDK
         if: runner.os == 'Windows' && matrix.accel == 'vulkan'
