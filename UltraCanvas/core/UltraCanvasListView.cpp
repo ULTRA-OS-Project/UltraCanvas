@@ -62,6 +62,17 @@ namespace UltraCanvas {
 
         SetBackgroundColor(Colors::White);
         SetBorders(1, Colors::Gray);
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasListView::ApplyTheme(const UltraCanvasTheme& theme) {
+        SetStyle(ListViewStyle::FromTheme(theme, viewStyle));
+        SetBordersColor(theme.roles.lineStrong);
+        if (auto* standard = dynamic_cast<UltraCanvasDefaultListDelegate*>(delegate.get())) {
+            standard->SetTextColor(theme.roles.ink);
+            standard->SetSelectedTextColor(theme.roles.onAccent);
+            standard->SetFontSize(static_cast<float>(theme.FontSize(ThemeTextRole::Body)));
+        }
     }
 
     // ===== MODEL / DELEGATE / SELECTION WIRING =====
@@ -174,6 +185,7 @@ namespace UltraCanvas {
 
     // ===== VIEW CONFIGURATION =====
     void UltraCanvasListView::SetStyle(const ListViewStyle& style) {
+        StyleSetByHand();
         viewStyle = style;
         SetBackgroundColor(viewStyle.backgroundColor);
         if (verticalScrollbar) verticalScrollbar->SetStyle(viewStyle.scrollbarStyle);
@@ -1506,4 +1518,20 @@ namespace UltraCanvas {
         if (horizontalScrollbar) horizontalScrollbar->SetWindow(win);
     }
 
+
+// ===== THE THEME =====
+    ListViewStyle ListViewStyle::FromTheme(const UltraCanvasTheme& theme, const ListViewStyle& base) {
+        ListViewStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.backgroundColor = r.well;
+        s.headerBackgroundColor = r.panel;
+        s.headerTextColor = r.ink;
+        s.gridLineColor = r.line;
+        s.alternateRowColor = r.panel;
+        s.selectionBackgroundColor = r.accent;
+        s.hoverBackgroundColor = r.hover;
+        s.headerFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
+        s.scrollbarStyle = ScrollbarStyle::FromTheme(theme, base.scrollbarStyle);
+        return s;
+    }
 } // namespace UltraCanvas

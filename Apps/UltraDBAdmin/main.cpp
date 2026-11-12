@@ -13,6 +13,7 @@
 // page: it reaches its databases through the relay the page came from
 // (web/DbAdminRelayWeb.h) and asks for the user's token first; no file, no
 // server and no password of its own.
+// Version: 0.3.0 - the theme under the Own policy with AppTheme as the provider: the host's fonts
 // Version: 0.3.0 - relay connections (UltraDatabaseRelayUltraNet.h); the browser build
 // Version: 0.2.0 - SSH tunnels through UltraNet (UltraDatabaseSshTunnel.h)
 // Version: 0.1.0
@@ -100,7 +101,14 @@ int main(int, char*[]) {
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
     RegisterVectorFormatsPlugin();
 #endif
-    UltraCanvasTheme::SetCurrent(UltraDBAdmin::AppTheme());
+    // The app's own theme under the policy: its colours, the host's fonts,
+    // again on every change of the desktop.
+    app.SetThemePolicy(ThemePolicy::Own);
+    app.SetThemeProvider([](const HostAppearance& host) {
+        UltraCanvasTheme theme = UltraDBAdmin::AppTheme();
+        theme.TakeHostFonts(host);
+        return theme;
+    });
     UltraDBAdmin::UseBrowserRelay();
     static UltraDBAdmin::DbAdminWindow window;
     if (!window.Initialize(std::string())) {   // nothing kept: the relay is the list
@@ -155,8 +163,15 @@ int main(int argc, char* argv[]) {
         // media/appicon/UltraDBAdmin.svg (see CMakeLists.txt).
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraDBAdmin.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
-        // Before the window: its elements are styled from the theme as they are made.
-        UltraCanvasTheme::SetCurrent(UltraDBAdmin::AppTheme());
+        // Before the window: its elements are styled from the theme as they
+        // are made. The app's own theme under the policy: its colours, the
+        // host's fonts, again on every change of the desktop.
+        app.SetThemePolicy(ThemePolicy::Own);
+        app.SetThemeProvider([](const HostAppearance& host) {
+            UltraCanvasTheme theme = UltraDBAdmin::AppTheme();
+            theme.TakeHostFonts(host);
+            return theme;
+        });
         // A connection behind a bastion reaches its server through UltraNet's
         // SSH plug-in, and a relay's connections through its WebSocket.
         UltraDb_UseUltraNetSshTunnels();

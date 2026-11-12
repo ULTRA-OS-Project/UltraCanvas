@@ -1,8 +1,10 @@
 // UltraCloud/providers/UltraCloudGoogleDrive.cpp
+// Version: 0.6.0 - a transfer keeps the file's dates: modifiedTime / createdTime
+//                  sent with an upload, read back after a download
 // Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile),
 //                  an upload sent from the file as it goes (bodyFilePath)
 // Version: 0.4.0 - each further page of a listing is logged
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudGoogleDrive.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -66,6 +68,17 @@ UltraNetOAuth2Config GoogleDriveProvider::OAuthConfig(const OAuthApp& app) const
     cfg.usePkce = true;
     return cfg;
 }
+
+namespace {
+// The file's own dates in Drive metadata: modifiedTime always writable,
+// createdTime only when the file is created (a replaced file keeps its own).
+void SetDriveDates(JSONValue& meta, const std::string& localPath, bool creating) {
+    int64_t modified = 0, created = 0;
+    LocalFileDates(localPath, modified, created);
+    if (modified > 0) meta.Set("modifiedTime", Rfc3339(modified));
+    if (creating && created > 0) meta.Set("createdTime", Rfc3339(created));
+}
+} // namespace
 
 Result GoogleDriveProvider::GetJson(const Credentials& credentials, const std::string& url,
                                     JSONValue& out, const std::string& what) {
@@ -205,6 +218,7 @@ Result GoogleDriveProvider::UploadResumable(const Credentials& credentials,
         JSONValue parents = JSONValue::MakeArray();
         parents.Append(parentId);
         meta.Set("parents", parents);
+        SetDriveDates(meta, localPath, true);
         open.url = std::string(kUpload) + "/files" + Query({{"uploadType", "resumable"}});
         open.method = UltraNetHttpMethod::Post;
         open.headers.Set("Content-Type", "application/json; charset=UTF-8");
@@ -213,6 +227,12 @@ Result GoogleDriveProvider::UploadResumable(const Credentials& credentials,
         open.url = std::string(kUpload) + "/files/" + existingId + Query({{"uploadType", "resumable"}});
         open.method = UltraNetHttpMethod::Custom;
         open.customMethod = "PATCH";
+        JSONValue meta = JSONValue::MakeObject();
+        SetDriveDates(meta, localPath, false);
+        if (meta.GetSize() > 0) {
+            open.headers.Set("Content-Type", "application/json; charset=UTF-8");
+            open.body = Bytes(ToJson(meta));
+        }
     }
     open.headers.Set("X-Upload-Content-Type", "application/octet-stream");
     open.headers.Set("X-Upload-Content-Length", std::to_string(total));
@@ -283,6 +303,7 @@ Result GoogleDriveProvider::Upload(const Account&, const Credentials& credential
         JSONValue parents = JSONValue::MakeArray();
         parents.Append(parentId);
         meta.Set("parents", parents);
+        SetDriveDates(meta, localPath, true);
         const std::string boundary = "ultracloud_multipart_boundary";
         std::string body;
         body += "--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n";
@@ -296,7 +317,24 @@ Result GoogleDriveProvider::Upload(const Account&, const Credentials& credential
     }
     UltraNetResponse resp;
     UltraNetResult net = Send(credentials, req, resp);
-    return FromHttp(net, resp, what);
+    Result r = FromHttp(net, resp, what);
+    // Replaced in place (uploadType=media carries no metadata): the file's
+    // date follows in a metadata update. Best effort - the bytes are there.
+    if (r && !existing.empty()) {
+        JSONValue meta = JSONValue::MakeObject();
+        SetDriveDates(meta, localPath, false);
+        if (meta.GetSize() > 0) {
+            UltraNetHttpRequest dated;
+            dated.url = std::string(kApi) + "/files/" + existing;
+            dated.method = UltraNetHttpMethod::Custom;
+            dated.customMethod = "PATCH";
+            dated.headers.Set("Content-Type", "application/json; charset=UTF-8");
+            dated.body = Bytes(ToJson(meta));
+            UltraNetResponse datedResp;
+            Send(credentials, dated, datedResp);
+        }
+    }
+    return r;
 }
 
 Result GoogleDriveProvider::Download(const Account&, const Credentials& credentials,
@@ -307,7 +345,18 @@ Result GoogleDriveProvider::Download(const Account&, const Credentials& credenti
     UltraNetHttpRequest req;
     req.url = std::string(kApi) + "/files/" + id + Query({{"alt", "media"}});
     // Written to disk as it arrives, not held in memory first.
-    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
+    Result r = DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
+    // The copy keeps the file's dates, asked of its metadata. Best effort:
+    // a refusal here leaves the file downloaded, dated now.
+    if (r) {
+        JSONValue meta;
+        if (GetJson(credentials, std::string(kApi) + "/files/" + id +
+                                         Query({{"fields", "modifiedTime,createdTime"}}),
+                    meta, "dates of " + remotePath))
+            GiveFileDates(localPath, ParseRfc3339(meta["modifiedTime"].GetString()),
+                          ParseRfc3339(meta["createdTime"].GetString()));
+    }
+    return r;
 }
 
 Result GoogleDriveProvider::CreateShareLink(const Account&, const Credentials& credentials,

@@ -1,7 +1,10 @@
 // UltraCanvasOCRPlugin.cpp
 // OCR plugin facade: engine selection, image bridging, and exporters.
+// Version: 0.2.1 - RecognizeFile decodes with libvips (every type the image pipeline reads,
+//                  UTF-8 names), Leptonica only as the fallback
+// Version: 0.2.0 - RecognizeRaw, RegisterOCRTextRecognition
 // Version: 0.1.0
-// Last Modified: 2026-05-21
+// Last Modified: 2026-11-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasOCRPlugin.h"
@@ -10,8 +13,12 @@
 
 //#include "PixelFX/PixelFX.h"
 
+#include "UltraCanvasFileLoader.h"
+
+#include <algorithm>
 #include <cstring>
 #include <iomanip>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -44,18 +51,19 @@ bool ImageToRaw(const vips::VImage& src,
                 int& outW, int& outH, int& outBpp, int& outStride) {
     try {
         // Force RGB / 8-bit; Tesseract handles greyscale internally.
-        vips::VImage img = src; // VImage inherits from vips::VImage
-        if (img.format() != VIPS_FORMAT_UCHAR) {
-            img = img.cast(VIPS_FORMAT_UCHAR);
+        vips::VImage img = src;
+        // Alpha onto white - flatten()'s own background is black, which
+        // left a transparent screenshot's dark text on black.
+        if (img.has_alpha()) {
+            const double white = img.interpretation() == VIPS_INTERPRETATION_RGB16 ||
+                                 img.interpretation() == VIPS_INTERPRETATION_GREY16 ? 65535.0 : 255.0;
+            img = img.flatten(vips::VImage::option()->set(
+                    "background", std::vector<double>(static_cast<size_t>(img.bands() - 1), white)));
         }
-        if (img.bands() == 1) {
-            // keep greyscale
-        } else if (img.bands() == 4) {
-            img = img.flatten();                 // drop alpha onto white
-            img = img.colourspace(VIPS_INTERPRETATION_sRGB);
-        } else {
-            img = img.colourspace(VIPS_INTERPRETATION_sRGB);
-        }
+        // 16-bit is scaled to 8, not clipped (a cast would clip).
+        if (img.bands() != 1) img = img.colourspace(VIPS_INTERPRETATION_sRGB);
+        else if (img.interpretation() == VIPS_INTERPRETATION_GREY16) img = img.colourspace(VIPS_INTERPRETATION_B_W);
+        if (img.format() != VIPS_FORMAT_UCHAR) img = img.cast(VIPS_FORMAT_UCHAR);
 
         outW = img.width();
         outH = img.height();
@@ -122,6 +130,19 @@ OCREngineKind UltraCanvasOCR::EngineInUse() const {
 
 OCRResult UltraCanvasOCR::RecognizeFile(const std::string& path) {
     if (!engine) { OCRResult r; r.error = "No OCR engine available"; return r; }
+    // libvips first: every picture type the image pipeline reads (WebP,
+    // HEIC, AVIF, JPEG XL ... which Leptonica does not), and its file names
+    // are UTF-8 on every platform. The engine's own reader is the fallback.
+    try {
+        const vips::VImage image = vips::VImage::new_from_file(
+                path.c_str(), vips::VImage::option()->set("access", VIPS_ACCESS_SEQUENTIAL));
+        std::vector<uint8_t> raw;
+        int w = 0, h = 0, bpp = 0, stride = 0;
+        if (ImageToRaw(image, raw, w, h, bpp, stride))
+            return engine->RecognizeRaw(raw.data(), w, h, bpp, stride);
+    } catch (const std::exception&) {
+        // not a picture libvips reads: the engine's reader may
+    }
     return engine->RecognizeFile(path);
 }
 
@@ -140,6 +161,13 @@ OCRResult UltraCanvasOCR::RecognizeImage(const vips::VImage& img) {
         return r;
     }
     return engine->RecognizeRaw(raw.data(), w, h, bpp, stride);
+}
+
+OCRResult UltraCanvasOCR::RecognizeRaw(const uint8_t* pixels, int width, int height,
+                                       int bytesPerPixel, int bytesPerLine) {
+    if (!engine) { OCRResult r; r.error = "No OCR engine available"; return r; }
+    if (!pixels || width <= 0 || height <= 0) { OCRResult r; r.error = "Empty image"; return r; }
+    return engine->RecognizeRaw(pixels, width, height, bytesPerPixel, bytesPerLine);
 }
 
 std::future<OCRResult> UltraCanvasOCR::RecognizeFileAsync(const std::string& path) {
@@ -276,6 +304,71 @@ std::string OCRResultToALTO(const OCRResult& result, const Size2Di& imageSize,
 
     out << "   </PrintSpace>\n  </Page>\n </Layout>\n</alto>\n";
     return out.str();
+}
+
+// ===== FILE LOADER HOOK =====
+namespace {
+
+// The languages the recognizer reads: those asked for, else every language
+// installed (not the helper models: osd, equ), else English.
+std::vector<std::string> RecognitionLanguages(const std::vector<std::string>& asked) {
+    if (!asked.empty()) return asked;
+    std::vector<std::string> languages;
+    for (const std::string& code : UltraCanvasOCR::InstalledLanguages()) {
+        if (code == "osd" || code == "equ") continue;
+        const OCRLanguageInfo* info = UltraCanvasOCR::FindLanguage(code);
+        if (info && info->isScript) continue;
+        languages.push_back(code);
+    }
+    // English first: Tesseract finds the data folder by the first language.
+    const auto english = std::find(languages.begin(), languages.end(), "eng");
+    if (english != languages.end()) std::rotate(languages.begin(), english, english + 1);
+    if (languages.empty()) languages.push_back("eng");
+    return languages;
+}
+
+} // namespace
+
+void RegisterOCRTextRecognition(const std::vector<std::string>& languages) {
+    struct Shared {
+        std::mutex mutex;
+        std::vector<std::string> languages;
+        std::unique_ptr<UltraCanvasOCR> ocr;
+    };
+    auto shared = std::make_shared<Shared>();
+    shared->languages = languages;
+    UltraCanvasFileLoader::SetImageTextRecognizer(
+            [shared](const UltraCanvasFileLoader::TextRecognitionImage& image, std::string& text,
+                     std::string& error) {
+        std::lock_guard<std::mutex> lock(shared->mutex);
+        auto recognize = [&image](UltraCanvasOCR& ocr) {
+            if (image.path.empty())
+                return ocr.RecognizeRaw(image.pixels, image.width, image.height, image.bytesPerPixel,
+                                        image.bytesPerLine);
+            return ocr.RecognizeFile(image.path);
+        };
+        if (!shared->ocr) {
+            OCRConfig config;
+            config.languages = RecognitionLanguages(shared->languages);
+            shared->ocr = std::make_unique<UltraCanvasOCR>(config);
+        }
+        OCRResult result = recognize(*shared->ocr);
+        // Languages installed in different folders cannot be loaded together:
+        // the first one alone, then.
+        if (!result.Ok() && shared->ocr->Config().languages.size() > 1 &&
+            result.error.rfind("Engine not initialised", 0) == 0) {
+            OCRConfig config = shared->ocr->Config();
+            config.languages.resize(1);
+            shared->ocr = std::make_unique<UltraCanvasOCR>(config);
+            result = recognize(*shared->ocr);
+        }
+        if (!result.Ok()) {
+            error = "Text recognition failed: " + result.error;
+            return false;
+        }
+        text = result.plainText;
+        return true;
+    });
 }
 
 } // namespace UltraCanvas

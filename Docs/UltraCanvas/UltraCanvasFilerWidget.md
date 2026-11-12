@@ -37,6 +37,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Long names](#long-names)
 - [File extensions](#file-extensions)
 - [File icons](#file-icons)
+- [Following the theme](#following-the-theme)
 - [Name tooltips](#name-tooltips)
 - [Context menu](#context-menu)
 - [Programs inside archives](#programs-inside-archives)
@@ -410,6 +411,29 @@ in the listing's colours (the Save dialog's big type logo).
 filer->DrawTypeIcon(ctx, "holiday.jpg", false, Rect2Di(4, 4, 24, 24));
 ```
 
+## Following the theme
+
+`FilerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the well for the file
+area, ink and muted ink for the names and their details, the panel for the
+header, the info bar and a bar's background with ink on it, hairlines for
+the grid, the hover fill, the soft accent for the selection with the accent
+round it, the accent for the bars and the loading bar, the well with the
+accent for the rename editor; the interface font at the body size, the
+small text at the caption size. The hover icon menu and the extension tag
+keep their dark overlays unless the theme names `filer.icon-menu`,
+`filer.on-icon-menu`, `filer.icon-menu-done`, `filer.extension-bar`,
+`filer.extension-tag` and `filer.on-extension-tag`. Under the theme policy
+a new widget follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+FilerStyle roomy = filer->GetStyle();
+roomy.tileGap = 16;
+filer->SetStyle(FilerStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+filer->SetFollowTheme(true);
+```
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -447,6 +471,8 @@ Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 Copy / Cut / Paste / Delete / Delete Permanently / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
+Refresh           the folder on display, or the one folder right-clicked,
+                  read again (onRefreshRequested)
 ──────────
 Compress / Extract
 ──────────
@@ -490,9 +516,38 @@ Notes:
 - **Paste** is enabled while the filer clipboard holds entries (shared between
   all filer instances) or the system clipboard offers files, an image or text —
   see [Clipboard interop](#clipboard-interop-with-other-programs).
+- **A copy keeps the original's dates.** Every file and folder a paste, a
+  drop, a *Duplicate* or a move between drives writes gets the original's
+  modification and access dates and, on Windows and macOS, its creation date
+  (`CopyFileTimes`, `UltraCanvasFileTimes.h`); a folder's are set after its
+  contents, which would otherwise make it "modified now". Linux and the BSDs
+  give a program no way to set a creation date, so there a copy is created
+  when it was made, as with `cp -p`. A move within a drive is a rename and
+  never touched the dates. A new file made from a template is new, and is
+  dated so. Copies to and from a remote drive keep them too - each UltraCloud
+  provider sends the file's dates with an upload and dates a download with
+  the server's (see *A transfer keeps the file's dates* in
+  `Docs/Modules/UltraCloud/README.md`) - and so does *Extract*: a file
+  unpacked from an archive has the date the archive gives it, and from a ZIP
+  or 7z its creation date as well, on Windows and macOS.
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
+- **Refresh** is for the one folder entry the menu was opened on, or else
+  the folder on display. Without a hook it re-reads the folder on display
+  (`Refresh()`). With `onRefreshRequested` set, the host is handed that
+  folder and carries the refresh out itself, this display's re-read
+  included: a host that answers remote folders from a cache
+  (`remoteListing`) asks the server again first, and one with a folder tree
+  brings its rows in line. UltraFiler does both, the same as its tree's
+  *Refresh*.
+
+  ```cpp
+  filer->onRefreshRequested = [display = filer.get()](const std::string& folder) {
+      // drop or re-ask what a cache holds for `folder`, then:
+      if (folder == display->GetPath()) display->Refresh();
+  };
+  ```
 - **Open with** is the first entry — opening a file is what the menu is
   opened for most often — and the entry itself is clickable: it opens the
   whole selection with the OS default application, the same thing a
@@ -1150,10 +1205,15 @@ also toggled by Display > Info-Bar) describes the current selection:
   - **bitmaps**: pixel dimensions (`1920 × 1080 px`), parsed from the file
     header for PNG / JPEG / GIF / BMP / WebP / TIFF / QOI / ICO (other formats
     fall back to the shared `UCImage` cache);
-  - **audio / video**: play length and codec (`3:45 · H.264`), parsed from the
-    container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 / M4A / MOV / AVI /
-    MKV / WebM / WMV — no decoding, only a few bounded reads. When nothing can
-    be probed the entry's `info` value (e.g. from `infoProvider`) is shown.
+  - **audio / video**: play length and codec (`3:45 · AAC LC`), and for a
+    film its picture size as shown between them (`1:23 · 1920 × 1080 · H.264`;
+    a phone's portrait clip upright, an anamorphic one at its display width),
+    parsed from the container headers of WAV / MP3 / FLAC / OGG / Opus / MP4 /
+    M4A / MOV / AVI / MKV / WebM / WMV — no decoding, only a few bounded reads.
+    MP4 / MOV / 3GP, Matroska / WebM and AVI are read by `ReadVideoFileInfo`
+    (`UltraCanvasVideoFileInfo.h`), the reader the media viewer's Details
+    use, so the two never disagree about a file. When nothing can be probed
+    the entry's `info` value (e.g. from `infoProvider`) is shown.
 - **Single folder** — recursive file / folder counts and total size (capped at
   50 000 entries for safety; a `≥` prefix marks a capped result).
 - **Multiple items** — item counts and the summed size of the selection

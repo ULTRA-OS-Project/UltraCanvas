@@ -35,11 +35,6 @@
   "an entry": "elementu",
   "An upload is still running — quit anyway?": "Przesyłanie nadal trwa – zakończyć mimo to?",
   "An upload is still waiting — quit anyway?": "Przesyłanie nadal czeka w kolejce – zakończyć mimo to?",
-  "and {n} more": {
-    "one": "i jeszcze {n}",
-    "few": "i jeszcze {n}",
-    "many": "i jeszcze {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Każdy inny plik, jeśli ten system ma program zarejestrowany dla tego rodzaju plików:",
   "Applied to {n} item.": {
     "one": "Zastosowano do {n} elementu.",
@@ -265,6 +260,7 @@
   "Open prompt": "Otwórz wiersz poleceń",
   "Opening files": "Otwieranie plików",
   "Opening {0} - {1}": "Otwieranie {0} – {1}",
+  "Order by": "Sortuj według",
   "Order pinned": "Kolejność przypięcia",
   "Own patterns - type one and press Enter:": "Własne wzorce – wpisz wzorzec i naciśnij Enter:",
   "Path to the application": "Ścieżka do aplikacji",
@@ -477,11 +473,6 @@
     "one": "{n} ikona",
     "few": "{n} ikony",
     "many": "{n} ikon"
-  },
-  "{n} line": {
-    "one": "{n} wiersz",
-    "few": "{n} wiersze",
-    "many": "{n} wierszy"
   },
   "{n} result": {
     "one": "{n} wynik",

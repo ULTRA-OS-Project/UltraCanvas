@@ -35,9 +35,6 @@
   "an entry": "항목",
   "An upload is still running — quit anyway?": "업로드 1개가 아직 실행 중입니다. 그래도 종료하시겠습니까?",
   "An upload is still waiting — quit anyway?": "업로드 1개가 아직 대기 중입니다. 그래도 종료하시겠습니까?",
-  "and {n} more": {
-    "other": "외 {n}개"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "그 밖의 파일(이 시스템에 해당 종류의 파일에 대해 등록된 프로그램이 있는 경우):",
   "Applied to {n} item.": {
     "other": "{n}개 항목에 적용했습니다."
@@ -257,6 +254,7 @@
   "Open prompt": "프롬프트 열기",
   "Opening files": "파일 열기",
   "Opening {0} - {1}": "{0} 여는 중 - {1}",
+  "Order by": "정렬 기준",
   "Order pinned": "고정 순서",
   "Own patterns - type one and press Enter:": "사용자 패턴 - 패턴을 입력하고 Enter 키를 누르십시오:",
   "Path to the application": "애플리케이션 경로",
@@ -447,9 +445,6 @@
   },
   "{n} icon": {
     "other": "아이콘 {n}개"
-  },
-  "{n} line": {
-    "other": "{n}줄"
   },
   "{n} result": {
     "other": "결과 {n}개"

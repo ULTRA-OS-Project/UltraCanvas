@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressSettings.cpp
 // See UltraPressSettings.h.
+// Version: 0.9.0 - the look is system, light or dark
 // Version: 0.8.7 - NormalPath public
 // Version: 0.8.5 - over the framework's UltraCanvasAppSettings
 // Version: 0.8.4
@@ -52,10 +53,11 @@ UltraPressSettings UltraPressSettings::Load(const std::string& dir) {
         // The look file of 0.8, until the settings are first written.
         std::ifstream look(PathFromUtf8(dir) / kOldLookFile);
         std::string word;
-        if (look && (look >> word)) s.dark = word == "dark";
+        if (look && (look >> word) && (word == "dark" || word == "light")) s.look = word;
         return s;
     }
-    s.dark = file.GetString("look", "light") == "dark";
+    const std::string look = file.GetString("look", "system");
+    if (look == "light" || look == "dark") s.look = look;
     s.recentSites = file.GetList("recent");
     s.windowWidth = file.GetInt("window.width", 0);
     s.windowHeight = file.GetInt("window.height", 0);
@@ -65,7 +67,7 @@ UltraPressSettings UltraPressSettings::Load(const std::string& dir) {
 bool UltraPressSettings::Save(const std::string& dir) const {
     if (dir.empty()) return false;
     UltraCanvasAppSettings file = FileIn(dir);
-    file.Set("look", dark ? "dark" : "light");
+    file.Set("look", look);
     file.Set("recent", recentSites);
     file.Set("window.width", windowWidth);
     file.Set("window.height", windowHeight);

@@ -13,13 +13,15 @@
 //   * SidesHorizontal - [dec] field [inc] with buttons flanking the field
 //   * FieldOnly      - the field alone; the arrow keys and the wheel still step
 //
+// Version: 1.7.0 - SpinnerVisualStyle::FromTheme, ApplyTheme: the spinner follows the theme;
+//                  a SetStyle by hand stops the following
 // Version: 1.6.0 - a held arrow button repeats its step (SetButtonRepeat)
 // Version: 1.5.0 - SpinnerLayout::FieldOnly: a field without step buttons
 // Version: 1.4.0 - onStepsFinished: once when a run of steps ends (button or key
 //                  released, the wheel at rest), not on every step
 // Version: 1.3.0 - SetSnapToStep: a Decimal value off the step grid
 // Version: 1.2.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -89,6 +91,15 @@ namespace UltraCanvas {
         SpinnerButtonGlyph glyph = SpinnerButtonGlyph::Triangle;
 
         FontStyle fontStyle;
+
+        // The theme's roles: the well for the field with the control border
+        // and the focus ring, ink and the caret in ink; the raised surface
+        // for the step buttons with the hover and pressed fills, their
+        // glyphs in muted ink; the panel disabled; the interface font at the
+        // body size - over a base's own shape (metrics, glyph), or a default one
+        static SpinnerVisualStyle FromTheme(const UltraCanvasTheme& theme, const SpinnerVisualStyle& base);
+        static SpinnerVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SpinnerVisualStyle()); }
+        static SpinnerVisualStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== MAIN SPINNER COMPONENT =====
@@ -282,7 +293,8 @@ namespace UltraCanvas {
 
         SpinnerVisualStyle& GetStyle() { return style; }
         const SpinnerVisualStyle& GetStyle() const { return style; }
-        void SetStyle(const SpinnerVisualStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const SpinnerVisualStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(SpinnerVisualStyle::FromTheme(theme, style)); }
 
         // ===== BASE OVERRIDES =====
         bool AcceptsFocus() const override { return true; }

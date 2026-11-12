@@ -3,6 +3,8 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.0.1 - Curves counts its histogram backdrop with UltraCanvasHistogramModel, as the
+//                  image viewer's Curves dialog does; the RGB backdrop adds the three channels
 // Version: 2.0.0 - images in tabs: one window holds several, each with its own paint surface
 //                  under the tab strip; New, Open, Paste as New Image, "Open in new tab" on a
 //                  drop and a second start's files add a tab instead of a window; File > Close
@@ -67,7 +69,7 @@
 //                  buttons in the palette and the toolbar; every menu entry has an
 //                  icon from the 16 px menu set (media/icons/ultrapaint/16)
 // Version: 1.1.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraPaintWindow.h"
@@ -540,7 +542,7 @@ void UltraPaintWindow::BuildMenuBar() {
             M::ActionWithShortcut("Export with Options...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
             M::Action("Password Protection...", MenuIconPath("password.svg"), [this]() { CmdPassword(); }),
             M::Separator(),
-            M::ActionWithShortcut(Tr("Close Tab"), "Ctrl+W", [this]() { CmdCloseTab(); }),
+            M::ActionWithShortcut(Tr("Close Tab"), "Ctrl+W", MenuIconPath("close-tab.svg"), [this]() { CmdCloseTab(); }),
             M::ActionWithShortcut(Tr("Next Tab"), "Ctrl+Tab", [this]() { CmdNextTab(1); }),
             M::ActionWithShortcut(Tr("Previous Tab"), "Ctrl+Shift+Tab", [this]() { CmdNextTab(-1); }),
             M::Separator(),
@@ -3569,26 +3571,15 @@ void UltraPaintWindow::CmdCurves() {
     if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
     auto dlg = std::make_shared<UltraCanvasCurvesDialog>(ToneCurveSet());
     // histogram backdrop from the layer - again whenever the layer the
-    // curves work on changes while the dialog is open
+    // curves work on changes while the dialog is open. The layer is straight
+    // RGBA8 without row padding; transparent pixels have no colour and are
+    // left out, as the image viewer's Curves dialog leaves them out.
     std::weak_ptr<UltraCanvasCurvesDialog> weakDlg = dlg;
     previewSourceChanged = [weakDlg](const UCRasterLayer& source) {
         auto curves = weakDlg.lock();
         if (!curves) return;
-        std::vector<uint32_t> bins[4];
-        for (auto& b : bins) b.assign(256, 0);
-        for (int y = 0; y < source.GetHeight(); ++y) {
-            const uint8_t* row = source.Row(y);
-            for (int x = 0; x < source.GetWidth(); ++x) {
-                const uint8_t* p = row + static_cast<size_t>(x) * 4;
-                if (!p[3]) continue;
-                ++bins[1][p[0]]; ++bins[2][p[1]]; ++bins[3][p[2]];
-                ++bins[0][(p[0] + p[1] + p[2]) / 3];
-            }
-        }
-        curves->SetHistogram(ToneCurveChannel::RGB, bins[0]);
-        curves->SetHistogram(ToneCurveChannel::Red, bins[1]);
-        curves->SetHistogram(ToneCurveChannel::Green, bins[2]);
-        curves->SetHistogram(ToneCurveChannel::Blue, bins[3]);
+        curves->SetHistograms(ComputeImageHistogram(source.Data(), source.GetWidth(), source.GetHeight(),
+                                                    source.GetWidth() * 4, HistogramPixelFormat::RGBA8));
     };
     BeginPreview();
     auto opFor = [](const ToneCurveSet& set) {

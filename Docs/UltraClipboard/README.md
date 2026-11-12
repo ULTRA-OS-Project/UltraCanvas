@@ -43,7 +43,8 @@ The buttons stand right of the entry's text, or left of it between the
 thumbnail and the text: Settings, *Display → Icons*. The desktop's quick
 panel follows the same setting.
 
-Right-click a row for the same and *Pin* / *Unpin* (Ctrl+P).
+Right-click a row for the same, *Pin* / *Unpin* (Ctrl+P) and, on an image
+or copied files with words in them, *Extract text* (Ctrl+T).
 
 **Saving as a file.** *Save as* writes the entry where you choose, through
 the framework's Save dialog: a text, code, link or colour as a text file;
@@ -57,6 +58,28 @@ you say so. Once saved, UltraClipboard asks *Delete the item from the
 clipboard?* - Yes deletes it, with *Undo* as for any deletion; No keeps it.
 The next *Save as* starts in the folder the last one saved to. Up and Down move
 through the list, skipping the section headers.
+
+**Extracting the text.** *Extract text* turns what an entry shows into text
+you can paste. An image - a screenshot, a photographed page - is read by text
+recognition: by an UltraAI vision provider that reads text, when one is set
+up (a model on this computer, or a cloud service you chose in UltraAI - Claude,
+for one: `ULTRAAI_DEFAULT_VISIONANALYZER=anthropic` with the key in UltraVault
+under `ai.anthropic.api_key`), and
+otherwise by OCR (Tesseract, in every language installed; more come with the
+system's `tesseract-ocr-<language>` packages). When UltraAI read it, the
+status bar says which provider did. Copied files are read by their
+type: a word processor document (ODT, DOCX) or a deck (PPTX), a PDF (its
+text; a scanned PDF by text recognition), a spreadsheet (ODS, XLSX, XLS:
+every sheet, tab-separated), a text or code file. A recording or a video is
+transcribed by an UltraAI speech-to-text provider - OpenAI's, chosen with
+`ULTRAAI_DEFAULT_SPEECHTOTEXT=openai` and its key in UltraVault under
+`ai.openai.api_key`, or a whisper server of your own; a video's sound is
+taken out first. Without one *Extract text* says that speech to text is not
+available. The reading runs in the background
+(*Reading the text…* in the status bar); the text arrives as a new text entry
+at the top, already on the clipboard. From several files you get one text,
+each file's under its name. Built on `UltraCanvasFileLoader::ExtractText`
+([FileLoader](../Modules/FileLoader/README.md), *Text From Any File*).
 
 **Finding.** Type in the search field (Ctrl+F) to search titles and texts,
 whatever their case and accents. *All*, *Text*, *Images*, *Files*, *Links* and

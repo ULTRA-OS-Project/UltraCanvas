@@ -1,5 +1,6 @@
 // Apps/UltraPress/ui/UltraPressWindow.cpp
 // The editor window: lists, preview and the property pane from the registry.
+// Version: 0.9.0 - the look is the policy's theme (no SetCurrent here); the toggle goes through onLookChosen
 // Version: 0.8.7 - the host dialog's sign-in reported on the console, step by step
 // Version: 0.8.6 - SetDark writes no file
 // Version: 0.8.4 - the look remembered through UltraPressSettings
@@ -14,7 +15,7 @@
 // Version: 0.5.1 - Publish prunes
 // Version: 0.5.0 - Publish and Host...
 // Version: 0.3.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraPressWindow.h"
 #include "UltraPressMediaDialog.h"
@@ -245,12 +246,12 @@ void EditorWindow::SetDark(bool wantDark) {
 }
 
 void EditorWindow::ApplyLook() {
-    // The theme is the look: every element that follows it re-styles
-    // itself (the application forwards the change to its windows); the
-    // columns, which have no theme of their own, take their surfaces here,
-    // and the side column is rebuilt in its own colours by the caller.
-    const UltraCanvasTheme theme = ThemeFor(dark);
-    if (UltraCanvasTheme::Current().name != theme.name) UltraCanvasTheme::SetCurrent(theme);
+    // The theme is the look, set by the application's policy from the
+    // settings and the desktop (ui/main.cpp): every element that follows it
+    // re-styles itself; the columns, which have no theme of their own, take
+    // their surfaces here, and the side column is rebuilt in its own
+    // colours by the caller.
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
     if (std::shared_ptr<UltraCanvasWindow> window = windowRef.lock()) window->SetBackgroundColor(theme.roles.ground);
     if (side) side->SetBackgroundColor(SideColorsOf(theme).panel);
     if (properties) properties->SetBackgroundColor(theme.roles.ground);
@@ -875,7 +876,12 @@ void EditorWindow::RebuildSide() {
     side->AddChild(settings);
     auto lookToggle = SideButton("Look", dark ? "Light look" : "Dark look", false);
     lookToggle->SetFont(kFont, 12);
-    lookToggle->onClick = [this]() { Later([this]() { SetDark(!dark); }); };
+    lookToggle->onClick = [this]() {
+        Later([this]() {
+            if (onLookChosen) onLookChosen(!dark);   // the program writes the choice and re-applies the policy
+            else SetDark(!dark);
+        });
+    };
     side->AddChild(lookToggle);
 
     side->AddChild(Gap(18));

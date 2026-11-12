@@ -1,7 +1,8 @@
 // UltraAI/tests/test_openai_adapter.cpp
 // Exercises the OpenAI ITextLLM + IEmbeddings adapters offline through
 // ScriptedTransport: Chat Completions serialization (messages, tool calls,
-// tool results, sampling, structured output, Bearer auth), response parsing
+// tool results, same-role turns merged, sampling, structured output, Bearer
+// auth), response parsing
 // (text, tool calls, usage, finish reasons), provider error mapping, SSE
 // chunk assembly ([DONE] sentinel, split tool-call arguments, usage chunk),
 // the keyless-when-self-hosted rule, and the embeddings endpoint.
@@ -158,6 +159,62 @@ void TestRequestSerialization() {
     EXPECT_EQ(body["response_format"]["type"], std::string("json_schema"));
     EXPECT_TRUE(body["response_format"]["json_schema"]["schema"].is_object());
     EXPECT_TRUE(!body.contains("stream"));
+}
+
+// Two user turns in a row reach the wire as one user message (and two
+// assistant turns as one), so a server whose chat template demands
+// alternating roles accepts the history; tool results stay separate.
+void TestConsecutiveSameRoleTurnsMerge() {
+    auto transport = std::make_shared<ScriptedTransport>();
+    transport->ScriptResponse(JsonResponse(200, ChatCompletion(
+        "chatcmpl-m", json{{"role", "assistant"}, {"content", "ok"}}, "stop")));
+    auto llm = CreateOpenAITextLLM(TestConfig(), nullptr, transport);
+    EXPECT_TRUE(llm != nullptr);
+
+    ChatRequest req;
+    Message u1; u1.role = Role::User; u1.text = "who are you?";
+    Message u2; u2.role = Role::User; u2.text = "who are you?";
+    Message a1; a1.role = Role::Assistant; a1.text = "A model.";
+    Message a2; a2.role = Role::Assistant;
+    ToolCall call; call.id = "call_1"; call.name = "lookup";
+    call.argumentsJson = "{}";
+    a2.toolCalls.push_back(call);
+    Message t1; t1.role = Role::Tool; t1.toolCallId = "call_1"; t1.text = "r1";
+    Message t2; t2.role = Role::Tool; t2.toolCallId = "call_2"; t2.text = "r2";
+    // A multimodal user turn after a text one: the text becomes the first
+    // part of the merged content, the image follows it.
+    Message u3; u3.role = Role::User; u3.text = "look";
+    Message u4; u4.role = Role::User;
+    ImagePart img; img.mimeType = "image/png"; img.bytes = {1, 2, 3};
+    u4.parts.push_back(img);
+    // A turn from a named speaker is a different speaker: not merged.
+    Message u5; u5.role = Role::User; u5.text = "me too"; u5.name = "bob";
+    req.messages = {u1, u2, a1, a2, t1, t2, u3, u4, u5};
+
+    ChatResponse resp = llm->Chat(req);
+    EXPECT_TRUE(resp.error.IsOk());
+
+    json body = json::parse(transport->Requests()[0].body);
+    const json& msgs = body["messages"];
+    EXPECT_EQ(msgs.size(), static_cast<size_t>(6));
+    EXPECT_EQ(msgs[0]["role"], std::string("user"));
+    EXPECT_EQ(msgs[0]["content"], std::string("who are you?\n\nwho are you?"));
+    EXPECT_EQ(msgs[1]["role"], std::string("assistant"));
+    EXPECT_EQ(msgs[1]["content"], std::string("A model."));
+    EXPECT_EQ(msgs[1]["tool_calls"][0]["id"], std::string("call_1"));
+    EXPECT_EQ(msgs[2]["role"], std::string("tool"));
+    EXPECT_EQ(msgs[2]["tool_call_id"], std::string("call_1"));
+    EXPECT_EQ(msgs[3]["role"], std::string("tool"));
+    EXPECT_EQ(msgs[3]["tool_call_id"], std::string("call_2"));
+    EXPECT_EQ(msgs[4]["role"], std::string("user"));
+    EXPECT_TRUE(msgs[4]["content"].is_array());
+    EXPECT_EQ(msgs[4]["content"].size(), static_cast<size_t>(2));
+    EXPECT_EQ(msgs[4]["content"][0]["type"], std::string("text"));
+    EXPECT_EQ(msgs[4]["content"][0]["text"], std::string("look"));
+    EXPECT_EQ(msgs[4]["content"][1]["type"], std::string("image_url"));
+    EXPECT_EQ(msgs[5]["role"], std::string("user"));
+    EXPECT_EQ(msgs[5]["name"], std::string("bob"));
+    EXPECT_EQ(msgs[5]["content"], std::string("me too"));
 }
 
 void TestToolCallResponse() {
@@ -501,6 +558,7 @@ void TestEmbeddingsErrors() {
 
 int main() {
     TestRequestSerialization();
+    TestConsecutiveSameRoleTurnsMerge();
     TestToolCallResponse();
     TestProviderErrorMapping();
     TestMissingModel();

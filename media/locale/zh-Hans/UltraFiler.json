@@ -35,9 +35,6 @@
   "an entry": "条目",
   "An upload is still running — quit anyway?": "一个上传仍在进行。仍要退出吗？",
   "An upload is still waiting — quit anyway?": "一个上传仍在等待。仍要退出吗？",
-  "and {n} more": {
-    "other": "以及另外 {n} 个"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "其他文件，当此系统为该类文件注册了程序时：",
   "Applied to {n} item.": {
     "other": "已应用于 {n} 个项目。"
@@ -257,6 +254,7 @@
   "Open prompt": "打开命令提示符",
   "Opening files": "打开文件",
   "Opening {0} - {1}": "正在打开 {0} - {1}",
+  "Order by": "排序方式",
   "Order pinned": "按固定顺序",
   "Own patterns - type one and press Enter:": "自定义模式 - 输入一个模式并按 Enter：",
   "Path to the application": "应用程序路径",
@@ -447,9 +445,6 @@
   },
   "{n} icon": {
     "other": "{n} 个图标"
-  },
-  "{n} line": {
-    "other": "{n} 行"
   },
   "{n} result": {
     "other": "{n} 个结果"

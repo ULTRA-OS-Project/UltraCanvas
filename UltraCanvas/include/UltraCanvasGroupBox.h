@@ -5,13 +5,15 @@
 // titled frame, an optional activator (checkbox or switch, on either side of
 // the title bar) that enables/disables the contents, an optional info icon
 // with help text, an optional close button, and optional collapsible behaviour.
+// Version: 1.5.0 - GroupBoxVisualStyle::FromTheme, ApplyTheme: the group box follows the theme; a SetVisualStyle
+//                  by hand stops the following
 // Version: 1.4.0 - SetCloseButton / onCloseClicked: an "x" at the right end of the
 //                  title bar, for a box that is a panel the user dismisses
 // Version: 1.3.0 - GroupBoxVisualStyle::SectionCard(): one section of a window as a white
 //                  card on the light Colors::SectionPage (UltraMail's panes, UltraPaint's
 //                  side panel), shared instead of copied per app
 // Version: 1.2.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -103,6 +105,18 @@ namespace UltraCanvas {
         // titleFont.fontSize to it, and contentPadding to what its content
         // wants (8 px here).
         static GroupBoxVisualStyle SectionCard();
+
+        // The theme's roles over a base's own shape (widths, radius, indents,
+        // padding, the caption's weight) and its fills: a filled frame or
+        // header takes the raised surface and the panel, a transparent one
+        // stays transparent; the frame in a hairline, the caption in ink at
+        // the body size, faint ink disabled; the activator's track in the
+        // accent and the control border with the raised surface for its
+        // knob; the info and close icons in muted ink, the accent and ink
+        // when hovered, the hover fill behind the close button
+        static GroupBoxVisualStyle FromTheme(const UltraCanvasTheme& theme, const GroupBoxVisualStyle& base);
+        static GroupBoxVisualStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+        static GroupBoxVisualStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== GROUP BOX =====
@@ -140,6 +154,7 @@ namespace UltraCanvas {
 
         // ===== STYLE =====
         void SetVisualStyle(const GroupBoxVisualStyle& newStyle);
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         const GroupBoxVisualStyle& GetVisualStyle() const { return visualStyle; }
 
         // Convenience setters

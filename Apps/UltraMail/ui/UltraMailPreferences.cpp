@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
+// Version: 0.17.0 - strip_* (Settings > Display > Email warnings)
 // Version: 0.16.0 - send_notification (popup / status-bar)
 // Version: 0.15.0 - attachments (bottom / right)
 // Version: 0.14.0 - warn_loan_offers
@@ -74,6 +75,13 @@ bool Preferences::Load(const std::string& path) {
         if (key == "warn_crypto_caution") scamWarnings.cryptoCaution = ParseBool(value);
         if (key == "warn_attachments")    scamWarnings.attachments   = ParseBool(value);
         if (key == "warn_spam_flag")      scamWarnings.spamFlag      = ParseBool(value);
+        if (key == "strip_phishing")       warningStrip.phishing      = ParseBool(value);
+        if (key == "strip_scam")           warningStrip.scam          = ParseBool(value);
+        if (key == "strip_romance")        warningStrip.romance       = ParseBool(value);
+        if (key == "strip_loan")           warningStrip.loan          = ParseBool(value);
+        if (key == "strip_crypto_scam")    warningStrip.cryptoScam    = ParseBool(value);
+        if (key == "strip_crypto_caution") warningStrip.cryptoCaution = ParseBool(value);
+        if (key == "strip_suspicious")     warningStrip.suspicious    = ParseBool(value);
         if (key == "trusted_senders" || key == "blocked_senders") {
             // Comma-separated addresses; a blocked "@example.com" is a domain.
             const bool blockList = key == "blocked_senders";
@@ -245,6 +253,13 @@ bool Preferences::Save(const std::string& path) const {
     flag("warn_crypto_caution", scamWarnings.cryptoCaution);
     flag("warn_attachments",    scamWarnings.attachments);
     flag("warn_spam_flag",      scamWarnings.spamFlag);
+    flag("strip_phishing",       warningStrip.phishing);
+    flag("strip_scam",           warningStrip.scam);
+    flag("strip_romance",        warningStrip.romance);
+    flag("strip_loan",           warningStrip.loan);
+    flag("strip_crypto_scam",    warningStrip.cryptoScam);
+    flag("strip_crypto_caution", warningStrip.cryptoCaution);
+    flag("strip_suspicious",     warningStrip.suspicious);
     auto list = [&file](const char* key, const std::set<std::string>& entries) {
         file << key << " = ";
         bool firstEntry = true;

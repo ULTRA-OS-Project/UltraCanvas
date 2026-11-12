@@ -52,9 +52,9 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioExamples() {
-        auto page = DemoKit::CreatePage("AudioExamples", "Audio Player & Recorder",
-                "Playback, recording, saving in a format this build can encode, and a live "
-                "level strip fed by the recorder input or the playback output.");
+        auto page = DemoKit::CreatePage("AudioExamples", Tr("Audio Player & Recorder"),
+                Tr("Playback, recording, saving in a format this build can encode, and a live "
+                "level strip fed by the recorder input or the playback output."));
 
         auto st = std::make_shared<AudioDemoState>();
 
@@ -62,12 +62,11 @@ namespace UltraCanvas {
         // the last action.
         auto status = DemoKit::AddText(page, "AudioStatus", "");
         if (UltraCanvasAudioDevices::IsAvailable()) {
-            status->SetText("Backend: " + UltraCanvasAudioDevices::GetBackendName() +
-                            " — ready");
+            status->SetText(TrF("Backend: {0} — ready", UltraCanvasAudioDevices::GetBackendName()));
             status->SetTextColor(Color(40, 120, 40));
         } else {
-            status->SetText("Audio backend not compiled in. "
-                            "Rebuild with -DULTRACANVAS_ENABLE_AUDIO=ON.");
+            status->SetText(Tr("Audio backend not compiled in. "
+                               "Rebuild with -DULTRACANVAS_ENABLE_AUDIO=ON."));
             status->SetTextColor(Color(180, 60, 60));
         }
         status->SetFontSize(11);
@@ -75,7 +74,7 @@ namespace UltraCanvas {
         auto sections = DemoKit::AddRow(page, "AudioSections");
 
         // ----- Playback section -----
-        auto playbackCard = DemoKit::AddCard(sections, "PlaybackLabel", "Playback");
+        auto playbackCard = DemoKit::AddCard(sections, "PlaybackLabel", Tr("Playback"));
 
         auto player = CreateAudioPlayer("DemoPlayer", 0, 0, 600, 56);
         DemoKit::AddStretched(playbackCard, player);
@@ -84,7 +83,7 @@ namespace UltraCanvas {
         playbackRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         // Shows the name of the file currently loaded into the player.
-        auto fileLabel = DemoKit::CreateCaption("PlaybackFile", "No file loaded.");
+        auto fileLabel = DemoKit::CreateCaption("PlaybackFile", Tr("No file loaded."));
         fileLabel->SetFontSize(11);
 
         // Strip any directory part so we display just the file name.
@@ -93,7 +92,7 @@ namespace UltraCanvas {
             return slash == std::string::npos ? p : p.substr(slash + 1);
         };
 
-        auto loadBtn = CreateButton("LoadAudio", 0, 0, 110, 36, "Open");
+        auto loadBtn = CreateButton("LoadAudio", 0, 0, 110, 36, Tr("Open"));
         auto playerWeak = std::weak_ptr<UltraCanvasAudioPlayerElement>(player);
         // Open through the shared FileLoader facade: it shows the native dialog
         // (with default audio filters) and hands back a decoded UCAudio buffer,
@@ -103,27 +102,27 @@ namespace UltraCanvas {
             if (!p) return;
 
             FileDialogOptions opts;
-            opts.SetTitle("Open Audio File")
+            opts.SetTitle(Tr("Open Audio File"))
                 .SetParentWindow(p->GetWindow());
 
             UltraCanvasFileLoader::OpenAudio(opts,
                 [playerWeak, fileLabel, status, baseName, st](
                         const FileLoadResult& res, std::shared_ptr<UCAudio> audio) {
                     if (res.dialogResult != DialogResult::OK) {
-                        status->SetText("Open cancelled.");
+                        status->SetText(Tr("Open cancelled."));
                         return;
                     }
                     if (!res.IsSuccess() || !audio) {
-                        status->SetText("Load failed: " + res.loadError);
+                        status->SetText(TrF("Load failed: {0}", res.loadError));
                         return;
                     }
                     auto pl = playerWeak.lock();
                     if (!pl) return;
                     pl->LoadFromAudio(audio);
                     std::string name = baseName(audio->GetSourcePath());
-                    fileLabel->SetText("File: " + name);
+                    fileLabel->SetText(TrF("File: {0}", name));
                     pl->SetTrackTitle(name);
-                    status->SetText("Loaded: " + name);
+                    status->SetText(TrF("Loaded: {0}", name));
                     // Remember the loaded audio: it becomes the save source and
                     // feeds the VU strip while it plays.
                     st->currentAudio = audio;
@@ -136,11 +135,11 @@ namespace UltraCanvas {
         DemoKit::Add(playbackRow, fileLabel, 1);
 
         // ----- Recording section -----
-        auto recCard = DemoKit::AddCard(sections, "RecLabel", "Recording");
+        auto recCard = DemoKit::AddCard(sections, "RecLabel", Tr("Recording"));
 
         auto recorder = CreateAudioRecorder("DemoRecorder", 0, 0, 600, 72);
-        recorder->onRecordStarted = [status]() { status->SetText("Recording..."); };
-        recorder->onRecordStopped = [status]() { status->SetText("Recording stopped."); };
+        recorder->onRecordStarted = [status]() { status->SetText(Tr("Recording...")); };
+        recorder->onRecordStopped = [status]() { status->SetText(Tr("Recording stopped.")); };
         DemoKit::AddStretched(recCard, recorder);
         auto recWeak = std::weak_ptr<UltraCanvasAudioRecorderElement>(recorder);
 
@@ -150,7 +149,7 @@ namespace UltraCanvas {
         // up here automatically.
         auto saveRow = DemoKit::AddRow(recCard, "SaveRow", 8);
         saveRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        DemoKit::AddCaption(saveRow, "SaveFmtLabel", "Save format:")->SetFontSize(11);
+        DemoKit::AddCaption(saveRow, "SaveFmtLabel", Tr("Save format:"))->SetFontSize(11);
 
         auto formatDd = std::make_shared<UltraCanvasDropdown>("SaveFormat", 0, 0, 150, 26);
         {
@@ -172,13 +171,13 @@ namespace UltraCanvas {
         DemoKit::AddFixed(saveRow, formatDd);
 
         recorder->onSaved = [status](const std::string& path) {
-            status->SetText("Saved to " + path);
+            status->SetText(TrF("Saved to {0}", path));
         };
         recorder->onSaveCancelled = [status]() {
-            status->SetText("Save cancelled or no recording available.");
+            status->SetText(Tr("Save cancelled or no recording available."));
         };
 
-        auto saveBtn = CreateButton("SaveAudio", 0, 0, 95, 36, "Save");
+        auto saveBtn = CreateButton("SaveAudio", 0, 0, 95, 36, Tr("Save"));
         auto formatDdWeak = std::weak_ptr<UltraCanvasDropdown>(formatDd);
         // Saves whatever audio the page currently holds — the captured recording
         // when one is available, otherwise the loaded file — encoding it in the
@@ -197,13 +196,13 @@ namespace UltraCanvas {
             }
             bool haveLoaded = st->currentAudio && st->currentAudio->IsValid();
             if (!haveRecording && !haveLoaded) {
-                status->SetText("Nothing to save — load a file or record something first.");
+                status->SetText(Tr("Nothing to save — load a file or record something first."));
                 return;
             }
 
             const DropdownItem* item = dd->GetSelectedItem();
             if (!item) {
-                status->SetText("No save format available in this build.");
+                status->SetText(Tr("No save format available in this build."));
                 return;
             }
             const std::string ext = item->value;
@@ -215,17 +214,17 @@ namespace UltraCanvas {
                     : (st->currentName.empty() ? "audio" : StripExtension(st->currentName));
 
             FileDialogOptions opts;
-            opts.SetTitle("Save Audio")
+            opts.SetTitle(Tr("Save Audio"))
                 .SetDefaultFileName(base + "." + ext)
                 .AddFilter(item->text, ext)
-                .AddFilter("All files (*.*)", "*");
+                .AddFilter(Tr("All files (*.*)"), "*");
             if (rec) opts.SetParentWindow(rec->GetWindow());
 
             UltraCanvasFileLoader::SaveFileDialog(opts,
                 [recWeak, status, st, fmt, ext, haveRecording](
                         DialogResult result, const std::string& path) {
                     if (result != DialogResult::OK || path.empty()) {
-                        status->SetText("Save cancelled.");
+                        status->SetText(Tr("Save cancelled."));
                         return;
                     }
                     bool ok = false;
@@ -234,14 +233,13 @@ namespace UltraCanvas {
                     } else {
                         ok = st->currentAudio->SaveToFile(path, fmt);
                     }
-                    if (ok) status->SetText("Saved to " + path);
-                    else    status->SetText("Save failed — no ." + ext +
-                                            " encoder available in this build.");
+                    if (ok) status->SetText(TrF("Saved to {0}", path));
+                    else    status->SetText(TrF("Save failed — no .{0} encoder available in this build.", ext));
                 });
         };
         DemoKit::Add(saveRow, saveBtn);
 
-        auto playRecBtn = CreateButton("PlayRec", 0, 0, 105, 36, "Play back");
+        auto playRecBtn = CreateButton("PlayRec", 0, 0, 105, 36, Tr("Play back"));
         playRecBtn->onClick = [player, recorder, status, fileLabel, st]() {
             auto audio = recorder->TakeBuffer();
             if (audio && audio->IsValid()) {
@@ -250,25 +248,25 @@ namespace UltraCanvas {
                 st->mono = AudioToMonoFloat(*audio);
                 st->rate = audio->GetSampleRate();
                 player->LoadFromAudio(audio);
-                player->SetTrackTitle("(just recorded)");
-                fileLabel->SetText("File: (just recorded)");
+                player->SetTrackTitle(Tr("(just recorded)"));
+                fileLabel->SetText(TrF("File: {0}", Tr("(just recorded)")));
                 player->Play();
-                status->SetText("Playing back recording.");
+                status->SetText(Tr("Playing back recording."));
             } else {
-                status->SetText("No recording captured yet.");
+                status->SetText(Tr("No recording captured yet."));
             }
         };
         DemoKit::Add(saveRow, playRecBtn);
 
         // ----- Horizontal VU strip (bottom) -----
-        auto vuCard = DemoKit::AddCard(page, "VuLabel", "Level (VU)");
+        auto vuCard = DemoKit::AddCard(page, "VuLabel", Tr("Level (VU)"));
 
         auto vuStrip = std::make_shared<UltraCanvasLevelMeter>("AudioVuStrip", 980, 24);
         DemoKit::AddStretched(vuCard, vuStrip);
 
         DemoKit::AddCaption(vuCard, "VuCaption",
-                "Live level: microphone input while recording, playback output "
-                "while playing. Fill = peak, dark tick = RMS.");
+                Tr("Live level: microphone input while recording, playback output "
+                "while playing. Fill = peak, dark tick = RMS."));
 
         // Drive the strip at ~30 fps: recorder levels win while capturing;
         // otherwise compute peak/RMS of the audible 40 ms window from the

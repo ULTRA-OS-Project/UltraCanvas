@@ -21,7 +21,9 @@ This app versions itself: [`Docs/Texter/CHANGELOG.md`](../../Docs/Texter/CHANGEL
   JavaScript / TypeScript, Rust, Swift, Kotlin, PHP, Ruby, Lua, SQL, Shell,
   HTML, CSS, XML, JSON, YAML, Markdown, assembly, Pascal and more), picked by
   extension or from the status bar. Line numbers, word wrap, zoom, light and
-  dark theme.
+  dark look - the desktop's, and *View > Theme* picks the other one for
+  every UltraCanvas application at once (it writes `Appearance.conf`, the
+  setting UOS-Settings' Look page keeps).
 - **Markdown.** A Markdown toolbar and side bar (headings, emphasis, lists,
   checklist, links, images, tables), with the Markdown rendered live in the
   editor (`UltraCanvasTextArea`).
@@ -50,7 +52,7 @@ Texter [options] [file...]
 
   -h, --help        Show this help message
   -v, --version     Show version information
-  -d, --dark        Start with dark theme
+  -d, --dark        Start with the dark look for this run (the desktop's look otherwise)
   -l, --lang LANG   Set syntax highlighting language
 ```
 

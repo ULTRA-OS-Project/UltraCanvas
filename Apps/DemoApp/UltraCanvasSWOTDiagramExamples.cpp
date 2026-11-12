@@ -21,19 +21,26 @@
 
 namespace UltraCanvas {
 
-    static const char* kSWOTQuadrantNames[4] = {
-            "Strengths", "Weaknesses", "Opportunities", "Threats"};
+    // A quadrant's name as the page shows it.
+    static std::string SWOTQuadrantName(int q) {
+        switch (q) {
+            case 0: return Tr("Strengths");
+            case 1: return Tr("Weaknesses");
+            case 2: return Tr("Opportunities");
+            default: return Tr("Threats");
+        }
+    }
 
     // Short phrases used by the "Add Random Item" button
     static std::string RandomSWOTItemText(SWOTQuadrant q) {
-        static const char* strengths[] = {
-                "Skilled workforce", "Solid cash reserves", "Modern tooling", "Fast delivery"};
-        static const char* weaknesses[] = {
-                "Slow release cycle", "High staff turnover", "Weak online presence", "Manual processes"};
-        static const char* opportunities[] = {
-                "New export markets", "Automation potential", "Industry consolidation", "Green energy demand"};
-        static const char* threats[] = {
-                "Currency volatility", "New market entrants", "Talent shortage", "Cyber attacks"};
+        const std::string strengths[] = {
+                Tr("Skilled workforce"), Tr("Solid cash reserves"), Tr("Modern tooling"), Tr("Fast delivery")};
+        const std::string weaknesses[] = {
+                Tr("Slow release cycle"), Tr("High staff turnover"), Tr("Weak online presence"), Tr("Manual processes")};
+        const std::string opportunities[] = {
+                Tr("New export markets"), Tr("Automation potential"), Tr("Industry consolidation"), Tr("Green energy demand")};
+        const std::string threats[] = {
+                Tr("Currency volatility"), Tr("New market entrants"), Tr("Talent shortage"), Tr("Cyber attacks")};
 
         int pick = rand() % 4;
         switch (q) {
@@ -51,8 +58,8 @@ namespace UltraCanvas {
         // 170 px controls and the card's padding.
         const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = DemoKit::CreatePage("swotMainContainer", "SWOT Diagram Infographic",
-                "Classic four-panel SWOT analysis with six design presets, light/dark themes and interactive items");
+        auto mainContainer = DemoKit::CreatePage("swotMainContainer", Tr("SWOT Diagram Infographic"),
+                Tr("Classic four-panel SWOT analysis with six design presets, light/dark themes and interactive items"));
 
         // Controls | diagram tabs and status | statistics. The sidebars keep
         // their width; on a narrow window the cards wrap under each other.
@@ -76,7 +83,7 @@ namespace UltraCanvas {
         sidebarLimits.minWidth = CSSLayout::Dimension::Px(SIDEBAR_CARD_W);
         leftSidebar->boxConstraints = sidebarLimits;
 
-        DemoKit::Add(leftSidebar, makeSectionTitle("swotControlsTitle", "CONTROLS"));
+        DemoKit::Add(leftSidebar, makeSectionTitle("swotControlsTitle", Tr("CONTROLS")));
 
         auto addDropdown = [&](const std::string& id, const std::string& labelId,
                                const std::string& caption) {
@@ -90,24 +97,24 @@ namespace UltraCanvas {
             return dropdown;
         };
 
-        auto themeSelector = addDropdown("swotThemeSelector", "swotThemeLabel", "Theme");
-        themeSelector->AddItem("Light", "light");
-        themeSelector->AddItem("Dark", "dark");
+        auto themeSelector = addDropdown("swotThemeSelector", "swotThemeLabel", Tr("Theme"));
+        themeSelector->AddItem(Tr("Light"), "light");
+        themeSelector->AddItem(Tr("Dark"), "dark");
         themeSelector->SetSelectedIndex(0);
 
-        auto badgesSelector = addDropdown("swotBadgesSelector", "swotBadgesLabel", "Letter Badges");
-        badgesSelector->AddItem("Shown", "on");
-        badgesSelector->AddItem("Hidden", "off");
+        auto badgesSelector = addDropdown("swotBadgesSelector", "swotBadgesLabel", Tr("Letter Badges"));
+        badgesSelector->AddItem(Tr("Shown"), "on");
+        badgesSelector->AddItem(Tr("Hidden"), "off");
         badgesSelector->SetSelectedIndex(0);
 
-        auto centerSelector = addDropdown("swotCenterSelector", "swotCenterLabel", "Center Element");
-        centerSelector->AddItem("Shown", "on");
-        centerSelector->AddItem("Hidden", "off");
+        auto centerSelector = addDropdown("swotCenterSelector", "swotCenterLabel", Tr("Center Element"));
+        centerSelector->AddItem(Tr("Shown"), "on");
+        centerSelector->AddItem(Tr("Hidden"), "off");
         centerSelector->SetSelectedIndex(0);
 
-        auto bulletsSelector = addDropdown("swotBulletsSelector", "swotBulletsLabel", "Item Bullets");
-        bulletsSelector->AddItem("Shown", "on");
-        bulletsSelector->AddItem("Hidden", "off");
+        auto bulletsSelector = addDropdown("swotBulletsSelector", "swotBulletsLabel", Tr("Item Bullets"));
+        bulletsSelector->AddItem(Tr("Shown"), "on");
+        bulletsSelector->AddItem(Tr("Hidden"), "off");
         bulletsSelector->SetSelectedIndex(0);
 
         // The action buttons: across the sidebar, as tall as before; a longer
@@ -119,20 +126,20 @@ namespace UltraCanvas {
             return button;
         };
 
-        auto btnAddItem = addButton("swotBtnAddItem", "Add Random Item", Color(13, 110, 253, 255));
-        auto btnRemove = addButton("swotBtnRemove", "Remove Selected", Color(220, 53, 69, 255));
-        auto btnReload = addButton("swotBtnReload", "Reload Sample Data", Color(25, 135, 84, 255));
-        auto btnReset = addButton("swotBtnReset", "Reset View", Color(108, 117, 125, 255));
+        auto btnAddItem = addButton("swotBtnAddItem", Tr("Add Random Item"), Color(13, 110, 253, 255));
+        auto btnRemove = addButton("swotBtnRemove", Tr("Remove Selected"), Color(220, 53, 69, 255));
+        auto btnReload = addButton("swotBtnReload", Tr("Reload Sample Data"), Color(25, 135, 84, 255));
+        auto btnReset = addButton("swotBtnReset", Tr("Reset View"), Color(108, 117, 125, 255));
 
         // Short lines, so the tips do not widen the sidebar; they wrap if a
         // translation is longer.
         auto helpBox = DemoKit::CreateText("swotHelpBox",
-                "INTERACTION TIPS\n\n"
+                Tr("INTERACTION TIPS\n\n"
                 "- Click an item to select\n"
                 "- Click empty space to\n"
                 "  clear the selection\n"
                 "- Hover for full text\n"
-                "- Double-click an item");
+                "- Double-click an item"));
         helpBox->SetFontSize(9);
         helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
         helpBox->SetPadding(10);
@@ -148,7 +155,7 @@ namespace UltraCanvas {
         DemoKit::AddFixed(centerCard, tabbedContainer);
 
         auto statusBar = DemoKit::CreateText("swotStatusBar",
-                "Ready - click items to select them, hover for tooltips");
+                Tr("Ready - click items to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);
@@ -159,7 +166,7 @@ namespace UltraCanvas {
         auto rightSidebar = DemoKit::AddCard(contentContainer, "swotRightSidebar", "", "", SIDEBAR_CARD_W);
         rightSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        DemoKit::Add(rightSidebar, makeSectionTitle("swotStatsTitle", "STATISTICS"));
+        DemoKit::Add(rightSidebar, makeSectionTitle("swotStatsTitle", Tr("STATISTICS")));
 
         auto statsPanel = DemoKit::CreateText("swotStatsPanel", "");
         statsPanel->SetFontSize(10);
@@ -167,7 +174,7 @@ namespace UltraCanvas {
         statsPanel->SetPadding(12);
         DemoKit::Add(rightSidebar, statsPanel);
 
-        DemoKit::Add(rightSidebar, makeSectionTitle("swotAboutTitle", "ABOUT THIS DESIGN"));
+        DemoKit::Add(rightSidebar, makeSectionTitle("swotAboutTitle", Tr("ABOUT THIS DESIGN")));
 
         auto aboutPanel = DemoKit::CreateText("swotAboutPanel", "");
         aboutPanel->SetFontSize(9);
@@ -184,31 +191,31 @@ namespace UltraCanvas {
             std::string about;
         };
         const std::vector<TabSpec> tabSpecs = {
-                {"Corner Badges", SWOTDesign::CornerBadges,
-                 "Corner Badges\n\nVivid filled panels with S/W/O/T letter badges at the outer corners "
-                 "and a central SWOT circle - the classic infographic presentation."},
-                {"Matrix", SWOTDesign::Matrix,
-                 "Classic Matrix\n\nContiguous 2x2 grid, the textbook SWOT form.\n\n"
-                 "Axis captions (helpful/harmful, internal/external) are enabled on this tab."},
-                {"Cards", SWOTDesign::Cards,
-                 "Cards\n\nFour separated rounded cards with colored header bars - reads as "
-                 "four independent tiles."},
-                {"Diamond", SWOTDesign::CenterDiamond,
-                 "Center Diamond\n\nA central rotated square of four letter triangles with clean "
-                 "text blocks at the surrounding corners."},
-                {"Rows", SWOTDesign::Rows,
-                 "Rows\n\nFour stacked horizontal bands with big letter blocks - the list-style "
-                 "presentation that suits longer item texts."},
-                {"Columns", SWOTDesign::Columns,
-                 "Columns\n\nFour side-by-side columns with header chips - good for portrait "
-                 "layouts."}};
+                {Tr("Corner Badges"), SWOTDesign::CornerBadges,
+                 Tr("Corner Badges\n\nVivid filled panels with S/W/O/T letter badges at the outer corners "
+                 "and a central SWOT circle - the classic infographic presentation.")},
+                {Tr("Matrix"), SWOTDesign::Matrix,
+                 Tr("Classic Matrix\n\nContiguous 2x2 grid, the textbook SWOT form.\n\n"
+                 "Axis captions (helpful/harmful, internal/external) are enabled on this tab.")},
+                {Tr("Cards"), SWOTDesign::Cards,
+                 Tr("Cards\n\nFour separated rounded cards with colored header bars - reads as "
+                 "four independent tiles.")},
+                {Tr("Diamond"), SWOTDesign::CenterDiamond,
+                 Tr("Center Diamond\n\nA central rotated square of four letter triangles with clean "
+                 "text blocks at the surrounding corners.")},
+                {Tr("Rows"), SWOTDesign::Rows,
+                 Tr("Rows\n\nFour stacked horizontal bands with big letter blocks - the list-style "
+                 "presentation that suits longer item texts.")},
+                {Tr("Columns"), SWOTDesign::Columns,
+                 Tr("Columns\n\nFour side-by-side columns with header chips - good for portrait "
+                 "layouts.")}};
 
         std::vector<std::shared_ptr<UltraCanvasSWOTDiagram>> allDiagrams;
         for (const auto& spec : tabSpecs) {
             auto diagram = CreateSWOTDiagramElement(
                     "swotDiagram" + std::to_string(allDiagrams.size()),
                     DIAG_X, DIAG_Y, DIAG_W, DIAG_H, spec.design);
-            diagram->SetTitle("SWOT Analysis");
+            diagram->SetTitle(Tr("SWOT Analysis"));
             diagram->LoadSampleData();
             if (spec.design == SWOTDesign::Matrix) diagram->SetShowAxisCaptions(true);
 
@@ -233,17 +240,17 @@ namespace UltraCanvas {
             if (!diagram) return;
 
             std::ostringstream oss;
-            oss << "Total Items: " << diagram->CountAllItems() << "\n\n";
+            oss << TrF("Total Items: {0}", diagram->CountAllItems()) << "\n\n";
             for (int q = 0; q < 4; ++q) {
-                oss << kSWOTQuadrantNames[q] << ": "
-                    << diagram->CountItems(static_cast<SWOTQuadrant>(q)) << "\n";
+                oss << TrF("{0}: {1}", SWOTQuadrantName(q),
+                           diagram->CountItems(static_cast<SWOTQuadrant>(q))) << "\n";
             }
             auto sel = diagram->GetSelectedItem();
-            oss << "\nSelected: ";
+            oss << "\n";
             if (sel.IsValid()) {
-                oss << kSWOTQuadrantNames[sel.quadrant] << " #" << (sel.item + 1);
+                oss << TrF("Selected: {0} #{1}", SWOTQuadrantName(sel.quadrant), sel.item + 1);
             } else {
-                oss << "none";
+                oss << TrF("Selected: {0}", Tr("none"));
             }
             statsPanel->SetText(oss.str());
         };
@@ -261,17 +268,17 @@ namespace UltraCanvas {
         // ===== DIAGRAM CALLBACKS =====
         for (auto& diagram : allDiagrams) {
             diagram->onItemSelect = [statusBar, updateStats](SWOTQuadrant q, size_t, const SWOTItem& item) {
-                statusBar->SetText("Selected [" +
-                        std::string(kSWOTQuadrantNames[static_cast<int>(q)]) + "] " + item.text);
+                statusBar->SetText(TrF("Selected [{0}] {1}",
+                        SWOTQuadrantName(static_cast<int>(q)), item.text));
                 updateStats();
             };
             diagram->onItemHover = [statusBar](SWOTQuadrant q, size_t, const SWOTItem& item) {
-                statusBar->SetText("Hovering [" +
-                        std::string(kSWOTQuadrantNames[static_cast<int>(q)]) + "] " + item.text);
+                statusBar->SetText(TrF("Hovering [{0}] {1}",
+                        SWOTQuadrantName(static_cast<int>(q)), item.text));
             };
             diagram->onItemDoubleClick = [statusBar](SWOTQuadrant q, size_t, const SWOTItem& item) {
-                statusBar->SetText("Double-clicked [" +
-                        std::string(kSWOTQuadrantNames[static_cast<int>(q)]) + "] " + item.text);
+                statusBar->SetText(TrF("Double-clicked [{0}] {1}",
+                        SWOTQuadrantName(static_cast<int>(q)), item.text));
             };
             diagram->onSelectionChange = updateStats;
         }
@@ -313,8 +320,8 @@ namespace UltraCanvas {
 
             std::string text = RandomSWOTItemText(q);
             diagram->AddItem(q, text);
-            statusBar->SetText("Added [" +
-                    std::string(kSWOTQuadrantNames[static_cast<int>(q)]) + "] " + text);
+            statusBar->SetText(TrF("Added [{0}] {1}",
+                    SWOTQuadrantName(static_cast<int>(q)), text));
             updateStats();
         };
 
@@ -324,12 +331,12 @@ namespace UltraCanvas {
 
             auto sel = diagram->GetSelectedItem();
             if (!sel.IsValid()) {
-                statusBar->SetText("Nothing selected - click an item first");
+                statusBar->SetText(Tr("Nothing selected - click an item first"));
                 return;
             }
             diagram->RemoveItem(static_cast<SWOTQuadrant>(sel.quadrant),
                                 static_cast<size_t>(sel.item));
-            statusBar->SetText("Removed the selected item");
+            statusBar->SetText(Tr("Removed the selected item"));
             updateStats();
         };
 
@@ -337,7 +344,7 @@ namespace UltraCanvas {
             auto diagram = activeDiagram();
             if (!diagram) return;
             diagram->LoadSampleData();
-            statusBar->SetText("Sample data reloaded for the active diagram");
+            statusBar->SetText(Tr("Sample data reloaded for the active diagram"));
             updateStats();
         };
 
@@ -357,7 +364,7 @@ namespace UltraCanvas {
                 diagram->LoadSampleData();
             }
 
-            statusBar->SetText("View reset - all diagrams restored to their defaults");
+            statusBar->SetText(Tr("View reset - all diagrams restored to their defaults"));
             updateStats();
         };
 

@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.9.0 - RichTextEditStyle::FromTheme, ApplyTheme: the edit follows the theme (its chrome and inks;
+//                  the document's fonts stay); a SetStyle by hand stops the following
 // Version: 1.8.0 - a run's own letter spacing (RichTextRun::letterSpacingPt) is drawn
 // Version: 1.7.0 - RichTextEditStyle::letterSpacing: the whole text tracked wider or tighter
 // Version: 1.6.0 - spell marks move with an edit instead of vanishing below the caret;
@@ -124,6 +126,19 @@ struct RichTextEditStyle {
     Color fontNoticeColor = Color(255, 244, 214);
     Color fontNoticeBorderColor = Color(230, 180, 80);
     Color fontNoticeTextColor = Color(110, 70, 0);
+
+    // The theme's roles over a base's own typography and metrics: the well
+    // for the text and the page (the element role "rich-text.page" where a
+    // theme wants paper of another colour), the panel for the desk, ink and
+    // the caret in ink, the soft accent for the selection, the accent for
+    // links, muted ink for quotes and list markers, the panel with hairlines
+    // for code, control-border rules and table grids, hairline guides; the
+    // comment, tracked-change and font-notice colours keep their own
+    // meaning. The document's fonts (baseFont, codeFontFamily) are the
+    // document's: they stay
+    static RichTextEditStyle FromTheme(const UltraCanvasTheme& theme, const RichTextEditStyle& base);
+    static RichTextEditStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, RichTextEditStyle()); }
+    static RichTextEditStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // A clickable region inside a rendered block (hyperlinks today).
@@ -241,6 +256,7 @@ public:
     const RichTextEditStyle& GetStyle() const { return style; }
     RichTextEditStyle& GetStyleMutable() { return style; }
     void SetStyle(const RichTextEditStyle& s);
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(RichTextEditStyle::FromTheme(theme, style)); }
 
     // ===== EDITING (also the toolbar surface) =====
     void InsertText(const std::string& utf8);
@@ -488,6 +504,14 @@ public:
     // text lying on a zoomable canvas - a bitmap editor's text layer - follows
     // the canvas's zoom, which goes well past a word processor's 0.25 to 5.
     void SetZoomRange(float minimum, float maximum);
+    // Zoom that follows the element's size, as a word processor's "Page
+    // width" and "Whole page": the page (with the desk either side) fills the
+    // width, or the whole page fits in the view. It is worked out again
+    // whenever the element is resized; SetZoom, Ctrl+wheel and Off end it.
+    // Only page view has a page to fit; outside it the zoom stays as it is.
+    enum class ZoomFit { Off, PageWidth, WholePage };
+    void SetZoomFit(ZoomFit fit);
+    ZoomFit GetZoomFit() const { return zoomFit; }
     std::function<void(float zoom)> onZoomChanged;
 
     // ===== SCROLLING =====
@@ -664,6 +688,14 @@ private:
             RichTextAlign floatAlign = RichTextAlign::Left;
             float offsetX = 0.0f;                 // pixels
             float offsetY = 0.0f;
+            // What the offsets count from (the column and paragraph, the
+            // page's text area, or the page) and the vertical alignment.
+            RichTextRun::FloatOrigin horizontalFrom = RichTextRun::FloatOrigin::Margin;
+            RichTextRun::FloatOrigin verticalFrom = RichTextRun::FloatOrigin::Paragraph;
+            RichTextRun::FloatVerticalAlign verticalAlign = RichTextRun::FloatVerticalAlign::Top;
+            // A text frame (UCRichDocument::frames) instead of a picture:
+            // `height` is its least height until its text is laid out.
+            int frameIndex = -1;
         };
         std::vector<InlineImage> inlineImages;
         // A display formula (MathBlock) typeset whole, centred in the column;
@@ -673,6 +705,13 @@ private:
         // beside this block (pixels); set by the placement pass.
         float intrudeLeft = 0.0f;
         float intrudeRight = 0.0f;
+        // How far down the block (layout pixels) that room is taken; 0 = all
+        // of it. Lines below take the column's full width again.
+        float intrudeUntil = 0.0f;
+        // Its own top-and-bottom picture lower down in it: the lines below
+        // `jumpFrom` (layout pixels) go on from `jumpTo`, under the picture.
+        float jumpFrom = 0.0f;
+        float jumpTo = 0.0f;
         // Page view: the pieces of a block that runs over a page end, one per
         // page - layout y range [from, to) drawn at content y `top`, below a
         // repeat of the table's header rows `headerHeight` tall. Empty = the
@@ -741,6 +780,7 @@ private:
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
 
+    struct FurnitureLayout;                       // below, with the pages
     // ===== FLOATING PICTURES =====
     // A floating picture where the placement pass put it: x from the text
     // column's left edge, y in content coordinates.
@@ -751,13 +791,26 @@ private:
         RichTextRun::ImageWrap wrap = RichTextRun::ImageWrap::Square;
         bool beside = true;                       // text flows beside it (else above and below)
         std::shared_ptr<UCImage> image;
+        // A text frame: its look and its laid-out paragraphs.
+        int frameIndex = -1;
+        std::shared_ptr<FurnitureLayout> frameContent;
     };
+    // A text frame's paragraphs laid out `width` pixels wide (its inner
+    // width, inside padding and border).
+    // With a page number, page fields in it show that page's.
+    std::shared_ptr<FurnitureLayout> LayoutTextFrame(IRenderContext* ctx, int frameIndex, float width,
+                                                     int pageNumber = 0, int pageCount = 0);
+    // The room a text frame's border and padding take on each side (pixels).
+    float TextFrameInset(int frameIndex) const;
+    void DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target);
     std::vector<PlacedFloat> placedFloats;
     // Places block `index`'s floats at `top` and fits the block round the
     // floats placed so far (moving it below a top-and-bottom one, narrowing it
     // beside a square one - relaying it out when that changes). Returns the
     // block's top.
     float FlowAroundFloats(IRenderContext* ctx, int index, float top, std::vector<PlacedFloat>& pageFloats);
+    void SplitBesideFloat(IRenderContext* ctx, const RichDocBlock& block, int blockIndex, BlockLayout& bl,
+                          float fullIndent);
     void DrawFloats(IRenderContext* ctx, bool behindText);
 
     // ===== EDITING A HEADER OR FOOTER =====
@@ -799,7 +852,16 @@ private:
         float footerTop = 0.0f;
         std::shared_ptr<FurnitureLayout> header;
         std::shared_ptr<FurnitureLayout> footer;
+        // The header's and footer's floating pictures and text frames on
+        // this page (blockIndex -1), which the page's body wraps round.
+        std::vector<PlacedFloat> furnitureFloats;
     };
+    PlacedFloat PlaceFloat(IRenderContext* ctx, const BlockLayout::InlineImage& image, float paragraphTop,
+                           float paragraphHeight, const PageFrame* page, int pageNumber = 0, int pageCount = 0);
+    void PlaceFurnitureFloats(IRenderContext* ctx, PageFrame& frame, int pageNumber, int pageCount);
+    void DrawPlacedFloat(IRenderContext* ctx, const PlacedFloat& placed);
+    // Set while a header or footer is laid out: its floats float too.
+    bool layingOutFurniture = false;
     // ===== NOTES =====
     // A footnote or endnote laid out where it is drawn: `top` in content
     // coordinates; `ruleAbove` for the first footnote of a page and the first
@@ -990,6 +1052,9 @@ private:
     float scrollOffset = 0.0f;
     float hScrollOffset = 0.0f;       // document pixels, page view only
     float zoom = 1.0f;
+    ZoomFit zoomFit = ZoomFit::Off;
+    // The zoom zoomFit asks for at the element's present size (0 = none).
+    float FitZoom() const;
     float minZoom = 0.25f;
     float maxZoom = 5.0f;
     bool needsHorizontalScrollbar = false;

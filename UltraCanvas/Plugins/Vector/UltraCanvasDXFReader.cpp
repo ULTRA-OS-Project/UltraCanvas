@@ -34,6 +34,7 @@
 
 #include "UltraCanvasCADConverters.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
 
 #include <algorithm>
 #include <array>
@@ -58,8 +59,18 @@ constexpr double kPi = 3.14159265358979323846;
 struct Tag {
     int code;
     std::string value;
-    double D() const { return std::atof(value.c_str()); }
-    int I() const { return std::atoi(value.c_str()); }
+    // DXF numbers are dot-decimal, as ISO and AutoCAD both have it. atof read
+    // them through LC_NUMERIC, so on a comma-decimal desktop a coordinate of
+    // 10.5 came back as 10 and a drawing arrived snapped to a whole-number
+    // grid - and this is the reader the DWG path feeds too, which is how a
+    // .dwg lost its geometry as well. TryParseFloat leaves the default where
+    // the text is not a number, which is what atof did by returning 0.
+    double D() const {
+        double number = 0.0;
+        TryParseFloat(value, number);
+        return number;
+    }
+    int I() const { return std::atoi(value.c_str()); }   // locale-ok: atoi has no decimal point
 };
 
 struct LayerDef {

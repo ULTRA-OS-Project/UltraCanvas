@@ -45,6 +45,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.21.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
+// Version: 1.21.0 - Display > Path bar: a drive named by its volume on the path bar, or by its letter alone
 // Version: 1.20.2 - the texts left in English go through Tr too: captions, tooltips, the cache figures (counts through TrN), the TAR labels; the conflict choices get ids that do not change with the language
 // Version: 1.20.1 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.20.0 - the interface strings go through Tr (UltraLocalisation); "Translate UltraFiler..." on the start page opens the localisation editor
@@ -55,7 +57,7 @@
 //                   preview forgets Unlock's passwords (0: never)
 // Version: 1.16.1 - the colour popup's picker is the framework's ColorPickerStyle::Light
 // Version: 1.16.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -73,6 +75,7 @@
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasSlider.h"
@@ -121,6 +124,7 @@ namespace {
     constexpr const char* kPageFileExtensions = "display/file-extensions";
     constexpr const char* kPageFileIcons = "display/file-icons";
     constexpr const char* kPageFilesInUse = "display/files-in-use";
+    constexpr const char* kPagePathBar = "display/path-bar";
     constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageHandling = "handling";
     constexpr const char* kPageDragDrop = "handling/drag-drop";
@@ -131,6 +135,7 @@ namespace {
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "extras/history-favorites";
     constexpr const char* kPageCache = "extras/cache";
+    constexpr const char* kPageProxy = "extras/proxy";
     constexpr const char* kPageArchives = "archives";
     constexpr const char* kPageTar = "archives/tar";
     // The page shown while nothing is selected - the window opens with every
@@ -169,6 +174,8 @@ namespace {
         std::shared_ptr<UltraCanvasCheckbox> extensionsInNamesBox;
         // Display > Files in use: the "mark held files" checkbox.
         std::shared_ptr<UltraCanvasCheckbox> lockMarkingBox;
+        // Display > Path bar: the "drive's volume name" checkbox.
+        std::shared_ptr<UltraCanvasCheckbox> pathBarVolumeNamesBox;
         // Display > Thumbnails: the "pictures inside a folder on its icon"
         // checkbox above the kind list.
         std::shared_ptr<UltraCanvasCheckbox> folderPreviewsBox;
@@ -517,7 +524,7 @@ namespace {
                 UltraFilerSettings::kMaxTreeWidth,
                 d->settings->treeFixedWidth, 10);
         d->treeWidthSpinner->SetSuffix(" px");
-        d->treeWidthSpinner->GetStyle().fontStyle.fontSize = kTextFontSize;
+        d->treeWidthSpinner->GetStyle().fontStyle.fontSize = TextFontSize();
         d->treeWidthSpinner->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         // Setting a width is choosing a fixed one.
         d->treeWidthSpinner->onValueChanged = [d](double value) {
@@ -1138,7 +1145,7 @@ namespace {
             parts.body->AddChild(MakeText("ufl-set-file-icons-unsupported",
                     Tr("This system has no desktop to take icons from, so the "
                        "simple icons are all there is to draw here."),
-                    kTextWidth, kTextFontSize, kNoteTextColor));
+                    kTextWidth, TextFontSize(), NoteTextColor()));
         }
 
         AddNote(parts, "ufl-set-file-icons-note1",
@@ -1180,7 +1187,7 @@ namespace {
             parts.body->AddChild(MakeText("ufl-set-inuse-unsupported",
                     Tr("This system cannot be asked which program holds a file, "
                        "so nothing is marked here."),
-                    kTextWidth, kTextFontSize, kNoteTextColor));
+                    kTextWidth, TextFontSize(), NoteTextColor()));
             d->lockMarkingBox->SetDisabled(true);
         }
 
@@ -1196,6 +1203,32 @@ namespace {
         AddNote(parts, "ufl-set-inuse-note3",
                 Tr("Off, nothing is asked: each shown file costs one open, which "
                    "is worth avoiding on a slow network volume."));
+        return parts.page;
+    }
+
+    // ===== DISPLAY > PATH BAR =====
+    std::shared_ptr<UltraCanvasContainer> BuildPathBarPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-pathbar", Tr("Path bar"),
+                Tr("How the path bar above the file display names a drive:"));
+
+        d->pathBarVolumeNamesBox = MakeCheckbox("ufl-set-pathbar-volume-names",
+                Tr("Show the drive's volume name - \"My Passport Ultra (D:)\" "
+                   "instead of \"D:\""), kTextWidth,
+                d->settings->pathBarVolumeNames, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->pathBarVolumeNames = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->pathBarVolumeNamesBox);
+
+        AddNote(parts, "ufl-set-pathbar-note1",
+                Tr("The same name the folder tree and the Computer page show, "
+                   "also in the list of drives under the path bar's Computer "
+                   "entry. A drive whose volume has no name, and a network "
+                   "drive, keep the letter alone."));
+        AddNote(parts, "ufl-set-pathbar-note2",
+                Tr("Off, the path bar is shorter: the letter alone, which "
+                   "leaves more room for the folders of a deep path."));
         return parts.page;
     }
 
@@ -1839,7 +1872,7 @@ namespace {
         pathRow->size.height = CSSLayout::Dimension::Px(32);
 
         d->promptInput = CreateTextInput("ufl-set-op-path", 0, 0, 400, 26);
-        d->promptInput->SetFontSize(kTextFontSize);
+        d->promptInput->SetFontSize(TextFontSize());
         d->promptInput->SetPlaceholder(Tr("Path to the application"));
         d->promptInput->SetText(d->settings ? d->settings->promptApplication
                                             : std::string());
@@ -1878,7 +1911,7 @@ namespace {
 
         // What will be started - feedback, so it stays with the controls.
         d->promptStatus = MakeText("ufl-set-op-status", std::string(), kTextWidth,
-                                   kTextFontSize, kNoteTextColor);
+                                   TextFontSize(), NoteTextColor());
         parts.body->AddChild(d->promptStatus);
         UpdatePromptStatus(d);
 
@@ -1971,7 +2004,7 @@ namespace {
 
         // What was just cleared - feedback, so it stays with the buttons.
         d->listsStatus = MakeText("ufl-set-hf-status", std::string(), kTextWidth,
-                                  kTextFontSize, kNoteTextColor);
+                                  TextFontSize(), NoteTextColor());
         parts.body->AddChild(d->listsStatus);
 
         AddNote(parts, "ufl-set-hf-note1",
@@ -2146,9 +2179,9 @@ namespace {
                                                   std::function<void(bool)> onChange) {
         auto sw = UltraCanvasSwitch::Create(id, 0, 0, text, checked);
         SwitchVisualStyle style = sw->GetVisualStyle();
-        style.base.fontSize       = kTextFontSize;
-        style.base.textColor      = kTextColor;
-        style.base.textHoverColor = kTextColor;
+        style.base.fontSize       = TextFontSize();
+        style.base.textColor      = TextColor();
+        style.base.textHoverColor = TextColor();
         sw->SetVisualStyle(style);
         // Explicit sizes: content measuring needs a render context, which the
         // dialog does not have while it is first laid out.
@@ -2189,7 +2222,7 @@ namespace {
 
         // What is held now, against what it is allowed to hold.
         parts.body->AddChild(MakeText("ufl-set-cache-used-title",
-                Tr("In use:"), kTextWidth, kTextFontSize, kTextColor));
+                Tr("In use:"), kTextWidth, TextFontSize(), TextColor()));
         d->cacheDiskLine = MakeText("ufl-set-cache-disk-line", std::string());
         d->cacheMemoryLine = MakeText("ufl-set-cache-memory-line", std::string());
         d->cacheIconLine = MakeText("ufl-set-cache-icon-line", std::string());
@@ -2202,7 +2235,7 @@ namespace {
         parts.body->AddChild(d->cacheMissingLine);
 
         d->cacheLocationLine = MakeText("ufl-set-cache-location", std::string(), kTextWidth,
-                                        kNoteFontSize, kNoteTextColor);
+                                        NoteFontSize(), NoteTextColor());
         parts.body->AddChild(d->cacheLocationLine);
 
         auto buttonRow = MakeButtonRow("ufl-set-cache-buttons");
@@ -2231,7 +2264,7 @@ namespace {
         parts.body->AddChild(buttonRow);
 
         d->cacheStatus = MakeText("ufl-set-cache-status", std::string(), kTextWidth,
-                                  kTextFontSize, kNoteTextColor);
+                                  TextFontSize(), NoteTextColor());
         parts.body->AddChild(d->cacheStatus);
 
         AddNote(parts, "ufl-set-cache-note1",
@@ -2564,6 +2597,7 @@ namespace {
         AddTreeNode(d, "settings", kPageDisplay, Tr("Display"));
         AddTreeNode(d, kPageDisplay, kPageTreeview, Tr("Treeview"));
         AddTreeNode(d, kPageDisplay, kPageTabStyle, Tr("Tab style"));
+        AddTreeNode(d, kPageDisplay, kPagePathBar, Tr("Path bar"));
         AddTreeNode(d, kPageDisplay, kPageNewTab, Tr("New tab"));
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, Tr("Home folder"));
         AddTreeNode(d, kPageDisplay, kPageFiles, Tr("Files"));
@@ -2586,10 +2620,12 @@ namespace {
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, Tr("Open prompt"));
         AddTreeNode(d, kPageExtras, kPageLists, Tr("History & Favorites"));
         AddTreeNode(d, kPageExtras, kPageCache, Tr("Cache"));
+        AddTreeNode(d, kPageExtras, kPageProxy, Tr("Proxy"));
 
         // ----- pages -----
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
         AddPage(d, kPageTabStyle, BuildTabStylePage(d));
+        AddPage(d, kPagePathBar, BuildPathBarPage(d));
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
         AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
@@ -2611,6 +2647,9 @@ namespace {
         AddPage(d, kPageLists, BuildListsPage(d));
         AddPage(d, kPageTar, BuildTarPage(d));
         AddPage(d, kPageCache, BuildCachePage(d));
+        // The proxy every ULTRA OS application connects through: FTP, SFTP,
+        // WebDAV and the cloud drives go through it.
+        AddPage(d, kPageProxy, MakeProxySettingsPage("ufl-set-proxy", d->window.get()));
         AddPage(d, kPageStart, BuildStartPage(d));
 
         // Nothing is selected while every section is closed, so the page

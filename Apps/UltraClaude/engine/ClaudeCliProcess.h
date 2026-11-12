@@ -16,8 +16,13 @@
 //
 // The callbacks run on the reader thread, not the UI thread.
 //
+// The child's environment is this program's with the proxy settings every
+// ULTRA OS application shares written in (ClaudeProxyEnvironment.h): the CLI
+// makes its own connections and reads its proxy from there.
+//
+// Version: 0.2.0 - the proxy settings in the child's environment
 // Version: 0.1.0
-// Last Modified: 2026-10-02
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

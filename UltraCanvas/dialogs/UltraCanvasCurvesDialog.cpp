@@ -1,7 +1,8 @@
 // dialogs/UltraCanvasCurvesDialog.cpp
 // Implementation of the Curves dialog. See UltraCanvasCurvesDialog.h.
+// Version: 1.1.0 - SetHistograms
 // Version: 1.0.0
-// Last Modified: 2026-08-25
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCurvesDialog.h"
@@ -61,6 +62,10 @@ const ToneCurveSet& UltraCanvasCurvesDialog::GetCurves() const {
 void UltraCanvasCurvesDialog::SetHistogram(ToneCurveChannel channel,
                                            const std::vector<uint32_t>& bins) {
     if (editor) editor->SetHistogram(channel, bins);
+}
+
+void UltraCanvasCurvesDialog::SetHistograms(const ImageHistogram& histogram) {
+    if (editor) editor->SetHistograms(histogram);
 }
 
 void UltraCanvasCurvesDialog::BuildLayout() {

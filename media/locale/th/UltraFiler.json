@@ -35,9 +35,6 @@
   "an entry": "รายการหนึ่ง",
   "An upload is still running — quit anyway?": "การอัปโหลดหนึ่งรายการยังทำงานอยู่ — ออกต่อไปหรือไม่",
   "An upload is still waiting — quit anyway?": "การอัปโหลดหนึ่งรายการยังรออยู่ — ออกต่อไปหรือไม่",
-  "and {n} more": {
-    "other": "และอีก {n} รายการ"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "ไฟล์อื่นๆ เมื่อระบบนี้มีโปรแกรมที่ลงทะเบียนไว้สำหรับไฟล์ประเภทนั้น:",
   "Applied to {n} item.": {
     "other": "นำไปใช้กับ {n} รายการแล้ว"
@@ -257,6 +254,7 @@
   "Open prompt": "เปิดพรอมต์",
   "Opening files": "การเปิดไฟล์",
   "Opening {0} - {1}": "กำลังเปิด {0} - {1}",
+  "Order by": "เรียงตาม",
   "Order pinned": "ลำดับที่ปักหมุด",
   "Own patterns - type one and press Enter:": "รูปแบบของคุณเอง - พิมพ์หนึ่งรูปแบบแล้วกด Enter:",
   "Path to the application": "พาธไปยังแอปพลิเคชัน",
@@ -447,9 +445,6 @@
   },
   "{n} icon": {
     "other": "{n} ไอคอน"
-  },
-  "{n} line": {
-    "other": "{n} บรรทัด"
   },
   "{n} result": {
     "other": "{n} ผลลัพธ์"

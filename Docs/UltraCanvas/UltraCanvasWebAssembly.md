@@ -220,6 +220,15 @@ is three `__EMSCRIPTEN__` branches: the static application object in
 `UltraCanvasDemo.cpp`. `wasm-build.yml` builds the page in CI, with the two
 sample applications.
 
+## Apps without the framework in them
+
+A page like the ones above carries the whole framework. The UltraCanvas
+runtime (prototype) splits it off: UltraCanvas is linked once into a main
+module that a browser extension installs, or the site serves, and an app is
+a side module of its own code - the same `main()` and the same C++ API,
+built with `ultracanvas_wasm_app()`. The sample app is 8.5 KB compressed on
+top of the runtime. See [`UltraCanvasWasmRuntime.md`](UltraCanvasWasmRuntime.md).
+
 ## Known limitations
 
 - Keyboard: typed text arrives on KeyDown like the desktop backends. Input

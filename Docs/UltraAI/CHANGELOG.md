@@ -1,3 +1,194 @@
+#### 2026-11-12 *0.1.27*
+- **The model server's lists are signed, and the client checks them.** The
+  model server signs `index.json`, `catalogue.json` and `topics.json` with its
+  Ed25519 key (the signature in the `X-UltraAI-Signature` header and as
+  `<document>.sig`) and publishes its keys in `keys.json`. The local runtime
+  pins those keys on the first refresh from a server
+  (`LocalRuntimeSettings::trustedKeys`) and from then on refuses a refresh
+  whose index, catalogue or topics are not signed by a pinned key - nothing
+  is replaced, and the error's `providerCode` is `"bad-signature"`. A new
+  model server address drops the old pins; a gallery that publishes no keys
+  (the built-in one, a plain mirror) stays unsigned. Settings > Model topics
+  says whether the lists in use are signed and by which key.
+- The settings window's pages - Default providers, Local models, Model
+  topics, Local & cloud, Endpoints - go through `Tr`, so they show in the
+  desktop's language once `media/locale/<lang>/UltraAI.json` has them.
+
+#### 2026-11-12 *0.1.26*
+- **Consecutive same-role turns are merged before a chat template sees
+  them.** Two `user` messages in a row (or two `assistant` ones) now reach
+  the wire as one message, texts joined with a blank line and parts, tool
+  calls and names kept in order; tool results and turns from different named
+  speakers stay apart. OpenAI accepts either shape, but an OpenAI-compatible
+  server that hands the history to the model's chat template (LocalAI,
+  llama.cpp server, vLLM with Gemma, Llama 2 or Mistral) refuses two in a
+  row with *"Conversation roles must alternate user/assistant/user/assistant"*
+  - the HTTP 500 the dashboard's Chat hit through LiteLLM. The merge is
+  `MergeSameRoleTurns` in the shared adapter library
+  (`UltraAIMessageHistory.h`): the OpenAI adapter applies it, so the Qwen and
+  `local` providers that delegate to it are covered, and the in-process
+  llama.cpp adapter applies it before `llama_chat_apply_template`. The
+  dashboard no longer produces such a history since 0.1.20, and now no other
+  UltraAI client can trip it either.
+
+#### 2026-11-11 *0.1.25*
+- **Settings > Services > Proxy.** The cloud providers are reached through
+  the proxy every ULTRA OS application shares - the system's until another
+  is chosen - and the page opens the Proxy settings dialog to choose one; a
+  local model on this machine is never reached through it.
+
+#### 2026-11-10 *0.1.24*
+- **Speech to text for UltraCanvas applications.**
+  `RegisterUltraAISpeechTranscription()` (`UltraAISpeechTranscription.h`, in
+  `UltraAI_UI`) makes UltraAI `UltraCanvasFileLoader`'s speech transcriber:
+  the words spoken in a sound file or a video come from the first
+  speech-to-text provider on the default route (chosen, then local, a cloud
+  one only when chosen or allowed, never `mock`), chosen again at every file.
+  A sound file of a type the provider takes, within its size limit, goes as
+  it is; every video, another type or a file over the limit has its sound
+  track taken out with VideoFX first, as a mono 16 kHz MP3 at 64 kbit/s
+  (about 50 minutes in 25 MB). Without a provider the transcriber installed
+  before it transcribes. `FindSpeechProvider` and
+  `LastSpeechTranscriptionProvider` say which. `UltraAI_UI` links VideoFX
+  where it is in the build. `UltraAISpeechTranscriptionTest` covers it with a
+  generated WAV, the MP3 conversion, and a video where the ffmpeg command
+  line is installed.
+- **OpenAI speech to text.** `CreateOpenAISpeechToText` (`UltraAIOpenAI.h`)
+  transcribes over the audio API: a multipart upload to
+  `/v1/audio/transcriptions` (or `/v1/audio/translations` with `whisper-1`),
+  `gpt-4o-transcribe` by default, `whisper-1` with segment and word
+  timestamps (`verbose_json`), the language as its primary subtag, options as
+  form fields, 25 MB refused before upload, errors mapped. Without a key in
+  the config it reads the UltraVault entry `ai.openai.api_key`. Against a
+  custom `baseUrl` - a self-hosted OpenAI-compatible whisper server - it runs
+  keyless with `whisper-1` by default. Live transcription is not supported.
+  Registered as `"openai"` for `"speechtotext"`, a cloud provider used once
+  chosen (`ULTRAAI_DEFAULT_SPEECHTOTEXT=openai`). `ultraai.openai_speech`
+  tests it offline.
+
+#### 2026-11-10 *0.1.23*
+- **The Anthropic text adapter moves to the current API and models.**
+  Requests send `anthropic-version: 2026-10-21` (migration guide:
+  https://platform.claude.com/docs/en/api/migration-2026-10-21) and default to
+  `claude-opus-5-5`; the model list is Claude Opus 5.5, Sonnet 5.5 and
+  Haiku 5.5. On that version:
+  - `temperature`, `top_p` and `top_k` are a 400 on every model, so the
+    adapter no longer sends them - from `ChatRequest::sampling` or from the
+    options. Every model samples with its defaults; a caller that set a
+    lower temperature (the text-LLM translator's 0.0) gets the default, which
+    Claude 4.7 and later models were already limited to - on the old
+    `claude-opus-5` default, the translator's 0.0 was a 400 before this.
+  - A document directly in an assistant message is a 400: a `FilePart` in an
+    assistant message is sent as a user message just before that turn.
+  - Forced tool choice is a 400 on Claude Fable 5.1, Mythos 5.1, Opus 5.5 and
+    Sonnet 5.5: `ToolChoice::Required` / `Specific` become `auto` with a
+    system instruction to call the tool(s) there; older models still get
+    `any` / `tool`.
+  - Server-side refusal fallbacks are on by default for Claude Fable 5.1,
+    Opus 5.5, Opus 5 and Sonnet 5.5 (`"fallbacks": "default"`, beta
+    `server-side-fallback-2026-07-01`): a refusal is re-run on another model
+    in the same call. A configured `fallbacks` replaces it; token counting
+    sends none. The Anthropic vision adapter takes the default from here.
+  `ultraai.anthropic_adapter` covers each rule.
+- **Claude reads text: the Anthropic vision adapter.**
+  `CreateAnthropicVisionAnalyzer` (`UltraAIAnthropicVisionAnalyzer.h`, in
+  `UltraAI_AdapterAnthropic`) is an `IVisionAnalyzer` for `VisionTask::Ocr`
+  over the Messages API, built on the Anthropic text adapter (its
+  serialization, key resolution, error mapping and transport). The picture
+  goes as a base64 image block with an instruction to transcribe every word
+  in reading order - lines, paragraphs, table rows by tabs, nothing
+  translated or corrected - and the transcription comes back as structured
+  output (`{"text": ...}`), so no commentary is mixed in. Defaults:
+  `claude-opus-5-5`, effort `low`, server-side refusal fallbacks
+  (`"fallbacks": "default"`, beta `server-side-fallback-2026-07-01`); a
+  configured `output_config` or `fallbacks` replaces them. A refusal is
+  `ContentFiltered`, a cut-off transcription an error, other tasks
+  `InvalidRequest`. Without a key or a vault reference in the config it
+  reads the UltraVault entry `ai.anthropic.api_key`, so the default route can
+  build it. Registered as `"anthropic"` for `"visionanalyzer"`: a cloud
+  provider, used only once chosen. With `RegisterUltraAITextRecognition` it
+  reads pictures and scanned pages for `UltraCanvasFileLoader::ExtractText`
+  (UltraClipboard's *Extract text*); pictures over 3.75 MB of PNG are halved
+  there until they fit the API's image limit. `ultraai.anthropic_vision`
+  tests it offline.
+- **UltraAI reads the words in pictures for UltraCanvas applications.**
+  `RegisterUltraAITextRecognition()` (`UltraAITextRecognition.h`, in
+  `UltraAI_UI`) installs UltraAI in front of `UltraCanvasFileLoader`'s text
+  recognizer: when a vision provider on the default route declares
+  `VisionTask::Ocr` - the one chosen for `"visionanalyzer"`, then the ones on
+  this computer, a cloud one only when chosen or allowed, never `mock` - it
+  reads pictures and scanned PDF pages (a PNG, with the model that declares
+  OCR; the OCR text, else the spans, else the document regions in reading
+  order). Without one, or when it fails, the recognizer installed before it
+  (the OCR plugin's Tesseract) reads the picture. The provider is chosen at
+  every picture, so one set up while the application runs is used from the
+  next. `FindOcrProvider` and `LastTextRecognitionProvider` say which.
+  `UltraAI_UI` now links `UltraAI_Core`. No adapter but the mock implements
+  `IVisionAnalyzer` yet, so the built-in OCR keeps reading until one does.
+  `UltraAITextRecognitionTest` covers the choice with stand-in providers.
+
+#### 2026-11-10 *0.1.22*
+- **The Agents tile.** The dashboard has an *Agents* tile (and the
+  `--agents` start option). Give a model a task and it works through it
+  with the ticked tools: a clock, a calculator, text statistics and
+  random numbers, none of which touch files or programs. The transcript
+  shows its text as it arrives, every tool call with its arguments and
+  each result. *Ask before a tool runs* puts each call to you first,
+  *Stop* ends the task, and the conversation carries over between tasks
+  until *New conversation*. The instructions (the system prompt) and the
+  most model calls per task can be set, and the status line counts the
+  model calls, tool calls and tokens.
+- The dashboard lays its tiles out six to a row.
+- **Agents: a model that uses tools until the task is done**
+  (`UltraAIAgent.h`, part of `UltraAI_Core`). `UltraAI::Agent` runs the
+  model ↔ tool loop over any `ITextLLM` (anthropic, openai, qwen, local,
+  llama-cpp, mock). An application registers C++ functions as tools
+  (`AddTool`; `ToolArguments` reads the arguments the model wrote,
+  `ToolResult::Ok` / `Fail` answers) and calls `Run`. The agent calls the
+  model, runs the tools it asks for and feeds the results back until it
+  answers. Each tool call is offered to `AgentOptions::canUseTool` (allow,
+  deny with a reason the model reads, or stop the run), and each result
+  passes `afterToolCall`. Progress events (turns, streamed text with
+  `stream`, tool calls and results) all arrive on the run's thread. Also:
+  `maxTurns`, `Cancel()` from any thread, `RunAsync`, a conversation that
+  carries over between runs (`History` / `SetHistory` / `ClearHistory`;
+  a run that fails before the model answered leaves it unchanged),
+  `CreateAgent` from a provider config, and subagents
+  (`MakeSubagentTool`). Every tool call gets a result in the history
+  (denied, unknown, throwing and cancelled ones too), so the conversation
+  stays one a provider accepts. `Docs/Modules/UltraAI/Agents.md`; tests in
+  `UltraAI/tests/test_agent.cpp`.
+- The text-LLM translator's private JSON reader moved to
+  `UltraAI/src/UltraAIMiniJson.h`, shared with the agent.
+- **Batches: many chat requests as one job, at about half the price**
+  (`UltraAIBatch.h`, part of `UltraAI_Core`). `ITextBatch` submits a list
+  of `ChatRequest`s with a custom id each (`Submit`), reports the job
+  (`Get`: state and counts), cancels it (`Cancel`) and returns one
+  `ChatResponse` per request when it is finished (`Results`).
+  `RunBatch` does all four: submit, poll with a growing interval, report
+  progress, honour a cancel flag and a timeout, collect.
+  `CreateTextBatch` gives Anthropic's Message Batches
+  (`CreateAnthropicTextBatch`) and OpenAI's Batch API
+  (`CreateOpenAITextBatch`: a JSONL file upload, then a batch from it).
+  Every other provider, and an OpenAI-compatible server, gets a fallback
+  that sends the requests one at a time on a thread of its own
+  (`CreateSequentialTextBatch`, optionally several at once), so an
+  application uses one API everywhere. `IsNative()` says which kind it
+  got. `Docs/Modules/UltraAI/Batches.md`; tests in
+  `UltraAI/tests/test_batch.cpp`.
+- The `anthropic` adapter sends the results of one turn's tool calls
+  together, in one user message, instead of one user message each.
+- **Chat is a playground now.** A settings panel above the conversation
+  (*Hide settings* / *Show settings*) chooses the model: the endpoint's
+  default, a model its server lists, or any model id typed in. It also
+  sets the system prompt, the temperature, top p and the most output
+  tokens, and declares tools as JSON (`[{"name", "description",
+  "parameters"}]`). An out-of-range number or broken tools JSON is
+  reported before anything is sent. When the model calls a tool, the call
+  and its arguments are shown and the next message goes back as the
+  tool's result. The status line reads out the model and the tokens of
+  the last reply and of the whole chat.
+
 #### 2026-11-07 *0.1.21*
 - **Model topics: which model is used for what, and what happens to new
   models.** Settings > Services > *Model topics* lists the topics - general

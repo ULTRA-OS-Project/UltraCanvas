@@ -116,6 +116,45 @@ TEST(ScannerHonoursExcludeNames) {
     REQUIRE(report.items[0].path.find("drop.bin") != std::string::npos);
 }
 
+// One kind of separator per item path. Windows joins a root and a name with
+// a backslash, so items read "C:/Users/x/AppData/Local/Temp\a.log" until the
+// scanner put them in the engine's '/' spelling (WithForwardSlashes). On Linux
+// and macOS a backslash is part of a name and must come back unchanged.
+TEST(ScannerReportsItemPathsWithOneKindOfSeparator) {
+    TempTree tree;
+    const std::string root = tree.Dir("logs");
+    tree.File("logs/nested/two.log", 10);
+#if !defined(_WIN32) && !defined(_WIN64)
+    tree.File("logs/back\\slash.log", 10);
+#endif
+
+    CleanRule rule;
+    rule.id = "test.logs";
+    rule.category = CleanCategory::Logs;
+    rule.title = "Test logs";
+    rule.roots = { root };
+    rule.mode = RuleMode::RemoveMatchingFiles;
+    rule.namePatterns = { "*.log" };
+    rule.maxDepth = 2;
+    rule.platforms = PlatformMask::All;
+
+    Scanner scanner;
+    const ScanReport report = scanner.Scan({ rule });
+
+#if defined(_WIN32) || defined(_WIN64)
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(1));
+    REQUIRE(report.items[0].path.find('\\') == std::string::npos);
+    REQUIRE(report.items[0].path == root + "/nested/two.log");
+#else
+    REQUIRE_EQ(report.items.size(), static_cast<size_t>(2));
+    bool keptTheBackslash = false;
+    for (const auto& item : report.items) {
+        if (item.path == root + "/back\\slash.log") keptTheBackslash = true;
+    }
+    REQUIRE(keptTheBackslash);
+#endif
+}
+
 TEST(ScannerMatchesFilesByPatternWithinDepth) {
     TempTree tree;
     const std::string root = tree.Dir("logs");

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UltraAI dashboard icon: agents. 128 x 128 tile, generated as a set. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2FC2A8"/>
+      <stop offset="1" stop-color="#136D8C"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="64" rx="28" fill="url(#gloss)"/>
+  <rect x="4.75" y="4.75" width="118.5" height="118.5" rx="27.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="1.5"/>
+  <g transform="translate(0 3)">
+    <path d="M64 22 V34" fill="none" stroke="#0B1020" stroke-opacity="0.22" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="64" cy="20" r="7" fill="#0B1020" fill-opacity="0.22"/>
+    <rect x="28" y="36" width="72" height="56" rx="18" fill="#0B1020" fill-opacity="0.22"/>
+    <rect x="18" y="54" width="10" height="22" rx="5" fill="#0B1020" fill-opacity="0.22"/>
+    <rect x="100" y="54" width="10" height="22" rx="5" fill="#0B1020" fill-opacity="0.22"/>
+    <circle cx="50" cy="60" r="8" fill="none" stroke="none"/>
+    <circle cx="78" cy="60" r="8" fill="none" stroke="none"/>
+    <path d="M50 78 H78" fill="none" stroke="none" stroke-width="6" stroke-linecap="round"/>
+    <path d="M40 100 H88" fill="none" stroke="#0B1020" stroke-opacity="0.22" stroke-width="6" stroke-linecap="round"/>
+  </g>
+    <path d="M64 22 V34" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="64" cy="20" r="7" fill="#FFFFFF"/>
+    <rect x="28" y="36" width="72" height="56" rx="18" fill="#FFFFFF"/>
+    <rect x="18" y="54" width="10" height="22" rx="5" fill="#FFFFFF" fill-opacity="0.6"/>
+    <rect x="100" y="54" width="10" height="22" rx="5" fill="#FFFFFF" fill-opacity="0.6"/>
+    <circle cx="50" cy="60" r="8" fill="#0F6A86"/>
+    <circle cx="78" cy="60" r="8" fill="#0F6A86"/>
+    <path d="M50 78 H78" fill="none" stroke="#0F6A86" stroke-width="6" stroke-linecap="round"/>
+    <path d="M40 100 H88" fill="none" stroke="#FFFFFF" stroke-opacity="0.6" stroke-width="6" stroke-linecap="round"/>
+</svg>

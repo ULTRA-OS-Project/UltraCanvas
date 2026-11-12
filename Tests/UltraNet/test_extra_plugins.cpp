@@ -26,6 +26,7 @@
 #include <vector>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 
 #if !defined(_WIN32)
   #include <arpa/inet.h>
@@ -146,12 +147,24 @@ fs::path FindOrBuild(const std::string& name) {
     else if (name == "RTP")  extraLinkFlags = "";   // BSD sockets only, no extra libs
     else                     extraLinkFlags = " $(pkg-config --cflags --libs libcurl)";
 
+    // As the plug-in's CMake target builds it: with the host shim
+    // (UltraNetPluginHostShim.cpp - every core function the plug-in calls
+    // comes through the host's table), the shared plug-in headers, and every
+    // symbol hidden but the entry point (ULTRANET_PLUGIN_EXPORT), so the
+    // shim never stands in for the host's own functions. The compiler's
+    // output goes to a log beside the library: a backend library missing
+    // here (Avahi, paho, ...) is a skip, not a page of errors in the test
+    // output.
+    const fs::path log = outDir / "build.log";
     const std::string cmd =
-        "g++ -std=c++20 -fPIC -shared "
-        "-I UltraCanvas/include "
-        + src.string() + extraLinkFlags +
-        " -o " + outFile.string() + " 2>&1";
-    if (std::system(cmd.c_str()) != 0) return {};
+        "g++ -std=c++20 -fPIC -shared -fvisibility=hidden "
+        "-I UltraCanvas/include -I UltraCanvas/Plugins/UltraNet/common "
+        + src.string() + " UltraCanvas/Plugins/UltraNet/common/UltraNetPluginHostShim.cpp" + extraLinkFlags +
+        " -o " + outFile.string() + " > " + log.string() + " 2>&1";
+    if (std::system(cmd.c_str()) != 0) {
+        std::fprintf(stderr, "    (%s plug-in not built here - %s)\n", name.c_str(), log.string().c_str());
+        return {};
+    }
     return fs::exists(outFile) ? outFile : fs::path{};
 }
 
@@ -734,6 +747,248 @@ TEST(rtmp_plugin_loads_and_registers) {
     CHECK(!bool(r));
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidHandle);
 }
+
+// A stream played from an RTMP server of the test's own on 127.0.0.1: the
+// handshake, connect (app and tcUrl), createStream and play (the play path
+// with its query), then a 300-byte video message in 128-byte chunks (one
+// full header, two continuation chunks), an audio message under a delta
+// header, and a ping. The plug-in gives the stream back as FLV and answers
+// the ping.
+#if !defined(_WIN32)
+namespace {
+
+void PutBe(std::string& out, uint32_t v, int n) {
+    for (int i = n - 1; i >= 0; --i) out += static_cast<char>((v >> (8 * i)) & 0xFF);
+}
+
+std::string AmfStr(const std::string& s) {
+    std::string out(1, '\x02');
+    PutBe(out, static_cast<uint32_t>(s.size()), 2);
+    return out + s;
+}
+
+std::string AmfNum(double d) {
+    uint64_t bits = 0;
+    std::memcpy(&bits, &d, sizeof bits);
+    std::string out(1, '\x00');
+    for (int i = 7; i >= 0; --i) out += static_cast<char>((bits >> (8 * i)) & 0xFF);
+    return out;
+}
+
+std::string AmfStatus(const std::string& code) {
+    std::string out(1, '\x03');
+    PutBe(out, 5, 2); out += "level"; out += AmfStr("status");
+    PutBe(out, 4, 2); out += "code"; out += AmfStr(code);
+    out += std::string("\x00\x00\x09", 3);
+    return out;
+}
+
+// The string value of `key` in an AMF0 object somewhere in `body`.
+std::string AmfProp(const std::string& body, const std::string& key) {
+    std::string marker;
+    PutBe(marker, static_cast<uint32_t>(key.size()), 2);
+    marker += key;
+    marker += '\x02';
+    const std::size_t at = body.find(marker);
+    if (at == std::string::npos) return {};
+    const std::size_t len = (static_cast<unsigned char>(body[at + marker.size()]) << 8) |
+                            static_cast<unsigned char>(body[at + marker.size() + 1]);
+    return body.substr(at + marker.size() + 2, len);
+}
+
+class FakeRtmpServer {
+public:
+    std::string app, tcUrl, playPath;
+    bool pongSeen = false;
+    int port = 0;
+
+    bool Start() {
+        listener_ = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        socklen_t length = sizeof addr;
+        if (bind(listener_, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0) return false;
+        listen(listener_, 1);
+        getsockname(listener_, reinterpret_cast<sockaddr*>(&addr), &length);
+        port = ntohs(addr.sin_port);
+        thread_ = std::thread([this] {
+            const int c = accept(listener_, nullptr, nullptr);
+            if (c < 0) return;
+            timeval tv{5, 0};
+            setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+            Serve(c);
+            close(c);
+        });
+        return true;
+    }
+    void Join() { if (thread_.joinable()) thread_.join(); }
+    ~FakeRtmpServer() {
+        shutdown(listener_, SHUT_RDWR);
+        Join();
+        close(listener_);
+    }
+
+private:
+    int listener_ = -1;
+    std::thread thread_;
+
+    static std::string Read(int c, std::size_t n) {
+        std::string out;
+        char buf[4096];
+        while (out.size() < n) {
+            const ssize_t got = recv(c, buf, std::min(sizeof buf, n - out.size()), 0);
+            if (got <= 0) break;
+            out.append(buf, static_cast<std::size_t>(got));
+        }
+        return out;
+    }
+    static void Send(int c, const std::string& s) { send(c, s.data(), s.size(), MSG_NOSIGNAL); }
+
+    // A message in chunks of 128: a full header, then continuation headers.
+    static std::string Chunked(int csid, int type, uint32_t streamId, uint32_t ts, const std::string& payload) {
+        std::string out;
+        std::size_t pos = 0;
+        do {
+            if (pos == 0) {
+                out += static_cast<char>(csid);
+                PutBe(out, ts, 3);
+                PutBe(out, static_cast<uint32_t>(payload.size()), 3);
+                out += static_cast<char>(type);
+                for (int i = 0; i < 4; ++i) out += static_cast<char>((streamId >> (8 * i)) & 0xFF);
+            } else {
+                out += static_cast<char>(0xC0 | csid);
+            }
+            const std::size_t take = std::min<std::size_t>(128, payload.size() - pos);
+            out += payload.substr(pos, take);
+            pos += take;
+        } while (pos < payload.size());
+        return out;
+    }
+
+    void Serve(int c) {
+        const std::string c01 = Read(c, 1537);
+        if (c01.size() != 1537 || c01[0] != '\x03') return;
+        Send(c, std::string(1, '\x03') + std::string(1536, '\x01') + c01.substr(1));   // S0 S1 S2
+        if (Read(c, 1536).size() != 1536) return;                                     // C2
+        for (;;) {
+            // The client sends every message in one chunk with a full header.
+            const std::string head = Read(c, 12);
+            if (head.size() != 12 || (static_cast<unsigned char>(head[0]) >> 6) != 0) return;
+            const uint32_t len = (static_cast<unsigned char>(head[4]) << 16) |
+                                 (static_cast<unsigned char>(head[5]) << 8) | static_cast<unsigned char>(head[6]);
+            const int type = static_cast<unsigned char>(head[7]);
+            const std::string body = Read(c, len);
+            if (type == 4 && body.size() >= 2 && body[1] == '\x07') {   // our ping answered
+                pongSeen = true;
+                return;
+            }
+            if (type != 20) continue;
+            if (body.find(AmfStr("connect")) == 0) {
+                app = AmfProp(body, "app");
+                tcUrl = AmfProp(body, "tcUrl");
+                std::string ack, bw;
+                PutBe(ack, 2500000, 4);
+                PutBe(bw, 2500000, 4);
+                bw += '\x02';
+                Send(c, Chunked(2, 5, 0, 0, ack) + Chunked(2, 6, 0, 0, bw));
+                Send(c, Chunked(3, 20, 0, 0, AmfStr("_result") + AmfNum(1) + std::string("\x05", 1) +
+                                                 AmfStatus("NetConnection.Connect.Success")));
+            } else if (body.find(AmfStr("createStream")) == 0) {
+                Send(c, Chunked(3, 20, 0, 0, AmfStr("_result") + AmfNum(2) + std::string("\x05", 1) + AmfNum(1)));
+            } else if (body.find(AmfStr("play")) == 0) {
+                // play, 0, null, the play path
+                const std::size_t at = AmfStr("play").size() + 9 + 1;
+                if (body.size() > at + 3 && body[at] == '\x02') {
+                    const std::size_t n = (static_cast<unsigned char>(body[at + 1]) << 8) |
+                                          static_cast<unsigned char>(body[at + 2]);
+                    playPath = body.substr(at + 3, n);
+                }
+                Send(c, Chunked(5, 20, 1, 0, AmfStr("onStatus") + AmfNum(0) + std::string("\x05", 1) +
+                                                 AmfStatus("NetStream.Play.Start")));
+                std::string video;
+                for (int i = 0; i < 300; ++i) video += static_cast<char>(i & 0xFF);
+                std::string media = Chunked(6, 9, 1, 40, video);
+                // Audio on the same chunk stream under a delta header: 40 + 20.
+                media += static_cast<char>(0x40 | 6);
+                PutBe(media, 20, 3);
+                PutBe(media, 10, 3);
+                media += '\x08';
+                media += std::string(10, '\x7F');
+                std::string ping;
+                PutBe(ping, 6, 2);
+                PutBe(ping, 1234, 4);
+                media += Chunked(2, 4, 0, 0, ping);
+                Send(c, media);
+            }
+        }
+    }
+};
+
+uint32_t BeAt(const std::vector<uint8_t>& v, std::size_t at, int n) {
+    uint32_t out = 0;
+    for (int i = 0; i < n; ++i) out = (out << 8) | v[at + static_cast<std::size_t>(i)];
+    return out;
+}
+
+} // namespace
+
+TEST(rtmp_plugin_plays_a_stream_as_flv) {
+    if (!LoadInto("RTMP", "rtmp")) SKIP("RTMP plug-in not buildable");
+    auto p = UltraNet_GetPlugin("rtmp");
+    auto* stream = dynamic_cast<IStreamingProtocolPlugin*>(p.get());
+    REQUIRE(stream != nullptr);
+
+    FakeRtmpServer server;
+    REQUIRE(server.Start());
+    UltraNetStreamOptions options;
+    options.connectTimeoutMs = 5000;
+    const UltraNetHandle h = stream->OpenStream(
+        "rtmp://127.0.0.1:" + std::to_string(server.port) + "/live/test?key=abc", options);
+    REQUIRE(h != UltraNetInvalidHandle);
+
+    std::vector<uint8_t> flv;
+    const std::size_t expected = 13 + (11 + 300 + 4) + (11 + 10 + 4);
+    for (int i = 0; i < 6 && flv.size() < expected; ++i) {
+        std::vector<uint8_t> frame;
+        REQUIRE(stream->ReadFrame(h, frame).success);
+        flv.insert(flv.end(), frame.begin(), frame.end());
+    }
+    REQUIRE_EQ(flv.size(), expected);
+    REQUIRE(flv[0] == 'F' && flv[1] == 'L' && flv[2] == 'V' && flv[3] == 1);
+    // The video tag: type 9, 300 bytes, at 40 ms, put back together whole.
+    REQUIRE_EQ(flv[13], 9);
+    REQUIRE_EQ(BeAt(flv, 14, 3), 300u);
+    REQUIRE_EQ(BeAt(flv, 17, 3), 40u);
+    bool intact = true;
+    for (int i = 0; i < 300; ++i) intact = intact && flv[24 + static_cast<std::size_t>(i)] == (i & 0xFF);
+    REQUIRE(intact);
+    REQUIRE_EQ(BeAt(flv, 324, 4), 311u);
+    // The audio tag: type 8, 10 bytes, at 40 + 20 ms.
+    REQUIRE_EQ(flv[328], 8);
+    REQUIRE_EQ(BeAt(flv, 329, 3), 10u);
+    REQUIRE_EQ(BeAt(flv, 332, 3), 60u);
+
+    // The client's side of it, as the server saw it.
+    std::vector<uint8_t> more;
+    stream->ReadFrame(h, more);   // gives the reader the ping to answer
+    server.Join();
+    REQUIRE_EQ(server.app, std::string("live"));
+    REQUIRE_EQ(server.tcUrl, "rtmp://127.0.0.1:" + std::to_string(server.port) + "/live");
+    REQUIRE_EQ(server.playPath, std::string("test?key=abc"));
+    REQUIRE(server.pongSeen);
+}
+
+TEST(rtmp_plugin_refuses_an_address_without_a_stream) {
+    if (!LoadInto("RTMP", "rtmp")) SKIP("RTMP plug-in not buildable");
+    auto p = UltraNet_GetPlugin("rtmp");
+    auto* stream = dynamic_cast<IStreamingProtocolPlugin*>(p.get());
+    REQUIRE(stream != nullptr);
+    UltraNetStreamOptions options;
+    options.connectTimeoutMs = 1000;
+    REQUIRE_EQ(stream->OpenStream("rtmp://127.0.0.1:1/live", options), UltraNetInvalidHandle);
+}
+#endif
 
 // ===== Scheme registry coverage =====
 TEST(all_quickwin_plugins_appear_in_supported_schemes) {

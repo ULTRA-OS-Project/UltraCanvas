@@ -35,11 +35,6 @@
   "an entry": "элемента",
   "An upload is still running — quit anyway?": "Отправка на сервер ещё выполняется — всё равно выйти?",
   "An upload is still waiting — quit anyway?": "Отправка на сервер ещё ожидает в очереди — всё равно выйти?",
-  "and {n} more": {
-    "one": "и ещё {n}",
-    "few": "и ещё {n}",
-    "many": "и ещё {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Любой другой файл, если в системе для этого типа файлов зарегистрирована программа:",
   "Applied to {n} item.": {
     "one": "Применено к {n} элементу.",
@@ -265,6 +260,7 @@
   "Open prompt": "Открыть командную строку",
   "Opening files": "Открытие файлов",
   "Opening {0} - {1}": "Открытие {0} — {1}",
+  "Order by": "Сортировать по",
   "Order pinned": "Порядок закрепления",
   "Own patterns - type one and press Enter:": "Свои шаблоны — введите шаблон и нажмите Enter:",
   "Path to the application": "Путь к приложению",
@@ -477,11 +473,6 @@
     "one": "{n} значок",
     "few": "{n} значка",
     "many": "{n} значков"
-  },
-  "{n} line": {
-    "one": "{n} строка",
-    "few": "{n} строки",
-    "many": "{n} строк"
   },
   "{n} result": {
     "one": "{n} результат",

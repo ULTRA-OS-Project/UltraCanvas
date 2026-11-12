@@ -7,6 +7,8 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.23.0 - Display > Path bar: pathBarVolumeNames, a drive named by its
+//                  volume on the path bar ("My Passport Ultra (D:)")
 // Version: 1.22.0 - networkServers: the computers opened by name in the Network section
 // Version: 1.21.0 - Display > New tab: newTabStart (current folder / Home / Computer)
 //                  replaces newTabOpensHome
@@ -21,7 +23,7 @@
 //                   passwords Unlock was given
 // Version: 1.16.0 - the shared settings folder, and the move of the old one into it
 // Version: 1.15.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -151,6 +153,14 @@ public:
 #else
     bool homeShowPredefinedOnly = false;
 #endif
+
+    // Display > Path bar: whether the path bar above the file display calls a
+    // drive by its volume's name as well as its letter - "My Passport Ultra
+    // (D:)", as the folder tree and the Computer page do - or by the letter
+    // alone ("D:"). The names are the ones the tree already read, so the
+    // strip never waits on a disk for them. A drive whose volume has no name,
+    // and a network drive, keep the letter either way.
+    bool pathBarVolumeNames = true;
 
     // Display > Thumbnails and Display > Detail view: which file kinds may
     // show a thumbnail in the file display, and which ones the detail pane
@@ -507,6 +517,8 @@ public:
             ParseInt(it->second, treeFixedWidth, kMinTreeWidth, kMaxTreeWidth);
         it = kv.find("display.home.content");
         if (it != kv.end()) homeShowPredefinedOnly = (it->second == "predefined");
+        it = kv.find("display.pathbar.volume.names");
+        if (it != kv.end()) pathBarVolumeNames = ParseFlag(it->second);
         it = kv.find("display.thumbnails.kinds.off");
         if (it != kv.end()) thumbnailKinds = ParseEnabledKinds(it->second);
         it = kv.find("display.thumbnails.formats.off");
@@ -682,6 +694,8 @@ public:
         file << "tree.width = " << treeFixedWidth << "\n";
         file << "display.home.content = "
              << (homeShowPredefinedOnly ? "predefined" : "all") << "\n";
+        file << "display.pathbar.volume.names = "
+             << (pathBarVolumeNames ? "true" : "false") << "\n";
         file << "display.thumbnails.kinds.off = "
              << FormatDisabledKinds(thumbnailKinds) << "\n";
         file << "display.thumbnails.formats.off = "

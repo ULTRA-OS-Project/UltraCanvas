@@ -25,6 +25,7 @@
 // A message is assembled from however many reads it takes, up to
 // options.maxMessageBytes (64 MB unless set): past it the connection ends
 // with close 1009 before the memory is spent. Reconnecting is the owner's.
+// Version: 0.4.2 - through the proxy setting, as a CONNECT tunnel (UltraNetCurlProxy.h)
 // Version: 0.4.1 - options.maxMessageBytes: a message past it ends the connection (1009) before it is
 //                  assembled; the reconnect options, which nothing read, removed
 // Version: 0.4.0 - PINGs answered; pingIntervalMs pings and notices a silent peer; reads and writes
@@ -35,6 +36,7 @@
 
 #include "UltraNet/UltraNetWebSocket.h"
 #include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetCurlProxy.h"
 
 #include <curl/curl.h>
 #include <curl/websockets.h>
@@ -303,6 +305,9 @@ UltraNetHandle UltraNet_WebSocketConnect(
 
     curl_easy_setopt(c->easy, CURLOPT_URL, url.c_str());
     curl_easy_setopt(c->easy, CURLOPT_CONNECT_ONLY, 2L);   // WebSocket connect-only
+    // The proxy setting; through an HTTP proxy the upgrade goes in a CONNECT
+    // tunnel, which every proxy passes, rather than as a proxied GET.
+    ultranet_curlproxy::ApplyFor(c->easy, url, /*tunnel=*/true);
     curl_easy_setopt(c->easy, CURLOPT_CONNECTTIMEOUT_MS,
                      static_cast<long>(options.connectTimeoutMs));
     curl_easy_setopt(c->easy, CURLOPT_SSL_VERIFYPEER, options.verifyTls ? 1L : 0L);

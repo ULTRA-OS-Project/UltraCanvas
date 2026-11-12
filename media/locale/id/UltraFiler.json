@@ -35,9 +35,6 @@
   "an entry": "sebuah entri",
   "An upload is still running — quit anyway?": "Sebuah unggahan masih berjalan — tetap keluar?",
   "An upload is still waiting — quit anyway?": "Sebuah unggahan masih menunggu — tetap keluar?",
-  "and {n} more": {
-    "other": "dan {n} lainnya"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "File lainnya, jika sistem ini memiliki program yang terdaftar untuk jenis file tersebut:",
   "Applied to {n} item.": {
     "other": "Diterapkan ke {n} item."
@@ -257,6 +254,7 @@
   "Open prompt": "Buka prompt",
   "Opening files": "Membuka file",
   "Opening {0} - {1}": "Membuka {0} - {1}",
+  "Order by": "Urutkan menurut",
   "Order pinned": "Urutan sematan",
   "Own patterns - type one and press Enter:": "Pola sendiri - ketik satu lalu tekan Enter:",
   "Path to the application": "Jalur ke aplikasi",
@@ -447,9 +445,6 @@
   },
   "{n} icon": {
     "other": "{n} ikon"
-  },
-  "{n} line": {
-    "other": "{n} baris"
   },
   "{n} result": {
     "other": "{n} hasil"

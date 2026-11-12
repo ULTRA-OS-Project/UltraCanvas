@@ -115,7 +115,8 @@ UltraIMCapabilityFlags MatrixProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     const F flags = F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
                     F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-                    F::CreateGroup | F::ImageMessages | F::FileTransfer | F::ManageGroups | F::LeaveConversation;
+                    F::CreateGroup | F::ImageMessages | F::FileTransfer | F::SearchMessages | F::ManageGroups |
+                    F::LeaveConversation;
     return OlmAvailable() ? flags | F::E2EEncryption : flags;
 }
 
@@ -1211,6 +1212,35 @@ void MatrixProvider::FetchMessages(const std::string& conversationId, const std:
     });
 }
 
+void MatrixProvider::FetchPageForSearch(const std::string& conversationId, const std::string& beforeMessageId,
+                                        int limit, int tries, UltraIMMessagesCallback onResult) {
+    FetchMessages(conversationId, beforeMessageId, limit,
+                  [this, conversationId, beforeMessageId, limit, tries, onResult](
+                      const UltraIMResult& result, const std::vector<UltraIMMessage>& messages) {
+                      bool more = false;
+                      if (result && messages.empty() && tries < 8) {
+                          std::lock_guard<std::mutex> lock(mutex_);
+                          auto it = rooms_.find(conversationId);
+                          more = it != rooms_.end() && !it->second.historyComplete && !it->second.prevBatch.empty() &&
+                                 !it->second.invited;
+                      }
+                      if (more) {
+                          FetchPageForSearch(conversationId, beforeMessageId, limit, tries + 1, onResult);
+                          return;
+                      }
+                      onResult(result, messages);
+                  });
+}
+
+void MatrixProvider::SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) {
+    // The server's own search cannot read an encrypted room and finds whole
+    // words only; reading the history here gives one answer for every room.
+    UltraIM_SearchByFetching(
+        [this](const std::string& conversationId, const std::string& beforeMessageId, int limit,
+               UltraIMMessagesCallback done) { FetchPageForSearch(conversationId, beforeMessageId, limit, 0, done); },
+        search, std::move(onResult));
+}
+
 // ============================================================================
 // ROOMS
 // ============================================================================
@@ -1992,7 +2022,21 @@ UltraIMResult MatrixProvider::EditMessage(const std::string& conversationId, con
     return UltraIMResult::Ok();
 }
 
-UltraIMResult MatrixProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId) {
+UltraIMDeleteChoices MatrixProvider::GetDeleteChoices(const std::string& conversationId,
+                                                      const std::string& messageId) const {
+    UltraIMDeleteChoices choices;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = rooms_.find(conversationId);
+    if (it == rooms_.end()) return choices;
+    for (const auto& m : it->second.timeline) {
+        if (m.messageId == messageId) choices.forEveryone = m.isOwn && m.type != UltraIMMessageType::SystemEvent;
+    }
+    return choices;
+}
+
+UltraIMResult MatrixProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                            UltraIMDeleteScope scope) {
+    if (scope == UltraIMDeleteScope::ForMe) return Unsupported("deleting a message for yourself alone");
     std::shared_ptr<MatrixHttp> http = Http();
     if (!http) return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix");
     // The redaction arrives back through the sync as a MessageDelete.

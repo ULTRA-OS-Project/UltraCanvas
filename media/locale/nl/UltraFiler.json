@@ -35,10 +35,6 @@
   "an entry": "een item",
   "An upload is still running — quit anyway?": "Een upload is nog bezig — toch afsluiten?",
   "An upload is still waiting — quit anyway?": "Een upload wacht nog — toch afsluiten?",
-  "and {n} more": {
-    "one": "en nog {n}",
-    "other": "en nog {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Elk ander bestand, wanneer dit systeem een programma heeft geregistreerd voor dat soort bestand:",
   "Applied to {n} item.": {
     "one": "Toegepast op {n} item.",
@@ -261,6 +257,7 @@
   "Open prompt": "Opdrachtprompt openen",
   "Opening files": "Bestanden openen",
   "Opening {0} - {1}": "{0} openen - {1}",
+  "Order by": "Sorteren op",
   "Order pinned": "Volgorde van vastmaken",
   "Own patterns - type one and press Enter:": "Eigen patronen - typ er een en druk op Enter:",
   "Path to the application": "Pad naar de toepassing",
@@ -462,10 +459,6 @@
   "{n} icon": {
     "one": "{n} pictogram",
     "other": "{n} pictogrammen"
-  },
-  "{n} line": {
-    "one": "{n} regel",
-    "other": "{n} regels"
   },
   "{n} result": {
     "one": "{n} resultaat",

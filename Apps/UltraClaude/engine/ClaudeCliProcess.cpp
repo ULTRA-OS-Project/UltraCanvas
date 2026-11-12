@@ -1,12 +1,16 @@
 // Apps/UltraClaude/engine/ClaudeCliProcess.cpp
 // See ClaudeCliProcess.h.
+// Version: 0.2.0 - the child's environment carries the proxy settings every ULTRA OS
+//                  application shares (ClaudeProxyEnvironment.h)
 // Version: 0.1.0
-// Last Modified: 2026-10-02
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ClaudeCliProcess.h"
+#include "ClaudeProxyEnvironment.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <utility>
@@ -25,6 +29,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+// The process environment (POSIX); macOS' <unistd.h> does not declare it.
+extern "C" char** environ;
 #endif
 
 namespace UltraClaude {
@@ -131,6 +138,20 @@ bool ClaudeCliProcess::Start(const std::vector<std::string>& argv,
     for (const std::string& a : argv) args.push_back(const_cast<char*>(a.c_str()));
     args.push_back(nullptr);
 
+    // The proxy settings, in the environment the CLI and its tools read them
+    // from. Built here: between fork and exec only the pointer is swapped.
+    std::vector<std::string> childEnvironment;
+    std::vector<char*> envp;
+    const EnvironmentChanges proxyEnvironment = ClaudeProxyEnvironment();
+    if (!proxyEnvironment.Empty()) {
+        std::vector<std::string> current;
+        for (char** e = environ; e && *e; ++e) current.emplace_back(*e);
+        childEnvironment = ApplyEnvironmentChanges(current, proxyEnvironment, /*ignoreCase=*/false);
+        envp.reserve(childEnvironment.size() + 1);
+        for (std::string& entry : childEnvironment) envp.push_back(entry.data());
+        envp.push_back(nullptr);
+    }
+
     const pid_t pid = ::fork();
     if (pid < 0) {
         outError = std::string("Could not start a process: ") + std::strerror(errno);
@@ -146,6 +167,7 @@ bool ClaudeCliProcess::Start(const std::vector<std::string>& argv,
         ::dup2(err[1], STDERR_FILENO);
         if (!workingDirectory.empty() && ::chdir(workingDirectory.c_str()) != 0)
             ChildFail(report[1], kStepChdir);
+        if (!envp.empty()) environ = envp.data();
         ::execvp(args[0], args.data());
         ChildFail(report[1], kStepExec);
     }
@@ -395,6 +417,34 @@ bool ClaudeCliProcess::Start(const std::vector<std::string>& argv,
         commandLine = L"cmd.exe /d /s /c \"" + commandLine + L"\"";
     }
 
+    // The proxy settings, in the environment the CLI and its tools read them
+    // from: this process's block with the changes made, sorted by name (case
+    // ignored) as Windows keeps it. Unchanged, the child inherits ours.
+    std::wstring environmentBlock;
+    const EnvironmentChanges proxyEnvironment = ClaudeProxyEnvironment();
+    if (!proxyEnvironment.Empty()) {
+        std::vector<std::string> current;
+        if (wchar_t* block = GetEnvironmentStringsW()) {
+            for (const wchar_t* e = block; *e; e += wcslen(e) + 1)
+                current.push_back(UltraCanvas::WideToUtf8(std::wstring(e)));
+            FreeEnvironmentStringsW(block);
+        }
+        std::vector<std::string> entries = ApplyEnvironmentChanges(current, proxyEnvironment, /*ignoreCase=*/true);
+        auto nameKey = [](const std::string& entry) {
+            const size_t eq = entry.find('=', entry.empty() || entry[0] != '=' ? 0 : 1);
+            std::string name = entry.substr(0, eq);
+            for (char& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            return name;
+        };
+        std::stable_sort(entries.begin(), entries.end(),
+                         [&](const std::string& a, const std::string& b) { return nameKey(a) < nameKey(b); });
+        for (const std::string& entry : entries) {
+            environmentBlock += UltraCanvas::Utf8ToWide(entry);
+            environmentBlock.push_back(L'\0');
+        }
+        environmentBlock.push_back(L'\0');
+    }
+
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
@@ -409,7 +459,8 @@ bool ClaudeCliProcess::Start(const std::vector<std::string>& argv,
     const BOOL started = CreateProcessW(
             application.c_str(), mutableCommandLine.data(), nullptr, nullptr, TRUE,
             CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
-            nullptr, directory.empty() ? nullptr : directory.c_str(), &si, &pi);
+            environmentBlock.empty() ? nullptr : static_cast<LPVOID>(environmentBlock.data()),
+            directory.empty() ? nullptr : directory.c_str(), &si, &pi);
     CloseHandle(inRead);
     CloseHandle(outWrite);
     CloseHandle(errWrite);

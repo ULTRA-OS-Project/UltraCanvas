@@ -1,5 +1,6 @@
 // include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
+// Version: 2.5.2 - UpdateAndShowTooltip with no window shows nothing (it used to crash)
 // Version: 2.5.1 - on macOS too
 // Version: 2.5.0 - the tooltip is shown in a window of its own (WindowType::Tooltip), above
 //                  every other window: SetUseOwnWindow / GetUseOwnWindow, GetTooltipWindow,
@@ -74,6 +75,8 @@ namespace UltraCanvas {
 
         // Show a structured tooltip (title, label/value rows, bullets, …).
         // The explicit-style overload wins over content.styleOverride.
+        // `win` nullptr (an element not in a window yet) shows nothing and
+        // hides a tooltip shown for another window.
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position, const TooltipStyle& newStyle);
 
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const TooltipContent& content, const Point2Di& position) {

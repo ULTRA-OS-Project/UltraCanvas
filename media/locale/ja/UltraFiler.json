@@ -35,9 +35,6 @@
   "an entry": "項目",
   "An upload is still running — quit anyway?": "アップロード 1 件がまだ実行中です。それでも終了しますか？",
   "An upload is still waiting — quit anyway?": "アップロード 1 件がまだ待機中です。それでも終了しますか？",
-  "and {n} more": {
-    "other": "ほか {n} 件"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "その他のファイル (このシステムでその種類のファイルにプログラムが登録されている場合):",
   "Applied to {n} item.": {
     "other": "{n} 個の項目に適用しました。"
@@ -257,6 +254,7 @@
   "Open prompt": "プロンプトを開く",
   "Opening files": "ファイルを開く",
   "Opening {0} - {1}": "{0} を開いています - {1}",
+  "Order by": "並べ替え",
   "Order pinned": "ピン留めの順序",
   "Own patterns - type one and press Enter:": "独自のパターン - 入力して Enter を押します:",
   "Path to the application": "アプリケーションのパス",
@@ -447,9 +445,6 @@
   },
   "{n} icon": {
     "other": "アイコン {n} 個"
-  },
-  "{n} line": {
-    "other": "{n} 行"
   },
   "{n} result": {
     "other": "{n} 件の結果"

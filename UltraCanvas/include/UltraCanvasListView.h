@@ -1,6 +1,8 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Version: 1.9.0 - SetSelectsOnContextMenu: a right-click menu that leaves the selection alone
+// Version: 1.10.0 - SetSelectsOnContextMenu: a right-click menu that leaves the selection alone
+// Version: 1.9.0 - ListViewStyle::FromTheme, ApplyTheme: the list follows the theme, its default
+//                  delegate with it; a SetStyle by hand stops the following
 // Version: 1.8.0 - SetColumnFitting: every column as wide as its widest text
 //                  and its header, measured at the next paint after the rows
 //                  change, until the user drags a border
@@ -67,6 +69,15 @@ namespace UltraCanvas {
         Color hoverBackgroundColor = Colors::SelectionHover;
 
         ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Modern());
+
+        // The theme's roles over a base's own shape (heights, flags, the
+        // indicator): the well for the rows, the panel for the header with
+        // ink and hairline grid lines, the panel again for alternate rows,
+        // the accent for the selection and the hover fill; the header at the
+        // caption size; the scrollbars from ScrollbarStyle::FromTheme
+        static ListViewStyle FromTheme(const UltraCanvasTheme& theme, const ListViewStyle& base);
+        static ListViewStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ListViewStyle()); }
+        static ListViewStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
     // ===== LIST VIEW WIDGET =====
@@ -151,6 +162,9 @@ namespace UltraCanvas {
 
         void SetStyle(const ListViewStyle& style);
         const ListViewStyle& GetStyle() const;
+        // The style from the theme, and the default delegate's ink, text on
+        // the selection and body font when the delegate is the default one
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         void SetRowHeight(int height);
         int GetRowHeight() const;

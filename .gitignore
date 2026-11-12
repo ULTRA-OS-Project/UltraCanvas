@@ -55,3 +55,5 @@ Texter.exe
 /UltraCanvas/Plugins/UltraIM/matrix/olm-c/target/
 /media/ocr/tessdata/
 __pycache__/
+# Python packaging leftovers (pip install -e)
+*.egg-info/

@@ -2,11 +2,17 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
-// Version: 0.1.9 - a group renamed, a member taken out by the owner (and not by anyone else), added back, and
-//                  leaving it; a 1:1 conversation deleted on one side (TestGroupManagement)
+// Version: 0.1.11 - a group renamed, a member taken out by the owner (and not by anyone else), added back, and
+//                   leaving it; a 1:1 conversation deleted on one side (TestGroupManagement)
+// Version: 0.1.10 - deleting: the store's RemoveMessage; end to end by the rules (a read text, an unread one,
+//                   a file, a group), the other side's own check
+// Version: 0.1.9 - TestStoreSearch: words, kinds, links and pages from the store; the links table filled for
+//                  a history from before it
 // Version: 0.1.8 - the authenticator's setup code waits for a 30-second step with room left: computed a
 //                  step back and checked after the password work, it was refused when a step boundary
 //                  passed in between, and the wrong codes it then counted paused the rest
+// Version: 0.1.8 - the relay's WebSocket probed once it is up: a uvicorn without a WebSocket library fails
+//                  the suite with one line naming the package, not with every relayed check
 // Version: 0.1.7 - the e-mail confirmed by the link the relay e-mails; recovery by an e-mailed link, approved on
 //                  its page while the new computer asks (FinishRecovery: NeedsInput until then)
 // Version: 0.1.6 - the e-mail and phone confirmed with the relay's codes, recovery on, and the ID recovered on a
@@ -18,7 +24,7 @@
 // Version: 0.1.3 - the relay's port probed free, three tries
 // Version: 0.1.2 - the plaintext check on the sealed bytes
 // Version: 0.1.1 - TestRelayRedirect: the relay behind a redirector
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 
 #include "DirectCrypto.h"
@@ -27,6 +33,7 @@
 #include "DirectStore.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraDatabase/UltraDatabase.h"
 #include "UltraCrypt/OtpAuthUri.h"
 #include "UltraCrypt/UltraOtp.h"
 #include "UltraIM/UltraIMCore.h"
@@ -57,6 +64,7 @@
 #include <netinet/in.h>
 #include <signal.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -185,6 +193,173 @@ void TestStore() {
     store.Close();
 }
 
+std::string Ids(const UltraIMSearchPage& page) {
+    std::string ids;
+    for (const auto& m : page.messages) ids += (ids.empty() ? "" : " ") + m.clientMessageId;
+    return ids;
+}
+
+void TestStoreSearch() {
+    Store store;
+    std::string error;
+    const fs::path dir = TempDir("store-search");
+    const std::string path = UltraCanvas::PathToUtf8(dir / "s.sqlite3");
+    CHECK(store.Open(path, "direct", error));
+    for (const char* id : {"bob", "carol"}) {
+        UltraIMConversation c;
+        c.conversationId = id;
+        c.title = id;
+        store.UpsertConversation(c);
+    }
+    int64_t clock = 100;
+    const auto add = [&](const std::string& conversation, const std::string& id, const std::string& text,
+                         UltraIMMessageType type = UltraIMMessageType::Text, const std::string& fileName = "") {
+        UltraIMMessage m;
+        m.conversationId = conversation;
+        m.clientMessageId = id;
+        m.senderId = "someone";
+        m.text = text;
+        m.type = type;
+        m.timestampMs = ++clock;
+        if (!fileName.empty()) {
+            m.attachment.fileName = fileName;
+            m.attachment.remoteUrl = "file-" + id;
+        }
+        CHECK(store.AddMessage(m));
+    };
+    add("bob", "b1", "Lunch at the Übersee café?");
+    add("bob", "b2", "the menu: https://example.com/menu.");
+    add("bob", "b3", "the harbour", UltraIMMessageType::Image, "harbour.jpg");
+    add("carol", "c1", "ÜBERSEE again, see www.example.org/lunch");
+    add("bob", "b4", "", UltraIMMessageType::Video, "ferry.mp4");
+    add("bob", "b5", "", UltraIMMessageType::File, "Lunch-Invoice.PDF");
+    add("bob", "b6", "Bob left the lunch group", UltraIMMessageType::SystemEvent);
+    add("carol", "c2", "awww.nothing and an http: that is no link");
+    add("bob", "b7", "lunch was good");
+
+    const auto find = [&](const std::string& conversation, const std::string& text,
+                          UltraIMSearchKind kind = UltraIMSearchKind::AnyKind, int limit = 50,
+                          const std::string& cursor = "") {
+        UltraIMMessageSearch s;
+        s.conversationId = conversation;
+        s.text = text;
+        s.kind = kind;
+        s.limit = limit;
+        s.cursor = cursor;
+        return store.Search(s);
+    };
+    // Words: newest first, any case (beyond ASCII too), the file's name
+    // counted, a system line never; one conversation or all of them.
+    CHECK(Ids(find("bob", "lunch")) == "b7 b5 b1");
+    CHECK(Ids(find("bob", "ÜBERSEE lunch")) == "b1");
+    CHECK(Ids(find("", "übersee")) == "c1 b1");
+    CHECK(Ids(find("", "lunch")) == "b7 b5 c1 b1");
+    CHECK(Ids(find("carol", "invoice")).empty());
+    CHECK(Ids(find("nobody", "lunch")).empty());
+    CHECK(find("bob", "lunch").messages[1].attachment.fileName == "Lunch-Invoice.PDF");
+    CHECK(find("bob", "lunch").messages[0].providerId == "direct");
+    // Kinds.
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Images)) == "b3");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Videos)) == "b4");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Media)) == "b4 b3");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Files)) == "b5");
+    CHECK(Ids(find("bob", "harbour", UltraIMSearchKind::Media)) == "b3");
+    CHECK(Ids(find("", "", UltraIMSearchKind::AnyKind)) == "b7 c2 b5 b4 c1 b3 b2 b1");
+    // Links: the messages the links table names - not c2, which only looks like one.
+    CHECK(Ids(find("", "", UltraIMSearchKind::Links)) == "c1 b2");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Links)) == "b2");
+    CHECK(Ids(find("", "LUNCH", UltraIMSearchKind::Links)) == "c1");
+    CHECK(UltraIM_ExtractLinks(find("bob", "", UltraIMSearchKind::Links).messages[0].text) ==
+          std::vector<std::string>{"https://example.com/menu"});
+    // Pages: the cursor goes on where the page before stopped, to the start.
+    UltraIMSearchPage page = find("", "", UltraIMSearchKind::AnyKind, 3);
+    CHECK(Ids(page) == "b7 c2 b5" && !page.nextCursor.empty());
+    page = find("", "", UltraIMSearchKind::AnyKind, 3, page.nextCursor);
+    CHECK(Ids(page) == "b4 c1 b3" && !page.nextCursor.empty());
+    page = find("", "", UltraIMSearchKind::AnyKind, 3, page.nextCursor);
+    CHECK(Ids(page) == "b2 b1" && page.nextCursor.empty());
+    page = find("bob", "lunch", UltraIMSearchKind::AnyKind, 1);
+    CHECK(Ids(page) == "b7" && !page.nextCursor.empty());
+    page = find("bob", "lunch", UltraIMSearchKind::AnyKind, 1, page.nextCursor);
+    CHECK(Ids(page) == "b5");
+    CHECK(find("bob", "lunch", UltraIMSearchKind::AnyKind, 1, "not a cursor").messages.empty());
+    // More matches than one read of the database brings (a few among many).
+    for (int i = 0; i < 700; ++i) add("bob", "n" + std::to_string(i), i % 100 == 0 ? "needle" : "hay");
+    page = find("bob", "needle", UltraIMSearchKind::AnyKind, 5);
+    CHECK(Ids(page) == "n600 n500 n400 n300 n200" && !page.nextCursor.empty());
+    page = find("bob", "needle", UltraIMSearchKind::AnyKind, 5, page.nextCursor);
+    CHECK(Ids(page) == "n100 n0" && page.nextCursor.empty());
+
+    // A message removed: its note in the links table, its unsent copies and
+    // the parts of its file go with it; the conversation's last line and
+    // unread count follow.
+    {
+        UltraIMConversation carol;
+        CHECK(store.GetConversation("carol", carol) && carol.unreadCount == 2);
+        CHECK(carol.lastMessageSnippet == "awww.nothing and an http: that is no link");
+        UltraIMMessage removed;
+        CHECK(!store.IsReadReported("carol", "c2"));
+        CHECK(store.RemoveMessage("carol", "c2", removed) && removed.text.rfind("awww", 0) == 0);
+        CHECK(!store.RemoveMessage("carol", "c2", removed));        // once
+        CHECK(store.GetConversation("carol", carol) && carol.unreadCount == 1);
+        CHECK(carol.lastMessageSnippet == "ÜBERSEE again, see www.example.org/lunch");
+        CHECK(store.UnreadIncoming("carol").size() == 1 && store.IsReadReported("carol", "c1"));
+        CHECK(store.RemoveMessage("carol", "c1", removed));
+        CHECK(Ids(find("", "", UltraIMSearchKind::Links)) == "b2");  // no longer found by its link
+        CHECK(store.GetConversation("carol", carol) && carol.lastMessageSnippet.empty() && carol.unreadCount == 1);
+        add("carol", "c1", "ÜBERSEE again, see www.example.org/lunch");     // (back, for what follows)
+
+        OutboxEntry entry;
+        entry.conversation = "dm";
+        entry.recipient = "bob";
+        entry.body = "{}";
+        for (const char* id : {"b4", "c-file-b4-0", "c-file-b4-1", "c-file-b40-0", "other"}) {
+            entry.clientId = id;
+            store.AddOutbox(entry);
+        }
+        store.AddPart("file-b4", 0, "AAAA");
+        CHECK(!store.IsDeleted(Store::DeletedFileKey("file-b4")));
+        CHECK(store.RemoveMessage("bob", "b4", removed) && removed.attachment.fileName == "ferry.mp4");
+        CHECK(store.Outbox().size() == 2);                          // another file's part, another message
+        CHECK(store.CountParts("file-b4") == 0);
+        CHECK(store.IsDeleted(Store::DeletedFileKey("file-b4")) && !store.IsDeleted(Store::DeletedFileKey("file-b5")));
+        CHECK(Ids(find("bob", "", UltraIMSearchKind::Media)) == "b3");
+        store.RemoveOutbox("c-file-b40-0", "bob");
+        store.RemoveOutbox("other", "bob");
+        store.NoteDeleted("m/bob/bob/late", 1);
+        CHECK(store.IsDeleted("m/bob/bob/late") && !store.IsDeleted("m/bob/bob/other"));
+    }
+
+    // A conversation removed takes its links along.
+    CHECK(store.RemoveConversation("carol"));
+    CHECK(Ids(find("", "", UltraIMSearchKind::Links)) == "b2");
+    store.Close();
+
+    // A history from before the links table: opening it notes the messages
+    // with a link, so they are found without being sent again.
+    {
+        UltraDbConnectionConfig config;
+        config.name = "store-search-raw";
+        config.driver = "sqlite";
+        config.database = path;
+        CHECK(UltraDb_RegisterConnection(config));
+        CHECK(UltraDb_Exec("store-search-raw", "DROP TABLE links"));
+        CHECK(UltraDb_Exec("store-search-raw", "DROP INDEX messages_by_type"));
+        CHECK(UltraDb_Exec("store-search-raw", "DROP TABLE deleted"));
+        CHECK(UltraDb_Exec("store-search-raw", "DELETE FROM ultradb_schema_version WHERE version >= 3"));
+        UltraDb_CloseConnection("store-search-raw");
+    }
+    Store reopened;
+    CHECK(reopened.Open(path, "direct", error));
+    UltraIMMessageSearch links;
+    links.kind = UltraIMSearchKind::Links;
+    CHECK(Ids(reopened.Search(links)) == "b2");
+    links.conversationId = "bob";
+    links.text = "menu";
+    CHECK(Ids(reopened.Search(links)) == "b2");
+    reopened.Close();
+}
+
 // ============================================================================
 // END TO END
 // ============================================================================
@@ -283,12 +458,54 @@ int FreePort(int from) {
     return from;
 }
 
+// Why the relay's WebSocket cannot be used, or empty when it can. One raw
+// upgrade of /v1/ws without a token: a relay that speaks WebSocket refuses
+// it (403), while a uvicorn without a WebSocket library answers 404 (it says
+// so once in its log, and every relayed check would fail after it: no
+// presence, no push, no calls).
+std::string WebSocketProblem(int port) {
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return "no socket for the WebSocket probe";
+    timeval timeout{};
+    timeout.tv_sec = 5;
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    std::string problem;
+    if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0) {
+        problem = "the relay's port does not answer the WebSocket probe";
+    } else {
+        const std::string request = "GET /v1/ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\n"
+                                    "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                                    "Sec-WebSocket-Version: 13\r\n\r\n";
+        if (::send(fd, request.data(), request.size(), 0) != static_cast<ssize_t>(request.size())) {
+            problem = "the WebSocket upgrade was not sent";
+        } else {
+            char buffer[256] = {};
+            const ssize_t n = ::recv(fd, buffer, sizeof buffer - 1, 0);
+            const std::string head = n > 0 ? std::string(buffer, static_cast<size_t>(n)) : std::string();
+            if (head.rfind("HTTP/1.", 0) != 0 || head.size() < 12)
+                problem = "no HTTP answer to the WebSocket upgrade";
+            else if (head.compare(9, 3, "404") == 0)
+                problem = "the relay's uvicorn has no WebSocket library: pip install 'uvicorn[standard]'";
+        }
+    }
+    ::close(fd);
+    return problem;
+}
+
 struct Relay {
     pid_t pid = -1;
     std::string url;
+    std::string problem;   // why Start failed, for the one line that reports it
 
     bool Start(const fs::path& dataDir) {
-        if (std::system("python3 -c 'import fastapi, uvicorn, cryptography' >/dev/null 2>&1") != 0) return false;
+        if (std::system("python3 -c 'import fastapi, uvicorn, cryptography' >/dev/null 2>&1") != 0) {
+            problem = "no python3 with fastapi, uvicorn, cryptography";
+            return false;
+        }
         // Three tries: the port is probed free, but another process can
         // still take it between the probe and the relay's bind.
         for (int attempt = 0; attempt < 3; ++attempt) {
@@ -312,7 +529,12 @@ struct Relay {
                 UltraNetResponse response;
                 UltraNetHttpOptions options;
                 options.timeoutMs = 1000;
-                if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 200) return true;
+                if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 200) {
+                    problem = WebSocketProblem(port);
+                    if (problem.empty()) return true;
+                    Stop();   // no port can mend a missing library
+                    return false;
+                }
                 int status = 0;
                 if (waitpid(pid, &status, WNOHANG) == pid) { pid = -1; break; }   // gone: the bind failed, or no module
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -320,6 +542,7 @@ struct Relay {
             Stop();
             std::printf("DirectProviderTests: the relay did not come up on port %d (try %d)\n", port, attempt + 1);
         }
+        problem = "the relay did not come up";
         return false;
     }
     void Stop() {
@@ -1160,8 +1383,7 @@ void TestEndToEnd() {
     if (!relay.Start(base)) {
         // CI sets the variable: there a skip would read as a pass.
         const bool required = !UltraCanvas::GetEnvUtf8("ULTRAIM_TEST_RELAY_REQUIRED").empty();
-        std::printf("DirectProviderTests: %s end to end (no python3 with fastapi, uvicorn, cryptography)\n",
-                    required ? "FAIL" : "SKIP");
+        std::printf("DirectProviderTests: %s end to end (%s)\n", required ? "FAIL" : "SKIP", relay.problem.c_str());
         CHECK(!required);
         return;
     }
@@ -1337,6 +1559,141 @@ void TestEndToEnd() {
         CHECK(history[0].text == "hello over the data channel");
         CHECK(history[1].type == UltraIMMessageType::Image && history[1].attachment.isDownloaded);
         CHECK(history[3].type == UltraIMMessageType::File && history[3].attachment.fileName == "notes.pdf");
+    }
+    // And searched there: by words, by kind, across every conversation.
+    CHECK(UltraIM_HasCapability(bob->GetCapabilities(), UltraIMCapabilityFlags::SearchMessages));
+    {
+        UltraIMResult result;
+        UltraIMSearchPage found;
+        const auto take = [&](const UltraIMResult& r, const UltraIMSearchPage& p) {
+            result = r;
+            found = p;
+        };
+        UltraIMMessageSearch search;
+        search.conversationId = aliceId;
+        search.text = "DATA channel";
+        bob->SearchMessages(search, take);
+        CHECK(result && found.messages.size() == 1 && found.nextCursor.empty());
+        if (!found.messages.empty()) CHECK(found.messages[0].text == "hello over the data channel");
+        search.text.clear();
+        search.kind = UltraIMSearchKind::Files;
+        bob->SearchMessages(search, take);
+        CHECK(result && found.messages.size() == 1);
+        if (!found.messages.empty()) CHECK(found.messages[0].attachment.fileName == "notes.pdf");
+        search.kind = UltraIMSearchKind::AnyKind;
+        search.conversationId.clear();
+        search.text = "hello";
+        bob->SearchMessages(search, take);         // the direct chat and the group
+        CHECK(result && found.messages.size() == 2);
+        search.conversationId = "nobody";
+        bob->SearchMessages(search, take);
+        CHECK(!result && result.code == UltraIMResultCode::NotFound && found.messages.empty());
+    }
+
+    // Deleting, by ChatCube's rules. For oneself: always. For everyone, by
+    // the sender: a text until it was read, a file at any time, anything in
+    // a group - and the other side lets go only of what those rules allow.
+    CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::DeleteMessage));
+    {
+        // (The calls ended with Bob away.)
+        if (bob->GetConnectionState() != UltraIMConnectionState::Connected)
+            CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->SignIn(bobLogin, cb); }, r) && r);
+        const auto deleted = [](const std::string& conversation, const std::string& id) {
+            return [conversation, id](const UltraIMEvent& e) {
+                return e.type == UltraIMEventType::MessageDelete && e.conversationId == conversation &&
+                       e.message.messageId == id;
+            };
+        };
+        const auto ids = [](DirectProvider& p, const std::string& conversation) {
+            std::string out;
+            p.FetchMessages(conversation, "", 50, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& m) {
+                for (const auto& message : m) out += message.messageId + " ";
+            });
+            return out;
+        };
+        const auto has = [&](DirectProvider& p, const std::string& conversation, const std::string& id) {
+            return ids(p, conversation).find(id + " ") != std::string::npos;
+        };
+        const std::string pictureId = history.size() == 4 ? history[1].messageId : std::string();
+        const std::string bobsCopy = history.size() == 4 ? history[1].attachment.localPath : std::string();
+        CHECK(!pictureId.empty() && fs::exists(UltraCanvas::PathFromUtf8(bobsCopy)));
+
+        // A text Bob has read: Alice's to delete for herself only.
+        UltraIMDeleteChoices choices = alice->GetDeleteChoices(bobId, "msg-p2p");
+        CHECK(choices.forMe && !choices.forEveryone);
+        CHECK(alice->DeleteMessage(bobId, "msg-p2p", UltraIMDeleteScope::ForEveryone).code ==
+              UltraIMResultCode::PermissionDenied);
+        CHECK(has(*alice, bobId, "msg-p2p"));
+        CHECK(alice->DeleteMessage(bobId, "msg-p2p", UltraIMDeleteScope::ForMe));
+        CHECK(aliceEvents.WaitFor(deleted(bobId, "msg-p2p")));
+        CHECK(!has(*alice, bobId, "msg-p2p"));
+        CHECK(!alice->GetDeleteChoices(bobId, "msg-p2p").forMe);       // gone: nothing to offer
+        CHECK(alice->DeleteMessage(bobId, "msg-p2p", UltraIMDeleteScope::ForMe).code == UltraIMResultCode::NotFound);
+
+        // What someone else sent is theirs to delete for everyone.
+        choices = bob->GetDeleteChoices(aliceId, "msg-offline");
+        CHECK(choices.forMe && !choices.forEveryone);
+        CHECK(bob->DeleteMessage(aliceId, "msg-offline", UltraIMDeleteScope::ForEveryone).code ==
+              UltraIMResultCode::PermissionDenied);
+
+        // A text not read yet: gone from both.
+        choices = alice->GetDeleteChoices(bobId, "msg-offline");
+        CHECK(choices.forMe && choices.forEveryone);
+        CHECK(alice->DeleteMessage(bobId, "msg-offline", UltraIMDeleteScope::ForEveryone));
+        CHECK(aliceEvents.WaitFor(deleted(bobId, "msg-offline")));
+        CHECK(bobEvents.WaitFor(deleted(aliceId, "msg-offline")));
+        CHECK(!has(*alice, bobId, "msg-offline") && !has(*bob, aliceId, "msg-offline"));
+
+        // A picture, read long ago: still the sender's to take back, and
+        // Bob's copy of the file goes with it - Alice's own file does not.
+        choices = alice->GetDeleteChoices(bobId, pictureId);
+        CHECK(choices.forMe && choices.forEveryone);
+        CHECK(alice->DeleteMessage(bobId, pictureId, UltraIMDeleteScope::ForEveryone));
+        CHECK(bobEvents.WaitFor(deleted(aliceId, pictureId)));
+        CHECK(!has(*bob, aliceId, pictureId) && !has(*alice, bobId, pictureId));
+        CHECK(!fs::exists(UltraCanvas::PathFromUtf8(bobsCopy)));
+        CHECK(fs::exists(UltraCanvas::PathFromUtf8(picture)));
+        // Bob kept the text Alice deleted for herself alone, and the file.
+        CHECK(has(*bob, aliceId, "msg-p2p") && has(*bob, aliceId, "msg-file-offline"));
+        UltraIMConversation withAlice;
+        bob->FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& list) {
+            for (const auto& c : list) {
+                if (c.conversationId == aliceId) withAlice = c;
+            }
+        });
+        CHECK(withAlice.lastMessageSnippet == "[file] notes.pdf");      // the last message left
+
+        // Read while the read receipt could not reach Alice (Bob is away):
+        // to her it is unread, so she may ask - and Bob's side, which knows
+        // better, keeps it. The rule holds where the reading happened.
+        UltraIMSendOptions oRead;
+        oRead.clientMessageId = "msg-read";
+        CHECK(alice->SendText(bobId, "read me", oRead));
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "read me"); }));
+        bob->SignOut();
+        CHECK(bob->MarkRead(aliceId, ""));
+        CHECK(alice->GetDeleteChoices(bobId, "msg-read").forEveryone);
+        CHECK(alice->DeleteMessage(bobId, "msg-read", UltraIMDeleteScope::ForEveryone));
+        UltraIMSendOptions oAfter;
+        oAfter.clientMessageId = "msg-after";
+        CHECK(alice->SendText(bobId, "after that", oAfter));
+        CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->SignIn(bobLogin, cb); }, r) && r);
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "after that"); }));
+        CHECK(has(*bob, aliceId, "msg-read") && !has(*alice, bobId, "msg-read"));
+        // Once Alice knows it was read, the menu says so too.
+        CHECK(bob->MarkRead(aliceId, ""));
+        CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsDelivered(e, "msg-after", UltraIMDeliveryStatus::Read); }));
+        choices = alice->GetDeleteChoices(bobId, "msg-after");
+        CHECK(choices.forMe && !choices.forEveryone);
+
+        // In a group the sender may at any time.
+        choices = alice->GetDeleteChoices(group.conversationId, "msg-group");
+        CHECK(choices.forMe && choices.forEveryone);
+        CHECK(!bob->GetDeleteChoices(group.conversationId, "msg-group").forEveryone);
+        CHECK(bob->MarkRead(group.conversationId, ""));
+        CHECK(alice->DeleteMessage(group.conversationId, "msg-group", UltraIMDeleteScope::ForEveryone));
+        CHECK(bobEvents.WaitFor(deleted(group.conversationId, "msg-group")));
+        CHECK(!has(*bob, group.conversationId, "msg-group") && !has(*alice, group.conversationId, "msg-group"));
     }
 
     // Bob deletes his chat with Alice: gone from his list and his store, the
@@ -1558,6 +1915,7 @@ void TestSignInProtection() {
 int main() {
     TestEnvelope();
     TestStore();
+    TestStoreSearch();
     TestEndToEnd();
 #if !defined(_WIN32)
     UltraNet_Initialize();

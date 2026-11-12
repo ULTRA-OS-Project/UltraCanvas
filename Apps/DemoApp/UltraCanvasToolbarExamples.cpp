@@ -21,12 +21,12 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateToolbarExamples() {
         debugOutput << "Creating Toolbar Examples..." << std::endl;
 
-        auto page = DemoKit::CreatePage("ToolbarExamples", "Toolbar",
-                "Flexible toolbar system with buttons, dropdowns, separators, and various styles");
+        auto page = DemoKit::CreatePage("ToolbarExamples", Tr("Toolbar"),
+                Tr("Flexible toolbar system with buttons, dropdowns, separators, and various styles"));
 
         // ===== EXAMPLE 1: STANDARD HORIZONTAL TOOLBAR =====
-        auto card1 = DemoKit::AddCard(page, "ToolbarCard1", "1. Standard Horizontal Toolbar",
-                "Classic toolbar with buttons, separators, and flexible spacing");
+        auto card1 = DemoKit::AddCard(page, "ToolbarCard1", Tr("1. Standard Horizontal Toolbar"),
+                Tr("Classic toolbar with buttons, separators, and flexible spacing"));
 
         // Create standard toolbar using builder
         auto standardToolbar = UltraCanvasToolbarBuilder("StandardToolbar")
@@ -54,14 +54,14 @@ namespace UltraCanvas {
                 })
                 .AddSeparator()
                 .AddStretch(1.0f)
-                .AddLabel("status", "Ready")
+                .AddLabel("status", Tr("Ready"))
                 .Build();
 
         DemoKit::AddStretched(card1, standardToolbar);
 
         // ===== EXAMPLE 2: TOOLBAR WITH DROPDOWNS =====
-        auto card2 = DemoKit::AddCard(page, "ToolbarCard2", "2. Toolbar with Dropdown Menus",
-                "Toolbar combining buttons and dropdown selectors");
+        auto card2 = DemoKit::AddCard(page, "ToolbarCard2", Tr("2. Toolbar with Dropdown Menus"),
+                Tr("Toolbar combining buttons and dropdown selectors"));
 
         auto dropdownToolbar = std::make_shared<UltraCanvasToolbar>(
                 "DropdownToolbar", 0, 0, 960, 48
@@ -107,8 +107,8 @@ namespace UltraCanvas {
         DemoKit::AddStretched(card2, dropdownToolbar);
 
         // ===== EXAMPLE 3: FLAT STYLE TOOLBAR =====
-        auto card3 = DemoKit::AddCard(page, "ToolbarCard3", "3. Flat Style Toolbar",
-                "Modern flat design without borders");
+        auto card3 = DemoKit::AddCard(page, "ToolbarCard3", Tr("3. Flat Style Toolbar"),
+                Tr("Modern flat design without borders"));
 
         auto flatToolbar = UltraCanvasToolbarBuilder("FlatToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
@@ -135,8 +135,8 @@ namespace UltraCanvas {
         DemoKit::AddStretched(card3, flatToolbar);
 
         // ===== EXAMPLE 4: VERTICAL SIDEBAR TOOLBAR =====
-        auto card4 = DemoKit::AddCard(page, "ToolbarCard4", "4. Vertical Sidebar Toolbar",
-                "Vertical orientation for sidebar navigation");
+        auto card4 = DemoKit::AddCard(page, "ToolbarCard4", Tr("4. Vertical Sidebar Toolbar"),
+                Tr("Vertical orientation for sidebar navigation"));
 
         // The sidebar beside a content column, which takes the rest of the
         // width and is as tall as its text.
@@ -184,37 +184,37 @@ namespace UltraCanvas {
         DemoKit::AddFixed(sidebarContainer, verticalToolbar);
 
         auto contentColumn = DemoKit::CreateColumn("SidebarContent", 8);
-        auto contentLabel = DemoKit::CreateHeading("ContentLabel", "Main Content Area");
+        auto contentLabel = DemoKit::CreateHeading("ContentLabel", Tr("Main Content Area"));
         DemoKit::Add(contentColumn, contentLabel);
         DemoKit::AddText(contentColumn, "ContentDesc",
-                "The vertical toolbar on the left provides navigation controls.\n\n"
+                Tr("The vertical toolbar on the left provides navigation controls.\n\n"
                 "This is a common pattern in modern applications where the sidebar "
                 "contains primary navigation options while the main content area "
-                "displays the selected content.");
+                "displays the selected content."));
         DemoKit::Add(sidebarContainer, contentColumn, 1);
 
         // ===== EXAMPLE 5: RIBBON STYLE TOOLBAR =====
-        auto card5 = DemoKit::AddCard(page, "ToolbarCard5", "5. Ribbon Style Toolbar",
-                "Office-style ribbon with grouped controls");
+        auto card5 = DemoKit::AddCard(page, "ToolbarCard5", Tr("5. Ribbon Style Toolbar"),
+                Tr("Office-style ribbon with grouped controls"));
 
         auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Ribbon())
                 .SetDimensions(0, 0, 960, 58)
                 .AddButton("clipboardIcon", "", NormalizePath(GetResourcesDir() + "media/icons/clipboard-list.svg"), []() {})
-                .AddLabel("clipboard", "Clipboard")
+                .AddLabel("clipboard", Tr("Clipboard"))
                 .AddSpacer(5)
                 .AddButton("cut", "", NormalizePath(GetResourcesDir() + "media/icons/scissors.svg"), []() {})
                 .AddButton("copy", "", NormalizePath(GetResourcesDir() + "media/icons/copy.svg"), []() {})
                 .AddButton("paste", "", NormalizePath(GetResourcesDir() + "media/icons/paste.svg"), []() {})
                 .AddSpacer(20)
-                .AddLabel("format", "Format")
+                .AddLabel("format", Tr("Format"))
                 .AddSpacer(5)
                 .AddButton("bold", "B", "", []() {})
                 .AddButton("italic", "I", "", []() {})
                 .AddButton("underline", "U", "", []() {})
                 .AddSpacer(20)
-                .AddLabel("insert", "Insert")
+                .AddLabel("insert", Tr("Insert"))
                 .AddSpacer(5)
                 .AddButton("image", "", NormalizePath(GetResourcesDir() + "media/icons/image.svg"), []() {})
                 .AddButton("table", "", NormalizePath(GetResourcesDir() + "media/icons/table.svg"), []() {})
@@ -224,13 +224,13 @@ namespace UltraCanvas {
         DemoKit::AddStretched(card5, ribbonToolbar);
 
         // ===== USAGE NOTES =====
-        DemoKit::AddNotes(page, "ToolbarNotes", "Implementation Notes", {
-                "Use UltraCanvasToolbarBuilder for fluent construction",
-                "AddSpacer(size) creates fixed spacing between items",
-                "AddFlexSpacer(stretch) creates flexible space that grows",
-                "AddSeparator() adds visual dividers",
-                "Supports both horizontal and vertical orientations",
-                "Multiple built-in styles: Standard, Flat, Docked, Ribbon, Sidebar"});
+        DemoKit::AddNotes(page, "ToolbarNotes", Tr("Implementation Notes"), {
+                Tr("Use UltraCanvasToolbarBuilder for fluent construction"),
+                Tr("AddSpacer(size) creates fixed spacing between items"),
+                Tr("AddFlexSpacer(stretch) creates flexible space that grows"),
+                Tr("AddSeparator() adds visual dividers"),
+                Tr("Supports both horizontal and vertical orientations"),
+                Tr("Multiple built-in styles: Standard, Flat, Docked, Ribbon, Sidebar")});
 
         return page;
     }

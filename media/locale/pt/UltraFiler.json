@@ -35,10 +35,6 @@
   "an entry": "uma entrada",
   "An upload is still running — quit anyway?": "Um carregamento ainda está em curso — sair mesmo assim?",
   "An upload is still waiting — quit anyway?": "Um carregamento ainda está em espera — sair mesmo assim?",
-  "and {n} more": {
-    "one": "e mais {n}",
-    "other": "e mais {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Qualquer outro ficheiro, quando este sistema tem um programa registado para esse tipo de ficheiro:",
   "Applied to {n} item.": {
     "one": "Aplicado a {n} item.",
@@ -261,6 +257,7 @@
   "Open prompt": "Abrir linha de comandos",
   "Opening files": "Abrir ficheiros",
   "Opening {0} - {1}": "A abrir {0} - {1}",
+  "Order by": "Ordenar por",
   "Order pinned": "Ordem de fixação",
   "Own patterns - type one and press Enter:": "Padrões próprios - escreva um e prima Enter:",
   "Path to the application": "Caminho para a aplicação",
@@ -462,10 +459,6 @@
   "{n} icon": {
     "one": "{n} ícone",
     "other": "{n} ícones"
-  },
-  "{n} line": {
-    "one": "{n} linha",
-    "other": "{n} linhas"
   },
   "{n} result": {
     "one": "{n} resultado",

@@ -1,5 +1,6 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.8.2 - a layout a frame invalidated while drawing is laid out and drawn at the next frame
 // Version: 1.8.1 - on macOS too
 // Version: 1.8.0 - every popup in a window of its own (WindowType::Popup), above every other
 //                  window: made as it opens, placed, sized and cut to its outline as it is
@@ -836,6 +837,16 @@ namespace UltraCanvas {
             }
             dirtyRectManager.Clear();
             _needsWindowComposition = true;
+            // An element that found while drawing that the layout has to run
+            // again (a button grown to its text after its row read the width
+            // it was given) invalidated it during this pass, and the redraw it
+            // asked for went with the rects just cleared: the next frame lays
+            // out again and draws all of it - and the loop, which would wait
+            // for an event first, is woken for it.
+            if (!IsLayoutValid()) {
+                AddDirtyRectangle(Rect2Di(0, 0, config_.width, config_.height));
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->PostToUIThread([] {});
+            }
         }
 
         // ---- Popup pass: each popup owns its own dirty queue, in popup-local coords ----

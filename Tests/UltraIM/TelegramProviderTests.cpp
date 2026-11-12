@@ -10,18 +10,21 @@
 // picture fetched, a photo, a video and a file sent and received - the photo
 // and the video's preview picture arriving by themselves, the video when
 // asked for.
+// Version: 0.1.6 - what can be deleted (for oneself, one's own for everyone)
+// Version: 0.1.5 - searching a chat: words, kinds, pages
 // Version: 0.1.4 - avatars, photos, videos and files
 // Version: 0.1.3 - sign-in by a QR code
 // Version: 0.1.2 - the code asked for another way
 // Version: 0.1.1 - the step timeout
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
 #include "TelegramProvider.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraIM/UltraIMCore.h"
 
 #include <chrono>
 #include <condition_variable>
@@ -123,6 +126,31 @@ std::vector<UltraIMMessage> Fetch(TelegramProvider& p, const std::string& conver
     p.FetchMessages(conversation, before, limit, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& m) {
         std::lock_guard<std::mutex> lock(mutex);
         out = m;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; });
+    return out;
+}
+
+UltraIMSearchPage Search(TelegramProvider& p, const std::string& conversation, const std::string& text,
+                         UltraIMSearchKind kind = UltraIMSearchKind::AnyKind, int limit = 50,
+                         const std::string& cursor = "", UltraIMResult* result = nullptr) {
+    UltraIMMessageSearch search;
+    search.conversationId = conversation;
+    search.text = text;
+    search.kind = kind;
+    search.limit = limit;
+    search.cursor = cursor;
+    UltraIMSearchPage out;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    p.SearchMessages(search, [&](const UltraIMResult& r, const UltraIMSearchPage& page) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = page;
+        if (result) *result = r;
         done = true;
         cv.notify_all();
     });
@@ -432,7 +460,13 @@ void TestTelegram() {
     UltraIMEvent oops;
     CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }, &oops));
     CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }, &oops));
-    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId));
+    // Telegram's rules: anything for oneself, one's own for everyone.
+    UltraIMDeleteChoices choices = alice->GetDeleteChoices(dm.conversationId, oops.message.messageId);
+    CHECK(choices.forMe && choices.forEveryone);
+    choices = bob->GetDeleteChoices(got.conversationId, oops.message.messageId);
+    CHECK(choices.forMe && !choices.forEveryone);
+    CHECK(!bob->GetDeleteChoices(got.conversationId, "424242").forMe);     // no such message
+    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId, UltraIMDeleteScope::ForEveryone));
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
         return e.type == UltraIMEventType::MessageDelete && e.message.messageId == oops.message.messageId;
     }));
@@ -579,6 +613,56 @@ void TestTelegram() {
     alice->FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) { list = l; });
     CHECK(list.size() == 2);
     if (list.size() == 2) CHECK(list[0].conversationId == dm.conversationId);   // the newest message first
+
+    // Searching a chat: Telegram's own search, newest first, by words and by kind.
+    CHECK(UltraIM_HasCapability(bob->GetCapabilities(), UltraIMCapabilityFlags::SearchMessages));
+    CHECK(alice->SendText(dm.conversationId, "the plan: https://example.com/plan", UltraIMSendOptions()));
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "the plan: https://example.com/plan"); }));
+    {
+        UltraIMResult result;
+        UltraIMSearchPage found = Search(*bob, got.conversationId, "Message 2", UltraIMSearchKind::AnyKind, 50, "", &result);
+        CHECK(result && found.messages.size() == 11 && found.nextCursor.empty());   // 2 and 20 to 29
+        if (found.messages.size() == 11)
+            CHECK(found.messages.front().text == "message 29" && found.messages.back().text == "message 2");
+        if (!found.messages.empty())
+            CHECK(found.messages[0].conversationId == got.conversationId && !found.messages[0].senderName.empty());
+
+        // A page at a time: the cursor is where the next one starts.
+        found = Search(*bob, got.conversationId, "message", UltraIMSearchKind::AnyKind, 4);
+        CHECK(found.messages.size() == 4 && !found.nextCursor.empty());
+        if (found.messages.size() == 4) CHECK(found.messages[0].text == "message 29" && found.messages[3].text == "message 26");
+        found = Search(*bob, got.conversationId, "message", UltraIMSearchKind::AnyKind, 4, found.nextCursor);
+        CHECK(found.messages.size() == 4);
+        if (found.messages.size() == 4) CHECK(found.messages[0].text == "message 25" && found.messages[3].text == "message 22");
+        CHECK(Search(*bob, got.conversationId, "nowhere to be found").messages.empty());
+
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Images);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty())
+            CHECK(found.messages[0].type == UltraIMMessageType::Image && found.messages[0].attachment.localPath == picture);
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Videos);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty()) CHECK(found.messages[0].type == UltraIMMessageType::Video);
+        CHECK(Search(*bob, got.conversationId, "", UltraIMSearchKind::Media).messages.size() == 2);
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Files);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty())
+            CHECK(found.messages[0].type == UltraIMMessageType::File && found.messages[0].attachment.fileName == "notes.pdf");
+        CHECK(Search(*bob, got.conversationId, "NOTES", UltraIMSearchKind::Files).messages.size() == 1);
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Links);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty())
+            CHECK(UltraIM_ExtractLinks(found.messages[0].text) == std::vector<std::string>{"https://example.com/plan"});
+
+        // "Alice created the group" is no result; one chat at a time; a chat that is not there.
+        found = Search(*alice, group.conversationId, "");
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty()) CHECK(found.messages[0].text == "hi team");
+        Search(*bob, "", "message", UltraIMSearchKind::AnyKind, 50, "", &result);
+        CHECK(!result && result.code == UltraIMResultCode::CapabilityMissing);
+        Search(*bob, "123456789", "message", UltraIMSearchKind::AnyKind, 50, "", &result);
+        CHECK(!result && result.code == UltraIMResultCode::NotFound);
+    }
 
     // Bob goes: Alice sees him offline.
     bob->Shutdown();

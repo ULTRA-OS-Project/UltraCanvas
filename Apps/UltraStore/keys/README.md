@@ -8,7 +8,9 @@ nothing fetched; the user adds further keys on the window's Settings page,
 and the catalog's own `trusted_keys` list (schema 2, with the admin backend)
 rotates them.
 
-There is no production key yet: the admin backend generates it on its first
-run and its public half is committed here with the first published catalog.
-A key is retired by deleting its file and releasing the store without it;
-the catalog cannot remove a compiled-in key, by design.
+`publish.pub` is the production key: the admin backend generated it on the
+publishing machine and its public half was committed here with the first
+published catalog (the server is `ULTRASTORE_SERVERS`'s default,
+`Apps/UltraStore/CMakeLists.txt`). A second publishing machine adds a second
+file. A key is retired by deleting its file and releasing the store without
+it; the catalog cannot remove a compiled-in key, by design.

@@ -65,6 +65,16 @@
 // from a fresh listing (Revalidate) that goes ahead of the queue, and is
 // fetched beside an upload or download in progress on a thread of its own
 // rather than after it.
+// Version: 1.15.0 - a listing fetched more than kRemoteListingFreshFor ago is
+//                   shown and fetched again when its folder is listed;
+//                   OpenCopyDirectory, onOperationFinished says what kind
+//                   of failure it was
+// Version: 1.14.0 - RemoveDrive forgets a configured drive (and what is kept of
+//                   it) even when its sign-in fails; InvalidateDrive after its
+//                   settings changed; RefreshFolder for a Refresh command; a
+//                   failed preview copy says what kind of failure it was
+//                   (RemoteFailure), so a file that is gone can be said in a
+//                   dialog; MakeSignInLog names its session
 // Version: 1.13.0 - a folder a change was made in keeps its listing on screen
 //                   (Stale) while it is fetched again, and a listing the user
 //                   is looking at goes ahead of queued transfers; ListingStatus
@@ -81,7 +91,7 @@
 //                  after it), when the selection moves on, and when the
 //                  window closes
 // Version: 1.9.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -201,6 +211,19 @@ struct RemoteActivity {
     }
 };
 
+// How a request to a drive failed, as far as the window has to tell failures
+// apart. One that will not go away by itself - the file is no longer there,
+// the server refuses the sign-in or the request - is put to the user in a
+// dialog; one that may pass on its own - the network, a service limiting
+// requests, a request called off - is said on the status line, where it does
+// not stop the user at every click.
+enum class RemoteFailure {
+    NoFailure,
+    Passing,    // the network, a rate limit, a request called off, a local hiccup
+    NotFound,   // the file or folder is not on the drive (any more)
+    Lasting     // sign-in refused, a refusal, a request the drive cannot carry out
+};
+
 class UltraFilerRemoteDrives;
 
 // An upload or a download the drives were asked for and have not finished:
@@ -210,6 +233,7 @@ struct RemoteTransfer {
     bool running = false;   // false: queued, not started yet
     std::string name;       // the file's name
     std::string drive;      // the drive's name, as the folder tree shows it
+    std::string accountId;  // the drive's account, for a question about it alone
     // An upload to a drive that keeps what a stopped one sent
     // (RemoteDrive::partialUploadsRemain): removed the next time the drive
     // is used.
@@ -412,9 +436,11 @@ public:
     // at once from the disk cache when the copy is there; otherwise queues
     // the download AHEAD of everything waiting (the user is looking at the
     // selection now) and replaces an earlier preview download that has not
-    // started - the selection has moved on from it. Never blocks.
+    // started - the selection has moved on from it. Never blocks. On Failed,
+    // `failure`, when given, says what kind of failure it was: a file deleted
+    // on the server since its folder was listed is NotFound.
     PreviewCopy RequestPreviewCopy(const FilerEntry& entry, std::string& localPath,
-                                   std::string& error);
+                                   std::string& error, RemoteFailure* failure = nullptr);
     // Fires on the UI THREAD when a copy asked for above is in or has
     // failed, naming the remote file. The window asks again, and this time
     // gets Ready (or Failed).
@@ -423,6 +449,16 @@ public:
     // cache root (DiskCache::Directory). Empty when there is nowhere
     // writable, which switches previews of remote files off.
     static std::string PreviewCacheDirectory();
+    // Where a file opened from a drive in another program is fetched to
+    // (UltraFilerWindow::OpenRemoteFile): "remote-opened" beside the preview
+    // copies, one folder per file and version (RemotePreviewCacheKey), so a
+    // file opened again unchanged is not fetched again. Empty when there is
+    // nowhere writable.
+    static std::string OpenCopyDirectory();
+    // Deletes the open copies nobody has used within the disk cache's usual
+    // age - a copy edited since counts as used. Call once per run, before the
+    // first copy is fetched.
+    static void SweepOpenCopies();
 
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
@@ -438,13 +474,14 @@ public:
     std::function<void(const RemoteActivity&)> onActivityChanged;
 
     // Fires on the UI THREAD when a queued change has finished. `message` is
-    // empty on success and carries the provider's reason on failure;
+    // empty on success and carries the provider's reason on failure, and
+    // `failure` what kind of failure it was (NoFailure on success);
     // `folderPath` is the folder whose listing changed, already invalidated,
     // so the window can refresh it either way. For a download that folder is
     // the LOCAL one the file landed in - nothing on the drive changed - so a
     // handler that refreshes has to ask which kind of path it was given.
-    std::function<void(const std::string& folderPath,
-                       const std::string& message)> onOperationFinished;
+    std::function<void(const std::string& folderPath, const std::string& message,
+                       RemoteFailure failure)> onOperationFinished;
 
     // ---- The connection log ------------------------------------------------
     // Every job the worker has run in this session, with its steps and its
@@ -457,19 +494,48 @@ public:
     // burst are one call - so a handler can afford to read the whole log.
     std::function<void()> onConnectionLogChanged;
 
-    // A recorder for the add-drive dialog's sign-ins (RemoteSignInLog). Call
+    // A recorder for the account dialog's sign-ins (RemoteSignInLog). Call
     // on the UI thread; the dialog's sign-in thread uses what it returns.
-    std::shared_ptr<RemoteSignInLog> MakeSignInLog();
+    // `operation` names its sessions in the log: "Add drive" when empty, or
+    // what the dialog does instead ("Configure drive").
+    std::shared_ptr<RemoteSignInLog> MakeSignInLog(const std::string& operation = std::string());
 
     // How many subfolder listings are waiting to be fetched ahead. Tests and
     // diagnostics; the UI does not show it - prefetching is meant to be
     // invisible.
     std::size_t PrefetchQueueSize() const;
 
-    // Forgets what is cached, so the next List fetches again. Invalidate() is
-    // what a manual Refresh on a remote folder means.
+    // Forgets what is cached, so the next List fetches again.
     void Invalidate(const std::string& path);
     void InvalidateAll();
+
+    // What a Refresh command on the remote folder `path` means: the server is
+    // asked for it again, ahead of what is queued, while the display goes on
+    // showing what the cache has (Revalidate) - a folder whose listing failed
+    // is asked afresh - and a preview in it that failed is tried again when
+    // it is next looked at. onListingArrived fires for it when the answer is
+    // in.
+    void RefreshFolder(const std::string& path);
+
+    // Forgets everything cached of the drive `accountId` - its listings, the
+    // failed ones among them, and its previews that failed - so each folder
+    // of it is asked of the server afresh. For a drive whose settings were
+    // just changed: what the old server, user or password answered is no
+    // answer for the new ones.
+    void InvalidateDrive(const std::string& accountId);
+
+    // ---- Managing the configured drives ------------------------------------
+    // Forgets the configured drive `accountId`: its account and its saved
+    // password leave UltraFiler's drive list (UltraCloud's RemoveAccount),
+    // and so does everything kept of it here - its listings, the requests and
+    // transfers still waiting for it, its fetches ahead and its previews -
+    // and the drive list is read again. Nothing on the server is touched. A
+    // job the worker is in the middle of for it ends on its own, failing once
+    // the account is gone. Works on a drive whose sign-in fails, which is when
+    // it is needed most. False with a reason when the drive list cannot be
+    // changed; a connected phone or camera is not removed this way - it goes
+    // when it is unplugged.
+    bool RemoveDrive(const std::string& accountId, std::string& error);
 
     // The service the shared add-account dialog stores into. Null until
     // Reload() has opened the account store, and always null in a build
@@ -510,6 +576,10 @@ private:
         // When this listing was last asked for or fetched, from useCounter_:
         // what decides which listings the disk cache keeps when it is full.
         uint64_t lastUsed = 0;
+        // When the server answered with it; unset for one read from the disk
+        // cache. A Ready listing older than kRemoteListingFreshFor is shown
+        // and asked for again when its folder is listed (List).
+        std::chrono::steady_clock::time_point fetchedAt{};
     };
 
     // One thing for the worker to do. A listing and a change queue together
@@ -627,6 +697,7 @@ private:
         bool pending = false;
         std::string localPath;
         std::string error;
+        RemoteFailure failure = RemoteFailure::NoFailure;
     };
     std::unordered_map<std::string, PreviewState> previews_;
     // Old copies are swept once per run, before the first is asked for.
@@ -701,8 +772,14 @@ private:
     std::chrono::steady_clock::time_point lastActivityPost_{};
     bool workerStarted_ = false;
     // Where RunOperation leaves a provider's refusal for the worker loop to
-    // report. Written and read on the worker thread only, under the lock.
+    // report, and what kind of failure it was. Written and read on the
+    // worker thread only, under the lock.
     std::string lastOperationError_;
+    RemoteFailure lastOperationFailure_ = RemoteFailure::NoFailure;
+    // Drops what is kept of the drive `accountId`: its listings and failed
+    // previews, and with `jobs` also its queued requests and fetches ahead.
+    // Lock held.
+    void ForgetDriveLocked(const std::string& accountId, bool jobs);
 
     RemoteConnectionLog log_;
     // Set while a "log changed" notice is queued for the UI thread.

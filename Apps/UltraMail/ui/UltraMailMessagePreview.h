@@ -3,6 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.17.0 - SetWarningStrip: the warning strip's kinds (Settings > Display >
+//                   Email warnings)
 // Version: 0.16.0 - signed and encrypted mail: decrypted and its signatures checked
 //                  off the UI thread (SetSecureKeys), shown as [S/MIME] / [OpenPGP] and
 //                  [Encrypted] pills that say what was found
@@ -34,7 +36,7 @@
 //                  pictures hosted on trusted websites load by themselves.
 // Version: 0.4.0 - the sender badge replaces the initial avatar, and a warning
 //                  strip above the body says why a message looks like a scam.
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -184,6 +186,9 @@ public:
     // right of the body (true) or a row under it (false). Before or after
     // Build().
     void  SetAttachmentsRight(bool right);
+    // Settings > Display > Email warnings: which kinds of warning the strip
+    // above the body shows. Takes effect with the next message shown.
+    void  SetWarningStrip(const WarningStripOptions& options) { warningStrip_ = options; }
 
     // The one-time codes of the message shown (UltraMailOneTimeCode.h): each
     // has a copy button - on the code itself when it stands in a box of its
@@ -293,6 +298,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyRow_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachColumn_;   // scrolls the column
     bool attachmentsRight_ = false;
+    WarningStripOptions warningStrip_;
     void PlaceAttachments();
     void SyncAttachmentColumn();   // the column shown only with chips in it
     // The selectable text: the header's labels share one selection, the HTML

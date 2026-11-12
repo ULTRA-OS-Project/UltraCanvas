@@ -35,10 +35,6 @@
   "an entry": "kohde",
   "An upload is still running — quit anyway?": "Lähetys palvelimeen on yhä käynnissä — lopetetaanko silti?",
   "An upload is still waiting — quit anyway?": "Lähetys palvelimeen odottaa yhä — lopetetaanko silti?",
-  "and {n} more": {
-    "one": "ja {n} muu",
-    "other": "ja {n} muuta"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Mikä tahansa muu tiedosto, kun tässä järjestelmässä on ohjelma rekisteröitynä kyseiselle tiedostotyypille:",
   "Applied to {n} item.": {
     "one": "Käytetty {n} kohteeseen.",
@@ -261,6 +257,7 @@
   "Open prompt": "Avaa komentokehote",
   "Opening files": "Tiedostojen avaaminen",
   "Opening {0} - {1}": "Avataan {0} – {1}",
+  "Order by": "Lajitteluperuste",
   "Order pinned": "Kiinnitysjärjestys",
   "Own patterns - type one and press Enter:": "Omat mallit – kirjoita malli ja paina Enter:",
   "Path to the application": "Sovelluksen polku",
@@ -462,10 +459,6 @@
   "{n} icon": {
     "one": "{n} kuvake",
     "other": "{n} kuvaketta"
-  },
-  "{n} line": {
-    "one": "{n} rivi",
-    "other": "{n} riviä"
   },
   "{n} result": {
     "one": "{n} tulos",

@@ -10,14 +10,26 @@ watched - for X11 and Wayland, and WebAssembly's media queries -
 2026-11-06: `ThemeFonts` and the text roles, `FromHost` with the accent
 derivation and the two high-contrast presets, the theme policy in
 `Initialize` and on every host change, a window's ground from the theme -
-[`UltraCanvasTheme.md`](UltraCanvasTheme.md)); **T4 to T6 proposed.** The
+[`UltraCanvasTheme.md`](UltraCanvasTheme.md)); **T4 implemented**
+(2026-11-10, six pull requests: following by default under the policy
+(`SetFollowThemeByDefault`), the `SetStyle` rule, fonts by role in the
+existing readers, then `FromTheme` and `ApplyTheme` for every style
+struct that lacked them - the input elements, the lists, the containers
+and pickers, the rest of the panel elements, the media elements and the
+viewers - with element roles for the colours no shared role fits);
+**T5 implemented** (2026-11-10: `Appearance.conf` through
+`AppearanceSettings`, applied over the host on every read; the settings
+watcher owned by the application base, native or a five-second poll;
+UOS-Settings > Appearance > Look with a preview strip; DemoApp's theme
+page); **T6 in progress** (the four `Own` applications on the policy).
+The
 companion document
 [`UltraCanvasLocalisationProposal.md`](UltraCanvasLocalisationProposal.md)
 covers the language half of the same job and shares §6 (the settings file
 and the watcher) with this one.
 
 Author: UltraCanvas Framework
-Last Modified: 2026-10-21
+Last Modified: 2026-11-10
 
 ---
 
@@ -325,9 +337,9 @@ decides, as it does on any platform where a person set `look=dark`.
 | **T1** | **Done** (`UltraCanvasHostAppearance.md`): `HostAppearance`, the pure readers and `HostAppearanceTest`; the Windows (registry, metrics, `WM_SETTINGCHANGE`) and macOS (AppKit, KVO) backends; `GetSystemFontStyle` served from it; the `ULTRACANVAS_HOST_APPEARANCE` override. The two font detectors stay as the fonts' source under `DetectHostAppearanceNative`, so the platforms without a backend are untouched | 4 days |
 | **T2** | **Done**: the Linux backend - the portal's colour scheme over the session bus, the XSETTINGS decoder and the manager's `PropertyNotify`, GSettings through GIO, `kdeglobals` and `settings.ini` readers, the config folders watched with `UltraCanvasFolderWatcher` - shared by X11 and Wayland (the BSDs with them); WebAssembly's media queries and their change events; `LinuxHostAppearanceTest`. GSettings' `changed` signal is not pumped: dconf's file under `~/.config/dconf` is watched instead, which covers the portal on GNOME too | 3-4 days |
 | **T3** | **Done**: `ThemeFonts`, `ThemeTextRole`, `FromHost` with the accent derivation and the two high-contrast presets, `ThemePolicy` / `SetThemeProvider` in `Initialize()` and on every host change, the window clear colour (a window built with the default background takes the policy's ground), `UltraCanvasThemeTest` extended (accent derivation contrast over fourteen accents, high contrast at 7:1, the roles' sizes); `UltraCanvasTheme.md`. `Appearance.conf` stays T5. An application that sets its own theme is left alone by the policy, so the four that do need no change yet | 3 days |
-| **T4** | `FromTheme` + `ApplyTheme` for the 42 remaining style structs, with fonts by role in all 69; `SetFollowThemeByDefault` and the `SetStyle` rule; the catalogue doc rows | 8-10 days (the bulk; splits by element group into 4-5 PRs) |
-| **T5** | `Appearance.conf`, the settings watcher, UOS-Settings > Appearance > Look, DemoApp's theme page | 3 days |
-| **T6** | The applications: the hand-painted-surface review and the dark/light/14 pt run, one PR each; UltraVideo and UltraPress to `Own` with their providers; Texter's dark mode retired onto the policy | ½ day each, ~15 days for 30 |
+| **T4** | **Done** (2026-11-10): `SetFollowThemeByDefault` set by the policy, every element with an `ApplyTheme` taking the theme at the end of its constructor; the `SetStyle` rule (a style set by hand stops the following, `SetStyle` then `SetFollowTheme(true)` keeps both); fonts by role in the existing readers (`Body` for the button, label, dropdown, text input, menu, switch; `Heading` for a heading label; `Caption` for the tooltip, the slider's value, the dialog's details, the tab titles; the families only where the sizes are a design's pixels); the input elements (`CheckboxVisualStyle`, `RadioVisualStyle`, `SegmentedControlStyle`, `SpinnerVisualStyle`, `StepperStyle`, `RatingStyle`, `CalendarStyle`, `DatePickerStyle`, `TimePickerStyle`) with the element roles `checkbox.mark`, `radio.dot`, `rating.on` / `rating.hover` / `rating.border`, `stepper.on-error`, `calendar.weekend`, `time-picker.clock-face`; the lists (`ScrollbarStyle`, `ListViewStyle`, `TreeColumnStyle`, `FilerStyle`, and `ApplyTheme` on the tree view, which has no struct) with `scrollbar.track` / `scrollbar.thumb`, `columns-tree.group-header` / `columns-tree.on-group-header` and the filer's overlay roles; the containers and pickers (`ContainerStyle` for the scrollbars, `GroupBoxVisualStyle`, `BreadcrumbStyle`, `PaginationStyle`, `ColorPickerStyle`, `ColorSwatchBarStyle`, `ColorPaletteManagerStyle`, `RichTextEditStyle`) with `color-picker.marker` / `color-picker.marker-outline` and `rich-text.page`; the rest of the panel elements (`BadgeStyle` with `primaryColor`, `CardStyle`, `ChipStyle`, `TagInputStyle`, `CollapsiblePanelStyle`, `SidebarStyle`, `BusyIndicatorStyle`, `AutoCompleteStyle`, `NewDocumentDialogStyle`, `ReferencePointPickerStyle`, and `SpellCheckStyle` and `ClipboardRowStyle` for their hosts) with `busy-indicator.second-arc`; the media elements and the viewers (`AudioPlayerStyle`, `AudioRecorderStyle`, `VideoPlayerStyle`, `VideoRecorderStyle`, `VideoTileStyle`, `SlideshowConfig` with `SlideshowIndicatorStyle`, `FontViewerStyle`, `CurveEditorStyle`) with `audio-recorder.pulse`, the players' and the tile's stage and bar roles, `slideshow.stage` and `curve-editor.diagonal`. Every component doc has a *Following the theme* passage | 8-10 days (the bulk; splits by element group into 4-5 PRs) |
+| **T5** | **Done**: `AppearanceSettings` (`Appearance.conf`: `Parse` / `Serialize` / `ApplyTo` / `Load` / `Save`, applied in `ReadHostAppearance` before the override), `UltraCanvasSettingsWatcher` (one folder watcher on the settings folder, handlers on the UI thread once per burst, a five-second poll where the build has no backend; the application base starts it in `Initialize`), UOS-Settings > Appearance > Look (look, accent, font and size, text scale, contrast; a preview strip styled from the theme the choices give), DemoApp's Modules > Theme page; `HostAppearanceTest` and `SettingsWatcherTest`. `Emoji.conf` and `Language.conf` are not on the watcher yet: `ApplyEmojiSettings` is once per configuration, and the language handler is the localisation proposal's §7 | 3 days |
+| **T6** | **In progress** - done: the four applications with a theme of their own (UltraVideo, UltraPress, ChatCube, UltraDBAdmin) on `ThemePolicy::Own` with their `ThemeFor` / `AppTheme` as the provider and the host's fonts through `UltraCanvasTheme::TakeHostFonts` (UltraPress and ChatCube with `system` as their look's default, UltraVideo's palette following the desktop until the eye picks the project's). Texter's dark mode retired onto the policy: the look is the theme's flag (a change handler repaints), View > Theme writes `Appearance.conf`'s `look=`, `--dark` is `ThemePolicy::Dark` for the run, the `darkTheme` setting is gone. UltraFiler's hand-painted surfaces onto the roles (`UltraFilerLook.h`, `ApplyLook` on a theme change, the text size the theme's body size; run light, dark and at 14 pt). UltraMail's colours and sizes onto the roles (`UltraMailTheme.h` as functions of the theme; its windows take the look as they are built). UltraPassword's colours and sizes onto the roles (`ui/Theme.h` as functions of the theme). The settings page kit's colours and sizes onto the roles, as functions where they were constants, and UOS-Settings' own with them. Left: the hand-painted-surface review and the dark/light/14 pt run of the other applications, one PR each, paired with their L5 string pass | ½ day each, ~15 days for 30 |
 
 T1 and T3 together already give Windows and macOS users a dark window in
 their own font in the 27 elements that follow, which is the demo for the

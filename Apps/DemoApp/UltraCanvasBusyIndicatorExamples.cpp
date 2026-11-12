@@ -23,10 +23,10 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBusyIndicatorExamples() {
-        auto page = DemoKit::CreatePage("BusyIndicatorExamples", "Busy Indicator Examples",
-                "\"Working on it\" when there is no percentage to show. Six kinds "
+        auto page = DemoKit::CreatePage("BusyIndicatorExamples", Tr("Busy Indicator Examples"),
+                Tr("\"Working on it\" when there is no percentage to show. Six kinds "
                 "(BusyIndicatorKind), all driven by Start() / Stop(); the timer runs "
-                "only while an indicator is turning.");
+                "only while an indicator is turning."));
 
         // Every indicator on the page, for Start all / Stop all. Raw pointers:
         // the page owns the elements and the buttons live in it too.
@@ -58,8 +58,8 @@ namespace UltraCanvas {
         const float smallColumn = 130, largeColumn = 190, rowHeight = 56;
 
         // ===== THE SIX KINDS =====
-        auto kindsCard = DemoKit::AddCard(page, "BusyKindsCard", "The six kinds",
-                "Each at a small and a large size and in a second colour");
+        auto kindsCard = DemoKit::AddCard(page, "BusyKindsCard", Tr("The six kinds"),
+                Tr("Each at a small and a large size and in a second colour"));
 
         auto headerRow = DemoKit::AddRow(kindsCard, "BusyHeaderRow");
         auto columnHeader = [&](const std::shared_ptr<UltraCanvasContainer>& parent,
@@ -73,30 +73,30 @@ namespace UltraCanvas {
         auto headSmall = cell("BusyColSmallCell", smallColumn);
         auto headLarge = cell("BusyColLargeCell", largeColumn);
         auto headColor = cell("BusyColColorCell", largeColumn);
-        columnHeader(headSmall, "BusyColSmall", "Small", true);
-        columnHeader(headLarge, "BusyColLarge", "Large", true);
-        columnHeader(headColor, "BusyColColor", "Other colour", true);
+        columnHeader(headSmall, "BusyColSmall", Tr("Small"), true);
+        columnHeader(headLarge, "BusyColLarge", Tr("Large"), true);
+        columnHeader(headColor, "BusyColColor", Tr("Other colour"), true);
         DemoKit::AddFixed(headerRow, headSmall);
         DemoKit::AddFixed(headerRow, headLarge);
         DemoKit::AddFixed(headerRow, headColor);
         auto headText = DemoKit::CreateColumn("BusyColText", 2);
-        columnHeader(headText, "BusyColKind", "Kind", false);
-        columnHeader(headText, "BusyColNote", "Box", false);
+        columnHeader(headText, "BusyColKind", Tr("Kind"), false);
+        columnHeader(headText, "BusyColNote", Tr("Box"), false);
         DemoKit::Add(headerRow, headText, 1);
 
         struct Row {
             const char* name;
             BusyIndicatorKind kind;
             float smallW, smallH, largeW, largeH;
-            const char* note;
+            std::string note;
         };
         const Row rows[] = {
-            {"Ring",     BusyIndicatorKind::Ring,     16, 16,  40, 40, "square, 16 x 16"},
-            {"DualRing", BusyIndicatorKind::DualRing, 20, 20,  48, 48, "square, 20 x 20; two colours"},
-            {"Dots",     BusyIndicatorKind::Dots,     36, 10,  90, 24, "wide, 36 x 10"},
-            {"Bar",      BusyIndicatorKind::Bar,      120, 4, 180, 8,  "wide, 120 x 4; green: 40 px segment"},
-            {"Pulse",    BusyIndicatorKind::Pulse,    14, 14,  40, 40, "square, 14 x 14"},
-            {"DotRing",  BusyIndicatorKind::DotRing,  20, 20,  48, 48, "square, 20 x 20"},
+            {"Ring",     BusyIndicatorKind::Ring,     16, 16,  40, 40, Tr("square, 16 x 16")},
+            {"DualRing", BusyIndicatorKind::DualRing, 20, 20,  48, 48, Tr("square, 20 x 20; two colours")},
+            {"Dots",     BusyIndicatorKind::Dots,     36, 10,  90, 24, Tr("wide, 36 x 10")},
+            {"Bar",      BusyIndicatorKind::Bar,      120, 4, 180, 8,  Tr("wide, 120 x 4; green: 40 px segment")},
+            {"Pulse",    BusyIndicatorKind::Pulse,    14, 14,  40, 40, Tr("square, 14 x 14")},
+            {"DotRing",  BusyIndicatorKind::DotRing,  20, 20,  48, 48, Tr("square, 20 x 20")},
         };
         const int rowCount = static_cast<int>(std::size(rows));
         const Color otherColour(230, 120, 20, 255);   // orange
@@ -144,17 +144,17 @@ namespace UltraCanvas {
         }
 
         // ===== DOTRING: THE THREE FADES =====
-        auto fadeCard = DemoKit::AddCard(page, "BusyFadeCard", "DotRing, three ways (dotRingFade):");
+        auto fadeCard = DemoKit::AddCard(page, "BusyFadeCard", Tr("DotRing, three ways (dotRingFade):"));
         auto fadeRow = DemoKit::AddRow(fadeCard, "BusyFadeRow", 24);
 
         struct FadeDemo {
             BusyDotRingFade fade;
-            const char* caption;
+            std::string caption;
         };
         const FadeDemo fades[] = {
-            {BusyDotRingFade::Fade,            "Fade: dots fade out behind the head"},
-            {BusyDotRingFade::NoFade,          "NoFade: solid dots, the head shows by size"},
-            {BusyDotRingFade::FadeRandomColor, "FadeRandomColor: a new random colour at every fade-in"},
+            {BusyDotRingFade::Fade,            Tr("Fade: dots fade out behind the head")},
+            {BusyDotRingFade::NoFade,          Tr("NoFade: solid dots, the head shows by size")},
+            {BusyDotRingFade::FadeRandomColor, Tr("FadeRandomColor: a new random colour at every fade-in")},
         };
         for (int i = 0; i < static_cast<int>(std::size(fades)); ++i) {
             const FadeDemo& demo = fades[i];
@@ -176,12 +176,12 @@ namespace UltraCanvas {
 
         // ===== A STATUS LINE, AS AN APP USES ONE =====
         auto statusCard = DemoKit::AddCard(page, "BusyStatusCard",
-                                           "In a status line (indicator, then the text):");
+                                           Tr("In a status line (indicator, then the text):"));
         auto statusRow = DemoKit::AddRow(statusCard, "BusyStatusRow", 24);
         statusRow->layout.SetFlexGap(10, 32);
 
-        const char* statusTexts[] = {"Checking mail…", "Syncing folders…", "Receiving messages… (42)",
-                                     "Loading images…", "Contacting the server…", "Indexing attachments…"};
+        const std::string statusTexts[] = {Tr("Checking mail…"), Tr("Syncing folders…"), Tr("Receiving messages… (42)"),
+                                           Tr("Loading images…"), Tr("Contacting the server…"), Tr("Indexing attachments…")};
         for (int i = 0; i < rowCount; ++i) {
             const std::string n = std::to_string(i);
             const Row& row = rows[i];
@@ -201,20 +201,20 @@ namespace UltraCanvas {
         }
 
         // ===== START / STOP =====
-        auto controlCard = DemoKit::AddCard(page, "BusyControlCard", "Start / Stop");
+        auto controlCard = DemoKit::AddCard(page, "BusyControlCard", Tr("Start / Stop"));
         auto buttonRow = DemoKit::AddRow(controlCard, "BusyButtonRow", 10);
 
         // Buttons as wide as their text.
-        auto startBtn = std::make_shared<UltraCanvasButton>("BusyStart", 0, 0, 0, 30.0f, "Start all");
+        auto startBtn = std::make_shared<UltraCanvasButton>("BusyStart", 0, 0, 0, 30.0f, Tr("Start all"));
         startBtn->onClick = [indicators]() { for (auto* b : *indicators) b->Start(); };
         DemoKit::Add(buttonRow, startBtn);
 
-        auto stopBtn = std::make_shared<UltraCanvasButton>("BusyStop", 0, 0, 0, 30.0f, "Stop all");
+        auto stopBtn = std::make_shared<UltraCanvasButton>("BusyStop", 0, 0, 0, 30.0f, Tr("Stop all"));
         stopBtn->onClick = [indicators]() { for (auto* b : *indicators) b->Stop(); };
         DemoKit::Add(buttonRow, stopBtn);
 
         auto idleBtn = std::make_shared<UltraCanvasButton>("BusyIdle", 0, 0, 0, 30.0f,
-                                                           "Show when stopped");
+                                                           Tr("Show when stopped"));
         idleBtn->onClick = [indicators]() {
             for (auto* b : *indicators) {
                 BusyIndicatorStyle style = b->GetStyle();
@@ -225,9 +225,9 @@ namespace UltraCanvas {
         DemoKit::Add(buttonRow, idleBtn);
 
         DemoKit::AddCaption(controlCard, "BusyInstructions",
-            "Stop all halts every timer; a stopped indicator draws nothing unless "
+            Tr("Stop all halts every timer; a stopped indicator draws nothing unless "
             "hideWhenStopped is false (\"Show when stopped\" toggles it), and then rests "
-            "where it stopped. Start all resumes from there.");
+            "where it stopped. Start all resumes from there."));
 
         return page;
     }

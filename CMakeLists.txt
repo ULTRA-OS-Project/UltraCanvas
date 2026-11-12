@@ -268,6 +268,7 @@ if(ANDROID)
     # stop this configure, and the Android store is a later milestone.
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRASTOREOPERATOR OFF CACHE BOOL "Build the UltraStoreOperator application")
     set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
@@ -331,6 +332,20 @@ if(EMSCRIPTEN)
     else()
         add_compile_options(-fwasm-exceptions)
     endif()
+    # The UltraCanvas runtime (UltraCanvas/OS/WASM/runtime): UltraCanvas as
+    # one main module that apps load as side modules, from a browser extension
+    # or the site. Emscripten's dynamic linking needs every object in the main
+    # module position-independent - this whole build, and a sysroot built with
+    # WASM_PIC=1 (UltraCanvas/OS/WASM/build-wasm-sysroot.sh). Single-threaded
+    # only (ULTRACANVAS_WASM_THREADS=OFF): see Docs/UltraCanvas/UltraCanvasWasmRuntime.md.
+    option(ULTRACANVAS_WASM_DYNAMIC "WebAssembly: build -fPIC, and the UltraCanvas runtime that loads apps as side modules" OFF)
+    if(ULTRACANVAS_WASM_DYNAMIC)
+        if(ULTRACANVAS_WASM_THREADS)
+            message(FATAL_ERROR "ULTRACANVAS_WASM_DYNAMIC needs ULTRACANVAS_WASM_THREADS=OFF: "
+                                "dynamic linking in a browser is single-threaded")
+        endif()
+        add_compile_options(-fPIC)
+    endif()
     set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
@@ -350,6 +365,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
+    set(BUILD_ULTRASTOREOPERATOR OFF CACHE BOOL "Build the UltraStoreOperator application")
     set(BUILD_ULTRAAISERVERADMIN OFF CACHE BOOL "Build the UltraAI ServerAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
@@ -511,6 +527,14 @@ if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_SESSION_LOCK ON)
 endif()
 
+# Which platforms can give a copy its original's dates (UltraCanvasFileTimes:
+# SetFileTime on Windows, setattrlist + utimensat on macOS, utimensat on Linux
+# and the BSDs). Elsewhere the core file copies the modification date through
+# std::filesystem.
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
+    set(ULTRACANVAS_HAS_NATIVE_FILE_TIMES ON)
+endif()
+
 # A build machine's private OAuth settings (the sign-in service UltraNet is
 # built with), kept out of the repository - see cmake/oauth.local.cmake.example.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/oauth.local.cmake")
@@ -561,6 +585,14 @@ if(BUILD_WASM_DEMOS)
     message(STATUS "")
     message(STATUS "── Building WebAssembly demos ──")
     add_subdirectory(UltraCanvas/OS/WASM/demo)
+endif()
+
+# The UltraCanvas runtime for browsers and its sample app, under emcmake
+# with ULTRACANVAS_WASM_DYNAMIC (see the WebAssembly defaults block above).
+if(EMSCRIPTEN AND ULTRACANVAS_WASM_DYNAMIC)
+    message(STATUS "")
+    message(STATUS "── Building the UltraCanvas runtime for browsers ──")
+    add_subdirectory(UltraCanvas/OS/WASM/runtime)
 endif()
 
 # ===== BUILD ULTRAAI MODULE =====
@@ -935,6 +967,19 @@ if(BUILD_ULTRASTOREADMIN AND TARGET UltraStoreCore)
     add_subdirectory(Apps/UltraStoreAdmin)
 endif()
 
+# ===== ULTRASTOREOPERATOR =====
+# The operator's window and command line on the marketplace service
+# (Server/UltraStoreMarket): the merchants, the review and the publish, the
+# reports, the notices, the terms, the audit log
+# (Docs/UltraStoreOperator/README.md). On the admin backend's core (the
+# shared HTTP call), so it is built where the admin backend is.
+option(BUILD_ULTRASTOREOPERATOR "Build the UltraStoreOperator application" ON)
+if(BUILD_ULTRASTOREOPERATOR AND TARGET UltraStoreAdminCore)
+    message(STATUS "")
+    message(STATUS "── Building UltraStoreOperator ──")
+    add_subdirectory(Apps/UltraStoreOperator)
+endif()
+
 # ===== ULTRAAI SERVERADMIN =====
 # The super administrator's tool for an UltraAI model server
 # (Server/UltraAIModelServer): which models UltraAI clients may install, their
@@ -1053,6 +1098,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
             Apps/DemoApp/UltraCanvasTernaryChartExamples.cpp
+            Apps/DemoApp/UltraCanvasHistogramChartExamples.cpp
             Apps/DemoApp/UltraCanvasControlChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasPerformanceMatrixExamples.cpp
@@ -1112,6 +1158,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasAIExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasLocalisationExamples.cpp
+            Apps/DemoApp/UltraCanvasThemeExamples.cpp
             Apps/DemoApp/UltraCanvasSystemDialogsExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
             Apps/DemoApp/UltraCanvasSTLExamples.cpp
@@ -1476,10 +1523,10 @@ if(ULTRACANVAS_BUILD_HEIF_TESTS AND NOT BUILD_TESTS)
 endif()
 
 # ===== START PAGE AND APP SETTINGS TESTS WITHOUT THE FULL SUITE =====
-# StartPageTest and AppSettingsTest alone, for builds that leave BUILD_TESTS
+# StartPageTest, AppSettingsTest and ProxySettingsTest alone, for builds that leave BUILD_TESTS
 # off (the macOS and Windows CI rows): every application's start page and its
 # settings file, on the platform's own path rules and settings folder.
-option(ULTRACANVAS_BUILD_STARTPAGE_TESTS "Build StartPageTest and AppSettingsTest without BUILD_TESTS" OFF)
+option(ULTRACANVAS_BUILD_STARTPAGE_TESTS "Build StartPageTest, AppSettingsTest and ProxySettingsTest without BUILD_TESTS" OFF)
 if(ULTRACANVAS_BUILD_STARTPAGE_TESTS AND NOT BUILD_TESTS)
     enable_testing()
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/StartPageTests.cmake)
@@ -1808,6 +1855,18 @@ if(ULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS AND TARGET UltraStoreAdminCore)
     add_subdirectory(Tests/UltraStoreAdmin)
     message(STATUS "")
     message(STATUS "── UltraStoreAdmin core test suite enabled (target: UltraStoreAdminCoreTests) ──")
+endif()
+
+# ===== ULTRASTOREOPERATOR CORE TESTS =====
+# The operator's client against a fake service: the bearer header, the
+# bodies the service reads, the records parsed from its answers, the
+# settings file. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRASTOREOPERATOR_TESTS "Build the UltraStoreOperator core test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASTOREOPERATOR_TESTS AND TARGET UltraStoreOperatorCore)
+    enable_testing()
+    add_subdirectory(Tests/UltraStoreOperator)
+    message(STATUS "")
+    message(STATUS "── UltraStoreOperator core test suite enabled (target: UltraStoreOperatorCoreTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
@@ -2289,6 +2348,8 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAILocalModelsPage.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
         Apps/UltraAIApp/UltraAITranslatorDialog.cpp
+        Apps/UltraAIApp/UltraAIAgentDialog.cpp
+        Apps/UltraAIApp/UltraAIAgentTools.cpp
     )
     # One copy per user (UltraCanvasSingleInstance.h).
     ultracanvas_single_instance(UltraAIApp)

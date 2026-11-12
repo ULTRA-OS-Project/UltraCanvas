@@ -1,5 +1,8 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
+// Version: 1.5.0 - 2026-11-11 - SetFitWidthToItems: the button as wide as its widest item
+//                  (a translated item shows whole), its declared width the least
+// Version: 1.4.0 - 2026-11-10 - FromTheme sets the body font; the SetStyle rule and the constructor tail
 // Version: 1.3.0 - 2026-11-03 - DropdownItem::fontFamily: a row's text drawn in its own font
 //                  (a font list showing each font in itself), prepared in idle slices
 //                  once the dropdown is on screen, the rows the list opens on first
@@ -18,7 +21,7 @@
 //                  the list in a popup (the numbers from 1.0.1 on were given afterwards,
 //                  from the framework changelog)
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-10-12 - DropdownStyle::FromTheme, ApplyTheme
+// Last Modified: 2026-11-11 - SetFitWidthToItems
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -227,6 +230,16 @@ namespace UltraCanvas {
         // Takes the keyboard focus (Tab, a click), as a button does.
         bool canAcceptFocus = true;
 
+        // SetFitWidthToItems: on, and the declared width it keeps as the least.
+        bool fitWidthToItems = false;
+        float fitFloorWidth = 0.f;
+        // The width the widest item needs, border-box; 0 without a render
+        // context to measure with.
+        float WidthForItems();
+        // The items, the placeholder or the font changed: a width that
+        // follows them is measured again.
+        void ItemsChangedWidth();
+
         DropdownStyle style;
 
         // Font previews (DropdownItem::fontFamily) prepared ahead of the
@@ -312,6 +325,26 @@ namespace UltraCanvas {
         // ===== STYLING =====
         void SetStyle(const DropdownStyle& newStyle);
         const DropdownStyle& GetStyle() const { return style; }
+
+        // ===== WIDTH FROM THE ITEMS =====
+        // On, the button is as wide as its widest item needs - icon, text and
+        // arrow - so whichever item is chosen reads whole: a translation
+        // longer than the English ("Automatisch abspielen") widens it rather
+        // than being cut off. The width given to the constructor (or a fixed
+        // size.width) stays the least it is, so a layout made for the
+        // English text does not move where that text fits. It follows the
+        // items, the placeholder and the style's font as they change. Off by
+        // default: the width is the one set. Turning it off goes back to the
+        // declared width.
+        void SetFitWidthToItems(bool fit);
+        bool GetFitWidthToItems() const { return fitWidthToItems; }
+
+        // ===== ENGINE-DRIVEN LAYOUT =====
+        // With SetFitWidthToItems on, the width the items need (at least the
+        // declared one); off, no own content (the declared size).
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
 
         // ===== ACCESSORS =====
         const std::vector<DropdownItem>& GetItems() const {

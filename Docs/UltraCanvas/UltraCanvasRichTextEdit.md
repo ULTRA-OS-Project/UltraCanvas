@@ -32,6 +32,7 @@ state of the selection** rather than two asterisks in a buffer.
   - [Check lists](#check-lists)
   - [Formulas](#formulas)
   - [Structure](#structure)
+- [Following the theme](#following-the-theme)
 - [Keyboard](#keyboard)
 - [Autoformat as you type](#autoformat-as-you-type)
 - [Input methods](#input-methods)
@@ -573,12 +574,74 @@ DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
 (`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
 write back out; HTML output floats them with CSS. A floating picture is
-selected, resized and described like any other. In a table cell or a header
-it stays in the line.
+selected, resized and described like any other. In a table cell it stays in
+the line.
 
-The wrap works a paragraph at a time: a paragraph that starts beside a picture
-is narrowed as a whole, so a long one beside a short picture stays narrow below
-it too.
+**In a header or footer** a floating picture or frame floats too: on every
+page it is placed from that page (or from its header paragraph), drawn with
+the header - under the body's text, as in Word - and the page's body wraps
+round it like round one of its own. That is how a Word letterhead keeps its
+logo and sender block in the header. A frame there shows each page's page
+number and page count. It cannot be selected or resized from the page; edit
+the header for that.
+
+The wrap works line by line, as in Writer: a paragraph beside a picture is
+narrowed only for the lines level with it, and its lines below the picture
+take the column's full width again. A top-and-bottom picture set lower down
+in its own paragraph (`imageOffsetYPt`) keeps the lines that fit above it
+there and continues the paragraph below it. (Such a paragraph is laid out in
+two parts joined into one layout, so the caret, clicks and selection treat
+it as one.) A paragraph that would be left too narrow beside a picture
+starts below it instead.
+
+**Placed from the page.** By default a float counts across from the text
+column and down from its paragraph. `floatHorizontalFrom` and
+`floatVerticalFrom` (`RichTextRun::FloatOrigin`: `Paragraph`, `Margin`,
+`Page`) make the offsets and the alignment count from the page's text area or
+from the page's edges instead, and `floatVerticalAlign` (`Top`, `Middle`,
+`Bottom`) aligns it down that area. In page view it then sits on the page its
+paragraph is on - a letterhead's sender block 13 cm from the page's left edge
+stays there whatever the margins. Outside page view a page-placed float sits
+at its paragraph.
+
+**Text frames.** A run with `frameIndex` (into `UCRichDocument::frames`) is a
+text box: a `RichTextFrame`'s paragraphs with its `backgroundColor`,
+`border` and `paddingPt`, floating like a picture. Its width is
+`imageWidthPt` (half the column when 0) and its height is its text's, at
+least `imageHeightPt`. ODT `draw:text-box`, DOCX `wps:txbx` and VML text
+boxes, and DOC text boxes read into it, and both writers save it. In a
+header or footer it floats as described above; in a table cell or inside
+another frame it does not (a cell drops it, a frame shows its text in
+line).
+
+```cpp
+auto document = std::make_shared<UCRichDocument>();
+RichTextFrame sender;
+RichDocBlock line;
+RichTextRun text;
+text.text = "Example Company";
+line.runs = {text};
+sender.blocks = {line};
+sender.backgroundColor = "#eeeeee";
+document->frames.push_back(sender);
+
+RichTextRun box;
+box.text = RichTextRun::kObjectReplacement;
+box.frameIndex = 0;
+box.imageWidthPt = 170.0f;
+box.imageWrap = RichTextRun::ImageWrap::Square;
+box.imageFloatAlign = RichTextAlign::Default;
+box.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+box.floatVerticalFrom = RichTextRun::FloatOrigin::Page;
+box.imageOffsetXPt = 368.5f;          // 13 cm from the page's left edge
+box.imageOffsetYPt = 56.7f;           // 2 cm from its top
+RichDocBlock address;
+RichTextRun name;
+name.text = "Recipient Name";
+address.runs = {box, name};
+document->blocks.push_back(address);
+editor->SetDocument(document);
+```
 
 ### Check lists
 
@@ -632,6 +695,29 @@ alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
+
+## Following the theme
+
+`RichTextEditStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's typography and metrics: the
+well for the text and the page (the element role `rich-text.page` where a
+theme wants paper of another colour, white on a dark window say), the
+panel for the desk, ink and the caret in ink, the soft accent for the
+selection, the accent for links, muted ink for quotes and list markers,
+the panel with hairlines for code, control-border rules and table grids,
+hairline guides. The comment, tracked-change and font-notice colours keep
+their own meaning, and the document's fonts (`baseFont`, `codeFontFamily`)
+are the document's: they stay. Under the theme policy a new edit follows
+the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto edit = std::make_shared<UltraCanvasRichTextEdit>("edit", 600, 400);
+RichTextEditStyle serif = edit->GetStyle();
+serif.baseFont.fontFamily = "Georgia";
+edit->SetStyle(RichTextEditStyle::FromTheme(UltraCanvasTheme::Current(), serif));   // the roles over the document's font
+edit->SetFollowTheme(true);
+```
 
 ## Keyboard
 
@@ -1125,7 +1211,15 @@ back. `ExportToPdf` is built on the same three.
 editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
 editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
+editor->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);   // or PageWidth
 ```
+
+`SetZoomFit` makes the zoom follow the element's size in page view, like a
+word processor's "Page width" (the page and the desk either side fill the
+width) and "Whole page" (all of the page is in view). It is worked out again
+whenever the element is resized; `SetZoom`, Ctrl+wheel and `ZoomFit::Off`
+end it, and printing and PDF export stay at 100 %. Outside page view there is
+no page to fit and the zoom stays as it is.
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
 rewraps to the zoomed width; in page view the page is simply larger, and when
@@ -1154,6 +1248,9 @@ Honest limits of this first version — none of them silently misbehave:
 - **The input method's candidate window** is placed by the input method, not
   next to the caret, on X11 and Windows. On macOS and in the browser it opens
   at the caret (where the composition starts).
+- **A text frame's text cannot be edited**, and a frame cannot be moved or
+  resized; clicks go to the text underneath. Frames in table cells and in
+  other frames do not float (see *Floating pictures*).
 
 ## Related
 

@@ -44,6 +44,7 @@ first lines as of 2026-10-18.
 | [UltraDesktop](#ultradesktop) | The ULTRA OS desktop | 0.4.1 | DesktopShell, ClipboardHistory, UltraMessage |
 | [UltraStore](#ultrastore) | The app store: the window, a signed catalog, per-user installs, updates | 0.1.2 | UltraNet, UltraCrypt, UltraDatabase |
 | [UltraStoreAdmin](#ultrastoreadmin) | The store's admin backend: apps and settings, packages, the signing key, translations, the signed catalog | 0.1.0 | UltraStore core, UltraDatabase, UltraCrypt, UltraAI |
+| [UltraStoreOperator](#ultrastoreoperator) | The marketplace operator's window and command line: merchants, the app review and the catalog publish, reports, notices, terms, the audit log | 0.1.0 | UltraStoreAdmin core, UltraNet |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
@@ -520,6 +521,34 @@ the commands when given one.
 - The payment service (`Server/UltraStorePay`): Skrill Quick Checkout, the
   status report verified, the licence and the receipt, the signed download
   URLs, the sales for the ledger.
+
+### UltraStoreOperator
+
+**Purpose:** the operator's side of the UltraStore marketplace, the
+program the ULTRA OS Project runs to operate a store in which other
+publishers open shops: a client of the marketplace service
+(`Server/UltraStoreMarket`). One program, `ultrastoreop`: the window when
+started plainly, the commands when given one.
+
+**Capabilities (0.1.0):**
+- The Dashboard: the merchants, the review queue with the oldest's wait,
+  the open reports with the urgent ones, the merchants not on the terms,
+  the catalog sequence, the compliance lines, the latest operator actions.
+- Merchants: every merchant with its standing and strikes, a merchant's
+  file with its submissions, acceptances and suspensions; a notice or a
+  warning sent, a suspension and a reinstatement; a merchant registered
+  with the public half of its key.
+- App review: the submissions by state, one with its automatic checks,
+  the card as the store will show it, the packages and the decisions;
+  the decision with a message to the merchant; the publish that signs
+  the catalog from the released submissions.
+- Reports: the reporter the operator alone sees, the assignment, the
+  findings and the outcome line that closes a report, a report opened
+  from mail.
+- Terms and notices: the versions and who accepted, a new version, the
+  enforcement policy, a notice to any or every merchant.
+- The audit log with its hash chain verified. Settings: the service, the
+  token, the operator's name. Design: `Docs/UltraStoreOperator/README.md`.
 
 ### UltraDesktop
 

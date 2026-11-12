@@ -35,11 +35,6 @@
   "an entry": "položka",
   "An upload is still running — quit anyway?": "Jedno nahrávání stále probíhá — přesto ukončit?",
   "An upload is still waiting — quit anyway?": "Jedno nahrávání stále čeká ve frontě — přesto ukončit?",
-  "and {n} more": {
-    "one": "a {n} další",
-    "few": "a {n} další",
-    "other": "a {n} dalších"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Jakýkoli jiný soubor, pokud má tento systém pro tento druh souborů registrovaný program:",
   "Applied to {n} item.": {
     "one": "Použito na {n} položku.",
@@ -265,6 +260,7 @@
   "Open prompt": "Otevřít příkazový řádek",
   "Opening files": "Otevírání souborů",
   "Opening {0} - {1}": "Otevírání: {0} – {1}",
+  "Order by": "Seřadit podle",
   "Order pinned": "Pořadí připnutí",
   "Own patterns - type one and press Enter:": "Vlastní vzory – napište jeden a stiskněte Enter:",
   "Path to the application": "Cesta k aplikaci",
@@ -477,11 +473,6 @@
     "one": "{n} ikona",
     "few": "{n} ikony",
     "other": "{n} ikon"
-  },
-  "{n} line": {
-    "one": "{n} řádek",
-    "few": "{n} řádky",
-    "other": "{n} řádků"
   },
   "{n} result": {
     "one": "{n} výsledek",

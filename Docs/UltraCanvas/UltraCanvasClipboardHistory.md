@@ -274,6 +274,24 @@ The actions are painted into the row and hit-tested, as UltraMail's contact
 list paints its bin, so the keyboard reaches them through the window's keys:
 Enter copies, F2 edits, Delete deletes.
 
+## Following the theme
+
+`ClipboardRowStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (heights, sizes, flags):
+the well for the list, ink and muted ink, text on the accent for the
+selected row, the panel for the header and a tile with hairlines, the
+actions in faint ink and ink when active with the hover fill, danger for
+delete, the accent for the pin, the selection and the hover fill; the
+"copied" green keeps its meaning. Without a base it starts from `Dark()` or
+`Light()` by the theme's flag. The rows are drawn by a delegate, not an
+element, so the host hands the delegate the style from its own
+`ApplyTheme`.
+
+```cpp
+// the roles over the compact shape, handed to the delegate that draws the rows
+auto rowDelegate = std::make_shared<ClipboardHistoryRowDelegate>(ClipboardRowStyle::FromTheme(UltraCanvasTheme::Current(), ClipboardRowStyle::Dark()));
+```
+
 ## Tests
 
 `Tests/ClipboardHistoryStoreTest.cpp` (headless): kinds and titles, the

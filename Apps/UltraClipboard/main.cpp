@@ -9,6 +9,11 @@
 // desktop"): it records and keeps the history open, and the next start shows
 // the window at once. Closing the window then hides it; Quit in the More
 // menu ends the program. A --background start while one runs changes nothing.
+// Version: 0.6.0 - recordings and videos transcribed by an UltraAI speech-to-text provider
+// Version: 0.5.0 - UltraAI reads the words in a picture when one of its vision providers
+//                  reads text; the OCR plugin otherwise
+// Version: 0.4.0 - text recognition: the OCR plugin reads the words in a picture
+//                  for Extract text (UltraCanvasFileLoader::ExtractText)
 // Version: 0.3.0 - --background
 // Version: 0.2.0 - the framework's single-instance helper: two starts at the
 //                  same moment no longer both stay, and a copy that does not
@@ -21,6 +26,13 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
+#ifdef ULTRACANVAS_OCR_SUPPORT
+#include "UltraCanvasOCRPlugin.h"   // Extract text reads pictures with it
+#endif
+#ifdef ULTRACLIPBOARD_HAS_ULTRAAI
+#include "UltraAITextRecognition.h"   // ... or with an UltraAI vision provider, when one reads text
+#include "UltraAISpeechTranscription.h"   // recordings and videos: an UltraAI speech-to-text provider
+#endif
 
 #ifdef __linux__
 #include <X11/Xlib.h>
@@ -120,6 +132,13 @@ int main(int argc, char* argv[]) {
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraClipboard.png"));
         if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
             return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraClipboard");
+#ifdef ULTRACANVAS_OCR_SUPPORT
+        RegisterOCRTextRecognition();
+#endif
+#ifdef ULTRACLIPBOARD_HAS_ULTRAAI
+        UltraAI::RegisterUltraAITextRecognition();   // in front of the OCR plugin, which stays the fallback
+        UltraAI::RegisterUltraAISpeechTranscription();
+#endif
         window = std::make_unique<UltraClipboard::UltraClipboardWindow>(app);
         if (!window->Create(search, editId)) {
             std::cerr << "Failed to create the main window\n";

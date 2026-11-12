@@ -35,10 +35,6 @@
   "an entry": "et element",
   "An upload is still running — quit anyway?": "En opplasting kjører fortsatt — avslutte likevel?",
   "An upload is still waiting — quit anyway?": "En opplasting venter fortsatt — avslutte likevel?",
-  "and {n} more": {
-    "one": "og {n} til",
-    "other": "og {n} til"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Enhver annen fil, når dette systemet har et program registrert for den filtypen:",
   "Applied to {n} item.": {
     "one": "Brukt på {n} element.",
@@ -261,6 +257,7 @@
   "Open prompt": "Åpne ledetekst",
   "Opening files": "Åpning av filer",
   "Opening {0} - {1}": "Åpner {0} – {1}",
+  "Order by": "Sorter etter",
   "Order pinned": "Festet rekkefølge",
   "Own patterns - type one and press Enter:": "Egne mønstre – skriv inn ett og trykk Enter:",
   "Path to the application": "Bane til programmet",
@@ -462,10 +459,6 @@
   "{n} icon": {
     "one": "{n} ikon",
     "other": "{n} ikoner"
-  },
-  "{n} line": {
-    "one": "{n} linje",
-    "other": "{n} linjer"
   },
   "{n} result": {
     "one": "{n} resultat",

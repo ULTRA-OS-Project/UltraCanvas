@@ -24,6 +24,7 @@
 #include "UltraCanvasCADConverters.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -45,7 +46,7 @@ namespace {
         CadLoadResult result;
         auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
         if (!converter || !converter->CanImport()) {
-            result.warnings.push_back("no reader for " + path);
+            result.warnings.push_back(TrF("no reader for {0}", path));
             return result;
         }
         VectorConverter::ConversionOptions options;
@@ -69,10 +70,9 @@ namespace {
     std::string DescribeDocument(const VectorStorage::VectorDocument& doc, double ms) {
         size_t drawables = 0;
         for (const auto& layer : doc.Layers) if (layer) drawables += CountDrawables(*layer);
-        char buf[160];
-        std::snprintf(buf, sizeof(buf), "%zu layers, %zu drawables, page %.0f x %.0f pt, decoded in %.0f ms",
-                      doc.Layers.size(), drawables, doc.Size.width, doc.Size.height, ms);
-        return buf;
+        return TrF("{0} layers, {1} drawables, page {2} x {3} pt, decoded in {4} ms",
+                   doc.Layers.size(), drawables, std::llround(doc.Size.width), std::llround(doc.Size.height),
+                   std::llround(ms));
     }
 
 }   // namespace
@@ -80,15 +80,15 @@ namespace {
 // ===== DWG VECTOR EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDWGVectorExamples() {
         auto page = DemoKit::CreatePage("DWGExamples",
-                "AutoCAD DWG and DXF Drawings - Click to Open in the Media Viewer",
-                "Native DWG decoding (R13 to R2018) with no external tools, and the DXF reader it shares: blocks, "
-                "layers, hatches, splines, dimensions and 3D meshes projected to plan view. Click a drawing to open it in the media viewer.");
+                Tr("AutoCAD DWG and DXF Drawings - Click to Open in the Media Viewer"),
+                Tr("Native DWG decoding (R13 to R2018) with no external tools, and the DXF reader it shares: blocks, "
+                "layers, hatches, splines, dimensions and 3D meshes projected to plan view. Click a drawing to open it in the media viewer."));
 
         auto samplesCard = DemoKit::AddCard(page, "DWGSamples");
         auto tilesRow = DemoKit::AddRow(samplesCard, "DWGTiles", 20);
 
         // The status line under the tiles; it grows with the reader's warnings.
-        auto statusLabel = DemoKit::CreateText("DWGStatus", "Ready. Click a drawing to open it in the media viewer.");
+        auto statusLabel = DemoKit::CreateText("DWGStatus", Tr("Ready. Click a drawing to open it in the media viewer."));
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
@@ -121,7 +121,7 @@ namespace {
                 element->SetDocument(loaded.document);
                 summary = fileName + ": " + DescribeDocument(*loaded.document, loaded.milliseconds);
             } else {
-                summary = "Failed to load " + path;
+                summary = TrF("Failed to load {0}", path);
             }
             for (const auto& w : loaded.warnings) summary += "\n" + w;
 
@@ -155,43 +155,43 @@ namespace {
         };
 
         makeTile("DWGContainer1", "media/vector/", "DWG", "Audi-Q5-DWGFree.com_.dwg",
-                 "DWG: Audi Q5 (R2013, 2D block)");
+                 Tr("DWG: Audi Q5 (R2013, 2D block)"));
         makeTile("DWGContainer2", "media/vector/", "DWG", "womans hostel.dwg",
-                 "DWG: hostel plans (R2007, blocks, hatches)");
+                 Tr("DWG: hostel plans (R2007, blocks, hatches)"));
         makeTile("DWGContainer3", "media/3D/", "DWG", "bagno_3d_1.dwg",
-                 "DWG: bathroom (R2013, 3D polyface meshes, projected)");
+                 Tr("DWG: bathroom (R2013, 3D polyface meshes, projected)"));
         makeTile("DXFContainer1", "media/vector/", "DXF", "millennium-falcon.dxf",
-                 "DXF: Millennium Falcon (1015 LWPOLYLINEs, 507 LINEs)");
+                 Tr("DXF: Millennium Falcon (1015 LWPOLYLINEs, 507 LINEs)"));
         makeTile("DXFContainer2", "media/vector/", "DXF", "women-body.dxf",
-                 "DXF: figure study (74 NURBS SPLINEs)");
+                 Tr("DXF: figure study (74 NURBS SPLINEs)"));
 
         DemoKit::Add(samplesCard, statusLabel);
 
         auto infoRow = DemoKit::AddRow(page, "DWGInfoRow");
 
         // ===== INFO PANEL =====
-        DemoKit::AddNotes(infoRow, "InfoPanel", "Native CAD import", {
-                "DWG R13, R14, 2000, 2004, 2007, 2010, 2013, 2018",
-                "DXF R12 and later (read and write)",
-                "Lines, arcs, circles, ellipses, splines",
-                "Polylines, LW polylines, 3D and mesh polylines",
-                "Hatches (solid, pattern, gradient boundaries)",
-                "Text, MTEXT, attributes, leaders, dimensions",
-                "Blocks and nested inserts, mirrored and arrayed",
-                "Layers, true colours, lineweights, linetypes",
-                "DWG to DXF conversion: DWGConverter::DecodeToDxf",
-                "DWG writing needs LibreDWG's dxf2dwg (optional)"});
+        DemoKit::AddNotes(infoRow, "InfoPanel", Tr("Native CAD import"), {
+                Tr("DWG R13, R14, 2000, 2004, 2007, 2010, 2013, 2018"),
+                Tr("DXF R12 and later (read and write)"),
+                Tr("Lines, arcs, circles, ellipses, splines"),
+                Tr("Polylines, LW polylines, 3D and mesh polylines"),
+                Tr("Hatches (solid, pattern, gradient boundaries)"),
+                Tr("Text, MTEXT, attributes, leaders, dimensions"),
+                Tr("Blocks and nested inserts, mirrored and arrayed"),
+                Tr("Layers, true colours, lineweights, linetypes"),
+                Tr("DWG to DXF conversion: DWGConverter::DecodeToDxf"),
+                Tr("DWG writing needs LibreDWG's dxf2dwg (optional)")});
 
         // ===== HOW IT WORKS =====
-        auto howCard = DemoKit::AddCard(infoRow, "HowPanel", "How a .dwg becomes a VectorDocument");
+        auto howCard = DemoKit::AddCard(infoRow, "HowPanel", Tr("How a .dwg becomes a VectorDocument"));
         DemoKit::AddText(howCard, "HowText",
-                "1. UltraCanvasDWGDecoder decodes the binary drawing database - bit-coded values, the R2004+ compressed "
+                Tr("1. UltraCanvasDWGDecoder decodes the binary drawing database - bit-coded values, the R2004+ compressed "
                 "pages, the R2007 Reed-Solomon pages, the object map, CLASSES and the block definitions - and renders "
                 "it as tagged DXF text (DWGConverter::DecodeToDxf).\n"
                 "2. The DXF reader builds the VectorStorage::VectorDocument, the same path a .dxf file takes directly: "
                 "blocks expand into transformed groups, layers keep their names, colours and visibility, and the page "
-                "follows the drawing's real extents.");
-        DemoKit::AddCaption(howCard, "HowCode", "auto doc = DWGConverter().Import(\"plan.dwg\");");
+                "follows the drawing's real extents."));
+        DemoKit::AddCaption(howCard, "HowCode", Tr("auto doc = DWGConverter().Import(\"plan.dwg\");"));
 
         return page;
     }

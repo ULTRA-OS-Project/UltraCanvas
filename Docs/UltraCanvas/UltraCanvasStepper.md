@@ -10,6 +10,7 @@
 - [Custom (SVG) markers](#custom-svg-markers)
 - [Key API](#key-api)
 - [Keyboard](#keyboard)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -24,7 +25,7 @@ Design's Steps). It is **distinct from the value −/+ stepper**, which ships as
 `CreateStepper()` on `UltraCanvasSpinner`.
 
 **File Location**: `include/UltraCanvasStepper.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `StepperStyle::FromTheme`, `ApplyTheme`: the stepper follows the theme
 **Author**: UltraCanvas Framework
 
 ## Design choices (all configurable)
@@ -134,6 +135,27 @@ std::function<void(int)> onStepClicked;   // a marker/label was clicked
 | `End`           | Last step |
 
 (Keys are ignored in `Display` navigation mode.)
+
+## Following the theme
+
+`StepperStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the accent for a
+completed or active marker and its connector, with text on it; the control
+border for an upcoming marker over the raised surface, muted ink in it;
+danger for an error (its glyph stays white unless a theme names
+`stepper.on-error`); ink for a title, the accent for the active one, muted
+ink for a description; the interface font, the titles at the body size and
+the descriptions at the caption size. Under the theme policy a new stepper
+follows the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops
+that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto wizard = std::make_shared<UltraCanvasStepper>("wizard", 400, 64);
+StepperStyle small = wizard->GetStyle();
+small.markerSize = 24;
+wizard->SetStyle(StepperStyle::FromTheme(UltraCanvasTheme::Current(), small));
+wizard->SetFollowTheme(true);
+```
 
 ## Notes
 

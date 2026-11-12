@@ -1,3 +1,192 @@
+#### 2026-11-12 *1.107.14*
+- **Proxy settings and the other dialogs no longer stay on top of other
+  programs.** They sat above every application's windows and could not be
+  sent behind them; now they stay above UltraFiler's own window only, as the
+  Settings window always did. The change is in the framework's
+  `DialogConfig`; see the framework changelog.
+
+#### 2026-11-11 *1.107.13*
+- **The window follows the desktop's look.** Light or dark as the desktop
+  is - or as *Look* on UOS-Settings' Appearance page says - in the desktop's
+  font and size, and a change while UltraFiler runs is taken at once. Every
+  surface the window, its dialogs and its tab strips painted in a colour of
+  their own (the tool rows and buttons, the status strip, the folder tree,
+  the computer page, the search field, the New folder split button, the
+  Scan sub folder button, the connection log badge) is a role of the
+  framework theme now (`UltraFilerLook.h`); the file displays, dropdowns,
+  menus and tree follow the theme by themselves, so a dark desktop gives a
+  dark filer throughout. The window's text size is the theme's body size
+  (the desktop's interface font size) rather than a fixed 9 pt. A drive row
+  of the folder tree keeps its chosen background and picks its text colour
+  by it, so it reads in both looks.
+
+#### 2026-11-11 *1.107.12*
+- **The toolbar's dropdowns show their entries whole.** The View, Order by
+  and Video dropdowns had widths sized for the English entries, so a longer
+  translation was cut off - the Video mode read *Automatisch al…* in German.
+  Each now widens to its longest entry where a translation needs it, and
+  keeps its width where the entries fit.
+- **The toolbar's captions show in full, and *Sort* reads *Order by*.** The
+  captions in front of the View, Order by and Video dropdowns had a fixed
+  width, so a longer translation was cut off at every window size - German
+  read *Sortie…*. Each caption now takes the width of its text and shows
+  whole wherever the window has room; only when the bar is too narrow for
+  everything does it shorten, after the search field has given way first.
+  The sort caption is *Order by* in English (*Sortieren nach* in German).
+
+#### 2026-11-11 *1.107.11*
+- **Copying and pasting keeps the files' original dates.** A pasted, dropped
+  or duplicated file - and a file moved to another drive - was dated the
+  moment of the copy: on Windows its *Created* date, on Linux and macOS every
+  date, and a large file or a folder lost all of them on every system. Copies
+  now keep the original's modified and accessed dates everywhere and its
+  created date on Windows and macOS (Linux lets no program set a creation
+  date). A folder's dates are set after its contents are copied in.
+- **Settings > Extras > Proxy.** FTP, SFTP, WebDAV and the cloud drives go
+  through the proxy every ULTRA OS application shares - the system's until
+  another is chosen - and the page opens the Proxy settings dialog to choose
+  one: none, or an HTTP or SOCKS proxy with the hosts reached directly and a
+  sign-in. Before, a remote drive never went through a proxy.
+- **Files copied to or from a remote drive, or extracted from an archive, keep
+  their dates.** An upload to an FTP, SFTP, WebDAV, Nextcloud, Dropbox,
+  Google Drive or OneDrive drive was dated the moment it arrived, and a file
+  copied off one the moment it landed. Now an upload keeps the file's
+  modified date (and its created date on Nextcloud, Google Drive and OneDrive)
+  and a download gets the date the server holds. *Extract* gives an
+  unpacked file its date from the archive and, from a ZIP or 7z, its created
+  date as well on Windows and macOS.
+- **A video's details now say what the clip is.** The preview's Details panel
+  showed only a video's name, path, size and type, and the status bar its
+  name, size and position in the folder. Both now read the clip's own headers
+  (MP4 / MOV, MKV / WebM, AVI) through the framework's new
+  `ReadVideoFileInfo`: the status bar adds the picture size, frame rate, video
+  codec, the sound (codec, sample rate, channels - or *no audio*) and the
+  length; the Details panel adds the container, exact duration, bit rates,
+  codec profile and level, display size and aspect ratio, frame count, bit
+  depth, rotation, the sound's channels and language, the track counts and
+  the file's title, encoder and creation time.
+- **The file list names a film's picture size.** A video's line under its icon
+  (the Length field) and in the status bar now reads
+  `1:23 · 1920 × 1080 · H.264` - a phone's portrait clip upright, an
+  anamorphic one at its display width - from the same header reader the
+  preview's Details use, so the two never disagree; before it said the length
+  and the codec only, from a parser of the list's own.
+
+#### 2026-11-10 *1.107.10*
+- **A file on a drive with no preview opens in its program.** Double-clicking
+  a document, a spreadsheet, an archive or anything else on a drive that the
+  preview pane does not show did nothing: the system's opener was handed the
+  drive's path and found no file. It is now fetched like any download, with
+  its progress on the status line, into UltraCanvas's cache folder
+  (`remote-opened`, one folder per file and version) and opened with the
+  program this computer opens its type with (`OpenRemoteFile`). The status
+  line says changes to the copy are not saved to the drive. Opened again
+  while the file on the server is unchanged, the same copy opens without a
+  request; a fetch that did not finish is never opened. A program, a script,
+  an installer or a launcher is not started from a drive - the dialog says to
+  copy it to this computer first - since on Windows the system's opener runs
+  such a file. A fetch that fails says so in a dialog, a file no longer there
+  as *File not found* with its folder read again.
+- **A drive's folder fetched a while ago is asked for again when opened.**
+  Within a session a listing was served from the cache for good, so leaving
+  a folder and coming back never showed a file another device had added or
+  deleted. A listing older than two minutes (`kRemoteListingFreshFor`) is now
+  shown as it was and fetched again behind it when its folder is listed, as
+  a listing kept from the last run is; within the two minutes, and for a
+  subfolder fetched ahead, it costs no request.
+- **Configure drive saves while the server is out of reach.** Save always
+  signed in first, so a drive whose server could not be reached could not
+  even be renamed. Once that sign-in fails, *Save without signing in* appears
+  beside Cancel and stores the settings as they are, to be tried the next
+  time the drive is opened.
+
+#### 2026-11-10 *1.107.9*
+- **The path bar names a drive by its volume, and a setting says whether.**
+  The path bar above the file display called a drive "D:" while the folder
+  tree and the Computer page call it "My Passport Ultra (D:)". It now shows
+  the same name, on the drive's own node and in the list of drives under its
+  Computer entry, also over each pane of the split view. Settings > Display
+  > Path bar turns it off, for a shorter strip with the letter alone (saved
+  as `display.pathbar.volume.names`, on by default). The names are the ones
+  the tree has already read, so the strip never waits on a disk; a drive
+  whose volume has no name, and a network drive, keep the letter.
+
+#### 2026-11-10 *1.107.8*
+- **A remote drive that can no longer sign in can be deleted or mended.**
+  Its row under *Remote Drives* kept *Delete* greyed out, like every root of
+  the tree, and nothing offered to change its settings, so a drive whose
+  password was changed on the server stayed in the tree for good, failing.
+  - *Delete* on a drive's row now deletes the drive from UltraFiler, after a
+    question that says the files on the server are not touched: its account
+    and saved password go (`UltraFilerRemoteDrives::RemoveDrive`), and so do
+    its cached listings and the requests still waiting for it - the question
+    counts the uploads and downloads that are dropped. A display on the drive
+    moves to Home.
+  - *Configure drive* beside it opens the add-drive form filled in with the
+    drive's settings (UltraCloud's new `ShowEditAccountDialog`): the kind of
+    server fixed, the protocol, server, port, user, key file and folder as
+    stored, and the password field empty, which keeps the saved password
+    unless a new one is typed. Saving signs in first and stores only what the
+    server accepts; the drive keeps its id, so open folders and pins on it
+    still work, and is read again with the new settings. Its sign-ins are in
+    the connection log as *Configure drive*.
+- **Refresh on every folder.** A drive's folders are shown from a cache, so
+  a file uploaded or deleted from another device did not show, even after
+  leaving the folder and coming back. *Refresh* is now in the folder tree's
+  context menu for every folder and drive row, and in the folder display's
+  context menu for the folder shown or the folder right-clicked: the folder
+  is read again with its tree rows and every display showing it, and on a
+  drive the server is asked again, ahead of the queue, while the files it
+  showed stay on screen (`RefreshFolderEverywhere`,
+  `UltraFilerRemoteDrives::RefreshFolder`). The toolbar's *Refresh* does the
+  same on a drive instead of blanking the folder until the answer is in.
+- **A file deleted on a drive says so in a dialog.** Selecting such a file -
+  a picture on Google Drive deleted from another device, say - only put
+  *No preview of ...* on the status line. A preview fetch that fails now
+  carries what kind of failure it was (`RemoteFailure`): a file that is not
+  there opens *File not found* and its folder is read again, so the file
+  leaves the display; a refused sign-in or another refusal opens *Cannot open
+  the file*, pointing to the connection log. A network that does not answer
+  or a service that asks to wait stays a note on the status line, and the
+  dialog comes once per selection, not at every update of the pane.
+
+#### 2026-11-10 *1.107.7*
+- **The Computer page lists the remote drives and the RAM discs too.** Under
+  Drives, a "Remote Drives" section has a card for each FTP / SFTP server and
+  cloud account, and a "RAM Discs" section one for each RAM disc - the same
+  card a drive has, opening the drive when clicked. A section shows only
+  while it has a card. A RAM disc that is also a drive letter (ImDisk) is
+  under RAM Discs, not Drives. A remote drive's ring stays neutral: UltraCloud
+  does not say how full a server or an account is. The page's headings are
+  translated now as well.
+- **A drive shows its name, as Explorer does.** The folder tree and the
+  drive cards on the Computer page used to call a drive by its letter alone
+  ("D:"); they now show the volume's own name with it - "My Passport Ultra
+  (D:)", "Windows-SSD (C:)". The name is read off the UI thread, so the
+  letters show first and the names follow a moment later; a renamed volume
+  is picked up on the next drive refresh. Network drives keep their letter.
+- **An external USB drive no longer appears twice.** A drive such as a
+  "My Passport Ultra" showed both as its letter (D:) and as a portable
+  device under its own name, reached through an `ultracloud://device-…`
+  path that lists the folders but draws no thumbnails and copies every file
+  over WPD. Only the drive letter is listed now; phones, cameras and players
+  (MTP / PTP) still come in as before.
+- **The "New RAM disc" dialog shows its whole note.** The explanation under
+  the size ran to more lines than its fixed box held, so its last line was
+  cut off just above the buttons. The note is now measured and as tall as
+  its text, the window grows to fit it, and Create and Cancel sit at the
+  bottom right (`UltraFilerRamDiskDialog.cpp` 1.1.2).
+- **The rest of the "New RAM disc" dialog is translated.** The notes on how
+  the memory is used, how much is free, and that everything is lost on
+  eject, and the messages for a missing, too long or wrongly spelt name,
+  were English in every language; they now go through `Tr` (German
+  included, the other languages follow with the next catalogue draft).
+- **The tree's Cloud Storage, Remote Drives and RAM Discs rows do something.**
+  Selecting one changed nothing. Each now opens the Computer page with its
+  own section alone: the cloud folders, the remote drives' cards, or the RAM
+  discs' cards. The Computer row, the breadcrumb and the Up button still show
+  the whole page.
+
 #### 2026-11-06 *1.107.6*
 - **A failed cloud operation or listing says why in your language.** A
   download, upload, delete or rename that fails on a remote drive, and a

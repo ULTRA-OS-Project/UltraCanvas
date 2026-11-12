@@ -8,9 +8,11 @@
 // Version: 1.0.4 - type-ahead, the keyboard focus, Return chooses, DropdownItem::tooltip,
 //                  DropdownStyle::buttonShowsText
 // Version: 1.0.3 - DropdownStyle::FromTheme, ApplyTheme
-// Last Modified: 2026-10-12 - DropdownStyle::FromTheme
+// Last Modified: 2026-11-10 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <chrono>
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
@@ -198,6 +200,7 @@ namespace UltraCanvas {
         dropdownModel = std::make_shared<DropdownListModel>();
         CreatePopupListView();
         WireListViewCallbacks();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasDropdown::~UltraCanvasDropdown() {
@@ -269,22 +272,26 @@ namespace UltraCanvas {
     void UltraCanvasDropdown::AddItem(const std::string &text) {
         items.emplace_back(text);
         dropdownModel->DataChanged();
+        ItemsChangedWidth();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value) {
         items.emplace_back(text, value);
         dropdownModel->DataChanged();
+        ItemsChangedWidth();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value, const std::string &iconPath) {
         items.emplace_back(text, value, iconPath);
         dropdownModel->DataChanged();
+        ItemsChangedWidth();
     }
 
     void UltraCanvasDropdown::AddItem(const DropdownItem &item) {
         items.push_back(item);
         if (!item.fontFamily.empty()) previewsDirty = true;
         dropdownModel->DataChanged();
+        ItemsChangedWidth();
     }
 
     void UltraCanvasDropdown::AddSeparator() {
@@ -300,6 +307,7 @@ namespace UltraCanvas {
         selectedIndex = -1;
         selectedIndices.clear();
         dropdownModel->DataChanged();
+        ItemsChangedWidth();
     }
 
     void UltraCanvasDropdown::RemoveItem(int index) {
@@ -327,6 +335,7 @@ namespace UltraCanvas {
             }
 
             dropdownModel->DataChanged();
+            ItemsChangedWidth();
         }
     }
 
@@ -563,9 +572,101 @@ namespace UltraCanvas {
     // ===== STYLING =====
 
     void UltraCanvasDropdown::SetStyle(const DropdownStyle &newStyle) {
+        StyleSetByHand();
         style = newStyle;
         ApplyStyleToListView();
+        ItemsChangedWidth();
         RequestRedraw();
+    }
+
+    // ===== WIDTH FROM THE ITEMS =====
+
+    void UltraCanvasDropdown::SetFitWidthToItems(bool fit) {
+        if (fit == fitWidthToItems) return;
+        fitWidthToItems = fit;
+        if (fit) {
+            // The declared width becomes the floor; the engine sizes an
+            // automatic width from MeasureOwnContent.
+            fitFloorWidth = size.width.unit == CSSLayout::DimensionUnit::Pixels
+                    ? size.width.value : std::max(0.f, GetBounds().width);
+            size.width = CSSLayout::Dimension::Auto();
+        } else {
+            size.width = CSSLayout::Dimension::Px(fitFloorWidth);
+        }
+        InvalidateLayout();
+        RequestRedraw();
+    }
+
+    void UltraCanvasDropdown::ItemsChangedWidth() {
+        if (fitWidthToItems) InvalidateLayout();
+    }
+
+    float UltraCanvasDropdown::WidthForItems() {
+        IRenderContext* ctx = GetRenderContext();
+        if (!ctx) return 0.f;
+        ctx->PushState();
+        ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+        ctx->SetFontSize(style.fontSize);
+        // What the button can read: every item, the placeholder, and with
+        // multi-selection the summary it shows.
+        float widestText = 0.f;
+        bool anyIcon = false;
+        auto measure = [&](const std::string& text) {
+            if (!text.empty())
+                widestText = std::max(widestText,
+                        static_cast<float>(ctx->GetTextLineDimensions(text).width));
+        };
+        for (const auto& item : items) {
+            if (item.separator) continue;
+            if (!item.iconPath.empty()) anyIcon = true;
+            if (style.buttonShowsText) measure(item.text);
+        }
+        if (style.buttonShowsText) {
+            measure(placeholderText);
+            if (multiSelectEnabled) measure(GetDisplayText());
+        }
+        ctx->PopState();
+
+        // RenderButton's arithmetic: the text starts paddingLeft in, after the
+        // icon and its gap (multi-selection draws no icon), and the arrow
+        // keeps arrowSize * 2 + 2 at the right. Two pixels spare, so the
+        // last letter is not on the clip.
+        const float arrowSpace = style.arrowSize * 2 + 2;
+        const bool icon = anyIcon && !multiSelectEnabled;
+        float need;
+        if (widestText > 0.f) {
+            need = style.paddingLeft + widestText + arrowSpace + 2.f;
+            if (icon) need += style.iconSize + style.iconPadding;
+        } else {
+            need = (icon ? style.iconSize + style.paddingLeft : 0.f) + arrowSpace;
+        }
+        return std::ceil(need);
+    }
+
+    Size2Df UltraCanvasDropdown::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+                                                   const CSSLayout::LayoutContext& /*ctx*/) {
+        if (!fitWidthToItems) return Size2Df(0.f, 0.f);
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float width = std::max(WidthForItems(), fitFloorWidth) - padH;
+        const float padV = GetTotalPaddingVertical() + GetTotalBorderVertical();
+        const float height = size.height.unit == CSSLayout::DimensionUnit::Pixels
+                ? size.height.value : std::max(0.f, GetBounds().height);
+        return Size2Df(std::max(0.f, width), std::max(0.f, height - padV));
+    }
+
+    void UltraCanvasDropdown::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) {
+        if (!fitWidthToItems) {
+            UltraCanvasUIElement::ComputeIntrinsicSizes(ctx);
+            return;
+        }
+        // The button does not wrap or shrink its text: min-content is
+        // max-content. Border-box units, as Flex and Grid use them.
+        const float width = std::max(WidthForItems(), fitFloorWidth);
+        const float height = size.height.unit == CSSLayout::DimensionUnit::Pixels
+                ? size.height.value : std::max(0.f, GetBounds().height);
+        intrinsic.valid = true;
+        intrinsic.minContentWidth = intrinsic.maxContentWidth = width;
+        intrinsic.minContentHeight = intrinsic.maxContentHeight = height;
     }
 
     // ===== POPUP SIZING AND POSITIONING =====
@@ -778,6 +879,7 @@ namespace UltraCanvas {
     void UltraCanvasDropdown::SetPlaceholderText(const std::string& text) {
         if (placeholderText == text) return;
         placeholderText = text;
+        ItemsChangedWidth();
         RequestRedraw();
     }
 
@@ -1063,6 +1165,9 @@ namespace UltraCanvas {
     DropdownStyle DropdownStyle::FromTheme(const UltraCanvasTheme& theme, const DropdownStyle& base) {
         DropdownStyle s = base;
         const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
         s.normalColor = r.raised;
         s.hoverColor = r.hover;
         s.pressedColor = r.pressed;

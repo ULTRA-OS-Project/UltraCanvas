@@ -3,7 +3,7 @@
 // Version: 1.4.0 - SplitPaneStyle::FromTheme
 // Version: 1.3.0 - Arrange places the panes once (no block-layout pass first, which
 //                 reset the scroll position of everything in them on a resize)
-// Last Modified: 2026-10-04
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplitPane.h"
@@ -454,6 +454,7 @@ namespace UltraCanvas {
         cs.forceShowVerticalScrollbar = false;
         cs.forceShowHorizontalScrollbar = false;
         SetContainerStyle(cs);
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasSplitPane::SetBounds(const Rect2Df& b) {
@@ -466,6 +467,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSplitPane::SetSplitPaneStyle(const SplitPaneStyle& s) {
+        StyleSetByHand();
         splitStyle = s;
         PushStyleToSplitters();
         InvalidateLayout();

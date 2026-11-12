@@ -35,10 +35,6 @@
   "an entry": "una entrada",
   "An upload is still running — quit anyway?": "Una pujada encara està en curs — voleu sortir igualment?",
   "An upload is still waiting — quit anyway?": "Una pujada encara està en espera — voleu sortir igualment?",
-  "and {n} more": {
-    "one": "i {n} més",
-    "other": "i {n} més"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Qualsevol altre fitxer, quan aquest sistema té un programa registrat per a aquest tipus de fitxer:",
   "Applied to {n} item.": {
     "one": "S'ha aplicat a {n} element.",
@@ -261,6 +257,7 @@
   "Open prompt": "Obre l'indicador d'ordres",
   "Opening files": "Obertura de fitxers",
   "Opening {0} - {1}": "S'està obrint {0} - {1}",
+  "Order by": "Ordena per",
   "Order pinned": "Ordre de fixació",
   "Own patterns - type one and press Enter:": "Patrons propis - escriviu-ne un i premeu Retorn:",
   "Path to the application": "Camí a l'aplicació",
@@ -462,10 +459,6 @@
   "{n} icon": {
     "one": "{n} icona",
     "other": "{n} icones"
-  },
-  "{n} line": {
-    "one": "{n} línia",
-    "other": "{n} línies"
   },
   "{n} result": {
     "one": "{n} resultat",

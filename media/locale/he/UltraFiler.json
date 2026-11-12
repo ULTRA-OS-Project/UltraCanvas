@@ -35,12 +35,6 @@
   "an entry": "רשומה",
   "An upload is still running — quit anyway?": "העלאה אחת עדיין פועלת — לצאת בכל זאת?",
   "An upload is still waiting — quit anyway?": "העלאה אחת עדיין ממתינה — לצאת בכל זאת?",
-  "and {n} more": {
-    "one": "ועוד {n}",
-    "two": "ועוד {n}",
-    "many": "ועוד {n}",
-    "other": "ועוד {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "כל קובץ אחר, כשלמערכת זו יש תוכנית רשומה עבור סוג קובץ זה:",
   "Applied to {n} item.": {
     "one": "הוחל על {n} פריט.",
@@ -269,6 +263,7 @@
   "Open prompt": "פתיחת שורת הפקודה",
   "Opening files": "פתיחת קבצים",
   "Opening {0} - {1}": "פותח את {0} - {1}",
+  "Order by": "מיון לפי",
   "Order pinned": "סדר ההצמדה",
   "Own patterns - type one and press Enter:": "תבניות משלך - יש להקליד אחת ולהקיש Enter:",
   "Path to the application": "נתיב ליישום",
@@ -492,12 +487,6 @@
     "two": "{n} סמלים",
     "many": "{n} סמלים",
     "other": "{n} סמלים"
-  },
-  "{n} line": {
-    "one": "{n} שורה",
-    "two": "{n} שורות",
-    "many": "{n} שורות",
-    "other": "{n} שורות"
   },
   "{n} result": {
     "one": "{n} תוצאה",

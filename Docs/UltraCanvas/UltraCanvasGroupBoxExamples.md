@@ -12,6 +12,7 @@
   - [Factory Functions](#factory-functions)
   - [Key Methods](#key-methods)
   - [Callbacks](#callbacks)
+- [Following the theme](#following-the-theme)
 - [Usage Examples](#usage-examples)
   - [Basic framed group](#basic-framed-group)
   - [Checkable group (enables/disables its contents)](#checkable-group-enablesdisables-its-contents)
@@ -29,7 +30,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.3.0
+**Version:** 1.4.0 - `GroupBoxVisualStyle::FromTheme`, `ApplyTheme`: the group box follows the theme
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -126,6 +127,26 @@ bool IsCollapsed() const;
 std::function<void(bool)> onCheckedChanged;     // new checked state
 std::function<void(bool)> onCollapsedChanged;   // new collapsed state
 std::function<void()>     onCloseClicked;       // the close button was clicked
+```
+
+## Following the theme
+
+`GroupBoxVisualStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape (widths, radius,
+indents, padding, the caption's weight) and its fills: a filled frame or
+header takes the raised surface and the panel, a transparent one stays
+transparent; the frame in a hairline, the caption in ink at the body size,
+faint ink disabled; the activator's track in the accent and the control
+border with the raised surface for its knob; the info and close icons in
+muted ink, the accent and ink when hovered. Under the theme policy a new
+group box follows the theme by itself (`ApplyTheme`, its scrollbars with
+it); a `SetVisualStyle` by hand stops that, `SetFollowTheme(true)` after it
+keeps both.
+
+```cpp
+auto section = std::make_shared<UltraCanvasGroupBox>("section", 300, 200, "Messages");
+section->SetVisualStyle(GroupBoxVisualStyle::FromTheme(UltraCanvasTheme::Current(), GroupBoxVisualStyle::SectionCard()));   // the roles over the card
+section->SetFollowTheme(true);
 ```
 
 ## Usage Examples

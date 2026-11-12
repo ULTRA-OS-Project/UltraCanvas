@@ -2,6 +2,8 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
+// Version: 4.9.0 - ContainerStyle::FromTheme, ApplyTheme: a container's scrollbars follow the theme; the
+//                  constructor tail of a container that follows by default
 // Version: 4.8.1 - the wheel scrolls a container whose bar autoShowScrollbars showed, not only a forced one
 // Version: 4.8.0 - the corner between two showing scrollbars is painted in the
 //                  track's colour, not left to whatever is beneath
@@ -10,7 +12,7 @@
 // Version: 4.5.0 - FinishArrange for subclasses that place their own children
 // Version: 4.4.0 - ContainerStyle::clipChildren (false: CSS overflow: visible)
 // Version: 4.3.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -72,6 +74,14 @@ namespace UltraCanvas {
         bool forceShowHorizontalScrollbar = false;
 
         ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Default());
+
+        // The theme over a base's own behaviour (clipping and scrolling
+        // flags): the scrollbars from ScrollbarStyle::FromTheme. A
+        // container's own background is the window's or the element's
+        // business, not the style's
+        static ContainerStyle FromTheme(const UltraCanvasTheme& theme, const ContainerStyle& base);
+        static ContainerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ContainerStyle()); }
+        static ContainerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 
@@ -96,6 +106,7 @@ namespace UltraCanvas {
         UltraCanvasContainer(const std::string &id, float x, float y, float w, float h)
                 : UltraCanvasUIElement(id, x, y, w, h) {
             CreateScrollbars();
+            ApplyThemeIfFollowing();
         }
 
         UltraCanvasContainer(const std::string &id, float w, float h)
@@ -173,7 +184,13 @@ namespace UltraCanvas {
 
         static Rect2Di GetChildRect(UltraCanvasUIElement& elem); // get rect of child element in parent coordinates
 
+        // SetContainerStyle is behaviour (clipping, scrolling), not a look: it
+        // does not stop the following, so a derived element that turns its
+        // scrollbars off in its constructor still follows the theme
         void SetContainerStyle(const ContainerStyle &newStyle);
+        // The theme's scrollbars; a derived element with a look of its own
+        // overrides this and themes its own parts
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetContainerStyle(ContainerStyle::FromTheme(theme, style)); }
         const ContainerStyle &GetContainerStyle() const { return style; }
 
         // ===== ENHANCED EVENT CALLBACKS =====

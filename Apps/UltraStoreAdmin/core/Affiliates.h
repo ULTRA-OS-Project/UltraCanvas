@@ -17,6 +17,9 @@
 // the payout - is the payment service's; the admin records sales by hand
 // until it exists (RecordSale), so the report and the payouts work from
 // day one.
+// Version: 0.2.3 - SyncSales takes the payment's `reference` (a renewal is a sale of its own)
+// Version: 0.2.2 - JoinPage and RetiredCodePage in the page frame (PageFrame.h), like CodeLandingPage
+// Version: 0.2.1 - JoinPage (the page behind the join link, with the store's contact; closed for a partner switched off), RetiredCodePage
 // Version: 0.2.0 - RecordSale with a reference; SyncSales from the payment service
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -82,5 +85,19 @@ Result<void> WriteQrCodeSvg(const std::string& text, const std::string& fileUtf8
 // The landing page of a code, for the publish folder's go/<CODE>/index.html:
 // what the code gives, the apps, and the link that opens the store with it.
 std::string CodeLandingPage(const UltraStore::PromoCode& code, const std::vector<UltraStore::Component>& apps, const std::string& catalogBase);
+
+// The page behind a partner's join link, for the publish folder's
+// join/<affiliate>/index.html: what a partner earns, who is inviting, the
+// partner id to name when signing up so the recruiter is credited, and the
+// store's contact (the setting store.contact) to sign up with. For a
+// partner switched off, a page saying the invitation is closed: the
+// uploader never deletes on the server, so the page that replaces the
+// old one is what makes a stale link harmless.
+std::string JoinPage(const Affiliate& recruiter, const std::string& storeContact, const std::string& catalogBase);
+
+// The page that replaces a code's landing page once the code is out of the
+// catalog (switched off, or its partner is): "no longer valid", for the
+// same reason.
+std::string RetiredCodePage(const std::string& code, const std::string& catalogBase);
 
 } // namespace UltraStoreAdmin

@@ -545,6 +545,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`ULTRACANVAS_HAS_NATIVE_TRASH` unset). `UltraCanvasFilerWidget`'s delete
   confirmation uses it for its "Move to the Trash" choice. (UltraCleaner keeps
   its own copy in its headless engine, which does not link UltraCanvas.)
+- **UltraCanvasFileTimes** (`UltraCanvasFileTimes.h`) — a file's dates read,
+  set, and carried to a copy. `FileTimes` (created / modified / accessed,
+  nanoseconds since 1970, 0 = unknown), `GetFileTimes(path, out)`,
+  `SetFileTimes(path, times)` (0 leaves a date alone),
+  `CopyFileTimes(from, to)` (files or folders; true when at least the
+  modification date was set), `CanCopyCreationTime()`. Backends:
+  `OS/MSWindows/UltraCanvasWindowsFileTimes.cpp` (GetFileTime / SetFileTime:
+  created, modified, accessed), `OS/MacOS/UltraCanvasMacOSFileTimes.cpp`
+  (utimensat, then setattrlist `ATTR_CMN_CRTIME`), and
+  `OS/Linux/UltraCanvasLinuxFileTimes.cpp` (utimensat: modified and accessed -
+  the kernel keeps the creation date to itself). Android and WebAssembly copy
+  the modification date through `std::filesystem` in
+  `core/UltraCanvasFileTimes.cpp` (`ULTRACANVAS_HAS_NATIVE_FILE_TIMES` unset).
+  `UltraCanvasFilerWidget` calls it after every file and folder it copies;
+  UltraCloud's providers read a file's dates for an upload and set the
+  server's on a download with it (UltraNet stays free of it: its FTP options
+  carry the date to set, `setRemoteModificationTime`, and report the server's,
+  `onRemoteModificationTime`).
 
 - **UltraCanvasInstanceLock** (`UltraCanvasInstanceLock.h`) — one running
   copy of an application per user. `InstanceLock::Acquire(path)` answers
@@ -891,8 +909,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with
   `SetThemeProvider`) applies it in `Initialize` and on every host change,
   a window built with the default background taking the theme's ground.
-  Phases T1 to T3 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
-  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
+  `Appearance.conf` (`UltraCanvasAppearanceSettings.h`: `AppearanceSettings`
+  `Parse` / `Serialize` / `ApplyTo` / `Load` / `Save` - look, accent, font,
+  size, scale, contrast, each `system` when the host decides) is applied
+  over the host on every read, before the override, and
+  `UltraCanvasSettingsWatcher` (`UltraCanvasSettingsWatcher.h`, one folder
+  watcher on the settings folder owned by the application base, a poll where
+  the build has no backend) makes a change to it live; UOS-Settings >
+  Appearance > Look writes it, and the DemoApp page *ULTRA OS modules >
+  Theme* (`Apps/DemoApp/UltraCanvasThemeExamples.cpp`) shows the roles, the
+  policy and the host, the fonts by role and the file. `SettingsWatcherTest`
+  covers the watcher. Phases T1 to T5 of
+  `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`; see
+  `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
   `Docs/UltraCanvas/UltraCanvasTheme.md`.
 
   Emoji come from a bundled font the emoji setting picks
@@ -903,6 +932,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   fontconfig platform's `LoadBundledFontsNative`, adds that one font and the
   rule that makes Pango's `emoji` runs use it.
   See `Docs/UltraCanvas/UltraCanvasEmojiSettings.md`.
+
+  The proxy every application connects through
+  (`UltraCanvasProxySettings.h`: `ProxySettings` - `ProxyMode` System /
+  NoProxy / Manual, `ProxyKind` Http / Socks, host, port, exceptions, a
+  sign-in - `Load` / `Save` on `Proxy.conf` in the UltraCanvas settings
+  folder, a remembered password in a device-key vault, `ToUltraNet`,
+  `CheckProxyConnection`; `UseSharedProxySettings()`, run by
+  `UltraCanvasApplicationBase::Initialize`, makes UltraNet follow the file, a
+  change saved by another application included). One dialog edits it for
+  every application (`UltraCanvasProxySettingsDialog.h`:
+  `ShowProxySettingsDialog`, `MakeProxySettingsPage` for a settings window,
+  `DescribeProxySettings`); UltraFiler, UltraMail, UltraAI, ChatCube,
+  UOS-Settings, UltraClipboard and UltraStore offer it.
+  See `Docs/UltraCanvas/UltraCanvasProxySettings.md`.
 
   A click on an application's notification that reaches it outside the bus
   - on Windows a toast clicked in the Action Center after the broker host
@@ -1137,7 +1180,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   - `ClipboardHistoryListModel` + `ClipboardHistoryRowDelegate`
     (`ClipboardRowStyle::Light()` / `Dark()`) - the history in an
     `UltraCanvasListView`: thumbnails by kind, meta line, painted Copy / Edit
-    / Delete hit-tested with `ActionAt`.
+    / Delete hit-tested with `ActionAt`; its text in the person's language
+    (`Tr`), with `ClipboardEntryKindLabel` / `ClipboardEntryDisplayTitle` for
+    what is stored in English.
   - `EditClipboardText` (trim, join lines, case), `ClipboardImageFile`,
     `FoldForClipboardSearch`, `DescribeClipboardEntry`,
     `PreferredClipboardKinds` (what a program takes when pasted into, from
@@ -1613,7 +1658,18 @@ image / video / music generation, translation, code assist). See
 through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 `BuildTranslationPrompt` / `ParseTranslationReply`, `BuildDetectionPrompt` /
 `ParseDetectionReply`), registered under each text-LLM provider's id;
-`Docs/Modules/UltraAI/Adapters.md` has the option keys. The local runtime
+`Docs/Modules/UltraAI/Adapters.md` has the option keys. Agents
+(`UltraAIAgent.h`: `Agent` with `AddTool` / `RemoveTool` / `Run` /
+`RunAsync` / `Cancel` / `History` / `SetHistory` / `ClearHistory`,
+`CreateAgent`, `AgentOptions` (`canUseTool`, `afterToolCall`, `maxTurns`,
+`stream`), `ToolArguments`, `ToolResult`, `ToolPermission`,
+`MakeSubagentTool`) run the model ↔ tool loop over any `ITextLLM`;
+`Docs/Modules/UltraAI/Agents.md`. Batches (`UltraAIBatch.h`:
+`ITextBatch` with `Submit` / `Get` / `Cancel` / `Results`,
+`CreateTextBatch`, `CreateSequentialTextBatch`, `RunBatch`,
+`ValidateBatchItems`, `IsFinished`; `CreateAnthropicTextBatch`,
+`CreateOpenAITextBatch`) send many chat requests as one job at about half
+the price; `Docs/Modules/UltraAI/Batches.md`. The local runtime
 (`UltraAILocalRuntime.h`, `UltraAI/runtime/`: `LocalRuntime::Instance()`,
 `ListModels` / `ListEngines` / `Recommend` / `Fit`, `InstallModel` /
 `InstallEngine` / `Cancel` / `RemoveModel`, `AddModelFile` /
@@ -1683,6 +1739,19 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
 
+The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
+password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
+documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
+recognition), spreadsheets (every sheet, tab-separated), text files, pictures
+(text recognition) and recordings (speech to text);
+`GetTextExtractionMethod` / `CanExtractText` / `WhyNoTextExtraction` say how
+and whether. Text recognition and speech to text are hooks:
+`SetImageTextRecognizer` (the OCR plugin's `RegisterOCRTextRecognition()`
+installs Tesseract) and `SetSpeechTranscriber` (an application's engine, e.g.
+UltraAI's `ISpeechToText`: `RegisterUltraAISpeechTranscription()` in
+`UltraAI_UI`, a video's sound taken out with VideoFX; `GetSpeechTranscriber`
+for the one before). UltraClipboard's *Extract text* uses it.
+
 ### **4. Plug-ins for File Types**
 
 Per-format plug-ins under `UltraCanvas/Plugins/` (Charts, Diagrams, Text,
@@ -1731,8 +1800,13 @@ future.
   `UltraNetFtpLogLine` steps, commands with the password masked, replies with
   their codes, the error with libcurl's number); connections kept open
   between calls on one thread, closed by `UltraNet_FtpCloseIdleConnections`
-- `UltraNet_TcpConnect`, `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
-  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`
+- `UltraNet_TcpConnect`, `UltraNet_TcpOpen` (the same with the reason it
+  failed), `UltraNet_TcpListen`, `UltraNet_TcpAccept`,
+  `UltraNet_TcpSend`, `UltraNet_TcpReceive`, `UltraNet_SocketLocalEndpoint`,
+  `UltraNet_SocketDetach` (the OS socket handed to a library that runs its
+  own protocol); a TCP connection through a proxy when asked
+  (`UltraNetSocketOptions::proxy` / `useProxySetting`: SOCKS 5, 4 / 4a, HTTP
+  CONNECT)
 - `UltraNet_OAuth2GeneratePkce`, `UltraNet_OAuth2ChallengeFromVerifier`,
   `UltraNet_OAuth2GenerateState`, `UltraNet_OAuth2BuildAuthUrl`,
   `UltraNet_OAuth2WaitForCallback`, `UltraNet_OAuth2ExchangeCode`,
@@ -1766,6 +1840,18 @@ future.
   challenge and collects the code, and the exchange and the refresh go
   through the service, which adds the secret. UltraMail signs in through
   `https://oauth-callback.ultraos.eu` this way
+- `UltraNet_ResolveProxy`, `UltraNet_DetectSystemProxy`,
+  `UltraNet_DetectSystemProxyFor`, `UltraNet_CanEvaluateProxyScript`,
+  `UltraNet_SetGlobalProxy`, `UltraNet_GetGlobalProxy`, `UltraNet_DisableProxy`,
+  `UltraNet_SetGlobalProxySource`, `UltraNet_ForgetSystemProxy`,
+  `UltraNet_HostMatchesNoProxy`, `UltraNet_ParseNoProxyList`,
+  `UltraNet_DescribeProxy` — the proxy of every libcurl connection (HTTP,
+  WebSocket, FTP / SFTP, the mail and file plug-ins): the operating system's
+  by default (`UltraNetProxyType::System` - the environment, GNOME / KDE,
+  Windows' WPAD and PAC, macOS' PAC), none, or HTTP / HTTPS / SOCKS with
+  exceptions; the machine itself always direct. `UltraNet/UltraNetCurlProxy.h`
+  puts the answer on a libcurl handle; the plug-ins reach the resolver through
+  the host table (ABI 4)
 - `UltraNet_UdpOpen`, `UltraNet_UdpSend`, `UltraNet_UdpReceive`
 - `UltraNet_TlsWrap`, `UltraNet_TlsHandshake`, `UltraNet_TlsGetInfo`
 - `UltraNet_DnsResolve`, `UltraNet_DnsResolveAsync`, `UltraNet_DnsReverseLookup`
@@ -2598,7 +2684,10 @@ target `VideoFX`, header `<VideoFX/VideoFX.h>`, `namespace VideoFX`; see
 
 **Not the player.** Playback, recording and thumbnails for the UI stay in the
 core (`UltraCanvasVideoPlayer`, `UltraCanvasVideoRecorder`,
-`UltraCanvasVideoThumbnail`, on the platform media frameworks). VideoFX is
+`UltraCanvasVideoThumbnail`, on the platform media frameworks), and so does
+reading a clip's technical facts for display: `ReadVideoFileInfo` /
+`VideoFileInfo` (`UltraCanvasVideoFileInfo.h`) parse MP4 / MOV, Matroska /
+WebM and AVI headers without FFmpeg. VideoFX is
 headless and has no UltraCanvas UI dependency; applications call it from a
 worker thread or through `VideoFXExportJob`. It is a shared library of its
 own (`libVideoFX.so` / `.dylib` / `.dll`, `VIDEOFX_BUILD_SHARED`, default ON
@@ -2819,6 +2908,14 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_SetEventDispatcher`, `UltraIM_Subscribe`, `UltraIM_Unsubscribe`
 - `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
 - `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
+- `UltraIM_GetDeleteChoices` (what `UltraIM_DeleteMessage` can do to one
+  message now - for oneself, for everyone - by its messenger's own rules)
+- `UltraIM_SearchMessages` (words, or everything of one kind - pictures,
+  videos, files, links - in a provider's history, a page at a time),
+  `UltraIM_MessageMatchesSearch`, `UltraIM_ExtractLinks`, `UltraIM_FoldCase`
+  (the matcher, the links in a text and the case folding it uses),
+  `UltraIM_SearchByFetching` (for providers: a search answered by reading
+  history through `FetchMessages`)
 - `UltraIM_SendText`, `UltraIM_SendFile`, `UltraIM_SendImage`,
   `UltraIM_SendVideo`, `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`,
   `UltraIM_DeleteMessage`, `UltraIM_EditMessage`, `UltraIM_MarkRead`,
@@ -2899,7 +2996,7 @@ mandatory. Built when OpenSSL is found; otherwise every call answers
   `UltraRtc_AddIceCandidate`, `UltraRtc_GetConnectionState`
 - `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
 
-Also: `UltraRtc_IsAvailable`, `UltraRtc_GetLocalDescription`,
+Also: `UltraRtc_IsAvailable`, `UltraRtc_GetVersion`, `UltraRtc_GetLocalDescription`,
 `UltraRtc_GetRemoteDescription`, `UltraRtc_GetIceGatheringState`,
 `UltraRtc_GetSignalingState`, `UltraRtc_DataChannelSendText` /
 `UltraRtc_DataChannelSendBinary`, `UltraRtc_GetDataChannelLabel`,
@@ -2925,7 +3022,10 @@ sink); VP8 video tracks (libvpx through FFmpeg's libavcodec, our own RFC 7741
 payload handlers, key-frame recovery by PLI) with the camera through
 `UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
 `opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
-Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
+Tests in `Tests/UltraRTC`; `UltraRtcApiStatus` there probes every function
+and reports WORKING / IMPLEMENTED / NOT IMPLEMENTED / BROKEN for the build and
+the machine it runs on (`Docs/Modules/UltraRTC/ApiStatus.md`). See
+`Docs/Modules/UltraRTC/README.md`.
 
 ---
 

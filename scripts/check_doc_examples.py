@@ -112,6 +112,8 @@ per doc rather than per file, so a merge that brings another doc's
 rewritten block from main stays valid. The entries are a multiset (a
 message a doc repeats is listed as often), which a hand merge loses first.
 """
+# Version: 1.10.0 - UltraAI/include is on the include path and in the
+#                 header index, for the UltraAI module docs
 # Version: 1.9.0 - the baseline is signed per doc, and --update-baseline is
 #                 the only way to write it: a hand-edited block fails
 #                 --strict naming its doc; with docs named, --update-baseline
@@ -196,6 +198,7 @@ INCLUDE_DIRS = [
     ROOT / "UltraCanvas" / "Plugins" / "Vector" / "EPS",
     ROOT / "UltraCanvas" / "third_party", ROOT / "VirtualFS" / "include",
     ROOT / "Apps" / "DemoApp",
+    ROOT / "UltraAI" / "include",   # the UltraAI module docs (Docs/Modules/UltraAI)
 ]
 
 KEYWORDS = {
@@ -445,7 +448,7 @@ class HeaderIndex:
 
     def __init__(self):
         self.text = {}
-        for root in (INCLUDE, ROOT / "UltraCanvas" / "Plugins"):
+        for root in (INCLUDE, ROOT / "UltraCanvas" / "Plugins", ROOT / "UltraAI" / "include"):
             for p in root.rglob("*.h"):
                 try:
                     self.text[p] = p.read_text(encoding="utf-8", errors="replace")

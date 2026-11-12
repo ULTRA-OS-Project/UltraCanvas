@@ -35,14 +35,6 @@
   "an entry": "عنصر",
   "An upload is still running — quit anyway?": "عملية رفع لا تزال جارية — هل تريد الإنهاء على أي حال؟",
   "An upload is still waiting — quit anyway?": "عملية رفع لا تزال في الانتظار — هل تريد الإنهاء على أي حال؟",
-  "and {n} more": {
-    "zero": "و{n} أخرى",
-    "one": "و{n} أخرى",
-    "two": "و{n} أخرى",
-    "few": "و{n} أخرى",
-    "many": "و{n} أخرى",
-    "other": "و{n} أخرى"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "أي ملف آخر، عندما يكون لدى هذا النظام برنامج مسجَّل لهذا النوع من الملفات:",
   "Applied to {n} item.": {
     "zero": "تم التطبيق على {n} عنصر.",
@@ -277,6 +269,7 @@
   "Open prompt": "فتح موجه الأوامر",
   "Opening files": "فتح الملفات",
   "Opening {0} - {1}": "جارٍ فتح {0} - {1}",
+  "Order by": "ترتيب حسب",
   "Order pinned": "ترتيب المثبتة",
   "Own patterns - type one and press Enter:": "أنماط خاصة - اكتب نمطًا واضغط Enter:",
   "Path to the application": "مسار التطبيق",
@@ -522,14 +515,6 @@
     "few": "{n} أيقونات",
     "many": "{n} أيقونة",
     "other": "{n} أيقونة"
-  },
-  "{n} line": {
-    "zero": "{n} سطر",
-    "one": "{n} سطر",
-    "two": "{n} سطران",
-    "few": "{n} أسطر",
-    "many": "{n} سطرًا",
-    "other": "{n} سطر"
   },
   "{n} result": {
     "zero": "{n} نتيجة",

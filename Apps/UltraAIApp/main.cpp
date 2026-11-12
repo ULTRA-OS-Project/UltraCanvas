@@ -3,10 +3,11 @@
 // one per AI capability. Clicking an icon opens a modal dialog
 // driven by the matching in-process mock adapter — no network or
 // external models required.
+// Version: 0.1.4 - --agents opens the Agents dialog at start
 // Version: 0.1.3 - one UltraAI per user: a second start brings the running
 //                  dashboard forward instead of opening another copy
 // Version: 0.1.2
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-09
 // Author: UltraAI Module
 
 #include "UltraAIDashboard.h"
@@ -62,7 +63,8 @@ void PrintUsage(const char* prog) {
               << "  --settings [page]  open the settings window at start; page is one of\n"
               << "                 default-providers, local-models, topics, local-and-cloud, endpoints\n"
               << "  --get-local-model  open the \"Get a local model\" dialog at start, as\n"
-              << "                 Chat does when its model is not installed\n";
+              << "                 Chat does when its model is not installed\n"
+              << "  --agents       open the Agents dialog at start\n";
 }
 
 } // namespace
@@ -72,6 +74,7 @@ int main(int argc, char* argv[]) {
     // the page named - for a screenshot or a quick check of one page.
     bool openSettings = false;
     bool openGetModel = false;
+    bool openAgents = false;
     UltraAIApp::UltraAISettingsWindow::Page settingsPage =
         UltraAIApp::UltraAISettingsWindow::Page::Default;
     for (int i = 1; i < argc; ++i) {
@@ -81,6 +84,7 @@ int main(int argc, char* argv[]) {
             std::cout << "UltraAI app " << ULTRAAI_APP_VERSION << "\n"; return 0;
         }
         if (a == "--get-local-model") openGetModel = true;
+        if (a == "--agents") openAgents = true;
         if (a == "--settings") {
             openSettings = true;
             const std::string page = i + 1 < argc ? argv[i + 1] : "";
@@ -175,6 +179,7 @@ int main(int argc, char* argv[]) {
         dashboard.Show();
         if (openSettings) dashboard.OpenSettingsDialog(settingsPage);
         if (openGetModel) dashboard.OpenLocalModelDialog();
+        if (openAgents) dashboard.OpenAgentDialog();
         instance.ListenRaise();   // a later start brings the dashboard forward
 
         app.Run();

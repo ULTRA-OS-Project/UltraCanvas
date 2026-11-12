@@ -12,7 +12,7 @@
 // Version: 2.2.0 - Arrange takes its box without a block-layout pass over the tab
 //                 contents, which reset the active page's scroll position on a resize
 // Version: 2.1.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -33,6 +33,7 @@ namespace UltraCanvas {
                                                            float posY, float w, float h)
             : UltraCanvasContainer(elementId, posX, posY, w, h) {
         InitializeOverflowDropdown();
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasTabbedContainer::~UltraCanvasTabbedContainer() {
@@ -2672,6 +2673,8 @@ namespace UltraCanvas {
         newTabButtonIconColor = r.inkMuted;
         dragInsertionColor = r.accent;
         dragGhostBorderColor = r.accent.WithAlpha(120);
+        // the titles at the caption size
+        fontSize = static_cast<int>(std::lround(theme.FontSize(ThemeTextRole::Caption)));
         RequestRedraw();
     }
 } // namespace UltraCanvas

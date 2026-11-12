@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.12 - CreateThemeExamples (Modules > Theme)
+// Version: 1.0.11 - CreateHistogramChartExamples
 // Version: 1.0.10 - AddControlChartCard (the Line Chart page's control chart)
 // Version: 1.0.9 - CreateTernaryChartExamples
 // Version: 1.0.8 - treeFilterInput: a filter field over the component tree,
@@ -13,7 +15,7 @@
 // Version: 1.0.3 - CreateDomainTableDemo is gone with UltraCanvasTableDemo.cpp, which
 //                 was in no build
 // Version: 1.0.2
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 //
 // One rule that every example file here follows, because the demo is the
@@ -385,6 +387,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateQuadrantChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateImportancePerformanceChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTernaryChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateHistogramChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGanttChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateKanbanBoardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();
@@ -446,6 +449,7 @@ namespace UltraCanvas {
         // an interactive Open / Save playground across the supported file families.
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLocalisationExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateThemeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSystemDialogsExamples();
 #ifdef HAS_LIBVIPS
         // PixelFX module page: Overview / Details / Examples tabs, the last one an

@@ -2,13 +2,15 @@
 // Version: 0.8.0 - FtpServerOf / FtpServerUrl / FtpDefaultPort for a form that
 //                  asks for the protocol, the host and the port; Verify
 //                  refuses a scheme the provider does not speak
+// Version: 0.8.0 - a transfer keeps the file's date: the upload dates the file it
+//                  wrote (MFMT / SFTP mtime), the download gives the copy the server's
 // Version: 0.7.0 - a download continues a partial copy (SetThreadDownloadContinues)
 // Version: 0.6.0 - partialUploadsRemain; an upload reports when the server
 //                  created the file, or refused to (internal::UploadReport)
 // Version: 0.5.0 - a transfer called off is Cancelled, not a server refusal
 // Version: 0.4.0 - SFTP with a private key (Credentials::privateKeyFile)
 // Version: 0.2.0 - a failure carries UltraNet's diagnostics
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudFtp.h>
 
@@ -424,6 +426,11 @@ Result FtpProvider::Upload(const Account& account, const Credentials& credential
             };
         }
     }
+    // The file keeps its own date: given to it once it is written (MFMT on
+    // FTP, mtime on SFTP), and a server that cannot is no failure.
+    int64_t modified = 0, created = 0;
+    internal::LocalFileDates(localPath, modified, created);
+    options.setRemoteModificationTime = modified;
     const UltraNetResult net = ops_.upload(localPath, FtpUrl(account, remotePath, false),
                                            options);
     return FromFtp(net, "upload " + NormalizePath(remotePath));
@@ -452,6 +459,9 @@ Result FtpProvider::Download(const Account& account, const Credentials& credenti
         options.resumeTransfer = true;
         options.resumeOffset = have;
     }
+    // The server's date of the file (MDTM / the SFTP stat), for the copy.
+    auto serverDate = std::make_shared<int64_t>(0);
+    options.onRemoteModificationTime = [serverDate](int64_t seconds) { *serverDate = seconds; };
     const std::string url = FtpUrl(account, remotePath, false);
     UltraNetResult net = ops_.download(url, localPath, options);
     if (!net.success && have > 0 &&
@@ -460,6 +470,7 @@ Result FtpProvider::Download(const Account& account, const Credentials& credenti
         options.resumeOffset = 0;
         net = ops_.download(url, localPath, options);
     }
+    if (net.success && *serverDate > 0) internal::GiveFileDates(localPath, *serverDate, 0);
     return FromFtp(net, "download " + NormalizePath(remotePath));
 }
 

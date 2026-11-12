@@ -1087,6 +1087,168 @@ int main() {
         TEST("...addressed by its place in the text", edit->GetSelectedImage() == RichDocPosition(0, 0));
     }
 
+    // ===== TEXT FRAMES =====
+    std::cerr << "\n--- Text frames ---" << std::endl;
+    {
+        // A text box 300 pt (400 px) wide at the column's right edge: the
+        // paragraph anchoring it wraps in the room left of it.
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame frame;
+        RichDocBlock inFrame;
+        RichTextRun frameWords;
+        frameWords.text = "Sender Company";
+        inFrame.runs = {frameWords};
+        frame.blocks = {inFrame};
+        frame.backgroundColor = "#eeeeee";
+        document->frames.push_back(frame);
+        RichDocBlock paragraph;
+        RichTextRun box;
+        box.text = RichTextRun::kObjectReplacement;
+        box.frameIndex = 0;
+        box.imageWidthPt = 300.0f;
+        box.imageHeightPt = 400.0f;                    // taller than the paragraph
+        box.imageWrap = RichTextRun::ImageWrap::Square;
+        box.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun words;
+        for (int i = 0; i < 40; i++) words.text += "word" + std::to_string(i) + " ";
+        paragraph.runs = {box, words};
+        document->blocks.push_back(paragraph);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float rightmost = 0.0f;
+        const int length = static_cast<int>(editor.BlockText(0).size());
+        for (int offset = 3; offset <= length; offset += 5) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            rightmost = std::max(rightmost, edit->GetCaretRectForTest().x);
+        }
+        TEST("Text beside a text frame wraps short of it: rightmost caret at " + std::to_string(rightmost),
+             rightmost > 100.0f && rightmost < 380.0f);
+        TEST("Plain text spells the frame's text before its paragraph",
+             document->ToPlainText().rfind("Sender Company", 0) == 0);
+
+        // A short frame (a single line's height): only the lines level with
+        // it are narrowed, the ones below take the column's full width.
+        RichTextRun shortBox = box;
+        shortBox.imageHeightPt = 12.0f;
+        RichDocBlock longParagraph;
+        RichTextRun longWords;
+        for (int i = 0; i < 120; i++) longWords.text += "word" + std::to_string(i) + " ";
+        longParagraph.runs = {shortBox, longWords};
+        document->frames[0].blocks.front().runs.front().text = "S";
+        document->blocks = {longParagraph};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float firstLineRight = 0.0f, laterRight = 0.0f;
+        const int longLength = static_cast<int>(editor.BlockText(0).size());
+        float firstTop = -1.0f;
+        for (int offset = 3; offset <= longLength; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const Rect2Df caret = edit->GetCaretRectForTest();
+            if (firstTop < 0.0f) firstTop = caret.y;
+            if (std::abs(caret.y - firstTop) < 2.0f) firstLineRight = std::max(firstLineRight, caret.x);
+            else if (caret.y > firstTop + 60.0f) laterRight = std::max(laterRight, caret.x);
+        }
+        TEST("Beside a short frame only its own lines are narrowed: first line to " + std::to_string(firstLineRight)
+             + ", later lines to " + std::to_string(laterRight),
+             firstLineRight < 380.0f && laterRight > 600.0f);
+        // A click on a later line lands in the text below the frame.
+        editor.SetCaret(RichDocPosition(0, longLength));
+        window->UpdateAndRender();
+        const Rect2Df end = edit->GetCaretRectForTest();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, static_cast<int>(end.x) - 1, static_cast<int>(end.y + end.height / 2)));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, static_cast<int>(end.x) - 1, static_cast<int>(end.y + end.height / 2)));
+        window->UpdateAndRender();
+        TEST("...and clicks there land in it", editor.GetCaret().blockIndex == 0
+             && editor.GetCaret().byteOffset > longLength - 8);
+
+        // A top-and-bottom picture set lower down in its paragraph: the lines
+        // above it stay above, the rest go on below it.
+        RichTextRun picture;
+        picture.text = RichTextRun::kObjectReplacement;
+        picture.mediaIndex = document->AddMedia("dot.png", "image/png", kDotPng);
+        picture.imageWidthPt = 60.0f;
+        picture.imageHeightPt = 60.0f;                 // 80 px
+        picture.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+        picture.imageFloatAlign = RichTextAlign::Right;
+        picture.imageOffsetYPt = 40.0f;                // 53 px down: two lines fit above
+        RichDocBlock withPicture;
+        withPicture.runs = {picture, longWords};
+        document->blocks = {withPicture};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 4));
+        window->UpdateAndRender();
+        const float startY = edit->GetCaretRectForTest().y;
+        float largestGap = 0.0f, previous = startY;
+        for (int offset = 4; offset <= longLength; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const float y = edit->GetCaretRectForTest().y;
+            largestGap = std::max(largestGap, y - previous);
+            previous = y;
+        }
+        TEST("Text starts above a picture set lower in its paragraph and goes on below it: first line at "
+             + std::to_string(startY) + ", gap " + std::to_string(largestGap),
+             startY < 40.0f && largestGap > 80.0f);
+    }
+
+    // ===== FRAMES IN THE HEADER =====
+    std::cerr << "\n--- Frames in the header ---" << std::endl;
+    {
+        // A letterhead: the sender block is a frame in the header, placed
+        // from the page beside the top of the body; the body wraps round it.
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame sender;
+        RichDocBlock senderLine;
+        RichTextRun senderText;
+        senderText.text = "Sender";
+        senderLine.runs = {senderText};
+        sender.blocks = {senderLine};
+        document->frames.push_back(sender);
+        RichTextRun box;
+        box.text = RichTextRun::kObjectReplacement;
+        box.frameIndex = 0;
+        box.imageWidthPt = 150.0f;
+        box.imageHeightPt = 150.0f;
+        box.imageWrap = RichTextRun::ImageWrap::Square;
+        box.imageFloatAlign = RichTextAlign::Default;
+        box.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+        box.floatVerticalFrom = RichTextRun::FloatOrigin::Page;
+        box.imageOffsetXPt = 380.0f;
+        box.imageOffsetYPt = 56.7f;                    // the body's top (2 cm margins)
+        RichDocBlock headerParagraph;
+        headerParagraph.runs = {box};
+        document->pageFurniture.header = {headerParagraph};
+        RichDocBlock paragraph;
+        RichTextRun words;
+        for (int i = 0; i < 200; i++) words.text += "word" + std::to_string(i) + " ";
+        paragraph.runs = {words};
+        document->blocks = {paragraph};
+        edit->SetDocument(document);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float besideRight = 0.0f, belowRight = 0.0f, firstTop = -1.0f;
+        const int length = static_cast<int>(editor.BlockText(0).size());
+        for (int offset = 3; offset <= length; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const Rect2Df caret = edit->GetCaretRectForTest();
+            if (firstTop < 0.0f) firstTop = caret.y;
+            if (caret.y < firstTop + 150.0f) besideRight = std::max(besideRight, caret.x);
+            else if (caret.y > firstTop + 230.0f && caret.y < 540.0f) belowRight = std::max(belowRight, caret.x);
+        }
+        TEST("The body wraps round a frame in the header: beside it to " + std::to_string(besideRight)
+             + ", below it to " + std::to_string(belowRight),
+             besideRight > 200.0f && besideRight < 500.0f && belowRight > 600.0f);
+        edit->SetPageView(false);
+    }
+
     // ===== BLOCKS RUNNING OVER PAGES =====
     std::cerr << "\n--- Page splitting ---" << std::endl;
     {
@@ -1148,6 +1310,20 @@ int main() {
         window->UpdateAndRender();
         window->UpdateAndRender();
         TEST("...and not when it fits", edit->GetHorizontalScrollOffset() == 0.0f);
+
+        // Fitting zooms follow the element's size.
+        edit->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);
+        window->UpdateAndRender();
+        const float wholePage = edit->GetZoom();
+        TEST("Whole page fits an A4 page into the view: " + std::to_string(wholePage),
+             wholePage > 0.3f && wholePage < 0.55f);
+        edit->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::PageWidth);
+        window->UpdateAndRender();
+        const float pageWidth = edit->GetZoom();
+        TEST("Page width fills the width: " + std::to_string(pageWidth), pageWidth > wholePage && pageWidth < 1.0f);
+        TEST("...with no sideways scrolling", edit->GetHorizontalScrollOffset() == 0.0f);
+        edit->SetZoom(1.0f);
+        TEST("A chosen zoom ends the fitting one", edit->GetZoomFit() == UltraCanvasRichTextEdit::ZoomFit::Off);
         edit->SetPageView(false);
         edit->SetZoom(1.0f);
         window->UpdateAndRender();

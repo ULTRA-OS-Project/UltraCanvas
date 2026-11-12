@@ -38,6 +38,69 @@ between cloud and local models without rebuilding apps.
 Each interface ships with a programmable mock adapter so apps and
 tests run without any network or external model.
 
+On top of them, **agents** (`UltraAIAgent.h`, `UltraAI::Agent`): a model
+that uses the application's tools until the task is done. Register C++
+functions as tools, call `Run`, and the agent runs the model ↔ tool loop,
+with permission hooks, streaming progress events, turn limits,
+cancellation, conversations that carry over and subagents. It works over
+every `ITextLLM` provider. See
+[`../Docs/Modules/UltraAI/Agents.md`](../Docs/Modules/UltraAI/Agents.md).
+
+And **batches** (`UltraAIBatch.h`, `ITextBatch`): many chat requests sent
+as one job and answered later, at about half the price, through
+Anthropic's Message Batches and OpenAI's Batch API. Every other provider
+gets the same interface over one request at a time. See
+[`../Docs/Modules/UltraAI/Batches.md`](../Docs/Modules/UltraAI/Batches.md).
+
+### Text recognition for UltraCanvas applications
+
+`UltraAI::RegisterUltraAITextRecognition()` (`ui/include/UltraAITextRecognition.h`,
+in `UltraAI_UI`) puts UltraAI in front of UltraCanvas's text recognizer: when a
+vision provider on the default route - the one chosen for `"visionanalyzer"`,
+then the providers on this computer, a cloud one only when chosen or allowed,
+never `mock` - declares `VisionTask::Ocr` on one of its models, it reads the
+words in pictures and scanned PDF pages (`UltraCanvasFileLoader::ExtractText`)
+instead of the OCR plugin's Tesseract. With no such provider, or when it
+fails, the recognizer installed before it reads the picture, so register the
+framework's first. `FindOcrProvider` says which provider would read now, and
+`LastTextRecognitionProvider` which one read the last picture. UltraClipboard's
+*Extract text* uses it.
+
+The one vision provider that reads text today is `anthropic`
+(`CreateAnthropicVisionAnalyzer`, `adapters/anthropic`): OCR through Claude
+(`claude-opus-5-5` by default, low effort, the transcription as structured
+output, server-side refusal fallbacks on). It is a cloud provider, so the
+default route uses it only once chosen - `ULTRAAI_DEFAULT_VISIONANALYZER=anthropic`,
+`SetDefaultProvider("visionanalyzer", "anthropic")` or the dashboard's
+settings - with its key in UltraVault under `ai.anthropic.api_key` (or in the
+config). Pictures over 3.75 MB of PNG are halved until they fit.
+
+### Speech to text for UltraCanvas applications
+
+`UltraAI::RegisterUltraAISpeechTranscription()`
+(`ui/include/UltraAISpeechTranscription.h`, in `UltraAI_UI`) makes UltraAI
+`UltraCanvasFileLoader`'s speech transcriber: the words spoken in a sound file
+or a video come from the first speech-to-text provider on the default route
+(the one chosen for `"speechtotext"`, then the ones on this computer, a cloud
+one only when chosen or allowed, never `mock`). A sound file of a type the
+provider takes, within its size limit, goes as it is; anything else - every
+video, another type, a file over the limit - has its sound track taken out
+first with VideoFX as a mono 16 kHz MP3 at 64 kbit/s (about 50 minutes in
+25 MB). Without a provider the transcriber installed before it, if any,
+transcribes. `FindSpeechProvider` and `LastSpeechTranscriptionProvider` say
+which. UltraClipboard's *Extract text* uses it for copied recordings and
+videos.
+
+The provider that transcribes today is `openai` (`CreateOpenAISpeechToText`,
+`adapters/openai`): the audio API (`/v1/audio/transcriptions`, multipart),
+`gpt-4o-transcribe` by default, `whisper-1` for timestamps and translation,
+25 MB per file. It is a cloud provider, used once chosen -
+`ULTRAAI_DEFAULT_SPEECHTOTEXT=openai` or `SetDefaultProvider("speechtotext",
+"openai")` - with its key in UltraVault under `ai.openai.api_key`. A custom
+`baseUrl` points it at a self-hosted OpenAI-compatible whisper server
+(speaches, faster-whisper-server, LocalAI) instead: keyless, `whisper-1` by
+default, nothing leaves the network.
+
 ---
 
 ## Adapters
@@ -45,8 +108,8 @@ tests run without any network or external model.
 | Adapter | Capabilities | Where the model runs | CMake option |
 |---|---|---|---|
 | `mock` | all ten | in-process | `ULTRAAI_ADAPTER_MOCK` (ON) |
-| `anthropic` | `ITextLLM` | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
-| `openai` | `ITextLLM`, `IEmbeddings` | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
+| `anthropic` | `ITextLLM`, `ITextBatch`, `IVisionAnalyzer` (OCR) | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
+| `openai` | `ITextLLM`, `IEmbeddings`, `ITextBatch` (hosted API), `ISpeechToText` (audio API) | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
@@ -105,10 +168,12 @@ UltraAI/
 │   ├── UltraAITextLLMTranslator.h # ITranslator served by any ITextLLM
 │   ├── UltraAIVideoGen.h
 │   ├── UltraAIMusicGen.h
-│   └── UltraAICodeAssist.h
+│   ├── UltraAICodeAssist.h
+│   ├── UltraAIAgent.h             # the agent loop over any ITextLLM (tools, hooks, events)
+│   └── UltraAIBatch.h             # batches: native (anthropic, openai) or one at a time
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
-├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer and speech transcriber (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -187,11 +252,11 @@ cmake -S UltraAI -B build \
 | 10 capability interfaces | Complete |
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
-| Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay) | Complete |
+| Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay, same-role turn merge) | Complete |
 | Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
-| OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server) | Complete |
+| OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server, LocalAI; two user or two assistant turns in a row are sent as one message, since a self-hosted chat template may demand alternating roles) | Complete |
 | Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > mock, with constructibility fallback; cloud providers only when named or when cloud fallback is allowed via `SetCloudFallbackAllowed` / `ULTRAAI_ALLOW_CLOUD_FALLBACK`) | Complete |
-| llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
+| llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; two user or two assistant turns in a row reach the chat template as one message; opt-in) | Complete (v0.1 — no tool calls yet) |
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
@@ -199,7 +264,9 @@ cmake -S UltraAI -B build \
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
-| Unit tests | Complete (13 executables, all passing) |
+| Agents (`UltraAIAgent.h`: the model ↔ tool loop over any `ITextLLM`; tools as C++ handlers with `ToolArguments`, permission and after-call hooks, progress events, streaming, turn limits, cancellation, `RunAsync`, conversations, subagents) | Complete (v0.1 — tools run one at a time; no built-in tools) |
+| Batches (`UltraAIBatch.h`: `ITextBatch` submit / get / cancel / results, `RunBatch`; Anthropic Message Batches, OpenAI Batch API, one-at-a-time fallback for every other provider) | Complete (v0.1 — chat requests only) |
+| Unit tests | Complete (15 executables, all passing) |
 | UltraVault credential lookup | Live — `apiKeyVaultRef` resolves through the UltraVault module (memory + encrypted-file backends; on by default in-tree) |
 
 ---
@@ -211,6 +278,10 @@ cmake -S UltraAI -B build \
   threading model, adapter checklist.
 * [`Docs/UltraVault.md`](Docs/UltraVault.md) —
   credential-storage architecture comparison and recommendation.
+* [`../Docs/Modules/UltraAI/Agents.md`](../Docs/Modules/UltraAI/Agents.md) —
+  agents: the tool loop, options, hooks, events, cancellation, subagents.
+* [`../Docs/Modules/UltraAI/Batches.md`](../Docs/Modules/UltraAI/Batches.md) —
+  batches: native and fallback providers, `RunBatch`, results.
 * [`../Docs/Modules/UltraAI/LocalRuntime.md`](../Docs/Modules/UltraAI/LocalRuntime.md) —
   the local runtime as built: the gallery and catalogue formats, storage,
   settings, the engine's command line, the `local` provider, testing.

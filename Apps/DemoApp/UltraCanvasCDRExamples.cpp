@@ -53,12 +53,12 @@ namespace UltraCanvas {
         VectorConverter::CDRConverter reader;
         auto document = reader.Import(cdrFile, options);
         if (!document) {
-            result.error = firstWarning.empty() ? "could not read " + cdrFile : firstWarning;
+            result.error = firstWarning.empty() ? TrF("could not read {0}", cdrFile) : firstWarning;
             return result;
         }
         VectorConverter::XARConverter writer;
         if (!writer.Export(*document, xarPath, options)) {
-            result.error = firstWarning.empty() ? "could not write " + xarPath : firstWarning;
+            result.error = firstWarning.empty() ? TrF("could not write {0}", xarPath) : firstWarning;
             return result;
         }
         result.success = true;
@@ -79,11 +79,11 @@ namespace UltraCanvas {
             const std::string& cdrFile,
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
         auto btn = std::make_shared<UltraCanvasButton>(id, x, y, w, h);
-        btn->SetText("Save as");
+        btn->SetText(Tr("Save as"));
         btn->SetFontSize(10);
         btn->onClick = [cdrElement, cdrFile, statusLabel]() {
             if (!cdrElement->IsLoaded()) {
-                statusLabel->SetText("Nothing to save: " + cdrFile + " is not loaded.");
+                statusLabel->SetText(TrF("Nothing to save: {0} is not loaded.", cdrFile));
                 return;
             }
 
@@ -95,10 +95,10 @@ namespace UltraCanvas {
             if (dot != std::string::npos) stem = stem.substr(0, dot);
 
             FileDialogOptions opts;
-            opts.title = "Save " + stem + " as SVG or XAR";
+            opts.title = TrF("Save {0} as SVG or XAR", stem);
             opts.defaultFileName = stem + ".svg";
-            opts.AddFilter("SVG vector graphics", "svg");
-            opts.AddFilter("Xara drawing (first page)", "xar");
+            opts.AddFilter(Tr("SVG vector graphics"), "svg");
+            opts.AddFilter(Tr("Xara drawing (first page)"), "xar");
 
             const int page = cdrElement->GetCurrentPage();
             UltraCanvasFileLoader::SaveFileDialog(opts,
@@ -118,10 +118,9 @@ namespace UltraCanvas {
                         for (const auto& f : r.writtenFiles) {
                             files += (files.empty() ? "" : ", ") + f;
                         }
-                        statusLabel->SetText("Saved page " + std::to_string(xar ? 1 : page + 1) +
-                                             " of " + cdrFile + " to " + files);
+                        statusLabel->SetText(TrF("Saved page {0} of {1} to {2}", xar ? 1 : page + 1, cdrFile, files));
                     } else {
-                        statusLabel->SetText("Save failed: " + r.error);
+                        statusLabel->SetText(TrF("Save failed: {0}", r.error));
                     }
                 });
         };
@@ -132,35 +131,38 @@ namespace UltraCanvas {
     namespace {
         // The drawings shipped under media/vector/CDR, one tab each. No
         // .cmx / .ccx / .cdt sample ships yet, though the plugin reads those too.
+        // Built when the page is, so the descriptions are in the current language.
         struct CDRSample {
             const char* file;
-            const char* about;
+            std::string about;
         };
-        const CDRSample kCDRSamples[] = {
-            {"detailed.cdr",
-             "3.3 MB, one 614 x 384 pt page: 67 draw calls, but 10 gradients and 6 embedded "
-             "bitmaps - the fill and image paths, and the one worth zooming into. The slowest of "
-             "the three to read: every pixel of its bitmaps is colour-converted."},
-            {"door-panel.cdr",
-             "237 KB, one Letter page, 400 draw calls of flat-filled line work: no gradients, "
-             "no bitmaps."},
-            {"dubai-atlantis.cdr",
-             "97 KB, one Letter page and the busiest of the three at 725 draw calls."},
-        };
+        std::vector<CDRSample> CDRSamples() {
+            return {
+                {"detailed.cdr",
+                 Tr("3.3 MB, one 614 x 384 pt page: 67 draw calls, but 10 gradients and 6 embedded "
+                 "bitmaps - the fill and image paths, and the one worth zooming into. The slowest of "
+                 "the three to read: every pixel of its bitmaps is colour-converted.")},
+                {"door-panel.cdr",
+                 Tr("237 KB, one Letter page, 400 draw calls of flat-filled line work: no gradients, "
+                 "no bitmaps.")},
+                {"dubai-atlantis.cdr",
+                 Tr("97 KB, one Letter page and the busiest of the three at 725 draw calls.")},
+            };
+        }
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCDRVectorExamples() {
         auto page = DemoKit::CreatePage("CDRExamples",
-                "CorelDRAW CDR Graphics Demo",
-                "One drawing at a time: pick a file on the left. A drawing is read the first time "
+                Tr("CorelDRAW CDR Graphics Demo"),
+                Tr("One drawing at a time: pick a file on the left. A drawing is read the first time "
                 "its tab is shown, on a worker thread, so the window stays responsive meanwhile. "
                 "A click on the drawing opens it in the media viewer; \"Save as\" exports the shown "
-                "page to SVG, or the first page to XAR. Supports CDR, CMX, CCX, CDT.");
+                "page to SVG, or the first page to XAR. Supports CDR, CMX, CCX, CDT."));
         // The tabs take the height left under the texts.
         page->SetFillsArea(true);
 
         // Status line for feedback; it goes in at the bottom of the page.
-        auto statusLabel = DemoKit::CreateText("CDRStatus", "Ready.");
+        auto statusLabel = DemoKit::CreateText("CDRStatus", Tr("Ready."));
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
         statusLabel->SetPadding(6);
@@ -175,7 +177,7 @@ namespace UltraCanvas {
         // at the end has nothing to load.
         auto starters = std::make_shared<std::vector<std::function<void()>>>();
 
-        for (const CDRSample& sample : kCDRSamples) {
+        for (const CDRSample& sample : CDRSamples()) {
             const std::string fileName = sample.file;
             const std::string id = "CDR_" + fileName.substr(0, fileName.find('.'));
             const std::string path = NormalizePath(GetResourcesDir() + "media/vector/CDR/" + fileName);
@@ -202,7 +204,7 @@ namespace UltraCanvas {
             };
 
             // Page navigation. The label doubles as the page indicator.
-            auto pageLabel = DemoKit::CreateCaption(id + "PageNo", "-/-");
+            auto pageLabel = DemoKit::CreateCaption(id + "PageNo", Tr("-/-"));
             pageLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
             pageLabel->SetTextColor(DemoKit::BodyText());
             // The page arrows are icons, not "◀" / "▶" glyphs, which the
@@ -213,7 +215,7 @@ namespace UltraCanvas {
                 }
             });
             SetFlatButtonIcon(prev, "menu/chevron-left.svg", ButtonIconPosition::Center, 14);
-            prev.SetTooltip("Previous page");
+            prev.SetTooltip(Tr("Previous page"));
             DemoKit::Add(controls, pageLabel);
             UltraCanvasButton& next = makeButton("Next", 26, "", [element]() {
                 if (element->IsLoaded() &&
@@ -222,26 +224,26 @@ namespace UltraCanvas {
                 }
             });
             SetFlatButtonIcon(next, "menu/chevron-right.svg", ButtonIconPosition::Center, 14);
-            next.SetTooltip("Next page");
+            next.SetTooltip(Tr("Next page"));
 
             // Zoom / fit.
             makeButton("ZoomOut", 28, "\xE2\x88\x92", [element]() {  // U+2212
                 element->SetFitMode(CDRFitMode::FitNone);
                 element->SetZoom(element->GetZoom() / 1.25f);
-            }).SetTooltip("Zoom out");
+            }).SetTooltip(Tr("Zoom out"));
             makeButton("ZoomIn", 28, "+", [element]() {
                 element->SetFitMode(CDRFitMode::FitNone);
                 element->SetZoom(element->GetZoom() * 1.25f);
-            }).SetTooltip("Zoom in");
-            makeButton("Fit", 40, "Fit", [element]() {
+            }).SetTooltip(Tr("Zoom in"));
+            makeButton("Fit", 40, Tr("Fit"), [element]() {
                 element->SetFitMode(CDRFitMode::FitPage);
-            }).SetTooltip("Fit the page into the view");
+            }).SetTooltip(Tr("Fit the page into the view"));
 
             DemoKit::Add(controls, MakeCDRSaveAsButton(id + "Save", 0, 0, 64, 26,
                                                        element, path, statusLabel));
-            makeButton("Open", 120, "Open in viewer", [path, statusLabel]() {
+            makeButton("Open", 120, Tr("Open in viewer"), [path, statusLabel]() {
                 ShowInMediaViewer(path);
-                statusLabel->SetText("Opened in the media viewer: " + path);
+                statusLabel->SetText(TrF("Opened in the media viewer: {0}", path));
             });
 
             // ----- the drawing, or what stands in for it while it is read -----
@@ -253,7 +255,7 @@ namespace UltraCanvas {
 
             element->SetVisible(false);
             element->SetMouseCursor(UCMouseCursor::Hand);
-            element->SetTooltip("Click to open in the media viewer");
+            element->SetTooltip(Tr("Click to open in the media viewer"));
             DemoKit::Add(view, element, 1);
             element->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
@@ -264,7 +266,7 @@ namespace UltraCanvas {
             DemoKit::Add(view, loadingPane, 1);
             auto busy = CreateBusyIndicator(id + "Busy", 0, 0, 48.0f);
             loadingPane->AddChild(busy);
-            auto loadingText = DemoKit::CreateCaption(id + "LoadingText", "Reading " + fileName + "\xE2\x80\xA6");
+            auto loadingText = DemoKit::CreateCaption(id + "LoadingText", TrF("Reading {0}\xE2\x80\xA6", fileName));
             loadingText->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
             DemoKit::Add(loadingPane, loadingText);
 
@@ -288,20 +290,21 @@ namespace UltraCanvas {
                 pageNo->SetText("1/" + std::to_string(el->GetPageCount()));
                 const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - *started).count();
-                statusLabel->SetText("Loaded " + path + " (" + std::to_string(el->GetPageCount()) +
-                                     (el->GetPageCount() == 1 ? " page" : " pages") + ") in " +
-                                     std::to_string(ms) + " ms");
+                statusLabel->SetText(LocalisationDetail::Substitute(
+                        TrN("Loaded {0} ({n} page) in {1} ms", "Loaded {0} ({n} pages) in {1} ms",
+                            el->GetPageCount()),
+                        {path, std::to_string(ms)}));
             };
             element->onLoadError = [ring, waiting, statusLabel](const std::string& error) {
                 ring->Stop();
                 waiting->SetText(error);
                 waiting->SetTextColor(Color(170, 40, 40, 255));
-                statusLabel->SetText("Failed: " + error);
+                statusLabel->SetText(TrF("Failed: {0}", error));
             };
             element->SetEventCallback([statusLabel, path](const UCEvent& event) {
                 if (event.type != UCEventType::MouseUp) return false;
                 ShowInMediaViewer(path);
-                statusLabel->SetText("Opened in the media viewer: " + path);
+                statusLabel->SetText(TrF("Opened in the media viewer: {0}", path));
                 return true;
             });
 
@@ -311,7 +314,7 @@ namespace UltraCanvas {
                 loaded = true;
                 *started = std::chrono::steady_clock::now();
                 busy->Start();
-                statusLabel->SetText("Reading " + path + "\xE2\x80\xA6");
+                statusLabel->SetText(TrF("Reading {0}\xE2\x80\xA6", path));
                 element->LoadFromFileAsync(path);
             });
 
@@ -323,24 +326,24 @@ namespace UltraCanvas {
             auto about = DemoKit::CreateColumn("CDRAboutPage", 10);
             about->SetPadding(10, 12, 10, 12);
             about->SetBackgroundColor(Colors::White);
-            DemoKit::AddHeading(about, "CDRAboutHeading", "CDR Plugin Features");
+            DemoKit::AddHeading(about, "CDRAboutHeading", Tr("CDR Plugin Features"));
             DemoKit::Add(about, DemoKit::CreateBullets("CDRAboutText", {
-                    "CorelDRAW CDR format",
-                    "Corel Presentation Exchange CMX",
-                    "Multi-page document support",
-                    "Vector paths and shapes",
-                    "Text with styling",
-                    "Transformations (rotate, scale)",
-                    "Groups and layers",
-                    "Stroke and fill styles, gradients, embedded bitmaps",
-                    "Zoom and pan controls",
-                    "Fit modes (page, width, height)",
-                    "Save as SVG, and as XAR through the Vector plugin",
-                    "LoadFromFileAsync: a drawing read on a worker thread"}));
+                    Tr("CorelDRAW CDR format"),
+                    Tr("Corel Presentation Exchange CMX"),
+                    Tr("Multi-page document support"),
+                    Tr("Vector paths and shapes"),
+                    Tr("Text with styling"),
+                    Tr("Transformations (rotate, scale)"),
+                    Tr("Groups and layers"),
+                    Tr("Stroke and fill styles, gradients, embedded bitmaps"),
+                    Tr("Zoom and pan controls"),
+                    Tr("Fit modes (page, width, height)"),
+                    Tr("Save as SVG, and as XAR through the Vector plugin"),
+                    Tr("LoadFromFileAsync: a drawing read on a worker thread")}));
             DemoKit::AddCaption(about, "CDRAboutLib",
-                    "Uses libcdr for parsing (UltraCanvas/third_party/libcdr, patched).");
+                    Tr("Uses libcdr for parsing (UltraCanvas/third_party/libcdr, patched)."));
             starters->push_back([]() {});
-            tabs->AddTab("About the plugin", about);
+            tabs->AddTab(Tr("About the plugin"), about);
         }
 
         tabs->onTabChange = [starters](int, int index) {

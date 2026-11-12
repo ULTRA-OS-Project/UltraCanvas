@@ -20,6 +20,7 @@
 // left to the end of the clip before it (or to 0); Shift+click moves every
 // clip after the gap with it. Both are reported as one Move change.
 //
+// Version: 1.7.0 - FromTheme takes the theme's families; the SetStyle rule and the constructor tail
 // Version: 1.6.0 - MakeVideoTimelineDescriptor / RegisterVideoTimelineElement: the element in
 //                  the element registry as "video-timeline", bundled or as a runtime module
 // Version: 1.5.0 - filmstrips cover the whole clip at any zoom (time-aligned slots, only those in view)
@@ -28,7 +29,7 @@
 // Version: 1.2.0 - SetDropTargetClip: the clip an application-carried drop (an effect) would land on
 // Version: 1.1.0 - ApplyTheme
 // Version: 1.0.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 

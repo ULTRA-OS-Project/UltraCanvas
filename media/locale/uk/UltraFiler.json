@@ -35,11 +35,6 @@
   "an entry": "елемента",
   "An upload is still running — quit anyway?": "Вивантаження ще триває — все одно вийти?",
   "An upload is still waiting — quit anyway?": "Вивантаження ще чекає в черзі — все одно вийти?",
-  "and {n} more": {
-    "one": "і ще {n}",
-    "few": "і ще {n}",
-    "many": "і ще {n}"
-  },
   "Any other file, when this system has a program registered for that kind of file:": "Будь-який інший файл, якщо в системі для цього типу файлів зареєстровано програму:",
   "Applied to {n} item.": {
     "one": "Застосовано до {n} елемента.",
@@ -265,6 +260,7 @@
   "Open prompt": "Відкрити командний рядок",
   "Opening files": "Відкриття файлів",
   "Opening {0} - {1}": "Відкриття {0} — {1}",
+  "Order by": "Сортувати за",
   "Order pinned": "Порядок закріплення",
   "Own patterns - type one and press Enter:": "Власні шаблони — введіть шаблон і натисніть Enter:",
   "Path to the application": "Шлях до застосунку",
@@ -477,11 +473,6 @@
     "one": "{n} значок",
     "few": "{n} значки",
     "many": "{n} значків"
-  },
-  "{n} line": {
-    "one": "{n} рядок",
-    "few": "{n} рядки",
-    "many": "{n} рядків"
   },
   "{n} result": {
     "one": "{n} результат",

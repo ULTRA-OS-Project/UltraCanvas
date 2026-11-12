@@ -1,7 +1,7 @@
 // UltraCanvasCheckbox.cpp
 // Checkbox indicator rendering and three-state toggle logic.
 // Version: 2.1.0
-// Last Modified: 2026-06-02
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCheckbox.h"
@@ -11,7 +11,9 @@ namespace UltraCanvas {
     UltraCanvasCheckbox::UltraCanvasCheckbox(const std::string& identifier,
                                              float x, float y, float w, float h,
                                              const std::string& labelText)
-            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {
+        ApplyThemeIfFollowing();
+    }
 
     void UltraCanvasCheckbox::Toggle() {
         switch (checkState) {
@@ -149,6 +151,24 @@ namespace UltraCanvas {
         // A zero w/h leaves that axis size = Auto (the ctor only stamps Px when
         // > 0), so it content-sizes; a non-zero axis stays an explicit size.
         return cb;
+    }
+
+// ===== THE THEME =====
+    CheckboxVisualStyle CheckboxVisualStyle::FromTheme(const UltraCanvasTheme& theme, const CheckboxVisualStyle& base) {
+        CheckboxVisualStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.base = LabeledToggleVisualStyle::FromTheme(theme, base.base);
+        s.boxColor = r.well;
+        s.boxBorderColor = r.lineStrong;
+        s.boxHoverColor = r.hover;
+        s.boxPressedColor = r.pressed;
+        s.boxDisabledColor = r.panel;
+        s.boxBorderDisabledColor = r.line;
+        // the element's own role, for a design whose mark is not the accent
+        s.checkmarkColor = theme.Role("checkbox.mark", r.accent);
+        s.checkmarkHoverColor = s.checkmarkColor;
+        s.checkmarkDisabledColor = r.inkFaint;
+        return s;
     }
 
 } // namespace UltraCanvas

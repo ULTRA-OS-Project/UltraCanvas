@@ -1,3 +1,89 @@
+#### 2026-11-12 *0.1.14*
+- Every text of the window goes through `Tr`
+  (`media/locale/<lang>/UltraStoreAdmin.json`), sentences with values as
+  `TrF`, so the admin backend shows in the desktop's language once a
+  catalogue has them.
+
+#### 2026-11-12 *0.1.13*
+- **The marketplace call speaks PUT.** `Market.h`'s HTTP call (shared with
+  the operator's client, `Apps/UltraStoreOperator`) sends a PUT with a
+  JSON body the way it sends a POST; nothing the merchant backend does
+  changes.
+
+#### 2026-11-12 *0.1.12*
+- `publish` writes the marketplace service's URL (the setting
+  `market.url`) into the catalog as `market_url`, so a store reading a
+  merchant's own catalog can report a problem to the operator too.
+
+#### 2026-11-12 *0.1.11*
+- **The marketplace.** The merchant's side of the operator's marketplace
+  service (`Market.h`; `Server/UltraStoreMarket`): `market submit <app-id>`
+  sends a release to the review, the app's component object signed with
+  this backend's key, every request signed the way the service verifies
+  it; `market notices` and `ack`, `market terms` and `terms accept`,
+  `market standing`, `market submissions`, `withdraw`, `market reports`.
+  The settings `market.url`, `market.merchant_id` and `market.key`. The
+  window's *Marketplace* page does the same, and the operator's
+  unacknowledged notices show as a banner above every page until
+  acknowledged.
+
+#### 2026-11-12 *0.1.10*
+- **`sale sync` records a subscription's renewals.** The payment service
+  names each payment (`reference`: the order for the sale, the order and
+  the payment for a renewal), and the sync records a renewal as a sale of
+  its own with the partner's credit, instead of skipping it as the order
+  already recorded.
+
+#### 2026-11-11 *0.1.9*
+- **Categories from the store's fixed list.** The form offers the store's
+  categories as chips to pick (Music and audio, Video, Graphics and photos,
+  Office, ...) instead of free words typed into a field, and
+  `PutComponent` and `app set <id> categories` refuse a word that is not on
+  the list, naming the list - the store names each category in the buyer's
+  language, which it cannot do for a word it does not know. A component
+  saved before keeps loading; its old words are not offered and a save keeps
+  only the list's.
+
+#### 2026-11-11 *0.1.8*
+- **The join and retired pages in the page frame.** The partner join page
+  and the pages a withdrawn code or a closed invitation leave behind wear
+  the frame the code landing page and the payment service's pages have
+  (`PageFrame.h`): the ULTRA OS mark, the store's colours, a dark look where
+  the browser asks for one, instead of their own plain stylesheet.
+
+#### 2026-11-11 *0.1.7*
+- **Featured.** An app can be marked as featured - the form's checkbox, or
+  `app set <id> featured true` - and the catalog carries it as `featured`:
+  the store shows the newest featured app as its Discover hero and the
+  featured apps as *Editor's picks*.
+- **The join QR code's link opened nothing.** `publish` now writes a page
+  per partner as `join/<affiliate>/index.html`, behind
+  `<catalog base>/join/<affiliate>`: who invites, what a partner earns, the
+  recruiter's contact when they gave one, the partner id to name when
+  signing up so the recruiter is credited, and the store's contact to sign
+  up with - the new setting `store.contact`, on the Settings page and
+  `settings set store.contact <address>`.
+- **A stale page no longer outlives its code or partner.** The uploader
+  never deletes on the server, so a page once published stayed reachable
+  after its code was switched off or its partner left. `admin.sqlite` now
+  remembers every page ever published (`published_pages`, schema 4), and
+  each publish writes one for every entry: a code out of the catalog, a
+  partner switched off, and a code or a partner removed outright get a
+  page that says so (*no longer valid*, *this invitation is closed*),
+  which the next upload puts in place of the old one. The publish report,
+  in the window and on the command line, counts the code pages, the join
+  pages and these retired pages.
+- **The shop design's look.** The window wears the store's tokens - a
+  white ground, ink text, the UltraStore blue as the one accent, Manrope
+  headings over Inter, rounded surfaces, pill buttons - at the denser
+  sizes its forms need (`AdminTheme.h`).
+
+#### 2026-11-10 *0.1.6*
+- **The partner landing pages** (`go/<CODE>/`) have the look of the
+  payment service's pages: the same stylesheet, the ULTRA OS mark at the
+  top, a dark look where the browser asks for one. Publish copies the mark
+  from the framework's media folder into the publish folder's `media/`.
+
 #### 2026-11-01 *0.1.5*
 - **A code's QR link opened nothing.** The QR code and `code link` give
   `<catalog base>/go/<CODE>`, but `publish` wrote the landing page as
