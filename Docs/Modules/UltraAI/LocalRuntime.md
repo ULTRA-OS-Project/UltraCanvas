@@ -135,6 +135,36 @@ speech models are offered there.
 
 ---
 
+### Engines built here
+
+Where upstream publishes no build, this repository makes one:
+`.github/workflows/whisper-server.yml` builds whisper.cpp's server at a
+release tag for macOS on Apple silicon (Metal, the library embedded) and on
+Intel (CPU), both for macOS 13.3 and later and signed ad hoc; Windows on ARM
+(CPU and Vulkan, with clang-cl, as ggml refuses MSVC on ARM); and Vulkan
+builds for Windows x64 and Linux x64 and arm64 (glibc 2.39 and the system's
+Vulkan loader). Each is linked statically against whisper.cpp and ggml (and
+the C runtime on Windows), and each archive holds the executable,
+whisper.cpp's `LICENSE` and a `BUILD.txt` naming the commit, the CMake
+arguments and the run.
+
+Every build but Windows Vulkan (a hosted Windows runner has no Vulkan
+loader) is started with the runtime's own command line and must transcribe
+whisper.cpp's `samples/jfk.wav` sent to `/v1/audio/transcriptions` with the
+tiny model; Linux Vulkan runs on Mesa's software device. A pull request that
+changes the workflow or `scripts/whisper_gallery_entries.py` runs every build
+and test without publishing.
+
+To publish: Actions → *whisper-server* → *Run workflow* with the
+whisper.cpp tag and a revision (`r1`, then `r2` for every rebuild of the same
+tag - a published release is never replaced, because the gallery pins its
+hashes). The release `whisper-server-<tag>-<revision>` of this repository,
+not marked *latest*, carries the archives, `SHA256SUMS` and
+`whisper-server.gallery.json`: the bundle entries to add to the
+`whisper-server` engine in `LocalRuntimeBuiltinData.cpp` and to the model
+server's seed (`Server/UltraAIModelServer/ultraai_models/seed/index.json`).
+The engine's `version` stays the whisper.cpp tag.
+
 ## The gallery index
 
 `index.json`, format version 1:
@@ -378,9 +408,9 @@ LocalRuntime::Instance().SetSettings(s);
   engines are still to come.
 - `whisper-server` comes from whisper.cpp's own release archives, which
   hold CPU builds for Linux x64 and arm64 and Windows x64 only: no macOS,
-  no Windows on ARM, no GPU build. The gallery the proposal describes
-  (whisper.cpp built by our CI, Metal and Vulkan) fills those in without a
-  format change. The whisper models' hashes are taken from Hugging Face at
+  no Windows on ARM, no GPU build. The rest are built here (*Engines built
+  here*, above) and join the gallery, without a format change, once the
+  first release of them is published. The whisper models' hashes are taken from Hugging Face at
   install time; their sizes are whisper.cpp's published figures.
 - One `llama-server` process per model; the router mode (one process for
   every GGUF) and the `UltraAIHost` supervisor are phase 2. An engine
