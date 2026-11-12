@@ -1,0 +1,55 @@
+# The UltraStore marketplace service (Server/UltraStoreMarket): its tests,
+# on every change to it or to the shared database layer, on every
+# database: SQLite (tests and development), MySQL (production) and
+# PostgreSQL, the latter two as service containers.
+name: UltraStore marketplace service
+
+on:
+  push:
+    branches: [main]
+    paths: ['Server/UltraStoreMarket/**', 'Server/UltraStoreDb/**', '.github/workflows/ultrastore-market.yml']
+  pull_request:
+    paths: ['Server/UltraStoreMarket/**', 'Server/UltraStoreDb/**', '.github/workflows/ultrastore-market.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_USER: ultrastore
+          MARIADB_PASSWORD: ultrastore
+          MARIADB_DATABASE: ultrastore_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ultrastore
+          POSTGRES_PASSWORD: ultrastore
+          POSTGRES_DB: ultrastore_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ultrastore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: Server/UltraStoreMarket
+    env:
+      ULTRASTORE_MARKET_TEST_MYSQL_URL: mysql://ultrastore:ultrastore@127.0.0.1:3306/ultrastore_test
+      ULTRASTORE_MARKET_TEST_PG_URL: postgresql://ultrastore:ultrastore@127.0.0.1:5432/ultrastore_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '../UltraStoreDb[mysql,postgres]' -e '.[test,mysql,postgres]'
+      - run: python -m pytest -q

@@ -1,5 +1,5 @@
-"""The orders and the payments, on the service's database (db.py:
-PostgreSQL in production, SQLite for tests and development).
+"""The orders and the payments, on the service's database (ultrastore_db:
+MySQL or PostgreSQL in production, SQLite for tests and development).
 
 An order is one purchase: made when the store asks for a checkout, paid
 when Skrill's status report says so, and then the carrier of the licence.
@@ -9,6 +9,7 @@ and the sales and the renewals numbered again in the sequence the admin
 backend fetches (`seq`), the refunds and the chargebacks in theirs
 (`reversal_seq`).
 
+Version: 0.2.1 - on ultrastore_db, so MySQL runs it too (the key types, the upsert, the concatenation through the layer)
 Version: 0.2.0 - payments, subscriptions (cycle, paid_until, valid_until),
                  refunds and chargebacks (revoked_at), schema 2
 Version: 0.1.0
@@ -115,26 +116,28 @@ class Order:
 
 class Store:
     def __init__(self, url: str) -> None:
-        self._db = Database(url)
-        self._db.script([
-            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        db = self._db = Database(url)
+        self._key = db.ident("key")
+        tk = db.text_key
+        db.script([
+            f"CREATE TABLE IF NOT EXISTS meta ({self._key} {tk} PRIMARY KEY, value TEXT NOT NULL)",
             "CREATE TABLE IF NOT EXISTS orders ("
-            " id TEXT PRIMARY KEY, secret TEXT NOT NULL, created_at TEXT NOT NULL, app TEXT NOT NULL, app_name TEXT NOT NULL,"
+            f" id {tk} PRIMARY KEY, secret TEXT NOT NULL, created_at TEXT NOT NULL, app TEXT NOT NULL, app_name TEXT NOT NULL,"
             " amount TEXT NOT NULL, currency TEXT NOT NULL, list_price TEXT NOT NULL, code TEXT NOT NULL DEFAULT '',"
             " code_applied INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL, skrill_transaction TEXT NOT NULL DEFAULT '',"
-            " payer_email TEXT NOT NULL DEFAULT '', paid_at TEXT NOT NULL DEFAULT '', licence_id TEXT NOT NULL DEFAULT '',"
+            f" payer_email TEXT NOT NULL DEFAULT '', paid_at TEXT NOT NULL DEFAULT '', licence_id {tk} NOT NULL DEFAULT '',"
             " licence TEXT NOT NULL DEFAULT '', receipt_no INTEGER NOT NULL DEFAULT 0, notes TEXT NOT NULL DEFAULT '',"
             " seq INTEGER NOT NULL DEFAULT 0)",
-            "CREATE INDEX IF NOT EXISTS orders_seq ON orders (seq)",
             f"CREATE TABLE IF NOT EXISTS payments ("
-            f" id {self._db.serial} PRIMARY KEY, order_id TEXT NOT NULL, kind TEXT NOT NULL, skrill_transaction TEXT NOT NULL DEFAULT '',"
+            f" id {db.serial} PRIMARY KEY, order_id {tk} NOT NULL, kind TEXT NOT NULL, skrill_transaction {tk} NOT NULL DEFAULT '',"
             " amount TEXT NOT NULL, currency TEXT NOT NULL, at TEXT NOT NULL, receipt_no INTEGER NOT NULL DEFAULT 0,"
             " seq INTEGER NOT NULL DEFAULT 0, reversal_seq INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '',"
             " reverses TEXT NOT NULL DEFAULT '', revoking INTEGER NOT NULL DEFAULT 0)",
-            "CREATE INDEX IF NOT EXISTS payments_order ON payments (order_id)",
-            "CREATE INDEX IF NOT EXISTS payments_seq ON payments (seq)",
-            "CREATE INDEX IF NOT EXISTS payments_reversal_seq ON payments (reversal_seq)",
         ])
+        db.create_index("orders_seq", "orders", "seq")
+        db.create_index("payments_order", "payments", "order_id")
+        db.create_index("payments_seq", "payments", "seq")
+        db.create_index("payments_reversal_seq", "payments", "reversal_seq")
         self._upgrade()
 
     def _upgrade(self) -> None:
@@ -163,11 +166,11 @@ class Store:
 
     # ----- meta -----
     def meta(self, key: str) -> str:
-        row = self._db.fetchone("SELECT value FROM meta WHERE key = ?", (key,))
+        row = self._db.fetchone(f"SELECT value FROM meta WHERE {self._key} = ?", (key,))
         return row["value"] if row else ""
 
     def set_meta(self, key: str, value: str) -> None:
-        self._db.execute("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", (key, value))
+        self._db.execute(self._db.upsert("meta", self._key, "value"), (key, value))
 
     def _next(self, counter: str) -> int:
         """The next number of a counter kept in meta (receipt_no, sales_seq,
@@ -217,11 +220,11 @@ class Store:
 
     def set_status(self, order_id: str, status: str, *, skrill_transaction: str = "", payer_email: str = "", note: str = "") -> None:
         self._db.execute("UPDATE orders SET status = ?, skrill_transaction = COALESCE(NULLIF(?, ''), skrill_transaction),"
-                         " payer_email = COALESCE(NULLIF(?, ''), payer_email), notes = CASE WHEN ? = '' THEN notes ELSE notes || ? || ? END"
+                         f" payer_email = COALESCE(NULLIF(?, ''), payer_email), notes = CASE WHEN ? = '' THEN notes ELSE {self._db.concat('notes', '?', '?')} END"
                          " WHERE id = ?", (status, skrill_transaction, payer_email, note, note, "\n", order_id))
 
     def note(self, order_id: str, note: str) -> None:
-        self._db.execute("UPDATE orders SET notes = notes || ? || ? WHERE id = ?", (note, "\n", order_id))
+        self._db.execute(f"UPDATE orders SET notes = {self._db.concat('notes', '?', '?')} WHERE id = ?", (note, "\n", order_id))
 
     def mark_paid(self, order_id: str, *, skrill_transaction: str, payer_email: str, licence_id: str, licence: str,
                   paid_until: str = "", valid_until: str = "", rec_payment_id: str = "") -> Order:
@@ -264,7 +267,7 @@ class Store:
 
     def set_subscription(self, order_id: str, status: str, *, rec_payment_id: str = "", note: str = "") -> None:
         self._db.execute("UPDATE orders SET subscription_status = ?, rec_payment_id = COALESCE(NULLIF(?, ''), rec_payment_id),"
-                         " notes = CASE WHEN ? = '' THEN notes ELSE notes || ? || ? END WHERE id = ?",
+                         f" notes = CASE WHEN ? = '' THEN notes ELSE {self._db.concat('notes', '?', '?')} END WHERE id = ?",
                          (status, rec_payment_id, note, note, "\n", order_id))
 
     def record_reversal(self, order_id: str, kind: str, *, skrill_transaction: str, reverses: str, amount: str, currency: str, refunded: str,
