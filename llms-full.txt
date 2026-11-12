@@ -97456,8 +97456,8 @@ FILE: Docs/Modules/UltraAI/LocalRuntime.md
 
 # UltraAI Local Runtime — models on this computer, nothing to install
 
-**Version:** 0.2.0
-**Last Modified:** 2026-11-06
+**Version:** 0.3.0
+**Last Modified:** 2026-11-10
 
 ## Overview
 
@@ -97547,7 +97547,8 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 |---|---|---|
 | `policy` | `Ask` | `Never`: installs only from a settings page; `Ask`: `Ensure` installs when the caller passes `allowDownload` (the dialog's answer); `Automatic`: `Ensure` installs silently |
 | `preferredAccelerator` | `""` (Auto) | `"cpu"`, `"vulkan"`, `"metal"`, `"cuda12"`, `"rocm"` — the bundle to use when the gallery has one for this platform |
-| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` is read from beside it |
+| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` and `topics.json` are read from beside it |
+| `trustedKeys` | `[]` | Ed25519 public keys (hex) the gallery's documents must be signed with; pinned from `keys.json` on the first refresh (see *Signed galleries*) |
 | `idleMinutes` | 15 | stop an engine nobody used for this long (0 stops at the next sweep) |
 | `diskCapBytes` | 20 GB | an install that would exceed it fails with `QuotaExceeded` |
 | `startTimeoutSeconds` | 0 | how long a start may take; 0 scales it with the model's size (about 100 MB/s plus 20 s, at least 30 s) |
@@ -97647,6 +97648,40 @@ Gemma 3 4B with vision, Qwen3 Embedding 0.6B and Nomic Embed Text v1.5 for
 embeddings. Its file names and sizes were checked against the Hugging Face
 repositories on that date; the hashes are still read from the tree API at
 install time.
+
+---
+
+## Signed galleries
+
+A model server ([`Server/UltraAIModelServer`](../../../Server/UltraAIModelServer/README.md))
+signs `index.json`, `catalogue.json` and `topics.json` with its Ed25519
+key: a detached signature over the exact bytes served, 128 lower-case hex
+characters (the convention of UltraStore's `catalog.json.sig`), in the
+document's `X-UltraAI-Signature` header and as `<document>.sig` beside it.
+`keys.json` beside the index lists the keys a client may trust:
+
+```json
+{"formatVersion": 1, "algorithm": "ed25519", "keys": ["3b6a27bc..."]}
+```
+
+`RefreshGallery()`:
+
+- with `trustedKeys` empty, reads `keys.json`; when there is one, the index
+  must verify against it and its keys are pinned into the settings (trust on
+  first use, over TLS). A gallery without `keys.json` - the built-in default,
+  a plain mirror - stays unsigned and works as before;
+- with `trustedKeys` set, the index, and the catalogue and the topics when
+  they are there, must each carry a signature by one of those keys: an
+  unsigned or wrongly signed one fails the refresh with `ProviderError` /
+  `providerCode` `"bad-signature"`, and nothing is replaced. What `keys.json`
+  says that day does not matter - a server that changes its key is refused
+  until the user resets the pin (or the server announced the next key
+  beforehand and signed with it, `ULTRAAI_MODELS_NEXT_PUBLIC_KEYS`);
+- a new `galleryUrl` set through `SetSettings` without new `trustedKeys`
+  drops the old pins: they belong to the old server.
+
+An administrator who wants no first-use step hands users the key (UltraAI
+ServerAdmin shows it on its Connection page) to put in `trustedKeys`.
 
 ---
 
@@ -97814,8 +97849,8 @@ LocalRuntime::Instance().SetSettings(s);
 - The catalogue's hashes are taken from Hugging Face at install time until
   they are pinned; the file names and sizes were checked against the
   repositories on 2026-10-21.
-- The gallery index is not yet signed; it is fetched over TLS from a URL
-  the settings control.
+- The built-in gallery (llama.cpp's release archives) is not signed; a
+  model server's gallery is (see *Signed galleries*).
 - The *Get a local model* dialog is the module's (`UltraAI/ui/`,
   `UltraAILocalModelDialog.h`, library `UltraAI_UI`): an application links
   `UltraAI_UI` beside `UltraAI_Core`, tests an error with
@@ -111843,6 +111878,28 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/cache-folder-names-unambiguous.md
+==============================================================================
+
+- **A folder called "a/b" and one called "a_b" no longer share - and
+  overwrite - their downloaded messages.** The folder's cache directory wrote
+  `/` as `_`, so both were cached in one directory, and so were names with
+  `\` or `:` in that place. A literal `_`, `\` and `:` now have codes of their
+  own (`a_b` is cached as `a~ub`), and so have the characters Windows does not
+  allow in a file name (`* ? " < > |`): a folder called "What?" could not
+  have its messages cached on Windows at all. Folders without those
+  characters keep their directories. The first start moves the cached
+  messages of both earlier layouts; where two folders shared a directory each
+  takes its own, and a message both had under the same number is downloaded
+  again when it is read.
+- **Folders whose names differ only in an accented or non-Latin letter ("Über"
+  and "über", "Входящие" and "входящие") no longer share their downloaded
+  messages on Windows and macOS.** The code that tells such names apart knew
+  only the letters a-z; it now knows the letters of the Latin, Greek,
+  Cyrillic, Armenian and Georgian alphabets. A folder named in the usual way
+  ("Über", "Entwürfe") keeps its directory; the first start moves the others.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
