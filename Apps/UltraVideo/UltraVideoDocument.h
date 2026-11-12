@@ -5,12 +5,13 @@
 // `.ultravideo` file that holds all of it (Docs/Research/UltraVideoDesignProposal.md
 // §5.6, §9.2). The project inside the file is what VideoFX_ProjectToJson
 // writes, so `videofx render` works on it once extracted.
+// Version: 0.8.0 - ViewState::darkChosen: a project's look is its own once picked; before, the desktop's
 // Version: 0.7.0 - titles drawn by UltraCanvas: TitleSpan::Look, the formatting the text bar sets
 //                  carried on the engine's text overlay (VideoFXOverlay::richText, fontFamily, ...)
 // Version: 0.6.0 - EffectTarget: a segment's or an overlay clip's effects
 // Version: 0.5.0 - DraftSettings: the draft render's settings, shared with the test
 // Version: 0.4.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -48,6 +49,8 @@ struct ViewState {
     double rangeIn = 0.0;
     double rangeOut = 0.0;
     bool dark = true;               // the design's default
+    bool darkChosen = false;        // the look is this project's (the eye, or a saved project);
+                                    // until then the window follows the desktop
     int binWidth = 280;
     int inspectorWidth = 300;
     int dockPercent = 35;           // the timeline dock's share of the height

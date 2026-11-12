@@ -1,13 +1,19 @@
 // Apps/UltraStore/core/PackageResolver.cpp
 // Target matching and install plans (PackageResolver.h).
+// Version: 0.1.1 - the messages through Tr, whole sentences
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "PackageResolver.h"
+
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <functional>
 #include <set>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -105,7 +111,7 @@ Result<InstallPlan> PackageResolver::Plan(const Catalog& catalog, const Componen
             for (const std::string& t : trail) {
                 if (t == key) {
                     failureCode = ErrorCode::DependencyError;
-                    failure = "The dependencies of " + app.name + " form a cycle at " + key;
+                    failure = TrF("The dependencies of {0} form a cycle at {1}", app.name, key);
                     return false;
                 }
             }
@@ -115,14 +121,13 @@ Result<InstallPlan> PackageResolver::Plan(const Catalog& catalog, const Componen
                 const Component* dep = catalog.FindComponent(d.id);
                 if (!dep) {
                     failureCode = ErrorCode::DependencyError;
-                    failure = app.name + " needs " + d.id + ", which the catalog does not have";
+                    failure = TrF("{0} needs {1}, which the catalog does not have", app.name, d.id);
                     return false;
                 }
                 const Release* depRelease = dep->Find(d.version);
                 if (!depRelease) {
                     failureCode = ErrorCode::DependencyError;
-                    failure = app.name + " needs " + dep->name + " " + d.version +
-                              ", which the catalog does not have";
+                    failure = TrF("{0} needs {1}, which the catalog does not have", app.name, dep->name + " " + d.version);
                     return false;
                 }
                 if (!visit(*dep, *depRelease, false)) return false;
@@ -141,9 +146,9 @@ Result<InstallPlan> PackageResolver::Plan(const Catalog& catalog, const Componen
                     return true;
                 }
                 failureCode = isApp ? ErrorCode::NotAvailable : ErrorCode::DependencyError;
-                failure = isApp ? app.name + " is not available for your system"
-                                : app.name + " needs " + component.name + " " + rel.version +
-                                      ", which is not available for your system";
+                failure = isApp ? TrF("{0} is not available for your system", app.name)
+                                : TrF("{0} needs {1}, which is not available for your system", app.name,
+                                      component.name + " " + rel.version);
                 return false;
             }
             step.package = res.package;
@@ -158,8 +163,8 @@ Result<InstallPlan> PackageResolver::Plan(const Catalog& catalog, const Componen
     // answer when the app has no build for the machine, whatever its
     // dependencies have.
     if (!ResolveRelease(release, platform).Available()) {
-        return Result<InstallPlan>::Failure(ErrorCode::NotAvailable, app.name + " is not available for your system",
-                                            "available for " + SupportedSystems(release));
+        return Result<InstallPlan>::Failure(ErrorCode::NotAvailable, TrF("{0} is not available for your system", app.name),
+                                            TrF("available for {0}", SupportedSystems(release)));
     }
     if (!visit(app, release, true)) {
         return Result<InstallPlan>::Failure(failureCode, failure);

@@ -19,9 +19,12 @@
 //
 // Usage: SVGLocaleTest
 // Exit code is the number of failed checks.
+// Version: 1.2.0 - the comma-decimal run sets the C++ global locale too
 // Version: 1.1.0 - transforms (SerializeTransform)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
+
+#include "LocaleTestSupport.h"   // InLocale - the C locale and the C++ global one
 
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
@@ -284,10 +287,17 @@ int main() {
     const char* comma = FindCommaDecimalLocale();
     if (comma) {
         std::printf("\n--- LC_ALL=%s (comma-decimal) ---\n", comma);
-        std::setlocale(LC_ALL, comma);
         currentLocale = comma;
-        RunAllChecks();
-        std::setlocale(LC_ALL, "C");
+        {
+            // Both switches, not only the C one: a stream reads and writes
+            // through the C++ global locale, which setlocale does not touch,
+            // and the reader uses one for `points`, a dash array and a
+            // symbol's viewBox. Setting only the C locale is how the dash
+            // array went on being read through the host's locale with this
+            // test passing - VectorLocaleTest's round trip found it.
+            const UltraCanvasTest::InLocale german(comma);
+            RunAllChecks();
+        }
 
         const int failuresUnderComma = failures - failuresUnderC;
         currentLocale = "both";

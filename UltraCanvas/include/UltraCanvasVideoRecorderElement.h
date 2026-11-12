@@ -1,7 +1,9 @@
 // include/UltraCanvasVideoRecorderElement.h
 // Composite UI control wrapping UltraCanvasVideoRecorder: camera preview + REC controls
+// Version: 0.2.0 - VideoRecorderStyle::FromTheme, ApplyTheme: the recorder takes the theme's danger; a SetStyle
+//                  by hand stops the following
 // Version: 0.1.1
-// Last Modified: 2026-07-23
+// Last Modified: 2026-11-10
 // V0.1.1: Expose onError so hosts can surface camera/pipeline failures (a silent
 //   backend error otherwise leaves a stale status message on screen).
 // Author: UltraCanvas Framework
@@ -40,6 +42,15 @@ struct VideoRecorderStyle {
     // and the hit test, not just the paint.
     bool  showRecordButton = true;
     int   targetFps = 30;
+
+    // A recorder is a dark stage with a translucent bar whatever the
+    // window: the theme gives it danger for the record button; the stage
+    // and the bar are the element roles "video-recorder.stage" and
+    // "video-recorder.control-bar" where a theme names them, else the
+    // base's own
+    static VideoRecorderStyle FromTheme(const UltraCanvasTheme& theme, const VideoRecorderStyle& base);
+    static VideoRecorderStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, VideoRecorderStyle()); }
+    static VideoRecorderStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== VIDEO RECORDER UI ELEMENT =====
@@ -85,6 +96,7 @@ public:
 
     // ===== STYLE =====
     void SetStyle(const VideoRecorderStyle& s);
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(VideoRecorderStyle::FromTheme(theme, style)); }
     const VideoRecorderStyle& GetStyle() const { return style; }
 
     // ===== ACCESS =====

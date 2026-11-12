@@ -12,6 +12,8 @@
 // for updates); a *withdrawn* one only when it is installed (no new
 // installs, existing ones keep updating).
 //
+// Version: 0.3.0 - categories from the fixed list: CategoryName, PrimaryCategory; search finds the name
+// Version: 0.2.1 - PeriodPrice; the texts through Tr
 // Version: 0.2.0 - codes: CheckCode, DiscountedPrice, PriceLabel with a code
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -51,8 +53,18 @@ struct AppListing {
     bool Available() const { return resolution.Available(); }
 };
 
-// The listed apps' categories, sorted, each once.
+// The categories the listed apps are under, each once, in the order of
+// StoreCategories (Catalog.h); one this store does not know is left out.
 std::vector<std::string> CatalogCategories(const Catalog& catalog);
+
+// A category's name in the person's language: "video" -> "Video",
+// "audio" -> "Music and audio" (Tr, "app category|..." entries); an id the
+// store does not know as it is written.
+std::string CategoryName(const std::string& id);
+
+// The first of the app's categories the store knows, or "": the one its
+// card, its row and its page show.
+std::string PrimaryCategory(const Component& app);
 
 // The apps the filter keeps, sorted by name (case-insensitive), ties by id.
 std::vector<AppListing> ListApps(const Catalog& catalog, const PlatformInfo& platform,
@@ -91,8 +103,12 @@ CodeCheck CheckCode(const Catalog& catalog, const std::string& text, const std::
 std::string DiscountedPrice(const Pricing& pricing, const PromoCode* code);
 
 // "Free", "29.90 EUR", "4.99 EUR / month", with the trial when there is one;
-// with a code that applies, "23.92 EUR (was 29.90)".
+// with a code that applies, "23.92 EUR (was 29.90)". These texts, the code's
+// and the sizes below are in the person's language (Tr) in the window and
+// English everywhere no catalogue is loaded (the command line, the tests).
 std::string PriceLabel(const Pricing& pricing, const PromoCode* code = nullptr);
+// An amount with the price's currency and period: "4.99 EUR / month".
+std::string PeriodPrice(const Pricing& pricing, const std::string& amount);
 // What a code takes off, for the buyer: "20% off", "5.00 EUR off"; "" when nothing.
 std::string DiscountLabel(const PromoCode& code);
 

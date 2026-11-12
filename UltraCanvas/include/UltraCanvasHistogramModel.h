@@ -16,6 +16,7 @@
 // UltraPaint, uses it too, and the core builds without the charts.
 // UltraCanvasHistogramChart draws it. Guide: Docs/UltraCanvas/UltraCanvasHistogramChart.md
 //
+// Version: 1.2.0 - ClippedRange (UltraPaint's Auto contrast)
 // Version: 1.1.0 - moved to the core library; Add, RgbTotal
 // Version: 1.0.0
 // Last Modified: 2026-11-10
@@ -49,6 +50,13 @@ struct HistogramStatistics {
     double highlightsClipped = 0.0;
 };
 
+// The levels a channel spans once a fraction of its pixels is let go at each
+// end (ImageHistogram::ClippedRange).
+struct HistogramRange {
+    int low = 0;
+    int high = 255;
+};
+
 struct ImageHistogram {
     // bins[channel][level], channels in HistogramChannel order.
     std::array<std::array<uint64_t, 256>, 4> bins{};
@@ -74,6 +82,12 @@ struct ImageHistogram {
     // all three sit at each level - the levels a curve applied to all three
     // channels at once (the Curves dialog's RGB curve) works on.
     std::array<uint64_t, 256> RgbTotal() const;
+    // The darkest and lightest levels left once at most `fraction` (0..1) of
+    // the pixels is allowed off each end: low is the first level the darkest
+    // pixels beyond that fraction sit at, high the last such level from the
+    // top - what an auto contrast stretches to 0..255. high >= low; an empty
+    // histogram gives 0..255.
+    HistogramRange ClippedRange(HistogramChannel channel, double fraction) const;
 };
 
 // The luminosity level of a colour: Rec. 601 luma, rounded.

@@ -23,6 +23,7 @@
 #include <UltraCanvasUtils.h>
 
 #include <curl/curl.h>
+#include <UltraNet/UltraNetCurlProxy.h>   // after UltraNetPlugins.h: it brings <windows.h>
 
 #include <algorithm>
 #include <cctype>
@@ -160,6 +161,7 @@ public:
 
             std::string body;
             curl_easy_setopt(h.get(), CURLOPT_URL, full.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), full, /*tunnel=*/true);   // the proxy setting
             curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
             curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
             curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);

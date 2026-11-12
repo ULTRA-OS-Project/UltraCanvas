@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/AdminDatabase.cpp
+// Version: 0.3.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.3.0 - sales.reference
 // Version: 0.2.0 - affiliates, codes, sales
 // Version: 0.1.0
@@ -76,6 +77,9 @@ Result<void> AdminDatabase::Open(const std::string& databasePathUtf8) {
         " amount TEXT NOT NULL DEFAULT '0', currency TEXT NOT NULL DEFAULT '', affiliate TEXT NOT NULL DEFAULT '',"
         " recruiter TEXT NOT NULL DEFAULT '', affiliate_credit TEXT NOT NULL DEFAULT '0', recruiter_credit TEXT NOT NULL DEFAULT '0',"
         " reference TEXT NOT NULL DEFAULT '')",
+        // schema 4
+        "CREATE TABLE IF NOT EXISTS published_pages ("
+        " path TEXT PRIMARY KEY, kind TEXT NOT NULL, first_published_at TEXT NOT NULL)",
     };
     for (const char* sql : kTables) {
         if (const UltraDbResult r = UltraDb_Exec(connection_, sql); !r) {
@@ -169,6 +173,8 @@ Result<std::vector<Publisher>> AdminDatabase::Publishers() const {
 // ===== components =====
 Result<void> AdminDatabase::PutComponent(const Component& component) {
     if (component.id.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "A component needs an id");
+    // Only the store's categories: it names them in the buyer's language.
+    if (const auto ok = UltraStore::CheckCategories(component.categories); !ok) return ok;
     const std::string json = UltraStore::SerializeComponent(component);
     // What is written is what the store reads: parse it back before storing.
     if (const auto check = UltraStore::ParseComponent(json, component.kind, false); !check) {
@@ -273,6 +279,26 @@ Result<KeyRecord> AdminDatabase::AddKey(const std::string& name, const std::stri
     if (!r) return DbFailure<KeyRecord>(r, "add the key " + key.name);
     key.id = r.lastInsertId;
     return Result<KeyRecord>::Succeed(std::move(key));
+}
+
+Result<void> AdminDatabase::RememberPage(const std::string& path, const std::string& kind) {
+    if (path.empty() || kind.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "A published page needs a path and a kind");
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT OR IGNORE INTO published_pages (path, kind, first_published_at) VALUES (?, ?, ?)",
+        {UltraDbValue(path), UltraDbValue(kind), UltraDbValue(NowIso8601())});
+    if (!r) return DbFailure<void>(r, "remember the page " + path);
+    return Result<void>::Succeed();
+}
+
+Result<std::vector<PublishedPage>> AdminDatabase::PublishedPages() const {
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_, "SELECT path, kind, first_published_at FROM published_pages ORDER BY path", rs); !r) return DbFailure<std::vector<PublishedPage>>(r, "read its published pages");
+    std::vector<PublishedPage> out;
+    for (size_t i = 0; i < rs.Size(); ++i) {
+        const UltraDbRow& row = rs.Row(i);
+        out.push_back({Str(row, "path"), Str(row, "kind"), Str(row, "first_published_at")});
+    }
+    return Result<std::vector<PublishedPage>>::Succeed(std::move(out));
 }
 
 Result<std::vector<KeyRecord>> AdminDatabase::Keys() const {

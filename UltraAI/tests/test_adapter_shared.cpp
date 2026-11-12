@@ -3,8 +3,8 @@
 // credential resolution order, HTTP status -> Error mapping, Retry-After
 // parsing, retry policy decisions and backoff, the stream-handle
 // cancellation contract, base64, multipart bodies, the asynchronous-job
-// poll loop, and the ScriptedTransport test double (requests, SSE and
-// WebSocket).
+// poll loop, the same-role turn merge, and the ScriptedTransport test
+// double (requests, SSE and WebSocket).
 //
 // Uses plain asserts so the test suite has no third-party dependency.
 
@@ -12,6 +12,7 @@
 #include "UltraAICredentials.h"
 #include "UltraAIHttpError.h"
 #include "UltraAIJobPoll.h"
+#include "UltraAIMessageHistory.h"
 #include "UltraAIMultipart.h"
 #include "UltraAIRetryPolicy.h"
 #include "UltraAIStreamHandleBase.h"
@@ -21,6 +22,7 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <variant>
 #include <vector>
 
 using namespace UltraAI;
@@ -363,6 +365,59 @@ void TestJobPoll() {
     EXPECT_TRUE(error.message.find("connection refused") != std::string::npos);
 }
 
+// Two user turns in a row become one (texts joined with a blank line), two
+// assistant turns become one (tool calls appended), tool results and turns
+// from different named speakers stay apart, and a text turn followed by a
+// multimodal one keeps the text as the first part.
+void TestMergeSameRoleTurns() {
+    Message sys; sys.role = Role::System; sys.text = "Be terse.";
+    Message u1; u1.role = Role::User; u1.text = "who are you?";
+    Message u2; u2.role = Role::User; u2.text = "who are you?";
+    Message a1; a1.role = Role::Assistant; a1.text = "A model.";
+    Message a2; a2.role = Role::Assistant;
+    ToolCall call; call.id = "call_1"; call.name = "lookup"; call.argumentsJson = "{}";
+    a2.toolCalls.push_back(call);
+    Message t1; t1.role = Role::Tool; t1.toolCallId = "call_1"; t1.text = "r1";
+    Message t2; t2.role = Role::Tool; t2.toolCallId = "call_2"; t2.text = "r2";
+    Message u3; u3.role = Role::User; u3.text = "look";
+    Message u4; u4.role = Role::User;
+    ImagePart img; img.mimeType = "image/png"; img.bytes = {1, 2, 3};
+    u4.parts.push_back(img);
+    Message u5; u5.role = Role::User; u5.text = "me too"; u5.name = "bob";
+    Message u6; u6.role = Role::User; u6.text = "";          // an empty turn
+    Message u7; u7.role = Role::User; u7.text = "and this";
+
+    const std::vector<Message> out = MergeSameRoleTurns(
+        {sys, u1, u2, a1, a2, t1, t2, u3, u4, u5, u6, u7});
+    EXPECT_EQ(out.size(), size_t(8));
+    EXPECT_TRUE(out[0].role == Role::System);
+    EXPECT_EQ(out[0].text, std::string("Be terse."));
+    EXPECT_TRUE(out[1].role == Role::User);
+    EXPECT_EQ(out[1].text, std::string("who are you?\n\nwho are you?"));
+    EXPECT_TRUE(out[1].parts.empty());
+    EXPECT_TRUE(out[2].role == Role::Assistant);
+    EXPECT_EQ(out[2].text, std::string("A model."));
+    EXPECT_EQ(out[2].toolCalls.size(), size_t(1));
+    EXPECT_EQ(out[2].toolCalls[0].id, std::string("call_1"));
+    EXPECT_TRUE(out[3].role == Role::Tool);
+    EXPECT_EQ(out[3].toolCallId, std::string("call_1"));
+    EXPECT_TRUE(out[4].role == Role::Tool);
+    EXPECT_EQ(out[4].toolCallId, std::string("call_2"));
+    EXPECT_TRUE(out[5].role == Role::User);
+    EXPECT_EQ(out[5].text, std::string("look"));
+    EXPECT_EQ(out[5].parts.size(), size_t(1));
+    EXPECT_TRUE(std::get_if<ImagePart>(&out[5].parts[0]) != nullptr);
+    // bob's turn is kept apart from the unnamed one before it and the
+    // unnamed ones after it; the empty unnamed turn after bob starts a new
+    // message that absorbs "and this" without a stray blank line.
+    EXPECT_TRUE(out[6].role == Role::User);
+    EXPECT_EQ(out[6].name, std::string("bob"));
+    EXPECT_EQ(out[6].text, std::string("me too"));
+    EXPECT_TRUE(out[7].role == Role::User);
+    EXPECT_TRUE(out[7].name.empty());
+    EXPECT_EQ(out[7].text, std::string("and this"));
+}
+
 void TestScriptedTransportWebSocket() {
     ScriptedTransport transport;
 
@@ -449,6 +504,7 @@ int main() {
     TestBase64();
     TestMultipartBody();
     TestJobPoll();
+    TestMergeSameRoleTurns();
     TestScriptedTransportWebSocket();
     TestDefaultTransportHasNoWebSocket();
     std::cout << "test_adapter_shared: all checks passed" << std::endl;

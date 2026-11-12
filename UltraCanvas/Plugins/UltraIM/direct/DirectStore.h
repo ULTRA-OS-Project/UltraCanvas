@@ -1,9 +1,11 @@
 // Plugins/UltraIM/direct/DirectStore.h
 // ChatCube Direct - the device's own record: contacts and their keys,
 // conversations, message history and the outbox (SQLite via UltraDatabase)
+// Version: 0.1.3 - RemoveMessage, IsReadReported; what was deleted while still on its way (NoteDeleted, IsDeleted)
+// Version: 0.1.2 - Search; the messages with a link in them noted by id (the links table)
 // Version: 0.1.1 - a message's attachment kept with it; the parts of a file on its way in
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -69,9 +71,30 @@ public:
     bool UpdateAttachment(const std::string& conversationId, const std::string& clientId,
                           const UltraIMAttachment& attachment);
     bool FindMessageByFile(const std::string& fileId, UltraIMMessage& out);
+    // Takes one message out of the record - with its note in the links
+    // table, the parts of its file still arriving and its copies still in
+    // the outbox (a file's parts too) - and puts the conversation's last
+    // line and unread count right. `removed` is the message as it was (its
+    // attachment's paths, for the caller to clear away). A file's id is
+    // noted as deleted (DeletedFileKey), so its parts that arrive later
+    // are dropped.
+    bool RemoveMessage(const std::string& conversationId, const std::string& clientId, UltraIMMessage& removed);
+    // Whether an incoming message was reported read (the conversation was
+    // opened with it in it): UnreadIncoming has handed it out.
+    bool IsReadReported(const std::string& conversationId, const std::string& clientId);
+    // Things deleted before they were all here - a file whose parts are
+    // still coming, a message a "delete" overtook on another path - by a key
+    // the caller makes up, so they are dropped when they do arrive.
+    void NoteDeleted(const std::string& key, int64_t timestampMs);
+    bool IsDeleted(const std::string& key);
+    static std::string DeletedFileKey(const std::string& fileId) { return "f/" + fileId; }
     // Oldest first; beforeClientId "" = the newest page.
     std::vector<UltraIMMessage> Messages(const std::string& conversationId,
                                          const std::string& beforeClientId, int limit);
+    // What a search is for, newest first (UltraIMMessageSearch: one
+    // conversation or, with conversationId "", all of them). The cursor is
+    // the place in the history the page before stopped at.
+    UltraIMSearchPage Search(const UltraIMMessageSearch& search);
     // Own messages in the conversation that the peer has not read yet, and
     // incoming ones not reported read.
     std::vector<std::string> UnreadIncoming(const std::string& conversationId);

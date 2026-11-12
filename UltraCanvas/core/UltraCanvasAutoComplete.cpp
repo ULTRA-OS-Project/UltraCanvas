@@ -1,7 +1,7 @@
 // core/UltraCanvasAutoComplete.cpp
 // AutoComplete text input with popup suggestion list (inherits TextInput, uses ListView popup)
 // Version: 4.0.0
-// Last Modified: 2026-03-29
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasAutoComplete.h"
 #include "UltraCanvasWindow.h"
@@ -18,6 +18,12 @@ namespace UltraCanvas {
         SetShowValidationState(false);
         CreatePopupListView();
         WireListViewCallbacks();
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasAutoComplete::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasTextInput::ApplyTheme(theme);
+        SetAutocompleteStyle(AutoCompleteStyle::FromTheme(theme, acStyle));
     }
 
     // ===== ITEM MANAGEMENT =====
@@ -128,6 +134,7 @@ namespace UltraCanvas {
     // ===== STYLING =====
 
     void UltraCanvasAutoComplete::SetAutocompleteStyle(const AutoCompleteStyle& newStyle) {
+        StyleSetByHand();
         acStyle = newStyle;
         ApplyStyleToListView();
         RequestRedraw();
@@ -464,4 +471,19 @@ namespace UltraCanvas {
         return Point2Di(static_cast<int>(x), static_cast<int>(y));
     }
 
+
+// ===== THE THEME =====
+    AutoCompleteStyle AutoCompleteStyle::FromTheme(const UltraCanvasTheme& theme, const AutoCompleteStyle& base) {
+        AutoCompleteStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.listBackgroundColor = r.raised;
+        s.listBorderColor = r.line;
+        s.itemHoverColor = r.hover;
+        s.itemTextColor = r.ink;
+        s.scrollbarStyle = ScrollbarStyle::FromTheme(theme, base.scrollbarStyle);
+        return s;
+    }
 } // namespace UltraCanvas

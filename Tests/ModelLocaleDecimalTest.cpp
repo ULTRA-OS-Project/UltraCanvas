@@ -15,24 +15,43 @@
 // in the "C" locale and once in a comma-decimal one, and the two meshes must
 // match vertex for vertex. Where no comma-decimal locale is installed the
 // comparison is reported as skipped rather than passed.
+//
+// The writers are held to the same thing, through the other locale switch. A
+// stream renders its numbers through the C++ global locale, not the C one, so
+// a writer leaks into its file whatever a host set with std::locale::global -
+// `v 1,5 0 2`, which every other tool reads as a different vertex, or
+// `element vertex 12.227` for a mesh of 12227, which no reader accepts at
+// all. Each text writer's output is compared byte for byte between the two
+// locales; none of them embeds a date, so the two runs agree exactly unless
+// the locale leaked in.
+// Version: 1.2.0 - ASCII STL, both halves; the locale switches move to LocaleTestSupport.h
+// Version: 1.1.0 - the writers too, byte for byte between the two locales
 // Version: 1.0.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 
+#include "LocaleTestSupport.h"   // InLocale, CommaDecimalLocale - both switches
 #include "UltraCanvasModelPreview.h"
 #include "Models/UltraCanvasModelFormatsPlugin.h"
 #include "Models/UltraCanvasModelMesh3D.h"
+#include "Models/STL/UltraCanvasSTLLoader.h"
 
+#include <algorithm>
 #include <clocale>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <locale>
 #include <string>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::ModelConverter;
+using UltraCanvasTest::CommaDecimalLocale;
+using UltraCanvasTest::InLocale;
 namespace fs = std::filesystem;
 
 namespace {
@@ -63,18 +82,11 @@ ModelPreviewProvider RealProvider() {
     return provider;
 }
 
-// A locale whose decimal point is a comma, or nullptr.
-const char* CommaDecimalLocale() {
-    for (const char* name : {"de_DE.UTF-8", "de_DE.utf8", "de_DE", "fr_FR.UTF-8",
-                             "fr_FR.utf8", "German_Germany.1252", "German"}) {
-        if (std::setlocale(LC_ALL, name)) {
-            const bool comma = std::localeconv()->decimal_point[0] == ',';
-            std::setlocale(LC_ALL, "C");
-            if (comma) return name;
-        }
-    }
-    std::setlocale(LC_ALL, "C");
-    return nullptr;
+// A written file, for comparing one run's bytes with another's.
+std::vector<uint8_t> ReadBytes(const std::string& path) {
+    std::ifstream file(UltraCanvas::PathFromUtf8(path), std::ios::binary);
+    return std::vector<uint8_t>(std::istreambuf_iterator<char>(file),
+                                std::istreambuf_iterator<char>());
 }
 
 bool SameMesh(const Mesh3D& a, const Mesh3D& b, std::string& why) {
@@ -145,11 +157,12 @@ int main(int argc, char** argv) {
             continue;
         }
         Mesh3D inC, inComma;
-        std::setlocale(LC_ALL, "C");
         const bool readC = provider.Load(path.string(), inC);
-        std::setlocale(LC_ALL, comma);
-        const bool readComma = provider.Load(path.string(), inComma);
-        std::setlocale(LC_ALL, "C");
+        bool readComma = false;
+        {
+            const InLocale german(comma);
+            readComma = provider.Load(path.string(), inComma);
+        }
         if (!readC) {
             Check(false, relative + " reads in \"C\"");
             continue;
@@ -159,6 +172,136 @@ int main(int argc, char** argv) {
         Check(readComma && SameMesh(inC, inComma, why),
               relative + ": the same " + std::to_string(inC.positions.size()) +
               " vertices in both" + (why.empty() ? "" : " - " + why));
+    }
+
+    // ===== THE WRITERS =====
+    //
+    // PreferBinary is off throughout: the binary encodings hold IEEE bytes and
+    // never met the locale, and PLY's default is binary, so the text writer
+    // this is here for would otherwise not run at all.
+    struct WriteCase {
+        const char* source;        // a document to write, read in "C"
+        const char* extension;     // the writer to write it with
+    };
+    // .wrl is missing on purpose: the X3D converter picks its classic VRML
+    // encoding from the file name, which ExportToMemory has none of, so it
+    // would only exercise the XML writer a second time.
+    const std::vector<WriteCase> writers = {
+        {"OBJ/E-45-Aircraft.obj", "obj"},
+        {"OBJ/E-45-Aircraft.obj", "ply"},
+        {"OBJ/E-45-Aircraft.obj", "x3d"},
+        {"OBJ/E-45-Aircraft.obj", "dae"},
+        {"STEP/Box.step", "step"},   // solids, not a mesh: STEP writes exact bodies
+    };
+    for (const WriteCase& test : writers) {
+        const fs::path path = media / test.source;
+        const std::string what = std::string(test.extension) + " written from " + test.source;
+        if (!fs::exists(UltraCanvas::PathFromUtf8(path))) {
+            std::printf("  [SKIP] %s (source not in this checkout)\n", what.c_str());
+            continue;
+        }
+        auto writer = UltraCanvasModelFormatsPlugin::CreateConverterForExtension(test.extension);
+        if (!writer || !writer->CanExport()) {
+            std::printf("  [SKIP] %s (no writer in this build)\n", what.c_str());
+            continue;
+        }
+
+        ConversionOptions options;
+        options.PreferBinary = false;
+        auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(path.string(), options);
+        if (!document) {
+            std::printf("  [SKIP] %s (the source does not read in this build)\n", what.c_str());
+            continue;
+        }
+
+        std::vector<uint8_t> inC, inComma;
+        const bool wroteC = writer->ExportToMemory(*document, inC, options);
+        bool wroteComma = false;
+        {
+            const InLocale german(comma);
+            if (!german.HasGlobal()) {
+                // Without the C++ global locale a stream still writes '.', so
+                // the comparison would pass whatever the writer does.
+                std::printf("  [SKIP] %s (\"%s\" is not a C++ locale here)\n",
+                            what.c_str(), comma);
+                continue;
+            }
+            wroteComma = writer->ExportToMemory(*document, inComma, options);
+        }
+        if (!wroteC) {
+            Check(false, what + " in \"C\"");
+            continue;
+        }
+        Check(wroteComma, what + " in \"" + comma + "\"");
+        std::string why;
+        if (wroteComma && inC != inComma) {
+            const size_t at = static_cast<size_t>(
+                    std::mismatch(inC.begin(), inC.end(), inComma.begin(), inComma.end()).first -
+                    inC.begin());
+            const size_t from = at > 40 ? at - 40 : 0;
+            const auto piece = [&](const std::vector<uint8_t>& bytes) {
+                return std::string(bytes.begin() + static_cast<long>(from),
+                                   bytes.begin() + static_cast<long>(std::min(bytes.size(),
+                                                                              at + 20)));
+            };
+            why = " - they part at byte " + std::to_string(at) + ": \"" + piece(inC) +
+                  "\" against \"" + piece(inComma) + "\"";
+        }
+        Check(wroteComma && inC == inComma,
+              what + ": the same " + std::to_string(inC.size()) + " bytes in both" + why);
+    }
+
+    // ===== ASCII STL =====
+    //
+    // STL is not one of the converters above - core's own loader owns it, so
+    // that the Filer's thumbnails can read a .stl without the Models plugin -
+    // and it is the one model format whose text form a person chooses
+    // explicitly: Save takes STLFormat::ASCII, and a slicer that wants a
+    // readable file is why that option exists. Both halves of it were
+    // locale-dependent, which no reader comparison above could have caught,
+    // because this reader is not in the dispatch table they use.
+    const fs::path stlSource = media / "OBJ/E-45-Aircraft.obj";
+    if (!fs::exists(UltraCanvas::PathFromUtf8(stlSource))) {
+        std::printf("  [SKIP] ASCII STL (no source mesh in this checkout)\n");
+    } else {
+        ConversionOptions options;
+        options.TriangulateOnImport = true;
+        auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(stlSource.string(),
+                                                                        options);
+        const Mesh3D mesh = document ? ModelDocumentToMesh3D(*document) : Mesh3D();
+        const fs::path directory = fs::temp_directory_path();
+        const std::string inC = (directory / "uc_locale_c.stl").string();
+        const std::string inComma = (directory / "uc_locale_comma.stl").string();
+        std::string error;
+        bool wroteC = false, wroteComma = false;
+        if (!mesh.Empty()) {
+            wroteC = UltraCanvasSTLLoader::Save(inC, mesh, STLFormat::ASCII, &error);
+            const InLocale german(comma);
+            wroteComma = german.HasGlobal() &&
+                         UltraCanvasSTLLoader::Save(inComma, mesh, STLFormat::ASCII, &error);
+        }
+        Check(wroteC && wroteComma, "ASCII STL writes in both locales");
+        if (wroteC && wroteComma) {
+            Check(ReadBytes(inC) == ReadBytes(inComma),
+                  "ASCII STL: the same " + std::to_string(ReadBytes(inC).size()) +
+                          " bytes in both");
+            // And the reader's half, on the file the writer just produced.
+            Mesh3D readC, readComma;
+            std::string why;
+            const bool okC = UltraCanvasSTLLoader::Load(inC, readC, &error);
+            bool okComma = false;
+            {
+                const InLocale german(comma);
+                okComma = UltraCanvasSTLLoader::Load(inC, readComma, &error);
+            }
+            Check(okC && okComma, "ASCII STL reads in both locales");
+            Check(okC && okComma && SameMesh(readC, readComma, why),
+                  "ASCII STL: the same mesh read back in both" +
+                          (why.empty() ? "" : " - " + why));
+        }
+        std::error_code ignored;
+        fs::remove(UltraCanvas::PathFromUtf8(inC), ignored);
+        fs::remove(UltraCanvas::PathFromUtf8(inComma), ignored);
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",

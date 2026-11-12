@@ -758,6 +758,12 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmojiSettings.cpp
+        # The proxy every application connects through (Proxy.conf, followed
+        # by UltraNet), and the dialog that sets it.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProxySettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProxySettingsDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAppearanceSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsWatcher.cpp
         # Whether the computer has a font for a text, by script.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontCoverage.cpp
         # A notification's click outside the bus: the Windows backend under
@@ -782,6 +788,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Move to the Recycle Bin / Trash. Platform backend under
         # OS/<Platform>/; Android and WebAssembly get the fallback in here.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTrash.cpp
+        # A copy keeps the original's dates (created / modified / accessed).
+        # Platform backend under OS/<Platform>/UltraCanvas<Platform>FileTimes.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileTimes.cpp
         # "Delete as administrator": the UAC relaunch behind a permission
         # failure. Windows backend under OS/MSWindows/, picked up by the
         # platform glob; every other platform gets the fallbacks in here.
@@ -917,6 +926,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimecodeField.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideo.cpp
+        # A clip's technical facts from its container headers (no decoder)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoFileInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoThumbnail.cpp
@@ -2596,6 +2607,11 @@ endif()
 if(ULTRACANVAS_HAS_NATIVE_TRASH)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_TRASH)
 endif()
+# Copied dates: the same arrangement for UltraCanvasFileTimes. Only its core
+# file reads the define, so it stays PRIVATE.
+if(ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+endif()
 # Native volume monitoring: the same arrangement for UltraCanvasVolumeMonitor.
 # PUBLIC so an app can tell a device notification from the polling fallback.
 if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
@@ -3271,6 +3287,12 @@ target_compile_features(uc-vault PUBLIC cxx_std_20)
 set_target_properties(uc-vault PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(uc-vault PUBLIC uc-crypt)
 _ultracanvas_module_home(UltraVault uc-vault)
+# The core itself uses it: UltraCanvasProxySettings.cpp keeps a remembered
+# proxy password in a device-key vault. Absorbed whole into a shared core; a
+# static core links the home PUBLIC, as it does UltraCrypt.
+if(NOT ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraVault)
+endif()
 
 # The text of every application in the person's language
 # (Docs/Modules/UltraLocalisation/README.md): Tr() over the application's
@@ -3308,7 +3330,8 @@ set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorNames.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDnsProxy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorEvents.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorConntrack.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorConntrack.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorKernelNetwork.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # The socket table, and nf_conntrack's netlink events as an event source.
     list(APPEND _uc_networkmonitor_sources
@@ -3503,6 +3526,7 @@ if(ULTRACANVAS_ENABLE_NET)
 
     set(ULTRANET_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCore.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetProxy.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpEasy.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpAsync.cpp
@@ -3615,11 +3639,13 @@ if(ULTRACANVAS_ENABLE_NET)
         target_link_libraries(uc-net PUBLIC ${CARES_LIBRARIES})
     endif()
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-        target_link_libraries(uc-net PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv)
+        # ${CMAKE_DL_LIBS}: the desktop's proxy settings are read through GIO,
+        # opened at run time (OS/Linux/UltraNetSupport.cpp).
+        target_link_libraries(uc-net PUBLIC OpenSSL::SSL OpenSSL::Crypto resolv ${CMAKE_DL_LIBS})
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Android")
         # No -lresolv: bionic has no separate resolver library (and the c-ares
         # path is mandatory here anyway).
-        target_link_libraries(uc-net PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+        target_link_libraries(uc-net PUBLIC OpenSSL::SSL OpenSSL::Crypto ${CMAKE_DL_LIBS})
     elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
         # winhttp: system-proxy detection; ws2_32: getaddrinfo/getnameinfo/recv/send;
         # secur32: Schannel (AcquireCredentialsHandle etc.); crypt32: cert parsing;
@@ -4423,7 +4449,8 @@ option(ULTRACANVAS_ENABLE_ULTRAIM "Build the UltraIM instant-messaging library" 
 if(ULTRACANVAS_ENABLE_ULTRAIM)
     # The archive is uc-im; UltraIM is its home ("MODULE HOMES").
     add_library(uc-im STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraIM/UltraIMManager.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraIM/UltraIMManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraIM/UltraIMSearch.cpp)
     set_target_properties(uc-im PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultraim")

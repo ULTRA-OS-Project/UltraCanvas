@@ -1,6 +1,8 @@
 // core/UltraNet/UltraNetHttpEasy.cpp
 // Shared libcurl easy-handle plumbing: callbacks, option-setting,
 // finalisation. Used by both the sync and the async HTTP code paths.
+// Version: 0.5.2 - the proxy through UltraNet_ResolveProxy (the system's by
+//                  default; never libcurl's own reading of the environment)
 // Version: 0.5.1 - the per-thread share is off unless UltraNetConfig::
 //                  reuseHttpConnections asks for it, and shares no TLS
 //                  sessions: a device whose key changed was reached on the
@@ -16,6 +18,7 @@
 
 #include "UltraNetHttpEasy.h"
 #include "UltraNet/UltraNetCurlError.h"   // diagnostics of a failed transfer
+#include "UltraNet/UltraNetCurlProxy.h"
 #include "UltraNet/UltraNetCurlTls.h"
 #include "UltraNet/UltraNetTls.h"
 
@@ -228,22 +231,6 @@ namespace {
             case UltraNetTlsVersion::Auto:
             default:                        return CURL_SSLVERSION_DEFAULT;
         }
-    }
-
-    std::string ProxyUrl(const UltraNetProxyConfig& p) {
-        if (!p.IsEnabled() || p.host.empty()) return {};
-        std::string scheme;
-        switch (p.type) {
-            case UltraNetProxyType::Http:   scheme = "http://";    break;
-            case UltraNetProxyType::Https:  scheme = "https://";   break;
-            case UltraNetProxyType::Socks4: scheme = "socks4://";  break;
-            case UltraNetProxyType::Socks5: scheme = "socks5://";  break;
-            default: break;
-        }
-        std::ostringstream os;
-        os << scheme << p.host;
-        if (p.port > 0) os << ':' << p.port;
-        return os.str();
     }
 
     curl_slist* BuildSlist(const UltraNetHttpHeaders& headers) {
@@ -675,27 +662,10 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
     // UltraNetCurlTls.h). No-op elsewhere.
     ultranet_curltls::Apply(easy);
 
-    const UltraNetProxyConfig& proxy =
-        opt.proxy.IsEnabled() ? opt.proxy : cfg.proxy;
-    const std::string proxyUrl = ProxyUrl(proxy);
-    if (!proxyUrl.empty()) {
-        curl_easy_setopt(easy, CURLOPT_PROXY, proxyUrl.c_str());
-        if (!proxy.credentials.username.empty()) {
-            curl_easy_setopt(easy, CURLOPT_PROXYUSERNAME,
-                             proxy.credentials.username.c_str());
-            curl_easy_setopt(easy, CURLOPT_PROXYPASSWORD,
-                             proxy.credentials.password.c_str());
-        }
-        if (!proxy.noProxyHosts.empty()) {
-            std::ostringstream os;
-            for (std::size_t i = 0; i < proxy.noProxyHosts.size(); ++i) {
-                if (i) os << ',';
-                os << proxy.noProxyHosts[i];
-            }
-            std::string list = os.str();
-            curl_easy_setopt(easy, CURLOPT_NOPROXY, list.c_str());
-        }
-    }
+    // The request's own proxy, else the module-wide one (the operating
+    // system's by default); a direct connection keeps libcurl from reading
+    // the *_proxy environment on its own (UltraNetCurlProxy.h).
+    ultranet_curlproxy::ApplyFor(easy, request.url, /*tunnel=*/false, opt.proxy);
 
     if (cfg.enableCompression) {
         curl_easy_setopt(easy, CURLOPT_ACCEPT_ENCODING, "");

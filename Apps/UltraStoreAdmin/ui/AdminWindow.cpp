@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/ui/AdminWindow.cpp
 // The shell, the store's pages (Overview, Settings, Keys, Publish) and the
 // worker thread; the component form is in AdminComponentPage.cpp.
+// Version: 0.5.0 - the Marketplace page and the notices banner
 // Version: 0.4.0 - the payment settings and Sync sales
 // Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
@@ -41,16 +42,19 @@ constexpr const char* kPublish = "publish";
 constexpr const char* kKeys = "keys";
 constexpr const char* kAffiliates = "affiliates";
 constexpr const char* kSettings = "settings";
+constexpr const char* kMarket = "market";
 constexpr const char* kComponent = "component";
 constexpr const char* kItemPrefix = "c:";
 
-const char* kSettingKeys[] = {"catalog.base_url", "packages.base_url", "texts.languages", "ai.provider", "ai.base_url",
-                               "ai.model", "payment.url", "payment.licence_key", "payment.token"};
+const char* kSettingKeys[] = {"catalog.base_url", "packages.base_url", "store.contact", "texts.languages", "ai.provider",
+                               "ai.base_url", "ai.model", "payment.url", "payment.licence_key", "payment.token",
+                               "market.url", "market.merchant_id", "market.key"};
 
 // A setting's label, in the person's language.
 std::string SettingLabel(const std::string& key) {
     if (key == "catalog.base_url")    return Tr("Catalog base URL");
     if (key == "packages.base_url")   return Tr("Packages base URL");
+    if (key == "store.contact")       return Tr("Store contact (on the partners' join pages)");
     if (key == "texts.languages")     return Tr("Languages to translate into");
     if (key == "ai.provider")         return Tr("UltraAI provider");
     if (key == "ai.base_url")         return Tr("UltraAI server");
@@ -58,6 +62,9 @@ std::string SettingLabel(const std::string& key) {
     if (key == "payment.url")         return Tr("Payment service URL");
     if (key == "payment.licence_key") return Tr("Licence key (hex, GET /v1/keys)");
     if (key == "payment.token")       return Tr("Payment service admin token");
+    if (key == "market.url")          return Tr("Marketplace service URL");
+    if (key == "market.merchant_id")  return Tr("Merchant id at the marketplace (from the operator)");
+    if (key == "market.key")          return Tr("Key that signs submissions (id; empty: the first active)");
     return key;
 }
 
@@ -154,6 +161,7 @@ void AdminWindow::BuildShell() {
     sidebar_->AddItem(store, kPublish, Tr("Publish"), Theme::Icon("folder-download.svg"));
     sidebar_->AddItem(store, kKeys, Tr("Keys"), Theme::Icon("list-check.svg"));
     sidebar_->AddItem(store, kAffiliates, Tr("Affiliates and codes"), Theme::Icon("user-plus.svg"));
+    sidebar_->AddItem(store, kMarket, Tr("Marketplace"), Theme::Icon("mail.svg"));
     sidebar_->AddItem(store, kSettings, Tr("Settings"), Theme::Icon("settings.svg"));
     appsSection_ = sidebar_->AddSection(Tr("Apps"));
     componentsSection_ = sidebar_->AddSection(Tr("Runtimes and libraries"));
@@ -170,9 +178,23 @@ void AdminWindow::BuildShell() {
 
     pageHost_ = Theme::Column("uaPages", 0);
     pageHost_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    // The notices banner: the operator's unacknowledged notices, above every page until acknowledged.
+    noticesBanner_ = Theme::Row("uaBanner", Theme::kInnerGap, true);
+    noticesBanner_->SetPadding(8, Theme::kPagePadding);
+    noticesBanner_->SetBackgroundColor(Theme::kAccentSoft);
+    noticesBanner_->SetBorders(0.0f, Theme::kBorder, 0.0f);
+    bannerLabel_ = Theme::Caption("uaBanner.text", "");
+    bannerLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    noticesBanner_->AddChild(bannerLabel_);
+    auto openNotices = Theme::Button("uaBanner.open", Tr("Open"), 70, Theme::ButtonKind::Secondary);
+    openNotices->onClick = [this]() { EnsureDraftSaved([this]() { ShowPage(kMarket); }); };
+    noticesBanner_->AddChild(openNotices);
+    noticesBanner_->SetVisible(false);
+    pageHost_->AddChild(noticesBanner_);
     BuildOverviewPage();
     BuildPublishPage();
     BuildAffiliatesPage();
+    BuildMarketPage();
     BuildKeysPage();
     BuildSettingsPage();
     BuildComponentPage();
@@ -221,6 +243,7 @@ void AdminWindow::ShowPage(const std::string& id) {
     if (id == kKeys) RefreshKeysPage();
     if (id == kPublish) RefreshKeysPage();
     if (id == kAffiliates) RefreshAffiliatesPage();
+    if (id == kMarket) RefreshMarketPage();
     pageHost_->InvalidateLayout();
     pageHost_->RequestRedraw();
 }
@@ -651,8 +674,10 @@ void AdminWindow::PublishNow() {
         const auto report = Publish(db_, keyId, pass, options);
         if (!report) { out.ok = false; out.message = report.error.message + (report.error.detail.empty() ? "" : " (" + report.error.detail + ")"); return out; }
         const PublishReport& r = report.Value();
-        out.message = TrF("Published sequence {0}: {1} app(s), {2} component(s), {3} package file(s), {4} picture(s)",
-                          r.sequence, r.apps, r.components, r.packagesCopied, r.mediaCopied);
+        out.message = TrF("Published sequence {0}: {1} app(s), {2} component(s), {3} package file(s), {4} picture(s), "
+                          "{5} code page(s), {6} join page(s), {7} retired page(s)",
+                          r.sequence, r.apps, r.components, r.packagesCopied, r.mediaCopied, r.codePages, r.joinPages,
+                          r.retiredPages);
         out.lines.push_back(r.catalogPath);
         out.lines.push_back(r.signaturePath);
         out.lines.push_back(TrF("key {0}", r.publicKeyHex));
@@ -1005,6 +1030,244 @@ void AdminWindow::RefreshAffiliatesPage() {
     }
     affiliatesList_->InvalidateLayout();
     codesList_->InvalidateLayout();
+    pageHost_->InvalidateLayout();
+    pageHost_->RequestRedraw();
+}
+
+// ===========================================================================
+// Marketplace
+// ===========================================================================
+void AdminWindow::BuildMarketPage() {
+    std::shared_ptr<Container> header, body;
+    BuildPage(kMarket, Tr("Marketplace"), header, body);
+    body->AddChild(Theme::Caption("uaM.hint",
+        Tr("The operator's marketplace service (Settings: market.url, market.merchant_id): where this backend stands with the terms, the notices "
+        "the operator sent, a release submitted for review - the component as it is here, signed with this backend's key - and the reports about "
+        "this merchant. Every request is signed with the key, so the passphrase is asked for once per visit.")));
+
+    auto standing = Theme::Surface("uaM.standing", Theme::kInnerGap);
+    marketStandingLabel_ = Theme::Text("uaM.standing.text", Tr("Not asked yet."), 14.0f, FontWeight::Bold);
+    standing->AddChild(marketStandingLabel_);
+    auto keyRow = Theme::Row("uaM.keyRow", Theme::kInnerGap, true);
+    marketPassphrase_ = Theme::Pin(CreatePasswordInput("uaM.pass", 0, 0, 260, Theme::kControlHeight));
+    marketPassphrase_->SetPlaceholder(Tr("the key's passphrase"));
+    keyRow->AddChild(Theme::Field("uaM.passField", Tr("Passphrase"), marketPassphrase_));
+    auto refresh = Theme::Button("uaM.refresh", Tr("Ask the service"), 130, Theme::ButtonKind::Primary);
+    refresh->onClick = [this]() { RefreshMarketPage(); };
+    keyRow->AddChild(refresh);
+    standing->AddChild(keyRow);
+    body->AddChild(standing);
+
+    auto notices = Theme::Surface("uaM.notices", Theme::kInnerGap);
+    notices->AddChild(Theme::Text("uaM.notices.title", Tr("Notices"), 14.0f, FontWeight::Bold));
+    noticesList_ = Theme::Column("uaM.notices.list", Theme::kInnerGap);
+    notices->AddChild(noticesList_);
+    body->AddChild(notices);
+
+    auto terms = Theme::Surface("uaM.terms", Theme::kInnerGap);
+    terms->AddChild(Theme::Text("uaM.terms.title", Tr("Terms"), 14.0f, FontWeight::Bold));
+    marketTermsLabel_ = Theme::Caption("uaM.terms.state", "");
+    terms->AddChild(marketTermsLabel_);
+    marketTermsText_ = Theme::Caption("uaM.terms.text", "");
+    terms->AddChild(marketTermsText_);
+    auto acceptRow = Theme::Row("uaM.acceptRow", Theme::kInnerGap, true);
+    marketAcceptedBy_ = Theme::Pin(CreateTextInput("uaM.by", 0, 0, 220, Theme::kControlHeight));
+    marketAcceptedBy_->SetPlaceholder(Tr("who accepts, by name"));
+    acceptRow->AddChild(marketAcceptedBy_);
+    auto accept = Theme::Button("uaM.accept", Tr("Accept the terms"), 140);
+    accept->onClick = [this]() {
+        if (!haveTerms_) { SetStatus(Tr("No terms are in force"), true); return; }
+        const std::string by = marketAcceptedBy_->GetText();
+        if (by.empty()) { SetStatus(Tr("Say who accepts the terms"), true); return; }
+        const auto seed = MarketSeed();
+        if (!seed) { SetStatus(seed.error.message, true); return; }
+        MarketClient client(MarketSettings::From(db_), seed.Value());
+        const int version = terms_.version;
+        RunJob(Tr("Accepting the terms"), [client, version, by]() {
+            JobOutcome out;
+            const auto s = client.AcceptTerms(version, by);
+            if (!s) { out.ok = false; out.message = s.error.message; return out; }
+            out.message = TrF("Terms version {0} accepted; standing {1}", version, s.Value().standing);
+            return out;
+        }, [this](const JobOutcome& out) { if (out.ok) RefreshMarketPage(); });
+    };
+    acceptRow->AddChild(accept);
+    terms->AddChild(acceptRow);
+    body->AddChild(terms);
+
+    auto submit = Theme::Surface("uaM.submit", Theme::kInnerGap);
+    submit->AddChild(Theme::Text("uaM.submit.title", Tr("Submit a release"), 14.0f, FontWeight::Bold));
+    submit->AddChild(Theme::Caption("uaM.submit.hint", Tr("The app as it is saved here goes to the review, signed; the packages are named by their hashes.")));
+    submitApp_ = Theme::Pin(CreateDropdown("uaM.app", 0, 0, 320, Theme::kControlHeight));
+    submit->AddChild(Theme::Field("uaM.appRow", Tr("App"), submitApp_));
+    submitAnswers_ = Theme::Pin(CreateTextInput("uaM.answers", 0, 0, 200, Theme::kControlHeight));
+    submitAnswers_->SetPlaceholder(Tr("s-00000012 (a resubmission)"));
+    submit->AddChild(Theme::Field("uaM.answersRow", Tr("Answers"), submitAnswers_));
+    auto send = Theme::Button("uaM.send", Tr("Submit"), 100, Theme::ButtonKind::Primary);
+    send->onClick = [this]() {
+        const int at = submitApp_->GetSelectedIndex();
+        if (at < 0) { SetStatus(Tr("Pick the app to submit"), true); return; }
+        const std::string appId = submitApp_->GetItem(at)->value;
+        const auto component = db_.GetComponent(appId);
+        if (!component) { SetStatus(component.error.message, true); return; }
+        const auto seed = MarketSeed();
+        if (!seed) { SetStatus(seed.error.message, true); return; }
+        MarketClient client(MarketSettings::From(db_), seed.Value());
+        const std::string answers = submitAnswers_->GetText();
+        RunJob(TrF("Submitting {0}", appId), [client, c = component.Value(), answers]() {
+            JobOutcome out;
+            const auto sent = client.Submit(c, answers);
+            if (!sent) { out.ok = false; out.message = sent.error.message; return out; }
+            out.message = TrF("Submitted {0} {1} as {2}: {3}", sent.Value().app, sent.Value().version, sent.Value().id, sent.Value().state);
+            for (const auto& [name, outcome] : sent.Value().checks) out.lines.push_back(name + ": " + outcome);
+            return out;
+        }, [this](const JobOutcome& out) { if (out.ok) { submitAnswers_->SetText(""); RefreshMarketPage(); } });
+    };
+    submit->AddChild(send);
+    body->AddChild(submit);
+
+    auto submissions = Theme::Surface("uaM.submissions", Theme::kInnerGap);
+    submissions->AddChild(Theme::Text("uaM.submissions.title", Tr("Submissions"), 14.0f, FontWeight::Bold));
+    submissionsList_ = Theme::Column("uaM.submissions.list", Theme::kInnerGap);
+    submissions->AddChild(submissionsList_);
+    body->AddChild(submissions);
+
+    auto reports = Theme::Surface("uaM.reports", Theme::kInnerGap);
+    reports->AddChild(Theme::Text("uaM.reports.title", Tr("Reports about this merchant"), 14.0f, FontWeight::Bold));
+    reportsList_ = Theme::Column("uaM.reports.list", Theme::kInnerGap);
+    reports->AddChild(reportsList_);
+    body->AddChild(reports);
+}
+
+Result<std::vector<uint8_t>> AdminWindow::MarketSeed() {
+    const MarketSettings settings = MarketSettings::From(db_);
+    if (!settings.Complete()) return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, Tr("Settings: market.url and market.merchant_id name the marketplace service"));
+    if (!marketPassphrase_ || marketPassphrase_->GetText().empty()) return Result<std::vector<uint8_t>>::Failure(ErrorCode::InvalidArgument, Tr("The key's passphrase signs the request"));
+    return OpenKeySeed(db_, 0, marketPassphrase_->GetText());
+}
+
+void AdminWindow::RefreshMarketPage() {
+    if (submitApp_) {
+        submitApp_->ClearItems();
+        for (const UltraStore::Component& c : components_) if (c.kind == UltraStore::ComponentKind::App) submitApp_->AddItem(c.name.empty() ? c.id : c.name + " (" + c.id + ")", c.id);
+    }
+    const auto seed = MarketSeed();
+    if (!seed) { marketError_ = seed.error.message; ShowMarketPage(); return; }
+    MarketClient client(MarketSettings::From(db_), seed.Value());
+    RunJob(Tr("Asking the marketplace service"), [client]() {
+        JobOutcome out;
+        out.message = Tr("Marketplace: up to date");
+        return out;
+    }, nullptr);
+    // The job above only keeps the status line honest; the fetch itself:
+    std::weak_ptr<int> token = alive_;
+    std::thread([this, token, client]() {
+        std::string standingText, error;
+        std::vector<Notice> notices;
+        bool haveTerms = false;
+        Terms terms;
+        std::vector<std::string> subs, reps;
+        const auto standing = client.GetStanding();
+        if (!standing) error = standing.error.message;
+        else {
+            const Standing& s = standing.Value();
+            standingText = TrF("{0} ({1}): {2}, {3} strike(s), terms in force {4}, accepted {5}", s.name, s.id, s.standing,
+                               s.strikes, s.termsInForce, s.termsAccepted);
+        }
+        if (const auto n = client.Notices()) notices = n.Value();
+        if (const auto t = client.CurrentTerms()) { haveTerms = true; terms = t.Value(); }
+        if (const auto list = client.Submissions()) {
+            for (const UltraCanvas::JSONValue& sub : list.Value().Get("submissions").GetElements()) {
+                std::string line = sub.Get("id").GetString() + "  " + sub.Get("app").GetString() + " " + sub.Get("version").GetString() + "  " + sub.Get("state").GetString();
+                const UltraCanvas::JSONValue& decisions = sub.Get("decisions");
+                if (decisions.GetSize() > 0) {
+                    const UltraCanvas::JSONValue& last = decisions.At(decisions.GetSize() - 1);
+                    line += "  (" + last.Get("action").GetString() + (last.Get("message").GetString().empty() ? "" : ": " + last.Get("message").GetString()) + ")";
+                }
+                subs.push_back(line);
+            }
+        }
+        if (const auto list = client.Reports()) {
+            for (const UltraCanvas::JSONValue& r : list.Value().Get("reports").GetElements()) {
+                reps.push_back(r.Get("id").GetString() + "  " + TrF("{0} about {1}", r.Get("kind").GetString(), r.Get("target").GetString()) + ", " + r.Get("state").GetString() +
+                               (r.Get("outcome").GetString().empty() ? "" : ": " + r.Get("outcome").GetString()) + "\n" + r.Get("text").GetString());
+            }
+        }
+        app_.PostToUIThread([this, token, standingText, error, notices, haveTerms, terms, subs, reps]() {
+            if (!token.lock()) return;
+            marketStanding_ = standingText;
+            marketError_ = error;
+            notices_ = notices;
+            haveTerms_ = haveTerms;
+            terms_ = terms;
+            submissionLines_ = subs;
+            reportLines_ = reps;
+            ShowMarketPage();
+        });
+    }).detach();
+}
+
+void AdminWindow::ShowMarketPage() {
+    if (!marketStandingLabel_) return;
+    marketStandingLabel_->SetText(!marketError_.empty() ? marketError_ : marketStanding_.empty() ? Tr("Not asked yet.") : marketStanding_);
+    marketStandingLabel_->SetTextColor(marketError_.empty() ? Theme::kTextPrimary : Theme::kDanger);
+    noticesList_->ClearChildren();
+    if (notices_.empty()) noticesList_->AddChild(Theme::Caption("uaM.n.none", Tr("No notices.")));
+    int n = 0;
+    for (const Notice& notice : notices_) {
+        const std::string id = "uaM.n" + std::to_string(n++);
+        auto row = Theme::Row(id, Theme::kInnerGap, true);
+        auto text = Theme::Caption(id + ".t", notice.kind + ": " + notice.subject + (notice.clause.empty() ? std::string() : " " + TrF("(clause {0})", notice.clause)) +
+                                   (notice.deadline.empty() ? std::string() : ", " + TrF("answer by {0}", notice.deadline)) +
+                                   (notice.Acknowledged() ? " - " + Tr("acknowledged") : std::string()) +
+                                   (notice.text.empty() ? "" : "\n" + notice.text));
+        text->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        row->AddChild(text);
+        if (!notice.Acknowledged()) {
+            auto ack = Theme::Button(id + ".ack", Tr("Acknowledge"), 110);
+            ack->onClick = [this, noticeId = notice.id]() {
+                const auto seed = MarketSeed();
+                if (!seed) { SetStatus(seed.error.message, true); return; }
+                MarketClient client(MarketSettings::From(db_), seed.Value());
+                RunJob(TrF("Acknowledging {0}", noticeId), [client, noticeId]() {
+                    JobOutcome out;
+                    const auto at = client.Acknowledge(noticeId);
+                    if (!at) { out.ok = false; out.message = at.error.message; return out; }
+                    out.message = Tr("Acknowledged ") + noticeId;
+                    return out;
+                }, [this](const JobOutcome& out) { if (out.ok) RefreshMarketPage(); });
+            };
+            row->AddChild(ack);
+        }
+        noticesList_->AddChild(row);
+    }
+    if (haveTerms_) {
+        marketTermsLabel_->SetText(TrF("Version {0}, in force from {1}", terms_.version, terms_.inForceFrom) + (terms_.changes.empty() ? "" : " (" + terms_.changes + ")"));
+        marketTermsText_->SetText(terms_.text);
+    } else {
+        marketTermsLabel_->SetText(Tr("No terms are in force."));
+        marketTermsText_->SetText("");
+    }
+    submissionsList_->ClearChildren();
+    if (submissionLines_.empty()) submissionsList_->AddChild(Theme::Caption("uaM.s.none", Tr("Nothing submitted yet.")));
+    n = 0;
+    for (const std::string& line : submissionLines_) submissionsList_->AddChild(Theme::Caption("uaM.s" + std::to_string(n++), line));
+    reportsList_->ClearChildren();
+    if (reportLines_.empty()) reportsList_->AddChild(Theme::Caption("uaM.r.none", Tr("No reports.")));
+    n = 0;
+    for (const std::string& line : reportLines_) reportsList_->AddChild(Theme::Caption("uaM.r" + std::to_string(n++), line));
+    UpdateNoticesBanner();
+    pageHost_->InvalidateLayout();
+    pageHost_->RequestRedraw();
+}
+
+void AdminWindow::UpdateNoticesBanner() {
+    if (!noticesBanner_) return;
+    size_t open = 0;
+    std::string first;
+    for (const Notice& notice : notices_) if (!notice.Acknowledged()) { if (first.empty()) first = notice.kind + ": " + notice.subject; ++open; }
+    noticesBanner_->SetVisible(open > 0);
+    if (open > 0) bannerLabel_->SetText(TrN("{n} notice from the operator - ", "{n} notices from the operator - ", static_cast<long long>(open)) + first);
     pageHost_->InvalidateLayout();
     pageHost_->RequestRedraw();
 }

@@ -53,6 +53,7 @@ void UltraSnipSettings::Load() {
     videoFolder = file.GetString("video.folder", videoFolder);
     frameRate = std::clamp(file.GetInt("video.frameRate", frameRate), 5, 60);
     showWindowAfterSnip = file.GetBool("snip.showWindowAfter", showWindowAfterSnip);
+    takePrintKey = file.GetBool("snip.printKey", takePrintKey);
     saveFolder = file.GetString("save.folder", saveFolder);
 }
 
@@ -70,6 +71,7 @@ void UltraSnipSettings::Save() const {
     file.Set("video.folder", videoFolder);
     file.Set("video.frameRate", frameRate);
     file.Set("snip.showWindowAfter", showWindowAfterSnip);
+    file.Set("snip.printKey", takePrintKey);
     file.Set("save.folder", saveFolder);
     file.Save();
 }
@@ -92,6 +94,7 @@ void UltraSnipSettings::ResetVideos() {
 void UltraSnipSettings::ResetBehaviour() {
     const UltraSnipSettings defaults;
     showWindowAfterSnip = defaults.showWindowAfterSnip;
+    takePrintKey = defaults.takePrintKey;
 }
 
 std::string UltraSnipSettings::NewPicturePath() const {

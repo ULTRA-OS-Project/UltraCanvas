@@ -1,3 +1,8 @@
+#### 2026-11-11 *0.14*
+- **The theme under the application's `Own` policy.** `AppTheme` is the
+  provider: the colours stay UltraDBAdmin's, the fonts are the desktop's,
+  taken again when the desktop changes.
+
 #### 2026-10-28 *0.13*
 - **The relay's sign-in checks the ID token through UltraCrypt.** Its RS256 /
   ES256 signature (`UltraCryptPublicKey.h`) and the sign-in's random state

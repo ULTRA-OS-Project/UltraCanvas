@@ -2,10 +2,11 @@
 // UltraRTC - the UltraRtc_* API in a build without an engine (no OpenSSL):
 // every call answers Unsupported, so callers can offer the feature or not.
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraRTC/UltraRTCCore.h"
+#include "UltraRTCVersion.h"
 
 namespace {
 UltraRtcResult NoEngine() {
@@ -17,6 +18,7 @@ UltraRtcResult NoEngine() {
 UltraRtcResult UltraRtc_Initialize() { return NoEngine(); }
 void UltraRtc_Shutdown() {}
 bool UltraRtc_IsAvailable() { return false; }
+std::string UltraRtc_GetVersion() { return ULTRARTC_API_VERSION; }
 UltraRtcCapabilities UltraRtc_GetCapabilities() { return UltraRtcCapabilities(); }
 void UltraRtc_SetEventDispatcher(UltraRtcDispatcher) {}
 

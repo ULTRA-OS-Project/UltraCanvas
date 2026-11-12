@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.9.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.8.4 - an editable password row on the setup and server-re-entry
 //                  pages (AccountFields::askPassword), prefilled with the typed
 //                  password, so a failed sign-in can be fixed in place
@@ -38,6 +39,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cctype>
 #include <cstdlib>
@@ -135,11 +137,11 @@ std::string ProtocolName(MailProtocol protocol) {
 // The line under the fields: the usual ports, and where to find them.
 std::string NoteFor(MailProtocol protocol) {
     if (protocol == MailProtocol::Jmap)
-        return "A JMAP server is reached over HTTPS, usually on port 443, and "
-               "answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, "
-               "Cyrus and Apache James: the mail host). Mail is read and sent "
-               "through it: the outgoing (SMTP) server is optional - leave it "
-               "empty to send through JMAP.";
+        return Tr("A JMAP server is reached over HTTPS, usually on port 443, and "
+                  "answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, "
+                  "Cyrus and Apache James: the mail host). Mail is read and sent "
+                  "through it: the outgoing (SMTP) server is optional - leave it "
+                  "empty to send through JMAP.");
     return "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
            "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
            "settings\" or \"IMAP/SMTP\" in their help.";
@@ -187,7 +189,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     auto content = CreateContainer("srvForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -195,7 +197,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     auto header = Theme::MakeDialogHeader("srvHeader", account.edit ? "envelope" : "server",
-                                          account.edit ? "Account settings" : "Server settings",
+                                          account.edit ? Tr("Account settings") : Tr("Server settings"),
                                           intro, 30.0f);
     header->SetMargin(0, 0, 4, 0);
     content->AddChild(header);
@@ -208,7 +210,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine("srvNameLbl", "Display name", Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
         nameInput = CreateTextInput("srvName", 0, 0, 0, Theme::kControlHeight);
@@ -230,7 +232,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                        .SetFlexGap(Theme::kInnerGap)
                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto protocolLabel = Theme::MakeLine("srvProtocolLbl", "Protocol", Theme::kControlHeight,
-                                         Theme::kSizeBody, Theme::kTextSecondary);
+                                         Theme::SizeBody(), Theme::TextSecondary());
     protocolLabel->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     protocolRow->AddChild(protocolLabel);
     auto protocol = CreateDropdown("srvProtocol", 0, 0, 0, Theme::kControlHeight);
@@ -257,7 +259,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         ServerRow r;
         r.label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                  Theme::kSizeBody, Theme::kTextSecondary);
+                                  Theme::SizeBody(), Theme::TextSecondary());
         r.label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(r.label);
 
@@ -269,7 +271,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         r.host->layoutItem.SetFlexGrow(1);
 
         r.port = CreateTextInput(id + "Port", 0, 0, kPortWidth, Theme::kControlHeight);
-        r.port->SetPlaceholder("Port");
+        r.port->SetPlaceholder(Tr("Port"));
         r.port->SetText(s.port > 0 ? std::to_string(s.port) : "");
         Theme::StyleInput(r.port);
         row->AddChild(r.port);
@@ -277,7 +279,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         r.security = CreateDropdown(id + "Sec", 0, 0, kSecWidth, Theme::kControlHeight);
         r.security->AddItem("SSL/TLS", "ssl");
         r.security->AddItem("STARTTLS", "starttls");
-        r.security->AddItem("None", "none");
+        r.security->AddItem(Tr("None"), "none");
         Theme::StyleDropdown(r.security);
         r.security->SetSelectedIndex(SecurityIndex(s.security), /*runNotifications=*/false);
         row->AddChild(r.security);
@@ -338,7 +340,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         AuthRow r;
         r.label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                  Theme::kSizeBody, Theme::kTextSecondary);
+                                  Theme::SizeBody(), Theme::TextSecondary());
         r.label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(r.label);
         r.method = CreateDropdown(id, 0, 0, 0, Theme::kControlHeight);
@@ -350,9 +352,9 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         return r;
     };
-    AuthRow imapAuth = addAuthRow("srvImapAuth", "Sign-in (" + ProtocolName(startProtocol) + ")",
+    AuthRow imapAuth = addAuthRow("srvImapAuth", TrF("Sign-in ({0})", ProtocolName(startProtocol)),
                                   startProtocol, prefill.imap.auth, false);
-    AuthRow smtpAuth = addAuthRow("srvSmtpAuth", "Sign-in (SMTP)", MailProtocol::Imap,
+    AuthRow smtpAuth = addAuthRow("srvSmtpAuth", Tr("Sign-in (SMTP)"), MailProtocol::Imap,
                                   prefill.smtp.auth, true);
 
     // Username row.
@@ -361,7 +363,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto userLabel = Theme::MakeLine("srvUserLbl", "Username", Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
     userLabel->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     userRow->AddChild(userLabel);
     auto user = CreateTextInput("srvUser", 0, 0, 0, Theme::kControlHeight);
@@ -383,7 +385,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
         content->AddChild(row);
@@ -412,10 +414,10 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     }
     if (account.edit && account.canOAuth) {
         auto row = credRow("srvOAuthRow", "Sign-in");
-        const std::string prov = account.providerName.empty() ? "the provider"
+        const std::string prov = account.providerName.empty() ? Tr("the provider")
                                                               : account.providerName;
         oauthBtn = CreateButton("srvReauth", 0, 0, 0, Theme::kControlHeight,
-                                "Sign in with " + prov);
+                                TrF("Sign in with {0}", prov));
         Theme::StyleSecondary(oauthBtn);
         Theme::SetButtonIcon(oauthBtn, "globe");
         row->AddChild(oauthBtn);
@@ -429,12 +431,12 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         auto row = credRow("srvSigRow", "Signature");
         auto current = std::make_shared<Signature>(account.signature);
         auto summary = Theme::MakeLine("srvSigSummary", DescribeSignature(*current),
-                                       Theme::kControlHeight, Theme::kSizeBody,
-                                       Theme::kTextPrimary);
+                                       Theme::kControlHeight, Theme::SizeBody(),
+                                       Theme::TextPrimary());
         row->AddChild(summary);
         summary->layoutItem.SetFlexGrow(1);
         auto editBtn = CreateButton("srvSigEdit", 0, 0, 120, Theme::kControlHeight,
-                                    "Edit signature\xE2\x80\xA6");
+                                    Tr("Edit signature\xE2\x80\xA6"));
         Theme::FitToLabel(editBtn, 120);
         Theme::StyleSecondary(editBtn);
         Theme::SetButtonIcon(editBtn, "signature");
@@ -458,13 +460,13 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     if (account.edit && account.onEditSecurity) {
         auto row = credRow("srvSecRow", "Security");
         auto summary = Theme::MakeLine("srvSecSummary", account.securitySummary, Theme::kControlHeight,
-                                       Theme::kSizeBody, Theme::kTextPrimary);
+                                       Theme::SizeBody(), Theme::TextPrimary());
         summary->SetTooltip(account.securitySummary);
         row->AddChild(summary);
         summary->layoutItem.SetFlexGrow(1);
         UltraCanvasLabel* summaryLabel = summary.get();   // a sibling in this dialog
         auto editBtn = CreateButton("srvSecEdit", 0, 0, 130, Theme::kControlHeight,
-                                    "Mail security\xE2\x80\xA6");
+                                    Tr("Mail security\xE2\x80\xA6"));
         Theme::FitToLabel(editBtn, 130);
         Theme::StyleSecondary(editBtn);
         Theme::SetButtonIcon(editBtn, "lock");
@@ -480,8 +482,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->AddChild(editBtn);
     }
 
-    auto note = Theme::MakeLine("srvNote", NoteFor(startProtocol), 0, Theme::kSizeBody,
-                                Theme::kTextSecondary);
+    auto note = Theme::MakeLine("srvNote", NoteFor(startProtocol), 0, Theme::SizeBody(),
+                                Theme::TextSecondary());
     note->SetWrap(TextWrap::WrapWord);
     content->AddChild(note);
     note->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -490,7 +492,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // space so a long sign-in error wraps across as many lines as it needs
     // instead of being clipped to one line. (Added below the note; made here
     // for the protocol switch's password warning.)
-    auto status = Theme::MakeText("srvStatus", "", Theme::kSizeBody, Theme::kWaitingText);
+    auto status = Theme::MakeText("srvStatus", "", Theme::SizeBody(), Theme::WaitingText());
     status->SetWrap(TextWrap::WrapWord);
     status->SetAlignment(TextAlignment::Left);
 
@@ -519,10 +521,10 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                 "stored password is not used for the new protocol (a JMAP server often "
                 "wants its own app password or API token), so without it the account "
                 "cannot connect.";
-            status->SetTextColor(Theme::kWaitingText);
+            status->SetTextColor(Theme::WaitingText());
             status->SetText(*passwordWarning);
         } else if (passInput) {
-            passInput->SetPlaceholder("Leave blank to keep the current password");
+            passInput->SetPlaceholder(Tr("Leave blank to keep the current password"));
             if (!passwordWarning->empty() && status->GetText() == *passwordWarning)
                 status->SetText("");
             passwordWarning->clear();
@@ -581,7 +583,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     if (account.edit && account.onDelete) {
         std::function<void()> onDelete = account.onDelete;
         auto deleteBtn = CreateButton("srvDelete", 0, 0, 130, Theme::kControlHeight,
-                                      "Delete account");
+                                      Tr("Delete account"));
         Theme::FitToLabel(deleteBtn, 130);
         Theme::StyleDanger(deleteBtn);
         Theme::SetButtonIcon(deleteBtn, "trash");
@@ -593,7 +595,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     }
 
     buttonRow->AddStretchSpacer(1);
-    auto cancelBtn = CreateButton("srvCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("srvCancel", 0, 0, 90, Theme::kControlHeight, Tr("Cancel"));
     Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
@@ -637,22 +639,22 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         auto badHost = [status](const char* field, const std::string& host) {
             const std::string problem = ServerNameProblem(host);
             if (problem.empty()) return false;
-            status->SetTextColor(Theme::kWaitingText);
+            status->SetTextColor(Theme::WaitingText());
             status->SetText(std::string(field) + " \"" + host + "\": " + problem);
             return true;
         };
         const std::string incoming = "Incoming (" + ProtocolName(r.imap.protocol) + ") server";
         if (r.imap.host.empty())      { status->SetText("Enter the incoming (" + ProtocolName(r.imap.protocol) + ") server."); return false; }
         if (badHost(incoming.c_str(), r.imap.host)) return false;
-        if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return false; }
+        if (r.imap.port == 0)         { status->SetText(Tr("The incoming port must be a number from 1 to 65535.")); return false; }
         // A JMAP account sends through its JMAP server unless an outgoing
         // server is given; everything else needs one.
         if (r.smtp.host.empty() && r.imap.protocol == MailProtocol::Jmap) {
             r.smtp = MailServerSettings{};
         } else {
-            if (r.smtp.host.empty())      { status->SetText("Enter the outgoing (SMTP) server."); return false; }
+            if (r.smtp.host.empty())      { status->SetText(Tr("Enter the outgoing (SMTP) server.")); return false; }
             if (badHost("Outgoing (SMTP) server", r.smtp.host)) return false;
-            if (r.smtp.port == 0)         { status->SetText("The outgoing port must be a number from 1 to 65535."); return false; }
+            if (r.smtp.port == 0)         { status->SetText(Tr("The outgoing port must be a number from 1 to 65535.")); return false; }
         }
         r.found  = true;
         r.source = "manual";
@@ -677,20 +679,20 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // sign-in, library versions and trusted roots were involved. The status
     // line has room for the reason only; this is what a bug report needs.
     auto diagnostics = std::make_shared<std::string>();
-    auto detailsBtn = CreateButton("srvDetails", 0, 0, 90, Theme::kControlHeight, "Details");
+    auto detailsBtn = CreateButton("srvDetails", 0, 0, 90, Theme::kControlHeight, Tr("Details"));
     Theme::FitToLabel(detailsBtn, 90);
     Theme::StyleSecondary(detailsBtn);
     Theme::SetButtonIcon(detailsBtn, "info");
     detailsBtn->SetVisible(false);
     detailsBtn->onClick = [diagnostics, status]() {
-        AlertWarning(nullptr, "Connection details",
+        AlertWarning(nullptr, Tr("Connection details"),
                      WithDiagnostics(status->GetText(), *diagnostics));
     };
     buttonRow->AddChild(detailsBtn);
 
     // "Save anyway" appears after a failed check, for a server that is down
     // right now or a check that could not run (no plug-in).
-    auto anywayBtn = CreateButton("srvSaveAnyway", 0, 0, 130, Theme::kControlHeight, "Save anyway");
+    auto anywayBtn = CreateButton("srvSaveAnyway", 0, 0, 130, Theme::kControlHeight, Tr("Save anyway"));
     Theme::FitToLabel(anywayBtn, 130);
     Theme::StyleSecondary(anywayBtn);
     anywayBtn->SetVisible(false);
@@ -712,7 +714,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     };
     buttonRow->AddChild(anywayBtn);
 
-    auto saveBtn = CreateButton("srvSave", 0, 0, 110, Theme::kControlHeight, "Save");
+    auto saveBtn = CreateButton("srvSave", 0, 0, 110, Theme::kControlHeight, Tr("Save"));
     Theme::FitToLabel(saveBtn, 110);
     Theme::StylePrimary(saveBtn);
     Theme::SetButtonIcon(saveBtn, "check");
@@ -737,7 +739,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
             dlg->CloseDialog(DialogResult::OK);
             return;
         }
-        status->SetTextColor(Theme::kTextSecondary);
+        status->SetTextColor(Theme::TextSecondary());
         status->SetText("Checking the sign-in at " + r.settings.imap.host + "…");
         save->SetDisabled(true);
         anyway->SetVisible(false);
@@ -751,7 +753,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                 return;
             }
             save->SetDisabled(false);
-            status->SetTextColor(Theme::kWaitingText);
+            status->SetTextColor(Theme::WaitingText());
             const std::string detail = DetailLine(outcome);
             status->SetText("The sign-in at " + r.settings.imap.host + " did not succeed: "
                             + FriendlyMessage(outcome)

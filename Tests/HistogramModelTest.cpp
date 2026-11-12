@@ -1,8 +1,10 @@
 // Tests/HistogramModelTest.cpp
 // Unit tests for the image histogram model: counting each pixel layout,
 // premultiplied alpha, transparent pixels, luminosity, the statistics and the
-// percentiles, adding counts and the red-green-blue total. UI-free.
+// percentiles, adding counts, the red-green-blue total and the clipped range
+// an auto contrast stretches. UI-free.
 //
+// Version: 1.2.0 - ClippedRange
 // Version: 1.1.0 - Add, RgbTotal; the model is in the core library
 // Version: 1.0.0
 // Last Modified: 2026-11-10
@@ -133,6 +135,32 @@ static void TestAddAndTotal() {
     CHECK(sum == 3 * whole.pixelCount, "three values a pixel");
 }
 
+static void TestClippedRange() {
+    std::printf("\n[Clipped range]\n");
+    // 1,000 grey pixels: one at 0, one at 255, the rest spread over 40..199.
+    std::vector<uint8_t> px;
+    px.insert(px.end(), {0, 0, 0});
+    for (int i = 0; i < 998; ++i) {
+        const uint8_t v = static_cast<uint8_t>(40 + i % 160);
+        px.insert(px.end(), {v, v, v});
+    }
+    px.insert(px.end(), {255, 255, 255});
+    const ImageHistogram h = ComputeImageHistogram(px.data(), 1000, 1, 3000, HistogramPixelFormat::RGB8);
+    const HistogramRange none = h.ClippedRange(HistogramChannel::Red, 0.0);
+    CHECK(none.low == 0 && none.high == 255, "fraction 0: the lone black and white pixels hold the full range");
+    const HistogramRange some = h.ClippedRange(HistogramChannel::Red, 0.002);
+    CHECK(some.low == 40 && some.high == 199, "0.2 % (two pixels) lets each outlier go: 40..199");
+    const HistogramRange tooFew = h.ClippedRange(HistogramChannel::Red, 0.0009);
+    CHECK(tooFew.low == 0 && tooFew.high == 255, "under one whole pixel lets none go");
+
+    const uint8_t flat[6] = {77, 77, 77, 77, 77, 77};
+    const HistogramRange one = ComputeImageHistogram(flat, 2, 1, 6, HistogramPixelFormat::RGB8)
+                                   .ClippedRange(HistogramChannel::Green, 0.002);
+    CHECK(one.low == 77 && one.high == 77, "one level everywhere: low and high meet there");
+    const HistogramRange empty = ImageHistogram().ClippedRange(HistogramChannel::Blue, 0.002);
+    CHECK(empty.low == 0 && empty.high == 255, "an empty histogram: the whole scale");
+}
+
 int main() {
     std::printf("====================================\n");
     std::printf("  UltraCanvas Histogram Model\n");
@@ -141,6 +169,7 @@ int main() {
     TestLuminosity();
     TestStatistics();
     TestAddAndTotal();
+    TestClippedRange();
     std::printf("\n====================================\n");
     if (g_failures == 0) {
         std::printf("All tests passed.\n");

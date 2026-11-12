@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailOutboxView.cpp
+// Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.0 - Send now, Edit and Delete carry icons
 // Version: 0.2.0 - SetNote; Edit and Delete while a send runs
 // Version: 0.1.0
@@ -7,6 +8,7 @@
 
 #include "UltraCanvasListSelection.h"
 #include "UltraMailTheme.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cctype>
 #include <string>
@@ -26,15 +28,15 @@ std::string Join(const std::vector<std::string>& v) {
 // Why it is still here, and where it is kept.
 std::string StatusOf(const OutboxItem& item, bool sending, bool held) {
     std::string status;
-    if (held)                       status = "Open for correcting - not sent until it is sent again";
-    else if (sending)               status = "Sending…";
-    else if (item.attempts == 0)    status = "Waiting to be sent";
+    if (held)                       status = Tr("Open for correcting - not sent until it is sent again");
+    else if (sending)               status = Tr("Sending…");
+    else if (item.attempts == 0)    status = Tr("Waiting to be sent");
     else if (!item.lastError.empty()) {
         status = item.lastError;   // as a sentence: capital first letter
         status[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(status[0])));
     }
-    else                            status = "Not sent yet";
-    if (item.HasDraftCopy()) status += " · copy in " + item.draftsFolder;
+    else                            status = Tr("Not sent yet");
+    if (item.HasDraftCopy()) status += " · " + TrF("copy in {0}", item.draftsFolder);
     return status;
 }
 
@@ -43,44 +45,44 @@ std::string StatusOf(const OutboxItem& item, bool sending, bool held) {
 std::shared_ptr<UltraCanvasContainer> OutboxView::Build() {
     root_ = CreateContainer("outboxView", 0, 0, 0, 0);
     root_->SetPadding(Theme::kPagePadding);
-    root_->SetBackgroundColor(Theme::kCardBackground);
+    root_->SetBackgroundColor(Theme::CardBackground());
     root_->layout.SetFlexColumn()
                  .SetFlexGap(Theme::kGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     summary_ = Theme::MakeLine("outboxSummary", "", Theme::kControlHeight,
-                               Theme::kSizeBody, Theme::kTextSecondary);
+                               Theme::SizeBody(), Theme::TextSecondary());
     summary_->SetWrap(TextWrap::WrapWord);
     root_->AddChild(summary_);
 
     model_ = std::make_shared<UltraCanvasMultiColumnListModel>();
     model_->SetColumns({
-        ListColumnDef("To", 150),
-        ListColumnDef("Subject", 170),
-        ListColumnDef("From", 140),
-        ListColumnDef("Tries", 44, TextAlignment::Right),
-        ListColumnDef("Status", 220),
+        ListColumnDef(Tr("To"), 150),
+        ListColumnDef(Tr("Subject"), 170),
+        ListColumnDef(Tr("From"), 140),
+        ListColumnDef(Tr("Tries"), 44, TextAlignment::Right),
+        ListColumnDef(Tr("Status"), 220),
     });
     list_ = std::make_shared<UltraCanvasListView>("outboxList");
     list_->SetModel(model_);
     list_->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
     ListViewStyle style;
-    style.backgroundColor          = Theme::kCardBackground;
+    style.backgroundColor          = Theme::CardBackground();
     style.showHeader               = true;
-    style.headerBackgroundColor    = Theme::kSidebar;
-    style.headerTextColor          = Theme::kTextSecondary;
-    style.headerFontSize           = Theme::kSizeBody;
-    style.selectionBackgroundColor = Theme::kRowSelected;
-    style.hoverBackgroundColor     = Theme::kRowHover;
+    style.headerBackgroundColor    = Theme::Sidebar();
+    style.headerTextColor          = Theme::TextSecondary();
+    style.headerFontSize           = Theme::SizeBody();
+    style.selectionBackgroundColor = Theme::RowSelected();
+    style.hoverBackgroundColor     = Theme::RowHover();
     list_->SetStyle(style);
     // The app's text size and colour, dark on the light selection too.
     auto rows = std::make_shared<UltraCanvasDefaultListDelegate>();
-    rows->SetFontSize(Theme::kSizeBody);
-    rows->SetTextColor(Theme::kTextPrimary);
-    rows->SetSelectedTextColor(Theme::kTextPrimary);
+    rows->SetFontSize(Theme::SizeBody());
+    rows->SetTextColor(Theme::TextPrimary());
+    rows->SetSelectedTextColor(Theme::TextPrimary());
     list_->SetDelegate(rows);
     list_->SetColumnsResizable(true);
-    list_->SetBorders(1.0f, Theme::kCardBorder, Theme::kControlRadius);
+    list_->SetBorders(1.0f, Theme::CardBorder(), Theme::kControlRadius);
     list_->onSelectionChanged = [this](const std::vector<int>&) { UpdateButtons(); };
     // Double-click: open it to correct it (Edit).
     list_->onItemDoubleClicked = [this](int) {
@@ -192,11 +194,13 @@ void OutboxView::UpdateSummary() {
     if (!summary_) return;
     const size_t n = items_.size();
     std::string text = n == 0
-        ? std::string("Nothing is waiting to be sent.")
-        : (n == 1 ? std::string("1 message is") : std::to_string(n) + " messages are")
-          + " waiting to be sent. UltraMail tries again by itself - sooner when the "
-            "connection is back. A message the server keeps refusing can be "
-            "corrected (Edit) or deleted here.";
+        ? Tr("Nothing is waiting to be sent.")
+        : TrN("{n} message is waiting to be sent. UltraMail tries again by itself - sooner when the "
+              "connection is back. A message the server keeps refusing can be corrected (Edit) or "
+              "deleted here.",
+              "{n} messages are waiting to be sent. UltraMail tries again by itself - sooner when the "
+              "connection is back. A message the server keeps refusing can be corrected (Edit) or "
+              "deleted here.", static_cast<long long>(n));
     if (!note_.empty()) text += " " + note_;
     summary_->SetText(text);
 }

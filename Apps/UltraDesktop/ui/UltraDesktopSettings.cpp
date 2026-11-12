@@ -2,6 +2,7 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.9.0 - UltraSnip among the StartupPrograms, on once by default (startupDefaults 2)
 // Version: 0.8.0 - startupDefaults: UltraNotifications added once to
 //                  startWithDesktop
 // Version: 0.7.0 - dropFilesOn, desktopIcons
@@ -255,6 +256,7 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     // then records that, and unticking it holds.
     const int applied = static_cast<int>(root.Get("startupDefaults").GetInteger(0));
     if (applied < 1) loaded.SetStartsWithDesktop("UltraNotifications", true);
+    if (applied < 2) loaded.SetStartsWithDesktop("UltraSnip", true);
     loaded.startupDefaults = std::max(applied, kStartupDefaults);
     const JSONValue& pinned = root.Get("pinnedApps");
     if (pinned.IsArray()) {
@@ -326,6 +328,9 @@ const std::vector<StartupProgram>& DesktopSettings::StartupPrograms() {
         {"UltraNotifications", "org.ultraos.ultranotifications",
          "UltraNotifications - no window: counts the unread on the bell, opens at once",
          "UltraNotifications", "--background", false},
+        {"UltraSnip", "org.ultraos.ultrasnip",
+         "UltraSnip - no window: the Print Screen key snips, the screenshot button opens at once",
+         "UltraSnip", "--background", false},
         {"StickerBoard", "", "Sticker board - made ready unseen: shows at once, the thumbnails made",
          "Sticker board", "", true},
     };

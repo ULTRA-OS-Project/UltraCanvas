@@ -1,8 +1,9 @@
 // Apps/UltraMail/ui/UltraMailPassphraseDialog.cpp
+// Version: 0.8.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.7.0 - PassphrasePrompt; the Primary Password's words; a mistake asks again
 // Version: 0.6.0 - a header with a lock tile; Set password / Unlock carry icons
 // Version: 0.5.0 - themed inputs and buttons
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailPassphraseDialog.h"
 
@@ -13,6 +14,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <memory>
@@ -27,21 +29,21 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
                             std::function<void(const std::string&)> onSubmit) {
     PassphrasePrompt prompt;
     if (firstRun) {
-        prompt.title       = "Choose a Primary Password";
-        prompt.heading     = "Choose a Primary Password";
-        prompt.text        = "It encrypts your mail passwords and the mail stored on this "
-                             "computer, and it is not stored anywhere - if you forget it, "
-                             "the mail kept here has to be downloaded again and your mail "
-                             "passwords entered again.";
+        prompt.title       = Tr("Choose a Primary Password");
+        prompt.heading     = Tr("Choose a Primary Password");
+        prompt.text        = Tr("It encrypts your mail passwords and the mail stored on this "
+                                "computer, and it is not stored anywhere - if you forget it, "
+                                "the mail kept here has to be downloaded again and your mail "
+                                "passwords entered again.");
         prompt.fieldLabel  = "New password";
-        prompt.placeholder = "Choose a Primary Password";
+        prompt.placeholder = Tr("Choose a Primary Password");
         prompt.okLabel     = "Set password";
         prompt.okIcon      = "check";
         prompt.confirm     = true;
     } else {
-        prompt.heading = "Unlock your mail";
-        prompt.text    = "Enter your Primary Password to open your mail and your mail "
-                         "account passwords.";
+        prompt.heading = Tr("Unlock your mail");
+        prompt.text    = Tr("Enter your Primary Password to open your mail and your mail "
+                            "account passwords.");
     }
     prompt.errorText = errorText;
     Show(parent, std::move(prompt), std::move(onSubmit));
@@ -71,7 +73,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     auto content = CreateContainer("passForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -86,8 +88,8 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
     if (!prompt.errorText.empty()) {
         auto err = CreateLabel("passError", 0, 0, 400, 16, prompt.errorText);
         err->SetWrap(TextWrap::WrapWord);
-        err->SetFontSize(Theme::kSizeBody);
-        err->SetTextColor(Theme::kWaitingText);
+        err->SetFontSize(Theme::SizeBody());
+        err->SetTextColor(Theme::WaitingText());
         content->AddChild(err);
         err->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     }
@@ -100,7 +102,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Lbl", labelText, Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
         label->SetElementSize(Size2Df(104.0f, Theme::kControlHeight));
         row->AddChild(label);
         Theme::StyleInput(input);
@@ -117,7 +119,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
     std::shared_ptr<UltraCanvasTextInput> confirm;
     if (prompt.confirm) {
         confirm = CreatePasswordInput("passConfirm", 0, 0, 0, Theme::kControlHeight);
-        confirm->SetPlaceholder("Type it again");
+        confirm->SetPlaceholder(Tr("Type it again"));
         addRow("passConfirm", "Repeat", confirm);
     }
 
@@ -131,7 +133,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
 
-    auto cancelBtn = CreateButton("passCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("passCancel", 0, 0, 90, Theme::kControlHeight, Tr("Cancel"));
     Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
@@ -163,9 +165,9 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
             const std::string entered = pass->GetText();
             std::string mistake;
             if (entered.empty())
-                mistake = "No password was entered.";
+                mistake = Tr("No password was entered.");
             else if (prompt.confirm && confirm && entered != confirm->GetText())
-                mistake = "The two passwords do not match - type them again.";
+                mistake = Tr("The two passwords do not match - type them again.");
             if (!mistake.empty()) {
                 PassphrasePrompt again = prompt;
                 again.errorText = mistake;

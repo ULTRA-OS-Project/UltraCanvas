@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.7.0 - the theme under the Own policy: the provider picks the palette (the project's look or the desktop's) and takes the host's fonts; ApplyOwnLooks after the theme
 // Version: 0.14.0 - the export's progress window names its size, frame rate, codec and sound; the
 //                  path in "Saved ..." keeps its backslashes (escaped for the Markdown message)
 // Version: 0.13.0 - selected words of a title take a letter spacing and a colour (the Clip
@@ -16,7 +17,7 @@
 // Version: 0.6.0 - OpenFiles: files handed over by a second start
 // Version: 0.5.0 - Import, the overlay and a sound on A2 offer FileLoader's types the engine reads
 // Version: 0.4.0
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #include "UltraVideoWindow.h"
 #include "UltraVideoFormats.h"
@@ -173,6 +174,7 @@ double SliderToZoom(double value) {
 UltraVideoWindow::UltraVideoWindow(UltraCanvasApplication& app) : app_(app) {}
 
 UltraVideoWindow::~UltraVideoWindow() {
+    if (themeHandler_) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     if (timer_) app_.StopTimer(timer_);
     if (job_) job_->Cancel();
     if (draftJob_) draftJob_->Cancel();
@@ -185,13 +187,30 @@ UltraVideoWindow::~UltraVideoWindow() {
 // building
 // ============================================================================
 bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
+    // The design's palette as the framework theme, under the application's
+    // Own policy: the provider picks the palette - the project's look once
+    // the eye chose one or a saved project brought one, the desktop's until
+    // then - and takes the host's fonts; the policy calls it now and on
+    // every change of the desktop, and the change handler re-applies the
+    // window's own looks after the elements that follow have re-styled.
+    app_.SetThemePolicy(ThemePolicy::Own);
+    app_.SetThemeProvider([this](const HostAppearance& host) {
+        dark_ = document_.view.darkChosen ? document_.view.dark : host.dark;
+        palette_ = &PaletteFor(dark_);
+        UltraCanvasTheme theme = ThemeFor(*palette_);
+        theme.TakeHostFonts(host);
+        return theme;
+    });
+    themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) {
+        if (built_) ApplyOwnLooks();
+    });
     WindowConfig config;
     config.title = std::string("Untitled - UltraVideo ") + ULTRAVIDEO_VERSION;
     config.width = 1440;
     config.height = 860;
     config.minWidth = 960;
     config.minHeight = 600;
-    config.backgroundColor = ToColor(Tokens::Dark.Bg000);
+    config.backgroundColor = ToColor(palette_->Bg000);
     window_ = CreateWindow(config);
     if (!window_) return false;
     UltraCanvasWindow* window = window_.get();
@@ -307,7 +326,8 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
         return false;
     };
 
-    ApplyPalette();
+    built_ = true;
+    ApplyPalette();   // the theme is the policy's already; this brings the window's own looks
     SweepOldDrafts();
 
     // What the command line brought
@@ -377,9 +397,10 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildAppBar() {
     appBar_->AddChild(story_);
     theme_ = MakeIconButton("uv.theme", "eye", "Light or dark");
     theme_->SetOnClick([this]() {
-        dark_ = !dark_;
-        document_.view.dark = dark_;
-        palette_ = &PaletteFor(dark_);
+        // The eye picks the project's look: from here it is the project's,
+        // whatever the desktop does
+        document_.view.dark = !dark_;
+        document_.view.darkChosen = true;
         ApplyPalette();
     });
     appBar_->AddChild(theme_);
@@ -832,11 +853,16 @@ std::shared_ptr<UltraCanvasContainer> UltraVideoWindow::BuildTimelineDock() {
 }
 
 void UltraVideoWindow::ApplyPalette() {
+    // The framework's theme is the palette: the policy builds it again
+    // through the provider (which picks the palette), the elements that
+    // follow it (split panes, tabs, fields, albums, toolbars, dropdowns,
+    // menus, tooltips) re-style themselves, and the change handler brings
+    // the app's own looks after them (ApplyOwnLooks)
+    app_.ApplyThemePolicy();
+}
+
+void UltraVideoWindow::ApplyOwnLooks() {
     const Palette& p = *palette_;
-    // The framework's theme is the palette: the elements that follow it
-    // (split panes, tabs, fields, albums, toolbars, dropdowns, menus,
-    // tooltips) re-style themselves here; the app's own looks follow
-    UltraCanvasTheme::SetCurrent(ThemeFor(p));
     window_->SetBackgroundColor(ToColor(p.Bg000));
     appBar_->SetBackgroundColor(ToColor(p.Bg100));
     appBar_->SetBorderBottom(1, ToColor(p.Line));
@@ -878,8 +904,6 @@ void UltraVideoWindow::SetDocument(Document document) {
     if (titleHost_) titleHost_->SetVisible(false);
     document_ = std::move(document);
     InvalidateDraft();
-    dark_ = document_.view.dark;
-    palette_ = &PaletteFor(dark_);
     history_.Clear();
     selectedClip_.clear();
     if (timeline_) {
@@ -1030,7 +1054,8 @@ void UltraVideoWindow::ConfirmThen(std::function<void()> then) {
 void UltraVideoWindow::NewProject() {
     ConfirmThen([this]() {
         Document fresh;
-        fresh.view.dark = dark_;
+        fresh.view.dark = dark_;                            // the look stays as it is
+        fresh.view.darkChosen = document_.view.darkChosen;   // and whose it is
         SetDocument(std::move(fresh));
         Message("A new project.");
     });

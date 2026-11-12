@@ -188,7 +188,7 @@ UltraIMCapabilityFlags TelegramProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
            F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-           F::CreateGroup | F::Channels | F::ImageMessages | F::FileTransfer | F::Stickers;
+           F::CreateGroup | F::Channels | F::ImageMessages | F::FileTransfer | F::Stickers | F::SearchMessages;
 }
 
 UltraIMResult TelegramProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -1676,6 +1676,60 @@ void TelegramProvider::FetchMessages(const std::string& conversationId, const st
     (*next)();
 }
 
+void TelegramProvider::SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) {
+    if (search.conversationId.empty()) {
+        onResult(Unsupported("searching every conversation at once"), UltraIMSearchPage());
+        return;
+    }
+    int64_t chatId = 0;
+    const UltraIMResult r = Connected(chatId, search.conversationId);
+    if (!r) {
+        onResult(r, UltraIMSearchPage());
+        return;
+    }
+    const char* filter = "searchMessagesFilterEmpty";
+    switch (search.kind) {
+        case UltraIMSearchKind::AnyKind: break;
+        case UltraIMSearchKind::Images:  filter = "searchMessagesFilterPhoto"; break;
+        case UltraIMSearchKind::Videos:  filter = "searchMessagesFilterVideo"; break;
+        case UltraIMSearchKind::Media:   filter = "searchMessagesFilterPhotoAndVideo"; break;
+        case UltraIMSearchKind::Files:   filter = "searchMessagesFilterDocument"; break;
+        case UltraIMSearchKind::Links:   filter = "searchMessagesFilterUrl"; break;
+    }
+    const int limit = std::min(100, search.limit > 0 ? search.limit : 50);      // TDLib's most
+    const int64_t from = ToId(search.cursor);
+    Client()->Send(Request::SearchChatMessages(chatId, Trim(search.text), from, limit, filter),
+                   [this, chatId, from, onResult](const TdObject& a) {
+                       if (IsError(a)) {
+                           onResult(UltraIMResult::Error(UltraIMResultCode::NetworkError, ErrorText(a)),
+                                    UltraIMSearchPage());
+                           return;
+                       }
+                       UltraIMSearchPage page;
+                       {
+                           std::lock_guard<std::mutex> lock(mutex_);
+                           auto chat = chats_.find(chatId);
+                           for (const auto& raw : a["messages"].GetElements()) {        // newest first
+                               UltraIMMessage m;
+                               if (!MessageFrom(raw, m)) continue;
+                               if (from && ToId(m.messageId) > from) continue;     // newer than asked for
+                               // "X joined the group" is not something a person looks for.
+                               if (m.type == UltraIMMessageType::SystemEvent) continue;
+                               page.messages.push_back(m);
+                               if (chat != chats_.end()) {
+                                   Remember(chat->second, m);
+                                   FetchMedia(chat->second, m);
+                               }
+                           }
+                       }
+                       // 0: Telegram has nothing older that matches.
+                       const int64_t next = TdInt(a["next_from_message_id"]);
+                       if (next) page.nextCursor = std::to_string(next);
+                       FlushDownloads();
+                       onResult(UltraIMResult::Ok(), page);
+                   });
+}
+
 void TelegramProvider::ResolveUser(const std::string& address,
                                    std::function<void(const UltraIMResult&, int64_t)> done) {
     const std::string a = Trim(address);
@@ -1896,11 +1950,26 @@ UltraIMResult TelegramProvider::EditMessage(const std::string& conversationId, c
     return UltraIMResult::Ok();
 }
 
-UltraIMResult TelegramProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId) {
+UltraIMDeleteChoices TelegramProvider::GetDeleteChoices(const std::string& conversationId,
+                                                        const std::string& messageId) const {
+    UltraIMDeleteChoices choices;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto chat = chats_.find(ToId(conversationId));
+    if (chat == chats_.end()) return choices;
+    for (const auto& m : chat->second.recent) {
+        if (m.messageId != messageId || m.type == UltraIMMessageType::SystemEvent) continue;
+        choices.forMe = true;
+        choices.forEveryone = m.isOwn;      // (Telegram has the last word: it may still refuse)
+    }
+    return choices;
+}
+
+UltraIMResult TelegramProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                              UltraIMDeleteScope scope) {
     int64_t chatId = 0;
     const UltraIMResult r = Connected(chatId, conversationId);
     if (!r) return r;
-    Client()->Send(Request::DeleteMessages(chatId, {ToId(messageId)}, true));
+    Client()->Send(Request::DeleteMessages(chatId, {ToId(messageId)}, scope == UltraIMDeleteScope::ForEveryone));
     return UltraIMResult::Ok();
 }
 

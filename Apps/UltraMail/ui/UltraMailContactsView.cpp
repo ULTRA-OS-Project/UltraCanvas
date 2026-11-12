@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailContactsView.cpp
+// Version: 0.7.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.6.0 - Services' menu: "Remove no-reply contacts…" (what the
 //                  collector filed for no-reply senders, one per message for
 //                  some services)
@@ -12,7 +13,7 @@
 //                  as a virtualised UltraCanvasListView with a delete icon per
 //                  row; section changes restyle the sidebar instead of
 //                  rebuilding it under the click that asked for it.
-// Last Modified: 2026-09-28
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailContactsView.h"
 
@@ -26,6 +27,7 @@
 #include "UltraMailContactCollector.h"
 #include "UltraMailTheme.h"
 #include "UltraCanvasEvent.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cctype>
 #include <memory>
@@ -109,14 +111,14 @@ public:
 
         // Avatar.
         const double ax = r.x + 12, ay = r.y + (r.height - kAvatar) / 2.0;
-        ctx->DrawFilledRectangle(Rect2Dd(ax, ay, kAvatar, kAvatar), Theme::kAccentSoft,
+        ctx->DrawFilledRectangle(Rect2Dd(ax, ay, kAvatar, kAvatar), Theme::AccentSoft(),
                                  0.0f, Colors::Transparent, kAvatar * 0.25f);
         ctx->SetFontSize(kAvatar * 0.45f);
         ctx->SetFontWeight(FontWeight::Bold);
         ctx->SetTextWrap(TextWrap::WrapNone);
         ctx->SetTextAlignment(TextAlignment::Center);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextPaint(Theme::kAccent);
+        ctx->SetTextPaint(Theme::Accent());
         ctx->DrawTextInRect(Initial(c.displayName), Rect2Dd(ax, ay, kAvatar, kAvatar));
 
         // Name and the line under it.
@@ -124,13 +126,13 @@ public:
         const double tw = r.x + r.width - kDeleteZone - tx - 4;
         if (tw > 0) {
             ctx->SetTextAlignment(TextAlignment::Left);
-            ctx->SetFontSize(Theme::kSizeBody);
-            ctx->SetTextPaint(Theme::kTextPrimary);
+            ctx->SetFontSize(Theme::SizeBody());
+            ctx->SetTextPaint(Theme::TextPrimary());
             ctx->DrawTextInRect(c.displayName.empty() ? std::string("(no name)") : c.displayName,
                                 Rect2Dd(tx, r.y + 4, tw, r.height / 2.0 - 2));
             ctx->SetFontWeight(FontWeight::Normal);
-            ctx->SetFontSize(Theme::kSizeSecondary);
-            ctx->SetTextPaint(Theme::kTextSecondary);
+            ctx->SetFontSize(Theme::SizeSecondary());
+            ctx->SetTextPaint(Theme::TextSecondary());
             ctx->DrawTextInRect(SubLine(c), Rect2Dd(tx, r.y + r.height / 2.0, tw,
                                                     r.height / 2.0 - 4));
         }
@@ -139,7 +141,7 @@ public:
         // Bin icon: muted, red on the hovered row.
         if (auto img = UCImage::Get(binIcon)) {
             const double side = 16;
-            ctx->DrawMask(option.isHovered ? Theme::kTrustScam : Theme::kTextMuted, *img,
+            ctx->DrawMask(option.isHovered ? Theme::TrustScam() : Theme::TextMuted(), *img,
                           Rect2Dd(r.x + r.width - kDeleteZone + (kDeleteZone - side) / 2.0,
                                   r.y + (r.height - side) / 2.0, side, side),
                           ImageFitMode::Contain);
@@ -147,7 +149,7 @@ public:
 
         // Row divider.
         ctx->DrawFilledRectangle(Rect2Dd(r.x + 8, r.y + r.height - 1, r.width - 16, 1),
-                                 Theme::kDivider, 0.0f, Colors::Transparent, 0.0f);
+                                 Theme::Divider(), 0.0f, Colors::Transparent, 0.0f);
     }
 
     int GetRowHeight(const IListModel*, int) const override { return kRowH; }
@@ -211,7 +213,7 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     sidebar_ = CreateContainer("contactsSidebar", 0, 0, kSidebarW, 0);
-    sidebar_->SetBackgroundColor(Theme::kSidebar);
+    sidebar_->SetBackgroundColor(Theme::Sidebar());
     sidebar_->SetBorders(0.0f, Colors::Transparent, 0.0f);
     sidebar_->SetPadding(Theme::kPagePadding, 10);
     sidebar_->layout.SetFlexColumn()
@@ -228,7 +230,7 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
     sidebarList_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     auto addGroup = CreateButton("contactsAddGroup", 0, 0, 120, Theme::kControlHeight,
-                                 "Add group");
+                                 Tr("Add group"));
     Theme::FitToLabel(addGroup, 120);
     Theme::StyleSecondary(addGroup);
     Theme::SetButtonIcon(addGroup, "group-add");
@@ -239,7 +241,7 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
     sidebar_->AddChild(addGroup);
 
     auto rule = CreateContainer("contactsRule", 0, 0, 1, 0);
-    rule->SetBackgroundColor(Theme::kDivider);
+    rule->SetBackgroundColor(Theme::Divider());
     root_->AddChild(rule);
     rule->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -254,10 +256,10 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
                     .SetFlexGap(Theme::kInnerGap)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     titleLabel_ = Theme::MakeLine("contactsTitle", current_.Title(), Theme::kToolbarHeight,
-                                  Theme::kSizeTitle, Theme::kTextPrimary, FontWeight::Bold);
+                                  Theme::SizeTitle(), Theme::TextPrimary(), FontWeight::Bold);
     titleRow->AddChild(titleLabel_);
     titleLabel_->layoutItem.SetFlexGrow(1);
-    auto addBtn = CreateButton("contactsAdd", 0, 0, 130, Theme::kControlHeight, "Add contact");
+    auto addBtn = CreateButton("contactsAdd", 0, 0, 130, Theme::kControlHeight, Tr("Add contact"));
     Theme::FitToLabel(addBtn, 130);
     Theme::StylePrimary(addBtn);
     Theme::SetButtonIcon(addBtn, "user-add");
@@ -272,7 +274,7 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
     titleRow->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     filter_ = CreateTextInput("contactsFilter", 0, 0, 0, Theme::kControlHeight);
-    filter_->SetPlaceholder("Filter by name, address, phone or organization");
+    filter_->SetPlaceholder(Tr("Filter by name, address, phone or organization"));
     Theme::StyleInput(filter_);
     filter_->onTextChanged = [this](const std::string&) { ApplyFilter(); };
     main->AddChild(filter_);
@@ -283,19 +285,19 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
     list_->SetModel(model_);
     list_->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
     ListViewStyle st;
-    st.backgroundColor          = Theme::kCardBackground;
+    st.backgroundColor          = Theme::CardBackground();
     st.showHeader               = false;
     st.rowHeight                = kRowH;
     st.showGridLines            = false;
-    st.selectionBackgroundColor = Theme::kRowSelected;
-    st.hoverBackgroundColor     = Theme::kRowHover;
+    st.selectionBackgroundColor = Theme::RowSelected();
+    st.hoverBackgroundColor     = Theme::RowHover();
     list_->SetStyle(st);
     auto d = std::make_shared<ContactRowDelegate>();
     d->contacts = &shown_;
     d->binIcon  = NormalizePath(GetResourcesDir() + "media/icons/delete.svg");
     delegate_ = d;
     list_->SetDelegate(delegate_);
-    list_->SetBorders(1.0f, Theme::kCardBorder, 8.0f);
+    list_->SetBorders(1.0f, Theme::CardBorder(), 8.0f);
 
     list_->onItemDoubleClicked = [this](int row) {
         if (row >= 0 && row < static_cast<int>(shown_.size()))
@@ -370,8 +372,8 @@ void ContactsView::RebuildSidebar() {
     entries_.clear();
 
     auto addHeader = [this](const std::string& id, const std::string& text) {
-        auto header = Theme::MakeLine(id, text, 22, Theme::kSizeSecondary,
-                                      Theme::kTextMuted, FontWeight::Bold);
+        auto header = Theme::MakeLine(id, text, 22, Theme::SizeSecondary(),
+                                      Theme::TextMuted(), FontWeight::Bold);
         header->SetPadding(0, 10);
         sidebarList_->AddChild(header);
         header->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -387,12 +389,12 @@ void ContactsView::RebuildSidebar() {
         entry->layout.SetFlexRow()
                      .SetFlexGap(Theme::kInnerGap)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto name = Theme::MakeText(id + ".name", place.Title(), Theme::kSizeBody,
-                                    Theme::kTextPrimary);
+        auto name = Theme::MakeText(id + ".name", place.Title(), Theme::SizeBody(),
+                                    Theme::TextPrimary());
         entry->AddChild(name);
         name->layoutItem.SetFlexGrow(1);
         auto num = Theme::MakeText(id + ".count", std::to_string(count),
-                                   Theme::kSizeSecondary, Theme::kTextMuted);
+                                   Theme::SizeSecondary(), Theme::TextMuted());
         entry->AddChild(num);
         sidebarList_->AddChild(entry);
         entry->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -435,10 +437,10 @@ void ContactsView::RebuildSidebar() {
 void ContactsView::RestyleSidebar() {
     for (auto& e : entries_) {
         const bool selected = e.place == current_;
-        e.surface->SetBackgroundColor(selected ? Theme::kAccentSoft : Colors::Transparent);
-        e.name->SetTextColor(selected ? Theme::kAccent : Theme::kTextPrimary);
+        e.surface->SetBackgroundColor(selected ? Theme::AccentSoft() : Colors::Transparent);
+        e.name->SetTextColor(selected ? Theme::Accent() : Theme::TextPrimary());
         e.name->SetFontWeight(selected ? FontWeight::Bold : FontWeight::Normal);
-        e.count->SetTextColor(selected ? Theme::kAccent : Theme::kTextMuted);
+        e.count->SetTextColor(selected ? Theme::Accent() : Theme::TextMuted());
     }
 }
 
@@ -492,7 +494,7 @@ void ContactsView::ShowRowMenu(int row, const UCEvent& event) {
 
     menu_ = std::make_shared<UltraCanvasMenu>("contacts.rowMenu", 0, 0, 190, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
-    menu_->AddItem(MenuItemData::Action("Edit", [this, c]() {
+    menu_->AddItem(MenuItemData::Action(Tr("Edit"), [this, c]() {
         EditContact(c, /*isNew=*/false, Window());
     }));
 
@@ -518,9 +520,9 @@ void ContactsView::ShowRowMenu(int row, const UCEvent& event) {
             if (store_ && store_->MoveToGroup(id, name)) Changed();
         }));
     }
-    menu_->AddItem(MenuItemData::Submenu("Move to group", targets));
+    menu_->AddItem(MenuItemData::Submenu(Tr("Move to group"), targets));
     menu_->AddItem(MenuItemData::Separator());
-    menu_->AddItem(MenuItemData::Action("Delete", [this, c]() { ConfirmDelete(c); }));
+    menu_->AddItem(MenuItemData::Action(Tr("Delete"), [this, c]() { ConfirmDelete(c); }));
 
     PopupElementSettings settings;
     menu_->OpenMenu(event.pointerWindow, *window, settings);
@@ -531,15 +533,15 @@ void ContactsView::ShowPlaceMenu(const ContactPlace& place, const UCEvent& event
     if (!window) return;
     menu_ = std::make_shared<UltraCanvasMenu>("contacts.placeMenu", 0, 0, 170, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
-    menu_->AddItem(MenuItemData::Action("Add group", [this]() { AskNewGroup(); }));
+    menu_->AddItem(MenuItemData::Action(Tr("Add group"), [this]() { AskNewGroup(); }));
     if (place.isGroup) {
         const std::string name = place.group;
-        menu_->AddItem(MenuItemData::Action("Delete group", [this, name]() {
+        menu_->AddItem(MenuItemData::Action(Tr("Delete group"), [this, name]() {
             ConfirmDeleteGroup(name);
         }));
     } else {
         // The sections are built in: they cannot be deleted.
-        MenuItemData item = MenuItemData::Action("Delete group", []() {});
+        MenuItemData item = MenuItemData::Action(Tr("Delete group"), []() {});
         item.enabled = false;
         menu_->AddItem(item);
     }
@@ -547,13 +549,13 @@ void ContactsView::ShowPlaceMenu(const ContactPlace& place, const UCEvent& event
     // a name and an address in Other, never written to.
     if (!place.isGroup && place.section == ContactSection::Other && writtenTo) {
         menu_->AddItem(MenuItemData::Separator());
-        menu_->AddItem(MenuItemData::Action("Remove collected contacts\xE2\x80\xA6",
+        menu_->AddItem(MenuItemData::Action(Tr("Remove collected contacts\xE2\x80\xA6"),
                                             [this]() { ConfirmRemoveCollected(); }));
     }
     // What the collector filed for no-reply senders until 0.6.0.
     if (!place.isGroup && place.section == ContactSection::Services) {
         menu_->AddItem(MenuItemData::Separator());
-        menu_->AddItem(MenuItemData::Action("Remove no-reply contacts\xE2\x80\xA6",
+        menu_->AddItem(MenuItemData::Action(Tr("Remove no-reply contacts\xE2\x80\xA6"),
                                             [this]() { ConfirmRemoveNoReply(); }));
     }
     PopupElementSettings settings;
@@ -564,14 +566,14 @@ void ContactsView::ConfirmRemoveCollected() {
     if (!store_ || !writtenTo) return;
     std::vector<Contact> other;
     if (UltraDbResult r = store_->ListBySection(ContactSection::Other, other); !r) {
-        AlertError(Window(), "The contacts could not be read.", DetailLine(r));
+        AlertError(Window(), Tr("The contacts could not be read."), DetailLine(r));
         return;
     }
     const std::vector<Contact> found = ContactCollector::NeverWrittenTo(other, writtenTo());
     if (found.empty()) {
-        UltraCanvasAlert::Info("Nothing to remove: every contact in Other was either written "
-                               "to or has more than a name and an address.",
-                               "Remove collected contacts", nullptr, Window());
+        UltraCanvasAlert::Info(Tr("Nothing to remove: every contact in Other was either written "
+                                  "to or has more than a name and an address."),
+                               Tr("Remove collected contacts"), nullptr, Window());
         return;
     }
     const std::string examples = FirstFew(found);
@@ -587,7 +589,7 @@ void ContactsView::ConfirmRemoveCollected() {
         [this, ids](bool yes) {
             if (!yes || !store_) return;
             if (UltraDbResult r = store_->RemoveAll(ids); !r) {
-                AlertError(Window(), "The contacts could not be removed.", DetailLine(r));
+                AlertError(Window(), Tr("The contacts could not be removed."), DetailLine(r));
                 return;
             }
             Changed();
@@ -599,14 +601,14 @@ void ContactsView::ConfirmRemoveNoReply() {
     if (!store_) return;
     std::vector<Contact> services;
     if (UltraDbResult r = store_->ListBySection(ContactSection::Services, services); !r) {
-        AlertError(Window(), "The contacts could not be read.", DetailLine(r));
+        AlertError(Window(), Tr("The contacts could not be read."), DetailLine(r));
         return;
     }
     const std::vector<Contact> found = ContactCollector::CollectedNoReply(services);
     if (found.empty()) {
-        UltraCanvasAlert::Info("Nothing to remove: no contact in Services is a no-reply address "
-                               "UltraMail added by itself.",
-                               "Remove no-reply contacts", nullptr, Window());
+        UltraCanvasAlert::Info(Tr("Nothing to remove: no contact in Services is a no-reply address "
+                                  "UltraMail added by itself."),
+                               Tr("Remove no-reply contacts"), nullptr, Window());
         return;
     }
     const std::string examples = FirstFew(found);
@@ -622,7 +624,7 @@ void ContactsView::ConfirmRemoveNoReply() {
         [this, ids](bool yes) {
             if (!yes || !store_) return;
             if (UltraDbResult r = store_->RemoveAll(ids); !r) {
-                AlertError(Window(), "The contacts could not be removed.", DetailLine(r));
+                AlertError(Window(), Tr("The contacts could not be removed."), DetailLine(r));
                 return;
             }
             Changed();
@@ -632,7 +634,7 @@ void ContactsView::ConfirmRemoveNoReply() {
 
 void ContactsView::AskNewGroup() {
     UltraCanvasDialogManager::ShowInputDialog(
-        "Name of the new group:", "Add group", "", InputType::Text,
+        Tr("Name of the new group:"), Tr("Add group"), "", InputType::Text,
         [this](DialogResult result, const std::string& text) {
             if (result != DialogResult::OK || !store_) return;
             std::string name = text;
@@ -641,7 +643,7 @@ void ContactsView::AskNewGroup() {
             while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front())))
                 name.erase(name.begin());
             if (UltraDbResult r = store_->AddGroup(name); !r) {
-                AlertWarning(Window(), "The group was not added.", r.message);
+                AlertWarning(Window(), Tr("The group was not added."), r.message);
                 return;
             }
             // Open the new group, after this dialog's event has been handled.
@@ -664,7 +666,7 @@ void ContactsView::ConfirmDeleteGroup(const std::string& group) {
         [this, group](bool yes) {
             if (!yes || !store_) return;
             if (UltraDbResult r = store_->RemoveGroup(group); !r) {
-                AlertError(Window(), "The group could not be deleted.", DetailLine(r));
+                AlertError(Window(), Tr("The group could not be deleted."), DetailLine(r));
                 return;
             }
             Changed();
@@ -693,7 +695,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     // ===== CONTENT: labelled input rows =====
     auto content = CreateContainer("contactForm", 0, 0, 0, 0);
@@ -709,7 +711,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Label", labelText, Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
         label->SetElementSize(Size2Df(kDialogLabelW, Theme::kControlHeight));
         row->AddChild(label);
         Theme::StyleInput(input);
@@ -721,7 +723,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
 
     auto name = CreateTextInput("cNameIn", 0, 0, 0, Theme::kControlHeight);
     name->SetText(contact.displayName);
-    name->SetPlaceholder("Erika Example");
+    name->SetPlaceholder(Tr("Erika Example"));
     addRow("cName", "Name", name);
 
     auto email = CreateEmailInput("cEmailIn", 0, 0, 0, Theme::kControlHeight);
@@ -730,7 +732,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
     const std::size_t editIdx = EditableEmailIndex(contact.emails, address);
     email->SetText(editIdx == std::string::npos ? std::string()
                                                 : contact.emails[editIdx].address);
-    email->SetPlaceholder("erika@example.com");
+    email->SetPlaceholder(Tr("erika@example.com"));
     addRow("cEmail", "Email", email);
 
     auto phone = CreateTextInput("cPhoneIn", 0, 0, 0, Theme::kControlHeight);
@@ -740,7 +742,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
 
     auto org = CreateTextInput("cOrgIn", 0, 0, 0, Theme::kControlHeight);
     org->SetText(contact.organization);
-    org->SetPlaceholder("Company / group");
+    org->SetPlaceholder(Tr("Company / group"));
     addRow("cOrg", "Organization", org);
 
     auto notes = CreateTextInput("cNotesIn", 0, 0, 0, Theme::kControlHeight);
@@ -751,7 +753,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
                                    contact.group.empty()
                                        ? "Section: " + DisplayName(contact.section)
                                        : "Group: " + contact.group,
-                                   22, Theme::kSizeSecondary, Theme::kTextMuted);
+                                   22, Theme::SizeSecondary(), Theme::TextMuted());
     content->AddChild(section);
     section->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -765,13 +767,13 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
 
-    auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, Tr("Cancel"));
     Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 
-    auto saveBtn = CreateButton("cSave", 0, 0, 100, Theme::kControlHeight, "Save");
+    auto saveBtn = CreateButton("cSave", 0, 0, 100, Theme::kControlHeight, Tr("Save"));
     Theme::FitToLabel(saveBtn, 100);
     Theme::StylePrimary(saveBtn);
     Theme::SetButtonIcon(saveBtn, "check");
@@ -787,9 +789,9 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
             if (result != DialogResult::OK) return;
             contact.displayName = name->GetText();
             if (contact.displayName.empty()) {
-                AlertWarning(parent, "The contact was not saved because it has "
-                                     "no name.",
-                             "Enter a name for the contact and try again.");
+                AlertWarning(parent, Tr("The contact was not saved because it has "
+                                     "no name."),
+                             Tr("Enter a name for the contact and try again."));
                 return;
             }
 

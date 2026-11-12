@@ -101,6 +101,25 @@ is built at no size and given one later. Re-flowing from `SetBounds()` alone
 leaves such a viewer with the chrome placement it had at a size of zero, which
 is none at all.
 
+## Following the theme
+
+`FontViewerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the panel behind
+raised cells with hairlines, ink for the glyphs, the hover fill, the soft
+accent with the accent round it selected, the captions in muted ink in the
+interface font at the caption size. Under the theme policy a new viewer
+follows the theme by itself (`ApplyTheme`, its scrollbars and its controls
+with it); a `SetStyle` by hand stops that, `SetFollowTheme(true)` after it
+keeps both.
+
+```cpp
+auto glyphs = std::make_shared<UltraCanvasFontViewer>("glyphs", 0, 0, 480, 320);
+FontViewerStyle roomy = glyphs->GetStyle();
+roomy.cellSpacing = 10;
+glyphs->SetStyle(FontViewerStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+glyphs->SetFollowTheme(true);
+```
+
 ## Performance
 
 Glyphs are rasterized one cell at a time and cached by (entry, device-pixel

@@ -8,10 +8,11 @@
 //                 row; "File name:" was at the dialog's own window offset and
 //                 the "Will create:" preview below the dialog
 // Version: 1.1.1 - the close cross, document icon and tick are drawn, not typed
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNewDocumentDialog.h"
+#include <cmath>
 #include "UltraCanvasConfig.h"        // GetResourcesDir
 #include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasUtils.h"         // NormalizePath
@@ -34,6 +35,7 @@ namespace UltraCanvas {
         SetupComponents();
         SetupLayout();
         LoadDefaultDocumentTypes();
+        ApplyThemeIfFollowing();
     }
 
 // ===== SETUP =====
@@ -846,4 +848,29 @@ namespace UltraCanvas {
         return types;
     }
 
+
+// ===== THE THEME =====
+    NewDocumentDialogStyle NewDocumentDialogStyle::FromTheme(const UltraCanvasTheme& theme, const NewDocumentDialogStyle& base) {
+        NewDocumentDialogStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.titleFontSize = static_cast<int>(std::lround(theme.FontSize(ThemeTextRole::Heading)));
+        s.itemFontSize = static_cast<int>(std::lround(theme.FontSize(ThemeTextRole::Body)));
+        s.backgroundColor = r.panel;
+        s.borderColor = r.line;
+        s.titleColor = r.ink;
+        s.listBackgroundColor = r.well;
+        s.listBorderColor = r.line;
+        s.itemHoverColor = r.hover;
+        s.itemSelectedColor = r.accentSoft;
+        s.itemTextColor = r.ink;
+        s.categoryTextColor = r.inkMuted;
+        s.inputBackgroundColor = r.well;
+        s.inputBorderColor = r.lineStrong;
+        s.inputFocusBorderColor = r.focus;
+        s.buttonColor = r.raised;
+        s.buttonHoverColor = r.hover;
+        s.primaryButtonColor = r.accent;
+        s.primaryButtonTextColor = r.onAccent;
+        return s;
+    }
 } // namespace UltraCanvas

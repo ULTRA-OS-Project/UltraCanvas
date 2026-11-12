@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.19.0 - Appearance.conf over the host, the settings watcher (a change reaches a running application)
 // Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
 // Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
 //                  from the host at start and on every host change, a window's ground from it
@@ -48,6 +49,7 @@
 
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
+    class UltraCanvasSettingsWatcher;
 
     // The bundled fonts' file names (the Ubuntu and Ubuntu Mono families), in
     // GetBundledFontsDir(). Defined in UltraCanvasApplication.cpp.
@@ -328,6 +330,13 @@ namespace UltraCanvas {
         bool themePolicyApplied_ = false;
         std::atomic<bool> hostAppearanceRefreshPending_{false};
         std::vector<std::pair<int, std::function<void(const HostAppearance&)>>> hostAppearanceHandlers_;
+        // The shared settings files as live settings (UltraCanvasSettingsWatcher.h):
+        // Appearance.conf re-reads the host appearance. Started by Initialize
+        // after the theme; a timer polls it where the build has no native watch.
+        std::shared_ptr<UltraCanvasSettingsWatcher> settingsWatcher_;
+        TimerId settingsPollTimer_ = InvalidTimerId;
+        void StartSettingsWatcher();
+        void StopSettingsWatcher();
         int nextHostAppearanceHandlerId_ = 1;
 
         // Font files handed to RegisterFontFile(), by resolved path, so a
@@ -504,6 +513,10 @@ namespace UltraCanvas {
         void RefreshHostAppearance();
         void ScheduleHostAppearanceRefresh();
         // Called on the UI thread after a change, with the new value.
+        // Appearance.conf (UltraCanvasAppearanceSettings.h) is applied over
+        // the host on every read, and a change to the file - UOS-Settings'
+        // Look page - reaches a running application through the settings
+        // watcher as a change of the desktop does.
         using HostAppearanceHandler = std::function<void(const HostAppearance&)>;
         int AddHostAppearanceHandler(HostAppearanceHandler handler);
         void RemoveHostAppearanceHandler(int id);

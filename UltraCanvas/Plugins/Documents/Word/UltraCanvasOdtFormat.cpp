@@ -298,6 +298,14 @@ public:
         }
         LoadTrackedChanges(text->FirstChildElement("text:tracked-changes"));
         ParseBlockContainer(text, 0, "");
+        if (!pendingPageFrames_.empty()) {
+            // Frames after the last paragraph: one of their own carries them.
+            RichDocBlock carrier;
+            carrier.type = RichBlockType::Paragraph;
+            carrier.runs = std::move(pendingPageFrames_);
+            pendingPageFrames_.clear();
+            doc_->blocks.push_back(std::move(carrier));
+        }
         ApplySections();
         if (!doc_->notes.empty()) doc_->UpdateNoteMarks();
         LoadMetadata();
@@ -313,6 +321,10 @@ private:
     // not start a new page (ODF/CSS fragmentation applies to in-flow boxes),
     // so break emission is gated on this flag.
     bool inMainFlow_ = true;
+    int frameDepth_ = 0;                       // inside a text frame's content
+    // Page-anchored frames met between paragraphs, waiting for the next
+    // paragraph of the main flow to anchor them.
+    std::vector<RichTextRun> pendingPageFrames_;
     bool inTableOfContents_ = false;           // paragraphs are contents entries
     std::map<std::string, RichSectionSetup> sectionStyles_;   // section style -> columns
     struct SectionRange { size_t start; size_t end; RichSectionSetup setup; };
@@ -396,7 +408,10 @@ private:
     // Graphic styles: how a frame wraps and where it sits. Empty = not stated
     // (then the parent style's, then Writer's defaults).
     struct GraphicPlacement {
-        std::string parent, wrap, runThrough, horizontalPos;
+        std::string parent, wrap, runThrough, horizontalPos, horizontalRel, verticalPos, verticalRel;
+        // A text frame's look: its fill, border (or a shape's stroke) and
+        // padding, and its least height.
+        std::string fill, fillColor, backgroundColor, border, stroke, strokeColor, strokeWidth, padding, minHeight;
     };
     std::map<std::string, GraphicPlacement> graphicStyles_;
     std::string GraphicAttribute(const std::string& styleName,
@@ -722,6 +737,18 @@ private:
                 placement.wrap = Attr(graphic, "style:wrap");
                 placement.runThrough = Attr(graphic, "style:run-through");
                 placement.horizontalPos = Attr(graphic, "style:horizontal-pos");
+                placement.horizontalRel = Attr(graphic, "style:horizontal-rel");
+                placement.verticalPos = Attr(graphic, "style:vertical-pos");
+                placement.verticalRel = Attr(graphic, "style:vertical-rel");
+                placement.fill = Attr(graphic, "draw:fill");
+                placement.fillColor = Attr(graphic, "draw:fill-color");
+                placement.backgroundColor = Attr(graphic, "fo:background-color");
+                placement.border = Attr(graphic, "fo:border");
+                placement.stroke = Attr(graphic, "draw:stroke");
+                placement.strokeColor = Attr(graphic, "svg:stroke-color");
+                placement.strokeWidth = Attr(graphic, "svg:stroke-width");
+                placement.padding = Attr(graphic, "fo:padding");
+                placement.minHeight = Attr(graphic, "fo:min-height");
                 if (!name.empty()) graphicStyles_[name] = placement;
             }
             if (auto* cp = style->FirstChildElement("style:table-column-properties")) {
@@ -912,6 +939,10 @@ private:
         // draw:text-box contents anchored in the paragraph; their block
         // content is emitted right after the paragraph itself.
         std::vector<tinyxml2::XMLElement*> textBoxes;
+        // Text boxes become text-frame runs (RichTextRun::frameIndex) where
+        // a paragraph can carry one; elsewhere (a table cell) their text is
+        // flattened as before.
+        bool framesAsRuns = false;
         bool pendingLineBreak = false;
         bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
         std::vector<std::string> bookmarks;    // text:bookmark(-start) names met
@@ -1099,41 +1130,21 @@ private:
         const std::string altText = Attr(frame, "draw:name");
 
         // text:anchor-type="as-char" is a picture anchored *in* the text;
-        // "paragraph" and "char" anchor a floating one to its paragraph. Both
-        // belong in the run stream. A frame anchored to the page or to another
-        // frame has no paragraph to travel with and stays a block of its own.
+        // "paragraph" and "char" anchor a floating one to its paragraph, and
+        // "page" one to the page (it travels with the paragraph that follows
+        // it, which puts it on that paragraph's page). All of them belong in
+        // the run stream. A frame anchored to another frame stays a block of
+        // its own.
         const std::string anchorType = Attr(frame, "text:anchor-type");
-        if (anchorType == "as-char" || anchorType == "paragraph" || anchorType == "char") {
+        if (anchorType == "as-char" || anchorType == "paragraph" || anchorType == "char"
+            || (anchorType == "page" && ctx.framesAsRuns)) {
             RichTextRun run;
             run.text = RichTextRun::kObjectReplacement;
             run.mediaIndex = mediaIndex;
             run.imageWidthPt = widthPt;
             run.imageHeightPt = heightPt;
             run.imageAltText = altText;
-            if (anchorType != "as-char") {
-                const std::string style = Attr(frame, "draw:style-name");
-                const std::string wrap = GraphicAttribute(style, &GraphicPlacement::wrap);
-                if (wrap == "none") {
-                    run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
-                } else if (wrap == "run-through") {
-                    run.imageWrap = GraphicAttribute(style, &GraphicPlacement::runThrough) == "background"
-                        ? RichTextRun::ImageWrap::BehindText : RichTextRun::ImageWrap::InFrontOfText;
-                } else {
-                    run.imageWrap = RichTextRun::ImageWrap::Square;   // parallel, left, right, dynamic, biggest
-                }
-                const std::string position = GraphicAttribute(style, &GraphicPlacement::horizontalPos);
-                if (position == "right" || position == "outside") {
-                    run.imageFloatAlign = RichTextAlign::Right;
-                } else if (position == "center") {
-                    run.imageFloatAlign = RichTextAlign::Center;
-                } else if (position == "from-left" || position == "from-inside") {
-                    run.imageFloatAlign = RichTextAlign::Default;
-                    run.imageOffsetXPt = std::max(0.0f, ParseLengthPt(Attr(frame, "svg:x")));
-                } else {
-                    run.imageFloatAlign = RichTextAlign::Left;
-                }
-                run.imageOffsetYPt = std::max(0.0f, ParseLengthPt(Attr(frame, "svg:y")));
-            }
+            if (anchorType != "as-char") ApplyFloatPlacement(frame, run);
             run.lineBreakBefore = ctx.pendingLineBreak;
             ctx.pendingLineBreak = false;
             ctx.runs.push_back(std::move(run));
@@ -1159,8 +1170,116 @@ private:
         if (ParseFormulaObject(frame, props, linkTarget, ctx)) return;
         if (ParseImageFrame(frame, ctx)) return;
         if (auto* textBox = frame->FirstChildElement("draw:text-box")) {
-            ctx.textBoxes.push_back(textBox);
+            if (ctx.framesAsRuns && frameDepth_ == 0) ParseTextFrame(frame, textBox, ctx);
+            else ctx.textBoxes.push_back(textBox);
         }
+    }
+
+    // How a floating picture or text frame wraps and where it sits: its
+    // graphic style's wrap, its horizontal and vertical position and what
+    // they count from (the page, its text area, or the paragraph), and the
+    // frame's svg:x / svg:y.
+    void ApplyFloatPlacement(tinyxml2::XMLElement* frame, RichTextRun& run) const {
+        using Origin = RichTextRun::FloatOrigin;
+        const std::string style = Attr(frame, "draw:style-name");
+        const std::string wrap = GraphicAttribute(style, &GraphicPlacement::wrap);
+        if (wrap == "none") {
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+        } else if (wrap == "run-through") {
+            run.imageWrap = GraphicAttribute(style, &GraphicPlacement::runThrough) == "background"
+                ? RichTextRun::ImageWrap::BehindText : RichTextRun::ImageWrap::InFrontOfText;
+        } else {
+            run.imageWrap = RichTextRun::ImageWrap::Square;   // parallel, left, right, dynamic, biggest
+        }
+        const bool pageAnchored = std::string(Attr(frame, "text:anchor-type")) == "page";
+        auto origin = [&](const std::string& relation) {
+            if (relation == "page" || relation == "page-start-margin" || relation == "page-end-margin") return Origin::Page;
+            if (relation == "page-content") return Origin::Margin;
+            if (relation.empty() && pageAnchored) return Origin::Page;
+            return Origin::Paragraph;
+        };
+        const Origin across = origin(GraphicAttribute(style, &GraphicPlacement::horizontalRel));
+        run.floatHorizontalFrom = across == Origin::Page ? Origin::Page : Origin::Margin;
+        run.floatVerticalFrom = origin(GraphicAttribute(style, &GraphicPlacement::verticalRel));
+
+        const char* x = frame->Attribute("svg:x");
+        const std::string position = GraphicAttribute(style, &GraphicPlacement::horizontalPos);
+        if (position == "right" || position == "outside") {
+            run.imageFloatAlign = RichTextAlign::Right;
+        } else if (position == "center") {
+            run.imageFloatAlign = RichTextAlign::Center;
+        } else if (position == "from-left" || position == "from-inside" || (position.empty() && x)) {
+            run.imageFloatAlign = RichTextAlign::Default;
+            const float offset = ParseLengthPt(x ? x : "");
+            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? offset : std::max(0.0f, offset);
+        } else {
+            run.imageFloatAlign = RichTextAlign::Left;
+        }
+        const std::string down = GraphicAttribute(style, &GraphicPlacement::verticalPos);
+        using VAlign = RichTextRun::FloatVerticalAlign;
+        run.floatVerticalAlign = down == "middle" ? VAlign::Middle : down == "bottom" ? VAlign::Bottom : VAlign::Top;
+        if (down.empty() || down == "from-top") {
+            const float offset = ParseLengthPt(Attr(frame, "svg:y"));
+            run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, offset) : offset;
+        }
+    }
+
+    // A draw:text-box: its paragraphs become a text frame (UCRichDocument::
+    // frames), floating where the frame says, with its fill, border and
+    // padding. Read like the body, but out of the main flow; a text box
+    // inside it is flattened into its text.
+    void ParseTextFrame(tinyxml2::XMLElement* frame, tinyxml2::XMLElement* textBox, InlineContext& ctx) {
+        RichTextFrame content;
+        content.name = Attr(frame, "draw:name");
+        const size_t start = doc_->blocks.size();
+        const bool savedFlow = inMainFlow_;
+        inMainFlow_ = false;
+        ++frameDepth_;
+        ParseBlockContainer(textBox, 0, "");
+        --frameDepth_;
+        inMainFlow_ = savedFlow;
+        content.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                              std::make_move_iterator(doc_->blocks.end()));
+        doc_->blocks.resize(start);
+
+        const std::string style = Attr(frame, "draw:style-name");
+        auto look = [&](std::string GraphicPlacement::*field) { return GraphicAttribute(style, field); };
+        if (look(&GraphicPlacement::fill) == "solid") {
+            content.backgroundColor = look(&GraphicPlacement::fillColor);
+        } else if (look(&GraphicPlacement::fill).empty()) {
+            const std::string background = look(&GraphicPlacement::backgroundColor);
+            if (!background.empty() && background != "transparent") content.backgroundColor = background;
+        }
+        const std::string border = look(&GraphicPlacement::border);
+        if (!border.empty()) {
+            content.border = ParseBorder(border);
+        } else if (look(&GraphicPlacement::stroke) == "solid") {
+            content.border.widthPt = std::max(0.5f, ParseLengthPt(look(&GraphicPlacement::strokeWidth)));
+            content.border.color = look(&GraphicPlacement::strokeColor);
+            if (content.border.color.empty()) content.border.color = "#000000";
+        }
+        content.paddingPt = std::max(0.0f, ParseLengthPt(look(&GraphicPlacement::padding)));
+
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.frameIndex = static_cast<int>(doc_->frames.size());
+        run.imageAltText = content.name;
+        run.imageWidthPt = ParseLengthPt(Attr(frame, "svg:width"));
+        if (run.imageWidthPt <= 0.0f) run.imageWidthPt = ParseLengthPt(Attr(frame, "fo:min-width"));
+        // Its least height: the box's own, else the frame's.
+        float height = ParseLengthPt(Attr(textBox, "fo:min-height"));
+        if (height <= 0.0f) height = ParseLengthPt(Attr(frame, "svg:height"));
+        if (height <= 0.0f) height = ParseLengthPt(look(&GraphicPlacement::minHeight));
+        run.imageHeightPt = std::max(0.0f, height);
+        doc_->frames.push_back(std::move(content));
+        if (std::string(Attr(frame, "text:anchor-type")) == "as-char") {
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;   // in the line: alone on its own lines
+        } else {
+            ApplyFloatPlacement(frame, run);
+        }
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
     }
 
     void ParseInlineNodes(tinyxml2::XMLNode* parent, const OdtTextProps& props,
@@ -1336,8 +1455,14 @@ private:
         }
 
         InlineContext ctx;
+        ctx.framesAsRuns = true;
         ParseInlineNodes(elem, runBase, "", ctx);
         block.runs = std::move(ctx.runs);
+        if (inMainFlow_ && frameDepth_ == 0 && !pendingPageFrames_.empty()) {
+            // The page-anchored frames before it travel with this paragraph.
+            block.runs.insert(block.runs.begin(), pendingPageFrames_.begin(), pendingPageFrames_.end());
+            pendingPageFrames_.clear();
+        }
         block.bookmarks = std::move(ctx.bookmarks);
         if (inTableOfContents_ && block.type == RichBlockType::Paragraph) MakeContentsEntry(block, styleName);
 
@@ -1674,9 +1799,15 @@ private:
                     }
                 }
             } else if (tag == "draw:frame") {
-                // Page-anchored frame sitting directly in the text flow.
+                // Page-anchored frame sitting directly in the text flow: a
+                // picture or text frame waits for the next paragraph.
                 InlineContext ctx;
+                ctx.framesAsRuns = inMainFlow_ && frameDepth_ == 0;
                 ParseFrame(elem, OdtTextProps{}, "", ctx);
+                if (ctx.framesAsRuns && !ctx.runs.empty()) {
+                    pendingPageFrames_.insert(pendingPageFrames_.end(), ctx.runs.begin(), ctx.runs.end());
+                    ctx.runs.clear();
+                }
                 if (!ctx.runs.empty()) {
                     RichDocBlock promoted;
                     if (WordFormatInternal::ParagraphIsOneInlineImage(ctx.runs, promoted)) {
@@ -2071,7 +2202,9 @@ private:
         if (run.IsFloatingImage()) {
             xml << " draw:style-name=\"" << FloatingFrameStyle(run) << "\" text:anchor-type=\"paragraph\"";
             if (run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
-            xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+            if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) {
+                xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+            }
         } else {
             xml << " text:anchor-type=\"as-char\"";
         }
@@ -2081,10 +2214,32 @@ private:
             << "</draw:frame>";
     }
 
-    // An automatic graphic style saying how a floating picture wraps and
-    // where it sits; one per distinct combination.
-    std::string FloatingFrameStyle(const RichTextRun& run) {
+    // A text frame: a paragraph-anchored draw:frame holding a draw:text-box
+    // with the frame's paragraphs, placed and styled as the run says.
+    void WriteTextFrame(std::ostringstream& xml, const RichTextRun& run) {
+        const RichTextFrame* frame = doc_->FrameFor(run);
+        if (!frame) return;
+        const float widthPt = run.imageWidthPt > 0.0f ? run.imageWidthPt : 144.0f;
+        xml << "<draw:frame draw:style-name=\"" << FloatingFrameStyle(run, frame) << "\"";
+        if (!frame->name.empty()) xml << " draw:name=\"" << EscapeXml(frame->name) << "\"";
+        xml << " text:anchor-type=\"paragraph\"";
+        if (run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
+        if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+        xml << " svg:width=\"" << Pt(widthPt) << "\"><draw:text-box";
+        if (run.imageHeightPt > 0.0f) xml << " fo:min-height=\"" << Pt(run.imageHeightPt) << "\"";
+        xml << ">";
+        std::vector<RichDocBlock> blocks = frame->blocks;
+        if (blocks.empty()) blocks.emplace_back();
+        xml << WriteBlocks(blocks) << "</draw:text-box></draw:frame>";
+    }
+
+    // An automatic graphic style saying how a floating picture or text frame
+    // wraps, where it sits and what that counts from, and a frame's fill,
+    // border and padding; one per distinct combination.
+    std::string FloatingFrameStyle(const RichTextRun& run, const RichTextFrame* frame = nullptr) {
         using Wrap = RichTextRun::ImageWrap;
+        using Origin = RichTextRun::FloatOrigin;
+        using VAlign = RichTextRun::FloatVerticalAlign;
         std::string wrap = "parallel", runThrough = "foreground";
         if (run.imageWrap == Wrap::TopAndBottom) wrap = "none";
         else if (run.imageWrap == Wrap::BehindText) { wrap = "run-through"; runThrough = "background"; }
@@ -2092,7 +2247,25 @@ private:
         const std::string position = run.imageFloatAlign == RichTextAlign::Right ? "right"
                                    : run.imageFloatAlign == RichTextAlign::Center ? "center"
                                    : run.imageFloatAlign == RichTextAlign::Default ? "from-left" : "left";
-        const std::string key = wrap + "|" + runThrough + "|" + position;
+        const std::string verticalPosition = run.floatVerticalAlign == VAlign::Middle ? "middle"
+                                           : run.floatVerticalAlign == VAlign::Bottom ? "bottom" : "from-top";
+        auto relation = [](Origin origin, bool across, Origin other) -> std::string {
+            if (origin == Origin::Page) return "page";
+            if (origin == Origin::Margin && !(across && other == Origin::Paragraph)) return "page-content";
+            return "paragraph";
+        };
+        const std::string horizontalRel = relation(run.floatHorizontalFrom, true, run.floatVerticalFrom);
+        const std::string verticalRel = relation(run.floatVerticalFrom, false, run.floatHorizontalFrom);
+        std::string look;
+        if (frame) {
+            look += frame->backgroundColor.empty()
+                  ? std::string(" draw:fill=\"none\"")
+                  : " draw:fill=\"solid\" draw:fill-color=\"" + EscapeXml(frame->backgroundColor) + "\"";
+            look += " fo:border=\"" + BorderValue(frame->border) + "\"";
+            look += " fo:padding=\"" + Pt(std::max(0.0f, frame->paddingPt)) + "\"";
+        }
+        const std::string key = wrap + "|" + runThrough + "|" + position + "|" + verticalPosition + "|"
+                              + horizontalRel + "|" + verticalRel + "|" + look;
         auto found = floatingFrameStyles_.find(key);
         if (found != floatingFrameStyles_.end()) return found->second;
         const std::string name = "fr" + std::to_string(floatingFrameStyles_.size() + 1);
@@ -2100,9 +2273,10 @@ private:
         graphicStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"graphic\">"
                              "<style:graphic-properties style:wrap=\"" + wrap + "\" style:run-through=\""
                              + runThrough + "\" style:horizontal-pos=\"" + position
-                             + "\" style:horizontal-rel=\"paragraph\" style:vertical-pos=\"from-top\""
-                               " style:vertical-rel=\"paragraph\" fo:margin-left=\"0.32cm\""
-                               " fo:margin-right=\"0.32cm\"/></style:style>\n";
+                             + "\" style:horizontal-rel=\"" + horizontalRel + "\" style:vertical-pos=\""
+                             + verticalPosition + "\" style:vertical-rel=\"" + verticalRel + "\""
+                               " fo:margin-left=\"0.32cm\" fo:margin-right=\"0.32cm\"" + look
+                             + "/></style:style>\n";
         return name;
     }
 
@@ -2205,6 +2379,10 @@ private:
         if (run.lineBreakBefore) xml << "<text:line-break/>";
         if (run.IsInlineImage()) {
             WriteInlineImage(xml, run);
+            return;
+        }
+        if (run.IsTextFrame()) {
+            WriteTextFrame(xml, run);
             return;
         }
         if (run.IsNoteReference()) {

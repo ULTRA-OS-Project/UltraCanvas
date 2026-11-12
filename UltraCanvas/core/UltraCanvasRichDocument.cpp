@@ -725,6 +725,66 @@ std::string UCRichDocument::ConcatenateRunText(const std::vector<RichTextRun>& r
 
 // ===== MARKDOWN SERIALIZER =====
 
+namespace {
+
+// WithFramesInlineIn's work; `depth` stops a frame that (in a damaged file)
+// contains itself.
+std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std::vector<RichDocBlock>& in,
+                                       int depth) {
+    bool any = false;
+    for (const RichDocBlock& block : in) {
+        for (const RichTextRun& run : block.runs) any = any || run.IsTextFrame();
+    }
+    if (!any) return in;
+    std::vector<RichDocBlock> out;
+    out.reserve(in.size());
+    for (const RichDocBlock& block : in) {
+        std::vector<RichTextRun> kept;
+        bool hadFrame = false;
+        bool pendingBreak = false;
+        for (const RichTextRun& run : block.runs) {
+            if (run.IsTextFrame()) {
+                hadFrame = true;
+                pendingBreak = pendingBreak || run.lineBreakBefore;
+                const RichTextFrame* frame = document.FrameFor(run);
+                if (frame && depth < 8) {
+                    std::vector<RichDocBlock> inner = FramesInline(document, frame->blocks, depth + 1);
+                    out.insert(out.end(), std::make_move_iterator(inner.begin()), std::make_move_iterator(inner.end()));
+                }
+                continue;
+            }
+            kept.push_back(run);
+            if (pendingBreak) {
+                kept.back().lineBreakBefore = kept.size() > 1;
+                pendingBreak = false;
+            }
+        }
+        // A paragraph that only anchored frames has nothing left to say.
+        if (hadFrame && kept.empty() && block.type == RichBlockType::Paragraph) continue;
+        RichDocBlock copy = block;
+        if (hadFrame) copy.runs = std::move(kept);
+        out.push_back(std::move(copy));
+    }
+    return out;
+}
+
+} // namespace
+
+std::vector<RichDocBlock> UCRichDocument::WithFramesInlineIn(const std::vector<RichDocBlock>& blocks) const {
+    return FramesInline(*this, blocks, 0);
+}
+
+UCRichDocument UCRichDocument::WithFramesInline() const {
+    UCRichDocument flat = *this;
+    flat.blocks = WithFramesInlineIn(blocks);
+    for (RichPageFurniture* furniture : {&flat.pageFurniture, &flat.firstPageFurniture}) {
+        furniture->header = WithFramesInlineIn(furniture->header);
+        furniture->footer = WithFramesInlineIn(furniture->footer);
+    }
+    flat.frames.clear();
+    return flat;
+}
+
 UCRichDocument UCRichDocument::WithFirstPageFurnitureInline() const {
     UCRichDocument flat = *this;
     flat.pageFurniture = RichPageFurniture{};
@@ -818,6 +878,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
     // Text output has no pages: the first page's header and footer go before
     // and after the body, set off by rules.
     if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToMarkdown(options);
+    if (!frames.empty()) return WithFramesInline().ToMarkdown(options);
     // Write referenced media to disk once, remembering the path per index.
     std::vector<std::string> mediaPaths(media.size());
     if (!options.imageDirectory.empty()) {
@@ -1389,6 +1450,7 @@ const char* AlignCss(RichTextAlign align) {
 
 std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const {
     if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToHTML(options);
+    if (!frames.empty()) return WithFramesInline().ToHTML(options);
     std::ostringstream html;
     int openListLevel = -1;   // -1 = no list open
     std::vector<bool> listOrderedStack;
@@ -1569,6 +1631,7 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
 
 std::string UCRichDocument::ToPlainText() const {
     if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToPlainText();
+    if (!frames.empty()) return WithFramesInline().ToPlainText();
     std::ostringstream out;
     bool first = true;
     int previousQuote = 0;
