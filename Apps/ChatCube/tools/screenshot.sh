@@ -142,6 +142,9 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     "$XINPUT" rclick 160 236 sleep 1200 move 230 319 sleep 1200 move 420 319 move 470 347 sleep 1200
     import -window root "$OUT/group-menu.png"
     "$XINPUT" key Escape sleep 300 key Escape sleep 300 key Escape sleep 600
+    # A click on the empty message area: the press that a closed menu would
+    # otherwise swallow, so the next click lands.
+    "$XINPUT" click 660 450 sleep 600
     # The person button beside the ID: the Edit profile window.
     "$XINPUT" click 292 25 sleep 2500
     import -window root "$OUT/profile.png"

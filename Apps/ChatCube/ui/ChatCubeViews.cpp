@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.6 - the texts go through Tr (UltraLocalisation)
 // Version: 0.2.5 - pinned conversations first, with a pin; one marked unread with a dot
 // Version: 0.2.4 - times on a 12-hour clock and dates in three orders, from the Settings window
 // Version: 0.2.3 - the ticks drawn as strokes (no font needed); a file that is a picture - an SVG
@@ -11,7 +12,7 @@
 //                  rounded selection, bubbles without borders in the theme's colours, senders in
 //                  their avatar's colour
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeViews.h"
@@ -19,6 +20,7 @@
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -140,13 +142,13 @@ std::string MessageText(const UltraIMMessage& m) {
         case UltraIMMessageType::Video:       return m.text;
         case UltraIMMessageType::Sticker:     return a.localPath.empty() ? m.text : std::string();
         case UltraIMMessageType::File: {
-            std::string line = a.fileName.empty() ? std::string("File") : a.fileName;
+            std::string line = a.fileName.empty() ? Tr("File") : a.fileName;
             if (a.fileSizeBytes > 0) line += "  " + FormatSize(a.fileSizeBytes);
             if (!m.text.empty()) line += "\n" + m.text;
             return line;
         }
         case UltraIMMessageType::Audio: {
-            std::string line = a.fileName.empty() ? std::string("Voice message") : a.fileName;
+            std::string line = a.fileName.empty() ? Tr("Voice message") : a.fileName;
             if (a.durationSeconds > 0) line += "  " + FormatDuration(a.durationSeconds);
             return line;
         }
@@ -219,7 +221,7 @@ std::string FormatDuration(double seconds) {
 }
 
 std::string FormatSize(int64_t bytes) {
-    if (bytes < 1000) return std::to_string(bytes) + " bytes";
+    if (bytes < 1000) return TrN("{n} byte", "{n} bytes", static_cast<long long>(bytes));
     // One decimal, in tenths, so no float is formatted.
     const char* unit = "KB";
     int64_t tenths = bytes * 10 / 1000;
@@ -554,10 +556,10 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
         if (!painted) {
             ctx->DrawFilledRectangle(box, look.well, 0.0f, Colors::Transparent, kPictureRadius);
             std::string waiting;
-            if (m.deliveryStatus == UltraIMDeliveryStatus::Sending) waiting = "Sending\xE2\x80\xA6";
-            else if (m.deliveryStatus == UltraIMDeliveryStatus::Failed) waiting = "Not sent";
-            else if (m.type == UltraIMMessageType::Video) waiting = "Video";
-            else waiting = "Fetching the picture\xE2\x80\xA6";
+            if (m.deliveryStatus == UltraIMDeliveryStatus::Sending) waiting = Tr("Sending\xE2\x80\xA6");
+            else if (m.deliveryStatus == UltraIMDeliveryStatus::Failed) waiting = Tr("Not sent");
+            else if (m.type == UltraIMMessageType::Video) waiting = Tr("Video");
+            else waiting = Tr("Fetching the picture\xE2\x80\xA6");
             ctx->SetFontSize(kMetaFont + 0.5f);
             ctx->SetFontWeight(FontWeight::Normal);
             ctx->SetTextWrap(TextWrap::WrapNone);
@@ -708,7 +710,7 @@ ListDataValue ConversationListModel::GetData(const ListIndex& index, ListDataRol
     const UltraIMConversation& c = list_[static_cast<size_t>(index.row)];
     if (role == ListDataRole::DisplayRole) return c.title;
     if (role == ListDataRole::ToolTipRole)
-        return c.isGroup ? c.title + "\n" + std::to_string(c.memberIds.size()) + " members"
+        return c.isGroup ? c.title + "\n" + TrN("{n} member", "{n} members", static_cast<long long>(c.memberIds.size()))
                          : c.title + "\n" + GroupUserId(c.directContactId);
     return ListDataValue();
 }
@@ -795,8 +797,8 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     ctx->SetFontSize(kSnippetFont);
     ctx->SetFontWeight(FontWeight::Normal);
     ctx->SetTextPaint(unread ? look.ink : look.inkMuted);
-    std::string snippet = c.lastMessageSnippet.empty() ? std::string("No messages yet") : c.lastMessageSnippet;
-    if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = "End-to-end encrypted";
+    std::string snippet = c.lastMessageSnippet.empty() ? Tr("No messages yet") : c.lastMessageSnippet;
+    if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = Tr("End-to-end encrypted");
     ctx->DrawTextInRect(snippet, Rect2Dd(textX, topY + 22, rightEdge - textX - badgeWidth - 8, 18));
 }
 
