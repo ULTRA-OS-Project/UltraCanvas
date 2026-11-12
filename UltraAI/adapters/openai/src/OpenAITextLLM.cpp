@@ -4,17 +4,18 @@
 // is served by self-hosted OpenAI-compatible servers (Ollama, vLLM,
 // llama.cpp server), which the adapter supports via a custom baseUrl.
 // Version: 0.2.1 - consecutive user turns (or assistant turns) are merged into
-//                  one message, so a server whose chat template demands
-//                  alternating roles never sees two in a row
+//                  one message (MergeSameRoleTurns), so a server whose chat
+//                  template demands alternating roles never sees two in a row
 // Version: 0.2.0 - the Batch API (ITextBatch)
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-12
 // Author: UltraAI Module
 
 #include "UltraAIOpenAI.h"
 
 #include "OpenAIInternal.h"
 #include "UltraAIBase64.h"
+#include "UltraAIMessageHistory.h"
 #include "UltraAIMultipart.h"
 #include "UltraAIStreamHandleBase.h"
 #ifdef ULTRAAI_HAS_ULTRANET
@@ -115,47 +116,6 @@ json MessageToJson(const Message& m) {
     return json::object();
 }
 
-// Two user turns in a row, or two assistant turns in a row, become one
-// message. OpenAI itself accepts either, but many OpenAI-compatible servers
-// hand the conversation to the model's chat template, and Gemma's, Llama 2's
-// and Mistral's refuse it with "Conversation roles must alternate
-// user/assistant/user/assistant" - LocalAI behind LiteLLM answered HTTP 500
-// to a history that kept an unanswered user turn. Texts are joined with a
-// blank line; parts, tool calls and names are kept in order. Tool results
-// are never merged: several in a row answer several tool calls, which is
-// what the wire format expects. Two turns with different speaker names are
-// different speakers and stay apart.
-void AppendMergingSameRole(std::vector<Message>& out, const Message& m) {
-    if (!out.empty()) {
-        Message& prev = out.back();
-        const bool mergeable = prev.role == m.role &&
-                               (m.role == Role::User || m.role == Role::Assistant) &&
-                               prev.name == m.name;
-        if (mergeable) {
-            if (prev.parts.empty() && m.parts.empty()) {
-                if (prev.text.empty())       prev.text = m.text;
-                else if (!m.text.empty())    prev.text += "\n\n" + m.text;
-            } else {
-                // prev.text (if any) is serialized as the first text part,
-                // so the merged content keeps every piece in its order.
-                if (!m.text.empty()) prev.parts.push_back(TextPart{m.text});
-                prev.parts.insert(prev.parts.end(), m.parts.begin(), m.parts.end());
-            }
-            prev.toolCalls.insert(prev.toolCalls.end(),
-                                  m.toolCalls.begin(), m.toolCalls.end());
-            return;
-        }
-    }
-    out.push_back(m);
-}
-
-std::vector<Message> MergeSameRoleTurns(const std::vector<Message>& in) {
-    std::vector<Message> out;
-    out.reserve(in.size());
-    for (const auto& m : in) AppendMergingSameRole(out, m);
-    return out;
-}
-
 json BuildRequestBody(const ChatRequest& request, const TextLLMConfig& config,
                       Error* outError) {
     json body;
@@ -171,6 +131,8 @@ json BuildRequestBody(const ChatRequest& request, const TextLLMConfig& config,
     }
     body["model"] = model;
 
+    // Two user (or assistant) turns in a row go out as one message: see
+    // MergeSameRoleTurns for the servers that refuse them otherwise.
     json messages = json::array();
     for (const auto& m : MergeSameRoleTurns(request.messages)) {
         messages.push_back(MessageToJson(m));
