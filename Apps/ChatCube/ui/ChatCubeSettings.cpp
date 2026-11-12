@@ -9,6 +9,7 @@
 #include "ChatCubeSettings.h"
 
 #include "UltraCanvasAppSettings.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace ChatCube {
 
@@ -69,11 +70,11 @@ std::string Settings::File() {
 
 std::string DateStyleExample(DateStyle style) {
     switch (style) {
-        case DateStyle::YearMonthDay: return "2026-10-31  (year, month, day)";
-        case DateStyle::MonthDayYear: return "10/31/2026  (month, day, year)";
+        case DateStyle::YearMonthDay: return UltraCanvas::Tr("2026-10-31  (year, month, day)");
+        case DateStyle::MonthDayYear: return UltraCanvas::Tr("10/31/2026  (month, day, year)");
         case DateStyle::DayMonthYear: break;
     }
-    return "31.10.2026  (day, month, year)";
+    return UltraCanvas::Tr("31.10.2026  (day, month, year)");
 }
 
 } // namespace ChatCube
