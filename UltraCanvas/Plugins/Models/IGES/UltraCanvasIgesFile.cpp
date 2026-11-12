@@ -415,12 +415,12 @@ std::string FormatString(const std::string& text) {
     return std::to_string(text.size()) + "H" + text;
 }
 
-int FileWriter::Add(EntitySpec spec) {
+int FileWriter::Add(EntityToWrite spec) {
     entities_.push_back(std::move(spec));
     return static_cast<int>(entities_.size()) * 2 - 1;
 }
 
-FileWriter::EntitySpec& FileWriter::Get(int directory) {
+FileWriter::EntityToWrite& FileWriter::Get(int directory) {
     return entities_[static_cast<size_t>((directory - 1) / 2)];
 }
 
@@ -503,7 +503,7 @@ void FileWriter::Write(std::ostream& out, const std::string& start,
     std::vector<int> firstLine(entities_.size(), 0);
     std::vector<int> lineCount(entities_.size(), 0);
     for (size_t i = 0; i < entities_.size(); ++i) {
-        const EntitySpec& entity = entities_[i];
+        const EntityToWrite& entity = entities_[i];
         std::vector<std::string> tokens;
         tokens.reserve(entity.Params.size() + 1);
         tokens.push_back(FormatInteger(entity.Type));
@@ -523,7 +523,7 @@ void FileWriter::Write(std::ostream& out, const std::string& start,
     auto field = [](const std::string& value) { return RightJustify(value, 8); };
     auto number = [&field](long long value) { return field(std::to_string(value)); };
     for (size_t i = 0; i < entities_.size(); ++i) {
-        const EntitySpec& entity = entities_[i];
+        const EntityToWrite& entity = entities_[i];
         std::string status = entity.StatusNumber;
         status.resize(8, '0');
         std::string label = entity.Label.substr(0, 8);

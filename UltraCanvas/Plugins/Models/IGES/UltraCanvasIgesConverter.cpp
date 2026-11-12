@@ -1828,7 +1828,7 @@ private:
     int Add(int type, int form, std::vector<std::string> params,
             const char* status = kSubordinate, int transform = 0, int colour = 0,
             const std::string& label = std::string()) {
-        IF::FileWriter::EntitySpec spec;
+        IF::FileWriter::EntityToWrite spec;
         spec.Type = type;
         spec.Form = form;
         spec.Params = std::move(params);
@@ -2435,7 +2435,7 @@ void Writer::OpenSolid(int solidIndex) {
 
             if (face.Loops.empty()) {
                 // An untrimmed patch is the surface itself.
-                IF::FileWriter::EntitySpec& spec = file_.Get(surface);
+                IF::FileWriter::EntityToWrite& spec = file_.Get(surface);
                 spec.StatusNumber = kIndependent;
                 spec.Color = Colour(material);
                 continue;

@@ -173,7 +173,7 @@ static void TestParsing() {
 static void TestWriterLayout() {
     std::printf("Card layout\n");
     IF::FileWriter writer;
-    IF::FileWriter::EntitySpec name;
+    IF::FileWriter::EntityToWrite name;
     name.Type = 406;
     name.Form = 15;
     // Longer than a card's parameter field, so it has to be split.

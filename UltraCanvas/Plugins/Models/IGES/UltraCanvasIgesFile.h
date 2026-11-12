@@ -141,7 +141,7 @@ std::string FormatString(const std::string& text);
 // Collects entities and lays them out into the five sections.
 class FileWriter {
 public:
-    struct EntitySpec {
+    struct EntityToWrite {
         int Type = 0;
         int Form = 0;
         int Transform = 0;
@@ -157,8 +157,8 @@ public:
     // reference it by. Pointers are known as soon as an entity is added, so
     // a writer adds the leaves first and the entities that refer to them
     // after.
-    int Add(EntitySpec spec);
-    EntitySpec& Get(int directory);
+    int Add(EntityToWrite spec);
+    EntityToWrite& Get(int directory);
     size_t Count() const { return entities_.size(); }
 
     // `global` is the formatted global parameters 3 onwards; the delimiters
@@ -167,7 +167,7 @@ public:
                const std::vector<std::string>& global) const;
 
 private:
-    std::vector<EntitySpec> entities_;
+    std::vector<EntityToWrite> entities_;
 };
 
 } // namespace IgesFile
