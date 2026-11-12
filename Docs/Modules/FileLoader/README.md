@@ -389,7 +389,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 
 **Images** (libvips, build-dependent): PNG, JPEG, WebP, AVIF, HEIC/HEIF, GIF, BMP, TIFF, TGA, HDR, EXR, JPEG XL, JPEG 2000, Netpbm, QOI, PSD, ICO, FITS
 **Vector:** SVG/SVGZ (load); CorelDRAW, Xara (via plugins)
-**3D Models:** STL (load + save, via plugin)
+**3D Models** (via plugins): STL, STEP, IGES, OBJ, PLY, 3DS, COLLADA, X3D/VRML (load + save); FBX, Alembic, DirectX `.x`, MilkShape 3D, Blender (load)
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3

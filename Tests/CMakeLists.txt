@@ -2850,6 +2850,41 @@ add_test(
 )
 message(STATUS "    Test registered: ModelStepTest")
 
+# ===== IGES READER / WRITER TEST =====
+# The second B-rep reader: the 80-column card syntax as unit tests, and the
+# IGES 5.3 entity meanings against the samples in media/3D/IGES, which
+# make_samples.py builds entity by entity - sharing no code with the writer -
+# in other exporters' habits. The assertions are measurements again: the
+# block's meshed volume, the plate's area with its hole, the boss's side.
+message(STATUS "  Building ModelIgesTest...")
+add_executable(ModelIgesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelIgesTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/IGES/UltraCanvasIgesFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/IGES/UltraCanvasIgesConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / FormatFloatClassic
+)
+target_include_directories(ModelIgesTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelIgesTest PRIVATE cxx_std_20)
+set_target_properties(ModelIgesTest PROPERTIES
+    OUTPUT_NAME "ModelIgesTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelIgesTest
+    COMMAND ModelIgesTest "${ULTRACANVAS_ROOT}/media/3D"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelIgesTest")
+
 # ===== B-REP STORAGE TEST =====
 # ModelStorage::BrepData - exact trimmed surfaces and the topology that closes
 # them into solids, plus the tessellator that approximates them. The assertions
@@ -3227,6 +3262,8 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/IGES/UltraCanvasIgesFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/IGES/UltraCanvasIgesConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp
