@@ -1329,6 +1329,196 @@ int main() {
         window->UpdateAndRender();
     }
 
+    // ===== DRAWN SHAPES =====
+    std::cerr << "\n--- Drawn shapes ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        // A rule: a line with no height.
+        RichTextFrame ruleFrame;
+        RichShape rule;
+        rule.kind = RichShape::Kind::Line;
+        rule.widthPt = 300.0f;
+        rule.lineColor = "#1F4E79";
+        rule.lineWidthPt = 1.5f;
+        ruleFrame.shapes = {rule};
+        // A turned, dashed box with words centred in it.
+        RichTextFrame boxFrame;
+        RichShape box;
+        box.kind = RichShape::Kind::RoundRectangle;
+        box.widthPt = 120.0f;
+        box.heightPt = 60.0f;
+        box.rotationDeg = 15.0f;
+        box.fillColor = "#FFE699";
+        box.lineColor = "#C00000";
+        box.dash = RichShape::Dash::Dashed;
+        boxFrame.shapes = {box};
+        boxFrame.textAnchor = RichShape::TextAnchor::Middle;
+        RichDocBlock boxWords;
+        RichTextRun boxWord;
+        boxWord.text = "Boxed";
+        boxWords.runs = {boxWord};
+        boxFrame.blocks = {boxWords};
+        // A group: a mirrored outline with an arrow, an ellipse, and a box
+        // whose words are a frame of their own.
+        RichTextFrame memberWords;
+        memberWords.shapeText = true;
+        RichDocBlock memberBlock;
+        RichTextRun memberWord;
+        memberWord.text = "Member words";
+        memberBlock.runs = {memberWord};
+        memberWords.blocks = {memberBlock};
+        RichShape outline;
+        outline.kind = RichShape::Kind::Path;
+        outline.widthPt = outline.heightPt = 40.0f;
+        outline.flipH = true;
+        outline.lineColor = "#000000";
+        outline.arrowEnd = true;
+        RichShape::PathPoint start, curve;
+        start.op = RichShape::PathPoint::Op::Move;
+        curve.op = RichShape::PathPoint::Op::Curve;
+        curve.c1x = 0.5f; curve.c2x = 1.0f; curve.c2y = 0.5f; curve.x = 1.0f; curve.y = 1.0f;
+        outline.path = {start, curve};
+        RichShape dot;
+        dot.kind = RichShape::Kind::Ellipse;
+        dot.xPt = 50.0f;
+        dot.widthPt = dot.heightPt = 20.0f;
+        dot.fillColor = "#ED7D31";
+        RichShape member;
+        member.xPt = 80.0f;
+        member.widthPt = 100.0f;
+        member.heightPt = 40.0f;
+        member.lineColor = "#4472C4";
+        member.textFrame = 3;
+        RichShape group;
+        group.kind = RichShape::Kind::Group;
+        group.widthPt = 180.0f;
+        group.heightPt = 40.0f;
+        group.rotationDeg = 10.0f;
+        group.children = {outline, dot, member};
+        RichTextFrame groupFrame;
+        groupFrame.shapes = {group};
+        document->frames = {ruleFrame, boxFrame, groupFrame, memberWords};
+
+        auto drawing = [](int frame, float width, float height) {
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.frameIndex = frame;
+            run.imageWidthPt = width;
+            run.imageHeightPt = height;
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            run.imageFloatAlign = RichTextAlign::Left;
+            return run;
+        };
+        RichTextRun words;
+        words.text = "Text below the drawing.";
+        RichDocBlock first, second, third;
+        first.runs = {drawing(0, 300.0f, 0.0f), words};
+        second.runs = {drawing(1, 120.0f, 60.0f), words};
+        third.runs = {drawing(2, 180.0f, 40.0f), words};
+        document->blocks = {first, second, third};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df ruleRect = edit->GetFloatRectForTest(0);
+        const Rect2Df boxRect = edit->GetFloatRectForTest(1);
+        const Rect2Df groupRect = edit->GetFloatRectForTest(2);
+        TEST("A rule is placed with no height: " + std::to_string(ruleRect.height) + " high, "
+             + std::to_string(ruleRect.width) + " wide", ruleRect.height == 0.0f && ruleRect.width > 300.0f);
+        TEST("A drawing with words keeps its own height: " + std::to_string(boxRect.height),
+             std::abs(boxRect.height - 80.0f) < 1.0f);
+        TEST("A group is placed whole: " + std::to_string(groupRect.width) + " x " + std::to_string(groupRect.height),
+             std::abs(groupRect.width - 240.0f) < 1.0f && groupRect.y > boxRect.y + boxRect.height);
+        TEST("Plain text spells a drawing's words and its members'",
+             document->ToPlainText().find("Boxed") != std::string::npos
+             && document->ToPlainText().find("Member words") != std::string::npos);
+        // A preset outline from Word's names.
+        RichShape star;
+        TEST("Presets give outlines: star5", star.ApplyPreset("star5") && star.kind == RichShape::Kind::Path
+             && star.path.size() == 11);
+        TEST("...and an unknown name leaves a rectangle",
+             !star.ApplyPreset("noSuchShape") && star.kind == RichShape::Kind::Rectangle);
+    }
+
+    // ===== MOVING AND RESIZING FLOATS =====
+    std::cerr << "\n--- Moving and resizing floats ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame drawing;
+        RichShape box;
+        box.kind = RichShape::Kind::Ellipse;
+        box.widthPt = 120.0f;
+        box.heightPt = 60.0f;
+        box.fillColor = "#70AD47";
+        box.gradientStops = {{0.0f, "#FFFFFF"}, {1.0f, "#70AD47"}};
+        box.gradientRadial = true;
+        drawing.shapes = {box};
+        document->frames = {drawing};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 120.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Left;
+        RichTextRun words;
+        for (int i = 0; i < 30; i++) words.text += "word" + std::to_string(i) + " ";
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor, words};
+        document->blocks = {paragraph};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        auto runOf = [&]() -> const RichTextRun& { return edit->GetDocument()->blocks[0].runs[0]; };
+        Rect2Df on = edit->GetFloatElementRectForTest(0);
+        const float cx = on.x + on.width * 0.5f, cy = on.y + on.height * 0.5f;
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx, cy));
+        window->UpdateAndRender();
+        TEST("A click on a drawing selects it", edit->HasSelectedImage() && edit->GetSelectedImage().byteOffset == 0);
+
+        // Dragged 60 px right and 30 px down: offsets from its paragraph.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, cx + 30.0f, cy + 15.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, cx + 60.0f, cy + 30.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx + 60.0f, cy + 30.0f));
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("Dragging it moves it: offset " + std::to_string(runOf().imageOffsetXPt) + ", "
+             + std::to_string(runOf().imageOffsetYPt),
+             runOf().imageFloatAlign == RichTextAlign::Default && std::abs(runOf().imageOffsetXPt - 45.0f) < 1.0f
+             && std::abs(runOf().imageOffsetYPt - 22.5f) < 1.0f);
+        const Rect2Df moved = edit->GetFloatElementRectForTest(0);
+        TEST("...and it is drawn there", std::abs(moved.x - on.x - 60.0f) < 1.5f && std::abs(moved.y - on.y - 30.0f) < 1.5f);
+        TEST("...still selected", edit->HasSelectedImage());
+
+        // The bottom-right handle, dragged out: a corner keeps proportions,
+        // and the drawing remembers the size its shapes were drawn for.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, moved.x + moved.width, moved.y + moved.height));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, moved.x + moved.width + 80.0f, moved.y + moved.height + 40.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, moved.x + moved.width + 80.0f, moved.y + moved.height + 40.0f));
+        window->UpdateAndRender();
+        const RichTextFrame& resized = edit->GetDocument()->frames[0];
+        TEST("Its corner handle resizes it: " + std::to_string(runOf().imageWidthPt) + " x "
+             + std::to_string(runOf().imageHeightPt),
+             std::abs(runOf().imageWidthPt - 180.0f) < 1.5f && std::abs(runOf().imageHeightPt - 90.0f) < 1.5f);
+        TEST("...its shapes scale from the size they were drawn for",
+             resized.drawingWidthPt == 120.0f && resized.drawingHeightPt == 60.0f);
+        editor.Undo();
+        editor.Undo();
+        window->UpdateAndRender();
+        TEST("Undo puts it back where and as big as it was",
+             runOf().imageFloatAlign == RichTextAlign::Left && runOf().imageWidthPt == 120.0f);
+        // A frame behind the text leaves the text to the clicks.
+        edit->GetDocument()->blocks[0].runs[0].imageWrap = RichTextRun::ImageWrap::BehindText;
+        edit->SetDocument(edit->GetDocument());
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        on = edit->GetFloatElementRectForTest(0);
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, on.x + on.width * 0.5f, on.y + 4.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, on.x + on.width * 0.5f, on.y + 4.0f));
+        TEST("A drawing behind the text is not picked up by a click", !edit->HasSelectedImage());
+    }
+
     // ===== PDF =====
     std::cerr << "\n--- PDF export ---" << std::endl;
     {

@@ -18,6 +18,9 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.11.0 - floating frames and drawings selected, moved and resized like pictures;
+//                   gradient fills; GetFloatRectForTest
+// Version: 1.10.0 - DrawShape / TraceShape: a drawing's shapes (RichTextFrame::shapes)
 // Version: 1.9.0 - RichTextEditStyle::FromTheme, ApplyTheme: the edit follows the theme (its chrome and inks;
 //                  the document's fonts stay); a SetStyle by hand stops the following
 // Version: 1.8.0 - a run's own letter spacing (RichTextRun::letterSpacingPt) is drawn
@@ -374,7 +377,10 @@ public:
     // ===== PICTURES =====
     // Clicking a picture selects it: a frame with eight handles is drawn round
     // it, and dragging a handle resizes it (a corner keeps its proportions).
-    // Delete removes a selected picture, like any selection.
+    // Delete removes a selected picture, like any selection. Floating text
+    // frames and drawings are selected the same way (not one behind the
+    // text), and a floating one is moved by dragging it: it keeps the new
+    // place as offsets from what it is placed from, which both writers save.
     bool HasSelectedImage() const;
     // {block, 0} for an Image block, the placeholder's offset for a picture
     // in the line (see UCRichDocumentEditor::IsImageAt).
@@ -618,6 +624,17 @@ public:
     // The caret's rectangle, element coordinates (for tests and hosts that
     // place a popup at the caret); empty when it is not laid out.
     Rect2Df GetCaretRectForTest() const { return ToElement(CaretRect()); }
+    // Where the body's `index`th floating picture, frame or drawing was placed
+    // (x from the column's left edge, y in content pixels); empty if none.
+    Rect2Df GetFloatRectForTest(size_t index) const {
+        return index < placedFloats.size() ? placedFloats[index].rect : Rect2Df(0, 0, 0, 0);
+    }
+    // ...and where it is on the element, for a pointer to press on.
+    Rect2Df GetFloatElementRectForTest(size_t index) const {
+        if (index >= placedFloats.size()) return Rect2Df(0, 0, 0, 0);
+        const Rect2Df& r = placedFloats[index].rect;
+        return ToElement(Rect2Df(ColumnLeft() + r.x, visibleArea.y + r.y - scrollOffset, r.width, r.height));
+    }
     // Drag and drop: on by default. A drag moves the selection; with Ctrl held
     // at the drop it copies it.
     bool enableDragAndDrop = true;
@@ -794,7 +811,13 @@ private:
         // A text frame: its look and its laid-out paragraphs.
         int frameIndex = -1;
         std::shared_ptr<FurnitureLayout> frameContent;
+        // The corner its offsets count from (its paragraph, the page or the
+        // page's text area), in the same coordinates as `rect`: a float
+        // dragged elsewhere gets its offsets from it.
+        float areaLeft = 0.0f, areaTop = 0.0f;
     };
+    // The placed float whose placeholder is at `object`, or null.
+    const PlacedFloat* PlacedFloatAt(const RichDocPosition& object) const;
     // A text frame's paragraphs laid out `width` pixels wide (its inner
     // width, inside padding and border).
     // With a page number, page fields in it show that page's.
@@ -803,6 +826,10 @@ private:
     // The room a text frame's border and padding take on each side (pixels).
     float TextFrameInset(int frameIndex) const;
     void DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target);
+    // A drawing's shapes (RichTextFrame::shapes), their boxes from (originX, originY).
+    void DrawShape(IRenderContext* ctx, const RichShape& shape, double originX, double originY, int depth);
+    static void TraceShape(IRenderContext* ctx, const RichShape& shape, double x, double y, double w, double h);
+    std::map<std::pair<const void*, size_t>, std::shared_ptr<UCImage>> shapeImages;   // pictures in groups, by their bytes
     std::vector<PlacedFloat> placedFloats;
     // Places block `index`'s floats at `top` and fits the block round the
     // floats placed so far (moving it below a top-and-bottom one, narrowing it

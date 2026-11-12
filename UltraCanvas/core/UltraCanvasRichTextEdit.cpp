@@ -7,6 +7,11 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.7.0 - floating frames and drawings are selected, moved by dragging (their new
+//                  offsets kept) and resized - a drawing's shapes scale with it; gradient fills
+// Version: 1.6.0 - drawn shapes in frames (RichTextFrame::shapes): lines, rectangles,
+//                  ellipses, outlines and groups, filled, outlined, dashed, with arrowheads,
+//                  turned and mirrored; a group member's words in its box
 // Version: 1.5.0 - a run's own letter spacing (RichTextRun::letterSpacingPt), over the tracking
 // Version: 1.4.0 - RichTextEditStyle::letterSpacing: extra room between every two letters
 // Version: 1.3.0 - the font report and its notice: the fonts the document needs that the
@@ -48,6 +53,8 @@ namespace {
 // text they belong to.
 constexpr float kPixelsPerPoint = 96.0f / 72.0f;
 inline float Px(float points) { return points * kPixelsPerPoint; }
+// resizeHandle's value while a float is dragged whole rather than resized.
+constexpr int kMoveHandle = 8;
 
 // Room between a paragraph's text and its frame (and what the frame adds to
 // the space around the paragraph).
@@ -911,7 +918,12 @@ UltraCanvasRichTextEdit::PlacedFloat UltraCanvasRichTextEdit::PlaceFloat(
         placed.frameContent = LayoutTextFrame(ctx, image.frameIndex, std::max(8.0f, image.width - 2.0f * inset),
                                               pageNumber, pageCount);
         if (placed.frameContent) height = std::max(height, placed.frameContent->height + 2.0f * inset);
-        height = std::max(height, 2.0f * inset + 8.0f);
+        // A drawing is as tall as it was drawn - a rule has no height at
+        // all; a box of text at least holds a line.
+        const UCRichDocument& document = *editor.GetDocument();
+        const bool drawingOnly = image.frameIndex < static_cast<int>(document.frames.size())
+            && document.frames[static_cast<size_t>(image.frameIndex)].IsDrawing() && !placed.frameContent;
+        if (!drawingOnly) height = std::max(height, 2.0f * inset + 8.0f);
     }
     const float column = ColumnWidth();
     // Across: within the column, or within the page (whose left edge lies
@@ -944,6 +956,8 @@ UltraCanvasRichTextEdit::PlacedFloat UltraCanvasRichTextEdit::PlaceFloat(
     if (image.verticalAlign == VAlign::Middle) y = areaTop + (areaHeight - height) * 0.5f;
     else if (image.verticalAlign == VAlign::Bottom) y = areaTop + areaHeight - height;
     placed.rect = Rect2Df(x, y, image.width, height);
+    placed.areaLeft = areaLeft;
+    placed.areaTop = areaTop;
     // Text passes beside a square-wrapped picture at a side of the column; a
     // centred one leaves no useful room either side.
     placed.beside = image.wrap == RichTextRun::ImageWrap::Square && image.floatAlign != RichTextAlign::Center;
@@ -1090,6 +1104,18 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
     const RichTextFrame* frame = editor.GetDocument()->frames.size() > static_cast<size_t>(placed.frameIndex)
         ? &editor.GetDocument()->frames[static_cast<size_t>(placed.frameIndex)] : nullptr;
     if (!frame) return;
+    if (frame->IsDrawing()) {
+        // A drawing: its shapes, scaled from the box they were drawn for to
+        // the frame's (once it has been resized), then its words over them.
+        const double drawnWidth = Px(frame->drawingWidthPt), drawnHeight = Px(frame->drawingHeightPt);
+        const double scaleX = drawnWidth > 0.0 ? target.width / drawnWidth : 1.0;
+        const double scaleY = drawnHeight > 0.0 ? target.height / drawnHeight : 1.0;
+        ctx->PushState();
+        ctx->Translate(target.x, target.y);
+        if (scaleX > 0.0 && scaleY > 0.0 && (scaleX != 1.0 || scaleY != 1.0)) ctx->Scale(scaleX, scaleY);
+        for (const RichShape& shape : frame->shapes) DrawShape(ctx, shape, 0.0, 0.0, 0);
+        ctx->PopState();
+    }
     if (!frame->backgroundColor.empty()) {
         ctx->DrawFilledRectangle(target, ParseHexColor(frame->backgroundColor, Colors::Transparent),
                                  0.0f, Colors::Transparent);
@@ -1100,22 +1126,204 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
         ctx->DrawFilledRectangle(Rect2Dd(target.x + half, target.y + half, target.width - width, target.height - width),
                                  Colors::Transparent, static_cast<float>(width),
                                  ParseHexColor(frame->border.color, style.textColor));
-    } else if (!readOnly) {
+    } else if (!readOnly && !frame->IsDrawing()) {
         // An editable view shows where a borderless frame is, as Writer does.
         ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f, style.tableGuideColor);
     }
     if (!placed.frameContent) return;
     const float inset = TextFrameInset(placed.frameIndex);
     const FurnitureLayout& content = *placed.frameContent;
+    // Words centred or at the foot of a frame taller than they are.
+    float down = 0.0f;
+    const float room = static_cast<float>(target.height) - 2.0f * inset - content.height;
+    if (room > 0.0f && frame->textAnchor == RichShape::TextAnchor::Middle) down = room * 0.5f;
+    else if (room > 0.0f && frame->textAnchor == RichShape::TextAnchor::Bottom) down = room;
     ctx->PushState();
     ctx->ClipRect(target);
     for (size_t i = 0; i < content.layouts.size(); i++) {
         const BlockLayout& bl = content.layouts[i];
         RenderBlock(ctx, content.blocks, static_cast<int>(i), bl,
                     static_cast<float>(target.x) + inset,
-                    static_cast<float>(target.y) + inset + bl.bounds.y, -1);
+                    static_cast<float>(target.y) + inset + down + bl.bounds.y, -1);
     }
     ctx->PopState();
+}
+
+// The outline of `shape` in the box (x, y, w, h), as the current path.
+void UltraCanvasRichTextEdit::TraceShape(IRenderContext* ctx, const RichShape& shape,
+                                         double x, double y, double w, double h) {
+    using Kind = RichShape::Kind;
+    using Op = RichShape::PathPoint::Op;
+    ctx->ClearPath();
+    switch (shape.kind) {
+        case Kind::Rectangle:
+            ctx->Rect(x, y, w, h);
+            break;
+        case Kind::RoundRectangle: {
+            const double radius = std::clamp(static_cast<double>(shape.cornerRadius), 0.0, 0.5) * std::min(w, h);
+            if (radius > 0.0 && w > 0.0 && h > 0.0) ctx->RoundedRect(x, y, w, h, radius);
+            else ctx->Rect(x, y, w, h);
+            break;
+        }
+        case Kind::Ellipse:
+            if (w > 0.0 && h > 0.0) ctx->Ellipse(x + w * 0.5, y + h * 0.5, w * 0.5, h * 0.5, 0.0);
+            break;
+        case Kind::Line:
+            ctx->MoveTo(x, y);
+            ctx->LineTo(x + w, y + h);
+            break;
+        case Kind::Path:
+            for (const RichShape::PathPoint& point : shape.path) {
+                switch (point.op) {
+                    case Op::Move: ctx->MoveTo(x + point.x * w, y + point.y * h); break;
+                    case Op::Line: ctx->LineTo(x + point.x * w, y + point.y * h); break;
+                    case Op::Curve:
+                        ctx->BezierCurveTo(x + point.c1x * w, y + point.c1y * h, x + point.c2x * w,
+                                           y + point.c2y * h, x + point.x * w, y + point.y * h);
+                        break;
+                    case Op::Close: ctx->ClosePath(); break;
+                }
+            }
+            break;
+        case Kind::Group:
+            break;
+    }
+}
+
+// An arrowhead at `tip`, pointing away from `from`.
+static void DrawArrowhead(IRenderContext* ctx, double fromX, double fromY, double tipX, double tipY,
+                          double lineWidth, const Color& color) {
+    const double dx = tipX - fromX, dy = tipY - fromY;
+    const double length = std::hypot(dx, dy);
+    if (length < 0.01) return;
+    const double ux = dx / length, uy = dy / length;
+    const double size = std::max(6.0, lineWidth * 3.5);
+    const double baseX = tipX - ux * size, baseY = tipY - uy * size;
+    ctx->ClearPath();
+    ctx->MoveTo(tipX, tipY);
+    ctx->LineTo(baseX - uy * size * 0.5, baseY + ux * size * 0.5);
+    ctx->LineTo(baseX + uy * size * 0.5, baseY - ux * size * 0.5);
+    ctx->ClosePath();
+    ctx->SetFillPaint(color);
+    ctx->FillPathPreserve();
+    ctx->ClearPath();
+}
+
+// A drawn shape, its box from (originX, originY): turned and mirrored about
+// its centre, filled, outlined; a group draws its members in its box; a
+// member's words go in its box, turned with it but never mirrored.
+void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& shape,
+                                        double originX, double originY, int depth) {
+    if (depth > 8) return;
+    const double x = originX + Px(shape.xPt), y = originY + Px(shape.yPt);
+    const double w = Px(shape.widthPt), h = Px(shape.heightPt);
+    const double cx = x + w * 0.5, cy = y + h * 0.5;
+    constexpr double kDegrees = 3.14159265358979323846 / 180.0;
+    ctx->PushState();
+    if (shape.rotationDeg != 0.0f || shape.flipH || shape.flipV) {
+        ctx->Translate(cx, cy);
+        if (shape.rotationDeg != 0.0f) ctx->Rotate(shape.rotationDeg * kDegrees);
+        ctx->Scale(shape.flipH ? -1.0 : 1.0, shape.flipV ? -1.0 : 1.0);
+        ctx->Translate(-cx, -cy);
+    }
+    if (shape.kind == RichShape::Kind::Group) {
+        for (const RichShape& member : shape.children) DrawShape(ctx, member, x, y, depth + 1);
+    } else {
+        const UCRichDocument& document = *editor.GetDocument();
+        if (shape.mediaIndex >= 0 && shape.mediaIndex < static_cast<int>(document.media.size())) {
+            // A picture in a group.
+            const RichDocMedia& media = document.media[static_cast<size_t>(shape.mediaIndex)];
+            std::shared_ptr<UCImage>& image = shapeImages[{media.data.data(), media.data.size()}];
+            if (!image) image = UCImage::LoadFromMemory(media.data);
+            if (image) ctx->DrawImage(*image, Rect2Dd(x, y, w, h), ImageFitMode::Fill);
+        }
+        TraceShape(ctx, shape, x, y, w, h);
+        if (shape.IsClosed() && shape.HasGradient() && shape.mediaIndex < 0 && w > 0.0 && h > 0.0) {
+            std::vector<GradientStop> stops;
+            for (const RichShape::GradientStop& stop : shape.gradientStops) {
+                stops.emplace_back(std::clamp(static_cast<double>(stop.position), 0.0, 1.0),
+                                   ParseHexColor(stop.color, Colors::Transparent));
+            }
+            std::shared_ptr<IPaintPattern> pattern;
+            if (shape.gradientRadial) {
+                // From its centre to the farthest corner.
+                const double gx = x + w * std::clamp(static_cast<double>(shape.gradientCenterX), 0.0, 1.0);
+                const double gy = y + h * std::clamp(static_cast<double>(shape.gradientCenterY), 0.0, 1.0);
+                const double reach = std::hypot(std::max(gx - x, x + w - gx), std::max(gy - y, y + h - gy));
+                pattern = ctx->CreateRadialGradientPattern(gx, gy, 0.0, gx, gy, std::max(1.0, reach), stops);
+            } else {
+                // Across the box at its angle: from the side it starts on to
+                // the opposite one, through the centre.
+                const double angle = static_cast<double>(shape.gradientAngleDeg) * kDegrees;
+                const double ux = std::cos(angle), uy = std::sin(angle);
+                const double half = (std::abs(w * ux) + std::abs(h * uy)) * 0.5;
+                pattern = ctx->CreateLinearGradientPattern(cx - ux * half, cy - uy * half, cx + ux * half,
+                                                           cy + uy * half, stops);
+            }
+            if (pattern) ctx->SetFillPaint(pattern);
+            else ctx->SetFillPaint(ParseHexColor(shape.gradientStops.front().color, Colors::Transparent));
+            ctx->FillPathPreserve();
+        } else if (shape.IsClosed() && !shape.fillColor.empty() && shape.mediaIndex < 0) {
+            ctx->SetFillPaint(ParseHexColor(shape.fillColor, Colors::Transparent));
+            ctx->FillPathPreserve();
+        }
+        if (!shape.lineColor.empty()) {
+            const double lineWidth = std::max(1.0, static_cast<double>(Px(shape.lineWidthPt)));
+            const Color color = ParseHexColor(shape.lineColor, style.textColor);
+            ctx->SetStrokePaint(color);
+            ctx->SetStrokeWidth(lineWidth);
+            ctx->SetLineJoin(LineJoin::Miter);
+            if (shape.dash == RichShape::Dash::Dashed) ctx->SetLineDash(UCDashPattern({lineWidth * 4.0, lineWidth * 3.0}));
+            else if (shape.dash == RichShape::Dash::Dotted) ctx->SetLineDash(UCDashPattern({lineWidth, lineWidth * 2.0}));
+            ctx->StrokePathPreserve();
+            ctx->SetLineDash(UCDashPattern());
+            // Arrowheads on a line's or an open path's ends.
+            if ((shape.arrowStart || shape.arrowEnd) && shape.IsOpen()) {
+                double sx = x, sy = y, s2x = x + w, s2y = y + h;    // start and the point after it
+                double ex = x + w, ey = y + h, e2x = x, e2y = y;    // end and the point before it
+                if (shape.kind == RichShape::Kind::Path && shape.path.size() >= 2) {
+                    const auto& p = shape.path;
+                    sx = x + p[0].x * w; sy = y + p[0].y * h;
+                    const auto& second = p[1];
+                    s2x = x + (second.op == RichShape::PathPoint::Op::Curve ? second.c1x : second.x) * w;
+                    s2y = y + (second.op == RichShape::PathPoint::Op::Curve ? second.c1y : second.y) * h;
+                    const auto& last = p.back();
+                    ex = x + last.x * w; ey = y + last.y * h;
+                    e2x = x + (last.op == RichShape::PathPoint::Op::Curve ? last.c2x : p[p.size() - 2].x) * w;
+                    e2y = y + (last.op == RichShape::PathPoint::Op::Curve ? last.c2y : p[p.size() - 2].y) * h;
+                }
+                if (shape.arrowStart) DrawArrowhead(ctx, s2x, s2y, sx, sy, lineWidth, color);
+                if (shape.arrowEnd) DrawArrowhead(ctx, e2x, e2y, ex, ey, lineWidth, color);
+            }
+        }
+        ctx->ClearPath();
+    }
+    ctx->PopState();
+    // A group member's words, in its box.
+    const UCRichDocument& document = *editor.GetDocument();
+    if (shape.textFrame >= 0 && shape.textFrame < static_cast<int>(document.frames.size()) && w > 4.0 && h > 4.0) {
+        const float inset = Px(std::max(0.0f, shape.textPaddingPt));
+        auto content = LayoutTextFrame(ctx, shape.textFrame, std::max(8.0f, static_cast<float>(w) - 2.0f * inset));
+        if (content) {
+            ctx->PushState();
+            if (shape.rotationDeg != 0.0f) {
+                ctx->Translate(cx, cy);
+                ctx->Rotate(shape.rotationDeg * kDegrees);
+                ctx->Translate(-cx, -cy);
+            }
+            ctx->ClipRect(Rect2Dd(x, y, w, h));
+            float down = 0.0f;
+            const float room = static_cast<float>(h) - 2.0f * inset - content->height;
+            if (room > 0.0f && shape.textAnchor == RichShape::TextAnchor::Middle) down = room * 0.5f;
+            else if (room > 0.0f && shape.textAnchor == RichShape::TextAnchor::Bottom) down = room;
+            for (size_t i = 0; i < content->layouts.size(); i++) {
+                const BlockLayout& bl = content->layouts[i];
+                RenderBlock(ctx, content->blocks, static_cast<int>(i), bl, static_cast<float>(x) + inset,
+                            static_cast<float>(y) + inset + down + bl.bounds.y, -1);
+            }
+            ctx->PopState();
+        }
+    }
 }
 
 float UltraCanvasRichTextEdit::TextFrameInset(int frameIndex) const {
@@ -3004,7 +3212,8 @@ void UltraCanvasRichTextEdit::ForEachImage(
         }
     };
     for (const PlacedFloat& placed : placedFloats) {
-        if (placed.frameIndex >= 0) continue;     // a text frame is not a picture to select
+        // A frame or drawing behind the text leaves the text to the clicks.
+        if (placed.frameIndex >= 0 && placed.wrap == RichTextRun::ImageWrap::BehindText) continue;
         visit(RichDocPosition(placed.blockIndex, placed.byteOffset),
               Rect2Df(ColumnLeft() + placed.rect.x, visibleArea.y + placed.rect.y - scrollOffset,
                       placed.rect.width, placed.rect.height));
@@ -3080,6 +3289,7 @@ Rect2Df UltraCanvasRichTextEdit::ResizedImageRect(const Point2Df& pointer) const
     float left = r.x, top = r.y, right = r.x + r.width, bottom = r.y + r.height;
     const float dx = pointer.x - resizeStartPoint.x, dy = pointer.y - resizeStartPoint.y;
     const int h = resizeHandle;
+    if (h == kMoveHandle) return Rect2Df(r.x + dx, r.y + dy, r.width, r.height);   // a float dragged whole
     const bool west = h == 0 || h == 6 || h == 7, east = h == 2 || h == 3 || h == 4;
     const bool north = h == 0 || h == 1 || h == 2, south = h == 4 || h == 5 || h == 6;
     if (west) left += dx;
@@ -3100,6 +3310,14 @@ Rect2Df UltraCanvasRichTextEdit::ResizedImageRect(const Point2Df& pointer) const
     const float x = west ? r.x + r.width - width : r.x;
     const float y = north ? r.y + r.height - height : r.y;
     return Rect2Df(x, y, width, height);
+}
+
+const UltraCanvasRichTextEdit::PlacedFloat* UltraCanvasRichTextEdit::PlacedFloatAt(const RichDocPosition& object) const {
+    if (object.InCell()) return nullptr;
+    for (const PlacedFloat& placed : placedFloats) {
+        if (placed.blockIndex == object.blockIndex && placed.byteOffset == object.byteOffset) return &placed;
+    }
+    return nullptr;
 }
 
 bool UltraCanvasRichTextEdit::HasSelectedImage() const {
@@ -4226,7 +4444,11 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     if (!readOnly && HasSelectedImage()) {
         Rect2Df rect;
         if (ImageRectFor(selectedImage, rect)) {
-            const int handle = ImageHandleAt(rect, ToDocument(event.pointer));
+            int handle = ImageHandleAt(rect, ToDocument(event.pointer));
+            // A press inside a selected float (off its handles) drags it.
+            if (handle < 0 && PlacedFloatAt(selectedImage) && rect.Contains(ToDocument(event.pointer))) {
+                handle = kMoveHandle;
+            }
             if (handle >= 0) {
                 resizeHandle = handle;
                 resizeStartRect = rect;
@@ -4290,9 +4512,25 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
 bool UltraCanvasRichTextEdit::HandleMouseUp(const UCEvent& event) {
     if (resizeHandle >= 0) {
         const Rect2Df rect = ResizedImageRect(ToDocument(event.pointer));
+        const bool moving = resizeHandle == kMoveHandle;
         resizeHandle = -1;
         UltraCanvasApplication::GetInstance()->ReleaseMouse();
         const RichDocPosition image = selectedImage;
+        if (moving) {
+            // Its new offsets, from the corner it is placed from.
+            const PlacedFloat* placed = PlacedFloatAt(image);
+            const float dx = rect.x - resizeStartRect.x, dy = rect.y - resizeStartRect.y;
+            if (placed && (std::abs(dx) >= 1.0f || std::abs(dy) >= 1.0f)) {
+                const float x = placed->rect.x + dx - placed->areaLeft;
+                const float y = placed->rect.y + dy - placed->areaTop;
+                if (editor.SetFloatOffset(image, x / kPixelsPerPoint, y / kPixelsPerPoint)) {
+                    AfterEdit();
+                    SelectImage(image);
+                }
+            }
+            RequestRedraw();
+            return true;
+        }
         if (std::abs(rect.width - resizeStartRect.width) >= 1.0f
             || std::abs(rect.height - resizeStartRect.height) >= 1.0f) {
             if (editor.SetImageSize(image, rect.width / kPixelsPerPoint, rect.height / kPixelsPerPoint)) {
@@ -4378,11 +4616,15 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
     if (!selecting && HasSelectedImage() && !readOnly) {
         Rect2Df rect;
         int handle = -1;
-        if (ImageRectFor(selectedImage, rect)) handle = ImageHandleAt(rect, ToDocument(event.pointer));
+        bool inside = false;
+        if (ImageRectFor(selectedImage, rect)) {
+            handle = ImageHandleAt(rect, ToDocument(event.pointer));
+            inside = PlacedFloatAt(selectedImage) && rect.Contains(ToDocument(event.pointer));
+        }
         static const UCMouseCursor cursors[8] = {
             UCMouseCursor::SizeNWSE, UCMouseCursor::SizeNS, UCMouseCursor::SizeNESW, UCMouseCursor::SizeWE,
             UCMouseCursor::SizeNWSE, UCMouseCursor::SizeNS, UCMouseCursor::SizeNESW, UCMouseCursor::SizeWE};
-        SetMouseCursor(handle >= 0 ? cursors[handle] : UCMouseCursor::Text);
+        SetMouseCursor(handle >= 0 ? cursors[handle] : inside ? UCMouseCursor::SizeAll : UCMouseCursor::Text);
     }
     if (dragArmed) {
         const float dx = static_cast<float>(event.pointer.x) - dragStartPoint.x;
