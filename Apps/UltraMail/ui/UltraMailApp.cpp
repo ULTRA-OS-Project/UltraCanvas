@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.10.1 - Settings > Display > Email warnings reach the reading pane's warning strip
 // Version: 0.10.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.9.44 - an earlier version's body directories moved to the case-safe layout at start
 // Version: 0.9.43 - a sent message is reported in a popup window or in the status
@@ -93,7 +94,7 @@
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 #include "UltraMailHeaderText.h"
@@ -892,6 +893,8 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.SetReadingPane(prefs_.showReadingPane);
     mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
     mailView_.SetAttachmentsRight(prefs_.AttachmentsRight());
+    mailView_.SetWarningStrip(prefs_.warningStrip);
+    shownWarningStrip_ = prefs_.warningStrip;
     mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                  prefs_.folderTreeWidth);
 
@@ -4780,6 +4783,11 @@ void UltraMailApp::OpenSettings() {
         // Other spam/scam warnings: every stored verdict is judged again - the
         // message on screen at once, the rest as the mail check re-scans them
         // (a batch per folder and check), starting with one now.
+        // Settings > Display > Email warnings: the strip above the message.
+        if (!(shownWarningStrip_ == prefs_.warningStrip)) {
+            shownWarningStrip_ = prefs_.warningStrip;
+            mailView_.SetWarningStrip(prefs_.warningStrip);
+        }
         if (!(GetThreatScanOptions() == prefs_.scamWarnings)) {
             SetThreatScanOptions(prefs_.scamWarnings);
             store_.MarkVerdictsStale();
