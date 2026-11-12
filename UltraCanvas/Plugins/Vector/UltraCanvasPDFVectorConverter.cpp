@@ -22,12 +22,14 @@
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#include "UltraCanvasTextUtils.h"   // FormatFixedClassic - dot-decimal, fixed point
 
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <locale>
 #include <map>
 #include <sstream>
 #include <variant>
@@ -44,20 +46,21 @@ namespace {
 
 using namespace PathOps;
 
-std::string Num(double v) {
-    char buf[48];
-    std::snprintf(buf, sizeof(buf), "%.3f", v);
-    std::string s = buf;
-    size_t last = s.find_last_not_of('0');
-    if (s[last] == '.') --last;
-    return s.substr(0, last + 1);
-}
+// Three decimals is PDF's working resolution, and the point goes when nothing
+// is behind it. snprintf used to do this, through LC_NUMERIC - which the Linux
+// backend sets from the environment at start-up for XIM - so on a
+// comma-decimal desktop the page itself came out as
+// `/MediaBox [0 0 420,5 297,25]`: not a rounded number but a five-element
+// array where a reader counts four.
+std::string Num(double v) { return FormatFixedClassic(v, 3); }
 
 class PdfEmitter {
 public:
     PdfEmitter(const VectorDocument& document,
                std::function<void(const std::string&)> warnFn)
-            : doc(document), warn(std::move(warnFn)) {}
+            : doc(document), warn(std::move(warnFn)) {
+        content.imbue(std::locale::classic());   // the content stream itself
+    }
 
     std::string Build() {
         pageW = doc.Size.width;
@@ -88,7 +91,13 @@ public:
         objects.push_back("<< /Type /Catalog /Pages 2 0 R >>");
         objects.push_back("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
 
+        // Object numbers, byte offsets and stream lengths all go out through
+        // these, and a PDF of any size has more than a thousand of them: under
+        // a locale that groups digits, `/Length 1.234` and an xref count of
+        // `1.234` are as fatal as a comma in a coordinate. The streams are
+        // this emitter's own, so they are imbued rather than guarded.
         std::ostringstream res;
+        res.imbue(std::locale::classic());
         res << "<<";
         if (!fonts.empty()) {
             res << " /Font <<";
@@ -107,6 +116,7 @@ public:
         res << " >>";
 
         std::ostringstream page;
+        page.imbue(std::locale::classic());
         page << "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " << Num(pageW)
              << " " << Num(pageH) << "] /Contents 4 0 R /Resources "
              << res.str() << " >>";
@@ -114,6 +124,7 @@ public:
 
         std::string cs = content.str();
         std::ostringstream stream;
+        stream.imbue(std::locale::classic());
         stream << "<< /Length " << cs.size() << " >>\nstream\n" << cs << "endstream";
         objects.push_back(stream.str());
 
@@ -127,6 +138,7 @@ public:
         }
 
         std::ostringstream out;
+        out.imbue(std::locale::classic());
         out << "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
         std::vector<size_t> offsets;
         for (size_t i = 0; i < objects.size(); ++i) {

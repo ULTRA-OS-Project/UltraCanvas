@@ -22,7 +22,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/COLLADA/UltraCanvasColladaConverter.h"
-#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat / ClassicNumbers
 
 #include "tinyxml2.h"
 
@@ -63,6 +63,13 @@ std::vector<double> ParseNumbers(const XMLElement* element) {
     std::vector<double> values;
     if (!element || !element->GetText()) return values;
     std::istringstream stream(element->GetText());
+    // A float_array is XML Schema doubles, and `>>` reads them through the
+    // stream's locale: where ',' is the decimal point, '.' is a digit-group
+    // separator instead, `1.5` fails to extract and the extraction stops
+    // there - so a <source> read under a host's own locale came back short or
+    // empty rather than slightly wrong. The stream is this function's own, so
+    // it is imbued here rather than guarded.
+    stream.imbue(std::locale::classic());
     double value = 0.0;
     while (stream >> value) values.push_back(value);
     return values;
@@ -72,6 +79,10 @@ std::vector<int> ParseIntegers(const XMLElement* element) {
     std::vector<int> values;
     if (!element || !element->GetText()) return values;
     std::istringstream stream(element->GetText());
+    // <p> and <vcount> are integers, and grouping is the same locale's
+    // business: a 1.000 that the writer meant as one thousand reads back as 1
+    // followed by 000, and the triangle list silently shifts.
+    stream.imbue(std::locale::classic());
     int value = 0;
     while (stream >> value) values.push_back(value);
     return values;
@@ -1140,21 +1151,6 @@ std::string MakeId(const char* prefix, size_t index) {
     return std::string(prefix) + std::to_string(index);
 }
 
-class ScopedPrecision {
-public:
-    ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
-            : stream_(stream), previous_(stream.precision()) {
-        stream_.precision(precision == NumericPrecision::Full ? (forDouble ? 17 : 9) : 6);
-    }
-    ~ScopedPrecision() { stream_.precision(previous_); }
-    ScopedPrecision(const ScopedPrecision&) = delete;
-    ScopedPrecision& operator=(const ScopedPrecision&) = delete;
-
-private:
-    std::ostream& stream_;
-    std::streamsize previous_;
-};
-
 // One mesh's primitives merged into parallel per-vertex arrays, which is what
 // lets every <input> share offset 0.
 struct MergedMesh {
@@ -1181,7 +1177,11 @@ public:
 
     void Run(std::ostream& out) {
         ReportLosses();
-        ScopedPrecision digits(out, options_.Precision, true);
+        // COLLADA's float_array and <matrix> are XML Schema doubles: dot
+        // decimal, no grouping, whatever locale the host set. ScopedPrecision
+        // pins both halves - the decimal point and the digit count - for as
+        // long as the writer is writing.
+        ScopedPrecision digits(out, DigitsFor(options_.Precision, true));
         out << std::fixed;
         out.unsetf(std::ios::fixed);   // default float format at the chosen precision
 

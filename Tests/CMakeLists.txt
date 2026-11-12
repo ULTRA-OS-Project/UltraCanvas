@@ -4558,6 +4558,36 @@ else()
     message(STATUS "  SVGLocaleTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# The same rule for every other vector writer, and through the half
+# check_locale_numbers.py cannot see: a stream renders its numbers through the
+# C++ global locale, which a host sets to honour the desktop's language, and
+# the checker reads one file at a time and never sees the locale of a stream a
+# writer was handed. One drawing is written by all ten writers twice - once
+# under "C", once under a comma-decimal locale - and the two files must be
+# identical. PDF, EPS and DXF each failed it the first time it ran. Reports a
+# skip rather than failing where no comma-decimal locale is installed, and for
+# a writer that needs an external tool this machine lacks (DWG wants dxf2dwg).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorLocaleTest...")
+    add_executable(VectorLocaleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorLocaleTest.cpp
+    )
+    target_include_directories(VectorLocaleTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Vector
+    )
+    target_compile_features(VectorLocaleTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorLocaleTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorLocaleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorLocaleTest COMMAND VectorLocaleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorLocaleTest")
+else()
+    message(STATUS "  VectorLocaleTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # Validates the Vector plugin's PDF writer: structural checks (an xref table
 # whose offsets really point at their objects, resources, operators) plus a
 # ghostscript rasterization with pixel checks when gs is installed.
