@@ -1,3 +1,12 @@
+#### 2026-11-12 *0.1.8*
+- **A new app icon.** UltraSnip's icon is now a dark camera with a blue lens
+  inside a red dashed selection frame, on an off-white tile, in place of the
+  white frame and lens on indigo. `media/appicon/UltraSnip.png` (the window,
+  the taskbar, the Windows `.exe`, the macOS bundle and the 256x256 theme
+  icon on Linux) is 256x256 like every other app icon, and
+  `media/appicon/UltraSnip.svg` (the scalable theme icon, which Linux desktops
+  prefer) is redrawn to match, so no desktop shows the old one.
+
 #### 2026-11-11 *0.1.7*
 - **`--background`: UltraSnip waits for the session.** Started so (as
   UltraDesktop does with the desktop), it shows no window and holds the
