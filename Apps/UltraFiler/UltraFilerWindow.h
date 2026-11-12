@@ -81,6 +81,7 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.37.0 - ApplyLook: the filer's own surfaces from the theme, again on every theme change
 // Version: 1.36.0 - OpenRemoteFile, OpenRemoteCopy
 // Version: 1.35.0 - VolumeDisplayName, RefreshPathBars, pathBarVolumeNamesApplied: the path
 //                  bar names a drive by its volume (Display > Path bar)
@@ -112,7 +113,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -225,6 +226,13 @@ private:
     // UltraFilerTabStripStyle.h. Called when the strip is built and from
     // ApplySettings.
     void ApplyTabStripStyle();
+    // The filer's own surfaces from the theme (UltraFilerLook.h): the
+    // window, the tool rows and buttons, the status strip, the tree, the
+    // computer page, the tab strips. Called when the theme changes; the
+    // elements that follow the theme by themselves have re-styled by then.
+    void ApplyLook();
+    void ApplyNewButtonColors();     // the New folder split button's look
+    void ApplyScanButtonColors();    // the accent, or red while it says Stop
     void BuildSplitLayout();
     // The parts the split view adds to the split (see SetSplitViewVisible):
     // the header row over the left-hand display, and the right-hand pane
@@ -1288,6 +1296,9 @@ private:
     std::shared_ptr<UltraCanvasContainer>       searchBox;    // field + in-field button
     std::shared_ptr<UltraCanvasTextInput>       searchInput;
     std::shared_ptr<UltraCanvasButton>          scanButton;   // "Scan sub folder" / "Stop"
+    std::shared_ptr<UltraCanvasContainer>       commandBarRow;   // the bar itself, for its hairline
+    bool statusNoteIsError = false;          // the status note is painted in the danger colour
+    int themeHandler = 0;                    // UltraCanvasTheme change handler: ApplyLook
     // The status strip: the line of text, and the bar that appears beside it
     // while a transfer to a drive is running.
     std::shared_ptr<UltraCanvasContainer>       statusRow;

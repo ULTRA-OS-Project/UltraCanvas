@@ -175,9 +175,14 @@ jobs:
       - name: Set up Emscripten
         timeout-minutes: 15
         run: |
-          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          # The clone and the toolchain download retried (scripts/ci-retry.sh),
+          # the clone into an emptied folder each time. `emsdk install` needs
+          # no cleaning between tries: without EMSDK_KEEP_DOWNLOADS it fetches
+          # every archive again rather than reusing a cut-off one.
+          scripts/ci-retry.sh --clean "$RUNNER_TEMP/emsdk" -- \
+            git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          scripts/ci-retry.sh -- "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
           cd "$RUNNER_TEMP/emsdk"
-          ./emsdk install "$EMSDK_VERSION"
           ./emsdk activate "$EMSDK_VERSION"
           source ./emsdk_env.sh
           echo "$EMSDK" >> "$GITHUB_PATH"

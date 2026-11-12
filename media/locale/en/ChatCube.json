@@ -1,0 +1,18 @@
+{
+  "@language": "en",
+  "@inherited": [
+    "All files",
+    "Open",
+    "Save as"
+  ],
+  "Could not delete the message: {0}": "Could not delete the message: {0}",
+  "Could not fetch {0}: {1}": "Could not fetch {0}: {1}",
+  "Could not save to {0}": "Could not save to {0}",
+  "Delete for everyone": "Delete for everyone",
+  "Delete for me": "Delete for me",
+  "Fetching {0}…": "Fetching {0}…",
+  "Save the file": "Save the file",
+  "Saved to {0}": "Saved to {0}",
+  "the file": "the file",
+  "This message will be removed for everyone in the conversation. This cannot be undone.": "This message will be removed for everyone in the conversation. This cannot be undone."
+}

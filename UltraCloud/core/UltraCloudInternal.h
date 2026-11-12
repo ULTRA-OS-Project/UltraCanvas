@@ -2,8 +2,10 @@
 // Small helpers shared by the module's own sources (not public API): JSON in
 // and out, RFC 3339 dates, query-string building, and what an upload tells
 // CloudService about itself (UploadReport).
+// Version: 0.5.0 - LocalFileDates / GiveFileDates, ParseRfc3339 / ParseHttpDate:
+//                  a transfer keeps the file's dates
 // Version: 0.4.0 - UploadReport
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -11,6 +13,7 @@
 #include <UltraNet/UltraNetUrl.h>
 
 #include <cstdint>
+#include <cstdio>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +22,7 @@
 #include <utility>
 #include <vector>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
+#include "../../UltraCanvas/include/UltraCanvasFileTimes.h"   // a file's dates across a transfer
 
 namespace UltraCloud {
 namespace internal {
@@ -79,6 +83,80 @@ inline std::string Rfc3339(int64_t epoch) {
     char buf[32];
     std::strftime(buf, sizeof buf, "%Y-%m-%dT%H:%M:%SZ", &tm);
     return buf;
+}
+
+// ---- A file's dates across a transfer ---------------------------------------
+// An upload sends the local file's dates where the service keeps them, and a
+// download gives the local copy the server's - so a copy to or from a drive
+// keeps the date the file was made rather than the moment it travelled. In
+// whole seconds, UTC; 0 is "not known" throughout.
+
+// Days since 1970-01-01 of a UTC calendar date (Howard Hinnant's algorithm).
+inline int64_t DaysFromCivil(int64_t y, unsigned m, unsigned d) {
+    y -= m <= 2;
+    const int64_t era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + static_cast<int64_t>(doe) - 719468;
+}
+
+inline int64_t EpochFromUtcParts(int year, int month, int day, int hour, int minute, int second) {
+    if (year < 1970 || month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59 || second < 0 || second > 60)
+        return 0;
+    return DaysFromCivil(year, static_cast<unsigned>(month), static_cast<unsigned>(day)) * 86400 +
+           hour * 3600 + minute * 60 + second;
+}
+
+// "2026-09-04T10:00:00Z", with or without a fraction ("...00.123Z") or an
+// offset instead of the Z ("...00+02:00"); 0 when it is not one.
+inline int64_t ParseRfc3339(const std::string& text) {
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0;
+    if (std::sscanf(text.c_str(), "%4d-%2d-%2dT%2d:%2d:%2d", &y, &mo, &d, &h, &mi, &se) != 6) return 0;
+    int64_t t = EpochFromUtcParts(y, mo, d, h, mi, se);
+    if (!t) return 0;
+    std::string::size_type at = 19;
+    if (at < text.size() && text[at] == '.')
+        while (++at < text.size() && text[at] >= '0' && text[at] <= '9') {}
+    if (at < text.size() && (text[at] == '+' || text[at] == '-')) {
+        int oh = 0, om = 0;
+        if (std::sscanf(text.c_str() + at + 1, "%2d:%2d", &oh, &om) == 2)
+            t -= (text[at] == '+' ? 1 : -1) * static_cast<int64_t>(oh * 3600 + om * 60);
+    }
+    return t;
+}
+
+// "Wed, 03 Sep 2026 10:00:00 GMT" (RFC 1123, HTTP's Last-Modified); 0 when not.
+inline int64_t ParseHttpDate(const std::string& text) {
+    const std::string::size_type comma = text.find(", ");
+    const std::string rest = comma == std::string::npos ? text : text.substr(comma + 2);
+    int d = 0, y = 0, h = 0, mi = 0, se = 0;
+    char month[8] = {0};
+    if (std::sscanf(rest.c_str(), "%d %7s %d %d:%d:%d", &d, month, &y, &h, &mi, &se) != 6) return 0;
+    static const char* kMonths[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    for (int m = 0; m < 12; ++m)
+        if (std::string(month) == kMonths[m]) return EpochFromUtcParts(y, m + 1, d, h, mi, se);
+    return 0;
+}
+
+// The local file's modification and creation dates (creation 0 where the
+// system does not keep one).
+inline void LocalFileDates(const std::string& localPath, int64_t& modified, int64_t& created) {
+    UltraCanvas::FileTimes times;
+    UltraCanvas::GetFileTimes(localPath, times);
+    modified = UltraCanvas::FileTimes::ToSeconds(times.modified);
+    created = UltraCanvas::FileTimes::ToSeconds(times.created);
+}
+
+// Gives a downloaded file the server's dates; a 0 leaves that one as it is.
+// Best effort - a file that would not take a date is still the file.
+inline void GiveFileDates(const std::string& localPath, int64_t modified, int64_t created) {
+    UltraCanvas::FileTimes times;
+    times.modified = modified > 0 ? UltraCanvas::FileTimes::FromSeconds(modified) : 0;
+    times.created = created > 0 ? UltraCanvas::FileTimes::FromSeconds(created) : 0;
+    UltraCanvas::SetFileTimes(localPath, times);
 }
 
 // "?a=1&b=x%20y" from key/value pairs (values percent-encoded).

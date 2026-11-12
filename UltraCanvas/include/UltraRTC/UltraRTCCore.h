@@ -1,7 +1,7 @@
 // include/UltraRTC/UltraRTCCore.h
 // UltraRTC - the public real-time communication API (UltraRtc_* functions)
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -30,6 +30,10 @@ UltraRtcResult       UltraRtc_Initialize();
 void                 UltraRtc_Shutdown();
 bool                 UltraRtc_IsAvailable();
 UltraRtcCapabilities UltraRtc_GetCapabilities();
+// The version of this API ("0.1.0"), with or without an engine, before or
+// after UltraRtc_Initialize. The engine's own version is in
+// UltraRtc_GetCapabilities().engine.
+std::string          UltraRtc_GetVersion();
 void                 UltraRtc_SetEventDispatcher(UltraRtcDispatcher dispatcher);
 
 // ---- Peers -------------------------------------------------------------------

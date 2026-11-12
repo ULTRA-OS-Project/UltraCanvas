@@ -2,13 +2,18 @@
 // Raw TCP/UDP sockets: POSIX on Linux/macOS, Winsock on Windows. Tracks each
 // open file descriptor in a process-wide registry keyed by UltraNetHandle so
 // callers operate on the handle rather than the OS fd.
+// Version: 0.4.0 - a TCP connection through a proxy: SOCKS 5, SOCKS 4 / 4a and an HTTP
+//                  CONNECT tunnel (UltraNet_TcpOpen); UltraNet_SocketDetach
 // Version: 0.3.0 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetSocket.h"
 #include "UltraNetSocketInternal.h"
+#include "UltraNet/UltraNetMime.h"   // UltraNet_Base64Encode: an HTTP proxy's Basic sign-in
 
 #include <atomic>
+#include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -236,6 +241,269 @@ UltraNetResult Resolve(const std::string& host, int port, bool preferIpv6,
     return UltraNetResult::Ok();
 }
 
+// ---- Through a proxy ---------------------------------------------------------
+
+// The send and receive timeouts as given, 0 included (no limit) -
+// ApplyTimeout leaves a 0 alone, which would keep a handshake's limit on the
+// connection after it.
+void SetTimeouts(SocketFd fd, int sendMs, int recvMs) {
+#if defined(_WIN32) || defined(_WIN64)
+    DWORD s = static_cast<DWORD>(sendMs > 0 ? sendMs : 0);
+    DWORD r = static_cast<DWORD>(recvMs > 0 ? recvMs : 0);
+    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&s), sizeof s);
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&r), sizeof r);
+#else
+    auto toTimeval = [](int ms) {
+        timeval tv{};
+        if (ms > 0) {
+            tv.tv_sec  = ms / 1000;
+            tv.tv_usec = (ms % 1000) * 1000;
+        }
+        return tv;
+    };
+    timeval s = toTimeval(sendMs), r = toTimeval(recvMs);
+    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &s, sizeof s);
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &r, sizeof r);
+#endif
+}
+
+bool SendAll(SocketFd fd, const std::string& data) {
+    std::size_t sent = 0;
+    while (sent < data.size()) {
+#if defined(_WIN32) || defined(_WIN64)
+        const int n = ::send(fd, data.data() + sent, static_cast<int>(data.size() - sent), 0);
+#else
+        const ssize_t n = ::send(fd, data.data() + sent, data.size() - sent, 0);
+#endif
+        if (n <= 0) return false;
+        sent += static_cast<std::size_t>(n);
+    }
+    return true;
+}
+
+bool ReceiveExactly(SocketFd fd, unsigned char* buf, std::size_t len) {
+    std::size_t got = 0;
+    while (got < len) {
+#if defined(_WIN32) || defined(_WIN64)
+        const int n = ::recv(fd, reinterpret_cast<char*>(buf) + got, static_cast<int>(len - got), 0);
+#else
+        const ssize_t n = ::recv(fd, buf + got, len - got, 0);
+#endif
+        if (n <= 0) return false;
+        got += static_cast<std::size_t>(n);
+    }
+    return true;
+}
+
+UltraNetResult ProxyError(UltraNetResultCode code, const UltraNetProxyConfig& proxy, const std::string& what) {
+    return UltraNetResult::Error(code, "proxy " + UltraNet_DescribeProxy(proxy) + ": " + what);
+}
+
+UltraNetResult NoAnswer(const UltraNetProxyConfig& proxy) {
+    return ProxyError(UltraNetResultCode::Timeout, proxy, "no answer to the handshake");
+}
+
+// The literal address bytes of `host`, when it is an IPv4 or IPv6 literal.
+bool LiteralAddress(const std::string& host, std::string& outBytes, bool& outIpv6) {
+    in_addr v4{};
+    if (::inet_pton(AF_INET, host.c_str(), &v4) == 1) {
+        outBytes.assign(reinterpret_cast<const char*>(&v4), 4);
+        outIpv6 = false;
+        return true;
+    }
+    in6_addr v6{};
+    if (::inet_pton(AF_INET6, host.c_str(), &v6) == 1) {
+        outBytes.assign(reinterpret_cast<const char*>(&v6), 16);
+        outIpv6 = true;
+        return true;
+    }
+    return false;
+}
+
+// `host` looked up here, as address bytes (IPv4 only when `ipv4Only`).
+bool LookUp(const std::string& host, bool ipv4Only, std::string& outBytes, bool& outIpv6) {
+    addrinfo hints{};
+    hints.ai_family = ipv4Only ? AF_INET : AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    addrinfo* res = nullptr;
+    if (::getaddrinfo(host.c_str(), nullptr, &hints, &res) != 0 || !res) {
+        if (res) ::freeaddrinfo(res);
+        return false;
+    }
+    if (res->ai_family == AF_INET) {
+        const auto* sa = reinterpret_cast<const sockaddr_in*>(res->ai_addr);
+        outBytes.assign(reinterpret_cast<const char*>(&sa->sin_addr), 4);
+        outIpv6 = false;
+    } else {
+        const auto* sa = reinterpret_cast<const sockaddr_in6*>(res->ai_addr);
+        outBytes.assign(reinterpret_cast<const char*>(&sa->sin6_addr), 16);
+        outIpv6 = true;
+    }
+    ::freeaddrinfo(res);
+    return true;
+}
+
+std::string PortBytes(int port) {
+    std::string out;
+    out += static_cast<char>((port >> 8) & 0xFF);
+    out += static_cast<char>(port & 0xFF);
+    return out;
+}
+
+// RFC 1928 (and RFC 1929 for the user name and password).
+UltraNetResult Socks5Handshake(SocketFd fd, const UltraNetProxyConfig& proxy,
+                               const std::string& host, int port) {
+    const std::string& user = proxy.credentials.username;
+    const std::string& pass = proxy.credentials.password;
+    if (user.size() > 255 || pass.size() > 255)
+        return ProxyError(UltraNetResultCode::InvalidState, proxy, "the user name or password is longer than SOCKS 5 allows");
+    std::string greeting;
+    greeting += '\x05';
+    if (user.empty()) { greeting += '\x01'; greeting += '\x00'; }
+    else { greeting += '\x02'; greeting += '\x00'; greeting += '\x02'; }
+    if (!SendAll(fd, greeting)) return ProxyError(UltraNetResultCode::SendFailed, proxy, "the greeting could not be sent");
+    unsigned char choice[2];
+    if (!ReceiveExactly(fd, choice, 2)) return NoAnswer(proxy);
+    if (choice[0] != 0x05) return ProxyError(UltraNetResultCode::ConnectionRefused, proxy, "not a SOCKS 5 proxy");
+    if (choice[1] == 0xFF)
+        return ProxyError(UltraNetResultCode::AuthenticationRequired, proxy,
+                          user.empty() ? "it asks for a user name and password" : "it accepts no way of signing in offered");
+    if (choice[1] == 0x02) {
+        if (user.empty())
+            return ProxyError(UltraNetResultCode::AuthenticationRequired, proxy, "it asks for a user name and password");
+        std::string signIn;
+        signIn += '\x01';
+        signIn += static_cast<char>(user.size());
+        signIn += user;
+        signIn += static_cast<char>(pass.size());
+        signIn += pass;
+        if (!SendAll(fd, signIn)) return ProxyError(UltraNetResultCode::SendFailed, proxy, "the sign-in could not be sent");
+        unsigned char status[2];
+        if (!ReceiveExactly(fd, status, 2)) return NoAnswer(proxy);
+        if (status[1] != 0x00)
+            return ProxyError(UltraNetResultCode::AuthenticationFailed, proxy, "the user name or password was refused");
+    } else if (choice[1] != 0x00) {
+        return ProxyError(UltraNetResultCode::ConnectionRefused, proxy, "it chose a way of signing in that was not offered");
+    }
+
+    std::string request = std::string("\x05\x01\x00", 3);
+    std::string bytes;
+    bool ipv6 = false;
+    if (LiteralAddress(host, bytes, ipv6)) {
+        request += ipv6 ? '\x04' : '\x01';
+        request += bytes;
+    } else if (proxy.remoteDns) {
+        if (host.size() > 255) return ProxyError(UltraNetResultCode::InvalidUrl, proxy, "the host name is too long");
+        request += '\x03';
+        request += static_cast<char>(host.size());
+        request += host;
+    } else if (LookUp(host, false, bytes, ipv6)) {
+        request += ipv6 ? '\x04' : '\x01';
+        request += bytes;
+    } else {
+        return UltraNetResult::Error(UltraNetResultCode::HostNotFound, host + " could not be looked up");
+    }
+    request += PortBytes(port);
+    if (!SendAll(fd, request)) return ProxyError(UltraNetResultCode::SendFailed, proxy, "the request could not be sent");
+
+    unsigned char reply[4];
+    if (!ReceiveExactly(fd, reply, 4)) return NoAnswer(proxy);
+    if (reply[0] != 0x05) return ProxyError(UltraNetResultCode::ConnectionRefused, proxy, "not a SOCKS 5 answer");
+    if (reply[1] != 0x00) {
+        static const char* const kReasons[] = {
+            "succeeded", "general failure", "not allowed by its rules", "the network is unreachable",
+            "the host is unreachable", "the connection was refused", "the time to live expired",
+            "the command is not supported", "the address type is not supported"};
+        const std::string why = reply[1] < 9 ? kReasons[reply[1]] : "error " + std::to_string(reply[1]);
+        const UltraNetResultCode code = reply[1] == 4 ? UltraNetResultCode::HostNotFound
+                                      : reply[1] == 2 ? UltraNetResultCode::AccessDenied
+                                                      : UltraNetResultCode::ConnectionRefused;
+        return ProxyError(code, proxy, host + ":" + std::to_string(port) + " - " + why);
+    }
+    // The address the proxy connected from, which nothing here needs.
+    std::size_t rest = 0;
+    if (reply[3] == 0x01) rest = 4 + 2;
+    else if (reply[3] == 0x04) rest = 16 + 2;
+    else if (reply[3] == 0x03) {
+        unsigned char len = 0;
+        if (!ReceiveExactly(fd, &len, 1)) return NoAnswer(proxy);
+        rest = static_cast<std::size_t>(len) + 2;
+    } else {
+        return ProxyError(UltraNetResultCode::ConnectionRefused, proxy, "an answer it cannot read");
+    }
+    unsigned char skip[256 + 2];
+    if (!ReceiveExactly(fd, skip, rest)) return NoAnswer(proxy);
+    return UltraNetResult::Ok();
+}
+
+// SOCKS 4, and 4a when the proxy looks the name up.
+UltraNetResult Socks4Handshake(SocketFd fd, const UltraNetProxyConfig& proxy,
+                               const std::string& host, int port) {
+    std::string bytes;
+    bool ipv6 = false;
+    bool byName = false;
+    if (LiteralAddress(host, bytes, ipv6)) {
+        if (ipv6) return ProxyError(UltraNetResultCode::Unsupported, proxy, "SOCKS 4 cannot reach an IPv6 address");
+    } else if (proxy.remoteDns) {
+        byName = true;
+        bytes = std::string("\x00\x00\x00\x01", 4);   // 4a: "the name follows"
+    } else if (!LookUp(host, true, bytes, ipv6)) {
+        return UltraNetResult::Error(UltraNetResultCode::HostNotFound, host + " could not be looked up");
+    }
+    std::string request = std::string("\x04\x01", 2) + PortBytes(port) + bytes;
+    request += proxy.credentials.username;
+    request += '\0';
+    if (byName) {
+        request += host;
+        request += '\0';
+    }
+    if (!SendAll(fd, request)) return ProxyError(UltraNetResultCode::SendFailed, proxy, "the request could not be sent");
+    unsigned char reply[8];
+    if (!ReceiveExactly(fd, reply, 8)) return NoAnswer(proxy);
+    if (reply[1] != 0x5A)
+        return ProxyError(reply[1] == 0x5C || reply[1] == 0x5D ? UltraNetResultCode::AuthenticationFailed
+                                                               : UltraNetResultCode::ConnectionRefused,
+                          proxy, host + ":" + std::to_string(port) + " was refused");
+    return UltraNetResult::Ok();
+}
+
+// CONNECT host:port through an HTTP proxy. The answer is read a byte at a
+// time up to its blank line, so nothing the server sends after it is lost.
+UltraNetResult HttpConnectHandshake(SocketFd fd, const UltraNetProxyConfig& proxy,
+                                    const std::string& host, int port) {
+    const std::string target = (host.find(':') != std::string::npos ? "[" + host + "]" : host) +
+                               ":" + std::to_string(port);
+    std::string request = "CONNECT " + target + " HTTP/1.1\r\nHost: " + target + "\r\n";
+    if (!proxy.credentials.username.empty()) {
+        const std::string pair = proxy.credentials.username + ":" + proxy.credentials.password;
+        request += "Proxy-Authorization: Basic " +
+                   UltraNet_Base64Encode(std::vector<uint8_t>(pair.begin(), pair.end()), false) + "\r\n";
+    }
+    request += "\r\n";
+    if (!SendAll(fd, request)) return ProxyError(UltraNetResultCode::SendFailed, proxy, "the request could not be sent");
+    std::string answer;
+    while (answer.size() < 16384 &&
+           (answer.size() < 4 || answer.compare(answer.size() - 4, 4, "\r\n\r\n") != 0)) {
+        unsigned char c = 0;
+        if (!ReceiveExactly(fd, &c, 1)) return NoAnswer(proxy);
+        answer += static_cast<char>(c);
+    }
+    const std::string statusLine = answer.substr(0, answer.find("\r\n"));
+    int status = 0;
+    const std::size_t space = statusLine.find(' ');
+    if (statusLine.rfind("HTTP/", 0) == 0 && space != std::string::npos) {
+        for (std::size_t i = space + 1; i < statusLine.size() && std::isdigit(static_cast<unsigned char>(statusLine[i])); ++i)
+            status = status * 10 + (statusLine[i] - '0');
+    }
+    if (status >= 200 && status < 300) return UltraNetResult::Ok();
+    if (status == 407)
+        return ProxyError(proxy.credentials.username.empty() ? UltraNetResultCode::AuthenticationRequired
+                                                             : UltraNetResultCode::AuthenticationFailed,
+                          proxy, "it asks for a user name and password (407)");
+    return ProxyError(UltraNetResultCode::ConnectionRefused, proxy,
+                      statusLine.empty() ? std::string("not an HTTP proxy") : "it answered \"" + statusLine + "\"");
+}
+
 } // namespace
 
 std::string UltraNetEndpoint::ToString() const {
@@ -250,28 +518,71 @@ std::string UltraNetEndpoint::ToString() const {
 // ============================================================================
 // TCP
 // ============================================================================
-UltraNetHandle UltraNet_TcpConnect(const std::string& host, int port,
-                                   const UltraNetSocketOptions& opt) {
+UltraNetResult UltraNet_TcpOpen(const std::string& host, int port,
+                                const UltraNetSocketOptions& opt, UltraNetHandle& outHandle) {
+    outHandle = UltraNetInvalidHandle;
+    // Through a proxy only when asked: a raw socket is mostly a device or a
+    // peer on the local network.
+    UltraNetProxyConfig proxy;
+    if (opt.proxy.IsEnabled() || opt.useProxySetting) {
+        const std::string authority = host.find(':') != std::string::npos ? "[" + host + "]" : host;
+        proxy = UltraNet_ResolveProxy("tcp://" + authority + ":" + std::to_string(port), opt.proxy);
+    }
+    const bool viaProxy = proxy.IsEnabled();
+    if (viaProxy && proxy.type == UltraNetProxyType::Https)
+        return ProxyError(UltraNetResultCode::Unsupported, proxy, "a proxy reached over TLS cannot carry a raw connection");
+
+    const std::string connectHost = viaProxy ? proxy.host : host;
+    const int connectPort = viaProxy ? proxy.port : port;
     sockaddr_storage ss{};
     socklen_t        sl = 0;
     bool             v6 = false;
-    auto r = Resolve(host, port, opt.useIpv6, ss, sl, v6);
-    if (!r) return UltraNetInvalidHandle;
+    auto r = Resolve(connectHost, connectPort, opt.useIpv6 && !viaProxy, ss, sl, v6);
+    if (!r) return viaProxy ? ProxyError(UltraNetResultCode::HostNotFound, proxy, r.message) : r;
 
     SocketFd fd = ::socket(ss.ss_family, SOCK_STREAM, IPPROTO_TCP);
-    if (fd == kInvalidFd) return UltraNetInvalidHandle;
+    if (fd == kInvalidFd)
+        return UltraNetResult::Error(UltraNetResultCode::Unknown, SocketErrorString(LastSocketError()));
     ApplyOptions(fd, opt);
-    ApplyTimeout(fd, opt.sendTimeoutMs, opt.recvTimeoutMs);
+    if (viaProxy) SetTimeouts(fd, opt.connectTimeoutMs, opt.connectTimeoutMs);
+    else ApplyTimeout(fd, opt.sendTimeoutMs, opt.recvTimeoutMs);
 
     if (::connect(fd, reinterpret_cast<sockaddr*>(&ss), sl) != 0) {
+        const std::string why = SocketErrorString(LastSocketError());
         CloseFd(fd);
-        return UltraNetInvalidHandle;
+        return viaProxy ? ProxyError(UltraNetResultCode::ConnectionRefused, proxy, why)
+                        : UltraNetResult::Error(UltraNetResultCode::ConnectionRefused,
+                                                host + ":" + std::to_string(port) + ": " + why);
+    }
+    if (viaProxy) {
+        UltraNetResult shaken =
+            proxy.type == UltraNetProxyType::Socks5 ? Socks5Handshake(fd, proxy, host, port)
+          : proxy.type == UltraNetProxyType::Socks4 ? Socks4Handshake(fd, proxy, host, port)
+                                                    : HttpConnectHandshake(fd, proxy, host, port);
+        if (!shaken) {
+            CloseFd(fd);
+            return shaken;
+        }
+        // The connection's own limits from here on.
+        SetTimeouts(fd, opt.sendTimeoutMs, opt.recvTimeoutMs);
+        // The address family is the target's as far as anyone above knows.
+        std::string bytes;
+        bool literalV6 = false;
+        v6 = LiteralAddress(host, bytes, literalV6) && literalV6;
     }
     auto e = std::make_shared<Entry>();
     e->fd     = fd;
     e->kind   = Kind::TcpStream;
     e->isIpv6 = v6;
-    return Register(std::move(e));
+    outHandle = Register(std::move(e));
+    return UltraNetResult::Ok();
+}
+
+UltraNetHandle UltraNet_TcpConnect(const std::string& host, int port,
+                                   const UltraNetSocketOptions& opt) {
+    UltraNetHandle handle = UltraNetInvalidHandle;
+    UltraNet_TcpOpen(host, port, opt, handle);
+    return handle;
 }
 
 UltraNetHandle UltraNet_TcpListen(int port,
@@ -524,6 +835,13 @@ UltraNetResult UltraNet_SocketClose(UltraNetHandle handle) {
     CloseFd(e->fd);
     Unregister(handle);
     return UltraNetResult::Ok();
+}
+
+std::intptr_t UltraNet_SocketDetach(UltraNetHandle handle) {
+    auto e = Find(handle);
+    if (!e || e->kind != Kind::TcpStream || e->tlsCtx) return -1;
+    Unregister(handle);
+    return static_cast<std::intptr_t>(e->fd);
 }
 
 UltraNetResult UltraNet_SocketLocalEndpoint(UltraNetHandle handle,

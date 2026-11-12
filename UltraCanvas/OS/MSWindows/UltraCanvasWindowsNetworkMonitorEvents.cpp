@@ -9,13 +9,13 @@
 // reported.
 //
 // Documented Win32 only, the same session mechanics as the DNS client
-// source; an elevated token is required. Event payloads are read by their
-// documented layout (PID, size, daddr, saddr, dport, sport, seqnum,
-// connid), bounds-checked. Compiled on CI; the first elevated run is its
-// acceptance test.
+// source; an elevated token is required. Event payloads are parsed by
+// NetworkMonitorKernelNetwork (pure, tested from fixture bytes on every
+// platform), each by its own template. Compiled on CI; the first elevated
+// run is its acceptance test - scripts/netmon-etw-acceptance.ps1 runs it.
 //
-// Version: 0.8.0
-// Last Modified: 2026-09-29
+// Version: 0.9.0
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 
 #if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0A00
@@ -27,8 +27,8 @@
 #  define NTDDI_VERSION (_WIN32_WINNT << 16)
 #endif
 
-#include "NetworkMonitor/NetworkMonitorAddress.h"
 #include "NetworkMonitor/NetworkMonitorEvents.h"
+#include "NetworkMonitor/NetworkMonitorKernelNetwork.h"
 #include "UltraCanvasWindowsProcessNames.h"
 
 #include <atomic>
@@ -59,48 +59,6 @@ namespace {
 const GUID kKernelNetworkProvider = { 0x7DD42A49, 0x5329, 0x4832,
                                       { 0x8D, 0xFD, 0x43, 0xD9, 0x79, 0x15, 0x3A, 0x88 } };
 const wchar_t* const kSessionName = L"UltraCanvas-NetworkMonitor-Network";
-
-// Event ids. TCPv4: 10 send, 11 receive, 12 connect, 13 disconnect,
-// 15 accept; TCPv6: 26, 27, 28, 29, 31. The UDP ids (42/43, 58/59) are
-// not consumed.
-constexpr USHORT kTcp4Send = 10, kTcp4Receive = 11, kTcp4Connect = 12, kTcp4Disconnect = 13, kTcp4Accept = 15;
-constexpr USHORT kTcp6Send = 26, kTcp6Receive = 27, kTcp6Connect = 28, kTcp6Disconnect = 29, kTcp6Accept = 31;
-
-struct Payload {
-    uint32_t pid = 0;
-    uint32_t size = 0;
-    std::string remoteAddress;   // daddr
-    std::string localAddress;    // saddr
-    uint16_t remotePort = 0;     // dport
-    uint16_t localPort = 0;      // sport
-    uint64_t connectionId = 0;
-};
-
-// PID(4) size(4) daddr(4|16) saddr(4|16) dport(2) sport(2) seqnum(4) connid(pointer).
-bool ReadPayload(const EVENT_RECORD& record, bool ipv6, Payload& out) {
-    const auto* data = static_cast<const unsigned char*>(record.UserData);
-    const std::size_t size = record.UserDataLength;
-    const std::size_t addressBytes = ipv6 ? 16 : 4;
-    const std::size_t pointerBytes = (record.EventHeader.Flags & EVENT_HEADER_FLAG_32_BIT_HEADER) ? 4 : 8;
-    const std::size_t needed = 4 + 4 + 2 * addressBytes + 2 + 2 + 4 + pointerBytes;
-    if (size < needed) return false;
-    std::size_t offset = 0;
-    std::memcpy(&out.pid, data + offset, 4); offset += 4;
-    std::memcpy(&out.size, data + offset, 4); offset += 4;
-    out.remoteAddress = ipv6 ? NetworkMonitorAddress::FormatIPv6(data + offset)
-                             : NetworkMonitorAddress::FormatIPv4(data + offset);
-    offset += addressBytes;
-    out.localAddress = ipv6 ? NetworkMonitorAddress::FormatIPv6(data + offset)
-                            : NetworkMonitorAddress::FormatIPv4(data + offset);
-    offset += addressBytes;
-    // Ports are in network order in the payload.
-    out.remotePort = static_cast<uint16_t>((data[offset] << 8) | data[offset + 1]); offset += 2;
-    out.localPort = static_cast<uint16_t>((data[offset] << 8) | data[offset + 1]); offset += 2;
-    offset += 4;   // seqnum
-    out.connectionId = 0;
-    std::memcpy(&out.connectionId, data + offset, pointerBytes);
-    return true;
-}
 
 class KernelNetworkEventSource : public IConnectionEventSource {
 public:
@@ -150,8 +108,11 @@ public:
             return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError,
                 "Starting the ETW session: error " + std::to_string(status));
         }
+        // Every keyword: the provider files IPv4 and IPv6 under keywords of
+        // their own, and a mask of zero is "all" only by a convention this
+        // does not rely on.
         status = ::EnableTraceEx2(session_, &kKernelNetworkProvider, EVENT_CONTROL_CODE_ENABLE_PROVIDER,
-                                  TRACE_LEVEL_INFORMATION, 0, 0, 0, nullptr);
+                                  TRACE_LEVEL_INFORMATION, ~0ULL, 0, 0, nullptr);
         if (status != ERROR_SUCCESS) {
             ::ControlTraceW(session_, nullptr, properties, EVENT_TRACE_CONTROL_STOP);
             session_ = 0;
@@ -205,39 +166,27 @@ private:
     }
 
     void Handle(const EVENT_RECORD& record) {
-        const USHORT id = record.EventHeader.EventDescriptor.Id;
-        bool ipv6 = false;
-        NetworkEventKind kind;
-        bool lifecycle = true;
-        bool send = false;
-        switch (id) {
-            case kTcp4Connect:    kind = NetworkEventKind::Opened; break;
-            case kTcp4Accept:     kind = NetworkEventKind::Accepted; break;
-            case kTcp4Disconnect: kind = NetworkEventKind::Closed; break;
-            case kTcp4Send:       lifecycle = false; send = true; kind = NetworkEventKind::Closed; break;
-            case kTcp4Receive:    lifecycle = false; kind = NetworkEventKind::Closed; break;
-            case kTcp6Connect:    ipv6 = true; kind = NetworkEventKind::Opened; break;
-            case kTcp6Accept:     ipv6 = true; kind = NetworkEventKind::Accepted; break;
-            case kTcp6Disconnect: ipv6 = true; kind = NetworkEventKind::Closed; break;
-            case kTcp6Send:       ipv6 = true; lifecycle = false; send = true; kind = NetworkEventKind::Closed; break;
-            case kTcp6Receive:    ipv6 = true; lifecycle = false; kind = NetworkEventKind::Closed; break;
-            default: return;
-        }
-        Payload payload;
-        if (!ReadPayload(record, ipv6, payload)) return;
+        namespace knet = NetworkMonitorKernelNetwork;
+        using Kind = knet::Kind;
+        const std::size_t pointerBytes = (record.EventHeader.Flags & EVENT_HEADER_FLAG_32_BIT_HEADER) ? 4 : 8;
+        knet::Event payload;
+        if (!knet::Parse(record.EventHeader.EventDescriptor.Id, static_cast<const unsigned char*>(record.UserData),
+                         record.UserDataLength, pointerBytes, payload)) return;
 
-        if (!lifecycle) {
+        if (payload.kind == Kind::Send || payload.kind == Kind::Receive) {
             std::lock_guard<std::mutex> lock(totalsMutex_);
             Totals& totals = totals_[payload.connectionId];
-            (send ? totals.sent : totals.received) += payload.size;
+            (payload.kind == Kind::Send ? totals.sent : totals.received) += payload.size;
             if (totals_.size() > 100000) totals_.clear();   // a runaway table is worse than lost sums
             return;
         }
 
         NetworkConnectionEvent e;
-        e.kind = kind;
+        e.kind = payload.kind == Kind::Connect ? NetworkEventKind::Opened
+               : payload.kind == Kind::Accept  ? NetworkEventKind::Accepted
+                                               : NetworkEventKind::Closed;
         e.transport = NetworkTransport::Tcp;
-        e.family = ipv6 ? NetworkAddressFamily::IPv6 : NetworkAddressFamily::IPv4;
+        e.family = payload.ipv6 ? NetworkAddressFamily::IPv6 : NetworkAddressFamily::IPv4;
         e.localAddress = payload.localAddress;
         e.localPort = payload.localPort;
         e.remoteAddress = payload.remoteAddress;
@@ -250,7 +199,7 @@ private:
         process.displayName = NetworkMonitor_WindowsProcessName(payload.pid, true);
         if (process.displayName.empty()) process.displayName = "pid " + std::to_string(payload.pid);
         e.process = process;
-        if (kind == NetworkEventKind::Closed) {
+        if (e.kind == NetworkEventKind::Closed) {
             std::lock_guard<std::mutex> lock(totalsMutex_);
             auto found = totals_.find(payload.connectionId);
             if (found != totals_.end()) {

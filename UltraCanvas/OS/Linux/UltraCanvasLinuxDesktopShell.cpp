@@ -951,7 +951,9 @@ static ShortcutState* OpenSuperTap(const std::string& accelerator, std::string& 
     return state;
 }
 
-ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
+// `exclusive` asks nothing more: the passive grab already keeps the key from
+// every other client.
+ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, bool /*exclusive*/) {
     // "Super+V" -> Mod4Mask and the keysym "v".
     unsigned int modifiers = 0;
     std::string key;

@@ -1,7 +1,7 @@
 // core/UltraCanvasVideoRecorderElement.cpp
 // Composite UI control wrapping UltraCanvasVideoRecorder: camera preview + REC controls
 // Version: 0.1.5
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // V0.1.5: the camera list opens anchored to the camera selector: above it when there
 //   is no room below (a recorder at the foot of a window), never over it.
 // V0.1.4: CloseCamera() now clears the last preview frame so the surface shows
@@ -61,6 +61,7 @@ UltraCanvasVideoRecorderElement::UltraCanvasVideoRecorderElement(
     recorder = std::make_shared<UltraCanvasVideoRecorder>();
     HookRecorderCallbacks();
     Relayout();
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasVideoRecorderElement::~UltraCanvasVideoRecorderElement() {
@@ -157,6 +158,7 @@ void UltraCanvasVideoRecorderElement::SelectCamera(const std::string& deviceId,
 }
 
 void UltraCanvasVideoRecorderElement::SetStyle(const VideoRecorderStyle& s) {
+    StyleSetByHand();
     style = s; Relayout(); RequestRedraw();
 }
 
@@ -442,4 +444,13 @@ bool UltraCanvasVideoRecorderElement::OnEvent(const UCEvent& event) {
     }
 }
 
+
+// ===== THE THEME =====
+VideoRecorderStyle VideoRecorderStyle::FromTheme(const UltraCanvasTheme& theme, const VideoRecorderStyle& base) {
+    VideoRecorderStyle s = base;
+    s.backgroundColor = theme.Role("video-recorder.stage", base.backgroundColor);
+    s.controlBarColor = theme.Role("video-recorder.control-bar", base.controlBarColor);
+    s.recordButtonColor = theme.roles.danger;
+    return s;
+}
 } // namespace UltraCanvas

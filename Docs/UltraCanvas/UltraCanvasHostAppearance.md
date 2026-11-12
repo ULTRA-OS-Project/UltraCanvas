@@ -16,6 +16,7 @@ policy - [`UltraCanvasTheme.md`](UltraCanvasTheme.md)). The system fonts
 come from it too.
 
 - Header: `UltraCanvas/include/UltraCanvasHostAppearance.h` (header-only, pure)
+- The settings file: `UltraCanvas/include/UltraCanvasAppearanceSettings.h` (`Appearance.conf`, applied over the host on every read)
 - Application: `GetHostAppearance`, `RefreshHostAppearance`, `ScheduleHostAppearanceRefresh`, `AddHostAppearanceHandler` / `RemoveHostAppearanceHandler` (`UltraCanvasApplication.h`)
 - Platform code: `OS/MSWindows/UltraCanvasWindowsHostAppearance.cpp`, `OS/MacOS/UltraCanvasMacOSHostAppearance.mm`, `OS/Linux/UltraCanvasLinuxHostAppearance.cpp` with `UltraCanvasLinuxHostAppearanceWatch.cpp` (X11 and Wayland, the BSDs with them), `OS/WASM/UltraCanvasWASMApplication.cpp`; Android answers the default with its font detectors' fonts
 - Tests: `Tests/HostAppearanceTest.cpp` (target `HostAppearanceTest`, no display), `Tests/LinuxHostAppearanceTest.cpp` (`LinuxHostAppearanceTest`, the Linux detector against a made-up config home, no display, no session)
@@ -126,6 +127,28 @@ there and the schemas answer only their compiled defaults, which nobody
 chose, so only XSETTINGS and the files are read. The source then says where
 the look came from: `linux:portal`, `linux:gsettings`, `linux:xsettings`,
 `linux:gtk-settings-ini`, `linux:kdeglobals`, or `linux:default`.
+
+## The settings file over the host
+
+`Appearance.conf` in the UltraCanvas settings folder is a person's choice
+over the desktop for every UltraCanvas application at once - the look, the
+accent, the font and its size, the text scale, the contrast, each `system`
+when the host decides. `AppearanceSettings::Load().ApplyTo(host)`
+(`UltraCanvasAppearanceSettings.h`) is applied over what the platform said
+on every read, before the override above, so the order is the host, then
+the file, then `ULTRACANVAS_HOST_APPEARANCE`; the source gains `+settings`
+(`linux:gsettings+settings`, `default+settings+override`). The application
+watches the folder (`UltraCanvasSettingsWatcher`, *The setting* in
+[`UltraCanvasTheme.md`](UltraCanvasTheme.md)), so a save on UOS-Settings'
+Look page is a change of the host to a running application: the handlers
+above run and the theme follows. On ULTRA OS, where no host sits above the
+desktop, the file is the host.
+
+```cpp
+HostAppearance host = DefaultHostAppearance();
+AppearanceSettings settings = AppearanceSettings::Parse("look=dark\nscale=1.25\n");
+bool applied = settings.ApplyTo(host);                 // dark, scale 1.25, source "default+settings"
+```
 
 ## The pure half
 

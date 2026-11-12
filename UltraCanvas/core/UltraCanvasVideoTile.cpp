@@ -1,7 +1,7 @@
 // core/UltraCanvasVideoTile.cpp
 // A live picture fed frame by frame from any thread
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVideoTile.h"
@@ -15,6 +15,7 @@ namespace UltraCanvas {
 UltraCanvasVideoTile::UltraCanvasVideoTile(const std::string& identifier, long x, long y, long w, long h)
     : UltraCanvasUIElement(identifier, x, y, w, h), inbox(std::make_shared<Inbox>()) {
     inbox->owner = this;
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasVideoTile::~UltraCanvasVideoTile() {
@@ -171,6 +172,7 @@ void UltraCanvasVideoTile::SetMirrored(bool value) {
 }
 
 void UltraCanvasVideoTile::SetStyle(const VideoTileStyle& newStyle) {
+    StyleSetByHand();
     style = newStyle;
     RequestRedraw();
 }
@@ -209,4 +211,14 @@ void UltraCanvasVideoTile::Render(IRenderContext* ctx, const Rect2Df& dirtyRect)
         ctx->DrawFilledRectangle(box, Color(0, 0, 0, 0), style.borderWidth, style.borderColor, static_cast<float>(r));
 }
 
+
+// ===== THE THEME =====
+VideoTileStyle VideoTileStyle::FromTheme(const UltraCanvasTheme& theme, const VideoTileStyle& base) {
+    VideoTileStyle s = base;
+    s.backgroundColor = theme.Role("video-tile.stage", base.backgroundColor);
+    s.captionColor = theme.Role("video-tile.caption", base.captionColor);
+    s.captionFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
+    if (base.borderWidth > 0) s.borderColor = theme.roles.line;
+    return s;
+}
 } // namespace UltraCanvas

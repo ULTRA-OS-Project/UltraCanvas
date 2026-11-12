@@ -101,9 +101,11 @@ TEST(googledrive_upload_creates_or_updates) {
     REQUIRE(lastContentType.find("multipart/related") != std::string::npos);
     REQUIRE(lastBody.find("\"parents\":[\"f1\"]") != std::string::npos);
     REQUIRE(lastBody.find("\r\n\r\ndata\r\n") != std::string::npos);
-    // Existing name → media update in place.
+    // Existing name → media update in place, then its date in the metadata
+    // (test_file_dates.cpp).
     REQUIRE(gd.Upload(a, c, WriteFile("report.pdf", "pdf"), "/Docs/report.pdf"));
-    REQUIRE(log.back().find("PATCH https://www.googleapis.com/upload/drive/v3/files/x1?uploadType=media") == 0);
+    REQUIRE(log[log.size() - 2].find("PATCH https://www.googleapis.com/upload/drive/v3/files/x1?uploadType=media") == 0);
+    REQUIRE(log.back().find("PATCH https://www.googleapis.com/drive/v3/files/x1") == 0);
 }
 
 TEST(googledrive_mkdir_and_share_link) {

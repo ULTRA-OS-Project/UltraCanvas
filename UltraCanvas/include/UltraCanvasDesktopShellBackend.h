@@ -141,9 +141,13 @@ namespace DesktopShellBackend {
     void MonitorClose(MonitorState* state);
 
     // A global shortcut: `ShortcutWait` blocks until the combination is
-    // pressed (true) or `ShortcutWake` was called (false).
+    // pressed (true) or `ShortcutWake` was called (false). `exclusive`: the
+    // key reaches nothing else, even a combination the system keeps for
+    // itself (Windows: a low-level keyboard hook that swallows it; an X11
+    // grab is exclusive already).
     struct ShortcutState;
-    ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error);   // nullptr + error
+    ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error,
+                                bool exclusive = false);   // nullptr + error
     bool ShortcutWait(ShortcutState* state);
     void ShortcutWake(ShortcutState* state);
     void ShortcutClose(ShortcutState* state);

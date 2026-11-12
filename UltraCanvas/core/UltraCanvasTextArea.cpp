@@ -1152,6 +1152,23 @@ namespace UltraCanvas {
             isNeedRecalculateVisibleArea = false;
         }
 
+        // A relayout (smaller font, wider wrap) can shrink the content below
+        // the current scroll position: bring the line that was at the top
+        // back to the top, then keep the view inside the content, or nothing
+        // is drawn and the scrollbar thumb leaves its track.
+        if (editingMode != TextAreaEditingMode::Hex) {
+            if (scrollAnchorLine >= 0) {
+                if (auto anchor = GetActualLineLayout(scrollAnchorLine)) {
+                    scrollAnimV.Cancel();
+                    verticalScrollOffset = anchor->bounds.y + scrollAnchorFraction * anchor->bounds.height;
+                }
+                scrollAnchorLine = -1;
+            }
+            const float maxV = MaxVerticalScroll();
+            if (verticalScrollOffset > maxV) verticalScrollOffset = maxV;
+            if (verticalScrollOffset < 0.0f) verticalScrollOffset = 0.0f;
+        }
+
         if (isCursorMoved) {
             EnsureCursorVisible();
             isCursorMoved = false;
@@ -2654,6 +2671,23 @@ namespace UltraCanvas {
         scrollAnimV.Cancel();
         verticalScrollOffset = std::max(0.0f, static_cast<float>(targetY));
         RequestRedraw();
+    }
+
+    // Remembers which logical line is at the top of the view (and how far
+    // into it) so Render() can put it back there after a relayout that
+    // changes every line's height, such as a new font size.
+    void UltraCanvasTextArea::RememberScrollAnchor() {
+        if (scrollAnchorLine >= 0) return;          // an earlier change is still pending
+        for (int i = 0; i < static_cast<int>(lineLayouts.size()); i++) {
+            const auto& ll = lineLayouts[i];
+            if (!ll) continue;
+            const float bottom = ll->bounds.y + ll->bounds.height;
+            if (bottom <= verticalScrollOffset) continue;
+            scrollAnchorLine = i;
+            scrollAnchorFraction = ll->bounds.height > 0.0f
+                ? std::max(0.0f, (verticalScrollOffset - ll->bounds.y) / ll->bounds.height) : 0.0f;
+            return;
+        }
     }
 
     float UltraCanvasTextArea::MaxVerticalScroll() {
@@ -4621,6 +4655,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::SetFont(const std::string &family, float size) {
+        RememberScrollAnchor();
         style.fontStyle.fontFamily = family,
         style.fontStyle.fontSize = size;
         isNeedRecalculateVisibleArea = true;
@@ -4629,6 +4664,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::SetFontSize(float size) {
+        RememberScrollAnchor();
         style.fontStyle.fontSize = size;
         isNeedRecalculateVisibleArea = true;
         isNeedRebuildLineLayouts = true;

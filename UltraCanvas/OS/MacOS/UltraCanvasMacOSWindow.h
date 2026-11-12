@@ -1,11 +1,13 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
+// Version: 2.6.0 - SetTransientParent: a dialog is a child window of its parent's NSWindow
+//   while both are shown (AttachToParentWindow / DetachFromParentWindow)
 // Version: 2.5.0 - GetWindowPosition and GetContentScreenOrigin: top-left screen coordinates
 // Version: 2.4.0 - Input method composition: the content view is an
 //   NSTextInputClient, and an element that draws compositions gets
 //   TextComposition events (InterpretKeyDown, the Ime* callbacks)
 // Version: 2.3.0 - GetContentView() for the VoiceOver (NSAccessibility) bridge
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -82,6 +84,16 @@ namespace UltraCanvas {
         bool CreateNativeCairoSurface();
         void DestroyNativeCairoSurface();
 
+        // ===== PARENT LINK =====
+        // A dialog (WindowType::Dialog) with a parent - config.parentWindow,
+        // or SetTransientParent, which ShowModal calls - is a child window of
+        // the parent's NSWindow while both are on screen: AppKit keeps it
+        // above that window and only that one, moves it with it, and takes it
+        // into the parent's full-screen space. Attached when shown, detached
+        // when either is hidden or closed.
+        void AttachToParentWindow();
+        void DetachFromParentWindow();
+
     protected:
         bool CreateNative() override;
         void DestroyNative() override;
@@ -121,6 +133,9 @@ namespace UltraCanvas {
         void GetNativeWindowSize(int& w, int& h) const override { w = config_.width; h = config_.height; }
         NSWindow* GetNSWindowHandle() const;
         void RaiseAndFocus() override;
+        // Records the parent and, for a dialog already on screen, makes it
+        // the parent's child window now (Show() does it otherwise).
+        void SetTransientParent(UltraCanvasWindowBase* parent) override;
 
         void Focus();  // Not virtual in base class
 

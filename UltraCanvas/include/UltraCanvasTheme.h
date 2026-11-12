@@ -23,11 +23,12 @@
 // roles, its fonts - from what UltraCanvasHostAppearance read; the
 // application's theme policy (ThemePolicy, UltraCanvasApplication) applies
 // it at start and on every host change.
+// Version: 1.3.0 - TakeHostFonts: the host's fonts and scale onto a theme, for an Own provider
 // Version: 1.2.0 - ThemeFonts and ThemeTextRole; LightHighContrast / DarkHighContrast;
 //                  FromHost with DeriveAccent; ThemePolicy (T3 of the host theme proposal)
 // Version: 1.1.0 - change handlers (AddChangeHandler / RemoveChangeHandler), called after SetCurrent
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -123,6 +124,12 @@ public:
     // host's; named "Host Light", "Host Dark", "Host Light High Contrast",
     // "Host Dark High Contrast".
     static UltraCanvasTheme FromHost(const HostAppearance& host);
+    // The host's fonts and text scale onto this theme, as FromHost puts
+    // them: the interface font and the monospace font where the host names
+    // one, the scale where it is positive; the theme's own stay otherwise.
+    // An Own provider calls it on the theme it built, so the application's
+    // colours come with the desktop's fonts.
+    void TakeHostFonts(const HostAppearance& host);
 
     // One accent into the five accent roles, over the roles' surfaces:
     // `accent` is darkened or lightened until `onAccent` (white or the dark

@@ -1,4 +1,5 @@
 // Apps/UltraPassword/ui/ExportDialog.cpp
+// Version: 0.2.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (Theme.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ExportDialog.h"
@@ -7,6 +8,7 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <memory>
 
@@ -17,7 +19,7 @@ namespace UltraPassword {
 void ExportDialog::Show(UltraCanvasWindowBase* parent,
                         std::function<void(ExportChoice)> onChoice) {
     DialogConfig config;
-    config.title      = "Export passwords";
+    config.title      = Tr("Export passwords");
     config.width      = 480;
     config.height     = 330;
     config.dialogType = DialogType::Custom;
@@ -29,7 +31,7 @@ void ExportDialog::Show(UltraCanvasWindowBase* parent,
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     // The choice is remembered here and read when the dialog closes.
     auto choice = std::make_shared<ExportChoice>(ExportChoice::VaultCopy);
@@ -48,8 +50,8 @@ void ExportDialog::Show(UltraCanvasWindowBase* parent,
             dlg->CloseDialog(DialogResult::OK);
         };
         row->AddChild(button);
-        auto line = Theme::MakeLine(id + "Text", text, 44, Theme::kSizeSmall,
-                                    danger ? Theme::kDanger : Theme::kTextSecondary);
+        auto line = Theme::MakeLine(id + "Text", text, 44, Theme::SizeSmall(),
+                                    danger ? Theme::Danger() : Theme::TextSecondary());
         line->SetWrap(TextWrap::WrapWord);
         line->layoutItem.SetFlexGrow(1);
         row->AddChild(line);
@@ -57,17 +59,17 @@ void ExportDialog::Show(UltraCanvasWindowBase* parent,
     };
 
     auto intro = Theme::MakeLine("exIntro",
-        "The vault file is the export: a copy opens in UltraPassword on any "
-        "computer with its password.", 30, Theme::kSizeBody, Theme::kTextSecondary);
+        Tr("The vault file is the export: a copy opens in UltraPassword on any "
+           "computer with its password."), 30, Theme::SizeBody(), Theme::TextSecondary());
     intro->SetWrap(TextWrap::WrapWord);
     dialog->AddChild(intro);
 
-    addOption("exCopy", "Vault file…",
-              "Encrypted copy (." + std::string("upwvault") + "), opens with your master password.",
+    addOption("exCopy", Tr("Vault file…"),
+              TrF("Encrypted copy (.{0}), opens with your master password.", "upwvault"),
               ExportChoice::VaultCopy, /*primary=*/true, false);
-    addOption("exOwn", "Vault file, own password…",
-              "Encrypted copy under a separate password - for a backup kept apart or "
-              "to hand to someone.",
+    addOption("exOwn", Tr("Vault file, own password…"),
+              Tr("Encrypted copy under a separate password - for a backup kept apart or "
+                 "to hand to someone."),
               ExportChoice::VaultWithPassword, false, false);
     addOption("exCsv", "Plain CSV…",
               "NOT encrypted: every password readable by anyone with the file. For "
@@ -77,7 +79,7 @@ void ExportDialog::Show(UltraCanvasWindowBase* parent,
     auto buttonRow = CreateContainer("exButtons", 0, 0, 0, Theme::kToolbarHeight);
     buttonRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
-    auto cancel = Theme::MakeButton("exCancel", "Cancel", 90);
+    auto cancel = Theme::MakeButton("exCancel", Tr("Cancel"), 90);
     cancel->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancel);
     dialog->AddStretchSpacer(1);

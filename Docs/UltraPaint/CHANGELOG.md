@@ -1,3 +1,13 @@
+#### 2026-11-12 *0.2.37*
+- **File ▸ Close Tab has an icon** (`media/icons/ultrapaint/16/close-tab.svg`, a tab with a cross, in the line style of the rest of the menu).
+
+#### 2026-11-11 *0.2.36*
+- **Auto contrast counts with the framework's histogram model.** The stretch
+  comes from `UltraCanvasHistogramModel` (`ClippedRange`, 0.2 % off each end per
+  channel), the counting the Curves backdrop uses. Opaque pictures are
+  stretched exactly as before; fully transparent pixels no longer count, so
+  the colour hidden under a transparent area no longer sets the stretch.
+
 #### 2026-11-10 *0.2.35*
 - **Curves shows the same histogram as the image viewer.** The backdrop is
   counted by the framework's `UltraCanvasHistogramModel`, as the viewer's Curves

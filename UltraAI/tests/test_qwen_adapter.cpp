@@ -93,6 +93,11 @@ void TestDiscoveryAndChat() {
     message.role = Role::User;
     message.text = "hi";
     req.messages.push_back(message);
+    // A second user turn in a row (a resend after a failed request) is
+    // merged into the first by the OpenAI delegate, so a local server
+    // whose chat template demands alternating roles accepts it.
+    message.text = "hi again";
+    req.messages.push_back(message);
 
     ChatResponse resp = llm->Chat(req);
     EXPECT_TRUE(resp.error.IsOk());
@@ -105,7 +110,10 @@ void TestDiscoveryAndChat() {
               std::string("http://localhost:11434/v1/chat/completions"));
     // The Qwen chat model is chosen over the llama one, and over the Qwen
     // embedding model.
-    EXPECT_EQ(json::parse(requests[1].body)["model"], "qwen3:8b");
+    const json sentBody = json::parse(requests[1].body);
+    EXPECT_EQ(sentBody["model"], "qwen3:8b");
+    EXPECT_EQ(sentBody["messages"].size(), size_t(1));
+    EXPECT_EQ(sentBody["messages"][0]["content"], "hi\n\nhi again");
     // A local server needs no credential, so none is sent.
     EXPECT_EQ(FindHeader(requests[1], "authorization"), std::string());
 }

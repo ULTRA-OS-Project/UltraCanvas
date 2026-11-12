@@ -1,7 +1,8 @@
 // Apps/UltraMail/ui/UltraMailStartPage.cpp
+// Version: 0.5.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.4.0 - the Settings gear in the top-right corner
 // Version: 0.3.0 - themed title colour and primary button
-// Last Modified: 2026-09-30
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailStartPage.h"
 
@@ -11,6 +12,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraMailTheme.h"
 #include "UltraMailSettingsDialog.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 using namespace UltraCanvas;
 
@@ -49,13 +51,13 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
     auto title = CreateLabel("startTitle", "UltraMail");
     title->SetFontSize(kTitleSize);
     title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Theme::kTextPrimary);
+    title->SetTextColor(Theme::TextPrimary());
     title->SetAlignment(TextAlignment::Center);
     page_->AddChild(title);
 
     // The single call to action: a primary button with an envelope icon.
     auto add = CreateButton("startAddAccount", 0, 0, kButtonWidth, kButtonHeight,
-                            "Add email account");
+                            Tr("Add email account"));
     Theme::FitToLabel(add, kButtonWidth);
     Theme::StylePrimary(add);
     add->SetFontSize(kButtonFont);

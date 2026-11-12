@@ -4,7 +4,7 @@
 //                  layout's size.height too
 // Version: 1.0.2 - TagInput grows inside a layout: its height in the layout too
 // Version: 1.0.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasChip.h"
@@ -23,6 +23,7 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
         if (h <= 0) SetHeight(style.height);
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasChip::SetIcon(const std::string& path) {
@@ -221,6 +222,7 @@ namespace UltraCanvas {
             size.height = CSSLayout::Dimension::Px(OneRowHeight());
             SetHeight(OneRowHeight());
         }
+        ApplyThemeIfFollowing();
     }
 
     bool UltraCanvasTagInput::HasTag(const std::string& tag) const {
@@ -492,4 +494,42 @@ namespace UltraCanvas {
         return false;
     }
 
+
+// ===== THE THEME =====
+    ChipStyle ChipStyle::FromTheme(const UltraCanvasTheme& theme, const ChipStyle& base) {
+        ChipStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
+        s.fillColor = r.panel;
+        s.textColor = r.ink;
+        s.borderColor = r.lineStrong;
+        s.hoverFillColor = r.hover;
+        s.pressedFillColor = r.pressed;
+        s.selectedFillColor = r.accent;
+        s.selectedTextColor = r.onAccent;
+        s.disabledFillColor = r.panel;
+        s.disabledTextColor = r.inkFaint;
+        s.closeColor = r.inkMuted;
+        s.closeHoverColor = r.danger;
+        s.closeHoverBg = r.ink.WithAlpha(30);
+        return s;
+    }
+
+    TagInputStyle TagInputStyle::FromTheme(const UltraCanvasTheme& theme, const TagInputStyle& base) {
+        TagInputStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontStyle.fontFamily = body.fontFamily;
+        s.fontStyle.fontSize = body.fontSize;
+        s.backgroundColor = r.well;
+        s.borderColor = r.lineStrong;
+        s.focusBorderColor = r.focus;
+        s.textColor = r.ink;
+        s.placeholderColor = r.inkFaint;
+        s.caretColor = r.ink;
+        s.chipStyle = ChipStyle::FromTheme(theme, base.chipStyle);
+        return s;
+    }
 } // namespace UltraCanvas

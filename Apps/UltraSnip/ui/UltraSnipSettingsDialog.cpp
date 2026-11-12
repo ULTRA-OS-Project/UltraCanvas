@@ -2,6 +2,8 @@
 // See the header. The window, the page skeleton and the controls come from
 // the framework's UltraCanvasSettingsPageKit, which UltraFiler's settings
 // window is built on too, so the two read as one family.
+// Version: 0.4.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
+// Version: 0.4.0 - After a snip: the Print Screen key starts a snip
 // Version: 0.3.0 - the texts go through Tr (UltraLocalisation); "Translate UltraSnip..." on the
 //                  start page opens the localisation editor on UltraSnip's own set
 // Version: 0.2.0 - on UltraCanvasSettingsPageKit
@@ -85,6 +87,7 @@ struct DialogState : public UltraCanvasSettingsWindow {
     std::shared_ptr<UltraCanvasRadio> showWindowRadio;
     std::shared_ptr<UltraCanvasRadio> stayHiddenRadio;
     UltraCanvasRadioGroup afterGroup;
+    std::shared_ptr<UltraCanvasCheckbox> printKeyBox;
 
     UltraSnipSettings* settings = nullptr;
     std::function<void()> onChanged;
@@ -101,7 +104,7 @@ void ApplyAndSave(DialogState* d) {
 // ===== TEXT =====
 
 std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
-                                            float fontSize = kTextFontSize, const Color& color = kTextColor) {
+                                            float fontSize = TextFontSize(), const Color& color = TextColor()) {
     auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
     l->SetText(text);
     l->SetFontSize(fontSize);
@@ -113,7 +116,7 @@ std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::st
 }
 
 std::shared_ptr<UltraCanvasLabel> MakeText(const std::string& id, const std::string& text, int width = kTextWidth,
-                                           float fontSize = kTextFontSize, const Color& color = kTextColor) {
+                                           float fontSize = TextFontSize(), const Color& color = TextColor()) {
     auto l = MakeLabel(id, text, fontSize, color);
     l->SetWrap(TextWrap::WrapWord);
     l->size.width = CSSLayout::Dimension::Px(width);
@@ -132,8 +135,8 @@ std::shared_ptr<UltraCanvasContainer> MakeNotesBlock(const std::string& id) {
     auto notes = std::make_shared<UltraCanvasContainer>(id);
     notes->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Start);
     notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    notes->SetBackgroundColor(kNoteBackground);
-    notes->SetBorderLeft(3, kNoteAccent);
+    notes->SetBackgroundColor(NoteBackground());
+    notes->SetBorderLeft(3, NoteAccent());
     notes->SetPadding(10, 12, 10, 12);
     return notes;
 }
@@ -144,7 +147,7 @@ PageParts MakePage(const std::string& id, const std::string& title, const std::s
     parts.page->layout.SetFlexColumn().SetFlexGap(0).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     parts.page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
 
-    auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
+    auto titleLabel = MakeLabel(id + "-title", title, TitleFontSize());
     titleLabel->SetFontWeight(FontWeight::Bold);
     parts.page->AddChild(titleLabel);
 
@@ -171,7 +174,7 @@ PageParts MakePage(const std::string& id, const std::string& title, const std::s
 }
 
 void AddNote(PageParts& parts, const std::string& id, const std::string& text) {
-    parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize, kNoteTextColor));
+    parts.notes->AddChild(MakeText(id, text, kNoteWidth, NoteFontSize(), NoteTextColor()));
 }
 
 void AddBodyCaption(PageParts& parts, const std::string& id, const std::string& text) {
@@ -189,10 +192,10 @@ std::string IconPath(const std::string& fileName) {
 std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& label, int width,
                                               std::function<void()> onClick, const std::string& iconFile = "") {
     auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
-    b->SetFontSize(kTextFontSize);
+    b->SetFontSize(TextFontSize());
     b->SetCornerRadius(4.0f);
     b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-    b->SetTextColors(kTextColor);
+    b->SetTextColors(TextColor());
     b->SetBorder(1.0f, Color(0, 0, 0, 60));
     if (!iconFile.empty()) {
         b->SetIcon(IconPath(iconFile));
@@ -220,9 +223,9 @@ std::shared_ptr<UltraCanvasRadio> MakeChoice(const std::string& id, const std::s
                                              int width = kTextWidth) {
     auto radio = UltraCanvasRadio::Create(id, -1, -1, text, checked);
     RadioVisualStyle style = radio->GetVisualStyle();
-    style.base.fontSize = kTextFontSize;
-    style.base.textColor = kTextColor;
-    style.base.textHoverColor = kTextColor;
+    style.base.fontSize = TextFontSize();
+    style.base.textColor = TextColor();
+    style.base.textHoverColor = TextColor();
     radio->SetVisualStyle(style);
     radio->size.width = CSSLayout::Dimension::Px(width);
     radio->size.height = CSSLayout::Dimension::Px(kControlHeight);
@@ -234,10 +237,10 @@ std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(const std::string& id, const s
                                                   bool checked, std::function<void(bool)> onChange) {
     auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, static_cast<float>(width),
                                                      static_cast<float>(kControlHeight), text);
-    box->SetFontSize(kTextFontSize);
+    box->SetFontSize(TextFontSize());
     CheckboxVisualStyle style = box->GetVisualStyle();
-    style.base.textColor = kTextColor;
-    style.base.textHoverColor = kTextColor;
+    style.base.textColor = TextColor();
+    style.base.textHoverColor = TextColor();
     box->SetVisualStyle(style);
     box->SetChecked(checked);
     box->size.width = CSSLayout::Dimension::Px(width);
@@ -355,7 +358,7 @@ void UpdateFormatLine(DialogState* d) {
     std::string text = TrF("Pictures are written as .{0}.", ext);
     if (!writable) text += "  " + Tr("This build cannot write that type: the snip is saved as PNG instead.");
     d->formatLine->SetText(text);
-    d->formatLine->SetTextColor(writable ? kTextColor : Color(185, 28, 28, 255));
+    d->formatLine->SetTextColor(writable ? TextColor() : Color(185, 28, 28, 255));
     d->formatLine->RequestRedraw();
     if (d->formatSettingsButton) {
         const bool hasSettings = writable && UltraCanvasFileLoader::HasSaveSettings(ext);
@@ -649,11 +652,21 @@ std::shared_ptr<UltraCanvasContainer> BuildAfterSnipPage(DialogState* d) {
         d->settings->showWindowAfterSnip = selected == d->showWindowRadio;
         ApplyAndSave(d);
     };
+    AddBodyCaption(parts, "snip-set-printkey-caption", Tr("The Print Screen key:"));
+    d->printKeyBox = MakeCheckbox("snip-set-printkey",
+                                  Tr("Starts a snip while UltraSnip runs, instead of the system's screenshot tool"),
+                                  kTextWidth, d->settings->takePrintKey, [d](bool on) {
+        if (!d->settings) return;
+        d->settings->takePrintKey = on;
+        ApplyAndSave(d);
+    });
+    parts.body->AddChild(d->printKeyBox);
     d->resets[kPageAfterSnip] = PageReset{Tr("Restore defaults"), 170, [d]() {
         if (!d->settings) return;
         d->settings->ResetBehaviour();
         d->syncing = true;
         if (d->showWindowRadio) d->showWindowRadio->SetChecked(true);
+        if (d->printKeyBox) d->printKeyBox->SetChecked(d->settings->takePrintKey);
         d->syncing = false;
         ApplyAndSave(d);
     }};
@@ -661,6 +674,10 @@ std::shared_ptr<UltraCanvasContainer> BuildAfterSnipPage(DialogState* d) {
             Tr("A snip taken from the window itself always comes back to the window. Out of the way, a "
                "picture is saved and copied as the Saving page says and nothing else appears; a "
                "recording still shows its bar, and its window stays hidden after Stop."));
+    AddNote(parts, "snip-set-printkey-note",
+            Tr("The Print Screen key takes the shape, kind and delay chosen on the bar, as Start does. It is "
+               "UltraSnip's only while UltraSnip runs; on Windows it no longer opens the Snipping Tool then, "
+               "and Alt+Print Screen and Win+Print Screen stay the system's."));
     return parts.page;
 }
 

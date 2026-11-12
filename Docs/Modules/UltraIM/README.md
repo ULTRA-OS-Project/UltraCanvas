@@ -123,6 +123,74 @@ hand `UltraIM_SignIn("telegram", ...)` - set once on the server, never built
 into the application or typed by the user. `NotFound` when the service keeps
 none, `CapabilityMissing` from a provider without a service.
 
+**Deleting a message.** `UltraIM_DeleteMessage(provider, conversation, message, scope)`
+deletes for everyone (`UltraIMDeleteScope::ForEveryone`, the default) or for
+this account alone (`ForMe`); a `MessageDelete` event follows where the
+message is gone. Who may do which, and until when, is each messenger's own
+business, so an application does not decide it: it asks
+`UltraIM_GetDeleteChoices(provider, conversation, message)` what is possible
+for this message now and offers that - a delete outside it answers
+`PermissionDenied`, a scope the messenger does not have `CapabilityMissing`.
+
+```cpp
+const UltraIMDeleteChoices choices = UltraIM_GetDeleteChoices("direct", message.conversationId, message.messageId);
+if (choices.forMe)       { /* menu: Delete for me */ }
+if (choices.forEveryone) { /* menu: Delete for everyone */ }
+UltraIMResult r = UltraIM_DeleteMessage("direct", message.conversationId, message.messageId, UltraIMDeleteScope::ForMe);
+```
+
+| Provider | For me | For everyone |
+|---|---|---|
+| ChatCube Direct | any message, any time | the sender: a text until the other person has read it; a picture, video or file at any time; anything in a group at any time |
+| Matrix | not available | the sender, any time (a redaction) |
+| Telegram | any message | the sender (Telegram has the last word and may refuse) |
+
+**Searching the history.** `UltraIM_SearchMessages(provider, search, cb)`
+finds messages by their words, or everything of one kind - the
+*Media / Files / Links* tabs of a conversation - for a provider with the
+`SearchMessages` capability (all three have it):
+
+```cpp
+UltraIMMessageSearch search;
+search.conversationId = conversation.conversationId;   // "" = every conversation (ChatCube Direct)
+search.text = "lunch invoice";                         // every word, in any case; "" = everything of the kind
+search.kind = UltraIMSearchKind::Files;                // AnyKind, Images, Videos, Media, Files, Links
+search.limit = 50;
+UltraIM_SearchMessages("direct", search, [](const UltraIMResult& result, const UltraIMSearchPage& page) {
+    if (!result) return;                                // result.message says why
+    for (const UltraIMMessage& message : page.messages) { /* newest first */ }
+    // page.nextCursor: pass it as search.cursor for the older matches; "" = that was all.
+});
+```
+
+The answer is a page (`UltraIMSearchPage`), newest first, with the cursor of
+the next, older one. A page can hold fewer messages than `limit` - even
+none - and still have a cursor: a provider that reads history from its
+service as it searches stops after a stretch of it, and the cursor says
+where to go on. Only an empty `nextCursor` means the beginning of the
+history was reached. A cursor belongs to the search that produced it (the
+same provider, conversation, text and kind).
+
+Each provider answers from wherever its history lives, so one call serves
+every network, and what differs is said here rather than discovered:
+
+| Provider | Where it searches | Words match | Every conversation at once |
+|---|---|---|---|
+| ChatCube Direct | its database on this device | anywhere in the text, any case | yes (`conversationId` "") |
+| Matrix | the room's history, read back page by page and matched on this device - so an encrypted room is searched like any other | anywhere in the text, any case | no: `CapabilityMissing` |
+| Telegram | Telegram's own search (`searchChatMessages`) | whole words, as in Telegram's apps | no: `CapabilityMissing` |
+
+The words are looked for in the message's text (a caption too) and its
+attachment's file name; a `SystemEvent` line ("Bob joined") is never a
+result. `Links` are messages whose text holds a link: `UltraIM_ExtractLinks(text)`
+gives them (`http://`, `https://`, or `www.` at the start of a word, without
+the full stop or bracket a sentence puts after), which is also how a list of
+links gets the address to show for each result.
+`UltraIM_MessageMatchesSearch(message, search)` is the matcher the
+on-device providers share - use it to filter rows a list already holds, so
+the list and a search agree - and `UltraIM_FoldCase` its case folding
+(Latin, Greek and Cyrillic letters, one to one, never by the locale).
+
 A message with a picture, a video, a file, a voice note or a sticker carries
 it as `UltraIMMessage::attachment` (`UltraIMAttachment`): the kind in the
 message's `type`, the caption in `text`, the file's name, size, dimensions
@@ -217,6 +285,28 @@ session, `FetchConversations`, `FetchMessages` and `SendText` are required;
 everything else has a default that answers `CapabilityMissing`. Raise events
 through the sink `Initialize` hands you; every method must return at once.
 
+`SearchMessages` (the `SearchMessages` capability) is answered from wherever
+the provider's history is: a query on its own database, its service's
+search, or - for any provider, with nothing but its `FetchMessages` -
+`UltraIM_SearchByFetching(fetchPage, search, onResult)`, which reads one
+conversation's history newest page first, keeps what
+`UltraIM_MessageMatchesSearch` accepts, and stops when the page is full, the
+history ends, or after about two thousand messages (the cursor then says
+where to go on):
+
+```cpp
+class MyProvider : public IUltraIMProviderPlugin {
+public:
+    void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) override {
+        UltraIM_SearchByFetching(
+            [this](const std::string& conversationId, const std::string& beforeMessageId, int limit,
+                   UltraIMMessagesCallback done) { FetchMessages(conversationId, beforeMessageId, limit, done); },
+            search, std::move(onResult));
+    }
+    // (the rest of the interface)
+};
+```
+
 A provider ships as a module that links the core and exports two
 functions - the version it was built for, and its entry point:
 
@@ -253,7 +343,9 @@ with `--update --no-abi-change "why"`. Version 1 was the first modules;
 version 2 (2026-11) added the account profile and the sign-in protection,
 `UltraIMCredentials::email`, and the check itself (version 1 had grown
 three interface methods with no bump); version 3 confirming the e-mail (by
-a link) and the phone (by a code), and account recovery by an e-mailed link.
+a link) and the phone (by a code), and account recovery by an e-mailed link;
+version 4 `SearchMessages` and its types; version 5 `DeleteMessage`'s
+scope and `GetDeleteChoices`.
 
 ## Provider: ChatCube Direct
 
@@ -283,6 +375,29 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
 - **Local record:** contacts and their keys, conversations, history and the
   outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
   `FetchMessages` answers from it; nothing waits for the network.
+- **Deleting** (`DeleteMessage`, `GetDeleteChoices`): anyone deletes any
+  message for themselves. For everyone, its sender deletes a text until
+  the other person has read it, a picture, video or file at any time, and
+  anything in a group at any time (a group has no read receipts). The
+  message leaves the record with its note in the `links` table, the copies
+  and file parts still in the outbox and the file it brought into the cache
+  (never a file of the user's own that was sent from where it lies); the
+  conversation's last line and unread count follow. The others are told
+  with a `delete` body - sealed and signed like a message, over the link or
+  through the relay's queue, so someone away hears of it when back. The
+  receiving side holds the request to the same rules: only what the asker
+  sent, and a text already read here stays here - reading that happened
+  while the read receipt could not travel still counts. A message or a file
+  deleted before all of it arrived is noted (`deleted`), and dropped when
+  the rest comes.
+- **Search:** `SearchMessages` is a query on that record - one conversation
+  or all of them, narrowed in the database by conversation and kind (an
+  index each) and matched by words on the way out, where upper and lower
+  case are known beyond ASCII. Which messages hold a link is noted in a
+  table of its own, `links`, by the message's id and nothing else: the
+  address stays in the message's text and is read out of it when shown, so
+  it is never stored twice. The table is filled as messages are stored, and
+  once for the history already there when a store from before it is opened.
 - **Calls** (1:1, voice and video): the invite, accept, reject, camera
   update and hang-up are signalling messages signed like the data channel's
   set-up and carried by the relay socket (session `call:<uuid>`); the media
@@ -401,6 +516,12 @@ other over mDNS alone, which skips without a responder unless
   `Sent` when the server took it, `Read` when someone's read receipt covers
   it. Typing, presence of the other person in a direct chat, unread counts.
   `FetchMessages` pages older history back with `/messages`.
+- **Search:** one room at a time, by reading its history back (`/messages`,
+  decrypted here) and matching on this device - the homeserver's own search
+  cannot read an encrypted room and finds whole words only, so this gives
+  one answer for every room. A long history is read a stretch at a time:
+  a page with a cursor and few or no messages means "further back, ask
+  again".
 - **End-to-end encryption** (`m.olm.v1.curve25519-aes-sha2`,
   `m.megolm.v1.aes-sha2`): the cryptography is
   [vodozemac](https://github.com/matrix-org/vodozemac), Matrix's audited
@@ -540,6 +661,10 @@ process.
   reported `Sent` under its client message id once TDLib has sent it, then
   `Read` when the other side's read mark passes it; typing, presence, unread
   counts; `FetchMessages` pages back with `getChatHistory`.
+- **Search:** one chat at a time, by Telegram's own search
+  (`searchChatMessages`, with its filters for photos, videos, documents and
+  links): the whole history, without downloading it, and matched as
+  Telegram's apps match - whole words.
 - **Files** are TDLib's: it downloads them on request into `files/` under
   the provider's data directory (`downloadFile`, the arrival as
   `updateFile`). A photo (the size whose longer side is at least 800 pixels,

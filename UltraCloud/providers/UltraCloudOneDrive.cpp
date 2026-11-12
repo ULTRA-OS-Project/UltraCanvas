@@ -1,8 +1,10 @@
 // UltraCloud/providers/UltraCloudOneDrive.cpp
+// Version: 0.6.0 - a transfer keeps the file's dates: fileSystemInfo sent with an
+//                  upload, read back after a download
 // Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile),
 //                  an upload sent from the file as it goes (bodyFilePath)
 // Version: 0.4.0 - each further page of a listing is logged
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudOneDrive.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -133,6 +135,20 @@ Result OneDriveProvider::MakeDirectory(const Account&, const Credentials& creden
     return r;
 }
 
+namespace {
+// The file's own dates as OneDrive keeps them: fileSystemInfo is the date
+// the file had on the client, which OneDrive shows - and keeps the creation
+// date too. Empty when the local file gives none.
+JSONValue FileSystemInfoFor(const std::string& localPath) {
+    int64_t modified = 0, created = 0;
+    LocalFileDates(localPath, modified, created);
+    JSONValue info = JSONValue::MakeObject();
+    if (modified > 0) info.Set("lastModifiedDateTime", Rfc3339(modified));
+    if (created > 0) info.Set("createdDateTime", Rfc3339(created));
+    return info;
+}
+} // namespace
+
 Result OneDriveProvider::Upload(const Account&, const Credentials& credentials,
                                 const std::string& localPath, const std::string& remotePath) {
     const int64_t total = FileSize(localPath);
@@ -149,13 +165,32 @@ Result OneDriveProvider::Upload(const Account&, const Credentials& credentials,
         req.bodyFilePath = localPath;
         UltraNetResponse resp;
         UltraNetResult net = Send(credentials, req, resp);
-        return FromHttp(net, resp, what);
+        Result r = FromHttp(net, resp, what);
+        // A simple upload carries no metadata: the file's dates follow in an
+        // update of the item. Best effort - the bytes are there.
+        const JSONValue info = FileSystemInfoFor(localPath);
+        if (r && info.GetSize() > 0) {
+            JSONValue patch = JSONValue::MakeObject();
+            patch.Set("fileSystemInfo", info);
+            UltraNetHttpRequest dated;
+            dated.url = OneDriveItemUrl(remotePath, "");
+            dated.method = UltraNetHttpMethod::Custom;
+            dated.customMethod = "PATCH";
+            dated.headers.Set("Content-Type", "application/json");
+            dated.body = Bytes(ToJson(patch));
+            UltraNetResponse datedResp;
+            Send(credentials, dated, datedResp);
+        }
+        return r;
     }
 
     // Large file: an upload session, then the bytes in chunks streamed from
     // disk against the pre-authorised session URL (no bearer token there).
     JSONValue item = JSONValue::MakeObject();
     item.Set("@microsoft.graph.conflictBehavior", "replace");
+    // The file's dates go with the session's item.
+    const JSONValue info = FileSystemInfoFor(localPath);
+    if (info.GetSize() > 0) item.Set("fileSystemInfo", info);
     JSONValue body = JSONValue::MakeObject();
     body.Set("item", item);
     UltraNetHttpRequest open;
@@ -194,7 +229,23 @@ Result OneDriveProvider::Download(const Account&, const Credentials& credentials
     UltraNetHttpRequest req;
     req.url = OneDriveItemUrl(remotePath, "content");   // 302 to the bytes; followed
     // Written to disk as it arrives, not held in memory first.
-    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
+    Result r = DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
+    // The copy keeps the file's dates, asked of the item. Best effort: a
+    // refusal here leaves the file downloaded, dated now.
+    if (r) {
+        UltraNetHttpRequest asked;
+        asked.url = OneDriveItemUrl(remotePath, "") + Query({{"$select", "fileSystemInfo"}});
+        UltraNetResponse answer;
+        UltraNetResult net = Send(credentials, asked, answer);
+        if (FromHttp(net, answer, "dates of " + remotePath)) {
+            const JSONValue item = ParseJson(BodyText(answer));
+            const JSONValue& info = item["fileSystemInfo"];
+            if (info.IsObject())
+                GiveFileDates(localPath, ParseRfc3339(info["lastModifiedDateTime"].GetString()),
+                              ParseRfc3339(info["createdDateTime"].GetString()));
+        }
+    }
+    return r;
 }
 
 Result OneDriveProvider::CreateShareLink(const Account&, const Credentials& credentials,

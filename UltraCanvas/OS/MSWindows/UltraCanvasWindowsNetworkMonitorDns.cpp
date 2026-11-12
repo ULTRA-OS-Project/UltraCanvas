@@ -15,8 +15,8 @@
 // QueryResults) with every step bounds-checked, rather than through TDH,
 // which would need the manifest at run time.
 //
-// Version: 0.4.0
-// Last Modified: 2026-09-22
+// Version: 0.5.0
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 
 #if !defined(_WIN32_WINNT) || _WIN32_WINNT < 0x0A00
@@ -31,6 +31,7 @@
 #include "NetworkMonitor/NetworkMonitorDns.h"
 #include "NetworkMonitor/NetworkMonitorNames.h"
 #include "NetworkMonitor/NetworkMonitorStore.h"
+#include "UltraCanvasWindowsProcessNames.h"
 
 #include <atomic>
 #include <cstring>
@@ -160,8 +161,9 @@ public:
             return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError,
                 std::string("Starting the ETW session: error ") + std::to_string(status));
         }
+        // Every keyword, as the network source does.
         status = ::EnableTraceEx2(session_, &kDnsClientProvider, EVENT_CONTROL_CODE_ENABLE_PROVIDER,
-                                  TRACE_LEVEL_INFORMATION, 0, 0, 0, nullptr);
+                                  TRACE_LEVEL_INFORMATION, ~0ULL, 0, 0, nullptr);
         if (status != ERROR_SUCCESS) {
             ::ControlTraceW(session_, nullptr, properties, EVENT_TRACE_CONTROL_STOP);
             session_ = 0;
@@ -234,9 +236,12 @@ private:
         if (observation.queryName.empty() || observation.addresses.empty()) return;
         observation.source = NameSource::EtwDnsClient;
         observation.observedAt = NetworkMonitor_Now();
+        // The header carries the PID; the process list names it, no handle
+        // needed - "pid N" only for a process already gone.
         ProcessIdentity process;
         process.pid = record.EventHeader.ProcessId;
-        process.displayName = "pid " + std::to_string(process.pid);
+        process.displayName = NetworkMonitor_WindowsProcessName(process.pid, true);
+        if (process.displayName.empty()) process.displayName = "pid " + std::to_string(process.pid);
         observation.process = process;
         if (onObservation_) onObservation_(observation);
     }

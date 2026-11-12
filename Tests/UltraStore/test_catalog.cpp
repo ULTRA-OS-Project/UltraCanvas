@@ -49,6 +49,7 @@ TEST(catalog_round_trips_through_json) {
     REQUIRE(video->visibility == Visibility::Listed && video->lifecycle == Lifecycle::Active);
     REQUIRE_EQ(video->ageRating, std::string("3"));
     REQUIRE(video->openSource && !video->requiresAccount);
+    REQUIRE(video->featured);
     REQUIRE_EQ(video->tags.size(), size_t(2));
     REQUIRE_EQ(video->sourceLanguage, std::string("de"));
     REQUIRE(video->machineTranslated == std::vector<std::string>{"en"});
@@ -61,6 +62,17 @@ TEST(catalog_round_trips_through_json) {
     REQUIRE(c.FindAny("org.ultraos.lib.videofx") != nullptr);
     REQUIRE(c.FindApp("org.ultraos.lib.videofx") == nullptr);
     REQUIRE(c.FindAny("nope") == nullptr);
+}
+
+TEST(categories_read_as_the_store_list_ids_once) {
+    Component c;
+    c.id = "org.example.cats";
+    c.name = "Cats";
+    c.categories = {"Video", " video", "Office ", "later-category"};
+    const auto parsed = ParseComponent(SerializeComponent(c), ComponentKind::App, false);
+    REQUIRE(parsed.Ok());
+    // Lower case, trimmed, each once; an id a later list may have is kept.
+    REQUIRE(parsed.Value().categories == std::vector<std::string>({"video", "office", "later-category"}));
 }
 
 TEST(newest_release_respects_the_channel) {

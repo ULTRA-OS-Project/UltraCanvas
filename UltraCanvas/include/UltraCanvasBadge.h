@@ -9,8 +9,10 @@
 // variants (Neutral / Primary / Success / Warning / Danger / Info). The badge
 // auto-sizes to its content and, when anchored, follows its anchor.
 //
+// Version: 1.2.0 - BadgeStyle::FromTheme, ApplyTheme: the badge follows the theme (BadgeStyle::primaryColor is the
+//                  Primary fill); a SetStyle by hand stops the following
 // Version: 1.1.0 - BadgeStyle::cornerRadius: pill (default) or rounded box.
-// Last Modified: 2026-09-04
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -67,6 +69,18 @@ namespace UltraCanvas {
 
         float fontSize     = 11.0f;
         std::string fontFamily;
+
+        // The Primary variant's fill (the other variants' colours mean
+        // something - green, amber, red - and stay)
+        Color primaryColor = Color(0, 120, 215, 255);
+
+        // The theme's roles over a base's own shape: the accent for the
+        // Primary fill, the panel for the ring behind an overlay badge, the
+        // interface font at the caption size; the text stays white (dark on
+        // amber), the variant fills their meaning
+        static BadgeStyle FromTheme(const UltraCanvasTheme& theme, const BadgeStyle& base);
+        static BadgeStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, BadgeStyle()); }
+        static BadgeStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== BADGE COMPONENT =====
@@ -124,7 +138,8 @@ namespace UltraCanvas {
 
         BadgeStyle& GetStyle() { return style; }
         const BadgeStyle& GetStyle() const { return style; }
-        void SetStyle(const BadgeStyle& s) { style = s; InvalidateLayout(); RequestRedraw(); }
+        void SetStyle(const BadgeStyle& s) { StyleSetByHand(); style = s; InvalidateLayout(); RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(BadgeStyle::FromTheme(theme, style)); }
 
         // ===== OVERLAY ANCHORING =====
         // Position this badge over `anchorElement` (a sibling in the same

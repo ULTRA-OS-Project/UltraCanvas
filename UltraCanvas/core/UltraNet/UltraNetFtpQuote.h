@@ -37,8 +37,15 @@
 // A name that holds a line break is refused rather than sent: on FTP it
 // would end the command and start another one of the server's choosing.
 //
+// After an upload, BuildSetModificationTime gives the file its original's
+// date: "MFMT" (FTP, an extension most servers have) in the file's folder,
+// libcurl's "mtime" (SFTP) with the full path. Each is sent with libcurl's
+// '*' prefix, which lets the command fail without failing the transfer: a
+// server that cannot date a file still has the file.
+//
 // Header-only and free of libcurl, so Tests/UltraNetFtpQuoteTest.cpp can
 // check it on any build.
+// Version: 1.2.0 - BuildSetModificationTime: MFMT / SFTP mtime after an upload
 // Version: 1.1.0 - FTP commands run after libcurl's change of folder
 //                  (afterFolderChange) and name the entry within it
 // Version: 1.0.0
@@ -47,6 +54,8 @@
 #pragma once
 
 #include <cctype>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -206,6 +215,63 @@ inline bool Build(const std::string& url, Verb verb, const std::string& newName,
             out.commands.push_back("RNTO " + newName);
             break;
     }
+    return true;
+}
+
+// A Unix time as UTC calendar parts (Howard Hinnant's days-to-civil).
+inline void CivilFromUnix(int64_t seconds, int& year, int& month, int& day,
+                          int& hour, int& minute, int& second, int& weekday) {
+    int64_t days = seconds / 86400;
+    int64_t rest = seconds % 86400;
+    if (rest < 0) { rest += 86400; --days; }
+    weekday = static_cast<int>(((days % 7) + 11) % 7);   // 0 = Sunday; 1970-01-01 was a Thursday
+    hour = static_cast<int>(rest / 3600);
+    minute = static_cast<int>(rest / 60 % 60);
+    second = static_cast<int>(rest % 60);
+    days += 719468;
+    const int64_t era = (days >= 0 ? days : days - 146096) / 146097;
+    const int64_t doe = days - era * 146097;
+    const int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const int64_t mp = (5 * doy + 2) / 153;
+    day = static_cast<int>(doy - (153 * mp + 2) / 5 + 1);
+    month = static_cast<int>(mp < 10 ? mp + 3 : mp - 9);
+    year = static_cast<int>(yoe + era * 400 + (month <= 2 ? 1 : 0));
+}
+
+// The command that dates the file `url` names with `unixSeconds` (UTC) - sent
+// after an upload has written it (CURLOPT_POSTQUOTE). FTP: "*MFMT
+// YYYYMMDDHHMMSS name", run in the file's folder like the commands above. SFTP:
+// libcurl's '*mtime "<RFC 1123 date>" "<path>"' with the full path - both
+// arguments quoted, as libcurl reads each as one word.
+inline bool BuildSetModificationTime(const std::string& url, int64_t unixSeconds,
+                                     Plan& out, std::string& error) {
+    out = Plan{};
+    if (unixSeconds <= 0) { error = "no date to set"; return false; }
+    std::string serverPath;
+    if (!SplitUrl(url, out.parentUrl, serverPath, error)) return false;
+    const std::string name = serverPath.substr(serverPath.find_last_of('/') + 1);
+    if (name.empty() || name == "." || name == "..") { error = "no file to date"; return false; }
+    if (HasLineBreak(serverPath)) { error = "the name holds a line break"; return false; }
+
+    int year, month, day, hour, minute, second, weekday;
+    CivilFromUnix(unixSeconds, year, month, day, hour, minute, second, weekday);
+    char stamp[64];
+    if (IsSftpUrl(url)) {
+        static const char* kDays[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+        static const char* kMonths[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        std::snprintf(stamp, sizeof(stamp), "%s, %02d %s %04d %02d:%02d:%02d GMT",
+                      kDays[weekday], day, kMonths[month - 1], year, hour, minute, second);
+        std::string path = serverPath;
+        if (path.rfind("/~/", 0) == 0) path.erase(0, 3);
+        out.commands.push_back("*mtime " + SftpQuotePath(stamp) + " " + SftpQuotePath(path));
+        return true;
+    }
+    std::snprintf(stamp, sizeof(stamp), "%04d%02d%02d%02d%02d%02d",
+                  year, month, day, hour, minute, second);
+    out.afterFolderChange = true;
+    out.commands.push_back(std::string("*MFMT ") + stamp + " " + name);
     return true;
 }
 

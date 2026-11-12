@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.10.0 - SetTransientParent makes the parent the window's owner, so a dialog
+//                   stays above its own window without WS_EX_TOPMOST
 // Version: 1.9.0 - WindowType::Popup: a popup's own window - topmost, out of the taskbar, never
 //                  activated, shown without activation; SetNativeWindowShape (a window region)
 // Version: 1.8.0 - WindowType::Tooltip: topmost, out of the taskbar, never activated, and
@@ -17,7 +19,7 @@
 // Version: 1.2.0 - WindowType::Notification: topmost, out of the taskbar, never activated
 // Version: 1.1.1 - window icon pixels converted to straight alpha
 // Version: 1.1.0 - Per-Monitor HiDPI: physical surface/window, WM_DPICHANGED
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -759,6 +761,23 @@ namespace UltraCanvas {
 
         SetForegroundWindow(hwnd);
         SetFocus(hwnd);
+    }
+
+    void UltraCanvasWindowsWindow::SetTransientParent(UltraCanvasWindowBase* parent) {
+        if (!parent || parent == this) return;
+        UltraCanvasWindowBase::SetTransientParent(parent);
+
+        // A window created with config.parentWindow is owned from the start
+        // (CreateWindowExW's hWndParent); a dialog created first and shown
+        // with ShowModal(parent) is given its owner here. GWLP_HWNDPARENT
+        // sets the owner of a top-level window. Not a desktop window: that
+        // is held at the bottom of the z-order, and owned windows move with
+        // their owner.
+        if (!hwnd || parent->GetConfig().type == WindowType::Desktop) return;
+        HWND owner = reinterpret_cast<HWND>(parent->GetNativeHandle());
+        if (owner && owner != hwnd) {
+            SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, reinterpret_cast<LONG_PTR>(owner));
+        }
     }
 
     void UltraCanvasWindowsWindow::SetWindowTitle(const std::string& title) {

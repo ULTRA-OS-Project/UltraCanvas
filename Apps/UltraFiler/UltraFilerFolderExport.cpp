@@ -1,12 +1,14 @@
 // Apps/UltraFiler/UltraFilerFolderExport.cpp
 // "Extras > Export": the folder content / folder tree as text, and the window
 // that shows it with a Save button.
+// Version: 1.1.0 - the colours are the theme's (UltraFilerLook.h)
 // Version: 1.0.2 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
 #include "UltraFilerFolderExport.h"
+#include "UltraFilerLook.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasApplication.h"
@@ -497,7 +499,7 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
 
     window_->layout.SetFlexColumn()
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    window_->SetBackgroundColor(Color(249, 249, 251, 255));
+    window_->SetBackgroundColor(Look().ground);
     window_->SetEventCallback([](const UCEvent& event) {
         if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
             if (auto tw = event.targetWindow.lock())
@@ -529,7 +531,7 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
     bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     bottom->SetPadding(8, 12, 8, 12);
-    bottom->SetBorderTop(1, Color(225, 225, 230, 255));
+    bottom->SetBorderTop(1, Look().line);
 
     // Weak: the host may drop this object while its window is still open.
     std::weak_ptr<UltraFilerFolderExportWindow> self = weak_from_this();
@@ -575,7 +577,7 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
 
     statusLabel_ = std::make_shared<UltraCanvasLabel>("uf-export-status", 0, 0, 0, 20);
     statusLabel_->SetFontSize(kFontSize);
-    statusLabel_->SetTextColor(Color(110, 110, 118, 255));
+    statusLabel_->SetTextColor(Look().inkMuted);
     statusLabel_->SetText(Tr("Reading ..."));
     statusLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     bottom->AddChild(statusLabel_);
@@ -584,9 +586,9 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 90, 28, label);
         b->SetFontSize(kFontSize);
         b->SetCornerRadius(4.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        b->SetTextColors(Color(40, 40, 44, 255));
-        b->SetBorder(1.0f, Color(0, 0, 0, 60));
+        b->SetColors(Look().button, Look().hover);
+        b->SetTextColors(Look().ink);
+        b->SetBorder(1.0f, Look().border);
         b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return b;
     };

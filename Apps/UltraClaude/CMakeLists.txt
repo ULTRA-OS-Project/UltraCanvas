@@ -20,6 +20,7 @@ add_executable(UltraClaude
     engine/RepoStatus.cpp
     engine/ClaudeChatSession.cpp
     engine/ClaudeCliProcess.cpp
+    engine/ClaudeProxyEnvironment.cpp
     engine/ClaudeStreamParser.cpp
     ui/ChatListView.cpp
     ui/UltraClaudeWindow.cpp
@@ -65,6 +66,28 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
             DESTINATION share/icons/hicolor/256x256/apps)
     install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraClaude.svg
             DESTINATION share/icons/hicolor/scalable/apps)
+endif()
+
+# The proxy settings handed to the CLI through its environment
+# (engine/ClaudeProxyEnvironment.h), with the process runner that does it.
+if(BUILD_TESTS OR ULTRACANVAS_BUILD_STARTPAGE_TESTS)
+    add_executable(UltraClaudeProxyEnvironmentTest
+        ${CMAKE_SOURCE_DIR}/Tests/UltraClaudeProxyEnvironmentTest.cpp
+        engine/ClaudeCliProcess.cpp
+        engine/ClaudeProxyEnvironment.cpp)
+    target_include_directories(UltraClaudeProxyEnvironmentTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/engine)
+    target_link_libraries(UltraClaudeProxyEnvironmentTest PRIVATE ${ULTRACANVAS_LIBRARY} Threads::Threads)
+    target_compile_features(UltraClaudeProxyEnvironmentTest PRIVATE cxx_std_20)
+    if(WIN32)
+        set_target_properties(UltraClaudeProxyEnvironmentTest PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:UltraCanvas>")
+    else()
+        set_target_properties(UltraClaudeProxyEnvironmentTest PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
+    add_test(NAME UltraClaudeProxyEnvironmentTest COMMAND UltraClaudeProxyEnvironmentTest)
 endif()
 
 message(STATUS "  [✓] UltraClaude - ENABLED (target: UltraClaude)")

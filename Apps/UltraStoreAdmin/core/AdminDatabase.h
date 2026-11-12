@@ -11,6 +11,7 @@
 // setting the catalog grows is kept without a schema change. The tables that
 // are queried on their own - package files by hash, keys, settings - are
 // tables.
+// Version: 0.4.0 - the pages ever published (published_pages), schema 4
 // Version: 0.3.0 - a sale's reference (the payment service's order), schema 3
 // Version: 0.2.0 - affiliates, codes, sales (schema 2)
 // Version: 0.1.0
@@ -33,7 +34,7 @@ using UltraStore::ErrorCode;
 using UltraStore::Publisher;
 using UltraStore::Result;
 
-inline constexpr int kAdminSchemaVersion = 3;   // 2: affiliates, codes, sales; 3: sales.reference
+inline constexpr int kAdminSchemaVersion = 4;   // 2: affiliates, codes, sales; 3: sales.reference; 4: published_pages
 
 // A signing key: the public half in the open, the seed sealed (KeyVault.h).
 struct KeyRecord {
@@ -84,6 +85,17 @@ struct CodeRecord {
 // A sale as the payment service reports it (or the admin records it by
 // hand until then), with what it credits: the affiliate whose code was used
 // and, one level up, their recruiter. Amounts are decimals in the currency.
+// A page the publish folder once carried under the catalog base - "go/ANNA-20",
+// "join/aff-anna" - with what it was. The uploader never deletes on the
+// server, so a page once published stays reachable; this list is what lets
+// publish put a page that says "no longer valid" or "this invitation is
+// closed" in place of one whose code or partner is gone from the database.
+struct PublishedPage {
+    std::string path;                // relative to the publish folder, '/' separated, no index.html
+    std::string kind;                // "code" (go/<CODE>) or "join" (join/<affiliate>)
+    std::string firstPublishedAt;    // ISO 8601
+};
+
 struct SaleRecord {
     int64_t id = 0;
     std::string at;                  // ISO 8601
@@ -151,6 +163,10 @@ public:
     Result<SaleRecord> AddSale(const SaleRecord& sale);       // as given; the credits are the caller's (Affiliates.h, RecordSale)
     Result<std::vector<SaleRecord>> Sales() const;
     bool HasSaleReference(const std::string& reference) const;   // a sale with this reference is in the ledger
+
+    // ----- the pages ever published -----
+    Result<void> RememberPage(const std::string& path, const std::string& kind);   // once; the first date stays
+    Result<std::vector<PublishedPage>> PublishedPages() const;
 
     // ----- the catalog's sequence -----
     uint64_t Sequence() const;                 // the last published; 0 before the first

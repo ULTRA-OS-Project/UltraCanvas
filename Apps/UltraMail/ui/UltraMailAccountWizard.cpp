@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
+// Version: 0.7.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.6.0 - a header (envelope tile, title, the one-line intro); Show
 //                  info, Continue carry icons
 // Version: 0.5.1 - Yahoo asks for an app password first (browser sign-in optional)
@@ -9,7 +10,7 @@
 // Version: 0.4.1 - live hint per address: browser sign-in for Gmail / Outlook,
 //                  an app password for Yahoo / iCloud (or a typed password
 //                  at an OAuth2 provider)
-// Last Modified: 2026-09-10
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountWizard.h"
 
@@ -23,6 +24,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasButton.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <memory>
 
@@ -41,7 +43,7 @@ constexpr int   kGuideHeight = 320;
 void AccountWizard::Show(UltraCanvasWindowBase* parent,
                          std::function<void(const AccountDraft&)> onSubmit) {
     DialogConfig config;
-    config.title      = "Add email account";
+    config.title      = Tr("Add email account");
     config.width      = kWidth;
     config.height     = kHeight;
     config.dialogType = DialogType::Custom;
@@ -58,7 +60,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     // ===== CONTENT: intro + labelled input rows =====
     auto content = CreateContainer("wizardForm", 0, 0, 0, 0);
@@ -66,8 +68,8 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto header = Theme::MakeDialogHeader("wizHeader", "account-add", "Add an email account",
-        "Enter your address and password — UltraMail finds the rest.", 18.0f);
+    auto header = Theme::MakeDialogHeader("wizHeader", "account-add", Tr("Add an email account"),
+        Tr("Enter your address and password — UltraMail finds the rest."), 18.0f);
     header->SetMargin(0, 0, 6, 0);
     content->AddChild(header);
 
@@ -81,7 +83,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         auto label = Theme::MakeLine(id + "Label", labelText, Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
 
@@ -95,21 +97,21 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     };
 
     auto name = CreateTextInput("wizName", 0, 0, 0, Theme::kControlHeight);
-    name->SetPlaceholder("Erika Example");
+    name->SetPlaceholder(Tr("Erika Example"));
     addRow("wizName", "Your name", name);
 
     auto email = CreateEmailInput("wizEmail", 0, 0, 0, Theme::kControlHeight);
-    email->SetPlaceholder("erika@example.com");
+    email->SetPlaceholder(Tr("erika@example.com"));
     addRow("wizEmail", "Email address", email);
 
     auto password = CreatePasswordInput("wizPass", 0, 0, 0, Theme::kControlHeight);
-    password->SetPlaceholder("Your password");
+    password->SetPlaceholder(Tr("Your password"));
     auto passRow = addRow("wizPass", "Password", password);
 
     // Provider-specific advice that follows the address as it is typed: Gmail
     // and Outlook sign in through the browser (OAuth2) when the password is
     // left empty; they, Yahoo and iCloud need an app password otherwise.
-    auto hint = Theme::MakeLine("wizHint", "", 30, Theme::kSizeBody, Theme::kTextSecondary);
+    auto hint = Theme::MakeLine("wizHint", "", 30, Theme::SizeBody(), Theme::TextSecondary());
     hint->SetWrap(TextWrap::WrapWord);
     content->AddChild(hint);
     hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -123,11 +125,11 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                     .SetFlexGap(Theme::kInnerGap)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto guideLabel = Theme::MakeLine("wizGuideLabel", "How to set up an iCloud mail account",
-                                      Theme::kControlHeight, Theme::kSizeBody,
-                                      Theme::kTextPrimary);
+                                      Theme::kControlHeight, Theme::SizeBody(),
+                                      Theme::TextPrimary());
     guideRow->AddChild(guideLabel);
     guideLabel->layoutItem.SetFlexGrow(1);
-    auto guideBtn = CreateButton("wizGuideBtn", 0, 0, 90, Theme::kControlHeight, "Show info");
+    auto guideBtn = CreateButton("wizGuideBtn", 0, 0, 90, Theme::kControlHeight, Tr("Show info"));
     Theme::FitToLabel(guideBtn, 90);
     Theme::StyleSecondary(guideBtn);
     Theme::SetButtonIcon(guideBtn, "info");
@@ -141,10 +143,10 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     guide->SetWordWrap(true);
     guide->SetShowLineNumbers(false);
     guide->SetHighlightCurrentLine(false);
-    guide->SetBackgroundColor(Theme::kSidebar);
-    guide->SetBorders(1.0f, Theme::kCardBorder, Theme::kControlRadius);
-    guide->SetFontSize(Theme::kSizeBody);
-    guide->SetTextColor(Theme::kTextPrimary);
+    guide->SetBackgroundColor(Theme::Sidebar());
+    guide->SetBorders(1.0f, Theme::CardBorder(), Theme::kControlRadius);
+    guide->SetFontSize(Theme::SizeBody());
+    guide->SetTextColor(Theme::TextPrimary());
     guide->SetText(ICloudSetupGuide(), false);
     guide->SetElementSize(Size2Df(0, static_cast<float>(kGuideHeight)));
     guide->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -191,29 +193,29 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
         } else if (provider == "yahoo") {
             // Yahoo: the app password comes first, because the browser sign-in
             // only works once Yahoo has granted the app Mail API access.
-            hint->SetText(d.displayName + ": enter an app password (Yahoo account > "
-                          "Account security > Generate app password)."
+            hint->SetText(TrF("{0}: enter an app password (Yahoo account > Account security > "
+                              "Generate app password).", d.displayName)
                           + std::string(OAuthApps::Has(provider)
-                              ? " Leave it empty to sign in with Yahoo in your browser instead."
-                              : ""));
-            password->SetPlaceholder("App password");
+                              ? " " + Tr("Leave it empty to sign in with Yahoo in your browser instead.")
+                              : std::string()));
+            password->SetPlaceholder(Tr("App password"));
         } else if (!provider.empty() && OAuthApps::Has(provider)) {
             const std::string name = OAuthProviderDisplayName(provider);
             hint->SetText(d.displayName + ": leave the password empty to sign in with "
                           + name + " in your browser, or enter an app password.");
             password->SetPlaceholder("Leave empty to sign in with " + name);
         } else if (d.displayName == "iCloud") {
-            hint->SetText("iCloud takes an app-specific password, not your Apple Account "
-                          "password - Show info below says where to make one.");
-            password->SetPlaceholder("App-specific password");
+            hint->SetText(Tr("iCloud takes an app-specific password, not your Apple Account "
+                          "password - Show info below says where to make one."));
+            password->SetPlaceholder(Tr("App-specific password"));
         } else if (ProviderNeedsAppPassword(d)) {
             hint->SetText(d.displayName + " rejects the normal password in mail programs: "
                           "enter an app password generated in your account's security "
                           "settings.");
-            password->SetPlaceholder("App password");
+            password->SetPlaceholder(Tr("App password"));
         } else {
             hint->SetText("");
-            password->SetPlaceholder("Your password");
+            password->SetPlaceholder(Tr("Your password"));
         }
     };
 
@@ -227,13 +229,13 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
 
-    auto cancelBtn = CreateButton("wizCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("wizCancel", 0, 0, 90, Theme::kControlHeight, Tr("Cancel"));
     Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 
-    auto continueBtn = CreateButton("wizContinue", 0, 0, 110, Theme::kControlHeight, "Continue");
+    auto continueBtn = CreateButton("wizContinue", 0, 0, 110, Theme::kControlHeight, Tr("Continue"));
     Theme::FitToLabel(continueBtn, 110);
     Theme::StylePrimary(continueBtn);
     Theme::SetButtonIcon(continueBtn, "arrow-right");
@@ -260,16 +262,16 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
 
             // Say why nothing happened rather than discarding what was typed.
             if (draft.email.empty()) {
-                AlertWarning(parent, "No e-mail address was entered, so no "
-                                     "account was added.",
-                             "Enter the address of the mailbox you want to add, "
-                             "for example you@example.com.");
+                AlertWarning(parent, Tr("No e-mail address was entered, so no "
+                                     "account was added."),
+                             Tr("Enter the address of the mailbox you want to add, "
+                             "for example you@example.com."));
                 return;
             }
             if (!LooksLikeEmailAddress(draft.email)) {
                 AlertWarning(parent, "\"" + draft.email + "\" is not a valid "
                              "e-mail address, so no account was added.",
-                             "An address looks like you@example.com.");
+                             Tr("An address looks like you@example.com."));
                 return;
             }
             if (onSubmit) onSubmit(draft);

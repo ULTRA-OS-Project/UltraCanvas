@@ -1388,6 +1388,7 @@ private:
         if (!dash.empty() && dash != "none") {
             for (char& ch : dash) if (ch == ',') ch = ' ';
             std::istringstream iss(dash);
+            iss.imbue(std::locale::classic());   // `6.5 3.25`, not the host's
             double d;
             while (iss >> d) st.DashArray.push_back(d);
         }
@@ -2166,6 +2167,7 @@ private:
                 std::string str = p;
                 for (char& ch : str) if (ch == ',') ch = ' ';
                 std::istringstream iss(str);
+                iss.imbue(std::locale::classic());
                 double x, y;
                 while (iss >> x >> y) pts.emplace_back(x, y);
             }
@@ -2206,6 +2208,7 @@ private:
             ApplyStyle(e, *sym);
             if (const char* v = e->Attribute("viewBox")) {
                 std::istringstream iss(v);
+                iss.imbue(std::locale::classic());
                 double a, b, c, d;
                 if (iss >> a >> b >> c >> d) sym->ViewBox = Rect2Dd{a, b, c, d};
             }

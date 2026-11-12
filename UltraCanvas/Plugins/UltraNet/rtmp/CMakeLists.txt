@@ -25,6 +25,10 @@ if(NOT DEFINED UC_CURL_LINK)
     set(UC_CURL_LINK CURL::libcurl)
 endif()
 target_link_libraries(UltraNetRtmpPlugin PRIVATE ${UC_CURL_LINK})
+# The plug-in's own RTMP client reads and writes its socket directly.
+if(WIN32)
+    target_link_libraries(UltraNetRtmpPlugin PRIVATE ws2_32)
+endif()
 
 set_target_properties(UltraNetRtmpPlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraNet)

@@ -8,6 +8,7 @@
 // strength, on main-track clips and overlay clips. Needs the VideoFX engine
 // (FFmpeg) for the probes and the clips it generates; without it the suite
 // skips itself.
+// Version: 0.10.0 - the view's look is the project's once chosen (darkChosen): written then, read back as chosen
 // Version: 0.9.0 - titles typed with the text bar: kept by the file and by the engine's project the
 //                  videofx tool reads, drawn by UltraCanvas as the engine's text renderer
 // Version: 0.8.0 - effects on overlay clips; a slider's drag as one undo step
@@ -16,7 +17,7 @@
 // Version: 0.6.0 - a HEIC imported and exported through the framework's image reader
 // Version: 0.5.0 - the files it takes are FileLoader's lists, as the engine reads them
 // Version: 0.4.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #include "UltraVideoDocument.h"
 #include "UltraVideoFormats.h"
@@ -919,6 +920,7 @@ int main() {
     doc.project.title = "Summer trip";
     doc.view.pixelsPerSecond = 120.0;
     doc.view.dark = false;
+    doc.view.darkChosen = true;   // the look is this project's: written, and read back as chosen
     std::string error;
     CHECK(doc.Save(file, error), ("save: " + error).c_str());
     CHECK(doc.path == file, "the document remembers its file");
@@ -939,7 +941,22 @@ int main() {
     CHECK(loaded.project.segments[2].kind == VideoFXSourceKind::File && loaded.project.segments[2].path == clip, "file paths absolute again");
     CHECK(loaded.project.settings.music.path == song && loaded.media.size() == 3, "the music and the bin");
     CHECK(loaded.markers.size() == 1 && loaded.markers[0].id == "m2", "the markers");
-    CHECK(loaded.view.pixelsPerSecond == 120.0 && !loaded.view.dark && loaded.view.rangeOut == 6.0, "the view");
+    CHECK(loaded.view.pixelsPerSecond == 120.0 && !loaded.view.dark && loaded.view.darkChosen && loaded.view.rangeOut == 6.0, "the view");
+    {
+        // A project that never picked a look follows the desktop: it writes
+        // no "dark" and comes back unchosen, whatever its dark flag held.
+        Document following;
+        following.view.dark = false;
+        const std::string followingFile = TempPath("following.ultravideo");
+        std::string followingError;
+        CHECK(following.Save(followingFile, followingError), ("save: " + followingError).c_str());
+        std::FILE* f = std::fopen(followingFile.c_str(), "rb");
+        std::string text;
+        if (f) { char buf[4096]; size_t n; while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n); std::fclose(f); }
+        CHECK(text.find("\"dark\"") == std::string::npos, "a project following the desktop writes no look");
+        Document back;
+        CHECK(Document::Load(followingFile, back, followingError) && !back.view.darkChosen, "and comes back following it");
+    }
     CHECK(loaded.view.useProxies, "proxies on by default, and kept");
     CHECK(missing.empty() && loaded.nextClipId == doc.nextClipId, "nothing missing; ids go on from where they were");
     std::error_code ec;

@@ -2,12 +2,13 @@
 // UltraRTC - the UltraRtc_* API over libdatachannel (peers, data channels,
 // audio and video tracks)
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraRTC/UltraRTCCore.h"
 #include "UltraRTCAudioDevices.h"
 #include "UltraRTCOpus.h"
+#include "UltraRTCVersion.h"
 #include "UltraRTCVideoCodec.h"
 #include "UltraRTCVideoDevices.h"
 #include "UltraRTCVp8Rtp.h"
@@ -18,6 +19,7 @@
 #include <atomic>
 #include <chrono>
 #include <random>
+#include <cstdio>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -575,7 +577,15 @@ void StopDevices(const std::shared_ptr<AudioMedia>& audio) {
 UltraRtcResult UltraRtc_Initialize() {
     std::lock_guard<std::mutex> lock(State().mutex);
     if (State().initialized) return UltraRtcResult::Ok();
-    rtc::InitLogger(rtc::LogLevel::Warning);
+    // The engine's warnings go to stderr. Its default is stdout, where they
+    // land in the middle of whatever a command-line program prints there - a
+    // report, JSON for a pipe, a peer's handshake for a parent process.
+    rtc::InitLogger(rtc::LogLevel::Warning, [](rtc::LogLevel level, std::string message) {
+        const char* label = level == rtc::LogLevel::Warning ? "warning"
+                          : level == rtc::LogLevel::Error   ? "error"
+                          : level == rtc::LogLevel::Fatal   ? "fatal" : "note";
+        std::fprintf(stderr, "UltraRTC engine %s: %s\n", label, message.c_str());
+    });
     rtc::Preload();
     State().initialized = true;
     return UltraRtcResult::Ok();
@@ -599,6 +609,10 @@ void UltraRtc_Shutdown() {
 
 bool UltraRtc_IsAvailable() {
     return true;
+}
+
+std::string UltraRtc_GetVersion() {
+    return ULTRARTC_API_VERSION;
 }
 
 UltraRtcCapabilities UltraRtc_GetCapabilities() {
