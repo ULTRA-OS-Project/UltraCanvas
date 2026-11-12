@@ -1246,6 +1246,11 @@ namespace UltraCanvas {
         // Scrolling
         float horizontalScrollOffset;
         float verticalScrollOffset;
+        // The line at the top of the view before a font change, restored by
+        // Render() once the layouts are rebuilt (-1: nothing pending).
+        int scrollAnchorLine = -1;
+        float scrollAnchorFraction = 0.0f;
+        void RememberScrollAnchor();
         // Explicit scrolling — the wheel and the ScrollUp/Down/Left/Right API the
         // page keys go through — glides to its target instead of jumping (see
         // UltraCanvasSmoothScroll.h). Following the caret does not: keeping the
