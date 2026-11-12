@@ -187,6 +187,8 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     add_executable(UltraWebGuestTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebGuestTest.cpp
         ${_uw_dir}/host/UltraWebFetch.cpp
+        ${_uw_dir}/host/UltraWebSocket.cpp
+        ${_uw_dir}/host/UltraWebRtc.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
         ${_uw_dir}/host/UltraWebLoader.cpp
         ${_uw_dir}/host/UltraWebStorage.cpp)
@@ -215,6 +217,10 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebTabTest.cpp
         ${_uw_dir}/host/UltraWebFetch.cpp
         ${_uw_dir}/host/UltraWebNetworkFetch.cpp
+        ${_uw_dir}/host/UltraWebSocket.cpp
+        ${_uw_dir}/host/UltraWebNetworkSocket.cpp
+        ${_uw_dir}/host/UltraWebRtc.cpp
+        ${_uw_dir}/host/UltraWebNetworkRtc.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
         ${_uw_dir}/host/UltraWebLoader.cpp
         ${_uw_dir}/host/UltraWebCookies.cpp
@@ -225,12 +231,50 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
         ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
     target_compile_features(UltraWebTabTest PRIVATE cxx_std_20)
     target_link_libraries(UltraWebTabTest PRIVATE WasmHost UltraNet UltraCanvas)
+    if(TARGET UltraRTC)
+        target_link_libraries(UltraWebTabTest PRIVATE UltraRTC)
+        target_compile_definitions(UltraWebTabTest PRIVATE ULTRAWEB_HAS_RTC=1)
+    endif()
     set_target_properties(UltraWebTabTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME UltraWebTabTest COMMAND UltraWebTabTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraWebTabTest")
+endif()
+
+# ===== ULTRAWEB REALTIME TEST =====
+# Apps' WebSockets and peer connections (ABI v3, uc_ws_* and uc_rtc_*): the
+# rules, guests written as WebAssembly text against fake services, then the
+# real services - UltraNet against a loopback WebSocket server (POSIX), and
+# two UltraRTC peers that connect in one process and exchange data-channel
+# messages (when the build has the engine).
+if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
+    message(STATUS "  Building UltraWebRealtimeTest...")
+    set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
+    add_executable(UltraWebRealtimeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebRealtimeTest.cpp
+        ${_uw_dir}/host/UltraWebFetch.cpp
+        ${_uw_dir}/host/UltraWebSocket.cpp
+        ${_uw_dir}/host/UltraWebNetworkSocket.cpp
+        ${_uw_dir}/host/UltraWebRtc.cpp
+        ${_uw_dir}/host/UltraWebNetworkRtc.cpp
+        ${_uw_dir}/host/UltraWebGuest.cpp
+        ${_uw_dir}/host/UltraWebStorage.cpp)
+    target_include_directories(UltraWebRealtimeTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
+    target_compile_features(UltraWebRealtimeTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraWebRealtimeTest PRIVATE WasmHost UltraNet UltraCanvas)
+    if(TARGET UltraRTC)
+        target_link_libraries(UltraWebRealtimeTest PRIVATE UltraRTC)
+        target_compile_definitions(UltraWebRealtimeTest PRIVATE ULTRAWEB_HAS_RTC=1)
+    endif()
+    set_target_properties(UltraWebRealtimeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraWebRealtimeTest COMMAND UltraWebRealtimeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraWebRealtimeTest")
 endif()
 
 # ===== ULTRAWEB COOKIES TEST =====

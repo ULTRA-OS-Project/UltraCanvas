@@ -5,19 +5,23 @@
 // class owns the elements, checks every handle, pointer and length it is
 // given, and turns the elements' callbacks into uc_event calls. Since ABI
 // v2 it also runs the app's timers, fetches, storage and clipboard writes,
-// through services the owner hands in (GuestServices) and under the rules
-// in ultraweb.h.
+// and since v3 its WebSockets and peer connections, through services the
+// owner hands in (GuestServices) and under the rules in ultraweb.h.
 //
 // Lives on the UI thread. A failure after start (a trap, the time limit)
 // is reported through onFailure on a later UI-thread turn, never from
 // inside the element callback that ran the guest, so the owner can tear
 // the guest down safely.
+// Version: 0.3.0 - ABI v3: WebSockets (uc_ws_*) and peer connections with data
+//                  channels (uc_rtc_*)
 // Version: 0.2.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraWebFetch.h"
+#include "UltraWebRtc.h"
+#include "UltraWebSocket.h"
 #include "UltraWebStorage.h"
 
 #include "UltraCanvasContainer.h"
@@ -33,7 +37,7 @@
 
 namespace UltraWeb {
 
-// What an app reaches beside its elements (element ABI v2). UltraWeb hands
+// What an app reaches beside its elements (element ABI v2 and v3). UltraWeb hands
 // in the real services (UltraWebWindow.cpp); the tests hand in fakes. A
 // service left empty answers UC_ERR_DENIED.
 struct GuestServices {
@@ -48,6 +52,11 @@ struct GuestServices {
     std::shared_ptr<UltraWebStorage> storage;
     // Puts text on the system clipboard; false when it could not.
     std::function<bool(const std::string&)> writeClipboard;
+    // Opens what uc_ws_open asked for, once SocketRules allowed it.
+    SocketService webSocket;
+    // Opens peer connections (uc_rtc_*); empty when this UltraWeb has no
+    // WebRTC engine.
+    RtcService rtc;
 };
 
 struct GuestOptions {
@@ -87,6 +96,9 @@ public:
     size_t ElementCount() const;
     size_t TimerCount() const { return timers_.size(); }
     size_t FetchCount() const { return fetches_.size(); }
+    size_t SocketCount() const { return sockets_.size(); }
+    size_t PeerCount() const { return peers_.size(); }
+    size_t ChannelCount() const { return channels_.size(); }
     bool HasFailed() const { return failed_; }
 
     // For tests: deliver an event as if the user had caused it.
@@ -115,9 +127,34 @@ private:
         std::function<void()> cancel;     // while running
     };
 
+    struct Socket {
+        std::shared_ptr<SocketConnection> connection;
+        int32_t state = 0;                // UC_WS_* (0 connecting), or the UC_ERR_* it failed with
+        int32_t closeCode = 0;
+        std::deque<std::pair<std::vector<uint8_t>, bool>> messages;   // bytes, binary
+        size_t queuedBytes = 0;
+        bool warnedFull = false;
+    };
+    struct PeerEvent {
+        uint32_t kind = 0;
+        int32_t channel = 0;              // the app's id for the channel
+        uint32_t number = 0;
+        std::string text;
+    };
+    struct Peer {
+        std::shared_ptr<RtcPeer> peer;
+        std::deque<PeerEvent> events;
+        std::map<uint64_t, int32_t> channelIds;   // the service's id -> the app's
+        bool warnedFull = false;
+    };
+    struct Channel {
+        int32_t peer = 0;
+        uint64_t serviceChannel = 0;
+    };
     explicit UltraWebGuest(GuestOptions options);
     std::vector<UltraCanvas::WasmImport> MakeImports();
     void AddServiceImports(std::vector<UltraCanvas::WasmImport>& imports);
+    void AddRealtimeImports(std::vector<UltraCanvas::WasmImport>& imports);
 
     // The ABI, one function per import; the results are UC_* codes.
     uint32_t Create(const std::string& kind);
@@ -141,6 +178,21 @@ private:
     int32_t CloseFetch(int32_t id);
     void StorageChanged();
     int32_t WriteClipboard(const std::string& text);
+
+    int32_t OpenSocket(const std::string& url, const std::string& protocols);
+    void SocketOpened(int32_t id);
+    void SocketMessage(int32_t id, std::vector<uint8_t> data, bool binary);
+    void SocketEnded(int32_t id, int32_t state, int32_t closeCode);
+    int32_t SendSocket(int32_t id, const std::vector<uint8_t>& data, bool binary);
+    int32_t CloseSocket(int32_t id, uint32_t code, const std::string& reason);
+
+    int32_t OpenPeer(const std::string& config);
+    int32_t ClosePeer(int32_t id);
+    void PeerEventArrived(int32_t id, RtcEvent event);
+    void QueuePeerEvent(Peer& peer, int32_t id, PeerEvent event);
+    int32_t OpenChannel(int32_t peer, const std::string& label, uint32_t flags, int32_t maxRetransmits);
+    int32_t CloseChannel(int32_t id);
+    int32_t NextRealtimeId();
     void Log(const std::string& line);
 
     Entry* Find(uint32_t handle);
@@ -174,6 +226,11 @@ private:
     std::map<int32_t, Fetch> fetches_;
     int32_t nextTimerId_ = 1;
     int32_t nextFetchId_ = 1;
+    std::map<int32_t, Socket> sockets_;
+    std::map<int32_t, Peer> peers_;
+    std::map<int32_t, Channel> channels_;
+    int32_t nextSocketId_ = 1;
+    int32_t nextRealtimeId_ = 1;          // peers and channels share it: an id names one or the other
     std::deque<std::pair<uint32_t, int32_t>> appEvents_;   // event, detail
     // Timer and network callbacks hold this weakly: the guest may be gone
     // by the time they run.
