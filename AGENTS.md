@@ -629,6 +629,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraPassword/CHANGELOG.md` | UltraPassword — the password vault |
 | `Docs/UltraStore/CHANGELOG.md` | UltraStore — the app store |
 | `Docs/UltraStoreAdmin/CHANGELOG.md` | UltraStoreAdmin — the store's admin backend |
+| `Docs/UltraStoreOperator/CHANGELOG.md` | UltraStoreOperator — the marketplace operator's window and command line |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
@@ -809,10 +810,13 @@ and never introduce a new literal copy of one:
    `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION` for a member appended to the host
    table, or the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG` for a type that
    crosses to the plug-ins. Then run `python3 scripts/check_plugin_abi.py
-   --update`; CI runs the check. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
-   the Windows builds compile it against libc++, which refuses what libstdc++
-   lets through (`std::to_string` of a file time's tick count, say), and the
-   script type-checks the module against libc++ in seconds. Reading HTML,
+   --update`; CI runs the check. Changing C++ the Windows build compiles
+   (anything but an OS arm)? Run `python3 scripts/check_libcxx_syntax.py <dir
+   or file>`: the Windows builds compile against libc++, which refuses what
+   libstdc++ lets through (`std::to_string` of a file time's tick count,
+   say), and the script type-checks the units under that path against libc++
+   with the build's own flags - a module in seconds, the whole tree in twenty
+   minutes. Reading HTML,
    CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or

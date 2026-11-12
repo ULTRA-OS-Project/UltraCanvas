@@ -8,6 +8,7 @@
 // 0.8.0 to 0.8.2 kept the look in a file beside it (`look`); a folder that
 // has that and no settings.json is read from it once, and it goes when the
 // settings are first written.
+// Version: 0.9.0 - the look is system, light or dark; system follows the desktop
 // Version: 0.8.7 - NormalPath, the list's spelling of a folder, public for the tests
 // Version: 0.8.5 - over the framework's UltraCanvasAppSettings
 // Version: 0.8.4
@@ -20,7 +21,10 @@
 namespace UltraPress {
 
 struct UltraPressSettings {
-    bool dark = false;
+    // The look: "system" (the desktop's, light or dark, and UOS-Settings'
+    // Look page over it), "light" or "dark" once chosen in the editor.
+    std::string look = "system";
+    bool DarkFor(bool hostDark) const { return look == "dark" || (look == "system" && hostDark); }
     std::vector<std::string> recentSites;   // last opened first
     int windowWidth = 0;                    // 0: the program's default
     int windowHeight = 0;

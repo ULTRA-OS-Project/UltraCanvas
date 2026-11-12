@@ -3330,7 +3330,8 @@ set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorNames.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDnsProxy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorEvents.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorConntrack.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorConntrack.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorKernelNetwork.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # The socket table, and nf_conntrack's netlink events as an event source.
     list(APPEND _uc_networkmonitor_sources
@@ -4448,7 +4449,8 @@ option(ULTRACANVAS_ENABLE_ULTRAIM "Build the UltraIM instant-messaging library" 
 if(ULTRACANVAS_ENABLE_ULTRAIM)
     # The archive is uc-im; UltraIM is its home ("MODULE HOMES").
     add_library(uc-im STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraIM/UltraIMManager.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraIM/UltraIMManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraIM/UltraIMSearch.cpp)
     set_target_properties(uc-im PROPERTIES
         POSITION_INDEPENDENT_CODE ON
         OUTPUT_NAME "ultraim")

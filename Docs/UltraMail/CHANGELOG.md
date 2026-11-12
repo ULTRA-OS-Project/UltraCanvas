@@ -1,3 +1,23 @@
+#### 2026-11-12 *0.10.89*
+- **Account settings and the other dialogs no longer stay on top of other
+  programs.** They sat above every application's windows and could not be
+  sent behind them; now they stay above UltraMail's own window only, as the
+  Settings window always did. The change is in the framework's
+  `DialogConfig`; see the framework changelog.
+
+#### 2026-11-11 *0.10.88*
+- **The desktop's look, and every text translatable.** UltraMail is light
+  or dark as the desktop is - or as *Look* on UOS-Settings' Appearance page
+  says - in the desktop's font and size: the colours and text sizes of
+  `UltraMailTheme.h` are the framework theme's roles now, read when a
+  window is built, so a dark desktop gives a dark UltraMail. Every text the
+  windows and dialogs show goes through `Tr`, with the sentences built from
+  pieces rewritten with placeholders and plurals; UltraMail's own English
+  set (`media/locale/en/UltraMail.json`, over the Communication base set)
+  is extracted from them, and *Translate UltraMail...* on the Settings page
+  opens the localisation editor. The signature verdicts of the engine stay
+  English for now.
+
 #### 2026-11-11 *0.10.87*
 - **Settings > Mail > Proxy.** IMAP, SMTP, JMAP and the sign-in go through
   the proxy every ULTRA OS application shares, and the page opens the Proxy

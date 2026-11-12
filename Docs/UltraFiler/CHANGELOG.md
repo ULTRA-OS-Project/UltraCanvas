@@ -1,3 +1,39 @@
+#### 2026-11-12 *1.107.14*
+- **Proxy settings and the other dialogs no longer stay on top of other
+  programs.** They sat above every application's windows and could not be
+  sent behind them; now they stay above UltraFiler's own window only, as the
+  Settings window always did. The change is in the framework's
+  `DialogConfig`; see the framework changelog.
+
+#### 2026-11-11 *1.107.13*
+- **The window follows the desktop's look.** Light or dark as the desktop
+  is - or as *Look* on UOS-Settings' Appearance page says - in the desktop's
+  font and size, and a change while UltraFiler runs is taken at once. Every
+  surface the window, its dialogs and its tab strips painted in a colour of
+  their own (the tool rows and buttons, the status strip, the folder tree,
+  the computer page, the search field, the New folder split button, the
+  Scan sub folder button, the connection log badge) is a role of the
+  framework theme now (`UltraFilerLook.h`); the file displays, dropdowns,
+  menus and tree follow the theme by themselves, so a dark desktop gives a
+  dark filer throughout. The window's text size is the theme's body size
+  (the desktop's interface font size) rather than a fixed 9 pt. A drive row
+  of the folder tree keeps its chosen background and picks its text colour
+  by it, so it reads in both looks.
+
+#### 2026-11-11 *1.107.12*
+- **The toolbar's dropdowns show their entries whole.** The View, Order by
+  and Video dropdowns had widths sized for the English entries, so a longer
+  translation was cut off - the Video mode read *Automatisch al…* in German.
+  Each now widens to its longest entry where a translation needs it, and
+  keeps its width where the entries fit.
+- **The toolbar's captions show in full, and *Sort* reads *Order by*.** The
+  captions in front of the View, Order by and Video dropdowns had a fixed
+  width, so a longer translation was cut off at every window size - German
+  read *Sortie…*. Each caption now takes the width of its text and shows
+  whole wherever the window has room; only when the bar is too narrow for
+  everything does it shorten, after the search field has given way first.
+  The sort caption is *Order by* in English (*Sortieren nach* in German).
+
 #### 2026-11-11 *1.107.11*
 - **Copying and pasting keeps the files' original dates.** A pasted, dropped
   or duplicated file - and a file moved to another drive - was dated the

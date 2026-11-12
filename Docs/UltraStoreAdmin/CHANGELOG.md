@@ -1,3 +1,43 @@
+#### 2026-11-12 *0.1.13*
+- **The marketplace call speaks PUT.** `Market.h`'s HTTP call (shared with
+  the operator's client, `Apps/UltraStoreOperator`) sends a PUT with a
+  JSON body the way it sends a POST; nothing the merchant backend does
+  changes.
+
+#### 2026-11-12 *0.1.12*
+- `publish` writes the marketplace service's URL (the setting
+  `market.url`) into the catalog as `market_url`, so a store reading a
+  merchant's own catalog can report a problem to the operator too.
+
+#### 2026-11-12 *0.1.11*
+- **The marketplace.** The merchant's side of the operator's marketplace
+  service (`Market.h`; `Server/UltraStoreMarket`): `market submit <app-id>`
+  sends a release to the review, the app's component object signed with
+  this backend's key, every request signed the way the service verifies
+  it; `market notices` and `ack`, `market terms` and `terms accept`,
+  `market standing`, `market submissions`, `withdraw`, `market reports`.
+  The settings `market.url`, `market.merchant_id` and `market.key`. The
+  window's *Marketplace* page does the same, and the operator's
+  unacknowledged notices show as a banner above every page until
+  acknowledged.
+
+#### 2026-11-12 *0.1.10*
+- **`sale sync` records a subscription's renewals.** The payment service
+  names each payment (`reference`: the order for the sale, the order and
+  the payment for a renewal), and the sync records a renewal as a sale of
+  its own with the partner's credit, instead of skipping it as the order
+  already recorded.
+
+#### 2026-11-11 *0.1.9*
+- **Categories from the store's fixed list.** The form offers the store's
+  categories as chips to pick (Music and audio, Video, Graphics and photos,
+  Office, ...) instead of free words typed into a field, and
+  `PutComponent` and `app set <id> categories` refuse a word that is not on
+  the list, naming the list - the store names each category in the buyer's
+  language, which it cannot do for a word it does not know. A component
+  saved before keeps loading; its old words are not offered and a save keeps
+  only the list's.
+
 #### 2026-11-11 *0.1.8*
 - **The join and retired pages in the page frame.** The partner join page
   and the pages a withdrawn code or a closed invitation leave behind wear

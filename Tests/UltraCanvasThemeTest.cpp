@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.14.0 - TakeHostFonts: the host's fonts onto an own theme
 // Version: 1.13.0 - the media elements and the viewers: the players and recorders, the video tile, the slideshow,
 //                   the font viewer and the curve editor
 // Version: 1.12.0 - the badge, card, chip and tag input, collapsible panel, sidebar, busy indicator, auto-complete,
@@ -20,7 +21,7 @@
 // Version: 1.2.0 - the slider's and the switch's element roles
 // Version: 1.1.0 - every FromTheme, the change handlers, elements that
 //                  follow the theme through a container
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
 #include "UltraCanvasHostAppearance.h"
@@ -789,6 +790,33 @@ int main() {
         auto later = std::make_shared<UltraCanvasButton>("later", 0, 0, 80, 24, "Later");
         CHECK(!later->GetFollowTheme() && !Same(later->GetStyle().normalColor, dark.roles.raised), "the default off again: a new element does not follow");
         UltraCanvasTheme::SetCurrent(light);
+    }
+
+    std::printf("the host's fonts onto an own theme (TakeHostFonts)\n");
+    {
+        HostAppearance host = DefaultHostAppearance();
+        host.uiFont.fontFamily = "Noto Sans";
+        host.uiFont.fontSize = 14;
+        host.monoFont.fontFamily = "Fira Code";
+        host.monoFont.fontSize = 13;
+        host.textScale = 1.25;
+        UltraCanvasTheme own = UltraCanvasTheme::Dark();
+        own.name = "My app";
+        const Color accentBefore = own.roles.accent;
+        own.TakeHostFonts(host);
+        CHECK(own.fonts.ui.fontFamily == "Noto Sans" && Near(own.fonts.ui.fontSize, 14, 1e-9)
+              && own.fonts.mono.fontFamily == "Fira Code" && Near(own.fonts.mono.fontSize, 13, 1e-9) && Near(own.fonts.scale, 1.25, 1e-9),
+              "TakeHostFonts: the host's interface and monospace fonts and its scale onto the theme");
+        CHECK(own.name == "My app" && own.dark && Same(own.roles.accent, accentBefore), "the theme's name, flag and colours stay its own");
+        HostAppearance bare = DefaultHostAppearance();
+        bare.uiFont.fontFamily.clear();
+        bare.monoFont.fontFamily.clear();
+        bare.textScale = 0;
+        own.TakeHostFonts(bare);
+        CHECK(own.fonts.ui.fontFamily == "Noto Sans" && own.fonts.mono.fontFamily == "Fira Code" && Near(own.fonts.scale, 1.25, 1e-9),
+              "a host that names no font and no scale changes nothing");
+        const UltraCanvasTheme fromHost = UltraCanvasTheme::FromHost(host);
+        CHECK(fromHost.fonts.ui.fontFamily == "Noto Sans" && Near(fromHost.fonts.scale, 1.25, 1e-9), "FromHost takes them the same way");
     }
 
     std::printf("fonts by role in the readers\n");

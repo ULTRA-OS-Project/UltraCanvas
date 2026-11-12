@@ -45,6 +45,8 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.15.0 - UltraCanvasGlobalShortcut::StartExclusive: the key reaches nothing else
+//                  (Windows: a low-level hook that swallows it - Print Screen past the Snipping Tool)
 // Version: 1.14.0 - CaptureWindowImage (a taskbar's window previews);
 //                   DesktopWindowInfo::appUserModelId (Windows' application
 //                   identity: Store applications' icons and names, grouping)
@@ -556,11 +558,23 @@ namespace UltraCanvas {
         // False when the combination cannot be read, the platform has no
         // global shortcuts, or another program holds it; `error` says which.
         bool Start(const std::string& accelerator, PressedCallback onPressed, std::string* error = nullptr);
+        // The same, and the key reaches nothing else - not even a key the
+        // system keeps for itself: Print Screen opens this program, not
+        // Windows' Snipping Tool, whatever "Use the Print screen key to open
+        // screen capture" says. On Windows a low-level keyboard hook on the
+        // shortcut's thread swallows the press and its release (the exact
+        // modifiers only: Alt+Print stays the system's when "Print" is
+        // taken); on X11 the grab Start makes is exclusive already.
+        bool StartExclusive(const std::string& accelerator, PressedCallback onPressed,
+                            std::string* error = nullptr);
         // Joins the thread, so no callback runs after this returns. Safe twice.
         void Stop();
         bool IsRunning() const { return running.load(); }
 
     private:
+        bool StartWith(const std::string& accelerator, PressedCallback onPressed, std::string* error,
+                       bool exclusive);
+
         std::atomic<bool> running{false};
         std::thread worker;
         PressedCallback callback;

@@ -1,5 +1,6 @@
 // Apps/UltraStoreAdmin/core/Affiliates.cpp
 // The affiliate scheme (Affiliates.h).
+// Version: 0.3.2 - SyncSales records a subscription's renewals under their own reference
 // Version: 0.3.1 - the join and retired pages in the shared frame too
 // Version: 0.3.0 - the landing page in the shared frame with the mark
 // Version: 0.2.0 - RecordSale with a reference; SyncSales
@@ -170,7 +171,11 @@ Result<SyncReport> SyncSales(AdminDatabase& db, const std::string& paymentUrl, c
         if (sales.GetSize() == 0) break;
         for (size_t i = 0; i < sales.GetSize(); ++i) {
             const UltraCanvas::JSONValue& s = sales.At(i);
-            const std::string reference = s.Get("order_id").GetString();
+            // The service names each payment: the order for the sale, the order and
+            // the payment for a subscription's renewal (`reference`); an older
+            // service gave the order alone.
+            std::string reference = s.Get("reference").GetString();
+            if (reference.empty()) reference = s.Get("order_id").GetString();
             const uint64_t seq = static_cast<uint64_t>(std::max<int64_t>(0, s.Get("seq").GetInteger(0)));
             if (!reference.empty() && db.HasSaleReference(reference)) { ++report.skipped; }
             else {

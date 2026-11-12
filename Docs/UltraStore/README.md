@@ -25,7 +25,7 @@ The brief's open questions, answered on 2026-10-24:
 | Translations | Creators supply at least one language; the admin backend translates with the server's local UltraAI into every official language and marks what it translated (`source_language`, `machine_translated`); ULTRA OS apps' own localisation folders get the same. |
 | Signing key | Generated and kept **in the admin backend's database**, the seed sealed with a passphrase (Argon2id, XChaCha20-Poly1305); the public key reaches the store through the repository and the signed catalog: see *Keys*. |
 | UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
-| The services' databases | **PostgreSQL in production, SQLite for tests and development only** (decided 2026-11-10). The payment service and the operator tier's marketplace service run on PostgreSQL; SQLite is what the tests and a developer's machine use, behind the same database layer, and never a production store. The files on a user's or a merchant's own machine (`registry.sqlite`, `admin.sqlite`) are UltraDatabase files, not servers, and stay as they are. |
+| The services' databases | **A database server in production, SQLite for tests and development only** (decided 2026-11-10, the engine 2026-11-11). The marketplace service runs on **MySQL**; the payment service on MySQL or PostgreSQL, the operator's choice - both go through one database layer (`Server/UltraStoreDb`, `ultrastore-db`) that hides the engine, and the tests of both run on all three. SQLite is what the tests and a developer's machine use, and never a production store. The files on a user's or a merchant's own machine (`registry.sqlite`, `admin.sqlite`) are UltraDatabase files, not servers, and stay as they are. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
 What the brief listed as the first catalog's apps, the final name, the
@@ -103,6 +103,7 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
   "trusted_keys": ["0415eff8…fba970e", "9c2b…"],
   "payment_url": "https://store.example",
   "licence_key": "e52d4fca…40c1ab",
+  "market_url": "https://store.example/market",
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -170,10 +171,32 @@ Per app, what the admin backend offers and the catalog carries:
 | Source | `open_source`, `source_url` | shown as a badge with the link |
 | Featured | `featured` | the admin's pick: the store's Discover shows the newest featured app as its hero and the featured apps as *Editor's picks* |
 | Links | `homepage`, `support_url`, `privacy_url` | |
-| Search | `categories`, `tags` | categories from the fixed list the store's sidebar shows; tags free-form |
+| Search | `categories`, `tags` | categories from the store's fixed list (below); tags free-form |
 | Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback; `source_language` names what the creator wrote, `machine_translated` the languages the server's UltraAI added (see *Translations*) |
 | Media | `icon`, `screenshots` | relative to the catalog URL, served from the same place |
 | Codes | `codes[]` (catalog-wide) | the discount and affiliate codes in force: see *Affiliates and codes* |
+
+**Categories** come from one fixed list, so the store can name each in the
+buyer's language; the catalog writes the ids, and the store's browser shows
+them in this order (`StoreCategories()`, `Catalog.h`; the names are
+`CategoryName()`, `StoreQuery.h`):
+
+| Id | Name (English) | | Id | Name (English) |
+|---|---|---|---|---|
+| `audio` | Music and audio | | `education` | Education |
+| `video` | Video | | `science` | Science |
+| `graphics` | Graphics and photos | | `finance` | Finance |
+| `office` | Office | | `security` | Security |
+| `communication` | Communication | | `games` | Games |
+| `internet` | Internet | | `system` | System |
+| `development` | Developer tools | | `utilities` | Utilities |
+
+The store reads an id in any case and trims it, so a catalog from before
+the list (`"Office"`) still files its apps; an id it does not know - a
+later list's - is kept and not shown, so an older store reads a newer
+catalog. The admin backend writes only the list's: its form offers the
+list, and `PutComponent` and `app set <id> categories` refuse any other
+word (`CheckCategories`).
 
 Pricing is **shown** by the store from 0.1.0 on; the purchase itself is
 milestone 7, with its own design (*Payment*), and until then the store
@@ -257,7 +280,35 @@ a *Receipt* button that opens the receipt in the browser, as a page in
 the look of the service's other pages (the service's README, *The
 pages*).
 `ultrastore buy <catalog.json> <app-id> [--code <CODE>]` does the same from
-the command line, and `ultrastore licences` lists what was bought.
+the command line, and `ultrastore licences` lists what was bought (with a
+subscription's day; `--sync <catalog.json>` asks the service about each
+first).
+
+**Subscriptions.** An app priced `monthly` or `yearly` is bought the same
+way, through Quick Checkout's recurring billing: the first payment is the
+price after the code, then the list price every month or year, until the
+buyer cancels. The licence carries the day it is valid until
+(`valid_until`: the paid period plus the service's grace days, during
+which Skrill retries a failed renewal), each renewal re-issues it with a
+later day, and the store takes the new token when it refreshes the
+catalog (the engine's `SyncLicences`, after every catalog fetch; `ultrastore
+licences --sync <catalog.json>` by hand). An app checks the day after
+verifying its file, `Licence::ValidOn` with today's date. `ultrastore
+unsubscribe <catalog.json> <app-id>` ends a subscription (the service
+tells Skrill); the licence lasts until the paid period ends. The window's
+side of a subscription - the day on the details page, a *Cancel
+subscription* button - is still to come.
+
+**Refunds and chargebacks.** The operator refunds a payment through the
+service (`POST /v1/orders/{order}/refund`, the admin token; Skrill's
+refund API), whole or in part; a chargeback reaches the service from
+Skrill. Either takes the licence back when everything paid is reversed: the
+service no longer hands the licence out or signs the app's downloads, and
+the store, at its next catalog refresh, removes the licence from the
+registry and the licence file from the app's folder (`SyncLicences`).
+The reversals are a feed of their own for the admin backend
+(`GET /v1/reversals`); taking the partners' credits back in the ledger is
+to come. The service's README, *Subscriptions, refunds and chargebacks*.
 
 A paid app's **trial** installs the same package, so an app with a trial
 keeps its package public (the licence gates what the trial lacks) and only
@@ -268,8 +319,10 @@ an app without one puts its package under `restricted/` (`package add
 On the admin's side, `sale sync` pulls the paid orders from the service
 (`GET /v1/sales?since=`, the `payment.token` setting or
 `ULTRASTORE_PAY_ADMIN_TOKEN` as the bearer token) and records each once in
-the ledger with the partners' credits; the sequence it reached is kept in
-`payment.sales_seq`, so a repeat records nothing twice.
+the ledger with the partners' credits - a subscription's renewal as a sale
+of its own, under the service's `reference` (`<order>/<payment>`); the
+sequence it reached is kept in `payment.sales_seq`, so a repeat records
+nothing twice.
 
 ### Translations
 
@@ -282,8 +335,14 @@ the original a click away; a translation the creator later supplies replaces
 the machine's and leaves the list. For ULTRA OS apps the same service reads
 the app's own localisation folder, so the app's strings get the same
 treatment as its description. The store's own interface strings are not in
-the catalog; they follow the framework's translation facility when it
-exists (none does today) and a local table in the app until then.
+the catalog: they go through the framework's `Tr` (UltraLocalisation), from
+`media/locale/<lang>/UltraStore.json` over the standard set, in the
+language the desktop or `Language.conf` picks - every page, button, fact,
+price, date (the language's month names and order), size unit and the
+messages of the core (a refused install, a catalog that does not verify, a
+failed download) the window shows. The command line (`ultrastore list`,
+`install` ...) stays English: its output is read by scripts and logs, and it
+runs before any language is loaded.
 
 ### Affiliates and codes
 
@@ -634,7 +693,10 @@ ultrastore remove <app-id> [--root <dir>]
 ultrastore installed [--root <dir>]
 ultrastore gc [--root <dir>]
 ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]   through the payment service
-ultrastore licences [--root <dir>]                        the apps bought here
+ultrastore licences [--sync <catalog.json>] [--root <dir>]  the apps bought here; --sync asks the payment service about each
+ultrastore unsubscribe <catalog.json> <app-id> [--root <dir>]   ends a subscription
+ultrastore report <catalog.json> <app-id> <kind> <text>   a problem with an app to the catalog's marketplace service
+ultrastore reports <catalog.json>                         what became of the reports sent from this machine
 ultrastore licence <app-id> [--root <dir>] [--key <hex>]    one purchase's terms; with the key, the licence file verified
 ultrastore code [<CODE> | clear] [--cache <dir>]          the code in force
 ultrastore --version | --help
@@ -677,7 +739,7 @@ settles where its data lives, so the pages are not drawn against nothing.
 
 | Question | Decision |
 |---|---|
-| Where do the operator's records live? | **In a marketplace service, `Server/UltraStoreMarket`, beside the payment service**: one HTTPS service the operator runs, its own database on **PostgreSQL in production, SQLite for tests and development only** (decided 2026-11-10; the payment service works that way, with one database layer hiding the two engines). It holds the merchants, the submissions, the reports, the notices and the audit log, and nothing a merchant's `admin.sqlite` already holds. The operator's window (the `Super*` pages) is a client of this service, as the merchant's window is a client of `UltraStoreAdminCore`: the window and a command line never disagree. |
+| Where do the operator's records live? | **In a marketplace service, `Server/UltraStoreMarket`, beside the payment service** (built 2026-11-11, its own README): one HTTPS service the operator runs, its own database on **MySQL in production, SQLite for tests and development only** (decided 2026-11-11; the payment service shares the database layer, `Server/UltraStoreDb`, which hides the engine). It holds the merchants, the submissions, the reports, the notices and the audit log, and nothing a merchant's `admin.sqlite` already holds. The operator's window (the `Super*` pages) is a client of this service, as the merchant's window is a client of `UltraStoreAdminCore`: the window and a command line never disagree. |
 | Who generates and signs the catalog? | **The operator, from the approved submissions.** The public catalog stays one signed `catalog.json` with the store's `trusted_keys`, generated by the service's publish from what the review released, signed with the operator's key (*Keys*). A merchant's `UltraStoreAdmin` keeps `admin.sqlite` as its working copy and its own `publish` for a private or test catalog, and gains `submit`: it sends a release - the component object `PutComponent` reads back, the packages into the operator's package store under their hash, the media - signed with the merchant's key, so the submission proves who sent it. The merchant's key is the one *Keys* already describes; it signs submissions now, not the public catalog. |
 | What is a submission? | **A row the review works on**: the signed component object as sent, the package hashes, the automatic checks' results (signature, SHA-256, the scans, the entry found, the smoke run, the listing's pictures and texts, the merchant's standing), the reviewer's checklist, the decision with its message, and the catalog sequence that released it. A resubmission is a new row that names the one it answers, so the review picks up where it left off. Nothing is edited in place: a decision is appended. |
 | Where do reports come from, and who sees the reporter? | **Three doors into one table**: the store's app page (`POST /v1/reports`, the licence or the install id as the reporter when there is one, else anonymous), the merchant backend (a merchant reporting another's app or a problem with their own), and the operator entering one from mail. A report names its target (an app, a release, a merchant), its kind, the text and attachments, and gets a state, an assignee and the operator's findings. **The reporter is visible to the operator only**: the merchant sees the report, never who filed it, and the reporter learns the outcome in one line. |
@@ -692,6 +754,34 @@ a merchant's signing seed, and the payment credentials (the payment service's).
 What the operator holds and the merchant can always read back through the
 service: their own submissions with every decision, every notice sent to
 them, every report about them with the reporter removed, and their standing.
+
+**Built so far** (`Server/UltraStoreMarket`, its README): the service with
+all of the above - the merchants registered by the operator with their
+keys and signing every request (`Authorization: Merchant <id>:<timestamp>:
+<signature>`), the submissions with the checks the service can make at
+once (the signature, the standing, the packages' hashes; the scans and the
+smoke run marked *not run* until the review pipeline exists) and the
+decisions appended, the three doors for reports with the reporter kept
+from the merchant and an outcome line for the reporter, the notices and
+the strikes, the enforcement policy as a settings record, the suspensions
+by hand and by the policy, the terms versions and acceptances with the
+*paused* standing, and the hash-chained audit log with its verification;
+`GET /v1/released` is what the catalog is generated from. The merchant
+backend's side (its README, *The command line*): `market submit`, the
+notices banner, the terms accepted from the *Marketplace* page, the
+standing and the reports. The store's door for reports: the app page's *Report a problem* (the
+kind, the text; the licence as the reporter when the app was bought here)
+when the catalog names the service (`market_url`), the outcome line on
+the page once the operator answers, `ultrastore report` and `reports`
+from the command line. The publish: `POST /v1/publish` generates and
+signs the catalog from the released submissions (the service's README,
+*The publish*). The operator's window and command line
+(`Apps/UltraStoreOperator`, [its README](../UltraStoreOperator/README.md)):
+the `Super*` pages on the service - the merchants and their files, the
+review with its decisions and the publish, the reports with the reporter
+the operator alone sees, the notices, the terms and the policy, the audit
+log verified. Still to come: the packages uploaded with a submission, the
+review pipeline behind the checks marked *not run*.
 
 ## Milestones
 
@@ -720,10 +810,19 @@ them, every report about them with the reporter removed, and their standing.
    After the purchase: the update period in the licence and held to by the
    store (*Buy update*), the licence file for the app (`FindLicenceFile`,
    `ReadLicenceFile`, `ultrastore licence`), the open order resumed at
-   the next start. Next: a run against the Skrill sandbox once the
-   credentials are in the environment.
-8. **The operator tier** (*The operator tier*, later): the marketplace
-   service `Server/UltraStoreMarket` with merchants, submissions, reports,
-   notices, terms and the audit log; the merchant backend's `submit` and
-   its notices banner; the operator's window on the service; the report
-   form on the store's app page.
+   the next start. Subscriptions (monthly and yearly apps through
+   recurring billing, the licence valid until a day, renewed and synced),
+   refunds through Skrill's API and chargebacks, both taking the licence
+   back; `ultrastore licences --sync`, `unsubscribe`. Next: a run against
+   the Skrill sandbox once the credentials are in the environment; the
+   window's side of a subscription; the reversals in the admin's ledger.
+8. **The operator tier** (*The operator tier*): the marketplace service
+   `Server/UltraStoreMarket` with merchants, submissions, reports,
+   notices, terms, the enforcement policy, the suspensions and the audit
+   log, on MySQL through the shared database layer `Server/UltraStoreDb`
+   (built; *Built so far* in that section); the merchant backend's
+   `submit` and its notices banner; the report form on the store's app
+   page; the catalog published from the released submissions; the
+   operator's window and command line (`Apps/UltraStoreOperator`). Next:
+   the packages uploaded with a submission into the operator's package
+   store; the review pipeline behind the checks marked *not run*.

@@ -4797,6 +4797,20 @@ add_test(NAME ButtonGrowToFitTest COMMAND ButtonGrowToFitTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonGrowToFitTest")
 
+message(STATUS "  Building DropdownFitWidthTest...")
+add_executable(DropdownFitWidthTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DropdownFitWidthTest.cpp
+)
+target_include_directories(DropdownFitWidthTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(DropdownFitWidthTest PRIVATE cxx_std_20)
+target_link_libraries(DropdownFitWidthTest PRIVATE UltraCanvas)
+set_target_properties(DropdownFitWidthTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DropdownFitWidthTest COMMAND DropdownFitWidthTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DropdownFitWidthTest")
+
 message(STATUS "  Building SpreadsheetSortMenuTest...")
 add_executable(SpreadsheetSortMenuTest
     ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetSortMenuTest.cpp
@@ -5562,6 +5576,28 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DialogCloseAllTest")
 else()
     message(STATUS "  DialogCloseAllTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DIALOG STACKING TEST =====
+# A dialog is kept above its own window (WM_TRANSIENT_FOR), not above every
+# application's (_NET_WM_STATE_ABOVE, which DialogConfig used to ask for).
+# The config checks run anywhere; the window checks skip without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building DialogStackingTest...")
+    add_executable(DialogStackingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DialogStackingTest.cpp
+    )
+    target_include_directories(DialogStackingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DialogStackingTest PRIVATE cxx_std_20)
+    target_link_libraries(DialogStackingTest PRIVATE UltraCanvas)
+    set_target_properties(DialogStackingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DialogStackingTest COMMAND DialogStackingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DialogStackingTest")
+else()
+    message(STATUS "  DialogStackingTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
 # ===== UNDECODABLE IMAGE TEST =====

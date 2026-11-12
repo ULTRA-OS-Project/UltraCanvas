@@ -1,66 +1,91 @@
-<svg width="100%" viewBox="0 0 680 612" role="img" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
-<title>FileLoader module overview</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title>FileLoader module overview (16:9)</title>
 <desc>FileLoader is a single C++ API for loading, saving, and converting files across image, audio, video, document, 3D model, and archive formats, with built-in security scanning, intelligent caching, and an extensible plugin architecture.</desc>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
 <style>
-.t{font-size:14px;font-weight:400}
-.ts{font-size:12px;font-weight:400}
-.th{font-size:14px;font-weight:500}
-.c-gray rect{fill:#F1EFE8;stroke:#5F5E5A}
-.c-gray text{fill:#2C2C2A}
-.c-purple rect{fill:#EEEDFE;stroke:#534AB7}
-.c-purple text{fill:#26215C}
-.c-teal rect{fill:#E1F5EE;stroke:#0F6E56}
-.c-teal text{fill:#04342C}
-.c-coral rect{fill:#FAECE7;stroke:#993C1D}
-.c-coral text{fill:#4A1B0C}
+.th{font-size:15px;font-weight:500}
+.ts{font-size:13px;font-weight:400}
+.blue-fill{fill:#E6F1FB;stroke:#185FA5}
+.blue-t{fill:#0C447C}.blue-s{fill:#185FA5}
+.teal-fill{fill:#E1F5EE;stroke:#0F6E56}
+.teal-sub{fill:#9FE1CB;stroke:#0F6E56}
+.teal-t{fill:#085041}.teal-s{fill:#0F6E56}
+.coral-fill{fill:#FAECE7;stroke:#993C1D}
+.coral-sub{fill:#F3CFC2;stroke:#993C1D}
+.coral-t{fill:#712B13}.coral-s{fill:#993C1D}
+.amber-fill{fill:#FAEEDA;stroke:#854F0B}
+.amber-sub{fill:#F2D9A6;stroke:#854F0B}
+.amber-t{fill:#633806}.amber-s{fill:#854F0B}
+.purple-fill{fill:#EEEDFE;stroke:#534AB7}
+.purple-sub{fill:#CECBF6;stroke:#534AB7}
+.purple-t{fill:#3C3489}.purple-s{fill:#534AB7}
+.pchip{font-size:13px;font-weight:500}
 .arr{stroke:#73726c;stroke-width:1.5;fill:none}
 </style>
 </defs>
 
-<g class="c-gray">
-<rect x="40" y="40" width="600" height="48" rx="8" stroke-width="0.5"/>
-<text class="th" x="340" y="60" text-anchor="middle" dominant-baseline="central">FileLoader</text>
-<text class="ts" x="340" y="76" text-anchor="middle" dominant-baseline="central">One unified C++ API for all file operations</text>
-</g>
-<line x1="340" y1="88" x2="340" y2="112" class="arr" marker-end="url(#arrow)"/>
+<!-- Entry point (full width) -->
+<rect class="blue-fill" x="40" y="30" width="1200" height="58" rx="10" stroke-width="0.5"/>
+<text class="th blue-t" x="640" y="49" text-anchor="middle" dominant-baseline="central">FileLoader</text>
+<text class="ts blue-s" x="640" y="69" text-anchor="middle" dominant-baseline="central">One unified C++ API for all file operations</text>
 
-<g class="c-purple">
-<rect x="40" y="112" width="600" height="154" rx="12" stroke-width="0.5"/>
-</g>
-<text class="th" x="56" y="134" dominant-baseline="central" fill="#26215C">Core operations</text>
-<text class="ts" x="624" y="134" text-anchor="end" dominant-baseline="central" fill="#3C3489">Load · save · convert</text>
+<line x1="640" y1="88" x2="640" y2="112" class="arr" marker-end="url(#arrow)"/>
 
-<g class="c-purple"><rect x="56" y="150" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="125" y="165" text-anchor="middle" dominant-baseline="central">LoadFile</text><text class="ts" x="125" y="181" text-anchor="middle" dominant-baseline="central">Auto-detect decode</text></g>
-<g class="c-purple"><rect x="204" y="150" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="273" y="165" text-anchor="middle" dominant-baseline="central">ConvertFile</text><text class="ts" x="273" y="181" text-anchor="middle" dominant-baseline="central">Format to format</text></g>
-<g class="c-purple"><rect x="352" y="150" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="421" y="165" text-anchor="middle" dominant-baseline="central">LoadMultipleFiles</text><text class="ts" x="421" y="181" text-anchor="middle" dominant-baseline="central">Batch processing</text></g>
-<g class="c-purple"><rect x="500" y="150" width="124" height="44" rx="8" stroke-width="0.5"/><text class="th" x="562" y="165" text-anchor="middle" dominant-baseline="central">RegisterPlugin</text><text class="ts" x="562" y="181" text-anchor="middle" dominant-baseline="central">Custom formats</text></g>
+<!-- Core operations (full width) -->
+<rect class="purple-fill" x="40" y="114" width="1200" height="194" rx="10" stroke-width="0.5"/>
+<text class="th purple-t" x="62" y="137" dominant-baseline="central">Core operations<tspan class="ts purple-s" dx="14">Load · save · convert</tspan></text>
+<rect class="purple-sub" x="60" y="156" width="278" height="60" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="199" y="176" text-anchor="middle" dominant-baseline="central">LoadFile</text>
+<text class="ts purple-s" x="199" y="196" text-anchor="middle" dominant-baseline="central">Auto-detect decode</text>
+<rect class="purple-sub" x="354" y="156" width="278" height="60" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="493" y="176" text-anchor="middle" dominant-baseline="central">ConvertFile</text>
+<text class="ts purple-s" x="493" y="196" text-anchor="middle" dominant-baseline="central">Format to format</text>
+<rect class="purple-sub" x="648" y="156" width="278" height="60" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="787" y="176" text-anchor="middle" dominant-baseline="central">LoadMultipleFiles</text>
+<text class="ts purple-s" x="787" y="196" text-anchor="middle" dominant-baseline="central">Batch processing</text>
+<rect class="purple-sub" x="942" y="156" width="278" height="60" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="1081" y="176" text-anchor="middle" dominant-baseline="central">RegisterPlugin</text>
+<text class="ts purple-s" x="1081" y="196" text-anchor="middle" dominant-baseline="central">Custom formats</text>
 
-<g class="c-purple"><rect x="56" y="204" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="125" y="219" text-anchor="middle" dominant-baseline="central">ScanFileForThreats</text><text class="ts" x="125" y="235" text-anchor="middle" dominant-baseline="central">Malware check</text></g>
-<g class="c-purple"><rect x="204" y="204" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="273" y="219" text-anchor="middle" dominant-baseline="central">SetCacheSize</text><text class="ts" x="273" y="235" text-anchor="middle" dominant-baseline="central">Memory tuning</text></g>
-<g class="c-purple"><rect x="352" y="204" width="272" height="44" rx="8" stroke-width="0.5" stroke-dasharray="4 3"/><text class="ts" x="488" y="226" text-anchor="middle" dominant-baseline="central" fill="#3C3489">Init · Shutdown lifecycle management</text></g>
+<rect class="purple-sub" x="60" y="228" width="278" height="60" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="199" y="248" text-anchor="middle" dominant-baseline="central">ScanFileForThreats</text>
+<text class="ts purple-s" x="199" y="268" text-anchor="middle" dominant-baseline="central">Malware check</text>
+<rect class="purple-sub" x="354" y="228" width="278" height="60" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="493" y="248" text-anchor="middle" dominant-baseline="central">SetCacheSize</text>
+<text class="ts purple-s" x="493" y="268" text-anchor="middle" dominant-baseline="central">Memory tuning</text>
+<rect class="purple-sub" x="648" y="228" width="572" height="60" rx="6" stroke-width="0.5" stroke-dasharray="4 3"/>
+<text class="ts purple-s" x="934" y="258" text-anchor="middle" dominant-baseline="central">Init · Shutdown lifecycle management</text>
 
-<line x1="340" y1="266" x2="340" y2="290" class="arr" marker-end="url(#arrow)"/>
+<line x1="640" y1="308" x2="640" y2="336" class="arr" marker-end="url(#arrow)"/>
 
-<g class="c-teal">
-<rect x="40" y="290" width="600" height="110" rx="12" stroke-width="0.5"/>
-<text class="th" x="56" y="310" dominant-baseline="central" fill="#04342C">Supported file format families</text>
-<text class="ts" x="624" y="310" text-anchor="end" dominant-baseline="central" fill="#0F6E56">Extensible via plugins</text>
-</g>
-<g class="c-teal"><rect x="56" y="326" width="190" height="30" rx="6" stroke-width="0.5"/><text class="ts" x="151" y="341" text-anchor="middle" dominant-baseline="central">Images · PNG JPEG WebP HEIC</text></g>
-<g class="c-teal"><rect x="258" y="326" width="190" height="30" rx="6" stroke-width="0.5"/><text class="ts" x="353" y="341" text-anchor="middle" dominant-baseline="central">Audio · MP3 FLAC WAV OGG ..</text></g>
-<g class="c-teal"><rect x="460" y="326" width="164" height="30" rx="6" stroke-width="0.5"/><text class="ts" x="542" y="341" text-anchor="middle" dominant-baseline="central">Video · MP4 MKV WebM ..</text></g>
-<g class="c-teal"><rect x="56" y="362" width="190" height="30" rx="6" stroke-width="0.5"/><text class="ts" x="151" y="377" text-anchor="middle" dominant-baseline="central">Documents · PDF DOC ODT.. </text></g>
-<g class="c-teal"><rect x="258" y="362" width="190" height="30" rx="6" stroke-width="0.5"/><text class="ts" x="353" y="377" text-anchor="middle" dominant-baseline="central">3D · OBJ FBX GLTF STL ..</text></g>
-<g class="c-teal"><rect x="460" y="362" width="164" height="30" rx="6" stroke-width="0.5"/><text class="ts" x="542" y="377" text-anchor="middle" dominant-baseline="central">Archives · ZIP RAR 7Z TAR</text></g>
+<!-- Format families (full width) -->
+<rect class="teal-fill" x="40" y="338" width="1200" height="156" rx="10" stroke-width="0.5"/>
+<text class="th teal-t" x="62" y="361" dominant-baseline="central">Supported file format families<tspan class="ts teal-s" dx="14">Extensible via plugins</tspan></text>
+<rect class="teal-sub" x="60" y="380" width="376" height="42" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="248" y="401" text-anchor="middle" dominant-baseline="central">Images · PNG JPEG WebP HEIC</text>
+<rect class="teal-sub" x="452" y="380" width="376" height="42" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="640" y="401" text-anchor="middle" dominant-baseline="central">Audio · MP3 FLAC WAV OGG ..</text>
+<rect class="teal-sub" x="844" y="380" width="376" height="42" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="1032" y="401" text-anchor="middle" dominant-baseline="central">Video · MP4 MKV WebM ..</text>
+<rect class="teal-sub" x="60" y="434" width="376" height="42" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="248" y="455" text-anchor="middle" dominant-baseline="central">Documents · PDF DOC ODT..</text>
+<rect class="teal-sub" x="452" y="434" width="376" height="42" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="640" y="455" text-anchor="middle" dominant-baseline="central">3D · OBJ FBX GLTF STL ..</text>
+<rect class="teal-sub" x="844" y="434" width="376" height="42" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="1032" y="455" text-anchor="middle" dominant-baseline="central">Archives · ZIP RAR 7Z TAR</text>
 
-<line x1="220" y1="400" x2="220" y2="440" class="arr" marker-end="url(#arrow)"/>
-<line x1="460" y1="400" x2="460" y2="440" class="arr" marker-end="url(#arrow)"/>
-<text class="ts" x="340" y="420" text-anchor="middle" dominant-baseline="central" fill="#5F5E5A">built-in</text>
+<line x1="335" y1="494" x2="335" y2="538" class="arr" marker-end="url(#arrow)"/>
+<line x1="945" y1="494" x2="945" y2="538" class="arr" marker-end="url(#arrow)"/>
+<text class="ts" x="640" y="516" text-anchor="middle" dominant-baseline="central" fill="#5F5E5A">built-in</text>
 
-<g class="c-coral"><rect x="40" y="440" width="290" height="56" rx="12" stroke-width="0.5"/><text class="th" x="185" y="460" text-anchor="middle" dominant-baseline="central">Security scanner</text><text class="ts" x="185" y="478" text-anchor="middle" dominant-baseline="central">Automatic malware · virus detection</text></g>
-<g class="c-coral"><rect x="350" y="440" width="290" height="56" rx="12" stroke-width="0.5"/><text class="th" x="495" y="460" text-anchor="middle" dominant-baseline="central">Intelligent cache</text><text class="ts" x="495" y="478" text-anchor="middle" dominant-baseline="central">Smart memory · resource management</text></g>
+<!-- Built-in services -->
+<rect class="coral-fill" x="40" y="540" width="590" height="80" rx="10" stroke-width="0.5"/>
+<text class="th coral-t" x="335" y="569" text-anchor="middle" dominant-baseline="central">Security scanner</text>
+<text class="ts coral-s" x="335" y="591" text-anchor="middle" dominant-baseline="central">Automatic malware · virus detection</text>
+<rect class="coral-fill" x="650" y="540" width="590" height="80" rx="10" stroke-width="0.5"/>
+<text class="th coral-t" x="945" y="569" text-anchor="middle" dominant-baseline="central">Intelligent cache</text>
+<text class="ts coral-s" x="945" y="591" text-anchor="middle" dominant-baseline="central">Smart memory · resource management</text>
 
-<text class="ts" x="340" y="540" text-anchor="middle" dominant-baseline="central" fill="#5F5E5A">Cross-platform · Windows · Linux · macOS — part of the UltraCanvas framework</text>
+<text class="ts" x="640" y="664" text-anchor="middle" dominant-baseline="central" fill="#5F5E5A">Cross-platform · Windows · Linux · macOS — part of the UltraCanvas framework</text>
 </svg>

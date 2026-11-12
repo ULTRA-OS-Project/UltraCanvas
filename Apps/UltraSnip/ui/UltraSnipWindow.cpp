@@ -1,5 +1,8 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.7.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
+// Version: 0.7.0 - resident (--background, started by UltraDesktop): a close hides the window
+// Version: 0.6.0 - the Print Screen key starts a snip, taken from the system (StartExclusive)
 // Version: 0.5.1 - the Start button as wide as its measured icon and text
 // Version: 0.5.0 - opens at the top centre of the screen over the screen already dimmed
 //                  (Arm); the delay a segmented choice like the shape and the kind;
@@ -40,6 +43,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <iostream>
 #include <utility>
 #include <vector>
 
@@ -94,6 +98,7 @@ int IndexOf(const int* values, size_t count, int value) {
 UltraSnipWindow::UltraSnipWindow(UltraCanvasApplication& app) : app_(app) {}
 
 UltraSnipWindow::~UltraSnipWindow() {
+    printKey_.Stop();   // no press reaches a window being taken down
     UltraSnipSettingsDialog::Shutdown();
     if (delayTimer_) app_.StopTimer(delayTimer_);
     if (recordingTimer_) app_.StopTimer(recordingTimer_);
@@ -138,6 +143,12 @@ bool UltraSnipWindow::Create() {
         Disarm();
         if (recorder_ && recorder_->IsRecording()) StopRecording();
         settings_.Save();
+        if (resident_) {
+            // Started by the desktop for the session: the window goes, UltraSnip
+            // and the Print Screen key stay
+            window_->Hide();
+            return false;
+        }
         app_.RequestExit();
         return true;
     };
@@ -151,7 +162,7 @@ std::shared_ptr<UltraCanvasSegmentedControl> MakeIconChoice(const std::string& i
                                                             const std::vector<std::pair<std::string, std::string>>& segments) {
     auto control = CreateSegmentedControl(id, 0, 0, static_cast<long>(segments.size()) * kChoiceWidth, kControlHeight);
     SegmentedControlStyle look = control->GetStyle();
-    look.fontSize = SettingsPageKit::kTextFontSize;
+    look.fontSize = SettingsPageKit::TextFontSize();
     look.iconSize = 16;
     look.iconAsMask = true;
     look.paddingHorizontal = 6;
@@ -217,7 +228,7 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     for (int seconds : kDelays) delayItems.push_back(TrF("{0} s", seconds));
     delays_ = CreateSegmentedControl("snip.delay", 0, 0, 0, kControlHeight);
     SegmentedControlStyle delayLook = delays_->GetStyle();
-    delayLook.fontSize = SettingsPageKit::kTextFontSize;
+    delayLook.fontSize = SettingsPageKit::TextFontSize();
     delayLook.paddingHorizontal = 6;
     delayLook.paddingVertical = 4;
     delayLook.cornerRadius = 4.0f;
@@ -279,7 +290,7 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     // lines in any language; the saved file's whole path is the tooltip
     status_ = CreateLabel("snip.status", "");
     status_->SetTextColor(kStatusText);
-    status_->SetFontSize(SettingsPageKit::kNoteFontSize);
+    status_->SetFontSize(SettingsPageKit::NoteFontSize());
     status_->SetWrap(TextWrap::WrapWord);
     status_->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     status_->size.height = CSSLayout::Dimension::Px(kBarHeight);
@@ -339,6 +350,34 @@ void UltraSnipWindow::ApplySettingsToControls() {
     if (modes_) modes_->SetSelectedIndex(settings_.mode == SnipMode::Window ? 1 : settings_.mode == SnipMode::FullScreen ? 2 : 0);
     if (kinds_) kinds_->SetSelectedIndex(settings_.kind == SnipKind::Video ? 1 : 0);
     if (delays_) delays_->SetSelectedIndex(IndexOf(kDelays, 4, settings_.delaySeconds));
+    ApplyPrintKey();
+}
+
+// ===== THE PRINT SCREEN KEY =====
+// Taken from the system while UltraSnip runs (StartExclusive: on Windows a
+// low-level hook swallows it, so the Snipping Tool does not open as well).
+// Without a way to take it - another program holds it, a platform with no
+// global shortcuts - the key stays the system's, and UltraSnip says so only
+// in its log: it is a convenience, not something to stop for.
+void UltraSnipWindow::ApplyPrintKey() {
+    if (!settings_.takePrintKey) {
+        printKey_.Stop();
+        return;
+    }
+    if (printKey_.IsRunning()) return;
+    std::string error;
+    const bool taken = printKey_.StartExclusive("Print", [this]() {
+        app_.PostToUIThread([this]() { OnPrintKey(); });   // the shortcut's thread
+    }, &error);
+    if (!taken) std::cerr << "UltraSnip: the Print Screen key stays the system's: " << error << std::endl;
+}
+
+// A snip as Start takes it, with the shape, kind and delay on the bar. One
+// already under way - the screen dimmed for a choice, the delay running, a
+// recording - is left to finish.
+void UltraSnipWindow::OnPrintKey() {
+    if (armed_ || capturing_ || (recorder_ && recorder_->IsRecording())) return;
+    StartCapture(RequestFromControls());
 }
 
 void UltraSnipWindow::OpenSettings() {
@@ -363,6 +402,11 @@ void UltraSnipWindow::Show() {
 }
 
 void UltraSnipWindow::Present(const SnipRequest& request) {
+    // The desktop starting it in the background while it runs: stay as it is
+    if (request.background) {
+        resident_ = true;
+        return;
+    }
     if (request.startAtOnce) {
         StartCapture(request);
         return;

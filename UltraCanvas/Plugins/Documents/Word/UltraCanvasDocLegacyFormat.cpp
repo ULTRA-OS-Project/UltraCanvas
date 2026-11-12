@@ -29,7 +29,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -1024,6 +1026,36 @@ bool IsMonospaceFont(const std::string& family) {
 // the Data stream at a PICF header followed by OfficeArt records; the image
 // itself is a BLIP record among them.
 
+// A PNG or JPEG BLIP record at data[at] (its 8-byte header first), ending
+// by `end`: the picture's bytes. Anything else, or a damaged record, is not.
+bool ReadBlipRecord(const std::vector<uint8_t>& data, size_t at, size_t end,
+                    std::vector<uint8_t>& image, std::string& mimeType) {
+    if (at + 8 > end || end > data.size()) return false;
+    const uint16_t verInstance = ReadU16(data, at);
+    const uint16_t type = ReadU16(data, at + 2);
+    const uint32_t length = ReadU32(data, at + 4);
+    if ((verInstance & 0x0F) != 0 || at + 8 + length > end) return false;
+    const uint16_t instance = verInstance >> 4;
+    size_t header = 0;
+    if (type == 0xF01E) {                                  // PNG
+        header = (instance == 0x6E1) ? 33 : 17;
+        mimeType = "image/png";
+    } else if (type == 0xF01D || type == 0xF02A) {         // JPEG
+        header = (instance == 0x46B || instance == 0x6E3) ? 33 : 17;
+        mimeType = "image/jpeg";
+    } else {
+        return false;
+    }
+    if (header >= length) return false;
+    image.assign(data.begin() + static_cast<std::ptrdiff_t>(at + 8 + header),
+                 data.begin() + static_cast<std::ptrdiff_t>(at + 8 + length));
+    const bool png = image.size() > 4 && image[0] == 0x89 && image[1] == 'P';
+    const bool jpeg = image.size() > 3 && image[0] == 0xFF && image[1] == 0xD8;
+    if ((mimeType == "image/png" && png) || (mimeType == "image/jpeg" && jpeg)) return true;
+    image.clear();
+    return false;
+}
+
 bool ExtractPicture(const std::vector<uint8_t>& data, int32_t location, std::vector<uint8_t>& image,
                     std::string& mimeType, float& widthPt, float& heightPt) {
     if (location < 0 || static_cast<size_t>(location) + 0x44 > data.size()) return false;
@@ -1041,28 +1073,7 @@ bool ExtractPicture(const std::vector<uint8_t>& data, int32_t location, std::vec
     // and DIBs are not decoded.
     const size_t end = pic + total;
     for (size_t at = pic + headerSize; at + 8 <= end; ++at) {
-        const uint16_t verInstance = ReadU16(data, at);
-        const uint16_t type = ReadU16(data, at + 2);
-        const uint32_t length = ReadU32(data, at + 4);
-        if ((verInstance & 0x0F) != 0 || at + 8 + length > end) continue;
-        const uint16_t instance = verInstance >> 4;
-        size_t header = 0;
-        if (type == 0xF01E) {                                  // PNG
-            header = (instance == 0x6E1) ? 33 : 17;
-            mimeType = "image/png";
-        } else if (type == 0xF01D || type == 0xF02A) {         // JPEG
-            header = (instance == 0x46B || instance == 0x6E3) ? 33 : 17;
-            mimeType = "image/jpeg";
-        } else {
-            continue;
-        }
-        if (header >= length) continue;
-        image.assign(data.begin() + static_cast<std::ptrdiff_t>(at + 8 + header),
-                     data.begin() + static_cast<std::ptrdiff_t>(at + 8 + length));
-        const bool png = image.size() > 4 && image[0] == 0x89 && image[1] == 'P';
-        const bool jpeg = image.size() > 3 && image[0] == 0xFF && image[1] == 0xD8;
-        if ((mimeType == "image/png" && png) || (mimeType == "image/jpeg" && jpeg)) return true;
-        image.clear();
+        if (ReadBlipRecord(data, at, end, image, mimeType)) return true;
     }
     return false;
 }
@@ -1095,11 +1106,20 @@ public:
         const uint32_t ccpText = ReadU32(word_, lw + 2 + 3 * 4);
         const uint32_t ccpFtn = ReadU32(word_, lw + 2 + 4 * 4);
         const uint32_t ccpHdd = ReadU32(word_, lw + 2 + 5 * 4);
+        const uint32_t ccpAtn = cslw > 7 ? ReadU32(word_, lw + 2 + 7 * 4) : 0;
+        const uint32_t ccpEdn = cslw > 8 ? ReadU32(word_, lw + 2 + 8 * 4) : 0;
+        const uint32_t ccpTxbx = cslw > 9 ? ReadU32(word_, lw + 2 + 9 * 4) : 0;
+        const uint32_t ccpHdrTxbx = cslw > 10 ? ReadU32(word_, lw + 2 + 10 * 4) : 0;
 
-        // The main text, then the footnotes, then the header/footer stories -
-        // one run of character positions through the piece table.
+        // The main text, then the footnotes, the header/footer stories, the
+        // comments, the endnotes and the text boxes' text - one run of
+        // character positions through the piece table.
         std::vector<DocChar> allChars;
-        if (!ReadPieces(ccpText + ccpFtn + ccpHdd, allChars, error)) return false;
+        if (!ReadPieces(ccpText + ccpFtn + ccpHdd + ccpAtn + ccpEdn + ccpTxbx + ccpHdrTxbx, allChars, error)) {
+            return false;
+        }
+        textBoxStoryStart_ = static_cast<size_t>(ccpText) + ccpFtn + ccpHdd + ccpAtn + ccpEdn;
+        headerTextBoxStoryStart_ = textBoxStoryStart_ + ccpTxbx;
         std::vector<DocChar> chars(allChars.begin(),
                                    allChars.begin() + static_cast<std::ptrdiff_t>(std::min<size_t>(ccpText, allChars.size())));
 
@@ -1115,9 +1135,16 @@ public:
             if (dxaTab > 0) doc_.defaultTabStopPt = static_cast<float>(dxaTab) / 20.0f;
         }
 
+        LoadOfficeArt();
+        LoadShapeAnchors(40, anchors_);            // PlcSpaMom: the main text's shapes
+        LoadShapeAnchors(41, headerAnchors_);      // PlcSpaHdr: the headers' and footers'
+        activeAnchors_ = &anchors_;
+        anchorCpBase_ = 0;
         BuildBlocks(chars);
+        activeAnchors_ = nullptr;
         LoadSection();
         LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
+        LoadTextBoxStories(allChars);
         return true;
     }
 
@@ -1175,7 +1202,11 @@ public:
             // The stories are read with the body's machinery, into their own list.
             std::vector<RichDocBlock> body = std::move(doc_.blocks);
             doc_.blocks.clear();
+            // Shapes anchored in it: PlcSpaHdr counts from the header stories' start.
+            activeAnchors_ = &headerAnchors_;
+            anchorCpBase_ = begin;
             BuildBlocks(text);
+            activeAnchors_ = nullptr;
             out = std::move(doc_.blocks);
             doc_.blocks = std::move(body);
             while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
@@ -1239,6 +1270,295 @@ private:
     bool cellHasParagraph_ = false;
     struct RowBorders { bool present = false; RichBorder sides[6]; };
     std::vector<RowBorders> rowTableBorders_;   // per row of the table being built
+
+    // ===== FLOATING SHAPES =====
+    // Word 97 keeps a floating picture or text box as an OfficeArt shape: its
+    // anchor (a 0x08 character), rectangle and wrap in PlcSpaMom's FSPA, its
+    // picture, text-box id, placement and look in the shape's OfficeArt
+    // properties (DggInfo), its text in the text-box story (PlcftxbxTxt).
+    struct OfficeArtShape {
+        int32_t textId = 0;                     // lTxid: text box (index << 16) | sequence
+        uint32_t pib = 0;                       // BStore index, 1-based
+        int posH = -1, posRelH = -1, posV = -1, posRelV = -1;
+        uint32_t fillColor = 0xFFFFFF;
+        bool filled = true;
+        uint32_t lineColor = 0;
+        bool lined = true;
+        int32_t lineWidth = 9525;               // EMU
+        int32_t textLeft = 91440;               // EMU
+    };
+    std::map<uint32_t, OfficeArtShape> shapes_;  // by spid
+    struct BlipRef { const std::vector<uint8_t>* stream = nullptr; size_t at = 0; size_t end = 0; };
+    std::vector<BlipRef> blips_;                 // the BStore, in order
+    struct Anchor {
+        uint32_t spid = 0;
+        int32_t left = 0, top = 0, right = 0, bottom = 0;   // twips
+        int bx = 0, by = 0, wr = 0;
+        bool belowText = false;
+    };
+    std::map<size_t, std::vector<Anchor>> anchors_;          // main text, by CP of the 0x08 character
+    std::map<size_t, std::vector<Anchor>> headerAnchors_;    // headers and footers, by CP in their story
+    // While a story is read: its anchors, and the CP of its first character.
+    const std::map<size_t, std::vector<Anchor>>* activeAnchors_ = nullptr;
+    size_t anchorCpBase_ = 0;
+    struct PendingTextBox { int frameIndex = -1; int story = -1; bool header = false; };
+    std::vector<PendingTextBox> pendingTextBoxes_;
+    size_t textBoxStoryStart_ = 0;
+    size_t headerTextBoxStoryStart_ = 0;
+
+    // DggInfo: an OfficeArtDggContainer (holding the BStore), then per
+    // drawing a one-byte label and an OfficeArtDgContainer of shapes.
+    void LoadOfficeArt() {
+        const uint32_t fc = FcAt(50), lcb = LcbAt(50);
+        if (lcb < 8 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        const size_t end = static_cast<size_t>(fc) + lcb;
+        size_t pos = fc;
+        bool first = true;
+        while (pos + 8 <= end) {
+            if (!first) pos += 1;                // dgglbl: main document or header drawing
+            if (pos + 8 > end) break;
+            const size_t length = ReadU32(table_, pos + 4);
+            if (pos + 8 + length > end) break;
+            WalkOfficeArt(pos + 8, pos + 8 + length, 0);
+            pos += 8 + length;
+            first = false;
+        }
+    }
+
+    void WalkOfficeArt(size_t from, size_t to, int depth) {
+        if (depth > 16) return;
+        for (size_t pos = from; pos + 8 <= to;) {
+            const uint16_t verInstance = ReadU16(table_, pos);
+            const uint16_t type = ReadU16(table_, pos + 2);
+            const size_t length = ReadU32(table_, pos + 4);
+            const size_t body = pos + 8;
+            if (body + length > to) break;
+            if (type == 0xF001) {
+                ReadBStore(body, body + length);
+            } else if (type == 0xF004) {
+                ReadShape(body, body + length);
+                WalkOfficeArt(body, body + length, depth + 1);   // a group's children
+            } else if ((verInstance & 0x0F) == 0x0F) {
+                WalkOfficeArt(body, body + length, depth + 1);
+            }
+            pos = body + length;
+        }
+    }
+
+    // FBSE records: the picture is embedded after the record's header, or
+    // lies in the WordDocument stream at foDelay.
+    void ReadBStore(size_t from, size_t to) {
+        for (size_t pos = from; pos + 8 <= to;) {
+            const uint16_t type = ReadU16(table_, pos + 2);
+            const size_t length = ReadU32(table_, pos + 4);
+            const size_t body = pos + 8;
+            if (body + length > to) break;
+            BlipRef blip;
+            if (type == 0xF007 && length >= 36) {
+                const size_t cbName = table_[body + 33];
+                const size_t embedded = body + 36 + cbName;
+                if (embedded + 8 <= body + length) {
+                    blip = BlipRef{&table_, embedded, body + length};
+                } else {
+                    const size_t foDelay = ReadU32(table_, body + 28);
+                    const size_t size = ReadU32(table_, body + 20);
+                    if (foDelay + 8 <= word_.size()) {
+                        blip = BlipRef{&word_, foDelay, std::min(word_.size(), foDelay + std::max<size_t>(size, 8))};
+                    }
+                }
+            }
+            blips_.push_back(blip);
+            pos = body + length;
+        }
+    }
+
+    // A shape container's FSP (its spid) and property tables.
+    void ReadShape(size_t from, size_t to) {
+        uint32_t spid = 0;
+        bool haveSpid = false;
+        OfficeArtShape shape;
+        for (size_t pos = from; pos + 8 <= to;) {
+            const uint16_t verInstance = ReadU16(table_, pos);
+            const uint16_t type = ReadU16(table_, pos + 2);
+            const size_t length = ReadU32(table_, pos + 4);
+            const size_t body = pos + 8;
+            if (body + length > to) break;
+            if (type == 0xF00A && length >= 8) {
+                spid = ReadU32(table_, body);
+                haveSpid = true;
+            } else if (type == 0xF00B || type == 0xF122) {
+                const size_t count = verInstance >> 4;
+                for (size_t i = 0; i < count && body + i * 6 + 6 <= body + length; ++i) {
+                    const uint16_t id = ReadU16(table_, body + i * 6) & 0x3FFF;
+                    const uint32_t value = ReadU32(table_, body + i * 6 + 2);
+                    switch (id) {
+                        case 0x0080: shape.textId = static_cast<int32_t>(value); break;     // lTxid
+                        case 0x0081: shape.textLeft = static_cast<int32_t>(value); break;   // dxTextLeft
+                        case 0x0104: shape.pib = value; break;                               // pib
+                        case 0x0181: shape.fillColor = value; break;                         // fillColor
+                        case 0x01BF:                                                         // fFilled (with fUsefFilled)
+                            if (value & 0x100000u) shape.filled = (value & 0x10u) != 0;
+                            break;
+                        case 0x01C0: shape.lineColor = value; break;                         // lineColor
+                        case 0x01CB: shape.lineWidth = static_cast<int32_t>(value); break;  // lineWidth
+                        case 0x01FF:                                                         // fLine (with fUsefLine)
+                            if (value & 0x80000u) shape.lined = (value & 0x08u) != 0;
+                            break;
+                        case 0x038F: shape.posH = static_cast<int>(value); break;           // posh
+                        case 0x0390: shape.posRelH = static_cast<int>(value); break;        // posrelh
+                        case 0x0391: shape.posV = static_cast<int>(value); break;           // posv
+                        case 0x0392: shape.posRelV = static_cast<int>(value); break;        // posrelv
+                        default: break;
+                    }
+                }
+            }
+            pos = body + length;
+        }
+        if (haveSpid) shapes_[spid] = shape;
+    }
+
+    // PlcSpaMom / PlcSpaHdr: shapes by the CP of their anchor.
+    void LoadShapeAnchors(size_t fibIndex, std::map<size_t, std::vector<Anchor>>& anchors) {
+        const uint32_t fc = FcAt(fibIndex), lcb = LcbAt(fibIndex);
+        if (lcb < 4 + 30 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        const size_t count = (lcb - 4) / 30;
+        const size_t data = fc + (count + 1) * 4;
+        for (size_t i = 0; i < count; ++i) {
+            const size_t cp = ReadU32(table_, fc + i * 4);
+            const size_t at = data + i * 26;
+            Anchor anchor;
+            anchor.spid = ReadU32(table_, at);
+            anchor.left = static_cast<int32_t>(ReadU32(table_, at + 4));
+            anchor.top = static_cast<int32_t>(ReadU32(table_, at + 8));
+            anchor.right = static_cast<int32_t>(ReadU32(table_, at + 12));
+            anchor.bottom = static_cast<int32_t>(ReadU32(table_, at + 16));
+            const uint16_t flags = ReadU16(table_, at + 20);
+            anchor.bx = (flags >> 1) & 0x3;
+            anchor.by = (flags >> 3) & 0x3;
+            anchor.wr = (flags >> 5) & 0xF;
+            anchor.belowText = (flags & 0x4000) != 0;
+            anchors[cp].push_back(anchor);
+        }
+    }
+
+    // The floating pictures and text boxes anchored at `cp`, as runs.
+    void AppendShapes(std::vector<RichTextRun>& runs, size_t cp, bool lineBreak) {
+        auto found = activeAnchors_->find(cp);
+        if (found == activeAnchors_->end()) return;
+        for (const Anchor& anchor : found->second) {
+            auto shapeIt = shapes_.find(anchor.spid);
+            if (shapeIt == shapes_.end()) continue;
+            const OfficeArtShape& shape = shapeIt->second;
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.imageWidthPt = static_cast<float>(anchor.right - anchor.left) / 20.0f;
+            run.imageHeightPt = static_cast<float>(anchor.bottom - anchor.top) / 20.0f;
+            PlaceShape(anchor, shape, run);
+            if (shape.textId > 0) {
+                // A text box: its text is read once the body is, from its story.
+                RichTextFrame frame;
+                if (shape.filled && (shape.fillColor >> 24) == 0) frame.backgroundColor = ColorRefHex(shape.fillColor);
+                if (shape.lined && (shape.lineColor >> 24) == 0) {
+                    frame.border.color = ColorRefHex(shape.lineColor);
+                    frame.border.widthPt = std::max(0.5f, static_cast<float>(shape.lineWidth) / 12700.0f);
+                }
+                frame.paddingPt = std::max(0.0f, static_cast<float>(shape.textLeft) / 12700.0f);
+                run.frameIndex = static_cast<int>(doc_.frames.size());
+                pendingTextBoxes_.push_back({run.frameIndex, (shape.textId >> 16) - 1,
+                                             activeAnchors_ == &headerAnchors_});
+                doc_.frames.push_back(std::move(frame));
+            } else if (shape.pib > 0 && shape.pib <= blips_.size() && blips_[shape.pib - 1].stream) {
+                const BlipRef& blip = blips_[shape.pib - 1];
+                std::vector<uint8_t> bytes;
+                std::string mimeType;
+                if (!ReadBlipRecord(*blip.stream, blip.at, blip.end, bytes, mimeType)) continue;
+                const std::string name = "image" + std::to_string(doc_.media.size() + 1)
+                                       + UCRichDocument::FileExtensionForMimeType(mimeType);
+                run.mediaIndex = doc_.AddMedia(name, mimeType, std::move(bytes));
+            } else {
+                continue;                           // a drawn shape: not shown
+            }
+            run.lineBreakBefore = lineBreak;
+            lineBreak = false;
+            runs.push_back(std::move(run));
+        }
+    }
+
+    // Where a shape floats: FSPA's anchor frame (bx: margin, page, column;
+    // by: margin, page, paragraph) and offsets, which the shape's own posrelh
+    // / posrelv and posh / posv (alignment) override; how text wraps (wr).
+    static void PlaceShape(const Anchor& anchor, const OfficeArtShape& shape, RichTextRun& run) {
+        using Origin = RichTextRun::FloatOrigin;
+        using VAlign = RichTextRun::FloatVerticalAlign;
+        // posrelh: 0 margin, 1 page, 2 column, 3 character; FSPA bx: 0 margin, 1 page, 2 column.
+        const int across = shape.posRelH >= 0 ? shape.posRelH : anchor.bx;
+        run.floatHorizontalFrom = across == 1 ? Origin::Page : Origin::Margin;
+        // posrelv: 0 margin, 1 page, 2 paragraph, 3 line; FSPA by: 0 margin, 1 page, 2 paragraph.
+        const int down = shape.posRelV >= 0 ? shape.posRelV : anchor.by;
+        run.floatVerticalFrom = down == 1 ? Origin::Page : down == 0 ? Origin::Margin : Origin::Paragraph;
+        const float x = static_cast<float>(anchor.left) / 20.0f;
+        const float y = static_cast<float>(anchor.top) / 20.0f;
+        switch (shape.posH) {
+            case 1: case 4: run.imageFloatAlign = RichTextAlign::Left; break;
+            case 2: run.imageFloatAlign = RichTextAlign::Center; break;
+            case 3: case 5: run.imageFloatAlign = RichTextAlign::Right; break;
+            default:
+                run.imageFloatAlign = RichTextAlign::Default;
+                run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+                break;
+        }
+        switch (shape.posV) {
+            case 1: run.floatVerticalAlign = VAlign::Top; break;
+            case 2: run.floatVerticalAlign = VAlign::Middle; break;
+            case 3: run.floatVerticalAlign = VAlign::Bottom; break;
+            default:
+                run.floatVerticalAlign = VAlign::Top;
+                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+                break;
+        }
+        // wr: 0 around, 1 top and bottom, 2 square, 3 none (in front or
+        // behind), 4 tight, 5 through.
+        switch (anchor.wr) {
+            case 1: run.imageWrap = RichTextRun::ImageWrap::TopAndBottom; break;
+            case 3:
+                run.imageWrap = anchor.belowText ? RichTextRun::ImageWrap::BehindText
+                                                 : RichTextRun::ImageWrap::InFrontOfText;
+                break;
+            default: run.imageWrap = RichTextRun::ImageWrap::Square; break;
+        }
+    }
+
+    // An OfficeArt COLORREF (0x00BBGGRR) as "#RRGGBB".
+    static std::string ColorRefHex(uint32_t color) {
+        char hex[8];
+        std::snprintf(hex, sizeof hex, "#%02X%02X%02X", color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
+        return hex;
+    }
+
+    // The text boxes' text (PlcftxbxTxt: CPs into the text-box story), read
+    // with the body's machinery into each text frame.
+    // The headers' text boxes have a story of their own (PlcfHdrtxbxTxt).
+    void LoadTextBoxStories(const std::vector<DocChar>& allChars) {
+        for (const PendingTextBox& pending : pendingTextBoxes_) {
+            const uint32_t fc = FcAt(pending.header ? 58 : 56), lcb = LcbAt(pending.header ? 58 : 56);
+            if (lcb < 4 + 26 || static_cast<size_t>(fc) + lcb > table_.size()) continue;
+            const size_t count = (lcb - 4) / 26;
+            const size_t storyStart = pending.header ? headerTextBoxStoryStart_ : textBoxStoryStart_;
+            if (pending.story < 0 || static_cast<size_t>(pending.story) >= count) continue;
+            const size_t begin = storyStart + ReadU32(table_, fc + static_cast<size_t>(pending.story) * 4);
+            const size_t end = storyStart + ReadU32(table_, fc + (static_cast<size_t>(pending.story) + 1) * 4);
+            if (end <= begin || end > allChars.size()) continue;
+            std::vector<DocChar> text(allChars.begin() + static_cast<std::ptrdiff_t>(begin),
+                                      allChars.begin() + static_cast<std::ptrdiff_t>(end));
+            std::vector<RichDocBlock> body = std::move(doc_.blocks);
+            doc_.blocks.clear();
+            BuildBlocks(text);
+            std::vector<RichDocBlock> out = std::move(doc_.blocks);
+            doc_.blocks = std::move(body);
+            while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
+            doc_.frames[static_cast<size_t>(pending.frameIndex)].blocks = std::move(out);
+        }
+    }
 
     uint32_t FcAt(size_t index) const {
         return index < fcLcbCount_ ? ReadU32(word_, fcLcb_ + index * 8) : 0;
@@ -1470,6 +1790,13 @@ private:
             if (ch == 0x0B) { lineBreak = true; continue; }
             if (ch == 0x01 && props.special) {
                 AppendPicture(runs, props, lineBreak);
+                lineBreak = false;
+                continue;
+            }
+            if (ch == 0x08) {
+                // A drawn object's anchor: the floating picture or text box
+                // anchored here (in the main text or a header or footer).
+                if (activeAnchors_) AppendShapes(runs, anchorCpBase_ + i, lineBreak);
                 lineBreak = false;
                 continue;
             }

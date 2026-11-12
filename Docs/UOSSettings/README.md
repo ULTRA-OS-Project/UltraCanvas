@@ -169,6 +169,16 @@ says when a device will appear. The keys are kept in
 (below), read and written through `UltraCanvasIODeviceTlsTrust.h`, so
 UOS-Settings and the applications that reach the devices agree on it.
 
+## The look and the language
+
+The window is light or dark as the desktop is - or as its own Appearance >
+Look page says - in the desktop's font and size: its colours and sizes are
+the settings page kit's ([`UltraCanvasSettingsPageKit.md`](../UltraCanvas/UltraCanvasSettingsPageKit.md)),
+which are the framework theme's roles. Every text the pages show goes
+through `Tr` (UltraLocalisation); the English set is
+`media/locale/en/UOS-Settings.json`, and the Language > Translations page
+edits every application's sets, this one's included.
+
 ## Where the settings live
 
 `Appearance.conf` (Appearance > Look, six lines), `Emoji.conf` (Appearance >

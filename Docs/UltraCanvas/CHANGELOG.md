@@ -1,3 +1,277 @@
+#### 2026-11-12 *0.9.542*
+- **Dialogs no longer stay on top of every other program's windows.**
+  `DialogConfig` switched `alwaysOnTop` on for every dialog, so once X11 and
+  macOS honoured that flag (`_NET_WM_STATE_ABOVE`, the floating level) a
+  dialog - UltraFiler's *Proxy settings*, UltraMail's *Account settings*,
+  every message box and file dialog - sat above every application and could
+  not be sent behind another program's window; on Windows it had always been
+  `WS_EX_TOPMOST`. The settings windows, made from a plain `WindowConfig`,
+  behaved. `DialogConfig` leaves `alwaysOnTop` off now, and a dialog is kept
+  above its own window only, through the parent `ShowModal` gives it:
+  - **X11:** `WM_TRANSIENT_FOR`, which `ShowModal` already set.
+  - **Windows:** the owner window. `SetTransientParent` now sets it
+    (`GWLP_HWNDPARENT`) for a dialog created before its parent was known, as
+    `CreateWindowExW` did for one created with `parentWindow`.
+  - **macOS:** a child window of the parent's `NSWindow`
+    (`addChildWindow:ordered:`); macOS had no link to the parent before. A
+    dialog is attached when it is shown over a visible parent and detached when
+    either is hidden or closed, so AppKit keeps it above that window, moves
+    it with it and takes it into the parent's full-screen space. Dialogs
+    only (`WindowType::Dialog`) - a popup, a tooltip and the splash screen
+    keep their own levels - and never under a desktop window.
+
+  On all three, a click on another of the application's windows still
+  raises the modal, and `alwaysOnTop` stays for what is meant to be above
+  everything - a recording bar, a floating palette, the splash screen
+  (`DialogStackingTest`: a dialog is not above, is transient for its window,
+  and an `alwaysOnTop` window still is above).
+
+#### 2026-11-12 *0.9.541*
+- **The settings page kit follows the theme (T6 of the host theme
+  proposal).** `UltraCanvasSettingsPageKit`'s colours and sizes are the
+  theme's roles and text roles now, read as functions (`TextColor()`,
+  `TextFontSize()`, `PageBackground()` ...) where they were constants, and
+  its buttons, colour boxes and bottom bar take the roles too: a settings
+  window built on the kit - UOS-Settings, UltraFiler's and UltraSnip's
+  settings - is dark on a dark desktop, in the desktop's font and size.
+
+#### 2026-11-11 *0.9.540*
+- **CI: an Ubuntu mirror outage no longer stops the Linux jobs at
+  `apt-get update`.** On 2026-11-11 `azure.archive.ubuntu.com` could not be
+  resolved for a quarter of an hour, and the Linux, Wayland and Android
+  jobs all failed before building anything, although the packages they
+  needed were in the package cache. `scripts/ci-apt.sh` 1.2.0 keeps apt's
+  package lists with the cached packages (`cache-out`, `cache-in`). An
+  `update` that cannot reach the mirror in its attempts goes on with those
+  lists, or without them with the runner's own, and with a warning instead
+  of an error. The packages in the cache then install without the mirror;
+  one that is not cached still fails at its install, naming it. The Wayland
+  and Android workflows now restore and save the package cache as
+  `build.yml` does.
+
+#### 2026-11-11 *0.9.539*
+- **A container sized to its content grows with a button grown to its
+  text.** The first layout read a fixed-width button's given width before
+  the button measured its text; the button grew afterwards, but its row
+  kept the width it had measured, so a group of header buttons came out as
+  wide as the English labels and the next item was laid over the last one
+  (UltraStore's German "Updates" tab under its search field, "Clear
+  finished" off the Downloads panel). A button grown during a layout pass
+  now asks for one more pass, and `UltraCanvasWindowBase::UpdateAndRender`
+  runs it at the next frame: a layout an element invalidated while being
+  drawn is laid out and drawn again, and the event loop is woken for it
+  instead of waiting for the next mouse move. `ButtonGrowToFitTest` covers a
+  group of grown buttons in a header row.
+
+#### 2026-11-11 *0.9.538*
+- **Word documents: text frames and floats placed from the page.** A
+  letterhead's sender block now stands beside the address instead of
+  following it in the text.
+  - The model gains text frames: a run with `RichTextRun::frameIndex` refers
+    to a `RichTextFrame` in `UCRichDocument::frames` (its paragraphs, fill,
+    border and padding) and floats like a floating picture.
+  - Floats can be placed from the page's edges or its text area as well as
+    from the paragraph (`floatHorizontalFrom`, `floatVerticalFrom`,
+    `floatVerticalAlign`).
+  - The ODT reader reads `draw:text-box` frames (Writer frames and drawing
+    text boxes) and page-anchored frames and pictures, with
+    `style:horizontal-rel` / `vertical-rel`.
+  - The DOCX reader reads text boxes (`wps:txbx`, and VML `v:textbox`
+    fallbacks) and every `wp:positionH` / `wp:positionV` `relativeFrom`.
+  - The DOC reader reads floating pictures and text boxes, which it used to
+    drop: OfficeArt shapes from `PlcSpaMom`, `DggInfo` and the text-box story.
+  - `UltraCanvasRichTextEdit` places and draws frames and page-placed floats
+    in page view, with text wrapping round them.
+  - Both writers save frames and placement (ODF `draw:frame` with
+    `draw:text-box`; DOCX `wps` text boxes and `wp:anchor` relations), and
+    LibreOffice reads the saved files back with the frames in place.
+  - Markdown, HTML and plain text spell a frame's text before its paragraph
+    (`UCRichDocument::WithFramesInline`).
+  - New fixture `Tests/fixtures/word-frames.*`.
+- **`UltraCanvasRichTextEdit`: text wraps round floats line by line.** A
+  paragraph beside a floating picture or frame is narrowed only for the lines
+  level with it; its lines below take the column's full width again, as in
+  Writer. A top-and-bottom picture set lower down in its paragraph keeps the
+  lines that fit above it there and continues the paragraph below it. Before,
+  the whole paragraph was narrowed, or moved below the picture.
+- **Frames and floating pictures in headers and footers float.** A Word
+  letterhead's logo and sender block, kept in the header, now stand at their
+  place on every page instead of being drawn in line in the header, and the
+  page's body wraps round them. A frame in a header shows each page's page
+  number and page count. The DOC reader reads shapes in headers and footers
+  too (`PlcSpaHdr` and the header text-box story). New fixture
+  `Tests/fixtures/word-header-frames.*`.
+- **`UltraCanvasRichTextEdit::SetZoomFit`: page width and whole page.** In
+  page view the zoom follows the element's size, so a narrow window shows the
+  whole page. `SetZoom` and Ctrl+wheel end it; printing stays at 100 %.
+- **DOCX writer: floating pictures keep their placement from the page or
+  margin.** Before, every floating picture was written as placed from the
+  column and the paragraph.
+
+#### 2026-11-11 *0.9.537*
+- **`UltraCanvasTheme::TakeHostFonts`, and the four applications with a
+  theme of their own on the policy (T6 of the host theme proposal, first
+  part).** `TakeHostFonts(host)` puts the host's interface and monospace
+  fonts and its text scale onto a theme, as `FromHost` does (which now goes
+  through it), so an `Own` provider's colours come with the desktop's
+  fonts. UltraVideo, UltraPress, ChatCube and UltraDBAdmin set
+  `ThemePolicy::Own` with their `ThemeFor` / `AppTheme` as the provider
+  instead of `SetCurrent` at start: a change of the desktop reaches them;
+  UltraPress and ChatCube gain `system` as their look setting's default
+  (the desktop's look), UltraVideo's palette follows the desktop until the
+  eye picks the project's. `UltraCanvasThemeTest` covers `TakeHostFonts`;
+  `UltraCanvasTheme.md` 1.15.0.
+
+#### 2026-11-11 *0.9.536*
+- **UltraIM: a message deleted for oneself or for everyone, by each
+  messenger's own rules.** `UltraIM_DeleteMessage` takes a scope
+  (`UltraIMDeleteScope::ForEveryone`, as before, or `ForMe`), and the new
+  `UltraIM_GetDeleteChoices(provider, conversation, message)` says what is
+  possible for one message now, so an application's menu offers exactly
+  that instead of deciding it. A delete outside the rules answers
+  `PermissionDenied`.
+  - **ChatCube Direct can delete messages** (it could not at all; the
+    `DeleteMessage` capability is new for it). Anyone deletes any message
+    for themselves. For everyone, the sender deletes a text until the other
+    person has read it, a picture, video or file at any time, and anything
+    in a group at any time. The others are told with a signed `delete`
+    body, over the link or through the relay's queue; the receiving side
+    checks the same rules itself, so a text already read there stays. The
+    file a deleted message brought into the cache is removed with it -
+    never the sender's own file - and what was deleted before it had fully
+    arrived is dropped when the rest comes (store schema 4).
+  - **Matrix** deletes one's own messages for everyone, as before, and
+    answers `CapabilityMissing` to "for me", which it does not have.
+  - **Telegram** now deletes for oneself too; until now every delete was
+    for everyone.
+- **UltraIM plug-in ABI 5.** `DeleteMessage` gained the scope and the
+  interface `GetDeleteChoices`, so `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 5.
+- **UltraIM: searching the history, one call for every network.**
+  `UltraIM_SearchMessages(provider, search, callback)` finds messages by
+  their words, or everything of one kind - pictures, videos, pictures and
+  videos, files, links (`UltraIMSearchKind`) - newest first, a page at a
+  time with a cursor for the older ones (`UltraIMMessageSearch`,
+  `UltraIMSearchPage`). A provider says it can with the new `SearchMessages`
+  capability and answers through the new `SearchMessages` method of the
+  provider interface, each from wherever its history lives:
+  - **ChatCube Direct** queries its own database - one conversation or all
+    of them. Which messages hold a link is noted in a new `links` table by
+    the message's id alone; the address stays in the message's text and is
+    read out of it when shown, so it is not stored twice. The table is
+    filled as messages are stored, and once for the existing history when
+    an older store is opened (schema 3).
+  - **Matrix** reads a room's history back page by page and matches it on
+    this device, so an encrypted room - which the homeserver's own search
+    cannot read - is searched like any other.
+  - **Telegram** asks Telegram's own search (`searchChatMessages`, with its
+    filters), which covers the whole history without downloading it and
+    matches whole words as Telegram's apps do.
+- **UltraIM: the pieces of a search, for providers and lists.**
+  `UltraIM_MessageMatchesSearch` is the one matcher the on-device providers
+  share (every word, anywhere in the text or the attachment's file name, in
+  any case - Latin, Greek and Cyrillic folded by `UltraIM_FoldCase`, never
+  by the locale); `UltraIM_ExtractLinks` gives the links in a text;
+  `UltraIM_SearchByFetching` answers `SearchMessages` for any provider from
+  nothing but its `FetchMessages`.
+- **UltraIM plug-in ABI 4.** The provider interface gained a method and
+  `UltraIMTypes.h` its types, so `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 4: a
+  provider module built for 3 is skipped until it is rebuilt.
+
+#### 2026-11-11 *0.9.535*
+- **`UltraCanvasDropdown::SetFitWidthToItems`: a dropdown as wide as its
+  widest item.** A dropdown sized for its English entries cut a longer
+  translation off - the button clips its text, so UltraFiler's video mode
+  read *Automatisch al…* in German. On, the button takes the width its
+  widest item needs (icon, text and arrow) and follows the items, the
+  placeholder and the font as they change; the width given stays the least
+  it takes, so a layout made for the English text does not move where that
+  text fits. Off by default. `DropdownFitWidthTest` covers it.
+
+#### 2026-11-11 *0.9.534*
+- **`scripts/check_libcxx_syntax.py` 2.0.0: the whole tree against
+  libc++, from the build's compile database.** The shell script of 1.0.0
+  checked VideoFX with a flag block of its own; the Python one reads
+  `build/compile_commands.json` (adding `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
+  to an existing build directory itself) and compiles every C++ unit the
+  Windows build would see - the Linux, macOS and Android OS arms, C sources
+  and generated files left out - with `clang++ -stdlib=libc++ -fsyntax-only`
+  and the flags the build gave it. A path argument narrows it to a module
+  or a file: VideoFX in ten seconds, the 1539 units of the tree in twenty
+  minutes on four cores, all of which compile today.
+- **Windows: the kernel network ETW source reads each event by its own
+  template.** Microsoft-Windows-Kernel-Network lays its TCP events out in
+  three templates that share a prefix (PID, size, the endpoints) and differ
+  in what sits before the trailing seqnum and connection id: a connect or
+  accept carries the TCP options (16 bytes), a send its start and end time
+  (8 bytes), a receive or disconnect nothing. The source read every event
+  by the last layout, so a connect's connection id was 16 bytes of options
+  and a send's was its times, and the bytes summed per connection could
+  never meet the disconnect that reports them. The parser is now
+  `NetworkMonitorKernelNetwork.h` in the core - pure, one template per
+  event id, every length checked - and tested from payloads built per
+  template on every platform, like the conntrack parser.
+  - Both ETW sources enable the provider with every keyword rather than a
+    mask of zero, and the DNS client source names the asking process from
+    the Toolhelp process list, as the network source and the socket table
+    do, instead of `pid N`.
+  - `scripts/netmon-etw-acceptance.ps1` is the first elevated run as a test
+    with a verdict: it records with the ETW sources alone, makes a loopback
+    connection and a DNS query of its own, reads the recording back and
+    checks the opened, accepted and closed events (with bytes) and the DNS
+    observation, each attributed to the PowerShell that made them.
+    *Windows: the first elevated run* in the module README is the
+    procedure and what each failure would mean.
+
+#### 2026-11-11 *0.9.533*
+- **UltraRTC: `UltraRtcApiStatus` reports what every function does in this
+  build, on this machine.** The module's proposal asked each phase to ship
+  the counterpart of `UltraNetApiStatus`; it was the one piece of phase 0
+  still missing. The tool has one probe for each of the 40 functions in
+  `UltraRTCCore.h` and prints WORKING / IMPLEMENTED / NOT IMPLEMENTED /
+  BROKEN per function, as text, Markdown or JSON. It needs no network
+  service: the probes run between peers of its own process, connected over
+  host candidates, with a data pair (text, every byte value, a second channel
+  closed, a 4 MiB burst for the buffered amount), an audio pair (a sine sent
+  like a microphone, counted and measured for loudness and pitch at the other
+  side) and a video pair (pictures scaled to the track and compared by
+  colour). On a Linux build with OpenSSL, libopus and FFmpeg in a container
+  it reports 33 working and 7 implemented: the device functions, which have
+  no microphone, speaker or camera there, and `UltraRtc_RequestKeyFrame`,
+  whose effect the API has no accessor for. In a build without OpenSSL it
+  reports the three functions that still answer as working and the other 37
+  as not implemented. `UltraRtcApiStatusCoverage` fails when a function in
+  the header has no probe, so a new function cannot be absent from a report
+  that reads as complete. The report framework is UltraNet's, now shared:
+  `SetReportIdentity` gives a tool its own title and area order, and
+  `UltraNetApiStatus` is unchanged. Built with
+  `-DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON`; doc
+  `Docs/Modules/UltraRTC/ApiStatus.md`.
+  - **New: `UltraRtc_GetVersion()`,** the version of the `UltraRtc_*`
+    surface ("0.1.0"), answered with or without an engine and before
+    `UltraRtc_Initialize` — the lifecycle call the proposal listed and the
+    module lacked, named as `UltraNet_GetVersion` and its siblings are.
+  - **Fixed: the engine wrote its warnings to stdout.** libdatachannel logs
+    to `std::cout` unless given a callback, so a line such as `juice: UDP
+    socket creation failed` landed in the middle of whatever a command-line
+    program using UltraRTC printed there; the status tool's JSON did not
+    parse. The warnings now go to stderr, one line each, prefixed `UltraRTC
+    engine warning:`.
+  - The proposal's status line said phase 1; it now says what is there
+    (phase 0 complete, peers, data channels, audio and video implemented)
+    and what is not.
+
+#### 2026-11-11 *0.9.532*
+- **`UltraCanvasGlobalShortcut::StartExclusive`: a key taken from everyone
+  else, the system included.** `Start` registers a hot key, which a key the
+  system holds refuses - Print Screen while Windows 11 gives it to the
+  Snipping Tool. `StartExclusive` registers none on Windows: a
+  `WH_KEYBOARD_LL` hook on the shortcut's thread swallows the press made
+  with exactly the given modifiers, and the release that ends it, so the
+  key reaches only this program (`Alt+Print` stays the system's when
+  `"Print"` is taken). On X11 the grab `Start` makes is exclusive already;
+  on Wayland the compositor decides. The backend's `ShortcutOpen` takes an
+  `exclusive` flag.
+
 #### 2026-11-11 *0.9.531*
 - **Appearance.conf and the settings watcher (T5 of the host theme
   proposal).** `AppearanceSettings` (`UltraCanvasAppearanceSettings.h`) is

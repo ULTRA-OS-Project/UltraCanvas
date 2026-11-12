@@ -70,7 +70,7 @@ app and every runtime or library the database has, an item marked
 | Page | What it does |
 |---|---|
 | Overview | The store folder and database, the counts, the last publish; *Add an app or a component* (id, name, kind) creates the record and opens its form. |
-| An app or component | The form: every setting of the table in the store's README - identity (id, kind, name, publisher, license, homepage, support, privacy, open source, source, categories, tags), the store settings (visibility, lifecycle and successor, age rating, account, monetary model with price, currency and trial days, free update period with its date), the texts per language (the source language, the language shown, *Add language*, *Translate the missing languages* through UltraAI, the machine ones marked), the pictures (the icon and the screenshots copied into `media/<id>/` by `ImportMedia`), the releases newest first with their packages, an inline editor for a new release and for a new package (the build's file into the package store, OS, processor, variants, minimum OS version, the entry suggested from the archive, public or restricted). Save writes the draft through `PutComponent`, which reads it back the way the store does; Revert reloads; Delete asks first. Leaving a form with unsaved edits asks. |
+| An app or component | The form: every setting of the table in the store's README - identity (id, kind, name, publisher, license, homepage, support, privacy, open source, source, the categories as chips of the store's fixed list, tags), the store settings (visibility, lifecycle and successor, age rating, account, monetary model with price, currency and trial days, free update period with its date), the texts per language (the source language, the language shown, *Add language*, *Translate the missing languages* through UltraAI, the machine ones marked), the pictures (the icon and the screenshots copied into `media/<id>/` by `ImportMedia`), the releases newest first with their packages, an inline editor for a new release and for a new package (the build's file into the package store, OS, processor, variants, minimum OS version, the entry suggested from the archive, public or restricted). Save writes the draft through `PutComponent`, which reads it back the way the store does; Revert reloads; Delete asks first. Leaving a form with unsaved edits asks. |
 | Publish | The publish folder, the key, the passphrase, whether to copy the packages and media; *Check* builds the catalog and lists the warnings; *Publish* runs `Publish()` on a worker thread and reports the sequence, the counts and the warnings. Below it the upload: the server, the user, the password or the key file, *Upload* sends what changed (the status line names each file as it goes) and reports what went and what the server still has. |
 | Keys | The keys with their public halves, *Export .pub…* and *Retire*; a new key from a name and a passphrase typed twice. |
 | Affiliates and codes | The partners with their shares, who recruited them and what the ledger owes them; add or change one, switch one off, the join QR code. The codes with what they take off, the apps and the validity; a new code, its QR code, switch off, remove. A sale recorded by hand with what it credits. |
@@ -138,7 +138,14 @@ affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report |
 code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]
 code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>
 sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list
-sale sync [--from <url>] [--token <t>]                   the paid orders from the payment service, once each
+sale sync [--from <url>] [--token <t>]                   the paid orders and the subscriptions' renewals from the payment service, once each
+market standing                                          where this merchant stands at the marketplace: active, paused (terms), suspended; strikes
+market submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]
+                                                         the app as saved here, signed, to the operator's review
+market submissions | withdraw <submission>               every submission with its last decision; one taken back
+market notices [--all] | ack <notice>                    the operator's notices (the unacknowledged, or all); one acknowledged
+market terms [accept <version> --by <name>]              the terms in force; an acceptance
+market reports                                           the reports about this merchant, the reporter removed by the service
 ```
 
 The payment service is named in the settings: `payment.url` (its base,
@@ -148,6 +155,24 @@ public half of its licence key, `GET /v1/keys`, published as
 bearer token for `sale sync`, or `ULTRASTORE_PAY_ADMIN_TOKEN`), and
 `payment.sales_seq`, which `sale sync` keeps for itself. The window's
 *Affiliates and codes* page has *Sync sales*.
+
+**The marketplace** (`Market.h`; the marketplace service, `Server/UltraStoreMarket`,
+its README) is named by `market.url` (the service's base) and
+`market.merchant_id` (the id the operator registered this backend under,
+with the public half of its key); `market.key` names the key that signs,
+the first active one when empty. Every `market` request is signed with
+that key - `Authorization: Merchant <id>:<timestamp>:<signature>` over
+the method, the path, the timestamp and the body, as the service's
+`auth.py` verifies it - so the passphrase is asked for as it is for
+`publish`. A submission carries the app's component object as
+`PutComponent` reads it back, a signature over its canonical JSON (keys
+sorted, no spaces, UTF-8 as it is: `CanonicalJson`, the same bytes the
+service's `canonical()` writes), and the packages by file (the path
+under the packages server), SHA-256 and size. The window's *Marketplace*
+page does the same with a passphrase field - the standing, the notices
+with *Acknowledge*, the terms with *Accept the terms*, *Submit a release*,
+the submissions, the reports - and the operator's unacknowledged notices
+show as a banner above every page until acknowledged.
 
 A passphrase comes from `--passphrase`, else `ULTRASTOREADMIN_PASSPHRASE`,
 else a line on standard input; the upload's password from `--password`,
@@ -243,7 +268,11 @@ Hello.
    *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
    sales into the ledger, the catalog naming the service from the
    `payment.*` settings.
-6. **The marketplace** (the store's README, *The operator tier*): `submit`
-   sends a release to the operator's service signed with this backend's
-   key; the notices banner and the *Terms* page read from it; `publish`
-   stays for a private or test catalog.
+6. **The marketplace** (the store's README, *The operator tier*): the
+   `market` commands and the window's *Marketplace* page (*The command
+   line*): `market submit` sends a release to the operator's service
+   signed with this backend's key, the notices show as a banner until
+   acknowledged, the terms are read and accepted there, the standing and
+   the reports about this merchant are shown; `publish` stays for a
+   private or test catalog. Next: the packages uploaded into the
+   operator's package store with the submission.

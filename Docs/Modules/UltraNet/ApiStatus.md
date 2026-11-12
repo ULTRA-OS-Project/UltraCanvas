@@ -18,6 +18,12 @@ prints one of four statuses per entry.
 `BROKEN` exists on purpose: a status tool that can only report good news
 would quietly turn a regression into a reassuring "implemented".
 
+The probe registry, the runner and the renderers (`ApiStatus.h`,
+`ApiStatusReport.cpp`) are also compiled into
+[`UltraRtcApiStatus`](../UltraRTC/ApiStatus.md), which gives the report its
+own title and areas through `SetReportIdentity`. A change to them is a change
+to both tools.
+
 ---
 
 ## Building and running

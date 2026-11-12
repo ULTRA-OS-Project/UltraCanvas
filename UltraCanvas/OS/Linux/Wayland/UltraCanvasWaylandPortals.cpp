@@ -535,7 +535,9 @@ namespace {
     }
 } // namespace
 
-ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
+// `exclusive` asks nothing more: the compositor decides who else hears the
+// shortcut, and a portal cannot take a key from it.
+ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, bool /*exclusive*/) {
     const std::string trigger = TriggerFor(accelerator, error);
     if (trigger.empty()) return nullptr;
     auto* state = new ShortcutState();

@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
+// Version: 0.8.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.7.0 - the counters are click targets of their own that filter the
 //                  list (onFilterAccount), the active one framed in its colour;
 //                  the rest of a card shows all mail (onSelectAccount, the
@@ -14,7 +15,7 @@
 //                  page: initial in a tinted avatar square, local part as the
 //                  name, and the three counters as tinted count · caption
 //                  pills instead of saturated badges.
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountBar.h"
 
@@ -22,6 +23,7 @@
 #include "UltraMailTheme.h"
 
 #include "UltraMailDiscovery.h"   // EmailLocalPart / EmailDomain
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -42,14 +44,14 @@ constexpr float kCountSize    = 11.0f;
 
 // A counter's colours, by the filter it applies.
 const Color& CounterTint(MessageFilterKind kind) {
-    return kind == MessageFilterKind::NewToday    ? Theme::kNewTodayTint
-         : kind == MessageFilterKind::Unread      ? Theme::kUnreadTint
-                                                  : Theme::kWaitingTint;
+    return kind == MessageFilterKind::NewToday    ? Theme::NewTodayTint()
+         : kind == MessageFilterKind::Unread      ? Theme::UnreadTint()
+                                                  : Theme::WaitingTint();
 }
 const Color& CounterText(MessageFilterKind kind) {
-    return kind == MessageFilterKind::NewToday    ? Theme::kNewTodayText
-         : kind == MessageFilterKind::Unread      ? Theme::kUnreadText
-                                                  : Theme::kWaitingText;
+    return kind == MessageFilterKind::NewToday    ? Theme::NewTodayText()
+         : kind == MessageFilterKind::Unread      ? Theme::UnreadText()
+                                                  : Theme::WaitingText();
 }
 
 // The second row. Where the account's card sits is known only once the bar
@@ -69,7 +71,7 @@ public:
 std::shared_ptr<UltraCanvasLabel> MakeName(const std::string& id, const std::string& email,
                                            float size) {
     // The local part only; the full address is one hover away.
-    auto name = Theme::MakeText(id, EmailLocalPart(email), size, Theme::kTextPrimary,
+    auto name = Theme::MakeText(id, EmailLocalPart(email), size, Theme::TextPrimary(),
                                 FontWeight::Bold);
     name->SetTooltip(email);
     return name;
@@ -131,26 +133,26 @@ void AccountBar::BuildFilterRow() {
     CSSLayout::BoxConstraints limits;
     limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
     filterCard_->boxConstraints = limits;
-    filterCard_->SetBackgroundColor(Theme::kCardBackground);
-    filterCard_->SetBorders(1.0f, Theme::kCardBorder, Theme::kCardRadius);
+    filterCard_->SetBackgroundColor(Theme::CardBackground());
+    filterCard_->SetBorders(1.0f, Theme::CardBorder(), Theme::kCardRadius);
     filterCard_->SetPadding(10, 14);
     filterCard_->layout.SetFlexRow()
                        .SetFlexGap(14)
                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto what = CreateContainer("acctFilterWhat", 0, 0, 0, 0);
     what->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    filterTitle_ = Theme::MakeText("acctFilterTitle", "", Theme::kSizeBody, Theme::kTextPrimary,
+    filterTitle_ = Theme::MakeText("acctFilterTitle", "", Theme::SizeBody(), Theme::TextPrimary(),
                                    FontWeight::Bold);
-    filterAccount_ = Theme::MakeText("acctFilterAccount", "", Theme::kSizeSmall,
-                                     Theme::kTextSecondary);
+    filterAccount_ = Theme::MakeText("acctFilterAccount", "", Theme::SizeSmall(),
+                                     Theme::TextSecondary());
     what->AddChild(filterTitle_);
     what->AddChild(filterAccount_);
     filterCard_->AddChild(what);
     showAll_ = CreateButton("acctFilterShowAll", 0, 0, 120, Theme::kControlHeight,
-                            "Show all emails");
+                            Tr("Show all emails"));
     Theme::FitToLabel(showAll_, 120);
     Theme::StyleSecondary(showAll_);
-    showAll_->SetTooltip("Take the filter away and show every message of the folder");
+    showAll_->SetTooltip(Tr("Take the filter away and show every message of the folder"));
     showAll_->onClick = [this]() { if (onShowAll) onShowAll(); };
     showAll_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     filterCard_->AddChild(showAll_);
@@ -204,7 +206,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::MakeCounter(const std::string&
     pill->AddChild(Theme::MakeText(id + acc + ".n", std::to_string(count), kCountSize,
                                    CounterText(kind), FontWeight::Bold));
     if (!caption.empty())
-        pill->AddChild(Theme::MakeText(id + acc + ".c", caption, Theme::kSizeSecondary,
+        pill->AddChild(Theme::MakeText(id + acc + ".c", caption, Theme::SizeSecondary(),
                                        CounterText(kind)));
     pill->PassPointerThroughContent();
     // "Unread" counts the unread mail from before today (today's is the
@@ -304,9 +306,9 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
                .SetFlexGap(2)
                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeHeading));
+    who->AddChild(MakeName("acctName_" + acc, account.email, Theme::SizeHeading()));
     auto domain = Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
-                                  Theme::kSizeSecondary, Theme::kTextSecondary);
+                                  Theme::SizeSecondary(), Theme::TextSecondary());
     domain->SetTooltip(account.email);
     who->AddChild(domain);
     card->AddChild(who);
@@ -374,9 +376,9 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         CSSLayout::BoxConstraints limits;
         limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
         tile->boxConstraints = limits;
-        tile->SetBackgroundColor(selected ? Theme::kAccentSoft : Theme::kCardBackground);
+        tile->SetBackgroundColor(selected ? Theme::AccentSoft() : Theme::CardBackground());
         tile->SetBorders(selected ? 2.0f : 1.0f,
-                         selected ? Theme::kAccent : Theme::kCardBorder, Theme::kCardRadius);
+                         selected ? Theme::Accent() : Theme::CardBorder(), Theme::kCardRadius);
         tile->SetPadding(12, 14);
         tile->layout.SetFlexColumn()
                     .SetFlexGap(10)
@@ -386,9 +388,9 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         // what each counter counts.
         TooltipContent tip;
         tip.AddTitle(account.email);
-        tip.AddRow(Theme::kNewTodayText, "New today", std::to_string(st.unreadToday));
-        tip.AddRow(Theme::kUnreadText, "Unread (before today)", std::to_string(st.unreadOlder));
-        tip.AddRow(Theme::kWaitingText, "Waiting for reply", std::to_string(st.needsAnswer));
+        tip.AddRow(Theme::NewTodayText(), "New today", std::to_string(st.unreadToday));
+        tip.AddRow(Theme::UnreadText(), "Unread (before today)", std::to_string(st.unreadOlder));
+        tip.AddRow(Theme::WaitingText(), "Waiting for reply", std::to_string(st.needsAnswer));
         tile->SetTooltipContent(tip);
 
         // Head: avatar beside the name and domain.
@@ -400,9 +402,9 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
                                          kTileAvatar));
         auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
         who->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeBody));
+        who->AddChild(MakeName("acctName_" + acc, account.email, Theme::SizeBody()));
         who->AddChild(Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
-                                      Theme::kSizeSmall, Theme::kTextSecondary));
+                                      Theme::SizeSmall(), Theme::TextSecondary()));
         head->AddChild(who);
         tile->AddChild(head);
 
@@ -432,9 +434,9 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
 void AccountBar::SetSelected(const std::string& accountId) {
     for (const auto& [acc, tile] : tiles_) {
         const bool selected = (acc == accountId);
-        tile->SetBackgroundColor(selected ? Theme::kAccentSoft : Theme::kCardBackground);
+        tile->SetBackgroundColor(selected ? Theme::AccentSoft() : Theme::CardBackground());
         tile->SetBorders(selected ? 2.0f : 1.0f,
-                         selected ? Theme::kAccent : Theme::kCardBorder, Theme::kCardRadius);
+                         selected ? Theme::Accent() : Theme::CardBorder(), Theme::kCardRadius);
         tile->RequestRedraw();
     }
 }
