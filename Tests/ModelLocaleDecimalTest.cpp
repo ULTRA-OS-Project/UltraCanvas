@@ -140,6 +140,8 @@ int main(int argc, char** argv) {
         "FBX/E-45-Aircraft-6.1-ascii.fbx",
         "STEP/Box.step",
         "STEP/Pin.step",
+        "IGES/Block.igs",
+        "IGES/Bracket.igs",
         "XFile/E-45-Aircraft.x",
         "OBJ/E-45-Aircraft.obj",
         "X3D/E-45-Aircraft.x3d",
@@ -192,6 +194,8 @@ int main(int argc, char** argv) {
         {"OBJ/E-45-Aircraft.obj", "x3d"},
         {"OBJ/E-45-Aircraft.obj", "dae"},
         {"STEP/Box.step", "step"},   // solids, not a mesh: STEP writes exact bodies
+        {"STEP/Pin.step", "igs"},    // a solid: IGES's manifold solid B-rep object
+        {"IGES/Bracket.igs", "igs"}, // open faces: IGES's trimmed surfaces
     };
     for (const WriteCase& test : writers) {
         const fs::path path = media / test.source;
