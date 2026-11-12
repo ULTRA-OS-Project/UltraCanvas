@@ -238,7 +238,9 @@ jobs:
           mkdir -p test-model
           [ -s test-model/ggml-tiny.bin ] || curl -fsSL --retry 3 -o test-model/ggml-tiny.bin "$TEST_MODEL_URL"
           # The runtime's arguments (local_detail::BuildEngineArgs for whisper-server).
-          "$EXE" --host 127.0.0.1 --port 8178 --model test-model/ggml-tiny.bin \
+          # MSYS_NO_PATHCONV: Git Bash on Windows would rewrite the inference
+          # path into a Windows path (the runtime passes it as it is).
+          MSYS_NO_PATHCONV=1 "$EXE" --host 127.0.0.1 --port 8178 --model test-model/ggml-tiny.bin \
                  --inference-path /v1/audio/transcriptions --language auto --threads 2 > server.log 2>&1 &
           pid=$!
           for i in $(seq 1 120); do
