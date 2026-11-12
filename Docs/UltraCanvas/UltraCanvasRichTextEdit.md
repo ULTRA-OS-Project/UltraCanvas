@@ -643,6 +643,37 @@ document->blocks.push_back(address);
 editor->SetDocument(document);
 ```
 
+**Drawings.** A frame with `shapes` is a drawing: each `RichShape` - a
+`Line`, `Rectangle`, `RoundRectangle`, `Ellipse`, `Path` (an outline from 0
+to 1 across its box) or `Group` - is drawn in the frame's box with its
+`fillColor`, `lineColor`, `lineWidthPt`, `dash` and arrowheads, turned by
+`rotationDeg` and mirrored by `flipH` / `flipV`. The frame's own words sit
+over its shapes, at `textAnchor` (top, middle or bottom); a group member's
+words are a frame of their own (`RichShape::textFrame`, with `shapeText`
+set), and a group member with a `mediaIndex` is a picture. A drawing with no
+words is exactly as tall as it was drawn, so a rule (a line with no height)
+takes no room. `RichShape::ApplyPreset` takes Word's outline names
+(`"star5"`, `"rightArrow"`, `"flowChartDecision"`, ...). ODT, DOCX (DrawingML
+and VML) and DOC (OfficeArt) shapes and groups read into it, and both writers
+save it. Shapes are drawn, not edited.
+
+```cpp
+RichShape rule;
+rule.kind = RichShape::Kind::Line;
+rule.widthPt = 425.0f;                // across the column; no height
+rule.lineColor = "#1F4E79";
+rule.lineWidthPt = 1.5f;
+RichTextFrame drawing;
+drawing.shapes = {rule};
+document->frames.push_back(drawing);
+
+RichTextRun under;
+under.text = RichTextRun::kObjectReplacement;
+under.frameIndex = static_cast<int>(document->frames.size()) - 1;
+under.imageWidthPt = 425.0f;
+under.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+```
+
 ### Check lists
 
 ```cpp

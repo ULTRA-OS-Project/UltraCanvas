@@ -101,7 +101,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Picture on its own line | yes | yes | yes | yes | yes | |
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
-| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | no | no | no | no | no | |
+| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradients draw as their first colour; no shadows, 3-D or WordArt. |
 | Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
 
@@ -164,15 +164,16 @@ orphan control, repeated table header rows), footnotes and endnotes, zoom
 and sideways scrolling, and (2026-11) positioned frames, text boxes and
 floating pictures placed from the page, text wrapping round them line by
 line, frames and floating pictures in headers and footers (DOC included),
-and zoom to the page's width or the whole page
-(`UltraCanvasRichTextEdit::SetZoomFit`).
+zoom to the page's width or the whole page
+(`UltraCanvasRichTextEdit::SetZoomFit`), and drawn shapes and groups from
+all three formats.
 
 1. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
    (their text lies after the main text in the piece table: `ccpFtn`,
    `ccpEdn`), comments and revision marks, sections and their columns,
    bookmarks and caption / cross-reference fields. ODT and DOCX read all of
    these.
-2. Shapes and charts: read-only display first.
+2. Charts: read-only display first.
 
 Each can be checked against a LibreOffice-generated fixture the way
 `Tests/fixtures/word97-formatting.*` is.
@@ -193,8 +194,12 @@ model or a reader can already carry, or that a document needs, but
   front of the text over it).
 - **A frame's text cannot be edited**, and a frame cannot be moved or
   resized; clicks pass through it to the text underneath.
-- **Group shapes and drawn shapes** (lines, arrows, WordArt) are not shown;
-  only a shape's picture or text box is.
+- **Drawn shapes are shown, not edited**: a shape cannot be selected, moved
+  or resized, and its words cannot be edited. Gradient and pattern fills
+  draw in one colour; shadows, glow, 3-D and WordArt are not drawn; text
+  wraps round a shape's box, not its outline. Word's named outlines outside
+  the forty or so the model knows (`RichShape::ApplyPreset`) draw as their
+  box.
 - **One page setup per document.** Sections can have their own columns, but
   not their own size, margins or orientation; even/odd headers are not
   modelled.
@@ -216,7 +221,12 @@ soffice --headless --convert-to docx word97-formatting.fodt
 
 `word-frames.fodt` (a letterhead-like page: a page-anchored sender frame
 beside the address, a note box a paragraph wraps round, a floating picture)
-is converted the same way to `word-frames.odt`, `.doc` and `.docx`.
+is converted the same way to `word-frames.odt`, `.doc` and `.docx`, and so
+is `word-shapes.fodt` (a rule, a box of words, an ellipse, a dashed arrow, a
+triangle, a group and a turned box). `word-shapes-word.docx` is built by
+`make-word-shapes-fixture.py`: shapes as Word itself writes them, which
+LibreOffice's export does not produce (theme colours, a custom outline with
+an arc, a group with a picture, VML-only drawings).
 
 `WordFormatsTest` checks that all three readers recover the same structure and
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it

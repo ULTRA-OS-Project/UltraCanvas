@@ -1329,6 +1329,116 @@ int main() {
         window->UpdateAndRender();
     }
 
+    // ===== DRAWN SHAPES =====
+    std::cerr << "\n--- Drawn shapes ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        // A rule: a line with no height.
+        RichTextFrame ruleFrame;
+        RichShape rule;
+        rule.kind = RichShape::Kind::Line;
+        rule.widthPt = 300.0f;
+        rule.lineColor = "#1F4E79";
+        rule.lineWidthPt = 1.5f;
+        ruleFrame.shapes = {rule};
+        // A turned, dashed box with words centred in it.
+        RichTextFrame boxFrame;
+        RichShape box;
+        box.kind = RichShape::Kind::RoundRectangle;
+        box.widthPt = 120.0f;
+        box.heightPt = 60.0f;
+        box.rotationDeg = 15.0f;
+        box.fillColor = "#FFE699";
+        box.lineColor = "#C00000";
+        box.dash = RichShape::Dash::Dashed;
+        boxFrame.shapes = {box};
+        boxFrame.textAnchor = RichShape::TextAnchor::Middle;
+        RichDocBlock boxWords;
+        RichTextRun boxWord;
+        boxWord.text = "Boxed";
+        boxWords.runs = {boxWord};
+        boxFrame.blocks = {boxWords};
+        // A group: a mirrored outline with an arrow, an ellipse, and a box
+        // whose words are a frame of their own.
+        RichTextFrame memberWords;
+        memberWords.shapeText = true;
+        RichDocBlock memberBlock;
+        RichTextRun memberWord;
+        memberWord.text = "Member words";
+        memberBlock.runs = {memberWord};
+        memberWords.blocks = {memberBlock};
+        RichShape outline;
+        outline.kind = RichShape::Kind::Path;
+        outline.widthPt = outline.heightPt = 40.0f;
+        outline.flipH = true;
+        outline.lineColor = "#000000";
+        outline.arrowEnd = true;
+        RichShape::PathPoint start, curve;
+        start.op = RichShape::PathPoint::Op::Move;
+        curve.op = RichShape::PathPoint::Op::Curve;
+        curve.c1x = 0.5f; curve.c2x = 1.0f; curve.c2y = 0.5f; curve.x = 1.0f; curve.y = 1.0f;
+        outline.path = {start, curve};
+        RichShape dot;
+        dot.kind = RichShape::Kind::Ellipse;
+        dot.xPt = 50.0f;
+        dot.widthPt = dot.heightPt = 20.0f;
+        dot.fillColor = "#ED7D31";
+        RichShape member;
+        member.xPt = 80.0f;
+        member.widthPt = 100.0f;
+        member.heightPt = 40.0f;
+        member.lineColor = "#4472C4";
+        member.textFrame = 3;
+        RichShape group;
+        group.kind = RichShape::Kind::Group;
+        group.widthPt = 180.0f;
+        group.heightPt = 40.0f;
+        group.rotationDeg = 10.0f;
+        group.children = {outline, dot, member};
+        RichTextFrame groupFrame;
+        groupFrame.shapes = {group};
+        document->frames = {ruleFrame, boxFrame, groupFrame, memberWords};
+
+        auto drawing = [](int frame, float width, float height) {
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.frameIndex = frame;
+            run.imageWidthPt = width;
+            run.imageHeightPt = height;
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            run.imageFloatAlign = RichTextAlign::Left;
+            return run;
+        };
+        RichTextRun words;
+        words.text = "Text below the drawing.";
+        RichDocBlock first, second, third;
+        first.runs = {drawing(0, 300.0f, 0.0f), words};
+        second.runs = {drawing(1, 120.0f, 60.0f), words};
+        third.runs = {drawing(2, 180.0f, 40.0f), words};
+        document->blocks = {first, second, third};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df ruleRect = edit->GetFloatRectForTest(0);
+        const Rect2Df boxRect = edit->GetFloatRectForTest(1);
+        const Rect2Df groupRect = edit->GetFloatRectForTest(2);
+        TEST("A rule is placed with no height: " + std::to_string(ruleRect.height) + " high, "
+             + std::to_string(ruleRect.width) + " wide", ruleRect.height == 0.0f && ruleRect.width > 300.0f);
+        TEST("A drawing with words keeps its own height: " + std::to_string(boxRect.height),
+             std::abs(boxRect.height - 80.0f) < 1.0f);
+        TEST("A group is placed whole: " + std::to_string(groupRect.width) + " x " + std::to_string(groupRect.height),
+             std::abs(groupRect.width - 240.0f) < 1.0f && groupRect.y > boxRect.y + boxRect.height);
+        TEST("Plain text spells a drawing's words and its members'",
+             document->ToPlainText().find("Boxed") != std::string::npos
+             && document->ToPlainText().find("Member words") != std::string::npos);
+        // A preset outline from Word's names.
+        RichShape star;
+        TEST("Presets give outlines: star5", star.ApplyPreset("star5") && star.kind == RichShape::Kind::Path
+             && star.path.size() == 11);
+        TEST("...and an unknown name leaves a rectangle",
+             !star.ApplyPreset("noSuchShape") && star.kind == RichShape::Kind::Rectangle);
+    }
+
     // ===== PDF =====
     std::cerr << "\n--- PDF export ---" << std::endl;
     {
