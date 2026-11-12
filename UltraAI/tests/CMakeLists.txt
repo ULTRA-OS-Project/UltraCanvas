@@ -51,9 +51,47 @@ if(TARGET UltraAI_AdapterLlama)
     target_link_libraries(ultraai_test_llamacpp_adapter PRIVATE
         UltraAI_Core UltraAI_AdapterLlama)
     target_compile_features(ultraai_test_llamacpp_adapter PRIVATE cxx_std_20)
-    # Inference checks self-skip unless ULTRAAI_TEST_LLAMA_MODEL points at a
-    # GGUF file.
     add_test(NAME ultraai.llamacpp_adapter COMMAND ultraai_test_llamacpp_adapter)
+
+    # The inference checks run on a model fixture make_tiny_llama_gguf.py
+    # writes at build time with the gguf-py of the llama.cpp checkout the
+    # adapter was built from (a random one-layer llama with a chat
+    # template, ~115 KB), so `ctest` exercises the adapter for real with no
+    # download. The script needs Python with numpy; without them the fixture
+    # is not written and the test self-skips its inference checks, saying
+    # so. ULTRAAI_TEST_LLAMA_MODEL, when set in the test's environment,
+    # points at the fixture; run the binary by hand with the variable set
+    # to try another GGUF.
+    get_property(_ultraai_llama_src GLOBAL PROPERTY ULTRAAI_LLAMACPP_RESOLVED_SOURCE_DIR)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    set(_ultraai_llama_fixture_ok FALSE)
+    if(Python3_Interpreter_FOUND AND EXISTS "${_ultraai_llama_src}/gguf-py/gguf/gguf_writer.py")
+        execute_process(COMMAND "${Python3_EXECUTABLE}" -c "import numpy"
+                        RESULT_VARIABLE _ultraai_numpy_rc OUTPUT_QUIET ERROR_QUIET)
+        if(_ultraai_numpy_rc EQUAL 0)
+            set(_ultraai_llama_fixture_ok TRUE)
+        endif()
+    endif()
+    if(_ultraai_llama_fixture_ok)
+        set(_ultraai_llama_fixture "${CMAKE_CURRENT_BINARY_DIR}/tiny-llama.gguf")
+        add_custom_command(
+            OUTPUT "${_ultraai_llama_fixture}"
+            COMMAND "${Python3_EXECUTABLE}"
+                    "${CMAKE_CURRENT_SOURCE_DIR}/make_tiny_llama_gguf.py"
+                    --gguf-py "${_ultraai_llama_src}/gguf-py"
+                    --output "${_ultraai_llama_fixture}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/make_tiny_llama_gguf.py"
+            COMMENT "Writing the llama.cpp adapter test's model fixture"
+            VERBATIM)
+        add_custom_target(ultraai_tiny_llama_gguf ALL DEPENDS "${_ultraai_llama_fixture}")
+        add_dependencies(ultraai_test_llamacpp_adapter ultraai_tiny_llama_gguf)
+        set_tests_properties(ultraai.llamacpp_adapter PROPERTIES
+            ENVIRONMENT "ULTRAAI_TEST_LLAMA_MODEL=${_ultraai_llama_fixture}")
+    else()
+        message(STATUS "UltraAI: no Python with numpy (or no gguf-py next to "
+                       "the llama.cpp sources) - the llama.cpp adapter test "
+                       "skips its inference checks")
+    endif()
 endif()
 
 if(TARGET UltraAI_AdapterAnthropic)

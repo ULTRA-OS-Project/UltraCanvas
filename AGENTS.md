@@ -405,7 +405,12 @@ Intel toolchain would catch (the macOS platform layer, the packaging, a
 bundled library) asks for that row with the `ci:intel` label; adding it
 starts a run with the full matrix.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
-then `ctest --test-dir build`. Framework tests live under `Tests/`.
+then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
+llama.cpp adapter is built (the engine is fetched from GitHub, or taken from
+`ULTRAAI_LLAMACPP_SOURCE_DIR`) and its test runs on a model the build
+generates (`UltraAI/tests/make_tiny_llama_gguf.py`, needs Python with
+numpy); `ultraai-llamacpp.yml` runs that in CI, since the build rows never
+compile the adapter. Framework tests live under `Tests/`.
 
 **Downloads in CI retry.** Apt installs go through `ci-apt.sh`; every other
 download a CI step makes retries too: a file through
