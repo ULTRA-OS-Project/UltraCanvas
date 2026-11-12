@@ -118,6 +118,18 @@ Readers skip tags and record kinds they do not know, so later versions can
 add fields without breaking older readers. See
 `Apps/UltraPassword/core/PasswordVault.cpp` and `VaultFile.cpp`.
 
+## The look and the language
+
+UltraPassword is light or dark as the desktop is - Windows' and macOS'
+light or dark mode, the desktop's theme on Linux - or as *Look* on
+UOS-Settings' Appearance page says, in the desktop's font and size: every
+colour and text size of its own (`ui/Theme.h`) is a role of the framework
+theme, read when a window is built; a change while UltraPassword runs
+reaches the elements that follow the theme at once and the rest at the
+next start. Every text it shows goes through `Tr` (UltraLocalisation): its
+own set is `media/locale/<lang>/UltraPassword.json` over the Security base
+set and the standard set, and UOS-Settings' Translations page edits them.
+
 ## Where the vault lives
 
 `$XDG_DATA_HOME/UltraPassword/vault.upwvault` when `$XDG_DATA_HOME` is set, else

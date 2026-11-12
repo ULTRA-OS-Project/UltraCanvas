@@ -1,4 +1,5 @@
 // Apps/UltraPassword/ui/EntryCard.cpp
+// Version: 0.2.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (Theme.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EntryCard.h"
@@ -7,6 +8,7 @@
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <ctime>
 
@@ -45,11 +47,11 @@ std::shared_ptr<UltraCanvasLabel> AddField(const std::shared_ptr<UltraCanvasCont
                                            const std::string& id, const std::string& caption,
                                            const std::string& value) {
     auto cap = Theme::MakeLine(id + ".cap", caption, Theme::kControlHeight,
-                               Theme::kSizeBody, Theme::kTextSecondary);
+                               Theme::SizeBody(), Theme::TextSecondary());
     cap->SetElementSize(Size2Df(kFieldLabelWidth, Theme::kControlHeight));
     row->AddChild(cap);
-    auto val = Theme::MakeLine(id + ".val", value, Theme::kControlHeight, Theme::kSizeBody,
-                               Theme::kTextPrimary);
+    auto val = Theme::MakeLine(id + ".val", value, Theme::kControlHeight, Theme::SizeBody(),
+                               Theme::TextPrimary());
     val->layoutItem.SetFlexGrow(1);
     row->AddChild(val);
     return val;
@@ -64,7 +66,7 @@ BuildEntryCard(const PasswordEntry& entry, const std::string& groupPath,
 
     auto card = CreateContainer(id, 0, 0, 0, 0);
     Theme::ApplyCard(card);
-    if (highlighted) card->SetBorders(2.0f, Theme::kAccent, Theme::kCardRadius);
+    if (highlighted) card->SetBorders(2.0f, Theme::Accent(), Theme::kCardRadius);
     card->SetPadding(12);
     // Keeps the right border inside the scroll pane's clip.
     card->SetMargin(0, 2, 0, 0);
@@ -76,16 +78,16 @@ BuildEntryCard(const PasswordEntry& entry, const std::string& groupPath,
 
     // ----- title + sign-in method + rating -----
     auto head = MakeRow(id + ".head", 26);
-    auto title = Theme::MakeLine(id + ".title", entry.title, 26, Theme::kSizeHeading,
-                                 Theme::kTextPrimary, FontWeight::Bold);
+    auto title = Theme::MakeLine(id + ".title", entry.title, 26, Theme::SizeHeading(),
+                                 Theme::TextPrimary(), FontWeight::Bold);
     title->layoutItem.SetFlexGrow(1);
     head->AddChild(title);
-    auto method = Theme::MakePill(id + ".method", info.shortName, Theme::kAccent);
+    auto method = Theme::MakePill(id + ".method", info.shortName, Theme::Accent());
     method->SetTooltip(std::string("Sign-in: ") + info.name);
     head->AddChild(method);
     auto rating = Theme::MakePill(id + ".level", SecurityLevelName(info.level),
                                   Theme::SecurityColor(info.level));
-    rating->SetTooltip("How well this sign-in method resists phishing and stolen passwords");
+    rating->SetTooltip(Tr("How well this sign-in method resists phishing and stolen passwords"));
     head->AddChild(rating);
     card->AddChild(head);
 
@@ -94,7 +96,7 @@ BuildEntryCard(const PasswordEntry& entry, const std::string& groupPath,
         auto row = MakeRow(id + ".urlRow", Theme::kControlHeight);
         AddField(row, id + ".url", "Website", entry.url);
         if (callbacks.openWebsite) {
-            auto open = Theme::MakeButton(id + ".open", "Open", 56);
+            auto open = Theme::MakeButton(id + ".open", Tr("Open"), 56);
             const std::string url = entry.url;
             open->onClick = [cb = callbacks.openWebsite, url]() { cb(url); };
             row->AddChild(open);
@@ -106,7 +108,7 @@ BuildEntryCard(const PasswordEntry& entry, const std::string& groupPath,
     if (!entry.username.empty()) {
         auto row = MakeRow(id + ".userRow", Theme::kControlHeight);
         AddField(row, id + ".user", "User name", entry.username);
-        auto copy = Theme::MakeButton(id + ".copyUser", "Copy", 56);
+        auto copy = Theme::MakeButton(id + ".copyUser", Tr("Copy"), 56);
         const std::string user = entry.username;
         copy->onClick = [cb = callbacks.copy, user]() { if (cb) cb(user, "User name"); };
         row->AddChild(copy);
@@ -119,7 +121,7 @@ BuildEntryCard(const PasswordEntry& entry, const std::string& groupPath,
         auto value = AddField(row, id + ".pass", "Password",
                               entry.password.empty() ? "(none stored)" : kMask);
         if (!entry.password.empty()) {
-            auto show = Theme::MakeButton(id + ".show", "Show", 56);
+            auto show = Theme::MakeButton(id + ".show", Tr("Show"), 56);
             // Raw pointers: the label and the button live in this card, which
             // owns the callback (a shared_ptr here would be a cycle).
             show->onClick = [value = value.get(), button = show.get(),
@@ -128,14 +130,14 @@ BuildEntryCard(const PasswordEntry& entry, const std::string& groupPath,
                     std::string pw = cb ? cb(entryId) : std::string();
                     value->SetText(pw);
                     WipeString(pw);
-                    button->SetText("Hide");
+                    button->SetText(Tr("Hide"));
                 } else {
                     value->SetText(kMask);
-                    button->SetText("Show");
+                    button->SetText(Tr("Show"));
                 }
             };
             row->AddChild(show);
-            auto copy = Theme::MakeButton(id + ".copyPass", "Copy", 56);
+            auto copy = Theme::MakeButton(id + ".copyPass", Tr("Copy"), 56);
             copy->onClick = [cbPw = callbacks.passwordOf, cbCopy = callbacks.copy,
                              entryId = entry.id]() {
                 if (!cbPw || !cbCopy) return;
@@ -151,21 +153,21 @@ BuildEntryCard(const PasswordEntry& entry, const std::string& groupPath,
     // ----- single sign-on provider -----
     if (entry.method == SignInMethod::SingleSignOn) {
         auto row = MakeRow(id + ".ssoRow", Theme::kControlHeight);
-        AddField(row, id + ".sso", "Signs in with",
-                 entry.ssoProvider.empty() ? "(provider not recorded)" : entry.ssoProvider);
+        AddField(row, id + ".sso", Tr("Signs in with"),
+                 entry.ssoProvider.empty() ? Tr("(provider not recorded)") : entry.ssoProvider);
         card->AddChild(row);
     }
 
     // ----- what the method means -----
-    auto why = Theme::MakeLine(id + ".why", info.description, 30, Theme::kSizeSmall,
+    auto why = Theme::MakeLine(id + ".why", info.description, 30, Theme::SizeSmall(),
                                Theme::SecurityColor(info.level));
     why->SetWrap(TextWrap::WrapWord);
     why->size.height = CSSLayout::Dimension::Auto();
     card->AddChild(why);
 
     if (!entry.notes.empty()) {
-        auto notes = Theme::MakeLine(id + ".notes", entry.notes, 32, Theme::kSizeSmall,
-                                     Theme::kTextSecondary);
+        auto notes = Theme::MakeLine(id + ".notes", entry.notes, 32, Theme::SizeSmall(),
+                                     Theme::TextSecondary());
         notes->SetWrap(TextWrap::WrapWord);
         notes->size.height = CSSLayout::Dimension::Auto();
         card->AddChild(notes);
@@ -177,13 +179,13 @@ BuildEntryCard(const PasswordEntry& entry, const std::string& groupPath,
     const std::string changed = FormatDate(entry.modified);
     if (!changed.empty()) meta += "  ·  changed " + changed;
     auto metaLabel = Theme::MakeLine(id + ".meta", meta, Theme::kControlHeight,
-                                     Theme::kSizeSmall, Theme::kTextMuted);
+                                     Theme::SizeSmall(), Theme::TextMuted());
     metaLabel->layoutItem.SetFlexGrow(1);
     foot->AddChild(metaLabel);
-    auto edit = Theme::MakeButton(id + ".edit", "Edit", 56);
+    auto edit = Theme::MakeButton(id + ".edit", Tr("Edit"), 56);
     edit->onClick = [cb = callbacks.edit, entryId = entry.id]() { if (cb) cb(entryId); };
     foot->AddChild(edit);
-    auto del = Theme::MakeButton(id + ".delete", "Delete", 64);
+    auto del = Theme::MakeButton(id + ".delete", Tr("Delete"), 64);
     del->onClick = [cb = callbacks.remove, entryId = entry.id]() { if (cb) cb(entryId); };
     foot->AddChild(del);
     card->AddChild(foot);
