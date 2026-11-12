@@ -19,6 +19,7 @@
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -795,8 +796,8 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     ctx->SetFontSize(kSnippetFont);
     ctx->SetFontWeight(FontWeight::Normal);
     ctx->SetTextPaint(unread ? look.ink : look.inkMuted);
-    std::string snippet = c.lastMessageSnippet.empty() ? std::string("No messages yet") : c.lastMessageSnippet;
-    if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = "End-to-end encrypted";
+    std::string snippet = c.lastMessageSnippet.empty() ? Tr("No messages yet") : c.lastMessageSnippet;
+    if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = Tr("End-to-end encrypted");
     ctx->DrawTextInRect(snippet, Rect2Dd(textX, topY + 22, rightEdge - textX - badgeWidth - 8, 18));
 }
 
