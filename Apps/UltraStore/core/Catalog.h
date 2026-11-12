@@ -4,6 +4,7 @@
 // one shape - releases with packages per target - and a release names the
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
+// Version: 0.7.1 - market_url: the marketplace service the app page reports a problem to
 // Version: 0.7.0 - categories from one fixed list (StoreCategories), read case-insensitively
 // Version: 0.6.0 - featured: the admin's pick for the store's hero and Editor's picks
 // Version: 0.5.0 - payment_url and licence_key: the payment service the store buys through
@@ -210,6 +211,9 @@ struct Catalog {
     // the store has none, and Buy goes to the publisher's page then.
     std::string paymentUrl;
     std::string licenceKey;
+    // The marketplace service (Server/UltraStoreMarket) the store's app page
+    // reports a problem to; empty when the publisher runs no operator tier.
+    std::string marketUrl;
     std::vector<Publisher> publishers;
     std::vector<Component> apps;        // kind == App
     std::vector<Component> components;  // kind == Runtime or Library

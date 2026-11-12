@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from ultrastore_market.app import create_app
 from ultrastore_market.auth import public_hex, sign_request, verify_request
 from ultrastore_market.config import Settings
+from ultrastore_market.publish import SigningKey
 from ultrastore_market.store import MarketStore, add_days, canonical, today
 
 OP = {"Authorization": "Bearer op-token"}
@@ -69,13 +70,15 @@ class MerchantClient:
 
 @pytest.fixture(params=database_urls())
 def service(request, tmp_path):
-    settings = Settings(database=database_url(request.param, tmp_path), operator_token="op-token")
+    settings = Settings(database=database_url(request.param, tmp_path), operator_token="op-token", publish_dir=str(tmp_path / "publish"),
+                        payment_url="https://pay.example", licence_key="ab" * 32, public_base_url="https://market.example",
+                        trusted_keys=["cd" * 32])
     with TestClient(create_app(settings)) as client:
         yield client
 
 
 def component(app_id: str, version: str) -> dict:
-    return {"id": app_id, "name": "Hello", "publisher": "Anna & Co", "pricing": {"model": "free"},
+    return {"id": app_id, "name": "Hello", "publisher": "anna-co", "pricing": {"model": "free"},
             "releases": [{"version": version, "channel": "stable", "packages": [{"os": "linux", "arch": "x86_64", "format": "zip", "sha256": "a" * 64, "size": 10}]}]}
 
 
@@ -315,3 +318,65 @@ def test_the_audit_chain_shows_an_edit(tmp_path):
     store._db.execute("DELETE FROM audit WHERE id = 2")   # a gap
     assert store.verify_audit()["broken_at"] == 3
     store.close()
+
+
+def test_the_catalog_is_published_from_the_released_submissions_and_signed(service, tmp_path):
+    client = service
+    anna = register(client)
+    bob = register(client, "Bob")
+    key = client.get("/v1/publish/key").json()
+    assert len(key["public_key"]) == 64 and key["trusted_keys"] == [key["public_key"], "cd" * 32]
+    packages = [{"file": "packages/" + "a" * 64 + ".zip", "sha256": "a" * 64, "size": 10}]
+    # Two of Anna's apps released, one at a later version; a runtime; Bob's app released and then Bob suspended.
+    hello = component("org.example.hello", "1.0.0")
+    hello2 = component("org.example.hello", "1.1.0")
+    runtime = {**component("org.example.runtime", "2.0.0"), "kind": "runtime", "name": "Runtime"}
+    bobs = {**component("org.example.bob", "0.1.0"), "publisher": "bob-co"}
+    ids = []
+    for who, comp in ((anna, hello), (anna, hello2), (anna, runtime), (bob, bobs)):
+        r = who.request("POST", "/v1/submissions", {"component": comp, "signature": who.sign_component(comp), "packages": packages})
+        assert r.status_code == 200, r.text
+        ids.append(r.json()["id"])
+        assert client.post(f"/v1/submissions/{r.json()['id']}/decide", json={"action": "release"}, headers=OP).status_code == 200
+    client.post(f"/v1/merchants/{bob.id}/suspend", json={"clause": "9.1", "reason": "x"}, headers=OP)
+    # Publish: the files, the sequence past the releases, the signature over the exact bytes.
+    assert client.post("/v1/publish").status_code == 401
+    r = client.post("/v1/publish", headers=OP)
+    assert r.status_code == 200, r.text
+    report = r.json()
+    assert report["sequence"] == 5 and report["apps"] == 1 and report["components"] == 1 and report["publishers"] == 1 and report["left_out"] == []
+    folder = tmp_path / "publish"
+    body = (folder / "catalog.json").read_bytes()
+    signature = bytes.fromhex((folder / "catalog.json.sig").read_text().strip())
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    Ed25519PublicKey.from_public_bytes(bytes.fromhex(key["public_key"])).verify(signature, body)
+    catalog = json.loads(body)
+    assert catalog["schema"] == 2 and catalog["sequence"] == 5 and catalog["trusted_keys"] == key["trusted_keys"]
+    assert catalog["payment_url"] == "https://pay.example" and catalog["licence_key"] == "ab" * 32 and catalog["market_url"] == "https://market.example"
+    assert catalog["codes"] == [] and [a["id"] for a in catalog["apps"]] == ["org.example.hello"]
+    assert catalog["apps"][0]["releases"][0]["version"] == "1.1.0"   # the latest release of the app
+    assert catalog["apps"][0]["publisher"] == "anna-co" and catalog["publishers"] == [{"id": "anna-co", "name": "Anna & Co"}]
+    assert [c["id"] for c in catalog["components"]] == ["org.example.runtime"]   # Bob's app is out: suspended
+    # Again: the next sequence; the audit log has both publishes.
+    assert client.post("/v1/publish", headers=OP).json()["sequence"] == 6
+    assert [a["action"] for a in client.get("/v1/audit", headers=OP).json()["audit"]].count("publish") == 2
+    # A merchant whose contact is a URL becomes the publisher's URL; Bob reinstated is back in.
+    client.post(f"/v1/merchants/{bob.id}/reinstate", json={}, headers=OP)
+    client.put(f"/v1/merchants/{bob.id}", json={"contact": "https://bob.example"}, headers=OP)
+    client.post("/v1/publish", headers=OP)
+    catalog = json.loads((folder / "catalog.json").read_bytes())
+    assert [a["id"] for a in catalog["apps"]] == ["org.example.bob", "org.example.hello"]
+    assert {"id": "bob-co", "name": "Bob", "url": "https://bob.example"} in catalog["publishers"]
+    # The signing key is kept across restarts when none is configured.
+    seed = SigningKey.generate()
+    assert len(seed.seed_hex) == 64 and SigningKey(bytes.fromhex(seed.seed_hex)).public_hex == seed.public_hex
+
+
+def test_publish_needs_a_folder(tmp_path):
+    settings = Settings(database="sqlite:///" + str(tmp_path / "m.sqlite3"), operator_token="op-token")
+    with TestClient(create_app(settings)) as client:
+        r = client.post("/v1/publish", headers=OP)
+        assert r.status_code == 503 and "ULTRASTORE_MARKET_PUBLISH_DIR" in r.json()["error_description"]
+        first = client.get("/v1/publish/key").json()["public_key"]
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/v1/publish/key").json()["public_key"] == first

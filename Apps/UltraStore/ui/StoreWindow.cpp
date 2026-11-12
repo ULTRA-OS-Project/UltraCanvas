@@ -1,6 +1,7 @@
 // Apps/UltraStore/ui/StoreWindow.cpp
 // The shell, the pages and the app page after the shop design; the jobs are
 // in StoreJobs.cpp, the settings page in StoreSettingsPage.cpp.
+// Version: 0.6.1 - Report a problem on the app page, the outcome of a report
 // Version: 0.6.0 - the categories by their names in the person's language, from the catalog's fixed list
 // Version: 0.5.2 - the header in less room: Refresh, the wordmark and Settings as their icons, as far as it needs
 // Version: 0.5.1 - every text through Tr: the header, the filters, the buttons, the facts; dates in the language's order
@@ -1714,7 +1715,56 @@ void StoreWindow::RebuildDetails() {
             receipt->onClick = [url]() { OpenURL(url); };
             actions->AddChild(receipt);
         }
+        if (catalog_ && !catalog_->marketUrl.empty()) {
+            auto report = Theme::Button("usX.report", Tr("Report a problem"), 130, Theme::ButtonKind::Ghost);
+            report->onClick = [this]() { reportOpen_ = !reportOpen_; RebuildDetails(); };
+            actions->AddChild(report);
+        }
         middle->AddChild(actions);
+
+        // What became of the problems reported from here, and the form.
+        if (catalog_ && !catalog_->marketUrl.empty()) {
+            int n = 0;
+            for (const StoreSettings::SentReport& r : settings_.reports) {
+                if (r.app != app->id) continue;
+                std::string line = TrF("Your report of {0} ({1}): {2}", PrettyDate(r.sentAt), r.kind, r.state.empty() ? Tr("sent") : r.state);
+                if (!r.outcome.empty()) line += " - " + r.outcome;
+                middle->AddChild(Theme::Caption("usX.rep" + std::to_string(n++), line));
+            }
+            if (reportOpen_) {
+                reportForm_ = Theme::Surface("usX.reportForm", Theme::kInnerGap);
+                reportForm_->AddChild(Theme::Text("usX.reportForm.title", Tr("Report a problem with this app"), 13.0f, FontWeight::Bold, Theme::kTextPrimary));
+                reportForm_->AddChild(Theme::Caption("usX.reportForm.hint", Tr("The store's operator reads it; the merchant sees the report, never who sent it. You learn the outcome here.")));
+                reportKind_ = Theme::Pin(CreateDropdown("usX.reportKind", 0, 0, 220, Theme::kControlHeight));
+                reportKind_->AddItem(Tr("It crashes"), "crash");
+                reportKind_->AddItem(Tr("It does not work as described"), "not-working");
+                reportKind_->AddItem(Tr("Malware or a security problem"), "malware");
+                reportKind_->AddItem(Tr("Inappropriate content"), "content");
+                reportKind_->AddItem(Tr("A copyright problem"), "copyright");
+                reportKind_->AddItem(Tr("A privacy problem"), "privacy");
+                reportKind_->AddItem(Tr("Something else"), "other");
+                reportKind_->SetSelectedIndex(0);
+                reportForm_->AddChild(reportKind_);
+                reportText_ = Theme::Pin(std::make_shared<UltraCanvasTextArea>("usX.reportText", 0.0f, 96.0f));
+                reportText_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(96.0f));
+                reportText_->SetWordWrap(true);
+                reportText_->SetShowLineNumbers(false);
+                reportText_->SetHighlightSyntax(false);
+                reportText_->SetFontSize(12.0f);
+                reportText_->SetBackgroundColor(Theme::kPageBackground);
+                reportText_->SetBorders(1.0f, Theme::kBorder, 4.0f);
+                reportForm_->AddChild(reportText_);
+                auto buttons = Theme::Row("usX.reportButtons", Theme::kInnerGap, true);
+                auto send = Theme::Button("usX.reportSend", Tr("Send"), 90, Theme::ButtonKind::Primary);
+                send->onClick = [this, appId = app->id]() { SendReportNow(appId); };
+                buttons->AddChild(send);
+                auto cancel = Theme::Button("usX.reportCancel", Tr("Cancel"), 90, Theme::ButtonKind::Ghost);
+                cancel->onClick = [this]() { reportOpen_ = false; RebuildDetails(); };
+                buttons->AddChild(cancel);
+                reportForm_->AddChild(buttons);
+                middle->AddChild(reportForm_);
+            }
+        }
 
         // What this machine downloads: the plan, in one line.
         if (const std::optional<InstallPlan> plan = PlanFor(l)) {
@@ -2081,6 +2131,30 @@ void StoreWindow::RequestPicture(const std::string& url, const std::weak_ptr<Ult
         });
     }
     pictureWake_.notify_one();
+}
+
+void StoreWindow::SendReportNow(const std::string& appId) {
+    if (!catalog_ || catalog_->marketUrl.empty() || !reportText_ || !reportKind_) return;
+    const std::string text = reportText_->GetText();
+    if (text.empty()) { SetStatus(Tr("Say what is wrong before sending the report"), true); return; }
+    const int at = reportKind_->GetSelectedIndex();
+    const std::string kind = at >= 0 ? reportKind_->GetItem(at)->value : std::string("other");
+    const std::string reporter = Bought(appId) ? Bought(appId)->licenceId : std::string();
+    const std::string marketUrl = catalog_->marketUrl;
+    SetStatus(Tr("Sending the report"));
+    std::weak_ptr<int> token = alive_;
+    std::thread([this, token, marketUrl, appId, kind, text, reporter]() {
+        const auto sent = SendReport(marketUrl, "app", appId, kind, text, reporter, UltraNetHttpCall());
+        app_.PostToUIThread([this, token, sent, appId, kind]() {
+            if (!token.lock()) return;
+            if (!sent) { SetStatus(sent.error.message, true); return; }
+            settings_.RememberReport({sent.Value().id, sent.Value().secret, appId, kind, Today(), "open", ""});
+            settings_.Save();
+            reportOpen_ = false;
+            SetStatus(Tr("Report sent. The outcome shows on this page once the operator has answered."));
+            if (detailsAppId_ == appId) RebuildDetails();
+        });
+    }).detach();
 }
 
 void StoreWindow::PictureReady(const std::string& url, const std::string& path) {

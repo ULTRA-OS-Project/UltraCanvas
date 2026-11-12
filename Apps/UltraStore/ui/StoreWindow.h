@@ -52,6 +52,7 @@
 #include "PackageResolver.h"
 #include "PlatformInfo.h"
 #include "Purchase.h"
+#include "Report.h"
 #include "StoreEngine.h"
 #include "StoreQuery.h"
 #include "StoreSettings.h"
@@ -191,6 +192,10 @@ private:
     // Install / Try / Buy, Open, Update, Remove - what fits the app's state.
     std::vector<std::shared_ptr<UltraCanvas::UltraCanvasButton>> PrimaryActions(const AppListing& l, const std::string& id);
     void ShowDetails(const std::string& appId);
+    // The report form on the app page (Report.h): opened by Report a
+    // problem, sent on a thread, the receipt kept in the settings; the
+    // outcomes of the reports about the app are shown above it.
+    void SendReportNow(const std::string& appId);
     void HideDetails();
     void RebuildDetails();
     std::string StateLine(const AppListing& l) const;
@@ -343,6 +348,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> detailsPage_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> detailsBody_;
     std::string detailsAppId_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> reportForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> reportKind_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> reportText_;
+    bool reportOpen_ = false;
     // Settings
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> channelDropdown_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> languageInput_;

@@ -49,6 +49,7 @@ with a 4xx status.
 | `GET /v1/submissions[?state=&merchant=&app=]`, `GET /v1/submissions/{id}` | the review's queue; one with its decisions |
 | `POST /v1/submissions/{id}/decide` | `{action, message, sequence?}` - `start_review`, `release` (the next catalog sequence, or the one given), `request_changes`, `reject`; a decision is appended, the state follows, a released submission stays released |
 | `GET /v1/released` | what the catalog is generated from: each app's latest released component, from merchants in good standing and apps not suspended, with the sequence |
+| `POST /v1/publish` | the catalog generated from it, signed into the publish folder (*The publish*) → `{sequence, apps, components, publishers, left_out, files, public_key}` |
 | `GET /v1/reports[?state=]`, `GET /v1/reports/{id}` | with the reporter |
 | `POST /v1/reports/{id}/assign {assignee}`, `/resolve`, `/dismiss {findings, outcome}` | the findings for the operator, the `outcome` line for the reporter and the merchant |
 | `POST /v1/notices` | `{kind, subject, text, clause?, recipients}` (`["*"]` for everyone) → the notice and the merchants the policy suspended on it |
@@ -78,7 +79,31 @@ with a 4xx status.
 | `POST /v1/reports` | `{target_kind: app\|release\|merchant, target, kind, text, attachments?, reporter?}` → `{id, secret}`; the store sends the licence or the install id as `reporter` when there is one |
 | `GET /v1/reports/{id}/outcome?secret=` | the one line the reporter learns |
 | `GET /v1/terms`, `GET /v1/terms/current` | |
+| `GET /v1/publish/key` | `{public_key, trusted_keys}`: the operator's signing key |
 | `GET /healthz` | `ok`, or what is not configured |
+
+## The publish
+
+`POST /v1/publish` (the operator) generates the one signed `catalog.json`
+the stores read from the released submissions (`publish.py`): each app's
+latest released component as the merchant sent it, from merchants in good
+standing and apps not suspended, under `apps` or `components` by its
+kind; the `publishers` from the components' publisher ids with the
+merchants' names (and the contact as the URL when it is one); the
+`trusted_keys` - the operator's signing key and `ULTRASTORE_MARKET_TRUSTED_KEYS`
+(a key being rotated in); `payment_url` and `licence_key` from
+`ULTRASTORE_MARKET_PAYMENT_URL` and `_LICENCE_KEY`; `market_url`, this
+service, where the store's app page reports a problem; `codes` empty (the
+codes are the merchants' own stores'). The sequence counts up past the
+last publish and the last release. The catalog and `catalog.json.sig`
+(the Ed25519 signature over the exact bytes, hex) go into
+`ULTRASTORE_MARKET_PUBLISH_DIR`, which the web server serves as the
+catalog base. The operator's signing key is `ULTRASTORE_MARKET_SIGNING_SEED`
+(32 bytes, hex), or one made on the first start and kept in the database;
+`GET /v1/publish/key` gives its public half for `Apps/UltraStore/keys/`
+and for a store's trusted keys. The packages stay on the merchants'
+servers until the operator's package store exists: the catalog carries
+the URLs the merchants named.
 
 ## Strikes, suspensions, standing
 
@@ -127,9 +152,6 @@ unit, the nginx location, the environment file to fill in.
 
 ## What comes next
 
-The merchant backend's `submit` (the component signed as above, the
-packages into the operator's package store), its notices banner and
-*Terms* page; the operator's window (the `Super*` pages of the design) on
-this API; the store's report form on the app page; the publish that
-generates and signs the catalog from `/v1/released`; the review pipeline
-behind the checks marked *not run*.
+The packages into the operator's package store with a submission; the
+operator's window (the `Super*` pages of the design) on this API; the
+review pipeline behind the checks marked *not run*.

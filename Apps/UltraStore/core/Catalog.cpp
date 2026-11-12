@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
+// Version: 0.6.1 - market_url
 // Version: 0.6.0 - categories from one fixed list: StoreCategories, CategoryId, CheckCategories; read case-insensitively
 // Version: 0.5.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.5.0 - payment_url, licence_key
@@ -607,6 +608,10 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
     if (!catalog.paymentUrl.empty() && catalog.paymentUrl.rfind("https://", 0) != 0 && catalog.paymentUrl.rfind("http://", 0) != 0) {
         return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("The payment service is an http(s) URL"), catalog.paymentUrl);
     }
+    catalog.marketUrl = root.Get("market_url").GetString();
+    if (!catalog.marketUrl.empty() && catalog.marketUrl.rfind("https://", 0) != 0 && catalog.marketUrl.rfind("http://", 0) != 0) {
+        return Result<Catalog>::Failure(ErrorCode::ParseError, "The marketplace service is an http(s) URL", catalog.marketUrl);
+    }
     catalog.licenceKey = root.Get("licence_key").GetString();
     if (!catalog.licenceKey.empty()) {
         std::vector<uint8_t> bytes;
@@ -682,6 +687,7 @@ std::string SerializeCatalog(const Catalog& catalog) {
     root.Set("publishers", std::move(publishers));
     if (!catalog.paymentUrl.empty()) root.Set("payment_url", catalog.paymentUrl);
     if (!catalog.licenceKey.empty()) root.Set("licence_key", catalog.licenceKey);
+    if (!catalog.marketUrl.empty()) root.Set("market_url", catalog.marketUrl);
     if (!catalog.codes.empty()) {
         JSONValue codes = JSONValue::MakeArray();
         for (const PromoCode& c : catalog.codes) codes.Append(WriteCode(c));

@@ -3,6 +3,7 @@
 // and posts progress and the outcome to the UI thread; the Downloads panel
 // shows the queue. The engine and the client are touched by the worker only
 // while a job runs and by the UI thread only while none does.
+// Version: 0.5.0 - the refresh fetches the outcome of the reports sent
 // Version: 0.4.0 - the refresh syncs the licences (renewals, licences taken back)
 // Version: 0.3.1 - every text through Tr; an update to buy is told by the licence, not the message
 // Version: 0.3.0 - the open order kept and resumed, the licence file
@@ -156,6 +157,18 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                     if (!sync.Value().renewed.empty()) result.message += " " + TrN("{n} subscription renewed.", "{n} subscriptions renewed.", static_cast<long long>(sync.Value().renewed.size()));
                     if (!sync.Value().revoked.empty()) result.message += " " + TrN("{n} licence taken back.", "{n} licences taken back.", static_cast<long long>(sync.Value().revoked.size()));
                 }
+            }
+            // The reports sent from here: what became of the open ones.
+            if (!fetched.Value().marketUrl.empty()) {
+                std::vector<StoreSettings::SentReport> reports = settings_.reports;
+                bool changed = false;
+                const HttpCall http = UltraNetHttpCall();
+                for (StoreSettings::SentReport& r : reports) {
+                    if (r.Closed()) continue;
+                    const auto now = FetchReportOutcome(fetched.Value().marketUrl, r.id, r.secret, http);
+                    if (now && (now.Value().state != r.state || now.Value().outcome != r.outcome)) { r.state = now.Value().state; r.outcome = now.Value().outcome; changed = true; }
+                }
+                if (changed) app_.PostToUIThread([this, reports]() { settings_.reports = reports; settings_.Save(); });
             }
             return result;
         }
