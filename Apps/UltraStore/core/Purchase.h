@@ -5,6 +5,8 @@
 // names, and the signed URL for a paid app's restricted package. The HTTP
 // call is a function the caller hands in, so the tests use a map and nothing
 // here touches the network in a test; the default is UltraNet.
+// Version: 0.2.0 - subscriptions (the order's cycle and days, the licence's valid_until, CancelSubscription),
+//                  a licence taken back by a refund or a chargeback, SyncLicences
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -15,6 +17,8 @@
 
 #include <functional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace UltraStore {
 
@@ -36,17 +40,30 @@ struct Order {
     std::string amount, currency, listPrice;
     std::string code;
     bool codeApplied = false;
-    std::string status;       // open, pending, paid, cancelled, failed, chargeback
+    std::string status;       // open, pending, paid, cancelled, failed, chargeback, refunded
     std::string paidAt, licenceId, licence;
     int receiptNo = 0;
+    // A subscription: "month" or "year", the day the paid period ends, the
+    // day the licence is valid until (the period plus the service's grace
+    // days), and whether it is active, failing (a renewal did not go
+    // through) or cancelled (it ends with the paid period).
+    std::string cycle, paidUntil, validUntil, subscriptionStatus;
+    // The licence was taken back by a refund or a chargeback (revokedReason).
+    bool revoked = false;
+    std::string revokedReason;
     bool Paid() const { return status == "paid"; }
-    bool Over() const { return status == "paid" || status == "cancelled" || status == "failed" || status == "chargeback"; }
+    bool Subscription() const { return !cycle.empty(); }
+    bool Over() const { return status == "paid" || status == "cancelled" || status == "failed" || status == "chargeback" || status == "refunded"; }
 };
 
 // POST /v1/checkout: the order, with the checkout URL to open in the browser.
 Result<Order> StartCheckout(const std::string& paymentUrl, const std::string& appId, const std::string& code, const HttpCall& http);
 // GET /v1/orders/{id}?secret=: the order as it stands.
 Result<Order> OrderStatus(const std::string& paymentUrl, const std::string& orderId, const std::string& secret, const HttpCall& http);
+// POST /v1/orders/{id}/subscription/cancel: the buyer ends a subscription;
+// Skrill charges no more and the licence lasts until the paid period ends.
+// The order as it stands afterwards.
+Result<Order> CancelSubscription(const std::string& paymentUrl, const std::string& orderId, const std::string& secret, const HttpCall& http);
 // POST /v1/orders/{id}/download: a URL for one of the app's restricted
 // packages ("restricted/<sha256>.<format>"), good for a few minutes.
 Result<std::string> SignedDownloadUrl(const std::string& paymentUrl, const std::string& orderId, const std::string& secret,
@@ -68,12 +85,19 @@ LicensedUrlSigner(SqliteRegistry& registry, std::string paymentUrl, HttpCall htt
 // update period when the order was paid.
 struct Licence {
     std::string licenceId, app, orderId, issued, updates, updatesUntil;
+    // A subscription's licence: the day it is valid until; empty for a
+    // purchase that lasts.
+    std::string validUntil;
     // Whether a release dated so is in the purchase: always; never - no
     // later than the day the licence was issued; until - no later than
     // that day. An undated release is in.
     bool Covers(const std::string& releaseDate) const;
     // "updates included", "the bought version only (2026-10-27)", "updates until 2027-12-31"
     std::string UpdateTerms() const;
+    // Whether the licence is good on that day: always for a purchase that
+    // lasts, up to and including validUntil for a subscription's. An app
+    // checks this with today's date after ReadLicenceFile.
+    bool ValidOn(const std::string& day) const;
 };
 // "ULIC1.<base64url payload>.<base64url signature>" against the hex Ed25519
 // key the catalog names (licence_key); SignatureInvalid when it is not that
@@ -103,5 +127,21 @@ Result<Licence> ReadLicenceFile(const std::string& pathUtf8, const std::string& 
 
 // The record the registry keeps of a paid order.
 LicenceRecord LicenceRecordOf(const Order& order, const Licence& licence);
+
+// ----- keeping the licences current -----
+// What SyncLicences found: the apps whose licence the service re-issued (a
+// subscription renewed), the apps whose licence it took back (a refund, a
+// chargeback - the record is gone from the registry), and the apps it
+// could not ask about, with why (their records stay).
+struct LicenceSync {
+    std::vector<std::string> renewed, revoked;
+    std::vector<std::pair<std::string, Error>> failed;
+    bool Changed() const { return !renewed.empty() || !revoked.empty(); }
+};
+// Asks the service about every licence in the registry (GET /v1/orders/
+// {id} with the order's secret): a revoked one is removed, a re-issued
+// token verified against the key (when one is given) and kept in place of
+// the old. The engine's SyncLicences does the same and the licence files.
+Result<LicenceSync> SyncLicences(SqliteRegistry& registry, const std::string& paymentUrl, const std::string& licenceKeyHex, const HttpCall& http);
 
 } // namespace UltraStore

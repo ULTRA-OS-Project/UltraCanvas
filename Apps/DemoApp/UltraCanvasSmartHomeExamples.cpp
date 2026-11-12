@@ -42,10 +42,10 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSmartHomeExamples() {
         static DemoHome home;   // after SmartHomeAPI's own static, so it goes first
 
-        auto page = DemoKit::CreatePage("SmartHomeExamples", "Smart Home - the demo home",
-            "The module's dashboard widget (SmartHomePanel) on the simulated home: 30 devices in 8 rooms that "
+        auto page = DemoKit::CreatePage("SmartHomeExamples", Tr("Smart Home - the demo home"),
+            Tr("The module's dashboard widget (SmartHomePanel) on the simulated home: 30 devices in 8 rooms that "
             "answer like real ones. A press on a card switches it; the toolbar picks the view and searches. "
-            "The full application is SmartHome Center.");
+            "The full application is SmartHome Center."));
         // The panel scrolls its own views: the page is the area's height.
         page->SetFillsArea(true);
 

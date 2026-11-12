@@ -207,6 +207,9 @@ struct Preferences {
     // agency's name, crypto scams, the caution on any crypto mail, dangerous
     // attachments, the server's spam verdict. All on.
     ThreatScanOptions scamWarnings;
+    // Settings > Display > Email warnings: which of those warnings the strip
+    // above the message shows. Display only - the badge still tells. All on.
+    WarningStripOptions warningStrip;
     // The sender menu's "Always trust this sender" and "Block this sender"
     // (Settings > Warnings > Trusted & blocked): addresses, lower
     // case, and "@example.com" for a blocked domain.

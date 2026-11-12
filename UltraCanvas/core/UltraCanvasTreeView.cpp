@@ -235,6 +235,7 @@ namespace UltraCanvas {
 
         SetBackgroundColor(Colors::White);
         SetBorders(1, Colors::Gray);
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, float w, float h) :
@@ -276,6 +277,7 @@ namespace UltraCanvas {
 
         SetBackgroundColor(Colors::White);
         SetBorders(1, Colors::Gray);
+        ApplyThemeIfFollowing();
     }
 
     UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier) :
@@ -317,6 +319,7 @@ namespace UltraCanvas {
 
         SetBackgroundColor(Colors::White);
         SetBorders(1, Colors::Gray);
+        ApplyThemeIfFollowing();
     }
 
     void UltraCanvasTreeView::SetRootVisible(bool visible) {
@@ -1384,12 +1387,13 @@ namespace UltraCanvas {
             // a focused row is told from one that is merely selected, and a
             // selected tree that lost the focus shows no ring. Drawn over the
             // background and under the lines, icon and label. The automatic
-            // colour contrasts with the row it sits on: white on the selection
-            // background (the text there is black, so the blue would vanish),
+            // colour contrasts with the row it sits on: the selection text
+            // colour (white when none is set) on the selection background,
             // the selection colour on any other row.
             if (node == focusedNode && IsFocused()) {
+                const Color onSelection = selectionTextColor.a > 0 ? selectionTextColor : Colors::White;
                 const Color ring = focusRingColor.a > 0 ? focusRingColor
-                                 : (bgColor == selectionColor ? Colors::White : selectionColor);
+                                 : (bgColor == selectionColor ? onSelection : selectionColor);
                 ctx->PushState();
                 ctx->SetLineDash(UCDashPattern({2.0, 2.0}));
                 ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 2, nodeY + 1, nodeWidth - 4, rowHeight - 2),
@@ -1677,7 +1681,7 @@ namespace UltraCanvas {
                                               int textX, int nodeWidth, int sbWidth,
                                               const Rect2Di &contentRect) {
         // Classic mode: single text run + optional right icon.
-        Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
+        Color nodeTextColor = NodeTextColor(node);
         ctx->SetFontSize(fontSize);
         ctx->SetTextPaint(nodeTextColor);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
@@ -2200,6 +2204,36 @@ namespace UltraCanvas {
         // The track size feeds row width (rows shrink by sbWidth) and the
         // scrollbar's own bounds, both resolved in UpdateScrollbars().
         UpdateScrollbars();
+        RequestRedraw();
+    }
+
+// ===== THE THEME =====
+    void UltraCanvasTreeView::ApplyTheme(const UltraCanvasTheme& theme) {
+        const ThemeRoles& r = theme.roles;
+        SetBackgroundColor(r.well);
+        SetBordersColor(r.lineStrong);
+        fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+        selectionColor = r.accent;
+        selectionTextColor = r.onAccent;
+        hoverColor = r.hover;
+        lineColor = r.lineStrong;
+        textColor = r.ink;
+        expandButtonColor = r.raised;
+        expandButtonBorderColor = r.lineStrong;
+        expandButtonSymbolColor = r.ink;
+        expanderArrowColor = r.inkMuted;
+        checkboxBackgroundColor = r.well;
+        checkboxBorderColor = r.lineStrong;
+        checkboxCheckColor = theme.Role("checkbox.mark", r.accent);
+        dropTargetColor = r.accent.WithAlpha(0x66);
+        loadingBarColor = r.accent;
+        TreeScrollToTopStyle buttons = scrollToTopStyle;
+        buttons.background = r.inkMuted.WithAlpha(0xC0);
+        buttons.hoverBackground = r.ink.WithAlpha(0xF0);
+        buttons.borderColor = r.panel.WithAlpha(0x60);
+        buttons.arrowColor = r.panel;
+        scrollToTopStyle = buttons;
+        SetVerticalScrollbarStyle(ScrollbarStyle::FromTheme(theme, scrollbarStyle));
         RequestRedraw();
     }
 }

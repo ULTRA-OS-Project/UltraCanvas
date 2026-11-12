@@ -1,4 +1,5 @@
 // UltraCloud/core/UltraCloudHttp.cpp
+// Version: 0.8.0 - DownloadToFile hands back the answer's headers (`answered`)
 // Version: 0.7.0 - DownloadToFile continues a partial copy (SetThreadDownloadContinues)
 // Version: 0.6.0 - DownloadToFile: a download is written to disk as it arrives
 // Version: 0.5.0 - a request called off (the thread's abort check) is Cancelled,
@@ -208,7 +209,8 @@ UltraNetResult HttpProviderBase::SendWith(
 Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
                                         UltraNetHttpRequest request,
                                         const std::string& localPath,
-                                        const std::string& what) const {
+                                        const std::string& what,
+                                        UltraNetResponse* answered) const {
     if (localPath.empty())
         return Result::Error(ResultCode::InvalidArgument, what + ": no local file given");
     // As asked, for a second try from the start (a 416 below).
@@ -314,7 +316,7 @@ Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
         std::error_code ec;
         std::filesystem::remove(target->path, ec);
         const bool previous = SetThreadDownloadContinues(false);
-        Result again = DownloadToFile(credentials, asked, localPath, what);
+        Result again = DownloadToFile(credentials, asked, localPath, what, answered);
         SetThreadDownloadContinues(previous);
         return again;
     }
@@ -334,6 +336,10 @@ Result HttpProviderBase::DownloadToFile(const Credentials& credentials,
     if (!r) {
         discard();   // half a file is no file
         return r;
+    }
+    if (answered) {
+        answered->statusCode = response.statusCode;
+        answered->headers = response.headers;
     }
     return Result::Ok();
 }

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- UltraStoreOperator: the store's tile in the operator tier's ink, the awning, and a shield with a check over the shop: the operator who runs the marketplace. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <path d="M48 92 L64 56 H192 L208 92 Z" fill="#ffffff"/>
+  <path d="M48 92 h32 a16 16 0 0 1 -32 0 Z M80 92 h32 a16 16 0 0 1 -32 0 Z M112 92 h32 a16 16 0 0 1 -32 0 Z M144 92 h32 a16 16 0 0 1 -32 0 Z M176 92 h32 a16 16 0 0 1 -32 0 Z" fill="#e2e8f0"/>
+  <rect x="64" y="108" width="128" height="92" rx="10" fill="#ffffff"/>
+  <!-- shield with a check -->
+  <path d="M128 118 L164 132 V160 C164 184 146 200 128 208 C110 200 92 184 92 160 V132 Z" fill="#2563eb"/>
+  <path d="M110 162 L123 175 L148 148" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

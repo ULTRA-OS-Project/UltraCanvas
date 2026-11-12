@@ -1,7 +1,9 @@
 // include/UltraCanvasNewDocumentDialog.h
 // New Document dialog with filterable file type selection
+// Version: 1.2.0 - NewDocumentDialogStyle::FromTheme, ApplyTheme: the dialog follows the theme; a SetStyle by hand
+//                  stops the following
 // Version: 1.1.0
-// Last Modified: 2026-05-29
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 //
 // IMPORTANT: After creating shared_ptr, call Initialize() to set up callbacks!
@@ -121,6 +123,17 @@ namespace UltraCanvas {
         Color primaryButtonTextColor = Colors::White;
 
         static NewDocumentDialogStyle Default() { return NewDocumentDialogStyle(); }
+        // The theme's roles over a base's own metrics: the panel with a
+        // hairline, the title in ink at the heading size, the well for the
+        // list with a hairline, the hover fill and the soft accent for the
+        // selected type, ink and muted ink at the body size, the well with
+        // the control border and the focus ring for the fields, the raised
+        // surface with the hover fill for a button, the accent with text on
+        // it for the primary one (the fields and buttons the dialog builds
+        // follow the theme on their own)
+        static NewDocumentDialogStyle FromTheme(const UltraCanvasTheme& theme, const NewDocumentDialogStyle& base);
+        static NewDocumentDialogStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+        static NewDocumentDialogStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== NEW DOCUMENT DIALOG =====
@@ -170,7 +183,11 @@ namespace UltraCanvas {
         NewDocumentResult GetResult() const;
 
         // ===== STYLING =====
-        void SetStyle(const NewDocumentDialogStyle& newStyle) { style = newStyle; }
+        void SetStyle(const NewDocumentDialogStyle& newStyle) { StyleSetByHand(); style = newStyle; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override {
+            UltraCanvasContainer::ApplyTheme(theme);
+            SetStyle(NewDocumentDialogStyle::FromTheme(theme, style));
+        }
         const NewDocumentDialogStyle& GetStyle() const { return style; }
 
         // ===== CALLBACKS =====

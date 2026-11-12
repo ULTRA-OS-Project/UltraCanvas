@@ -1,3 +1,194 @@
+#### 2026-11-12 *0.1.16*
+- **The operator's window and command line.** `Apps/UltraStoreOperator`,
+  `ultrastoreop` (its own README and changelog): the marketplace service's
+  operator side - the merchants, the review and the publish, the reports,
+  the notices, the terms and the policy, the audit log - on the service's
+  API with the operator token. The service (0.2.1): `GET /v1/released`
+  says the last publish's sequence as `published` beside the last
+  release's `sequence`.
+
+#### 2026-11-12 *0.1.15*
+- **Report a problem.** The app page gets *Report a problem* when the
+  catalog names the operator's marketplace service (`market_url`): the
+  kind and the text go to the service's reports, the licence names the
+  reporter when the app was bought here, and the outcome the operator
+  gives shows on the page after a refresh. `ultrastore report
+  <catalog.json> <app-id> <kind> <text>` and `ultrastore reports` do the
+  same from the command line; the receipts are kept in the settings.
+- **The operator publishes the catalog.** The marketplace service (0.2.0)
+  generates the signed `catalog.json` from the released submissions
+  (`POST /v1/publish`): the merchants' components as sent, the
+  publishers, the trusted keys, the payment service, `market_url`; the
+  operator's signing key is kept by the service and `GET /v1/publish/key`
+  gives its public half for the store's keys.
+
+#### 2026-11-12 *0.1.14*
+- **The marketplace service** (`Server/UltraStoreMarket`, milestone 8):
+  the operator tier's records in one service - the merchants with their
+  keys, signing every request; the submissions with the service's own
+  checks and every decision appended; the reports through the three doors
+  (the store, a merchant, the operator), the reporter kept from the
+  merchant; the notices, the strikes and the enforcement policy that
+  turns them into a suspension; suspensions by hand and by the policy;
+  the terms versions and acceptances, a merchant paused without the one in
+  force; the hash-chained audit log with `GET /v1/audit/verify`;
+  `GET /v1/released` for the catalog. Tested on SQLite, MySQL and
+  PostgreSQL.
+- **One database layer for the services** (`Server/UltraStoreDb`,
+  `ultrastore-db`): MySQL joins PostgreSQL as a production engine, SQLite
+  stays for tests and development. The marketplace service runs on MySQL
+  (decided 2026-11-11); the payment service takes the layer too and runs
+  its tests on all three engines (`ULTRASTORE_PAY_TEST_MYSQL_URL`).
+
+#### 2026-11-12 *0.1.13*
+- **Subscriptions.** An app priced `monthly` or `yearly` is bought through
+  Quick Checkout's recurring billing: the first payment at the price after
+  the code, then the list price every month or year. The payment service
+  (0.5.0) sets the paid period, re-issues the licence on each renewal
+  Skrill reports with a later `valid_until` (the period plus the grace
+  days Skrill retries in), numbers a receipt per payment, and hands the
+  renewals to the admin backend as sales of their own. The store takes the
+  re-issued token when it refreshes the catalog (`StoreEngine::SyncLicences`,
+  the licence file with it); `ultrastore licences --sync <catalog.json>`
+  does it by hand and shows a subscription's day; `ultrastore unsubscribe
+  <catalog.json> <app-id>` ends one - no more charges, the licence until
+  the paid period ends. An app checks the day after verifying its file:
+  `Licence::ValidOn(today)`.
+- **Refunds and chargebacks.** The operator refunds a payment through the
+  service (`POST /v1/orders/{order}/refund` with the admin token, whole or
+  in part, through Skrill's refund API); a chargeback reaches the service
+  from Skrill's status report. When everything paid is reversed the
+  licence is taken back: the service hands it out no more and refuses the
+  app's downloads, and the store removes it from the registry and the
+  app's folder at its next catalog refresh. `GET /v1/licences/{id}` tells
+  an app that is online whether its licence stands; `GET /v1/reversals`
+  is the feed of refunds and chargebacks for the admin backend. The
+  service's database moves to schema 2 (a `payments` table) on its own.
+
+#### 2026-11-11 *0.1.12*
+- **Categories in the person's language.** The category chips, the pills on
+  Discover, a card's and a row's category and the app page's breadcrumb
+  showed the words the admin typed into the catalog ("graphics",
+  "office"). Categories come from one fixed list now (audio, video,
+  graphics, office, communication, internet, development, education,
+  science, finance, security, games, system, utilities), each shown by its
+  name in the person's language ("Grafik und Fotos", "グラフィック・写真"),
+  in the list's order; the search finds an app by its category's name too.
+  A catalog from before the list is read case-insensitively ("Office" files
+  under office); an id a later list adds is kept and not shown, so this
+  store still reads a newer catalog.
+- **The header fits the window at its narrowest.** At the 900 px minimum
+  the header ran past the window's edge even in English: Refresh and
+  Settings were cut off. In less room it now takes its compact forms one at
+  a time - Refresh as its icon, then the wordmark as the app icon, then
+  Settings as a gear - as far as it has to and no further. The store
+  measures what the header needs after each frame that laid it out (the
+  buttons as wide as their texts, the search field at its least, 120 px)
+  and goes back to the fuller form when the window is wide enough again, so
+  it works for every language without a width guessed per language. The
+  icon-only buttons keep their tooltips, which name them for a screen
+  reader.
+- **The Settings page's last English labels follow the language.** Its
+  title, the Catalog and Servers headings, the Channel caption and its
+  Stable choice, and the Save, Revert and Proxy settings buttons were
+  plain literals, so they stayed English in a translated store. They go
+  through `Tr` now: Settings, Save and Proxy settings show translated in
+  every language of the standard set at once; Catalog, Channel, Stable,
+  Servers and Revert are UltraStore's own texts, translated with the rest
+  of its catalogue.
+- **UltraStore is translated into the suite's 29 languages.** Every text the
+  window shows goes through `Tr` now - the navigation, the filters, the
+  buttons and badges, the facts and the information column, the download
+  queue, the prices ("4.90 EUR / month", "(30-day trial)"), the code
+  messages and the sizes - and `media/locale/<lang>/UltraStore.json` carries
+  the store's own texts for ar, ca, cs, da, de, el, es, fi, fr, he, hi, hu,
+  id, it, ja, ko, nb, nl, pl, pt, ro, ru, sv, th, tr, uk, vi, zh-Hans and
+  zh-Hant (machine drafts, marked for review).
+- **The core's messages are whole sentences in the person's language.** A
+  refused install ("UltraVideo is a paid app: buy it first, then install"),
+  a missing dependency, a catalog that does not verify, a failed download
+  or a registry error was glued from English pieces; each is one `TrF`
+  sentence with its names as placeholders, so a translation can order them
+  as its grammar needs. The command line stays English (it runs before a
+  language is loaded).
+- **Dates and sizes follow the language.** A release date is the standard
+  set's short month in the language's order ("22. Okt. 2026",
+  "2026年10月22日") instead of "22 Oct 2026" everywhere; KB, MB and GB are the
+  language's units ("12.3 Mo", "1.5 ГБ").
+- **Fixed: Update all counted an update to buy by its English message.** An
+  update outside a purchase is now told by the licence's terms, so the "to
+  buy anew" count stays right in every language.
+- **Fixed: a heading in another script.** The small upper-case headings
+  (CATEGORY, PRICE, VERSION HISTORY) upper-cased ASCII letters only, so
+  "Catégorie" came out "CATéGORIE"; they upper-case any letter now. A
+  shortened summary or release note no longer cuts a character in two.
+- **Counts take the language's plural forms.** The Update all summary
+  ("3 apps updated, 1 failed"), the download queue's waiting and finished
+  counts, the catalog's app and component counts and every trial length
+  ("14-day free trial") are plural entries now, so Russian, Polish, Czech,
+  Arabic and the rest say "21 день", "3 dni", not one form for every number.
+- **A discount code has a word of its own.** The code field and a code
+  without a discount used the suite's "Code", which several languages
+  translate as program code; the store's entry is the discount or partner
+  code.
+- **Fixed: a longer translation covered the last header tab.** A
+  fixed-width button widened for its text, but its row kept the width it
+  measured first, so "Updates" in German slid under the search field and
+  "Clear finished" ran off the Downloads panel. The framework now lays such
+  a row out again at the next frame (UltraCanvas changelog), and the search
+  field gives way down to 120 px.
+
+#### 2026-11-11 *0.1.11*
+- **The payment service runs on PostgreSQL in production**; SQLite is for
+  tests and development only. `ULTRASTORE_PAY_DB` is a database URL, one
+  database layer hides the two engines, and the tests run the whole
+  purchase on both, PostgreSQL through a service container in CI.
+
+#### 2026-11-11 *0.1.10*
+- **Proxy settings** on the Settings page: the catalog, the downloads and
+  the purchases go through the proxy every ULTRA OS application shares, and
+  the button opens the dialog that sets it.
+
+#### 2026-11-11 *0.1.9*
+- The README and `Apps/UltraStore/keys/README.md` describe what a build
+  now trusts: the production server as `ULTRASTORE_SERVERS`'s default and
+  `publish.pub` as the compiled-in key, instead of saying neither exists.
+- **Every text the window shows goes through UltraLocalisation.** The
+  pages, the app page, the settings, the jobs' progress and messages are
+  `Tr`, `TrF` and `TrN` sites, and `media/locale/en/UltraStore.json` is
+  their English catalogue, so a translation reaches the store by dropping
+  a `<lang>/UltraStore.json` beside it.
+- **The shop design.** The window follows the canvas *UltraStore Shop
+  Design* (2026-11-05): a white ground, ink text, the UltraStore blue as
+  the one accent, Manrope over Inter, 20 px card corners, pill buttons and
+  chips. A header with the wordmark, the sections as pills (Updates with
+  its count), the search pill, Refresh and Settings replaces the sidebar.
+  Discover shows the featured app as a hero, the categories as pills, *New
+  and updated* as a numbered list, *Free essentials* as cards, the four
+  reasons for the store and the partner / discount code; a search turns it
+  into the results. Categories gets the filters on the left (the categories
+  with their counts, All / Free / Paid, open source only, hide installed),
+  the count and the sort order (newest release, name, price), the cards in
+  a grid. The app page is the shop's: the breadcrumb, the facts as pills,
+  what this machine downloads, the screenshots, *About*, *What's new* with
+  the version history, *What it installs* with the sizes, the information
+  column with the links, *More from* the publisher. Not taken from the
+  design: *Sign in* (no accounts), the share and wish-list buttons, the
+  footer's links, the *Runs on* filter.
+- **`featured`.** An app the admin marks as featured (the catalog's new
+  `featured` flag) is the Discover hero - the newest one this machine can
+  install - and the featured apps are the *Editor's picks* row; without a
+  pick the hero is the newest release.
+
+#### 2026-11-10 *0.1.8*
+- **The payment pages look like the product.** The checkout hand-off,
+  the thank-you and cancel pages and the receipt share one frame: the
+  ULTRA OS mark and the name at the top, the content on a card in the
+  store's colours, a dark look where the browser asks for one. The
+  receipt opens as a page from the store's *Receipt* button and stays
+  text for a script. The stylesheet and the mark are served by the
+  service itself.
+
 #### 2026-10-28 *0.1.7*
 - **After the purchase.** The licence carries the app's update period as
   the catalog had it when the order was paid, and the store holds to it:

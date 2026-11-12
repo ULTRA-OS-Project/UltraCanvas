@@ -3,11 +3,16 @@
 // generation, streaming with cancellation, exact token counting, and
 // GBNF-constrained JSON output. One llama_context per adapter instance;
 // calls are serialized on an internal mutex.
+// Version: 0.1.1 - consecutive user turns (or assistant turns) are merged into
+//                  one message before the chat template sees them
+//                  (MergeSameRoleTurns): Gemma's, Llama 2's and Mistral's
+//                  templates refuse two in a row
 // Version: 0.1.0
-// Last Modified: 2026-08-21
+// Last Modified: 2026-11-12
 // Author: UltraAI Module
 
 #include "UltraAILlamaTextLLM.h"
+#include "UltraAIMessageHistory.h"
 #include "UltraAIStreamHandleBase.h"
 
 #include <llama.h>
@@ -281,16 +286,19 @@ private:
             return {};
         }
 
+        // Two user (or assistant) turns in a row become one before the
+        // template sees them; `merged` owns the strings `chat` points into.
+        const std::vector<Message> merged = MergeSameRoleTurns(request.messages);
         std::vector<llama_chat_message> chat;
-        chat.reserve(request.messages.size());
-        for (const auto& m : request.messages) {
+        chat.reserve(merged.size());
+        for (const auto& m : merged) {
             chat.push_back({RoleName(m.role), m.text.c_str()});
         }
 
         const char* tmpl = llama_model_chat_template(model_, nullptr);
         if (tmpl) {
             size_t cap = 256;
-            for (const auto& m : request.messages) cap += 2 * m.text.size();
+            for (const auto& m : merged) cap += 2 * m.text.size();
             std::vector<char> buf(cap);
             int32_t n = llama_chat_apply_template(tmpl, chat.data(), chat.size(),
                                                   /*add_ass=*/true,
@@ -307,7 +315,7 @@ private:
         }
 
         std::string prompt;
-        for (const auto& m : request.messages) {
+        for (const auto& m : merged) {
             prompt += RoleName(m.role);
             prompt += ": ";
             prompt += m.text;

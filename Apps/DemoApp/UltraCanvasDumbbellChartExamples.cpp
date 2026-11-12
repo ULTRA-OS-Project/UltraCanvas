@@ -140,13 +140,13 @@ std::shared_ptr<UltraCanvasLabel> AddNoteBullets(const std::shared_ptr<UltraCanv
 
 std::shared_ptr<UltraCanvasUIElement> BuildSocialMediaTab() {
     auto tab = CreateTabPage("DumbbellSocialTab",
-                             "SocialTitle", "Social media usage by age and gender",
-                             "SocialSubtitle", "Share of UK adults aged 16-40 who use each platform regularly");
+                             "SocialTitle", Tr("Social media usage by age and gender"),
+                             "SocialSubtitle", Tr("Share of UK adults aged 16-40 who use each platform regularly"));
 
     auto chart = std::make_shared<UltraCanvasDumbbellChart>("SocialMediaDumbbell",
                                                             0, 0, 880, 590);
-    chart->SetLegendLabels("Men", "Women");
-    chart->SetAxisLabel("Percentage using the platform regularly (%)");
+    chart->SetLegendLabels(Tr("Men"), Tr("Women"));
+    chart->SetAxisLabel(Tr("Percentage using the platform regularly (%)"));
     chart->SetDefaultColors(kMenColor, kWomenColor, kConnectorColor);
     chart->SetValueFormat("%.0f%%");
     chart->SetCategoryLabelWidth(120.0f);
@@ -158,29 +158,29 @@ std::shared_ptr<UltraCanvasUIElement> BuildSocialMediaTab() {
     chart->SetAutoFitRows(true);
 
     for (const auto& row : kSocialData) {
-        chart->AddDataPoint(row.label, row.men, row.women, "Men", "Women");
+        chart->AddDataPoint(row.label, row.men, row.women, Tr("Men"), Tr("Women"));
     }
 
     auto notes = AddChartRow(tab, "SocialRow", chart, "SocialNotes");
-    AddNoteHeading(notes, "SocialNotesReadTitle", "Reading the chart");
+    AddNoteHeading(notes, "SocialNotesReadTitle", Tr("Reading the chart"));
     AddNote(notes, "SocialNotesRead",
-            "Each row is one platform / age band. The blue dot is the share of men, the pink dot "
-            "the share of women, and the grey bar between them is the gender gap.");
+            Tr("Each row is one platform / age band. The blue dot is the share of men, the pink dot "
+            "the share of women, and the grey bar between them is the gender gap."));
     AddNote(notes, "SocialNotesHover",
-            "Hover any dot for the exact figures and the difference between the two groups.");
-    AddNoteHeading(notes, "SocialNotesDataTitle", "What the data shows");
+            Tr("Hover any dot for the exact figures and the difference between the two groups."));
+    AddNoteHeading(notes, "SocialNotesDataTitle", Tr("What the data shows"));
     AddNoteBullets(notes, "SocialNotesData", {
-            "Women lead on every platform except Facebook 36-40, where the two are level.",
-            "The widest gaps are on Twitter/X, where women lead by up to 27 points.",
-            "TikTok 16-20 has the highest single reading at 88% of women.",
-            "Bluesky is still marginal in every band."});
+            Tr("Women lead on every platform except Facebook 36-40, where the two are level."),
+            Tr("The widest gaps are on Twitter/X, where women lead by up to 27 points."),
+            Tr("TikTok 16-20 has the highest single reading at 88% of women."),
+            Tr("Bluesky is still marginal in every band.")});
     AddNote(notes, "SocialNotesLabels",
-            "Value labels are switched off on this tab: with 39 rows squeezed into the plot area the "
+            Tr("Value labels are switched off on this tab: with 39 rows squeezed into the plot area the "
             "dots are too small to hold text. The chart detects this automatically when the labels "
-            "are on and moves them outside the dots.");
+            "are on and moves them outside the dots."));
 
     auto source = DemoKit::AddCaption(tab, "SocialSource",
-            "Source: Onward / JL Partners  -  rendered with UltraCanvasDumbbellChart");
+            Tr("Source: Onward / JL Partners  -  rendered with UltraCanvasDumbbellChart"));
     source->SetFontSize(9.5f);
 
     return tab;
@@ -192,13 +192,13 @@ std::shared_ptr<UltraCanvasUIElement> BuildSocialMediaTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     auto tab = CreateTabPage("DumbbellBeforeAfterTab",
-                             "BATitle", "Before / after: customer satisfaction by region",
-                             "BASubtitle", "Satisfaction score before and after the 2026 service programme - use the controls to restyle the chart live");
+                             "BATitle", Tr("Before / after: customer satisfaction by region"),
+                             "BASubtitle", Tr("Satisfaction score before and after the 2026 service programme - use the controls to restyle the chart live"));
 
     auto chart = std::make_shared<UltraCanvasDumbbellChart>("BeforeAfterDumbbell",
                                                             0, 0, 860, 560);
-    chart->SetLegendLabels("Before", "After");
-    chart->SetAxisLabel("Satisfaction score (0-100)");
+    chart->SetLegendLabels(Tr("Before"), Tr("After"));
+    chart->SetAxisLabel(Tr("Satisfaction score (0-100)"));
     chart->SetDefaultColors(Color(150, 150, 160, 255), Color(60, 160, 120, 255),
                             Color(205, 205, 205, 255));
     chart->SetValueFormat("%.0f");
@@ -208,21 +208,21 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     chart->SetIncludeZeroInRange(false);
     chart->SetShowValueLabels(true);
 
-    chart->AddDataPoint("North America", 62, 78, "Before", "After");
-    chart->AddDataPoint("Latin America", 55, 71, "Before", "After");
-    chart->AddDataPoint("United Kingdom", 68, 74, "Before", "After");
-    chart->AddDataPoint("Western Europe", 71, 83, "Before", "After");
-    chart->AddDataPoint("Eastern Europe", 49, 66, "Before", "After");
-    chart->AddDataPoint("Middle East", 58, 61, "Before", "After");
-    chart->AddDataPoint("Africa", 44, 63, "Before", "After");
-    chart->AddDataPoint("South Asia", 52, 69, "Before", "After");
-    chart->AddDataPoint("East Asia", 74, 81, "Before", "After");
-    chart->AddDataPoint("Oceania", 66, 72, "Before", "After");
+    chart->AddDataPoint(Tr("North America"), 62, 78, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("Latin America"), 55, 71, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("United Kingdom"), 68, 74, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("Western Europe"), 71, 83, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("Eastern Europe"), 49, 66, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("Middle East"), 58, 61, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("Africa"), 44, 63, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("South Asia"), 52, 69, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("East Asia"), 74, 81, Tr("Before"), Tr("After"));
+    chart->AddDataPoint(Tr("Oceania"), 66, 72, Tr("Before"), Tr("After"));
 
     // ===== CONTROL PANEL =====
-    auto panel = AddChartRow(tab, "BARow", chart, "BAControls", "Chart controls");
+    auto panel = AddChartRow(tab, "BARow", chart, "BAControls", Tr("Chart controls"));
 
-    DemoKit::AddCaption(panel, "BADotLabel", "Dot radius");
+    DemoKit::AddCaption(panel, "BADotLabel", Tr("Dot radius"));
 
     auto dotSlider = std::make_shared<UltraCanvasSlider>("BADotSlider", 0, 0, 280, 24);
     dotSlider->SetRange(3.0f, 20.0f);
@@ -232,7 +232,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     dotSlider->onValueChanged = [chart](float value) { chart->SetDotRadius(value); };
     DemoKit::AddStretched(panel, dotSlider);
 
-    DemoKit::AddCaption(panel, "BALineLabel", "Connector width");
+    DemoKit::AddCaption(panel, "BALineLabel", Tr("Connector width"));
 
     auto lineSlider = std::make_shared<UltraCanvasSlider>("BALineSlider", 0, 0, 280, 24);
     lineSlider->SetRange(1.0f, 10.0f);
@@ -242,7 +242,7 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     lineSlider->onValueChanged = [chart](float value) { chart->SetLineWidth(value); };
     DemoKit::AddStretched(panel, lineSlider);
 
-    DemoKit::AddCaption(panel, "BALabelWidth", "Category label column width");
+    DemoKit::AddCaption(panel, "BALabelWidth", Tr("Category label column width"));
 
     auto labelWidthSlider = std::make_shared<UltraCanvasSlider>("BALabelWidthSlider", 0, 0, 280, 24);
     labelWidthSlider->SetRange(60.0f, 260.0f);
@@ -252,21 +252,21 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     labelWidthSlider->onValueChanged = [chart](float value) { chart->SetCategoryLabelWidth(value); };
     DemoKit::AddStretched(panel, labelWidthSlider);
 
-    auto gridCheck = std::make_shared<UltraCanvasCheckbox>("BAGrid", 0, 0, 280, 24, "Show grid");
+    auto gridCheck = std::make_shared<UltraCanvasCheckbox>("BAGrid", 0, 0, 280, 24, Tr("Show grid"));
     gridCheck->SetChecked(true);
     gridCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowGrid(newState == CheckedState::Checked);
     };
     DemoKit::AddStretched(panel, gridCheck);
 
-    auto valueCheck = std::make_shared<UltraCanvasCheckbox>("BAValues", 0, 0, 280, 24, "Show value labels");
+    auto valueCheck = std::make_shared<UltraCanvasCheckbox>("BAValues", 0, 0, 280, 24, Tr("Show value labels"));
     valueCheck->SetChecked(true);
     valueCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowValueLabels(newState == CheckedState::Checked);
     };
     DemoKit::AddStretched(panel, valueCheck);
 
-    auto legendCheck = std::make_shared<UltraCanvasCheckbox>("BALegend", 0, 0, 280, 24, "Show legend");
+    auto legendCheck = std::make_shared<UltraCanvasCheckbox>("BALegend", 0, 0, 280, 24, Tr("Show legend"));
     legendCheck->SetChecked(true);
     legendCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowLegend(newState == CheckedState::Checked);
@@ -274,19 +274,19 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     DemoKit::AddStretched(panel, legendCheck);
 
     auto categoryCheck = std::make_shared<UltraCanvasCheckbox>("BACategories", 0, 0, 280, 24,
-                                                               "Show category labels");
+                                                               Tr("Show category labels"));
     categoryCheck->SetChecked(true);
     categoryCheck->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetShowCategoryLabels(newState == CheckedState::Checked);
     };
     DemoKit::AddStretched(panel, categoryCheck);
 
-    DemoKit::AddCaption(panel, "BAPlacementLabel", "Value label placement");
+    DemoKit::AddCaption(panel, "BAPlacementLabel", Tr("Value label placement"));
 
     auto placementDrop = std::make_shared<UltraCanvasDropdown>("BAPlacement", 0, 0, 280, 26);
-    placementDrop->AddItem("Auto (inside when they fit)");
-    placementDrop->AddItem("Always inside the dots");
-    placementDrop->AddItem("Always outside the dots");
+    placementDrop->AddItem(Tr("Auto (inside when they fit)"));
+    placementDrop->AddItem(Tr("Always inside the dots"));
+    placementDrop->AddItem(Tr("Always outside the dots"));
     placementDrop->SetSelectedIndex(0, false);
     placementDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         switch (index) {
@@ -298,12 +298,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
     DemoKit::AddStretched(panel, placementDrop);
 
     auto randomBtn = std::make_shared<UltraCanvasButton>("BARandom", 0, 0, 280, 30);
-    randomBtn->SetText("Generate random data");
+    randomBtn->SetText(Tr("Generate random data"));
     randomBtn->SetFontSize(11);
     randomBtn->onClick = [chart]() {
-        static const char* regions[] = {
-            "North America", "Latin America", "United Kingdom", "Western Europe",
-            "Eastern Europe", "Middle East", "Africa", "South Asia", "East Asia", "Oceania"
+        const std::string regions[] = {
+            Tr("North America"), Tr("Latin America"), Tr("United Kingdom"), Tr("Western Europe"),
+            Tr("Eastern Europe"), Tr("Middle East"), Tr("Africa"), Tr("South Asia"), Tr("East Asia"), Tr("Oceania")
         };
 
         std::random_device rd;
@@ -312,19 +312,19 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
         std::uniform_real_distribution<double> delta(-8.0, 25.0);
 
         chart->ClearData();
-        for (const char* region : regions) {
+        for (const std::string& region : regions) {
             double b = before(gen);
             double a = std::max(0.0, std::min(100.0, b + delta(gen)));
-            chart->AddDataPoint(region, b, a, "Before", "After");
+            chart->AddDataPoint(region, b, a, Tr("Before"), Tr("After"));
         }
     };
     DemoKit::AddStretched(panel, randomBtn);
 
     AddNote(panel, "BAHint",
-            "The axis rescales itself to whatever data is loaded, snapping to round tick values.",
+            Tr("The axis rescales itself to whatever data is loaded, snapping to round tick values."),
             Color(90, 90, 90, 255));
     AddNote(panel, "BAHint2",
-            "Hover a dot to see the before value, the after value and the change between them.",
+            Tr("Hover a dot to see the before value, the after value and the change between them."),
             Color(90, 90, 90, 255));
 
     return tab;
@@ -336,12 +336,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildBeforeAfterTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildRangeTab() {
     auto tab = CreateTabPage("DumbbellRangeTab",
-                             "RangeTitle", "Monthly temperature range - Reykjavik",
-                             "RangeSubtitle", "Average daily low and high, with each row coloured by how cold the month gets");
+                             "RangeTitle", Tr("Monthly temperature range - Reykjavik"),
+                             "RangeSubtitle", Tr("Average daily low and high, with each row coloured by how cold the month gets"));
 
     auto chart = std::make_shared<UltraCanvasDumbbellChart>("RangeDumbbell", 0, 0, 860, 560);
-    chart->SetLegendLabels("Average low", "Average high");
-    chart->SetAxisLabel("Temperature (degrees Celsius)");
+    chart->SetLegendLabels(Tr("Average low"), Tr("Average high"));
+    chart->SetAxisLabel(Tr("Temperature (degrees Celsius)"));
     // Every row overrides its own colours below; these only drive the legend swatches
     chart->SetDefaultColors(Color(125, 125, 135, 255), Color(205, 130, 55, 255),
                             Color(215, 215, 215, 255));
@@ -353,16 +353,16 @@ std::shared_ptr<UltraCanvasUIElement> BuildRangeTab() {
     chart->SetShowValueLabels(true);
     chart->SetValueLabelPlacement(DumbbellValueLabelPlacement::Outside);
 
-    struct MonthRange { const char* month; double low; double high; };
+    struct MonthRange { std::string month; double low; double high; };
     const MonthRange months[] = {
-        {"January", -3, 2},  {"February", -2, 3},  {"March", -2, 4},
-        {"April", 1, 6},     {"May", 4, 10},       {"June", 7, 13},
-        {"July", 9, 14},     {"August", 8, 14},    {"September", 6, 11},
-        {"October", 2, 7},   {"November", -1, 4},  {"December", -2, 3},
+        {Tr("January"), -3, 2},  {Tr("February"), -2, 3},  {Tr("March"), -2, 4},
+        {Tr("April"), 1, 6},     {Tr("May"), 4, 10},       {Tr("June"), 7, 13},
+        {Tr("July"), 9, 14},     {Tr("August"), 8, 14},    {Tr("September"), 6, 11},
+        {Tr("October"), 2, 7},   {Tr("November"), -1, 4},  {Tr("December"), -2, 3},
     };
 
     for (const auto& m : months) {
-        DumbbellDataPoint point(m.month, m.low, m.high, "Low", "High");
+        DumbbellDataPoint point(m.month, m.low, m.high, Tr("Low"), Tr("High"));
         // Colder months run blue, warmer months run amber
         double warmth = (m.high + 5.0) / 20.0;
         warmth = std::max(0.0, std::min(1.0, warmth));
@@ -376,20 +376,20 @@ std::shared_ptr<UltraCanvasUIElement> BuildRangeTab() {
     }
 
     auto notes = AddChartRow(tab, "RangeRow", chart, "RangeNotes");
-    AddNoteHeading(notes, "RangeNotesColoursTitle", "Per-row colours");
+    AddNoteHeading(notes, "RangeNotesColoursTitle", Tr("Per-row colours"));
     AddNote(notes, "RangeNotesColours",
-            "Every DumbbellDataPoint carries its own color1, color2 and lineColor. Leave them "
-            "transparent and the chart falls back to the colours set with SetDefaultColors().");
+            Tr("Every DumbbellDataPoint carries its own color1, color2 and lineColor. Leave them "
+            "transparent and the chart falls back to the colours set with SetDefaultColors()."));
     AddNote(notes, "RangeNotesHeat",
-            "Here each month is tinted by its average high, so the chart doubles as a heat scale.");
-    AddNoteHeading(notes, "RangeNotesPlacementTitle", "Value label placement");
+            Tr("Here each month is tinted by its average high, so the chart doubles as a heat scale."));
+    AddNoteHeading(notes, "RangeNotesPlacementTitle", Tr("Value label placement"));
     AddNote(notes, "RangeNotesPlacement",
-            "This tab pins the labels outside the dots. Each label sits beyond the outer edge of "
-            "its own dot, so they never overlap however narrow the range gets.");
-    AddNoteHeading(notes, "RangeNotesZeroTitle", "Zero on the axis");
+            Tr("This tab pins the labels outside the dots. Each label sits beyond the outer edge of "
+            "its own dot, so they never overlap however narrow the range gets."));
+    AddNoteHeading(notes, "RangeNotesZeroTitle", Tr("Zero on the axis"));
     AddNote(notes, "RangeNotesZero",
-            "SetIncludeZeroInRange(true) keeps the freezing point inside the plotted range even "
-            "though no month averages exactly zero.");
+            Tr("SetIncludeZeroInRange(true) keeps the freezing point inside the plotted range even "
+            "though no month averages exactly zero."));
 
     return tab;
 }
@@ -400,12 +400,12 @@ std::shared_ptr<UltraCanvasUIElement> BuildRangeTab() {
 
 std::shared_ptr<UltraCanvasUIElement> BuildGapAnalysisTab() {
     auto tab = CreateTabPage("DumbbellGapTab",
-                             "GapTitle", "Gap analysis: median hourly pay by sector",
-                             "GapSubtitle", "Sort the rows to bring the widest gaps to the top, and click a row to inspect it");
+                             "GapTitle", Tr("Gap analysis: median hourly pay by sector"),
+                             "GapSubtitle", Tr("Sort the rows to bring the widest gaps to the top, and click a row to inspect it"));
 
     auto chart = std::make_shared<UltraCanvasDumbbellChart>("GapDumbbell", 0, 0, 860, 540);
-    chart->SetLegendLabels("Women", "Men");
-    chart->SetAxisLabel("Median hourly pay (GBP)");
+    chart->SetLegendLabels(Tr("Women"), Tr("Men"));
+    chart->SetAxisLabel(Tr("Median hourly pay (GBP)"));
     chart->SetDefaultColors(Color(214, 96, 130, 255), Color(70, 130, 190, 255),
                             Color(198, 198, 198, 255));
     chart->SetValueFormat("%.2f");
@@ -416,30 +416,30 @@ std::shared_ptr<UltraCanvasUIElement> BuildGapAnalysisTab() {
     chart->SetValueLabelPlacement(DumbbellValueLabelPlacement::Outside);
     chart->SetSortOrder(DumbbellSortOrder::RangeDescending);
 
-    chart->AddDataPoint("Finance & insurance", 21.40, 29.85, "Women", "Men");
-    chart->AddDataPoint("Information & comms", 22.10, 26.90, "Women", "Men");
-    chart->AddDataPoint("Construction", 16.05, 19.60, "Women", "Men");
-    chart->AddDataPoint("Manufacturing", 15.20, 18.75, "Women", "Men");
-    chart->AddDataPoint("Professional services", 19.30, 25.10, "Women", "Men");
-    chart->AddDataPoint("Education", 17.85, 20.40, "Women", "Men");
-    chart->AddDataPoint("Health & social work", 16.90, 18.20, "Women", "Men");
-    chart->AddDataPoint("Retail & wholesale", 12.40, 14.05, "Women", "Men");
-    chart->AddDataPoint("Transport & storage", 13.75, 15.30, "Women", "Men");
-    chart->AddDataPoint("Hospitality", 11.20, 11.95, "Women", "Men");
-    chart->AddDataPoint("Public administration", 18.60, 19.45, "Women", "Men");
-    chart->AddDataPoint("Arts & recreation", 14.30, 16.85, "Women", "Men");
+    chart->AddDataPoint(Tr("Finance & insurance"), 21.40, 29.85, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Information & comms"), 22.10, 26.90, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Construction"), 16.05, 19.60, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Manufacturing"), 15.20, 18.75, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Professional services"), 19.30, 25.10, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Education"), 17.85, 20.40, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Health & social work"), 16.90, 18.20, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Retail & wholesale"), 12.40, 14.05, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Transport & storage"), 13.75, 15.30, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Hospitality"), 11.20, 11.95, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Public administration"), 18.60, 19.45, Tr("Women"), Tr("Men"));
+    chart->AddDataPoint(Tr("Arts & recreation"), 14.30, 16.85, Tr("Women"), Tr("Men"));
 
     auto panel = AddChartRow(tab, "GapRow", chart, "GapPanel");
 
-    DemoKit::AddCaption(panel, "GapSortLabel", "Row order");
+    DemoKit::AddCaption(panel, "GapSortLabel", Tr("Row order"));
 
     auto sortDrop = std::make_shared<UltraCanvasDropdown>("GapSort", 0, 0, 300, 26);
-    sortDrop->AddItem("Widest gap first");
-    sortDrop->AddItem("Narrowest gap first");
-    sortDrop->AddItem("Highest men's pay first");
-    sortDrop->AddItem("Highest women's pay first");
-    sortDrop->AddItem("Sector name (A-Z)");
-    sortDrop->AddItem("As entered");
+    sortDrop->AddItem(Tr("Widest gap first"));
+    sortDrop->AddItem(Tr("Narrowest gap first"));
+    sortDrop->AddItem(Tr("Highest men's pay first"));
+    sortDrop->AddItem(Tr("Highest women's pay first"));
+    sortDrop->AddItem(Tr("Sector name (A-Z)"));
+    sortDrop->AddItem(Tr("As entered"));
     sortDrop->SetSelectedIndex(0, false);
     sortDrop->onSelectionChanged = [chart](int index, const DropdownItem&) {
         switch (index) {
@@ -453,11 +453,11 @@ std::shared_ptr<UltraCanvasUIElement> BuildGapAnalysisTab() {
     };
     DemoKit::AddStretched(panel, sortDrop);
 
-    auto selectionTitle = DemoKit::AddHeading(panel, "GapSelTitle", "Selected row");
+    auto selectionTitle = DemoKit::AddHeading(panel, "GapSelTitle", Tr("Selected row"));
     selectionTitle->SetFontSize(12);
 
     auto selection = AddNote(panel, "GapSelection",
-                             "Click any row in the chart to read its values here.");
+                             Tr("Click any row in the chart to read its values here."));
     selection->SetFontSize(11);
 
     // onRowClick reports the index into the data source, unaffected by sorting
@@ -466,27 +466,30 @@ std::shared_ptr<UltraCanvasUIElement> BuildGapAnalysisTab() {
         if (!source || rowIndex >= source->GetPointCount()) return;
         const auto& point = source->GetDumbbellPoint(rowIndex);
 
-        char buffer[256];
-        std::snprintf(buffer, sizeof(buffer),
-                      "%s\n\n%s: %.2f\n%s: %.2f\nGap: %.2f (%.1f%%)",
-                      point.categoryLabel.c_str(),
-                      point.label1.c_str(), point.value1,
-                      point.label2.c_str(), point.value2,
-                      point.GetRange(),
-                      point.value2 != 0.0 ? point.GetRange() / point.value2 * 100.0 : 0.0);
-        selection->SetText(buffer);
+        auto number = [](double value, const char* format) {
+            char buffer[64];
+            std::snprintf(buffer, sizeof(buffer), format, value);
+            return std::string(buffer);
+        };
+        selection->SetText(TrF("{0}\n\n{1}: {2}\n{3}: {4}\nGap: {5} ({6}%)",
+                               point.categoryLabel,
+                               point.label1, number(point.value1, "%.2f"),
+                               point.label2, number(point.value2, "%.2f"),
+                               number(point.GetRange(), "%.2f"),
+                               number(point.value2 != 0.0 ? point.GetRange() / point.value2 * 100.0 : 0.0,
+                                      "%.1f")));
     };
 
     const Color notesColor(90, 90, 90, 255);
-    AddNoteHeading(panel, "GapNotesSortTitle", "Sorting");
+    AddNoteHeading(panel, "GapNotesSortTitle", Tr("Sorting"));
     AddNote(panel, "GapNotes",
-            "SetSortOrder() reorders the drawn rows without touching the data source, so the "
-            "indices handed to the callbacks always refer to the original rows.", notesColor);
-    AddNoteHeading(panel, "GapNotesCallbacksTitle", "Callbacks");
+            Tr("SetSortOrder() reorders the drawn rows without touching the data source, so the "
+            "indices handed to the callbacks always refer to the original rows."), notesColor);
+    AddNoteHeading(panel, "GapNotesCallbacksTitle", Tr("Callbacks"));
     AddNote(panel, "GapNotesCallbacks",
-            "onRowClick fires for a click anywhere in a row; onDotClick fires as well when the "
-            "click lands on one of the two dots and reports which one.", notesColor);
-    AddNote(panel, "GapNotesFigures", "Figures are illustrative.", notesColor);
+            Tr("onRowClick fires for a click anywhere in a row; onDotClick fires as well when the "
+            "click lands on one of the two dots and reports which one."), notesColor);
+    AddNote(panel, "GapNotesFigures", Tr("Figures are illustrative."), notesColor);
 
     return tab;
 }
@@ -498,9 +501,9 @@ std::shared_ptr<UltraCanvasUIElement> BuildGapAnalysisTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDumbbellChartExamples() {
-    auto container = DemoKit::CreatePage("DumbbellChartExamples", "Dumbbell Chart Examples",
-        "Connected dot charts: a gender comparison, a before/after study with live styling controls, "
-        "a min/max range with per-row colours and a gap analysis with sorting and click callbacks");
+    auto container = DemoKit::CreatePage("DumbbellChartExamples", Tr("Dumbbell Chart Examples"),
+        Tr("Connected dot charts: a gender comparison, a before/after study with live styling controls, "
+        "a min/max range with per-row colours and a gap analysis with sorting and click callbacks"));
 
     auto card = DemoKit::AddCard(container, "DumbbellChartCard");
     card->SetPadding(4);
@@ -510,10 +513,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDumbbell
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
 
-    tabs->AddTab("Social Media by Age & Gender", BuildSocialMediaTab());
-    tabs->AddTab("Before / After", BuildBeforeAfterTab());
-    tabs->AddTab("Min / Max Range", BuildRangeTab());
-    tabs->AddTab("Gap Analysis & Sorting", BuildGapAnalysisTab());
+    tabs->AddTab(Tr("Social Media by Age & Gender"), BuildSocialMediaTab());
+    tabs->AddTab(Tr("Before / After"), BuildBeforeAfterTab());
+    tabs->AddTab(Tr("Min / Max Range"), BuildRangeTab());
+    tabs->AddTab(Tr("Gap Analysis & Sorting"), BuildGapAnalysisTab());
     tabs->SetActiveTab(0);
 
     DemoKit::AddFixed(card, tabs);

@@ -1,11 +1,12 @@
 // Tests/UltraIM/FakeProvider.h
 // A provider that answers from memory, for the UltraIM tests
+// Version: 0.1.1 - `searchable`: SearchMessages by reading its history
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraIM/UltraIMPlugins.h"
+#include "UltraIM/UltraIMCore.h"
 
 #include <atomic>
 #include <mutex>
@@ -21,7 +22,8 @@ public:
     std::string GetDisplayName() const override { return "Fake " + id_; }
     std::string GetVersion() const override { return "1.0"; }
     UltraIMCapabilityFlags GetCapabilities() const override {
-        return UltraIMCapabilityFlags::TextMessages | UltraIMCapabilityFlags::VoiceCalls;
+        const auto flags = UltraIMCapabilityFlags::TextMessages | UltraIMCapabilityFlags::VoiceCalls;
+        return searchable ? flags | UltraIMCapabilityFlags::SearchMessages : flags;
     }
     UltraIMLoginType GetLoginType() const override { return UltraIMLoginType::KeyPair; }
 
@@ -49,9 +51,22 @@ public:
                        UltraIMMessagesCallback onResult) override {
         (void)beforeMessageId; (void)limit;
         UltraIMMessage message;
+        message.messageId = "h1";
         message.conversationId = conversationId;
         message.text = "history";
         onResult(UltraIMResult::Ok(), {message});
+    }
+
+    // With `searchable`: its one-message history, read as a provider
+    // without a search of its own would.
+    void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) override {
+        if (!searchable) return IUltraIMProviderPlugin::SearchMessages(search, onResult);
+        UltraIM_SearchByFetching(
+            [this](const std::string& conversationId, const std::string& before, int limit, UltraIMMessagesCallback done) {
+                if (!before.empty()) return done(UltraIMResult::Ok(), {});
+                FetchMessages(conversationId, before, limit, done);
+            },
+            search, onResult);
     }
 
     UltraIMResult SendText(const std::string& conversationId, const std::string& text,
@@ -88,6 +103,7 @@ public:
 
     std::vector<UltraIMConversation> conversations;
     std::atomic<bool> shutDown{false};
+    bool searchable = false;
     std::mutex mutex;
     std::string lastConversation, lastText, lastClientId;
 

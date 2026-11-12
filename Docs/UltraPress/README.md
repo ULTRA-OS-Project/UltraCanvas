@@ -77,12 +77,18 @@ site* writes the folder (`ui/UltraPressWindow.h`).
 The window has two looks. Its colours are a framework theme
 (`Apps/UltraPress/ui/UltraPressTheme.h`, `ThemeFor(dark)`: the brand's red accent, its
 ink and paper on the framework's light preset; the red lifted on the dark
-one), and every element of the columns and the dialogs follows that theme,
-so *Dark look* / *Light look* in the side column switches them all at
-once; the side column keeps its night blue in both, through the theme's
+one), set under the application's `Own` theme policy with `ThemeFor` as
+the provider (`ui/main.cpp`): until a look is chosen the editor follows
+the desktop - a dark desktop, or *Dark* on UOS-Settings' Look page, gives
+the dark look, and a change while the editor runs is taken at once - and
+the fonts are the desktop's. Every element of the columns and the dialogs
+follows that theme, so *Dark look* / *Light look* in the side column
+switches them all at once and makes the look the editor's own from then
+on; the side column keeps its night blue in both, through the theme's
 own `press.*` roles, and the page in the middle keeps the site's colours,
-because it is the site. The choice is remembered with the program's other
-settings - the sites opened last, the editor window's size - in
+because it is the site. The choice (`look`: `system`, `light` or `dark`)
+is remembered with the program's other settings - the sites opened last,
+the editor window's size - in
 `<settings folder>/UltraPress/settings.json` (`ui/UltraPressSettings.h`)
 and read before the window opens.
 

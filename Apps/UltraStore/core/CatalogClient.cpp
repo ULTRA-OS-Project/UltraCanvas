@@ -1,9 +1,12 @@
 // Apps/UltraStore/core/CatalogClient.cpp
 // Fetching, verifying and caching the catalog (CatalogClient.h).
+// Version: 0.2.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.2.0 - the announced keys
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "CatalogClient.h"
+
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
@@ -20,6 +23,9 @@
 #include <system_error>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -48,15 +54,15 @@ bool WriteFileAtomically(const std::filesystem::path& path, const std::string& b
     const std::filesystem::path temp = UltraCanvas::PathFromUtf8(UltraCanvas::PathToUtf8(path) + ".tmp");
     {
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) { error = "cannot write " + UltraCanvas::PathToUtf8(temp); return false; }
+        if (!out) { error = TrF("cannot write {0}", UltraCanvas::PathToUtf8(temp)); return false; }
         out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-        if (!out) { error = "cannot write " + UltraCanvas::PathToUtf8(temp); return false; }
+        if (!out) { error = TrF("cannot write {0}", UltraCanvas::PathToUtf8(temp)); return false; }
     }
     std::filesystem::remove(path, ec);   // Windows will not rename over a file
     ec.clear();
     std::filesystem::rename(temp, path, ec);
     if (ec) {
-        error = "cannot replace " + UltraCanvas::PathToUtf8(path) + ": " + ec.message();
+        error = TrF("cannot replace {0}: {1}", UltraCanvas::PathToUtf8(path), ec.message());
         std::filesystem::remove(temp, ec);
         return false;
     }
@@ -141,7 +147,7 @@ PublicKeys CatalogClient::KeysTrustedNow() const {
 
 bool CatalogClient::WriteCache(const std::string& catalogBytes, const std::vector<uint8_t>& signature,
                                const CatalogState& state, std::string& error) const {
-    if (config_.cacheDir.empty()) { error = "no cache folder configured"; return false; }
+    if (config_.cacheDir.empty()) { error = Tr("no cache folder configured"); return false; }
     if (!WriteFileAtomically(CachePath(config_.cacheDir, kCatalogFile), catalogBytes, error)) return false;
     if (!WriteFileAtomically(CachePath(config_.cacheDir, kSignatureFile), ToHex(signature), error)) return false;
     UltraCanvas::JSONValue v = UltraCanvas::JSONValue::MakeObject();
@@ -167,7 +173,7 @@ Result<Catalog> CatalogClient::Accept(const std::string& catalogBytes, const std
     const CatalogState previous = State();
     if (parsed.Value().sequence < previous.sequence) {
         return Result<Catalog>::Failure(ErrorCode::SequenceRollback,
-                                        "The server offered an older catalog than the one already seen",
+                                        Tr("The server offered an older catalog than the one already seen"),
                                         "sequence " + std::to_string(parsed.Value().sequence) + " < " +
                                             std::to_string(previous.sequence));
     }
@@ -179,16 +185,16 @@ Result<Catalog> CatalogClient::Accept(const std::string& catalogBytes, const std
     state.announcedKeys = parsed.Value().trustedKeys;   // replaces the last list; empty after a schema 1 catalog
     std::string error;
     if (!WriteCache(catalogBytes, signature, state, error)) {
-        return Result<Catalog>::Failure(ErrorCode::IoError, "The catalog could not be kept on disk", error);
+        return Result<Catalog>::Failure(ErrorCode::IoError, Tr("The catalog could not be kept on disk"), error);
     }
     return parsed;
 }
 
 Result<Catalog> CatalogClient::Refresh() {
     if (config_.baseUrls.empty()) {
-        return Result<Catalog>::Failure(ErrorCode::InvalidArgument, "No catalog server is configured");
+        return Result<Catalog>::Failure(ErrorCode::InvalidArgument, Tr("No catalog server is configured"));
     }
-    if (!fetcher_) return Result<Catalog>::Failure(ErrorCode::Internal, "No fetcher");
+    if (!fetcher_) return Result<Catalog>::Failure(ErrorCode::Internal, Tr("No fetcher"));
     const CatalogState previous = State();
     std::string lastError;
     for (const std::string& base : config_.baseUrls) {
@@ -196,7 +202,7 @@ Result<Catalog> CatalogClient::Refresh() {
         const std::string etag = previous.fetchedFrom == base ? previous.etag : std::string();
         const FetchResponse catalogResponse = fetcher_(JoinUrl(base, kCatalogFile), etag);
         if (!catalogResponse.error.empty() || catalogResponse.status == 0) {
-            lastError = base + ": " + (catalogResponse.error.empty() ? "no answer" : catalogResponse.error);
+            lastError = base + ": " + (catalogResponse.error.empty() ? Tr("no answer") : catalogResponse.error);
             continue;
         }
         if (catalogResponse.status == 304 && !etag.empty()) {
@@ -211,7 +217,7 @@ Result<Catalog> CatalogClient::Refresh() {
             const FetchResponse sig = fetcher_(JoinUrl(base, kSignatureFile), std::string());
             std::vector<uint8_t> signature;
             if (!sig.error.empty() || sig.status != 200 || !ParseSignatureFile(sig.body, signature)) {
-                lastError = base + ": the catalog's signature could not be fetched";
+                lastError = TrF("{0}: the catalog's signature could not be fetched", base);
                 continue;
             }
             return Accept(again.body, signature, again.etag, base);
@@ -223,12 +229,12 @@ Result<Catalog> CatalogClient::Refresh() {
         const FetchResponse sig = fetcher_(JoinUrl(base, kSignatureFile), std::string());
         std::vector<uint8_t> signature;
         if (!sig.error.empty() || sig.status != 200) {
-            lastError = base + ": the catalog's signature could not be fetched (" +
-                        (sig.error.empty() ? "HTTP " + std::to_string(sig.status) : sig.error) + ")";
+            lastError = TrF("{0}: the catalog's signature could not be fetched ({1})", base,
+                            sig.error.empty() ? "HTTP " + std::to_string(sig.status) : sig.error);
             continue;
         }
         if (!ParseSignatureFile(sig.body, signature)) {
-            lastError = base + ": the catalog's signature file is not a signature";
+            lastError = TrF("{0}: the catalog's signature file is not a signature", base);
             continue;
         }
         // A signature or sequence failure is final for this server: another
@@ -244,18 +250,18 @@ Result<Catalog> CatalogClient::Refresh() {
             if (&base == &config_.baseUrls.back()) return accepted;
         }
     }
-    return Result<Catalog>::Failure(ErrorCode::NetworkError, "The catalog could not be fetched", lastError);
+    return Result<Catalog>::Failure(ErrorCode::NetworkError, Tr("The catalog could not be fetched"), lastError);
 }
 
 Result<Catalog> CatalogClient::LoadCached() const {
     std::string catalogBytes, signatureText;
     if (!ReadFile(CachePath(config_.cacheDir, kCatalogFile), catalogBytes) ||
         !ReadFile(CachePath(config_.cacheDir, kSignatureFile), signatureText)) {
-        return Result<Catalog>::Failure(ErrorCode::NotFound, "No catalog has been fetched yet");
+        return Result<Catalog>::Failure(ErrorCode::NotFound, Tr("No catalog has been fetched yet"));
     }
     std::vector<uint8_t> signature;
     if (!ParseSignatureFile(signatureText, signature)) {
-        return Result<Catalog>::Failure(ErrorCode::SignatureInvalid, "The cached catalog's signature file is not a signature");
+        return Result<Catalog>::Failure(ErrorCode::SignatureInvalid, Tr("The cached catalog's signature file is not a signature"));
     }
     const Result<void> verified = VerifyCatalogSignature(catalogBytes, signature, KeysTrustedNow());
     if (!verified) return Result<Catalog>::Failure(verified.error.code, verified.error.message, verified.error.detail);

@@ -1,7 +1,14 @@
 # UltraRTC — Real-Time Communication Module (Design Proposal)
 
 **Date:** 2026-10-01
-**Status:** Phase 1 implemented on the tier 2 engine. On 2026-10-21 the
+**Status:** Phase 0 is complete: the registry entry, the API with its
+result type, handles, `UltraRtc_Initialize` / `UltraRtc_Shutdown` /
+`UltraRtc_GetCapabilities` / `UltraRtc_GetVersion`, and `UltraRtcApiStatus`
+([`../Modules/UltraRTC/ApiStatus.md`](../Modules/UltraRTC/ApiStatus.md)). Of
+phases 1 and 3, peers, data channels, Opus audio and VP8 video are
+implemented on the tier 2 engine; bandwidth estimation, the browser binding
+(phase 2), audio processing (phase 4) and the Rust tier are not started — the
+module README's *Status* section is the current list. On 2026-10-21 the
 engine decision was taken for ChatCube: **libdatachannel first** (no Rust in
 the core); the Rust tier can still follow behind the same API. See
 [`ChatCubeDirectPlan.md`](ChatCubeDirectPlan.md) and
@@ -76,7 +83,8 @@ UltraRTC rules (mirroring the UltraNet registry entry):
 
 Lifecycle and capability discovery:
 
-- `UltraRtc_Initialize`, `UltraRtc_Shutdown`, `UltraRtc_Version`
+- `UltraRtc_Initialize`, `UltraRtc_Shutdown`, `UltraRtc_GetVersion` (named as
+  `UltraNet_GetVersion` and its other siblings are)
 - `UltraRtc_GetCapabilities` — engine tier, codecs available in this build
   (Opus; VP8 / VP9 / H.264 / AV1 as FFmpeg provides them), hardware encoders,
   audio-processing availability, screen capture availability

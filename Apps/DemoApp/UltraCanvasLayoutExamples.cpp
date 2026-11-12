@@ -66,8 +66,8 @@ namespace {
                              .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // ===== SECTION 1: VERTICAL BOX LAYOUT =====
-        auto vboxCard = DemoKit::AddCard(mainContainer, "LayoutVBoxCard", "1. Vertical Box Layout",
-                "Vertical arrangement with spacing, padding, and stretch. Buttons respond to clicks.");
+        auto vboxCard = DemoKit::AddCard(mainContainer, "LayoutVBoxCard", Tr("1. Vertical Box Layout"),
+                Tr("Vertical arrangement with spacing, padding, and stretch. Buttons respond to clicks."));
         auto vboxRow = DemoKit::AddRow(vboxCard, "LayoutVBoxRow", 20);
 
         // Create demo container for vertical layout
@@ -78,18 +78,18 @@ namespace {
 
         vboxDemo->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        auto vboxBtn1 = MakeLayoutButton("VBtn1", "Button 1", 150, 35);
-        auto vboxBtn2 = MakeLayoutButton("VBtn2", "Button 2", 150, 35);
-        auto vboxBtn3 = MakeLayoutButton("VBtn3", "Button 3", 150, 35);
+        auto vboxBtn1 = MakeLayoutButton("VBtn1", Tr("Button 1"), 150, 35);
+        auto vboxBtn2 = MakeLayoutButton("VBtn2", Tr("Button 2"), 150, 35);
+        auto vboxBtn3 = MakeLayoutButton("VBtn3", Tr("Button 3"), 150, 35);
 
-        auto vboxStatus = std::make_shared<UltraCanvasLabel>("VStatus", "Click any button");
+        auto vboxStatus = std::make_shared<UltraCanvasLabel>("VStatus", Tr("Click any button"));
         vboxStatus->SetTextColor(Color(0, 100, 200, 255));
         vboxStatus->SetFontSize(11);
         vboxStatus->SetWrap(TextWrap::WrapWord);
 
-        vboxBtn1->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 1 clicked!"); });
-        vboxBtn2->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 2 clicked!"); });
-        vboxBtn3->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 3 clicked!"); });
+        vboxBtn1->SetOnClick([vboxStatus]() { vboxStatus->SetText(Tr("Button 1 clicked!")); });
+        vboxBtn2->SetOnClick([vboxStatus]() { vboxStatus->SetText(Tr("Button 2 clicked!")); });
+        vboxBtn3->SetOnClick([vboxStatus]() { vboxStatus->SetText(Tr("Button 3 clicked!")); });
 
         vboxDemo->AddChild(vboxBtn1);
         vboxBtn1->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
@@ -108,8 +108,8 @@ namespace {
                 "Code: container->layout.SetFlexColumn().SetFlexGap(10);\ncontainer->AddChild(button1); container->AddStretchSpacer(1);");
 
         // ===== SECTION 2: HORIZONTAL BOX LAYOUT =====
-        auto hboxCard = DemoKit::AddCard(mainContainer, "LayoutHBoxCard", "2. Horizontal Box Layout (Toolbar Style)",
-                "Horizontal toolbar with left-aligned actions and right-aligned utilities using AddStretch.");
+        auto hboxCard = DemoKit::AddCard(mainContainer, "LayoutHBoxCard", Tr("2. Horizontal Box Layout (Toolbar Style)"),
+                Tr("Horizontal toolbar with left-aligned actions and right-aligned utilities using AddStretch."));
 
         // Create demo container for horizontal layout
         auto hboxDemo = std::make_shared<UltraCanvasContainer>("HBoxDemo", 0, 0, 960, 50);
@@ -118,11 +118,11 @@ namespace {
 
         hboxDemo->layout.SetFlexRow().SetFlexGap(5).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        auto newBtn = MakeLayoutButton("NewBtn", "New", 60, 30);
-        auto openBtn = MakeLayoutButton("OpenBtn", "Open", 65, 30);
-        auto saveBtn = MakeLayoutButton("SaveBtn", "Save", 60, 30);
-        auto settingsBtn = MakeLayoutButton("SettingsBtn", "Settings", 80, 30);
-        auto helpBtn = MakeLayoutButton("HelpBtn", "Help", 60, 30);
+        auto newBtn = MakeLayoutButton("NewBtn", Tr("New"), 60, 30);
+        auto openBtn = MakeLayoutButton("OpenBtn", Tr("Open"), 65, 30);
+        auto saveBtn = MakeLayoutButton("SaveBtn", Tr("Save"), 60, 30);
+        auto settingsBtn = MakeLayoutButton("SettingsBtn", Tr("Settings"), 80, 30);
+        auto helpBtn = MakeLayoutButton("HelpBtn", Tr("Help"), 60, 30);
 
         hboxDemo->AddChild(newBtn);
         newBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
@@ -141,11 +141,11 @@ namespace {
         DemoKit::AddStretched(hboxCard, hboxDemo);
 
         DemoKit::AddText(hboxCard, "LayoutHBoxCode",
-                "Code: container->layout.SetFlexRow().SetFlexGap(5);\ncontainer->AddChild(leftBtn);\ncontainer->AddSpacer(15);\ncontainer->AddStretchSpacer(1);\ncontainer->AddChild(rightBtn);");
+                Tr("Code: container->layout.SetFlexRow().SetFlexGap(5);\ncontainer->AddChild(leftBtn);\ncontainer->AddSpacer(15);\ncontainer->AddStretchSpacer(1);\ncontainer->AddChild(rightBtn);"));
 
         // ===== SECTION 3: GRID LAYOUT (FORM) =====
-        auto gridCard = DemoKit::AddCard(mainContainer, "LayoutGridCard", "3. Grid Layout (Form Design)",
-                "Grid-based form with auto-sized labels and star-sized inputs. Submit button spans both columns.");
+        auto gridCard = DemoKit::AddCard(mainContainer, "LayoutGridCard", Tr("3. Grid Layout (Form Design)"),
+                Tr("Grid-based form with auto-sized labels and star-sized inputs. Submit button spans both columns."));
         auto gridRow = DemoKit::AddRow(gridCard, "LayoutGridRow", 20);
 
         // Create demo container for grid layout
@@ -177,7 +177,7 @@ namespace {
             return label;
         };
 
-        auto nameLabel = makeFormLabel("NameLbl", "Name:");
+        auto nameLabel = makeFormLabel("NameLbl", Tr("Name:"));
         auto nameInput = std::make_shared<UltraCanvasTextInput>("NameIn", 0, 0, 0, 25);
         nameInput->SetShowValidationState(false);
         gridDemo->AddChild(nameLabel);
@@ -185,14 +185,14 @@ namespace {
         gridDemo->AddChild(nameInput);
         nameInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
-        auto emailLabel = makeFormLabel("EmailLbl", "Email:");
+        auto emailLabel = makeFormLabel("EmailLbl", Tr("Email:"));
         auto emailInput = std::make_shared<UltraCanvasTextInput>("EmailIn", 0, 0, 0, 25);
         gridDemo->AddChild(emailLabel);
         emailLabel->layoutItem.SetGridRowColSimplified(row, 0);
         gridDemo->AddChild(emailInput);
         emailInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
-        auto phoneLabel = makeFormLabel("PhoneLbl", "Phone:");
+        auto phoneLabel = makeFormLabel("PhoneLbl", Tr("Phone:"));
         auto phoneInput = std::make_shared<UltraCanvasTextInput>("PhoneIn", 0, 0, 0, 25);
         gridDemo->AddChild(phoneLabel);
         phoneLabel->layoutItem.SetGridRowColSimplified(row, 0);
@@ -200,7 +200,7 @@ namespace {
         phoneInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
         auto submitBtn = std::make_shared<UltraCanvasButton>("SubmitBtn", 0, 0, 0, 30);
-        submitBtn->SetText("Submit");
+        submitBtn->SetText(Tr("Submit"));
         gridDemo->AddChild(submitBtn);
         submitBtn->layoutItem.SetGridRowColSimplified(row, 0, 1, 2);  // Span 2 columns
 
@@ -210,8 +210,8 @@ namespace {
                 "Code: container->layout.SetGrid();\ncontainer->layout.SetGridColumns({autoTrack, frTrack});\ncontainer->layout.SetGridRows(std::vector<GridTrackSize>(rows));\ncontainer->AddChild(label); label->layoutItem.SetGridRowColSimplified(row, column);\ncontainer->AddChild(input); input->layoutItem.SetGridRowColSimplified(row, column);");
 
         // ===== SECTION 4: FLEX LAYOUT (CARDS) =====
-        auto flexCard = DemoKit::AddCard(mainContainer, "LayoutFlexCard", "4. Flex Layout (Responsive Cards)",
-                "Flexible card layout with wrapping. Cards automatically adjust to available space.");
+        auto flexCard = DemoKit::AddCard(mainContainer, "LayoutFlexCard", Tr("4. Flex Layout (Responsive Cards)"),
+                Tr("Flexible card layout with wrapping. Cards automatically adjust to available space."));
 
         // Create demo container for flex layout. As wide as the card and as
         // tall as its wrapped lines of cards.
@@ -225,12 +225,12 @@ namespace {
                 .SetFlexAlignItems(CSSLayout::AlignItems::Start)
                 .SetFlexGap(15, 15);
 
-        const char* cardTitles[] = {"Card 1", "Card 2", "Card 3", "Card 4"};
-        const char* cardTexts[] = {
-                "Flexible layout",
-                "Wraps automatically",
-                "Responsive design",
-                "Modern pattern"
+        const std::string cardTitles[] = {Tr("Card 1"), Tr("Card 2"), Tr("Card 3"), Tr("Card 4")};
+        const std::string cardTexts[] = {
+                Tr("Flexible layout"),
+                Tr("Wraps automatically"),
+                Tr("Responsive design"),
+                Tr("Modern pattern")
         };
 
         for (int i = 0; i < 4; i++) {
@@ -259,7 +259,7 @@ namespace {
             cardText->SetFontSize(11);
             cardText->SetWrap(TextWrap::WrapWord);
 
-            auto cardBtn = MakeLayoutButton(std::string("CardBtn") + std::to_string(i), "Action", 80, 25);
+            auto cardBtn = MakeLayoutButton(std::string("CardBtn") + std::to_string(i), Tr("Action"), 80, 25);
 
             card->AddChild(cardTitle);
             card->AddChild(cardText);
@@ -276,22 +276,22 @@ namespace {
         DemoKit::Add(flexCard, flexDemo);
 
         DemoKit::AddText(flexCard, "LayoutFlexCode",
-                "Code: float flexGrow=0, flexShrink=1, flexBasis=220\ncontainer->layout.SetFlexDirection(FlexDirection::Row);\ncontainer->layout.SetFlexWrap(FlexWrap::Wrap).SetFlexGap(15, 15);\ncontainer->AddChild(card); card->layoutItem.SetFlexGrow(0).SetFlexShrink(1).SetFlexBasis(Dimension::Px(220));");
+                Tr("Code: float flexGrow=0, flexShrink=1, flexBasis=220\ncontainer->layout.SetFlexDirection(FlexDirection::Row);\ncontainer->layout.SetFlexWrap(FlexWrap::Wrap).SetFlexGap(15, 15);\ncontainer->AddChild(card); card->layoutItem.SetFlexGrow(0).SetFlexShrink(1).SetFlexBasis(Dimension::Px(220));"));
 
         // ===== SUMMARY =====
-        DemoKit::AddNotes(mainContainer, "LayoutSummary", "Summary", {
-                "VBox/HBox: Best for simple linear arrangements (buttons, toolbars, lists)",
-                "Grid: Perfect for forms, tables, and structured layouts",
-                "Flex: Ideal for responsive designs, card grids, and adaptive layouts",
-                "All layouts support: spacing, padding, margins, alignment, and size constraints"});
+        DemoKit::AddNotes(mainContainer, "LayoutSummary", Tr("Summary"), {
+                Tr("VBox/HBox: Best for simple linear arrangements (buttons, toolbars, lists)"),
+                Tr("Grid: Perfect for forms, tables, and structured layouts"),
+                Tr("Flex: Ideal for responsive designs, card grids, and adaptive layouts"),
+                Tr("All layouts support: spacing, padding, margins, alignment, and size constraints")});
 
         return mainContainer;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLayoutExamples() {
         // The page fills the area; each tab scrolls its own content.
-        auto page = DemoKit::CreatePage("LayoutExamplesPage", "UltraCanvas Layout System Examples",
-                "Comprehensive examples of Box, Grid, and Flex layouts with various configurations and use cases.");
+        auto page = DemoKit::CreatePage("LayoutExamplesPage", Tr("UltraCanvas Layout System Examples"),
+                Tr("Comprehensive examples of Box, Grid, and Flex layouts with various configurations and use cases."));
         page->SetFillsArea(true);
 
         auto card = DemoKit::CreateCard("LayoutTabsCard");
@@ -301,8 +301,8 @@ namespace {
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("LayoutExamplesTabs");
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
-        tabs->AddTab("Box / Grid / Flex", CreateBoxGridFlexLayoutTab());
-        tabs->AddTab("Label placement", CreateLabelPlacementLayoutTab());
+        tabs->AddTab(Tr("Box / Grid / Flex"), CreateBoxGridFlexLayoutTab());
+        tabs->AddTab(Tr("Label placement"), CreateLabelPlacementLayoutTab());
         DemoKit::Add(card, tabs, 1);
         tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
         return page;

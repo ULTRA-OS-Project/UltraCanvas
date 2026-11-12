@@ -1,5 +1,8 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.12.2 - alwaysOnTop and SetTransientParent say what each is for: a dialog is
+//                  kept above its parent, not above every application (on macOS too, as
+//                  the parent's child window)
 // Version: 2.12.1 - popups and the tooltip in windows of their own on macOS too; screen
 //                  coordinates are top-left there as everywhere
 // Version: 2.12.0 - every popup in a window of its own (WindowType::Popup) above every other
@@ -19,7 +22,7 @@
 //                  beneath it, so one can fade in or out as a whole
 // Version: 2.3.0 - WindowType::Notification (a toast: above everything, never focused)
 // Version: 2.2.0 - window drag overlay (content drawn above all elements)
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -130,9 +133,12 @@ namespace UltraCanvas {
         bool minimizable = true;
         bool maximizable = true;
         bool closable = true;
-        // Kept above the other windows: _NET_WM_STATE_ABOVE on X11,
-        // WS_EX_TOPMOST on Windows, the floating level on macOS. A
-        // Notification window has it anyway.
+        // Kept above every other window, of every application:
+        // _NET_WM_STATE_ABOVE on X11, WS_EX_TOPMOST on Windows, the
+        // floating level on macOS. For a recording bar or a floating
+        // palette; a Notification window has it anyway. Not for a dialog,
+        // which belongs above its own window only: give it parentWindow
+        // (or SetTransientParent) instead.
         bool alwaysOnTop = false;
 
         Color backgroundColor = Colors::WindowBackground;
@@ -662,8 +668,11 @@ namespace UltraCanvas {
 
         // Declare this window a transient child of `parent` (dialogs, alerts).
         // Records the parent in the config; platform backends additionally tell
-        // the window manager (X11 WM_TRANSIENT_FOR) so the window is kept above
-        // its parent and treated as belonging to the parent's monitor.
+        // the window manager (X11 WM_TRANSIENT_FOR, the owner window on
+        // Windows; on macOS a dialog becomes a child window of the parent's
+        // NSWindow while both are shown, and moves with it) so the window is
+        // kept above its parent - and only above it - and treated as
+        // belonging to the parent's monitor.
         virtual void SetTransientParent(UltraCanvasWindowBase* parent);
 
         // Method chaining for fluent interface

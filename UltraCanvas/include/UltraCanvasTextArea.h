@@ -1,5 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.18.1 - a font change keeps the top line in view and the scroll offset inside the content
+// Version: 3.18.0 - the SetStyle rule and the constructor tail of an area that follows by default
 // Version: 3.17.0 - a read-only or display-only area opens a Copy / Select All menu on a
 //                 right-click (ShowReadOnlyContextMenu, SetReadOnlyContextMenu)
 // Version: 3.16.0 - SetShowHiddenCharacters: spaces, tabs, no-break and zero-width
@@ -20,7 +22,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-28
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -774,7 +776,7 @@ namespace UltraCanvas {
         std::string_view GetLineContentView(int lineIndex) const;
 
         // Style access
-        void SetStyle(const TextAreaStyle& newStyle) { style = newStyle; }
+        void SetStyle(const TextAreaStyle& newStyle) { StyleSetByHand(); style = newStyle; }
         TextAreaStyle& GetStyle() { return style; }
         const TextAreaStyle& GetStyle() const { return style; }
 
@@ -1245,6 +1247,11 @@ namespace UltraCanvas {
         // Scrolling
         float horizontalScrollOffset;
         float verticalScrollOffset;
+        // The line at the top of the view before a font change, restored by
+        // Render() once the layouts are rebuilt (-1: nothing pending).
+        int scrollAnchorLine = -1;
+        float scrollAnchorFraction = 0.0f;
+        void RememberScrollAnchor();
         // Explicit scrolling — the wheel and the ScrollUp/Down/Left/Right API the
         // page keys go through — glides to its target instead of jumping (see
         // UltraCanvasSmoothScroll.h). Following the caret does not: keeping the

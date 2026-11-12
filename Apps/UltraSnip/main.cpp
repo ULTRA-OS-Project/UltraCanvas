@@ -5,6 +5,7 @@
 // picture, --delay N waits first. A second start hands its request to the
 // running copy (UltraCanvasSingleInstance), which is how UltraDesktop's
 // screenshot button and Super+Shift+S reach it.
+// Version: 0.2.0 - --background: resident for the session, nothing shown (UltraDesktop starts it)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraSnipTypes.h"
@@ -48,6 +49,9 @@ void PrintUsage(const char* prog) {
               << "  --screen       take a picture of the whole screen\n"
               << "  --video        record a video instead of taking a picture (with a shape above)\n"
               << "  --delay N      wait N seconds first (3, 5 or 10)\n"
+              << "  --background   start without a window and stay for the session: the Print\n"
+              << "                 Screen key and the desktop's snips find it running (UltraDesktop\n"
+              << "                 starts it so); closing its window hides it\n"
               << "  -h, --help     show this message\n"
               << "  -v, --version  show version\n"
               << "Without a shape the window opens; pictures go to Pictures/Screenshots and\n"
@@ -74,6 +78,7 @@ int main(int argc, char* argv[]) {
         if (a == "--screen" || a == "--fullscreen") { request.mode = UltraSnip::SnipMode::FullScreen; shape = true; continue; }
         if (a == "--video") { request.kind = UltraSnip::SnipKind::Video; continue; }
         if (a == "--picture") { request.kind = UltraSnip::SnipKind::Picture; continue; }
+        if (a == "--background") { request.background = true; continue; }
         if (a == "--delay" && i + 1 < argc) {
             request.delaySeconds = std::atoi(argv[++i]);
             if (request.delaySeconds != 0 && request.delaySeconds != 3 && request.delaySeconds != 5 &&
@@ -122,7 +127,8 @@ int main(int argc, char* argv[]) {
             const UltraSnip::SnipRequest later = UltraSnip::RequestFromJson(json);
             app.PostToUIThread([shown, later]() { shown->Present(later); });
         });
-        if (request.startAtOnce) window->StartCapture(request);
+        if (request.background) window->SetResident(true);   // nothing shown: it waits
+        else if (request.startAtOnce) window->StartCapture(request);
         else window->Arm();
         app.Run();
     } catch (const std::exception& e) {

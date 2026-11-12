@@ -27,6 +27,7 @@
 #include "UltraCanvasCADConverters.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#include "UltraCanvasTextUtils.h"   // FormatFixedClassic - dot-decimal, fixed point
 
 #include <algorithm>
 #include <cmath>
@@ -47,14 +48,11 @@ namespace {
 
 using namespace PathOps;
 
-std::string Num(double v) {
-    char buf[48];
-    std::snprintf(buf, sizeof(buf), "%.6f", v);
-    std::string s = buf;
-    size_t last = s.find_last_not_of('0');
-    if (s[last] == '.') ++last;   // keep one zero: "40.0"
-    return s.substr(0, last + 1);
-}
+// Six decimals, and one zero kept behind the point ("40.0"): a DXF group-code
+// value that looks like an integer can be read as one. snprintf did this
+// through LC_NUMERIC, so a comma-decimal desktop wrote `$EXTMIN` as `0,` and
+// every coordinate after it the same way - a drawing no CAD program opens.
+std::string Num(double v) { return FormatFixedClassic(v, 6, true); }
 
 // DXF only accepts these lineweight values (1/100 mm).
 int SnapLineweight(double widthPt) {

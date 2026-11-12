@@ -2,9 +2,10 @@
 // See the header. The look came from UltraFiler's settings window
 // (Apps/UltraFiler/UltraFilerSettingsDialog.cpp), where it was written
 // first; UltraSnip copied it, and the copy became this kit.
+// Version: 1.2.0 - the colours and sizes are the theme's (UltraCanvasSettingsPageKit.h)
 // Version: 1.1.0 - ShowSaveSettingsDialog
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSettingsPageKit.h"
@@ -52,8 +53,8 @@ std::shared_ptr<UltraCanvasContainer> MakeNotesBlock(const std::string& id) {
     auto notes = std::make_shared<UltraCanvasContainer>(id);
     notes->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Start);
     notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    notes->SetBackgroundColor(kNoteBackground);
-    notes->SetBorderLeft(3, kNoteAccent);
+    notes->SetBackgroundColor(NoteBackground());
+    notes->SetBorderLeft(3, NoteAccent());
     notes->SetPadding(10, 12, 10, 12);
     return notes;
 }
@@ -74,7 +75,7 @@ PageParts MakePage(const std::string& id, const std::string& title, const std::s
         parts.page->SetContainerStyle(cs);
     }
 
-    auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
+    auto titleLabel = MakeLabel(id + "-title", title, TitleFontSize());
     titleLabel->SetFontWeight(FontWeight::Bold);
     parts.page->AddChild(titleLabel);
 
@@ -107,7 +108,7 @@ PageParts MakePage(const std::string& id, const std::string& title, const std::s
 }
 
 void AddNote(PageParts& parts, const std::string& id, const std::string& text) {
-    parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize, kNoteTextColor));
+    parts.notes->AddChild(MakeText(id, text, kNoteWidth, NoteFontSize(), NoteTextColor()));
 }
 
 void AddBodyCaption(PageParts& parts, const std::string& id, const std::string& text) {
@@ -125,18 +126,17 @@ std::string IconPath(const std::string& fileName) {
 std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& label, int width,
                                               std::function<void()> onClick, const std::string& iconFile) {
     auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
-    b->SetFontSize(kTextFontSize);
+    b->SetFontSize(TextFontSize());
     b->SetCornerRadius(4.0f);
-    b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-    b->SetTextColors(kTextColor);
-    b->SetBorder(1.0f, Color(0, 0, 0, 60));
+    b->SetColors(ButtonFace(), ButtonHover());
+    b->SetTextColors(TextColor());
+    b->SetBorder(1.0f, Rule());
     if (!iconFile.empty()) {
         b->SetIcon(IconPath(iconFile));
         b->SetIconSize(15, 15);
         b->SetIconPosition(ButtonIconPosition::Left);
         b->SetIconSpacing(label.empty() ? 0 : 5);
-        b->SetUseIconAsMask(true);
-        b->SetIconMaskColor(Color(55, 55, 60, 255));
+        b->SetUseIconAsMask(true);   // drawn in the text colour: the theme's ink
     }
     if (onClick) b->SetOnClick(std::move(onClick));
     b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -180,9 +180,9 @@ std::shared_ptr<UltraCanvasContainer> MakeLabelledRow(const std::string& id, con
 std::shared_ptr<UltraCanvasRadio> MakeChoice(const std::string& id, const std::string& text, bool checked, int width) {
     auto radio = UltraCanvasRadio::Create(id, -1, -1, text, checked);
     RadioVisualStyle style = radio->GetVisualStyle();
-    style.base.fontSize = kTextFontSize;
-    style.base.textColor = kTextColor;
-    style.base.textHoverColor = kTextColor;
+    style.base.fontSize = TextFontSize();
+    style.base.textColor = TextColor();
+    style.base.textHoverColor = TextColor();
     radio->SetVisualStyle(style);
     // Explicit sizes: content measuring needs a render context, which the
     // window does not have while it is first laid out.
@@ -196,10 +196,10 @@ std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(const std::string& id, const s
                                                   bool checked, std::function<void(bool)> onChange) {
     auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, static_cast<float>(width),
                                                      static_cast<float>(kControlHeight), text);
-    box->SetFontSize(kTextFontSize);
+    box->SetFontSize(TextFontSize());
     CheckboxVisualStyle style = box->GetVisualStyle();
-    style.base.textColor = kTextColor;
-    style.base.textHoverColor = kTextColor;
+    style.base.textColor = TextColor();
+    style.base.textHoverColor = TextColor();
     box->SetVisualStyle(style);
     box->SetChecked(checked);
     box->size.width = CSSLayout::Dimension::Px(width);
@@ -264,7 +264,7 @@ std::shared_ptr<UltraCanvasButton> MakeColorBox(const std::string& id, const Col
     // Same colour in every state: a colour box that changes shade under the
     // pointer no longer shows the colour it stands for.
     b->SetColors(color, color, color, color);
-    b->SetBorder(1.0f, Color(120, 120, 128, 255));
+    b->SetBorder(1.0f, NoteAccent());
     b->SetTooltip(tooltip);
     if (onClick) b->SetOnClick(std::move(onClick));
     b->size.width = CSSLayout::Dimension::Px(56);
@@ -283,7 +283,7 @@ void SetColorBoxColor(const std::shared_ptr<UltraCanvasButton>& box, const Color
 
 void ShowSaveSettingsDialog(const std::string& extensionOrPath, UltraCanvasWindowBase* parent) {
     UltraCanvasFileLoader::ShowSaveSettingsDialog(extensionOrPath, FileSavePicture(), FileSaveImageSize(), parent,
-                                                  nullptr, kTextFontSize);
+                                                  nullptr, TextFontSize());
 }
 
 // ===== THE WINDOW =====
@@ -304,7 +304,7 @@ bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std:
     }
     closed = false;
     window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    window->SetBackgroundColor(kWindowBackground);
+    window->SetBackgroundColor(WindowBackground());
 
     // ----- settings-page tree | page area -----
     auto content = std::make_shared<UltraCanvasContainer>("settings-content");
@@ -314,17 +314,17 @@ bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std:
     // The sidebar: what stands above the tree (a logo), then the tree
     auto sidebar = std::make_shared<UltraCanvasContainer>("settings-sidebar");
     sidebar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    sidebar->SetBackgroundColor(kTreeBackground);
+    sidebar->SetBackgroundColor(TreeBackground());
     sidebar->size.width = CSSLayout::Dimension::Px(options.treeWidth);
     sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     if (options.sidebarHeader) sidebar->AddChild(options.sidebarHeader);
 
     tree = std::make_shared<UltraCanvasTreeView>("settings-tree");
-    tree->SetFontSize(kTreeFontSize);
+    tree->SetFontSize(TreeFontSize());
     tree->SetRowHeight(24);
     tree->SetSelectionMode(TreeSelectionMode::Single);
     tree->SetLineStyle(TreeLineStyle::NoLine);
-    tree->SetBackgroundColor(kTreeBackground);
+    tree->SetBackgroundColor(TreeBackground());
     // A section has no page of its own - it shows its first page - so
     // selecting one moves straight on to that first entry rather than
     // leaving two rows that show the same thing.
@@ -344,7 +344,7 @@ bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std:
     pageArea = std::make_shared<UltraCanvasContainer>("settings-pages");
     pageArea->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     pageArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    pageArea->SetBackgroundColor(kPageBackground);
+    pageArea->SetBackgroundColor(PageBackground());
     content->AddChild(pageArea);
     window->AddChild(content);
 
@@ -353,7 +353,7 @@ bool UltraCanvasSettingsWindow::Create(UltraCanvasWindowBase* parent, const std:
     bottom->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     bottom->SetPadding(8, 12, 8, 12);
-    bottom->SetBorderTop(1, Color(225, 225, 230, 255));
+    bottom->SetBorderTop(1, Rule());
     // The left half holds the page's restore button and takes the width the
     // Close button leaves, so Close keeps its right-hand place whether or
     // not a restore button is showing.

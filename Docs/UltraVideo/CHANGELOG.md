@@ -1,3 +1,12 @@
+#### 2026-11-11 *0.7.9*
+- **The palette follows the desktop until the eye picks one.** The theme
+  is set under the application's `Own` policy with `ThemeFor` as the
+  provider: the dark palette on a dark desktop (or under *Dark* on
+  UOS-Settings' Look page), the light one on a light desktop, and a change
+  while UltraVideo runs is taken at once. The eye button makes the look the
+  project's, saved with it (`view.dark`); a project that never picked keeps
+  following. The fonts are the desktop's.
+
 #### 2026-11-05 *0.7.8*
 - **Pictures along the whole clip on the timeline.** A long clip zoomed in
   showed pictures only over its first part (at most 200 were asked for,

@@ -1,3 +1,20 @@
+#### 2026-10-27 *0.67*
+- **Paths are shown with one kind of separator on Windows.** The rule roots
+  are spelled with '/', and Windows joins a folder and a name with a
+  backslash. So every item the scanner found read like
+  `C:/Users/x/AppData/Local/Temp\stale.bin`, and the window and the clean
+  report showed it that way; album pictures could too, under a folder
+  spelled with '/'. Items and pictures now come out with '/' throughout
+  (`WithForwardSlashes`), the engine's spelling for every path it hands out.
+  Only Windows is changed: on Linux and macOS a backslash is a legal
+  character in a file name and stays. The recycle bin gets its native
+  backslashes as before.
+- **The test suite's temp tree takes any file name.** `TempTree` built its
+  paths with the narrow path conversions, which on Windows read the ANSI code
+  page, so a test could not name a folder in Thai or with an emoji. It goes
+  through `PathFromUtf8` / `PathToUtf8` now, and the Thai and emoji wildcard
+  test uses it directly.
+
 #### 2026-10-17 *0.66*
 - **Windows registry cleaning.** A new *Windows registry* tab (and
   `--registry`, `--registry --fix --yes`, `--registry-restore <file>`) finds

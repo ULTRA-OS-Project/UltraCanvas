@@ -11,9 +11,11 @@
 // else - is shown as a free point: a ring in its direction across the grid,
 // kept inside the frame (SetFreePoint).
 //
+// Version: 1.2.0 - ReferencePointPickerStyle::FromTheme, ApplyTheme: the picker follows the theme; a SetStyle by
+//                  hand stops the following
 // Version: 1.1.0 - SetFreePoint: a point off the nine, drawn as a ring kept inside the frame
 // Version: 1.0.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,6 +57,13 @@ namespace UltraCanvas {
         float cornerRadius      = 2.0f;
         float pointSize         = 5.0f;    // side of a point's square
         float selectedPointSize = 7.0f;
+
+        // The theme's roles over a base's own metrics: the well with the
+        // control border, faint ink for the points not picked, muted ink
+        // hovered, the accent picked, the focus ring, a hairline disabled
+        static ReferencePointPickerStyle FromTheme(const UltraCanvasTheme& theme, const ReferencePointPickerStyle& base);
+        static ReferencePointPickerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ReferencePointPickerStyle()); }
+        static ReferencePointPickerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
     class UltraCanvasReferencePointPicker : public UltraCanvasUIElement {
@@ -87,7 +96,8 @@ namespace UltraCanvas {
 
         ReferencePointPickerStyle& GetStyle() { return style; }
         const ReferencePointPickerStyle& GetStyle() const { return style; }
-        void SetStyle(const ReferencePointPickerStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const ReferencePointPickerStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ReferencePointPickerStyle::FromTheme(theme, style)); }
 
         // ===== ACCESSIBILITY =====
         AccessibleRole GetAccessibleRole() const override { return AccessibleRole::Group; }

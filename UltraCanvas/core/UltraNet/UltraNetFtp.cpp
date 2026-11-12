@@ -15,6 +15,9 @@
 // is not asked for it again (ListingFormats). Before both, every folder an
 // FTP drive showed cost a login - two on a server without MLSD, such as
 // vsftpd, which logged in once to be refused and again to ask with LIST.
+// Version: 0.10.0 - an upload dates the file it wrote (setRemoteModificationTime:
+//                   MFMT / SFTP mtime, allowed to fail); a download reports the
+//                   server's date (CURLOPT_FILETIME, onRemoteModificationTime)
 // Version: 0.9.0 - an FTP change uses the connection kept open: its commands go
 //                  after libcurl's change of folder (CURLOPT_POSTQUOTE) and
 //                  name the entry within it, not on a connection of its own;
@@ -36,6 +39,7 @@
 
 #include "UltraNet/UltraNetFtp.h"
 #include "UltraNet/UltraNetCurlError.h"   // error buffer detail + diagnostics chain
+#include "UltraNet/UltraNetCurlProxy.h"   // the proxy setting on every handle
 #include "UltraNetHttpEasy.h"   // MapCurlError (private helpers)
 #include "UltraNetFtpQuote.h"   // the text of DELE / RNFR-RNTO / MKD / RMD
 #include "UltraNetFtpLog.h"     // the session log
@@ -416,6 +420,10 @@ UltraNetResultCode MapFtpError(CURLcode rc) {
 // with the server's refusal added, and the diagnostics chain.
 UltraNetResult Perform(CURL* h, const std::string& url, const UltraNetFtpOptions& opt,
                        Transcript& log, CURLcode* rcOut = nullptr) {
+    // The proxy setting (the operating system's by default): an HTTP proxy
+    // as a CONNECT tunnel for the control and the data connections, a SOCKS
+    // proxy as it is. SFTP goes the same way.
+    ultranet_curlproxy::ApplyFor(h, url, /*tunnel=*/true);
     curl_easy_setopt(h, CURLOPT_DEBUGFUNCTION, &FeedTranscript);
     curl_easy_setopt(h, CURLOPT_DEBUGDATA, &log);
     curl_easy_setopt(h, CURLOPT_VERBOSE, 1L);
@@ -825,6 +833,10 @@ UltraNetResult UltraNet_FtpDownload(const std::string& url,
     curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
     curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToFile);
     curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, fp);
+    // The file's date on the server (MDTM on FTP, the stat on SFTP), for a
+    // caller that gives it to the local copy. A server without MDTM is not a
+    // failure: libcurl goes on without the date.
+    if (opt.onRemoteModificationTime) curl_easy_setopt(h.get(), CURLOPT_FILETIME, 1L);
     if (opt.resumeTransfer && opt.resumeOffset > 0) {
         curl_easy_setopt(h.get(), CURLOPT_RESUME_FROM_LARGE,
                          static_cast<curl_off_t>(opt.resumeOffset));
@@ -835,6 +847,11 @@ UltraNetResult UltraNet_FtpDownload(const std::string& url,
     CURLcode rc = CURLE_OK;
     UltraNetResult r = Perform(h.get(), url, opt, log, &rc);
     std::fclose(fp);
+    if (r && opt.onRemoteModificationTime) {
+        curl_off_t stamp = -1;
+        if (curl_easy_getinfo(h.get(), CURLINFO_FILETIME_T, &stamp) == CURLE_OK && stamp > 0)
+            opt.onRemoteModificationTime(static_cast<int64_t>(stamp));
+    }
     return Finish(log, r, rc);
 }
 
@@ -874,11 +891,27 @@ UltraNetResult UltraNet_FtpUpload(const std::string& localPath,
     curl_easy_setopt(h.get(), CURLOPT_READDATA, fp);
     curl_easy_setopt(h.get(), CURLOPT_INFILESIZE_LARGE,
                      static_cast<curl_off_t>(size > 0 ? size : 0));
+    // The original's date, given to the file once it is written
+    // (UltraNetFtpQuote.h: MFMT / SFTP mtime, allowed to fail).
+    std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)> dating(nullptr, curl_slist_free_all);
+    if (opt.setRemoteModificationTime > 0) {
+        ultranet_internal::ftpquote::Plan plan;
+        std::string error;
+        if (ultranet_internal::ftpquote::BuildSetModificationTime(
+                    url, opt.setRemoteModificationTime, plan, error)) {
+            curl_slist* cmds = nullptr;
+            for (const std::string& c : plan.commands) cmds = curl_slist_append(cmds, c.c_str());
+            dating.reset(cmds);
+            curl_easy_setopt(h.get(), CURLOPT_POSTQUOTE, cmds);
+        }
+    }
     ApplyCommonOptions(h.get(), opt);
     ApplyProgressCallback(h.get());
 
     CURLcode rc = CURLE_OK;
     UltraNetResult r = Perform(h.get(), url, opt, log, &rc);
+    // The dating command's list goes before the handle does.
+    curl_easy_setopt(h.get(), CURLOPT_POSTQUOTE, nullptr);
     std::fclose(fp);
     return Finish(log, r, rc);
 }

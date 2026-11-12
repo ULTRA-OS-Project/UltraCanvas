@@ -1,3 +1,116 @@
+#### 2026-11-12 *1.107.14*
+- **Proxy settings and the other dialogs no longer stay on top of other
+  programs.** They sat above every application's windows and could not be
+  sent behind them; now they stay above UltraFiler's own window only, as the
+  Settings window always did. The change is in the framework's
+  `DialogConfig`; see the framework changelog.
+
+#### 2026-11-11 *1.107.13*
+- **The window follows the desktop's look.** Light or dark as the desktop
+  is - or as *Look* on UOS-Settings' Appearance page says - in the desktop's
+  font and size, and a change while UltraFiler runs is taken at once. Every
+  surface the window, its dialogs and its tab strips painted in a colour of
+  their own (the tool rows and buttons, the status strip, the folder tree,
+  the computer page, the search field, the New folder split button, the
+  Scan sub folder button, the connection log badge) is a role of the
+  framework theme now (`UltraFilerLook.h`); the file displays, dropdowns,
+  menus and tree follow the theme by themselves, so a dark desktop gives a
+  dark filer throughout. The window's text size is the theme's body size
+  (the desktop's interface font size) rather than a fixed 9 pt. A drive row
+  of the folder tree keeps its chosen background and picks its text colour
+  by it, so it reads in both looks.
+
+#### 2026-11-11 *1.107.12*
+- **The toolbar's dropdowns show their entries whole.** The View, Order by
+  and Video dropdowns had widths sized for the English entries, so a longer
+  translation was cut off - the Video mode read *Automatisch al…* in German.
+  Each now widens to its longest entry where a translation needs it, and
+  keeps its width where the entries fit.
+- **The toolbar's captions show in full, and *Sort* reads *Order by*.** The
+  captions in front of the View, Order by and Video dropdowns had a fixed
+  width, so a longer translation was cut off at every window size - German
+  read *Sortie…*. Each caption now takes the width of its text and shows
+  whole wherever the window has room; only when the bar is too narrow for
+  everything does it shorten, after the search field has given way first.
+  The sort caption is *Order by* in English (*Sortieren nach* in German).
+
+#### 2026-11-11 *1.107.11*
+- **Copying and pasting keeps the files' original dates.** A pasted, dropped
+  or duplicated file - and a file moved to another drive - was dated the
+  moment of the copy: on Windows its *Created* date, on Linux and macOS every
+  date, and a large file or a folder lost all of them on every system. Copies
+  now keep the original's modified and accessed dates everywhere and its
+  created date on Windows and macOS (Linux lets no program set a creation
+  date). A folder's dates are set after its contents are copied in.
+- **Settings > Extras > Proxy.** FTP, SFTP, WebDAV and the cloud drives go
+  through the proxy every ULTRA OS application shares - the system's until
+  another is chosen - and the page opens the Proxy settings dialog to choose
+  one: none, or an HTTP or SOCKS proxy with the hosts reached directly and a
+  sign-in. Before, a remote drive never went through a proxy.
+- **Files copied to or from a remote drive, or extracted from an archive, keep
+  their dates.** An upload to an FTP, SFTP, WebDAV, Nextcloud, Dropbox,
+  Google Drive or OneDrive drive was dated the moment it arrived, and a file
+  copied off one the moment it landed. Now an upload keeps the file's
+  modified date (and its created date on Nextcloud, Google Drive and OneDrive)
+  and a download gets the date the server holds. *Extract* gives an
+  unpacked file its date from the archive and, from a ZIP or 7z, its created
+  date as well on Windows and macOS.
+- **A video's details now say what the clip is.** The preview's Details panel
+  showed only a video's name, path, size and type, and the status bar its
+  name, size and position in the folder. Both now read the clip's own headers
+  (MP4 / MOV, MKV / WebM, AVI) through the framework's new
+  `ReadVideoFileInfo`: the status bar adds the picture size, frame rate, video
+  codec, the sound (codec, sample rate, channels - or *no audio*) and the
+  length; the Details panel adds the container, exact duration, bit rates,
+  codec profile and level, display size and aspect ratio, frame count, bit
+  depth, rotation, the sound's channels and language, the track counts and
+  the file's title, encoder and creation time.
+- **The file list names a film's picture size.** A video's line under its icon
+  (the Length field) and in the status bar now reads
+  `1:23 · 1920 × 1080 · H.264` - a phone's portrait clip upright, an
+  anamorphic one at its display width - from the same header reader the
+  preview's Details use, so the two never disagree; before it said the length
+  and the codec only, from a parser of the list's own.
+
+#### 2026-11-10 *1.107.10*
+- **A file on a drive with no preview opens in its program.** Double-clicking
+  a document, a spreadsheet, an archive or anything else on a drive that the
+  preview pane does not show did nothing: the system's opener was handed the
+  drive's path and found no file. It is now fetched like any download, with
+  its progress on the status line, into UltraCanvas's cache folder
+  (`remote-opened`, one folder per file and version) and opened with the
+  program this computer opens its type with (`OpenRemoteFile`). The status
+  line says changes to the copy are not saved to the drive. Opened again
+  while the file on the server is unchanged, the same copy opens without a
+  request; a fetch that did not finish is never opened. A program, a script,
+  an installer or a launcher is not started from a drive - the dialog says to
+  copy it to this computer first - since on Windows the system's opener runs
+  such a file. A fetch that fails says so in a dialog, a file no longer there
+  as *File not found* with its folder read again.
+- **A drive's folder fetched a while ago is asked for again when opened.**
+  Within a session a listing was served from the cache for good, so leaving
+  a folder and coming back never showed a file another device had added or
+  deleted. A listing older than two minutes (`kRemoteListingFreshFor`) is now
+  shown as it was and fetched again behind it when its folder is listed, as
+  a listing kept from the last run is; within the two minutes, and for a
+  subfolder fetched ahead, it costs no request.
+- **Configure drive saves while the server is out of reach.** Save always
+  signed in first, so a drive whose server could not be reached could not
+  even be renamed. Once that sign-in fails, *Save without signing in* appears
+  beside Cancel and stores the settings as they are, to be tried the next
+  time the drive is opened.
+
+#### 2026-11-10 *1.107.9*
+- **The path bar names a drive by its volume, and a setting says whether.**
+  The path bar above the file display called a drive "D:" while the folder
+  tree and the Computer page call it "My Passport Ultra (D:)". It now shows
+  the same name, on the drive's own node and in the list of drives under its
+  Computer entry, also over each pane of the split view. Settings > Display
+  > Path bar turns it off, for a shorter strip with the letter alone (saved
+  as `display.pathbar.volume.names`, on by default). The names are the ones
+  the tree has already read, so the strip never waits on a disk; a drive
+  whose volume has no name, and a network drive, keep the letter.
+
 #### 2026-11-10 *1.107.8*
 - **A remote drive that can no longer sign in can be deleted or mended.**
   Its row under *Remote Drives* kept *Delete* greyed out, like every root of

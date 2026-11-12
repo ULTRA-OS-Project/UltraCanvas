@@ -144,8 +144,13 @@ given). UltraAI's `RegisterUltraAITextRecognition`
 (`UltraAITextRecognition.h`, in `UltraAI_UI`), installed after it, puts an
 UltraAI vision provider that reads text in front - local first, a cloud one
 only when chosen - with Tesseract as the fallback
-(`GetImageTextRecognizer` hands it the recognizer before). An application with a speech-to-text engine - UltraAI's
-`ISpeechToText`, a local one - installs it with `SetSpeechTranscriber`.
+(`GetImageTextRecognizer` hands it the recognizer before). Speech to text
+is UltraAI's `RegisterUltraAISpeechTranscription` (`UltraAISpeechTranscription.h`,
+in `UltraAI_UI`): a speech-to-text provider on UltraAI's default route
+transcribes sound files and videos, a video's sound track taken out with
+VideoFX first. An application with an engine of its own installs it with
+`SetSpeechTranscriber` (`GetSpeechTranscriber` hands it to the next one
+installed, as its fallback).
 `CanExtractText(path)` says whether this build can read a file, and
 `WhyNoTextExtraction(path)` says why not in a sentence for the user ("Speech
 to text is not available ..."). Recognition and transcription take seconds, so

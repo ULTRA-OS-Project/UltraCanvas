@@ -63,8 +63,12 @@ TEST(onedrive_list_follows_next_link) {
 TEST(onedrive_small_upload_is_a_put) {
     std::string url, method;
     HttpFn fake = [&](const UltraNetHttpRequest& req, UltraNetResponse& resp) {
-        url = req.url; method = req.method == UltraNetHttpMethod::Put ? "PUT" : "other";
-        REQUIRE_EQ(Body(req), std::string("small"));
+        // The PUT of the bytes; the file's dates follow in a PATCH of the
+        // item (test_file_dates.cpp), which is not this test's business.
+        if (req.method == UltraNetHttpMethod::Put) {
+            url = req.url; method = "PUT";
+            REQUIRE_EQ(Body(req), std::string("small"));
+        }
         Answer(resp, 201, R"({"id":"1"})");
         return Ok();
     };

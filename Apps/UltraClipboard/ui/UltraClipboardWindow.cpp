@@ -1,5 +1,6 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
+// Version: 0.2.4 - ... or which one transcribed a recording
 // Version: 0.2.3 - Extract text says which UltraAI provider read a picture
 // Version: 0.2.2 - every text through Tr (UltraLocalisation)
 // Version: 0.2.1 - Extract text
@@ -38,6 +39,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 #ifdef ULTRACLIPBOARD_HAS_ULTRAAI
 #include "UltraAITextRecognition.h"   // LastTextRecognitionProvider
+#include "UltraAISpeechTranscription.h"   // LastSpeechTranscriptionProvider
 #endif
 
 #include <algorithm>
@@ -1092,6 +1094,8 @@ void UltraClipboardWindow::ExtractText(int64_t id) {
             const UltraCanvasFileLoader::TextExtractionResult result = UltraCanvasFileLoader::ExtractText(file);
 #ifdef ULTRACLIPBOARD_HAS_ULTRAAI
             if (const std::string reader = UltraAI::LastTextRecognitionProvider(); !reader.empty()) out.reader = reader;
+            if (const std::string reader = UltraAI::LastSpeechTranscriptionProvider(); !reader.empty())
+                out.reader = reader;
 #endif
             if (!result.Ok()) {
                 if (out.error.empty()) out.error = named ? name + ": " + result.error : result.error;

@@ -23,6 +23,8 @@
 // from the moment OpenTunnel returns: libssh allows a session to be used from
 // one thread at a time, and that thread accepts, opens channels and copies
 // bytes both ways.
+// Version: 0.3.0 - through the proxy setting: the connection is made through it by
+//                  UltraNet (SOCKS or an HTTP CONNECT tunnel) and handed to libssh
 // Version: 0.2.0 - host keys checked (known_hosts or a pinned fingerprint);
 //                  ISshTunnelPlugin: local port forwarding
 // Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
@@ -37,6 +39,7 @@
 #include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
+#include <UltraNet/UltraNetSocket.h>   // UltraNet_TcpOpen / UltraNet_SocketDetach: through a proxy
 
 #include <libssh/libssh.h>
 
@@ -228,6 +231,26 @@ UltraNetResult Connect(const std::string& url, const UltraNetRemoteOptions& opti
     if (options.connectTimeoutMs > 0) {
         const long seconds = (options.connectTimeoutMs + 999) / 1000;
         ssh_options_set(s, SSH_OPTIONS_TIMEOUT, &seconds);
+    }
+    // The proxy setting (the operating system's SOCKS proxy, or the proxy
+    // chosen): libssh cannot speak to a proxy, so UltraNet makes the
+    // connection through it and libssh is handed the socket, which it then
+    // owns. The host stays named above: known_hosts is looked up by it.
+    const std::string authority = c.host.find(':') != std::string::npos ? "[" + c.host + "]" : c.host;
+    const UltraNetProxyConfig proxy = UltraNet_ResolveProxy("ssh://" + authority + ":" + std::to_string(port),
+                                                            UltraNetProxyConfig());
+    if (proxy.IsEnabled()) {
+        UltraNetSocketOptions through;
+        through.connectTimeoutMs = options.connectTimeoutMs > 0 ? options.connectTimeoutMs : 10000;
+        through.proxy = proxy;
+        UltraNetHandle tcp = UltraNetInvalidHandle;
+        const UltraNetResult opened = UltraNet_TcpOpen(c.host, port, through, tcp);
+        if (!opened) {
+            ssh_free(s);
+            return opened;
+        }
+        socket_t fd = static_cast<socket_t>(UltraNet_SocketDetach(tcp));
+        ssh_options_set(s, SSH_OPTIONS_FD, &fd);
     }
     if (ssh_connect(s) != SSH_OK) {
         const UltraNetResult failed = UltraNetResult::Error(UltraNetResultCode::ConnectionRefused,

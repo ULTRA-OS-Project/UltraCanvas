@@ -14,8 +14,10 @@
 // Embedded by UltraCanvasMediaViewer as the display for MediaKind::Font, and
 // usable on its own - a font manager, or a font picker that wants to show
 // coverage rather than just a family name.
+// Version: 1.1.0 - FontViewerStyle::FromTheme, ApplyTheme: the viewer follows the theme; a SetStyle by hand stops
+//                  the following
 // Version: 1.0.0
-// Last Modified: 2026-09-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASFONTVIEWER_H
@@ -55,6 +57,14 @@ namespace UltraCanvas {
         int contentPadding = 8;
         float fontSize = 11.0f;
         std::string fontFamily;   // empty = the application's default
+
+        // The theme's roles over a base's own metrics: the panel behind
+        // raised cells with hairlines, ink for the glyphs, the hover fill,
+        // the soft accent with the accent round it selected, the captions
+        // in muted ink in the interface font at the caption size
+        static FontViewerStyle FromTheme(const UltraCanvasTheme& theme, const FontViewerStyle& base);
+        static FontViewerStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, FontViewerStyle()); }
+        static FontViewerStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
     // ===== THE GLYPH BROWSER =====
@@ -112,6 +122,7 @@ namespace UltraCanvas {
         void SetControlsVisible(bool visible);
         bool AreControlsVisible() const { return controlsVisible; }
         void SetStyle(const FontViewerStyle& s);
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         const FontViewerStyle& GetStyle() const { return style; }
 
         // ===== ELEMENT =====

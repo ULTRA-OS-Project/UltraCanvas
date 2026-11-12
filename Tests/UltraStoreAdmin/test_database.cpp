@@ -28,6 +28,14 @@ TEST(the_database_keeps_settings_publishers_and_components_whole) {
         REQUIRE(!db.RemovePublisher("acme").Ok());
 
         REQUIRE(db.PutComponent(HelloApp()).Ok());
+        {
+            // Only the store's categories: it names them in the buyer's language.
+            auto loose = HelloApp();
+            loose.categories = {"Tools"};
+            const auto refused = db.PutComponent(loose);
+            REQUIRE(!refused.Ok());
+            REQUIRE(refused.error.message.find("Tools") != std::string::npos);
+        }
         REQUIRE(db.PutComponent(Runtime()).Ok());
         const auto back = db.GetComponent("org.ultraos.hello");
         REQUIRE(back.Ok());

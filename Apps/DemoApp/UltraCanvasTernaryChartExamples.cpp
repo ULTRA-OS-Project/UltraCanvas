@@ -28,9 +28,9 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTernaryChartExamples() {
-        auto page = DemoKit::CreatePage("ternaryMainContainer", "Ternary Chart",
-                "Things made of three parts - votes, soil, alloys - as points in a triangle: each "
-                "corner is all of one part, and the three shares of every point add up to 100%");
+        auto page = DemoKit::CreatePage("ternaryMainContainer", Tr("Ternary Chart"),
+                Tr("Things made of three parts - votes, soil, alloys - as points in a triangle: each "
+                "corner is all of one part, and the three shares of every point add up to 100%"));
 
         // The chart beside its controls; a narrow window puts the controls under it.
         auto row = DemoKit::AddRow(page, "ternaryContent");
@@ -44,23 +44,24 @@ namespace UltraCanvas {
         struct Example {
             std::string tab;
             TernaryModel model;
+            bool density = false;   // the feldspar cloud: counted, not marked
         };
         TernaryModel soil = TernarySamples::SoilTexture();
-        soil.title = "Soil samples over the USDA texture classes";
-        soil.subtitle = "Invented samples; click a class to count them";
+        soil.title = Tr("Soil samples over the USDA texture classes");
+        soil.subtitle = Tr("Invented samples; click a class to count them");
         soil.series = TernarySamples::SoilSamples().series;
         const std::vector<Example> examples = {
-            {"Votes", TernarySamples::ThreePartyVotes()},
-            {"Vote swings", TernarySamples::VoteTrajectories()},
-            {"Soil texture", soil},
-            {"De Finetti", TernarySamples::DeFinetti()},
-            {"Density", TernarySamples::FeldsparCloud()},
+            {Tr("Votes"), TernarySamples::ThreePartyVotes()},
+            {Tr("Vote swings"), TernarySamples::VoteTrajectories()},
+            {Tr("Soil texture"), soil},
+            {Tr("De Finetti"), TernarySamples::DeFinetti()},
+            {Tr("Density"), TernarySamples::FeldsparCloud(), true},
         };
         std::vector<std::shared_ptr<UltraCanvasTernaryChart>> charts;
         for (size_t i = 0; i < examples.size(); ++i) {
             auto chart = CreateTernaryChart("ternaryChart" + std::to_string(i), 10, 10, 740, 580);
             chart->SetModel(examples[i].model);
-            if (examples[i].tab == "Density") {
+            if (examples[i].density) {
                 // 2,400 markers would hide one another: count them instead.
                 chart->SetDensity(15);
                 chart->SetDensityContours(4);
@@ -79,66 +80,66 @@ namespace UltraCanvas {
             DemoKit::AddCaption(sidebar, id, text)->SetFontWeight(FontWeight::Bold);
         };
 
-        addCaption("ternaryReadingCaption", "Reading direction");
+        addCaption("ternaryReadingCaption", Tr("Reading direction"));
         auto readingSelector = std::make_shared<UltraCanvasDropdown>("ternaryReadingSelector", 0, 0, 190, 28);
-        readingSelector->AddItem("As the sample reads", "sample");
-        readingSelector->AddItem("Clockwise", "clockwise");
-        readingSelector->AddItem("Anticlockwise", "anticlockwise");
+        readingSelector->AddItem(Tr("As the sample reads"), "sample");
+        readingSelector->AddItem(Tr("Clockwise"), "clockwise");
+        readingSelector->AddItem(Tr("Anticlockwise"), "anticlockwise");
         readingSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, readingSelector);
 
-        addCaption("ternaryLabelsCaption", "Point names");
+        addCaption("ternaryLabelsCaption", Tr("Point names"));
         auto labelsSelector = std::make_shared<UltraCanvasDropdown>("ternaryLabelsSelector", 0, 0, 190, 28);
-        labelsSelector->AddItem("Hidden (hover for them)", "hidden");
-        labelsSelector->AddItem("Beside the points", "shown");
+        labelsSelector->AddItem(Tr("Hidden (hover for them)"), "hidden");
+        labelsSelector->AddItem(Tr("Beside the points"), "shown");
         labelsSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, labelsSelector);
 
-        addCaption("ternaryGridCaption", "Grid and titles");
+        addCaption("ternaryGridCaption", Tr("Grid and titles"));
         auto gridSelector = std::make_shared<UltraCanvasDropdown>("ternaryGridSelector", 0, 0, 190, 28);
-        gridSelector->AddItem("Grid and edge titles", "both");
-        gridSelector->AddItem("Grid only", "grid");
-        gridSelector->AddItem("Edge titles only", "titles");
+        gridSelector->AddItem(Tr("Grid and edge titles"), "both");
+        gridSelector->AddItem(Tr("Grid only"), "grid");
+        gridSelector->AddItem(Tr("Edge titles only"), "titles");
         gridSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, gridSelector);
 
-        addCaption("ternaryGuideCaption", "Reading guide");
+        addCaption("ternaryGuideCaption", Tr("Reading guide"));
         auto guideSelector = std::make_shared<UltraCanvasDropdown>("ternaryGuideSelector", 0, 0, 190, 28);
-        guideSelector->AddItem("Off", "off");
-        guideSelector->AddItem("Follow the pointer", "on");
+        guideSelector->AddItem(Tr("Off"), "off");
+        guideSelector->AddItem(Tr("Follow the pointer"), "on");
         guideSelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, guideSelector);
 
-        addCaption("ternaryDensityCaption", "Density");
+        addCaption("ternaryDensityCaption", Tr("Density"));
         auto densitySelector = std::make_shared<UltraCanvasDropdown>("ternaryDensitySelector", 0, 0, 190, 28);
-        densitySelector->AddItem("As the tab shows it", "tab");
-        densitySelector->AddItem("Off: the points", "off");
-        densitySelector->AddItem("Cells", "cells");
-        densitySelector->AddItem("Cells and contours", "contours");
+        densitySelector->AddItem(Tr("As the tab shows it"), "tab");
+        densitySelector->AddItem(Tr("Off: the points"), "off");
+        densitySelector->AddItem(Tr("Cells"), "cells");
+        densitySelector->AddItem(Tr("Cells and contours"), "contours");
         densitySelector->SetSelectedIndex(0);
         DemoKit::AddStretched(sidebar, densitySelector);
 
-        addCaption("ternaryZoomCaption", "Zoom");
+        addCaption("ternaryZoomCaption", Tr("Zoom"));
         auto zoomOutButton = std::make_shared<UltraCanvasButton>("ternaryZoomOut", 0, 0, 190, 28,
-                                                                 "Show the whole triangle");
+                                                                 Tr("Show the whole triangle"));
         DemoKit::AddStretched(sidebar, zoomOutButton);
 
-        addCaption("ternaryFilesCaption", "Files");
+        addCaption("ternaryFilesCaption", Tr("Files"));
         auto makeButton = [&sidebar](const std::string& id, const std::string& text) {
             auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 190, 28, text);
             DemoKit::AddStretched(sidebar, button);
             return button;
         };
-        auto openJsonButton = makeButton("ternaryOpenJson", "Open JSON\xE2\x80\xA6");
-        auto saveJsonButton = makeButton("ternarySaveJson", "Save JSON\xE2\x80\xA6");
-        auto importCsvButton = makeButton("ternaryImportCsv", "Import points (CSV)\xE2\x80\xA6");
-        auto exportCsvButton = makeButton("ternaryExportCsv", "Export points (CSV)\xE2\x80\xA6");
+        auto openJsonButton = makeButton("ternaryOpenJson", Tr("Open JSON\xE2\x80\xA6"));
+        auto saveJsonButton = makeButton("ternarySaveJson", Tr("Save JSON\xE2\x80\xA6"));
+        auto importCsvButton = makeButton("ternaryImportCsv", Tr("Import points (CSV)\xE2\x80\xA6"));
+        auto exportCsvButton = makeButton("ternaryExportCsv", Tr("Export points (CSV)\xE2\x80\xA6"));
 
-        addCaption("ternarySelectionCaption", "SELECTED");
+        addCaption("ternarySelectionCaption", Tr("SELECTED"));
         auto selection = DemoKit::AddCaption(sidebar, "ternarySelection",
-                "Click a point for its three shares, or a soil class to count the samples in "
+                Tr("Click a point for its three shares, or a soil class to count the samples in "
                 "it. Drag across the triangle to zoom in; double-click to zoom out. Click a "
-                "legend entry to hide a series.");
+                "legend entry to hide a series."));
         selection->SetTextColor(DemoKit::BodyText());
         selection->SetBackgroundColor(Color(248, 249, 250, 255));
         selection->SetPadding(10);
@@ -174,8 +175,10 @@ namespace UltraCanvas {
                         names += (names.empty() ? "" : ", ") + point.label;
                     }
                 }
-                selectionPtr->SetText(chartPtrs[i]->BuildRegionTooltip(region) + "\n" + std::to_string(count) +
-                                      (count == 1 ? " sample" : " samples") + (names.empty() ? "" : ": " + names));
+                selectionPtr->SetText(chartPtrs[i]->BuildRegionTooltip(region) + "\n" +
+                                      (names.empty() ? TrN("{n} sample", "{n} samples", count)
+                                                     : LocalisationDetail::Substitute(
+                                                           TrN("{n} sample: {0}", "{n} samples: {0}", count), {names})));
             };
         }
         guideSelector->onSelectionChanged = [chartPtrs](int, const DropdownItem& item) {
@@ -199,15 +202,15 @@ namespace UltraCanvas {
             charts[i]->onZoomChanged = [chartPtrs, i, selectionPtr]() {
                 const TernaryModel& model = chartPtrs[i]->GetModel();
                 if (!model.IsZoomed()) {
-                    selectionPtr->SetText("The whole triangle. Drag across it to zoom in.");
+                    selectionPtr->SetText(Tr("The whole triangle. Drag across it to zoom in."));
                     return;
                 }
-                std::string text = "Zoomed in:";
+                std::string text = Tr("Zoomed in:");
                 for (const TernaryAxis& axis : model.axes) {
-                    text += "\n" + axis.title + " " + FormatTernaryShare(axis.minimum) + " to " +
-                            FormatTernaryShare(axis.minimum + model.ZoomSpan());
+                    text += "\n" + TrF("{0} {1} to {2}", axis.title, FormatTernaryShare(axis.minimum),
+                                       FormatTernaryShare(axis.minimum + model.ZoomSpan()));
                 }
-                selectionPtr->SetText(text + "\nDouble-click to zoom out.");
+                selectionPtr->SetText(text + "\n" + Tr("Double-click to zoom out."));
             };
         }
 
@@ -216,7 +219,7 @@ namespace UltraCanvas {
         auto readText = [selectionPtr, fileName](const std::string& path, std::string& text) {
             const FileBytesResult loaded = UltraCanvasFileLoader::LoadFile(path);
             if (!loaded.success) {
-                selectionPtr->SetText("Could not open " + fileName(path) + ": " + loaded.error);
+                selectionPtr->SetText(TrF("Could not open {0}: {1}", fileName(path), loaded.error));
                 return false;
             }
             text.assign(loaded.bytes.begin(), loaded.bytes.end());
@@ -225,9 +228,9 @@ namespace UltraCanvas {
         auto writeText = [selectionPtr, fileName](const std::string& path, const std::string& text) {
             std::string error;
             if (UltraCanvasFileLoader::SaveFile(path, std::vector<uint8_t>(text.begin(), text.end()), error)) {
-                selectionPtr->SetText("Saved " + fileName(path) + ".");
+                selectionPtr->SetText(TrF("Saved {0}.", fileName(path)));
             } else {
-                selectionPtr->SetText("Could not write " + fileName(path) + ": " + error);
+                selectionPtr->SetText(TrF("Could not write {0}: {1}", fileName(path), error));
             }
         };
 
@@ -236,9 +239,9 @@ namespace UltraCanvas {
             UltraCanvasTernaryChart* chart = active();
             if (!chart) return;
             FileDialogOptions opts;
-            opts.SetTitle("Open a ternary chart")
-                .AddFilter("Ternary chart (*.json)", "json")
-                .AddFilter("All files", "*");
+            opts.SetTitle(Tr("Open a ternary chart"))
+                .AddFilter(Tr("Ternary chart (*.json)"), "json")
+                .AddFilter(Tr("All files"), "*");
             UltraCanvasFileLoader::OpenFileDialog(opts,
                     [chart, selectionPtr, readText, fileName](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
@@ -246,20 +249,21 @@ namespace UltraCanvas {
                 if (!readText(path, text)) return;
                 TernaryModel model;
                 if (!ImportTernaryJson(text, model, &error)) {
-                    selectionPtr->SetText("Could not read " + fileName(path) + ": " + error);
+                    selectionPtr->SetText(TrF("Could not read {0}: {1}", fileName(path), error));
                     return;
                 }
                 chart->SetModel(model);
-                selectionPtr->SetText("Opened " + fileName(path) + ": " + std::to_string(model.PointCount()) +
-                                      " points, " + std::to_string(model.regions.size()) + " regions.");
+                selectionPtr->SetText(TrF("Opened {0}: {1}, {2}.", fileName(path),
+                                          TrN("{n} point", "{n} points", static_cast<long long>(model.PointCount())),
+                                          TrN("{n} region", "{n} regions", static_cast<long long>(model.regions.size()))));
             });
         };
         saveJsonButton->onClick = [active, writeText]() {
             UltraCanvasTernaryChart* chart = active();
             if (!chart) return;
             FileDialogOptions opts;
-            opts.SetTitle("Save the ternary chart")
-                .AddFilter("Ternary chart (*.json)", "json")
+            opts.SetTitle(Tr("Save the ternary chart"))
+                .AddFilter(Tr("Ternary chart (*.json)"), "json")
                 .SetDefaultExtension("json")
                 .SetDefaultFileName("ternary.json");
             const std::string text = ExportTernaryJson(chart->GetModel());
@@ -274,9 +278,9 @@ namespace UltraCanvas {
             UltraCanvasTernaryChart* chart = active();
             if (!chart) return;
             FileDialogOptions opts;
-            opts.SetTitle("Import points")
-                .AddFilter("Comma-separated values (*.csv)", "csv")
-                .AddFilter("All files", "*");
+            opts.SetTitle(Tr("Import points"))
+                .AddFilter(Tr("Comma-separated values (*.csv)"), "csv")
+                .AddFilter(Tr("All files"), "*");
             UltraCanvasFileLoader::OpenFileDialog(opts,
                     [chart, selectionPtr, readText, fileName](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
@@ -284,20 +288,21 @@ namespace UltraCanvas {
                 if (!readText(path, text)) return;
                 TernaryModel model = chart->GetModel();
                 if (!ImportTernaryCsv(text, model, &error)) {
-                    selectionPtr->SetText("Could not import " + fileName(path) + ": " + error);
+                    selectionPtr->SetText(TrF("Could not import {0}: {1}", fileName(path), error));
                     return;
                 }
                 chart->SetModel(model);
-                selectionPtr->SetText("Imported " + std::to_string(model.PointCount()) + " points from " +
-                                      fileName(path) + ".");
+                selectionPtr->SetText(LocalisationDetail::Substitute(
+                        TrN("Imported {n} point from {0}.", "Imported {n} points from {0}.",
+                            static_cast<long long>(model.PointCount())), {fileName(path)}));
             });
         };
         exportCsvButton->onClick = [active, writeText]() {
             UltraCanvasTernaryChart* chart = active();
             if (!chart) return;
             FileDialogOptions opts;
-            opts.SetTitle("Export the points")
-                .AddFilter("Comma-separated values (*.csv)", "csv")
+            opts.SetTitle(Tr("Export the points"))
+                .AddFilter(Tr("Comma-separated values (*.csv)"), "csv")
                 .SetDefaultExtension("csv")
                 .SetDefaultFileName("points.csv");
             const std::string text = ExportTernaryCsv(chart->GetModel());

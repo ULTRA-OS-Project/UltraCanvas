@@ -173,6 +173,29 @@ TEST(links_qr_codes_and_the_landing_page) {
     REQUIRE(page.find("UltraCanvas runtime") == std::string::npos);   // not one of the code's apps
     REQUIRE(page.find("ultrastore://code/ANNA-20") != std::string::npos);
     REQUIRE(page.find("2027-06-30") != std::string::npos);
+    // The join page names the inviting partner, their id and their contact.
+    Affiliate anna = Aff("aff-anna", "Anna & Co", 20, 5);
+    anna.contact = "anna@example.com";
+    const std::string join = JoinPage(anna, "partners@store.example", "https://store.example/v1/");
+    REQUIRE(join.find("<strong>Anna &amp; Co</strong> invites you") != std::string::npos);
+    REQUIRE(join.find("<code>aff-anna</code>") != std::string::npos);
+    REQUIRE(join.find("anna@example.com") != std::string::npos);
+    REQUIRE(join.find("<strong>partners@store.example</strong>") != std::string::npos);   // the store's contact
+    REQUIRE(join.find("https://store.example/v1<") != std::string::npos);   // the base, slash trimmed
+    anna.contact.clear();
+    const std::string noContacts = JoinPage(anna, "", "https://store.example/v1");
+    REQUIRE(noContacts.find("Questions about") == std::string::npos);
+    REQUIRE(noContacts.find("done by the store's team") != std::string::npos);
+    // A partner switched off: the invitation is closed, and the page says so.
+    anna.enabled = false;
+    const std::string closed = JoinPage(anna, "partners@store.example", "https://store.example/v1");
+    REQUIRE(closed.find("This invitation is closed") != std::string::npos);
+    REQUIRE(closed.find("aff-anna") == std::string::npos);
+    REQUIRE(closed.find("partners@store.example") != std::string::npos);
+    // A code out of the catalog: no longer valid.
+    const std::string retired = RetiredCodePage(" anna-20 ", "https://store.example/v1");
+    REQUIRE(retired.find("<code>ANNA-20</code>") != std::string::npos);
+    REQUIRE(retired.find("no longer valid") != std::string::npos);
     RemoveDir(dir);
 }
 
@@ -181,6 +204,7 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     AdminDatabase db;
     REQUIRE(db.Open(Join(dir, "admin.sqlite")).Ok());
     REQUIRE(db.SetSetting("catalog.base_url", "https://store.example/v1").Ok());
+    REQUIRE(db.SetSetting("store.contact", "partners@store.example").Ok());
     REQUIRE(db.PutPublisher({"ultra-os-project", "ULTRA OS Project", ""}).Ok());
     REQUIRE(db.PutComponent(HelloApp()).Ok());
     PackageFile f;
@@ -191,6 +215,9 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     REQUIRE(WriteFile(f.file, "zip bytes"));
     REQUIRE(db.PutPackageFile(f).Ok());
     REQUIRE(db.PutAffiliate(Aff("aff-anna", "Anna", 20, 0)).Ok());
+    Affiliate gone = Aff("aff-gone", "Gone", 10, 0);
+    gone.enabled = false;
+    REQUIRE(db.PutAffiliate(gone).Ok());
     REQUIRE(db.PutCode(Code("anna-20", UltraStore::CodeKind::Affiliate, "aff-anna", 20)).Ok());
     CodeRecord off = Code("off", UltraStore::CodeKind::Discount, "", 5);
     off.enabled = false;
@@ -229,6 +256,38 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     REQUIRE(page.find("ultrastore://code/ANNA-20") != std::string::npos);
     REQUIRE(page.find("<li>Hello</li>") != std::string::npos);
     REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "go/STALE/index.html"))));
+    // And join/<affiliate>/index.html for each enabled partner: the join QR
+    // code's link is <base>/join/<affiliate>. A partner switched off has none.
+    REQUIRE_EQ(report.Value().joinPages, size_t(1));
+    const std::string join = ReadFile(Join(options.outDirUtf8, "join/aff-anna/index.html"));
+    REQUIRE(join.find("<code>aff-anna</code>") != std::string::npos);
+    REQUIRE(join.find("Anna") != std::string::npos);
+    REQUIRE(join.find("partners@store.example") != std::string::npos);   // store.contact
+    // A partner switched off and a code out of the catalog keep a page that
+    // says so: the uploader never deletes on the server, so this is what
+    // replaces the stale page there.
+    REQUIRE_EQ(report.Value().retiredPages, size_t(2));   // the partner aff-gone, the code OFF
+    REQUIRE(ReadFile(Join(options.outDirUtf8, "join/aff-gone/index.html")).find("This invitation is closed") != std::string::npos);
+    REQUIRE(ReadFile(Join(options.outDirUtf8, "go/OFF/index.html")).find("no longer valid") != std::string::npos);
+    // The database remembers every page published, so a code and a partner
+    // removed outright still get their retired page on the next publish -
+    // into a fresh folder, to show it is the record and not the old files.
+    const auto pages = db.PublishedPages();
+    REQUIRE(pages.Ok());
+    REQUIRE_EQ(pages.Value().size(), size_t(5));   // go/ANNA-20, go/OFF, go/STALE, join/aff-anna, join/aff-gone
+    REQUIRE(!pages.Value()[0].firstPublishedAt.empty());
+    REQUIRE(db.RemoveCode("anna-20").Ok());
+    REQUIRE(db.RemoveAffiliate("aff-anna").Ok());
+    PublishOptions again = options;
+    again.outDirUtf8 = Join(dir, "out2");
+    const auto second = Publish(db, added.Value().id, "pass", again);
+    REQUIRE(second.Ok());
+    REQUIRE_EQ(second.Value().codePages, size_t(1));      // STALE
+    REQUIRE_EQ(second.Value().joinPages, size_t(0));
+    REQUIRE_EQ(second.Value().retiredPages, size_t(4));   // OFF, aff-gone, and the removed ANNA-20 and aff-anna
+    REQUIRE(ReadFile(Join(again.outDirUtf8, "go/ANNA-20/index.html")).find("no longer valid") != std::string::npos);
+    REQUIRE(ReadFile(Join(again.outDirUtf8, "join/aff-anna/index.html")).find("This invitation is closed") != std::string::npos);
+    REQUIRE_EQ(db.PublishedPages().Value().size(), size_t(5));   // nothing new, nothing forgotten
     RemoveDir(dir);
 }
 
@@ -242,8 +301,9 @@ TEST(the_sales_of_the_payment_service_go_into_the_ledger_once) {
     std::vector<std::string> asked;
     std::string page1 = R"({"sales": [
         {"seq": 1, "order_id": "ord1", "at": "2026-10-27T12:00:00Z", "code": "ANNA-20", "app": "org.ultraos.hello", "amount": "23.92", "currency": "EUR", "receipt_no": 1},
-        {"seq": 2, "order_id": "ord2", "at": "2026-10-27T12:05:00Z", "code": "", "app": "org.ultraos.hello", "amount": "29.90", "currency": "EUR", "receipt_no": 2}], "next": 2})";
-    std::string empty = R"({"sales": [], "next": 2})";
+        {"seq": 2, "order_id": "ord2", "at": "2026-10-27T12:05:00Z", "code": "", "app": "org.ultraos.hello", "amount": "29.90", "currency": "EUR", "receipt_no": 2},
+        {"seq": 3, "order_id": "ord1", "reference": "ord1/7", "kind": "renewal", "at": "2026-11-27T12:00:00Z", "code": "", "app": "org.ultraos.hello", "amount": "4.90", "currency": "EUR", "receipt_no": 3}], "next": 3})";
+    std::string empty = R"({"sales": [], "next": 3})";
     auto fetch = [&](const std::string& url, const std::string& token) -> UltraStore::Result<std::string> {
         asked.push_back(url + " " + token);
         if (url.find("since=0") != std::string::npos) return UltraStore::Result<std::string>::Succeed(page1);
@@ -253,12 +313,14 @@ TEST(the_sales_of_the_payment_service_go_into_the_ledger_once) {
     REQUIRE(!SyncSales(db, "https://pay.example", "", fetch).Ok());
     const auto first = SyncSales(db, "https://pay.example/", "admin-token", fetch);
     REQUIRE(first.Ok());
-    REQUIRE_EQ(first.Value().recorded, size_t(2));
-    REQUIRE_EQ(first.Value().sequence, uint64_t(2));
+    REQUIRE_EQ(first.Value().recorded, size_t(3));   // a subscription's renewal is a sale of its own, under its reference
+    REQUIRE_EQ(first.Value().sequence, uint64_t(3));
     REQUIRE_EQ(asked[0], std::string("https://pay.example/v1/sales?since=0 admin-token"));
-    REQUIRE_EQ(db.Setting("payment.sales_seq"), std::string("2"));
+    REQUIRE_EQ(db.Setting("payment.sales_seq"), std::string("3"));
     const auto sales = db.Sales();
-    REQUIRE_EQ(sales.Value().size(), size_t(2));
+    REQUIRE_EQ(sales.Value().size(), size_t(3));
+    REQUIRE_EQ(sales.Value()[2].reference, std::string("ord1/7"));
+    REQUIRE_EQ(sales.Value()[2].amount, std::string("4.90"));
     REQUIRE_EQ(sales.Value()[0].reference, std::string("ord1"));
     REQUIRE_EQ(sales.Value()[0].affiliate, std::string("aff-anna"));
     REQUIRE_EQ(sales.Value()[0].affiliateCredit, std::string("4.78"));
@@ -270,8 +332,8 @@ TEST(the_sales_of_the_payment_service_go_into_the_ledger_once) {
     REQUIRE(db.SetSetting("payment.sales_seq", "0").Ok());
     const auto third = SyncSales(db, "https://pay.example", "admin-token", fetch);
     REQUIRE_EQ(third.Value().recorded, size_t(0));
-    REQUIRE_EQ(third.Value().skipped, size_t(2));
-    REQUIRE_EQ(db.Sales().Value().size(), size_t(2));
+    REQUIRE_EQ(third.Value().skipped, size_t(3));
+    REQUIRE_EQ(db.Sales().Value().size(), size_t(3));
     REQUIRE(db.HasSaleReference("ord2"));
     REQUIRE(!db.HasSaleReference(""));
     // The catalog names the payment service and its key from the settings.

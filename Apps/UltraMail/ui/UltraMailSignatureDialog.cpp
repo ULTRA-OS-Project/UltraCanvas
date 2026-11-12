@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSignatureDialog.cpp
+// Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.0 - a header with the signature icon; the HTML editor's tools
 //                  and page share one framed card; HTML source / Design and
 //                  Save carry icons
@@ -23,6 +24,7 @@
 
 #include "UltraCanvasRichDocument.h"
 #include "UltraMailSignature.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <memory>
 #include <string>
@@ -154,7 +156,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
                            const Signature& current,
                            std::function<void(const Signature&)> onSave) {
     DialogConfig config;
-    config.title      = "Signature for " + email;
+    config.title      = TrF("Signature for {0}", email);
     config.width      = 720;
     config.height     = 600;
     config.dialogType = DialogType::Custom;
@@ -166,7 +168,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     auto state = std::make_shared<EditorState>();
 
@@ -176,7 +178,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     // ----- Kind: None | Plain text | HTML -----
     auto kindRow = MakeRow("sigKindRow", Theme::kInnerGap);
     auto kindLabel = Theme::MakeLine("sigKindLbl", "Signature", Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
     kindLabel->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     kindRow->AddChild(kindLabel);
     auto kind = CreateSegmentedControl("sigKind", 0, 0, 270, Theme::kControlHeight);
@@ -191,7 +193,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     // ----- The editors: one visible at a time, taking the spare height -----
     auto noneNote = Theme::MakeLine("sigNone",
         "No signature is added to messages from this account.",
-        Theme::kControlHeight, Theme::kSizeBody, Theme::kTextMuted);
+        Theme::kControlHeight, Theme::SizeBody(), Theme::TextMuted());
     dialog->AddChild(noneNote);
     state->noneNote = noneNote.get();
 
@@ -199,8 +201,8 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
     Theme::StyleTextArea(text);
-    text->SetBorders(1.0f, Theme::kCardBorder);   // framed like the HTML editor
-    text->SetPlaceholder("Erika Example\nSales, ACME Ltd.\n+49 30 1234567");
+    text->SetBorders(1.0f, Theme::CardBorder());   // framed like the HTML editor
+    text->SetPlaceholder(Tr("Erika Example\nSales, ACME Ltd.\n+49 30 1234567"));
     text->SetText(current.text);
     dialog->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -242,7 +244,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     auto rich = CreateRichTextEdit("sigRich", 0, 0, 0, 0);
     {
         RichTextEditStyle style = rich->GetStyle();
-        style.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the composer
+        style.baseFont.fontSize = Theme::SizeBody() + 1.0f;   // as the composer
         style.drawBorder = false;                            // the card is the frame
         rich->SetStyle(style);
     }
@@ -271,14 +273,14 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     // ----- Where it goes -----
     auto onReplies = std::make_shared<UltraCanvasCheckbox>(
         "sigOnReplies", 0, 0, 400, Theme::kControlHeight,
-        "Add the signature to replies and forwards too");
-    onReplies->SetFontSize(Theme::kSizeBody);
+        Tr("Add the signature to replies and forwards too"));
+    onReplies->SetFontSize(Theme::SizeBody());
     onReplies->SetChecked(current.onReplies);
     dialog->AddChild(onReplies);
     state->onReplies = onReplies.get();
 
     auto hint = Theme::MakeLine("sigHint", "", 2 * Theme::kControlHeight,
-                                Theme::kSizeBody, Theme::kTextSecondary);
+                                Theme::SizeBody(), Theme::TextSecondary());
     hint->SetWrap(TextWrap::WrapWord);
     dialog->AddChild(hint);
     state->hint = hint.get();
@@ -286,24 +288,24 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     // ----- Buttons: the source switch on the left, Cancel / Save right -----
     auto buttonRow = MakeRow("sigButtons", Theme::kInnerGap);
     buttonRow->SetElementSize(Size2Df(0, Theme::kToolbarHeight));
-    auto sourceBtn = CreateButton("sigSourceBtn", 0, 0, 110, Theme::kControlHeight, "HTML source");
+    auto sourceBtn = CreateButton("sigSourceBtn", 0, 0, 110, Theme::kControlHeight, Tr("HTML source"));
     Theme::FitToLabel(sourceBtn, 110);
     Theme::StyleSecondary(sourceBtn);
     Theme::SetButtonIcon(sourceBtn, "code");
-    sourceBtn->SetTooltip("Write or paste the signature as HTML");
+    sourceBtn->SetTooltip(Tr("Write or paste the signature as HTML"));
     sourceBtn->onClick = [state]() { SetSourceMode(*state, !state->sourceMode); };
     buttonRow->AddChild(sourceBtn);
     state->sourceBtn = sourceBtn.get();
 
     buttonRow->AddStretchSpacer(1);
-    auto cancelBtn = CreateButton("sigCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("sigCancel", 0, 0, 90, Theme::kControlHeight, Tr("Cancel"));
     Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 
     auto result = std::make_shared<Signature>(current);
-    auto saveBtn = CreateButton("sigSave", 0, 0, 90, Theme::kControlHeight, "Save");
+    auto saveBtn = CreateButton("sigSave", 0, 0, 90, Theme::kControlHeight, Tr("Save"));
     Theme::FitToLabel(saveBtn, 90);
     Theme::StylePrimary(saveBtn);
     Theme::SetButtonIcon(saveBtn, "check");

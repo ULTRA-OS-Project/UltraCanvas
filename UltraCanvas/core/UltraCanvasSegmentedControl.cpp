@@ -10,7 +10,7 @@
 // Version: 1.4.0 - SetSegmentTextColor: a segment's own text colour while unselected
 // Version: 1.3.1 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.3.0
-// Last Modified: 2026-11-07
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
@@ -1095,6 +1095,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSegmentedControl::SetStyle(SegmentedControlStyle st) {
+        StyleSetByHand();
         style = st;
         // Font lives in the style — drop cached text layouts so they re-measure.
         for (auto& segment : segments) segment.textLayout.reset();
@@ -1126,5 +1127,25 @@ namespace UltraCanvas {
         }
 
         return true;
+    }
+
+// ===== THE THEME =====
+    SegmentedControlStyle SegmentedControlStyle::FromTheme(const UltraCanvasTheme& theme, const SegmentedControlStyle& base) {
+        SegmentedControlStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.fontFamily = body.fontFamily;
+        s.fontSize = static_cast<float>(body.fontSize);
+        s.normalColor = r.raised;
+        s.selectedColor = r.accent;
+        s.hoverColor = r.hover;
+        s.disabledColor = r.panel;
+        s.normalTextColor = r.ink;
+        s.selectedTextColor = r.onAccent;
+        s.hoverTextColor = r.ink;
+        s.disabledTextColor = r.inkFaint;
+        s.borderColor = r.lineStrong;
+        s.separatorColor = r.line;
+        return s;
     }
 } // namespace UltraCanvas

@@ -1,14 +1,17 @@
 // Apps/UltraPaint/UltraPaintFilters.cpp
 // The filter catalogue (PixelFX operations with parameters) and the
 // parameter dialog with live preview.
+// Version: 1.0.1 - Auto contrast counts with UltraCanvasHistogramModel and leaves transparent
+//                  pixels out of the stretch
 // Version: 1.0.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraPaintFilters.h"
 #include "UltraPaintTools.h"    // PaintOptionWidgets::FormatValue
 #include "UltraPaintDialogs.h"  // UltraPaintDialogParts::SizeButtonToText
 #include "UltraCanvasFormLayout.h"
+#include "UltraCanvasHistogramModel.h"
 
 #include "UltraCanvasLabel.h"
 
@@ -72,39 +75,33 @@ std::vector<uint8_t> MakeLut(const std::function<double(double)>& f) {
 constexpr double kAutoContrastClip = 0.002;   // 0.2% off each end, per channel
 
 FX::PFXImage AutoContrast(const FX::PFXImage& rgba) {
-    return PaintFilterOnRGB(rgba, [](const FX::PFXImage& rgb) {
-        const int bands = rgb.Bands();
-        if (bands < 1) return rgb;
-        const std::vector<uint8_t> bytes = FX::Conversion::ToMemory(FX::Conversion::CastUchar(rgb));
-        const size_t pixels = bytes.size() / static_cast<size_t>(bands);
-        if (pixels == 0) return rgb;
+    // Counted by UltraCanvasHistogramModel, as the Curves backdrop is: the
+    // layer's straight RGBA, fully transparent pixels left out - they have no
+    // colour, so whatever their hidden RGB holds must not set the stretch.
+    FX::PFXImage bytes = FX::Conversion::CastUchar(rgba);
+    HistogramPixelFormat format;
+    if (bytes.Bands() >= 4) {
+        bytes = FX::Colour::ExtractBand(bytes, 0, 4);
+        format = HistogramPixelFormat::RGBA8;
+    } else if (bytes.Bands() == 3) {
+        format = HistogramPixelFormat::RGB8;
+    } else {
+        return rgba;
+    }
+    const std::vector<uint8_t> pixels = FX::Conversion::ToMemory(bytes);
+    const ImageHistogram histogram = ComputeImageHistogram(pixels.data(), bytes.Width(), bytes.Height(),
+                                                           bytes.Width() * bytes.Bands(), format);
+    if (histogram.Empty()) return rgba;
 
-        // One histogram per channel, straight off the pixels: a 256-bin count
-        // is cheaper than any second pass through the pipeline, and it is the
-        // only thing a percentile needs.
-        std::vector<std::array<uint64_t, 256>> histogram(static_cast<size_t>(bands));
-        for (auto& h : histogram) h.fill(0);
-        for (size_t i = 0; i + static_cast<size_t>(bands) <= bytes.size(); i += static_cast<size_t>(bands))
-            for (int b = 0; b < bands; ++b)
-                ++histogram[static_cast<size_t>(b)][bytes[i + static_cast<size_t>(b)]];
-
-        const uint64_t clip = static_cast<uint64_t>(static_cast<double>(pixels) * kAutoContrastClip);
-        std::vector<std::vector<uint8_t>> tables;
-        tables.reserve(static_cast<size_t>(bands));
-        for (int b = 0; b < bands; ++b) {
-            const auto& h = histogram[static_cast<size_t>(b)];
-            int low = 0, high = 255;
-            uint64_t seen = 0;
-            while (low < 255 && seen + h[static_cast<size_t>(low)] <= clip) { seen += h[static_cast<size_t>(low)]; ++low; }
-            seen = 0;
-            while (high > low && seen + h[static_cast<size_t>(high)] <= clip) { seen += h[static_cast<size_t>(high)]; --high; }
-            // A flat channel (one value everywhere) has nothing to stretch;
-            // leave it rather than dividing by its own width.
-            const double lo = low, hi = std::max<double>(high, low + 1);
-            tables.push_back(MakeLut([lo, hi](double v) { return (v * 255.0 - lo) / (hi - lo); }));
-        }
-        return FX::Colour::MapLut(rgb, tables);
-    });
+    std::vector<std::vector<uint8_t>> tables;
+    for (HistogramChannel channel : { HistogramChannel::Red, HistogramChannel::Green, HistogramChannel::Blue }) {
+        const HistogramRange range = histogram.ClippedRange(channel, kAutoContrastClip);
+        // A flat channel (one value everywhere) has nothing to stretch;
+        // leave it rather than dividing by its own width.
+        const double lo = range.low, hi = std::max<double>(range.high, range.low + 1);
+        tables.push_back(MakeLut([lo, hi](double v) { return (v * 255.0 - lo) / (hi - lo); }));
+    }
+    return PaintFilterOnRGB(rgba, [&tables](const FX::PFXImage& rgb) { return FX::Colour::MapLut(rgb, tables); });
 }
 
 FX::PFXImage Kernel3(const FX::PFXImage& rgba, const std::vector<double>& k, double scale = 1.0, double offset = 0.0) {

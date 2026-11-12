@@ -2,8 +2,10 @@
 // A live picture fed frame by frame from any thread: a call's video, a
 // self view, a decoded stream. The newest frame is shown, fitted (contain or
 // cover), optionally mirrored; without a frame, a caption.
+// Version: 0.2.0 - VideoTileStyle::FromTheme, ApplyTheme: the tile follows the theme; a SetStyle by hand stops
+//                  the following
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,6 +38,14 @@ struct VideoTileStyle {
     float cornerRadius = 0.0f;      // clips the picture too
     Color borderColor = Color(0, 0, 0, 0);
     float borderWidth = 0.0f;
+
+    // A tile is a dark stage whatever the window: the theme gives it the
+    // caption at the caption size and a hairline where a border is drawn;
+    // the stage and the caption's ink are the element roles
+    // "video-tile.stage" and "video-tile.caption" where a theme names them
+    static VideoTileStyle FromTheme(const UltraCanvasTheme& theme, const VideoTileStyle& base);
+    static VideoTileStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, VideoTileStyle()); }
+    static VideoTileStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 class UltraCanvasVideoTile : public UltraCanvasUIElement {
@@ -62,6 +72,7 @@ public:
     void SetMirrored(bool mirrored);
     bool IsMirrored() const { return mirrored; }
     void SetStyle(const VideoTileStyle& newStyle);
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(VideoTileStyle::FromTheme(theme, style)); }
     const VideoTileStyle& GetStyle() const { return style; }
 
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;

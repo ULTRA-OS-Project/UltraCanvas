@@ -18,6 +18,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDWGDecoder.h"
+#include "UltraCanvasTextUtils.h"   // FormatFloatClassic - dot-decimal
 
 #include <algorithm>
 #include <cctype>
@@ -1130,9 +1131,11 @@ public:
     void Tag(int code, int v) { Tag(code, std::to_string(v)); }
     void Tag(int code, double v) {
         if (!std::isfinite(v)) v = 0;
-        char buf[40];
-        std::snprintf(buf, sizeof(buf), "%.16g", v);
-        Tag(code, std::string(buf));
+        // This DXF text goes straight to the DXF reader, so a locale's comma
+        // here was a coordinate lost on the way in - the same defect as
+        // writing a file, with the file never touching the disk.
+        // %.16g is FormatFloatClassic's default format at 16 digits.
+        Tag(code, FormatFloatClassic(v, 16));
     }
     void Pt(int code, double x, double y) { Tag(code, x); Tag(code + 10, y); }
     void Pt(int code, double x, double y, double z) { Tag(code, x); Tag(code + 10, y); Tag(code + 20, z); }

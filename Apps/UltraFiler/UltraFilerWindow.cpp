@@ -65,6 +65,11 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.45.0 - the look is the theme's (UltraFilerLook.h): every colour set by hand is a role, ApplyLook on a theme change
+// Version: 1.44.0 - a file on a drive with no preview is fetched and opened in its
+//                  program (OpenRemoteFile); programs and launchers are refused
+// Version: 1.43.1 - Display > Path bar: the path bar names a drive by its volume, as the
+//                  tree does ("My Passport Ultra (D:)"), or by its letter alone
 // Version: 1.43.0 - a drive's row under Remote Drives takes Delete (the drive
 //                  is forgotten, its files are not touched) and Configure
 //                  drive; Refresh on every folder row of the tree and in the
@@ -121,11 +126,12 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
 #include "UltraFilerTabStripStyle.h"
+#include "UltraFilerLook.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasModalDialog.h"
@@ -151,6 +157,7 @@
 #include "UltraFilerRamDiskDialog.h"
 #include "UltraFilerLocations.h"           // Extras > Open location
 #include "UltraFilerRamDisks.h"
+#include "UltraFilerRemoteCache.h"      // RemotePreviewCacheKey: an open copy's folder
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 // UltraCloudUI's shared "add account" dialog - the same one UltraMail uses
 // for "Attach cloud link". Its include directory comes with the target.
@@ -222,8 +229,11 @@ namespace {
     constexpr const char* kWslNodeId = "ufl-wsl";
     constexpr const char* kNetworkNodeId = "ufl-network";
 
-    // Single UI font size (pt) used by every element of the window.
-    constexpr float kUiFontSize = 9.0f;
+    // The one text size of the window's own elements: the theme's body
+    // size - the desktop's interface font size, or Appearance.conf's over
+    // it. The elements that follow the theme take it again on every change,
+    // so a size of the filer's own would not survive one.
+    inline float UiFontSize() { return static_cast<float>(UltraCanvasTheme::Current().FontSize(ThemeTextRole::Body)); }
 
     // ===== SUB-FOLDER SEARCH LIMITS =====
     // How many matches one scan collects. The list is held in memory and
@@ -360,12 +370,79 @@ namespace {
         if (usedPercent >= 75.0) return Color(214, 152, 46, 255);
         return Color(70, 150, 96, 255);
     }
-    const Color kVolumeFreeColor(222, 226, 232, 255);
+
+    // The buttons and rows the filer styles by hand, remembered so that
+    // ApplyLook can style them again from the theme when it changes (the
+    // elements that follow the theme by themselves need no entry). Weak:
+    // a drive card's button goes with the card.
+    enum class LookKind { ToolButton, FloatingButton, ToggleButton, GroundRow };
+    struct StyledElement {
+        std::weak_ptr<UltraCanvasUIElement> element;
+        LookKind kind;
+        bool active = false;   // a toggle that is on
+    };
+    std::vector<StyledElement>& StyledElements() {
+        static std::vector<StyledElement> elements;
+        return elements;
+    }
+    void Remember(const std::shared_ptr<UltraCanvasUIElement>& element, LookKind kind, bool active = false) {
+        std::vector<StyledElement>& elements = StyledElements();
+        elements.erase(std::remove_if(elements.begin(), elements.end(),
+                                      [](const StyledElement& e) { return e.element.expired(); }),
+                       elements.end());
+        for (StyledElement& e : elements) {
+            if (e.element.lock() == element) { e.kind = kind; e.active = active; return; }
+        }
+        elements.push_back({element, kind, active});
+    }
+
+    // Flat command-bar button (Windows 11 style): quiet until hovered. The
+    // icon is drawn as a mask in the text colour, so it follows the ink.
+    void ApplyToolLook(UltraCanvasButton& b, const FilerLook& look) {
+        b.SetColors(look.button, look.hover);
+        b.SetTextColors(look.ink);
+        b.SetBorder(1.0f, look.border);
+    }
+    // A round icon button floating over a pane: the panel surface, the
+    // soft accent under the pointer, a light border so it stays legible
+    // over whatever it overlays.
+    void ApplyFloatingLook(UltraCanvasButton& b, const FilerLook& look) {
+        b.SetColors(look.panel, look.active);
+        b.SetBorder(1.0f, look.border);
+    }
+    // A toggle-style tool button. On: the soft accent that stays under the
+    // pointer - the pressed look must survive the hover right after the
+    // click that turned it on - with the accent outline; off: the row's
+    // own ground, tinted only under the pointer.
+    void ApplyToggleLook(UltraCanvasButton& b, bool active, const FilerLook& look) {
+        b.SetColors(active ? look.active : look.ground, active ? look.activeHover : look.hover);
+        b.SetBorder(active ? 1.0f : 0.0f, active ? look.activeBorder : Colors::Transparent);
+    }
+    // Every remembered button and row styled again from `look`.
+    void RestyleRemembered(const FilerLook& look) {
+        for (StyledElement& e : StyledElements()) {
+            std::shared_ptr<UltraCanvasUIElement> element = e.element.lock();
+            if (!element) continue;
+            if (e.kind == LookKind::GroundRow) {
+                element->SetBackgroundColor(look.ground);
+                continue;
+            }
+            auto* button = dynamic_cast<UltraCanvasButton*>(element.get());
+            if (!button) continue;
+            switch (e.kind) {
+                case LookKind::ToolButton:     ApplyToolLook(*button, look); break;
+                case LookKind::FloatingButton: ApplyFloatingLook(*button, look); break;
+                case LookKind::ToggleButton:   ApplyToggleLook(*button, e.active, look); break;
+                default: break;
+            }
+        }
+    }
 
     void ApplyDropdownFontSize(UltraCanvasDropdown* dropdown) {
         DropdownStyle s = dropdown->GetStyle();
-        s.fontSize = kUiFontSize;
+        s.fontSize = UiFontSize();
         dropdown->SetStyle(s);
+        dropdown->SetFollowTheme(true);   // the theme's colours over this size, again on every change
     }
 
     std::string IconPath(const std::string& fileName) {
@@ -730,7 +807,8 @@ namespace {
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        row->SetBackgroundColor(Color(249, 249, 251, 255));
+        row->SetBackgroundColor(Look().ground);
+        Remember(row, LookKind::GroundRow);
         return row;
     }
 
@@ -740,22 +818,44 @@ namespace {
             const std::string& id, const std::string& label,
             const std::string& iconFile, int width, std::function<void()> onClick) {
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
-        b->SetFontSize(kUiFontSize);
+        b->SetFontSize(UiFontSize());
         b->SetCornerRadius(4.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        b->SetTextColors(Color(40, 40, 44, 255));
-        b->SetBorder(1.0f, Color(0, 0, 0, 60));
+        ApplyToolLook(*b, Look());
+        Remember(b, LookKind::ToolButton);
         if (!iconFile.empty()) {
             b->SetIcon(IconPath(iconFile));
             b->SetIconSize(15, 15);
             b->SetIconPosition(ButtonIconPosition::Left);
             b->SetIconSpacing(label.empty() ? 0 : 5);
-            b->SetUseIconAsMask(true);
-            b->SetIconMaskColor(Color(55, 55, 60, 255));
+            b->SetUseIconAsMask(true);   // drawn in the text colour: the theme's ink
         }
         if (onClick) b->SetOnClick(std::move(onClick));
         b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return b;
+    }
+
+    // A caption in front of a command-bar control ("View", "Order by",
+    // "Video"). It takes the width of its text, so a longer translation
+    // ("Sortieren nach") shows whole wherever the window leaves room - a fixed
+    // width cut it to "Sortie…" at any window size. When the bar is too
+    // narrow for everything it gives way, ending in "…", but far more slowly
+    // than the search field beside it, which is the control meant to shrink.
+    // The padding on the left keeps it clear of the control before it.
+    std::shared_ptr<UltraCanvasLabel> MakeToolLabel(const std::string& id,
+                                                    const std::string& text) {
+        auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 24);
+        l->SetText(text);
+        l->SetFontSize(UiFontSize());
+        l->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+        l->SetPadding(0, 0, 0, 6);
+        l->size.width = CSSLayout::Dimension::Auto();
+        CSSLayout::BoxConstraints limits =
+                l->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(30.0f);
+        l->boxConstraints = limits;
+        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0.15f)
+                     .SetAlignSelf(CSSLayout::AlignSelf::Center);
+        return l;
     }
 
     // A round icon button that floats over the edge of a pane rather than
@@ -765,13 +865,11 @@ namespace {
                                   int diameter, const std::string& tooltip,
                                   std::function<void()> onClick) {
         b.SetCornerRadius(diameter / 2.0f);
-        b.SetColors(Color(255, 255, 255, 255), Color(219, 233, 250, 255));
-        b.SetBorder(1.0f, Color(0, 0, 0, 70));
+        ApplyFloatingLook(b, Look());
         b.SetIcon(IconPath(iconFile));
         b.SetIconSize(diameter / 2, diameter / 2);
         b.SetIconSpacing(0);
-        b.SetUseIconAsMask(true);
-        b.SetIconMaskColor(Color(55, 55, 60, 255));
+        b.SetUseIconAsMask(true);   // drawn in the text colour: the theme's ink
         b.SetTooltip(tooltip);
         if (onClick) b.SetOnClick(std::move(onClick));
     }
@@ -783,6 +881,7 @@ namespace {
                 id, 0, 0, static_cast<float>(diameter),
                 static_cast<float>(diameter), "");
         StyleFloatingRoundButton(*b, iconFile, diameter, tooltip, std::move(onClick));
+        Remember(b, LookKind::FloatingButton);
         return b;
     }
 
@@ -842,23 +941,17 @@ namespace {
     };
 
     // Mark / unmark a toggle-style tool button (the Preview switch).
-    void StyleToggleButton(UltraCanvasButton* b, bool active) {
+    void StyleToggleButton(const std::shared_ptr<UltraCanvasButton>& b, bool active) {
         if (!b) return;
-        // On: a clear blue that stays blue under the pointer - the pressed
-        // look must survive the hover right after the click that turned it
-        // on, and stand out on the tinted header of the active split-view
-        // pane (224, 236, 250), which the lighter blue it used to be did not.
-        b->SetColors(active ? Color(184, 212, 246, 255) : Color(249, 249, 251, 255),
-                     active ? Color(170, 202, 242, 255) : Color(233, 238, 244, 255));
-        b->SetBorder(active ? 1.0f : 0.0f,
-                     active ? Color(40, 120, 210, 255) : Color(0, 0, 0, 0));
+        ApplyToggleLook(*b, active, Look());
+        Remember(b, LookKind::ToggleButton, active);
     }
 
     // A flat tool button: no frame, the row's own background, tinted only
     // under the pointer - the look the split-view, History and Favorites
     // switches have while off. Home and Computer, the two places the row
     // goes to rather than steps through, wear it.
-    void StyleFlatToolButton(UltraCanvasButton* b) { StyleToggleButton(b, false); }
+    void StyleFlatToolButton(const std::shared_ptr<UltraCanvasButton>& b) { StyleToggleButton(b, false); }
 
     BreadcrumbStyle MakePathBreadcrumbStyle() {
         BreadcrumbStyle s = BreadcrumbStyle::Arrow();
@@ -868,7 +961,7 @@ namespace {
         s.arrowSize = 8;
         s.itemPaddingHorizontal = 9;
         s.itemPaddingVertical = 4;
-        s.fontStyle.fontSize = kUiFontSize;
+        s.fontStyle.fontSize = UiFontSize();
         return s;
     }
 
@@ -1099,6 +1192,7 @@ namespace {
 // ===== INITIALIZATION =====
 
 UltraFilerWindow::~UltraFilerWindow() {
+    if (themeHandler) UltraCanvasTheme::RemoveChangeHandler(themeHandler);
     // First: its callback captures the window, and Stop() joins, so after this
     // no mount notification can reach a window that is being destroyed.
     volumeMonitor.Stop();
@@ -1173,7 +1267,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     window->layout.SetFlexColumn()
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    window->SetBackgroundColor(Color(249, 249, 251, 255));
+    window->SetBackgroundColor(Look().ground);
 
     // Esc leaves the History or Favorites view, and otherwise closes the media preview,
     // wherever the keyboard focus sits (the filer usually holds it after the
@@ -1311,8 +1405,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // Created before settings.Load(); ApplySettings() right after it applies
     // the Display > Home folder mode here.
     FilerStyle folderPreviewStyle = folderPreview->GetStyle();
-    folderPreviewStyle.fontSize = kUiFontSize;
-    folderPreviewStyle.smallFontSize = kUiFontSize;
+    folderPreviewStyle.fontSize = UiFontSize();
+    folderPreviewStyle.smallFontSize = UiFontSize();
     folderPreviewStyle.folderIconScale = 0.7f;
     folderPreview->SetStyle(folderPreviewStyle);
     folderPreview->SetViewType(FilerViewType::ThumbnailsSmall);
@@ -1417,7 +1511,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusRow->layout.SetFlexRow()
                      .SetFlexGap(10)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    statusRow->SetBackgroundColor(Color(243, 243, 246, 255));
+    statusRow->SetBackgroundColor(Look().statusBar);
     statusRow->SetPadding(4, 10, 4, 10);
     statusRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -1427,8 +1521,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // display no longer draws under its files. Always there: a message never
     // takes its place.
     statusInfoLabel = std::make_shared<UltraCanvasLabel>("ufl-status-info", 0, 0, 0, 16);
-    statusInfoLabel->SetFontSize(kUiFontSize);
-    statusInfoLabel->SetTextColor(Color(70, 70, 76, 255));
+    statusInfoLabel->SetFontSize(UiFontSize());
+    statusInfoLabel->SetTextColor(Look().inkMuted);
     statusInfoLabel->SetTextIsMarkup(true);
     statusInfoLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
     statusInfoLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -1437,8 +1531,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // "1 of 404 selected": the folder's count, kept in sight while the line
     // on the left describes the selection.
     statusSelectionLabel = std::make_shared<UltraCanvasLabel>("ufl-status-selection", 0, 0, 0, 16);
-    statusSelectionLabel->SetFontSize(kUiFontSize);
-    statusSelectionLabel->SetTextColor(Color(107, 107, 115, 255));
+    statusSelectionLabel->SetFontSize(UiFontSize());
+    statusSelectionLabel->SetTextColor(Look().inkFaint);
     statusSelectionLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     statusSelectionLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     statusRow->AddChild(statusSelectionLabel);
@@ -1447,8 +1541,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // print or share result, an error. It stays until the next action
     // (UpdateStatusBar on the next selection, folder or refresh).
     statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 16);
-    statusLabel->SetFontSize(kUiFontSize);
-    statusLabel->SetTextColor(Color(70, 70, 76, 255));
+    statusLabel->SetFontSize(UiFontSize());
+    statusLabel->SetTextColor(Look().inkMuted);
     statusLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
     statusLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     statusRow->AddChild(statusLabel);
@@ -1468,7 +1562,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusProgress->SetValue(0.0);
     statusProgress->SetTitle("");             // no caption: the label is the caption
     statusProgress->SetUnit("");
-    statusProgress->SetGaugeColor(Color(37, 99, 235, 255));   // the accent blue
+    statusProgress->SetGaugeColor(Look().accent);
     statusProgress->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     statusProgress->SetVisible(false);
     statusRow->AddChild(statusProgress);
@@ -1506,7 +1600,59 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // display on the folder it last showed.
     if (settings.splitView) SetSplitViewVisible(true);
 
+    // The look follows the theme from here: the elements that follow it
+    // by themselves re-style as it changes, and ApplyLook brings the
+    // filer's own surfaces after them (the handler runs after the
+    // application's, which was installed first).
+    themeHandler = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
     return true;
+}
+
+void UltraFilerWindow::ApplyLook() {
+    const FilerLook look = Look();
+    if (window) window->SetBackgroundColor(look.ground);
+    RestyleRemembered(look);
+    if (commandBarRow) commandBarRow->SetBorderBottom(1, look.line);
+    ApplyNewButtonColors();
+    ApplyScanButtonColors();
+    if (searchBox) {
+        searchBox->SetBackgroundColor(look.panel);
+        searchBox->SetBorders(1.0f, look.line, 4.0f);
+    }
+    if (folderTree) {
+        folderTree->SetLineColor(look.inkFaint);
+        folderTree->SetBackgroundColor(look.ground);
+    }
+    if (statusRow) statusRow->SetBackgroundColor(look.statusBar);
+    if (statusInfoLabel) statusInfoLabel->SetTextColor(look.inkMuted);
+    if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
+    if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
+    if (statusProgress) statusProgress->SetGaugeColor(look.accent);
+    if (computerPane) computerPane->SetBackgroundColor(look.panel);
+    ApplyTabStripStyle();   // the strips' colours are the theme's
+    if (splitViewShown) StyleSplitHeaders();
+    if (window) window->RequestRedraw();
+}
+
+void UltraFilerWindow::ApplyNewButtonColors() {
+    if (!newButton) return;
+    const FilerLook look = Look();
+    newButton->SetSplitSecondaryIconColors(look.ink, look.ink, look.ink, look.ink.WithAlpha(128));
+    // The same quiet flat look as the primary section.
+    newButton->SetSplitColors(look.button, look.ink, look.hover, look.pressed);
+    newButton->SetSplitSeparator(true, look.border, 1.0f);
+}
+
+void UltraFilerWindow::ApplyScanButtonColors() {
+    if (!scanButton) return;
+    const FilerLook look = Look();
+    // Red while it stops something, the accent while it starts it.
+    if (scanButtonStops) {
+        scanButton->SetColors(look.danger, look.dangerHover, look.dangerHover, look.dangerHover);
+    } else {
+        scanButton->SetColors(look.accent, look.accentHover, look.accentHover, look.accentHover);
+    }
+    scanButton->SetTextColors(look.onAccent);
 }
 
 void UltraFilerWindow::Show() {
@@ -1913,6 +2059,11 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
+    // Display > Path bar: the strips are rebuilt only when the choice moved.
+    if (pathBarVolumeNamesApplied != settings.pathBarVolumeNames) {
+        pathBarVolumeNamesApplied = settings.pathBarVolumeNames;
+        RefreshPathBars();
+    }
     // Display > Ignored files: the clutter no display lists - the built-in
     // patterns still ticked plus the user's own, confined to the home folder
     // or loose in every folder. The widget ignores a call that changes
@@ -2538,7 +2689,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
         if (!dir.empty()) NavigateTo(dir);
     });
     home->SetTooltip(Tr("Home folder"));
-    StyleFlatToolButton(home.get());
+    StyleFlatToolButton(home);
     row->AddChild(home);
 
     // Computer: the Computer page - the Home and Cloud Storage folders and a
@@ -2547,7 +2698,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto computer = MakeToolButton("ufl-computer", "", "computer.svg", 30,
             [this]() { SetComputerPageVisible(true); });
     computer->SetTooltip(Tr("Computer: drives and main folders"));
-    StyleFlatToolButton(computer.get());
+    StyleFlatToolButton(computer);
     row->AddChild(computer);
 
     backButton = MakeToolButton("ufl-back", "", "arrow-left.svg", 30,
@@ -2587,7 +2738,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     splitViewButton = MakeToolButton("ufl-split-view", "", "split-screen.svg", 30,
             [this]() { SetSplitViewVisible(!splitViewShown); });
     splitViewButton->SetTooltip(Tr("Split view: two folder displays side by side"));
-    StyleToggleButton(splitViewButton.get(), splitViewShown);
+    StyleToggleButton(splitViewButton, splitViewShown);
     row->AddChild(splitViewButton);
 
     // The clock: shows the History view (Files / Folders / Apps) in place of
@@ -2595,7 +2746,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     historyButton = MakeToolButton("ufl-history", "", "clock-five.svg", 30,
             [this]() { SetHistoryVisible(!historyShown); });
     historyButton->SetTooltip(Tr("History"));
-    StyleToggleButton(historyButton.get(), historyShown);
+    StyleToggleButton(historyButton, historyShown);
     row->AddChild(historyButton);
 
     // The heart: shows the Favorites view (pinned Files / Folders / Apps) in
@@ -2603,7 +2754,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     favoritesButton = MakeToolButton("ufl-favorites", "", "rating-heart-on.svg", 30,
             [this]() { SetFavoritesVisible(!favoritesShown); });
     favoritesButton->SetTooltip(Tr("Favorites"));
-    StyleToggleButton(favoritesButton.get(), favoritesShown);
+    StyleToggleButton(favoritesButton, favoritesShown);
     row->AddChild(favoritesButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
@@ -2696,7 +2847,7 @@ void UltraFilerWindow::CreateNewDocumentCommand(const FilerNewDocumentType& type
 void UltraFilerWindow::ShowNewEntryMenu() {
     if (!window || !newButton) return;
     MenuStyle style = MenuStyle::Default();
-    style.font.fontSize = kUiFontSize;
+    style.font.fontSize = UiFontSize();
     newEntryMenu = std::make_shared<UltraCanvasMenu>("ufl-new-menu", 0, 0, 160, 0);
     newEntryMenu->SetMenuType(MenuType::PopupMenu);
     newEntryMenu->SetStyle(style);
@@ -2789,7 +2940,7 @@ void UltraFilerWindow::ShowAddDriveMenu() {
         return;
     }
     MenuStyle style = MenuStyle::Default();
-    style.font.fontSize = kUiFontSize;
+    style.font.fontSize = UiFontSize();
     addDriveMenu = std::make_shared<UltraCanvasMenu>("ufl-add-drive-menu", 0, 0, 260, 0);
     addDriveMenu->SetMenuType(MenuType::PopupMenu);
     addDriveMenu->SetStyle(style);
@@ -3436,6 +3587,116 @@ void UltraFilerWindow::ShowRemoteFileError(const std::string& path, const std::s
     });
 }
 
+namespace {
+
+// Whether a file of this name starts something when the system "opens" it:
+// a program, a script, an installer, a shortcut. A file fetched from a drive
+// is not started on a double-click - on Windows the system's opener runs
+// such a file, whatever server it came from.
+bool IsProgramOrLauncherName(const std::string& name) {
+    std::string ext;
+    const auto dot = name.find_last_of('.');
+    if (dot != std::string::npos && dot + 1 < name.size()) ext = name.substr(dot + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    static const char* const kLaunching[] = {
+        "exe", "com", "bat", "cmd", "msi", "msp", "scr", "pif", "cpl", "lnk", "url",
+        "js", "jse", "vbs", "vbe", "wsf", "wsh", "ps1", "psm1", "hta", "reg", "inf",
+        "scf", "jar", "app", "desktop", "sh", "bash", "zsh", "csh", "command", "run",
+        "appimage", "webloc", "workflow", "pkg", "dmg", "deb", "rpm"};
+    for (const char* launching : kLaunching)
+        if (ext == launching) return true;
+    return false;
+}
+
+} // namespace
+
+void UltraFilerWindow::OpenRemoteFile(const FilerEntry& entry) {
+    if (!window || !remoteDrives || entry.isDirectory || !IsRemoteFilerPath(entry.path)) return;
+    const std::string name = entry.name.empty() ? RemoteFilerName(entry.path) : entry.name;
+    if (entry.category == FilerFileCategory::Executable || entry.isShortcut ||
+        IsProgramOrLauncherName(name)) {
+        UltraCanvasAlert::Info(
+                TrF("\"{0}\" is a program, a script or a launcher. UltraFiler does not start one "
+                    "straight from a drive: copy it to this computer first, and start it "
+                    "there if you trust it.", name),
+                Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    const std::string root = UltraFilerRemoteDrives::OpenCopyDirectory();
+    if (root.empty()) {
+        UltraCanvasAlert::Error(Tr("There is no folder to fetch the file into: the cache "
+                                   "folder cannot be written."),
+                                Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    if (!remoteOpenCopiesSwept) {
+        remoteOpenCopiesSwept = true;
+        UltraFilerRemoteDrives::SweepOpenCopies();
+    }
+    // One folder per file and version - a file replaced on the server has
+    // another size or date, and so another folder.
+    const fs::path folder = PathFromUtf8(root) /
+            PathFromUtf8(RemotePreviewCacheKey(entry.path, entry.size, entry.modifiedTime));
+    const std::string folderUtf8 = PathToUtf8(folder);
+    if (remoteOpensWaiting.count(folderUtf8)) {
+        if (statusLabel)
+            statusLabel->SetText(TrF("\"{0}\" is still being fetched from the drive", name));
+        return;
+    }
+    // Fetched before, completely - the marker is written once it was - and
+    // unchanged on the server since: that copy is opened again, with what
+    // was changed in it since.
+    std::error_code ec;
+    if (fs::exists(folder / ".complete", ec)) {
+        for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->path().filename() == ".complete") continue;
+            std::error_code fec;
+            if (!it->is_regular_file(fec) || fec) continue;
+            OpenRemoteCopy(PathToUtf8(it->path()), name);
+            return;
+        }
+    }
+    // Anything else in it is what a fetch that did not finish left.
+    fs::remove_all(folder, ec);
+    fs::create_directories(folder, ec);
+    if (ec) {
+        UltraCanvasAlert::Error(TrF("The folder to fetch \"{0}\" into cannot be made: {1}",
+                                    name, ec.message()),
+                                Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    // A download like any other: in the queue, on the status line with its
+    // progress, and asked about if the window is closed before it is in.
+    std::string savedAs, error;
+    if (!remoteDrives->Download(entry.path, folderUtf8, savedAs, error)) {
+        UltraCanvasAlert::Error(error, Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    remoteOpensWaiting[folderUtf8] = RemoteOpenWaiting{entry.path, savedAs};
+    if (statusLabel)
+        statusLabel->SetText(TrF("Fetching \"{0}\" from the drive to open it…", name));
+}
+
+void UltraFilerWindow::OpenRemoteCopy(const std::string& localFile, const std::string& name) {
+    if (!window) return;
+    std::string error;
+    window->ShowBusyPointer(UltraCanvasWindowBase::kBusyPointerDelayMs,
+                            UltraCanvasWindowBase::kBusyPointerHoldMs);
+    if (!FileAssociations::OpenWithDefaultApplication({localFile}, error)) {
+        window->HideBusyPointer();
+        UltraCanvasAlert::Error(error.empty() ? TrF("No program on this computer opens \"{0}\".", name)
+                                              : error,
+                                Tr("Open a file from a drive"), nullptr, window.get());
+        return;
+    }
+    // Said, because nothing else says it: the program shows a file of the
+    // same name, and saving in it writes to this computer only.
+    if (statusLabel)
+        statusLabel->SetText(TrF("Opened a copy of \"{0}\" - changes to it are not saved to "
+                                 "the drive", name));
+}
+
 void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
     if (!widget) return;
     // Recognising a remote path costs a string comparison and is asked before
@@ -3940,14 +4201,7 @@ void UltraFilerWindow::UpdateScanButton() {
         scanButton->SetTooltip(searching
                 ? Tr("Stop the sub-folder scan")
                 : Tr("Search every sub folder of this folder (Enter)"));
-        // Red while it stops something, the accent blue while it starts it.
-        if (searching) {
-            scanButton->SetColors(Color(208, 74, 66, 255), Color(224, 92, 84, 255),
-                                  Color(184, 60, 52, 255), Color(184, 60, 52, 255));
-        } else {
-            scanButton->SetColors(Color(66, 133, 244, 255), Color(90, 150, 250, 255),
-                                  Color(52, 112, 214, 255), Color(52, 112, 214, 255));
-        }
+        ApplyScanButtonColors();
     }
     // Nothing to search for and nothing running: the field is a plain search
     // field again and gets its full width back. And when the command bar has
@@ -3961,8 +4215,9 @@ void UltraFilerWindow::UpdateScanButton() {
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     auto row = MakeToolRow("ufl-command-bar");
+    commandBarRow = row;
     row->SetPadding(2, 8, 6, 8);
-    row->SetBorderBottom(1, Color(225, 225, 230, 255));
+    row->SetBorderBottom(1, Look().line);
 
     // The file commands work on the folder display and its selection, so each
     // of them leaves the History / Favorites views first - the change they
@@ -3988,16 +4243,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
         newButton->SetSplitSecondaryText("");
         newButton->SetSplitSecondaryIcon(IconPath("dropdown.svg"));
         newButton->SetSplitSecondaryIconSize(14, 14);
-        newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),
-                                               Color(55, 55, 60, 255),
-                                               Color(55, 55, 60, 255),
-                                               Color(55, 55, 60, 128));
-        // The same quiet flat look as the primary section.
-        newButton->SetSplitColors(Color(255, 255, 255, 255),
-                                  Color(55, 55, 60, 255),
-                                  Color(233, 238, 244, 255),
-                                  Color(208, 228, 250, 255));
-        newButton->SetSplitSeparator(true, Color(0, 0, 0, 60), 1.0f);
+        ApplyNewButtonColors();
         newButton->onSecondaryClick = [this]() { ShowNewEntryMenu(); };
         newButton->SetTooltip(Tr("New folder (Ctrl+F) — the arrow lists more kinds"));
         row->AddChild(newButton);
@@ -4005,8 +4251,8 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     auto sep1 = std::make_shared<UltraCanvasLabel>("ufl-sep1", 0, 0, 9, 24);
     sep1->SetText("|");
-    sep1->SetFontSize(kUiFontSize);
-    sep1->SetTextColor(Color(200, 200, 206, 255));
+    sep1->SetThemeVariant(LabelVariant::Faint);   // follows the theme
+    sep1->SetFontSize(UiFontSize());
     row->AddChild(sep1);
 
     row->AddChild(MakeToolButton("ufl-cut", "", "scissors.svg", 30,
@@ -4038,8 +4284,8 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     auto sep2 = std::make_shared<UltraCanvasLabel>("ufl-sep2", 0, 0, 9, 24);
     sep2->SetText("|");
-    sep2->SetFontSize(kUiFontSize);
-    sep2->SetTextColor(Color(200, 200, 206, 255));
+    sep2->SetThemeVariant(LabelVariant::Faint);
+    sep2->SetFontSize(UiFontSize());
     row->AddChild(sep2);
 
     // Search box: the field plus the "Scan sub folder" button sitting inside
@@ -4071,22 +4317,23 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     searchBox = box;
     searchBox->layout.SetFlexRow().SetFlexGap(3)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    searchBox->SetBackgroundColor(Colors::White);
-    searchBox->SetBorders(1.0f, Color(200, 200, 206, 255), 4.0f);
+    searchBox->SetBackgroundColor(Look().panel);
+    searchBox->SetBorders(1.0f, Look().line, 4.0f);
     searchBox->SetPadding(1, 3, 1, 1);
     searchBox->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
 
     searchInput = CreateTextInput("ufl-search", 0, 0, 200, 24);
-    searchInput->SetFontSize(kUiFontSize);
+    searchInput->SetFontSize(UiFontSize());
     searchInput->SetPlaceholder(Tr("Filter / Search"));
     {
         // Borderless inside the box - the box draws the frame.
         TextInputStyle st = searchInput->GetStyle();
-        st.fontStyle.fontSize = kUiFontSize;
+        st.fontStyle.fontSize = UiFontSize();
         st.borderWidth = 0;
-        st.backgroundColor = Colors::White;
+        st.backgroundColor = Look().panel;
         searchInput->SetStyle(st);
+        searchInput->SetFollowTheme(true);   // the theme's colours over this shape, again on every change
     }
     searchInput->onTextChanged = [this](const std::string& text) {
         ApplyLiveSearchFilter(text);
@@ -4101,15 +4348,13 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
                            .SetAlignSelf(CSSLayout::AlignSelf::Center);
     searchBox->AddChild(searchInput);
 
-    // Wide enough for the label at kUiFontSize - a clipped "Scan sub fol…"
+    // Wide enough for the label at UiFontSize() - a clipped "Scan sub fol…"
     // is worse than the few pixels the field gives up for it.
     scanButton = std::make_shared<UltraCanvasButton>(
             "ufl-scan-sub", 0, 0, 118, 22, Tr("Scan sub folder"));
-    scanButton->SetFontSize(kUiFontSize);
+    scanButton->SetFontSize(UiFontSize());
     scanButton->SetCornerRadius(3.0f);
-    scanButton->SetColors(Color(66, 133, 244, 255), Color(90, 150, 250, 255),
-                          Color(52, 112, 214, 255), Color(52, 112, 214, 255));
-    scanButton->SetTextColors(Colors::White);
+    ApplyScanButtonColors();
     scanButton->SetBorder(0.0f, Colors::Transparent);
     // The user is typing in the field next to it; clicking must not take the
     // keyboard away from what they were typing.
@@ -4129,16 +4374,15 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // It sits ahead of the sort controls: picking the layout is the more
     // frequent choice, and the icon in each entry makes it findable at a
     // glance.
-    auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 44, 24);
-    viewLbl->SetText(Tr("View"));
-    viewLbl->SetFontSize(kUiFontSize);
-    viewLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    row->AddChild(viewLbl);
+    row->AddChild(MakeToolLabel("ufl-view-lbl", Tr("View")));
 
-    // Wide enough for the longest entry ("Extra large icons") once the icon
-    // column and the arrow have taken their share - the button clips its text.
+    // 152 is wide enough for the longest English entry ("Extra large icons")
+    // once the icon column and the arrow have taken their share; a longer
+    // translation widens the button (SetFitWidthToItems) rather than being
+    // cut off - the button clips its text.
     viewDropdown = CreateDropdown("ufl-view", 0, 0, 152, 26);
     ApplyDropdownFontSize(viewDropdown.get());
+    viewDropdown->SetFitWidthToItems(true);
     // Each entry carries a glyph of the layout it selects, so the dropdown
     // reads as a set of layouts rather than a list of names. The value stays
     // the entry text - only onSelectionChanged's index is used.
@@ -4167,14 +4411,11 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     row->AddChild(viewDropdown);
 
     // Sort field + direction. The dropdown mirrors FilerSortField order.
-    auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
-    sortLbl->SetText(Tr("Sort"));
-    sortLbl->SetFontSize(kUiFontSize);
-    sortLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    row->AddChild(sortLbl);
+    row->AddChild(MakeToolLabel("ufl-sort-lbl", Tr("Order by")));
 
     sortDropdown = CreateDropdown("ufl-sort", 0, 0, 128, 26);
     ApplyDropdownFontSize(sortDropdown.get());
+    sortDropdown->SetFitWidthToItems(true);   // a longer translation widens it
     sortDropdown->AddItem(Tr("Name"));
     sortDropdown->AddItem(Tr("Size"));
     sortDropdown->AddItem(Tr("Type"));
@@ -4215,14 +4456,13 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     // How the preview treats video files: full playback with sound (default),
     // a 5 second muted clip (album hover-preview style) or a still frame.
-    auto videoLbl = std::make_shared<UltraCanvasLabel>("ufl-video-lbl", 0, 0, 44, 24);
-    videoLbl->SetText(Tr("Video"));
-    videoLbl->SetFontSize(kUiFontSize);
-    videoLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    row->AddChild(videoLbl);
+    row->AddChild(MakeToolLabel("ufl-video-lbl", Tr("Video")));
 
     videoModeDropdown = CreateDropdown("ufl-video-mode", 0, 0, 104, 26);
     ApplyDropdownFontSize(videoModeDropdown.get());
+    // 104 fits the English entries; "Automatisch abspielen" and the like
+    // widen the button instead of reading "Automatisch al…".
+    videoModeDropdown->SetFitWidthToItems(true);
     videoModeDropdown->AddItem(Tr("Autoplay"));
     videoModeDropdown->AddItem(Tr("5 s clip"));
     videoModeDropdown->AddItem(Tr("Still image"));
@@ -4241,7 +4481,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // split view now, and two buttons with one icon would read as one thing.
     previewButton = MakeToolButton("ufl-preview-toggle", "Preview", "image.svg", 0,
             [this]() { SetPreviewEnabled(!previewEnabled); });
-    StyleToggleButton(previewButton.get(), previewEnabled);
+    StyleToggleButton(previewButton, previewEnabled);
     row->AddChild(previewButton);
 
     return row;
@@ -4251,15 +4491,15 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
 void UltraFilerWindow::BuildFolderTree() {
     folderTree = std::make_shared<UltraCanvasTreeView>("ufl-tree");
-    folderTree->SetFontSize(kUiFontSize);
+    folderTree->SetFontSize(UiFontSize());
     folderTree->SetRowHeight(24);
     folderTree->SetSelectionMode(TreeSelectionMode::Single);
     // Dotted connectors between a folder and its subfolders, the way a file
     // manager tree reads: which rows belong to which parent stays visible once
     // several branches are open at the same time.
     folderTree->SetLineStyle(TreeLineStyle::Dotted);
-    folderTree->SetLineColor(Color(0x9A, 0x9A, 0xA6, 0xFF));
-    folderTree->SetBackgroundColor(Color(249, 249, 251, 255));
+    folderTree->SetLineColor(Look().inkFaint);
+    folderTree->SetBackgroundColor(Look().ground);
 
     // Slim the vertical scrollbar to half its default width (6px) so it reads
     // as a thin sidebar accent rather than a full control.
@@ -4428,7 +4668,34 @@ void UltraFilerWindow::BuildFolderTree() {
     // marked out of date in the cache (Stale), so refreshing it shows what it
     // held while the server is asked again, ahead of transfers still waiting.
     remoteDrives->onOperationFinished = [this](const std::string& folderPath,
-                                               const std::string& message) {
+                                               const std::string& message,
+                                               RemoteFailure failure) {
+        // A file fetched to be opened (OpenRemoteFile): opened now, or the
+        // reason it could not be fetched said in a dialog - the user asked
+        // for it with a double-click and is waiting. Its folder is a cache
+        // folder, not work done anywhere, so the History hears nothing.
+        if (auto waiting = remoteOpensWaiting.find(folderPath);
+            waiting != remoteOpensWaiting.end()) {
+            const RemoteOpenWaiting opened = waiting->second;
+            remoteOpensWaiting.erase(waiting);
+            const std::string name = RemoteFilerName(opened.remoteFile);
+            if (!message.empty()) {
+                // Asked about once more: this is a new request, whatever was
+                // said about the same file before.
+                if (remoteFileAlertPath == opened.remoteFile) remoteFileAlertPath.clear();
+                ShowRemoteFileError(opened.remoteFile, message,
+                                    failure == RemoteFailure::NotFound ? RemoteFailure::NotFound
+                                                                       : RemoteFailure::Lasting);
+                return;
+            }
+            // Complete: the marker says so, and the copy is opened again
+            // from here next time rather than fetched.
+            if (std::FILE* marker = OpenFileUtf8(
+                        PathToUtf8(PathFromUtf8(folderPath) / ".complete"), "wb"))
+                std::fclose(marker);
+            OpenRemoteCopy(opened.localFile, name);
+            return;
+        }
         if (IsRemoteFilerPath(folderPath)) {
             RefreshRemoteFolderDisplays(folderPath);
             // The folder was marked out of date when the change finished, so
@@ -5111,6 +5378,10 @@ void UltraFilerWindow::ApplyDriveLists(const std::vector<UltraFilerRamDisks::Ram
 
     if (!added && !renamed && gone.empty()) return;   // nothing moved: nothing to repaint
 
+    // The path bar names a drive the way its tree row does (Display > Path
+    // bar): a volume's name that has just arrived goes there too.
+    if (renamed && settings.pathBarVolumeNames) RefreshPathBars();
+
     if (added) {
         // The new rows need the configured drive background, and a volume can
         // carry a cloud folder with it (a Google Drive that mounts as its own
@@ -5460,10 +5731,13 @@ void UltraFilerWindow::ApplyTreeColors() {
     folderTree->SetSelectionColor(settings.treeSelectedFolderColor);
     // A dark drive background needs light text: the drive rows are the only
     // ones painted with a user-chosen colour, and black on dark blue is
-    // unreadable. Colors::Black means "use the tree's default colour".
+    // unreadable - as the tree's own ink would be on a light drive row under
+    // a dark theme, so the text colour is chosen by the row's own
+    // background, not left to the tree (Colors::Black would mean "the
+    // tree's default colour", which is the theme's ink).
     const Color& drive = settings.treeDriveBackgroundColor;
     const int luminance = (drive.r * 299 + drive.g * 587 + drive.b * 114) / 1000;
-    const Color driveTextColor = luminance < 128 ? Colors::White : Colors::Black;
+    const Color driveTextColor = luminance < 128 ? Colors::White : Color(32, 32, 36, 255);
     // A connected phone is shown as the drive it is to the user, as Explorer
     // shows it among the drives of "This PC".
     for (const std::vector<std::string>* ids : {&treeDriveNodeIds, &treeDeviceNodeIds}) {
@@ -6124,7 +6398,7 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     });
 
     MenuStyle style = MenuStyle::Default();
-    style.font.fontSize = kUiFontSize;
+    style.font.fontSize = UiFontSize();
     treeContextMenu = std::make_shared<UltraCanvasMenu>("ufl-tree-menu", 0, 0, 180, 0);
     treeContextMenu->SetMenuType(MenuType::PopupMenu);
     treeContextMenu->SetStyle(style);
@@ -6198,7 +6472,7 @@ void UltraFilerWindow::BuildTabbedContainer() {
     // BuildSplitLayout puts in the folder pane of the split.
     tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
             "ufl-tabs", 0, 0, 0, kTabStripHeight);
-    tabbedContainer->fontSize = static_cast<int>(kUiFontSize);
+    tabbedContainer->fontSize = static_cast<int>(UiFontSize());
     tabbedContainer->SetTabHeight(kTabStripHeight);
     tabbedContainer->SetTabMinWidth(90);
     tabbedContainer->SetCloseMode(TabCloseMode::Closable);
@@ -6348,10 +6622,11 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     if (settings.homeShowPredefinedOnly)
         state->filer->SetCuratedHomeFolder(UserHomeDir(), HomeCurationPaths());
     FilerStyle filerStyle = state->filer->GetStyle();
-    filerStyle.fontSize = kUiFontSize;
-    filerStyle.smallFontSize = kUiFontSize;
+    filerStyle.fontSize = UiFontSize();
+    filerStyle.smallFontSize = UiFontSize();
     filerStyle.folderIconScale = 0.7f;
     state->filer->SetStyle(filerStyle);
+    state->filer->SetFollowTheme(true);   // the theme's colours over this shape, again on every change
     state->filer->SetViewType(FilerViewType::ThumbnailsMedium);
     // With the preview up, a delete of the previewed file moves the selection
     // (and with it the preview) on to the next entry instead of emptying it.
@@ -6471,6 +6746,21 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // registered program, UltraViewer, the preview - apply to it.
         if (entry.isDirectory) {
             if (tab->filer) tab->filer->OpenEntryWithOS(entry);
+            return;
+        }
+        // A file on a drive: none of the rules below apply, since each reads
+        // the local disk - and the system's opener, handed a drive's path,
+        // found nothing and did nothing. A picture, a drawing, a PDF or a
+        // model is shown in the preview, as before; anything else is fetched
+        // and opened with the program this system opens its type with.
+        if (IsRemoteFilerPath(entry.path)) {
+            if (!CanShowInDetailView(entry)) {
+                OpenRemoteFile(entry);
+            } else if (!previewEnabled) {
+                SetPreviewEnabled(true);
+            } else {
+                UpdatePreviewPane();
+            }
             return;
         }
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
@@ -6857,7 +7147,7 @@ void UltraFilerWindow::BuildHistoryView() {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     historyTabs = std::make_shared<UltraCanvasTabbedContainer>("ufl-history-tabs");
-    historyTabs->fontSize = static_cast<int>(kUiFontSize);
+    historyTabs->fontSize = static_cast<int>(UiFontSize());
     historyTabs->SetTabHeight(30);
     historyTabs->SetTabMinWidth(90);
     historyTabs->SetCloseMode(TabCloseMode::NoClose);
@@ -6879,10 +7169,11 @@ void UltraFilerWindow::BuildHistoryView() {
         auto histFiler = CreateFilerWidget("ufl-history-filer-" + suffix, 0, 0, 0, 0);
         ShowInfoInStatusBar(*histFiler);
         FilerStyle filerStyle = histFiler->GetStyle();
-        filerStyle.fontSize = kUiFontSize;
-        filerStyle.smallFontSize = kUiFontSize;
+        filerStyle.fontSize = UiFontSize();
+        filerStyle.smallFontSize = UiFontSize();
         filerStyle.folderIconScale = 0.7f;
         histFiler->SetStyle(filerStyle);
+    histFiler->SetFollowTheme(true);   // the theme's colours over this shape, again on every change
         histFiler->SetViewType(FilerViewType::ThumbnailsSmall);
         // The lists are handed over most recently used first, and that order
         // is what a history is about - so it is kept instead of sorted.
@@ -6956,7 +7247,7 @@ void UltraFilerWindow::SetHistoryVisible(bool visible) {
     // Only one of the History / Favorites views can replace the split.
     if (visible) SetFavoritesVisible(false);
     historyShown = visible;
-    StyleToggleButton(historyButton.get(), historyShown);
+    StyleToggleButton(historyButton, historyShown);
 
     if (visible) {
         RefreshHistoryTabs();
@@ -7119,7 +7410,7 @@ void UltraFilerWindow::BuildFavoritesView() {
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     favoritesTabs = std::make_shared<UltraCanvasTabbedContainer>("ufl-favorites-tabs");
-    favoritesTabs->fontSize = static_cast<int>(kUiFontSize);
+    favoritesTabs->fontSize = static_cast<int>(UiFontSize());
     favoritesTabs->SetTabHeight(30);
     favoritesTabs->SetTabMinWidth(90);
     favoritesTabs->SetCloseMode(TabCloseMode::NoClose);
@@ -7141,10 +7432,11 @@ void UltraFilerWindow::BuildFavoritesView() {
         auto favFiler = CreateFilerWidget("ufl-favorites-filer-" + suffix, 0, 0, 0, 0);
         ShowInfoInStatusBar(*favFiler);
         FilerStyle filerStyle = favFiler->GetStyle();
-        filerStyle.fontSize = kUiFontSize;
-        filerStyle.smallFontSize = kUiFontSize;
+        filerStyle.fontSize = UiFontSize();
+        filerStyle.smallFontSize = UiFontSize();
         filerStyle.folderIconScale = 0.7f;
         favFiler->SetStyle(filerStyle);
+    favFiler->SetFollowTheme(true);   // the theme's colours over this shape, again on every change
         favFiler->SetViewType(FilerViewType::ThumbnailsSmall);
         // The lists are handed over in pin order — the order the user made.
         favFiler->SetFileListOrderPreserved(true);
@@ -7216,7 +7508,7 @@ void UltraFilerWindow::SetFavoritesVisible(bool visible) {
     // Only one of the History / Favorites views can replace the split.
     if (visible) SetHistoryVisible(false);
     favoritesShown = visible;
-    StyleToggleButton(favoritesButton.get(), favoritesShown);
+    StyleToggleButton(favoritesButton, favoritesShown);
 
     if (visible) {
         RefreshFavoritesTabs();
@@ -7265,13 +7557,13 @@ void UltraFilerWindow::BuildComputerPage() {
     computerPane->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     computerPane->SetPadding(10, 12, 10, 12);
-    computerPane->SetBackgroundColor(Colors::White);
+    computerPane->SetBackgroundColor(Look().panel);
 
     auto makeHeading = [](const std::string& id, const std::string& text) {
         auto heading = CreateLabel(id, 0, 0, 200, 22, text);
-        heading->SetFontSize(kUiFontSize + 2);
+        heading->SetFontSize(UiFontSize() + 2);
         heading->SetFontWeight(FontWeight::Bold);
-        heading->SetTextColor(Color(40, 40, 44, 255));
+        heading->SetTextColor(Look().ink);
         heading->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return heading;
     };
@@ -7285,10 +7577,11 @@ void UltraFilerWindow::BuildComputerPage() {
                                         kComputerFoldersHeight);
     ShowInfoInStatusBar(*computerFolders);
     FilerStyle filerStyle = computerFolders->GetStyle();
-    filerStyle.fontSize = kUiFontSize;
-    filerStyle.smallFontSize = kUiFontSize;
+    filerStyle.fontSize = UiFontSize();
+    filerStyle.smallFontSize = UiFontSize();
     filerStyle.folderIconScale = 0.7f;
     computerFolders->SetStyle(filerStyle);
+    computerFolders->SetFollowTheme(true);   // the theme's colours over this shape, again on every change
     computerFolders->SetViewType(FilerViewType::ThumbnailsMedium);
     // Home first, then the cloud folders in the tree's order.
     computerFolders->SetFileListOrderPreserved(true);
@@ -7584,10 +7877,10 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         pie->SetDonutMode(true);
         pie->SetInnerRadius(0.52f);
         pie->SetLabelPosition(LabelPosition::NoLabels);
-        pie->SetBorderColor(Colors::White);
+        pie->SetBorderColor(Look().panel);
         pie->SetBorderWidth(2.0f);
         pie->SetCenterFont("Arial", 15.0f, FontWeight::Bold);
-        pie->SetCenterTextColor(Color(40, 40, 44, 255));
+        pie->SetCenterTextColor(Look().ink);
         pie->SetTooltipsEnabled(true);
         pie->SetValueFormatter([](double v) {
             return FormatVolumeBytes(static_cast<uint64_t>(v < 0.0 ? 0.0 : v));
@@ -7605,15 +7898,15 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
                                       [this, path]() { NavigateTo(path); }));
 
         auto usage = CreateLabel(id + "-usage", 0, 0, kComputerCardWidth, 18, "");
-        usage->SetFontSize(kUiFontSize);
+        usage->SetFontSize(UiFontSize());
         usage->SetAlignment(TextAlignment::Center);
         usage->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         card->AddChild(usage);
 
         auto space = CreateLabel(id + "-space", 0, 0, kComputerCardWidth, 18, "");
-        space->SetFontSize(kUiFontSize);
+        space->SetFontSize(UiFontSize());
         space->SetAlignment(TextAlignment::Center);
-        space->SetTextColor(Color(110, 110, 116, 255));
+        space->SetTextColor(Look().inkMuted);
         space->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         card->AddChild(space);
 
@@ -7621,9 +7914,9 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         // a stick's volume name, the root under a drive letter - and for a
         // phone, what it is and who made it.
         auto mount = CreateLabel(id + "-mount", 0, 0, kComputerCardWidth, 18, source.under);
-        mount->SetFontSize(kUiFontSize);
+        mount->SetFontSize(UiFontSize());
         mount->SetAlignment(TextAlignment::Center);
-        mount->SetTextColor(Color(150, 150, 156, 255));
+        mount->SetTextColor(Look().inkFaint);
         mount->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         card->AddChild(mount);
 
@@ -7656,13 +7949,13 @@ void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
             if (used > 0.0)
                 slices.emplace_back(1, used, 0, "Used", used, VolumeUsedColor(percent));
             if (free > 0.0)
-                slices.emplace_back(2, free, 0, "Free", free, kVolumeFreeColor);
+                slices.emplace_back(2, free, 0, "Free", free, Look().freeSlice);
             char kpi[16];
             std::snprintf(kpi, sizeof kpi, "%.0f%%", percent);
             card.pie->SetCenterKPI(kpi, "used");
         } else {
             // Nothing known (yet): a neutral full ring and no number.
-            slices.emplace_back(1, 1.0, 0, "Size not available", 1.0, kVolumeFreeColor);
+            slices.emplace_back(1, 1.0, 0, "Size not available", 1.0, Look().freeSlice);
             card.pie->SetCenterKPI("", "");
         }
         auto data = std::make_shared<ChartDataVector>();
@@ -7770,7 +8063,37 @@ void UltraFilerWindow::FillFolderBreadcrumb(
     // place the tree's Computer entry opens - rather than the drive root,
     // which the node next to it already is.
     options.onComputerClick = [this]() { SetComputerPageVisible(true); };
+    // Display > Path bar: a drive by its volume's name, as the tree calls it
+    // ("My Passport Ultra (D:)"). The name comes from the last drive listing,
+    // which read it off the UI thread; until that has answered, and for a
+    // volume with no name, the strip keeps the letter.
+    if (settings.pathBarVolumeNames)
+        options.driveLabel = [this](const std::string& root) { return VolumeDisplayName(root); };
     BuildFolderBreadcrumb(crumb, path, std::move(onNavigate), options);
+}
+
+std::string UltraFilerWindow::VolumeDisplayName(const std::string& root) const {
+    // Drive letters compare without case ("d:\\" is "D:\\"), and a root with
+    // or without its trailing separator is the same root.
+    auto key = [](std::string p) {
+        while (p.size() > 1 && (p.back() == '\\' || p.back() == '/')) p.pop_back();
+        std::transform(p.begin(), p.end(), p.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return p;
+    };
+    const std::string wanted = key(root);
+    for (const MountedVolume& volume : knownVolumes)
+        if (key(volume.path) == wanted) return DriveNodeLabel(volume);
+    return {};
+}
+
+void UltraFilerWindow::RefreshPathBars() {
+    // The main strip describes the active tab's folder - or "Computer"
+    // while that page is up, which names no drive - and the split view has
+    // a strip over each pane.
+    if (!computerShown && filer && !filer->GetPath().empty())
+        RebuildBreadcrumb(filer->GetPath());
+    RefreshPaneBreadcrumbs();
 }
 
 std::string UltraFilerWindow::TabTitleFor(const std::string& path) const {
@@ -8214,10 +8537,11 @@ void UltraFilerWindow::UpdateConnectionLogButton(FilerTabState* display) {
     // Called for every line a running connection logs, so the button and
     // the badge are only touched when what they say changes.
     if (button.GetTooltip() != tip) {
-        const Color quiet(55, 55, 60, 255);
-        const Color alarm(200, 30, 30, 255);
+        const FilerLook look = Look();
+        const Color quiet = look.ink;
+        const Color alarm = look.danger;
         button.SetIconMaskColor(unseen > 0 ? alarm : quiet);
-        button.SetBorder(1.0f, unseen > 0 ? alarm : Color(0, 0, 0, 70));
+        button.SetBorder(1.0f, unseen > 0 ? alarm : look.border);
         button.SetTooltip(tip);
         if (badge) badge->SetTooltip(tip);
     }
@@ -8574,8 +8898,8 @@ void UltraFilerWindow::UpdateStatusBar() {
 
     statusInfoLabel->SetText(info);
     if (statusSelectionLabel) statusSelectionLabel->SetText(selection);
-    statusLabel->SetTextColor(noteIsError ? Color(180, 35, 24, 255)
-                                          : Color(70, 70, 76, 255));
+    statusNoteIsError = noteIsError;
+    statusLabel->SetTextColor(noteIsError ? Look().danger : Look().inkMuted);
     statusLabel->SetText(note);
 }
 
@@ -8620,7 +8944,7 @@ bool UltraFilerWindow::SelectionChangedWithCtrl() {
 void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
     if (enabled == previewEnabled) return;
     previewEnabled = enabled;
-    StyleToggleButton(previewButton.get(), previewEnabled);
+    StyleToggleButton(previewButton, previewEnabled);
     ApplyPreviewSelectionPolicy();
     UpdatePreviewPane();
 }
@@ -9122,7 +9446,7 @@ void UltraFilerWindow::BuildSplitViewPanes() {
             SetTreeDockVisible(!here, side);
         });
         button->SetTooltip(Tr("Folder tree"));
-        StyleToggleButton(button.get(), false);
+        StyleToggleButton(button, false);
         header->AddChild(button);
         crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,
                                                         0, 0, 0, 28);
@@ -9208,7 +9532,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
     if (folderIndex < 0) return;
 
     splitViewShown = visible;
-    StyleToggleButton(splitViewButton.get(), splitViewShown);
+    StyleToggleButton(splitViewButton, splitViewShown);
 
     if (visible) {
         // The tree leaves its pane (parked hidden beside the left display
@@ -9517,14 +9841,15 @@ void UltraFilerWindow::RefreshPaneBreadcrumbs() {
 
 void UltraFilerWindow::StyleSplitHeaders() {
     if (!leftPaneHeader || !rightPaneHeader) return;
-    const Color active(224, 236, 250, 255);
-    const Color idle(243, 243, 246, 255);
+    // The active pane's header is tinted with the soft accent, the idle one sits on the well.
+    const Color active = Look().active;
+    const Color idle = Look().statusBar;
     const bool rightActive = splitViewShown && activeSplitSide == SplitSide::Right;
     leftPaneHeader->SetBackgroundColor(rightActive ? idle : active);
     rightPaneHeader->SetBackgroundColor(rightActive ? active : idle);
-    StyleToggleButton(leftTreeButton.get(),
+    StyleToggleButton(leftTreeButton,
                       treeDockShown && treeDockSide == SplitSide::Left);
-    StyleToggleButton(rightTreeButton.get(),
+    StyleToggleButton(rightTreeButton,
                       treeDockShown && treeDockSide == SplitSide::Right);
     leftPaneHeader->RequestRedraw();
     rightPaneHeader->RequestRedraw();

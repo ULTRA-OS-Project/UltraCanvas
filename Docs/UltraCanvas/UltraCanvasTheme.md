@@ -20,22 +20,51 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.7.0 - fonts and text roles, the high-contrast presets, the theme from the host and the policy (T3 of the host theme proposal)
-**Last Modified:** 2026-10-12
+**Version:** 1.15.0 - TakeHostFonts for an Own provider; the four Own applications on the policy (T6)
+**Last Modified:** 2026-11-11
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Status](#status)
+- [The roles](#the-roles)
+  - [Readability](#readability)
+- [Using it](#using-it)
+  - [Following the theme](#following-the-theme)
+- [Fonts and text roles](#fonts-and-text-roles)
+- [The theme from the host](#the-theme-from-the-host)
+- [The policy](#the-policy)
+- [The setting](#the-setting)
+- [Related](#related)
 
 ## Status
 
 The theme, its two presets, the current theme and its change handlers are
 in place. Every panel element reads it: the button, label, dropdown,
-slider, switch, text input, toolbar, split pane and album through a
-`FromTheme` on their style struct and an `ApplyTheme` on the element; the
-tabbed container and the text area through `ApplyTheme` alone; the menu
+slider, switch, text input, toolbar, split pane and album, and the input
+elements - checkbox, radio, segmented control, spinner, stepper, rating,
+the calendar view and the date, date range and time pickers with the
+clock view - the lists - the scrollbar, list view, columns tree view and
+filer widget - and the containers and pickers - the container's
+scrollbars, group box, breadcrumb, pagination, the colour picker, swatch
+bar and palette manager, the rich text edit - and the badge, card, chip
+and tag input, collapsible panel, sidebar, busy indicator, auto-complete,
+new-document dialog and reference point picker - and the media elements
+and viewers - the audio and video players and recorders, the video tile,
+the slideshow, the font viewer and the curve editor - through a
+`FromTheme` on their style struct and an `ApplyTheme` on the element; the tabbed
+container, the text area and the tree view through `ApplyTheme` alone;
+the spell check's marks and the clipboard history's rows through a
+`FromTheme` their host applies; the menu
 and the tooltip through `MenuStyle::FromTheme` and `TooltipStyle::FromTheme`,
 which put the roles over their own `Dark()` and `Light()` presets, so a
-dark menu or tooltip agrees with the rest of a dark window. An element
-follows the theme only when asked (`SetFollowTheme`); styled by hand it
-keeps its look, as before.
+dark menu or tooltip agrees with the rest of a dark window. Under the
+policy (`FollowHost`, the default, `Light` or `Dark`) every new element
+follows the theme: it is styled from the current theme as it is built and
+again on every change. Styled by hand (`SetStyle`) it keeps its look, as
+before. The readers set their fonts by role as well as their colours.
+Every style struct with colours now reads the theme: T4 of the proposal is
+complete.
 
 ## The roles
 
@@ -158,17 +187,39 @@ menu->SetStyle(MenuStyle::FromTheme());                     // Dark() or Light()
 UltraCanvasTooltipManager::SetStyle(TooltipStyle::FromTheme());
 ```
 
-An element asked to **follow the theme** styles itself from the current
+An element that **follows the theme** styles itself from the current
 theme at once and again whenever it changes: `ApplyTheme` puts the theme's
-colours over the element's own style (`FromTheme(theme, GetStyle())`), so
-a radius, a font or a toolbar's icon size set before survive a switch. A
-container passes a change on to its children, a window to its whole tree.
+colours and fonts over the element's own style
+(`FromTheme(theme, GetStyle())`), so a radius or a toolbar's icon size set
+before survive a switch. A container passes a change on to its children, a
+window to its whole tree.
+
+Whether a new element follows is the application-wide default,
+`UltraCanvasUIElement::SetFollowThemeByDefault`: the policy turns it on
+(`FollowHost`, `Light`, `Dark`) in `Initialize`, so every element built
+after it takes the theme at the end of its constructor; an `Own`
+application turns it on itself when its theme is in place. A style **set by
+hand** (`SetStyle`, a dialog's too; `SetConfig` on an album, `SetAppearance`
+on a toolbar, `SetVisualStyle` on a switch) stops the following for that
+element, so it keeps its look through every change, as before; an element
+that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
+which puts the roles over the given style and follows on from there. A
+setter that changes one thing (`SetTextColor`, `SetFont`) does not stop
+the following: the next theme change puts the theme's value back, so a
+colour an application means to keep goes through `SetStyle`, or is set
+again from its own change handler.
 
 ```cpp
+UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
 input->SetFollowTheme(true);                                // styled now, and on every change
 panel->SetFollowTheme(true);
 button->SetFollowTheme(false);                              // keeps the look it has
 bool follows = input->GetFollowTheme();
+bool byDefault = UltraCanvasUIElement::FollowThemeByDefault();
+ButtonStyle own = button->GetStyle();
+own.cornerRadius = 10;
+button->SetStyle(own);                                      // styled by hand: follows no more
+button->SetFollowTheme(true);                               // the roles over the hand-set style, following again
 ```
 
 `SetCurrent` calls every **change handler** after the switch. The
@@ -188,6 +239,38 @@ UltraCanvasTheme::RemoveChangeHandler(handler);
 
 A handler added during a change is not called for that change; one
 removed during a change is not called again.
+
+An element with a colour of its own that no shared role fits names an
+**element role** with a derived fallback, as the timeline does: the
+checkbox's mark and the radio's dot (`checkbox.mark`, `radio.dot`, the
+accent), a filled rating symbol with its hover and outline (`rating.on`,
+`rating.hover`, `rating.border`, the amber the struct defaults to on any
+window), a stepper's error glyph (`stepper.on-error`, white), the
+calendar's weekends (`calendar.weekend`, its red), the clock's dial
+(`time-picker.clock-face`, the pressed fill), a scrollbar's track and
+thumb (`scrollbar.track`, `scrollbar.thumb`, the panel and the control
+border), a columns tree's section header (`columns-tree.group-header`,
+`columns-tree.on-group-header`, its black bar), the filer's overlays
+(`filer.icon-menu`, `filer.on-icon-menu`, `filer.icon-menu-done`,
+`filer.extension-bar`, `filer.extension-tag`, `filer.on-extension-tag`),
+the colour picker's markers (`color-picker.marker`,
+`color-picker.marker-outline`, white and black), the rich text edit's
+paper (`rich-text.page`, the well), the busy indicator's second arc
+(`busy-indicator.second-arc`, its orange), the recorder's pulse
+(`audio-recorder.pulse`, its red), the video player's, recorder's and
+tile's dark stages and bars (`video-player.stage`,
+`video-player.control-bar`, `video-recorder.stage`,
+`video-recorder.control-bar`, `video-tile.stage`, `video-tile.caption`),
+the slideshow's stage (`slideshow.stage`, its black) and the curve
+editor's identity line (`curve-editor.diagonal`, its red).
+
+```cpp
+UltraCanvasTheme brand = UltraCanvasTheme::Light();
+brand.SetRole("rating.on", Color(242, 165, 58));                 // the brand's star
+brand.SetRole("calendar.weekend", brand.roles.inkMuted);         // weekends quiet, not red
+CheckboxVisualStyle box = CheckboxVisualStyle::FromTheme(brand); // the accent for the mark: not named
+RatingStyle stars = RatingStyle::FromTheme(brand, RatingStyle());
+```
 
 ## Fonts and text roles
 
@@ -210,9 +293,25 @@ theme.fonts.ui.fontSize = 9;
 theme.fonts.scale = 1.25;                                        // Body is then 11.25
 ```
 
-A `FromTheme` reader sets its style's family and size from `Font(role)`
-as it gains fonts by role (T4 of the proposal); until then the sizes are
-there for an application's own text.
+Every `FromTheme` reader sets its style's family and size from `Font(role)`
+by the role its text plays: the button, label, dropdown, text input, menu,
+switch, checkbox, radio, segmented control, spinner, rating, calendar,
+the date and time pickers, the list's rows, the tree, the filer, a group
+box's caption, the breadcrumb, the pagination, the colour picker, the
+chip, the collapsible panel's title, the sidebar's items, the
+auto-complete's list and the new-document dialog's types at `Body`, a
+stepper's titles too; a heading label, a card's title and the
+new-document dialog's title at `Heading`; the tooltip, a slider's value,
+a dialog's details, a stepper's descriptions, a list's header, the
+filer's small text, the palette manager, the badge, the collapsible
+panel's detail, the sidebar's sections and badges, the video tile's
+caption and the font viewer's captions at `Caption`, the dialog's message
+at `Body`, the tab titles at `Caption`; the rich text edit keeps the
+document's fonts, the slideshow its display sizes; the album, the timecode field and
+the timeline take the families only (their sizes are pixels of a design).
+The style struct's own literal stays the default of an element styled by
+hand, as the colour defaults do. The text area keeps its font: it is the
+document's, not the window's.
 
 ## The theme from the host
 
@@ -253,16 +352,71 @@ on every change when it gave one. An application that calls `SetCurrent`
 itself under another policy has taken over: the policy does not put its
 theme back over it.
 
+An `Own` provider builds the application's theme and takes the host's
+fonts onto it with `TakeHostFonts` - the interface and monospace fonts
+where the host names one, the text scale where it is positive, as
+`FromHost` does - so the application's colours come with the desktop's
+fonts. UltraVideo, UltraPress, ChatCube and UltraDBAdmin do this: their
+`ThemeFor` / `AppTheme` is the provider, the look picked from their own
+setting (`system`, which follows the desktop, `light` or `dark`) where
+they have one.
+
 ```cpp
 app->SetThemePolicy(ThemePolicy::Own);
 app->SetThemeProvider([](const HostAppearance& host) {
     UltraCanvasTheme theme = host.dark ? UltraCanvasTheme::Dark() : UltraCanvasTheme::Light();
     theme.name = "My app";
-    theme.fonts.ui = host.uiFont;
+    theme.TakeHostFonts(host);
     return theme;
 });
 ThemePolicy policy = app->GetThemePolicy();
 bool fromPolicy = app->ThemeIsFromPolicy();                      // the current theme is the policy's
+```
+
+## The setting
+
+A person's choices over the desktop, for every UltraCanvas application at
+once: `Appearance.conf` in the UltraCanvas settings folder
+(`UltraCanvasSettingsFolder.h`), the `Emoji.conf` pattern - every line
+optional, a missing or `system` line meaning "what the host says":
+
+```
+look=system          system | light | dark
+accent=system        system | #rrggbb
+font=system          system | <family>
+fontsize=system      system | <points>
+scale=1.0            over the host's text scale, 0.5 to 4
+contrast=system      system | high | normal
+```
+
+`AppearanceSettings` (`UltraCanvasAppearanceSettings.h`) is the file:
+`Parse` and `Serialize` are the text and back, `ApplyTo` puts the choices
+over a `HostAppearance` (the source gains `+settings`), `Load` and `Save`
+are the file, written beside and renamed over. The application applies it
+on every read of the host, before the `ULTRACANVAS_HOST_APPEARANCE`
+override, which still wins for one run; under `FollowHost` the theme is
+then built from the result, so `look=dark` on a light desktop is a dark
+theme in the desktop's font, and `scale=1.25` makes every text a quarter
+larger than the desktop's. UOS-Settings > Appearance > Look writes it
+(`Docs/UOSSettings/README.md`); an application may write it too, with
+`Save`, when a choice of its own should be a choice for every application.
+
+A change reaches a running application without a restart: the application
+base owns one `UltraCanvasSettingsWatcher` (`UltraCanvasSettingsWatcher.h`)
+on the settings folder - one `UltraCanvasFolderWatcher` where the build has
+a native backend, a five-second poll of the files' modification times where
+it has none - and a change to `Appearance.conf` re-reads the host, so the
+policy, the elements that follow and the host appearance handlers all hear
+it as they hear a change of the desktop. `Watch(fileName, handler)` takes
+another file; the handlers run on the UI thread once per burst of changes.
+
+```cpp
+AppearanceSettings settings = AppearanceSettings::Load();      // the file, or the defaults
+settings.look = "dark";
+settings.scale = 1.25;
+settings.Save();                                                 // every application follows within a moment
+HostAppearance host = app->GetHostAppearance();                  // the host with the file applied
+bool fromSettings = host.source.find("+settings") != std::string::npos;
 ```
 
 ## Related

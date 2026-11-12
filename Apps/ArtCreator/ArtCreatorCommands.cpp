@@ -181,7 +181,7 @@ void ArtCreatorWindow::RegisterCommands() {
         commands.Register(newIcon);
     }
     action("file.open", "File", "Open...", "open.svg", "Ctrl+O", [this]() { CmdOpen(); });
-    action("file.close-tab", "File", "Close Tab", "", "Ctrl+W", [this]() { CmdCloseTab(); });
+    action("file.close-tab", "File", "Close Tab", "close-tab.svg", "Ctrl+W", [this]() { CmdCloseTab(); });
     action("file.save", "File", "Save", "save.svg", "Ctrl+S", [this]() { CmdSave(); });
     action("file.save-as", "File", "Save As...", "save-as.svg", "Ctrl+Shift+S", [this]() { CmdSaveAs(); });
     action("file.export", "File", "Export...", "export.svg", "Ctrl+E", [this]() { CmdExport(); });

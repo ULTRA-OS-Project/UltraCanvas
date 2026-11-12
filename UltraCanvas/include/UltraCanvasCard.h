@@ -16,6 +16,7 @@
 // buttons, laid out as a flex column; this class adds the structure, the
 // states and the surface.
 //
+// Version: 1.1.0 - CardStyle::FromTheme, ApplyTheme: the card follows the theme; a SetStyle by hand stops the following
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -49,6 +50,14 @@ namespace UltraCanvas {
         float actionsGap           = 8.0f;
 
         static CardStyle Default();
+        // The theme's roles over a base's own shape (widths, radius,
+        // padding, gaps, the fonts' weights): the raised surface with the
+        // hover fill and the soft accent selected, a hairline with the
+        // accent to highlight, the title in ink at the heading size, the
+        // subtitle in muted ink at the body size
+        static CardStyle FromTheme(const UltraCanvasTheme& theme, const CardStyle& base);
+        static CardStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+        static CardStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
     class UltraCanvasCard : public UltraCanvasContainer {
@@ -105,6 +114,7 @@ namespace UltraCanvas {
 
         // ----- look -----
         void SetStyle(const CardStyle& newStyle);
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         const CardStyle& GetStyle() const { return style; }
         CardStyle& GetStyle() { return style; }
 
