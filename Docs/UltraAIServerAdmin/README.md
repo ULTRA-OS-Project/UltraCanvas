@@ -13,6 +13,9 @@ too) and your token - the server's `ULTRAAI_MODELS_SUPER_TOKEN`, or an
 account's. The address is remembered; the token never is
 (`ULTRAAI_SERVER_TOKEN` in the environment fills it in). Plain `http://` is
 refused except to this machine, since the token would travel in clear.
+Once signed in, the page shows the key the server signs its lists with:
+UltraAI clients pin it on their first refresh, so it is the key to give a
+user who wants to check theirs.
 
 | Page | What it does |
 |---|---|

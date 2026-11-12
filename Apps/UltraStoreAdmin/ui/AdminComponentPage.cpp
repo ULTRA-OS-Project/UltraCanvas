@@ -16,6 +16,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -92,16 +93,16 @@ void AdminWindow::BuildComponentPage() {
     page->SetPadding(Theme::kPagePadding);
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     auto header = Theme::Row("uaC.header", Theme::kGap);
-    formTitle_ = Theme::Heading("uaC.title", "App");
+    formTitle_ = Theme::Heading("uaC.title", Tr("App"));
     formTitle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     header->AddChild(formTitle_);
-    auto save = Theme::Button("uaC.save", "Save", 90, Theme::ButtonKind::Primary);
+    auto save = Theme::Button("uaC.save", Tr("Save"), 90, Theme::ButtonKind::Primary);
     save->onClick = [this]() { SaveComponent(); };
     header->AddChild(save);
-    auto revert = Theme::Button("uaC.revert", "Revert", 90);
+    auto revert = Theme::Button("uaC.revert", Tr("Revert"), 90);
     revert->onClick = [this]() { RevertComponent(); };
     header->AddChild(revert);
-    auto remove = Theme::Button("uaC.delete", "Delete", 90, Theme::ButtonKind::Danger);
+    auto remove = Theme::Button("uaC.delete", Tr("Delete"), 90, Theme::ButtonKind::Danger);
     remove->onClick = [this]() { DeleteComponent(); };
     header->AddChild(remove);
     page->AddChild(header);
@@ -121,27 +122,27 @@ void AdminWindow::BuildComponentPage() {
 
     // ----- identity -----
     auto identity = Theme::Surface("uaC.identity", Theme::kInnerGap);
-    identity->AddChild(Theme::Text("uaC.identity.title", "Identity", 14.0f, FontWeight::Bold));
+    identity->AddChild(Theme::Text("uaC.identity.title", Tr("Identity"), 14.0f, FontWeight::Bold));
     fId_ = input("uaC.id");
-    identity->AddChild(Theme::Field("uaC.idRow", "Id (reverse DNS)", fId_));
-    fKind_ = Choice("uaC.kind", kKinds, {"App", "Runtime", "Library"});
-    identity->AddChild(Theme::Field("uaC.kindRow", "Kind", fKind_));
+    identity->AddChild(Theme::Field("uaC.idRow", Tr("Id (reverse DNS)"), fId_));
+    fKind_ = Choice("uaC.kind", kKinds, {Tr("App"), Tr("Runtime"), Tr("Library")});
+    identity->AddChild(Theme::Field("uaC.kindRow", Tr("Kind"), fKind_));
     fName_ = input("uaC.name");
-    identity->AddChild(Theme::Field("uaC.nameRow", "Name", fName_));
-    fPublisher_ = Choice("uaC.publisher", {""}, {"(none)"}, 300);
-    identity->AddChild(Theme::Field("uaC.publisherRow", "Publisher", fPublisher_));
+    identity->AddChild(Theme::Field("uaC.nameRow", Tr("Name"), fName_));
+    fPublisher_ = Choice("uaC.publisher", {""}, {Tr("(none)")}, 300);
+    identity->AddChild(Theme::Field("uaC.publisherRow", Tr("Publisher"), fPublisher_));
     fLicense_ = input("uaC.license", 200);
-    identity->AddChild(Theme::Field("uaC.licenseRow", "License", fLicense_));
+    identity->AddChild(Theme::Field("uaC.licenseRow", Tr("License"), fLicense_));
     fHomepage_ = input("uaC.homepage");
-    identity->AddChild(Theme::Field("uaC.homepageRow", "Homepage", fHomepage_));
+    identity->AddChild(Theme::Field("uaC.homepageRow", Tr("Homepage"), fHomepage_));
     fSupport_ = input("uaC.support");
-    identity->AddChild(Theme::Field("uaC.supportRow", "Support URL", fSupport_));
+    identity->AddChild(Theme::Field("uaC.supportRow", Tr("Support URL"), fSupport_));
     fPrivacy_ = input("uaC.privacy");
-    identity->AddChild(Theme::Field("uaC.privacyRow", "Privacy URL", fPrivacy_));
-    fOpenSource_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaC.oss", 0, 0, 300, Theme::kControlHeight, "Open source", false));
+    identity->AddChild(Theme::Field("uaC.privacyRow", Tr("Privacy URL"), fPrivacy_));
+    fOpenSource_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaC.oss", 0, 0, 300, Theme::kControlHeight, Tr("Open source"), false));
     identity->AddChild(fOpenSource_);
     fSource_ = input("uaC.source");
-    identity->AddChild(Theme::Field("uaC.sourceRow", "Source URL", fSource_));
+    identity->AddChild(Theme::Field("uaC.sourceRow", Tr("Source URL"), fSource_));
     // The store's list, not free words: it names each in the buyer's language.
     fCategories_ = Theme::Pin(CreateChipGroup("uaC.categories", 0, 0, 0, 0));
     fCategories_->SetSelectionMode(ChipGroupSelectionMode::Multiple);
@@ -149,30 +150,30 @@ void AdminWindow::BuildComponentPage() {
     for (const std::string& id : UltraStore::StoreCategories()) fCategories_->AddChip(UltraStore::CategoryName(id));
     fCategories_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     fCategories_->onSelectedIndicesChanged = [this](const std::vector<int>&) { draftDirty_ = true; };
-    identity->AddChild(Theme::Field("uaC.categoriesRow", "Categories", fCategories_, true));
+    identity->AddChild(Theme::Field("uaC.categoriesRow", Tr("Categories"), fCategories_, true));
     fTags_ = input("uaC.tags");
-    fTags_->SetPlaceholder("free-form words for the search");
-    identity->AddChild(Theme::Field("uaC.tagsRow", "Tags", fTags_));
+    fTags_->SetPlaceholder(Tr("free-form words for the search"));
+    identity->AddChild(Theme::Field("uaC.tagsRow", Tr("Tags"), fTags_));
     body->AddChild(identity);
 
     // ----- the admin backend's settings -----
     auto settings = Theme::Surface("uaC.settings", Theme::kInnerGap);
-    settings->AddChild(Theme::Text("uaC.settings.title", "Store settings", 14.0f, FontWeight::Bold));
-    fVisibility_ = Choice("uaC.visibility", kVisibilities, {"Listed", "Unlisted (by id or link)", "Hidden (updates only)"}, 260);
-    settings->AddChild(Theme::Field("uaC.visibilityRow", "Visibility", fVisibility_));
-    fLifecycle_ = Choice("uaC.lifecycle", kLifecycles, {"Active", "Deprecated (names a successor)", "Withdrawn (no new installs)"}, 260);
-    settings->AddChild(Theme::Field("uaC.lifecycleRow", "Lifecycle", fLifecycle_));
+    settings->AddChild(Theme::Text("uaC.settings.title", Tr("Store settings"), 14.0f, FontWeight::Bold));
+    fVisibility_ = Choice("uaC.visibility", kVisibilities, {Tr("Listed"), Tr("Unlisted (by id or link)"), Tr("Hidden (updates only)")}, 260);
+    settings->AddChild(Theme::Field("uaC.visibilityRow", Tr("Visibility"), fVisibility_));
+    fLifecycle_ = Choice("uaC.lifecycle", kLifecycles, {Tr("Active"), Tr("Deprecated (names a successor)"), Tr("Withdrawn (no new installs)")}, 260);
+    settings->AddChild(Theme::Field("uaC.lifecycleRow", Tr("Lifecycle"), fLifecycle_));
     fSuccessor_ = input("uaC.successor");
-    fSuccessor_->SetPlaceholder("the id to install instead, when deprecated or withdrawn");
-    settings->AddChild(Theme::Field("uaC.successorRow", "Successor", fSuccessor_));
-    fAgeRating_ = Choice("uaC.age", kAges, {"Everyone", "3+", "7+", "12+", "16+", "18+"}, 160);
-    settings->AddChild(Theme::Field("uaC.ageRow", "Age rating", fAgeRating_));
-    fRequiresAccount_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaC.account", 0, 0, 420, Theme::kControlHeight, "Needs an account of its own to be useful", false));
+    fSuccessor_->SetPlaceholder(Tr("the id to install instead, when deprecated or withdrawn"));
+    settings->AddChild(Theme::Field("uaC.successorRow", Tr("Successor"), fSuccessor_));
+    fAgeRating_ = Choice("uaC.age", kAges, {Tr("Everyone"), "3+", "7+", "12+", "16+", "18+"}, 160);
+    settings->AddChild(Theme::Field("uaC.ageRow", Tr("Age rating"), fAgeRating_));
+    fRequiresAccount_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaC.account", 0, 0, 420, Theme::kControlHeight, Tr("Needs an account of its own to be useful"), false));
     settings->AddChild(fRequiresAccount_);
-    fFeatured_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaC.featured", 0, 0, 420, Theme::kControlHeight, "Featured: the store's hero and its Editor's picks", false));
+    fFeatured_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaC.featured", 0, 0, 420, Theme::kControlHeight, Tr("Featured: the store's hero and its Editor's picks"), false));
     settings->AddChild(fFeatured_);
-    fPricingModel_ = Choice("uaC.pricing", kPricing, {"Free", "One-time purchase", "Monthly fee", "Yearly fee"}, 200);
-    settings->AddChild(Theme::Field("uaC.pricingRow", "Monetary", fPricingModel_));
+    fPricingModel_ = Choice("uaC.pricing", kPricing, {Tr("Free"), Tr("One-time purchase"), Tr("Monthly fee"), Tr("Yearly fee")}, 200);
+    settings->AddChild(Theme::Field("uaC.pricingRow", Tr("Monetary"), fPricingModel_));
     auto priceRow = Theme::Row("uaC.priceRow", Theme::kInnerGap);
     fPrice_ = input("uaC.price", 100);
     fPrice_->SetPlaceholder("29.90");
@@ -180,24 +181,24 @@ void AdminWindow::BuildComponentPage() {
     fCurrency_ = input("uaC.currency", 70);
     fCurrency_->SetPlaceholder("EUR");
     priceRow->AddChild(fCurrency_);
-    priceRow->AddChild(Theme::Caption("uaC.trialLabel", "trial days"));
+    priceRow->AddChild(Theme::Caption("uaC.trialLabel", Tr("trial days")));
     fTrialDays_ = input("uaC.trial", 60);
     fTrialDays_->SetPlaceholder("0");
     priceRow->AddChild(fTrialDays_);
-    settings->AddChild(Theme::Field("uaC.priceField", "Price, currency, trial", priceRow));
-    fUpdatePeriod_ = Choice("uaC.period", kPeriods, {"Always free", "Never (the bought version only)", "Until a date"}, 260);
-    settings->AddChild(Theme::Field("uaC.periodRow", "Free update period", fUpdatePeriod_));
+    settings->AddChild(Theme::Field("uaC.priceField", Tr("Price, currency, trial"), priceRow));
+    fUpdatePeriod_ = Choice("uaC.period", kPeriods, {Tr("Always free"), Tr("Never (the bought version only)"), Tr("Until a date")}, 260);
+    settings->AddChild(Theme::Field("uaC.periodRow", Tr("Free update period"), fUpdatePeriod_));
     fUntil_ = input("uaC.until", 140);
     fUntil_->SetPlaceholder("2027-12-31");
-    settings->AddChild(Theme::Field("uaC.untilRow", "Free updates until", fUntil_));
+    settings->AddChild(Theme::Field("uaC.untilRow", Tr("Free updates until"), fUntil_));
     body->AddChild(settings);
 
     // ----- texts -----
     auto texts = Theme::Surface("uaC.texts", Theme::kInnerGap);
-    texts->AddChild(Theme::Text("uaC.texts.title", "Texts", 14.0f, FontWeight::Bold));
+    texts->AddChild(Theme::Text("uaC.texts.title", Tr("Texts"), 14.0f, FontWeight::Bold));
     fSourceLanguage_ = input("uaC.sourceLanguage", 80);
     fSourceLanguage_->SetPlaceholder("en");
-    texts->AddChild(Theme::Field("uaC.sourceLanguageRow", "Written in (source language)", fSourceLanguage_));
+    texts->AddChild(Theme::Field("uaC.sourceLanguageRow", Tr("Written in (source language)"), fSourceLanguage_));
     auto langRow = Theme::Row("uaC.langRow", Theme::kInnerGap, true);
     fLanguage_ = Theme::Pin(CreateDropdown("uaC.language", 0, 0, 240, Theme::kControlHeight));
     fLanguage_->onSelectionChanged = [this](int, const DropdownItem& item) {
@@ -209,10 +210,10 @@ void AdminWindow::BuildComponentPage() {
     fNewLanguage_ = input("uaC.newLanguage", 70);
     fNewLanguage_->SetPlaceholder("de");
     langRow->AddChild(fNewLanguage_);
-    auto addLanguage = Theme::Button("uaC.addLanguage", "Add language", 110);
+    auto addLanguage = Theme::Button("uaC.addLanguage", Tr("Add language"), 110);
     addLanguage->onClick = [this]() {
         const std::string code = Trim(fNewLanguage_->GetText());
-        if (code.size() < 2) { SetStatus("A language is a code such as de", true); return; }
+        if (code.size() < 2) { SetStatus(Tr("A language is a code such as de"), true); return; }
         std::string error;
         ReadForm(error);
         formLanguage_ = code;
@@ -220,15 +221,15 @@ void AdminWindow::BuildComponentPage() {
         RebuildTextsSection();
     };
     langRow->AddChild(addLanguage);
-    auto translate = Theme::Button("uaC.translate", "Translate the missing languages", 220);
-    translate->SetTooltip("UltraAI fills every language of the settings the texts lack, from the source language");
+    auto translate = Theme::Button("uaC.translate", Tr("Translate the missing languages"), 220);
+    translate->SetTooltip(Tr("UltraAI fills every language of the settings the texts lack, from the source language"));
     translate->onClick = [this]() { TranslateDraft(); };
     langRow->AddChild(translate);
-    texts->AddChild(Theme::Field("uaC.langField", "Language shown", langRow));
+    texts->AddChild(Theme::Field("uaC.langField", Tr("Language shown"), langRow));
     fMachineNote_ = Theme::Caption("uaC.machineNote", "");
     texts->AddChild(fMachineNote_);
     fSummary_ = input("uaC.summary", 600);
-    texts->AddChild(Theme::Field("uaC.summaryRow", "Summary (one line)", fSummary_));
+    texts->AddChild(Theme::Field("uaC.summaryRow", Tr("Summary (one line)"), fSummary_));
     fDescription_ = Theme::Pin(std::make_shared<UltraCanvasTextArea>("uaC.description", 0.0f, 140.0f));
     fDescription_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(140));
     fDescription_->SetWordWrap(true);
@@ -237,25 +238,25 @@ void AdminWindow::BuildComponentPage() {
     fDescription_->SetFontSize(12.0f);
     fDescription_->SetBackgroundColor(Theme::kPageBackground);
     fDescription_->SetBorders(1.0f, Theme::kBorder, 4.0f);
-    texts->AddChild(Theme::Text("uaC.descriptionLabel", "Description", 12.0f));
+    texts->AddChild(Theme::Text("uaC.descriptionLabel", Tr("Description"), 12.0f));
     texts->AddChild(fDescription_);
     fTexts_ = texts;
     body->AddChild(texts);
 
     // ----- pictures -----
     auto media = Theme::Surface("uaC.media", Theme::kInnerGap);
-    media->AddChild(Theme::Text("uaC.media.title", "Pictures", 14.0f, FontWeight::Bold));
+    media->AddChild(Theme::Text("uaC.media.title", Tr("Pictures"), 14.0f, FontWeight::Bold));
     auto iconRow = Theme::Row("uaC.iconRow", Theme::kInnerGap);
     fIcon_ = input("uaC.icon");
-    fIcon_->SetPlaceholder("media/<id>/icon.png, or a URL");
+    fIcon_->SetPlaceholder(Tr("media/<id>/icon.png, or a URL"));
     iconRow->AddChild(fIcon_);
-    auto pickIcon = Theme::Button("uaC.pickIcon", "Choose", 90);
+    auto pickIcon = Theme::Button("uaC.pickIcon", Tr("Choose"), 90);
     pickIcon->onClick = [this]() { PickIcon(); };
     iconRow->AddChild(pickIcon);
-    media->AddChild(Theme::Field("uaC.iconField", "Icon", iconRow));
+    media->AddChild(Theme::Field("uaC.iconField", Tr("Icon"), iconRow));
     fScreenshots_ = Theme::Column("uaC.screenshots", 4.0f);
-    media->AddChild(Theme::Field("uaC.screenshotsField", "Screenshots", fScreenshots_, true));
-    auto addShot = Theme::Button("uaC.addShot", "Add screenshot", 140);
+    media->AddChild(Theme::Field("uaC.screenshotsField", Tr("Screenshots"), fScreenshots_, true));
+    auto addShot = Theme::Button("uaC.addShot", Tr("Add screenshot"), 140);
     addShot->onClick = [this]() { PickScreenshot(); };
     auto shotRow = Theme::Row("uaC.shotRow", Theme::kInnerGap);
     shotRow->AddChild(addShot);
@@ -264,10 +265,10 @@ void AdminWindow::BuildComponentPage() {
 
     // ----- releases -----
     auto releases = Theme::Surface("uaC.releases", Theme::kInnerGap);
-    releases->AddChild(Theme::Text("uaC.releases.title", "Releases and packages", 14.0f, FontWeight::Bold));
+    releases->AddChild(Theme::Text("uaC.releases.title", Tr("Releases and packages"), 14.0f, FontWeight::Bold));
     releases->AddChild(Theme::Caption("uaC.releases.hint",
-        "A release per version, newest first, with the exact components it was built against; a package per target "
-        "with the build's file, which goes into the package store under its hash."));
+        Tr("A release per version, newest first, with the exact components it was built against; a package per target "
+        "with the build's file, which goes into the package store under its hash.")));
     fReleases_ = Theme::Column("uaC.releaseList", Theme::kInnerGap);
     releases->AddChild(fReleases_);
     // The add-release editor.
@@ -277,23 +278,23 @@ void AdminWindow::BuildComponentPage() {
     releaseEditor_->SetPadding(8.0f);
     rVersion_ = input("uaC.rVersion", 140);
     rVersion_->SetPlaceholder("1.2.0");
-    releaseEditor_->AddChild(Theme::Field("uaC.rVersionRow", "Version", rVersion_));
-    rChannel_ = Choice("uaC.rChannel", {"stable", "beta"}, {"Stable", "Beta"}, 140);
-    releaseEditor_->AddChild(Theme::Field("uaC.rChannelRow", "Channel", rChannel_));
+    releaseEditor_->AddChild(Theme::Field("uaC.rVersionRow", Tr("Version"), rVersion_));
+    rChannel_ = Choice("uaC.rChannel", {"stable", "beta"}, {Tr("Stable"), Tr("Beta")}, 140);
+    releaseEditor_->AddChild(Theme::Field("uaC.rChannelRow", Tr("Channel"), rChannel_));
     rDate_ = input("uaC.rDate", 140);
     rDate_->SetPlaceholder("2026-10-27");
-    releaseEditor_->AddChild(Theme::Field("uaC.rDateRow", "Date", rDate_));
+    releaseEditor_->AddChild(Theme::Field("uaC.rDateRow", Tr("Date"), rDate_));
     rDepends_ = input("uaC.rDepends");
-    rDepends_->SetPlaceholder("org.ultraos.runtime@0.9.410 (separated by spaces)");
-    releaseEditor_->AddChild(Theme::Field("uaC.rDependsRow", "Needs (id@version)", rDepends_));
+    rDepends_->SetPlaceholder(Tr("org.ultraos.runtime@0.9.410 (separated by spaces)"));
+    releaseEditor_->AddChild(Theme::Field("uaC.rDependsRow", Tr("Needs (id@version)"), rDepends_));
     rNotes_ = input("uaC.rNotes", 600);
-    rNotes_->SetPlaceholder("what changed, in the source language");
-    releaseEditor_->AddChild(Theme::Field("uaC.rNotesRow", "Release notes", rNotes_));
+    rNotes_->SetPlaceholder(Tr("what changed, in the source language"));
+    releaseEditor_->AddChild(Theme::Field("uaC.rNotesRow", Tr("Release notes"), rNotes_));
     auto rButtons = Theme::Row("uaC.rButtons", Theme::kInnerGap);
-    auto rAdd = Theme::Button("uaC.rAdd", "Add the release", 130, Theme::ButtonKind::Primary);
+    auto rAdd = Theme::Button("uaC.rAdd", Tr("Add the release"), 130, Theme::ButtonKind::Primary);
     rAdd->onClick = [this]() { AddRelease(); };
     rButtons->AddChild(rAdd);
-    auto rCancel = Theme::Button("uaC.rCancel", "Cancel", 80);
+    auto rCancel = Theme::Button("uaC.rCancel", Tr("Cancel"), 80);
     rCancel->onClick = [this]() { releaseEditor_->SetVisible(false); formBody_->InvalidateLayout(); };
     rButtons->AddChild(rCancel);
     releaseEditor_->AddChild(rButtons);
@@ -307,31 +308,31 @@ void AdminWindow::BuildComponentPage() {
     pFile_ = Theme::Text("uaC.pFile", "", 12.0f);
     packageEditor_->AddChild(pFile_);
     pOs_ = Choice("uaC.pOs", kOses, {}, 160);
-    packageEditor_->AddChild(Theme::Field("uaC.pOsRow", "Operating system", pOs_));
+    packageEditor_->AddChild(Theme::Field("uaC.pOsRow", Tr("Operating system"), pOs_));
     pArch_ = Choice("uaC.pArch", kArchs, {}, 160);
-    packageEditor_->AddChild(Theme::Field("uaC.pArchRow", "Processor", pArch_));
+    packageEditor_->AddChild(Theme::Field("uaC.pArchRow", Tr("Processor"), pArch_));
     pVariants_ = input("uaC.pVariants");
-    pVariants_->SetPlaceholder("glibc-2.31 rpi (separated by spaces)");
-    packageEditor_->AddChild(Theme::Field("uaC.pVariantsRow", "Variants", pVariants_));
+    pVariants_->SetPlaceholder(Tr("glibc-2.31 rpi (separated by spaces)"));
+    packageEditor_->AddChild(Theme::Field("uaC.pVariantsRow", Tr("Variants"), pVariants_));
     pMinOs_ = input("uaC.pMinOs", 160);
     pMinOs_->SetPlaceholder("14.0 / 10.0.17763");
-    packageEditor_->AddChild(Theme::Field("uaC.pMinOsRow", "Minimum OS version", pMinOs_));
+    packageEditor_->AddChild(Theme::Field("uaC.pMinOsRow", Tr("Minimum OS version"), pMinOs_));
     pEntry_ = input("uaC.pEntry");
-    pEntry_->SetPlaceholder("bin/app (suggested from the archive)");
-    packageEditor_->AddChild(Theme::Field("uaC.pEntryRow", "Entry to start", pEntry_));
-    pAccess_ = Choice("uaC.pAccess", {"public", "restricted"}, {"Public (free)", "Restricted (buyers only)"}, 220);
-    packageEditor_->AddChild(Theme::Field("uaC.pAccessRow", "Access", pAccess_));
+    pEntry_->SetPlaceholder(Tr("bin/app (suggested from the archive)"));
+    packageEditor_->AddChild(Theme::Field("uaC.pEntryRow", Tr("Entry to start"), pEntry_));
+    pAccess_ = Choice("uaC.pAccess", {"public", "restricted"}, {Tr("Public (free)"), Tr("Restricted (buyers only)")}, 220);
+    packageEditor_->AddChild(Theme::Field("uaC.pAccessRow", Tr("Access"), pAccess_));
     auto pButtons = Theme::Row("uaC.pButtons", Theme::kInnerGap);
-    auto pAdd = Theme::Button("uaC.pAdd", "Add the package", 130, Theme::ButtonKind::Primary);
+    auto pAdd = Theme::Button("uaC.pAdd", Tr("Add the package"), 130, Theme::ButtonKind::Primary);
     pAdd->onClick = [this]() { AddPackage(packageEditorVersion_); };
     pButtons->AddChild(pAdd);
-    auto pCancel = Theme::Button("uaC.pCancel", "Cancel", 80);
+    auto pCancel = Theme::Button("uaC.pCancel", Tr("Cancel"), 80);
     pCancel->onClick = [this]() { packageEditor_->SetVisible(false); formBody_->InvalidateLayout(); };
     pButtons->AddChild(pCancel);
     packageEditor_->AddChild(pButtons);
     packageEditor_->SetVisible(false);
     releases->AddChild(packageEditor_);
-    auto newRelease = Theme::Button("uaC.newRelease", "Add release", 120);
+    auto newRelease = Theme::Button("uaC.newRelease", Tr("Add release"), 120);
     newRelease->onClick = [this]() {
         packageEditor_->SetVisible(false);
         releaseEditor_->SetVisible(true);
@@ -375,8 +376,8 @@ void AdminWindow::ShowComponent(const std::string& id) {
 
 void AdminWindow::NewComponent(ComponentKind kind) {
     const std::string id = Trim(newId_->GetText()), name = Trim(newName_->GetText());
-    if (id.empty() || id.find('.') == std::string::npos) { SetStatus("The id is reverse DNS, such as org.ultraos.myapp", true); return; }
-    for (const Component& c : components_) if (c.id == id) { SetStatus(id + " exists already", true); return; }
+    if (id.empty() || id.find('.') == std::string::npos) { SetStatus(Tr("The id is reverse DNS, such as org.ultraos.myapp"), true); return; }
+    for (const Component& c : components_) if (c.id == id) { SetStatus(TrF("{0} exists already", id), true); return; }
     Component c;
     c.id = id;
     c.name = name.empty() ? id : name;
@@ -387,12 +388,13 @@ void AdminWindow::NewComponent(ComponentKind kind) {
     newName_->SetText("");
     ReloadComponents();
     ShowComponent(id);
-    SetStatus(id + " created: fill in the form and add a release");
+    SetStatus(TrF("{0} created: fill in the form and add a release", id));
 }
 
 void AdminWindow::FillForm() {
     const Component& c = draft_;
-    formTitle_->SetText((c.kind == ComponentKind::App ? "App " : c.kind == ComponentKind::Runtime ? "Runtime " : "Library ") + c.id);
+    formTitle_->SetText(c.kind == ComponentKind::App ? TrF("App {0}", c.id)
+                        : c.kind == ComponentKind::Runtime ? TrF("Runtime {0}", c.id) : TrF("Library {0}", c.id));
     fId_->SetText(c.id);
     fId_->SetDisabled(!draftIsNew_);
     fKind_->SetSelectedIndex(IndexOfValue(kKinds, UltraStore::ComponentKindName(c.kind)), false);
@@ -442,7 +444,7 @@ void AdminWindow::FillForm() {
         auto text = Theme::Caption("uaC.shot" + std::to_string(n) + ".path", shot);
         text->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         row->AddChild(text);
-        auto remove = Theme::Button("uaC.shot" + std::to_string(n) + ".remove", "Remove", 72);
+        auto remove = Theme::Button("uaC.shot" + std::to_string(n) + ".remove", Tr("Remove"), 72);
         remove->onClick = [this, shot]() {
             std::string error;
             ReadForm(error);
@@ -477,13 +479,13 @@ void AdminWindow::RebuildTextsSection() {
     int selected = 0;
     for (size_t i = 0; i < languages.size(); ++i) {
         const bool machine = std::find(draft_.machineTranslated.begin(), draft_.machineTranslated.end(), languages[i]) != draft_.machineTranslated.end();
-        fLanguage_->AddItem(LanguageLabel(languages[i]) + (machine ? " (machine)" : ""), languages[i]);
+        fLanguage_->AddItem(machine ? TrF("{0} (machine)", LanguageLabel(languages[i])) : LanguageLabel(languages[i]), languages[i]);
         if (languages[i] == formLanguage_) selected = static_cast<int>(i);
     }
     fLanguage_->SetSelectedIndex(selected, false);
     const bool machine = std::find(draft_.machineTranslated.begin(), draft_.machineTranslated.end(), formLanguage_) != draft_.machineTranslated.end();
-    fMachineNote_->SetText(machine ? "This language was translated automatically; editing it here makes it a human text."
-                                   : (formLanguage_ == (draft_.sourceLanguage.empty() ? "en" : draft_.sourceLanguage) ? "The source language." : ""));
+    fMachineNote_->SetText(machine ? Tr("This language was translated automatically; editing it here makes it a human text.")
+                                   : (formLanguage_ == (draft_.sourceLanguage.empty() ? "en" : draft_.sourceLanguage) ? Tr("The source language.") : std::string()));
     fSummary_->SetText(draft_.summary.byLanguage.count(formLanguage_) ? draft_.summary.byLanguage.at(formLanguage_) : "");
     fDescription_->SetText(draft_.description.byLanguage.count(formLanguage_) ? draft_.description.byLanguage.at(formLanguage_) : "", false);
 }
@@ -538,13 +540,13 @@ bool AdminWindow::ReadForm(std::string& error) {
         }
     } else if (hadDescription) c.description.byLanguage.erase(formLanguage_);
     if (c.sourceLanguage.empty() && !c.summary.byLanguage.empty()) c.sourceLanguage = c.summary.byLanguage.begin()->first;
-    if (c.id.empty() || c.id.find('.') == std::string::npos) { error = "The id is reverse DNS, such as org.ultraos.myapp"; return false; }
-    if (c.name.empty()) { error = "The app needs a name"; return false; }
+    if (c.id.empty() || c.id.find('.') == std::string::npos) { error = Tr("The id is reverse DNS, such as org.ultraos.myapp"); return false; }
+    if (c.name.empty()) { error = Tr("The app needs a name"); return false; }
     if (c.pricing.model != UltraStore::PricingModel::Free && (c.pricing.price.empty() || c.pricing.currency.empty())) {
-        error = "A paid app needs a price and a currency";
+        error = Tr("A paid app needs a price and a currency");
         return false;
     }
-    if (c.updates.period == UltraStore::UpdatePeriod::Until && c.updates.until.empty()) { error = "Free updates until needs a date"; return false; }
+    if (c.updates.period == UltraStore::UpdatePeriod::Until && c.updates.until.empty()) { error = Tr("Free updates until needs a date"); return false; }
     return true;
 }
 
@@ -560,31 +562,31 @@ void AdminWindow::SaveComponent() {
     const std::string id = draft_.id;
     ReloadComponents();
     ShowComponent(id);
-    SetStatus(id + " saved");
+    SetStatus(TrF("{0} saved", id));
 }
 
 void AdminWindow::RevertComponent() {
     if (draftIsNew_) { ShowPage("overview"); return; }
     ShowComponent(draft_.id);
-    SetStatus("Reverted to what is stored");
+    SetStatus(Tr("Reverted to what is stored"));
 }
 
 void AdminWindow::DeleteComponent() {
     const std::string id = draft_.id;
-    UltraCanvasDialogManager::ShowConfirmation("Delete " + id + " from the database? Its package files stay in the package store.", "Delete " + id,
+    UltraCanvasDialogManager::ShowConfirmation(TrF("Delete {0} from the database? Its package files stay in the package store.", id), TrF("Delete {0}", id),
         [this, id](bool confirmed) {
             if (!confirmed) return;
             if (const auto r = db_.RemoveComponent(id); !r) { SetStatus(r.error.message, true); return; }
             draftDirty_ = false;
             ReloadComponents();
             ShowPage("overview");
-            SetStatus(id + " deleted");
+            SetStatus(TrF("{0} deleted", id));
         }, window_.get());
 }
 
 bool AdminWindow::EnsureDraftSaved(std::function<void()> then) {
     if (currentPage_ != kComponent || !draftDirty_) { then(); return true; }
-    UltraCanvasDialogManager::ShowConfirmation("The form has unsaved changes. Leave and lose them?", "Unsaved changes",
+    UltraCanvasDialogManager::ShowConfirmation(Tr("The form has unsaved changes. Leave and lose them?"), Tr("Unsaved changes"),
         [this, then](bool confirmed) {
             if (!confirmed) { sidebar_->Select(kItemPrefix + draft_.id, false); return; }
             draftDirty_ = false;
@@ -598,20 +600,20 @@ bool AdminWindow::EnsureDraftSaved(std::function<void()> then) {
 // ===========================================================================
 void AdminWindow::PickIcon() {
     FileDialogOptions opts;
-    opts.SetTitle("The app's icon").AddFilter("Pictures", "png;svg;jpg;jpeg;webp").SetParentWindow(window_.get());
+    opts.SetTitle(Tr("The app's icon")).AddFilter(Tr("Pictures"), "png;svg;jpg;jpeg;webp").SetParentWindow(window_.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
         if (result != DialogResult::OK || path.empty()) return;
         const auto imported = ImportMedia(path, store_.dir, draft_.id);
         if (!imported) { SetStatus(imported.error.message, true); return; }
         fIcon_->SetText(imported.Value());
         draftDirty_ = true;
-        SetStatus("Icon copied into the media store as " + imported.Value());
+        SetStatus(TrF("Icon copied into the media store as {0}", imported.Value()));
     });
 }
 
 void AdminWindow::PickScreenshot() {
     FileDialogOptions opts;
-    opts.SetTitle("A screenshot").AddFilter("Pictures", "png;jpg;jpeg;webp").SetParentWindow(window_.get());
+    opts.SetTitle(Tr("A screenshot")).AddFilter(Tr("Pictures"), "png;jpg;jpeg;webp").SetParentWindow(window_.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
         if (result != DialogResult::OK || path.empty()) return;
         const auto imported = ImportMedia(path, store_.dir, draft_.id);
@@ -621,7 +623,7 @@ void AdminWindow::PickScreenshot() {
         if (std::find(draft_.screenshots.begin(), draft_.screenshots.end(), imported.Value()) == draft_.screenshots.end()) draft_.screenshots.push_back(imported.Value());
         FillForm();
         draftDirty_ = true;
-        SetStatus("Screenshot copied into the media store as " + imported.Value());
+        SetStatus(TrF("Screenshot copied into the media store as {0}", imported.Value()));
     });
 }
 
@@ -630,7 +632,7 @@ void AdminWindow::PickScreenshot() {
 // ===========================================================================
 void AdminWindow::RebuildReleasesSection() {
     fReleases_->ClearChildren();
-    if (draft_.releases.empty()) fReleases_->AddChild(Theme::Caption("uaC.noReleases", "No release yet: the store lists nothing until one has a package."));
+    if (draft_.releases.empty()) fReleases_->AddChild(Theme::Caption("uaC.noReleases", Tr("No release yet: the store lists nothing until one has a package.")));
     int n = 0;
     for (const Release& r : draft_.releases) {
         const std::string id = "uaC.rel" + std::to_string(n++);
@@ -644,17 +646,17 @@ void AdminWindow::RebuildReleasesSection() {
         auto titleLabel = Theme::Text(id + ".title", title, 13.0f, FontWeight::Bold);
         titleLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         head->AddChild(titleLabel);
-        auto addPackage = Theme::Button(id + ".addPackage", "Add package", 120);
+        auto addPackage = Theme::Button(id + ".addPackage", Tr("Add package"), 120);
         const std::string version = r.version;
         addPackage->onClick = [this, version]() {
             FileDialogOptions opts;
-            opts.SetTitle("The build for " + version).AddFilter("Packages", "zip;7z;zst;gz;xz;tgz;AppImage;appimage").SetParentWindow(window_.get());
+            opts.SetTitle(TrF("The build for {0}", version)).AddFilter(Tr("Packages"), "zip;7z;zst;gz;xz;tgz;AppImage;appimage").SetParentWindow(window_.get());
             UltraCanvasFileLoader::OpenFileDialog(opts, [this, version](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
-                if (FormatOf(path).empty()) { SetStatus("The store installs zip, 7z, tar.zst, tar.gz, tar.xz and AppImage files", true); return; }
+                if (FormatOf(path).empty()) { SetStatus(Tr("The store installs zip, 7z, tar.zst, tar.gz, tar.xz and AppImage files"), true); return; }
                 packageFile_ = path;
                 packageEditorVersion_ = version;
-                pFile_->SetText("File: " + path + "  (" + FormatOf(path) + ")");
+                pFile_->SetText(TrF("File: {0}  ({1})", path, FormatOf(path)));
                 pEntry_->SetText("");
                 if (const auto entries = ListPackageEntries(path)) {
                     pEntry_->SetText(SuggestEntry(entries.Value(), UltraStore::ParseOS(kOses[std::max(0, pOs_->GetSelectedIndex())])));
@@ -667,32 +669,33 @@ void AdminWindow::RebuildReleasesSection() {
             });
         };
         head->AddChild(addPackage);
-        auto removeRelease = Theme::Button(id + ".remove", "Remove release", 120, Theme::ButtonKind::Danger);
+        auto removeRelease = Theme::Button(id + ".remove", Tr("Remove release"), 120, Theme::ButtonKind::Danger);
         removeRelease->onClick = [this, version]() { RemoveRelease(version); };
         head->AddChild(removeRelease);
         surface->AddChild(head);
         if (!r.depends.empty()) {
-            std::string needs = "Needs";
-            for (const auto& d : r.depends) needs += " " + d.id + "@" + d.version;
+            std::string list;
+            for (const auto& d : r.depends) list += " " + d.id + "@" + d.version;
+            const std::string needs = TrF("Needs{0}", list);
             surface->AddChild(Theme::Caption(id + ".needs", needs));
         }
         const std::string notes = r.notes.Text(formLanguage_);
         if (!notes.empty()) surface->AddChild(Theme::Caption(id + ".notes", notes));
-        if (r.packages.empty()) surface->AddChild(Theme::Caption(id + ".noPackages", "No package yet."));
+        if (r.packages.empty()) surface->AddChild(Theme::Caption(id + ".noPackages", Tr("No package yet.")));
         for (size_t i = 0; i < r.packages.size(); ++i) {
             const Package& p = r.packages[i];
             auto row = Theme::Row(id + ".p" + std::to_string(i), Theme::kInnerGap);
             std::string line = p.target.Describe() + " · " + p.format;
-            if (p.size) line += " · " + std::to_string(p.size) + " bytes";
-            if (!p.minOs.empty()) line += " · min OS " + p.minOs;
-            if (!p.entry.empty()) line += " · starts " + p.entry;
+            if (p.size) line += " · " + TrF("{0} bytes", p.size);
+            if (!p.minOs.empty()) line += " · " + TrF("min OS {0}", p.minOs);
+            if (!p.entry.empty()) line += " · " + TrF("starts {0}", p.entry);
             line += " · " + p.sha256.substr(0, 12) + "…";
             if (const auto file = db_.GetPackageFile(p.sha256)) line += " · " + file.Value().access;
-            else if (p.url.empty()) line += " · no file!";
+            else if (p.url.empty()) line += " · " + Tr("no file!");
             auto text = Theme::Caption(id + ".p" + std::to_string(i) + ".text", line);
             text->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
             row->AddChild(text);
-            auto remove = Theme::Button(id + ".p" + std::to_string(i) + ".remove", "Remove", 72);
+            auto remove = Theme::Button(id + ".p" + std::to_string(i) + ".remove", Tr("Remove"), 72);
             remove->onClick = [this, version, i]() { RemovePackage(version, i); };
             row->AddChild(remove);
             surface->AddChild(row);
@@ -707,13 +710,13 @@ void AdminWindow::AddRelease() {
     ReadForm(error);
     Release r;
     r.version = Trim(rVersion_->GetText());
-    if (r.version.empty()) { SetStatus("A release needs a version", true); return; }
-    for (const Release& existing : draft_.releases) if (existing.version == r.version) { SetStatus("Release " + r.version + " exists", true); return; }
+    if (r.version.empty()) { SetStatus(Tr("A release needs a version"), true); return; }
+    for (const Release& existing : draft_.releases) if (existing.version == r.version) { SetStatus(TrF("Release {0} exists", r.version), true); return; }
     r.channel = rChannel_->GetSelectedIndex() == 1 ? "beta" : "stable";
     r.date = Trim(rDate_->GetText());
     for (const std::string& dep : SplitWords(rDepends_->GetText())) {
         const size_t at = dep.find('@');
-        if (at == std::string::npos) { SetStatus("Needs wants id@version, not " + dep, true); return; }
+        if (at == std::string::npos) { SetStatus(TrF("Needs wants id@version, not {0}", dep), true); return; }
         r.depends.push_back({dep.substr(0, at), dep.substr(at + 1)});
     }
     const std::string notes = Trim(rNotes_->GetText());
@@ -725,7 +728,7 @@ void AdminWindow::AddRelease() {
     draftDirty_ = true;
     FillForm();
     draftDirty_ = true;
-    SetStatus("Release " + r.version + " added to the draft: add its packages, then Save");
+    SetStatus(TrF("Release {0} added to the draft: add its packages, then Save", r.version));
 }
 
 void AdminWindow::RemoveRelease(const std::string& version) {
@@ -741,7 +744,7 @@ void AdminWindow::AddPackage(const std::string& version) {
     ReadForm(error);
     Release* release = nullptr;
     for (Release& r : draft_.releases) if (r.version == version) release = &r;
-    if (!release || packageFile_.empty()) { SetStatus("Choose the release's build first", true); return; }
+    if (!release || packageFile_.empty()) { SetStatus(Tr("Choose the release's build first"), true); return; }
     Package p;
     p.target.os = UltraStore::ParseOS(kOses[std::max(0, pOs_->GetSelectedIndex())]);
     p.target.arch = UltraStore::ParseArch(kArchs[std::max(0, pArch_->GetSelectedIndex())]);
@@ -767,7 +770,7 @@ void AdminWindow::AddPackage(const std::string& version) {
     packageFile_.clear();
     FillForm();
     draftDirty_ = true;
-    SetStatus("Package " + p.target.Describe() + " added to " + version + " (" + std::to_string(p.size) + " bytes, in the package store): Save to keep it");
+    SetStatus(TrF("Package {0} added to {1} ({2} bytes, in the package store): Save to keep it", p.target.Describe(), version, p.size));
 }
 
 void AdminWindow::RemovePackage(const std::string& version, size_t index) {
@@ -791,24 +794,24 @@ void AdminWindow::TranslateDraft() {
     if (languages.empty()) languages = OfficialLanguageCodes();
     std::string why;
     std::shared_ptr<ITextTranslator> translator = CreateUltraAITranslator(db_.Setting("ai.provider"), db_.Setting("ai.base_url"), db_.Setting("ai.model"), &why);
-    if (!translator) { SetStatus("No translator: " + why, true); return; }
+    if (!translator) { SetStatus(TrF("No translator: {0}", why), true); return; }
     Component work = draft_;
-    RunJob("Translating with UltraAI", [work, translator, languages]() mutable {
+    RunJob(Tr("Translating with UltraAI"), [work, translator, languages]() mutable {
         JobOutcome out;
         const auto report = TranslateComponent(work, *translator, languages);
         if (!report) { out.ok = false; out.message = report.error.message; return out; }
-        out.message = std::to_string(report.Value().texts) + " texts translated into " + std::to_string(report.Value().languages.size()) + " language(s)";
+        out.message = TrF("{0} texts translated into {1} language(s)", report.Value().texts, report.Value().languages.size());
         for (const std::string& e : report.Value().errors) out.lines.push_back(e);
         out.lines.push_back(UltraStore::SerializeComponent(work));
         return out;
     }, [this](const JobOutcome& out) {
         if (!out.ok || out.lines.empty()) return;
         const auto parsed = UltraStore::ParseComponent(out.lines.back(), draft_.kind, false);
-        if (!parsed) { SetStatus("The translated texts did not read back", true); return; }
+        if (!parsed) { SetStatus(Tr("The translated texts did not read back"), true); return; }
         draft_ = parsed.Value();
         FillForm();
         draftDirty_ = true;
-        std::string message = out.message + " - Save to keep them";
+        std::string message = TrF("{0} - Save to keep them", out.message);
         for (size_t i = 0; i + 1 < out.lines.size(); ++i) message += "; " + out.lines[i];
         SetStatus(message, out.lines.size() > 1);
     });

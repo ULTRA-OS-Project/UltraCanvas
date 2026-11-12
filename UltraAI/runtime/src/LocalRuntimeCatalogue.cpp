@@ -1,8 +1,9 @@
 // UltraAI/runtime/src/LocalRuntimeCatalogue.cpp
 // The gallery index and the model catalogue: JSON in, structs out, and the
 // Hugging Face helpers. Formats: Docs/Modules/UltraAI/LocalRuntime.md.
+// Version: 0.2.0 - trustedKeys, keys.json
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 
 #include "LocalRuntimeInternal.h"
@@ -274,6 +275,22 @@ bool ParseModels(const std::string& text, std::vector<LocalModelInfo>& out, std:
     return true;
 }
 
+bool ParseGalleryKeys(const std::string& text, std::vector<std::string>& outKeysHex) {
+    outKeysHex.clear();
+    json doc = json::parse(text, nullptr, false);
+    if (!doc.is_object() || I32(doc, "formatVersion") != 1) return false;
+    const std::string algorithm = Str(doc, "algorithm", "ed25519");
+    if (algorithm != "ed25519") return false;
+    for (std::string key : Strings(doc, "keys")) {
+        std::transform(key.begin(), key.end(), key.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (key.size() == 64 && key.find_first_not_of("0123456789abcdef") == std::string::npos) {
+            outKeysHex.push_back(key);
+        }
+    }
+    return !outKeysHex.empty();
+}
+
 std::string HuggingFaceFileUrl(const std::string& repo, const std::string& revision,
                                const std::string& file) {
     return "https://huggingface.co/" + repo + "/resolve/" +
@@ -310,6 +327,7 @@ std::string SerializeSettings(const LocalRuntimeSettings& s) {
     j["policy"]               = ToString(s.policy);
     j["preferredAccelerator"] = s.preferredAccelerator;
     j["galleryUrl"]           = s.galleryUrl;
+    j["trustedKeys"]          = s.trustedKeys;
     j["idleMinutes"]          = s.idleMinutes;
     j["diskCapBytes"]         = s.diskCapBytes;
     j["startTimeoutSeconds"]  = s.startTimeoutSeconds;
@@ -324,6 +342,7 @@ bool ParseSettings(const std::string& text, LocalRuntimeSettings& out) {
     if (ParseDownloadPolicy(Str(j, "policy"), policy)) s.policy = policy;
     s.preferredAccelerator = Str(j, "preferredAccelerator");
     s.galleryUrl           = Str(j, "galleryUrl");
+    s.trustedKeys          = Strings(j, "trustedKeys");
     if (j.contains("idleMinutes")) s.idleMinutes = I32(j, "idleMinutes");
     if (j.contains("diskCapBytes")) s.diskCapBytes = U64(j, "diskCapBytes");
     if (j.contains("startTimeoutSeconds")) s.startTimeoutSeconds = I32(j, "startTimeoutSeconds");

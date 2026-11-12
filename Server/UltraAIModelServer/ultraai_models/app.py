@@ -6,6 +6,8 @@ URL points at the first, the other two are read from beside it):
   GET  /gallery/index.json        the engines and their bundles (gallery index, formatVersion 1)
   GET  /gallery/catalogue.json    the published models (model catalogue, formatVersion 1)
   GET  /gallery/topics.json       the topics and the published models offered for each, the default first
+  GET  /gallery/<document>.sig    the Ed25519 signature of one of the three (128 hex characters)
+  GET  /gallery/keys.json         the public keys a client pins to check those signatures
   GET  /files/{sha256}/{name}     an uploaded model file (Range requests are answered)
   GET  /healthz
 
@@ -49,10 +51,11 @@ import secrets
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 
 from . import __version__
 from .config import Settings
+from .signing import SIGNATURE_HEADER, SigningKey, canonical_bytes
 from .store import SHA_RE, Store, StoreError, check_file_name
 
 SEED_DIR = Path(__file__).parent / "seed"
@@ -77,9 +80,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.seed and store.is_empty():
         _seed(store)
 
+    # The signing key: from the environment, else made once and kept.
+    if settings.signing_seed:
+        signing_key = SigningKey(bytes.fromhex(settings.signing_seed))
+    elif store.meta("signing_seed"):
+        signing_key = SigningKey(bytes.fromhex(store.meta("signing_seed")))
+    else:
+        signing_key = SigningKey.generate()
+        store.set_meta("signing_seed", signing_key.seed_hex)
+
     app = FastAPI(title="UltraAI model server", version=__version__)
     app.state.store = store
     app.state.settings = settings
+    app.state.signing_key = signing_key
 
     def blob_path(sha: str) -> Path:
         return data_dir / "blobs" / sha[:2] / sha
@@ -124,17 +137,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     base = settings.public_base_url
 
     # ----- what a client reads -----
-    @app.get("/gallery/index.json")
-    def gallery_index():
-        return JSONResponse(store.gallery_index(), headers={"Cache-Control": "max-age=300"})
+    def documents() -> dict:
+        return {"index.json": store.gallery_index, "catalogue.json": lambda: store.catalogue(base),
+                "topics.json": store.topics_document}
 
-    @app.get("/gallery/catalogue.json")
-    def gallery_catalogue():
-        return JSONResponse(store.catalogue(base), headers={"Cache-Control": "max-age=300"})
+    def keys_document() -> dict:
+        keys = [signing_key.public_hex] + [k for k in settings.next_public_keys if k != signing_key.public_hex]
+        return {"formatVersion": 1, "algorithm": "ed25519", "keys": keys}
 
-    @app.get("/gallery/topics.json")
-    def gallery_topics():
-        return JSONResponse(store.topics_document(), headers={"Cache-Control": "max-age=300"})
+    @app.get("/gallery/{document}")
+    def gallery(document: str):
+        if document == "keys.json":
+            return Response(canonical_bytes(keys_document()), media_type="application/json",
+                            headers={"Cache-Control": "max-age=300"})
+        signature = document.endswith(".sig")
+        name = document[:-4] if signature else document
+        make = documents().get(name)
+        if make is None:
+            raise _error(404, "not_found", "no such document")
+        data = canonical_bytes(make())
+        sig = signing_key.sign_hex(data)
+        if signature:
+            return PlainTextResponse(sig + "\n", headers={"Cache-Control": "max-age=60"})
+        return Response(data, media_type="application/json",
+                        headers={"Cache-Control": "max-age=300", SIGNATURE_HEADER: sig})
 
     @app.get("/files/{sha}/{name}")
     def file(sha: str, name: str):
@@ -157,7 +183,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/v1/admin/whoami")
     def whoami(who: dict = Depends(admin)):
         return {"name": who["name"], "role": who["role"], "server": __version__, "published": store.published(),
-                "revision": int(store.meta("revision") or "0"), "baseUrl": base}
+                "revision": int(store.meta("revision") or "0"), "baseUrl": base, "signingKey": signing_key.public_hex}
 
     # ----- admin: models -----
     @app.get("/v1/admin/models")

@@ -35,6 +35,8 @@
 //
 // Nothing here draws. The framework's "Get a local model" dialog and the
 // dashboard's Local models and Model topics pages are built on top of it.
+// Version: 0.3.0 - signed galleries: trustedKeys, keys.json pinned on first
+//                  use, every refreshed document checked (RefreshGallery)
 // Version: 0.2.0 - topics: the server's topics.json, the user's model per
 //                  topic, new models (ListTopics, ModelForTopic,
 //                  TopicPreferences, NewModels, ApplyTopicUpdates)
@@ -214,6 +216,14 @@ struct LocalRuntimeSettings {
     DownloadPolicy policy = DownloadPolicy::Ask;
     std::string    preferredAccelerator;        // "" = Auto; "cpu", "vulkan", "cuda12", ...
     std::string    galleryUrl;                  // "" = the built-in default
+    // The Ed25519 public keys (64 hex characters each) the gallery's
+    // documents must be signed with. Empty: the first refresh from a server
+    // that publishes keys.json pins its keys here (trust on first use, over
+    // TLS); a gallery that publishes none stays unsigned. Not empty: a
+    // refresh whose index, catalogue or topics carry no signature by one of
+    // these keys is refused and changes nothing. Changing galleryUrl
+    // through SetSettings without changing these clears them.
+    std::vector<std::string> trustedKeys;
     int            idleMinutes = 15;            // stop an engine nobody used for this long
     uint64_t       diskCapBytes = 20ull * 1024 * 1024 * 1024;
     int            startTimeoutSeconds = 0;     // 0 = scaled with model size
@@ -398,8 +408,14 @@ public:
 
     LocalRuntimeSettings GetSettings() const;
     void SetSettings(const LocalRuntimeSettings& settings);   // persisted
-    // Fetch the gallery index and the catalogue from the gallery URL and
-    // replace the built-in copies when they verify. Blocking.
+    // Fetch the gallery index, the catalogue and the topics from the gallery
+    // URL and replace the copies in use when they verify. Each document's
+    // signature comes in its X-UltraAI-Signature header or as
+    // <document>.sig beside it (128 hex characters, Ed25519 over the bytes
+    // served). With trustedKeys set, an unsigned or wrongly signed document
+    // fails the whole refresh with ProviderError / providerCode
+    // "bad-signature" and nothing is replaced; without, keys.json beside the
+    // index is pinned when the index verifies against it. Blocking.
     Error RefreshGallery();
     // When the in-use gallery was published ("" for the built-in one's
     // date when never refreshed).
