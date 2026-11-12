@@ -1,3 +1,8 @@
+#### 2026-11-12 *0.1.12*
+- `publish` writes the marketplace service's URL (the setting
+  `market.url`) into the catalog as `market_url`, so a store reading a
+  merchant's own catalog can report a problem to the operator too.
+
 #### 2026-11-12 *0.1.11*
 - **The marketplace.** The merchant's side of the operator's marketplace
   service (`Market.h`; `Server/UltraStoreMarket`): `market submit <app-id>`
