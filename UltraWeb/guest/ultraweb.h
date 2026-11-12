@@ -1,8 +1,9 @@
 /*
  * UltraWeb/guest/ultraweb.h
- * The UltraWeb element ABI, version 2: how a WebAssembly app builds its UI
+ * The UltraWeb element ABI, version 3: how a WebAssembly app builds its UI
  * out of UltraCanvas elements that the UltraWeb browser owns, and the
- * services it may use beside them - timers, fetch, storage, the clipboard.
+ * services it may use beside them - timers, fetch, storage, the clipboard,
+ * WebSockets, and peer-to-peer data channels (WebRTC, through UltraRTC).
  *
  * One header for both sides. A guest (built for wasm32-wasip1) includes it
  * for the imports below; the host (Apps/UltraWeb) includes it for the same
@@ -30,8 +31,12 @@
  * uc_abi_version() returning 2, so an older UltraWeb refuses it with a
  * message instead of failing at an import it does not have.
  *
+ * Version 3 adds WebSockets (uc_ws_*) and peer connections with data
+ * channels (uc_rtc_*); an app that uses them returns 3.
+ *
+ * Version: 3.0.0 - WebSockets and peer-to-peer data channels
  * Version: 2.0.0
- * Last Modified: 2026-10-06
+ * Last Modified: 2026-11-11
  * Author: UltraCanvas Framework / ULTRA OS
  */
 #ifndef ULTRAWEB_GUEST_ULTRAWEB_H
@@ -39,7 +44,7 @@
 
 #include <stdint.h>
 
-#define UC_ABI_VERSION 2
+#define UC_ABI_VERSION 3
 
 /* ===== Handles ===== */
 #define UC_NO_HANDLE   0u
@@ -96,6 +101,10 @@
  * guest that starts a timer or a fetch gets them (v2). */
 #define UC_EVENT_TIMER 16u   /* a timer fired.    detail = its id (uc_timer_start) */
 #define UC_EVENT_FETCH 32u   /* a fetch finished. detail = its id (uc_fetch) */
+#define UC_EVENT_WS    64u   /* a WebSocket opened, received, closed or failed (v3).
+                                detail = its id (uc_ws_open) */
+#define UC_EVENT_RTC  128u   /* a peer has events to read with uc_rtc_poll (v3).
+                                detail = the peer's id (uc_rtc_peer_open) */
 
 /* ===== Results ===== */
 #define UC_OK                0
@@ -111,7 +120,38 @@
                                     other than http(s), the clipboard outside a user
                                     action, or a service this UltraWeb lacks */
 #define UC_ERR_NETWORK      -9   /* a fetch got no complete HTTP answer (v2): DNS,
-                                    connection, TLS, timeout, cut off */
+                                    connection, TLS, timeout, cut off; a WebSocket
+                                    that could not connect or was lost (v3) */
+
+/* ===== WebSocket states (uc_ws_state, v3) ===== */
+#define UC_WS_CONNECTING 0
+#define UC_WS_OPEN       1
+#define UC_WS_CLOSED     2      /* closed by either side; uc_ws_close_code says how */
+
+/* ===== Peer events (uc_rtc_poll, v3) =====
+ * Each event is a kind, a channel id (0 when none), a number and a text. */
+#define UC_RTC_LOCAL_DESCRIPTION 1u  /* send it to the other side. number: UC_RTC_OFFER or
+                                        UC_RTC_ANSWER; text: the SDP */
+#define UC_RTC_CANDIDATE         2u  /* send it to the other side. text: the media id,
+                                        a newline, then the candidate */
+#define UC_RTC_STATE             3u  /* the connection's state: number UC_RTC_STATE_* */
+#define UC_RTC_CHANNEL           4u  /* the other side opened a channel: channel, text its label */
+#define UC_RTC_CHANNEL_OPEN      5u  /* channel: it can send */
+#define UC_RTC_CHANNEL_CLOSE     6u  /* channel: it closed (its id stays until uc_rtc_channel_close) */
+#define UC_RTC_MESSAGE           7u  /* channel: a message. number 1 binary, 0 text; text: the bytes */
+
+#define UC_RTC_OFFER  1u
+#define UC_RTC_ANSWER 2u
+
+#define UC_RTC_STATE_NEW          0
+#define UC_RTC_STATE_CONNECTING   1
+#define UC_RTC_STATE_CONNECTED    2
+#define UC_RTC_STATE_DISCONNECTED 3
+#define UC_RTC_STATE_FAILED       4
+#define UC_RTC_STATE_CLOSED       5
+
+/* Flags for uc_rtc_channel_open. */
+#define UC_RTC_UNORDERED 1u          /* messages may arrive out of order */
 
 /* ===== Fetch methods (uc_fetch) ===== */
 #define UC_METHOD_GET    0u
@@ -246,6 +286,89 @@ UC_IMPORT(uc_storage_clear) int32_t uc_storage_clear(void);
  * clipboard comes with per-app permissions. */
 UC_IMPORT(uc_clipboard_write) int32_t uc_clipboard_write(const char* text, uint32_t textLength);
 
+/* ----- WebSockets (v3) -----
+ * Opens a WebSocket and returns its id (> 0); uc_event(UC_NO_HANDLE,
+ * UC_EVENT_WS, id) follows when it opens, when it closes or fails, and when
+ * a message arrives while none was waiting: read with uc_ws_receive until
+ * UC_ERR_NOT_FOUND, or the next message brings no event. url is ws: or wss: (http: and https: count as ws: and
+ * wss:), and may be relative to the app's address. protocols is a
+ * comma-separated list of subprotocols ("" none).
+ *
+ * The rules are a browser's: the request carries the app's origin in an
+ * Origin header ("null" for an app from a file or about:), and it is the
+ * server that decides whether to accept it; no cookies are sent; an https
+ * app cannot open ws: (wss: only). Returns the id, or UC_ERR_DENIED (those
+ * rules, or no WebSockets in this UltraWeb), UC_ERR_LIMIT (more than 8 open,
+ * a URL over 8 KB), UC_ERR_STATE (no uc_event export, a URL that does not
+ * parse), UC_ERR_MEMORY. A message is limited to 1 MB either way; one that
+ * arrives larger ends the connection. Up to 4 MB of received messages wait
+ * to be read; past that the oldest are dropped (the console says so). */
+UC_IMPORT(uc_ws_open) int32_t uc_ws_open(const char* url, uint32_t urlLength,
+                                         const char* protocols, uint32_t protocolsLength);
+/* UC_WS_CONNECTING, UC_WS_OPEN, UC_WS_CLOSED, or why it failed
+ * (UC_ERR_NETWORK, UC_ERR_LIMIT for a message over 1 MB). UC_ERR_NOT_FOUND
+ * for an id that is not open. */
+UC_IMPORT(uc_ws_state) int32_t uc_ws_state(int32_t id);
+/* Sends a message: text (UTF-8) or, when binary is non-zero, bytes.
+ * UC_ERR_STATE unless the socket is open, UC_ERR_LIMIT past 1 MB. */
+UC_IMPORT(uc_ws_send) int32_t uc_ws_send(int32_t id, const void* data, uint32_t length, uint32_t binary);
+/* The oldest message not yet read: copies at most capacity bytes, writes 1
+ * (binary) or 0 (text) to *outBinary when it is not null, and returns the
+ * message's full length. It is taken off the queue only when it fitted, so
+ * a guest can call again with a bigger buffer. UC_ERR_NOT_FOUND when no
+ * message waits. */
+UC_IMPORT(uc_ws_receive) int32_t uc_ws_receive(int32_t id, void* out, uint32_t capacity, uint32_t* outBinary);
+/* The close code the other side (or the failure) gave, 0 while open. */
+UC_IMPORT(uc_ws_close_code) int32_t uc_ws_close_code(int32_t id);
+/* Closes the socket (code 1000 when code is 0) and forgets it; no event
+ * follows. */
+UC_IMPORT(uc_ws_close) int32_t uc_ws_close(int32_t id, uint32_t code, const char* reason, uint32_t reasonLength);
+
+/* ----- Peer connections and data channels (v3) -----
+ * WebRTC through UltraRTC: DTLS-encrypted, peer to peer, with data channels
+ * carrying text or bytes. The app does its own signalling - it sends the
+ * other side what UC_RTC_LOCAL_DESCRIPTION and UC_RTC_CANDIDATE events
+ * carry (over uc_ws_* or uc_fetch), and hands what comes back to
+ * uc_rtc_set_remote and uc_rtc_add_candidate, untouched. Negotiation is
+ * automatic: opening the first channel makes the offer, a remote offer
+ * makes the answer.
+ *
+ * config is JSON in the shape of RTCConfiguration:
+ *   {"iceServers": [{"urls": "stun:stun.example.org:3478"},
+ *                   {"urls": ["turn:turn.example.org"], "username": "u", "credential": "p"}]}
+ * ("" or {} for none). An app from the network connects through TURN relays
+ * only, which keeps the machine's local addresses from the other side; an
+ * app from a file or about: may connect directly.
+ *
+ * Events wait per peer; uc_event(UC_NO_HANDLE, UC_EVENT_RTC, peer) comes
+ * when one arrives while none was waiting: read them with uc_rtc_poll until
+ * UC_ERR_NOT_FOUND, or the next one brings no event. Limits: 4 peers,
+ * 16 channels a peer, 256 KB a message, 1000 events waiting a peer (past
+ * that the oldest messages are dropped). UC_ERR_DENIED when this UltraWeb
+ * has no WebRTC engine. */
+UC_IMPORT(uc_rtc_peer_open) int32_t uc_rtc_peer_open(const char* config, uint32_t configLength);
+/* Closes the peer and its channels, and forgets them all; no event follows. */
+UC_IMPORT(uc_rtc_peer_close) int32_t uc_rtc_peer_close(int32_t peer);
+/* type UC_RTC_OFFER or UC_RTC_ANSWER. UC_ERR_STATE for an SDP the engine refuses. */
+UC_IMPORT(uc_rtc_set_remote) int32_t uc_rtc_set_remote(int32_t peer, uint32_t type,
+                                                       const char* sdp, uint32_t sdpLength);
+UC_IMPORT(uc_rtc_add_candidate) int32_t uc_rtc_add_candidate(int32_t peer, const char* candidate,
+                                                             uint32_t candidateLength,
+                                                             const char* mid, uint32_t midLength);
+/* Opens a data channel and returns its id (> 0). flags: UC_RTC_UNORDERED;
+ * maxRetransmits < 0: reliable, else at most that many resends. */
+UC_IMPORT(uc_rtc_channel_open) int32_t uc_rtc_channel_open(int32_t peer, const char* label,
+                                                           uint32_t labelLength, uint32_t flags,
+                                                           int32_t maxRetransmits);
+/* Sends text or (binary non-zero) bytes. UC_ERR_STATE until the channel is open. */
+UC_IMPORT(uc_rtc_send) int32_t uc_rtc_send(int32_t channel, const void* data, uint32_t length, uint32_t binary);
+UC_IMPORT(uc_rtc_channel_close) int32_t uc_rtc_channel_close(int32_t channel);
+/* The peer's oldest event: writes kind, channel and number to info[0..2],
+ * copies at most capacity bytes of its text, and returns the text's full
+ * length. The event is taken off the queue only when its text fitted.
+ * UC_ERR_NOT_FOUND when none waits. */
+UC_IMPORT(uc_rtc_poll) int32_t uc_rtc_poll(int32_t peer, uint32_t* info, char* out, uint32_t capacity);
+
 #ifdef __cplusplus
 }
 #endif
@@ -253,7 +376,7 @@ UC_IMPORT(uc_clipboard_write) int32_t uc_clipboard_write(const char* text, uint3
 /* The exports a guest provides:
  *   void uc_main(void);
  *   void uc_event(uint32_t handle, uint32_t event, int32_t detail);   (if it listens,
- *                                                  or uses timers or fetch)
+ *                                    or uses timers, fetch, WebSockets or peers)
  *   int32_t uc_abi_version(void);                  (optional: the version it needs) */
 #define UC_EXPORT(name) __attribute__((export_name(#name)))
 

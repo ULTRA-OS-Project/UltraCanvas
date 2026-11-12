@@ -53,6 +53,8 @@ What a client reads (no authentication):
 | `GET /gallery/index.json` | the engines and their bundles (formatVersion 1) |
 | `GET /gallery/catalogue.json` | the published models; an uploaded file's `url` is `<base>/files/<sha256>/<name>` |
 | `GET /gallery/topics.json` | `{formatVersion: 1, published, topics: [{id, name, description, capability, models: [{id, default?}]}]}` |
+| `GET /gallery/<document>.sig` | the Ed25519 signature of `index.json`, `catalogue.json` or `topics.json`: 128 hex characters |
+| `GET /gallery/keys.json` | `{formatVersion: 1, algorithm: "ed25519", keys: [hex, ...]}`: the keys a client pins |
 | `GET /files/{sha256}/{name}` | an uploaded file of a published model (Range answered) |
 | `GET /healthz` | `ok`, or what is not configured |
 
@@ -78,6 +80,26 @@ The admin API (`Authorization: Bearer <token>`; errors are
 | `GET /v1/admin/admins`, `PUT` / `DELETE /v1/admin/admins/{name}` | super: `{role: "super" \| "editor"}` → `{token}`, shown once |
 | `GET /v1/admin/audit?since=N` | `{entries: [{seq, at, admin, action, target, detail}], next}` |
 
+## Signatures
+
+`index.json`, `catalogue.json` and `topics.json` are signed with the
+server's Ed25519 key over the exact bytes served (one compact, key-ordered
+serialisation), and the signature travels in the document's
+`X-UltraAI-Signature` header - so a document and its signature are always
+of one revision - and as `<document>.sig` for a mirror that copies files.
+An UltraAI client pins the keys of `keys.json` on its first refresh and
+from then on refuses a document that no pinned key signed
+(`Docs/Modules/UltraAI/LocalRuntime.md`, *Signed galleries*).
+
+The key is `ULTRAAI_MODELS_SIGNING_SEED` (32 bytes, hex), or one made on
+the first start and kept in the database. Keep it: a client that pinned it
+refuses anything signed with another. A client pins every key `keys.json`
+lists, so a key listed in `ULTRAAI_MODELS_NEXT_PUBLIC_KEYS` well before the
+change is trusted by the clients that first refreshed after it was listed;
+a client that pinned only the old key must have its pin reset (Model topics
+> Model server, set the address again) or be given the new key. `whoami` and UltraAI ServerAdmin's Connection
+page show the public key.
+
 ## Who may do what
 
 The **super administrator** signs in with `ULTRAAI_MODELS_SUPER_TOKEN` from
@@ -100,6 +122,8 @@ From the environment (`deploy/ultraai-model-server.env.example`):
 | `ULTRAAI_MODELS_DATA` | `ultraai-models-data` | the uploads (`blobs/<aa>/<sha256>`) and uploads in flight (`tmp/`) |
 | `ULTRAAI_MODELS_HOST`, `_PORT` | `127.0.0.1`, `8793` | where the service listens (behind nginx) |
 | `ULTRAAI_MODELS_MAX_UPLOAD` | 80 GiB | the largest upload |
+| `ULTRAAI_MODELS_SIGNING_SEED` | — (made and kept) | the Ed25519 seed (64 hex characters) the client documents are signed with |
+| `ULTRAAI_MODELS_NEXT_PUBLIC_KEYS` | — | public keys (hex, comma-separated) `keys.json` also lists |
 | `ULTRAAI_MODELS_SEED` | `1` | fill an empty database with the framework's built-in gallery, catalogue and topics, published |
 
 The seed is `ultraai_models/seed/`, the same documents

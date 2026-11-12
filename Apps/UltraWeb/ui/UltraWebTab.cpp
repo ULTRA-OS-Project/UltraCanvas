@@ -31,8 +31,8 @@ namespace {
 void AppLog(const std::string& line) { std::fprintf(stderr, "[UltraWeb app] %s\n", line.c_str()); }
 
 // The services an app reaches beside its elements (GuestServices), real
-// ones: the application's timers, UltraNet, a store on disk per origin,
-// the system clipboard.
+// ones: the application's timers, UltraNet for fetch and WebSockets, a store
+// on disk per origin, the system clipboard, UltraRTC for peer connections.
 GuestServices RealServices(const std::string& address, std::function<void(std::function<void()>)> post) {
     GuestServices services;
     services.startTimer = [](uint32_t ms, bool repeat, std::function<void()> fire) -> uint32_t {
@@ -49,6 +49,8 @@ GuestServices RealServices(const std::string& address, std::function<void(std::f
                                              UltraWebStorage::PartitionFor(address), problem);
     if (!problem.empty()) AppLog("UltraWeb: storage kept in memory only: " + problem);
     services.writeClipboard = [](const std::string& text) { return SetClipboardText(text); };
+    services.webSocket = MakeNetworkSockets(post);
+    services.rtc = MakeEngineRtc(post);
     return services;
 }
 

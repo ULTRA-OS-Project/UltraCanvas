@@ -6,7 +6,7 @@ database (whose accounts hold only hashes), never in a client."""
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -31,6 +31,14 @@ class Settings:
     # and topics on the first start, so a new server publishes what a client
     # already has and the administrator edits from there.
     seed: bool = True
+    # The key index.json, catalogue.json and topics.json are signed with: a
+    # 32-byte Ed25519 seed, hex. Empty: one is made on the first start and
+    # kept in the database. Clients pin its public half (keys.json), so
+    # keep it: a new key is refused by every client that pinned the old one.
+    signing_seed: str = ""
+    # Public keys (hex, comma-separated) keys.json also lists: the next key,
+    # announced before the server starts signing with it.
+    next_public_keys: list[str] = field(default_factory=list)
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -44,4 +52,6 @@ class Settings:
         s.super_token = env("ULTRAAI_MODELS_SUPER_TOKEN", "").strip()
         s.max_upload_bytes = int(env("ULTRAAI_MODELS_MAX_UPLOAD", s.max_upload_bytes))
         s.seed = env("ULTRAAI_MODELS_SEED", "1").strip().lower() not in ("0", "false", "no", "off")
+        s.signing_seed = env("ULTRAAI_MODELS_SIGNING_SEED", "").strip()
+        s.next_public_keys = [k.strip().lower() for k in env("ULTRAAI_MODELS_NEXT_PUBLIC_KEYS", "").split(",") if k.strip()]
         return s

@@ -14,6 +14,7 @@
 #include "UltraCanvasListSelection.h"
 #include "UltraCanvasModalDialog.h"      // ShowInputDialog
 #include "UltraCanvasUtils.h"            // OpenURL
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -48,17 +49,17 @@ std::string Bytes(uint64_t bytes) {
 }
 
 std::string AcceleratorLabel(const std::string& id) {
-    if (id == "cpu")    return "CPU only";
-    if (id == "vulkan") return "Vulkan (any GPU)";
-    if (id == "metal")  return "Metal (Apple GPU)";
-    if (id == "cuda12") return "CUDA 12 (NVIDIA)";
-    if (id == "rocm")   return "ROCm (AMD)";
+    if (id == "cpu")    return Tr("CPU only");
+    if (id == "vulkan") return Tr("Vulkan (any GPU)");
+    if (id == "metal")  return Tr("Metal (Apple GPU)");
+    if (id == "cuda12") return Tr("CUDA 12 (NVIDIA)");
+    if (id == "rocm")   return Tr("ROCm (AMD)");
     return id;
 }
 
 std::string CapabilityLabel(const std::string& capability) {
-    if (capability == "textllm")    return "Chat";
-    if (capability == "embeddings") return "Embeddings";
+    if (capability == "textllm")    return Tr("Chat");
+    if (capability == "embeddings") return Tr("Embeddings");
     return capability;
 }
 
@@ -66,7 +67,7 @@ std::string FitLabel(ModelFit fit) {
     switch (fit) {
         case ModelFit::Recommended: return "GPU";
         case ModelFit::RunsOnCpu:   return "CPU";
-        case ModelFit::TooLarge:    return "Too large";
+        case ModelFit::TooLarge:    return Tr("Too large");
         case ModelFit::Unknown:     return "—";
     }
     return "—";
@@ -74,10 +75,10 @@ std::string FitLabel(ModelFit fit) {
 
 std::string FitTooltip(ModelFit fit) {
     switch (fit) {
-        case ModelFit::Recommended: return "Fits this computer's GPU memory: runs on the GPU";
-        case ModelFit::RunsOnCpu:   return "Fits system memory: runs on the CPU, or partly on the GPU";
-        case ModelFit::TooLarge:    return "Does not fit this computer's memory";
-        case ModelFit::Unknown:     return "No memory requirement on record";
+        case ModelFit::Recommended: return Tr("Fits this computer's GPU memory: runs on the GPU");
+        case ModelFit::RunsOnCpu:   return Tr("Fits system memory: runs on the CPU, or partly on the GPU");
+        case ModelFit::TooLarge:    return Tr("Does not fit this computer's memory");
+        case ModelFit::Unknown:     return Tr("No memory requirement on record");
     }
     return {};
 }
@@ -116,10 +117,10 @@ UltraAILocalModelsPage::~UltraAILocalModelsPage() = default;
 
 std::shared_ptr<UltraCanvasContainer> UltraAILocalModelsPage::Build(UltraCanvasWindowBase* parent) {
     parent_ = parent;
-    PageParts parts = MakePage("uai-set-page-local-models", "Local models",
-            "Models that run on this computer. Nothing to install by hand: the "
+    PageParts parts = MakePage("uai-set-page-local-models", Tr("Local models"),
+            Tr("Models that run on this computer. Nothing to install by hand: the "
             "engine and a model are downloaded when a service first needs them, "
-            "or from here.");
+            "or from here."));
 
     BuildHardwareLine(*parts.body);
     BuildEngineRow(*parts.body);
@@ -130,18 +131,18 @@ std::shared_ptr<UltraCanvasContainer> UltraAILocalModelsPage::Build(UltraCanvasW
     BuildSettingsRows(*parts.body);
 
     AddNote(parts, "uai-lm-note1",
-            "GPU: the model fits the graphics card's memory and runs there. CPU: "
+            Tr("GPU: the model fits the graphics card's memory and runs there. CPU: "
             "it fits system memory and runs on the processor, slower. Too large: "
             "it cannot be loaded on this computer. A model is downloaded from its "
-            "publisher under the licence the table names.");
+            "publisher under the licence the table names."));
     AddNote(parts, "uai-lm-note2",
-            "Ask: a service that needs a model it does not have asks first. "
+            Tr("Ask: a service that needs a model it does not have asks first. "
             "Automatic: it downloads and continues. Never: models are only "
-            "installed from this page.");
+            "installed from this page."));
     AddNote(parts, "uai-lm-note3",
-            "A running engine is shared by every UltraCanvas application that "
+            Tr("A running engine is shared by every UltraCanvas application that "
             "wants the same model and stopped when nothing has used it for the "
-            "idle time.");
+            "idle time."));
 
     Refresh();
     return parts.page;
@@ -159,7 +160,7 @@ void UltraAILocalModelsPage::BuildEngineRow(UltraCanvasContainer& body) {
     body.AddChild(engineLabel_);
 
     auto row = MakeRow("uai-lm-accel-row", 28);
-    auto lbl = MakeLabel("uai-lm-accel-lbl", "Acceleration");
+    auto lbl = MakeLabel("uai-lm-accel-lbl", Tr("Acceleration"));
     lbl->size.width = CSSLayout::Dimension::Px(kLabelWidth);
     row->AddChild(lbl);
     accelDropdown_ = MakeDropdown("uai-lm-accel", kDropdownWidth);
@@ -172,18 +173,18 @@ void UltraAILocalModelsPage::BuildEngineRow(UltraCanvasContainer& body) {
         RefreshEngine();
     };
     row->AddChild(accelDropdown_);
-    engineButton_ = MakeButton("uai-lm-engine-btn", "Install engine", 114, [this]() { OnInstallEngine(); });
+    engineButton_ = MakeButton("uai-lm-engine-btn", Tr("Install engine"), 114, [this]() { OnInstallEngine(); });
     row->AddChild(engineButton_);
     body.AddChild(row);
 }
 
 void UltraAILocalModelsPage::BuildModelTable(UltraCanvasContainer& body) {
     tableModel_ = std::make_shared<UltraCanvasMultiColumnListModel>();
-    tableModel_->AddColumn(ListColumnDef("Model", 168, TextAlignment::Left, "The model, as the catalogue names it"));
-    tableModel_->AddColumn(ListColumnDef("Service", 80, TextAlignment::Left, "What it serves"));
-    tableModel_->AddColumn(ListColumnDef("Size", 62, TextAlignment::Right, "On disk, or to download"));
-    tableModel_->AddColumn(ListColumnDef("Fits", 58, TextAlignment::Left, "Whether it fits this computer, and where it runs"));
-    tableModel_->AddColumn(ListColumnDef("State", 98, TextAlignment::Left, "Installed, running, or not yet installed"));
+    tableModel_->AddColumn(ListColumnDef(Tr("Model"), 168, TextAlignment::Left, Tr("The model, as the catalogue names it")));
+    tableModel_->AddColumn(ListColumnDef(Tr("Service"), 80, TextAlignment::Left, Tr("What it serves")));
+    tableModel_->AddColumn(ListColumnDef(Tr("Size"), 62, TextAlignment::Right, Tr("On disk, or to download")));
+    tableModel_->AddColumn(ListColumnDef(Tr("Fits"), 58, TextAlignment::Left, Tr("Whether it fits this computer, and where it runs")));
+    tableModel_->AddColumn(ListColumnDef(Tr("State"), 98, TextAlignment::Left, Tr("Installed, running, or not yet installed")));
 
     table_ = std::make_shared<UltraCanvasListView>("uai-lm-table", 0, 0, kTextWidth, kTableHeight);
     table_->SetModel(tableModel_);
@@ -208,10 +209,10 @@ void UltraAILocalModelsPage::BuildModelTable(UltraCanvasContainer& body) {
 
 void UltraAILocalModelsPage::BuildActionRow(UltraCanvasContainer& body) {
     auto row = MakeRow("uai-lm-actions", 30);
-    installButton_ = MakeButton("uai-lm-install", "Install", 90, [this]() { OnInstall(); });
-    removeButton_  = MakeButton("uai-lm-remove", "Remove", 90, [this]() { OnRemove(); });
-    stopButton_    = MakeButton("uai-lm-stop", "Stop", 70, [this]() { OnStop(); });
-    forgetButton_  = MakeButton("uai-lm-forget", "Forget", 80, [this]() { OnForget(); });
+    installButton_ = MakeButton("uai-lm-install", Tr("Install"), 90, [this]() { OnInstall(); });
+    removeButton_  = MakeButton("uai-lm-remove", Tr("Remove"), 90, [this]() { OnRemove(); });
+    stopButton_    = MakeButton("uai-lm-stop", Tr("Stop"), 70, [this]() { OnStop(); });
+    forgetButton_  = MakeButton("uai-lm-forget", Tr("Forget"), 80, [this]() { OnForget(); });
     row->AddChild(installButton_);
     row->AddChild(removeButton_);
     row->AddChild(stopButton_);
@@ -242,7 +243,7 @@ void UltraAILocalModelsPage::BuildProgressRow(UltraCanvasContainer& body) {
     progressBar_->size.height = CSSLayout::Dimension::Px(8);
     progressBar_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     progressRow_->AddChild(progressBar_);
-    cancelButton_ = MakeButton("uai-lm-cancel", "Cancel", 80, [this]() {
+    cancelButton_ = MakeButton("uai-lm-cancel", Tr("Cancel"), 80, [this]() {
         if (!activeJobId_.empty()) LocalRuntime::Instance().Cancel(activeJobId_);
     });
     progressRow_->AddChild(cancelButton_);
@@ -252,22 +253,22 @@ void UltraAILocalModelsPage::BuildProgressRow(UltraCanvasContainer& body) {
 
 void UltraAILocalModelsPage::BuildAddRow(UltraCanvasContainer& body) {
     auto row = MakeRow("uai-lm-add-row", 30);
-    row->AddChild(MakeButton("uai-lm-add-file", "Add model file...", 130, [this]() { OnAddFile(); }));
-    row->AddChild(MakeButton("uai-lm-add-hf", "Add from Hugging Face...", 170, [this]() { OnAddHuggingFace(); }));
-    row->AddChild(MakeButton("uai-lm-refresh", "Refresh catalogue", 130, [this]() { OnRefreshCatalogue(); }));
+    row->AddChild(MakeButton("uai-lm-add-file", Tr("Add model file..."), 130, [this]() { OnAddFile(); }));
+    row->AddChild(MakeButton("uai-lm-add-hf", Tr("Add from Hugging Face..."), 170, [this]() { OnAddHuggingFace(); }));
+    row->AddChild(MakeButton("uai-lm-refresh", Tr("Refresh catalogue"), 130, [this]() { OnRefreshCatalogue(); }));
     body.AddChild(row);
 }
 
 void UltraAILocalModelsPage::BuildSettingsRows(UltraCanvasContainer& body) {
     {
         auto row = MakeRow("uai-lm-policy-row", 28);
-        auto lbl = MakeLabel("uai-lm-policy-lbl", "Downloads");
+        auto lbl = MakeLabel("uai-lm-policy-lbl", Tr("Downloads"));
         lbl->size.width = CSSLayout::Dimension::Px(kLabelWidth);
         row->AddChild(lbl);
         policyDropdown_ = MakeDropdown("uai-lm-policy", kDropdownWidth);
-        policyDropdown_->AddItem("Ask before downloading", "ask");
-        policyDropdown_->AddItem("Download automatically", "automatic");
-        policyDropdown_->AddItem("Never - install from here only", "never");
+        policyDropdown_->AddItem(Tr("Ask before downloading"), "ask");
+        policyDropdown_->AddItem(Tr("Download automatically"), "automatic");
+        policyDropdown_->AddItem(Tr("Never - install from here only"), "never");
         policyDropdown_->onSelectionChanged = [this](int, const DropdownItem& item) {
             DownloadPolicy policy;
             if (!ParseDownloadPolicy(item.value, policy)) return;
@@ -281,15 +282,15 @@ void UltraAILocalModelsPage::BuildSettingsRows(UltraCanvasContainer& body) {
     }
     {
         auto row = MakeRow("uai-lm-idle-row", 28);
-        auto lbl = MakeLabel("uai-lm-idle-lbl", "Stop idle engines after");
+        auto lbl = MakeLabel("uai-lm-idle-lbl", Tr("Stop idle engines after"));
         lbl->size.width = CSSLayout::Dimension::Px(kLabelWidth);
         row->AddChild(lbl);
         idleDropdown_ = MakeDropdown("uai-lm-idle", kDropdownWidth);
-        idleDropdown_->AddItem("5 minutes", "5");
-        idleDropdown_->AddItem("15 minutes", "15");
-        idleDropdown_->AddItem("1 hour", "60");
-        idleDropdown_->AddItem("4 hours", "240");
-        idleDropdown_->AddItem("Never", "525600");
+        idleDropdown_->AddItem(Tr("5 minutes"), "5");
+        idleDropdown_->AddItem(Tr("15 minutes"), "15");
+        idleDropdown_->AddItem(Tr("1 hour"), "60");
+        idleDropdown_->AddItem(Tr("4 hours"), "240");
+        idleDropdown_->AddItem(Tr("Never"), "525600");
         idleDropdown_->onSelectionChanged = [this](int, const DropdownItem& item) {
             const int minutes = std::atoi(item.value.c_str());
             if (minutes <= 0) return;
@@ -306,7 +307,7 @@ void UltraAILocalModelsPage::BuildSettingsRows(UltraCanvasContainer& body) {
         diskLabel_ = MakeLabel("uai-lm-disk", "", kNoteFontSize, kNoteTextColor);
         diskLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         row->AddChild(diskLabel_);
-        row->AddChild(MakeButton("uai-lm-open-folder", "Open folder", 110, [this]() { OnOpenFolder(); }));
+        row->AddChild(MakeButton("uai-lm-open-folder", Tr("Open folder"), 110, [this]() { OnOpenFolder(); }));
         body.AddChild(row);
     }
 }
@@ -317,14 +318,14 @@ void UltraAILocalModelsPage::Refresh() {
     if (!alive_ || !alive_->load()) return;
     LocalRuntime& rt = LocalRuntime::Instance();
     const HardwareProfile& hw = rt.Hardware();
-    std::string line = "This computer: " + Bytes(hw.memoryBytes) + " memory";
-    if (hw.physicalCores) line += ", " + std::to_string(hw.physicalCores) + " cores";
+    std::string line = TrF("This computer: {0} memory", Bytes(hw.memoryBytes));
+    if (hw.physicalCores) line += ", " + TrN("{n} core", "{n} cores", hw.physicalCores);
     for (const auto& gpu : hw.gpus) {
         line += ", " + (gpu.model.empty() ? gpu.vendor : gpu.model);
         if (gpu.videoMemoryBytes) line += " (" + Bytes(gpu.videoMemoryBytes) + ")";
     }
-    if (hw.gpus.empty()) line += ", no GPU found";
-    if (!hw.accelerators.empty()) line += " - " + AcceleratorLabel(hw.accelerators.front()) + " by default";
+    if (hw.gpus.empty()) line += Tr(", no GPU found");
+    if (!hw.accelerators.empty()) line += " - " + TrF("{0} by default", AcceleratorLabel(hw.accelerators.front()));
     if (hardwareLabel_) hardwareLabel_->SetText(line);
 
     const LocalRuntimeSettings s = rt.GetSettings();
@@ -366,7 +367,7 @@ void UltraAILocalModelsPage::RefreshEngine() {
     if (accelDropdown_) {
         accelDropdown_->ClearItems();
         accelIds_.clear();
-        std::string autoLabel = "Automatic";
+        std::string autoLabel = Tr("Automatic");
         EngineBundleInfo chosen;
         if (rt.ChooseBundle("llama-server", chosen)) {
             autoLabel += " (" + AcceleratorLabel(chosen.accelerator) + ")";
@@ -396,26 +397,25 @@ void UltraAILocalModelsPage::RefreshEngine() {
     EngineBundleInfo chosen;
     const bool haveChoice = rt.ChooseBundle("llama-server", chosen);
     if (!llama) {
-        text = "Engine: the gallery has no llama-server for this build.";
+        text = Tr("Engine: the gallery has no llama-server for this build.");
     } else if (!haveChoice) {
-        text = "Engine: llama-server " + llama->version + " - no build for " + hw.platform +
-               " in the gallery.";
+        text = TrF("Engine: llama-server {0} - no build for {1} in the gallery.", llama->version, hw.platform);
     } else {
         installed = chosen.installed;
-        text = "Engine: llama-server " + llama->version + " - " + AcceleratorLabel(chosen.accelerator) +
-               (installed ? ", installed"
-                          : ", not installed (" + Bytes(chosen.sizeBytes) +
-                                ", downloaded with the first model)");
+        text = installed ? TrF("Engine: llama-server {0} - {1}, installed", llama->version,
+                               AcceleratorLabel(chosen.accelerator))
+                         : TrF("Engine: llama-server {0} - {1}, not installed ({2}, downloaded with the first model)",
+                               llama->version, AcceleratorLabel(chosen.accelerator), Bytes(chosen.sizeBytes));
         // Other installed bundles are worth a word: they take disk.
         for (const auto& b : llama->bundles) {
             if (b.installed && b.accelerator != chosen.accelerator) {
-                text += "; " + AcceleratorLabel(b.accelerator) + " also installed";
+                text += "; " + TrF("{0} also installed", AcceleratorLabel(b.accelerator));
             }
         }
     }
     if (engineLabel_) engineLabel_->SetText(text);
     if (engineButton_) {
-        engineButton_->SetText(installed ? "Remove engine" : "Install engine");
+        engineButton_->SetText(installed ? Tr("Remove engine") : Tr("Install engine"));
         engineButton_->SetDisabled(!haveChoice || !activeJobId_.empty() || busy_);
         engineButton_->RequestRedraw();
     }
@@ -436,15 +436,15 @@ void UltraAILocalModelsPage::RefreshTable() {
 
     std::vector<MultiColumnListItem> items;
     for (const auto& m : rows_) {
-        std::string state = m.running ? "Running" : m.installed ? "Installed" : "Not installed";
-        if (m.fit == ModelFit::TooLarge && !m.installed) state = "Too large";
+        std::string state = m.running ? Tr("Running") : m.installed ? Tr("Installed") : Tr("Not installed");
+        if (m.fit == ModelFit::TooLarge && !m.installed) state = Tr("Too large");
         std::string name = m.displayName;
-        if (m.source == LocalModelSource::File) name += " (your file)";
-        if (m.source == LocalModelSource::HuggingFace) name += " (Hugging Face)";
+        if (m.source == LocalModelSource::File) name = TrF("{0} (your file)", name);
+        if (m.source == LocalModelSource::HuggingFace) name = TrF("{0} (Hugging Face)", name);
         MultiColumnListItem item({name, CapabilityLabel(m.capability), Bytes(m.sizeBytes),
                                   FitLabel(m.fit), state});
         item.tooltip = m.description.empty() ? m.displayName : m.description;
-        if (!m.license.empty()) item.SetCellTooltip(0, "Licence: " + m.license +
+        if (!m.license.empty()) item.SetCellTooltip(0, TrF("Licence: {0}", m.license) +
                                                        (m.description.empty() ? "" : "\n" + m.description));
         item.SetCellTooltip(3, FitTooltip(m.fit));
         if (m.installed) item.SetCellTooltip(4, m.installedPath);
@@ -483,10 +483,11 @@ void UltraAILocalModelsPage::RefreshDisk() {
     LocalRuntime& rt = LocalRuntime::Instance();
     const LocalRuntimeSettings s = rt.GetSettings();
     const uint64_t used = rt.DiskUsedBytes();
-    std::string text = used ? "Disk: " + Bytes(used) + " used" : std::string("Disk: nothing used yet");
-    if (s.diskCapBytes) text += " of a " + Bytes(s.diskCapBytes) + " limit";
+    std::string text = used ? (s.diskCapBytes ? TrF("Disk: {0} used of a {1} limit", Bytes(used), Bytes(s.diskCapBytes))
+                                             : TrF("Disk: {0} used", Bytes(used)))
+                            : Tr("Disk: nothing used yet");
     const std::string published = rt.GalleryPublished();
-    if (!published.empty()) text += "; catalogue of " + published;
+    if (!published.empty()) text += "; " + TrF("catalogue of {0}", published);
     diskLabel_->SetText(text);
 }
 
@@ -494,20 +495,19 @@ void UltraAILocalModelsPage::ShowProgress(const InstallProgress& p) {
     if (!progressRow_) return;
     std::string text = p.what;
     switch (p.state) {
-        case InstallProgress::State::Queued:      text += ": queued"; break;
+        case InstallProgress::State::Queued:      text = TrF("{0}: queued", p.what); break;
         case InstallProgress::State::Downloading: {
-            text += ": downloading";
             if (p.bytesTotal) {
                 const int percent = static_cast<int>(p.bytesDone * 100 / p.bytesTotal);
-                text += " " + std::to_string(percent) + "% of " + Bytes(p.bytesTotal);
+                text = TrF("{0}: downloading {1}% of {2}", p.what, percent, Bytes(p.bytesTotal));
                 if (progressBar_) progressBar_->SetValue(percent);
             } else {
-                text += " " + Bytes(p.bytesDone);
+                text = TrF("{0}: downloading {1}", p.what, Bytes(p.bytesDone));
             }
             break;
         }
-        case InstallProgress::State::Verifying:   text += ": verifying"; if (progressBar_) progressBar_->SetValue(100); break;
-        case InstallProgress::State::Unpacking:   text += ": unpacking"; break;
+        case InstallProgress::State::Verifying:   text = TrF("{0}: verifying", p.what); if (progressBar_) progressBar_->SetValue(100); break;
+        case InstallProgress::State::Unpacking:   text = TrF("{0}: unpacking", p.what); break;
         default: break;
     }
     if (progressLabel_) progressLabel_->SetText(text);
@@ -549,19 +549,19 @@ InstallProgressCallback UltraAILocalModelsPage::ProgressSink() {
                 case InstallProgress::State::Done:
                     activeJobId_.clear();
                     HideProgress();
-                    SetStatus(p.what + " installed.");
+                    SetStatus(TrF("{0} installed.", p.what));
                     Refresh();
                     break;
                 case InstallProgress::State::Failed:
                     activeJobId_.clear();
                     HideProgress();
-                    SetStatus("Failed: " + p.error);
+                    SetStatus(TrF("Failed: {0}", p.error));
                     Refresh();
                     break;
                 case InstallProgress::State::Cancelled:
                     activeJobId_.clear();
                     HideProgress();
-                    SetStatus(p.what + ": cancelled. A partial download is kept and resumed next time.");
+                    SetStatus(TrF("{0}: cancelled. A partial download is kept and resumed next time.", p.what));
                     Refresh();
                     break;
                 default:
@@ -590,7 +590,7 @@ void UltraAILocalModelsPage::OnInstallEngine() {
         const std::string accelerator = chosen.accelerator;
         RunThenRefresh([accelerator]() {
             const Error error = LocalRuntime::Instance().RemoveEngine("llama-server", accelerator);
-            return error.IsOk() ? std::string("Engine removed.") : error.message;
+            return error.IsOk() ? Tr("Engine removed.") : error.message;
         });
         return;
     }
@@ -623,7 +623,7 @@ void UltraAILocalModelsPage::OnRemove() {
     const std::string id = m->id, name = m->displayName;
     RunThenRefresh([id, name]() {
         const Error error = LocalRuntime::Instance().RemoveModel(id);
-        return error.IsOk() ? name + " removed." : error.message;
+        return error.IsOk() ? TrF("{0} removed.", name) : error.message;
     });
 }
 
@@ -633,7 +633,7 @@ void UltraAILocalModelsPage::OnStop() {
     const std::string id = m->id, name = m->displayName;
     RunThenRefresh([id, name]() {
         LocalRuntime::Instance().StopModel(id);
-        return name + " stopped.";
+        return TrF("{0} stopped.", name);
     });
 }
 
@@ -643,16 +643,16 @@ void UltraAILocalModelsPage::OnForget() {
     const std::string id = m->id, name = m->displayName;
     RunThenRefresh([id, name]() {
         const Error error = LocalRuntime::Instance().ForgetModel(id);
-        return error.IsOk() ? name + " forgotten." : error.message;
+        return error.IsOk() ? TrF("{0} forgotten.", name) : error.message;
     });
 }
 
 void UltraAILocalModelsPage::OnAddFile() {
     FileDialogOptions opts;
-    opts.SetTitle("Add a model file")
+    opts.SetTitle(Tr("Add a model file"))
         .SetParentWindow(parent_)
-        .AddFilter("GGUF models", std::vector<std::string>{"gguf"})
-        .AddFilter("All files", "*");
+        .AddFilter(Tr("GGUF models"), std::vector<std::string>{"gguf"})
+        .AddFilter(Tr("All files"), "*");
     UltraCanvasFileLoader::OpenFileDialog(
         opts, [this, alive = alive_](DialogResult result, const std::string& path) {
             if (!alive->load()) return;
@@ -666,7 +666,7 @@ void UltraAILocalModelsPage::OnAddFile() {
             const std::string capability = lower.find("embed") != std::string::npos ? "embeddings" : "textllm";
             std::string id;
             const Error error = LocalRuntime::Instance().AddModelFile(path, capability, "", id);
-            SetStatus(error.IsOk() ? "Added " + path + " as a " + CapabilityLabel(capability) + " model."
+            SetStatus(error.IsOk() ? TrF("Added {0} as a {1} model.", path, CapabilityLabel(capability))
                                    : error.message);
             Refresh();
         });
@@ -674,9 +674,9 @@ void UltraAILocalModelsPage::OnAddFile() {
 
 void UltraAILocalModelsPage::OnAddHuggingFace() {
     UltraCanvasDialogManager::ShowInputDialog(
-        "The repository and the GGUF file in it, as \"organisation/repository:file.gguf\". "
-        "Add \"embeddings\" after a space for an embedding model.",
-        "Add a model from Hugging Face", "", InputType::Text,
+        Tr("The repository and the GGUF file in it, as \"organisation/repository:file.gguf\". "
+        "Add \"embeddings\" after a space for an embedding model."),
+        Tr("Add a model from Hugging Face"), "", InputType::Text,
         [this, alive = alive_](DialogResult result, const std::string& text) {
             if (!alive->load()) return;
             if (result != DialogResult::OK || text.empty()) return;
@@ -688,18 +688,18 @@ void UltraAILocalModelsPage::OnAddHuggingFace() {
             }
             const size_t colon = spec.find(':');
             if (colon == std::string::npos) {
-                SetStatus("Write it as organisation/repository:file.gguf");
+                SetStatus(Tr("Write it as organisation/repository:file.gguf"));
                 return;
             }
             const std::string repo = spec.substr(0, colon), file = spec.substr(colon + 1);
             busy_ = true;
             RefreshButtons();
-            SetStatus("Asking Hugging Face about " + file + "...");
+            SetStatus(TrF("Asking Hugging Face about {0}…", file));
             std::thread worker([this, alive, repo, file, capability]() {
                 std::string id;
                 const Error error = LocalRuntime::Instance().AddHuggingFaceModel(repo, file, capability, "", id);
                 const std::string status = error.IsOk()
-                    ? "Added " + file + " from " + repo + "; select it and Install."
+                    ? TrF("Added {0} from {1}; select it and Install.", file, repo)
                     : error.message;
                 OnUiThread([this, alive, status]() {
                     if (!alive->load()) return;
@@ -716,8 +716,8 @@ void UltraAILocalModelsPage::OnAddHuggingFace() {
 void UltraAILocalModelsPage::OnRefreshCatalogue() {
     RunThenRefresh([]() {
         const Error error = LocalRuntime::Instance().RefreshGallery();
-        return error.IsOk() ? std::string("Catalogue refreshed.")
-                            : "Could not refresh the catalogue: " + error.message;
+        return error.IsOk() ? Tr("Catalogue refreshed.")
+                            : TrF("Could not refresh the catalogue: {0}", error.message);
     });
 }
 

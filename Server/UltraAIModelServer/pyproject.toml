@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ultraai-model-server"
-version = "0.1.0"
+version = "0.2.0"
 description = "The UltraAI model server: the engines, models and topics UltraAI clients install from, managed by UltraAI ServerAdmin"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,6 +12,7 @@ license = { text = "MIT" }
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
+    "cryptography>=42",
 ]
 
 [project.optional-dependencies]

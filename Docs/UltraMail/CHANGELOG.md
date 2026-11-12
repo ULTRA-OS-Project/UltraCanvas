@@ -1,3 +1,10 @@
+#### 2026-11-12 *0.10.91*
+- **The warning strip can be translated in full.** Its advice ("Do not sign
+  in, pay or reply ..."), the footnotes that say what phishing, a romance
+  scam, a loan scam or a cryptocurrency scam is, and the title of the caution
+  on crypto mail now go through `Tr`, so they are in UltraMail's English set
+  and follow the language chosen; they were English whatever the language.
+
 #### 2026-11-12 *0.10.90*
 - **The phishing warning reads as a list.** Under *Mismatch of domains* the
   sender's domain, the button's (or link's) domain and the scan's reasons are

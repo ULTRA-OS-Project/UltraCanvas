@@ -33,6 +33,9 @@ OS/WASM/
 ├── UltraCanvasWASMNetUrl.cpp          # UltraNetUrl.h over the WHATWG URL parser (UltraNet is off)
 ├── build-wasm-sysroot.sh              # Cross-compiles the dependency stack
 ├── patches/                           # wasm fixes applied to the deps by the script
+├── runtime/                           # The UltraCanvas runtime: apps as side modules on one shared
+│                                      # UltraCanvas, its extension and a sample site
+│                                      # (Docs/UltraCanvas/UltraCanvasWasmRuntime.md)
 └── demo/                              # Browser validation apps: wasm-demo, ultraos-frontpage
 ```
 
