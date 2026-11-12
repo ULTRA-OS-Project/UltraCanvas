@@ -99,12 +99,27 @@ jobs:
         if: runner.os == 'Windows' && matrix.accel == 'vulkan'
         shell: pwsh
         run: |
+          # LunarG names Windows on ARM "warm", with its own latest version.
           $arch = if ("${{ matrix.platform }}" -eq "win-arm64") { "ARM64" } else { "X64" }
-          $version = (Invoke-WebRequest -UseBasicParsing "https://vulkan.lunarg.com/sdk/latest/windows.txt").Content.Trim()
+          $platforms = if ($arch -eq "ARM64") { @("warm", "windows") } else { @("windows") }
           $installer = "$env:RUNNER_TEMP\VulkanSDK.exe"
-          Invoke-WebRequest -UseBasicParsing -OutFile $installer "https://sdk.lunarg.com/sdk/download/$version/windows/vulkansdk-windows-$arch-$version.exe"
+          $got = $null
+          foreach ($platform in $platforms) {
+            try { $v = (Invoke-WebRequest -UseBasicParsing "https://vulkan.lunarg.com/sdk/latest/$platform.txt").Content.Trim() } catch { continue }
+            foreach ($url in @("https://sdk.lunarg.com/sdk/download/$v/$platform/vulkansdk-windows-$arch-$v.exe",
+                               "https://sdk.lunarg.com/sdk/download/$v/$platform/vulkan_sdk.exe")) {
+              try {
+                Invoke-WebRequest -UseBasicParsing -OutFile $installer $url
+                $got = $url; $version = $v; break
+              } catch { Write-Host "not there: $url" }
+            }
+            if ($got) { break }
+          }
+          if (-not $got) { throw "no Vulkan SDK installer for $arch" }
+          Write-Host "Vulkan SDK $version from $got"
           & $installer --accept-licenses --default-answer --confirm-command install | Out-Host
           $sdk = "C:\VulkanSDK\$version"
+          if (-not (Test-Path $sdk)) { $sdk = (Get-ChildItem C:\VulkanSDK -Directory | Sort-Object Name | Select-Object -Last 1).FullName }
           if (-not (Test-Path "$sdk\Bin\glslc.exe")) { throw "the Vulkan SDK $version has no glslc at $sdk" }
           "VULKAN_SDK=$sdk" | Out-File -Append $env:GITHUB_ENV
           "$sdk\Bin" | Out-File -Append $env:GITHUB_PATH
