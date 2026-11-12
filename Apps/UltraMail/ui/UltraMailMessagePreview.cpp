@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.23.0 - the warning strip in markup: the domain mismatch and the scan's
+//                   reasons as a numbered list, the domains bold in the strip's colour;
+//                   each kind of strip can be hidden (Settings > Display > Email warnings)
 // Version: 0.22.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.21.1 - the body's file through CachedBodyPath (its own copy of the
 //                  folder-directory rule went stale)
@@ -68,7 +71,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailStorage.h"
@@ -1175,6 +1178,75 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
     return sec;
 }
 
+namespace {
+
+// Text for the warning strip's label, which reads Pango markup: <, > and &
+// written as entities.
+std::string WarningMarkup(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char ch : text) {
+        switch (ch) {
+            case '&': out += "&amp;"; break;
+            case '<': out += "&lt;";  break;
+            case '>': out += "&gt;";  break;
+            default:  out += ch;      break;
+        }
+    }
+    return out;
+}
+
+bool IsHostChar(char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '.' ||
+           (static_cast<unsigned char>(ch) & 0x80);
+}
+
+// Whether text[at, at + len) is a whole host name, not part of a longer one:
+// "woo.com" is not inside "mywoo.com" or "trk.woo.com", but is in "woo.com." at
+// the end of a sentence.
+bool WholeHost(const std::string& text, std::size_t at, std::size_t len) {
+    if (at > 0 && IsHostChar(text[at - 1])) return false;
+    const std::size_t end = at + len;
+    if (end >= text.size() || !IsHostChar(text[end])) return true;
+    return text[end] == '.' && (end + 1 >= text.size() || !IsHostChar(text[end + 1]));
+}
+
+// `text` as markup, with every occurrence of the domains in `domains` bold and
+// in `colour` - the names the reader should compare stand out of the sentence.
+std::string HighlightDomains(const std::string& text, std::vector<std::string> domains,
+                             const Color& colour) {
+    domains.erase(std::remove_if(domains.begin(), domains.end(),
+                                 [](const std::string& d) { return d.empty(); }),
+                  domains.end());
+    // The longest first, so "trk.woo.com" is not cut at a shorter "woo.com".
+    std::sort(domains.begin(), domains.end(),
+              [](const std::string& a, const std::string& b) { return a.size() > b.size(); });
+    const std::string open = "<span foreground=\"" + colour.ToHexString() + "\"><b>";
+    std::string out;
+    std::size_t pos = 0;
+    while (pos < text.size()) {
+        std::size_t best = std::string::npos;
+        std::size_t bestLen = 0;
+        for (const std::string& d : domains) {
+            std::size_t at = text.find(d, pos);
+            while (at != std::string::npos && !WholeHost(text, at, d.size()))
+                at = text.find(d, at + 1);
+            if (at != std::string::npos && (at < best || (at == best && d.size() > bestLen))) {
+                best = at;
+                bestLen = d.size();
+            }
+        }
+        if (best == std::string::npos) break;
+        out += WarningMarkup(text.substr(pos, best - pos));
+        out += open + WarningMarkup(text.substr(best, bestLen)) + "</b></span>";
+        pos = best + bestLen;
+    }
+    if (pos < text.size()) out += WarningMarkup(text.substr(pos));
+    return out;
+}
+
+} // namespace
+
 void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                                          const MessageSecurity& security,
                                          const std::string& raw) {
@@ -1205,10 +1277,11 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     // unknown senders are the badge's business, not a banner's - except that
     // any mail about crypto gets a word of caution, whoever sent it.
     if (!status.Dangerous()) {
-        if (!crypto) {
+        if (!crypto || !warningStrip_.cryptoCaution) {
             warning_->SetVisible(false);
             return;
         }
+        warningText_->SetTextIsMarkup(false);
         warning_->SetBackgroundColor(Theme::TrustSpamSoft());
         warning_->SetBorders(1.0f, Theme::TrustSpam(), Theme::kControlRadius);
         warningTitle_->SetTextColor(Theme::TrustSpam());
@@ -1227,6 +1300,19 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     if (security.level >= ThreatLevel::Suspicious && GetThreatScanOptions().phishing)
         mismatch = FindDomainMismatchInRaw(raw);
     const bool phishing = mismatch.found;
+
+    // Settings > Display > Email warnings: the strip for the kind told (the
+    // same order as the title below) may be switched off. The badge still says.
+    const bool kindShown = romance                         ? warningStrip_.romance
+                         : phishing || lookalike || webPage ? warningStrip_.phishing
+                         : cryptoScam                      ? warningStrip_.cryptoScam
+                         : loan                            ? warningStrip_.loan
+                         : status.cls == SenderClass::Scam ? warningStrip_.scam
+                                                           : warningStrip_.suspicious;
+    if (!kindShown) {
+        warning_->SetVisible(false);
+        return;
+    }
 
     // The scam the scan named comes first: a love letter that links to a
     // "verification" site is a romance scam, and is told as one.
@@ -1248,57 +1334,92 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
          : blocked ? Tr("You blocked this sender")
               : Tr("Parts of this message do not add up")));
 
+    // The strip's text is markup: the domains the reader should compare are
+    // bold and in the strip's colour wherever they appear, and the evidence is
+    // a numbered list - the sender's domain, where the button goes, then each
+    // reason the scan gave.
+    const std::vector<std::string> domains = {mismatch.senderDomain, mismatch.linkDomain};
+    const auto mark = [&](const std::string& plain) {
+        return HighlightDomains(plain, domains, accent);
+    };
     std::string text;
+    int item = 0;
+    const auto numbered = [&item, &mark](const std::string& plain) {
+        return "  " + std::to_string(++item) + ".  " + mark(plain) + "\n";
+    };
     if (phishing) {
-        text = Tr("Mismatch of domains") + "\n" +
-               TrF("Sender domain: {0}", mismatch.senderDomain) + "\n" +
-               (mismatch.isButton ? TrF("Button domain: {0}", mismatch.linkDomain)
-                                  : TrF("Link domain: {0}", mismatch.linkDomain));
+        text = "<b>" + WarningMarkup(Tr("Mismatch of domains")) + ":</b>\n";
+        text += numbered(TrF("Sender domain: {0}", mismatch.senderDomain));
+        std::string link = mismatch.isButton ? TrF("Button domain: {0}", mismatch.linkDomain)
+                                             : TrF("Link domain: {0}", mismatch.linkDomain);
         if (!mismatch.linkText.empty())
-            text += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
-        text += "\n";
-    } else if (!onlyBlocked) {
-        text = status.reason;
+            link += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
+        text += numbered(link);
+    } else if (!onlyBlocked && !status.reason.empty()) {
+        text = mark(status.reason) + "\n";
     }
-    if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
+    // The scan's reasons, "• one\n• two": numbered on from the domains when
+    // there is a mismatch, as bullets otherwise.
+    if (!security.reason.empty()) {
+        std::size_t pos = 0;
+        while (pos <= security.reason.size()) {
+            std::size_t nl = security.reason.find('\n', pos);
+            if (nl == std::string::npos) nl = security.reason.size();
+            std::string line = security.reason.substr(pos, nl - pos);
+            pos = nl + 1;
+            if (line.empty()) continue;
+            static const std::string bullet = "\xE2\x80\xA2 ";   // "• "
+            const bool isBullet = line.compare(0, bullet.size(), bullet) == 0;
+            if (phishing && isBullet)
+                text += numbered(line.substr(bullet.size()));
+            else
+                text += mark(line) + "\n";
+        }
+    }
+    std::string advice;
     if (onlyBlocked)
-        text += "\nRight-click the sender to unblock them. \"Mark as spam\" moves the "
-                "message to the junk folder.";
+        advice = "Right-click the sender to unblock them. \"Mark as spam\" moves the "
+                 "message to the junk folder.";
     else if (loan)
-        text += "\nDo not pay any fee, insurance or charge to receive a loan, and do not "
-                "send copies of your passport or bank details. Ask your own bank if you need "
-                "credit.";
+        advice = "Do not pay any fee, insurance or charge to receive a loan, and do not "
+                 "send copies of your passport or bank details. Ask your own bank if you need "
+                 "credit.";
     else if (webPage && !romance)
-        text += "\nDo not open the attached web page, and do not sign in or pay on a page it "
-                "opens. If you are unsure whether you owe something, contact the company at an "
-                "address you already know.";
+        advice = "Do not open the attached web page, and do not sign in or pay on a page it "
+                 "opens. If you are unsure whether you owe something, contact the company at an "
+                 "address you already know.";
     else if (romance)
-        text += "\nDo not send money, gift cards or crypto to someone you only know from "
-                "email or the internet, and do not sign up or give card details on a site "
-                "they send you to.";
+        advice = "Do not send money, gift cards or crypto to someone you only know from "
+                 "email or the internet, and do not sign up or give card details on a site "
+                 "they send you to.";
     else
-        text += "\nDo not sign in, pay or reply through the links in this message unless "
-                "you are sure who sent it.";
-    if (crypto && !romance) text += std::string("\n") + cryptoAdvice;
+        advice = "Do not sign in, pay or reply through the links in this message unless "
+                 "you are sure who sent it.";
+    if (!text.empty()) text += "\n";   // a blank line between the evidence and the advice
+    text += mark(advice);
+    if (crypto && !romance) text += "\n" + WarningMarkup(cryptoAdvice);
+    std::string footnote;
     if (romance)
-        text += "\n\n* Romance scams are love letters from strangers - a made-up "
-                "profile, someone else's photos, \"destiny\" - written to win your trust "
-                "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
-                "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
-                "search of the photo often finds it under another name.";
+        footnote = "* Romance scams are love letters from strangers - a made-up "
+                   "profile, someone else's photos, \"destiny\" - written to win your trust "
+                   "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
+                   "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
+                   "search of the photo often finds it under another name.";
     else if (phishing || lookalike || webPage)
-        text += "\n\n* Phishing emails are emails that try to get your credentials "
-                "to hack your accounts on other websites.";
+        footnote = "* Phishing emails are emails that try to get your credentials "
+                   "to hack your accounts on other websites.";
     else if (loan && !cryptoScam)
-        text += "\n\n* Loan scams offer credit or \"project funding\" - often "
-                "millions at a few percent - to strangers by email. Only a bank may lend, and "
-                "banks do not write to people out of the blue: the \"lender\" collects a "
-                "processing fee, an insurance or a transfer charge, and the loan never comes.";
+        footnote = "* Loan scams offer credit or \"project funding\" - often "
+                   "millions at a few percent - to strangers by email. Only a bank may lend, and "
+                   "banks do not write to people out of the blue: the \"lender\" collects a "
+                   "processing fee, an insurance or a transfer charge, and the loan never comes.";
     else if (cryptoScam)
-        text += "\n\n* Cryptocurrency scams ask for a wallet's recovery phrase, "
-                "demand payment to a wallet address (blackmail, fake invoices) or promise "
-                "profits on an \"investment platform\" that shows made-up gains and keeps "
-                "what is paid in.";
+        footnote = "* Cryptocurrency scams ask for a wallet's recovery phrase, "
+                   "demand payment to a wallet address (blackmail, fake invoices) or promise "
+                   "profits on an \"investment platform\" that shows made-up gains and keeps "
+                   "what is paid in.";
+    if (!footnote.empty()) text += "\n\n" + WarningMarkup(footnote);
+    warningText_->SetTextIsMarkup(true);
     warningText_->SetText(text);
     warning_->SetVisible(true);
 }

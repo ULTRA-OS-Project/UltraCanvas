@@ -1,3 +1,13 @@
+#### 2026-11-12 *0.10.90*
+- **The phishing warning reads as a list.** Under *Mismatch of domains* the
+  sender's domain, the button's (or link's) domain and the scan's reasons are
+  numbered 1, 2, 3 ..., and each mention of the two domains is bold and in the
+  warning's colour, so the names to compare stand out.
+- **Settings > Display > Email warnings.** One switch per warning the strip
+  above a message shows: phishing, scam, love scam, loan scam, cryptocurrency
+  scam, the caution on crypto mail, and other warnings. Switching one off only
+  hides the strip - the message is still checked and its badge still says so.
+
 #### 2026-11-12 *0.10.89*
 - **Account settings and the other dialogs no longer stay on top of other
   programs.** They sat above every application's windows and could not be

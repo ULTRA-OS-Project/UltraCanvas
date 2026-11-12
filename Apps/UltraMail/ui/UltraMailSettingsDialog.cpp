@@ -19,6 +19,8 @@
 // Display > Links (a link's address in the status bar or in a tooltip) and
 // Display > Notifications (a notification on screen when new mail arrives),
 // Display > Treeview (the folder tree lists the current account or all),
+// Display > Email warnings (which kinds of warning the strip above a
+// message shows),
 // Handling > Email send notification (a sent message reported in a popup
 // window or in the status bar) and
 // Warnings > Spam/scam warnings (which kinds of warning the content scan gives)
@@ -29,6 +31,8 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.20.0 - Display > Email warnings: which kinds of warning the strip above
+//                   a message shows (phishing, scam, love scam, loan, crypto, other)
 // Version: 1.19.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation)
 // Version: 1.18.0 - Mail > Proxy: the proxy the mail servers are reached through,
 //                  shared by every ULTRA OS application (MakeProxySettingsPage)
@@ -59,7 +63,7 @@
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
@@ -132,6 +136,7 @@ namespace {
     constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageNotify      = "display/notifications";
     constexpr const char* kPageTreeview    = "display/treeview";
+    constexpr const char* kPageEmailWarnings = "display/email-warnings";
     constexpr const char* kPageHandling    = "handling";
     constexpr const char* kPageSendNotify  = "handling/send-notification";
     constexpr const char* kPageWarnings    = "warnings";
@@ -230,6 +235,10 @@ namespace {
         std::shared_ptr<UltraCanvasRadio> treeCurrentRadio;
         std::shared_ptr<UltraCanvasRadio> treeAllRadio;
         UltraCanvasRadioGroup             treeContentGroup;
+
+        // Display > Email warnings: one box per kind of warning strip
+        std::vector<std::pair<bool WarningStripOptions::*,
+                              std::shared_ptr<UltraCanvasCheckbox>>> stripBoxes;
 
         // Handling > Email send notification
         std::shared_ptr<UltraCanvasRadio> sendPopupRadio;
@@ -487,6 +496,8 @@ namespace {
                                             ? d->sendStatusRadio : d->sendPopupRadio);
         for (const auto& [option, box] : d->warningBoxes)
             if (box) box->SetChecked(p.scamWarnings.*option);
+        for (const auto& [option, box] : d->stripBoxes)
+            if (box) box->SetChecked(p.warningStrip.*option);
         if (d->trustedSendersInput)
             d->trustedSendersInput->SetTags(ListTags(p.senderLists.trusted));
         if (d->blockedSendersInput)
@@ -1136,6 +1147,58 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > EMAIL WARNINGS =====
+    std::shared_ptr<UltraCanvasContainer> BuildEmailWarningsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-email-warnings", Tr("Email warnings"),
+                Tr("Show the warning above a message:"));
+
+        struct Kind { const char* id; std::string text; bool WarningStripOptions::* option; };
+        const Kind kinds[] = {
+            { "um-set-strip-phishing", Tr("Show phishing warning"),
+              &WarningStripOptions::phishing },
+            { "um-set-strip-scam", Tr("Show scam warning (advance-fee letters, letters in an "
+                                      "agency's name)"),
+              &WarningStripOptions::scam },
+            { "um-set-strip-romance", Tr("Show love-scam (romance scam) warning"),
+              &WarningStripOptions::romance },
+            { "um-set-strip-loan", Tr("Show loan-scam warning"),
+              &WarningStripOptions::loan },
+            { "um-set-strip-crypto-scam", Tr("Show cryptocurrency-scam warning"),
+              &WarningStripOptions::cryptoScam },
+            { "um-set-strip-crypto-caution", Tr("Show the caution on mail about cryptocurrency"),
+              &WarningStripOptions::cryptoCaution },
+            { "um-set-strip-suspicious", Tr("Show other warnings (blocked sender, suspicious "
+                                            "message)"),
+              &WarningStripOptions::suspicious },
+        };
+        d->stripBoxes.clear();
+        for (const Kind& kind : kinds) {
+            bool WarningStripOptions::* option = kind.option;
+            auto box = MakeCheckbox(kind.id, kind.text, d->prefs->warningStrip.*option,
+                    [d, option](bool on) {
+                if (!d->prefs) return;
+                d->prefs->warningStrip.*option = on;
+                ApplyAndSave(d);
+            });
+            d->stripBoxes.emplace_back(option, box);
+            parts.body->AddChild(box);
+        }
+
+        d->resets[kPageEmailWarnings] = PageReset{ "Show all", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->warningStrip = WarningStripOptions{};
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-email-warnings-note1",
+                Tr("This only hides the strip above the message. The message is still "
+                "checked, and its badge beside the sender still turns red or orange - "
+                "to stop looking for a kind altogether, use Warnings > Spam/scam "
+                "warnings."));
+        return parts.page;
+    }
+
     // ===== DISPLAY > NOTIFICATIONS =====
     std::shared_ptr<UltraCanvasContainer> BuildNotificationsPage(DialogState* d) {
         PageParts parts = MakePage("um-set-page-notify", Tr("Notifications"),
@@ -1500,6 +1563,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageLinks, Tr("Links"));
         AddTreeNode(d, kPageDisplay, kPageNotify, Tr("Notifications"));
         AddTreeNode(d, kPageDisplay, kPageTreeview, Tr("Treeview"));
+        AddTreeNode(d, kPageDisplay, kPageEmailWarnings, Tr("Email warnings"));
         AddTreeNode(d, "settings", kPageHandling, Tr("Handling"), "section-handling");
         AddTreeNode(d, kPageHandling, kPageSendNotify, Tr("Email send notification"));
         AddTreeNode(d, "settings", kPageWarnings, Tr("Warnings"), "section-warnings");
@@ -1533,6 +1597,7 @@ namespace {
         AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageNotify, BuildNotificationsPage(d));
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
+        AddPage(d, kPageEmailWarnings, BuildEmailWarningsPage(d));
         AddPage(d, kPageSendNotify, BuildSendNotificationPage(d));
         AddPage(d, kPageScamWarnings, BuildScamWarningsPage(d));
         AddPage(d, kPageSenderLists, BuildSenderListsPage(d));
