@@ -8,6 +8,7 @@
 // use - so the window and the command line never disagree. The slow ones
 // (a new key's Argon2id seal, a publish, a translation) run on a worker
 // thread and report through UltraCanvasApplication::PostToUIThread.
+// Version: 0.4.0 - the Marketplace page and the notices banner
 // Version: 0.3.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
@@ -16,6 +17,7 @@
 #pragma once
 
 #include "AdminDatabase.h"
+#include "Market.h"
 #include "PackageStore.h"
 
 #include "UltraCanvasApplication.h"
@@ -85,6 +87,15 @@ private:
     void UploadNow();
     void BuildAffiliatesPage();
     void RefreshAffiliatesPage();
+    // The marketplace (Market.h): the standing, the notices with their
+    // acknowledgement, the terms with their acceptance, a submission, the
+    // submissions and the reports. The service is asked on a worker; the
+    // unacknowledged notices show as a banner above every page.
+    void BuildMarketPage();
+    void RefreshMarketPage();                // asks the service (a job)
+    void ShowMarketPage();                   // fills the page from what was fetched
+    void UpdateNoticesBanner();
+    Result<std::vector<uint8_t>> MarketSeed();   // the key opened with the page's passphrase
 
     // ----- the component form (AdminComponentPage.cpp) -----
     void BuildComponentPage();
@@ -123,6 +134,17 @@ private:
     std::vector<UltraStore::Component> components_;
     std::vector<UltraStore::Publisher> publishers_;
     std::vector<KeyRecord> keys_;
+    // ----- the marketplace page's state (fetched on a worker) -----
+    std::string marketStanding_, marketError_;
+    std::vector<Notice> notices_;
+    bool haveTerms_ = false;
+    Terms terms_;
+    std::vector<std::string> submissionLines_, reportLines_;
+    std::shared_ptr<Container> noticesBanner_;
+    std::shared_ptr<Label> bannerLabel_, marketStandingLabel_, marketTermsLabel_, marketTermsText_;
+    std::shared_ptr<Container> noticesList_, submissionsList_, reportsList_;
+    std::shared_ptr<Dropdown> submitApp_;
+    std::shared_ptr<TextInput> marketPassphrase_, marketAcceptedBy_, submitAnswers_;
     std::shared_ptr<int> alive_ = std::make_shared<int>(1);
     std::thread worker_;
     std::atomic<bool> busy_{false};

@@ -23,11 +23,14 @@
 //   ultrastoreadmin translate [<id>] [--languages de fr ...] [--redo]
 //   ultrastoreadmin build [-o <catalog.json>]              the catalog, unsigned, for a look
 //   ultrastoreadmin publish <outdir> --key <id> [--passphrase <p>] [--no-copy]
+//   ultrastoreadmin market standing | submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]
+//   ultrastoreadmin market submissions | withdraw <submission> | notices [--all] | ack <notice> | terms [accept <version> --by <name>] | reports
 //   ultrastoreadmin --version | --help
 //
 // A passphrase comes from --passphrase, else ULTRASTOREADMIN_PASSPHRASE, else
 // a line on standard input.
 //
+// Version: 0.6.0 - market: the marketplace service (submit, notices, terms, standing, reports)
 // Version: 0.5.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.5.0 - sale sync
 // Version: 0.4.0 - affiliate, code, sale
@@ -43,6 +46,7 @@
 #include "PackageStore.h"
 #include "Translation.h"
 #include "Affiliates.h"
+#include "Market.h"
 #include "StoreQuery.h"
 #include "Uploader.h"
 
@@ -50,6 +54,7 @@
 #include "UltraStoreTypes.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCrypt/UltraCryptCore.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -105,6 +110,8 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "  code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]\n"
         "  code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>\n"
         "  sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list | sync [--from <url>] [--token <t>]\n"
+        "  market standing | submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]\n"
+        "  market submissions | withdraw <submission> | notices [--all] | ack <notice> | terms [accept <version> --by <name>] | reports\n"
         "  --version | --help\n"
         "\n"
         "Fields for `app set`: name publisher license homepage support_url privacy_url source_url icon\n"
@@ -861,6 +868,113 @@ int CmdSale(Store& store, const std::vector<std::string>& args) {
 
 } // namespace
 
+// market ...: the marketplace service (Market.h): the merchant's standing,
+// a submission signed with this backend's key, the notices and their
+// acknowledgement, the terms and their acceptance, the reports about us.
+int CmdMarket(Store& store, const std::vector<std::string>& args) {
+    if (!store.Open(false)) return 1;
+    const auto pos = Positional(args, {"--all"});
+    if (pos.size() < 2) return Usage(stderr);
+    const MarketSettings settings = MarketSettings::From(store.db);
+    if (!settings.Complete()) return Fail("The marketplace service is named in the settings: market.url and market.merchant_id (from the operator)");
+    std::vector<uint8_t> seed;
+    const std::string key = Option(args, "--key");
+    const auto opened = OpenKeySeed(store.db, key.empty() ? 0 : std::strtoll(key.c_str(), nullptr, 10), Passphrase(args));   // locale-ok: digits only
+    if (!opened) return Fail(opened.error);
+    seed = opened.Value();
+    MarketClient client(settings, seed);
+    UltraCrypt_SecureZero(seed.data(), seed.size());
+    if (pos[1] == "standing") {
+        const auto s = client.GetStanding();
+        if (!s) return Fail(s.error);
+        std::printf("%s (%s): %s, %d strike(s), terms in force %d, accepted %d%s\n", s.Value().name.c_str(), s.Value().id.c_str(), s.Value().standing.c_str(),
+                    s.Value().strikes, s.Value().termsInForce, s.Value().termsAccepted, s.Value().TermsDue() ? " - accept the terms: market terms accept <version> --by <name>" : "");
+        return 0;
+    }
+    if (pos[1] == "submit") {
+        if (pos.size() < 3) return Usage(stderr);
+        const auto component = store.db.GetComponent(pos[2]);
+        if (!component) return Fail(component.error);
+        const auto sent = client.Submit(component.Value(), Option(args, "--answers"));
+        if (!sent) return Fail(sent.error);
+        std::printf("submitted %s %s as %s: %s\n", sent.Value().app.c_str(), sent.Value().version.c_str(), sent.Value().id.c_str(), sent.Value().state.c_str());
+        for (const auto& [name, outcome] : sent.Value().checks) std::printf("  %-18s %s\n", name.c_str(), outcome.c_str());
+        return 0;
+    }
+    if (pos[1] == "submissions") {
+        const auto list = client.Submissions();
+        if (!list) return Fail(list.error);
+        const UltraCanvas::JSONValue& subs = list.Value().Get("submissions");
+        if (subs.GetSize() == 0) { std::printf("nothing submitted yet\n"); return 0; }
+        for (const UltraCanvas::JSONValue& sub : subs.GetElements()) {
+            std::printf("%s  %-32s %-10s %-18s %s", sub.Get("id").GetString().c_str(), sub.Get("app").GetString().c_str(), sub.Get("version").GetString().c_str(),
+                        sub.Get("state").GetString().c_str(), sub.Get("created_at").GetString().c_str());
+            const UltraCanvas::JSONValue& decisions = sub.Get("decisions");
+            if (decisions.GetSize() > 0) {
+                const UltraCanvas::JSONValue& last = decisions.At(decisions.GetSize() - 1);
+                std::printf("  %s%s", last.Get("action").GetString().c_str(), last.Get("message").GetString().empty() ? "" : (": " + last.Get("message").GetString()).c_str());
+            }
+            std::printf("\n");
+        }
+        return 0;
+    }
+    if (pos[1] == "withdraw") {
+        if (pos.size() < 3) return Usage(stderr);
+        if (const auto r = client.Withdraw(pos[2]); !r) return Fail(r.error);
+        std::printf("withdrawn %s\n", pos[2].c_str());
+        return 0;
+    }
+    if (pos[1] == "notices") {
+        const auto notices = client.Notices();
+        if (!notices) return Fail(notices.error);
+        const bool all = std::find(args.begin(), args.end(), "--all") != args.end();
+        size_t shown = 0;
+        for (const Notice& n : notices.Value()) {
+            if (n.Acknowledged() && !all) continue;
+            ++shown;
+            std::printf("%s  %-20s %s%s%s\n    %s\n", n.id.c_str(), n.kind.c_str(), n.subject.c_str(), n.clause.empty() ? "" : ("  (clause " + n.clause + ")").c_str(),
+                        n.Acknowledged() ? "  acknowledged" : n.deadline.empty() ? "" : ("  answer by " + n.deadline).c_str(), n.text.c_str());
+        }
+        if (shown == 0) std::printf(all ? "no notices\n" : "no unacknowledged notice (--all shows every one)\n");
+        return 0;
+    }
+    if (pos[1] == "ack") {
+        if (pos.size() < 3) return Usage(stderr);
+        const auto at = client.Acknowledge(pos[2]);
+        if (!at) return Fail(at.error);
+        std::printf("acknowledged %s at %s\n", pos[2].c_str(), at.Value().c_str());
+        return 0;
+    }
+    if (pos[1] == "terms") {
+        if (pos.size() >= 4 && pos[2] == "accept") {
+            const std::string by = Option(args, "--by");
+            if (by.empty()) return Fail("Who accepts: --by <name>");
+            const auto s = client.AcceptTerms(std::atoi(pos[3].c_str()), by);   // locale-ok: digits only
+            if (!s) return Fail(s.error);
+            std::printf("terms version %s accepted by %s; standing %s\n", pos[3].c_str(), by.c_str(), s.Value().standing.c_str());
+            return 0;
+        }
+        const auto t = client.CurrentTerms();
+        if (!t) return Fail(t.error);
+        std::printf("terms version %d, in force from %s%s\n\n%s\n", t.Value().version, t.Value().inForceFrom.c_str(),
+                    t.Value().changes.empty() ? "" : (" (" + t.Value().changes + ")").c_str(), t.Value().text.c_str());
+        return 0;
+    }
+    if (pos[1] == "reports") {
+        const auto list = client.Reports();
+        if (!list) return Fail(list.error);
+        const UltraCanvas::JSONValue& reports = list.Value().Get("reports");
+        if (reports.GetSize() == 0) { std::printf("no reports about this merchant\n"); return 0; }
+        for (const UltraCanvas::JSONValue& r : reports.GetElements()) {
+            std::printf("%s  %-10s %-9s %s %s  %s\n    %s%s\n", r.Get("id").GetString().c_str(), r.Get("kind").GetString().c_str(), r.Get("state").GetString().c_str(),
+                        r.Get("target_kind").GetString().c_str(), r.Get("target").GetString().c_str(), r.Get("created_at").GetString().c_str(),
+                        r.Get("text").GetString().c_str(), r.Get("outcome").GetString().empty() ? "" : ("\n    outcome: " + r.Get("outcome").GetString()).c_str());
+        }
+        return 0;
+    }
+    return Usage(stderr);
+}
+
 int UltraStoreAdmin::Cli::Run(const std::vector<std::string>& argsIn) {
     std::vector<std::string> args = argsIn;
     Store store;
@@ -890,6 +1004,7 @@ int UltraStoreAdmin::Cli::Run(const std::vector<std::string>& argsIn) {
     if (cmd == "affiliate") return CmdAffiliate(store, args);
     if (cmd == "code")      return CmdCode(store, args);
     if (cmd == "sale")      return CmdSale(store, args);
+    if (cmd == "market")    return CmdMarket(store, args);
     std::fprintf(stderr, "ultrastoreadmin: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }
