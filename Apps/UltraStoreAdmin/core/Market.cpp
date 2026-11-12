@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/Market.cpp
+// Version: 0.1.1 - the HTTP call speaks PUT (the operator's client, Apps/UltraStoreOperator, shares it)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Market.h"
@@ -167,11 +168,11 @@ MarketCall UltraNetMarketCall() {
         if (!UltraNet_IsInitialized()) UltraNet_Initialize();
         UltraNetHttpRequest request;
         request.url = url;
-        request.method = method == "POST" ? UltraNetHttpMethod::Post : UltraNetHttpMethod::Get;
+        request.method = method == "POST" ? UltraNetHttpMethod::Post : method == "PUT" ? UltraNetHttpMethod::Put : UltraNetHttpMethod::Get;
         request.options.httpsOnlyRedirects = true;
         request.options.maxReceiveSize = int64_t(8) << 20;
         if (!authorization.empty()) request.headers.Set("Authorization", authorization);
-        if (method == "POST") {
+        if (method == "POST" || method == "PUT") {
             request.headers.Set("Content-Type", "application/json");
             request.body.assign(jsonBody.begin(), jsonBody.end());
         }

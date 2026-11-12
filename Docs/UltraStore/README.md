@@ -775,8 +775,13 @@ when the catalog names the service (`market_url`), the outcome line on
 the page once the operator answers, `ultrastore report` and `reports`
 from the command line. The publish: `POST /v1/publish` generates and
 signs the catalog from the released submissions (the service's README,
-*The publish*). Still to come: the operator's window, the packages
-uploaded with a submission, the review pipeline.
+*The publish*). The operator's window and command line
+(`Apps/UltraStoreOperator`, [its README](../UltraStoreOperator/README.md)):
+the `Super*` pages on the service - the merchants and their files, the
+review with its decisions and the publish, the reports with the reporter
+the operator alone sees, the notices, the terms and the policy, the audit
+log verified. Still to come: the packages uploaded with a submission, the
+review pipeline behind the checks marked *not run*.
 
 ## Milestones
 
@@ -815,7 +820,9 @@ uploaded with a submission, the review pipeline.
    `Server/UltraStoreMarket` with merchants, submissions, reports,
    notices, terms, the enforcement policy, the suspensions and the audit
    log, on MySQL through the shared database layer `Server/UltraStoreDb`
-   (built; *Built so far* in that section). Next: the merchant backend's
-   `submit` and its notices banner; the operator's window on the service;
-   the report form on the store's app page; the catalog published from
-   the released submissions.
+   (built; *Built so far* in that section); the merchant backend's
+   `submit` and its notices banner; the report form on the store's app
+   page; the catalog published from the released submissions; the
+   operator's window and command line (`Apps/UltraStoreOperator`). Next:
+   the packages uploaded with a submission into the operator's package
+   store; the review pipeline behind the checks marked *not run*.

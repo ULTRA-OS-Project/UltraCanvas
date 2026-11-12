@@ -14,6 +14,7 @@
 // is), which is what the service checks. The HTTP call is a function the
 // caller hands in, so the tests use a fake and nothing here touches the
 // network in a test; the default is UltraNet.
+// Version: 0.1.1 - MarketCall speaks PUT as well (the operator's client shares it)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -48,8 +49,8 @@ struct MarketReply {
     std::string body;
     std::string error;
 };
-// method "GET" or "POST"; `authorization` the header's value; a POST sends
-// jsonBody as application/json.
+// method "GET", "POST" or "PUT"; `authorization` the header's value; a POST
+// or a PUT sends jsonBody as application/json.
 using MarketCall = std::function<MarketReply(const std::string& method, const std::string& url, const std::string& authorization,
                                              const std::string& jsonBody)>;
 MarketCall UltraNetMarketCall();   // HTTPS, redirects to https:// only

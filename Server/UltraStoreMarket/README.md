@@ -28,7 +28,7 @@ payment credentials.
 
 | | |
 |---|---|
-| the operator | `Authorization: Bearer <operator token>` (`ULTRASTORE_MARKET_OPERATOR_TOKEN`): the operator's window and command line |
+| the operator | `Authorization: Bearer <operator token>` (`ULTRASTORE_MARKET_OPERATOR_TOKEN`): the operator's window and command line, `ultrastoreop` (`Apps/UltraStoreOperator`) |
 | a merchant | `Authorization: Merchant <id>:<timestamp>:<signature>`, the Ed25519 signature with the merchant's key over `<METHOD> <path>\n<timestamp>\n` and the body bytes (`auth.py`, `sign_request`); a timestamp outside the window (300 s) is refused, so a captured request is not replayed. The key is the one that signs the merchant's submissions, registered by the operator and rotated with `PUT /v1/merchants/{id}` |
 | anyone | the store's report form, the reporter's outcome line, the terms |
 
@@ -48,7 +48,7 @@ with a 4xx status.
 | `POST /v1/apps/{app}/suspend`, `/reinstate` | the same for one app: it leaves `/v1/released` while suspended |
 | `GET /v1/submissions[?state=&merchant=&app=]`, `GET /v1/submissions/{id}` | the review's queue; one with its decisions |
 | `POST /v1/submissions/{id}/decide` | `{action, message, sequence?}` - `start_review`, `release` (the next catalog sequence, or the one given), `request_changes`, `reject`; a decision is appended, the state follows, a released submission stays released |
-| `GET /v1/released` | what the catalog is generated from: each app's latest released component, from merchants in good standing and apps not suspended, with the sequence |
+| `GET /v1/released` | what the catalog is generated from: each app's latest released component, from merchants in good standing and apps not suspended; `sequence` the last release's, `published` the last publish's |
 | `POST /v1/publish` | the catalog generated from it, signed into the publish folder (*The publish*) → `{sequence, apps, components, publishers, left_out, files, public_key}` |
 | `GET /v1/reports[?state=]`, `GET /v1/reports/{id}` | with the reporter |
 | `POST /v1/reports/{id}/assign {assignee}`, `/resolve`, `/dismiss {findings, outcome}` | the findings for the operator, the `outcome` line for the reporter and the merchant |
@@ -153,5 +153,6 @@ unit, the nginx location, the environment file to fill in.
 ## What comes next
 
 The packages into the operator's package store with a submission; the
-operator's window (the `Super*` pages of the design) on this API; the
-review pipeline behind the checks marked *not run*.
+review pipeline behind the checks marked *not run*. The operator's window
+and command line on this API are `Apps/UltraStoreOperator`
+([its README](../../Docs/UltraStoreOperator/README.md)).
