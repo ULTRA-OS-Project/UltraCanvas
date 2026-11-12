@@ -64,6 +64,17 @@ TEST(catalog_round_trips_through_json) {
     REQUIRE(c.FindAny("nope") == nullptr);
 }
 
+TEST(categories_read_as_the_store_list_ids_once) {
+    Component c;
+    c.id = "org.example.cats";
+    c.name = "Cats";
+    c.categories = {"Video", " video", "Office ", "later-category"};
+    const auto parsed = ParseComponent(SerializeComponent(c), ComponentKind::App, false);
+    REQUIRE(parsed.Ok());
+    // Lower case, trimmed, each once; an id a later list may have is kept.
+    REQUIRE(parsed.Value().categories == std::vector<std::string>({"video", "office", "later-category"}));
+}
+
 TEST(newest_release_respects_the_channel) {
     const Catalog c = FixtureCatalog();
     const Component* video = c.FindApp("org.ultraos.ultravideo");

@@ -1,5 +1,7 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.13.1 - a width grown during a layout pass asks for one more pass at the next frame:
+//                  the parent read the given width before the button measured its text
 // Version: 2.13.0 - ButtonStyle::wrap: the text wrapped onto the lines its area holds, from the top
 // Version: 2.12.4 - a split button's two captions are centred on their capitals, not their line box
 // Version: 2.12.3 - SetText fits the width to the new text at once, so a parent
@@ -513,7 +515,7 @@ namespace UltraCanvas {
             // the block path resolves from size.width/height or the constraints.
             return Size2Df(0.f, 0.f);
         }
-        FitWidthToText(rc);
+        if (FitWidthToText(rc)) grewDuringLayout = true;
         // A button doesn't wrap, so the content size is width-independent.
         rc->PushState();
         Size2Df content = MeasureContentSize(rc);
@@ -529,7 +531,7 @@ namespace UltraCanvas {
             return;
         }
 
-        FitWidthToText(rc);
+        if (FitWidthToText(rc)) grewDuringLayout = true;
         const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
         const float padV = GetTotalPaddingVertical()   + GetTotalBorderVertical();
 
@@ -1157,6 +1159,14 @@ namespace UltraCanvas {
         // forces a narrower box (a fixed grid column) must not be asked
         // again on every frame.
         bool relayout = FitWidthToText(ctx);
+        // A parent that read the width before the pass grew it (a flex
+        // row's base size, a row sized to its content) lays the button out
+        // at the width it had; one more pass reads the grown one. Once: that
+        // pass grows nothing, so it asks for none.
+        if (grewDuringLayout) {
+            grewDuringLayout = false;
+            relayout = true;
+        }
         if (fitMinWidth > 0.f && GetWidth() + 0.5f < fitMinWidth && relayoutForMinWidth != fitMinWidth) {
             relayoutForMinWidth = fitMinWidth;
             relayout = true;

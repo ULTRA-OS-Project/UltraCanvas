@@ -3,13 +3,14 @@
 // One copy per user: a second start hands its files to the running copy,
 // which opens them as File > Open does, and quits
 // (UltraCanvasSingleInstance.h).
+// Version: 2.3.0 - the look is the theme's: --dark is ThemePolicy::Dark for the run; no theme sync across windows
 // Version: 2.2.0 - the start-up messages go through Tr; the application's name
 //                  is given to Initialize as a literal, the name of its catalogue
 // Version: 2.1.0 - one UltraTexter per user: a second start's files open in
 //                  the running copy; every file named on the command line
 //                  opens, not only the last
 // Version: 2.0.3
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -53,7 +54,6 @@ private:
     UltraCanvasApplication* app;
     std::vector<std::shared_ptr<UltraCanvasTextEditor>> editors;
     TextEditorConfig baseConfig;
-    bool useDarkTheme;
     // The window the user worked in last: where handed-over files go.
     std::weak_ptr<UltraCanvasTextEditor> lastActiveEditor;
 
@@ -85,19 +85,8 @@ private:
             }
         };
 
-        // Theme toggled: sync to all other windows
-        editorPtr->onThemeChanged = [this, editorPtr](bool isDark) {
-            useDarkTheme = isDark;
-            for (auto& ed : editors) {
-                if (ed.get() == editorPtr) continue;
-                if (isDark) {
-                    ed->ApplyDarkTheme();
-                } else {
-                    ed->ApplyLightTheme();
-                }
-                ed->RequestRedraw();
-            }
-        };
+        // View > Theme writes Appearance.conf and the theme follows: every
+        // window takes it from the theme itself, so there is nothing to sync.
 
         // Focus: remember the window the user works in
         editorPtr->onWindowFocus = [this, weakEditor]() {
@@ -142,9 +131,8 @@ private:
     }
 
 public:
-    TexterWindowManager(UltraCanvasApplication* appPtr,
-                        const TextEditorConfig& config, bool dark)
-        : app(appPtr), baseConfig(config), useDarkTheme(dark) {}
+    TexterWindowManager(UltraCanvasApplication* appPtr, const TextEditorConfig& config)
+        : app(appPtr), baseConfig(config) {}
 
     std::shared_ptr<UltraCanvasTextEditor> CreateNewWindow(int screenX = -1, int screenY = -1) {
         auto editor = CreateTextEditor(baseConfig);
@@ -152,11 +140,6 @@ public:
         if (!editor) {
             debugOutput << "Failed to create text editor window" << std::endl;
             return nullptr;
-        }
-
-        // Apply theme
-        if (useDarkTheme) {
-            editor->ApplyDarkTheme();
         }
 
         // Wire callbacks
@@ -303,13 +286,13 @@ void PrintUsage(const char* programName) {
     std::cout << "Options:" << std::endl;
     std::cout << "  -h, --help        Show this help message" << std::endl;
     std::cout << "  -v, --version     Show version information" << std::endl;
-    std::cout << "  -d, --dark        Start with dark theme" << std::endl;
+    std::cout << "  -d, --dark        Start with the dark look for this run (the desktop's look otherwise)" << std::endl;
     std::cout << "  -l, --lang LANG   Set syntax highlighting language" << std::endl;
     std::cout << std::endl;
     std::cout << "Examples:" << std::endl;
     std::cout << "  " << programName << "                    # Start with empty document" << std::endl;
     std::cout << "  " << programName << " myfile.cpp         # Open myfile.cpp" << std::endl;
-    std::cout << "  " << programName << " -d myfile.py       # Open with dark theme" << std::endl;
+    std::cout << "  " << programName << " -d myfile.py       # Open with the dark look" << std::endl;
     std::cout << "  " << programName << " -l Python script   # Open 'script' with Python highlighting" << std::endl;
     std::cout << std::endl;
     std::cout << "While UltraTexter is running, starting it again opens the files in the" << std::endl;
@@ -383,14 +366,17 @@ int main(int argc, char* argv[]) {
         editorConfig.showToolbar = true;
         editorConfig.showStatusBar = true;
         editorConfig.showLineNumbers = true;
-        editorConfig.darkTheme = useDarkTheme;
+        // --dark: the framework's dark preset with the desktop's fonts for
+        // this run; otherwise the desktop's look, and Appearance.conf over
+        // it, which View > Theme writes.
+        if (useDarkTheme) app.SetThemePolicy(ThemePolicy::Dark);
 
         if (!language.empty()) {
             editorConfig.defaultLanguage = language;
         }
 
         // Create window manager
-        TexterWindowManager windowManager(&app, editorConfig, useDarkTheme);
+        TexterWindowManager windowManager(&app, editorConfig);
         g_windowManager = &windowManager;
 
         // Create the first window

@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.21.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.20.0 - SetSecureKeys / onCertificateLearnt for signed and encrypted mail
 // Version: 0.19.1 - RescanSender reads the message files through UltraMailStorage
 // Version: 0.19.0 - ShowInbox: an account's inbox under a filter (the account bar's
@@ -59,6 +60,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <UltraNet/UltraNetMime.h>
 
@@ -158,9 +160,9 @@ SplitPaneStyle GapSplitterStyle() {
     SplitPaneStyle s;
     s.splitterThickness      = kSplitterGap;
     s.showSplitterBackground = false;
-    s.splitterColor          = Theme::kPageBackground;
-    s.splitterHoverColor     = Theme::kCardBorder;
-    s.splitterActiveColor    = Theme::kAccent;
+    s.splitterColor          = Theme::PageBackground();
+    s.splitterHoverColor     = Theme::CardBorder();
+    s.splitterActiveColor    = Theme::Accent();
     return s;
 }
 
@@ -372,7 +374,7 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
     outerSplit_->SetSplitPaneStyle(GapSplitterStyle());
 
     // Left: the folder tree (one email root per account, mailboxes beneath).
-    folderBox_ = CreateGroupBox("folderBox", 0, 0, 0, 0, "Folders");
+    folderBox_ = CreateGroupBox("folderBox", 0, 0, 0, 0, Tr("Folders"));
     folderBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
     folderBox_->SetVisualStyle(Theme::CardGroupBox(6.0f));
     folderTree_ = std::make_shared<UltraCanvasTreeView>("folderTree", 0, 0, 0, 0);
@@ -381,12 +383,12 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
     folderTree_->SetShowRootLines(false);
     folderTree_->SetRowHeight(22);
     folderTree_->SetIndentSize(14);
-    folderTree_->SetFontSize(Theme::kSizeBody);
+    folderTree_->SetFontSize(Theme::SizeBody());
     folderTree_->SetSelectionMode(TreeSelectionMode::Single);
-    folderTree_->SetBackgroundColor(Theme::kCardBackground);
-    folderTree_->SetSelectionColor(Theme::kRowSelected);
-    folderTree_->SetHoverColor(Theme::kRowHover);
-    folderTree_->SetTextColor(Theme::kTextPrimary);
+    folderTree_->SetBackgroundColor(Theme::CardBackground());
+    folderTree_->SetSelectionColor(Theme::RowSelected());
+    folderTree_->SetHoverColor(Theme::RowHover());
+    folderTree_->SetTextColor(Theme::TextPrimary());
     folderTree_->onNodeSelected = [this](TreeNode* node) {
         if (suppressTreeCallback_ || !node) return;
         auto it = folderNodeId_.find(node->data.nodeId);
@@ -418,21 +420,21 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
 }
 
 void MailView::BuildListBox() {
-    listBox_ = CreateGroupBox("listBox", 0, 0, 0, 0, "Inbox");
+    listBox_ = CreateGroupBox("listBox", 0, 0, 0, 0, Tr("Inbox"));
     listBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
     listBox_->SetVisualStyle(Theme::CardGroupBox(6.0f));
 
     model_ = std::make_shared<UltraCanvasMultiColumnListModel>();
     model_->SetColumns({
-        ListColumnDef("From",    kFromWidth,  TextAlignment::Left),
+        ListColumnDef(Tr("From"),    kFromWidth,  TextAlignment::Left),
         // The sender badge, immediately left of the subject: who the message is
         // from, before a word of it is read. Titled with a bullet rather than a
         // word so the 26px column keeps its header readable.
         ListColumnDef("\xE2\x97\x8F", kBadgeWidth, TextAlignment::Center,
                       "Sender: green = contact, blue = business contact, black = new, "
                       "dark blue = advertisement, orange = spam, red = likely scam"),
-        ListColumnDef("Subject", kSubjectMin, TextAlignment::Left),
-        ListColumnDef("Date",    kDateWidth,  TextAlignment::Left),
+        ListColumnDef(Tr("Subject"), kSubjectMin, TextAlignment::Left),
+        ListColumnDef(Tr("Date"),    kDateWidth,  TextAlignment::Left),
     });
 
     auto lv = std::make_shared<MessageListView>("messageList");
@@ -442,16 +444,16 @@ void MailView::BuildListBox() {
     list_->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
 
     ListViewStyle st;
-    st.backgroundColor          = Theme::kCardBackground;
+    st.backgroundColor          = Theme::CardBackground();
     st.showHeader               = true;
     st.headerHeight             = kHeaderHeight;
-    st.headerBackgroundColor    = Theme::kSidebar;
-    st.headerTextColor          = Theme::kTextSecondary;
-    st.headerFontSize           = Theme::kSizeSecondary;
+    st.headerBackgroundColor    = Theme::Sidebar();
+    st.headerTextColor          = Theme::TextSecondary();
+    st.headerFontSize           = Theme::SizeSecondary();
     st.rowHeight                = kRowHeight;
     st.showGridLines            = false;
-    st.selectionBackgroundColor = Theme::kRowSelected;
-    st.hoverBackgroundColor     = Theme::kRowHover;
+    st.selectionBackgroundColor = Theme::RowSelected();
+    st.hoverBackgroundColor     = Theme::RowHover();
     list_->SetStyle(st);
 
     auto d = std::make_shared<MessageColorDelegate>();
@@ -459,9 +461,9 @@ void MailView::BuildListBox() {
     d->badges      = &rowBadges_;
     d->badgeColumn = 1;
     d->badgeSide   = Theme::kBadgeSize;
-    d->unreadColor = Theme::kTextPrimary;
-    d->readColor   = Theme::kTextSecondary;
-    d->fontSize    = Theme::kSizeBody;
+    d->unreadColor = Theme::TextPrimary();
+    d->readColor   = Theme::TextSecondary();
+    d->fontSize    = Theme::SizeBody();
     d->rowHeight   = kRowHeight;
     d->clipIcon    = NormalizePath(GetResourcesDir() + "media/icons/paperclip.svg");
     d->wantIcon    = [this](const std::string& key) { if (iconRequester_) iconRequester_(key); };
@@ -503,7 +505,7 @@ void MailView::BuildListBox() {
                   .SetFlexGap(Theme::kInnerGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     search_ = CreateTextInput("messageSearch", 0, 0, 0, Theme::kControlHeight);
-    search_->SetPlaceholder("Search sender or subject");
+    search_->SetPlaceholder(Tr("Search sender or subject"));
     search_->SetShowClearButton(true);
     Theme::StyleInput(search_);
     search_->SetText(searchText_);   // a rebuilt pane keeps the search
@@ -520,7 +522,7 @@ void MailView::BuildListBox() {
 }
 
 void MailView::BuildMessageBox() {
-    messageBox_ = CreateGroupBox("messageBox", 0, 0, 0, 0, "Message");
+    messageBox_ = CreateGroupBox("messageBox", 0, 0, 0, 0, Tr("Message"));
     messageBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
     messageBox_->SetVisualStyle(Theme::CardGroupBox(Theme::kPagePadding));
     preview_.onSaveAttachment = [this](const Attachment& a) {
@@ -742,7 +744,7 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
     if (row < 0 || row >= static_cast<int>(messages_.size())) {
         rowMenu_ = std::make_shared<UltraCanvasMenu>("mailRow.ctx", 0, 0, 200, 0);
         rowMenu_->SetMenuType(MenuType::PopupMenu);
-        rowMenu_->AddItem(MenuItemData::Submenu("Show emails", ShowEmailsItems("")));
+        rowMenu_->AddItem(MenuItemData::Submenu(Tr("Show emails"), ShowEmailsItems("")));
         PopupElementSettings settings;
         rowMenu_->OpenMenu(event.pointerWindow, *window, settings);
         return;
@@ -761,16 +763,16 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
     }
 
     // Show emails ▸ - narrow the list; the active choice carries the check.
-    rowMenu_->AddItem(MenuItemData::Submenu("Show emails", ShowEmailsItems(m.fromAddr)));
+    rowMenu_->AddItem(MenuItemData::Submenu(Tr("Show emails"), ShowEmailsItems(m.fromAddr)));
     rowMenu_->AddItem(MenuItemData::Separator());
 
     // Read state and the needs-an-answer list.
     if (unread) {
-        rowMenu_->AddItem(MenuItemData::Action("Mark as read", [this, m]() {
+        rowMenu_->AddItem(MenuItemData::Action(Tr("Mark as read"), [this, m]() {
             if (onMarkRead) onMarkRead(m);
         }));
     } else {
-        rowMenu_->AddItem(MenuItemData::Action("Mark as unread", [this, m]() {
+        rowMenu_->AddItem(MenuItemData::Action(Tr("Mark as unread"), [this, m]() {
             if (onMarkUnread) onMarkUnread(m);
         }));
     }
@@ -782,15 +784,15 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
 
     // Spam: out of the junk mailbox, or back to the inbox from it.
     if (curFolderIsJunk_) {
-        rowMenu_->AddItem(MenuItemData::Action("Not spam", [this, m]() {
+        rowMenu_->AddItem(MenuItemData::Action(Tr("Not spam"), [this, m]() {
             if (onNotJunk) onNotJunk(m);
         }));
     } else {
-        rowMenu_->AddItem(MenuItemData::Action("Mark as spam", [this, m]() {
+        rowMenu_->AddItem(MenuItemData::Action(Tr("Mark as spam"), [this, m]() {
             if (onJunk) onJunk(m);
         }));
     }
-    rowMenu_->AddItem(MenuItemData::Action("Unsubscribe…", [this, m]() {
+    rowMenu_->AddItem(MenuItemData::Action(Tr("Unsubscribe…"), [this, m]() {
         if (onUnsubscribe) onUnsubscribe(m);
     }));
 
@@ -810,7 +812,7 @@ void MailView::ShowRowMenu(int row, const UCEvent& event) {
         }
     }
     if (!moveItems.empty())
-        rowMenu_->AddItem(MenuItemData::Submenu("Move to folder", moveItems));
+        rowMenu_->AddItem(MenuItemData::Submenu(Tr("Move to folder"), moveItems));
 
     // The sender and the address book.
     if (!m.fromAddr.empty()) {
@@ -845,13 +847,13 @@ std::vector<MenuItemData> MailView::AddressBookItems(const MessageEnvelope& m) {
             if (onAddToContactGroup) onAddToContactGroup(m, place);
         }));
     }
-    items.push_back(MenuItemData::Submenu("Add to contact group", places));
+    items.push_back(MenuItemData::Submenu(Tr("Add to contact group"), places));
     if (contacts_.Contains(m.fromAddr)) {
-        items.push_back(MenuItemData::Action("Edit contact", [this, m]() {
+        items.push_back(MenuItemData::Action(Tr("Edit contact"), [this, m]() {
             if (onEditContact) onEditContact(m);
         }));
     } else {
-        items.push_back(MenuItemData::Action("Add to contacts", [this, m]() {
+        items.push_back(MenuItemData::Action(Tr("Add to contacts"), [this, m]() {
             if (onAddContact) onAddContact(m);
         }));
     }
@@ -870,18 +872,18 @@ std::vector<MenuItemData> MailView::SenderListItems(const MessageEnvelope& m) {
     };
     // Trust: fewer warnings for this address - only what catches a lie.
     items.push_back(lists.Trusts(address)
-        ? MenuItemData::Action("Stop trusting this sender", change(address, false, false))
-        : MenuItemData::Action("Always trust this sender", change(address, false, true)));
+        ? MenuItemData::Action(Tr("Stop trusting this sender"), change(address, false, false))
+        : MenuItemData::Action(Tr("Always trust this sender"), change(address, false, true)));
     // Block: the address, or the whole domain unless it is a mailbox provider
     // (blocking gmail.com would block everyone who writes from it).
     const std::string blockedBy = lists.BlockedBy(address);
     if (blockedBy == address) {
-        items.push_back(MenuItemData::Action("Unblock this sender", change(address, true, false)));
+        items.push_back(MenuItemData::Action(Tr("Unblock this sender"), change(address, true, false)));
     } else if (!blockedBy.empty()) {
         items.push_back(MenuItemData::Action("Unblock everything from " + blockedBy.substr(1),
                                              change(blockedBy, true, false)));
     } else {
-        items.push_back(MenuItemData::Action("Block this sender", change(address, true, true)));
+        items.push_back(MenuItemData::Action(Tr("Block this sender"), change(address, true, true)));
         const std::string domain = RegistrableDomain(DomainOfAddress(address));
         if (!domain.empty() && !IsPersonalMailboxDomain(domain))
             items.push_back(MenuItemData::Action("Block everything from " + domain,
@@ -934,14 +936,14 @@ std::vector<MenuItemData> MailView::SenderMenuItems(const MessageEnvelope& m) {
     std::vector<MenuItemData> items;
     if (m.fromAddr.empty()) return items;
     const std::string address = m.fromAddr;
-    items.push_back(MenuItemData::Action("Copy address", [address]() {
+    items.push_back(MenuItemData::Action(Tr("Copy address"), [address]() {
         SetClipboardText(address);
     }));
     const bool showingSender = filter_.kind == MessageFilterKind::SameSender &&
                                filter_.sender == m.fromAddr;
     items.push_back(showingSender
-        ? MenuItemData::Action("Show all messages", [this]() { SetFilter({}); })
-        : MenuItemData::Action("Show only mail from this sender", [this, address]() {
+        ? MenuItemData::Action(Tr("Show all messages"), [this]() { SetFilter({}); })
+        : MenuItemData::Action(Tr("Show only mail from this sender"), [this, address]() {
               SetFilter({MessageFilterKind::SameSender, address});
           }));
     items.push_back(MenuItemData::Separator());
@@ -950,11 +952,11 @@ std::vector<MenuItemData> MailView::SenderMenuItems(const MessageEnvelope& m) {
     for (auto& item : SenderListItems(m)) items.push_back(item);
     // Spam: out of the junk mailbox, or back to the inbox from it.
     if (curFolderIsJunk_) {
-        items.push_back(MenuItemData::Action("Not spam", [this, m]() {
+        items.push_back(MenuItemData::Action(Tr("Not spam"), [this, m]() {
             if (onNotJunk) onNotJunk(m);
         }));
     } else {
-        items.push_back(MenuItemData::Action("Mark as spam", [this, m]() {
+        items.push_back(MenuItemData::Action(Tr("Mark as spam"), [this, m]() {
             if (onJunk) onJunk(m);
         }));
     }
@@ -1047,7 +1049,7 @@ void MailView::RebuildFolderTree() {
         const std::string accNode = kAccountNodePrefix + accId;
         TreeNodeData accData(accNode, account.email.empty() ? account.displayName
                                                             : account.email);
-        accData.textColor = Theme::kTextPrimary;
+        accData.textColor = Theme::TextPrimary();
         folderTree_->AddNode(kTreeRootId, accData);
         // Clicking the account row opens its inbox.
         folderNodeId_[accNode] = {accId, "INBOX"};
@@ -1071,7 +1073,7 @@ void MailView::RebuildFolderTree() {
         // created even if the folder list has no INBOX row yet.
         const std::string inboxNode = kFolderNodePrefix + accId + "::INBOX";
         TreeNodeData inboxData(inboxNode, "Inbox");
-        inboxData.textColor = Theme::kTextPrimary;
+        inboxData.textColor = Theme::TextPrimary();
         folderTree_->AddNode(accNode, inboxData);
         folderNodeId_[inboxNode] = {accId, "INBOX"};
 
@@ -1103,7 +1105,7 @@ void MailView::RebuildFolderTree() {
                     const std::string nodeId = kFolderNodePrefix + accId + "::" + path;
                     if (created.insert(nodeId).second) {
                         TreeNodeData data(nodeId, FolderDisplayName(path, delim));
-                        data.textColor = Theme::kTextPrimary;
+                        data.textColor = Theme::TextPrimary();
                         folderTree_->AddNode(parent, data);
                         folderNodeId_[nodeId] = {accId, path};
                     }
@@ -1148,10 +1150,10 @@ std::vector<MenuItemData> MailView::FolderMenuItems(const std::string& nodeId) {
 
     std::vector<Folder> folders;
     if (store_) store_->ListFolders(accountId, folders);
-    std::string why = "The inbox cannot be deleted.";
+    std::string why = Tr("The inbox cannot be deleted.");
     bool deletable = false;
     if (!top) {
-        why = "The folder is not in the list yet.";
+        why = Tr("The folder is not in the list yet.");
         for (const auto& f : folders)
             if (f.name == folder) { deletable = CanDeleteFolder(f, folders, &why); break; }
     }
@@ -1165,10 +1167,10 @@ std::vector<MenuItemData> MailView::FolderMenuItems(const std::string& nodeId) {
     items.push_back(MenuItemData::Header(title));
     items.push_back(MenuItemData::Separator());
     const std::string parent = top ? std::string() : folder;
-    items.push_back(MenuItemData::Action("Add folder…", [this, accountId, parent]() {
+    items.push_back(MenuItemData::Action(Tr("Add folder…"), [this, accountId, parent]() {
         if (onAddFolder) onAddFolder(accountId, parent);
     }));
-    MenuItemData remove = MenuItemData::Action("Delete folder…", [this, accountId, folder]() {
+    MenuItemData remove = MenuItemData::Action(Tr("Delete folder…"), [this, accountId, folder]() {
         if (onDeleteFolder) onDeleteFolder(accountId, folder);
     });
     remove.enabled = deletable;

@@ -181,6 +181,86 @@ static void CheckPageLayout(const UCRichDocument& d, const std::string& label) {
               label + ": furniture per page");
 }
 
+// Tests/fixtures/word-frames: a letterhead-like page. A page-anchored sender
+// frame 13 cm / 2 cm from the page's corner, beside the address; a note box
+// anchored to a paragraph that wraps round it; a picture at the right of the
+// text column, which text goes above and below.
+static void CheckPositionedFrames(const UCRichDocument& d, const std::string& label, bool pictureFromPage) {
+    using Origin = RichTextRun::FloatOrigin;
+    auto frameRun = [&](const std::string& paragraph) -> const RichTextRun* {
+        const RichDocBlock* block = FindBlock(d, paragraph);
+        if (!block) return nullptr;
+        for (const RichTextRun& run : block->runs) if (run.IsTextFrame()) return &run;
+        return nullptr;
+    };
+    auto frameText = [&](const RichTextRun* run) {
+        std::string text;
+        const RichTextFrame* frame = run ? d.FrameFor(*run) : nullptr;
+        if (frame) for (const RichDocBlock& b : frame->blocks) text += UCRichDocument::ConcatenateRunText(b.runs) + "|";
+        return text;
+    };
+    CHECK_MSG(d.frames.size() == 2, label + ": two text frames");
+    const RichTextRun* sender = frameRun("Recipient Name");
+    CHECK_MSG(sender && frameText(sender) == "Sender Company GmbH|Example Street 1|12345 Sample Town|",
+              label + ": sender frame's text");
+    CHECK_MSG(sender && sender->floatHorizontalFrom == Origin::Page && sender->floatVerticalFrom == Origin::Page
+              && sender->imageFloatAlign == RichTextAlign::Default
+              && Near(sender->imageOffsetXPt, 368.5f) && Near(sender->imageOffsetYPt, 56.7f)
+              && Near(sender->imageWidthPt, 170.1f) && sender->imageWrap == RichTextRun::ImageWrap::Square,
+              label + ": sender frame placed from the page");
+    const RichTextFrame* senderFrame = sender ? d.FrameFor(*sender) : nullptr;
+    CHECK_MSG(senderFrame && Lower(senderFrame->backgroundColor) == "#eeeeee", label + ": sender frame's fill");
+
+    const RichTextRun* note = frameRun("This paragraph flows to the right");
+    CHECK_MSG(note && frameText(note) == "Boxed note|", label + ": note frame's text");
+    CHECK_MSG(note && note->floatHorizontalFrom == Origin::Margin && note->floatVerticalFrom == Origin::Paragraph
+              && note->imageFloatAlign == RichTextAlign::Left && Near(note->imageWidthPt, 113.4f)
+              && note->imageWrap == RichTextRun::ImageWrap::Square, label + ": note frame at its paragraph");
+
+    const RichDocBlock* withPicture = FindBlock(d, "A paragraph with a picture");
+    const RichTextRun* picture = nullptr;
+    if (withPicture) for (const RichTextRun& run : withPicture->runs) if (run.IsFloatingImage()) picture = &run;
+    CHECK_MSG(picture && picture->imageFloatAlign == RichTextAlign::Right
+              && picture->imageWrap == RichTextRun::ImageWrap::TopAndBottom
+              && picture->floatVerticalFrom == Origin::Paragraph && Near(picture->imageOffsetYPt, 14.1f)
+              && picture->floatHorizontalFrom == (pictureFromPage ? Origin::Page : Origin::Margin),
+              label + ": floating picture");
+
+    // Text output spells the frames before the paragraph that anchors them.
+    const std::string plain = d.ToPlainText();
+    const size_t senderAt = plain.find("Sender Company GmbH"), addressAt = plain.find("Recipient Name");
+    CHECK_MSG(senderAt != std::string::npos && addressAt != std::string::npos && senderAt < addressAt,
+              label + ": frames in the plain text");
+}
+
+// Tests/fixtures/word-header-frames: a letterhead whose logo and sender
+// block are floats in the header, placed from the page: the logo 2.5 cm /
+// 0.8 cm from the page's corner over the text, the sender frame 13 cm /
+// 2.5 cm with text flowing beside it.
+static void CheckHeaderFrames(const UCRichDocument& d, const std::string& label) {
+    using Origin = RichTextRun::FloatOrigin;
+    const RichTextRun* logo = nullptr;
+    const RichTextRun* sender = nullptr;
+    for (const RichDocBlock& b : d.pageFurniture.header) {
+        for (const RichTextRun& run : b.runs) {
+            if (run.IsFloatingImage()) logo = &run;
+            if (run.IsTextFrame()) sender = &run;
+        }
+    }
+    CHECK_MSG(logo && logo->floatHorizontalFrom == Origin::Page && logo->floatVerticalFrom == Origin::Page
+              && Near(logo->imageOffsetXPt, 70.9f) && Near(logo->imageOffsetYPt, 22.7f)
+              && logo->imageWrap == RichTextRun::ImageWrap::InFrontOfText, label + ": logo in the header");
+    const RichTextFrame* frame = sender ? d.FrameFor(*sender) : nullptr;
+    std::string text;
+    if (frame) for (const RichDocBlock& b : frame->blocks) text += UCRichDocument::ConcatenateRunText(b.runs) + "|";
+    CHECK_MSG(text == "Sender Company GmbH|Example Street 1|12345 Sample Town|", label + ": sender frame in the header");
+    CHECK_MSG(sender && sender->floatHorizontalFrom == Origin::Page && sender->floatVerticalFrom == Origin::Page
+              && Near(sender->imageOffsetXPt, 368.5f) && Near(sender->imageOffsetYPt, 70.9f)
+              && sender->imageWrap == RichTextRun::ImageWrap::Square, label + ": sender frame placed from the page");
+    CHECK_MSG(!d.blocks.empty() && UCRichDocument::ConcatenateRunText(d.blocks.front().runs) == "Recipient Name",
+              label + ": the body starts with the address");
+}
+
 // Highlight, fixed line heights and paragraph frames.
 static void CheckHighlightAndFrames(const UCRichDocument& d, const std::string& label) {
     const RichDocBlock* marked = FindBlock(d, "marked");
@@ -600,6 +680,50 @@ int main(int argc, char** argv) {
                     CHECK_MSG(FindBlock(back, "item five", &index)
                               && RichDocOrderedItemNumber(back.blocks, index) == 5, label);
                 }
+            }
+        }
+    }
+#endif
+
+    // ===== 5d. Positioned frames: the same page as .odt, .docx and .doc =====
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        for (const char* name : {"word-frames.odt", "word-frames.docx", "word-frames.doc"}) {
+            const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
+            UCRichDocument imported;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, imported, err), err);
+            // LibreOffice saves the picture's "right of the text area" in
+            // .doc as right of the page, and reads it back that way.
+            const bool docFile = std::string(name).find(".doc") + 4 == std::string(name).size();
+            CheckPositionedFrames(imported, name, docFile);
+            // Both writers keep the frames, their text, look and placement.
+            for (const char* ext : {".odt", ".docx"}) {
+                const std::string saved = TmpPath(std::string("resaved-") + name + ext);
+                CHECK_MSG(UCWordDocumentIO::Save(saved, imported, err), err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+                CheckPositionedFrames(back, std::string(name) + " -> " + ext, docFile);
+            }
+        }
+    }
+#endif
+
+    // ===== 5d2. Frames in the header: the same letterhead as .odt, .docx, .doc =====
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        for (const char* name : {"word-header-frames.odt", "word-header-frames.docx", "word-header-frames.doc"}) {
+            const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
+            UCRichDocument imported;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, imported, err), err);
+            CheckHeaderFrames(imported, name);
+            for (const char* ext : {".odt", ".docx"}) {
+                const std::string saved = TmpPath(std::string("resaved-") + name + ext);
+                CHECK_MSG(UCWordDocumentIO::Save(saved, imported, err), err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+                CheckHeaderFrames(back, std::string(name) + " -> " + ext);
             }
         }
     }
@@ -1567,13 +1691,16 @@ int main(int argc, char** argv) {
         CHECK_MSG(UCWordDocumentIO::Load(TmpPath("letterhead.odt"), letter, err), err);
         std::string plain = letter.ToPlainText();
 
-        // Logo and contact block come from the body's page-anchored frames.
+        // Logo and contact block come from the body's page-anchored frames:
+        // floating on the page, carried by the first paragraph after them.
         CHECK_MSG(letter.media.size() == 1, "logo image loaded");
         bool sawLogo = false;
         for (const auto& b : letter.blocks) {
-            if (b.type == RichBlockType::Image) sawLogo = true;
+            for (const auto& run : b.runs) {
+                if (run.IsFloatingImage() && run.floatVerticalFrom == RichTextRun::FloatOrigin::Page) sawLogo = true;
+            }
         }
-        CHECK_MSG(sawLogo, "logo image block emitted");
+        CHECK_MSG(sawLogo, "logo floats on the page");
         CHECK_MSG(plain.find("+49 (0) 2761 82 81 69") != std::string::npos, plain);
         CHECK_MSG(plain.find("+49 (0) 911 308 44 77 844") != std::string::npos, plain);
         CHECK_MSG(plain.find("+49 (0) 170 754 22 91") != std::string::npos, plain);
@@ -1682,22 +1809,22 @@ int main(int argc, char** argv) {
         UCRichDocument doc4;
         std::string err;
         CHECK_MSG(UCWordDocumentIO::Load(TmpPath("pgbreak.odt"), doc4, err), err);
-        int breaks = 0, breakBeforeContactTwo = 0;
-        bool sawContactTwo = false;
+        int breaks = 0;
         for (const auto& b : doc4.blocks) {
-            if (b.type == RichBlockType::PageBreak) {
-                ++breaks;
-                if (!sawContactTwo) ++breakBeforeContactTwo;   // count breaks before contact two
-            }
-            if (UCRichDocument::ConcatenateRunText(b.runs).find("contact line two")
-                    != std::string::npos) {
-                sawContactTwo = true;
-            }
+            if (b.type == RichBlockType::PageBreak) ++breaks;
         }
         // Exactly one page break, from the main-flow "after real break"
-        // paragraph — none from the text-box contact line.
+        // paragraph — none from the text-box contact line, which is in the
+        // anchor's text frame without one.
         CHECK_MSG(breaks == 1, std::to_string(breaks));
-        CHECK_MSG(breakBeforeContactTwo == 0, "no page break splits the contact block");
+        bool contactInFrame = false, breakInFrame = false;
+        for (const RichTextFrame& frame : doc4.frames) {
+            for (const auto& b : frame.blocks) {
+                if (b.type == RichBlockType::PageBreak) breakInFrame = true;
+                if (UCRichDocument::ConcatenateRunText(b.runs) == "contact line two") contactInFrame = true;
+            }
+        }
+        CHECK_MSG(contactInFrame && !breakInFrame, "no page break splits the contact block");
     }
 
     // ===== 11d. A table of contents shows the text it was built into =====

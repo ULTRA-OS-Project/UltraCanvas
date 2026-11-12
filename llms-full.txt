@@ -16786,8 +16786,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.3.0 - `SetWrap`: the text on several lines  
-**Last Modified:** 2026-11-01  
+**Version:** 1.3.1 - a container sized to its content grows with a button grown to its text  
+**Last Modified:** 2026-11-11  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -17275,6 +17275,14 @@ absolutely placed buttons it can then reach its neighbour; lay such rows out
 with a flex container (see the Layout documentation) so the buttons after it
 move along. Buttons without text (icon-only tools) are not affected.
 
+A container sized to its content grows with its buttons. The first layout
+reads a button's given width before the button has measured its text, so a
+group of buttons in a header row comes out as wide as the English labels; the
+button then asks for one more layout pass, and the window runs it at the next
+frame (it wakes its event loop for it rather than waiting for one), so the
+group, and whatever follows it in the row, take the grown widths. Nothing in
+the application has to change for it.
+
 ### Split Button (a primary action plus a menu)
 
 A split button is one button with two sections: the primary one runs the
@@ -17364,6 +17372,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3.1 | 2026-11-11 | A container sized to its content grows with its buttons: one more layout pass, run at the next frame (A Fixed Width Is a Minimum) |
 | 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |
 | 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
 | 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
@@ -65883,12 +65892,74 @@ DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
 (`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
 write back out; HTML output floats them with CSS. A floating picture is
-selected, resized and described like any other. In a table cell or a header
-it stays in the line.
+selected, resized and described like any other. In a table cell it stays in
+the line.
 
-The wrap works a paragraph at a time: a paragraph that starts beside a picture
-is narrowed as a whole, so a long one beside a short picture stays narrow below
-it too.
+**In a header or footer** a floating picture or frame floats too: on every
+page it is placed from that page (or from its header paragraph), drawn with
+the header - under the body's text, as in Word - and the page's body wraps
+round it like round one of its own. That is how a Word letterhead keeps its
+logo and sender block in the header. A frame there shows each page's page
+number and page count. It cannot be selected or resized from the page; edit
+the header for that.
+
+The wrap works line by line, as in Writer: a paragraph beside a picture is
+narrowed only for the lines level with it, and its lines below the picture
+take the column's full width again. A top-and-bottom picture set lower down
+in its own paragraph (`imageOffsetYPt`) keeps the lines that fit above it
+there and continues the paragraph below it. (Such a paragraph is laid out in
+two parts joined into one layout, so the caret, clicks and selection treat
+it as one.) A paragraph that would be left too narrow beside a picture
+starts below it instead.
+
+**Placed from the page.** By default a float counts across from the text
+column and down from its paragraph. `floatHorizontalFrom` and
+`floatVerticalFrom` (`RichTextRun::FloatOrigin`: `Paragraph`, `Margin`,
+`Page`) make the offsets and the alignment count from the page's text area or
+from the page's edges instead, and `floatVerticalAlign` (`Top`, `Middle`,
+`Bottom`) aligns it down that area. In page view it then sits on the page its
+paragraph is on - a letterhead's sender block 13 cm from the page's left edge
+stays there whatever the margins. Outside page view a page-placed float sits
+at its paragraph.
+
+**Text frames.** A run with `frameIndex` (into `UCRichDocument::frames`) is a
+text box: a `RichTextFrame`'s paragraphs with its `backgroundColor`,
+`border` and `paddingPt`, floating like a picture. Its width is
+`imageWidthPt` (half the column when 0) and its height is its text's, at
+least `imageHeightPt`. ODT `draw:text-box`, DOCX `wps:txbx` and VML text
+boxes, and DOC text boxes read into it, and both writers save it. In a
+header or footer it floats as described above; in a table cell or inside
+another frame it does not (a cell drops it, a frame shows its text in
+line).
+
+```cpp
+auto document = std::make_shared<UCRichDocument>();
+RichTextFrame sender;
+RichDocBlock line;
+RichTextRun text;
+text.text = "Example Company";
+line.runs = {text};
+sender.blocks = {line};
+sender.backgroundColor = "#eeeeee";
+document->frames.push_back(sender);
+
+RichTextRun box;
+box.text = RichTextRun::kObjectReplacement;
+box.frameIndex = 0;
+box.imageWidthPt = 170.0f;
+box.imageWrap = RichTextRun::ImageWrap::Square;
+box.imageFloatAlign = RichTextAlign::Default;
+box.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+box.floatVerticalFrom = RichTextRun::FloatOrigin::Page;
+box.imageOffsetXPt = 368.5f;          // 13 cm from the page's left edge
+box.imageOffsetYPt = 56.7f;           // 2 cm from its top
+RichDocBlock address;
+RichTextRun name;
+name.text = "Recipient Name";
+address.runs = {box, name};
+document->blocks.push_back(address);
+editor->SetDocument(document);
+```
 
 ### Check lists
 
@@ -66458,7 +66529,15 @@ back. `ExportToPdf` is built on the same three.
 editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
 editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
+editor->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);   // or PageWidth
 ```
+
+`SetZoomFit` makes the zoom follow the element's size in page view, like a
+word processor's "Page width" (the page and the desk either side fill the
+width) and "Whole page" (all of the page is in view). It is worked out again
+whenever the element is resized; `SetZoom`, Ctrl+wheel and `ZoomFit::Off`
+end it, and printing and PDF export stay at 100 %. Outside page view there is
+no page to fit and the zoom stays as it is.
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
 rewraps to the zoomed width; in page view the page is simply larger, and when
@@ -66487,6 +66566,9 @@ Honest limits of this first version — none of them silently misbehave:
 - **The input method's candidate window** is placed by the input method, not
   next to the caret, on X11 and Windows. On macOS and in the browser it opens
   at the caret (where the composition starts).
+- **A text frame's text cannot be edited**, and a frame cannot be moved or
+  resized; clicks go to the text underneath. Frames in table cells and in
+  other frames do not float (see *Floating pictures*).
 
 ## Related
 
@@ -91599,7 +91681,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 |---|---|---|---|---|---|---|
 | Headings 1–6 | yes | yes | yes | yes | yes | DOC: built-in Heading styles and outline level. |
 | Alignment (left/centre/right/justify) | yes | yes | yes | yes | yes | |
-| Paragraph style → character formatting | yes | *partial* | yes | yes | yes | A "Standard + bold 14pt" title arrives as bold 14pt runs. DOCX: the style's size and font (and `w:docDefaults`) reach text without its own (2026-09); bold and colour from a style do not yet. |
+| Paragraph style → character formatting | yes | yes | yes | yes | yes | A "Standard + bold 14pt" title arrives as bold 14pt runs. DOCX: the paragraph style's character properties (bold, italic, underline, colour, size, font, and `w:docDefaults`) reach text without its own. |
 | Paragraph font (empty lines) | yes | yes | yes | yes | yes | 2026-09. `RichDocBlock::paragraphFontSizePt` / `paragraphFontFamily`: the style's font, or the paragraph mark's for an empty paragraph, so blank lines are as tall as in Writer. A contract's blank lines drew at the view's 12 pt instead of 11 pt and pushed its last line onto a second page. |
 | Block quote, preformatted | yes | yes | yes | yes | yes | By style name / monospace style font. |
 | Line breaks, page breaks | yes | yes | yes | yes | yes | In page view a page break starts a new page (2026-09); the continuous view draws it as a dashed rule. |
@@ -91642,8 +91724,8 @@ View = `UltraCanvasRichTextEdit` draws it.
 |---|---|---|---|---|---|---|
 | Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. |
 | Picture on its own line | yes | yes | yes | yes | yes | |
-| Floating / page-anchored pictures and frames | *partial* | *partial* | no | no | no | Written out in reading order. There is no position or text wrap. |
-| Text boxes | *partial* | *partial* | no | no | no | Their paragraphs follow the anchoring paragraph. |
+| Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
+| Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
 | Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | no | no | no | no | no | |
 | Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
@@ -91655,12 +91737,12 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Page size, margins, orientation | yes | yes | yes | yes | yes | 2026-09. `UCRichDocument::page` (`RichPageSetup`): size, margins and header/footer distances, from the ODF page layout, DOCX `w:sectPr` and the DOC section (SEP). Page view draws the pages and uses the page's text column. Both writers save it. Only the first section's page is read. |
 | Headers and footers | yes | yes | yes | yes | yes | 2026-09. `pageFurniture` and `firstPageFurniture` (another first page: ODF `style:header-first` or a first master page with a next style, DOCX `w:titlePg`, DOC first-page stories). Drawn on every page in page view, and above and below the body otherwise. Both writers save them. Even/odd headers are not read. |
 | Page number and page count fields | yes | yes | yes | yes | yes | 2026-09. `RichTextRun::field`: ODF `text:page-number` / `text:page-count`, DOCX `PAGE` / `NUMPAGES` / `SECTIONPAGES` (complex and simple fields), DOC field codes. Page view fills in each page's numbers in headers and footers. |
-| Dates and other fields | *partial* | *partial* | *partial* | — | — | Their last displayed value is kept as text. |
-| Footnotes / endnotes | *partial* | no | no | no | no | ODT: placed inline in parentheses. |
-| Table of contents and indexes | yes | no | *partial* | — | — | ODT: the generated text (`text:index-body`) is read (2026-09). DOCX TOCs are fields inside `w:sdt`. DOC shows the field result. |
-| Sections, multiple columns | *partial* | no | no | no | no | Hidden sections are dropped; columns are flattened. |
-| Comments, tracked changes | no | *partial* | no | no | no | DOCX keeps inserted text. |
-| Bookmarks, cross references | no | no | no | no | no | The reference text itself comes through. |
+| Dates and other fields | *partial* | *partial* | *partial* | no | — | Their last displayed value is kept as text. Captions and cross-references are real fields (see below). |
+| Footnotes / endnotes | yes | yes | no | yes | yes | `UCRichDocument::notes` with numbered reference runs; footnotes at the foot of their page in page view, endnotes after the body. DOC: the note text is not read yet. |
+| Table of contents and indexes | yes | yes | *partial* | yes | yes | Contents entries are `RichDocBlock::tocLevel` paragraphs whose page numbers are `PageReference` fields; `UpdateTableOfContents` rebuilds them. ODT: the generated text (`text:index-body`) of every index is read; only a table of contents gets `tocLevel`. DOCX: "TOC 1-9" paragraphs, also inside `w:sdt`. DOC shows the field result. Both writers save a table of contents. Alphabetical and other indexes are plain text. |
+| Sections, multiple columns | yes | yes | no | yes | *partial* | `RichSectionSetup` (columns, gap, new page) in `UCRichDocument::firstSection` and `RichDocBlock::sectionStart` / `section`; ODF `text:section` with `style:columns`, DOCX `w:sectPr` with `w:cols` / `w:type`. Page view flows a section column by column; the continuous view draws one column. Unequal column widths become equal, and a section's own page size is not read. Hidden ODT sections are dropped. Both writers save them. |
+| Comments, tracked changes | yes | yes | no | yes | yes | Comments: `UCRichDocument::comments` (`RichComment`), anchored by `RichTextRun::commentIds`; ODF `office:annotation`, DOCX `comments.xml`. Tracked changes: `RichTextRun::change` / `revision` into `UCRichDocument::revisions`; ODF `text:tracked-changes`, DOCX `w:ins` / `w:del` / `w:moveTo` / `w:moveFrom`. The view shades commented text with a comment pane beside it, underlines insertions and strikes through deletions. Both writers save them. Format changes are not kept. DOC does not read comments or revision marks. |
+| Bookmarks, cross references | yes | yes | no | yes | yes | `RichDocBlock::bookmarks` (paragraph-level; where a bookmark ends is not kept) and `RichTextRun::Field` `Sequence` / `Reference` / `PageReference` with `fieldArgument`; ODF `text:bookmark`, `text:sequence`, `text:bookmark-ref`; DOCX `w:bookmarkStart`, `SEQ` / `REF` / `PAGEREF`. `UpdateFields` renumbers captions and references; page view fills in page references. Both writers save them. DOC: only the field's result text. |
 | Document metadata | yes | yes | no | yes | — | |
 
 ## Checked against real documents
@@ -91685,9 +91767,12 @@ View = `UltraCanvasRichTextEdit` draws it.
   date tables no longer show grid lines. In page view (2026-09) the bank
   footer sits at the foot of page one only, and the following pages carry
   the "Seite N / M" header with their own numbers. Because the sender block
-  still flows in the text instead of standing beside the address, the
-  signature's last two lines move to a second page; Writer fits the letter
-  on one.
+  still flowed in the text instead of standing beside the address, the
+  signature's last two lines moved to a second page; Writer fits the letter
+  on one. Positioned frames (2026-11) put a page-anchored sender block
+  beside the address; that was checked on `Tests/fixtures/word-frames`, a
+  page of the same shape, against LibreOffice's rendering - the original
+  letter itself has not been re-checked.
 
 ## Roadmap, in priority order
 
@@ -91699,17 +91784,20 @@ mapping, table cell borders and backgrounds, list number formats,
 multi-level labels and document bullets, highlight, paragraph borders and
 backgrounds, table width, position, cell padding and vertical alignment,
 and the page model: page size, margins, headers, footers, page number
-fields and page view.
+fields and page view. Since then: blocks split across pages (widow and
+orphan control, repeated table header rows), footnotes and endnotes, zoom
+and sideways scrolling, and (2026-11) positioned frames, text boxes and
+floating pictures placed from the page, text wrapping round them line by
+line, frames and floating pictures in headers and footers (DOC included),
+and zoom to the page's width or the whole page
+(`UltraCanvasRichTextEdit::SetZoomFit`).
 
-1. **Positioned frames and floating pictures** (anchor, x/y, wrap). Page
-   view gives them a page to stand on; this is the only way a letterhead can
-   look like the original.
-2. **Pagination inside blocks**: split long paragraphs and tables across
-   pages (with widow/orphan control and repeated table header rows).
-3. **Footnotes and endnotes** as real notes, and **DOC merged cells and
-   footnotes** (the footnote text lies after the main text in the piece
-   table: `ccpFtn`).
-4. Comments, tracked changes, shapes, charts: read-only display first.
+1. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
+   (their text lies after the main text in the piece table: `ccpFtn`,
+   `ccpEdn`), comments and revision marks, sections and their columns,
+   bookmarks and caption / cross-reference fields. ODT and DOCX read all of
+   these.
+2. Shapes and charts: read-only display first.
 
 Each can be checked against a LibreOffice-generated fixture the way
 `Tests/fixtures/word97-formatting.*` is.
@@ -91720,21 +91808,21 @@ Found while checking real documents against Writer. Each is something the
 model or a reader can already carry, or that a document needs, but
 `UltraCanvasRichTextEdit` does not draw or edit:
 
-- **Blocks are not split across pages.** A paragraph or table that does not
-  fit moves whole to the next page, leaving the rest of the page empty; a
-  block taller than a page runs past its bottom margin. No widow/orphan
-  control, no keep-with-next, no repeated table header rows.
-- **Headers and footers cannot be edited**, only shown. The caret never
-  enters them.
-- **Page number fields in the body** show the number they were saved with;
-  only headers and footers are numbered per page.
-- **No zoom and no horizontal scrolling.** A page wider than the element is
-  cut at the right; the page is drawn at 96 DPI.
-- **One page setup per document.** Sections with their own size, margins or
-  orientation, and even/odd headers, are not modelled.
-- **Positioned frames and floating pictures** are drawn in reading order,
-  not at their place on the page.
-- **Border line styles** (double, dotted, dashed) are drawn solid.
+- **A frame's distance from the text is a fixed 9 pt**, whatever the
+  document says, and text wraps round a frame's rectangle, not round a
+  picture's outline (Writer's contour wrap).
+- **Frames in table cells and in other frames** do not float: a cell drops
+  a frame's text, a frame shows a nested frame's text in line. Frames in
+  headers and footers cannot be selected or moved on the page, and are
+  drawn under the body's text (Word's order; Writer draws a frame set in
+  front of the text over it).
+- **A frame's text cannot be edited**, and a frame cannot be moved or
+  resized; clicks pass through it to the text underneath.
+- **Group shapes and drawn shapes** (lines, arrows, WordArt) are not shown;
+  only a shape's picture or text box is.
+- **One page setup per document.** Sections can have their own columns, but
+  not their own size, margins or orientation; even/odd headers are not
+  modelled.
 - **Picture bullets** and **numbered headings** (chapter numbering) are not
   drawn.
 - **Merged cells in DOC** are not read (the model and view support them).
@@ -91750,6 +91838,10 @@ soffice --headless --convert-to odt word97-formatting.fodt
 soffice --headless --convert-to "doc:MS Word 97" word97-formatting.fodt
 soffice --headless --convert-to docx word97-formatting.fodt
 ```
+
+`word-frames.fodt` (a letterhead-like page: a page-anchored sender frame
+beside the address, a note box a paragraph wraps round, a floating picture)
+is converted the same way to `word-frames.odt`, `.doc` and `.docx`.
 
 `WordFormatsTest` checks that all three readers recover the same structure and
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it
@@ -107693,6 +107785,13 @@ Screen and Win+Print Screen stay the system's. *Settings > Behaviour > After
 a snip* switches it off. When UltraSnip is not running, Print Screen is the
 system's again.
 
+**In the background.** UltraDesktop starts `UltraSnip --background` with
+the desktop (ticked by default in its *Start with the desktop* menu): no
+window, the Print Screen key held, and the screenshot button and
+Super+Shift+S answered at once by the copy that runs. Its window, once a
+snip has shown it, hides when closed instead of ending UltraSnip. A second
+`--background` start reaches the running copy and changes nothing.
+
 **From the window.** Start UltraSnip from the applications: until there is
 a snip its window is just its bar. Choose the shape and the kind (icons;
 each names itself in its tooltip) and the delay, and click *Start*
@@ -109328,6 +109427,7 @@ shows first - each ticked one that is not running yet is started:
 | UltraMail | `--minimized` | new mail is fetched and counted on the mail icon |
 | UltraClipboard | `--background` | no window; opens at once from the clipboard panel |
 | UltraNotifications (ticked by default) | `--background` | no window; counts the unread on the bell, opens at once |
+| UltraSnip (ticked by default) | `--background` | no window; the Print Screen key snips (taken from the system, so not the Windows Snipping Tool), the screenshot button and Super+Shift+S open at once |
 | Sticker board | - | the desktop's own board: its window and file thumbnails are made, not shown, so the first click shows it at once |
 
 A minimized program that is running already is left alone, since a second
@@ -109335,10 +109435,11 @@ start of these single-copy programs would only bring their window forward; a
 second `--background` start reaches the running copy, which takes it as
 nothing to do. Ticking one in the menu starts it at once as well.
 
-UltraNotifications is ticked from the start, so the bell counts from the
-first sign-in; the others are off until ticked. A settings file from before
-that default gets UltraNotifications added once (`startupDefaults` in the
-file records it), and unticking it afterwards holds.
+UltraNotifications and UltraSnip are ticked from the start, so the bell
+counts and the Print Screen key snips from the first sign-in; the others are
+off until ticked. A settings file from before a default gets that program
+added once (`startupDefaults` in the file records how many defaults it has
+had: 1 UltraNotifications, 2 UltraSnip), and unticking it afterwards holds.
 
 ## How the mail count gets there
 
@@ -111729,18 +111830,6 @@ headless, the player part skips itself without GStreamer plugins).
 The proposal's roadmap (§11) has the order.
 
 ==============================================================================
-FILE: Docs/UltraVideo/changelog.d/host-theme-policy.md
-==============================================================================
-
-- **The palette follows the desktop until the eye picks one.** The theme
-  is set under the application's `Own` policy with `ThemeFor` as the
-  provider: the dark palette on a dark desktop (or under *Dark* on
-  UOS-Settings' Look page), the light one on a light desktop, and a change
-  while UltraVideo runs is taken at once. The eye button makes the look the
-  project's, saved with it (`view.dark`); a project that never picked keeps
-  following. The fonts are the desktop's.
-
-==============================================================================
 FILE: Docs/UltraPress/README.md
 ==============================================================================
 
@@ -112058,17 +112147,6 @@ and its reference from the shadow, the newsletter's e-mail mode of the
 emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.
-
-==============================================================================
-FILE: Docs/UltraPress/changelog.d/host-theme-policy.md
-==============================================================================
-
-- **The look follows the desktop until one is chosen.** The theme is set
-  under the application's `Own` policy with `ThemeFor` as the provider: a
-  dark desktop, or *Dark* on UOS-Settings' Look page, gives the dark look
-  (`look=system`, the new default), and a change while the editor runs is
-  taken at once; *Dark look* / *Light look* in the side column still picks
-  one for good (`look=light` / `look=dark`). The fonts are the desktop's.
 
 ==============================================================================
 FILE: Docs/Legal/Privacy/README.md

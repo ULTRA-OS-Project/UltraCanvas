@@ -31,6 +31,7 @@
 // a line on standard input.
 //
 // Version: 0.6.0 - market: the marketplace service (submit, notices, terms, standing, reports)
+// Version: 0.5.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.5.0 - sale sync
 // Version: 0.4.0 - affiliate, code, sale
 // Version: 0.3.0 - upload
@@ -352,7 +353,15 @@ bool SetField(Component& c, const std::string& field, const std::string& value, 
     else if (field == "source_url") c.sourceUrl = value;
     else if (field == "icon") c.icon = value;
     else if (field == "source_language") c.sourceLanguage = value;
-    else if (field == "categories") c.categories = SplitWords(value);
+    else if (field == "categories") {
+        // The store's list only (UltraStore::StoreCategories), any case.
+        c.categories.clear();
+        for (const std::string& word : SplitWords(value)) c.categories.push_back(UltraStore::CategoryId(word));
+        if (const auto ok = UltraStore::CheckCategories(c.categories); !ok) {
+            error = ok.error.message + "; the categories are: " + ok.error.detail;
+            return false;
+        }
+    }
     else if (field == "tags") c.tags = SplitWords(value);
     else if (field == "screenshots") c.screenshots = SplitWords(value);
     else if (field == "successor") c.successor = value;
