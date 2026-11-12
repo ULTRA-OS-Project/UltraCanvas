@@ -69843,7 +69843,7 @@ the next application's, so every settings window reads as one family and a
 change to the look lands everywhere.
 
 **File Location**: `include/UltraCanvasSettingsPageKit.h`
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Author**: UltraCanvas Framework
 
 Everything is in `namespace UltraCanvas::SettingsPageKit`.
@@ -69888,10 +69888,16 @@ under the caption, before the list.
 | `MakeColorBox(id, color, tooltip, onClick)`, `SetColorBoxColor(box, color)` | A box showing a configured colour, the same shade in every state. |
 | `IconPath(fileName)` | `media/icons/<fileName>` resolved. |
 
-The type scale and colours (`kTitleFontSize`, `kTextFontSize`,
-`kNoteFontSize`, `kTextColor`, `kNoteTextColor`, ...) and the page
-geometry (`kTextWidth`, `kControlHeight`, ...) are constants of the
-namespace, for a control a page builds itself.
+The type scale and colours are the theme's, read as functions of the
+namespace for a control a page builds itself: `TitleFontSize()`,
+`TextFontSize()`, `NoteFontSize()` and `TreeFontSize()` are the theme's
+Heading, Body and Caption sizes (the desktop's interface font size and the
+ratios of [`UltraCanvasTheme.md`](UltraCanvasTheme.md)); `TextColor()`,
+`NoteTextColor()`, `NoteBackground()`, `NoteAccent()`, `WindowBackground()`,
+`TreeBackground()`, `PageBackground()`, `ButtonFace()`, `ButtonHover()`
+and `Rule()` are its roles, so a settings window is dark on a dark desktop
+and a window built after the theme changed takes the new look. The page
+geometry (`kTextWidth`, `kControlHeight`, ...) stays constant.
 
 ## Usage
 
