@@ -146,7 +146,7 @@ the `WasmHost` library's engine under Emscripten.
 | Storage | a JSON file per origin in the settings folder | the same file, in an IndexedDB-backed directory of the page's origin (synced every 2 s, and when the page is hidden or closed) |
 | Clipboard | the system clipboard | `navigator.clipboard`, through the backend's `SetClipboardText` |
 | WebSockets (v3) | UltraNet, under `SocketRules` | not yet: `uc_ws_open` answers `UC_ERR_DENIED`. The page's `WebSocket` is the obvious service, under the same rules |
-| Peers (v3) | UltraRTC | not yet: `uc_rtc_peer_open` answers `UC_ERR_DENIED`. The page's `RTCPeerConnection` is the obvious service (`UltraRTCDesignProposal.md`, the WebAssembly tier) |
+| Peers and calls (v3, v4) | UltraRTC; the tab's permission bar for the devices | not yet: `uc_rtc_peer_open` answers `UC_ERR_DENIED`. The page's `RTCPeerConnection` and `getUserMedia` are the obvious services (`UltraRTCDesignProposal.md`, the WebAssembly tier) |
 
 The page's origin is the app's origin: an app loaded from
 `https://x.org/app/hello.wasm` fetches and stores as `https://x.org`.

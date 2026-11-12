@@ -1,9 +1,11 @@
 /*
  * UltraWeb/guest/ultraweb.h
- * The UltraWeb element ABI, version 3: how a WebAssembly app builds its UI
+ * The UltraWeb element ABI, version 4: how a WebAssembly app builds its UI
  * out of UltraCanvas elements that the UltraWeb browser owns, and the
  * services it may use beside them - timers, fetch, storage, the clipboard,
- * WebSockets, and peer-to-peer data channels (WebRTC, through UltraRTC).
+ * WebSockets, peer-to-peer data channels (WebRTC, through UltraRTC), and
+ * calls: audio and video tracks, the camera and the microphone, pictures in
+ * a VideoTile element.
  *
  * One header for both sides. A guest (built for wasm32-wasip1) includes it
  * for the imports below; the host (Apps/UltraWeb) includes it for the same
@@ -32,8 +34,11 @@
  * message instead of failing at an import it does not have.
  *
  * Version 3 adds WebSockets (uc_ws_*) and peer connections with data
- * channels (uc_rtc_*); an app that uses them returns 3.
+ * channels (uc_rtc_*); an app that uses them returns 3. Version 4 adds audio
+ * and video tracks, the devices (behind the user's permission) and the
+ * VideoTile element; an app that uses them returns 4.
  *
+ * Version: 4.0.0 - audio and video tracks, the camera and the microphone, VideoTile
  * Version: 3.0.0 - WebSockets and peer-to-peer data channels
  * Version: 2.0.0
  * Last Modified: 2026-11-11
@@ -44,7 +49,7 @@
 
 #include <stdint.h>
 
-#define UC_ABI_VERSION 3
+#define UC_ABI_VERSION 4
 
 /* ===== Handles ===== */
 #define UC_NO_HANDLE   0u
@@ -56,6 +61,10 @@
 #define UC_KIND_BUTTON     "Button"
 #define UC_KIND_TEXT_INPUT "TextInput"
 #define UC_KIND_CHECKBOX   "Checkbox"
+#define UC_KIND_VIDEO_TILE "VideoTile"   /* v4: a live picture - a track's video
+                                            (uc_rtc_video_show) or the camera's
+                                            self view (uc_rtc_camera); its TEXT is
+                                            the caption shown without a picture */
 
 /* ===== Properties =====
  * Text properties go through uc_set_text / uc_get_text, numbers through
@@ -82,6 +91,11 @@
                                     column (the height of a row) for every child
                                     whose size on that axis is automatic: a child
                                     with a set width keeps it. */
+#define UC_PROP_FIT        16u   /* UC_FIT_*: VideoTile (v4) */
+#define UC_PROP_MIRRORED   17u   /* 0 / 1: VideoTile (v4); a self view is mirrored by itself */
+
+#define UC_FIT_CONTAIN 0         /* the whole picture, bars where the shapes differ */
+#define UC_FIT_COVER   1         /* fills the tile, the overflow cut off */
 
 #define UC_DIRECTION_COLUMN 0
 #define UC_DIRECTION_ROW    1
@@ -139,6 +153,25 @@
 #define UC_RTC_CHANNEL_OPEN      5u  /* channel: it can send */
 #define UC_RTC_CHANNEL_CLOSE     6u  /* channel: it closed (its id stays until uc_rtc_channel_close) */
 #define UC_RTC_MESSAGE           7u  /* channel: a message. number 1 binary, 0 text; text: the bytes */
+/* v4: in these the channel slot carries a track's id. */
+#define UC_RTC_TRACK             8u  /* the other side added a track this side has not: track,
+                                        number UC_RTC_AUDIO or UC_RTC_VIDEO, text its media id */
+#define UC_RTC_TRACK_OPEN        9u  /* track: media can flow */
+#define UC_RTC_TRACK_CLOSE      10u  /* track: it ended */
+#define UC_RTC_PERMISSION       11u  /* track: what became of uc_rtc_camera / uc_rtc_microphone.
+                                        number UC_RTC_DEVICE_*; text "camera" or "microphone" */
+
+#define UC_RTC_AUDIO 0u
+#define UC_RTC_VIDEO 1u
+
+#define UC_RTC_DEVICE_BLOCKED 0      /* the user said no (now or before) */
+#define UC_RTC_DEVICE_ON      1      /* allowed, and the device runs */
+#define UC_RTC_DEVICE_FAILED  2      /* allowed, but the device could not be opened */
+
+/* Directions for uc_rtc_audio_add / uc_rtc_video_add. */
+#define UC_RTC_SENDRECV 0u
+#define UC_RTC_SENDONLY 1u
+#define UC_RTC_RECVONLY 2u
 
 #define UC_RTC_OFFER  1u
 #define UC_RTC_ANSWER 2u
@@ -363,6 +396,45 @@ UC_IMPORT(uc_rtc_channel_open) int32_t uc_rtc_channel_open(int32_t peer, const c
 /* Sends text or (binary non-zero) bytes. UC_ERR_STATE until the channel is open. */
 UC_IMPORT(uc_rtc_send) int32_t uc_rtc_send(int32_t channel, const void* data, uint32_t length, uint32_t binary);
 UC_IMPORT(uc_rtc_channel_close) int32_t uc_rtc_channel_close(int32_t channel);
+/* ----- Calls (v4) -----
+ * Audio (Opus, 48 kHz) and video (VP8) tracks on a peer. Add a track on both
+ * sides with the same media id ("audio", "video") before the offer - the
+ * two then share one m-line - then make the offer with uc_rtc_offer on the
+ * side that calls (tracks, unlike channels, do not start a negotiation by
+ * themselves); the answer follows by itself. A track the other side added
+ * that this side has not arrives as UC_RTC_TRACK. Track ids share the peer
+ * and channel id space. Limits: 4 audio and 4 video tracks a peer.
+ *
+ * The camera and the microphone are the user's: the first uc_rtc_camera or
+ * uc_rtc_microphone of an app shows a bar in its tab - "x.org wants to use
+ * your camera: Allow / Block" - and the answer is kept for the app's
+ * origin. The call returns UC_OK at once (or UC_ERR_DENIED when the user
+ * blocked it before); what became of it arrives as UC_RTC_PERMISSION. Off
+ * (on = 0) stops the device at once. A closed peer stops its devices. */
+/* direction UC_RTC_SENDRECV / SENDONLY / RECVONLY. Returns the track's id. */
+UC_IMPORT(uc_rtc_audio_add) int32_t uc_rtc_audio_add(int32_t peer, const char* mid, uint32_t midLength,
+                                                     uint32_t direction);
+/* What it sends: width x height (16..1920 x 16..1080), fps (1..30), kbps
+ * (50..4000); 0 for any of them takes the default, 640 x 480 at 24 fps and
+ * 700 kbit/s. Pictures of another size are scaled. */
+UC_IMPORT(uc_rtc_video_add) int32_t uc_rtc_video_add(int32_t peer, const char* mid, uint32_t midLength,
+                                                     uint32_t direction, uint32_t width, uint32_t height,
+                                                     uint32_t fps, uint32_t kbps);
+/* Makes the offer (a UC_RTC_LOCAL_DESCRIPTION follows): once the tracks are added. */
+UC_IMPORT(uc_rtc_offer) int32_t uc_rtc_offer(int32_t peer);
+/* The microphone feeds an audio track. */
+UC_IMPORT(uc_rtc_microphone) int32_t uc_rtc_microphone(int32_t track, uint32_t on);
+/* The camera feeds a video track; its pictures show, mirrored, in selfView
+ * (a VideoTile, or UC_NO_HANDLE for none). */
+UC_IMPORT(uc_rtc_camera) int32_t uc_rtc_camera(int32_t track, uint32_t on, uint32_t selfView);
+/* Received audio plays on the speaker. No permission is asked. */
+UC_IMPORT(uc_rtc_playback) int32_t uc_rtc_playback(int32_t track, uint32_t on);
+/* Received pictures show in the VideoTile `tile` (UC_NO_HANDLE: nowhere).
+ * The pixels never pass through the app's memory. */
+UC_IMPORT(uc_rtc_video_show) int32_t uc_rtc_video_show(int32_t track, uint32_t tile);
+/* Mute / camera off: a disabled track sends nothing; the device keeps running. */
+UC_IMPORT(uc_rtc_track_enabled) int32_t uc_rtc_track_enabled(int32_t track, uint32_t enabled);
+
 /* The peer's oldest event: writes kind, channel and number to info[0..2],
  * copies at most capacity bytes of its text, and returns the text's full
  * length. The event is taken off the queue only when its text fitted.

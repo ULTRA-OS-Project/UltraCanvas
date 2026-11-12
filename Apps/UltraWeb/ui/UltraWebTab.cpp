@@ -1,10 +1,12 @@
 // Apps/UltraWeb/ui/UltraWebTab.cpp
 // One browser tab (UltraWebTab.h): what used to be the whole window's page
 // or app, now one per tab.
+// Version: 0.4.0 - apps' calls: WebSockets and UltraRTC services, the device
+//                  permission bar (kept per origin, PermissionStore)
 // Version: 0.3.0 - pages carry the browser's cookies (SharedCookieJar)
 // Version: 0.2.0 - target="_blank" links go to the window (a new tab)
 // Version: 0.1.0
-// Last Modified: 2026-10-22
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebTab.h"
@@ -12,12 +14,14 @@
 #include "../host/UltraWebCookies.h"
 #include "../host/UltraWebFetch.h"
 #include "../host/UltraWebPages.h"
+#include "../host/UltraWebPermissions.h"
 #include "../host/UltraWebStorage.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "WasmHost/UltraCanvasWasmHost.h"
 
 #include <cstdio>
@@ -33,7 +37,8 @@ void AppLog(const std::string& line) { std::fprintf(stderr, "[UltraWeb app] %s\n
 // The services an app reaches beside its elements (GuestServices), real
 // ones: the application's timers, UltraNet for fetch and WebSockets, a store
 // on disk per origin, the system clipboard, UltraRTC for peer connections.
-GuestServices RealServices(const std::string& address, std::function<void(std::function<void()>)> post) {
+GuestServices RealServices(const std::string& address, std::function<void(std::function<void()>)> post,
+                           std::function<void(const std::string&, std::function<void(bool)>)> askPermission) {
     GuestServices services;
     services.startTimer = [](uint32_t ms, bool repeat, std::function<void()> fire) -> uint32_t {
         auto* app = UltraCanvasApplicationBase::GetCurrent();
@@ -51,6 +56,7 @@ GuestServices RealServices(const std::string& address, std::function<void(std::f
     services.writeClipboard = [](const std::string& text) { return SetClipboardText(text); };
     services.webSocket = MakeNetworkSockets(post);
     services.rtc = MakeEngineRtc(post);
+    services.askPermission = std::move(askPermission);
     return services;
 }
 
@@ -58,6 +64,34 @@ GuestServices RealServices(const std::string& address, std::function<void(std::f
 
 UltraWebTab::UltraWebTab(const std::string& id, Host host)
     : host_(std::move(host)), loader_(host_.post) {
+    // The page: the permission bar while an app asks for a device, then the area.
+    page_ = CreateContainer(id + "Page", 0, 0, 0, 0);
+    page_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    page_->layoutItem.SetFlexGrow(1);
+    page_->layoutItem.SetFlexShrink(1);
+    page_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    ContainerStyle pagePlain;
+    pagePlain.autoShowScrollbars = false;
+    page_->SetContainerStyle(pagePlain);
+
+    bar_ = CreateContainer(id + "PermissionBar", 0, 0, 0, 0);
+    bar_->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    bar_->layout.SetFlexGap(8);
+    bar_->SetPadding(8);
+    bar_->SetBackgroundColor(Color(255, 244, 206));
+    bar_->SetContainerStyle(pagePlain);
+    barText_ = CreateLabel(id + "PermissionText", "");
+    barText_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    barText_->SetWrap(TextWrap::WrapWord);
+    allow_ = CreateButton(id + "PermissionAllow", 0, 0, 90, 28, Tr("Allow"));
+    block_ = CreateButton(id + "PermissionBlock", 0, 0, 90, 28, Tr("Block"));
+    allow_->SetOnClick([this]() { AnswerPermission(true); });
+    block_->SetOnClick([this]() { AnswerPermission(false); });
+    bar_->AddChild(barText_);
+    bar_->AddChild(allow_);
+    bar_->AddChild(block_);
+
     // UC_ROOT_HANDLE: a flex column the app fills; how its children sit
     // across it is the app's to say (UC_PROP_ALIGN), start until then.
     area_ = CreateContainer(id, 0, 0, 0, 0);
@@ -69,6 +103,7 @@ UltraWebTab::UltraWebTab(const std::string& id, Host host)
     ContainerStyle plain;
     plain.autoShowScrollbars = false;
     area_->SetContainerStyle(plain);
+    page_->AddChild(area_);
 
     errorTitle_ = CreateLabel(id + "ErrorTitle", "");
     errorTitle_->SetFontSize(16);
@@ -220,7 +255,11 @@ void UltraWebTab::ShowApp(const LoadedApp& app) {
     GuestOptions options;
     options.onLog = AppLog;
     options.address = app.address;
-    options.services = RealServices(app.address, host_.post);
+    std::weak_ptr<bool> asking = alive_;
+    options.services = RealServices(app.address, host_.post,
+        [this, asking](const std::string& device, std::function<void(bool)> answer) {
+            if (!asking.expired()) AskPermission(device, std::move(answer));
+        });
     std::weak_ptr<bool> alive = alive_;
     options.onFailure = [this, alive](const std::string& message) {
         if (alive.expired()) return;
@@ -252,7 +291,68 @@ void UltraWebTab::ShowError(const std::string& title, const std::string& detail)
     area_->RequestRedraw();
 }
 
+// ===== DEVICE PERMISSIONS =====
+
+void UltraWebTab::AskPermission(const std::string& device, std::function<void(bool)> answer) {
+    const std::string partition = UltraWebStorage::PartitionFor(address_);
+    const PermissionStore::Answer kept = PermissionStore::Shared()->Get(partition, device);
+    if (kept != PermissionStore::Answer::NotAsked) {
+        // Answered before: on a later turn, as the bar's answer would come.
+        const bool allowed = kept == PermissionStore::Answer::Allowed;
+        host_.post([answer = std::move(answer), allowed]() { answer(allowed); });
+        return;
+    }
+    questions_.push_back(Question{device, std::move(answer)});
+    if (questions_.size() == 1) ShowNextQuestion();
+}
+
+void UltraWebTab::ShowNextQuestion() {
+    page_->RemoveChild(bar_);
+    if (!questions_.empty()) {
+        std::string who = UltraWebStorage::PartitionFor(address_);
+        if (who.rfind("file://", 0) == 0) who = who.substr(7);
+        barText_->SetText(questions_.front().device == "camera" ? TrF("{0} wants to use your camera", who)
+                                                                : TrF("{0} wants to use your microphone", who));
+        page_->ClearChildren();
+        page_->AddChild(bar_);
+        page_->AddChild(area_);
+    }
+    page_->InvalidateLayout();
+    page_->RequestRedraw();
+}
+
+std::string UltraWebTab::PermissionQuestion() const {
+    return questions_.empty() ? std::string() : barText_->GetText();
+}
+
+void UltraWebTab::AnswerPermission(bool allowed) {
+    if (questions_.empty()) return;
+    const std::string device = questions_.front().device;
+    PermissionStore::Shared()->Set(UltraWebStorage::PartitionFor(address_), device, allowed);
+    // Every question about that device has its answer now.
+    std::vector<std::function<void(bool)>> answers;
+    for (auto it = questions_.begin(); it != questions_.end();) {
+        if (it->device == device) {
+            answers.push_back(std::move(it->answer));
+            it = questions_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    // The bar's own click is running: answer on the next turn, and show the
+    // next question (or none) now.
+    ShowNextQuestion();
+    for (auto& answer : answers) host_.post([answer = std::move(answer), allowed]() { answer(allowed); });
+}
+
+void UltraWebTab::DropQuestions() {
+    if (questions_.empty()) return;
+    questions_.clear();
+    ShowNextQuestion();
+}
+
 void UltraWebTab::ClearArea() {
+    DropQuestions();
     area_->ClearChildren();
     area_->InvalidateLayout();
     area_->RequestRedraw();
