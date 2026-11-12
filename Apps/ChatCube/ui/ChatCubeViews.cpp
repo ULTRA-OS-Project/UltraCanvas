@@ -141,13 +141,13 @@ std::string MessageText(const UltraIMMessage& m) {
         case UltraIMMessageType::Video:       return m.text;
         case UltraIMMessageType::Sticker:     return a.localPath.empty() ? m.text : std::string();
         case UltraIMMessageType::File: {
-            std::string line = a.fileName.empty() ? std::string("File") : a.fileName;
+            std::string line = a.fileName.empty() ? Tr("File") : a.fileName;
             if (a.fileSizeBytes > 0) line += "  " + FormatSize(a.fileSizeBytes);
             if (!m.text.empty()) line += "\n" + m.text;
             return line;
         }
         case UltraIMMessageType::Audio: {
-            std::string line = a.fileName.empty() ? std::string("Voice message") : a.fileName;
+            std::string line = a.fileName.empty() ? Tr("Voice message") : a.fileName;
             if (a.durationSeconds > 0) line += "  " + FormatDuration(a.durationSeconds);
             return line;
         }
@@ -192,7 +192,8 @@ std::string FormatTime(int64_t timestampMs) {
         // "2:05 PM": no leading zero, and AM / PM whatever the locale says
         // (strftime's %p is empty in many of them).
         const int hour = tm.tm_hour % 12 == 0 ? 12 : tm.tm_hour % 12;
-        std::snprintf(buffer, sizeof(buffer), "%d:%02d %s", hour, tm.tm_min, tm.tm_hour < 12 ? "AM" : "PM");
+        std::snprintf(buffer, sizeof(buffer), "%d:%02d", hour, tm.tm_min);
+        return tm.tm_hour < 12 ? TrF("{0} AM", buffer) : TrF("{0} PM", buffer);
     }
     return buffer;
 }
@@ -220,21 +221,23 @@ std::string FormatDuration(double seconds) {
 }
 
 std::string FormatSize(int64_t bytes) {
-    if (bytes < 1000) return std::to_string(bytes) + " bytes";
+    if (bytes < 1000) return TrN("{n} byte", "{n} bytes", bytes);
     // One decimal, in tenths, so no float is formatted.
-    const char* unit = "KB";
+    int unit = 0;               // 0 KB, 1 MB, 2 GB
     int64_t tenths = bytes * 10 / 1000;
     if (tenths >= 10000) {
-        unit = "MB";
+        unit = 1;
         tenths = bytes * 10 / (1000 * 1000);
     }
     if (tenths >= 10000) {
-        unit = "GB";
+        unit = 2;
         tenths = bytes * 10 / (1000LL * 1000 * 1000);
     }
     std::string out = std::to_string(tenths / 10);
     if (tenths < 100) out += "." + std::to_string(tenths % 10);
-    return out + " " + unit;
+    if (unit == 0) return TrF("{0} KB", out);
+    if (unit == 1) return TrF("{0} MB", out);
+    return TrF("{0} GB", out);
 }
 
 bool HasPicture(const UltraIMMessage& message) {
@@ -555,10 +558,10 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
         if (!painted) {
             ctx->DrawFilledRectangle(box, look.well, 0.0f, Colors::Transparent, kPictureRadius);
             std::string waiting;
-            if (m.deliveryStatus == UltraIMDeliveryStatus::Sending) waiting = "Sending\xE2\x80\xA6";
-            else if (m.deliveryStatus == UltraIMDeliveryStatus::Failed) waiting = "Not sent";
-            else if (m.type == UltraIMMessageType::Video) waiting = "Video";
-            else waiting = "Fetching the picture\xE2\x80\xA6";
+            if (m.deliveryStatus == UltraIMDeliveryStatus::Sending) waiting = Tr("Sending\xE2\x80\xA6");
+            else if (m.deliveryStatus == UltraIMDeliveryStatus::Failed) waiting = Tr("Not sent");
+            else if (m.type == UltraIMMessageType::Video) waiting = Tr("Video");
+            else waiting = Tr("Fetching the picture\xE2\x80\xA6");
             ctx->SetFontSize(kMetaFont + 0.5f);
             ctx->SetFontWeight(FontWeight::Normal);
             ctx->SetTextWrap(TextWrap::WrapNone);
@@ -709,7 +712,7 @@ ListDataValue ConversationListModel::GetData(const ListIndex& index, ListDataRol
     const UltraIMConversation& c = list_[static_cast<size_t>(index.row)];
     if (role == ListDataRole::DisplayRole) return c.title;
     if (role == ListDataRole::ToolTipRole)
-        return c.isGroup ? c.title + "\n" + std::to_string(c.memberIds.size()) + " members"
+        return c.isGroup ? c.title + "\n" + TrN("{n} member", "{n} members", static_cast<long long>(c.memberIds.size()))
                          : c.title + "\n" + GroupUserId(c.directContactId);
     return ListDataValue();
 }

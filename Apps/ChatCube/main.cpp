@@ -38,6 +38,7 @@
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraIM/UltraIMCore.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetPlugins.h"
 #include "UltraRTC/UltraRTCCore.h"
@@ -262,7 +263,7 @@ int main(int argc, char** argv) {
     {
         ChatCube::ChatCubeWindow window(CHATCUBE_VERSION, "direct", settings);
         if (!window.Create()) {
-            std::fprintf(stderr, "ChatCube: the window could not be created.\n");
+            std::fprintf(stderr, "%s\n", UltraCanvas::Tr("ChatCube: the window could not be created.").c_str());
             exitCode = EXIT_FAILURE;
         } else {
             window.onClosed = [&app]() { app.Exit(); };
