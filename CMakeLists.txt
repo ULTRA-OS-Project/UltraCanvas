@@ -332,6 +332,20 @@ if(EMSCRIPTEN)
     else()
         add_compile_options(-fwasm-exceptions)
     endif()
+    # The UltraCanvas runtime (UltraCanvas/OS/WASM/runtime): UltraCanvas as
+    # one main module that apps load as side modules, from a browser extension
+    # or the site. Emscripten's dynamic linking needs every object in the main
+    # module position-independent - this whole build, and a sysroot built with
+    # WASM_PIC=1 (UltraCanvas/OS/WASM/build-wasm-sysroot.sh). Single-threaded
+    # only (ULTRACANVAS_WASM_THREADS=OFF): see Docs/UltraCanvas/UltraCanvasWasmRuntime.md.
+    option(ULTRACANVAS_WASM_DYNAMIC "WebAssembly: build -fPIC, and the UltraCanvas runtime that loads apps as side modules" OFF)
+    if(ULTRACANVAS_WASM_DYNAMIC)
+        if(ULTRACANVAS_WASM_THREADS)
+            message(FATAL_ERROR "ULTRACANVAS_WASM_DYNAMIC needs ULTRACANVAS_WASM_THREADS=OFF: "
+                                "dynamic linking in a browser is single-threaded")
+        endif()
+        add_compile_options(-fPIC)
+    endif()
     set(BUILD_TEXTER_APP OFF CACHE BOOL "Build the texter application")
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
@@ -571,6 +585,14 @@ if(BUILD_WASM_DEMOS)
     message(STATUS "")
     message(STATUS "── Building WebAssembly demos ──")
     add_subdirectory(UltraCanvas/OS/WASM/demo)
+endif()
+
+# The UltraCanvas runtime for browsers and its sample app, under emcmake
+# with ULTRACANVAS_WASM_DYNAMIC (see the WebAssembly defaults block above).
+if(EMSCRIPTEN AND ULTRACANVAS_WASM_DYNAMIC)
+    message(STATUS "")
+    message(STATUS "── Building the UltraCanvas runtime for browsers ──")
+    add_subdirectory(UltraCanvas/OS/WASM/runtime)
 endif()
 
 # ===== BUILD ULTRAAI MODULE =====

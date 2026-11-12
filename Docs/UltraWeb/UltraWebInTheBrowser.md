@@ -34,6 +34,11 @@ not have the extension.
 - [Limits of the prototype](#limits-of-the-prototype)
 - [What would make it a product](#what-would-make-it-a-product)
 
+An app written against the full UltraCanvas C++ API, rather than the
+small UltraWeb interface, has its own runtime and extension: UltraCanvas as
+a shared main module that loads apps as side modules -
+[`Docs/UltraCanvas/UltraCanvasWasmRuntime.md`](../UltraCanvas/UltraCanvasWasmRuntime.md).
+
 ## The three ways an app reaches the screen
 
 | | Where UltraCanvas is | What the site sends | Status |
