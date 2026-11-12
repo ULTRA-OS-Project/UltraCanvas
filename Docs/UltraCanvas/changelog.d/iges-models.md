@@ -43,3 +43,8 @@
   Models plugin reads and writes.** It still said only STL was implemented and
   that OBJ, FBX, 3DS, PLY and COLLADA were not, which had not been true since
   the Models plugin arrived. The demo app has an IGES page with both samples.
+- **The file browser names and colours CAD files.** `.step`, `.stp`, `.p21`,
+  `.igs` and `.iges` had no entry in `UltraCanvasFilerWidget`'s type table, so
+  they showed with no type name on the generic 3D colour. They are now "STEP
+  Model" and "IGES Model" on the 3D ramp - STEP on glTF's rung, the older
+  IGES on the last - and `FilerFormatColorTest` checks the rungs.
