@@ -1,15 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 750 750">
   <title>UltraSnip</title>
-  <desc>A white selection frame with corner handles around a camera's lens, with a red recording dot, on an indigo tile: the screenshot and screen-recording mark.</desc>
-  <rect x="16" y="16" width="224" height="224" rx="48" ry="48" fill="#4f46e5"/>
-  <g fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M62 96 V62 H96"/>
-    <path d="M160 62 H194 V96"/>
-    <path d="M194 160 V194 H160"/>
-    <path d="M96 194 H62 V160"/>
+  <desc>A dark camera with a blue lens inside a red dashed selection frame, on an off-white tile: the screenshot and screen-recording mark.</desc>
+  <rect x="1" y="1" width="748" height="748" rx="165" ry="165" fill="#f6f6f3" stroke="#e4e4e0" stroke-width="2"/>
+  <g fill="#e2312b">
+    <path d="M62 62 H150 V114 H114 V150 H62 Z"/>
+    <path d="M688 62 H600 V114 H636 V150 H688 Z"/>
+    <path d="M688 688 H600 V636 H636 V600 H688 Z"/>
+    <path d="M62 688 H150 V636 H114 V600 H62 Z"/>
+    <rect x="185" y="62" width="124" height="52"/>
+    <rect x="441" y="62" width="124" height="52"/>
+    <rect x="185" y="636" width="124" height="52"/>
+    <rect x="441" y="636" width="124" height="52"/>
+    <rect x="62" y="185" width="52" height="124"/>
+    <rect x="62" y="441" width="52" height="124"/>
+    <rect x="636" y="185" width="52" height="124"/>
+    <rect x="636" y="441" width="52" height="124"/>
   </g>
-  <circle cx="128" cy="128" r="40" fill="none" stroke="#ffffff" stroke-width="14"/>
-  <circle cx="128" cy="128" r="16" fill="#ffffff"/>
-  <circle cx="186" cy="70" r="20" fill="#ef4444" stroke="#ffffff" stroke-width="8"/>
+  <g fill="#1e2230">
+    <rect x="207" y="257" width="61" height="40" rx="10" ry="10"/>
+    <path d="M302 284 L330 224 Q333 217 341 217 L408 217 Q416 217 419 224 L447 284 Z"/>
+    <rect x="170" y="279" width="410" height="248" rx="48" ry="48"/>
+  </g>
+  <circle cx="374.5" cy="403.5" r="87.5" fill="none" stroke="#f6f6f3" stroke-width="20"/>
+  <circle cx="374.5" cy="403.5" r="41" fill="#005dff"/>
+  <circle cx="358.5" cy="387" r="12" fill="#f4e3df"/>
 </svg>
