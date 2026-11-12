@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.23.1 - the warning strip's advice, footnotes and crypto caution title go
+//                   through Tr (they were English only)
 // Version: 0.23.0 - the warning strip in markup: the domain mismatch and the scan's
 //                   reasons as a numbered list, the domains bold in the strip's colour;
 //                   each kind of strip can be hidden (Settings > Display > Email warnings)
@@ -1285,7 +1287,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         warning_->SetBackgroundColor(Theme::TrustSpamSoft());
         warning_->SetBorders(1.0f, Theme::TrustSpam(), Theme::kControlRadius);
         warningTitle_->SetTextColor(Theme::TrustSpam());
-        warningTitle_->SetText("\xE2\x9A\xA0 Caution: this message is about cryptocurrency");
+        warningTitle_->SetText("\xE2\x9A\xA0 " + Tr("Caution: this message is about cryptocurrency"));
         warningText_->SetText(cryptoAdvice);
         warning_->SetVisible(true);
         return;
@@ -1378,46 +1380,46 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     }
     std::string advice;
     if (onlyBlocked)
-        advice = "Right-click the sender to unblock them. \"Mark as spam\" moves the "
-                 "message to the junk folder.";
+        advice = Tr("Right-click the sender to unblock them. \"Mark as spam\" moves the "
+                 "message to the junk folder.");
     else if (loan)
-        advice = "Do not pay any fee, insurance or charge to receive a loan, and do not "
+        advice = Tr("Do not pay any fee, insurance or charge to receive a loan, and do not "
                  "send copies of your passport or bank details. Ask your own bank if you need "
-                 "credit.";
+                 "credit.");
     else if (webPage && !romance)
-        advice = "Do not open the attached web page, and do not sign in or pay on a page it "
+        advice = Tr("Do not open the attached web page, and do not sign in or pay on a page it "
                  "opens. If you are unsure whether you owe something, contact the company at an "
-                 "address you already know.";
+                 "address you already know.");
     else if (romance)
-        advice = "Do not send money, gift cards or crypto to someone you only know from "
+        advice = Tr("Do not send money, gift cards or crypto to someone you only know from "
                  "email or the internet, and do not sign up or give card details on a site "
-                 "they send you to.";
+                 "they send you to.");
     else
-        advice = "Do not sign in, pay or reply through the links in this message unless "
-                 "you are sure who sent it.";
+        advice = Tr("Do not sign in, pay or reply through the links in this message unless "
+                 "you are sure who sent it.");
     if (!text.empty()) text += "\n";   // a blank line between the evidence and the advice
     text += mark(advice);
     if (crypto && !romance) text += "\n" + WarningMarkup(cryptoAdvice);
     std::string footnote;
     if (romance)
-        footnote = "* Romance scams are love letters from strangers - a made-up "
+        footnote = "* " + Tr("Romance scams are love letters from strangers - a made-up "
                    "profile, someone else's photos, \"destiny\" - written to win your trust "
                    "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
                    "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
-                   "search of the photo often finds it under another name.";
+                   "search of the photo often finds it under another name.");
     else if (phishing || lookalike || webPage)
-        footnote = "* Phishing emails are emails that try to get your credentials "
-                   "to hack your accounts on other websites.";
+        footnote = "* " + Tr("Phishing emails are emails that try to get your credentials "
+                   "to hack your accounts on other websites.");
     else if (loan && !cryptoScam)
-        footnote = "* Loan scams offer credit or \"project funding\" - often "
+        footnote = "* " + Tr("Loan scams offer credit or \"project funding\" - often "
                    "millions at a few percent - to strangers by email. Only a bank may lend, and "
                    "banks do not write to people out of the blue: the \"lender\" collects a "
-                   "processing fee, an insurance or a transfer charge, and the loan never comes.";
+                   "processing fee, an insurance or a transfer charge, and the loan never comes.");
     else if (cryptoScam)
-        footnote = "* Cryptocurrency scams ask for a wallet's recovery phrase, "
+        footnote = "* " + Tr("Cryptocurrency scams ask for a wallet's recovery phrase, "
                    "demand payment to a wallet address (blackmail, fake invoices) or promise "
                    "profits on an \"investment platform\" that shows made-up gains and keeps "
-                   "what is paid in.";
+                   "what is paid in.");
     if (!footnote.empty()) text += "\n\n" + WarningMarkup(footnote);
     warningText_->SetTextIsMarkup(true);
     warningText_->SetText(text);
