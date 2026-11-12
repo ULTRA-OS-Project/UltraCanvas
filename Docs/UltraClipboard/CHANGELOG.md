@@ -1,3 +1,8 @@
+#### 2026-11-11 *0.1.10*
+- **Proxy settings** at the foot of the settings dialog: text recognition by
+  a cloud model goes through the proxy every ULTRA OS application shares,
+  and the button opens the dialog that sets it.
+
 #### 2026-11-10 *0.1.9*
 - **Extract text on recordings and videos.** A copied sound file or video is
   transcribed by an UltraAI speech-to-text provider: OpenAI's, once chosen

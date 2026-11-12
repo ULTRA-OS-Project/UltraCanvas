@@ -1,5 +1,10 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
+// Version: 1.7.0 - an extracted file keeps its dates: ExtractFile writes through
+//                  libarchive's disk writer (it wrote the bytes only, dated now),
+//                  ExtractAll follows preserveTimestamps, and a ZIP's or 7z's
+//                  creation date is restored (CreationDateFromFormat) and, when
+//                  packing, stored
 // Version: 1.6.0 - VirtualFSOpenOptions::compressionMethod sets the method of a
 //                  ZIP / 7-Zip (NotSupported when libarchive cannot write it, or
 //                  when it contradicts a TAR's extension); followSymlinks makes
@@ -15,7 +20,7 @@
 //                  file's own time / permissions / owner, symbolic links stored
 //                  as links, exclusions; files are streamed instead of read whole
 // Version: 1.3.1
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-10
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
@@ -210,6 +215,23 @@ void SetEntryDiskHardlink(struct archive_entry* entry, const std::string& utf8Pa
 #else
     archive_entry_copy_hardlink(entry, utf8Path.c_str());
 #endif
+}
+
+// ZIP and 7z keep a third date beside the modification and access dates: the
+// file's creation date (7-Zip's "CTime", the ZIP extended-timestamp and NTFS
+// fields' creation time). libarchive reads it into the entry's ctime - the
+// change time on a POSIX disk - while its disk writer sets a file's creation
+// date (Windows, macOS) from the birthtime only. So an archive's creation
+// dates were dropped on unpacking: this moves the one into the other.
+bool FormatKeepsCreationDate(struct archive* a) {
+    const int base = archive_format(a) & ARCHIVE_FORMAT_BASE_MASK;
+    return base == ARCHIVE_FORMAT_ZIP || base == ARCHIVE_FORMAT_7ZIP;
+}
+void CreationDateFromFormat(struct archive* a, struct archive_entry* entry) {
+    if (!FormatKeepsCreationDate(a) || archive_entry_birthtime_is_set(entry) ||
+        !archive_entry_ctime_is_set(entry))
+        return;
+    archive_entry_set_birthtime(entry, archive_entry_ctime(entry), archive_entry_ctime_nsec(entry));
 }
 
 // ============================================================================
@@ -986,38 +1008,101 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractFile(
     const std::string& destPath,
     const VirtualFSExtractOptions& options) {
     
-    std::vector<uint8_t> data;
-    auto result = ReadFile(virtualPath, data);
-    
-    if (result != VirtualFSResult::Ok) return result;
-    
+    if (!pImpl->isOpen) return VirtualFSResult::ArchiveNotOpen;
+
+    std::string normalizedPath = NormalizeInternalPath(virtualPath);
+    // Extracting a link extracts what it points to, as reading one does.
+    if (pImpl->openOptions.followSymlinks)
+        normalizedPath = ResolveLinks(normalizedPath, true);
+    auto entryIt = pImpl->entryCache.find(normalizedPath);
+    if (entryIt == pImpl->entryCache.end()) {
+        pImpl->lastError = "Entry not found: " + virtualPath;
+        return VirtualFSResult::NotFound;
+    }
+    if (entryIt->second.IsDirectory()) {
+        pImpl->lastError = "Cannot extract a directory as a file";
+        return VirtualFSResult::InvalidArgument;
+    }
+
+    std::error_code ec;
     if (options.createDirectories) {
         std::filesystem::path dest(UltraCanvas::PathFromUtf8(destPath));
         if (dest.has_parent_path()) {
-            std::filesystem::create_directories(dest.parent_path());
+            std::filesystem::create_directories(dest.parent_path(), ec);
         }
     }
     
-    if (std::filesystem::exists(UltraCanvas::PathFromUtf8(destPath)) && !options.overwriteExisting) {
+    if (std::filesystem::exists(UltraCanvas::PathFromUtf8(destPath), ec) && !options.overwriteExisting) {
         pImpl->lastError = "File already exists: " + destPath;
         return VirtualFSResult::AlreadyExists;
     }
-    
-    std::ofstream file(UltraCanvas::PathFromUtf8(destPath), std::ios::binary);
-    if (!file) {
-        pImpl->lastError = "Failed to create file: " + destPath;
-        return VirtualFSResult::WriteError;
+
+    // Written through libarchive's disk writer, like ExtractAll: the file
+    // gets the entry's dates - modified, and created where the archive kept
+    // it and the system can set it (Windows, macOS) - instead of the moment
+    // it was written, and its permissions when they are asked for.
+    Utf8LocaleScope utf8Names;   // see ENTRY NAME ENCODING
+    struct archive* a = pImpl->NewReadHandle();
+    if (!a) return VirtualFSResult::ReadError;
+    struct archive* ext = archive_write_disk_new();
+    int flags = 0;
+    if (options.preserveTimestamps) flags |= ARCHIVE_EXTRACT_TIME;
+    if (options.preservePermissions) flags |= ARCHIVE_EXTRACT_PERM;
+    if (options.overwriteExisting) flags |= ARCHIVE_EXTRACT_UNLINK;
+    archive_write_disk_set_options(ext, flags);
+    archive_write_disk_set_standard_lookup(ext);
+
+    struct archive_entry* entry;
+    VirtualFSResult result = VirtualFSResult::NotFound;
+    while (NextHeader(a, &entry)) {
+        if (NormalizeInternalPath(EntryPathUtf8(a, entry)) != normalizedPath) {
+            archive_read_data_skip(a);
+            continue;
+        }
+        // The entry's bytes under the caller's name - never a link: a hard
+        // link names another entry, which is not being extracted.
+        archive_entry_set_hardlink(entry, nullptr);
+        SetEntryDiskPath(entry, destPath);
+        CreationDateFromFormat(a, entry);
+        if (archive_write_header(ext, entry) < ARCHIVE_WARN) {
+            const char* why = archive_error_string(ext);
+            pImpl->lastError = why ? why : "Failed to create file: " + destPath;
+            result = VirtualFSResult::WriteError;
+            break;
+        }
+        result = VirtualFSResult::Ok;
+        const void* buff;
+        size_t size;
+        la_int64_t offset;
+        int got;
+        while ((got = archive_read_data_block(a, &buff, &size, &offset)) == ARCHIVE_OK) {
+            if (archive_write_data_block(ext, buff, size, offset) != ARCHIVE_OK) {
+                const char* why = archive_error_string(ext);
+                pImpl->lastError = why ? why : "Failed to write file: " + destPath;
+                result = VirtualFSResult::WriteError;
+                break;
+            }
+        }
+        if (result == VirtualFSResult::Ok && got != ARCHIVE_EOF) {
+            const char* why = archive_error_string(a);
+            pImpl->lastError = why ? why : "Failed to read " + virtualPath;
+            result = VirtualFSResult::ReadError;
+        }
+        // The dates are set here, once the bytes are written.
+        if (archive_write_finish_entry(ext) < ARCHIVE_WARN && result == VirtualFSResult::Ok) {
+            const char* why = archive_error_string(ext);
+            pImpl->lastError = why ? why : "Failed to finish " + destPath;
+            result = VirtualFSResult::WriteError;
+        }
+        break;
     }
-    
-    file.write(reinterpret_cast<const char*>(data.data()), 
-               static_cast<std::streamsize>(data.size()));
-    
-    if (!file) {
-        pImpl->lastError = "Failed to write file: " + destPath;
-        return VirtualFSResult::WriteError;
+    archive_read_free(a);
+    archive_write_free(ext);
+    if (result != VirtualFSResult::Ok && result != VirtualFSResult::NotFound) {
+        std::filesystem::remove(UltraCanvas::PathFromUtf8(destPath), ec);   // half a file is no file
     }
-    
-    return VirtualFSResult::Ok;
+    if (result == VirtualFSResult::NotFound) pImpl->lastError = "Entry not found: " + virtualPath;
+    return result;
 }
 
 VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
@@ -1054,8 +1139,10 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     // "link/passwd". SECURE_NOABSOLUTEPATHS cannot be set: every path handed
     // over is the absolute destination plus the entry, so absolute entry
     // names are refused by SanitizeEntryPath instead.
-    int flags = ARCHIVE_EXTRACT_TIME | ARCHIVE_EXTRACT_SECURE_NODOTDOT |
-                ARCHIVE_EXTRACT_SECURE_SYMLINKS;
+    int flags = ARCHIVE_EXTRACT_SECURE_NODOTDOT | ARCHIVE_EXTRACT_SECURE_SYMLINKS;
+    // The entries' dates: modified, and created where the archive kept it
+    // (7z, tar's pax headers, a ZIP's NTFS field) and the system can set it.
+    if (options.preserveTimestamps) flags |= ARCHIVE_EXTRACT_TIME;
     if (options.preservePermissions) flags |= ARCHIVE_EXTRACT_PERM;
     if (options.overwriteExisting) flags |= ARCHIVE_EXTRACT_UNLINK;
     
@@ -1113,6 +1200,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
             SetEntryDiskHardlink(entry, dest + "/" + relativeTarget);
         }
         SetEntryDiskPath(entry, dest + "/" + relative);
+        CreationDateFromFormat(a, entry);
         
         // ARCHIVE_WARN: written, with something minor lost (an owner that
         // could not be restored). ARCHIVE_FAILED: this entry was refused -
@@ -1314,11 +1402,19 @@ VirtualFSResult VirtualFSLibArchiveProvider::WriteDiskEntry(
     archive_entry_set_pathname_utf8(entry, name.c_str());
     if (type != AE_IFREG) archive_entry_set_size(entry, 0);
 
-    // Only the modification time travels: access and change times differ
-    // on every machine the archive is unpacked on.
+    // The modification date travels, and in a ZIP or a 7z the creation date
+    // too: those formats keep it as their third date, which libarchive writes
+    // from the entry's ctime (see CreationDateFromFormat) - so a file unpacked
+    // again keeps the date it was made where the system can set it. The
+    // access and change times differ on every machine, and do not travel.
+    const bool keepsCreation = keep.keepTimestamps && archive_entry_birthtime_is_set(entry) &&
+                               FormatKeepsCreationDate(pImpl->writeArchive);
+    const time_t created = archive_entry_birthtime(entry);
+    const long createdNsec = archive_entry_birthtime_nsec(entry);
     archive_entry_unset_atime(entry);
     archive_entry_unset_ctime(entry);
     archive_entry_unset_birthtime(entry);
+    if (keepsCreation) archive_entry_set_ctime(entry, created, createdNsec);
     if (!keep.keepTimestamps) archive_entry_set_mtime(entry, time(nullptr), 0);
     if (!keep.keepPermissions) {
         archive_entry_set_perm(entry, type == AE_IFDIR ? 0755

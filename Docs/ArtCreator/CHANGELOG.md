@@ -1,3 +1,6 @@
+#### 2026-11-12 *0.8.16*
+- **File ▸ Close Tab has an icon**, at 16 px for the menu (`media/icons/artcreator/16/close-tab.svg`) and 24 px for the toolbar (`media/icons/artcreator/close-tab.svg`): a tab with a cross, in the line style of the rest of the set.
+
 #### 2026-11-09 *0.8.15*
 - **Several drawings in one window, in tabs.** A tab strip over the canvas
   holds one drawing per tab, each with its own page, view, selection, undo

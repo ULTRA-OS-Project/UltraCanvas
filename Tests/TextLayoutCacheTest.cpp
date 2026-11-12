@@ -5,6 +5,7 @@
 // (IRenderContext::TextLayoutsCreated); a changed text, font or width makes
 // one more, a changed colour none. Drawn into an offscreen surface; needs
 // no display.
+// Version: 1.4.0 - texts alike in their first 300 characters get layouts of their own
 // Version: 1.3.0 - a WrapNone key with no ellipsize stays one line at a narrow width
 // Version: 1.2.0 - the context's key respects the font; the dropdown's reordered rows
 // Version: 1.1.0 - the text input, the dropdown and the menu
@@ -181,6 +182,22 @@ int main() {
         ctx->SetFontStyle(bold);
         Check(ctx->GetTextLineDimensions("Hello").width != atSmall.width, "and differently in bold");
         ctx->SetFontStyle(small);
+    }
+
+    std::printf("Long texts that share a beginning\n");
+    {
+        // The context's key once held only the first 300 characters: two
+        // texts alike that far shared a layout, and the second was drawn as
+        // the first.
+        const std::string common(320, 'x');
+        const std::string first = common + " - the first ending";
+        const std::string second = common + " - the second, longer ending";
+        auto a = ctx->GetOrCreateTextLayout(first, Size2Di(0, 0), false);
+        auto b = ctx->GetOrCreateTextLayout(second, Size2Di(0, 0), false);
+        Check(a && b && a != b, "two layouts, not one");
+        Check(b && b->GetText() == second, "the second layout holds the second text");
+        Check(a && ctx->GetOrCreateTextLayout(first, Size2Di(0, 0), false) == a,
+              "and the first is still found again");
     }
 
     std::printf("A text input\n");

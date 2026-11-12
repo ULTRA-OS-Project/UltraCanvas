@@ -1,3 +1,704 @@
+#### 2026-11-12 *0.9.548*
+- **CI: a "Build result" commit status says whether the Build workflow really
+  built a commit.** A new workflow, `build-result.yml`, follows every Build
+  run from outside it (`workflow_run`): the status is pending while a run is
+  going, green only when the newest run of that commit succeeded and ran jobs,
+  and red when it failed, timed out, was cancelled, failed to start or ended
+  with no jobs. Until now a run that never started any job left nothing red on
+  the commit, and a pull request read as mergeable although no platform had
+  built it (#1153 on 2026-11-09). Make "Build result" a required status check
+  of `main` in the branch protection settings so that such a pull request
+  cannot be merged.
+
+#### 2026-11-12 *0.9.547*
+- **The UltraCanvas runtime for browsers (prototype): apps keep the whole
+  C++ API and ship only their own code.** UltraCanvas, cairo, pango, glib
+  and the fonts are linked once into an Emscripten main module that exports
+  the C++ API (`UltraCanvas/OS/WASM/runtime`). An app is a side module built
+  with `ultracanvas_wasm_app()` (`cmake/UltraCanvasWasmApp.cmake`) from an
+  ordinary UltraCanvas `main()`; the runtime loads it with `dlopen` and calls
+  that `main()`. A Manifest V3 extension installs the runtime once, so a site
+  sends only its app; `ultracanvas-loader.js` takes the extension's runtime,
+  or the site's own copy when the extension is missing or of another version.
+  Tested end to end in Chromium (`UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs`).
+  See `Docs/UltraCanvas/UltraCanvasWasmRuntime.md`.
+- `build-wasm-sysroot.sh` takes `WASM_PIC=1` for a position-independent
+  sysroot, and the root build `ULTRACANVAS_WASM_DYNAMIC` (single-threaded),
+  which compiles everything `-fPIC` and adds the runtime.
+- `wasm-build.yml` gains a `dynamic` variant: the -fPIC build against a
+  -fPIC sysroot, with the runtime's Chromium test.
+
+#### 2026-11-12 *0.9.546*
+- **A tooltip asked for by an element with no window crashed.** An element
+  not yet in a window - built but not added, drawn offscreen, driven by a
+  test - passes nullptr to `UltraCanvasTooltipManager::UpdateAndShowTooltip`
+  when the pointer rests on it, and the manager then started its show timer
+  through an application that a program drawing only offscreen does not
+  have. With no window the manager now shows nothing and hides a tooltip
+  shown for another window; its timers are started and stopped only when
+  there is an application. `TooltipNoWindowTest` covers it, and
+  `KanbanFileDropTest` runs its hover test with tooltips on again.
+
+#### 2026-11-12 *0.9.545*
+- **3D files written on a localised desktop were unreadable, and COLLADA read
+  back short.** A C++ stream renders its numbers through the *C++ global*
+  locale — a separate switch from the C one, and the one a host application
+  sets when it honours the desktop's language (`std::locale::global`) — so
+  every model writer that streams its numbers put that locale into the file.
+  STEP wrote `COLOUR_RGB('Steel',0,720000028610229.,0,…)`, where the comma is
+  Part 21's parameter separator: a three-parameter entity became six and no
+  CAD system would open the file at all. ASCII PLY wrote `element vertex
+  12.227` for a mesh of 12227 vertices — digit grouping is the same locale's
+  business, so a header with no floating-point number in it came out broken
+  too. COLLADA wrote `count="33.639"` and `-0,012582`. OBJ's face lines, which
+  are written between its guarded coordinate blocks rather than inside one,
+  went out as `f 1.000/1.000/1.000`.
+  - **COLLADA's reader lost geometry for the mirror-image reason:** `>>` takes
+    the '.' for a digit-group separator in such a locale, so a `<float_array>`
+    stopped extracting at its first coordinate and a mesh came back short or
+    empty rather than slightly wrong — and `<p>` index lists re-read a written
+    `1.000` as 1.
+  - Every one of those sites now pins its stream to the classic locale.
+    `ClassicNumbers` (`UltraCanvasTextUtils.h`) is the new guard for the
+    common case: it imbues a stream for as long as the writer is writing and
+    gives the caller's own locale back afterwards, because an application that
+    hands a writer its `std::ostream` has not asked for that stream to be
+    changed.
+  - **`ModelLocaleDecimalTest` grew the half that was missing.** It compared
+    the readers' meshes between the two locales but nothing compared what the
+    writers produced, and it set only the C locale — which leaves every stream
+    writing '.' however the writer is built, so the whole class was invisible
+    to it. It now sets both locales and compares each text writer's bytes
+    between "C" and a comma-decimal locale: OBJ, PLY, X3D, COLLADA and STEP.
+    Four of the five failed the first time it ran.
+  - The STEP, FBX, PLY and DirectX `.x` readers were already dot-decimal from
+    0.9.43; what remained for those four formats was all on the writing side,
+    and FBX and `.x` have no writer at all.
+- **Every drawing the framework writes was wrong on a localised desktop, and a
+  DXF or EPS one could not be opened at all.** The same defect as the model
+  writers above, in the formats where a misplaced comma is not a rounded
+  number but a different drawing - or a count the reader cannot resolve:
+  - **PDF** wrote `/MediaBox [0 0 420,5 297,25]`, a five-element array where
+    a reader counts four, and the same comma in every `cm`, `re` and `l`
+    operator of the content stream.
+  - **DXF** wrote `$EXTMIN` as `0,` and every coordinate after it the same
+    way. No CAD program opens that drawing.
+  - **EPS** wrote `%%HiResBoundingBox: 0 0 420,5 297,25` and `1,5
+    setlinewidth`; PostScript counts an operator's operands, so neither is a
+    number out by a factor of ten - it is a syntax error.
+  - **ASCII STL**, which is the one text form a person chooses deliberately
+    (a slicer that wants a readable file), wrote `1,5e+00` - and its reader
+    could not read even a correct file, because `>>` takes the '.' for a
+    digit-group separator in such a locale and stops. A .stl saved as text and
+    loaded again came back empty.
+  - **DWG** reads by converting to DXF text in memory, and wrote `1,5` into
+    that text, so a .dwg lost its geometry on the way in; the DXF reader's own
+    `atof` and the EPS reader's `strtod` were the other half of the same trip.
+  - PDF's object numbers, byte offsets and stream lengths were streamed
+    unimbued as well, so a drawing with more than a thousand objects also
+    carried `/Length 1.234` and a grouped xref count.
+  - **The SVG reader lost a dash pattern, a polygon's points and a symbol's
+    viewBox** the same way: three of its `istringstream` number readers were
+    never imbued, while two beside them were. `SVGLocaleTest` could not see it
+    because it set only the C locale, which leaves a stream reading '.'
+    however it is built; it now sets both.
+  - `Tests/VectorLocaleTest.cpp` writes one drawing with all ten vector
+    writers under "C" and under a comma-decimal locale, compares the bytes,
+    and - for the formats that read back - reads each file under both locales
+    and compares the drawing. PDF, EPS, DXF and the SVG reader failed it the
+    first time it ran; EMF, WMF, CDR and XAR passed. `ModelLocaleDecimalTest`
+    gained the ASCII STL cases, both halves.
+- **One guard for the numbers a text format writes, instead of five copies.**
+  `ScopedPrecision` (`UltraCanvasTextUtils.h`) now pins both halves of a
+  stream's number shape - the decimal point and the digit count - and the OBJ,
+  X3D, COLLADA and STEP writers use it in place of a private copy each; three
+  of those copies had had the locale half wrong or missing at some point, and
+  one had it right in a scope too small to cover the file. `DigitsFor`
+  (`UltraCanvasModelConverter.h`) is where `NumericPrecision` becomes a digit
+  count, so the writers stop spelling 17, 9 and 6 out themselves, and
+  `FormatFixedClassic` is the fixed-point formatter the three drawing writers
+  had each written with `snprintf`. Byte-for-byte identical output: every
+  writer's file is unchanged under "C", and 400,000 random values round-trip
+  through the shared formatter exactly as the three `snprintf` copies did.
+- `scripts/check_locale_numbers.py` recognises those guards, so a writer that
+  holds one is not reported for the stream it guards - and its own comment now
+  says what it cannot see (the locale of a stream a writer is handed, which is
+  what the two locale tests are for). The baseline is down to 12 keys, 49
+  sites; the whole `Plugins/Vector` tree is off it.
+
+#### 2026-11-12 *0.9.544*
+- **TextArea: zooming out at the end of a long document left the view blank.**
+  A smaller font shortened the content, but `verticalScrollOffset` kept its old
+  value past the new end: no line was drawn and the scrollbar thumb left its
+  track. `SetFont` / `SetFontSize` now remember the line at the top of the view
+  and `Render()` puts it back there once the layouts are rebuilt; after every
+  relayout the offset is clamped to `MaxVerticalScroll()`.
+
+#### 2026-11-12 *0.9.543*
+- **Two long texts that began alike were drawn as one.** The render context's
+  text-layout cache keyed a layout on the first 300 characters of its text
+  (`RenderContextCairo::GenerateTextCacheKey`), so a second text that matched
+  the first that far got the first one's layout - drawn and measured as the
+  first. The key now carries the whole text, and a cache entry's charged size
+  counts its text, so a long one weighs against the 20 MB budget by its length.
+  `TextLayoutCacheTest` checks two texts alike in their first 320 characters.
+- **Hardware information: three out-of-bounds or dangling accesses.**
+  - **Windows, USB:** a device property was read up to a NUL that SetupAPI
+    does not write when the value fills the buffer, so the read ran on past
+    the stack buffer. It now stops at the bytes SetupAPI reports, a value
+    longer than 512 characters is read again at its size instead of coming
+    back empty, and a property that is not a string reads as none.
+  - **Linux, `pci.ids` / `usb.ids`:** `LoadIdsFile` checked `strtoul`'s end
+    pointer after the temporary substring it pointed into was destroyed
+    (found by AddressSanitizer).
+- **UltraMessage on Windows: a listener closing mid-accept no longer leaves
+  the kernel writing into a dead stack frame.** `Listener::Accept` cancelled
+  a pending `ConnectNamedPipe` and returned at once, while the cancellation
+  still owned the `OVERLAPPED` on its stack; it now waits for the
+  cancellation to complete, as reads and writes already did.
+
+#### 2026-11-12 *0.9.542*
+- **Dialogs no longer stay on top of every other program's windows.**
+  `DialogConfig` switched `alwaysOnTop` on for every dialog, so once X11 and
+  macOS honoured that flag (`_NET_WM_STATE_ABOVE`, the floating level) a
+  dialog - UltraFiler's *Proxy settings*, UltraMail's *Account settings*,
+  every message box and file dialog - sat above every application and could
+  not be sent behind another program's window; on Windows it had always been
+  `WS_EX_TOPMOST`. The settings windows, made from a plain `WindowConfig`,
+  behaved. `DialogConfig` leaves `alwaysOnTop` off now, and a dialog is kept
+  above its own window only, through the parent `ShowModal` gives it:
+  - **X11:** `WM_TRANSIENT_FOR`, which `ShowModal` already set.
+  - **Windows:** the owner window. `SetTransientParent` now sets it
+    (`GWLP_HWNDPARENT`) for a dialog created before its parent was known, as
+    `CreateWindowExW` did for one created with `parentWindow`.
+  - **macOS:** a child window of the parent's `NSWindow`
+    (`addChildWindow:ordered:`); macOS had no link to the parent before. A
+    dialog is attached when it is shown over a visible parent and detached when
+    either is hidden or closed, so AppKit keeps it above that window, moves
+    it with it and takes it into the parent's full-screen space. Dialogs
+    only (`WindowType::Dialog`) - a popup, a tooltip and the splash screen
+    keep their own levels - and never under a desktop window.
+
+  On all three, a click on another of the application's windows still
+  raises the modal, and `alwaysOnTop` stays for what is meant to be above
+  everything - a recording bar, a floating palette, the splash screen
+  (`DialogStackingTest`: a dialog is not above, is transient for its window,
+  and an `alwaysOnTop` window still is above).
+
+#### 2026-11-12 *0.9.541*
+- **The settings page kit follows the theme (T6 of the host theme
+  proposal).** `UltraCanvasSettingsPageKit`'s colours and sizes are the
+  theme's roles and text roles now, read as functions (`TextColor()`,
+  `TextFontSize()`, `PageBackground()` ...) where they were constants, and
+  its buttons, colour boxes and bottom bar take the roles too: a settings
+  window built on the kit - UOS-Settings, UltraFiler's and UltraSnip's
+  settings - is dark on a dark desktop, in the desktop's font and size.
+
+#### 2026-11-11 *0.9.540*
+- **CI: an Ubuntu mirror outage no longer stops the Linux jobs at
+  `apt-get update`.** On 2026-11-11 `azure.archive.ubuntu.com` could not be
+  resolved for a quarter of an hour, and the Linux, Wayland and Android
+  jobs all failed before building anything, although the packages they
+  needed were in the package cache. `scripts/ci-apt.sh` 1.2.0 keeps apt's
+  package lists with the cached packages (`cache-out`, `cache-in`). An
+  `update` that cannot reach the mirror in its attempts goes on with those
+  lists, or without them with the runner's own, and with a warning instead
+  of an error. The packages in the cache then install without the mirror;
+  one that is not cached still fails at its install, naming it. The Wayland
+  and Android workflows now restore and save the package cache as
+  `build.yml` does.
+
+#### 2026-11-11 *0.9.539*
+- **A container sized to its content grows with a button grown to its
+  text.** The first layout read a fixed-width button's given width before
+  the button measured its text; the button grew afterwards, but its row
+  kept the width it had measured, so a group of header buttons came out as
+  wide as the English labels and the next item was laid over the last one
+  (UltraStore's German "Updates" tab under its search field, "Clear
+  finished" off the Downloads panel). A button grown during a layout pass
+  now asks for one more pass, and `UltraCanvasWindowBase::UpdateAndRender`
+  runs it at the next frame: a layout an element invalidated while being
+  drawn is laid out and drawn again, and the event loop is woken for it
+  instead of waiting for the next mouse move. `ButtonGrowToFitTest` covers a
+  group of grown buttons in a header row.
+
+#### 2026-11-11 *0.9.538*
+- **Word documents: text frames and floats placed from the page.** A
+  letterhead's sender block now stands beside the address instead of
+  following it in the text.
+  - The model gains text frames: a run with `RichTextRun::frameIndex` refers
+    to a `RichTextFrame` in `UCRichDocument::frames` (its paragraphs, fill,
+    border and padding) and floats like a floating picture.
+  - Floats can be placed from the page's edges or its text area as well as
+    from the paragraph (`floatHorizontalFrom`, `floatVerticalFrom`,
+    `floatVerticalAlign`).
+  - The ODT reader reads `draw:text-box` frames (Writer frames and drawing
+    text boxes) and page-anchored frames and pictures, with
+    `style:horizontal-rel` / `vertical-rel`.
+  - The DOCX reader reads text boxes (`wps:txbx`, and VML `v:textbox`
+    fallbacks) and every `wp:positionH` / `wp:positionV` `relativeFrom`.
+  - The DOC reader reads floating pictures and text boxes, which it used to
+    drop: OfficeArt shapes from `PlcSpaMom`, `DggInfo` and the text-box story.
+  - `UltraCanvasRichTextEdit` places and draws frames and page-placed floats
+    in page view, with text wrapping round them.
+  - Both writers save frames and placement (ODF `draw:frame` with
+    `draw:text-box`; DOCX `wps` text boxes and `wp:anchor` relations), and
+    LibreOffice reads the saved files back with the frames in place.
+  - Markdown, HTML and plain text spell a frame's text before its paragraph
+    (`UCRichDocument::WithFramesInline`).
+  - New fixture `Tests/fixtures/word-frames.*`.
+- **`UltraCanvasRichTextEdit`: text wraps round floats line by line.** A
+  paragraph beside a floating picture or frame is narrowed only for the lines
+  level with it; its lines below take the column's full width again, as in
+  Writer. A top-and-bottom picture set lower down in its paragraph keeps the
+  lines that fit above it there and continues the paragraph below it. Before,
+  the whole paragraph was narrowed, or moved below the picture.
+- **Frames and floating pictures in headers and footers float.** A Word
+  letterhead's logo and sender block, kept in the header, now stand at their
+  place on every page instead of being drawn in line in the header, and the
+  page's body wraps round them. A frame in a header shows each page's page
+  number and page count. The DOC reader reads shapes in headers and footers
+  too (`PlcSpaHdr` and the header text-box story). New fixture
+  `Tests/fixtures/word-header-frames.*`.
+- **`UltraCanvasRichTextEdit::SetZoomFit`: page width and whole page.** In
+  page view the zoom follows the element's size, so a narrow window shows the
+  whole page. `SetZoom` and Ctrl+wheel end it; printing stays at 100 %.
+- **DOCX writer: floating pictures keep their placement from the page or
+  margin.** Before, every floating picture was written as placed from the
+  column and the paragraph.
+
+#### 2026-11-11 *0.9.537*
+- **`UltraCanvasTheme::TakeHostFonts`, and the four applications with a
+  theme of their own on the policy (T6 of the host theme proposal, first
+  part).** `TakeHostFonts(host)` puts the host's interface and monospace
+  fonts and its text scale onto a theme, as `FromHost` does (which now goes
+  through it), so an `Own` provider's colours come with the desktop's
+  fonts. UltraVideo, UltraPress, ChatCube and UltraDBAdmin set
+  `ThemePolicy::Own` with their `ThemeFor` / `AppTheme` as the provider
+  instead of `SetCurrent` at start: a change of the desktop reaches them;
+  UltraPress and ChatCube gain `system` as their look setting's default
+  (the desktop's look), UltraVideo's palette follows the desktop until the
+  eye picks the project's. `UltraCanvasThemeTest` covers `TakeHostFonts`;
+  `UltraCanvasTheme.md` 1.15.0.
+
+#### 2026-11-11 *0.9.536*
+- **UltraIM: a message deleted for oneself or for everyone, by each
+  messenger's own rules.** `UltraIM_DeleteMessage` takes a scope
+  (`UltraIMDeleteScope::ForEveryone`, as before, or `ForMe`), and the new
+  `UltraIM_GetDeleteChoices(provider, conversation, message)` says what is
+  possible for one message now, so an application's menu offers exactly
+  that instead of deciding it. A delete outside the rules answers
+  `PermissionDenied`.
+  - **ChatCube Direct can delete messages** (it could not at all; the
+    `DeleteMessage` capability is new for it). Anyone deletes any message
+    for themselves. For everyone, the sender deletes a text until the other
+    person has read it, a picture, video or file at any time, and anything
+    in a group at any time. The others are told with a signed `delete`
+    body, over the link or through the relay's queue; the receiving side
+    checks the same rules itself, so a text already read there stays. The
+    file a deleted message brought into the cache is removed with it -
+    never the sender's own file - and what was deleted before it had fully
+    arrived is dropped when the rest comes (store schema 4).
+  - **Matrix** deletes one's own messages for everyone, as before, and
+    answers `CapabilityMissing` to "for me", which it does not have.
+  - **Telegram** now deletes for oneself too; until now every delete was
+    for everyone.
+- **UltraIM plug-in ABI 5.** `DeleteMessage` gained the scope and the
+  interface `GetDeleteChoices`, so `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 5.
+- **UltraIM: searching the history, one call for every network.**
+  `UltraIM_SearchMessages(provider, search, callback)` finds messages by
+  their words, or everything of one kind - pictures, videos, pictures and
+  videos, files, links (`UltraIMSearchKind`) - newest first, a page at a
+  time with a cursor for the older ones (`UltraIMMessageSearch`,
+  `UltraIMSearchPage`). A provider says it can with the new `SearchMessages`
+  capability and answers through the new `SearchMessages` method of the
+  provider interface, each from wherever its history lives:
+  - **ChatCube Direct** queries its own database - one conversation or all
+    of them. Which messages hold a link is noted in a new `links` table by
+    the message's id alone; the address stays in the message's text and is
+    read out of it when shown, so it is not stored twice. The table is
+    filled as messages are stored, and once for the existing history when
+    an older store is opened (schema 3).
+  - **Matrix** reads a room's history back page by page and matches it on
+    this device, so an encrypted room - which the homeserver's own search
+    cannot read - is searched like any other.
+  - **Telegram** asks Telegram's own search (`searchChatMessages`, with its
+    filters), which covers the whole history without downloading it and
+    matches whole words as Telegram's apps do.
+- **UltraIM: the pieces of a search, for providers and lists.**
+  `UltraIM_MessageMatchesSearch` is the one matcher the on-device providers
+  share (every word, anywhere in the text or the attachment's file name, in
+  any case - Latin, Greek and Cyrillic folded by `UltraIM_FoldCase`, never
+  by the locale); `UltraIM_ExtractLinks` gives the links in a text;
+  `UltraIM_SearchByFetching` answers `SearchMessages` for any provider from
+  nothing but its `FetchMessages`.
+- **UltraIM plug-in ABI 4.** The provider interface gained a method and
+  `UltraIMTypes.h` its types, so `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 4: a
+  provider module built for 3 is skipped until it is rebuilt.
+
+#### 2026-11-11 *0.9.535*
+- **`UltraCanvasDropdown::SetFitWidthToItems`: a dropdown as wide as its
+  widest item.** A dropdown sized for its English entries cut a longer
+  translation off - the button clips its text, so UltraFiler's video mode
+  read *Automatisch al…* in German. On, the button takes the width its
+  widest item needs (icon, text and arrow) and follows the items, the
+  placeholder and the font as they change; the width given stays the least
+  it takes, so a layout made for the English text does not move where that
+  text fits. Off by default. `DropdownFitWidthTest` covers it.
+
+#### 2026-11-11 *0.9.534*
+- **`scripts/check_libcxx_syntax.py` 2.0.0: the whole tree against
+  libc++, from the build's compile database.** The shell script of 1.0.0
+  checked VideoFX with a flag block of its own; the Python one reads
+  `build/compile_commands.json` (adding `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`
+  to an existing build directory itself) and compiles every C++ unit the
+  Windows build would see - the Linux, macOS and Android OS arms, C sources
+  and generated files left out - with `clang++ -stdlib=libc++ -fsyntax-only`
+  and the flags the build gave it. A path argument narrows it to a module
+  or a file: VideoFX in ten seconds, the 1539 units of the tree in twenty
+  minutes on four cores, all of which compile today.
+- **Windows: the kernel network ETW source reads each event by its own
+  template.** Microsoft-Windows-Kernel-Network lays its TCP events out in
+  three templates that share a prefix (PID, size, the endpoints) and differ
+  in what sits before the trailing seqnum and connection id: a connect or
+  accept carries the TCP options (16 bytes), a send its start and end time
+  (8 bytes), a receive or disconnect nothing. The source read every event
+  by the last layout, so a connect's connection id was 16 bytes of options
+  and a send's was its times, and the bytes summed per connection could
+  never meet the disconnect that reports them. The parser is now
+  `NetworkMonitorKernelNetwork.h` in the core - pure, one template per
+  event id, every length checked - and tested from payloads built per
+  template on every platform, like the conntrack parser.
+  - Both ETW sources enable the provider with every keyword rather than a
+    mask of zero, and the DNS client source names the asking process from
+    the Toolhelp process list, as the network source and the socket table
+    do, instead of `pid N`.
+  - `scripts/netmon-etw-acceptance.ps1` is the first elevated run as a test
+    with a verdict: it records with the ETW sources alone, makes a loopback
+    connection and a DNS query of its own, reads the recording back and
+    checks the opened, accepted and closed events (with bytes) and the DNS
+    observation, each attributed to the PowerShell that made them.
+    *Windows: the first elevated run* in the module README is the
+    procedure and what each failure would mean.
+
+#### 2026-11-11 *0.9.533*
+- **UltraRTC: `UltraRtcApiStatus` reports what every function does in this
+  build, on this machine.** The module's proposal asked each phase to ship
+  the counterpart of `UltraNetApiStatus`; it was the one piece of phase 0
+  still missing. The tool has one probe for each of the 40 functions in
+  `UltraRTCCore.h` and prints WORKING / IMPLEMENTED / NOT IMPLEMENTED /
+  BROKEN per function, as text, Markdown or JSON. It needs no network
+  service: the probes run between peers of its own process, connected over
+  host candidates, with a data pair (text, every byte value, a second channel
+  closed, a 4 MiB burst for the buffered amount), an audio pair (a sine sent
+  like a microphone, counted and measured for loudness and pitch at the other
+  side) and a video pair (pictures scaled to the track and compared by
+  colour). On a Linux build with OpenSSL, libopus and FFmpeg in a container
+  it reports 33 working and 7 implemented: the device functions, which have
+  no microphone, speaker or camera there, and `UltraRtc_RequestKeyFrame`,
+  whose effect the API has no accessor for. In a build without OpenSSL it
+  reports the three functions that still answer as working and the other 37
+  as not implemented. `UltraRtcApiStatusCoverage` fails when a function in
+  the header has no probe, so a new function cannot be absent from a report
+  that reads as complete. The report framework is UltraNet's, now shared:
+  `SetReportIdentity` gives a tool its own title and area order, and
+  `UltraNetApiStatus` is unchanged. Built with
+  `-DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON`; doc
+  `Docs/Modules/UltraRTC/ApiStatus.md`.
+  - **New: `UltraRtc_GetVersion()`,** the version of the `UltraRtc_*`
+    surface ("0.1.0"), answered with or without an engine and before
+    `UltraRtc_Initialize` — the lifecycle call the proposal listed and the
+    module lacked, named as `UltraNet_GetVersion` and its siblings are.
+  - **Fixed: the engine wrote its warnings to stdout.** libdatachannel logs
+    to `std::cout` unless given a callback, so a line such as `juice: UDP
+    socket creation failed` landed in the middle of whatever a command-line
+    program using UltraRTC printed there; the status tool's JSON did not
+    parse. The warnings now go to stderr, one line each, prefixed `UltraRTC
+    engine warning:`.
+  - The proposal's status line said phase 1; it now says what is there
+    (phase 0 complete, peers, data channels, audio and video implemented)
+    and what is not.
+
+#### 2026-11-11 *0.9.532*
+- **`UltraCanvasGlobalShortcut::StartExclusive`: a key taken from everyone
+  else, the system included.** `Start` registers a hot key, which a key the
+  system holds refuses - Print Screen while Windows 11 gives it to the
+  Snipping Tool. `StartExclusive` registers none on Windows: a
+  `WH_KEYBOARD_LL` hook on the shortcut's thread swallows the press made
+  with exactly the given modifiers, and the release that ends it, so the
+  key reaches only this program (`Alt+Print` stays the system's when
+  `"Print"` is taken). On X11 the grab `Start` makes is exclusive already;
+  on Wayland the compositor decides. The backend's `ShortcutOpen` takes an
+  `exclusive` flag.
+
+#### 2026-11-11 *0.9.531*
+- **Appearance.conf and the settings watcher (T5 of the host theme
+  proposal).** `AppearanceSettings` (`UltraCanvasAppearanceSettings.h`) is
+  a person's choice over the desktop for every UltraCanvas application at
+  once - `look`, `accent`, `font`, `fontsize`, `scale`, `contrast`, each
+  `system` when the host decides - in `Appearance.conf` in the settings
+  folder, the `Emoji.conf` pattern (`Parse`, `Serialize`, `ApplyTo`, `Load`,
+  `Save`). The application applies it over the host on every read, before
+  `ULTRACANVAS_HOST_APPEARANCE`; the source gains `+settings`.
+  `UltraCanvasSettingsWatcher` (`UltraCanvasSettingsWatcher.h`), owned by the
+  application base, watches the settings folder - natively where the build
+  has a backend, a five-second poll otherwise - and a change to
+  `Appearance.conf` re-reads the host, so the theme, the elements that
+  follow and the host appearance handlers hear it as they hear a change of
+  the desktop. UOS-Settings > Appearance > Look writes the file; DemoApp's
+  Modules > Theme page shows the roles, the policy and the host, the fonts
+  by role, elements following by default and the file. `HostAppearanceTest`
+  covers the file and `SettingsWatcherTest` the watcher; `UltraCanvasTheme.md`
+  1.14.0 (*The setting*), `UltraCanvasHostAppearance.md`.
+
+#### 2026-11-11 *0.9.530*
+- **CI: the macOS legs keep their caches, and stop holding the macOS runners
+  for hours.** On 2026-11-10 a macOS leg that takes half an hour with its
+  caches ran two to almost four hours, and pull requests' macOS checks waited
+  up to four hours for a runner behind main's release builds. Two causes, both
+  in the caches:
+  - The arm64 leg's vcpkg fallback key `vcpkg-macos-15-` was also the start of
+    the Intel leg's `vcpkg-macos-15-intel-...` keys. With no arm64 cache for a
+    changed `MacOS/deps`, it restored the x86_64 libraries, could use none of
+    them, and built every library from source (45 minutes). A leg's vcpkg key
+    now names its architecture as well as its runner
+    (`vcpkg-macos-15-arm64-...`, `vcpkg-macos-15-intel-x86_64-...`), so no
+    leg's prefix starts another's; the caches saved under the old key are
+    still read for the same `MacOS/deps`.
+  - Every run on main saved a new run-numbered ccache for each of its six legs
+    (and vcpkg's for each macOS leg) and nothing removed the one it replaced,
+    so ten release builds in a day overflowed the repository's 10 GB and the
+    caches the next run needed were evicted: both macOS legs found no ccache
+    at all (8.5 % of compiles hit). The new `cache-prune.yml` runs
+    `scripts/prune_actions_caches.py` after every Build, Wayland, element
+    modules and Android run and every six hours: it deletes each run-numbered
+    cache but the newest of its kind on its ref, and the caches of closed pull
+    requests. Tested in `scripts/tests/test_prune_actions_caches.py`.
+
+#### 2026-11-11 *0.9.529*
+- **The media elements and the viewers follow the theme (T4 of the host
+  theme proposal, sixth and last part).** `FromTheme` on `AudioPlayerStyle`,
+  `AudioRecorderStyle`, `VideoPlayerStyle`, `VideoRecorderStyle`,
+  `VideoTileStyle`, `SlideshowConfig` and `SlideshowIndicatorStyle`,
+  `FontViewerStyle` and `CurveEditorStyle` (without a base `Dark()` or
+  `Default()` by the theme's flag), and `ApplyTheme` on the eight elements,
+  with the constructor tail and the `SetStyle` rule. The audio bars take the
+  panel, the accent and ink; the video player, recorder and tile stay a dark
+  stage with a translucent bar and take the accent, danger and the caption
+  size; the slideshow's info panel and indicators take the roles and its
+  display sizes stay; the font viewer and the curve editor take the panel,
+  the well, ink and the accent. Element roles with their fallbacks:
+  `audio-recorder.pulse`, `video-player.stage`, `video-player.control-bar`,
+  `video-recorder.stage`, `video-recorder.control-bar`, `video-tile.stage`,
+  `video-tile.caption`, `slideshow.stage`, `curve-editor.diagonal`. With
+  this every style struct with colours reads the theme; `UltraCanvasTheme.md`
+  and the proposal mark T4 done. `UltraCanvasThemeTest` covers every mapping
+  and the following by default.
+
+#### 2026-11-11 *0.9.528*
+- **A copied file keeps its original's dates.** The Filer copied with
+  `std::filesystem::copy_file`, which on Windows sets a copy's creation date
+  to the moment of the copy and on Linux and macOS keeps no date at all; a
+  file over the chunking threshold, copied in pieces for the progress ring,
+  and every copied folder lost all of them. New `UltraCanvasFileTimes.h`
+  (`CopyFileTimes`, `CanCopyCreationTime`) carries them over: created,
+  modified and accessed on Windows (SetFileTime) and macOS (setattrlist +
+  utimensat), modified and accessed on Linux and the BSDs (utimensat - the
+  kernel lets no program set a creation date), the modification date through
+  `std::filesystem` elsewhere. `UltraCanvasFilerWidget` calls it after every
+  file and every folder (after its contents) it copies - paste, drop,
+  *Duplicate* and a move between drives. `FileTimesTest` checks a file and a
+  folder against the platform's backend.
+- **Every connection goes through the system's proxy by default, and one
+  dialog sets the proxy for every application.** UltraNet had a proxy
+  setting that nothing used: only its HTTP client read it, nothing set it,
+  and an FTP, WebSocket or mail connection never went through a proxy at all.
+  - `UltraNet_ResolveProxy(url)` decides per address and every libcurl
+    connection asks it - the HTTP verbs (sync, async, SSE), WebSocket, FTP /
+    FTPS / SFTP, and the IMAP, SMTP, POP3, WebDAV, LDAP, Telnet and gRPC
+    plug-ins, which reach it through the plug-in host table (ABI 4, so a
+    plug-in built from this tree needs a host from it) and put the answer on
+    the handle with `UltraNet/UltraNetCurlProxy.h`. An HTTP proxy carries
+    anything that is not HTTP as a CONNECT tunnel. A direct connection now
+    really is direct: libcurl no longer reads `*_proxy` from the environment
+    behind the setting's back.
+  - The default (`UltraNetProxyType::System`) is the operating system's
+    proxy: on Linux the `*_proxy` variables, else GNOME's settings (through
+    GIO, opened at run time - "automatic" runs the PAC script where
+    glib-networking can) or KDE's `kioslaverc`; on Windows the Internet
+    settings through WinHTTP, with automatic detection (WPAD) and a setup
+    script (PAC) evaluated per address, and a company proxy answered as the
+    signed-in user; on macOS System Settings through CFNetwork, PAC
+    included. The web's proxy is used for the web; mail uses the system's
+    SOCKS proxy or `all_proxy`, so a proxy that only lets port 443 through
+    no longer cuts off a mail server reached directly before.
+  - Windows' `https=` entry and macOS' "Secure web proxy" were taken for a
+    proxy reached over TLS; they are a plain HTTP proxy that carries https://
+    traffic.
+  - The machine itself (`localhost`, `127.0.0.0/8`, `::1`) is never reached
+    through a proxy - a local model server stays local - and exceptions take
+    patterns (`*.example.com`, `192.168.*`), IPv4 ranges and `<local>`
+    (`UltraNet_HostMatchesNoProxy`, `UltraNet_ParseNoProxyList`).
+    `UltraNetProxyType::Direct` connects one request directly whatever the
+    setting, `remoteDns` lets a SOCKS proxy look the name up (socks5h, the
+    default), `autoConfigUrl` names a PAC script, and
+    `UltraNet_SetGlobalProxySource` supplies the setting from outside.
+- **`UltraCanvasProxySettings` and the Proxy settings dialog.** The choice -
+  the system's proxy, no proxy, or HTTP / SOCKS with a host, a port, the
+  hosts reached directly and a sign-in - is `Proxy.conf` in the shared
+  settings folder, with a remembered password in an encrypted device-key
+  vault and never in the file. `UltraCanvasApplicationBase::Initialize`
+  makes UltraNet follow the file (`UseSharedProxySettings`), so every
+  application uses one setting and a change saved in one is used by the
+  others from their next connection. `ShowProxySettingsDialog` edits it -
+  with *Check connection*, which opens an address with the settings as they
+  stand and says whether it went through the proxy - and
+  `MakeProxySettingsPage` is its page for a settings window. Docs:
+  `Docs/UltraCanvas/UltraCanvasProxySettings.md`, the UltraNet module's
+  *Proxies*. Tests: `ProxySettingsTest`, `UltraNetTests` (`test_proxy.cpp`).
+- **A raw TCP connection can go through a proxy, and SSH and RTSP follow the
+  setting.** `UltraNetSocketOptions::proxy` (or `useProxySetting`, the
+  module-wide setting) connects through SOCKS 5 - with its user name and
+  password, the name looked up by the proxy - SOCKS 4 / 4a, or an HTTP
+  `CONNECT` tunnel with Basic sign-in, the handshakes spoken by UltraNet;
+  off by default, since a raw socket is mostly a peer on the local network.
+  `UltraNet_TcpOpen` says why a connection failed; `UltraNet_SocketDetach`
+  hands the operating-system socket to a library that runs its own protocol.
+  The SSH plug-in uses both: libssh is given a connection made through the
+  proxy, so SSH tunnels and shells (UltraDBAdmin's tunnels among them) go
+  where the setting says. The RTSP plug-in's DESCRIBE goes through it as
+  well. Tests: seven loopback handshakes in `UltraNetTests`
+  (`test_proxy.cpp`), and the SSH tunnel tests passed against an sshd
+  reached through a SOCKS 5 proxy.
+- **The RTMP plug-in plays `rtmp://` again, with a client of its own.** It
+  relied on libcurl's librtmp support, which the libcurl UltraNet is built
+  with does not have (libcurl dropped librtmp), so `OpenStream` never
+  connected. It now speaks RTMP itself over a connection UltraNet makes
+  through the proxy setting: the handshake, the chunk stream (any chunk size
+  the server sets, every header form, extended timestamps, Window
+  Acknowledgement Size with Acknowledgements, a ping answered), AMF0
+  `connect` / `createStream` / `play` with the server's refusal reported,
+  and `ReadFrame` gives the stream back as FLV as librtmp did - the header,
+  then one tag per audio, video or data message, an aggregate split into
+  its tags, the publisher's `@setDataFrame` taken off the metadata.
+  `rtmps` / `rtmpe` / `rtmpt` are offered, through libcurl, only where the
+  libcurl loaded has RTMP. Tested against a server of the test's own in
+  `UltraNetTests`, and against FFmpeg serving RTMP - directly and through a
+  SOCKS 5 proxy - with FFmpeg reading back the FLV it gave, audio and video,
+  without an error.
+- **`test_extra_plugins.cpp` builds a plug-in it cannot find as CMake does.**
+  The fallback compile left out the host shim and the shared plug-in
+  headers, so it could never succeed - the mDNS test printed a compiler
+  error on every machine without the CMake-built plug-in, then skipped. It
+  now compiles the shim in with the entry point the only symbol exported,
+  and keeps the compiler's output in a log it names; a backend library that
+  is missing (Avahi) is a one-line skip.
+- **A file copied to or from a drive, or out of an archive, keeps its dates.**
+  An upload was dated the moment it arrived and a download the moment it was
+  written, on every provider; a file taken out of an archive with
+  `ExtractFile` was dated now; and a ZIP's or 7z's creation date was dropped
+  on unpacking.
+  - `UltraCanvasFileTimes.h` gains `FileTimes`, `GetFileTimes` and
+    `SetFileTimes` (nanoseconds since 1970, 0 = unknown / leave alone) beside
+    `CopyFileTimes`; the std::filesystem fallback converts exactly (libc++'s
+    file clock is the Unix epoch, libstdc++ and MSVC convert).
+  - UltraNet FTP / SFTP: `UltraNetFtpOptions::setRemoteModificationTime`
+    dates an uploaded file (`MFMT`, SFTP `mtime`, sent with libcurl's `*` so a
+    server that refuses still has the file), `onRemoteModificationTime`
+    reports the server's date of a download (`CURLOPT_FILETIME`: `MDTM` /
+    stat). `UltraNetFtpQuote.h`'s `BuildSetModificationTime` makes the
+    command.
+  - UltraCloud: every provider sends the local file's dates with an upload
+    and dates a download with the server's - FTP / SFTP (modified), WebDAV and
+    Nextcloud (`X-OC-Mtime` / `X-OC-CTime`; `Last-Modified`), Dropbox
+    (`client_modified`), Google Drive (`modifiedTime` / `createdTime`) and
+    OneDrive (`fileSystemInfo`), the last two with the creation date too.
+    `HttpProviderBase::DownloadToFile` hands back the answer's headers
+    (`answered`).
+  - VirtualFS: `ExtractFile` writes through libarchive's disk writer (the
+    entry's dates and, when asked, permissions); `ExtractAll` follows
+    `preserveTimestamps`; a ZIP's or 7z's creation date - read by libarchive
+    as the change time - is restored as the creation date on Windows and
+    macOS, and stored when packing a ZIP or 7z.
+  - Tests: `test_file_dates.cpp` (UltraCloud, every provider),
+    `VirtualFSExtractDatesTest`, `UltraNetFtpQuoteTest` (the dating command),
+    `FileTimesTest` (get / set).
+- **A video's Details panel and status bar now say what the clip is.** The
+  media viewer (UltraFiler's preview, UltraViewer) showed only a video's file
+  name, path, size and type: the playback backends fill `VideoStreamInfo`
+  unevenly, and Media Foundation reports nothing but the size and the length.
+  New `UltraCanvasVideoFileInfo.h` - `ReadVideoFileInfo` / `VideoFileInfo` -
+  reads MP4 / MOV / 3GP (fragmented too), Matroska / WebM and AVI headers
+  directly, with no decoder: container and brand, duration, overall and
+  per-track bit rates, video codec with profile and level, coded and display
+  size, aspect ratio, frame rate, frame count, bit depth, rotation, audio
+  codec (AAC LC / HE-AAC told apart), sample rate, channels, language, track
+  counts, title, encoder and creation time. The status bar now reads
+  `clip.mp4 · VIDEO · 1920 x 1080 · 29.97 fps · H.264 · AAC LC 48 kHz Stereo ·
+  1:23 · 17.5 MB · 2 / 2`; the Details panel gets *Video*, *Audio* and
+  *Tracks* sections. A container the reader does not know (WMV, MPEG-TS) falls
+  back on the backend's stream info. `VideoFileInfoTest` checks it against
+  MP4, fragmented MP4, MOV, Matroska and AVI headers built in memory.
+
+#### 2026-11-11 *0.9.527*
+- **CI: every download retries, not only the Clang install.** After the
+  `llvm.sh` fix, six more network steps still failed a job on the first
+  dropped connection: the libopusenc and c-ares tarballs (`curl | tar`), the
+  libjxl clone and its submodules, the MuPDF clone fallback, the rustup
+  installer and its toolchain download (`build.yml`), and the emsdk clone and
+  `emsdk install` (`wasm-build.yml`). The tarballs are now fetched into a
+  file under curl's own retries (`--retry 5 --retry-all-errors`) and then
+  unpacked, so a cut-off transfer never reaches `tar`. The rest run under the
+  new `scripts/ci-retry.sh`: three tries, 30 s and 60 s apart, each announced
+  as a warning, with `--clean DIR` emptying a clone's folder before every try
+  so a half-made clone does not fail the next one. pip, npm, vcpkg and the
+  apt installs (`ci-apt.sh`) already retried and are unchanged. `AGENTS.md`
+  says to use the same for any new download.
+
+#### 2026-11-11 *0.9.526*
+- **`ImageHistogram::ClippedRange`.** The levels a channel spans once a fraction
+  of its pixels is let go at each end - what an auto contrast stretches to fill
+  the scale. Test: `HistogramModelTest`. Guide: `UltraCanvasHistogramChart.md`.
+
+#### 2026-11-11 *0.9.525*
+- **The badge, card, chips, panels, sidebar, busy indicator, auto-complete,
+  new-document dialog and reference point picker follow the theme (T4 of
+  the host theme proposal, fifth part).** `FromTheme` on `BadgeStyle` (with
+  a `primaryColor` for the Primary variant's fill), `CardStyle`, `ChipStyle`,
+  `TagInputStyle`, `CollapsiblePanelStyle`, `SidebarStyle`,
+  `BusyIndicatorStyle`, `AutoCompleteStyle`, `NewDocumentDialogStyle` and
+  `ReferencePointPickerStyle`, and `ApplyTheme` on the ten elements (the
+  auto-complete's field from the text input's reader, its list from its
+  own), with the constructor tail and the `SetStyle` rule. `SpellCheckStyle`
+  and `ClipboardRowStyle` gain a `FromTheme` for their hosts (the shared
+  checker and the row delegate are not elements). Element role with its
+  fallback: `busy-indicator.second-arc` (the orange). `UltraCanvasThemeTest`
+  covers every mapping and the following by default.
+
+#### 2026-11-11 *0.9.524*
+- **Manrope and Inter ship in `media/fonts`** (the variable fonts, SIL Open
+  Font License, from Google Fonts) and are registered at start with the
+  Ubuntu family on every platform, so an application can name them:
+  UltraStore's window does, after the UltraStore shop design.
+
+#### 2026-11-10 *0.9.523*
+- **The containers and pickers follow the theme (T4 of the host theme
+  proposal, fourth part).** `FromTheme` on `ContainerStyle` (the
+  scrollbars), `GroupBoxVisualStyle`, `BreadcrumbStyle`, `PaginationStyle`,
+  `ColorPickerStyle` (without a base `Dark()` or `Light()` by the theme's
+  flag), `ColorSwatchBarStyle`, `ColorPaletteManagerStyle` (its editor's
+  picker with it) and `RichTextEditStyle` (the chrome and the inks; the
+  document's fonts stay), and `ApplyTheme` on the container, group box,
+  breadcrumb, pagination, colour picker, swatch bar, palette manager and
+  rich text edit, with the constructor tail and the `SetStyle` rule; a
+  filled frame, strip or bar takes the theme's surface and a transparent one
+  stays transparent. `SetContainerStyle` is behaviour, not a look, so a
+  derived element that turns its scrollbars off in its constructor still
+  follows. Element roles with their fallbacks: `color-picker.marker` and
+  `color-picker.marker-outline` (white and black), `rich-text.page` (the
+  well, for paper of another colour). `UltraCanvasThemeTest` covers every
+  mapping and the following by default.
+
 #### 2026-11-10 *0.9.522*
 - **UltraCloudUI: the account form's error is read whole.** Its status line
   was a fixed two lines inside the form grid, so a server's refusal stopped

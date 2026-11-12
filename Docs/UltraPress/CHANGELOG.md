@@ -1,3 +1,11 @@
+#### 2026-11-11 *0.8.5*
+- **The look follows the desktop until one is chosen.** The theme is set
+  under the application's `Own` policy with `ThemeFor` as the provider: a
+  dark desktop, or *Dark* on UOS-Settings' Look page, gives the dark look
+  (`look=system`, the new default), and a change while the editor runs is
+  taken at once; *Dark look* / *Light look* in the side column still picks
+  one for good (`look=light` / `look=dark`). The fonts are the desktop's.
+
 #### 2026-11-06 *0.8.4*
 - **Host… reports the sign-in on the console.** Adding a host that refused
   - or answered nothing, as a web server does to an FTP login - showed one

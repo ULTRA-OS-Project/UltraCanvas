@@ -18,6 +18,7 @@
 #include "tinyxml2.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -146,13 +147,6 @@ public:
             error = "The Word document has no body: " + filePath;
             return false;
         }
-        // A picture placed from the page's edge needs the page's margin, which
-        // the section at the end of the body states.
-        if (auto* sectPr = body->FirstChildElement("w:sectPr")) {
-            if (auto* margins = sectPr->FirstChildElement("w:pgMar")) {
-                pageMarginLeftPt_ = static_cast<float>(margins->IntAttribute("w:left", 1440)) / 20.0f;
-            }
-        }
         parsingBody_ = true;
         for (auto* elem = body->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
             std::string tag = elem->Name() ? elem->Name() : "";
@@ -206,7 +200,6 @@ private:
         Geometry geometry;
     };
     static constexpr float kUnset = -1.0e9f;
-    float pageMarginLeftPt_ = 72.0f;        // w:pgMar w:left, for page-relative pictures
 
     // ===== TABLE BORDERS =====
     // A table's six border positions; a side not stated stays unset so a
@@ -978,9 +971,191 @@ private:
         return std::strtoll(text, nullptr, 10);     // integers only: no locale decimal point involved
     }
 
+    // A wp:anchor's wrap and position: how text wraps round a floating
+    // picture or text box, and where it sits - aligned or offset, from the
+    // page's edges, its text area (margin) or the paragraph.
+    static void ApplyAnchorPlacement(tinyxml2::XMLElement* anchor, RichTextRun& run) {
+        using Origin = RichTextRun::FloatOrigin;
+        run.imageWrap = RichTextRun::ImageWrap::Square;
+        if (!anchor) return;
+        if (anchor->FirstChildElement("wp:wrapTopAndBottom")) {
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+        } else if (anchor->FirstChildElement("wp:wrapNone")) {
+            run.imageWrap = Attr(anchor, "behindDoc") == std::string("1")
+                ? RichTextRun::ImageWrap::BehindText : RichTextRun::ImageWrap::InFrontOfText;
+        }
+        auto offsetOf = [](tinyxml2::XMLElement* position, float& out) {
+            auto* offset = position->FirstChildElement("wp:posOffset");
+            if (!offset) return false;
+            out = static_cast<float>(ParseEmu(offset->GetText())) / kEmuPerPoint;
+            return true;
+        };
+        if (auto* positionH = anchor->FirstChildElement("wp:positionH")) {
+            const std::string from = Attr(positionH, "relativeFrom");
+            const bool page = from == "page" || from == "leftMargin" || from == "rightMargin"
+                           || from == "insideMargin" || from == "outsideMargin";
+            run.floatHorizontalFrom = page ? Origin::Page : Origin::Margin;
+            float x = 0.0f;
+            if (auto* align = positionH->FirstChildElement("wp:align")) {
+                const std::string side = align->GetText() ? align->GetText() : "";
+                run.imageFloatAlign = side == "right" || side == "outside" ? RichTextAlign::Right
+                                    : side == "center" ? RichTextAlign::Center : RichTextAlign::Left;
+            } else if (offsetOf(positionH, x)) {
+                run.imageFloatAlign = RichTextAlign::Default;
+                run.imageOffsetXPt = page ? x : std::max(0.0f, x);
+            }
+        }
+        if (auto* positionV = anchor->FirstChildElement("wp:positionV")) {
+            const std::string from = Attr(positionV, "relativeFrom");
+            run.floatVerticalFrom = from == "margin" ? Origin::Margin
+                                  : (from == "paragraph" || from == "line") ? Origin::Paragraph : Origin::Page;
+            using VAlign = RichTextRun::FloatVerticalAlign;
+            float y = 0.0f;
+            if (auto* align = positionV->FirstChildElement("wp:align")) {
+                const std::string side = align->GetText() ? align->GetText() : "";
+                run.floatVerticalAlign = side == "center" ? VAlign::Middle
+                                       : (side == "bottom" || side == "outside") ? VAlign::Bottom : VAlign::Top;
+            } else if (offsetOf(positionV, y)) {
+                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+            }
+        }
+    }
+
+    // A text box: Word's wps:wsp with a wps:txbx, or a VML v:textbox
+    // (w:pict). Its paragraphs become a text frame floating where the shape
+    // is anchored, with the shape's fill, outline and inner margin.
+    bool ParseTextBox(tinyxml2::XMLElement* drawing, InlineContext& ctx) {
+        auto* content = FindDescendant(drawing, "w:txbxContent");
+        if (!content) return false;
+        RichTextFrame frame;
+        const size_t start = doc_->blocks.size();
+        for (auto* elem = content->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
+            const std::string tag = elem->Name() ? elem->Name() : "";
+            if (tag == "w:p") ParseParagraph(elem);
+            else if (tag == "w:tbl") ParseTable(elem);
+        }
+        frame.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                            std::make_move_iterator(doc_->blocks.end()));
+        doc_->blocks.resize(start);
+
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        if (std::string(drawing->Name() ? drawing->Name() : "") == "w:pict") {
+            if (!ReadVmlTextBox(drawing, frame, run)) return false;
+        } else {
+            if (auto* docPr = FindDescendant(drawing, "wp:docPr")) frame.name = Attr(docPr, "name");
+            if (auto* extent = FindDescendant(drawing, "wp:extent")) {
+                run.imageWidthPt = extent->FloatAttribute("cx", 0.0f) / kEmuPerPoint;
+                run.imageHeightPt = extent->FloatAttribute("cy", 0.0f) / kEmuPerPoint;
+            }
+            if (auto* shape = FindDescendant(drawing, "wps:spPr")) {
+                auto colourOf = [](tinyxml2::XMLElement* fill) -> std::string {
+                    auto* rgb = fill ? fill->FirstChildElement("a:srgbClr") : nullptr;
+                    const std::string value = rgb ? Attr(rgb, "val") : "";
+                    return value.size() == 6 ? "#" + value : "";
+                };
+                frame.backgroundColor = colourOf(shape->FirstChildElement("a:solidFill"));
+                if (auto* line = shape->FirstChildElement("a:ln"); line && !line->FirstChildElement("a:noFill")) {
+                    const std::string colour = colourOf(line->FirstChildElement("a:solidFill"));
+                    if (!colour.empty()) {
+                        frame.border.color = colour;
+                        frame.border.widthPt = std::max(0.5f, line->FloatAttribute("w", 9525.0f) / kEmuPerPoint);
+                    }
+                }
+            }
+            // The inner margin (Word's default is 0.1 inch).
+            if (auto* body = FindDescendant(drawing, "wps:bodyPr")) {
+                frame.paddingPt = body->FloatAttribute("lIns", 91440.0f) / kEmuPerPoint;
+            }
+            if (drawing->FirstChildElement("wp:inline")) {
+                run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;   // in the line: on lines of its own
+            } else {
+                ApplyAnchorPlacement(drawing->FirstChildElement("wp:anchor"), run);
+            }
+        }
+        run.imageAltText = frame.name;
+        run.frameIndex = static_cast<int>(doc_->frames.size());
+        doc_->frames.push_back(std::move(frame));
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
+        return true;
+    }
+
+    // A CSS length ("368.5pt", " 2in") in points; a bare number is pixels.
+    static float CssLengthPt(std::string value) {
+        value.erase(std::remove(value.begin(), value.end(), ' '), value.end());
+        if (!value.empty() && (std::isdigit(static_cast<unsigned char>(value.back())) || value.back() == '.')) value += "px";
+        return WordFormatInternal::ParseLengthPt(value);
+    }
+
+    // A VML text box's size, place and look, from its v:shape's CSS style
+    // ("position:absolute;margin-left:368.5pt;...;mso-position-horizontal-
+    // relative:page") and attributes.
+    static bool ReadVmlTextBox(tinyxml2::XMLElement* pict, RichTextFrame& frame, RichTextRun& run) {
+        tinyxml2::XMLElement* shape = FindDescendant(pict, "v:shape");
+        if (!shape) shape = FindDescendant(pict, "v:rect");
+        if (!shape) return false;
+        frame.name = Attr(shape, "ID");
+        if (frame.name.empty()) frame.name = Attr(shape, "id");
+        std::map<std::string, std::string> css;
+        std::istringstream declarations(Attr(shape, "style"));
+        std::string declaration;
+        while (std::getline(declarations, declaration, ';')) {
+            const size_t colon = declaration.find(':');
+            if (colon == std::string::npos) continue;
+            css[ToLower(declaration.substr(0, colon))] = declaration.substr(colon + 1);
+        }
+        auto length = [&](const char* name) {
+            auto found = css.find(name);
+            return found == css.end() ? 0.0f : CssLengthPt(found->second);
+        };
+        using Origin = RichTextRun::FloatOrigin;
+        run.imageWidthPt = length("width");
+        run.imageHeightPt = length("height");
+        const std::string across = css["mso-position-horizontal-relative"];
+        const std::string down = css["mso-position-vertical-relative"];
+        run.floatHorizontalFrom = across == "page" ? Origin::Page : Origin::Margin;
+        run.floatVerticalFrom = down == "page" ? Origin::Page : down == "margin" ? Origin::Margin : Origin::Paragraph;
+        const std::string alignAcross = css["mso-position-horizontal"];
+        if (alignAcross == "right" || alignAcross == "outside") run.imageFloatAlign = RichTextAlign::Right;
+        else if (alignAcross == "center") run.imageFloatAlign = RichTextAlign::Center;
+        else if (alignAcross == "left" || alignAcross == "inside") run.imageFloatAlign = RichTextAlign::Left;
+        else {
+            run.imageFloatAlign = RichTextAlign::Default;
+            const float x = length("margin-left");
+            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+        }
+        const float y = length("margin-top");
+        run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+        // Wrapping: w10:wrap's type; none means over or under the text.
+        run.imageWrap = RichTextRun::ImageWrap::Square;
+        if (auto* wrap = FindDescendant(pict, "w10:wrap")) {
+            const std::string type = Attr(wrap, "type");
+            if (type == "topAndBottom") run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            else if (type == "none") run.imageWrap = RichTextRun::ImageWrap::InFrontOfText;
+        }
+        if (std::string(Attr(shape, "filled")) != "f" && std::string(Attr(shape, "filled")) != "false") {
+            const std::string fill = Attr(shape, "fillcolor");
+            if (fill.size() == 7 && fill[0] == '#') frame.backgroundColor = fill;
+        }
+        if (std::string(Attr(shape, "stroked")) != "f" && std::string(Attr(shape, "stroked")) != "false") {
+            std::string colour = Attr(shape, "strokecolor");
+            if (colour.size() != 7 || colour[0] != '#') colour = "#000000";
+            frame.border.color = colour;
+            const float weight = CssLengthPt(Attr(shape, "strokeweight"));
+            frame.border.widthPt = weight > 0.0f ? weight : 0.75f;
+        }
+        frame.paddingPt = 3.6f;                       // VML's default inset, 0.05 inch
+        return true;
+    }
+
     void ParseDrawing(tinyxml2::XMLElement* drawing, InlineContext& ctx) {
         auto* blip = FindDescendant(drawing, "a:blip");
-        if (!blip) return;
+        if (!blip) {
+            ParseTextBox(drawing, ctx);
+            return;
+        }
         std::string relId = Attr(blip, "r:embed");
         int mediaIndex = LoadImageByRelId(relId);
         if (mediaIndex < 0) return;
@@ -1022,38 +1197,7 @@ private:
         run.imageWidthPt = widthPt;
         run.imageHeightPt = heightPt;
         run.imageAltText = altText;
-        run.imageWrap = RichTextRun::ImageWrap::Square;
-        if (anchor) {
-            if (anchor->FirstChildElement("wp:wrapTopAndBottom")) {
-                run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
-            } else if (anchor->FirstChildElement("wp:wrapNone")) {
-                run.imageWrap = Attr(anchor, "behindDoc") == std::string("1")
-                    ? RichTextRun::ImageWrap::BehindText : RichTextRun::ImageWrap::InFrontOfText;
-            }
-            if (auto* positionH = anchor->FirstChildElement("wp:positionH")) {
-                const std::string from = Attr(positionH, "relativeFrom");
-                if (auto* align = positionH->FirstChildElement("wp:align")) {
-                    const std::string side = align->GetText() ? align->GetText() : "";
-                    run.imageFloatAlign = side == "right" || side == "outside" ? RichTextAlign::Right
-                                        : side == "center" ? RichTextAlign::Center : RichTextAlign::Left;
-                } else if (auto* offset = positionH->FirstChildElement("wp:posOffset")) {
-                    float x = static_cast<float>(ParseEmu(offset->GetText())) / kEmuPerPoint;
-                    // From the page's edge: the text column starts a margin in.
-                    if (from == "page") x -= pageMarginLeftPt_;
-                    run.imageFloatAlign = RichTextAlign::Default;
-                    run.imageOffsetXPt = std::max(0.0f, x);
-                }
-            }
-            if (auto* positionV = anchor->FirstChildElement("wp:positionV")) {
-                const std::string from = Attr(positionV, "relativeFrom");
-                auto* offset = positionV->FirstChildElement("wp:posOffset");
-                // Only an offset from the paragraph (or its line) has a meaning
-                // once pages are laid out afresh; others sit at the paragraph.
-                if (offset && (from == "paragraph" || from == "line")) {
-                    run.imageOffsetYPt = static_cast<float>(ParseEmu(offset->GetText())) / kEmuPerPoint;
-                }
-            }
-        }
+        ApplyAnchorPlacement(anchor, run);
         run.lineBreakBefore = ctx.pendingLineBreak;
         ctx.pendingLineBreak = false;
         ctx.runs.push_back(std::move(run));
@@ -1126,6 +1270,16 @@ private:
                 ctx.runs.push_back(std::move(run));
             } else if (tag == "w:drawing" || tag == "w:pict") {
                 ParseDrawing(child, ctx);
+            } else if (tag == "mc:AlternateContent") {
+                // A shape in a run: Word's DrawingML (wps) when it is the
+                // choice, else its VML fallback - never both.
+                auto* choice = child->FirstChildElement("mc:Choice");
+                auto* fallback = child->FirstChildElement("mc:Fallback");
+                auto* use = choice ? choice : fallback;
+                for (auto* inner = use ? use->FirstChildElement() : nullptr; inner; inner = inner->NextSiblingElement()) {
+                    const std::string innerTag = inner->Name() ? inner->Name() : "";
+                    if (innerTag == "w:drawing" || innerTag == "w:pict") ParseDrawing(inner, ctx);
+                }
             } else if (tag == "w:footnoteReference" || tag == "w:endnoteReference") {
                 const bool endnote = tag == "w:endnoteReference";
                 RichTextRun run = props;
@@ -2104,7 +2258,10 @@ private:
                 continue;
             }
             xml << "<w:r>";
-            if (run.IsInlineImage()) {
+            if (run.IsTextFrame()) {
+                if (run.lineBreakBefore) xml << "<w:br/>";
+                WriteTextBox(xml, run);
+            } else if (run.IsInlineImage()) {
                 if (run.lineBreakBefore) xml << "<w:br/>";
                 WriteDrawing(xml, run.mediaIndex, run.imageWidthPt, run.imageHeightPt,
                              run.imageAltText, ++inlineDrawingId_,
@@ -2291,6 +2448,92 @@ private:
         xml << "</w:r></w:p>\n";
     }
 
+    // A wp:anchor's opening: where a floating picture or text box sits, what
+    // that counts from (page, margin, column / paragraph), how text wraps
+    // round it - in the element order CT_Anchor requires, up to wp:docPr.
+    static void WriteAnchorPlacement(std::ostringstream& xml, const RichTextRun& floating, int drawingId,
+                                     long long cx, long long cy) {
+        using Wrap = RichTextRun::ImageWrap;
+        using Origin = RichTextRun::FloatOrigin;
+        using VAlign = RichTextRun::FloatVerticalAlign;
+        const Wrap wrap = floating.imageWrap;
+        const long long gap = static_cast<long long>(9.0f * kEmuPerPoint);      // Word's 0.32 cm
+        const char* across = floating.floatHorizontalFrom == Origin::Page ? "page"
+                           : floating.floatVerticalFrom == Origin::Paragraph ? "column" : "margin";
+        const char* down = floating.floatVerticalFrom == Origin::Page ? "page"
+                         : floating.floatVerticalFrom == Origin::Margin ? "margin" : "paragraph";
+        xml << "<wp:anchor distT=\"0\" distB=\"0\" distL=\"" << gap << "\" distR=\"" << gap
+            << "\" simplePos=\"0\" relativeHeight=\"" << (251658240 + drawingId) << "\" behindDoc=\""
+            << (wrap == Wrap::BehindText ? 1 : 0)
+            << "\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
+            << "<wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"" << across << "\">";
+        switch (floating.imageFloatAlign) {
+            case RichTextAlign::Right:  xml << "<wp:align>right</wp:align>"; break;
+            case RichTextAlign::Center: xml << "<wp:align>center</wp:align>"; break;
+            case RichTextAlign::Default:
+                xml << "<wp:posOffset>" << static_cast<long long>(floating.imageOffsetXPt * kEmuPerPoint)
+                    << "</wp:posOffset>";
+                break;
+            default: xml << "<wp:align>left</wp:align>"; break;
+        }
+        xml << "</wp:positionH><wp:positionV relativeFrom=\"" << down << "\">";
+        switch (floating.floatVerticalAlign) {
+            case VAlign::Middle: xml << "<wp:align>center</wp:align>"; break;
+            case VAlign::Bottom: xml << "<wp:align>bottom</wp:align>"; break;
+            default:
+                xml << "<wp:posOffset>" << static_cast<long long>(floating.imageOffsetYPt * kEmuPerPoint)
+                    << "</wp:posOffset>";
+                break;
+        }
+        xml << "</wp:positionV>"
+            << "<wp:extent cx=\"" << cx << "\" cy=\"" << cy << "\"/>"
+            << "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>";
+        switch (wrap) {
+            case Wrap::TopAndBottom: xml << "<wp:wrapTopAndBottom/>"; break;
+            case Wrap::BehindText:
+            case Wrap::InFrontOfText: xml << "<wp:wrapNone/>"; break;
+            default: xml << "<wp:wrapSquare wrapText=\"bothSides\"/>"; break;
+        }
+    }
+
+    // A text frame as Word's text box: a floating wps shape whose txbxContent
+    // holds the frame's paragraphs, with its fill, outline and inner margin.
+    // Wrapped in mc:AlternateContent, as Word itself writes it.
+    void WriteTextBox(std::ostringstream& xml, const RichTextRun& run) {
+        const RichTextFrame* frame = doc_->FrameFor(run);
+        if (!frame) return;
+        const int drawingId = ++inlineDrawingId_;
+        const long long cx = static_cast<long long>((run.imageWidthPt > 0.0f ? run.imageWidthPt : 144.0f) * kEmuPerPoint);
+        const long long cy = static_cast<long long>(std::max(14.0f, run.imageHeightPt) * kEmuPerPoint);
+        const std::string name = frame->name.empty() ? "Text Box " + std::to_string(drawingId) : frame->name;
+        auto rgb = [](const std::string& hex) { return hex.size() == 7 ? hex.substr(1) : std::string("000000"); };
+        const long long inset = static_cast<long long>(std::max(0.0f, frame->paddingPt) * kEmuPerPoint);
+        std::vector<RichDocBlock> blocks = frame->blocks;
+        if (blocks.empty()) blocks.emplace_back();
+        xml << "<mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\""
+               " xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">"
+               "<mc:Choice Requires=\"wps\"><w:drawing>";
+        WriteAnchorPlacement(xml, run, drawingId, cx, cy);
+        xml << "<wp:docPr id=\"" << drawingId << "\" name=\"" << EscapeXml(name) << "\"/>"
+            << "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
+            << "<a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">"
+            << "<wps:wsp><wps:cNvSpPr txBox=\"1\"/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\""
+            << cx << "\" cy=\"" << cy << "\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>";
+        if (frame->backgroundColor.empty()) xml << "<a:noFill/>";
+        else xml << "<a:solidFill><a:srgbClr val=\"" << EscapeXml(rgb(frame->backgroundColor)) << "\"/></a:solidFill>";
+        if (frame->border.IsVisible()) {
+            xml << "<a:ln w=\"" << static_cast<long long>(frame->border.widthPt * kEmuPerPoint)
+                << "\"><a:solidFill><a:srgbClr val=\"" << EscapeXml(rgb(frame->border.color))
+                << "\"/></a:solidFill></a:ln>";
+        } else {
+            xml << "<a:ln><a:noFill/></a:ln>";
+        }
+        xml << "</wps:spPr><wps:txbx><w:txbxContent>" << WriteBlocks(blocks) << "</w:txbxContent></wps:txbx>"
+            << "<wps:bodyPr wrap=\"square\" lIns=\"" << inset << "\" tIns=\"" << inset << "\" rIns=\"" << inset
+            << "\" bIns=\"" << inset << "\" anchor=\"t\"><a:spAutoFit/></wps:bodyPr></wps:wsp>"
+            << "</a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice></mc:AlternateContent>";
+    }
+
     void WriteDrawingElement(std::ostringstream& xml, const RichDocBlock& block, int drawingId,
                              const RichTextRun* floating = nullptr) {
         float widthPt = block.imageWidthPt;
@@ -2312,36 +2555,7 @@ private:
 
         xml << "<w:drawing>";
         if (floating) {
-            // A floating picture: where it sits and how text wraps round it,
-            // in the element order CT_Anchor requires.
-            using Wrap = RichTextRun::ImageWrap;
-            const Wrap wrap = floating->imageWrap;
-            const long long gap = static_cast<long long>(9.0f * kEmuPerPoint);      // Word's 0.32 cm
-            xml << "<wp:anchor distT=\"0\" distB=\"0\" distL=\"" << gap << "\" distR=\"" << gap
-                << "\" simplePos=\"0\" relativeHeight=\"" << (251658240 + drawingId) << "\" behindDoc=\""
-                << (wrap == Wrap::BehindText ? 1 : 0)
-                << "\" locked=\"0\" layoutInCell=\"1\" allowOverlap=\"1\">"
-                << "<wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"column\">";
-            switch (floating->imageFloatAlign) {
-                case RichTextAlign::Right:  xml << "<wp:align>right</wp:align>"; break;
-                case RichTextAlign::Center: xml << "<wp:align>center</wp:align>"; break;
-                case RichTextAlign::Default:
-                    xml << "<wp:posOffset>" << static_cast<long long>(floating->imageOffsetXPt * kEmuPerPoint)
-                        << "</wp:posOffset>";
-                    break;
-                default: xml << "<wp:align>left</wp:align>"; break;
-            }
-            xml << "</wp:positionH><wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>"
-                << static_cast<long long>(floating->imageOffsetYPt * kEmuPerPoint)
-                << "</wp:posOffset></wp:positionV>"
-                << "<wp:extent cx=\"" << cx << "\" cy=\"" << cy << "\"/>"
-                << "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>";
-            switch (wrap) {
-                case Wrap::TopAndBottom: xml << "<wp:wrapTopAndBottom/>"; break;
-                case Wrap::BehindText:
-                case Wrap::InFrontOfText: xml << "<wp:wrapNone/>"; break;
-                default: xml << "<wp:wrapSquare wrapText=\"bothSides\"/>"; break;
-            }
+            WriteAnchorPlacement(xml, *floating, drawingId, cx, cy);
         } else {
             xml << "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
                 << "<wp:extent cx=\"" << cx << "\" cy=\"" << cy << "\"/>";

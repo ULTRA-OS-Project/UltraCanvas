@@ -5,6 +5,7 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.10.0 - UltraSnip starts with the desktop by default (startupDefaults 2)
 // Version: 0.9.0 - UltraNotifications starts with the desktop by default
 //                  (startupDefaults: added once to a settings file older
 //                  than that, so unticking it afterwards holds)
@@ -123,12 +124,13 @@ struct DesktopSettings {
     std::vector<std::string> pinnedApps;
     // The programs started with the desktop (their StartupProgram::program),
     // unseen, unless a copy runs already. UltraNotifications by default, so
-    // the bell counts from the first sign-in; the others are off.
-    std::vector<std::string> startWithDesktop = {"UltraNotifications"};
+    // the bell counts from the first sign-in, and UltraSnip, so the Print
+    // Screen key snips from the first sign-in; the others are off.
+    std::vector<std::string> startWithDesktop = {"UltraNotifications", "UltraSnip"};
     // Which defaults of startWithDesktop a settings file has had applied
     // (kStartupDefaults): a file from before one is given it once, at the
     // next start, and what the person changes after that is kept.
-    static constexpr int kStartupDefaults = 1;
+    static constexpr int kStartupDefaults = 2;   // 1: UltraNotifications, 2: UltraSnip
     int startupDefaults = kStartupDefaults;
 
     // The Apps window. Its view ("tiles", a grid per category as on Windows'

@@ -93,7 +93,8 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 |---|---|---|
 | `policy` | `Ask` | `Never`: installs only from a settings page; `Ask`: `Ensure` installs when the caller passes `allowDownload` (the dialog's answer); `Automatic`: `Ensure` installs silently |
 | `preferredAccelerator` | `""` (Auto) | `"cpu"`, `"vulkan"`, `"metal"`, `"cuda12"`, `"rocm"` — the bundle to use when the gallery has one for this platform |
-| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` is read from beside it |
+| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` and `topics.json` are read from beside it |
+| `trustedKeys` | `[]` | Ed25519 public keys (hex) the gallery's documents must be signed with; pinned from `keys.json` on the first refresh (see *Signed galleries*) |
 | `idleMinutes` | 15 | stop an engine nobody used for this long (0 stops at the next sweep) |
 | `diskCapBytes` | 20 GB | an install that would exceed it fails with `QuotaExceeded` |
 | `startTimeoutSeconds` | 0 | how long a start may take; 0 scales it with the model's size (about 100 MB/s plus 20 s, at least 30 s) |
@@ -234,6 +235,40 @@ Gemma 3 4B with vision, Qwen3 Embedding 0.6B and Nomic Embed Text v1.5 for
 embeddings. Its file names and sizes were checked against the Hugging Face
 repositories on that date; the hashes are still read from the tree API at
 install time.
+
+---
+
+## Signed galleries
+
+A model server ([`Server/UltraAIModelServer`](../../../Server/UltraAIModelServer/README.md))
+signs `index.json`, `catalogue.json` and `topics.json` with its Ed25519
+key: a detached signature over the exact bytes served, 128 lower-case hex
+characters (the convention of UltraStore's `catalog.json.sig`), in the
+document's `X-UltraAI-Signature` header and as `<document>.sig` beside it.
+`keys.json` beside the index lists the keys a client may trust:
+
+```json
+{"formatVersion": 1, "algorithm": "ed25519", "keys": ["3b6a27bc..."]}
+```
+
+`RefreshGallery()`:
+
+- with `trustedKeys` empty, reads `keys.json`; when there is one, the index
+  must verify against it and its keys are pinned into the settings (trust on
+  first use, over TLS). A gallery without `keys.json` - the built-in default,
+  a plain mirror - stays unsigned and works as before;
+- with `trustedKeys` set, the index, and the catalogue and the topics when
+  they are there, must each carry a signature by one of those keys: an
+  unsigned or wrongly signed one fails the refresh with `ProviderError` /
+  `providerCode` `"bad-signature"`, and nothing is replaced. What `keys.json`
+  says that day does not matter - a server that changes its key is refused
+  until the user resets the pin (or the server announced the next key
+  beforehand and signed with it, `ULTRAAI_MODELS_NEXT_PUBLIC_KEYS`);
+- a new `galleryUrl` set through `SetSettings` without new `trustedKeys`
+  drops the old pins: they belong to the old server.
+
+An administrator who wants no first-use step hands users the key (UltraAI
+ServerAdmin shows it on its Connection page) to put in `trustedKeys`.
 
 ---
 
@@ -424,8 +459,8 @@ LocalRuntime::Instance().SetSettings(s);
 - The catalogue's hashes are taken from Hugging Face at install time until
   they are pinned; the file names and sizes were checked against the
   repositories on 2026-10-21.
-- The gallery index is not yet signed; it is fetched over TLS from a URL
-  the settings control.
+- The built-in gallery (llama.cpp's release archives) is not signed; a
+  model server's gallery is (see *Signed galleries*).
 - The *Get a local model* dialog is the module's (`UltraAI/ui/`,
   `UltraAILocalModelDialog.h`, library `UltraAI_UI`): an application links
   `UltraAI_UI` beside `UltraAI_Core`, tests an error with

@@ -1,3 +1,66 @@
+#### 2026-11-12 *0.10.92*
+- **A folder called "a/b" and one called "a_b" no longer share - and
+  overwrite - their downloaded messages.** The folder's cache directory wrote
+  `/` as `_`, so both were cached in one directory, and so were names with
+  `\` or `:` in that place. A literal `_`, `\` and `:` now have codes of their
+  own (`a_b` is cached as `a~ub`), and so have the characters Windows does not
+  allow in a file name (`* ? " < > |`): a folder called "What?" could not
+  have its messages cached on Windows at all. Folders without those
+  characters keep their directories. The first start moves the cached
+  messages of both earlier layouts; where two folders shared a directory each
+  takes its own, and a message both had under the same number is downloaded
+  again when it is read.
+- **Folders whose names differ only in an accented or non-Latin letter ("Über"
+  and "über", "Входящие" and "входящие") no longer share their downloaded
+  messages on Windows and macOS.** The code that tells such names apart knew
+  only the letters a-z; it now knows the letters of the Latin, Greek,
+  Cyrillic, Armenian and Georgian alphabets. A folder named in the usual way
+  ("Über", "Entwürfe") keeps its directory; the first start moves the others.
+
+#### 2026-11-12 *0.10.91*
+- **The warning strip can be translated in full.** Its advice ("Do not sign
+  in, pay or reply ..."), the footnotes that say what phishing, a romance
+  scam, a loan scam or a cryptocurrency scam is, and the title of the caution
+  on crypto mail now go through `Tr`, so they are in UltraMail's English set
+  and follow the language chosen; they were English whatever the language.
+
+#### 2026-11-12 *0.10.90*
+- **The phishing warning reads as a list.** Under *Mismatch of domains* the
+  sender's domain, the button's (or link's) domain and the scan's reasons are
+  numbered 1, 2, 3 ..., and each mention of the two domains is bold and in the
+  warning's colour, so the names to compare stand out.
+- **Settings > Display > Email warnings.** One switch per warning the strip
+  above a message shows: phishing, scam, love scam, loan scam, cryptocurrency
+  scam, the caution on crypto mail, and other warnings. Switching one off only
+  hides the strip - the message is still checked and its badge still says so.
+
+#### 2026-11-12 *0.10.89*
+- **Account settings and the other dialogs no longer stay on top of other
+  programs.** They sat above every application's windows and could not be
+  sent behind them; now they stay above UltraMail's own window only, as the
+  Settings window always did. The change is in the framework's
+  `DialogConfig`; see the framework changelog.
+
+#### 2026-11-11 *0.10.88*
+- **The desktop's look, and every text translatable.** UltraMail is light
+  or dark as the desktop is - or as *Look* on UOS-Settings' Appearance page
+  says - in the desktop's font and size: the colours and text sizes of
+  `UltraMailTheme.h` are the framework theme's roles now, read when a
+  window is built, so a dark desktop gives a dark UltraMail. Every text the
+  windows and dialogs show goes through `Tr`, with the sentences built from
+  pieces rewritten with placeholders and plurals; UltraMail's own English
+  set (`media/locale/en/UltraMail.json`, over the Communication base set)
+  is extracted from them, and *Translate UltraMail...* on the Settings page
+  opens the localisation editor. The signature verdicts of the engine stay
+  English for now.
+
+#### 2026-11-11 *0.10.87*
+- **Settings > Mail > Proxy.** IMAP, SMTP, JMAP and the sign-in go through
+  the proxy every ULTRA OS application shares, and the page opens the Proxy
+  settings dialog to choose it. An HTTP proxy carries the mail connections
+  as a CONNECT tunnel; the system's web proxy is not used for mail, its
+  SOCKS proxy is.
+
 #### 2026-11-09 *0.10.86*
 - **An account's card counted 0 new, 0 unread and 0 waiting although its
   inbox was full of unread mail.** The counters count the mail of the folder

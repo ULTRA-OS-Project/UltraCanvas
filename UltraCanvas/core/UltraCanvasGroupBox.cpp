@@ -10,7 +10,7 @@
 // Version: 1.1.1 - the help tooltip is anchored at the info icon's top edge (tooltips
 //                 now sit above the spot passed)
 // Version: 1.1.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #include "UltraCanvasGroupBox.h"
 #include "UltraCanvasTooltipManager.h"
@@ -75,6 +75,12 @@ namespace UltraCanvas {
         SetBackgroundColor(Colors::Transparent);
         expandedHeight = size.height;
         RecalculatePadding();
+        ApplyThemeIfFollowing();
+    }
+
+    void UltraCanvasGroupBox::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasContainer::ApplyTheme(theme);
+        SetVisualStyle(GroupBoxVisualStyle::FromTheme(theme, visualStyle));
     }
 
 // ===== TITLE =====
@@ -99,6 +105,7 @@ namespace UltraCanvas {
 
 // ===== STYLE =====
     void UltraCanvasGroupBox::SetVisualStyle(const GroupBoxVisualStyle& newStyle) {
+        StyleSetByHand();
         visualStyle = newStyle;
         RecalculatePadding();
         RequestRedraw();
@@ -785,4 +792,28 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+
+// ===== THE THEME =====
+    GroupBoxVisualStyle GroupBoxVisualStyle::FromTheme(const UltraCanvasTheme& theme, const GroupBoxVisualStyle& base) {
+        GroupBoxVisualStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.titleFont.fontFamily = body.fontFamily;
+        s.titleFont.fontSize = body.fontSize;
+        // a filled frame or header keeps being filled, a transparent one transparent
+        if (base.backgroundColor.a > 0) s.backgroundColor = r.raised;
+        if (base.headerBackgroundColor.a > 0) s.headerBackgroundColor = r.panel;
+        s.borderColor = r.line;
+        s.titleColor = r.ink;
+        s.disabledTitleColor = r.inkFaint;
+        s.activatorOnColor = r.accent;
+        s.activatorOffColor = r.lineStrong;
+        s.activatorKnobColor = r.raised;
+        s.infoIconColor = r.inkMuted;
+        s.infoIconHoverColor = r.accent;
+        s.closeIconColor = r.inkMuted;
+        s.closeIconHoverColor = r.ink;
+        s.closeHoverBackgroundColor = r.hover;
+        return s;
+    }
 } // namespace UltraCanvas

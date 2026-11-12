@@ -6,10 +6,13 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.5.0 - Text frames (RichTextRun::frameIndex, UCRichDocument::frames)
+//                  and floats placed from the page or its margins
+//                  (floatHorizontalFrom / floatVerticalFrom / floatVerticalAlign)
 // Version: 1.4.0 - RichTextRun::letterSpacingPt: a run's own room between its letters;
 //                  RichStyleCharacter::letterSpacingPt: a character style's
 // Version: 1.3.3
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -86,8 +89,30 @@ struct RichTextRun {
     RichTextAlign imageFloatAlign = RichTextAlign::Left;
     float imageOffsetXPt = 0.0f;
     float imageOffsetYPt = 0.0f;        // from the top of its paragraph
+    // What the offsets and the alignment count from. By default a float is
+    // placed across the text column and down from its paragraph; a
+    // letterhead's frames are placed from the page's edges (Page) or from
+    // the top-left corner of its text area (Margin). imageFloatAlign then
+    // aligns within that area, and floatVerticalAlign aligns down it
+    // (Top = imageOffsetYPt from its top).
+    enum class FloatOrigin { Paragraph, Margin, Page };
+    FloatOrigin floatHorizontalFrom = FloatOrigin::Margin;     // Paragraph counts as Margin across
+    FloatOrigin floatVerticalFrom = FloatOrigin::Paragraph;
+    enum class FloatVerticalAlign { Top, Middle, Bottom };
+    FloatVerticalAlign floatVerticalAlign = FloatVerticalAlign::Top;
 
     bool IsFloatingImage() const { return IsInlineImage() && imageWrap != ImageWrap::Inline; }
+
+    // ===== TEXT FRAME =====
+    // A text box floating like a picture - a letterhead's sender block, a
+    // boxed note: ODF's draw:frame with a draw:text-box, Word's text box. Its
+    // paragraphs are UCRichDocument::frames[frameIndex]; the run is one U+FFFC
+    // placeholder carrying its size (imageWidthPt; imageHeightPt 0 = as tall
+    // as its text), wrap and placement in the image fields above.
+    int frameIndex = -1;
+    bool IsTextFrame() const { return frameIndex >= 0; }
+    // A picture or text frame placed apart from the line.
+    bool IsFloatingObject() const { return (IsInlineImage() || IsTextFrame()) && imageWrap != ImageWrap::Inline; }
 
     // A footnote or endnote reference: the note is UCRichDocument::notes
     // [noteIndex]. `text` is the mark as last shown ("3", "iv"), superscript;
@@ -134,6 +159,7 @@ struct RichTextRun {
         // text beside it: each placeholder has to stay its own run, because the
         // run is what carries which picture it is.
         if (IsInlineImage() || other.IsInlineImage()) return false;
+        if (IsTextFrame() || other.IsTextFrame()) return false;
         return bold == other.bold && italic == other.italic && underline == other.underline
             && strikethrough == other.strikethrough && code == other.code
             && subscript == other.subscript && superscript == other.superscript
@@ -514,6 +540,17 @@ struct RichNote {
     std::vector<RichDocBlock> blocks;
 };
 
+// ===== TEXT FRAMES =====
+// A text box's content and look, referenced by a run with frameIndex (which
+// also carries where it floats).
+struct RichTextFrame {
+    std::vector<RichDocBlock> blocks;
+    std::string name;                     // ODF draw:name / Word's shape name
+    std::string backgroundColor;          // "#RRGGBB"; empty = none
+    RichBorder border;                    // all four sides alike; widthPt 0 = none
+    float paddingPt = 0.0f;               // between the border and the text
+};
+
 // ===== COMMENTS =====
 // A reviewer's comment on some text: the runs it covers carry its index in
 // RichTextRun::commentIds. A comment no run refers to any more (its text was
@@ -659,6 +696,14 @@ public:
 
     bool IsEmpty() const { return blocks.empty(); }
 
+    // ===== TEXT FRAMES =====
+    std::vector<RichTextFrame> frames;    // indexed by RichTextRun::frameIndex
+    // The frame a run refers to, or null when it refers to none (out of range).
+    const RichTextFrame* FrameFor(const RichTextRun& run) const {
+        return run.frameIndex >= 0 && run.frameIndex < static_cast<int>(frames.size())
+            ? &frames[static_cast<size_t>(run.frameIndex)] : nullptr;
+    }
+
     // ===== NOTES =====
     std::vector<RichNote> notes;
     // Every note reference in document order (body blocks and table cells):
@@ -764,6 +809,13 @@ public:
     // A copy whose body holds the first page's header, a rule, the body, a
     // rule and the footer - what the text serializers write.
     UCRichDocument WithFirstPageFurnitureInline() const;
+    // A copy with every text frame's paragraphs in the text, before the
+    // paragraph the frame is anchored in, and no frames: how Markdown, HTML
+    // and plain text spell a letterhead's sender block.
+    UCRichDocument WithFramesInline() const;
+    // The same for one list of blocks (a header, a frame's own paragraphs):
+    // each frame's paragraphs before the paragraph that anchors it.
+    std::vector<RichDocBlock> WithFramesInlineIn(const std::vector<RichDocBlock>& blocks) const;
 
     // ===== CHECK LISTS IN FORMATS WITHOUT THEM =====
     // A list item or paragraph whose text opens with a ballot box (☐ U+2610,

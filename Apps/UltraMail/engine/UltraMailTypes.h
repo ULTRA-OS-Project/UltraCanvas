@@ -2,12 +2,13 @@
 // Core data types for the UltraMail engine: accounts, folders, message
 // envelopes, message flags, and the per-account status rollup that drives the
 // account bar (unread today · unread before · waiting for reply).
+// Version: 0.8.0 - WarningStripOptions: which warnings the reading pane's strip shows
 // Version: 0.7.0 - AccountSecurity: how an account's new messages start out signed and encrypted
 // Version: 0.6.1 - HasServers: a JMAP account needs no outgoing server
 // Version: 0.6.0 - the protocol of the incoming server (IMAP or JMAP)
 // Version: 0.5.0 - a signature per account (plain text or HTML)
 // Version: 0.4.0 - the authentication method per server
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -246,6 +247,21 @@ struct AccountStatus {
     int unreadToday = 0;  // ... of those, dated today (local midnight onwards)
     int unreadOlder = 0;  // ... of those, dated before today
     int needsAnswer = 0;  // messages addressed to the user awaiting a reply
+};
+
+// Settings > Display > Email warnings: which kinds of warning the reading
+// pane's strip above the body shows. Display only: a kind switched off here is
+// still looked for and still colours the sender badge (that is Settings >
+// Warnings > Spam/scam warnings) - only the strip stays hidden. All on.
+struct WarningStripOptions {
+    bool phishing      = true;   // links that lie, a look-alike sender, a web-page attachment
+    bool scam          = true;   // other scams: advance-fee letters, letters in an agency's name
+    bool romance       = true;   // romance (love) scams
+    bool loan          = true;   // loan scams
+    bool cryptoScam    = true;   // cryptocurrency scams
+    bool cryptoCaution = true;   // the word of caution on any mail about crypto
+    bool suspicious    = true;   // the rest: blocked senders, "parts do not add up"
+    bool operator==(const WarningStripOptions&) const = default;
 };
 
 } // namespace UltraMail

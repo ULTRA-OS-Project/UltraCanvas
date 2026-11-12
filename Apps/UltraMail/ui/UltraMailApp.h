@@ -760,6 +760,9 @@ private:
     // App-wide view preferences (reading pane on/off), remembered between runs
     // in preferences.ini under the data directory.
     Preferences prefs_;
+    // The warning-strip kinds the reading pane was last given, so a settings
+    // change re-shows the message only when they changed.
+    WarningStripOptions shownWarningStrip_;
     std::string prefsPath_;
     // Per-folder resync bookkeeping, keyed by (accountId + "\n" + folder).
     // Opening a folder always refreshes it from the server, but throttled: a

@@ -47,6 +47,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   view toggle (see below), clickable breadcrumb path (each segment's dropdown
   lists sibling folders), folder tree with lazy expansion, and the History
   toggle (see below).
+- **The desktop's look.** The window is light or dark as the desktop is -
+  Windows' and macOS' light or dark mode, the desktop's theme on Linux - or
+  as *Look* on UOS-Settings' Appearance page says, in the desktop's font and
+  size, and a change while UltraFiler runs is taken at once. Every surface
+  of the window, its dialogs and its tab strips is a role of the framework
+  theme (`UltraFilerLook.h`); the drive rows of the folder tree keep the
+  colour chosen under Settings > Display.
 - **Split view:** the split-screen button in the navigation row (left of the
   clock) shows **two folder displays side by side** in place of the folder
   tree and the single display: the active tab's display on the left and a

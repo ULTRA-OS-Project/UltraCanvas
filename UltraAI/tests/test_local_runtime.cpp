@@ -12,7 +12,8 @@
 // segments; a speech model whose engine has no build here not offered);
 // the topics (the built-in document, the resolution
 // of a topic's model, the preferences, new models and the installs the
-// topic settings call for).
+// topic settings call for); signed galleries (keys pinned on first use, a
+// tampered or unsigned document refused, pins dropped with the address).
 //
 // argv[1] is the fake engine's path (CMake passes it). Uses plain asserts.
 
@@ -25,6 +26,7 @@
 #include "UltraAIUltraNetTransport.h"
 #endif
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCrypt/UltraCryptCore.h"
 #include "VirtualFS/VirtualFS.h"
 
 #include <algorithm>
@@ -1059,6 +1061,140 @@ void TestTopics() {
     }
 }
 
+// ----- signed galleries -----
+
+// A transport that answers by URL, for RefreshGallery.
+class UrlTransport : public ITransport {
+public:
+    std::map<std::string, TransportResponse> pages;
+    std::vector<std::string> asked;
+    TransportResponse Request(const TransportRequest& request, Error* outError) override {
+        asked.push_back(request.url);
+        auto it = pages.find(request.url);
+        if (it != pages.end()) return it->second;
+        TransportResponse r;
+        r.statusCode = 404;
+        (void)outError;
+        return r;
+    }
+    CancelFn SseStream(const TransportRequest&, SseEventCallback, SseCompleteCallback onComplete) override {
+        if (onComplete) onComplete(Error{ErrorCode::ProviderError, "no streams here", ""}, 0);
+        return [] {};
+    }
+};
+
+std::string Hex(const std::vector<uint8_t>& bytes) {
+    std::string out = UltraCrypt_ToHex(bytes);
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return out;
+}
+
+struct Signer {
+    std::vector<uint8_t> pub;
+    UltraCryptSecureBuffer secret;
+    Signer() { EXPECT_TRUE(UltraCrypt_GenerateSignatureKeyPair(UltraCryptSignatureAlgorithm::Ed25519, pub, secret).success); }
+    std::string Sign(const std::string& bytes) const {
+        std::vector<uint8_t> sig;
+        EXPECT_TRUE(UltraCrypt_Sign(UltraCryptSignatureAlgorithm::Ed25519, secret, bytes.data(), bytes.size(), sig).success);
+        return Hex(sig);
+    }
+    std::string PublicHex() const { return Hex(pub); }
+};
+
+TransportResponse Page(const std::string& body, const std::string& signature = {}) {
+    TransportResponse r;
+    r.statusCode = 200;
+    r.body = body;
+    if (!signature.empty()) r.headers.push_back({"X-UltraAI-Signature", signature});
+    return r;
+}
+
+void TestSignedGallery() {
+    if (!UltraCrypt_IsSignatureAvailable(UltraCryptSignatureAlgorithm::Ed25519)) {
+        std::cerr << "signed gallery: skipped (no Ed25519 in this build)\n";
+        return;
+    }
+    const std::string base = "https://models.test/gallery/";
+    const std::string index = BuiltinGalleryJson();
+    const std::string catalogue = BuiltinCatalogueJson();
+    const std::string topicsV1 = BuiltinTopicsJson();
+    std::string topicsV2 = topicsV1;
+    topicsV2.replace(topicsV2.find("General chat"), 12, "Chat, signed");
+    Signer key, other;
+
+    // VerifyDocumentSignature itself.
+    EXPECT_TRUE(VerifyDocumentSignature("abc", key.Sign("abc"), {other.PublicHex(), key.PublicHex()}));
+    EXPECT_TRUE(!VerifyDocumentSignature("abd", key.Sign("abc"), {key.PublicHex()}));
+    EXPECT_TRUE(!VerifyDocumentSignature("abc", key.Sign("abc"), {other.PublicHex()}));
+    EXPECT_TRUE(!VerifyDocumentSignature("abc", "zz", {key.PublicHex()}));
+    std::vector<std::string> parsed;
+    EXPECT_TRUE(ParseGalleryKeys(R"({"formatVersion":1,"algorithm":"ed25519","keys":[")" + key.PublicHex() + R"("]})", parsed));
+    EXPECT_EQ(parsed.size(), size_t(1));
+    EXPECT_TRUE(!ParseGalleryKeys(R"({"formatVersion":1,"keys":["nothex"]})", parsed));
+
+    Fixture fx("signed");
+    auto transport = std::make_shared<UrlTransport>();
+    transport->pages[base + "index.json"] = Page(index, key.Sign(index));
+    transport->pages[base + "catalogue.json"] = Page(catalogue, key.Sign(catalogue));
+    transport->pages[base + "topics.json"] = Page(topicsV1);                                   // signature in .sig
+    transport->pages[base + "topics.json.sig"] = Page(key.Sign(topicsV1) + "\n");
+    transport->pages[base + "keys.json"] = Page(R"({"formatVersion":1,"algorithm":"ed25519","keys":[")" + key.PublicHex() + R"("]})");
+    LocalRuntimeOptions o = fx.Options(true);
+    o.transport = transport;
+    LocalRuntime rt(o);
+    LocalRuntimeSettings s = rt.GetSettings();
+    s.galleryUrl = base + "index.json";
+    rt.SetSettings(s);
+
+    // First refresh: keys.json pinned, everything verified.
+    Error e = rt.RefreshGallery();
+    if (!e.IsOk()) std::cerr << "refresh: " << e.message << "\n";
+    EXPECT_TRUE(e.IsOk());
+    EXPECT_EQ(rt.GetSettings().trustedKeys.size(), size_t(1));
+    EXPECT_EQ(rt.GetSettings().trustedKeys[0], key.PublicHex());
+
+    // A tampered topics document is refused, and nothing changes.
+    transport->pages[base + "topics.json"] = Page(topicsV2);
+    e = rt.RefreshGallery();
+    EXPECT_TRUE(!e.IsOk());
+    EXPECT_EQ(e.providerCode, std::string("bad-signature"));
+    ModelTopic chat;
+    EXPECT_TRUE(rt.FindTopic("chat", chat));
+    EXPECT_EQ(chat.name, std::string("General chat"));
+
+    // Signed with another key - even one keys.json now names - is refused:
+    // the pinned key decides, not what the server says today.
+    transport->pages[base + "topics.json.sig"] = Page(other.Sign(topicsV2));
+    transport->pages[base + "keys.json"] = Page(R"({"formatVersion":1,"algorithm":"ed25519","keys":[")" + other.PublicHex() + R"("]})");
+    EXPECT_EQ(rt.RefreshGallery().providerCode, std::string("bad-signature"));
+
+    // Properly signed: taken.
+    transport->pages[base + "topics.json.sig"] = Page(key.Sign(topicsV2));
+    EXPECT_TRUE(rt.RefreshGallery().IsOk());
+    EXPECT_TRUE(rt.FindTopic("chat", chat));
+    EXPECT_EQ(chat.name, std::string("Chat, signed"));
+
+    // An unsigned index under pinned keys is refused.
+    transport->pages[base + "index.json"] = Page(index);
+    EXPECT_EQ(rt.RefreshGallery().providerCode, std::string("bad-signature"));
+
+    // Another server: the pins go with the old address.
+    s = rt.GetSettings();
+    s.galleryUrl = "https://other.test/gallery/index.json";
+    rt.SetSettings(s);
+    EXPECT_TRUE(rt.GetSettings().trustedKeys.empty());
+
+    // A gallery that publishes no keys stays unsigned and works as before.
+    const std::string plain = "https://mirror.test/";
+    transport->pages[plain + "index.json"] = Page(index);
+    transport->pages[plain + "catalogue.json"] = Page(catalogue);
+    s = rt.GetSettings();
+    s.galleryUrl = plain + "index.json";
+    rt.SetSettings(s);
+    EXPECT_TRUE(rt.RefreshGallery().IsOk());
+    EXPECT_TRUE(rt.GetSettings().trustedKeys.empty());
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1075,6 +1211,7 @@ int main(int argc, char** argv) {
     TestRegistration();
     TestInstall();
     TestTopics();
+    TestSignedGallery();
     TestEnsureAndSupervision();
     TestLocalProvider();
     TestLocalSpeech();

@@ -3,8 +3,10 @@
 // sysfs - no daemon, no helper process, no extra library - so the probe works on
 // a minimal system and inside a container, and degrades to a warning wherever
 // the kernel keeps a value behind root (SMBIOS tables, SMART, ATA IDENTIFY).
+// Version: 0.1.1 - pci.ids / usb.ids ids parsed from a named string: the end
+//                  pointer strtoul returned read a destroyed temporary
 // Version: 0.1.0
-// Last Modified: 2026-08-29
+// Last Modified: 2026-11-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasHardwareInfoBackend.h"
@@ -181,16 +183,20 @@ void LoadIdsFile(IdsDatabase& database, const std::vector<std::string>& candidat
             if (line.empty() || line[0] == '#') continue;
             if (line[0] != '\t') {
                 if (line.size() < 6) continue;
+                // Parsed from a named copy: strtoul leaves `end` pointing into
+                // it, and a temporary substr is gone before `*end` is read.
+                const std::string digits = line.substr(0, 4);
                 char* end = nullptr;
-                const unsigned long id = std::strtoul(line.substr(0, 4).c_str(), &end, 16);
+                const unsigned long id = std::strtoul(digits.c_str(), &end, 16);
                 if (end == nullptr || *end != '\0') continue;
                 currentVendor = static_cast<uint32_t>(id);
                 haveVendor = true;
                 database.vendors[currentVendor] = Trim(line.substr(4));
             } else if (line.size() > 1 && line[1] != '\t' && haveVendor) {
                 if (line.size() < 7) continue;
+                const std::string digits = line.substr(1, 4);
                 char* end = nullptr;
-                const unsigned long id = std::strtoul(line.substr(1, 4).c_str(), &end, 16);
+                const unsigned long id = std::strtoul(digits.c_str(), &end, 16);
                 if (end == nullptr || *end != '\0') continue;
                 database.devices[(currentVendor << 16) | static_cast<uint32_t>(id)] =
                     Trim(line.substr(5));

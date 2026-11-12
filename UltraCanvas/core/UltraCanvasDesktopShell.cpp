@@ -962,10 +962,20 @@ UltraCanvasGlobalShortcut::~UltraCanvasGlobalShortcut() {
 }
 
 bool UltraCanvasGlobalShortcut::Start(const std::string& accelerator, PressedCallback onPressed, std::string* error) {
+    return StartWith(accelerator, std::move(onPressed), error, false);
+}
+
+bool UltraCanvasGlobalShortcut::StartExclusive(const std::string& accelerator, PressedCallback onPressed,
+                                               std::string* error) {
+    return StartWith(accelerator, std::move(onPressed), error, true);
+}
+
+bool UltraCanvasGlobalShortcut::StartWith(const std::string& accelerator, PressedCallback onPressed,
+                                          std::string* error, bool exclusive) {
     Stop();
     std::string why;
     if (!onPressed) why = "No action was given for " + accelerator + ".";
-    if (why.empty()) impl->state = DesktopShellBackend::ShortcutOpen(accelerator, why);
+    if (why.empty()) impl->state = DesktopShellBackend::ShortcutOpen(accelerator, why, exclusive);
     if (!impl->state) {
         if (error) *error = why;
         return false;
@@ -1199,7 +1209,7 @@ namespace DesktopShellBackend {
     void MonitorClose(MonitorState*) {}
 
     struct ShortcutState {};
-    ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
+    ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, bool /*exclusive*/) {
         error = "Shortcuts for the whole desktop (" + accelerator + ") are not available on this platform yet.";
         return nullptr;
     }

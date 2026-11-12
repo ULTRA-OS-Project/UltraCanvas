@@ -1,4 +1,5 @@
 // Apps/UltraPassword/ui/StartPage.cpp
+// Version: 0.2.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (Theme.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StartPage.h"
@@ -8,6 +9,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 using namespace UltraCanvas;
 
@@ -28,7 +30,7 @@ constexpr float kPageTextWidth = 420.0f;
 
 std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
     page_ = CreateContainer("upwStartPage", 0, 0, 0, 0);
-    page_->SetBackgroundColor(Theme::kPageBackground);
+    page_->SetBackgroundColor(Theme::PageBackground());
     page_->layout.SetFlexColumn()
                  .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Center)
@@ -43,20 +45,22 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
     auto title = CreateLabel("upwStartTitle", "UltraPassword");
     title->SetFontSize(kTitleSize);
     title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Theme::kTextPrimary);
+    title->SetTextColor(Theme::TextPrimary());
     title->SetAlignment(TextAlignment::Center);
     page_->AddChild(title);
 
-    subtitle_ = CreateLabel("upwStartSubtitle", 0, 0, kPageTextWidth, 34, "");
-    subtitle_->SetFontSize(Theme::kSizeBody);
-    subtitle_->SetTextColor(Theme::kTextSecondary);
+    // Two lines of body text at the theme's size: 2.6 line heights, so a
+    // 14 pt desktop font does not clip the second line.
+    subtitle_ = CreateLabel("upwStartSubtitle", 0, 0, kPageTextWidth, Theme::SizeBody() * 2.6f + 4.0f, "");
+    subtitle_->SetFontSize(Theme::SizeBody());
+    subtitle_->SetTextColor(Theme::TextSecondary());
     subtitle_->SetAlignment(TextAlignment::Center);
     subtitle_->SetWrap(TextWrap::WrapWord);
     page_->AddChild(subtitle_);
 
     // ----- Create mode: the single call to action -----
     createButton_ = CreateButton("upwStartCreate", 0, 0, kButtonWidth, kButtonHeight,
-                                 "Create password vault");
+                                 Tr("Create password vault"));
     Theme::FitToLabel(createButton_, kButtonWidth);
     Theme::StylePrimary(createButton_);
     createButton_->SetFontSize(kButtonFont);
@@ -74,11 +78,11 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
                       .SetFlexGap(Theme::kInnerGap)
                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     password_ = CreatePasswordInput("upwStartPassword", 0, 0, kPasswordWidth, kButtonHeight);
-    password_->SetPlaceholder("Master password");
+    password_->SetPlaceholder(Tr("Master password"));
     Theme::StyleInput(password_);
     password_->onEnterPressed = [this](const std::string&) { SubmitPassword(); return true; };
     unlockRow_->AddChild(password_);
-    unlockButton_ = CreateButton("upwStartUnlock", 0, 0, 90, kButtonHeight, "Unlock");
+    unlockButton_ = CreateButton("upwStartUnlock", 0, 0, 90, kButtonHeight, Tr("Unlock"));
     Theme::FitToLabel(unlockButton_, 90);
     Theme::StylePrimary(unlockButton_);
     unlockButton_->SetFontSize(kButtonFont);
@@ -88,15 +92,15 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
     page_->AddChild(unlockRow_);
 
     error_ = CreateLabel("upwStartError", 0, 0, kPageTextWidth, 30, "");
-    error_->SetFontSize(Theme::kSizeBody);
-    error_->SetTextColor(Theme::kDanger);
+    error_->SetFontSize(Theme::SizeBody());
+    error_->SetTextColor(Theme::Danger());
     error_->SetAlignment(TextAlignment::Center);
     error_->SetWrap(TextWrap::WrapWord);
     page_->AddChild(error_);
 
     // ----- both modes: a vault file from elsewhere -----
     openOther_ = CreateButton("upwStartOpenOther", 0, 0, 160, Theme::kControlHeight,
-                              "Open existing vault…");
+                              Tr("Open existing vault…"));
     Theme::FitToLabel(openOther_, 160);
     Theme::StyleSecondary(openOther_);
     openOther_->onClick = [this]() { if (onOpenOther) onOpenOther(); };
@@ -122,7 +126,7 @@ void StartPage::SetMode(Mode mode, const std::string& detail) {
               "only you know."
             : detail);
     } else {
-        subtitle_->SetText(detail.empty() ? "Enter your master password to unlock the vault."
+        subtitle_->SetText(detail.empty() ? Tr("Enter your master password to unlock the vault.")
                                           : detail);
     }
     password_->SetText("");
@@ -154,7 +158,7 @@ void StartPage::SubmitPassword() {
     std::string typed = password_->GetText();
     password_->SetText("");
     if (typed.empty()) {
-        SetError("Enter the master password.");
+        SetError(Tr("Enter the master password."));
         return;
     }
     if (onUnlock) onUnlock(typed);

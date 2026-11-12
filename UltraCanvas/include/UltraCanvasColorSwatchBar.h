@@ -23,6 +23,8 @@
 // 256-colour GIF palette is a block rather than a hairline. The host sizes
 // such a bar with HeightForWidth().
 //
+// Version: 1.5.0 - ColorSwatchBarStyle::FromTheme, ApplyTheme: the bar follows the theme; a SetStyle by hand
+//                  stops the following
 // Version: 1.4.0 - SetShowAutoEntry / SelectAuto / onAutoSelected: a leading
 //                  "automatic" swatch, before the checkered one
 // Version: 1.3.0 - onColorHovered: the entry under the pointer, for a host
@@ -32,7 +34,7 @@
 //                  SetColorAt; onColorContextClicked: a right click with the
 //                  entry's index and where it happened (to edit the entry)
 // Version: 1.1.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -72,6 +74,14 @@ struct ColorSwatchBarStyle {
     float selectedBorderWidth = 2.0f;
     float cornerRadius   = 2.0f;
     float checkerCell    = 4.0f;    // checkerboard square size
+
+    // The theme's roles over a base's own metrics: a filled bar takes the
+    // panel, a transparent one stays so; the control border round a
+    // swatch, muted ink hovered, the accent selected; the checkerboard and
+    // the auto swatch keep their own greys
+    static ColorSwatchBarStyle FromTheme(const UltraCanvasTheme& theme, const ColorSwatchBarStyle& base);
+    static ColorSwatchBarStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ColorSwatchBarStyle()); }
+    static ColorSwatchBarStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== COLOUR SWATCH BAR =====
@@ -144,7 +154,8 @@ public:
     Color GetSelectedColor() const;
 
     // ===== APPEARANCE =====
-    void SetStyle(const ColorSwatchBarStyle& s) { style_ = s; RequestRedraw(); }
+    void SetStyle(const ColorSwatchBarStyle& s) { StyleSetByHand(); style_ = s; RequestRedraw(); }
+    void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ColorSwatchBarStyle::FromTheme(theme, style_)); }
     const ColorSwatchBarStyle& GetStyle() const { return style_; }
     ColorSwatchBarStyle& GetStyle() { return style_; }
     void SetSwatchSize(float size);

@@ -12,7 +12,7 @@
 // Version: 1.3.0 - the font report and its notice: the fonts the document needs that the
 //                  computer lacks, each a link to its download page
 // Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
@@ -25,6 +25,7 @@
 #include "UltraCanvasUtils.h"           // OpenURL
 
 #include <algorithm>
+#include <limits>
 #include <cctype>
 #include <cstdio>
 #include <ctime>
@@ -51,6 +52,205 @@ inline float Px(float points) { return points * kPixelsPerPoint; }
 // Room between a paragraph's text and its frame (and what the frame adds to
 // the space around the paragraph).
 constexpr float kParagraphFramePadding = 3.0f;
+
+// A paragraph wrapped round a floating picture or frame for only some of its
+// lines: its first lines laid out narrow beside the float (`head`, the whole
+// text, of which only the lines above `splitByte` are shown) and the rest at
+// the column's full width (`tail`, the text from `splitByte`), shown below
+// them `tailDx` to the side. To the view it is one layout with the paragraph's
+// text and byte offsets, so caret, clicks, selection and line walking work on
+// it unchanged; DrawSplitLayout draws it.
+class SplitTextLayout : public ITextLayout {
+public:
+    // The head shows its lines above `headHeight`; the tail is drawn from
+    // `tailTop` down (below a picture between them, or right after the head).
+    SplitTextLayout(std::unique_ptr<ITextLayout> head, std::unique_ptr<ITextLayout> tail,
+                    int splitByte, float headHeight, float tailDx, float tailTop)
+        : head_(std::move(head)), tail_(std::move(tail)), split_(splitByte),
+          headHeight_(headHeight), tailDx_(tailDx), tailTop_(tailTop) {
+        for (const LayoutLineExtent& line : head_->GetLineExtents()) {
+            if (line.startByte >= split_) break;
+            headLines_.push_back(line);
+        }
+    }
+    ITextLayout& Head() const { return *head_; }
+    ITextLayout& Tail() const { return *tail_; }
+    int SplitByte() const { return split_; }
+    float HeadHeight() const { return headHeight_; }
+    float TailDx() const { return tailDx_; }
+    float TailTop() const { return tailTop_; }
+
+    bool IsValid() const override { return head_->IsValid() && tail_->IsValid(); }
+    void* GetHandle() const override { return head_->GetHandle(); }
+    void SetExplicitWidth(double w) override { head_->SetExplicitWidth(w); }
+    void SetExplicitHeight(double h) override { head_->SetExplicitHeight(h); }
+    double GetExplicitWidth() const override { return head_->GetExplicitWidth(); }
+    double GetExplicitHeight() const override { return head_->GetExplicitHeight(); }
+    void SetText(const std::string& text) override { head_->SetText(text); }
+    std::string GetText() const override { return head_->GetText(); }
+    void SetMarkup(const std::string& markup) override { head_->SetMarkup(markup); }
+    void SetFontStyle(const FontStyle& font) override { head_->SetFontStyle(font); tail_->SetFontStyle(font); }
+    void SetAlignment(TextAlignment align) override { head_->SetAlignment(align); tail_->SetAlignment(align); }
+    TextAlignment GetAlignment() const override { return head_->GetAlignment(); }
+    void SetVerticalAlignment(VerticalAlignment align) override { head_->SetVerticalAlignment(align); }
+    VerticalAlignment GetVerticalAlignment() override { return head_->GetVerticalAlignment(); }
+    void SetWrap(TextWrap wrap) override { head_->SetWrap(wrap); tail_->SetWrap(wrap); }
+    TextWrap GetWrap() const override { return head_->GetWrap(); }
+    void SetEllipsize(EllipsizeMode mode) override { head_->SetEllipsize(mode); }
+    EllipsizeMode GetEllipsize() const override { return head_->GetEllipsize(); }
+    void SetIndent(int indent) override { head_->SetIndent(indent); }
+    int GetIndent() const override { return head_->GetIndent(); }
+    void SetLineSpacing(float factor) override { head_->SetLineSpacing(factor); tail_->SetLineSpacing(factor); }
+    float GetLineSpacing() const override { return head_->GetLineSpacing(); }
+    void SetSpacing(int spacing) override { head_->SetSpacing(spacing); }
+    int GetSpacing() const override { return head_->GetSpacing(); }
+    void SetSingleParagraphMode(bool single) override { head_->SetSingleParagraphMode(single); }
+    bool GetSingleParagraphMode() const override { return head_->GetSingleParagraphMode(); }
+    void SetAutoDir(bool autoDir) override { head_->SetAutoDir(autoDir); }
+    bool GetAutoDir() const override { return head_->GetAutoDir(); }
+    // Attributes go to the head only: the view styles both parts while it
+    // builds them (and the selection through ApplySelectionAttributes).
+    void InsertAttribute(std::unique_ptr<ITextAttribute> attr) override { head_->InsertAttribute(std::move(attr)); }
+    void ChangeAttribute(std::unique_ptr<ITextAttribute> attr) override { head_->ChangeAttribute(std::move(attr)); }
+    void SetAttributesFromString(const std::string& str) override { head_->SetAttributesFromString(str); }
+    std::string GetAttributesAsString() override { return head_->GetAttributesAsString(); }
+    void RemoveAllAttributes() override { head_->RemoveAllAttributes(); }
+    void UpdateAttributesAccordingToText(int pos, int added, int removed) override {
+        head_->UpdateAttributesAccordingToText(pos, added, removed);
+    }
+    void ResetTabs() override { head_->ResetTabs(); }
+    void SetTabs(const std::vector<UCLayoutTabPos>& tabs) override { head_->SetTabs(tabs); }
+    std::vector<UCLayoutTabPos> GetTabs() override { return head_->GetTabs(); }
+
+    UCLayoutExtents GetLayoutExtents() override {
+        UCLayoutExtents extents = head_->GetLayoutExtents();
+        const UCLayoutExtents tail = tail_->GetLayoutExtents();
+        const double right = std::max(extents.logical.x + extents.logical.width,
+                                      static_cast<double>(tailDx_) + tail.logical.x + tail.logical.width);
+        const double left = std::min(extents.logical.x, static_cast<double>(tailDx_) + tail.logical.x);
+        extents.logical.x = left;
+        extents.logical.width = right - left;
+        extents.logical.height = tailTop_ + tail.logical.height;
+        extents.ink = extents.logical;
+        return extents;
+    }
+    double GetLayoutVerticalOffset() override { return head_->GetLayoutVerticalOffset(); }
+    double GetBaseline() const override { return head_->GetBaseline(); }
+    double GetCapHeight() override { return head_->GetCapHeight(); }
+    int GetLineCount() const override { return static_cast<int>(headLines_.size()) + tail_->GetLineCount(); }
+
+    UCLayoutHitResult XYToIndex(int x, int y) const override {
+        if (static_cast<float>(y) < (headHeight_ + tailTop_) * 0.5f) {
+            UCLayoutHitResult hit = head_->XYToIndex(x, y);
+            if (hit.index >= split_) { hit.index = split_; hit.trailing = 0; }
+            return hit;
+        }
+        UCLayoutHitResult hit = tail_->XYToIndex(x - static_cast<int>(tailDx_), y - static_cast<int>(tailTop_));
+        hit.index += split_;
+        return hit;
+    }
+    Rect2Di IndexToPos(int index) const override {
+        if (index < split_) return head_->IndexToPos(index);
+        return Shift(tail_->IndexToPos(index - split_));
+    }
+    double IndexToBaseline(int index) const override {
+        if (index < split_) return head_->IndexToBaseline(index);
+        return tailTop_ + tail_->IndexToBaseline(index - split_);
+    }
+    UCLayoutLineXPos IndexToLineX(int index, bool trailing) const override {
+        if (index < split_) return head_->IndexToLineX(index, trailing);
+        UCLayoutLineXPos pos = tail_->IndexToLineX(index - split_, trailing);
+        pos.line += static_cast<int>(headLines_.size());
+        pos.xPos += static_cast<int>(tailDx_);
+        return pos;
+    }
+    UCCursorPos GetCursorPos(int index) const override {
+        if (index < split_) return head_->GetCursorPos(index);
+        UCCursorPos pos = tail_->GetCursorPos(index - split_);
+        pos.strongPos = Shift(pos.strongPos);
+        pos.weakPos = Shift(pos.weakPos);
+        return pos;
+    }
+    UCCursorMoveResult MoveCursorVisually(bool strong, int oldIndex, int oldTrailing, int direction) const override {
+        if (oldIndex < split_ || (oldIndex == split_ && direction < 0)) {
+            UCCursorMoveResult moved = head_->MoveCursorVisually(strong, oldIndex, oldTrailing, direction);
+            if (moved.newIndex > split_ && moved.newIndex < static_cast<int>(head_->GetText().size())) {
+                moved.newIndex = split_;
+                moved.newTrailing = 0;
+            }
+            return moved;
+        }
+        UCCursorMoveResult moved = tail_->MoveCursorVisually(strong, oldIndex - split_, oldTrailing, direction);
+        // Off the tail's start: back into the head's last line.
+        if (moved.newIndex < 0) return head_->MoveCursorVisually(strong, split_, 0, direction);
+        if (moved.newIndex < std::numeric_limits<int>::max() - split_) moved.newIndex += split_;
+        return moved;
+    }
+    std::vector<LayoutLineRange> GetLineByteRanges() const override {
+        std::vector<LayoutLineRange> lines;
+        for (const LayoutLineExtent& line : headLines_) lines.push_back({line.startByte, line.lengthBytes});
+        for (const LayoutLineRange& line : tail_->GetLineByteRanges()) lines.push_back({line.startByte + split_, line.lengthBytes});
+        return lines;
+    }
+    std::vector<LayoutLineExtent> GetLineExtents() const override {
+        std::vector<LayoutLineExtent> lines = headLines_;
+        for (LayoutLineExtent line : tail_->GetLineExtents()) {
+            line.startByte += split_;
+            line.top += tailTop_;
+            lines.push_back(line);
+        }
+        return lines;
+    }
+
+private:
+    Rect2Di Shift(Rect2Di rect) const {
+        rect.x += static_cast<int>(tailDx_);
+        rect.y += static_cast<int>(tailTop_);
+        return rect;
+    }
+    std::unique_ptr<ITextLayout> head_;
+    std::unique_ptr<ITextLayout> tail_;
+    int split_ = 0;
+    float headHeight_ = 0.0f;
+    float tailDx_ = 0.0f;
+    float tailTop_ = 0.0f;
+    std::vector<LayoutLineExtent> headLines_;
+};
+
+// Draws a layout - both parts of a split one.
+void DrawLayout(IRenderContext* ctx, ITextLayout& layout, const Point2Dd& at) {
+    auto* split = dynamic_cast<SplitTextLayout*>(&layout);
+    if (!split) {
+        ctx->DrawTextLayout(layout, at);
+        return;
+    }
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(at.x - 100000.0, at.y - 100000.0, 200000.0, 100000.0 + split->HeadHeight()));
+    ctx->DrawTextLayout(split->Head(), at);
+    ctx->PopState();
+    ctx->DrawTextLayout(split->Tail(), Point2Dd(at.x + split->TailDx(), at.y + split->TailTop()));
+}
+
+// The runs from layout byte `from` on (the bytes RunsText gives them,
+// a line break counting one), for the tail of a split paragraph.
+std::vector<RichTextRun> RunsFrom(const std::vector<RichTextRun>& runs, int from) {
+    std::vector<RichTextRun> out;
+    int position = 0;
+    for (const RichTextRun& run : runs) {
+        const int breakBytes = run.lineBreakBefore ? 1 : 0;
+        const int textStart = position + breakBytes;
+        const int end = textStart + static_cast<int>(run.text.size());
+        if (end <= from) { position = end; continue; }
+        RichTextRun piece = run;
+        if (position < from) {
+            piece.lineBreakBefore = false;
+            piece.text = run.text.substr(static_cast<size_t>(std::max(0, from - textStart)));
+        }
+        out.push_back(std::move(piece));
+        position = end;
+    }
+    return out;
+}
 
 Color ParseHexColor(const std::string& hex, const Color& fallback) {
     if (hex.size() != 7 || hex[0] != '#') return fallback;
@@ -145,6 +345,7 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
     // Typing gets a word processor's corrections (smart quotes, dashes,
     // lists from "1. "...); SetAutoFormatEnabled(false) turns them off.
     editor.SetAutoFormatEnabled(true);
+    ApplyThemeIfFollowing();
 }
 
 UltraCanvasRichTextEdit::~UltraCanvasRichTextEdit() {
@@ -221,6 +422,7 @@ void UltraCanvasRichTextEdit::SetPageView(bool enabled) {
 }
 
 void UltraCanvasRichTextEdit::SetStyle(const RichTextEditStyle& s) {
+    StyleSetByHand();
     style = s;
     InvalidateDocument();
 }
@@ -236,6 +438,11 @@ void UltraCanvasRichTextEdit::Arrange(const Rect2Df& finalRect, const CSSLayout:
 // by the zoom - which is the space everything is laid out and hit-tested in.
 // Its origin is the same in both spaces; drawing scales about it.
 void UltraCanvasRichTextEdit::RecalculateVisibleArea() {
+    // A fitting zoom follows the element's size before anything is measured.
+    if (const float fit = FitZoom(); fit > 0.0f && std::abs(fit - zoom) > 0.001f) {
+        zoom = fit;
+        if (onZoomChanged) onZoomChanged(zoom);
+    }
     Rect2Df bounds = TextBounds();
     const float bar = style.scrollbarWidth;
     float availableHeight = bounds.height - 2 * style.padding;
@@ -284,10 +491,34 @@ void UltraCanvasRichTextEdit::SetZoomRange(float minimum, float maximum) {
     if (!(minimum > 0.0f) || !(maximum >= minimum)) return;
     minZoom = minimum;
     maxZoom = maximum;
+    const ZoomFit fit = zoomFit;
     SetZoom(zoom);
+    zoomFit = fit;
+}
+
+float UltraCanvasRichTextEdit::FitZoom() const {
+    if (zoomFit == ZoomFit::Off || !pageView || printing) return 0.0f;   // printing is at 100%
+    const Rect2Df bounds = TextBounds();
+    // Room for the vertical scrollbar is always kept, so the fit does not
+    // change as the scrollbar comes and goes.
+    const float pane = commentPaneShown ? style.commentPaneWidth : 0.0f;
+    const float width = bounds.width - 2 * style.padding - style.scrollbarWidth - pane;
+    const float height = bounds.height - 2 * style.padding;
+    if (width <= 1.0f || height <= 1.0f) return 0.0f;
+    const RichPageSetup page = EffectivePageSetup();
+    float fit = width / (Px(page.widthPt) + 2.0f * style.pageGap);
+    if (zoomFit == ZoomFit::WholePage) fit = std::min(fit, height / (Px(page.heightPt) + 2.0f * style.pageGap));
+    return std::clamp(fit, minZoom, maxZoom);
+}
+
+void UltraCanvasRichTextEdit::SetZoomFit(ZoomFit fit) {
+    zoomFit = fit;
+    visibleAreaDirty = true;
+    RequestRedraw();
 }
 
 void UltraCanvasRichTextEdit::SetZoom(float factor) {
+    zoomFit = ZoomFit::Off;                  // a chosen zoom ends a fitting one
     factor = std::clamp(factor, minZoom, maxZoom);
     if (std::abs(factor - zoom) < 0.001f) return;
     // The scroll offset is in document pixels, so the view keeps its place.
@@ -397,6 +628,7 @@ std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdi
     furniture->blocks = FillPageFields(blocks, pageNumber, pageCount, hasFields);
     furniture->layouts.resize(furniture->blocks.size());
     float y = 0.0f;
+    layingOutFurniture = true;                 // its floating pictures and frames float
     for (size_t i = 0; i < furniture->blocks.size(); i++) {
         BlockLayout& bl = furniture->layouts[i];
         BuildBlockLayout(ctx, furniture->blocks, static_cast<int>(i), bl, -1);
@@ -404,6 +636,7 @@ std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdi
         bl.bounds.y = y;
         y += bl.bounds.height + GapAfterBlock(furniture->blocks, static_cast<int>(i));
     }
+    layingOutFurniture = false;
     furniture->height = y;
     furnitureCache[key] = furniture;
     return furniture;
@@ -449,6 +682,7 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
         }
         // A page always keeps some room for text, whatever its furniture.
         frame.bodyBottom = std::max(frame.bodyBottom, frame.bodyTop + 24.0f);
+        PlaceFurnitureFloats(ctx, frame, index + 1, count);
         return frame;
     };
 
@@ -464,6 +698,20 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
         placedFloats.clear();
         noteAreas.clear();
         std::vector<PlacedFloat> pageFloats;      // floats of the current page
+        // The body wraps round its page's header and footer floats too.
+        auto seedFurnitureFloats = [&]() {
+            for (const PlacedFloat& placed : pages.back().furnitureFloats) {
+                if (placed.wrap == RichTextRun::ImageWrap::Square || placed.wrap == RichTextRun::ImageWrap::TopAndBottom) {
+                    pageFloats.push_back(placed);
+                }
+            }
+        };
+        auto keepBodyFloats = [&]() {
+            for (const PlacedFloat& placed : pageFloats) {
+                if (placed.blockIndex >= 0) placedFloats.push_back(placed);
+            }
+        };
+        seedFurnitureFloats();
         // Sections of columns: blocks fill a column to the foot of the page,
         // then the next column from the section's top, then the next page.
         RichSectionSetup section = document.firstSection;
@@ -479,9 +727,10 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             return static_cast<float>(column) * (width + gap);
         };
         auto newPage = [&]() {
-            placedFloats.insert(placedFloats.end(), pageFloats.begin(), pageFloats.end());
+            keepBodyFloats();
             pageFloats.clear();
             pages.push_back(frameFor(static_cast<int>(pages.size()), count));
+            seedFurnitureFloats();
             y = pages.back().bodyTop;
             pageEmpty = true;
             column = 0;
@@ -632,11 +881,96 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             firstEndnote = false;
             noteAreas.push_back(std::move(area));
         }
-        placedFloats.insert(placedFloats.end(), pageFloats.begin(), pageFloats.end());
+        keepBodyFloats();
         if (static_cast<int>(pages.size()) == count) break;
         count = static_cast<int>(pages.size());
     }
     return pages.back().top + pageHeightPx + gap;
+}
+
+// Where a floating picture or text frame goes: across within the column or
+// the page, down from its paragraph's top (`paragraphTop`, `paragraphHeight`)
+// or within `page` or its text area - at the paragraph when there is no page
+// (the continuous view). A text frame is laid out, its page fields filled in
+// for `page`, to know its height.
+UltraCanvasRichTextEdit::PlacedFloat UltraCanvasRichTextEdit::PlaceFloat(
+        IRenderContext* ctx, const BlockLayout::InlineImage& image, float paragraphTop, float paragraphHeight,
+        const PageFrame* page, int pageNumber, int pageCount) {
+    using Origin = RichTextRun::FloatOrigin;
+    using VAlign = RichTextRun::FloatVerticalAlign;
+    const RichPageSetup pageSetup = EffectivePageSetup();
+    PlacedFloat placed;
+    placed.byteOffset = image.byteOffset;
+    placed.wrap = image.wrap;
+    placed.image = image.image;
+    float height = image.height;
+    if (image.frameIndex >= 0) {
+        // A text frame is as tall as its text, and at least its own height.
+        const float inset = TextFrameInset(image.frameIndex);
+        placed.frameIndex = image.frameIndex;
+        placed.frameContent = LayoutTextFrame(ctx, image.frameIndex, std::max(8.0f, image.width - 2.0f * inset),
+                                              pageNumber, pageCount);
+        if (placed.frameContent) height = std::max(height, placed.frameContent->height + 2.0f * inset);
+        height = std::max(height, 2.0f * inset + 8.0f);
+    }
+    const float column = ColumnWidth();
+    // Across: within the column, or within the page (whose left edge lies
+    // a margin left of the column).
+    const bool fromPage = image.horizontalFrom == Origin::Page;
+    const float areaLeft = fromPage ? -Px(pageSetup.marginLeftPt) : 0.0f;
+    const float areaWidth = fromPage ? Px(pageSetup.widthPt) : column;
+    float x = 0.0f;
+    switch (image.floatAlign) {
+        case RichTextAlign::Right:  x = areaLeft + areaWidth - image.width; break;
+        case RichTextAlign::Center: x = areaLeft + (areaWidth - image.width) * 0.5f; break;
+        case RichTextAlign::Default: x = areaLeft + image.offsetX; break;
+        default: x = areaLeft; break;
+    }
+    const float minX = fromPage ? -Px(pageSetup.marginLeftPt) : 0.0f;
+    const float maxX = fromPage ? column + Px(pageSetup.marginRightPt) - image.width : column - image.width;
+    x = std::clamp(x, minX, std::max(minX, maxX));
+    // Down: from the paragraph's top, or within the page or its text area.
+    float areaTop = paragraphTop, areaHeight = std::max(paragraphHeight, height);
+    float offsetY = image.offsetY;
+    if (image.verticalFrom != Origin::Paragraph) {
+        if (page) {
+            areaTop = image.verticalFrom == Origin::Page ? page->top : page->bodyTop;
+            areaHeight = image.verticalFrom == Origin::Page ? pageHeightPx : page->bodyBottom - page->bodyTop;
+        } else {
+            offsetY = 0.0f;
+        }
+    }
+    float y = areaTop + offsetY;
+    if (image.verticalAlign == VAlign::Middle) y = areaTop + (areaHeight - height) * 0.5f;
+    else if (image.verticalAlign == VAlign::Bottom) y = areaTop + areaHeight - height;
+    placed.rect = Rect2Df(x, y, image.width, height);
+    // Text passes beside a square-wrapped picture at a side of the column; a
+    // centred one leaves no useful room either side.
+    placed.beside = image.wrap == RichTextRun::ImageWrap::Square && image.floatAlign != RichTextAlign::Center;
+    return placed;
+}
+
+// A header's or footer's floating pictures and frames on its page: placed
+// from the page (or the header's own paragraphs), drawn with it, and wrapped
+// round by the page's body text.
+void UltraCanvasRichTextEdit::PlaceFurnitureFloats(IRenderContext* ctx, PageFrame& frame,
+                                                   int pageNumber, int pageCount) {
+    frame.furnitureFloats.clear();
+    const PageFrame* page = pageView ? &frame : nullptr;
+    auto place = [&](const std::shared_ptr<FurnitureLayout>& furniture, float top) {
+        if (!furniture) return;
+        for (const BlockLayout& bl : furniture->layouts) {
+            for (const BlockLayout::InlineImage& image : bl.inlineImages) {
+                if (!image.floating) continue;
+                PlacedFloat placed = PlaceFloat(ctx, image, top + bl.bounds.y, bl.bounds.height, page,
+                                                pageNumber, pageCount);
+                placed.blockIndex = -1;           // not the body's: never selected, never in placedFloats
+                frame.furnitureFloats.push_back(std::move(placed));
+            }
+        }
+    };
+    place(frame.header, pageView ? frame.headerTop : 0.0f);
+    place(frame.footer, frame.footerTop);
 }
 
 float UltraCanvasRichTextEdit::FlowAroundFloats(IRenderContext* ctx, int index, float top,
@@ -655,41 +989,46 @@ float UltraCanvasRichTextEdit::FlowAroundFloats(IRenderContext* ctx, int index, 
             }
         }
     }
-    // The block's own floating pictures, placed at its top.
+    // The block's own floating pictures and text frames: by default at its
+    // top; from the page or its text area when they say so.
     bool ownBelow = false;
     float ownBottom = top;
+    float ownTop = std::numeric_limits<float>::max();
+    const PageFrame* onPage = pageView && !pages.empty() ? &pages.back() : nullptr;
     for (const BlockLayout::InlineImage& image : bl.inlineImages) {
         if (!image.floating) continue;
-        PlacedFloat placed;
+        PlacedFloat placed = PlaceFloat(ctx, image, top, bl.bounds.height, onPage);
         placed.blockIndex = index;
-        placed.byteOffset = image.byteOffset;
-        placed.wrap = image.wrap;
-        placed.image = image.image;
-        const float column = ColumnWidth();
-        float x = 0.0f;
-        switch (image.floatAlign) {
-            case RichTextAlign::Right:  x = column - image.width; break;
-            case RichTextAlign::Center: x = (column - image.width) * 0.5f; break;
-            case RichTextAlign::Default: x = image.offsetX; break;
-            default: x = 0.0f; break;
-        }
-        x = std::clamp(x, 0.0f, std::max(0.0f, column - image.width));
-        placed.rect = Rect2Df(x, top + image.offsetY, image.width, image.height);
-        // Text passes beside a square-wrapped picture at a side of the
-        // column; a centred one leaves no useful room either side.
-        placed.beside = image.wrap == RichTextRun::ImageWrap::Square && image.floatAlign != RichTextAlign::Center;
         if (image.wrap == RichTextRun::ImageWrap::TopAndBottom || (!placed.beside
             && image.wrap == RichTextRun::ImageWrap::Square)) {
             ownBelow = true;
             ownBottom = std::max(ownBottom, placed.rect.y + placed.rect.height + gap);
+            ownTop = std::min(ownTop, placed.rect.y);
         }
         pageFloats.push_back(std::move(placed));
     }
-    // Its text starts below its own top-and-bottom picture.
-    if (ownBelow) top = ownBottom;
+    // Its text goes on below its own top-and-bottom picture: the lines that
+    // fit above the picture stay there (a picture set lower down in its
+    // paragraph), the rest continue below it; with no room above, all of it
+    // starts below.
+    float jumpFrom = 0.0f, jumpTo = 0.0f;
+    if (ownBelow) {
+        float firstLine = static_cast<float>(style.baseFont.fontSize) * 1.3f;
+        if (bl.layout) {
+            const std::vector<LayoutLineExtent> lines = bl.layout->GetLineExtents();
+            if (!lines.empty()) firstLine = lines.front().height;
+        }
+        if (ownTop - top >= firstLine && bl.layout) {
+            jumpFrom = ownTop - top;
+            jumpTo = ownBottom - top;
+        } else {
+            top = ownBottom;
+        }
+    }
 
-    // Beside square-wrapped pictures, the block is narrowed.
-    float left = 0.0f, right = 0.0f;
+    // Beside square-wrapped pictures, the block is narrowed - down to the
+    // last of them; its lines below take the full width again.
+    float left = 0.0f, right = 0.0f, until = 0.0f;
     const float height = std::max(bl.bounds.height, 1.0f);
     for (const PlacedFloat& placed : pageFloats) {
         if (!placed.beside) continue;
@@ -697,6 +1036,7 @@ float UltraCanvasRichTextEdit::FlowAroundFloats(IRenderContext* ctx, int index, 
         const float middle = placed.rect.x + placed.rect.width * 0.5f;
         if (middle < ColumnWidth() * 0.5f) left = std::max(left, placed.rect.x + placed.rect.width + gap);
         else right = std::max(right, ColumnWidth() - placed.rect.x + gap);
+        until = std::max(until, placed.rect.y + placed.rect.height - top);
     }
     // Never so narrow that nothing fits: then the text goes below instead.
     if (left + right > ColumnWidth() - 48.0f) {
@@ -707,9 +1047,15 @@ float UltraCanvasRichTextEdit::FlowAroundFloats(IRenderContext* ctx, int index, 
         top = below;
         left = right = 0.0f;
     }
-    if (std::abs(left - bl.intrudeLeft) > 0.5f || std::abs(right - bl.intrudeRight) > 0.5f) {
+    if (left <= 0.0f && right <= 0.0f) until = 0.0f;
+    if (std::abs(left - bl.intrudeLeft) > 0.5f || std::abs(right - bl.intrudeRight) > 0.5f
+        || std::abs(until - bl.intrudeUntil) > 0.5f
+        || std::abs(jumpFrom - bl.jumpFrom) > 0.5f || std::abs(jumpTo - bl.jumpTo) > 0.5f) {
         bl.intrudeLeft = left;
         bl.intrudeRight = right;
+        bl.intrudeUntil = until;
+        bl.jumpFrom = jumpFrom;
+        bl.jumpTo = jumpTo;
         if (bl.valid) BuildBlockLayout(ctx, index);
         else bl.textLeft = std::max(0.0f, BlockIndentFor(editor.GetBlock(index)) + left);
     }
@@ -721,14 +1067,100 @@ void UltraCanvasRichTextEdit::DrawFloats(IRenderContext* ctx, bool behindText) {
     for (const PlacedFloat& placed : placedFloats) {
         if ((placed.wrap == RichTextRun::ImageWrap::BehindText) != behindText) continue;
         if (placed.rect.y + placed.rect.height < viewTop || placed.rect.y > viewBottom) continue;
-        const Rect2Dd target(ColumnLeft() + placed.rect.x, visibleArea.y + placed.rect.y - scrollOffset,
-                             placed.rect.width, placed.rect.height);
-        if (placed.image) {
-            ctx->DrawImage(*placed.image, target, ImageFitMode::Contain);
-        } else {
-            ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f, style.imagePlaceholderColor);
-        }
+        DrawPlacedFloat(ctx, placed);
     }
+}
+
+void UltraCanvasRichTextEdit::DrawPlacedFloat(IRenderContext* ctx, const PlacedFloat& placed) {
+    const Rect2Dd target(ColumnLeft() + placed.rect.x, visibleArea.y + placed.rect.y - scrollOffset,
+                         placed.rect.width, placed.rect.height);
+    if (placed.frameIndex >= 0) {
+        DrawTextFrame(ctx, placed, target);
+        return;
+    }
+    if (placed.image) {
+        ctx->DrawImage(*placed.image, target, ImageFitMode::Contain);
+    } else {
+        ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f, style.imagePlaceholderColor);
+    }
+}
+
+// A text frame: its fill, its border, then its paragraphs inside them.
+void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target) {
+    const RichTextFrame* frame = editor.GetDocument()->frames.size() > static_cast<size_t>(placed.frameIndex)
+        ? &editor.GetDocument()->frames[static_cast<size_t>(placed.frameIndex)] : nullptr;
+    if (!frame) return;
+    if (!frame->backgroundColor.empty()) {
+        ctx->DrawFilledRectangle(target, ParseHexColor(frame->backgroundColor, Colors::Transparent),
+                                 0.0f, Colors::Transparent);
+    }
+    if (frame->border.IsVisible()) {
+        const double width = std::max(1.0, static_cast<double>(Px(frame->border.widthPt)));
+        const double half = width * 0.5;
+        ctx->DrawFilledRectangle(Rect2Dd(target.x + half, target.y + half, target.width - width, target.height - width),
+                                 Colors::Transparent, static_cast<float>(width),
+                                 ParseHexColor(frame->border.color, style.textColor));
+    } else if (!readOnly) {
+        // An editable view shows where a borderless frame is, as Writer does.
+        ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f, style.tableGuideColor);
+    }
+    if (!placed.frameContent) return;
+    const float inset = TextFrameInset(placed.frameIndex);
+    const FurnitureLayout& content = *placed.frameContent;
+    ctx->PushState();
+    ctx->ClipRect(target);
+    for (size_t i = 0; i < content.layouts.size(); i++) {
+        const BlockLayout& bl = content.layouts[i];
+        RenderBlock(ctx, content.blocks, static_cast<int>(i), bl,
+                    static_cast<float>(target.x) + inset,
+                    static_cast<float>(target.y) + inset + bl.bounds.y, -1);
+    }
+    ctx->PopState();
+}
+
+float UltraCanvasRichTextEdit::TextFrameInset(int frameIndex) const {
+    const UCRichDocument& document = *editor.GetDocument();
+    if (frameIndex < 0 || frameIndex >= static_cast<int>(document.frames.size())) return 0.0f;
+    const RichTextFrame& frame = document.frames[static_cast<size_t>(frameIndex)];
+    return Px(std::max(0.0f, frame.paddingPt) + (frame.border.IsVisible() ? frame.border.widthPt : 0.0f));
+}
+
+std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdit::LayoutTextFrame(
+        IRenderContext* ctx, int frameIndex, float width, int pageNumber, int pageCount) {
+    const UCRichDocument& document = *editor.GetDocument();
+    if (frameIndex < 0 || frameIndex >= static_cast<int>(document.frames.size())) return nullptr;
+    const RichTextFrame& frame = document.frames[static_cast<size_t>(frameIndex)];
+    if (frame.blocks.empty()) return nullptr;
+    // Its own cache key: the frames' width is theirs, not the column's.
+    // A header's "Page 2 of 5" box shows its page's numbers.
+    const bool numbered = pageNumber > 0 && HasPageFields(frame.blocks);
+    const std::string key = "frame|" + std::to_string(frameIndex) + "|" + std::to_string(std::lround(width * 10.0f))
+                          + "|" + std::to_string(reinterpret_cast<uintptr_t>(&frame.blocks))
+                          + (numbered ? "|" + std::to_string(pageNumber) + "|" + std::to_string(pageCount) : "");
+    auto found = furnitureCache.find(key);
+    if (found != furnitureCache.end()) return found->second;
+
+    auto layout = std::make_shared<FurnitureLayout>();
+    layout->blocks = document.WithFramesInlineIn(frame.blocks);
+    if (numbered) {
+        bool hasFields = false;
+        layout->blocks = FillPageFields(layout->blocks, pageNumber, pageCount, hasFields);
+    }
+    layout->layouts.resize(layout->blocks.size());
+    const float savedOverride = columnWidthOverride;
+    columnWidthOverride = width;
+    float y = 0.0f;
+    for (size_t i = 0; i < layout->blocks.size(); i++) {
+        BlockLayout& bl = layout->layouts[i];
+        BuildBlockLayout(ctx, layout->blocks, static_cast<int>(i), bl, -1);
+        bl.bounds.x = bl.textLeft;
+        bl.bounds.y = y;
+        y += bl.bounds.height + GapAfterBlock(layout->blocks, static_cast<int>(i));
+    }
+    columnWidthOverride = savedOverride;
+    layout->height = y;
+    furnitureCache[key] = layout;
+    return layout;
 }
 
 float UltraCanvasRichTextEdit::BlockToContentY(const BlockLayout& bl, float layoutY) const {
@@ -851,6 +1283,17 @@ float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
     const int blockCount = editor.GetBlockCount();
     placedFloats.clear();
     std::vector<PlacedFloat> floats;
+    {
+        // The header's floats, at its paragraphs: the body wraps round them.
+        PageFrame headerOnly = frame;
+        headerOnly.footer.reset();
+        PlaceFurnitureFloats(ctx, headerOnly, 1, 1);
+        for (const PlacedFloat& placed : headerOnly.furnitureFloats) {
+            if (placed.wrap == RichTextRun::ImageWrap::Square || placed.wrap == RichTextRun::ImageWrap::TopAndBottom) {
+                floats.push_back(placed);
+            }
+        }
+    }
     for (int i = 0; i < blockCount; i++) {
         BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
         y = FlowAroundFloats(ctx, i, y, floats);
@@ -861,7 +1304,9 @@ float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
     }
     // The column ends below its last picture too.
     for (const PlacedFloat& placed : floats) y = std::max(y, placed.rect.y + placed.rect.height);
-    placedFloats = std::move(floats);
+    for (const PlacedFloat& placed : floats) {
+        if (placed.blockIndex >= 0) placedFloats.push_back(placed);
+    }
     // Footnotes and endnotes follow the text.
     noteAreas.clear();
     y = PlaceEndnotes(ctx, y, /*footnotesToo*/ true);
@@ -870,6 +1315,8 @@ float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
         frame.footerTop = y + separation;
         y = frame.footerTop + frame.footer->height;
     }
+    PlaceFurnitureFloats(ctx, frame, 1, 1);
+    for (const PlacedFloat& placed : frame.furnitureFloats) y = std::max(y, placed.rect.y + placed.rect.height);
     if (frame.header || frame.footer) pages.push_back(std::move(frame));
     return y;
 }
@@ -1148,22 +1595,31 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         // squeezed to nothing and the placement pass puts the picture beside
         // the text. Only a body paragraph floats one; in a cell or a header it
         // stays in the line.
-        const bool floats = run.IsFloatingImage() && cellRow < 0 && blockIndex >= 0 && outInlineImages
-                            && block.type != RichBlockType::Table;
+        const bool floats = run.IsFloatingObject() && cellRow < 0 && (blockIndex >= 0 || layingOutFurniture)
+                            && outInlineImages && block.type != RichBlockType::Table;
         if (floats) {
             std::shared_ptr<UCImage> image;
             const UCRichDocument& document = *editor.GetDocument();
             if (run.mediaIndex >= 0 && run.mediaIndex < static_cast<int>(document.media.size())) {
                 image = UCImage::LoadFromMemory(document.media[static_cast<size_t>(run.mediaIndex)].data);
             }
-            float width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt)
-                        : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
-            float height = run.imageHeightPt > 0.0f ? Px(run.imageHeightPt)
-                         : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
-            const float maxWidth = std::max(16.0f, ColumnWidth());
-            if (width > maxWidth) {
-                height *= maxWidth / width;
-                width = maxWidth;
+            float width = 0.0f, height = 0.0f;
+            if (run.IsTextFrame()) {
+                // A text frame is as wide as it says (half the column when it
+                // does not say) and at least as tall as it says; its text
+                // decides the rest once it is laid out.
+                width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt) : ColumnWidth() * 0.5f;
+                height = Px(std::max(0.0f, run.imageHeightPt));
+            } else {
+                width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt)
+                      : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
+                height = run.imageHeightPt > 0.0f ? Px(run.imageHeightPt)
+                       : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
+                const float maxWidth = std::max(16.0f, ColumnWidth());
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
             }
             add(TextAttributeFactory::CreateShape(0.0, 0.0, 0.0));
             BlockLayout::InlineImage placed;
@@ -1177,7 +1633,19 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             placed.floatAlign = run.imageFloatAlign;
             placed.offsetX = Px(run.imageOffsetXPt);
             placed.offsetY = Px(run.imageOffsetYPt);
+            placed.horizontalFrom = run.floatHorizontalFrom;
+            placed.verticalFrom = run.floatVerticalFrom;
+            placed.verticalAlign = run.floatVerticalAlign;
+            placed.frameIndex = run.frameIndex;
             outInlineImages->push_back(std::move(placed));
+            continue;
+        }
+
+        // A text frame where nothing floats (a table cell, a header, another
+        // frame): its placeholder takes no room. The header's and frame's
+        // own layouts put the frame's text in line beforehand.
+        if (run.IsTextFrame()) {
+            add(TextAttributeFactory::CreateShape(0.0, 0.0, 0.0));
             continue;
         }
 
@@ -1340,6 +1808,71 @@ bool UltraCanvasRichTextEdit::CaretWithin(int blockIndex, int cellRow, int cellC
     return inside(editor.GetCaret()) || inside(editor.GetAnchor());
 }
 
+// Splits a paragraph that is narrowed beside a float into its narrow lines
+// (the ones starting above bl.intrudeUntil) and the rest, laid out again at
+// the column's full width from the first line below the float.
+void UltraCanvasRichTextEdit::SplitBesideFloat(IRenderContext* ctx, const RichDocBlock& block, int blockIndex,
+                                               BlockLayout& bl, float fullIndent) {
+    const std::vector<LayoutLineExtent> lines = bl.layout->GetLineExtents();
+    // Below its own top-and-bottom picture (jumpTo) the text goes on after
+    // the last line that fits above it; beside a float, after the last line
+    // that starts level with it.
+    const bool jump = bl.jumpTo > 0.0f;
+    int split = -1;
+    float headHeight = 0.0f;
+    for (size_t i = 1; i < lines.size(); i++) {
+        const bool below = jump ? lines[i].top + lines[i].height > bl.jumpFrom + 0.5f
+                                : lines[i].top >= bl.intrudeUntil - 0.5f;
+        if (below) {
+            split = lines[i].startByte;
+            headHeight = lines[i].top;
+            break;
+        }
+    }
+    if (split <= 0) return;                     // the float is beside every line
+    const float tailTop = jump ? std::max(headHeight, bl.jumpTo) : headHeight;
+
+    // The rest goes on as further lines of the paragraph: no first-line
+    // indent, at the paragraph's own indent across the whole column.
+    RichDocBlock rest = block;
+    rest.firstLineIndentPt = 0.0f;
+    const float left = std::max(0.0f, fullIndent);
+    const float width = block.type == RichBlockType::ListItem
+        ? std::max(1.0f, ColumnWidth() - left)
+        : std::max(1.0f, ColumnWidth() - left - Px(std::max(0.0f, block.rightIndentPt)));
+    std::vector<BlockLayout::InlineImage> unused;      // the head already placed its pictures
+    std::unique_ptr<ITextLayout> tail = MakeRunsLayout(ctx, rest, RunsFrom(block.runs, split), width,
+                                                       nullptr, blockIndex, &unused, left);
+    if (!tail) return;
+    std::unique_ptr<ITextLayout> head = std::move(bl.layout);
+    bl.layout = std::make_unique<SplitTextLayout>(std::move(head), std::move(tail), split, headHeight,
+                                                  left - bl.textLeft, tailTop);
+    // Links are found again through the joined layout.
+    if (!bl.hitRects.empty()) {
+        bl.hitRects.clear();
+        int position = 0;
+        for (const RichTextRun& run : block.runs) {
+            const int start = position + (run.lineBreakBefore ? 1 : 0);
+            const int end = start + static_cast<int>(run.text.size());
+            position = end;
+            if (run.linkTarget.empty() || start >= end) continue;
+            for (const LayoutLineRange& line : bl.layout->GetLineByteRanges()) {
+                const int from = std::max(start, line.startByte);
+                const int to = std::min(end, line.startByte + line.lengthBytes);
+                if (from >= to) continue;
+                const Rect2Di a = bl.layout->IndexToPos(from);
+                const Rect2Di b = bl.layout->IndexToPos(to);
+                RichTextHitRect hit;
+                hit.bounds = Rect2Df(static_cast<float>(a.x), static_cast<float>(a.y),
+                                     static_cast<float>(std::max(1, b.x - a.x)), static_cast<float>(std::max(1, a.height)));
+                hit.linkTarget = run.linkTarget;
+                hit.blockIndex = blockIndex;
+                bl.hitRects.push_back(hit);
+            }
+        }
+    }
+}
+
 void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
                                                        int cellRow, int cellColumn) const {
     if (!layout || !editor.HasSelection() || printing) return;
@@ -1362,6 +1895,21 @@ void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int 
     to   = std::max(from, std::min(to, length));
     if (from == to) return;
 
+    if (auto* split = dynamic_cast<SplitTextLayout*>(layout)) {
+        // Both parts of a split paragraph carry their share.
+        const int at = split->SplitByte();
+        if (from < at) {
+            auto head = TextAttributeFactory::CreateBackground(style.selectionColor);
+            head->SetRange(from, std::min(to, at));
+            split->Head().InsertAttribute(std::move(head));
+        }
+        if (to > at) {
+            auto tail = TextAttributeFactory::CreateBackground(style.selectionColor);
+            tail->SetRange(std::max(from, at) - at, to - at);
+            split->Tail().InsertAttribute(std::move(tail));
+        }
+        return;
+    }
     auto bg = TextAttributeFactory::CreateBackground(style.selectionColor);
     bg->SetRange(from, to);
     layout->InsertAttribute(std::move(bg));
@@ -1758,6 +2306,12 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
             bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth,
                                        blockIndex >= 0 ? &bl.hitRects : nullptr, blockIndex,
                                        &bl.inlineImages, bl.textLeft);
+            // Beside a float for only its first lines: those stay narrow, and
+            // the lines below it take the column's full width again.
+            if (blockIndex >= 0 && !bl.markerOnRight && !block.rightToLeft
+                && ((bl.intrudeUntil > 0.0f && (intrudeLeft > 0.0f || intrudeRight > 0.0f)) || bl.jumpTo > 0.0f)) {
+                SplitBesideFloat(ctx, block, blockIndex, bl, indent - intrudeLeft);
+            }
             ApplySelectionAttributes(bl.layout.get(), blockIndex);
             bl.bounds.width = static_cast<float>(bl.layout->GetLayoutWidth());
             bl.bounds.height = static_cast<float>(bl.layout->GetLayoutHeight()) + style.paragraphLeading;
@@ -2064,10 +2618,23 @@ void UltraCanvasRichTextEdit::RenderPages(IRenderContext* ctx) {
         // The header or footer being edited is drawn live, as the blocks.
         const bool editedPage = furnitureEdit && furnitureEdit->noteIndex < 0
                                 && static_cast<int>(&frame - pages.data()) == furnitureEdit->pageIndex;
+        // Its header's and footer's floats: behind-text ones under the
+        // header's text, the rest over it - all of them under the body's.
+        const float viewTopFloat = scrollOffset, viewBottomFloat = scrollOffset + visibleArea.height;
+        auto floats = [&](bool behind) {
+            if (editedPage) return;                // the part being edited draws its own
+            for (const PlacedFloat& placed : frame.furnitureFloats) {
+                if ((placed.wrap == RichTextRun::ImageWrap::BehindText) != behind) continue;
+                if (placed.rect.y + placed.rect.height < viewTopFloat || placed.rect.y > viewBottomFloat) continue;
+                DrawPlacedFloat(ctx, placed);
+            }
+        };
+        floats(true);
         if (frame.header && !(editedPage && !furnitureEdit->footer)) {
             RenderFurniture(ctx, *frame.header, pageView ? frame.headerTop : 0.0f);
         }
         if (frame.footer && !(editedPage && furnitureEdit->footer)) RenderFurniture(ctx, *frame.footer, frame.footerTop);
+        floats(false);
     }
 }
 
@@ -2273,7 +2840,7 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
     }
     if (bl.layout) {
         ctx->SetCurrentPaint(style.textColor);
-        ctx->DrawTextLayout(*bl.layout, Point2Dd(textX, originY));
+        DrawLayout(ctx, *bl.layout, Point2Dd(textX, originY));
         DrawInlineImages(ctx, bl, static_cast<float>(textX), static_cast<float>(originY));
     }
 }
@@ -2437,6 +3004,7 @@ void UltraCanvasRichTextEdit::ForEachImage(
         }
     };
     for (const PlacedFloat& placed : placedFloats) {
+        if (placed.frameIndex >= 0) continue;     // a text frame is not a picture to select
         visit(RichDocPosition(placed.blockIndex, placed.byteOffset),
               Rect2Df(ColumnLeft() + placed.rect.x, visibleArea.y + placed.rect.y - scrollOffset,
                       placed.rect.width, placed.rect.height));
@@ -4524,6 +5092,7 @@ bool UltraCanvasRichTextEdit::BeginFurnitureEditing(int pageIndex, bool footer) 
     auto furnitureDoc = std::make_shared<UCRichDocument>();
     furnitureDoc->blocks = footer ? furniture.footer : furniture.header;
     furnitureDoc->media = body->media;          // pictures keep their indices
+    furnitureDoc->frames = body->frames;        // and text frames theirs
     furnitureDoc->page = body->page;
     furnitureDoc->defaultTabStopPt = body->defaultTabStopPt;
 
@@ -4808,6 +5377,7 @@ std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdi
         look.text.clear();
         look.lineBreakBefore = false;
         look.mediaIndex = -1;
+        look.frameIndex = -1;
         look.math = false;
         look.code = false;
         look.linkTarget.clear();
@@ -5581,4 +6151,32 @@ void UltraCanvasRichTextEdit::EndPrintLayout() {
     InvalidateDocument();
 }
 
+
+// ===== THE THEME =====
+RichTextEditStyle RichTextEditStyle::FromTheme(const UltraCanvasTheme& theme, const RichTextEditStyle& base) {
+    RichTextEditStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.textColor = r.ink;
+    s.backgroundColor = r.well;
+    s.selectionColor = r.accentSoft;
+    s.cursorColor = r.ink;
+    s.linkColor = r.accent;
+    s.quoteBarColor = r.lineStrong;
+    s.quoteTextColor = r.inkMuted;
+    s.codeTextColor = r.ink;
+    s.codeBackgroundColor = r.panel;
+    s.codeBorderColor = r.line;
+    s.ruleColor = r.lineStrong;
+    s.pageBreakColor = r.inkFaint;
+    s.listMarkerColor = r.inkMuted;
+    s.tableBorderColor = r.lineStrong;
+    s.tableGuideColor = r.line;
+    s.imagePlaceholderColor = r.inkFaint;
+    s.borderColor = r.lineStrong;
+    s.deskColor = r.panel;
+    // the element's own role: paper of another colour than the well
+    s.pageColor = theme.Role("rich-text.page", r.well);
+    s.pageMarginGuideColor = r.line;
+    return s;
+}
 } // namespace UltraCanvas

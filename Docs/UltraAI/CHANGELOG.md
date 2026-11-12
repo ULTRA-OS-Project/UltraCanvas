@@ -1,3 +1,42 @@
+#### 2026-11-12 *0.1.27*
+- **The model server's lists are signed, and the client checks them.** The
+  model server signs `index.json`, `catalogue.json` and `topics.json` with its
+  Ed25519 key (the signature in the `X-UltraAI-Signature` header and as
+  `<document>.sig`) and publishes its keys in `keys.json`. The local runtime
+  pins those keys on the first refresh from a server
+  (`LocalRuntimeSettings::trustedKeys`) and from then on refuses a refresh
+  whose index, catalogue or topics are not signed by a pinned key - nothing
+  is replaced, and the error's `providerCode` is `"bad-signature"`. A new
+  model server address drops the old pins; a gallery that publishes no keys
+  (the built-in one, a plain mirror) stays unsigned. Settings > Model topics
+  says whether the lists in use are signed and by which key.
+- The settings window's pages - Default providers, Local models, Model
+  topics, Local & cloud, Endpoints - go through `Tr`, so they show in the
+  desktop's language once `media/locale/<lang>/UltraAI.json` has them.
+
+#### 2026-11-12 *0.1.26*
+- **Consecutive same-role turns are merged before a chat template sees
+  them.** Two `user` messages in a row (or two `assistant` ones) now reach
+  the wire as one message, texts joined with a blank line and parts, tool
+  calls and names kept in order; tool results and turns from different named
+  speakers stay apart. OpenAI accepts either shape, but an OpenAI-compatible
+  server that hands the history to the model's chat template (LocalAI,
+  llama.cpp server, vLLM with Gemma, Llama 2 or Mistral) refuses two in a
+  row with *"Conversation roles must alternate user/assistant/user/assistant"*
+  - the HTTP 500 the dashboard's Chat hit through LiteLLM. The merge is
+  `MergeSameRoleTurns` in the shared adapter library
+  (`UltraAIMessageHistory.h`): the OpenAI adapter applies it, so the Qwen and
+  `local` providers that delegate to it are covered, and the in-process
+  llama.cpp adapter applies it before `llama_chat_apply_template`. The
+  dashboard no longer produces such a history since 0.1.20, and now no other
+  UltraAI client can trip it either.
+
+#### 2026-11-11 *0.1.25*
+- **Settings > Services > Proxy.** The cloud providers are reached through
+  the proxy every ULTRA OS application shares - the system's until another
+  is chosen - and the page opens the Proxy settings dialog to choose one; a
+  local model on this machine is never reached through it.
+
 #### 2026-11-10 *0.1.24*
 - **Speech to text for UltraCanvas applications.**
   `RegisterUltraAISpeechTranscription()` (`UltraAISpeechTranscription.h`, in

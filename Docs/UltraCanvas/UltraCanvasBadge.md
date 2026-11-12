@@ -8,6 +8,7 @@
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
 - [Shape: pill or rounded box](#shape-pill-or-rounded-box)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -21,7 +22,7 @@
   follows the anchor.
 
 **File Location**: `include/UltraCanvasBadge.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `BadgeStyle::FromTheme`, `ApplyTheme`: the badge follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -122,6 +123,25 @@ The badge still auto-sizes to its text, so `SetCount(9999)` widens the box while
 `JustifyContent::Center` and leave the surrounding tile's width **auto** so the
 frame grows with them — see `Docs/CSSLayout.md` and `Apps/UltraMail/ui/UltraMailAccountBar.cpp`
 for a worked example.
+
+## Following the theme
+
+`BadgeStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the accent for the
+`Primary` variant's fill (`BadgeStyle::primaryColor`), the panel for the ring
+behind an overlay badge, the interface font at the caption size. The text
+stays white (dark on amber) and the other variants' fills keep their
+meaning. Under the theme policy a new badge follows the theme by itself
+(`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)` after
+it keeps both.
+
+```cpp
+auto count = std::make_shared<UltraCanvasBadge>("count", 24, 18);
+BadgeStyle boxed = count->GetStyle();
+boxed.cornerRadius = 4;
+count->SetStyle(BadgeStyle::FromTheme(UltraCanvasTheme::Current(), boxed));
+count->SetFollowTheme(true);
+```
 
 ## Notes
 

@@ -2,10 +2,11 @@
 // The facade: inventory, install jobs, engine supervision and the shared
 // record of running engines (runtime.json), composed from the parts in
 // LocalRuntimeInternal.h.
-// Version: 0.3.0 - whisper-server: speech models, models whose engine has no build here are not offered
+// Version: 0.4.0 - whisper-server: speech models, models whose engine has no build here are not offered
+// Version: 0.3.0 - signed galleries (RefreshGallery verifies, keys pinned)
 // Version: 0.2.0 - topics: topics.json, the topic preferences, new models
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-12
 // Author: UltraAI Module
 
 #include "UltraAILocalRuntime.h"
@@ -1456,20 +1457,34 @@ LocalRuntimeSettings LocalRuntime::GetSettings() const {
 
 void LocalRuntime::SetSettings(const LocalRuntimeSettings& settings) {
     std::lock_guard<std::mutex> lock(impl_->mutex_);
-    impl_->settings_ = settings;
+    LocalRuntimeSettings next = settings;
+    // Keys pinned for one server say nothing about another: a new gallery
+    // address that came without keys of its own starts unpinned.
+    if (next.galleryUrl != impl_->settings_.galleryUrl && next.trustedKeys == impl_->settings_.trustedKeys) {
+        next.trustedKeys.clear();
+    }
+    impl_->settings_ = next;
     impl_->SaveSettings();
 }
 
 Error LocalRuntime::RefreshGallery() {
     std::string url;
+    std::vector<std::string> trustedKeys;
     {
         std::lock_guard<std::mutex> lock(impl_->mutex_);
         url = impl_->settings_.galleryUrl.empty() ? DefaultGalleryUrl() : impl_->settings_.galleryUrl;
+        trustedKeys = impl_->settings_.trustedKeys;
     }
     if (!impl_->transport_) {
         return MakeError(ErrorCode::NetworkError, "this build has no network transport");
     }
-    auto fetchText = [&](const std::string& u, std::string& out) -> Error {
+    // One document: its bytes and, when it comes with one, its signature
+    // (the X-UltraAI-Signature header, else <url>.sig).
+    struct Fetched {
+        std::string body;
+        std::string signature;
+    };
+    auto fetchText = [&](const std::string& u, std::string& out, std::string* outSignature) -> Error {
         TransportRequest req;
         req.method    = "GET";
         req.url       = u;
@@ -1482,44 +1497,89 @@ Error LocalRuntime::RefreshGallery() {
                              "the gallery answered HTTP " + std::to_string(resp.statusCode) + " for " + u);
         }
         out = resp.body;
+        if (outSignature) *outSignature = resp.GetHeader("X-UltraAI-Signature");
         return {};
     };
-    std::string indexText;
-    Error error = fetchText(url, indexText);
+    auto fetchDocument = [&](const std::string& u, Fetched& out) -> Error {
+        Error error = fetchText(u, out.body, &out.signature);
+        if (!error.IsOk()) return error;
+        if (out.signature.empty()) {
+            std::string sig;
+            if (fetchText(u + ".sig", sig, nullptr).IsOk()) out.signature = sig;
+        }
+        return {};
+    };
+    auto badSignature = [](const std::string& what) {
+        Error e = MakeError(ErrorCode::ProviderError,
+                            "the gallery's " + what + " is not signed by a key this computer trusts; nothing was changed");
+        e.providerCode = "bad-signature";
+        return e;
+    };
+    const size_t slash = url.rfind('/');
+    const std::string base = slash == std::string::npos ? std::string() : url.substr(0, slash + 1);
+
+    Fetched index;
+    Error error = fetchDocument(url, index);
     if (!error.IsOk()) return error;
     Gallery gallery;
     std::string parseError;
-    if (!ParseGallery(indexText, gallery, parseError)) {
+    if (!ParseGallery(index.body, gallery, parseError)) {
         return MakeError(ErrorCode::ProviderError, "the gallery index is not usable: " + parseError);
     }
-    // The catalogue sits beside the index.
-    std::string catalogueUrl = url;
-    const size_t slash = catalogueUrl.rfind('/');
-    catalogueUrl = (slash == std::string::npos ? std::string() : catalogueUrl.substr(0, slash + 1)) +
-                   "catalogue.json";
-    std::string catalogueText;
+
+    // The keys: the pinned ones, else - trust on first use - the ones the
+    // server publishes beside the index, kept when the index verifies
+    // against them. A gallery that publishes none stays unsigned.
+    std::vector<std::string> pinNow;
+    if (trustedKeys.empty()) {
+        std::string keysText;
+        std::vector<std::string> published;
+        if (fetchText(base + "keys.json", keysText, nullptr).IsOk() && ParseGalleryKeys(keysText, published)) {
+            if (!VerifyDocumentSignature(index.body, index.signature, published)) return badSignature("index");
+            trustedKeys = published;
+            pinNow = published;
+        }
+    }
+    const bool signedGallery = !trustedKeys.empty();
+    if (signedGallery && !VerifyDocumentSignature(index.body, index.signature, trustedKeys)) {
+        return badSignature("index");
+    }
+
+    // The catalogue and the topics sit beside the index. One that is not
+    // there keeps the copy in use (a plain mirror may publish no topics);
+    // one that is there must verify when the gallery is signed.
+    Fetched catalogueDoc, topicsDoc;
     Catalogue catalogue;
-    const bool haveCatalogue = fetchText(catalogueUrl, catalogueText).IsOk() &&
-                               ParseCatalogue(catalogueText, catalogue, parseError);
-    // The topics too, when the server publishes them (a plain mirror of
-    // the gallery may not: the built-in or last copy stays then).
-    const std::string topicsUrl = catalogueUrl.substr(0, catalogueUrl.size() - std::string("catalogue.json").size()) +
-                                  "topics.json";
-    std::string topicsText;
     Topics topics;
-    const bool haveTopics = fetchText(topicsUrl, topicsText).IsOk() &&
-                            ParseTopics(topicsText, topics, parseError);
+    bool haveCatalogue = false, haveTopics = false;
+    if (fetchDocument(base + "catalogue.json", catalogueDoc).IsOk()) {
+        if (signedGallery && !VerifyDocumentSignature(catalogueDoc.body, catalogueDoc.signature, trustedKeys)) {
+            return badSignature("catalogue");
+        }
+        haveCatalogue = ParseCatalogue(catalogueDoc.body, catalogue, parseError);
+    }
+    if (fetchDocument(base + "topics.json", topicsDoc).IsOk()) {
+        if (signedGallery && !VerifyDocumentSignature(topicsDoc.body, topicsDoc.signature, trustedKeys)) {
+            return badSignature("topics");
+        }
+        haveTopics = ParseTopics(topicsDoc.body, topics, parseError);
+    }
+
     std::string writeError;
     std::lock_guard<std::mutex> lock(impl_->mutex_);
+    if (!pinNow.empty() && impl_->settings_.trustedKeys.empty()) {
+        impl_->settings_.trustedKeys = pinNow;
+        impl_->SaveSettings();
+    }
     impl_->gallery_ = gallery;
-    WriteFileAtomic(impl_->paths_.galleryJson, indexText, writeError);
+    WriteFileAtomic(impl_->paths_.galleryJson, index.body, writeError);
     if (haveCatalogue) {
         impl_->catalogue_ = catalogue;
-        WriteFileAtomic(impl_->paths_.catalogueJson, catalogueText, writeError);
+        WriteFileAtomic(impl_->paths_.catalogueJson, catalogueDoc.body, writeError);
     }
     if (haveTopics) {
         impl_->topics_ = topics;
-        WriteFileAtomic(impl_->paths_.topicsJson, topicsText, writeError);
+        WriteFileAtomic(impl_->paths_.topicsJson, topicsDoc.body, writeError);
     }
     return {};
 }

@@ -3,10 +3,11 @@
 // tested on their own: the gallery and catalogue formats, the hardware fit,
 // the storage layout, files, hashing, archives and processes. The facade in
 // LocalRuntime.cpp composes them.
-// Version: 0.3.0 - whisper-server's command line
+// Version: 0.4.0 - whisper-server's command line
+// Version: 0.3.0 - gallery signatures
 // Version: 0.2.0 - topics
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-12
 // Author: UltraAI Module
 #pragma once
 
@@ -78,6 +79,14 @@ std::string HuggingFaceTreeUrl(const std::string& repo, const std::string& revis
 // oid). False when the file is not listed.
 bool ParseHuggingFaceTree(const std::string& json, const std::string& file,
                           uint64_t& outSize, std::string& outSha256);
+// Whether `bytes` carry an Ed25519 signature (`signatureHex`: 128 hex
+// characters, whitespace around it ignored) by one of `publicKeysHex`.
+// False for a malformed signature or key, or without a crypto backend.
+bool VerifyDocumentSignature(const std::string& bytes, const std::string& signatureHex,
+                             const std::vector<std::string>& publicKeysHex);
+// The keys of a keys.json ({"formatVersion": 1, "algorithm": "ed25519",
+// "keys": [hex, ...]}), lower-cased; false when it is not one.
+bool ParseGalleryKeys(const std::string& json, std::vector<std::string>& outKeysHex);
 // Settings to and from JSON.
 std::string SerializeSettings(const LocalRuntimeSettings& settings);
 bool ParseSettings(const std::string& json, LocalRuntimeSettings& out);

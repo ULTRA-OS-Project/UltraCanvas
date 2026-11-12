@@ -1,0 +1,61 @@
+# Keeps the repository's Actions cache to what the next runs restore
+# (scripts/prune_actions_caches.py, which explains the rule).
+#
+# GitHub keeps 10 GB of cache per repository and evicts the least recently
+# used entries past that. build.yml, wayland-build.yml, element-modules.yml
+# and android-build.yml each save a cache under a key ending in the run's
+# number and restore the newest one by prefix, so every run on main added an
+# entry and none was ever removed. On 2026-11-10 ten release builds in seven
+# hours overflowed the budget within a few runs: the macOS legs found neither
+# their ccache nor their vcpkg libraries, ran two to four hours instead of
+# half an hour, and held the scarce macOS runners while every pull request's
+# macOS check queued behind them. This deletes each superseded run-numbered
+# entry - the newest of its kind on its ref stays - and the caches of closed
+# pull requests.
+name: Cache prune
+
+on:
+  # After a run of a workflow that saves run-numbered caches: that is when an
+  # entry is superseded, and removing it then keeps the budget from evicting
+  # the entry that replaced it.
+  workflow_run:
+    workflows: [Build, Wayland build, Element modules, Android build]
+    types: [completed]
+  # And every six hours whatever ran, for the caches of pull requests closed
+  # meanwhile and for a run the trigger above missed.
+  schedule:
+    - cron: '41 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be deleted, delete nothing"
+        type: boolean
+        default: false
+
+# Deleting caches, and reading whether a pull request is closed. The job runs
+# the script from the default branch, never a pull request's code.
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+# One prune at a time. A newer one replaces one still waiting: it lists the
+# caches afresh, so it does all the waiting one would have.
+concurrency:
+  group: cache-prune
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: scripts/prune_actions_caches.py
+          sparse-checkout-cone-mode: false
+      - name: Delete superseded caches and those of closed pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: python3 scripts/prune_actions_caches.py --repo "${{ github.repository }}" $DRY_RUN

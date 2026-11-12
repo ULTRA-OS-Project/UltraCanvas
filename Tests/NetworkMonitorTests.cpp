@@ -20,6 +20,7 @@
 #include "NetworkMonitor/NetworkMonitor.h"
 #include "NetworkMonitor/NetworkMonitorAddress.h"
 #include "NetworkMonitor/NetworkMonitorConntrack.h"
+#include "NetworkMonitor/NetworkMonitorKernelNetwork.h"
 #include "NetworkMonitor/NetworkMonitorDns.h"
 #include "NetworkMonitor/NetworkMonitorEvents.h"
 #include "NetworkMonitor/NetworkMonitorNames.h"
@@ -1259,6 +1260,82 @@ static void TestConntrackParse() {
     CHECK(!Parse(created.data(), 10, flow), "a message shorter than its headers is refused");
 }
 
+// A Microsoft-Windows-Kernel-Network payload built field by field, as the
+// kernel lays it out: integers in host order, ports in network order, the
+// template's own fields between the ports and the trailing seqnum and
+// connid, the connid a pointer of the header's size.
+struct KernelPayload {
+    std::vector<unsigned char> bytes;
+    KernelPayload& U32(uint32_t v)  { for (int i = 0; i < 4; ++i) bytes.push_back(static_cast<unsigned char>((v >> (8 * i)) & 0xFF)); return *this; }
+    KernelPayload& U16(uint16_t v)  { bytes.push_back(static_cast<unsigned char>(v & 0xFF)); bytes.push_back(static_cast<unsigned char>(v >> 8)); return *this; }
+    KernelPayload& I16(int16_t v)   { return U16(static_cast<uint16_t>(v)); }
+    KernelPayload& Port(uint16_t v) { bytes.push_back(static_cast<unsigned char>(v >> 8)); bytes.push_back(static_cast<unsigned char>(v & 0xFF)); return *this; }
+    KernelPayload& Addr4(std::initializer_list<unsigned char> a) { bytes.insert(bytes.end(), a); return *this; }
+    KernelPayload& Addr6(std::initializer_list<unsigned char> a) { bytes.insert(bytes.end(), a); return *this; }
+    KernelPayload& Pointer(uint64_t v, std::size_t width) { for (std::size_t i = 0; i < width; ++i) bytes.push_back(static_cast<unsigned char>((v >> (8 * i)) & 0xFF)); return *this; }
+};
+
+static void TestKernelNetworkParse() {
+    std::printf("kernel network payloads (Windows ETW)\n");
+    using namespace NetworkMonitorKernelNetwork;
+    const uint64_t tcb = 0xFFFFC001DEADBEEFULL;   // the connection's TCB: its id in every event
+    const uint32_t pid = 4720;
+
+    // A connect (TypeGroup2): the TCP options sit between the ports and seqnum.
+    KernelPayload connect;
+    connect.U32(pid).U32(0).Addr4({203, 0, 113, 9}).Addr4({192, 0, 2, 2}).Port(443).Port(50700)
+           .U16(1460).U16(1).U16(0).U16(8).U32(65535).I16(8).I16(7).U32(0x12345678).Pointer(tcb, 8);
+    Event e;
+    CHECK(Parse(kTcp4Connect, connect.bytes.data(), connect.bytes.size(), 8, e) && e.kind == Kind::Connect && !e.ipv6,
+          "a TCPv4 connect parses");
+    CHECK(e.pid == pid && e.remoteAddress == "203.0.113.9" && e.remotePort == 443 &&
+          e.localAddress == "192.0.2.2" && e.localPort == 50700,
+          "with the PID, the remote (daddr, dport) and the local (saddr, sport) endpoints");
+    CHECK(e.connectionId == tcb, "and the connection id read past the TCP options");
+
+    // A send (SendIPV4): startime and endtime sit there instead.
+    KernelPayload send;
+    send.U32(pid).U32(1300).Addr4({203, 0, 113, 9}).Addr4({192, 0, 2, 2}).Port(443).Port(50700)
+        .U32(1000).U32(1002).U32(0x12345679).Pointer(tcb, 8);
+    CHECK(Parse(kTcp4Send, send.bytes.data(), send.bytes.size(), 8, e) && e.kind == Kind::Send && e.size == 1300,
+          "a send parses with its byte count");
+    CHECK(e.connectionId == tcb, "and the same connection id as the connect");
+
+    // A receive and a disconnect (TypeGroup1): nothing extra.
+    KernelPayload receive;
+    receive.U32(pid).U32(516).Addr4({203, 0, 113, 9}).Addr4({192, 0, 2, 2}).Port(443).Port(50700)
+           .U32(0x22345678).Pointer(tcb, 8);
+    CHECK(Parse(kTcp4Receive, receive.bytes.data(), receive.bytes.size(), 8, e) && e.kind == Kind::Receive &&
+          e.size == 516 && e.connectionId == tcb, "a receive parses, same id");
+    KernelPayload disconnect;
+    disconnect.U32(pid).U32(0).Addr4({203, 0, 113, 9}).Addr4({192, 0, 2, 2}).Port(443).Port(50700)
+              .U32(0x32345678).Pointer(tcb, 8);
+    CHECK(Parse(kTcp4Disconnect, disconnect.bytes.data(), disconnect.bytes.size(), 8, e) &&
+          e.kind == Kind::Disconnect && e.connectionId == tcb, "a disconnect parses, same id");
+
+    // An IPv6 accept: 16-byte addresses, the options, a 32-bit pointer.
+    KernelPayload accept;
+    accept.U32(4120).U32(0)
+          .Addr6({0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01})
+          .Addr6({0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01})
+          .Port(40000).Port(8080)
+          .U16(1440).U16(1).U16(1).U16(8).U32(262144).I16(8).I16(8).U32(7).Pointer(0x80001234, 4);
+    CHECK(Parse(kTcp6Accept, accept.bytes.data(), accept.bytes.size(), 4, e) && e.kind == Kind::Accept && e.ipv6,
+          "a TCPv6 accept parses");
+    CHECK(e.pid == 4120 && e.remoteAddress == "2001:db8::1" && e.remotePort == 40000 &&
+          e.localAddress == "::1" && e.localPort == 8080 && e.connectionId == 0x80001234,
+          "with its endpoints and a 32-bit connection id");
+
+    CHECK(!Parse(kTcp4Connect, connect.bytes.data(), connect.bytes.size() - 1, 8, e),
+          "a payload one byte short of its template is refused");
+    CHECK(!Parse(kTcp4Connect, disconnect.bytes.data(), disconnect.bytes.size(), 8, e),
+          "a connect with only TypeGroup1's bytes is refused rather than misread");
+    CHECK(!Parse(42, send.bytes.data(), send.bytes.size(), 8, e), "a UDP event is not consumed");
+    CHECK(!Parse(17, send.bytes.data(), send.bytes.size(), 8, e), "nor a failed connect, which has no id");
+    CHECK(!Parse(kTcp4Send, send.bytes.data(), send.bytes.size(), 2, e), "an unknown pointer size is refused");
+    CHECK(!Parse(kTcp4Send, nullptr, 0, 8, e), "an empty payload is refused");
+}
+
 static void TestEventRegistry() {
     std::printf("Event registry\n");
     NetworkMonitor_ClearRecentEvents();
@@ -1825,6 +1902,7 @@ int main() {
     TestDnsProxy();
     TestStoreNames();
     TestConntrackParse();
+    TestKernelNetworkParse();
     TestEventRegistry();
     TestSnapshotDiff();
     TestSystemEventSource();

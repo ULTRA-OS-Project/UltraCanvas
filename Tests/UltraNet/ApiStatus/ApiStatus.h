@@ -79,6 +79,17 @@ struct RunOptions {
 
 int Run(const RunOptions& options);
 
+// What the report calls itself. UltraNetApiStatus runs with the defaults;
+// another module's status tool built on this framework (UltraRtcApiStatus)
+// sets its own before Run(), so the registry, the runner and the three
+// renderers are written once.
+struct ReportIdentity {
+    std::string              title = "UltraNet API status";   // the Markdown heading
+    std::vector<std::string> areaOrder;                       // empty = UltraNet's areas
+    std::string              networkEnvVar = "ULTRANET_PROBE_NETWORK";
+};
+void SetReportIdentity(ReportIdentity identity);
+
 // True when the caller opted into probes that need the public internet
 // (--network, or ULTRANET_PROBE_NETWORK=1). Off by default so the tool is
 // deterministic and CI-safe.

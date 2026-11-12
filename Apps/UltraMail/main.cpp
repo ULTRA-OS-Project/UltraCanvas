@@ -4,6 +4,7 @@
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop. One UltraMail per user: a second start brings the running one
 // forward and quits (UltraCanvasSingleInstance.h).
+// Version: 0.10.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation)
 // Version: 0.9.0 - --minimized: started in the background, the window minimized
 //                  (UltraDesktop's "start with the desktop")
 // Version: 0.8.0 - the vault opens before the mailbox, and a Primary Password is asked
@@ -17,7 +18,7 @@
 // Version: 0.6.0 - the timing trace: each step of the start, with its time, on
 //                  the console and in trace.log (UltraMailTrace.h)
 // Version: 0.5.2 - the data folder's location is read as UTF-8
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraMailApp.h"
 #include "ui/UltraMailSettingsDialog.h"
@@ -31,6 +32,7 @@
 #include "UltraCanvasPathUtf8.h"   // GetEnvUtf8
 #include "UltraCanvasSingleInstance.h"
 #include "UltraMailPaths.h"        // DefaultDataDir / AdoptLegacyDataDir
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -110,6 +112,7 @@ int main(int argc, char** argv) {
     // second copy would sync, store and send the same accounts twice.
     // The lock sits in the data folder: one UltraMail per mailbox.
     using UltraCanvas::UltraCanvasSingleInstance;
+    using UltraCanvas::Tr;
     UltraCanvasSingleInstance instance("org.ultraos.ultramail", "UltraMail");
     const UltraCanvasSingleInstance::Start start =
         instance.Claim(UltraCanvas::JSONValue::MakeObject(), UserDataDir());
@@ -182,10 +185,10 @@ int main(int argc, char** argv) {
             UltraCanvas::AlertOptions opts;
             opts.severity = UltraCanvas::AlertSeverity::Error;
             opts.title    = "UltraMail";
-            opts.message  = "UltraMail could not open its mailbox database, so it "
-                            "cannot start.";
+            opts.message  = Tr("UltraMail could not open its mailbox database, so it "
+                               "cannot start.");
             opts.details  = (storeError.empty()
-                                ? std::string("The data folder could not be opened.")
+                                ? Tr("The data folder could not be opened.")
                                 : storeError)
                             + "\n\nData folder: " + UserDataDir();
             opts.onResult = [&app](UltraCanvas::DialogResult) { app.Exit(); };
@@ -225,8 +228,8 @@ int main(int argc, char** argv) {
         auto ask = std::make_shared<std::function<void(const std::string&)>>();
         *ask = [&, ask](const std::string& errorText) {
             UltraMail::PassphrasePrompt prompt;
-            prompt.heading   = "UltraMail is locked";
-            prompt.text      = "Enter your Primary Password to open your mail.";
+            prompt.heading   = Tr("UltraMail is locked");
+            prompt.text      = Tr("Enter your Primary Password to open your mail.");
             prompt.errorText = errorText;
             prompt.onCancel  = [&app, ask]() {
                 *ask = nullptr;

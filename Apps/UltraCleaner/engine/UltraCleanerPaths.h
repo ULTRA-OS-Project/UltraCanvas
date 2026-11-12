@@ -75,6 +75,14 @@ bool IsRefusedBySystem(const std::string& path);
 bool GlobMatch(const std::string& name, const std::string& pattern);
 
 // ===== PATH HELPERS =====
+// A path as the engine reports it: '/' between its parts on every platform,
+// like the roots it is found under. Windows joins a directory and a name with
+// a backslash, so an item found under "C:/Users/x/AppData/Local/Temp" read
+// ".../Temp\stale.bin" - one path, two separators, shown as is in the window.
+// Only Windows has a second separator: on Linux and macOS a backslash is a
+// legal character in a name, so it is left alone there.
+std::string WithForwardSlashes(std::string path);
+
 // Lower-cased on Windows and macOS (case-insensitive filesystems), and with
 // separators normalized to '/', so path comparisons behave the same as the
 // filesystem the user is on.

@@ -142,6 +142,14 @@ INCLUDE_ROOTS = ["UltraCanvas/include", "UltraCanvas/core", "UltraCanvas/Plugins
                  "UltraCloud/include", "UltraAI/include", "VirtualFS/include", "SmartHome/include"]
 STREAM_DECL_RE = re.compile(r"\b(?:std::)?(?:o|i)?stringstream\s+(?P<name>\w+)\s*[;(]")
 IMBUE_RE = re.compile(r"\.imbue\s*\(\s*std::locale::classic\s*\(\s*\)\s*\)")
+# The RAII guards in UltraCanvasTextUtils.h, which imbue a stream for as long
+# as a writer is writing: `ClassicNumbers dotDecimal(out);` and
+# `ScopedPrecision digits(out, DigitsFor(...));`. A stream handed to one of
+# these is pinned to the classic locale just as surely as one that imbues
+# itself, and a writer that holds one does not mention `locale::classic`
+# anywhere - which is how the OBJ writer started reporting itself the day its
+# private copy of the guard was replaced by the shared one.
+GUARD_RE = re.compile(r"\b(?:ClassicNumbers|ScopedPrecision)\b")
 STREAM_FLOAT_RE = re.compile(r"<<\s*[^;]*\b(?:\d*\.\d|[a-zA-Z_]\w*\.(?:x|y|X|Y)\b)")
 
 
@@ -323,14 +331,24 @@ def check_file(path: Path) -> list[Finding]:
 
     # A stream in a writer that is never imbued, and does receive a number.
     # Skipped entirely for a file that knows the idiom somewhere - it either
-    # imbues its streams or funnels them through a helper that does, and
-    # neither is distinguishable from the outside by looking at the `<<`.
-    if writer and "locale::classic" not in text:
+    # imbues its streams, holds one of the RAII guards over them, or funnels
+    # them through a helper that does, and none of the three is distinguishable
+    # from the outside by looking at the `<<`.
+    #
+    # What this rule cannot see at all: the stream a writer is HANDED
+    # (`ExportToStream(const Document&, std::ostream& out, ...)`), because its
+    # locale was set by whoever constructed it, in another file. That half of
+    # the problem belongs to Tests/ModelLocaleDecimalTest.cpp and
+    # Tests/VectorLocaleTest.cpp, which write one document in two locales and
+    # compare the bytes; a clean run here is not coverage of it.
+    if writer and "locale::classic" not in text and not GUARD_RE.search(text):
         for m in STREAM_DECL_RE.finditer(text):
             name = m.group("name")
             after = text[m.end():m.end() + 4000]
             uses = re.search(rf"\b{re.escape(name)}\s*<<", after)
-            imbued = re.search(rf"\b{re.escape(name)}{IMBUE_RE.pattern}", after)
+            imbued = (re.search(rf"\b{re.escape(name)}{IMBUE_RE.pattern}", after)
+                      or re.search(rf"{GUARD_RE.pattern}\s+\w+\s*\(\s*{re.escape(name)}\b",
+                                   after))
             if uses and not imbued and STREAM_FLOAT_RE.search(after):
                 findings.append(Finding(
                     path, text.count("\n", 0, m.start()) + 1, "locale-write",

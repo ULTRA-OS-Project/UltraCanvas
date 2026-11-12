@@ -94,7 +94,25 @@ StoreSettings StoreSettings::From(const UltraCanvas::UltraCanvasAppSettings& fil
     s.openOrder.currency = file.GetString("order.currency", "");
     s.openOrder.checkoutUrl = file.GetString("order.checkoutUrl", "");
     s.openOrder.startedAt = file.GetString("order.startedAt", "");
+    const int reports = file.GetInt("reports.count", 0);
+    for (int i = 0; i < reports && i < static_cast<int>(kMaxReports); ++i) {
+        const std::string key = "reports." + std::to_string(i) + ".";
+        SentReport r;
+        r.id = file.GetString(key + "id", "");
+        r.secret = file.GetString(key + "secret", "");
+        r.app = file.GetString(key + "app", "");
+        r.kind = file.GetString(key + "kind", "");
+        r.sentAt = file.GetString(key + "sentAt", "");
+        r.state = file.GetString(key + "state", "");
+        r.outcome = file.GetString(key + "outcome", "");
+        if (!r.id.empty()) s.reports.push_back(std::move(r));
+    }
     return s;
+}
+
+void StoreSettings::RememberReport(const SentReport& report) {
+    reports.push_back(report);
+    while (reports.size() > kMaxReports) reports.erase(reports.begin());
 }
 
 void StoreSettings::WriteTo(UltraCanvas::UltraCanvasAppSettings& file) const {
@@ -116,6 +134,17 @@ void StoreSettings::WriteTo(UltraCanvas::UltraCanvasAppSettings& file) const {
     file.Set("order.currency", openOrder.currency);
     file.Set("order.checkoutUrl", openOrder.checkoutUrl);
     file.Set("order.startedAt", openOrder.startedAt);
+    file.Set("reports.count", static_cast<int>(reports.size()));
+    for (size_t i = 0; i < reports.size(); ++i) {
+        const std::string key = "reports." + std::to_string(i) + ".";
+        file.Set(key + "id", reports[i].id);
+        file.Set(key + "secret", reports[i].secret);
+        file.Set(key + "app", reports[i].app);
+        file.Set(key + "kind", reports[i].kind);
+        file.Set(key + "sentAt", reports[i].sentAt);
+        file.Set(key + "state", reports[i].state);
+        file.Set(key + "outcome", reports[i].outcome);
+    }
 }
 
 namespace {

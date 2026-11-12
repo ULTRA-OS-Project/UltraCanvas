@@ -1,8 +1,11 @@
 // Apps/UltraStore/core/PlatformInfo.cpp
 // Platform detection (PlatformInfo.h).
+// Version: 0.1.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "PlatformInfo.h"
+
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cstdio>
 #include <fstream>
@@ -22,6 +25,8 @@
 #endif
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
 
 namespace {
 
@@ -166,7 +171,7 @@ std::string PlatformInfo::Describe() const {
     std::string out = target.Describe();
     if (!osVersion.empty()) out += " - " + OSName(target.os) + " " + osVersion;
     if (!distroId.empty()) out += " (" + distroId + ")";
-    if (canRunX86_64 && target.arch != Arch::X86_64) out += ", runs x86_64 through Rosetta";
+    if (canRunX86_64 && target.arch != Arch::X86_64) out += ", " + Tr("runs x86_64 through Rosetta");
     return out;
 }
 

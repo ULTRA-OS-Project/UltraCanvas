@@ -6,7 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "Models/PLY/UltraCanvasPLYConverter.h"
-#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic / TryParseFloat / ClassicNumbers
 
 #include <algorithm>
 #include <cctype>
@@ -664,6 +664,16 @@ FlatMesh Flatten(const ModelDocument& source, const ConversionOptions& options) 
 
 bool PLYConverter::ExportToStream(const ModelDocument& document, std::ostream& stream,
                                   const ConversionOptions& options) {
+    // PLY is dot-decimal and ungrouped, in the header as well as the body, and
+    // a stream writes through the C++ global locale that the hosting process
+    // set. Without this the ASCII writer put that locale into the file: a
+    // vertex line of `1,5 0,25 -2,75`, which a reader takes apart at the
+    // spaces and reads as the point (1, 0, 0), and - for a mesh of 12227
+    // vertices - an `element vertex 12.227` header no reader accepts at all.
+    // The binary branch below writes raw bytes and never cared, but its
+    // header goes through this same stream.
+    const ClassicNumbers dotDecimal(stream);
+
     const FlatMesh flat = Flatten(document, options);
     if (flat.Positions.empty()) {
         options.Warn("PLY: the document holds no vertices; nothing to write");

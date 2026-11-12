@@ -1,3 +1,27 @@
+#### 2026-11-12 *1.81*
+- **Zooming out at the end of a long document no longer blanks the page.** The
+  line at the top of the window stays there (framework TextArea fix).
+- **Zoom steps:** Decrease Font Size no longer reads past the end of the zoom
+  list, and Increase Font Size now reaches the last step, 200%.
+
+#### 2026-11-11 *1.80*
+- **The look is the desktop's, and *View > Theme* is a choice for every
+  application.** The dark and light looks follow the framework theme - the
+  desktop's light or dark mode, and *Look* on UOS-Settings' Appearance page
+  over it - instead of a `darkTheme` setting of UltraTexter's own: a switch
+  of the desktop repaints every window at once. *View > Theme* writes the
+  other look to `Appearance.conf`, so every UltraCanvas application takes
+  it, UltraTexter's other windows with them. `--dark` starts this run in the
+  framework's dark look whatever the desktop says. The `darkTheme` line of
+  the settings file is no longer read or written.
+
+#### 2026-11-11 *1.79*
+- **The zoom box offers "Page width" and "Whole page".** A word-processing
+  tab in page layout then zooms with the window: the page fills its width,
+  or the whole page is in view. Text tabs keep their percentage. The choice
+  is remembered (`pageZoomFit` in `config.ini`); picking a percentage ends
+  it. The zoom box is a little wider so the new entries fit.
+
 #### 2026-11-06 *1.78*
 - **Crash recovery no longer asks.** Files autosaved in a session that did not
   end cleanly are reopened at startup straight away, each in its own tab and

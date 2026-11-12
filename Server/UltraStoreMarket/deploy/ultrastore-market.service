@@ -1,0 +1,20 @@
+[Unit]
+Description=UltraStore marketplace service
+After=network.target mariadb.service mysql.service
+
+[Service]
+User=ultrastore
+Group=ultrastore
+EnvironmentFile=/etc/ultrastore-market.env
+WorkingDirectory=/opt/ultrastore-market
+ExecStart=/opt/ultrastore-market/.venv/bin/ultrastore-market
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/ultrastore-market
+
+[Install]
+WantedBy=multi-user.target

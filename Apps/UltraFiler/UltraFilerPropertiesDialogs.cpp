@@ -6,13 +6,15 @@
 // matrix (special bits like setuid are preserved), reduced to a single
 // "Read-only" switch on Windows, where only the write bits map onto the
 // filesystem attribute.
+// Version: 1.1.0 - the colours are the theme's (UltraFilerLook.h)
 // Version: 1.0.3 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.0.2 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.1 - Read-only works on a name outside the Windows code page
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraFilerPropertiesDialogs.h"
+#include "UltraFilerLook.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -66,7 +68,7 @@ namespace {
         auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
         l->SetText(text);
         l->SetFontSize(fontSize);
-        l->SetTextColor(Color(40, 40, 44, 255));
+        l->SetTextColor(Look().ink);
         l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         l->size.width  = CSSLayout::Dimension::Auto();
         l->size.height = CSSLayout::Dimension::Auto();
@@ -80,9 +82,9 @@ namespace {
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
         b->SetFontSize(kFontSize);
         b->SetCornerRadius(4.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        b->SetTextColors(Color(40, 40, 44, 255));
-        b->SetBorder(1.0f, Color(0, 0, 0, 60));
+        b->SetColors(Look().button, Look().hover);
+        b->SetTextColors(Look().ink);
+        b->SetBorder(1.0f, Look().border);
         if (onClick) b->SetOnClick(std::move(onClick));
         b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return b;
@@ -100,7 +102,7 @@ namespace {
         row->size.height = CSSLayout::Dimension::Px(20);
 
         auto name = MakeLabel(id + "-l", label);
-        name->SetTextColor(Color(110, 110, 118, 255));
+        name->SetTextColor(Look().inkMuted);
         name->SetAlignment(TextAlignment::Right, VerticalAlignment::Top);
         name->size.width = CSSLayout::Dimension::Px(90);
         row->AddChild(name);
@@ -149,7 +151,7 @@ namespace {
 
         window->layout.SetFlexColumn()
                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        window->SetBackgroundColor(Color(249, 249, 251, 255));
+        window->SetBackgroundColor(Look().ground);
         // Escape closes, matching the framework's dialog convention.
         window->SetEventCallback([](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp &&
@@ -182,7 +184,7 @@ namespace {
         bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         bottom->SetPadding(8, 12, 8, 12);
-        bottom->SetBorderTop(1, Color(225, 225, 230, 255));
+        bottom->SetBorderTop(1, Look().line);
         UltraCanvasWindow* raw = window.get();
         bottom->AddChild(MakeButton(idPrefix + "-close", Tr("Close"), 90,
                 [raw]() { raw->Close(); }));
@@ -363,7 +365,7 @@ void UltraFilerPropertiesDialogs::ShowAttributes(
         list->layout.SetFlexColumn().SetFlexGap(2)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         list->SetPadding(4, 6, 4, 6);
-        list->SetBackgroundColor(Color(255, 255, 255, 255));
+        list->SetBackgroundColor(Look().panel);
         list->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -445,7 +447,7 @@ void UltraFilerPropertiesDialogs::ShowAccess(
 
         auto name = MakeLabel(std::string("ufl-acc-lbl-") + kPermRowLabels[r],
                               kPermRowLabels[r]);
-        name->SetTextColor(Color(110, 110, 118, 255));
+        name->SetTextColor(Look().inkMuted);
         name->size.width = CSSLayout::Dimension::Px(56);
         row->AddChild(name);
 
@@ -478,7 +480,7 @@ void UltraFilerPropertiesDialogs::ShowAccess(
     content->AddChild(buttonRow);
 
     state->status = MakeLabel("ufl-acc-status", "");
-    state->status->SetTextColor(Color(110, 110, 118, 255));
+    state->status->SetTextColor(Look().inkMuted);
     content->AddChild(state->status);
 
     window->onWindowClosed = []() {

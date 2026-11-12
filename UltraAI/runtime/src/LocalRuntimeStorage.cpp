@@ -1,6 +1,7 @@
 // UltraAI/runtime/src/LocalRuntimeStorage.cpp
 // The runtime's folders and files, hashing (UltraCrypt), unpacking
 // (VirtualFS), and the processes it starts and stops.
+// Version: 0.2.0 - VerifyDocumentSignature
 // Version: 0.1.0
 // Last Modified: 2026-10-20
 // Author: UltraAI Module
@@ -174,6 +175,48 @@ bool Sha256File(const fs::path& path, std::string& outHex, std::string& outError
     std::transform(outHex.begin(), outHex.end(), outHex.begin(),
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return true;
+}
+
+namespace {
+
+bool FromHex(const std::string& text, std::vector<uint8_t>& out) {
+    std::string hex;
+    for (char c : text) {
+        if (!std::isspace(static_cast<unsigned char>(c))) hex += c;
+    }
+    if (hex.size() % 2) return false;
+    out.clear();
+    for (size_t i = 0; i < hex.size(); i += 2) {
+        int v = 0;
+        for (size_t k = 0; k < 2; ++k) {
+            const char c = static_cast<char>(std::tolower(static_cast<unsigned char>(hex[i + k])));
+            v <<= 4;
+            if (c >= '0' && c <= '9') v |= c - '0';
+            else if (c >= 'a' && c <= 'f') v |= c - 'a' + 10;
+            else return false;
+        }
+        out.push_back(static_cast<uint8_t>(v));
+    }
+    return true;
+}
+
+} // namespace
+
+bool VerifyDocumentSignature(const std::string& bytes, const std::string& signatureHex,
+                             const std::vector<std::string>& publicKeysHex) {
+    std::vector<uint8_t> signature;
+    if (!FromHex(signatureHex, signature) ||
+        signature.size() != UltraCrypt_GetSignatureSize(UltraCryptSignatureAlgorithm::Ed25519)) {
+        return false;
+    }
+    for (const std::string& keyHex : publicKeysHex) {
+        std::vector<uint8_t> key;
+        if (!FromHex(keyHex, key)) continue;
+        const UltraCryptResult r = UltraCrypt_Verify(UltraCryptSignatureAlgorithm::Ed25519, key,
+                                                     bytes.data(), bytes.size(), signature);
+        if (r.success) return true;
+    }
+    return false;
 }
 
 Error UnpackArchive(const fs::path& archive, const fs::path& dest) {

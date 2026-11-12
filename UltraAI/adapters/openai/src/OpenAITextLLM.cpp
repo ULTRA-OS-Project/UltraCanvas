@@ -3,15 +3,19 @@
 // response parsing, SSE chunk assembly, error mapping. The same wire format
 // is served by self-hosted OpenAI-compatible servers (Ollama, vLLM,
 // llama.cpp server), which the adapter supports via a custom baseUrl.
+// Version: 0.2.1 - consecutive user turns (or assistant turns) are merged into
+//                  one message (MergeSameRoleTurns), so a server whose chat
+//                  template demands alternating roles never sees two in a row
 // Version: 0.2.0 - the Batch API (ITextBatch)
 // Version: 0.1.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-12
 // Author: UltraAI Module
 
 #include "UltraAIOpenAI.h"
 
 #include "OpenAIInternal.h"
 #include "UltraAIBase64.h"
+#include "UltraAIMessageHistory.h"
 #include "UltraAIMultipart.h"
 #include "UltraAIStreamHandleBase.h"
 #ifdef ULTRAAI_HAS_ULTRANET
@@ -127,8 +131,10 @@ json BuildRequestBody(const ChatRequest& request, const TextLLMConfig& config,
     }
     body["model"] = model;
 
+    // Two user (or assistant) turns in a row go out as one message: see
+    // MergeSameRoleTurns for the servers that refuse them otherwise.
     json messages = json::array();
-    for (const auto& m : request.messages) {
+    for (const auto& m : MergeSameRoleTurns(request.messages)) {
         messages.push_back(MessageToJson(m));
     }
     body["messages"] = std::move(messages);

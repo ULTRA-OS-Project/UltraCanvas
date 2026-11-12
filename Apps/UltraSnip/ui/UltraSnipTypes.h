@@ -3,6 +3,7 @@
 // whole screen), the kind (a picture, a video) and the delay before it. A
 // request travels from the command line, from UltraDesktop's button and
 // from a second start of the program (UltraCanvasSingleInstance) as JSON.
+// Version: 0.2.0 - background: started by the desktop to wait, nothing shown
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -21,6 +22,9 @@ struct SnipRequest {
     SnipKind kind = SnipKind::Picture;
     int delaySeconds = 0;           // 0, 3, 5 or 10
     bool startAtOnce = false;       // a capture begins without a click on New
+    // Started by the desktop (UltraDesktop) to wait for the session: nothing
+    // is shown, the Print Screen key is held, closing the window hides it
+    bool background = false;
 };
 
 inline const char* ModeKey(SnipMode mode) {
@@ -52,6 +56,7 @@ inline UltraCanvas::JSONValue RequestToJson(const SnipRequest& request) {
     json.Set("kind", KindKey(request.kind));
     json.Set("delay", request.delaySeconds);
     json.Set("start", request.startAtOnce);
+    json.Set("background", request.background);
     return json;
 }
 
@@ -61,6 +66,7 @@ inline SnipRequest RequestFromJson(const UltraCanvas::JSONValue& json) {
     request.kind = KindFromKey(json.Get("kind").GetString());
     request.delaySeconds = static_cast<int>(json.Get("delay").GetInteger());
     request.startAtOnce = json.Get("start").GetBoolean();
+    request.background = json.Get("background").GetBoolean();
     return request;
 }
 

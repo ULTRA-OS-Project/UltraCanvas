@@ -35,6 +35,7 @@
 #include "Models/X3D/UltraCanvasX3DConverter.h"
 
 #include "Models/X3D/UltraCanvasX3DScene.h"
+#include "UltraCanvasTextUtils.h"   // ScopedPrecision - the decimal point and the digits
 
 #include "tinyxml2.h"
 
@@ -70,14 +71,17 @@ constexpr double kPi = 3.14159265358979323846;
 // Every number in an X3D file is dot-decimal, in both encodings: the XML one
 // is XML Schema float/double and the classic one is VRML's, and neither has
 // ever had a locale. A stringstream, though, reads and writes through its own
-// locale, which starts as the global one - and the Linux backend calls
-// setlocale(LC_ALL, "") for XIM, so on a comma-decimal desktop `1.5` was not
-// merely misread: the `.` is that locale's digit-group separator, the token
-// failed to extract at all, and `point="1.5 0.25 -2.75"` yielded an EMPTY
-// vector - the whole field gone, not one wrong number. The writer's half
-// emitted `1,5`, which every other X3D tool then reads as two numbers. These
-// two types are the format's own locale, whatever the host is set to; every
-// number the file carries goes through one of them.
+// locale, copied from the C++ global locale - which a host sets with
+// std::locale::global to honour the desktop's language. Where that locale's
+// decimal point is a comma, `1.5` was not merely misread: the `.` is its
+// digit-group separator, the token failed to extract at all, and
+// `point="1.5 0.25 -2.75"` yielded an EMPTY vector - the whole field gone,
+// not one wrong number. The writer's half emitted `1,5`, which every other
+// X3D tool reads as two numbers. These two types are the format's own locale,
+// whatever the host set; every number the file carries goes through one of
+// them. They are the owned-stream case that ClassicNumbers
+// (UltraCanvasTextUtils.h) describes: a stream nobody else sees is imbued
+// where it is declared, and only a stream borrowed from a caller is guarded.
 struct ClassicIn : std::istringstream {
     explicit ClassicIn(const std::string& text) : std::istringstream(text) {
         imbue(std::locale::classic());
@@ -2289,30 +2293,6 @@ private:
     std::vector<std::string> stack_;
 };
 
-class ScopedPrecision {
-public:
-    ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
-            : stream_(stream), previous_(stream.precision()),
-              previousLocale_(stream.getloc()) {
-        // The digit count was set here from the first version; the decimal
-        // point was not, and it is the half that decides whether another
-        // reader can open the file at all.
-        stream_.imbue(std::locale::classic());
-        stream_.precision(precision == NumericPrecision::Full ? (forDouble ? 17 : 9) : 6);
-    }
-    ~ScopedPrecision() {
-        stream_.precision(previous_);
-        stream_.imbue(previousLocale_);
-    }
-    ScopedPrecision(const ScopedPrecision&) = delete;
-    ScopedPrecision& operator=(const ScopedPrecision&) = delete;
-
-private:
-    std::ostream& stream_;
-    std::streamsize previous_;
-    std::locale previousLocale_;
-};
-
 class Writer {
 public:
     Writer(const ModelDocument& document, const ConversionOptions& options)
@@ -2320,7 +2300,7 @@ public:
 
     void Run(std::ostream& out, bool classic) {
         ReportLosses();
-        ScopedPrecision digits(out, options_.Precision, true);
+        ScopedPrecision digits(out, DigitsFor(options_.Precision, true));
 
         if (classic) {
             out << "#X3D V3.3 utf8\n"

@@ -58,6 +58,7 @@ set(ULTRANET_TEST_SOURCES
     test_body_file.cpp
     test_curl_debug.cpp
     test_loopback.cpp
+    test_proxy.cpp
     test_download.cpp
     test_abort.cpp
     test_session.cpp

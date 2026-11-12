@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraStoreOperator. `Icon=UltraStoreOperator`
+# is resolved through the icon themes; the install rules put
+# media/appicon/UltraStoreOperator.png and .svg into share/icons/hicolor.
+Type=Application
+Version=1.5
+Name=UltraStore Operations
+GenericName=App Store Operator
+Comment=Run the UltraStore marketplace: merchants, the app review and the catalog publish, reports, notices, terms
+Exec=ultrastoreop
+TryExec=ultrastoreop
+Icon=UltraStoreOperator
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraStoreOperator
+Categories=Development;System;
+Keywords=store;marketplace;review;merchants;catalog;

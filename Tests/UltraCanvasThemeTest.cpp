@@ -3,6 +3,13 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.14.0 - TakeHostFonts: the host's fonts onto an own theme
+// Version: 1.13.0 - the media elements and the viewers: the players and recorders, the video tile, the slideshow,
+//                   the font viewer and the curve editor
+// Version: 1.12.0 - the badge, card, chip and tag input, collapsible panel, sidebar, busy indicator, auto-complete,
+//                   new-document dialog and reference point picker; the spell-check style
+// Version: 1.11.0 - the containers and pickers: container, group box, breadcrumb, pagination, the colour picker, swatch bar
+//                   and palette manager, the rich text edit
 // Version: 1.10.0 - the list elements: the scrollbar, list view, tree view, columns tree view and filer widget
 // Version: 1.9.0 - the input elements: checkbox, radio, segmented control, spinner, stepper, rating, the date and time pickers
 // Version: 1.8.0 - following by default (SetFollowThemeByDefault), the SetStyle rule, fonts by role in the readers
@@ -14,12 +21,37 @@
 // Version: 1.2.0 - the slider's and the switch's element roles
 // Version: 1.1.0 - every FromTheme, the change handlers, elements that
 //                  follow the theme through a container
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #include "UltraCanvasTheme.h"
 #include "UltraCanvasHostAppearance.h"
 #include "UltraCanvasAlbum.h"
+#include "UltraCanvasAudioPlayerElement.h"
+#include "UltraCanvasAudioRecorderElement.h"
+#include "UltraCanvasCurveEditor.h"
+#include "UltraCanvasFontViewer.h"
+#include "UltraCanvasSlideshow.h"
+#include "UltraCanvasVideoPlayerElement.h"
+#include "UltraCanvasVideoRecorderElement.h"
+#include "UltraCanvasVideoTile.h"
+#include "UltraCanvasAutoComplete.h"
+#include "UltraCanvasBadge.h"
+#include "UltraCanvasBusyIndicator.h"
+#include "UltraCanvasCard.h"
+#include "UltraCanvasChip.h"
+#include "UltraCanvasCollapsiblePanel.h"
+#include "UltraCanvasNewDocumentDialog.h"
+#include "UltraCanvasReferencePointPicker.h"
+#include "UltraCanvasSidebarNavigation.h"
+#include "UltraCanvasSpellChecker.h"
+#include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasColorPaletteManager.h"
+#include "UltraCanvasColorPicker.h"
+#include "UltraCanvasColorSwatchBar.h"
+#include "UltraCanvasGroupBox.h"
+#include "UltraCanvasPagination.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasColumnsTreeView.h"
 #include "UltraCanvasFilerWidget.h"
@@ -52,6 +84,12 @@
 #endif
 #ifndef UC_TEST_HAS_VIDEO_TIMELINE
 #define UC_TEST_HAS_VIDEO_TIMELINE 1
+#endif
+#ifndef UC_TEST_HAS_COLOR_PALETTE_MANAGER
+#define UC_TEST_HAS_COLOR_PALETTE_MANAGER 1
+#endif
+#ifndef UC_TEST_HAS_SLIDESHOW
+#define UC_TEST_HAS_SLIDESHOW 1
 #endif
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTooltipTypes.h"
@@ -365,6 +403,171 @@ int main() {
               "filer: the overlays kept, the interface font at the body and caption sizes, the base's gap");
     }
 
+    std::printf("FromTheme for the containers and pickers\n");
+    {
+        const double bodySize = own.FontSize(ThemeTextRole::Body);
+        ContainerStyle csBase;
+        csBase.autoShowScrollbars = true;
+        const ContainerStyle cs = ContainerStyle::FromTheme(own, csBase);
+        CHECK(cs.autoShowScrollbars && Same(cs.scrollbarStyle.trackBorderColor, r.line) && Same(cs.scrollbarStyle.thumbBorderColor, r.lineStrong),
+              "container: the scrollbars from the theme, the base's flags kept");
+        const GroupBoxVisualStyle gb = GroupBoxVisualStyle::FromTheme(own);
+        CHECK(gb.backgroundColor.a == 0 && Same(gb.borderColor, r.line) && Same(gb.titleColor, r.ink) && Same(gb.disabledTitleColor, r.inkFaint)
+              && Same(gb.activatorOnColor, r.accent) && Same(gb.activatorOffColor, r.lineStrong) && Same(gb.activatorKnobColor, r.raised)
+              && Same(gb.infoIconColor, r.inkMuted) && Same(gb.closeIconHoverColor, r.ink) && Same(gb.closeHoverBackgroundColor, r.hover)
+              && Near(gb.titleFont.fontSize, bodySize, 1e-9), "group box: a transparent frame stays so, hairline, ink caption at the body size, the activator from the accent");
+        const GroupBoxVisualStyle card = GroupBoxVisualStyle::FromTheme(own, GroupBoxVisualStyle::SectionCard());
+        CHECK(Same(card.backgroundColor, r.raised) && card.cornerRadius == GroupBoxVisualStyle::SectionCard().cornerRadius
+              && card.titleFont.fontWeight == GroupBoxVisualStyle::SectionCard().titleFont.fontWeight,
+              "group box: a filled card takes the raised surface, its radius and bold caption kept");
+        const BreadcrumbStyle bc = BreadcrumbStyle::FromTheme(own);
+        CHECK(bc.backgroundColor.a == 0 && Same(bc.itemTextColor, r.inkMuted) && Same(bc.itemHoverTextColor, r.accent) && Same(bc.currentItemTextColor, r.ink)
+              && Same(bc.disabledItemTextColor, r.inkFaint) && Same(bc.itemHoverBackgroundColor, r.hover) && Same(bc.separatorColor, r.inkFaint)
+              && Same(bc.levelIndicatorColor, r.accent) && Same(bc.levelIndicatorTextColor, r.onAccent) && Near(bc.fontStyle.fontSize, bodySize, 1e-9),
+              "breadcrumb: muted items, the accent hovered, ink for the current one, the level badge in the accent, the body font");
+        const BreadcrumbStyle pills = BreadcrumbStyle::FromTheme(own, BreadcrumbStyle::Pills());
+        CHECK(pills.itemStyle == BreadcrumbStyle::Pills().itemStyle && (BreadcrumbStyle::Pills().currentItemBackgroundColor.a == 0 || Same(pills.currentItemBackgroundColor, r.accentSoft)),
+              "breadcrumb: the Pills shape kept, a filled current item on the soft accent");
+        const PaginationStyle pg = PaginationStyle::FromTheme(own);
+        CHECK(Same(pg.cellColor, r.raised) && Same(pg.cellHoverColor, r.hover) && Same(pg.cellPressedColor, r.pressed) && Same(pg.cellBorderColor, r.lineStrong)
+              && Same(pg.cellTextColor, r.ink) && Same(pg.currentColor, r.accent) && Same(pg.currentTextColor, r.onAccent) && Same(pg.disabledCellColor, r.panel)
+              && Same(pg.disabledTextColor, r.inkFaint) && Same(pg.navGlyphColor, r.inkMuted) && Near(pg.fontStyle.fontSize, bodySize, 1e-9),
+              "pagination: raised cells, the current page in the accent, the body font");
+        const ColorPickerStyle cp = ColorPickerStyle::FromTheme(own);
+        CHECK(Same(cp.backgroundColor, r.panel) && Same(cp.panelColor, r.raised) && Same(cp.borderColor, r.line) && Same(cp.textColor, r.ink)
+              && Same(cp.mutedTextColor, r.inkMuted) && Same(cp.fieldColor, r.well) && Same(cp.fieldBorderColor, r.lineStrong) && Same(cp.accentColor, r.accent)
+              && Same(cp.markerColor, ColorPickerStyle::Light().markerColor) && Near(cp.fontSize, bodySize, 1e-6) && cp.fontFamily == own.fonts.ui.fontFamily,
+              "colour picker: the panel surface, raised panels, fields from the well, the accent, the markers kept, the body font");
+        CHECK(ColorPickerStyle::FromTheme(dark).uiScale == ColorPickerStyle::Dark().uiScale && Same(ColorPickerStyle::FromTheme(dark).backgroundColor, dark.roles.panel),
+              "colour picker without a base: Dark() under a dark theme, the roles over it");
+        const ColorSwatchBarStyle sw = ColorSwatchBarStyle::FromTheme(own);
+        CHECK(sw.background.a == 0 && Same(sw.border, r.lineStrong) && Same(sw.hoverBorder, r.inkMuted) && Same(sw.selectedBorder, r.accent)
+              && Same(sw.checkerDark, ColorSwatchBarStyle().checkerDark), "swatch bar: the control border, muted ink hovered, the accent selected, the checkerboard kept");
+#if UC_TEST_HAS_COLOR_PALETTE_MANAGER   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
+        ColorPaletteManagerStyle pmBase;
+        pmBase.swatchSize = 20;
+        const ColorPaletteManagerStyle pm = ColorPaletteManagerStyle::FromTheme(own, pmBase);
+        CHECK(Same(pm.swatchBorder, r.line) && Same(pm.swatchSelectedBorder, r.accent) && Same(pm.buttonColor, r.raised) && Same(pm.buttonText, r.ink)
+              && Same(pm.accentColor, r.accent) && Same(pm.accentHoverColor, r.accentHover) && Same(pm.popupBackground, r.raised) && Same(pm.cardBackground, r.panel)
+              && Same(pm.titleText, r.ink) && Same(pm.mutedText, r.inkMuted) && Near(pm.fontSize, own.FontSize(ThemeTextRole::Caption), 1e-6) && pm.swatchSize == 20
+              && Same(pm.editorPickerStyle.fieldColor, r.well), "palette manager: hairlines and the accent, raised buttons and popups, the caption size, its editor's picker from the theme");
+#endif
+        RichTextEditStyle rtBase;
+        rtBase.baseFont.fontFamily = "Georgia";
+        rtBase.baseFont.fontSize = 16;
+        const RichTextEditStyle rt = RichTextEditStyle::FromTheme(own, rtBase);
+        CHECK(Same(rt.textColor, r.ink) && Same(rt.backgroundColor, r.well) && Same(rt.pageColor, r.well) && Same(rt.deskColor, r.panel) && Same(rt.selectionColor, r.accentSoft)
+              && Same(rt.cursorColor, r.ink) && Same(rt.linkColor, r.accent) && Same(rt.quoteTextColor, r.inkMuted) && Same(rt.codeBackgroundColor, r.panel)
+              && Same(rt.tableBorderColor, r.lineStrong) && Same(rt.borderColor, r.lineStrong), "rich text edit: ink on the well, the page the well, the desk the panel, the accent for the selection and links");
+        CHECK(rt.baseFont.fontFamily == "Georgia" && Near(rt.baseFont.fontSize, 16, 1e-9) && Same(rt.commentHighlightColor, RichTextEditStyle().commentHighlightColor)
+              && Same(rt.insertionColor, RichTextEditStyle().insertionColor), "rich text edit: the document's font and the comment and tracked-change colours stay");
+        UltraCanvasTheme paper = own;
+        paper.SetRole("rich-text.page", Colors::White);
+        CHECK(Same(RichTextEditStyle::FromTheme(paper).pageColor, Colors::White), "the element role rich-text.page is honoured");
+    }
+
+    std::printf("FromTheme for the badge, card, chips, panels and the rest\n");
+    {
+        const double bodySize = own.FontSize(ThemeTextRole::Body), captionSize = own.FontSize(ThemeTextRole::Caption);
+        const BadgeStyle bd = BadgeStyle::FromTheme(own);
+        CHECK(Same(bd.primaryColor, r.accent) && Same(bd.overlayRingColor, r.panel) && Same(bd.textColor, Colors::White) && Near(bd.fontSize, captionSize, 1e-6)
+              && bd.fontFamily == own.fonts.ui.fontFamily, "badge: the Primary fill from the accent, the ring the panel, white text kept, the caption size");
+        const CardStyle cd = CardStyle::FromTheme(own);
+        CHECK(Same(cd.backgroundColor, r.raised) && Same(cd.hoverBackgroundColor, r.hover) && Same(cd.selectedBackgroundColor, r.accentSoft) && Same(cd.borderColor, r.line)
+              && Same(cd.highlightBorderColor, r.accent) && Same(cd.titleColor, r.ink) && Same(cd.subtitleColor, r.inkMuted)
+              && Near(cd.titleFont.fontSize, own.FontSize(ThemeTextRole::Heading), 1e-9) && cd.titleFont.fontWeight == CardStyle::Default().titleFont.fontWeight
+              && Near(cd.subtitleFont.fontSize, bodySize, 1e-9), "card: the raised surface, the accent to highlight, the title at the heading size in its weight");
+        const ChipStyle ch = ChipStyle::FromTheme(own);
+        CHECK(Same(ch.fillColor, r.panel) && Same(ch.textColor, r.ink) && Same(ch.borderColor, r.lineStrong) && Same(ch.hoverFillColor, r.hover)
+              && Same(ch.selectedFillColor, r.accent) && Same(ch.selectedTextColor, r.onAccent) && Same(ch.disabledTextColor, r.inkFaint)
+              && Same(ch.closeColor, r.inkMuted) && Same(ch.closeHoverColor, r.danger) && Near(ch.fontStyle.fontSize, bodySize, 1e-9),
+              "chip: the panel fill, the accent selected, the close mark in muted ink and danger, the body font");
+        const TagInputStyle tg = TagInputStyle::FromTheme(own);
+        CHECK(Same(tg.backgroundColor, r.well) && Same(tg.borderColor, r.lineStrong) && Same(tg.focusBorderColor, r.focus) && Same(tg.textColor, r.ink)
+              && Same(tg.placeholderColor, r.inkFaint) && Same(tg.caretColor, r.ink) && Same(tg.chipStyle.selectedFillColor, r.accent),
+              "tag input: the field from the well, its chips from the chip reader");
+        const CollapsiblePanelStyle cpn = CollapsiblePanelStyle::FromTheme(own);
+        CHECK(Same(cpn.backgroundColor, r.raised) && Same(cpn.headerBackgroundColor, r.panel) && Same(cpn.headerHoverColor, r.hover) && Same(cpn.borderColor, r.line)
+              && Same(cpn.chevronColor, r.inkMuted) && Same(cpn.titleColor, r.ink) && Same(cpn.detailColor, r.inkMuted) && Same(cpn.gripColor, r.accent)
+              && Near(cpn.titleFont.fontSize, bodySize, 1e-9) && Near(cpn.detailFont.fontSize, captionSize, 1e-9),
+              "collapsible panel: the raised body with the panel header, ink and muted ink, the title at the body and the detail at the caption size");
+        const SidebarStyle sb = SidebarStyle::FromTheme(own);
+        CHECK(Same(sb.backgroundColor, r.panel) && Same(sb.textColor, r.ink) && Same(sb.disabledTextColor, r.inkFaint) && Same(sb.sectionTextColor, r.inkMuted)
+              && Same(sb.hoverBackgroundColor, r.hover) && Same(sb.selectedBackgroundColor, r.accentSoft) && Same(sb.indicatorColor, r.accent)
+              && Same(sb.badgeBackgroundColor, r.accent) && Same(sb.badgeTextColor, r.onAccent) && Same(sb.focusColor, r.focus)
+              && Near(sb.itemFont.fontSize, bodySize, 1e-9) && Near(sb.sectionFont.fontSize, captionSize, 1e-9) && sb.expandedWidth == SidebarStyle::Default().expandedWidth,
+              "sidebar: the panel, the soft accent selected with the accent bar, a badge in the accent, the widths kept");
+        BusyIndicatorStyle biBase;
+        biBase.kind = BusyIndicatorKind::Dots;
+        const BusyIndicatorStyle bi = BusyIndicatorStyle::FromTheme(own, biBase);
+        CHECK(Same(bi.arcColor, r.accent) && bi.trackColor.r == r.ink.r && bi.trackColor.a == biBase.trackColor.a && Same(bi.secondArcColor, BusyIndicatorStyle().secondArcColor)
+              && bi.kind == BusyIndicatorKind::Dots, "busy indicator: the accent moving, ink at the track's alpha still, the second arc kept, the kind kept");
+        const AutoCompleteStyle ac = AutoCompleteStyle::FromTheme(own);
+        CHECK(Same(ac.listBackgroundColor, r.raised) && Same(ac.listBorderColor, r.line) && Same(ac.itemHoverColor, r.hover) && Same(ac.itemTextColor, r.ink)
+              && Near(ac.fontSize, bodySize, 1e-6) && Same(ac.scrollbarStyle.trackBorderColor, r.line), "auto-complete: the raised list, the body font, its scrollbar from the theme");
+        const NewDocumentDialogStyle nd = NewDocumentDialogStyle::FromTheme(own);
+        CHECK(Same(nd.backgroundColor, r.panel) && Same(nd.titleColor, r.ink) && Same(nd.listBackgroundColor, r.well) && Same(nd.itemSelectedColor, r.accentSoft)
+              && Same(nd.categoryTextColor, r.inkMuted) && Same(nd.inputFocusBorderColor, r.focus) && Same(nd.buttonColor, r.raised) && Same(nd.primaryButtonColor, r.accent)
+              && Same(nd.primaryButtonTextColor, r.onAccent) && nd.titleFontSize == static_cast<int>(std::lround(own.FontSize(ThemeTextRole::Heading))),
+              "new-document dialog: the panel, the well for the list, the primary button in the accent, the title at the heading size");
+        const ReferencePointPickerStyle rp = ReferencePointPickerStyle::FromTheme(own);
+        CHECK(Same(rp.frameColor, r.lineStrong) && Same(rp.backgroundColor, r.well) && Same(rp.pointColor, r.inkFaint) && Same(rp.hoverColor, r.inkMuted)
+              && Same(rp.selectedColor, r.accent) && Same(rp.focusColor, r.focus) && Same(rp.disabledColor, r.line), "reference point picker: the well, faint points, the accent picked");
+        const SpellCheckStyle sc = SpellCheckStyle::FromTheme(own);
+        CHECK(Same(sc.markColor, r.danger) && Same(sc.repeatedWordColor, r.accent) && sc.highlightColor.r == r.danger.r && sc.highlightColor.a == SpellCheckStyle().highlightColor.a
+              && sc.markStyle == SpellCheckStyle().markStyle, "spell check: danger for a misspelling, the accent for a repeated word, the mark style kept");
+    }
+
+    std::printf("FromTheme for the media elements and the viewers\n");
+    {
+        const double captionSize = own.FontSize(ThemeTextRole::Caption);
+        AudioPlayerStyle apBase;
+        apBase.compact = true;
+        const AudioPlayerStyle ap = AudioPlayerStyle::FromTheme(own, apBase);
+        CHECK(Same(ap.backgroundColor, r.panel) && Same(ap.borderColor, r.line) && Same(ap.progressTrackColor, r.pressed) && Same(ap.progressFillColor, r.accent)
+              && Same(ap.knobColor, r.raised) && Same(ap.knobBorderColor, r.lineStrong) && Same(ap.textColor, r.ink) && Same(ap.iconColor, r.inkMuted)
+              && Same(ap.iconHoverColor, r.accent) && ap.compact, "audio player: the panel bar, the accent fill, raised knob, muted icons; the base's flags kept");
+        const AudioRecorderStyle ar = AudioRecorderStyle::FromTheme(own);
+        CHECK(Same(ar.backgroundColor, r.panel) && Same(ar.recordButtonColor, r.danger) && Same(ar.recordingPulseColor, AudioRecorderStyle().recordingPulseColor)
+              && Same(ar.levelMeterBgColor, r.pressed) && Same(ar.levelMeterLowColor, AudioRecorderStyle().levelMeterLowColor) && Same(ar.textColor, r.ink)
+              && Same(ar.iconColor, r.inkMuted) && Same(ar.disabledColor, r.inkFaint), "audio recorder: danger for the record button, the pulse and the meter's colours kept");
+        const VideoPlayerStyle vp = VideoPlayerStyle::FromTheme(own);
+        CHECK(Same(vp.backgroundColor, VideoPlayerStyle().backgroundColor) && Same(vp.controlBarColor, VideoPlayerStyle().controlBarColor)
+              && Same(vp.progressFillColor, r.accent) && Same(vp.iconHoverColor, r.accent) && Same(vp.textColor, VideoPlayerStyle().textColor),
+              "video player: the dark stage and bar kept, the accent for the fill and the hovered icons");
+        UltraCanvasTheme staged = own;
+        staged.SetRole("video-player.stage", Color(1, 1, 1));
+        CHECK(Same(VideoPlayerStyle::FromTheme(staged).backgroundColor, Color(1, 1, 1, 255)), "the element role video-player.stage is honoured");
+        const VideoRecorderStyle vr = VideoRecorderStyle::FromTheme(own);
+        CHECK(Same(vr.backgroundColor, VideoRecorderStyle().backgroundColor) && Same(vr.recordButtonColor, r.danger) && Same(vr.textColor, VideoRecorderStyle().textColor),
+              "video recorder: the dark stage kept, danger for the record button");
+        VideoTileStyle vtBase;
+        vtBase.borderWidth = 1;
+        const VideoTileStyle vt = VideoTileStyle::FromTheme(own, vtBase);
+        CHECK(Same(vt.backgroundColor, VideoTileStyle().backgroundColor) && Same(vt.captionColor, VideoTileStyle().captionColor) && Near(vt.captionFontSize, captionSize, 1e-6)
+              && Same(vt.borderColor, r.line), "video tile: the dark stage and caption ink kept, the caption size, a hairline where a border is drawn");
+#if UC_TEST_HAS_SLIDESHOW   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
+        SlideshowConfig ssBase;
+        ssBase.titleFontSize = 30;
+        const SlideshowConfig ss = SlideshowConfig::FromTheme(own, ssBase);
+        CHECK(Same(ss.backgroundColor, SlideshowConfig().backgroundColor) && Same(ss.infoPanelColor, r.panel) && Same(ss.titleColor, r.ink) && Same(ss.bodyColor, r.inkMuted)
+              && ss.fontFamily == own.fonts.ui.fontFamily && ss.titleFontSize == 30 && Same(ss.indicators.activeColor, r.accent) && Same(ss.indicators.inactiveColor, r.lineStrong),
+              "slideshow: the stage kept, the info panel from the panel with ink, the display sizes kept, the indicators from the theme");
+#endif
+        const FontViewerStyle fv = FontViewerStyle::FromTheme(own);
+        CHECK(Same(fv.background, r.panel) && Same(fv.cellBackground, r.raised) && Same(fv.cellBorder, r.line) && Same(fv.glyphColor, r.ink) && Same(fv.hoverBackground, r.hover)
+              && Same(fv.selectedBackground, r.accentSoft) && Same(fv.selectedBorder, r.accent) && Same(fv.captionColor, r.inkMuted) && Near(fv.fontSize, captionSize, 1e-6),
+              "font viewer: raised cells on the panel, ink glyphs, the soft accent selected, captions at the caption size");
+        const CurveEditorStyle cePreset = own.dark ? CurveEditorStyle::Dark() : CurveEditorStyle::Default();
+        const CurveEditorStyle ce = CurveEditorStyle::FromTheme(own);
+        CHECK(Same(ce.backgroundColor, r.well) && Same(ce.borderColor, r.lineStrong) && Same(ce.gridColor, r.line) && Same(ce.curveColor, r.ink) && Same(ce.pointColor, r.raised)
+              && Same(ce.pointBorderColor, r.ink) && Same(ce.selectedPointColor, r.accent) && Same(ce.focusColor, r.focus) && ce.histogramColor.a == cePreset.histogramColor.a
+              && Same(ce.diagonalColor, cePreset.diagonalColor),
+              "curve editor: the well with the grid, the curve in ink, the accent selected, the identity line of its preset kept");
+        CHECK(Same(CurveEditorStyle::FromTheme(dark).diagonalColor, CurveEditorStyle::Dark().diagonalColor) && Same(CurveEditorStyle::FromTheme(dark).backgroundColor, dark.roles.well),
+              "curve editor without a base: Dark() under a dark theme, the roles over it");
+    }
+
     std::printf("Menu and tooltip from the roles\n");
     const MenuStyle menu = MenuStyle::FromTheme(own);
     CHECK(Same(menu.backgroundColor, r.raised) && Same(menu.borderColor, r.line) && Same(menu.hoverColor, r.hover) && Same(menu.textColor, r.ink) &&
@@ -495,6 +698,58 @@ int main() {
         UltraCanvasUIElement::SetFollowThemeByDefault(false);
         CHECK(UltraCanvasTreeView("plain").GetSelectionTextColor().a == 0, "a tree that does not follow keeps the row's own text colour on a selected row");
         UltraCanvasUIElement::SetFollowThemeByDefault(true);
+        auto freshPanel = std::make_shared<UltraCanvasContainer>("fresh-panel", 0, 0, 200, 100);
+        auto freshGroup = std::make_shared<UltraCanvasGroupBox>("fresh-group", 0, 0, 200, 100, "Group");
+        auto freshCrumbs = std::make_shared<UltraCanvasBreadcrumb>("fresh-crumbs", 0, 0, 300, 24);
+        auto freshPages = std::make_shared<UltraCanvasPagination>("fresh-pages", 0, 0, 300, 32);
+        auto freshPicker = std::make_shared<UltraCanvasColorPicker>("fresh-picker", 0, 0, 260, 300);
+        auto freshSwatches = std::make_shared<UltraCanvasColorSwatchBar>("fresh-swatches", 0, 0, 300, 28);
+        auto freshRich = std::make_shared<UltraCanvasRichTextEdit>("fresh-rich", 0, 0, 300, 200);
+        CHECK(freshPanel->GetFollowTheme() && Same(freshPanel->GetContainerStyle().scrollbarStyle.trackBorderColor, dark.roles.line)
+              && Same(freshGroup->GetVisualStyle().titleColor, dark.roles.ink) && Same(freshCrumbs->GetStyle().currentItemTextColor, dark.roles.ink)
+              && Same(freshPages->GetStyle().currentColor, dark.roles.accent) && Same(freshPicker->GetStyle().fieldColor, dark.roles.well)
+              && Same(freshSwatches->GetStyle().selectedBorder, dark.roles.accent) && Same(freshRich->GetStyle().textColor, dark.roles.ink),
+              "a new container, group box, breadcrumb, pagination, colour picker, swatch bar and rich text edit are styled from the theme");
+        ContainerStyle noScroll = freshPanel->GetContainerStyle();
+        noScroll.autoShowScrollbars = false;
+        freshPanel->SetContainerStyle(noScroll);
+        CHECK(freshPanel->GetFollowTheme(), "SetContainerStyle is behaviour, not a look: the container keeps following");
+        freshGroup->SetVisualStyle(GroupBoxVisualStyle::Card());
+        freshCrumbs->SetStyle(BreadcrumbStyle::Compact());
+        freshPicker->SetStyle(ColorPickerStyle::Light());
+        freshRich->SetStyle(RichTextEditStyle());
+        CHECK(!freshGroup->GetFollowTheme() && !freshCrumbs->GetFollowTheme() && !freshPicker->GetFollowTheme() && !freshRich->GetFollowTheme(),
+              "a hand-set style stops their following");
+        auto freshBadge = std::make_shared<UltraCanvasBadge>("fresh-badge", 0, 0, 24, 18);
+        auto freshCard = std::make_shared<UltraCanvasCard>("fresh-card", 0, 0, 200, 120, "Card", "Sub");
+        auto freshChip = std::make_shared<UltraCanvasChip>("fresh-chip", 0, 0, 80, 28);
+        auto freshTags = std::make_shared<UltraCanvasTagInput>("fresh-tags", 0, 0, 200, 32);
+        auto freshFold = std::make_shared<UltraCanvasCollapsiblePanel>("fresh-fold", 0, 0, 200, 120, "Fold");
+        auto freshSide = std::make_shared<UltraCanvasSidebarNavigation>("fresh-side", 0, 0, 220, 300);
+        auto freshBusy = std::make_shared<UltraCanvasBusyIndicator>("fresh-busy", 0, 0, 24, 24);
+        auto freshAuto = std::make_shared<UltraCanvasAutoComplete>("fresh-auto", 0, 0, 200, 24);
+        auto freshPoints = std::make_shared<UltraCanvasReferencePointPicker>("fresh-points", 0, 0, 48, 48);
+        CHECK(Same(freshBadge->GetStyle().primaryColor, dark.roles.accent) && Same(freshCard->GetStyle().backgroundColor, dark.roles.raised)
+              && Same(freshChip->GetStyle().textColor, dark.roles.ink) && Same(freshTags->GetStyle().backgroundColor, dark.roles.well)
+              && Same(freshFold->GetStyle().titleColor, dark.roles.ink) && Same(freshSide->GetStyle().backgroundColor, dark.roles.panel)
+              && Same(freshBusy->GetStyle().arcColor, dark.roles.accent) && Same(freshAuto->GetAutoCompleteStyle().listBackgroundColor, dark.roles.raised)
+              && Same(freshAuto->GetStyle().backgroundColor, dark.roles.well) && Same(freshPoints->GetStyle().selectedColor, dark.roles.accent),
+              "a new badge, card, chip, tag input, collapsible panel, sidebar, busy indicator, auto-complete (field and list) and reference point picker are styled from the theme");
+        freshBadge->SetStyle(BadgeStyle());
+        freshCard->SetStyle(CardStyle::Default());
+        freshSide->SetStyle(SidebarStyle::Default());
+        freshAuto->SetAutocompleteStyle(AutoCompleteStyle());
+        CHECK(!freshBadge->GetFollowTheme() && !freshCard->GetFollowTheme() && !freshSide->GetFollowTheme() && !freshAuto->GetFollowTheme(),
+              "a hand-set style stops their following");
+        auto freshCurve = std::make_shared<UltraCanvasCurveEditor>("fresh-curve", 0, 0, 200, 200);
+        auto freshGlyphs = std::make_shared<UltraCanvasFontViewer>("fresh-glyphs", 0, 0, 300, 200);
+        auto freshTile = std::make_shared<UltraCanvasVideoTile>("fresh-tile", 0, 0, 160, 120);
+        CHECK(Same(freshCurve->GetStyle().backgroundColor, dark.roles.well) && Same(freshGlyphs->GetStyle().glyphColor, dark.roles.ink)
+              && Near(freshTile->GetStyle().captionFontSize, dark.FontSize(ThemeTextRole::Caption), 1e-6),
+              "a new curve editor, font viewer and video tile are styled from the theme");
+        freshCurve->SetStyle(CurveEditorStyle::Default());
+        freshTile->SetStyle(VideoTileStyle());
+        CHECK(!freshCurve->GetFollowTheme() && !freshTile->GetFollowTheme(), "a hand-set style stops their following");
         CHECK(Same(freshCols->GetColumnStyle().headerBackground, dark.roles.panel) && Same(freshCols->GetTextColor(), dark.roles.ink),
               "a new columns tree view: its columns and its tree part");
         freshBar->SetStyle(ScrollbarStyle::Modern());
@@ -535,6 +790,33 @@ int main() {
         auto later = std::make_shared<UltraCanvasButton>("later", 0, 0, 80, 24, "Later");
         CHECK(!later->GetFollowTheme() && !Same(later->GetStyle().normalColor, dark.roles.raised), "the default off again: a new element does not follow");
         UltraCanvasTheme::SetCurrent(light);
+    }
+
+    std::printf("the host's fonts onto an own theme (TakeHostFonts)\n");
+    {
+        HostAppearance host = DefaultHostAppearance();
+        host.uiFont.fontFamily = "Noto Sans";
+        host.uiFont.fontSize = 14;
+        host.monoFont.fontFamily = "Fira Code";
+        host.monoFont.fontSize = 13;
+        host.textScale = 1.25;
+        UltraCanvasTheme own = UltraCanvasTheme::Dark();
+        own.name = "My app";
+        const Color accentBefore = own.roles.accent;
+        own.TakeHostFonts(host);
+        CHECK(own.fonts.ui.fontFamily == "Noto Sans" && Near(own.fonts.ui.fontSize, 14, 1e-9)
+              && own.fonts.mono.fontFamily == "Fira Code" && Near(own.fonts.mono.fontSize, 13, 1e-9) && Near(own.fonts.scale, 1.25, 1e-9),
+              "TakeHostFonts: the host's interface and monospace fonts and its scale onto the theme");
+        CHECK(own.name == "My app" && own.dark && Same(own.roles.accent, accentBefore), "the theme's name, flag and colours stay its own");
+        HostAppearance bare = DefaultHostAppearance();
+        bare.uiFont.fontFamily.clear();
+        bare.monoFont.fontFamily.clear();
+        bare.textScale = 0;
+        own.TakeHostFonts(bare);
+        CHECK(own.fonts.ui.fontFamily == "Noto Sans" && own.fonts.mono.fontFamily == "Fira Code" && Near(own.fonts.scale, 1.25, 1e-9),
+              "a host that names no font and no scale changes nothing");
+        const UltraCanvasTheme fromHost = UltraCanvasTheme::FromHost(host);
+        CHECK(fromHost.fonts.ui.fontFamily == "Noto Sans" && Near(fromHost.fonts.scale, 1.25, 1e-9), "FromHost takes them the same way");
     }
 
     std::printf("fonts by role in the readers\n");

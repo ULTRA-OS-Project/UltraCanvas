@@ -50,6 +50,14 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.46.0 - a film's media info (the Length line, the info bar) comes from
+//                  ReadVideoFileInfo, as the viewer's Details do, and names its
+//                  picture size: "1:23 · 1920 × 1080 · H.264"; the Filer's own
+//                  MP4 / AVI / Matroska parsers are gone
+// Version: 1.45.0 - a copy keeps the original's dates: CopyFileTimes after each
+//                  file (both the copy_file and the chunked path) and after
+//                  each folder's contents - paste, drop, Duplicate, a move
+//                  between drives
 // Version: 1.44.0 - Refresh in the context menu (onRefreshRequested): the
 //                  folder on display, or the one folder right-clicked, read
 //                  again
@@ -155,6 +163,8 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir - the context menu's icons
 #include "UltraCanvasTrash.h"
+#include "UltraCanvasFileTimes.h"   // CopyFileTimes: a copy keeps the original's dates
+#include "UltraCanvasVideoFileInfo.h"   // ReadVideoFileInfo: a film's length, size and codec
 #include "UltraCanvasSyntaxTokenizer.h"   // which extensions are source text
 #include "../libspecific/Cairo/QoiPixmapCodec.h"
 #include "UltraCanvasMenu.h"
@@ -2003,9 +2013,6 @@ namespace UltraCanvas {
             return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16)
                  | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
         }
-        uint64_t U64BE(const unsigned char* p) {
-            return (uint64_t(U32BE(p)) << 32) | U32BE(p + 4);
-        }
 
         std::vector<unsigned char> ReadFileBytes(std::ifstream& f, uint64_t offset,
                                                  size_t count) {
@@ -2016,15 +2023,6 @@ namespace UltraCanvas {
                    static_cast<std::streamsize>(count));
             out.resize(static_cast<size_t>(std::max<std::streamsize>(0, f.gcount())));
             return out;
-        }
-
-        std::string FourCCName(const unsigned char* p) {
-            std::string s;
-            for (int i = 0; i < 4; ++i) {
-                char c = char(p[i]);
-                if (c >= 32 && c < 127) s += c;
-            }
-            return s;
         }
 
         // --- Bitmap dimensions (PNG / GIF / BMP / QOI / WebP / ICO / JPEG / TIFF) ---
@@ -2133,6 +2131,7 @@ namespace UltraCanvas {
         // --- Audio / video duration + codec ---
         struct FilerMediaProbe {
             double seconds = -1.0;
+            std::string size;     // a film's picture, "1920 × 1080"; empty for a sound
             std::string codec;
         };
 
@@ -2289,260 +2288,6 @@ namespace UltraCanvas {
             return !out.codec.empty();
         }
 
-        std::string Mp4CodecName(const std::string& fcc, bool& isVideo) {
-            struct Map { const char* fcc; const char* name; bool video; };
-            static const Map map[] = {
-                {"avc1", "H.264", true},  {"avc3", "H.264", true},
-                {"hvc1", "H.265", true},  {"hev1", "H.265", true},
-                {"vp08", "VP8", true},    {"vp09", "VP9", true},
-                {"av01", "AV1", true},    {"mp4v", "MPEG-4", true},
-                {"s263", "H.263", true},  {"mjpa", "MJPEG", true},
-                {"jpeg", "MJPEG", true},
-                {"mp4a", "AAC", false},   {"ac-3", "AC-3", false},
-                {"ec-3", "E-AC-3", false},{"alac", "ALAC", false},
-                {"Opus", "Opus", false},  {"opus", "Opus", false},
-                {"fLaC", "FLAC", false},  {"twos", "PCM", false},
-                {"sowt", "PCM", false},   {"lpcm", "PCM", false},
-                {"in24", "PCM", false},   {"fl32", "PCM", false},
-                {"samr", "AMR", false},   {"sawb", "AMR-WB", false},
-                {".mp3", "MP3", false},   {"dtsc", "DTS", false},
-                {"dtse", "DTS Express", false},
-            };
-            for (const Map& m : map)
-                if (fcc == m.fcc) { isVideo = m.video; return m.name; }
-            isVideo = false;
-            return fcc;   // unknown: show the raw sample-entry code
-        }
-
-        void ParseMp4Boxes(const unsigned char* p, size_t n, FilerMediaProbe& out,
-                           bool& haveVideoCodec, int depth) {
-            if (depth > 6) return;
-            size_t pos = 0;
-            while (pos + 8 <= n) {
-                uint64_t sz = U32BE(p + pos);
-                std::string type = FourCCName(p + pos + 4);
-                size_t hdr = 8;
-                if (sz == 1) {
-                    if (pos + 16 > n) return;
-                    sz = U64BE(p + pos + 8);
-                    hdr = 16;
-                } else if (sz == 0) {
-                    sz = n - pos;
-                }
-                if (sz < hdr || sz > n - pos) return;
-                const unsigned char* body = p + pos + hdr;
-                size_t bodyLen = size_t(sz - hdr);
-                if (type == "trak" || type == "mdia" || type == "minf" ||
-                    type == "stbl") {
-                    ParseMp4Boxes(body, bodyLen, out, haveVideoCodec, depth + 1);
-                } else if (type == "mvhd" && bodyLen >= 20) {
-                    if (body[0] == 1 && bodyLen >= 32) {
-                        uint32_t scale = U32BE(body + 20);
-                        uint64_t dur = U64BE(body + 24);
-                        if (scale && dur != ~0ull) out.seconds = double(dur) / scale;
-                    } else if (body[0] == 0 && bodyLen >= 20) {
-                        uint32_t scale = U32BE(body + 12);
-                        uint32_t dur = U32BE(body + 16);
-                        if (scale && dur != 0xFFFFFFFFu)
-                            out.seconds = double(dur) / scale;
-                    }
-                } else if (type == "stsd" && bodyLen >= 16) {
-                    bool isVideo = false;
-                    std::string name = Mp4CodecName(FourCCName(body + 12), isVideo);
-                    if (!name.empty() &&
-                        (out.codec.empty() || (isVideo && !haveVideoCodec))) {
-                        out.codec = name;
-                        haveVideoCodec = haveVideoCodec || isVideo;
-                    }
-                }
-                pos += size_t(sz);
-            }
-        }
-
-        bool ProbeMp4(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
-            auto head = ReadFileBytes(f, 0, 12);
-            if (head.size() < 12) return false;
-            std::string first = FourCCName(head.data() + 4);
-            if (first != "ftyp" && first != "moov" && first != "mdat" &&
-                first != "wide" && first != "free" && first != "skip")
-                return false;
-            uint64_t pos = 0;
-            for (int i = 0; i < 128 && pos + 8 <= fileSize; ++i) {
-                auto bh = ReadFileBytes(f, pos, 16);
-                if (bh.size() < 8) break;
-                uint64_t sz = U32BE(bh.data());
-                uint64_t hdr = 8;
-                if (sz == 1 && bh.size() >= 16) {
-                    sz = U64BE(bh.data() + 8);
-                    hdr = 16;
-                } else if (sz == 0) {
-                    sz = fileSize - pos;
-                }
-                if (sz < hdr) break;
-                if (std::memcmp(bh.data() + 4, "moov", 4) == 0) {
-                    size_t load = size_t(std::min<uint64_t>(sz - hdr, 8u << 20));
-                    auto moov = ReadFileBytes(f, pos + hdr, load);
-                    bool haveVideo = false;
-                    ParseMp4Boxes(moov.data(), moov.size(), out, haveVideo, 0);
-                    break;
-                }
-                pos += sz;
-            }
-            return out.seconds >= 0 || !out.codec.empty();
-        }
-
-        std::string AviCodecName(std::string fcc) {
-            std::transform(fcc.begin(), fcc.end(), fcc.begin(),
-                           [](unsigned char c) { return std::toupper(c); });
-            if (fcc == "H264" || fcc == "X264" || fcc == "AVC1") return "H.264";
-            if (fcc == "H265" || fcc == "X265" || fcc == "HEVC") return "H.265";
-            if (fcc == "XVID" || fcc == "DIVX" || fcc == "DX50" ||
-                fcc == "FMP4" || fcc == "MP4V") return "MPEG-4";
-            if (fcc == "MJPG") return "MJPEG";
-            if (fcc == "DVSD") return "DV";
-            if (fcc == "WMV3") return "WMV";
-            if (fcc == "VP80") return "VP8";
-            if (fcc == "VP90") return "VP9";
-            return fcc;
-        }
-
-        void ParseAviChunks(const unsigned char* p, size_t n, FilerMediaProbe& out,
-                            int depth) {
-            if (depth > 4) return;
-            size_t pos = 0;
-            while (pos + 8 <= n) {
-                const unsigned char* c = p + pos;
-                uint32_t sz = U32LE(c + 4);
-                if (sz > n - pos - 8) break;
-                if (std::memcmp(c, "LIST", 4) == 0 && sz >= 4) {
-                    ParseAviChunks(c + 12, sz - 4, out, depth + 1);
-                } else if (std::memcmp(c, "avih", 4) == 0 && sz >= 20) {
-                    uint32_t usPerFrame = U32LE(c + 8);
-                    uint32_t totalFrames = U32LE(c + 8 + 16);
-                    if (usPerFrame && totalFrames)
-                        out.seconds = double(usPerFrame) * totalFrames / 1e6;
-                } else if (std::memcmp(c, "strh", 4) == 0 && sz >= 8) {
-                    if (std::memcmp(c + 8, "vids", 4) == 0 && out.codec.empty())
-                        out.codec = AviCodecName(FourCCName(c + 12));
-                }
-                pos += 8 + size_t(sz) + (sz & 1);
-            }
-        }
-
-        bool ProbeAvi(std::ifstream& f, FilerMediaProbe& out) {
-            auto b = ReadFileBytes(f, 0, 65536);
-            if (b.size() < 16 || std::memcmp(b.data(), "RIFF", 4) != 0 ||
-                std::memcmp(b.data() + 8, "AVI ", 4) != 0) return false;
-            ParseAviChunks(b.data() + 12, b.size() - 12, out, 0);
-            if (out.codec.empty()) out.codec = "AVI";
-            return true;
-        }
-
-        // Matroska / WebM: a bounded EBML walk over Segment > Info / Tracks.
-        struct MkvScan {
-            double durationTicks = -1.0;
-            uint64_t timescale = 1000000;   // ns per tick, Matroska default
-            std::string videoCodec, audioCodec;
-        };
-
-        bool EbmlRead(std::ifstream& f, uint64_t& pos, uint64_t end,
-                      bool keepMarker, uint64_t& value, bool& unknown) {
-            unknown = false;
-            if (pos >= end) return false;
-            auto b = ReadFileBytes(f, pos, 8);
-            if (b.empty() || b[0] == 0) return false;
-            int len = 1;
-            while (len <= 8 && !(b[0] & (0x80 >> (len - 1)))) ++len;
-            if (len > 8 || size_t(len) > b.size()) return false;
-            value = keepMarker ? b[0] : uint64_t(b[0] & (0xFF >> len));
-            for (int i = 1; i < len; ++i) value = (value << 8) | b[i];
-            if (!keepMarker) {
-                uint64_t allOnes = (len == 8) ? 0x00FFFFFFFFFFFFFFull
-                                              : ((1ull << (7 * len)) - 1);
-                unknown = (value == allOnes);
-            }
-            pos += len;
-            return true;
-        }
-
-        std::string MkvCodecName(const std::string& id) {
-            if (id == "V_MPEG4/ISO/AVC")  return "H.264";
-            if (id == "V_MPEGH/ISO/HEVC") return "H.265";
-            if (id == "V_VP8")            return "VP8";
-            if (id == "V_VP9")            return "VP9";
-            if (id == "V_AV1")            return "AV1";
-            if (id == "V_THEORA")         return "Theora";
-            if (id == "V_MPEG2")          return "MPEG-2";
-            if (id.rfind("V_MPEG4", 0) == 0) return "MPEG-4";
-            if (id == "A_OPUS")           return "Opus";
-            if (id == "A_VORBIS")         return "Vorbis";
-            if (id == "A_FLAC")           return "FLAC";
-            if (id.rfind("A_AAC", 0) == 0) return "AAC";
-            if (id == "A_MPEG/L3")        return "MP3";
-            if (id == "A_AC3")            return "AC-3";
-            if (id == "A_EAC3")           return "E-AC-3";
-            if (id.rfind("A_PCM", 0) == 0) return "PCM";
-            if (id.size() > 2 && id[1] == '_') return id.substr(2);
-            return id;
-        }
-
-        void ParseMkvLevel(std::ifstream& f, uint64_t pos, uint64_t end,
-                           MkvScan& scan, int depth) {
-            if (depth > 5) return;
-            for (int guard = 0; pos < end && guard < 256; ++guard) {
-                uint64_t id = 0, sz = 0;
-                bool unknown = false, idUnknown = false;
-                if (!EbmlRead(f, pos, end, true, id, idUnknown)) return;
-                if (!EbmlRead(f, pos, end, false, sz, unknown)) return;
-                uint64_t bodyEnd = unknown ? end : std::min(end, pos + sz);
-                if (id == 0x1F43B675ull) return;   // Cluster: headers are done
-                if (id == 0x18538067ull || id == 0x1549A966ull ||
-                    id == 0x1654AE6Bull || id == 0xAEull) {
-                    // Segment / Info / Tracks / TrackEntry
-                    ParseMkvLevel(f, pos, bodyEnd, scan, depth + 1);
-                } else if (id == 0x2AD7B1ull) {    // TimestampScale (uint)
-                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 8)));
-                    uint64_t v = 0;
-                    for (unsigned char c : d) v = (v << 8) | c;
-                    if (v) scan.timescale = v;
-                } else if (id == 0x4489ull) {      // Duration (float)
-                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 8)));
-                    if (d.size() == 4) {
-                        uint32_t u = U32BE(d.data());
-                        float fv;
-                        std::memcpy(&fv, &u, 4);
-                        scan.durationTicks = fv;
-                    } else if (d.size() == 8) {
-                        uint64_t u = U64BE(d.data());
-                        double dv;
-                        std::memcpy(&dv, &u, 8);
-                        scan.durationTicks = dv;
-                    }
-                } else if (id == 0x86ull) {        // CodecID (string)
-                    auto d = ReadFileBytes(f, pos, size_t(std::min<uint64_t>(sz, 32)));
-                    std::string codecId(d.begin(), d.end());
-                    if (codecId.rfind("V_", 0) == 0 && scan.videoCodec.empty())
-                        scan.videoCodec = MkvCodecName(codecId);
-                    else if (codecId.rfind("A_", 0) == 0 && scan.audioCodec.empty())
-                        scan.audioCodec = MkvCodecName(codecId);
-                }
-                if (unknown) return;   // can't skip an unknown-size element
-                pos += sz;
-            }
-        }
-
-        bool ProbeMkv(std::ifstream& f, uint64_t fileSize, FilerMediaProbe& out) {
-            auto head = ReadFileBytes(f, 0, 4);
-            if (head.size() < 4 ||
-                std::memcmp(head.data(), "\x1A\x45\xDF\xA3", 4) != 0) return false;
-            MkvScan scan;
-            ParseMkvLevel(f, 0, fileSize, scan, 0);
-            if (scan.durationTicks > 0)
-                out.seconds = scan.durationTicks * double(scan.timescale) / 1e9;
-            out.codec = !scan.videoCodec.empty() ? scan.videoCodec : scan.audioCodec;
-            return out.seconds >= 0 || !out.codec.empty();
-        }
-
         bool ProbeAsf(std::ifstream& f, FilerMediaProbe& out) {
             static const unsigned char kAsfHeader[16] =
                 {0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11,
@@ -2586,11 +2331,27 @@ namespace UltraCanvas {
             if (ext == "ogg" || ext == "oga" || ext == "opus")
                 return ProbeOgg(f, fileSize, out);
             if (ext == "mp4" || ext == "m4a" || ext == "m4b" || ext == "m4v" ||
-                ext == "mov" || ext == "3gp" || ext == "3g2")
-                return ProbeMp4(f, fileSize, out);
-            if (ext == "avi")  return ProbeAvi(f, out);
-            if (ext == "mkv" || ext == "webm" || ext == "mka")
-                return ProbeMkv(f, fileSize, out);
+                ext == "mov" || ext == "3gp" || ext == "3g2" || ext == "avi" ||
+                ext == "mkv" || ext == "webm" || ext == "mka") {
+                // The containers the media viewer reads too (ReadVideoFileInfo,
+                // UltraCanvasVideoFileInfo.h): one reader, so the list and the
+                // viewer's Details never disagree about a file. A film says its
+                // length, its picture size as shown (a phone's portrait clip
+                // upright) and its codec; a sound its length and codec.
+                VideoFileInfo info;
+                if (!ReadVideoFileInfo(path, info)) return false;
+                if (info.duration > 0) out.seconds = info.duration;
+                if (info.hasVideo) {
+                    int w = info.displayWidth > 0 ? info.displayWidth : info.width;
+                    int h = info.displayHeight > 0 ? info.displayHeight : info.height;
+                    if (info.rotation == 90 || info.rotation == 270) std::swap(w, h);
+                    if (w > 0 && h > 0) out.size = std::to_string(w) + " \xC3\x97 " + std::to_string(h);
+                    out.codec = info.videoCodec;
+                } else {
+                    out.codec = info.audioCodec;
+                }
+                return out.seconds >= 0 || !out.codec.empty() || !out.size.empty();
+            }
             if (ext == "wmv" || ext == "asf" || ext == "wma") return ProbeAsf(f, out);
             return false;
         }
@@ -8809,6 +8570,9 @@ namespace UltraCanvas {
         if (sizeEc || bytes <= kFileOpChunkThreshold) {
             fs::copy_file(UltraCanvas::PathFromUtf8(from), UltraCanvas::PathFromUtf8(to), fs::copy_options::overwrite_existing, ec);
             if (ec) return false;
+            // The copy keeps the original's dates: copy_file leaves the creation
+            // date at "now" everywhere and the modification date too off Windows.
+            CopyFileTimes(from, to);
             credit.Step(1 + bytes, {});
             return true;
         }
@@ -8858,6 +8622,8 @@ namespace UltraCanvas {
         const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(from), pec);
         if (!pec) fs::permissions(UltraCanvas::PathFromUtf8(to), st.permissions(),
                                   fs::perm_options::replace, pec);
+        // ...and its dates, as the small-file path does.
+        CopyFileTimes(from, to);
         return true;
     }
 
@@ -8897,6 +8663,9 @@ namespace UltraCanvas {
             std::error_code pec;
             fs::permissions(target, st.permissions(),
                             fs::perm_options::replace, pec);
+            // Its dates last of all: writing the children into the copy just
+            // made its modification date "now".
+            CopyFileTimes(from, to);
             return true;
         }
         if (fs::is_regular_file(st))
@@ -14799,9 +14568,10 @@ namespace UltraCanvas {
                     FilerMediaProbe probe;
                     if (ProbeMediaFile(media.path, media.extension, probe)) {
                         out = FormatDuration(probe.seconds);
-                        if (!probe.codec.empty()) {
+                        for (const std::string* part : {&probe.size, &probe.codec}) {
+                            if (part->empty()) continue;
                             if (!out.empty()) out += " · ";
-                            out += probe.codec;
+                            out += *part;
                         }
                     }
                 }
