@@ -211,7 +211,16 @@ of keeping those objects in the host. That is cheap for a widget that needs one
 to five of them, and pointless for the MediaViewer, which reaches about 45 (a
 view for every kind of file) and UltraNet and UltraCrypt besides: its module is
 built against a shared core only (`UC_WIDGET_<key>_SHARED_CORE_ONLY`), and a
-static build that leaves it out warns that it has neither.
+static build has to compile it in.
+
+**Every widget exists in one form.** A widget left out of `ULTRACANVAS_WIDGETS`
+must be buildable as a module, or the configure stops, naming it and the ways
+out. Three things rule a module out: no runtime modules in the build
+(WebAssembly, Android, or `ULTRACANVAS_WIDGET_RUNTIME_MODULES=OFF`), a static
+core on Windows (a module there links the core DLL), and a static core for a
+shared-core-only widget. Before, the first two warned or skipped and the build
+went on without the widget, so an application asking for it by name found out
+only at run time.
 
 ```cpp
 // At startup - registers the widgets compiled in. In a static core it also

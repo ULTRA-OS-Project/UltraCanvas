@@ -1444,8 +1444,32 @@ foreach(key IN LISTS UC_WIDGET_KEYS)
         list(APPEND UC_WIDGET_MODULE_KEYS ${key})
     endif()
 endforeach()
-if(NOT ULTRACANVAS_WIDGET_RUNTIME_MODULES AND UC_WIDGET_MODULE_KEYS)
-    message(WARNING "Widgets not selected and runtime modules off - unavailable: ${UC_WIDGET_MODULE_KEYS}")
+# A widget left out must exist as a module, or the build would have it in no
+# form at all - and an application or a document asking for it by name would
+# only find out at run time. Three things can rule its module out: no runtime
+# modules here (WebAssembly, Android, or the option off), a static core on
+# Windows (a module there links the core DLL), and a static core for a widget
+# whose module is built against a shared core only (MediaViewer). Any of them
+# stops the configure, naming the widgets and the ways out.
+set(uc_widgets_unavailable "")
+set(uc_widgets_unavailable_why "")
+foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+    if(NOT ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+        list(APPEND uc_widgets_unavailable ${key})
+        set(uc_widgets_unavailable_why "this build has no runtime modules (ULTRACANVAS_WIDGET_RUNTIME_MODULES is off, or the platform cannot load one)")
+    elseif(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
+        list(APPEND uc_widgets_unavailable ${key})
+        set(uc_widgets_unavailable_why "a module on Windows needs the shared core (ULTRACANVAS_BUILD_SHARED=ON)")
+    elseif(UC_WIDGET_${key}_SHARED_CORE_ONLY AND NOT ULTRACANVAS_BUILD_SHARED)
+        list(APPEND uc_widgets_unavailable ${key})
+        set(uc_widgets_unavailable_why "its module is built against a shared core only (ULTRACANVAS_BUILD_SHARED=ON)")
+    endif()
+endforeach()
+if(uc_widgets_unavailable)
+    string(REPLACE ";" ", " uc_widgets_unavailable_text "${uc_widgets_unavailable}")
+    message(FATAL_ERROR "${uc_widgets_unavailable_text} would be neither compiled in nor built as a "
+        "module: ${uc_widgets_unavailable_why}. Add ${uc_widgets_unavailable_text} to "
+        "ULTRACANVAS_WIDGETS (or use 'all'), or build a shared core.")
 endif()
 foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
     list(APPEND ULTRACANVAS_CORE_SOURCES ${UC_WIDGET_${key}_SOURCES})
@@ -2341,19 +2365,12 @@ endif()
 # ===== WIDGET RUNTIME MODULES =====
 # One MODULE DSO per unselected selectable widget, the same way as the chart
 # modules above (ENABLE_EXPORTS + RTLD_GLOBAL on Unix, the shared core DLL on
-# Windows, so a Windows static build skips them).
+# Windows).
 if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
     foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+        # Every module here can be built: the selection above stops the
+        # configure for a widget whose module this build cannot have.
         set(uc_widget_target "ultracanvas-widget-${UC_WIDGET_${key}_KEBAB}")
-        if(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
-            message(STATUS "  [−] widget module ${uc_widget_target} - SKIPPED (needs shared core on Windows)")
-            continue()
-        endif()
-        if(UC_WIDGET_${key}_SHARED_CORE_ONLY AND NOT ULTRACANVAS_BUILD_SHARED)
-            message(WARNING "${key} is neither compiled in nor built as a module: its module "
-                "needs ULTRACANVAS_BUILD_SHARED=ON. Add ${key} to ULTRACANVAS_WIDGETS, or build a shared core.")
-            continue()
-        endif()
         add_library(${uc_widget_target} MODULE
             ${UC_WIDGET_${key}_SOURCES}
             ${UC_WIDGET_${key}_PLUGIN})
