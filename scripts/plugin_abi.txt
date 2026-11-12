@@ -1,9 +1,9 @@
 # The plug-in ABIs as last recorded - see scripts/check_plugin_abi.py.
 # Written by `check_plugin_abi.py --update`; never edit by hand.
 
-# ultraim: recorded at abi 6
-ultraim abi 6
-ultraim fingerprint 5ede19fa27d2b77c6df1618d68e16e0dc2a68b57393dc2a13277431218a42851
+# ultraim: recorded at abi 5
+ultraim abi 5
+ultraim fingerprint 877aef7f6ec5a87a88ad833c962d891ba9d7821b3a533d028c89414a85c519e6
 
 # element: no ABI change at table 1, uc 1: adds the host-side free function UltraCanvas_RegisterSelectedWidgets; the host table and the descriptor types are unchanged
 element table 1

@@ -15,7 +15,9 @@
 #                 place afterwards (to drive the app further by hand)
 #
 # Writes signin.png, empty.png (signed in, no conversation open),
-# chat.png (the conversation with Bob) and profile.png (Edit profile). Needs: a built ChatCube and
+# chat.png (the conversation with Bob), menu.png (Bob's chat right-clicked
+# in the list), group-menu.png (a group's menu, its Members and Bob's own
+# items open) and profile.png (Edit profile). Needs: a built ChatCube and
 # chatcube-peer, the relay's virtual environment
 # (Server/ChatCubeRelay/.venv, see Apps/ChatCube/README.md), xvfb-run,
 # ImageMagick's `import`, and a C compiler with libX11 and libXtst
@@ -25,11 +27,14 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.4 - the relay in the settings file (Settings > Networks > Relay; the card has no field for it
+#                  now), the card's fields where they are now; menu.png and group-menu.png, the chat
+#                  list's right-click menu (xinput rclick and move)
 # Version: 0.1.3 - the relay offers recovery (an outbox file): profile.png shows the confirmation rows
 # Version: 0.1.2 - the card's fields 21 pixels higher ("Recover my ChatCube ID" under the button)
 # Version: 0.1.1 - the e-mail and phone on the sign-in card; profile.png, the Edit profile window
 # Version: 0.1.0
-# Last Modified: 2026-10-28
+# Last Modified: 2026-11-12
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -100,6 +105,11 @@ bob=$("$peer" --relay "http://127.0.0.1:$port" --data "$work/bob" --name "Bob Sm
 "$peer" --data "$work/bob" --relay "http://127.0.0.1:$port" --echo 600 > "$work/bob.log" 2>&1 &
 pids+=($!)
 
+# The relay ChatCube signs in through: a setting (Networks > Relay), so it
+# goes into the settings file before ChatCube starts.
+mkdir -p "$work/home/.config/UltraCanvas/ChatCube"
+printf '{"networks": {"relay": "http://127.0.0.1:%s"}}\n' "$port" > "$work/home/.config/UltraCanvas/ChatCube/settings.json"
+
 # ChatCube under Xvfb, driven like a person: the window is 1000x680 at the
 # screen's origin.
 export APP="$app" OPT="$opt" XINPUT="$xinput" OUT="$out" WORK="$work" BOB="$bob" PORT="$port"
@@ -110,9 +120,9 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     app=$!
     sleep 5
     import -window root "$OUT/signin.png"
-    # The sign-in card: the name, the e-mail, the phone, the relay, the button.
-    "$XINPUT" click 499 233 type "Alice Park" click 499 275 type "alice@example.org" \
-        click 499 317 type "+49 151 2345 6789" click 499 359 type "http://127.0.0.1:$PORT" click 499 492 sleep 4000
+    # The sign-in card: the name, the e-mail, the phone, the button.
+    "$XINPUT" click 499 254 type "Alice Park" click 499 296 type "alice@example.org" \
+        click 499 338 type "+49 151 2345 6789" click 499 471 sleep 4000
     import -window root "$OUT/empty.png"
     # The sidebar: the add-a-contact pill, then the first conversation row,
     # then the composer at the bottom of the window.
@@ -121,10 +131,21 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     "$XINPUT" click 600 625 type "Hi Bob, is the new look on your side too?" key Return sleep 3500
     "$XINPUT" type "It has avatars and a dark theme now." key Return sleep 3500
     import -window root "$OUT/chat.png"
+    # The chat with Bob right-clicked in the list: its menu (Escape closes it).
+    "$XINPUT" rclick 160 170 sleep 1200
+    import -window root "$OUT/menu.png"
+    "$XINPUT" key Escape sleep 600
+    # A group with Bob (the Group button, its name and members, Enter), then
+    # its menu with Members and the items for Bob open by hovering.
+    "$XINPUT" click 57 111 sleep 800 click 158 150 type "ULTRA OS questions" \
+        click 158 188 type "$BOB" key Return sleep 3000
+    "$XINPUT" rclick 160 236 sleep 1200 move 230 319 sleep 1200 move 420 319 move 470 347 sleep 1200
+    import -window root "$OUT/group-menu.png"
+    "$XINPUT" key Escape sleep 300 key Escape sleep 300 key Escape sleep 600
     # The person button beside the ID: the Edit profile window.
     "$XINPUT" click 292 25 sleep 2500
     import -window root "$OUT/profile.png"
     kill $app
     sleep 1
 '
-echo "screenshot.sh: $out/signin.png, empty.png, chat.png, profile.png (logs in $work)"
+echo "screenshot.sh: $out/signin.png, empty.png, chat.png, menu.png, group-menu.png, profile.png (logs in $work)"
