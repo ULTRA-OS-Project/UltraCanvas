@@ -1,3 +1,10 @@
+#### 2026-11-12 *0.10.89*
+- **Account settings and the other dialogs no longer stay on top of other
+  programs.** They sat above every application's windows and could not be
+  sent behind them; now they stay above UltraMail's own window only, as the
+  Settings window always did. The change is in the framework's
+  `DialogConfig`; see the framework changelog.
+
 #### 2026-11-11 *0.10.88*
 - **The desktop's look, and every text translatable.** UltraMail is light
   or dark as the desktop is - or as *Look* on UOS-Settings' Appearance page

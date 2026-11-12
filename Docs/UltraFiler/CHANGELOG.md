@@ -1,3 +1,10 @@
+#### 2026-11-12 *1.107.14*
+- **Proxy settings and the other dialogs no longer stay on top of other
+  programs.** They sat above every application's windows and could not be
+  sent behind them; now they stay above UltraFiler's own window only, as the
+  Settings window always did. The change is in the framework's
+  `DialogConfig`; see the framework changelog.
+
 #### 2026-11-11 *1.107.13*
 - **The window follows the desktop's look.** Light or dark as the desktop
   is - or as *Look* on UOS-Settings' Appearance page says - in the desktop's
