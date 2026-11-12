@@ -1,5 +1,7 @@
 // Apps/UltraCanvasStart/engine/StartPackages.cpp
-// Version: 0.1.3 - with the SDK on Linux, the CDR plug-in's link libraries too
+// Version: 0.1.3 - with the SDK on Linux, the static plug-ins' link libraries too
+//                  (CDR: librevenge, lcms2, ICU; OCR: Tesseract, Leptonica,
+//                  libarchive - a libarchive entry of its own)
 // Version: 0.1.2 - Msys2UpdateSteps apart: an installed MSYS2 is updated before pacman -S
 // Version: 0.1.1 - Msys2SetupSteps
 // Version: 0.1.0
@@ -101,6 +103,10 @@ std::vector<Dependency> BuildTable() {
           "libtesseract-dev", "tesseract-devel", "tesseract", "tesseract-ocr-devel", "tesseract", M("tesseract-ocr") });
     add({ "leptonica", "Leptonica", G::Ocr, K::PkgConfig, "lept", "",
           "libleptonica-dev", "leptonica-devel", "leptonica", "leptonica-devel", "leptonica", M("leptonica") });
+    // The OCR plug-in names -larchive itself (Tesseract reads its trained
+    // data from archives).
+    add({ "libarchive", "libarchive", G::Ocr, K::PkgConfig, "libarchive", "",
+          "libarchive-dev", "libarchive-devel", "libarchive", "libarchive-devel", "libarchive", M("libarchive") });
 
     // ---- Vectorizer ---------------------------------------------------------
     add({ "rust", "Rust toolchain (cargo)", G::Vectorizer, K::Tool, "cargo", "",
@@ -139,15 +145,19 @@ const std::vector<Dependency>& AllDependencies() {
 
 std::vector<const Dependency*> DependenciesFor(const Choices& choices,
                                                PackageManager manager) {
-    // The SDK's CDR plug-in is a static archive, compiled into the
-    // application with the libraries it names: a Linux machine building
-    // against the SDK needs their development files, as Choices' groups do
-    // not say (a clean Ubuntu 22.04 stopped at -lrevenge-0.0 without them).
+    // The SDK's plug-ins are static archives, compiled into the application
+    // with the libraries they name: a Linux machine building against the SDK
+    // needs their development files, which Choices' groups do not say. A
+    // clean Ubuntu 22.04 stopped at -lrevenge-0.0 (CDR) and at -ltesseract,
+    // -llept and -larchive (OCR) without them; the plug-ins' other libraries
+    // (zlib, tinyxml2, libvips, GLib) are the core group's already. The
+    // sdk-linux CI job finds the next one.
     const bool sdkOnLinux = choices.useSdk &&
         (choices.platform == Platform::Linux ||
          (choices.platform == Platform::Unknown && PlatformOf(manager) == Platform::Linux));
     const auto linkedBySdkPlugin = [](const Dependency& d) {
-        return d.id == "librevenge" || d.id == "lcms2" || d.id == "icu";
+        return d.id == "librevenge" || d.id == "lcms2" || d.id == "icu" ||
+               d.id == "tesseract" || d.id == "leptonica" || d.id == "libarchive";
     };
     std::vector<const Dependency*> result;
     for (const auto& dependency : AllDependencies()) {

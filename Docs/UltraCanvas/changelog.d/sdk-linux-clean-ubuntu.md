@@ -19,7 +19,9 @@
     - The 0.9.465 SDK stopped with "No rule to make target
       '/usr/lib/x86_64-linux-gnu/libmp3lame.so'" (fixed by #1093).
     - With that fixed, the link stopped at `-lFLAC`, `-larchive`, GStreamer,
-      Vorbis, Opus, `-lzbar` and `-lrevenge-0.0`.
+      Vorbis, Opus, `-lzbar` and `-lrevenge-0.0`. On the job's first run, with
+      0.9.548, the newer OCR plug-in's `-ltesseract`, `-llept` and
+      `-larchive` were also missing.
     - The core could not load 31 libraries, such as `libmp3lame.so.0` and
       `libavcodec.so.58`, 63 with their own dependencies.
   - **The link line.** For a shared core without `deps/` (the Linux SDK),
@@ -42,4 +44,7 @@
     - without `librevenge-dev`, the skeleton stopped only at
       `-lrevenge-0.0`, which UltraCanvasStart now installs (its changelog);
     - with it, the skeleton built with no library missing, and
-      `PackageConsumer` built and ran without `LD_LIBRARY_PATH`.
+      `PackageConsumer` built and ran without `LD_LIBRARY_PATH`;
+    - the same against 0.9.547, with the static plug-ins' six `-dev`
+      packages that UltraCanvasStart now installs: 64 libraries added, and
+      the skeleton and `PackageConsumer` built and ran.

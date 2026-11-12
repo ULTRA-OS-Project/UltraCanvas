@@ -48,9 +48,9 @@ TEST(DependenciesFor_follows_the_groups_and_the_manager) {
 }
 
 TEST(DependenciesFor_adds_the_sdk_plugins_link_libraries_on_linux) {
-    // The skeleton links the SDK's static CDR plug-in, which names librevenge,
-    // lcms2 and ICU: with the SDK on Linux they are installed without the
-    // CDR group, and not when the framework is built from source, nor on
+    // The skeleton links the SDK's static plug-ins: CDR names librevenge,
+    // lcms2 and ICU, OCR Tesseract, Leptonica and libarchive. With the SDK on
+    // Linux they are installed without the CDR and OCR groups, and not when the framework is built from source, nor on
     // macOS, whose SDK carries them in deps/.
     const auto has = [](const std::vector<const Dependency*>& list, const char* id) {
         for (const auto* d : list) if (d->id == id) return true;
@@ -62,7 +62,11 @@ TEST(DependenciesFor_adds_the_sdk_plugins_link_libraries_on_linux) {
     REQUIRE(has(sdk, "librevenge"));
     REQUIRE(has(sdk, "lcms2"));
     REQUIRE(has(sdk, "icu"));
+    REQUIRE(has(sdk, "tesseract"));
+    REQUIRE(has(sdk, "leptonica"));
+    REQUIRE(has(sdk, "libarchive"));
     REQUIRE(!has(sdk, "libcdr"));
+    REQUIRE(!has(sdk, "boost"));
     choices.useSdk = false;
     REQUIRE(!has(DependenciesFor(choices, PackageManager::Apt), "librevenge"));
     choices.useSdk = true;

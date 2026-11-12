@@ -186,9 +186,10 @@ glib, tinyxml2 and libvips through pkg-config:
     VirtualFS is folded into the core too, so `VirtualFS::VirtualFS` gives
     way to a target with only its headers and definitions.
   - **The static plug-ins.** The plug-ins are static archives, compiled into
-    the application, so the libraries they name are the application's: the
-    CDR plug-in's are librevenge, lcms2 and ICU. UltraCanvasStart installs
-    their `-dev` packages on Linux when the SDK is chosen.
+    the application, so the libraries they name are the application's. The
+    CDR plug-in's are librevenge, lcms2 and ICU; the OCR plug-in's are
+    Tesseract, Leptonica and libarchive. UltraCanvasStart installs their
+    `-dev` packages on Linux when the SDK is chosen.
   - **Run time.** The core's run-time libraries that such a machine does not
     have are in the SDK's `lib/`, beside the core: libmp3lame, the FFmpeg
     libraries, GStreamer, MuPDF's libraries and the rest. They are not
