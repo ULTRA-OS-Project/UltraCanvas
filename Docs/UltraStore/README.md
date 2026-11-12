@@ -279,7 +279,35 @@ a *Receipt* button that opens the receipt in the browser, as a page in
 the look of the service's other pages (the service's README, *The
 pages*).
 `ultrastore buy <catalog.json> <app-id> [--code <CODE>]` does the same from
-the command line, and `ultrastore licences` lists what was bought.
+the command line, and `ultrastore licences` lists what was bought (with a
+subscription's day; `--sync <catalog.json>` asks the service about each
+first).
+
+**Subscriptions.** An app priced `monthly` or `yearly` is bought the same
+way, through Quick Checkout's recurring billing: the first payment is the
+price after the code, then the list price every month or year, until the
+buyer cancels. The licence carries the day it is valid until
+(`valid_until`: the paid period plus the service's grace days, during
+which Skrill retries a failed renewal), each renewal re-issues it with a
+later day, and the store takes the new token when it refreshes the
+catalog (the engine's `SyncLicences`, after every catalog fetch; `ultrastore
+licences --sync <catalog.json>` by hand). An app checks the day after
+verifying its file, `Licence::ValidOn` with today's date. `ultrastore
+unsubscribe <catalog.json> <app-id>` ends a subscription (the service
+tells Skrill); the licence lasts until the paid period ends. The window's
+side of a subscription - the day on the details page, a *Cancel
+subscription* button - is still to come.
+
+**Refunds and chargebacks.** The operator refunds a payment through the
+service (`POST /v1/orders/{order}/refund`, the admin token; Skrill's
+refund API), whole or in part; a chargeback reaches the service from
+Skrill. Either takes the licence back when everything paid is reversed: the
+service no longer hands the licence out or signs the app's downloads, and
+the store, at its next catalog refresh, removes the licence from the
+registry and the licence file from the app's folder (`SyncLicences`).
+The reversals are a feed of their own for the admin backend
+(`GET /v1/reversals`); taking the partners' credits back in the ledger is
+to come. The service's README, *Subscriptions, refunds and chargebacks*.
 
 A paid app's **trial** installs the same package, so an app with a trial
 keeps its package public (the licence gates what the trial lacks) and only
@@ -290,8 +318,10 @@ an app without one puts its package under `restricted/` (`package add
 On the admin's side, `sale sync` pulls the paid orders from the service
 (`GET /v1/sales?since=`, the `payment.token` setting or
 `ULTRASTORE_PAY_ADMIN_TOKEN` as the bearer token) and records each once in
-the ledger with the partners' credits; the sequence it reached is kept in
-`payment.sales_seq`, so a repeat records nothing twice.
+the ledger with the partners' credits - a subscription's renewal as a sale
+of its own, under the service's `reference` (`<order>/<payment>`); the
+sequence it reached is kept in `payment.sales_seq`, so a repeat records
+nothing twice.
 
 ### Translations
 
@@ -748,8 +778,12 @@ them, every report about them with the reporter removed, and their standing.
    After the purchase: the update period in the licence and held to by the
    store (*Buy update*), the licence file for the app (`FindLicenceFile`,
    `ReadLicenceFile`, `ultrastore licence`), the open order resumed at
-   the next start. Next: a run against the Skrill sandbox once the
-   credentials are in the environment.
+   the next start. Subscriptions (monthly and yearly apps through
+   recurring billing, the licence valid until a day, renewed and synced),
+   refunds through Skrill's API and chargebacks, both taking the licence
+   back; `ultrastore licences --sync`, `unsubscribe`. Next: a run against
+   the Skrill sandbox once the credentials are in the environment; the
+   window's side of a subscription; the reversals in the admin's ledger.
 8. **The operator tier** (*The operator tier*, later): the marketplace
    service `Server/UltraStoreMarket` with merchants, submissions, reports,
    notices, terms and the audit log; the merchant backend's `submit` and

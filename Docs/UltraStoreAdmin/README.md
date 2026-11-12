@@ -138,7 +138,7 @@ affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report |
 code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]
 code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>
 sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list
-sale sync [--from <url>] [--token <t>]                   the paid orders from the payment service, once each
+sale sync [--from <url>] [--token <t>]                   the paid orders and the subscriptions' renewals from the payment service, once each
 ```
 
 The payment service is named in the settings: `payment.url` (its base,

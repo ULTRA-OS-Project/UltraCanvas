@@ -3,6 +3,7 @@
 // and posts progress and the outcome to the UI thread; the Downloads panel
 // shows the queue. The engine and the client are touched by the worker only
 // while a job runs and by the UI thread only while none does.
+// Version: 0.4.0 - the refresh syncs the licences (renewals, licences taken back)
 // Version: 0.3.1 - every text through Tr; an update to buy is told by the licence, not the message
 // Version: 0.3.0 - the open order kept and resumed, the licence file
 // Version: 0.2.0 - the Buy job
@@ -145,6 +146,17 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
             result.catalog = std::make_shared<const Catalog>(fetched.Value());
             result.state = client_->State();
             result.message = TrF("Catalog updated: {0}, sequence {1}, from {2}", TrN("{n} app", "{n} apps", static_cast<long long>(fetched.Value().apps.size())), fetched.Value().sequence, result.state.fetchedFrom);
+            // The licences follow: a subscription renewed gets its new token,
+            // a licence refunded or charged back goes.
+            if (const auto bought = engine_->Registry().Licences(); bought && !bought.Value().empty() && !fetched.Value().paymentUrl.empty()) {
+                progress(Tr("Checking the licences with the payment service"), -1.0);
+                const auto sync = engine_->SyncLicences(fetched.Value().paymentUrl, fetched.Value().licenceKey, UltraNetHttpCall());
+                if (sync && sync.Value().Changed()) {
+                    if (const auto all = engine_->Registry().Licences()) { result.licences = all.Value(); result.haveLicences = true; }
+                    if (!sync.Value().renewed.empty()) result.message += " " + TrN("{n} subscription renewed.", "{n} subscriptions renewed.", static_cast<long long>(sync.Value().renewed.size()));
+                    if (!sync.Value().revoked.empty()) result.message += " " + TrN("{n} licence taken back.", "{n} licences taken back.", static_cast<long long>(sync.Value().revoked.size()));
+                }
+            }
             return result;
         }
         case JobKind::Reload:

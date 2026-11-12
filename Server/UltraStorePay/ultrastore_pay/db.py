@@ -8,6 +8,7 @@ and a few named differences (the placeholder style, the serial type, how a
 row is read), and this module hides them. Nothing else in the service knows
 which engine runs.
 
+Version: 0.1.1 - columns(), for the schema upgrade
 Version: 0.1.0
 """
 from __future__ import annotations
@@ -46,6 +47,13 @@ class Database:
     def serial(self) -> str:
         """An integer that counts up on its own, as a column type."""
         return "BIGSERIAL" if self.engine == "postgresql" else "INTEGER"
+
+    def columns(self, table: str) -> list[str]:
+        """The table's column names, empty when there is no such table."""
+        if self.engine == "postgresql":
+            rows = self.fetchall("SELECT column_name FROM information_schema.columns WHERE table_name = ?", (table,))
+            return [r["column_name"] for r in rows]
+        return [r["name"] for r in self.fetchall(f"PRAGMA table_info({table})")]
 
     def _sql(self, sql: str) -> str:
         return sql.replace("?", "%s") if self.engine == "postgresql" else sql

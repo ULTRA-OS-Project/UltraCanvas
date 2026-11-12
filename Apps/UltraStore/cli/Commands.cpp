@@ -34,6 +34,7 @@
 //
 // --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
 //
+// Version: 0.6.0 - licences --sync, unsubscribe; a subscription's day on licence
 // Version: 0.5.0 - licence
 // Version: 0.4.0 - buy, licences
 // Version: 0.3.0 - code
@@ -527,6 +528,10 @@ int CmdLicence(const std::vector<std::string>& args) {
     const auto terms = ParseLicence(l.token);
     std::printf("%s: receipt %d, %s %s, %s\norder %s, licence %s\nterms: %s\n", l.app.c_str(), l.receiptNo, l.amount.c_str(), l.currency.c_str(),
                 l.issuedAt.c_str(), l.orderId.c_str(), l.licenceId.c_str(), terms ? terms.Value().UpdateTerms().c_str() : "(not readable)");
+    if (terms && !terms.Value().validUntil.empty()) {
+        std::printf("a subscription: valid until %s%s\n", terms.Value().validUntil.c_str(),
+                    terms.Value().ValidOn(NowIso8601Utc().substr(0, 10)) ? "" : " (ended; ultrastore licences --sync fetches a renewal)");
+    }
     const std::string file = LicenceFilePath(engine.Root(), pos[1]);
     const std::string key = Option(args, "--key");
     if (key.empty()) { std::printf("file: %s\n", file.c_str()); return 0; }
@@ -539,13 +544,45 @@ int CmdLicence(const std::vector<std::string>& args) {
 int CmdLicences(const std::vector<std::string>& args) {
     StoreEngine engine(StoreRoot(args));
     if (const auto r = engine.Open(); !r) return Fail(r.error);
+    if (const std::string catalogPath = Option(args, "--sync"); !catalogPath.empty()) {
+        Catalog catalog;
+        if (!LoadCatalog(catalogPath, catalog)) return 1;
+        const auto sync = engine.SyncLicences(catalog.paymentUrl, catalog.licenceKey, UltraNetHttpCall());
+        if (!sync) return Fail(sync.error);
+        for (const std::string& app : sync.Value().renewed) std::printf("renewed   %s\n", app.c_str());
+        for (const std::string& app : sync.Value().revoked) std::printf("taken back %s (refunded or charged back; the licence is gone)\n", app.c_str());
+        for (const auto& [app, error] : sync.Value().failed) std::fprintf(stderr, "%s: %s\n", app.c_str(), error.message.c_str());
+    }
     const auto all = engine.Registry().Licences();
     if (!all) return Fail(all.error);
     if (all.Value().empty()) { std::printf("nothing was bought here\n"); return 0; }
+    const std::string today = NowIso8601Utc().substr(0, 10);
     for (const LicenceRecord& l : all.Value()) {
-        std::printf("%-32s receipt %d  %s %s  %s  order %s  licence %s\n", l.app.c_str(), l.receiptNo, l.amount.c_str(), l.currency.c_str(),
-                    l.issuedAt.c_str(), l.orderId.c_str(), l.licenceId.c_str());
+        const auto terms = ParseLicence(l.token);
+        std::string validity;
+        if (terms && !terms.Value().validUntil.empty()) validity = (terms.Value().ValidOn(today) ? "  valid until " : "  ended ") + terms.Value().validUntil;
+        std::printf("%-32s receipt %d  %s %s  %s  order %s  licence %s%s\n", l.app.c_str(), l.receiptNo, l.amount.c_str(), l.currency.c_str(),
+                    l.issuedAt.c_str(), l.orderId.c_str(), l.licenceId.c_str(), validity.c_str());
     }
+    return 0;
+}
+
+// unsubscribe <catalog.json> <app-id>: the payment service ends the
+// subscription; the licence lasts until the paid period ends.
+int CmdUnsubscribe(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 3) return Usage(stderr);
+    Catalog catalog;
+    if (!LoadCatalog(pos[1], catalog)) return 1;
+    if (catalog.paymentUrl.empty()) return Fail("The catalog names no payment service");
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const auto rec = engine.Registry().GetLicence(pos[2]);
+    if (!rec) return Fail(rec.error);
+    const auto order = CancelSubscription(catalog.paymentUrl, rec.Value().orderId, rec.Value().orderSecret, UltraNetHttpCall());
+    if (!order) return Fail(order.error);
+    std::printf("%s: the subscription is %s; paid until %s, the licence valid until %s\n", pos[2].c_str(), order.Value().subscriptionStatus.c_str(),
+                order.Value().paidUntil.c_str(), order.Value().validUntil.c_str());
     return 0;
 }
 
@@ -612,6 +649,7 @@ int UltraStore::Cli::Run(const std::vector<std::string>& args) {
     if (cmd == "buy")      return CmdBuy(args);
     if (cmd == "licences") return CmdLicences(args);
     if (cmd == "licence")  return CmdLicence(args);
+    if (cmd == "unsubscribe") return CmdUnsubscribe(args);
     std::fprintf(stderr, "ultrastore: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }

@@ -159,6 +159,7 @@
   "Categories": "Categories",
   "Channel": "Channel",
   "Channel in use: {0}": "Channel in use: {0}",
+  "Checking the licences with the payment service": "Checking the licences with the payment service",
   "Clean up": "Clean up",
   "Clean up unused components": "Clean up unused components",
   "Clear finished": "Clear finished",
@@ -502,6 +503,14 @@
   "{n} key is compiled into this build (": {
     "one": "{n} key is compiled into this build (",
     "other": "{n} keys are compiled into this build ("
+  },
+  "{n} licence taken back.": {
+    "one": "{n} licence taken back.",
+    "other": "{n} licences taken back."
+  },
+  "{n} subscription renewed.": {
+    "one": "{n} subscription renewed.",
+    "other": "{n} subscriptions renewed."
   },
   "{n} to buy anew": {
     "one": "{n} to buy anew",
