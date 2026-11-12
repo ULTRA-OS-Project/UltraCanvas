@@ -9,6 +9,9 @@
 // per-account worker and marshals results to the UI. Because it depends only on
 // the IMailboxProtocolPlugin interface, it is fully testable with a fake
 // mailbox — no live server required.
+// Version: 0.8.0 - CacheDirectoryOf: a trailing '.' or space, a Windows device
+//                  name and the characters that make two spellings of a name
+//                  for macOS are escapes too (~t ~n ~z ~x); .layout-4
 // Version: 0.7.0 - CacheDirectoryOf escapes '_', '\', ':' and the characters
 //                  Windows refuses, so "a/b" and "a_b" no longer share a
 //                  directory; MigrateBodyCache moves both earlier layouts
@@ -270,29 +273,41 @@ std::string CachedBodyPath(const std::string& emlDir, const std::string& account
                            const std::string& folder, int64_t uid);
 
 // The directory a folder's bodies are cached in, one per folder name, also
-// where the file system ignores case (Windows, macOS):
+// where the file system ignores case (Windows, macOS) or the Unicode
+// normalization form (macOS), and one Windows can make:
 //   - '/' as '_' ("[Gmail]/All Mail" -> "[Gmail]_All Mail");
 //   - '~', a literal '_', '\', ':' and the characters Windows refuses in a
 //     name as a '~' and a letter: ~~ ~u ~r ~k, and * ~s, ? ~q, " ~w, < ~l,
 //     > ~g, | ~p ("a_b" -> "a~ub");
+//   - a trailing '.' or space, which Windows drops, as ~t or ~n ("Notes."
+//     -> "Notes~t", "." -> "~t");
+//   - a character that composes with another or stands for one - combining
+//     marks, kana voicing marks, Hangul jamo, Indic nukta, Greek Extended,
+//     the Ohm, Kelvin and Angstrom signs, CJK compatibility ideographs - as
+//     ~x and six hex digits of its code ("u" + U+0308 -> "u~x000308"), so
+//     that no two spellings of a name meet on macOS;
 //   - a name not in title case followed by '~' and a hex mask of the letters
-//     whose case differs from it ("work" -> "work~1").
+//     whose case differs from it ("work" -> "work~1");
+//   - a Windows device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9, CONIN$,
+//     CONOUT$, also before a '.') broken up by ~z after its first letter
+//     ("CON" -> "C~zON", "Nul.Txt" -> "N~zul.Txt").
 // A name in title case with none of those characters is its own directory
-// ("Sent Items", "INBOX", "INBOX.Drafts"); an empty name is INBOX's.
+// ("Sent Items", "INBOX", "INBOX.Drafts", "Entwürfe"); an empty name is INBOX's.
 std::string CacheDirectoryOf(const std::string& folder);
-// The folder name a cache directory reads as: '_' as '/', the escapes undone,
-// the case mask left out ("work~1" -> "work", "a~ub" -> "a_b",
-// "[Gmail]_Bin" -> "[Gmail]/Bin") - for reading a name back from the
-// directory alone, as EmailCleaner does.
+// The folder name a cache directory reads as: '_' as '/', the escapes undone
+// (~z as nothing, ~x as its character), the case mask left out ("work~1" ->
+// "work", "a~ub" -> "a_b", "[Gmail]_Bin" -> "[Gmail]/Bin", "C~zON" -> "CON") -
+// for reading a name back from the directory alone, as EmailCleaner does.
 std::string FolderOfCacheDirectory(const std::string& directory);
 // Moves the body directories earlier versions made - the name with '/', '\'
-// and ':' as '_' (which "a/b" and "a_b", and case twins, shared), and that
-// with only the case mask - to CacheDirectoryOf's, for every folder `store`
-// knows, once per `emlDir` (a ".layout-3" file marks it done; a move that
-// fails is tried again at the next call). From a directory two folders
-// shared, each takes only its own bodies, and one both had under the same
-// number is deleted - to be downloaded again. Returns how many directories
-// were moved.
+// and ':' as '_' (which "a/b" and "a_b", and case twins, shared), that with
+// only the case mask, and that without the escapes of a trailing dot or
+// space, a device name or a decomposed character - to CacheDirectoryOf's,
+// for every folder `store` knows, once per `emlDir` (a ".layout-4" file marks
+// it done; a move that fails is tried again at the next call). From a
+// directory two folders shared, each takes only its own bodies, and one both
+// had under the same number is deleted - to be downloaded again. Returns how
+// many directories were moved.
 int MigrateBodyCache(const std::string& emlDir, const LocalStore& store);
 
 } // namespace UltraMail
