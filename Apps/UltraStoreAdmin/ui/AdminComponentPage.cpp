@@ -3,12 +3,14 @@
 // the texts per language, the pictures, the releases with their packages.
 // The form edits a draft; Save writes it whole (AdminDatabase::PutComponent,
 // which reads it back the way the store does before storing it).
+// Version: 0.1.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "AdminWindow.h"
 
 #include "AdminTheme.h"
 #include "Translation.h"
+#include "StoreQuery.h"   // CategoryName
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasFileLoader.h"
@@ -140,9 +142,14 @@ void AdminWindow::BuildComponentPage() {
     identity->AddChild(fOpenSource_);
     fSource_ = input("uaC.source");
     identity->AddChild(Theme::Field("uaC.sourceRow", "Source URL", fSource_));
-    fCategories_ = input("uaC.categories");
-    fCategories_->SetPlaceholder("Office Tools (separated by spaces)");
-    identity->AddChild(Theme::Field("uaC.categoriesRow", "Categories", fCategories_));
+    // The store's list, not free words: it names each in the buyer's language.
+    fCategories_ = Theme::Pin(CreateChipGroup("uaC.categories", 0, 0, 0, 0));
+    fCategories_->SetSelectionMode(ChipGroupSelectionMode::Multiple);
+    fCategories_->SetSpacing(6.0f);
+    for (const std::string& id : UltraStore::StoreCategories()) fCategories_->AddChip(UltraStore::CategoryName(id));
+    fCategories_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    fCategories_->onSelectedIndicesChanged = [this](const std::vector<int>&) { draftDirty_ = true; };
+    identity->AddChild(Theme::Field("uaC.categoriesRow", "Categories", fCategories_, true));
     fTags_ = input("uaC.tags");
     fTags_->SetPlaceholder("free-form words for the search");
     identity->AddChild(Theme::Field("uaC.tagsRow", "Tags", fTags_));
@@ -344,7 +351,7 @@ void AdminWindow::BuildComponentPage() {
 
     // Every edit marks the draft.
     for (auto* in : {fId_.get(), fName_.get(), fLicense_.get(), fHomepage_.get(), fSupport_.get(), fPrivacy_.get(), fSource_.get(),
-                     fSuccessor_.get(), fCategories_.get(), fTags_.get(), fSourceLanguage_.get(), fPrice_.get(), fCurrency_.get(),
+                     fSuccessor_.get(), fTags_.get(), fSourceLanguage_.get(), fPrice_.get(), fCurrency_.get(),
                      fTrialDays_.get(), fUntil_.get(), fIcon_.get(), fSummary_.get()}) {
         in->onTextChanged = [this](const std::string&) { draftDirty_ = true; };
     }
@@ -400,7 +407,17 @@ void AdminWindow::FillForm() {
     fPrivacy_->SetText(c.privacyUrl);
     fOpenSource_->SetChecked(c.openSource);
     fSource_->SetText(c.sourceUrl);
-    fCategories_->SetText(JoinWords(c.categories));
+    {
+        // A category from before the list, or a later list's, is not offered:
+        // Save keeps only the list's.
+        std::vector<int> picked;
+        const auto& all = UltraStore::StoreCategories();
+        for (const std::string& written : c.categories) {
+            const auto at = std::find(all.begin(), all.end(), UltraStore::CategoryId(written));
+            if (at != all.end()) picked.push_back(static_cast<int>(at - all.begin()));
+        }
+        fCategories_->SetSelectedIndices(picked);
+    }
     fTags_->SetText(JoinWords(c.tags));
     fVisibility_->SetSelectedIndex(IndexOfValue(kVisibilities, UltraStore::VisibilityName(c.visibility)), false);
     fLifecycle_->SetSelectedIndex(IndexOfValue(kLifecycles, UltraStore::LifecycleName(c.lifecycle)), false);
@@ -484,7 +501,10 @@ bool AdminWindow::ReadForm(std::string& error) {
     c.privacyUrl = Trim(fPrivacy_->GetText());
     c.openSource = fOpenSource_->IsChecked();
     c.sourceUrl = Trim(fSource_->GetText());
-    c.categories = SplitWords(fCategories_->GetText());
+    c.categories.clear();
+    for (int index : fCategories_->GetSelectedIndices()) {
+        if (index >= 0 && index < static_cast<int>(UltraStore::StoreCategories().size())) c.categories.push_back(UltraStore::StoreCategories()[index]);
+    }
     c.tags = SplitWords(fTags_->GetText());
     c.visibility = UltraStore::ParseVisibility(kVisibilities[std::max(0, fVisibility_->GetSelectedIndex())]);
     c.lifecycle = UltraStore::ParseLifecycle(kLifecycles[std::max(0, fLifecycle_->GetSelectedIndex())]);

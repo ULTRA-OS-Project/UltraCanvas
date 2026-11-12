@@ -27,6 +27,13 @@ Screen and Win+Print Screen stay the system's. *Settings > Behaviour > After
 a snip* switches it off. When UltraSnip is not running, Print Screen is the
 system's again.
 
+**In the background.** UltraDesktop starts `UltraSnip --background` with
+the desktop (ticked by default in its *Start with the desktop* menu): no
+window, the Print Screen key held, and the screenshot button and
+Super+Shift+S answered at once by the copy that runs. Its window, once a
+snip has shown it, hides when closed instead of ending UltraSnip. A second
+`--background` start reaches the running copy and changes nothing.
+
 **From the window.** Start UltraSnip from the applications: until there is
 a snip its window is just its bar. Choose the shape and the kind (icons;
 each names itself in its tooltip) and the delay, and click *Start*

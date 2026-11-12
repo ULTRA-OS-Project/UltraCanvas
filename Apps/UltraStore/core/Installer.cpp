@@ -1,11 +1,13 @@
 // Apps/UltraStore/core/Installer.cpp
 // Unpacking and removing installed versions (Installer.h).
+// Version: 0.1.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Installer.h"
 #include "CatalogClient.h"   // NowIso8601Utc
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #if defined(ULTRACANVAS_HAS_VIRTUALFS)
 #include "UltraCanvasVirtualFSBridge.h"
 #endif
@@ -17,6 +19,9 @@
 #include <system_error>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace fs = std::filesystem;
 using UltraCanvas::PathFromUtf8;
@@ -96,7 +101,7 @@ Result<void> ArchiveInstaller::PointCurrentAt(std::string_view id, std::string_v
         ec.clear();
         std::ofstream out(link, std::ios::binary | std::ios::trunc);
         out << version << '\n';
-        if (!out) return Result<void>::Failure(ErrorCode::IoError, "The current-version marker could not be written", CurrentLinkFor(id));
+        if (!out) return Result<void>::Failure(ErrorCode::IoError, Tr("The current-version marker could not be written"), CurrentLinkFor(id));
     }
     return Result<void>::Succeed();
 }
@@ -109,7 +114,7 @@ void ArchiveInstaller::ClearCurrent(std::string_view id) {
 Result<void> ArchiveInstaller::Install(const InstallStep& step, const std::string& archivePath,
                                        const InstallProgress& progress) {
     if (!step.component || !step.release || !step.package) {
-        return Result<void>::Failure(ErrorCode::InvalidArgument, "The install step names no component, release or package");
+        return Result<void>::Failure(ErrorCode::InvalidArgument, Tr("The install step names no component, release or package"));
     }
     const Component& component = *step.component;
     const Release& release = *step.release;
@@ -117,11 +122,11 @@ Result<void> ArchiveInstaller::Install(const InstallStep& step, const std::strin
     std::error_code ec;
     const fs::path archive = PathFromUtf8(archivePath);
     if (!fs::is_regular_file(archive, ec)) {
-        return Result<void>::Failure(ErrorCode::IoError, "The package file is not there", archivePath);
+        return Result<void>::Failure(ErrorCode::IoError, Tr("The package file is not there"), archivePath);
     }
     if (!SupportsFormat(package.format)) {
         return Result<void>::Failure(ErrorCode::NotAvailable,
-                                     "This UltraStore cannot unpack " + package.format + " packages",
+                                     TrF("This UltraStore cannot unpack {0} packages", package.format),
                                      "libarchive missing from the build, or an unknown format");
     }
 
@@ -130,7 +135,7 @@ Result<void> ArchiveInstaller::Install(const InstallStep& step, const std::strin
     fs::remove_all(staging, ec);
     ec.clear();
     fs::create_directories(staging, ec);
-    if (ec) return Result<void>::Failure(ErrorCode::IoError, "The install folder could not be created", PathToUtf8(staging));
+    if (ec) return Result<void>::Failure(ErrorCode::IoError, Tr("The install folder could not be created"), PathToUtf8(staging));
 
     if (package.format == "appimage") {
         const std::string name = package.entry.empty() ? PathToUtf8(archive.filename()) : package.entry;
@@ -139,7 +144,7 @@ Result<void> ArchiveInstaller::Install(const InstallStep& step, const std::strin
         fs::copy_file(archive, target, fs::copy_options::overwrite_existing, ec);
         if (ec) {
             fs::remove_all(staging, ec);
-            return Result<void>::Failure(ErrorCode::IoError, "The AppImage could not be copied", ec.message());
+            return Result<void>::Failure(ErrorCode::IoError, Tr("The AppImage could not be copied"), ec.message());
         }
         MakeExecutable(target);
         if (progress) progress(package.size, package.size, name);
@@ -155,12 +160,12 @@ Result<void> ArchiveInstaller::Install(const InstallStep& step, const std::strin
         if (!ok) {
             std::error_code ignore;
             fs::remove_all(staging, ignore);
-            return Result<void>::Failure(ErrorCode::IoError, "The package could not be unpacked",
+            return Result<void>::Failure(ErrorCode::IoError, Tr("The package could not be unpacked"),
                                          error.empty() ? archivePath : error);
         }
 #else
         fs::remove_all(staging, ec);
-        return Result<void>::Failure(ErrorCode::NotAvailable, "This UltraStore was built without VirtualFS");
+        return Result<void>::Failure(ErrorCode::NotAvailable, Tr("This UltraStore was built without VirtualFS"));
 #endif
         // A zip made on Windows records no execute bit: the entry gets one.
         if (!package.entry.empty()) {
@@ -176,7 +181,7 @@ Result<void> ArchiveInstaller::Install(const InstallStep& step, const std::strin
     if (ec) {
         std::error_code ignore;
         fs::remove_all(staging, ignore);
-        return Result<void>::Failure(ErrorCode::IoError, "The unpacked package could not be moved into place", ec.message());
+        return Result<void>::Failure(ErrorCode::IoError, Tr("The unpacked package could not be moved into place"), ec.message());
     }
 
     InstalledRecord rec;
@@ -200,13 +205,13 @@ Result<void> ArchiveInstaller::Remove(std::string_view id, std::string_view vers
     if (!rows) return Result<void>::Failure(rows.error.code, rows.error.message, rows.error.detail);
     const InstalledRecord* row = nullptr;
     for (const InstalledRecord& r : rows.Value()) if (VersionEqual(r.version, version)) row = &r;
-    if (!row) return Result<void>::Failure(ErrorCode::NotFound, std::string(id) + " " + std::string(version) + " is not installed");
+    if (!row) return Result<void>::Failure(ErrorCode::NotFound, TrF("{0} is not installed", std::string(id) + " " + std::string(version)));
 
     std::error_code ec;
     const fs::path folder = row->folder.empty() ? PathFromUtf8(FolderFor(row->kind, id, version)) : PathFromUtf8(row->folder);
     fs::remove_all(folder, ec);
     if (ec && fs::exists(folder, ec)) {
-        return Result<void>::Failure(ErrorCode::IoError, "The install folder could not be removed", PathToUtf8(folder));
+        return Result<void>::Failure(ErrorCode::IoError, Tr("The install folder could not be removed"), PathToUtf8(folder));
     }
     const bool wasCurrent = row->current;
     const ComponentKind kind = row->kind;

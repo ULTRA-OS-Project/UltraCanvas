@@ -187,6 +187,52 @@ int main() {
         Check(b->GetX() >= a->GetX() + a->GetWidth() - 0.5f, "and they do not overlap");
     }
 
+    std::printf("\n-- grown buttons in a row that takes its content's width --\n");
+    {
+        // A window's header: a group of fixed-width buttons sized for
+        // English, a field that fills the rest. A translation grows the
+        // buttons; the group must grow with them, or the field is laid over
+        // the last one.
+        auto header = Page();
+        header->layout.SetFlexDirection(FlexDirection::Row);
+        auto group = std::make_shared<Element>();
+        group->box.boxSizing = BoxSizing::BorderBox;
+        group->layout.SetFlexDirection(FlexDirection::Row);
+        group->layoutItem.SetFlexShrink(0);
+        std::vector<std::shared_ptr<MeasuredButton>> buttons;
+        for (const char* text : {"Entdecken und mehr", "Kategorien und mehr", "Aktualisierungen"}) {
+            auto b = std::make_shared<MeasuredButton>(text, 0, 0, 50, 30, text);
+            b->layoutItem.SetFlexShrink(0);
+            group->AddChild(b);
+            buttons.push_back(b);
+        }
+        auto field = std::make_shared<Element>();
+        field->box.boxSizing = BoxSizing::BorderBox;
+        field->size.width = Dimension::Px(240);
+        field->size.height = Dimension::Px(30);
+        field->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        header->AddChild(group);
+        header->AddChild(field);
+        // As a window does: lay out, draw, and lay out again while drawing
+        // asked for it.
+        auto paint = CreateRenderContext(Size2Di(16, 16), nullptr);
+        int passes = 0;
+        do {
+            LayOut(header, 900, 40);
+            ++passes;
+            for (auto& b : buttons) b->Render(paint.get(), Rect2Df(0, 0, 16, 16));
+        } while (!header->IsLayoutValid() && passes < 4);
+        float sum = 0.f;
+        for (auto& b : buttons) sum += b->GetWidth();
+        const auto& last = buttons.back();
+        std::printf("  (buttons %.1f px together, group %.1f px, field at %.1f, last button ends at %.1f, %d pass(es))\n",
+                    sum, group->finalBounds.width, field->finalBounds.x, last->GetX() + last->GetWidth(), passes);
+        Check(buttons[0]->GetWidth() > 50.f, "the buttons grew past the 50 px given");
+        Check(group->finalBounds.width >= sum - 0.5f, "the group is as wide as its grown buttons");
+        Check(field->finalBounds.x >= last->GetX() + last->GetWidth() - 0.5f, "and the field starts after the last one");
+        Check(passes <= 2, "within one more pass, as a window lays out once more after a frame");
+    }
+
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
     return failures;
 }

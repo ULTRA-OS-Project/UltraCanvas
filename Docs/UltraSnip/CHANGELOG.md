@@ -1,3 +1,12 @@
+#### 2026-11-11 *0.1.7*
+- **`--background`: UltraSnip waits for the session.** Started so (as
+  UltraDesktop does with the desktop), it shows no window and holds the
+  Print Screen key, so the key snips while no UltraSnip window is open, and
+  the desktop's screenshot button and Super+Shift+S reach a copy that is
+  running already. Its window, once a snip has shown it, hides when closed
+  instead of ending UltraSnip. A second `--background` start reaches the
+  running copy and changes nothing.
+
 #### 2026-11-11 *0.1.6*
 - **Print Screen starts a snip.** While UltraSnip runs, the Print Screen key
   starts a snip with the shape, kind and delay chosen on the bar, as Start

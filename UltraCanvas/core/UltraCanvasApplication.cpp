@@ -1279,7 +1279,8 @@ namespace UltraCanvas {
         // policy or provider set after it, a change of the desktop - here.
         if (again) {
             debugOutput << "UltraCanvas: theme " << theme.name << " ("
-                        << (themePolicy_ == ThemePolicy::Own ? "the application's own" : "follows the host")
+                        << (themePolicy_ == ThemePolicy::FollowHost ? "follows the host"
+                            : themePolicy_ == ThemePolicy::Light ? "light" : themePolicy_ == ThemePolicy::Dark ? "dark" : "the application's own")
                         << "), font " << theme.fonts.ui.fontFamily << " " << theme.fonts.ui.fontSize << std::endl;
         }
     }

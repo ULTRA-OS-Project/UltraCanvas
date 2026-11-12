@@ -2,6 +2,7 @@
 // Implementation of the new RAM disc dialog. Construction follows
 // UltraFilerFindTextDialog (flex-column content, custom Create / Cancel
 // buttons so Create can refuse a bad name without closing).
+// Version: 1.1.4 - the error colour is the theme's danger (UltraFilerLook.h)
 // Version: 1.1.3 - the size notes and the name errors go through Tr
 // Version: 1.1.2 - the note under the size is as tall as its text, the window as tall
 //                  as its content, and the buttons sit at the bottom right
@@ -10,6 +11,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraFilerRamDiskDialog.h"
+#include "UltraFilerLook.h"
 #include "UltraFilerRamDisks.h"
 
 #include "UltraCanvasButton.h"
@@ -135,7 +137,7 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
 
     errorLabel_ = std::make_shared<UltraCanvasLabel>(
         "uf-ramdisk-error", 0, 0, kContentWidth, kLabelHeight, "");
-    errorLabel_->SetTextColor(Color(200, 30, 30));
+    errorLabel_->SetTextColor(Look().danger);
     content->AddChild(errorLabel_);
 
     AddChild(content);

@@ -1,6 +1,7 @@
 // Apps/UltraStore/core/Purchase.cpp
 // Buying through the payment service (Purchase.h).
 // Version: 0.3.0 - subscriptions, revoked licences, SyncLicences
+// Version: 0.2.1 - the messages and the update terms through Tr
 // Version: 0.2.0 - what the purchase includes, the licence file
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -9,6 +10,7 @@
 #include "Verifier.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraNet/UltraNetCore.h"
@@ -21,6 +23,10 @@
 #include <cstdint>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrC;
+using UltraCanvas::TrF;
 
 namespace {
 
@@ -41,16 +47,16 @@ std::string Encode(const std::string& text) {
 
 Result<UltraCanvas::JSONValue> Answer(const HttpReply& reply, const std::string& what) {
     using R = Result<UltraCanvas::JSONValue>;
-    if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The payment service could not be reached", reply.error);
+    if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, Tr("The payment service could not be reached"), reply.error);
     UltraCanvas::JSONParseResult parse;
     const UltraCanvas::JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
     if (reply.status < 200 || reply.status >= 300) {
         const std::string description = parse.success && v.IsObject() ? v.Get("error_description").GetString() : std::string();
         return R::Failure(reply.status == 404 ? ErrorCode::NotFound : ErrorCode::NetworkError,
-                          description.empty() ? what + ": the payment service answered HTTP " + std::to_string(reply.status) : description,
+                          description.empty() ? TrF("{0}: the payment service answered HTTP {1}", what, reply.status) : description,
                           "HTTP " + std::to_string(reply.status));
     }
-    if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, what + ": the payment service's answer is not JSON", parse.errorMessage);
+    if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, TrF("{0}: the payment service's answer is not JSON", what), parse.errorMessage);
     return R::Succeed(v);
 }
 
@@ -128,22 +134,22 @@ HttpCall UltraNetHttpCall() {
 
 Result<Order> StartCheckout(const std::string& paymentUrl, const std::string& appId, const std::string& code, const HttpCall& http) {
     using R = Result<Order>;
-    if (paymentUrl.empty()) return R::Failure(ErrorCode::NotAvailable, "The catalog names no payment service");
+    if (paymentUrl.empty()) return R::Failure(ErrorCode::NotAvailable, Tr("The catalog names no payment service"));
     UltraCanvas::JSONValue body = UltraCanvas::JSONValue::MakeObject();
     body.Set("app", appId);
     if (!code.empty()) body.Set("code", code);
-    const auto answer = Answer(http("POST", TrimSlash(paymentUrl) + "/v1/checkout", UltraCanvas::JSON::Serialize(body)), "checkout");
+    const auto answer = Answer(http("POST", TrimSlash(paymentUrl) + "/v1/checkout", UltraCanvas::JSON::Serialize(body)), TrC("payment step", "checkout"));
     if (!answer) return R::Failure(answer.error.code, answer.error.message, answer.error.detail);
     Order order = OrderOf(answer.Value());
     if (order.orderId.empty() || order.secret.empty() || order.checkoutUrl.empty()) {
-        return R::Failure(ErrorCode::ParseError, "The payment service's order lacks its id, secret or checkout URL");
+        return R::Failure(ErrorCode::ParseError, Tr("The payment service's order lacks its id, secret or checkout URL"));
     }
     return R::Succeed(std::move(order));
 }
 
 Result<Order> OrderStatus(const std::string& paymentUrl, const std::string& orderId, const std::string& secret, const HttpCall& http) {
     using R = Result<Order>;
-    const auto answer = Answer(http("GET", TrimSlash(paymentUrl) + "/v1/orders/" + Encode(orderId) + "?secret=" + Encode(secret), ""), "order");
+    const auto answer = Answer(http("GET", TrimSlash(paymentUrl) + "/v1/orders/" + Encode(orderId) + "?secret=" + Encode(secret), ""), TrC("payment step", "order"));
     if (!answer) return R::Failure(answer.error.code, answer.error.message, answer.error.detail);
     Order order = OrderOf(answer.Value());
     order.secret = secret;
@@ -164,10 +170,10 @@ Result<std::string> SignedDownloadUrl(const std::string& paymentUrl, const std::
                                       const std::string& file, const HttpCall& http) {
     using R = Result<std::string>;
     const auto answer = Answer(http("POST", TrimSlash(paymentUrl) + "/v1/orders/" + Encode(orderId) + "/download?secret=" + Encode(secret) +
-                                    "&file=" + Encode(file), "{}"), "download");
+                                    "&file=" + Encode(file), "{}"), TrC("payment step", "download"));
     if (!answer) return R::Failure(answer.error.code, answer.error.message, answer.error.detail);
     const std::string url = answer.Value().Get("url").GetString();
-    if (url.empty()) return R::Failure(ErrorCode::ParseError, "The payment service gave no download URL");
+    if (url.empty()) return R::Failure(ErrorCode::ParseError, Tr("The payment service gave no download URL"));
     return R::Succeed(url);
 }
 
@@ -203,9 +209,9 @@ bool Licence::ValidOn(const std::string& day) const {
 }
 
 std::string Licence::UpdateTerms() const {
-    if (updates == "never") return "the bought version only" + (issued.empty() ? std::string() : " (" + issued + ")");
-    if (updates == "until" && !updatesUntil.empty()) return "updates until " + updatesUntil;
-    return "updates included";
+    if (updates == "never") return issued.empty() ? Tr("the bought version only") : TrF("the bought version only ({0})", issued);
+    if (updates == "until" && !updatesUntil.empty()) return TrF("updates until {0}", updatesUntil);
+    return Tr("updates included");
 }
 
 namespace {
@@ -214,12 +220,12 @@ namespace {
 Result<std::pair<std::vector<uint8_t>, std::vector<uint8_t>>> SplitLicence(const std::string& token) {
     using R = Result<std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>;
     const std::string prefix = "ULIC1.";
-    if (token.rfind(prefix, 0) != 0) return R::Failure(ErrorCode::ParseError, "Not a licence");
+    if (token.rfind(prefix, 0) != 0) return R::Failure(ErrorCode::ParseError, Tr("Not a licence"));
     const size_t dot = token.find('.', prefix.size());
-    if (dot == std::string::npos) return R::Failure(ErrorCode::ParseError, "Not a licence");
+    if (dot == std::string::npos) return R::Failure(ErrorCode::ParseError, Tr("Not a licence"));
     std::vector<uint8_t> payload, signature;
     if (!Base64UrlDecode(token.substr(prefix.size(), dot - prefix.size()), payload) || !Base64UrlDecode(token.substr(dot + 1), signature)) {
-        return R::Failure(ErrorCode::ParseError, "The licence is not base64url");
+        return R::Failure(ErrorCode::ParseError, Tr("The licence is not base64url"));
     }
     return R::Succeed(std::make_pair(std::move(payload), std::move(signature)));
 }
@@ -233,7 +239,7 @@ Result<Licence> ParseLicence(const std::string& token) {
     const std::string bytes(parts.Value().first.begin(), parts.Value().first.end());
     UltraCanvas::JSONParseResult parse;
     const UltraCanvas::JSONValue v = UltraCanvas::JSON::Parse(bytes, &parse);
-    if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The licence's payload is not JSON");
+    if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, Tr("The licence's payload is not JSON"));
     Licence l;
     l.licenceId = v.Get("licence").GetString();
     l.app = v.Get("app").GetString();
@@ -242,7 +248,7 @@ Result<Licence> ParseLicence(const std::string& token) {
     l.validUntil = v.Get("valid_until").GetString();   // a subscription's licence
     l.updates = v.Get("updates").GetString();
     l.updatesUntil = v.Get("updates_until").GetString();
-    if (l.licenceId.empty() || l.app.empty()) return R::Failure(ErrorCode::ParseError, "The licence names no app");
+    if (l.licenceId.empty() || l.app.empty()) return R::Failure(ErrorCode::ParseError, Tr("The licence names no app"));
     return R::Succeed(std::move(l));
 }
 
@@ -251,10 +257,10 @@ Result<Licence> VerifyLicence(const std::string& token, const std::string& publi
     const auto parts = SplitLicence(token);
     if (!parts) return R::Failure(parts.error.code, parts.error.message);
     std::vector<uint8_t> key;
-    if (!FromHex(publicKeyHex, key) || key.size() != 32) return R::Failure(ErrorCode::InvalidArgument, "The licence key is not a 32-byte hex public key");
+    if (!FromHex(publicKeyHex, key) || key.size() != 32) return R::Failure(ErrorCode::InvalidArgument, Tr("The licence key is not a 32-byte hex public key"));
     const std::string bytes(parts.Value().first.begin(), parts.Value().first.end());
     if (const auto ok = VerifyCatalogSignature(bytes, parts.Value().second, {key}); !ok) {
-        return R::Failure(ErrorCode::SignatureInvalid, "The licence is not signed by the store's licence key", ok.error.detail);
+        return R::Failure(ErrorCode::SignatureInvalid, Tr("The licence is not signed by the store's licence key"), ok.error.detail);
     }
     return ParseLicence(token);
 }
@@ -271,11 +277,11 @@ Result<void> WriteLicenceFile(const std::string& path, const std::string& token)
     const fs::path tmp = file.parent_path() / UltraCanvas::PathFromUtf8(std::string(kLicenceFileName) + ".tmp");
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        if (!out) return Result<void>::Failure(ErrorCode::IoError, "The licence file could not be written", path);
+        if (!out) return Result<void>::Failure(ErrorCode::IoError, Tr("The licence file could not be written"), path);
         out << token << "\n";
     }
     fs::rename(tmp, file, ec);
-    if (ec) return Result<void>::Failure(ErrorCode::IoError, "The licence file could not be written", path);
+    if (ec) return Result<void>::Failure(ErrorCode::IoError, Tr("The licence file could not be written"), path);
     return Result<void>::Succeed();
 }
 
@@ -295,9 +301,9 @@ std::string FindLicenceFile(const std::string& pathUtf8) {
 
 Result<Licence> ReadLicenceFile(const std::string& pathUtf8, const std::string& publicKeyHex) {
     using R = Result<Licence>;
-    if (pathUtf8.empty()) return R::Failure(ErrorCode::NotFound, "No licence file");
+    if (pathUtf8.empty()) return R::Failure(ErrorCode::NotFound, Tr("No licence file"));
     std::ifstream in(UltraCanvas::PathFromUtf8(pathUtf8), std::ios::binary);
-    if (!in) return R::Failure(ErrorCode::NotFound, "No licence file", pathUtf8);
+    if (!in) return R::Failure(ErrorCode::NotFound, Tr("No licence file"), pathUtf8);
     std::string token((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' ')) token.pop_back();
     return VerifyLicence(token, publicKeyHex);
