@@ -1,8 +1,9 @@
 // Apps/ChatCube/ui/ChatCubeSettings.cpp
 // ChatCube's preferences in <settings folder>/ChatCube/settings.json.
+// Version: 0.3.0 - the relay server (networks.relay)
 // Version: 0.2.0 - the look is system, light or dark
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettings.h"
@@ -45,6 +46,7 @@ void Settings::Load() {
     sendTyping = file.GetBool("messages.send-typing", defaults.sendTyping);
     showTyping = file.GetBool("messages.show-typing", defaults.showTyping);
     showNearby = file.GetBool("networks.show-nearby", defaults.showNearby);
+    relayServer = file.GetString("networks.relay", defaults.relayServer);
 }
 
 bool Settings::Save() const {
@@ -57,6 +59,7 @@ bool Settings::Save() const {
     file.Set("messages.send-typing", sendTyping);
     file.Set("messages.show-typing", showTyping);
     file.Set("networks.show-nearby", showNearby);
+    file.Set("networks.relay", relayServer);
     return file.Save();
 }
 

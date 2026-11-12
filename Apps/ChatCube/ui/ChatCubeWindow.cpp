@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.9 - the relay from the settings (Networks > Relay) instead of a field on the sign-in
+//                  page; a Connecting page while ChatCube Direct signs in, with Try again on a failure
 // Version: 0.2.8 - a message's right-click menu: its file opened or saved, the message deleted for oneself or
 //                  for everyone, as its messenger allows
 // Version: 0.2.7 - recovery by the link e-mailed to the ID's address: the window waits for it and signs in
@@ -19,7 +21,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -151,6 +153,17 @@ std::string PresenceText(UltraIMPresence presence) {
     return std::string();
 }
 
+// The relay as the Connecting page names it: its host, without the scheme
+// and the path ("relay-chatcube.ultraos.eu").
+std::string RelayHost(const std::string& url) {
+    std::string host = Trim(url);
+    const size_t scheme = host.find("://");
+    if (scheme != std::string::npos) host.erase(0, scheme + 3);
+    const size_t path = host.find('/');
+    if (path != std::string::npos) host.erase(path);
+    return host;
+}
+
 } // namespace
 
 ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId, Settings settings)
@@ -185,6 +198,7 @@ bool ChatCubeWindow::Create() {
     window_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window_->SetBackgroundColor(L().ground);
     window_->AddChild(BuildSignInPage());
+    window_->AddChild(BuildConnectingPage());
     window_->AddChild(BuildChatView());
     ApplySettings();
     window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
@@ -200,8 +214,10 @@ bool ChatCubeWindow::Create() {
     }
     hasIdentity_ = info.hasStoredSession;
     UpdateSignInForm();
-    ShowSignInPage();
-    if (hasIdentity_) SignIn();         // a saved identity signs in without asking
+    // A saved identity signs in without asking, on the Connecting page; a
+    // computer without one is asked to make one.
+    if (hasIdentity_) SignIn();
+    else ShowSignInPage();
     return true;
 }
 
@@ -261,10 +277,6 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     unlockCode_ = MakeInput("cc-signin-code", "The 6-digit code UltraAuthenticator shows", static_cast<int>(kFormWidth));
     unlockCode_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
     card->AddChild(unlockCode_);
-    relay_ = MakeInput("cc-signin-relay", "Relay server (optional), e.g. https://relay.example.org",
-                       static_cast<int>(kFormWidth));
-    relay_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
-    card->AddChild(relay_);
     localNetwork_ = std::make_shared<UltraCanvasCheckbox>("cc-signin-lan", 0, 0, static_cast<long>(kFormWidth), 22,
                                                           "Also find people on this network");
     localNetwork_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -339,13 +351,52 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
         "cc-signin-note",
         "Your ChatCube ID is a key made on this computer. Messages are end-to-end encrypted; "
         "the relay only connects you and keeps messages for people who are offline. "
-        "Without one, ChatCube finds the people on your network itself.",
+        "Which relay is set in Settings > Networks > Relay.",
         9.0f, L().inkFaint);
     note->SetWrap(TextWrap::WrapWord);
     note->SetAlignment(TextAlignment::Center);
     note->size.width = CSSLayout::Dimension::Px(kFormWidth + 48);
     signInPage_->AddChild(note);
     return signInPage_;
+}
+
+std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConnectingPage() {
+    connectingPage_ = std::make_shared<UltraCanvasContainer>("cc-connecting");
+    connectingPage_->layout.SetFlexColumn()
+        .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+        .SetFlexAlignItems(CSSLayout::AlignItems::Center)
+        .SetFlexGap(10);
+    connectingPage_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    connectingPage_->AddChild(MakeLogo("cc-connecting-logo", 72));
+    auto title = MakeLabel("cc-connecting-name", "ChatCube", 26.0f);
+    title->SetFontWeight(FontWeight::Bold);
+    connectingPage_->AddChild(title);
+    connectingPage_->AddSpacer(6);
+    connectingTitle_ = MakeLabel("cc-connecting-title", "Connecting\xE2\x80\xA6", 13.0f);
+    connectingPage_->AddChild(connectingTitle_);
+    connectingRelay_ = MakeLabel("cc-connecting-relay", "", 10.0f, L().inkMuted);
+    connectingPage_->AddChild(connectingRelay_);
+    connectingStatus_ = MakeLabel("cc-connecting-status", "", kTextFont, L().inkMuted);
+    connectingStatus_->SetWrap(TextWrap::WrapWord);
+    connectingStatus_->SetAlignment(TextAlignment::Center);
+    connectingStatus_->size.width = CSSLayout::Dimension::Px(kFormWidth + 48);
+    connectingPage_->AddChild(connectingStatus_);
+
+    // On a failure: again, or the Settings window to change the relay.
+    connectingButtons_ = MakeRow("cc-connecting-buttons", 8);
+    connectingButtons_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+    auto retry = MakeButton("cc-connecting-retry", "Try again", 150, true);
+    retry->SetOnClick([this]() { SignIn(); });
+    connectingButtons_->AddChild(retry);
+    auto settings = MakeButton("cc-connecting-settings", "Settings", 150);
+    settings->SetOnClick([this]() { OpenSettings(); });
+    connectingButtons_->AddChild(settings);
+    connectingButtons_->SetVisible(false);
+    connectingPage_->AddChild(connectingButtons_);
+
+    connectingPage_->SetVisible(false);
+    return connectingPage_;
 }
 
 std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
@@ -826,12 +877,25 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
 
 void ChatCubeWindow::ShowSignInPage() {
     if (chatView_) chatView_->SetVisible(false);
+    if (connectingPage_) connectingPage_->SetVisible(false);
     if (signInPage_) signInPage_->SetVisible(true);
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::ShowConnectingPage(bool failed) {
+    const std::string host = RelayHost(settings_.relayServer);
+    connectingTitle_->SetText(failed ? "Could not connect" : "Connecting\xE2\x80\xA6");
+    connectingRelay_->SetText(host.empty() ? "the local network" : host);
+    connectingButtons_->SetVisible(failed);
+    if (chatView_) chatView_->SetVisible(false);
+    if (signInPage_) signInPage_->SetVisible(false);
+    connectingPage_->SetVisible(true);
     if (window_) window_->RequestRedraw();
 }
 
 void ChatCubeWindow::ShowChatView() {
     if (signInPage_) signInPage_->SetVisible(false);
+    if (connectingPage_) connectingPage_->SetVisible(false);
     if (chatView_) chatView_->SetVisible(true);
     if (window_) window_->RequestRedraw();
 }
@@ -864,6 +928,7 @@ void ChatCubeWindow::RenderStatus() {
 
 void ChatCubeWindow::SetSignInStatus(const std::string& text) {
     if (signInStatus_) signInStatus_->SetText(text);
+    if (connectingStatus_) connectingStatus_->SetText(text);
 }
 
 // =================================================================== actions
@@ -886,8 +951,6 @@ void ChatCubeWindow::UpdateSignInForm() {
     recoverToggle_->SetText(!recovering ? "Recover my ChatCube ID"
                             : recoveryId_.empty() ? "Make a new ChatCube ID instead"
                                                   : "Start over - send a new link");
-    relay_->SetPlaceholder(recovering ? "Your relay, e.g. https://relay.example.org"
-                                      : "Relay server (optional), e.g. https://relay.example.org");
     if (recovering) signIn_->SetText(recoveryId_.empty() ? "E-mail me a link" : "Check now");
     else if (creating) signIn_->SetText("Create my ChatCube ID");
     else if (unlockStep_ == UltraIMAuthStep::Password || unlockStep_ == UltraIMAuthStep::Code) signIn_->SetText("Unlock");
@@ -920,11 +983,11 @@ void ChatCubeWindow::StopRecoveryPolling() {
 }
 
 void ChatCubeWindow::Recover() {
-    const std::string server = Trim(relay_->GetText());
+    const std::string server = Trim(settings_.relayServer);
     if (!recoveryId_.empty()) return PollRecovery();        // "Check now"
     // The link, e-mailed to the address - if an ID with recovery on has it.
     const std::string address = Trim(recoverAddress_->GetText());
-    if (server.empty()) return SetSignInStatus("Type the address of the relay your ID used.");
+    if (server.empty()) return SetSignInStatus("Set the relay your ID used in Settings > Networks > Relay.");
     if (address.find('@') == std::string::npos) return SetSignInStatus("Type your ID's e-mail address.");
     signIn_->SetDisabled(true);
     SetSignInStatus("Asking the relay\xE2\x80\xA6");
@@ -946,7 +1009,7 @@ void ChatCubeWindow::PollRecovery() {
     if (recoveryId_.empty() || recoveryAsking_) return;
     recoveryAsking_ = true;
     UltraIMRecoveryAnswer answer;
-    answer.server = Trim(relay_->GetText());
+    answer.server = Trim(settings_.relayServer);
     answer.recoveryId = recoveryId_;
     UltraIM_FinishRecovery(providerId_, answer, [this](const UltraIMResult& r) {
         recoveryAsking_ = false;
@@ -974,7 +1037,9 @@ void ChatCubeWindow::SignIn() {
     if (!hasIdentity_ && recovering_) return Recover();
     UltraIMCredentials credentials;
     credentials.loginType = UltraIMLoginType::KeyPair;
-    credentials.server = Trim(relay_->GetText());
+    // The relay is a setting (Networks > Relay), ULTRA OS's own unless
+    // changed; empty, the provider uses the one it remembers, if any.
+    credentials.server = Trim(settings_.relayServer);
     credentials.displayName = Trim(name_->GetText());
     credentials.createAccount = !hasIdentity_;
     const auto chosen = static_cast<UltraIMSignInProtection>(std::clamp(protection_->GetSelectedIndex(), 0, 3));
@@ -1018,16 +1083,21 @@ void ChatCubeWindow::SignIn() {
     // no relay remembered either).
     credentials.localNetwork = localNetwork_->IsChecked();
     signIn_->SetDisabled(true);
+    // Signing in has a page of its own: the form is not shown while it runs.
     SetSignInStatus(unlockStep_ == UltraIMAuthStep::Password ? "Opening the key vault\xE2\x80\xA6"
-                                                             : "Connecting\xE2\x80\xA6");
+                    : !hasIdentity_ ? "Making your ChatCube ID\xE2\x80\xA6"
+                               : std::string());
+    ShowConnectingPage();
     const bool created = !hasIdentity_;
     UltraIM_SignIn(providerId_, credentials, [this, created, chosen, password](const UltraIMResult& r) {
         signIn_->SetDisabled(false);
         if (!r) {
             // A protected ID: the password, then the code, on this page.
             UltraIMProviderInfo asked;
-            if (hasIdentity_ && UltraIM_GetProviderInfo(providerId_, asked) &&
-                (asked.authStep == UltraIMAuthStep::Password || asked.authStep == UltraIMAuthStep::Code)) {
+            const bool unlock = hasIdentity_ && UltraIM_GetProviderInfo(providerId_, asked) &&
+                                (asked.authStep == UltraIMAuthStep::Password ||
+                                 asked.authStep == UltraIMAuthStep::Code);
+            if (unlock) {
                 // Typed again from the start: a wrong one, or the next step.
                 unlockPassword_->SetText(std::string());
                 unlockCode_->SetText(std::string());
@@ -1036,7 +1106,11 @@ void ChatCubeWindow::SignIn() {
                 (unlockStep_ == UltraIMAuthStep::Password ? unlockPassword_ : unlockCode_)->SetFocus(true);
             }
             SetSignInStatus(r.message);
-            ShowSignInPage();
+            // A new ID, or a password or code to type: the form again. An
+            // ID that could not connect: the Connecting page says why, with
+            // Try again and the Settings to change the relay.
+            if (unlock || !hasIdentity_) ShowSignInPage();
+            else ShowConnectingPage(true);
             return;
         }
         unlockStep_ = UltraIMAuthStep::Idle;
@@ -2441,8 +2515,9 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 SetNetworkButton(matrixToggle_, "Matrix", "Matrix account");
                 break;
             }
-            ShowSignInPage();
-            SetSignInStatus("Please sign in again.");
+            SetSignInStatus("The connection ended - sign in again.");
+            if (hasIdentity_) ShowConnectingPage(true);
+            else ShowSignInPage();
             break;
         default:
             break;

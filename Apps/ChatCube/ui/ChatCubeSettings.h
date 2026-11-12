@@ -6,9 +6,10 @@
 // Everything but the look applies at once; the look is read when ChatCube
 // starts, since every element of the window takes its colours as it is built.
 //
+// Version: 0.3.0 - the relay server is a setting (Networks > Relay), ULTRA OS's own relay by default
 // Version: 0.2.0 - the look is system, light or dark; system follows the desktop
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -33,6 +34,11 @@ struct Settings {
     bool      showTyping = true;                    // show "typing…" when they do
     // Networks
     bool      showNearby = true;                    // "On this network" in the sidebar
+    // The relay ChatCube Direct signs in through, finds people and keeps
+    // messages for the offline on; "" = the one this computer used last,
+    // or the local network only when there was none.
+    static constexpr const char* kDefaultRelay = "https://relay-chatcube.ultraos.eu";
+    std::string relayServer = kDefaultRelay;
 
     // Reads the file; a missing one leaves the defaults.
     void Load();
