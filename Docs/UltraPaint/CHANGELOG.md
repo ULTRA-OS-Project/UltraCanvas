@@ -1,3 +1,6 @@
+#### 2026-11-12 *0.2.37*
+- **File ▸ Close Tab has an icon** (`media/icons/ultrapaint/16/close-tab.svg`, a tab with a cross, in the line style of the rest of the menu).
+
 #### 2026-11-11 *0.2.36*
 - **Auto contrast counts with the framework's histogram model.** The stretch
   comes from `UltraCanvasHistogramModel` (`ClippedRange`, 0.2 % off each end per

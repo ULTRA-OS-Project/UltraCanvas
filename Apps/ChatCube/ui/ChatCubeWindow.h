@@ -1,19 +1,30 @@
 // Apps/ChatCube/ui/ChatCubeWindow.h
-// The ChatCube window. Two views, one shown at a time:
+// The ChatCube window. Three views, one shown at a time:
 //
-// Sign-in page:
+// Sign-in page (a computer without a ChatCube ID, or one that asks for its
+// password or code):
 //                        ChatCube
 //      Chat directly with the people you know - end-to-end encrypted
 //                 [ Your name               ]
 //                 [ E-mail address          ]   to recover the account
 //                 [ Phone number (+...)     ]   with, kept for you alone
-//                 [ Relay server (optional) ]
 //                 [x] Also find people on this network
 //                 Signing in on this computer: [ No password v ]
 //                 [ Password ] [ Repeat ]        (when one is chosen)
 //                 [ Create my ChatCube ID   ]   (or: Sign in)
-//      No relay at all: ChatCube works on the local network only.
 //                       status line
+//
+// The relay is not asked for here: it is a setting (Settings > Networks >
+// Relay), https://relay-chatcube.ultraos.eu unless changed.
+//
+// Connecting page - while ChatCube Direct signs in (at every start with an
+// ID on this computer, and after Create / Unlock):
+//
+//                        ChatCube
+//                      Connecting…
+//                relay-chatcube.ultraos.eu
+//                     status / error
+//            [ Try again ]  [ Settings ]       (when it failed)
 //
 // An ID behind a password or an authenticator code (UltraIM's sign-in
 // protection) is asked for them at every start, one after the other, on the
@@ -59,6 +70,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.0 - the relay from the settings, not the sign-in page; a Connecting page of its own
 // Version: 0.2.9 - a message's right-click menu: its file opened or saved, the message deleted for oneself or
 //                  for everyone, as its messenger allows
 // Version: 0.2.8 - recovery by the link e-mailed to the ID's address: ChatCube waits for it to be opened
@@ -80,7 +92,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -132,10 +144,13 @@ public:
 private:
     // ---- views ---------------------------------------------------------------
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSignInPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildConnectingPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildChatView();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSidebar();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildConversationPane();
     void ShowSignInPage();
+    // The Connecting page; `failed`: with the error and Try again / Settings.
+    void ShowConnectingPage(bool failed = false);
     void ShowChatView();
 
     // ---- actions -------------------------------------------------------------
@@ -285,7 +300,12 @@ private:
     std::string recoveryId_;           // "" until the link is on its way
     uint64_t    recoveryTimer_ = 0;    // asks the relay whether it was opened (0: none)
     bool        recoveryAsking_ = false;
-    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> relay_;
+    // The Connecting page.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> connectingPage_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     connectingTitle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     connectingRelay_;   // the relay's host
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     connectingStatus_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> connectingButtons_; // Try again, Settings
     std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>  localNetwork_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    signIn_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     signInStatus_;

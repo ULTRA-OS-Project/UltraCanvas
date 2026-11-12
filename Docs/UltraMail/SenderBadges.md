@@ -40,8 +40,11 @@ class, the service, the reason and the scan's findings in words, and a
 suspicious or scam message also carries a warning strip above its body in the
 reading pane. When the scan's verdict is suspicious or worse and a button (or,
 failing that, a bare link) leads off the sender's domain, the strip is titled
-*"Warning: This is likely a phishing\* email!"*, quotes both domains —
-`Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
+*"Warning: This is likely a phishing\* email!"*, lists both domains as a
+numbered list under **Mismatch of domains:** — `1. Sender domain: …`,
+`2. Button domain: …`, then the scan's reasons numbered on (`3. A link reads
+"…" but actually goes to …`) — with every mention of the two domains in bold
+and in the strip's colour, and explains
 the footnote: phishing emails try to get your credentials to hack your
 accounts on other websites (`FindDomainMismatch` in the scan). A message the
 scan reads as a **romance scam** is titled *"Warning: This is likely a romance
@@ -433,6 +436,19 @@ exist. Changing a switch marks every stored verdict stale
 and the rest are re-scanned by the mail check a batch at a time, the first
 check starting straight away.
 
+### Hiding the warning strip
+
+*Settings > Display > Email warnings* decides which warnings the strip above
+the message shows (`WarningStripOptions`, `strip_*` in `preferences.ini`), all
+on: *phishing*, *scam* (advance-fee letters, letters in an agency's name, any
+other scam verdict), *love scam* (romance), *loan scam*, *cryptocurrency
+scam*, *the caution on mail about cryptocurrency*, and *other warnings* (a
+blocked sender, "parts of this message do not add up"). This is display only:
+the message is still scanned and its badge still turns red or orange - to stop
+looking for a kind altogether, switch it off under *Spam/scam warnings* above.
+The kind is the one the strip's title would name, in the same order: a romance
+scam that also links elsewhere is a love scam, not phishing.
+
 ### Trusted and blocked senders
 
 A right-click on a sender — on a row of the message list, or on the name or
@@ -592,7 +608,7 @@ folder.
 | Badge column in the message list | `Apps/UltraMail/ui/UltraMailMailView.cpp` |
 | Badge + warning strip in the reading pane | `Apps/UltraMail/ui/UltraMailMessagePreview.cpp` |
 | Colours | `Apps/UltraMail/ui/UltraMailTheme.h` (`kTrust*`) |
-| The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
+| The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings; Display > Email warnings for the strip, `warningStrip`), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |

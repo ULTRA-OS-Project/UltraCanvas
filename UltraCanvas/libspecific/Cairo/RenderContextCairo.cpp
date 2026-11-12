@@ -1,5 +1,8 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.0.17 - the text-layout cache key holds the whole text: two texts that
+//                  matched in their first 300 characters shared one layout; an
+//                  entry's size counts its text
 // Version: 1.0.16 - SetAlpha fades fills, strokes and text too, not only images: a
 //                  colour's alpha is scaled by it, and a pattern (gradient) is
 //                  painted through a group laid down at it
@@ -14,7 +17,7 @@
 //                  or solid on its own (a dashed side took the previous colour and
 //                  passed its dash on to the sides after it)
 // Version: 1.0.11 - A non-invertible matrix is refused instead of killing the context
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -38,8 +41,12 @@ namespace UltraCanvas {
     struct UCTextLayoutCacheEntry {
         std::shared_ptr<UCTextLayout> payload;
         std::chrono::steady_clock::time_point lastAccess;
+        // The text is held twice - in the key and in the Pango layout - so a
+        // long one weighs against the budget by its length, not as a fixed
+        // few hundred bytes.
         size_t GetEntrySize() {
-            return sizeof(UCTextLayoutCacheEntry) + sizeof(UCTextLayout) + 256;
+            const size_t textBytes = payload ? payload->GetText().size() : 0;
+            return sizeof(UCTextLayoutCacheEntry) + sizeof(UCTextLayout) + 256 + 2 * textBytes;
         }
     };
     static UCCache<UCTextLayout, UCTextLayoutCacheEntry> g_TextLayoutsCache(20 * 1024 * 1024);
@@ -274,7 +281,10 @@ namespace UltraCanvas {
 //                  << static_cast<int>(g_TextHintStyle)
 //                  << static_cast<int>(g_TextHintMetrics) << "|"
                   << "|r" << static_cast<int>(g_PangoResolution * 100)
-                  << text.substr(0,300);
+                  // The whole text, never a prefix: two strings that only
+                  // differ after the cut shared one layout, and the second
+                  // was drawn - and measured - as the first.
+                  << "|" << text;
 
         return keyStream.str();
     }
