@@ -1,3 +1,9 @@
+#### 2026-11-12 *0.1.13*
+- **The marketplace call speaks PUT.** `Market.h`'s HTTP call (shared with
+  the operator's client, `Apps/UltraStoreOperator`) sends a PUT with a
+  JSON body the way it sends a POST; nothing the merchant backend does
+  changes.
+
 #### 2026-11-12 *0.1.12*
 - `publish` writes the marketplace service's URL (the setting
   `market.url`) into the catalog as `market_url`, so a store reading a
