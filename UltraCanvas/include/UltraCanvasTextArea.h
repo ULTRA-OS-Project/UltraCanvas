@@ -1,5 +1,6 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.18.1 - a font change keeps the top line in view and the scroll offset inside the content
 // Version: 3.18.0 - the SetStyle rule and the constructor tail of an area that follows by default
 // Version: 3.17.0 - a read-only or display-only area opens a Copy / Select All menu on a
 //                 right-click (ShowReadOnlyContextMenu, SetReadOnlyContextMenu)
