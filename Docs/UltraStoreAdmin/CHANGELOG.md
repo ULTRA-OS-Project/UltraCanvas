@@ -1,3 +1,9 @@
+#### 2026-11-12 *0.1.14*
+- Every text of the window goes through `Tr`
+  (`media/locale/<lang>/UltraStoreAdmin.json`), sentences with values as
+  `TrF`, so the admin backend shows in the desktop's language once a
+  catalogue has them.
+
 #### 2026-11-12 *0.1.13*
 - **The marketplace call speaks PUT.** `Market.h`'s HTTP call (shared with
   the operator's client, `Apps/UltraStoreOperator`) sends a PUT with a
