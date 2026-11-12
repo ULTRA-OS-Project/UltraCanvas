@@ -2,6 +2,8 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.5.0 - Gradient fills read and written (a:gradFill, VML v:fill); VML pictures
+//                  (v:imagedata) as pictures in the line or floating
 // Version: 1.4.0 - Drawn shapes: wps shapes (preset and custom outlines, theme colours), wpg
 //                  groups with pictures and text, VML shapes and groups; a header's own
 //                  relationships, so its pictures load
@@ -1484,9 +1486,7 @@ private:
                 shape.fillColor = DrawingColor(solid);
                 fillStated = true;
             } else if (auto* gradient = spPr->FirstChildElement("a:gradFill")) {
-                // A gradient as its first stop's colour.
-                auto* list = gradient->FirstChildElement("a:gsLst");
-                shape.fillColor = DrawingColor(list ? list->FirstChildElement("a:gs") : nullptr);
+                ReadGradient(gradient, shape);
                 fillStated = true;
             } else if (auto* pattern = spPr->FirstChildElement("a:pattFill")) {
                 shape.fillColor = DrawingColor(pattern->FirstChildElement("a:fgClr"));
@@ -1523,6 +1523,37 @@ private:
             shape.arrowEnd = arrow(line->FirstChildElement("a:tailEnd"));
         }
         if (!shape.IsClosed() || !takesFill) shape.fillColor.clear();
+    }
+
+    // a:gradFill: its stops (a:gs, positions in thousandths of a percent),
+    // and a:lin's angle (60000ths of a degree, clockwise from left-to-right)
+    // or a:path's round kinds, from the centre out.
+    void ReadGradient(tinyxml2::XMLElement* gradient, RichShape& shape) const {
+        shape.gradientStops.clear();
+        auto* list = gradient->FirstChildElement("a:gsLst");
+        for (auto* stop = list ? list->FirstChildElement("a:gs") : nullptr; stop; stop = stop->NextSiblingElement("a:gs")) {
+            const std::string colour = DrawingColor(stop);
+            if (colour.empty()) continue;
+            shape.gradientStops.push_back({std::clamp(stop->FloatAttribute("pos", 0.0f) / 100000.0f, 0.0f, 1.0f), colour});
+        }
+        std::stable_sort(shape.gradientStops.begin(), shape.gradientStops.end(),
+                         [](const RichShape::GradientStop& a, const RichShape::GradientStop& b) { return a.position < b.position; });
+        if (auto* linear = gradient->FirstChildElement("a:lin")) {
+            shape.gradientAngleDeg = static_cast<float>(ParseEmu(Attr(linear, "ang"))) / 60000.0f;
+        } else if (auto* path = gradient->FirstChildElement("a:path")) {
+            shape.gradientRadial = true;
+            // Its centre: the middle of a:fillToRect (insets from each side).
+            if (auto* focus = path->FirstChildElement("a:fillToRect")) {
+                const float l = focus->FloatAttribute("l", 50000.0f), t = focus->FloatAttribute("t", 50000.0f);
+                const float r = focus->FloatAttribute("r", 50000.0f), b = focus->FloatAttribute("b", 50000.0f);
+                shape.gradientCenterX = std::clamp((l + 100000.0f - r) * 0.5f / 100000.0f, 0.0f, 1.0f);
+                shape.gradientCenterY = std::clamp((t + 100000.0f - b) * 0.5f / 100000.0f, 0.0f, 1.0f);
+            }
+        } else {
+            shape.gradientAngleDeg = 90.0f;      // Word's default: top to bottom
+        }
+        shape.fillColor = shape.gradientStops.empty() ? "" : shape.gradientStops.front().color;
+        if (shape.gradientStops.size() < 2) shape.gradientStops.clear();
     }
 
     static RichShape::TextAnchor TextAnchorOf(tinyxml2::XMLElement* bodyPr) {
@@ -1710,6 +1741,29 @@ private:
         return v == "f" || v == "false" || v == "0";
     }
 
+    // v:fill type="gradient" (linear) or "gradientRadial": the shape's
+    // colour and color2, placed by focus and turned by angle as Word 97's
+    // shades are (WordFormatInternal::ApplyOfficeShade).
+    static void ReadVmlGradient(tinyxml2::XMLElement* fill, RichShape& shape) {
+        const std::string type = Attr(fill, "type");
+        if ((type != "gradient" && type != "gradientRadial") || shape.fillColor.empty()) return;
+        std::string back = VmlColour(Attr(fill, "color2"));
+        if (back.empty()) back = "#FFFFFF";
+        double angle = 0.0, focus = 0.0;
+        WordFormatInternal::ReadNumberAt(Attr(fill, "angle"), 0, angle);
+        const std::string focusText = Attr(fill, "focus");
+        WordFormatInternal::ReadNumberAt(focusText, 0, focus);
+        if (!focusText.empty() && focusText.find('%') == std::string::npos) focus *= 100.0;   // a fraction
+        WordFormatInternal::ApplyOfficeShade(shape, shape.fillColor, back, focus, angle, type == "gradientRadial");
+        // A round one's centre (focusposition, fractions of the box).
+        double centre[2] = {0.0, 0.0};                       // VML's default: the top-left corner
+        if (shape.gradientRadial) {
+            WordFormatInternal::ReadNumbers(Attr(fill, "focusposition"), centre, 2);
+            shape.gradientCenterX = static_cast<float>(std::clamp(centre[0], 0.0, 1.0));
+            shape.gradientCenterY = static_cast<float>(std::clamp(centre[1], 0.0, 1.0));
+        }
+    }
+
     // A VML shape's look: fill, stroke (v:stroke's dash style and arrows).
     static void ReadVmlLook(tinyxml2::XMLElement* element, RichShape& shape) {
         if (!VmlOff(Attr(element, "filled"))) {
@@ -1720,6 +1774,7 @@ private:
         if (auto* fill = element->FirstChildElement("v:fill")) {
             if (VmlOff(Attr(fill, "on"))) shape.fillColor.clear();
             else if (!VmlColour(Attr(fill, "color")).empty() && !shape.fillColor.empty()) shape.fillColor = VmlColour(Attr(fill, "color"));
+            ReadVmlGradient(fill, shape);
         }
         if (!VmlOff(Attr(element, "stroked"))) {
             std::string colour = VmlColour(Attr(element, "strokecolor"));
@@ -1969,13 +2024,77 @@ private:
         return true;
     }
 
+    // Where a VML shape sits: floating (position:absolute) from the page,
+    // its margin or its paragraph, wrapped as w10:wrap says; else in the
+    // line, on lines of its own.
+    static void ReadVmlPlacement(tinyxml2::XMLElement* element, std::map<std::string, std::string>& css, RichTextRun& run) {
+        using Origin = RichTextRun::FloatOrigin;
+        if (css["position"].find("absolute") == std::string::npos) {
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            return;
+        }
+        auto length = [&](const char* name) {
+            auto found = css.find(name);
+            return found == css.end() ? 0.0f : CssLengthPt(found->second);
+        };
+        const std::string across = css["mso-position-horizontal-relative"];
+        const std::string down = css["mso-position-vertical-relative"];
+        run.floatHorizontalFrom = across == "page" ? Origin::Page : Origin::Margin;
+        run.floatVerticalFrom = down == "page" ? Origin::Page : down == "margin" ? Origin::Margin : Origin::Paragraph;
+        const std::string alignAcross = css["mso-position-horizontal"];
+        if (alignAcross == "right" || alignAcross == "outside") run.imageFloatAlign = RichTextAlign::Right;
+        else if (alignAcross == "center") run.imageFloatAlign = RichTextAlign::Center;
+        else if (alignAcross == "left" || alignAcross == "inside") run.imageFloatAlign = RichTextAlign::Left;
+        else {
+            run.imageFloatAlign = RichTextAlign::Default;
+            const float x = length("margin-left") + length("left");
+            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+        }
+        const float y = length("margin-top") + length("top");
+        run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+        run.imageWrap = RichTextRun::ImageWrap::InFrontOfText;
+        if (auto* wrap = FindDescendant(element, "w10:wrap")) {
+            const std::string type = Attr(wrap, "type");
+            if (type == "topAndBottom") run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            else if (type == "square" || type == "tight" || type == "through") run.imageWrap = RichTextRun::ImageWrap::Square;
+        }
+        const std::string z = css["z-index"];
+        if (!z.empty() && z[0] == '-') run.imageWrap = RichTextRun::ImageWrap::BehindText;
+    }
+
+    // A VML picture (v:shape with v:imagedata, as Word 2003 and older
+    // documents keep a logo): a picture in the line, or floating where its
+    // CSS position says.
+    void ParseVmlPicture(tinyxml2::XMLElement* element, InlineContext& ctx) {
+        auto* data = FindDescendant(element, "v:imagedata");
+        std::string relId = Attr(data, "r:id");
+        if (relId.empty()) relId = Attr(data, "r:pict");
+        const int mediaIndex = LoadImageByRelId(relId);
+        if (mediaIndex < 0) return;
+        auto css = VmlStyle(element);
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.mediaIndex = mediaIndex;
+        run.imageWidthPt = CssLengthPt(css["width"]);
+        run.imageHeightPt = CssLengthPt(css["height"]);
+        run.imageAltText = Attr(element, "alt");
+        if (run.imageAltText.empty()) run.imageAltText = Attr(data, "o:title");
+        if (css["position"].find("absolute") != std::string::npos) ReadVmlPlacement(element, css, run);
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
+    }
+
     // w:pict without a text box: its VML shapes, as a drawing floating where
     // the first of them says (its CSS position), or in the line.
     void ParseVmlDrawing(tinyxml2::XMLElement* pict, InlineContext& ctx) {
         for (auto* element = pict->FirstChildElement(); element; element = element->NextSiblingElement()) {
             const std::string tag = element->Name() ? element->Name() : "";
             if (tag == "v:shapetype" || tag == "w10:wrap" || tag == "o:lock") continue;
-            if (tag == "v:shape" && FindDescendant(element, "v:imagedata")) continue;   // a VML picture
+            if ((tag == "v:shape" || tag == "v:rect") && FindDescendant(element, "v:imagedata")) {
+                ParseVmlPicture(element, ctx);                                       // a VML picture
+                continue;
+            }
             RichShape shape;
             ChildSpace top;
             if (!ReadVmlShape(element, top, shape, 0)) continue;
@@ -1993,38 +2112,7 @@ private:
                 run.imageHeightPt = shape.heightPt;
             }
             shape.xPt = shape.yPt = 0.0f;
-            using Origin = RichTextRun::FloatOrigin;
-            if (css["position"].find("absolute") != std::string::npos) {
-                auto length = [&](const char* name) {
-                    auto found = css.find(name);
-                    return found == css.end() ? 0.0f : CssLengthPt(found->second);
-                };
-                const std::string across = css["mso-position-horizontal-relative"];
-                const std::string down = css["mso-position-vertical-relative"];
-                run.floatHorizontalFrom = across == "page" ? Origin::Page : Origin::Margin;
-                run.floatVerticalFrom = down == "page" ? Origin::Page : down == "margin" ? Origin::Margin : Origin::Paragraph;
-                const std::string alignAcross = css["mso-position-horizontal"];
-                if (alignAcross == "right" || alignAcross == "outside") run.imageFloatAlign = RichTextAlign::Right;
-                else if (alignAcross == "center") run.imageFloatAlign = RichTextAlign::Center;
-                else if (alignAcross == "left" || alignAcross == "inside") run.imageFloatAlign = RichTextAlign::Left;
-                else {
-                    run.imageFloatAlign = RichTextAlign::Default;
-                    const float x = length("margin-left") + length("left");
-                    run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
-                }
-                const float y = length("margin-top") + length("top");
-                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
-                run.imageWrap = RichTextRun::ImageWrap::InFrontOfText;
-                if (auto* wrap = FindDescendant(element, "w10:wrap")) {
-                    const std::string type = Attr(wrap, "type");
-                    if (type == "topAndBottom") run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
-                    else if (type == "square" || type == "tight" || type == "through") run.imageWrap = RichTextRun::ImageWrap::Square;
-                }
-                const std::string z = css["z-index"];
-                if (!z.empty() && z[0] == '-') run.imageWrap = RichTextRun::ImageWrap::BehindText;
-            } else {
-                run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;   // in the line: on lines of its own
-            }
+            ReadVmlPlacement(element, css, run);
             RichTextFrame frame;
             frame.name = shape.name;
             frame.shapes.push_back(std::move(shape));
@@ -3513,8 +3601,29 @@ private:
             }
             default: xml << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"; break;
         }
-        if (shape.fillColor.empty() || !shape.IsClosed()) xml << "<a:noFill/>";
-        else xml << "<a:solidFill><a:srgbClr val=\"" << EscapeXml(rgb(shape.fillColor)) << "\"/></a:solidFill>";
+        if (shape.fillColor.empty() || !shape.IsClosed()) {
+            xml << "<a:noFill/>";
+        } else if (shape.HasGradient()) {
+            xml << "<a:gradFill rotWithShape=\"1\"><a:gsLst>";
+            for (const RichShape::GradientStop& stop : shape.gradientStops) {
+                xml << "<a:gs pos=\"" << std::lround(std::clamp(stop.position, 0.0f, 1.0f) * 100000.0f)
+                    << "\"><a:srgbClr val=\"" << EscapeXml(rgb(stop.color)) << "\"/></a:gs>";
+            }
+            xml << "</a:gsLst>";
+            if (shape.gradientRadial) {
+                const long l = std::lround(std::clamp(shape.gradientCenterX, 0.0f, 1.0f) * 100000.0f);
+                const long t = std::lround(std::clamp(shape.gradientCenterY, 0.0f, 1.0f) * 100000.0f);
+                xml << "<a:path path=\"circle\"><a:fillToRect l=\"" << l << "\" t=\"" << t << "\" r=\"" << (100000 - l)
+                    << "\" b=\"" << (100000 - t) << "\"/></a:path>";
+            } else {
+                double angle = std::fmod(static_cast<double>(shape.gradientAngleDeg), 360.0);
+                if (angle < 0.0) angle += 360.0;
+                xml << "<a:lin ang=\"" << std::llround(angle * 60000.0) << "\" scaled=\"0\"/>";
+            }
+            xml << "</a:gradFill>";
+        } else {
+            xml << "<a:solidFill><a:srgbClr val=\"" << EscapeXml(rgb(shape.fillColor)) << "\"/></a:solidFill>";
+        }
         if (shape.lineColor.empty()) {
             xml << "<a:ln><a:noFill/></a:ln>";
             return;
@@ -3631,8 +3740,12 @@ private:
                 if (only->flipH) xml << " flipH=\"1\"";
                 if (only->flipV) xml << " flipV=\"1\"";
             }
-            const long long chX = only ? std::max(1LL, Emu(only->widthPt)) : cx;
-            const long long chY = only ? std::max(1LL, Emu(only->heightPt)) : cy;
+            // The members' space: the group's own, else the size the shapes
+            // were drawn for (a resized drawing), mapped onto the frame.
+            const long long chX = only ? std::max(1LL, Emu(only->widthPt))
+                                : frame.drawingWidthPt > 0.0f ? std::max(1LL, Emu(frame.drawingWidthPt)) : cx;
+            const long long chY = only ? std::max(1LL, Emu(only->heightPt))
+                                : frame.drawingHeightPt > 0.0f ? std::max(1LL, Emu(frame.drawingHeightPt)) : cy;
             xml << "><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx << "\" cy=\"" << cy
                 << "\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"" << chX << "\" cy=\"" << chY << "\"/></a:xfrm></wpg:grpSpPr>";
             for (const RichShape& shape : only ? only->children : frame.shapes) WriteGroupMember(xml, shape, 0.0f, 0.0f, 0);

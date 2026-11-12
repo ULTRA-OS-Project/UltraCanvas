@@ -1,7 +1,8 @@
 # Builds Tests/fixtures/word-shapes-word.docx (python3 make-word-shapes-fixture.py
 # word-shapes-word.docx): drawn shapes as Word writes them - theme colours
 # through wps:style, a custom outline with an arc, a group with a picture and
-# words, VML-only shapes as Word 2007 writes them. Synthetic content.
+# words, VML-only shapes as Word 2007 writes them, a VML picture as Word 2003
+# keeps a logo. Synthetic content.
 import base64, sys, zipfile
 out = sys.argv[1]
 png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAADwAAAAeCAIAAAD/+uoYAAAAOklEQVR4nO3OAQkAIBAAMeOYycTGMob3MFiArX3uOOv7QDpMWlo6QFpaOkBaWjpAWlo6QFpaOmBk+gFSlRDY5nT27gAAAABJRU5ErkJggg==")
@@ -96,9 +97,15 @@ s7 = choice("wps", anchor(7, "Labelled", cx, cy) +
     '<a:fontRef idx="minor"><a:schemeClr val="lt1"/></a:fontRef></wps:style>' + words("Label") +
     '<wps:bodyPr anchor="ctr"/></wps:wsp></a:graphicData></a:graphic></wp:anchor>')
 
+# 8. A VML picture, as Word 2003 keeps a logo: floating at the column's right.
+v8 = ('<w:pict><v:shape id="Logo" type="#_x0000_t75" alt="Company logo" style="position:absolute;margin-left:0;'
+      'margin-top:0;width:90pt;height:45pt;mso-position-horizontal:right;mso-position-horizontal-relative:margin;'
+      'mso-position-vertical-relative:text"><v:imagedata r:id="rIdLogo" o:title="logo"/><w10:wrap type="square"/>'
+      '</v:shape></w:pict>')
+
 body = (para("Shapes as Word draws them.") + para("A themed rounded rectangle.", s1) + para("A custom outline.", s2)
         + para("A group with a picture and words.", s3) + para("A dotted pointer.", s4)
-        + para("An old drawing.", v5) + para("A rule.", v6) + para("A labelled box.", s7) + para("Closing line."))
+        + para("An old drawing.", v5) + para("A rule.", v6) + para("A labelled box.", s7) + para("A VML logo.", v8) + para("Closing line."))
 document = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document {NS}><w:body>{body}'
             '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1418" '
             'w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>')

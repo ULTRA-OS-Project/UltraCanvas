@@ -6,6 +6,8 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
+//                  (RichTextFrame::drawingWidthPt / drawingHeightPt)
 // Version: 1.6.0 - Drawn shapes (RichShape, RichTextFrame::shapes)
 // Version: 1.5.0 - Text frames (RichTextRun::frameIndex, UCRichDocument::frames)
 //                  and floats placed from the page or its margins
@@ -556,6 +558,20 @@ struct RichShape {
     // top-left to its bottom-right corner; flipped, from another corner.
     bool flipH = false, flipV = false;
     std::string fillColor;                // "#RRGGBB"; empty = not filled
+    // A gradient fill: two or more colours along the box (fillColor holds
+    // the first, for whatever draws one colour). Linear ones run at
+    // gradientAngleDeg - 0 left to right, 90 top to bottom (clockwise);
+    // radial ones from the box's centre (position 0) to its corners (1).
+    struct GradientStop {
+        float position = 0.0f;            // 0..1
+        std::string color;                // "#RRGGBB"
+    };
+    std::vector<GradientStop> gradientStops;
+    float gradientAngleDeg = 0.0f;
+    bool gradientRadial = false;
+    // A radial gradient's centre, from 0 to 1 across and down the box.
+    float gradientCenterX = 0.5f, gradientCenterY = 0.5f;
+    bool HasGradient() const { return gradientStops.size() >= 2; }
     std::string lineColor;                // "#RRGGBB"; empty = no outline
     float lineWidthPt = 0.75f;
     enum class Dash { Solid, Dashed, Dotted };
@@ -607,6 +623,10 @@ struct RichTextFrame {
     // with shapes is a drawing, not a box: it shows no frame of its own.
     std::vector<RichShape> shapes;
     bool IsDrawing() const { return !shapes.empty(); }
+    // The box its shapes were drawn for, in points (0 = its run's size). A
+    // drawing resized on the page keeps this, and its shapes are scaled from
+    // it to the run's new size.
+    float drawingWidthPt = 0.0f, drawingHeightPt = 0.0f;
     // Where the words sit down the frame when it is taller than they are
     // (a shape's text is centred in Word by default).
     RichShape::TextAnchor textAnchor = RichShape::TextAnchor::Top;

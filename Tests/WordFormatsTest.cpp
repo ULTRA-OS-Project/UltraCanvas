@@ -389,6 +389,42 @@ static void CheckWordShapes(const UCRichDocument& d, const std::string& label) {
     const std::string labelledFill = labelled ? labelled->fillColor : labelledFrame ? labelledFrame->backgroundColor : "";
     CHECK_MSG(Lower(labelledFill) == "#70ad47" && FrameText(d, runs[6]->frameIndex) == "Label|",
               label + ": a themed rectangle with words");
+    // A VML picture (v:imagedata) floats at the column's right.
+    const RichTextRun* logo = nullptr;
+    for (const RichDocBlock& b : d.blocks) {
+        for (const RichTextRun& run : b.runs) {
+            if (run.IsFloatingImage()) logo = &run;
+        }
+    }
+    CHECK_MSG(logo && logo->mediaIndex >= 0 && Near(logo->imageWidthPt, 90.0f) && Near(logo->imageHeightPt, 45.0f)
+              && logo->imageFloatAlign == RichTextAlign::Right && logo->imageWrap == RichTextRun::ImageWrap::Square,
+              label + ": the VML picture");
+}
+
+// Gradient fills (word-gradients.*): top to bottom, axial at 45 degrees,
+// round from the corner.
+static void CheckGradients(const UCRichDocument& d, const std::string& label) {
+    const std::vector<const RichTextRun*> runs = FloatingFrames(d);
+    CHECK_MSG(runs.size() == 3, label + ": three filled shapes");
+    if (runs.size() != 3) return;
+    auto only = [&](size_t i) -> const RichShape* {
+        const RichTextFrame* frame = d.FrameFor(*runs[i]);
+        return frame && frame->shapes.size() == 1 ? &frame->shapes.front() : nullptr;
+    };
+    const RichShape* down = only(0);
+    CHECK_MSG(down && down->gradientStops.size() == 2 && !down->gradientRadial && Near(down->gradientAngleDeg, 90.0f)
+              && Lower(down->gradientStops.front().color) == "#1f4e79" && Lower(down->gradientStops.back().color) == "#ffffff",
+              label + ": a top-to-bottom gradient");
+    const RichShape* across = only(1);
+    CHECK_MSG(across && across->gradientStops.size() == 3 && Near(across->gradientAngleDeg, 45.0f)
+              && Lower(across->gradientStops.front().color) == "#c00000"
+              && Lower(across->gradientStops[1].color) == "#ffc000" && Lower(across->gradientStops.back().color) == "#c00000",
+              label + ": an axial gradient at 45 degrees");
+    const RichShape* round = only(2);
+    CHECK_MSG(round && round->gradientRadial && round->gradientStops.size() == 2
+              && Lower(round->gradientStops.front().color) == "#ffffff" && Lower(round->gradientStops.back().color) == "#70ad47"
+              && Near(round->gradientCenterX * 10.0f, 0.0f) && Near(round->gradientCenterY * 10.0f, 0.0f),
+              label + ": a round gradient from the corner");
 }
 
 // Highlight, fixed line heights and paragraph frames.
@@ -862,6 +898,53 @@ int main(int argc, char** argv) {
     // ===== 5d3. Drawn shapes: lines, boxes, outlines and groups =====
 #ifdef WORDTEST_FIXTURE_DIR
     {
+        for (const char* name : {"word-gradients.odt", "word-gradients.docx", "word-gradients.doc"}) {
+            const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
+            UCRichDocument imported;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, imported, err), err);
+            CheckGradients(imported, name);
+            for (const char* ext : {".odt", ".docx"}) {
+                const std::string saved = TmpPath(std::string("resaved-") + name + ext);
+                CHECK_MSG(UCWordDocumentIO::Save(saved, imported, err), err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+                CheckGradients(back, std::string(name) + " -> " + ext);
+            }
+        }
+        // A drawing resized on the page is saved at its new size, its
+        // members scaled with it.
+        {
+            UCRichDocument d;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/word-shapes.docx", d, err), err);
+            std::vector<const RichTextRun*> runs = FloatingFrames(d);
+            if (runs.size() == 7) {
+                RichTextRun& group = const_cast<RichTextRun&>(*runs[5]);
+                RichTextFrame& frame = d.frames[static_cast<size_t>(group.frameIndex)];
+                frame.drawingWidthPt = group.imageWidthPt;
+                frame.drawingHeightPt = group.imageHeightPt;
+                group.imageWidthPt *= 2.0f;
+                group.imageHeightPt *= 2.0f;
+                for (const char* ext : {".odt", ".docx"}) {
+                    const std::string saved = TmpPath(std::string("resized-drawing") + ext);
+                    CHECK_MSG(UCWordDocumentIO::Save(saved, d, err), err);
+                    UCRichDocument back;
+                    CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+                    std::vector<const RichTextRun*> again = FloatingFrames(back);
+                    const RichTextFrame* drawn = again.size() == 7 ? back.FrameFor(*again[5]) : nullptr;
+                    const RichShape* g = drawn && drawn->shapes.size() == 1 ? &drawn->shapes.front() : nullptr;
+                    // The dot, in its group's box, at twice its place.
+                    float dotX = 0.0f, scale = 1.0f;
+                    if (g && g->children.size() == 2) {
+                        scale = g->widthPt > 0.0f ? again[5]->imageWidthPt / g->widthPt : 1.0f;
+                        dotX = g->children[1].xPt * scale;
+                    }
+                    CHECK_MSG(g && Near(again[5]->imageWidthPt, 425.2f) && Near(dotX, 368.6f),
+                              std::string("a resized drawing saved as ") + ext + ": " + std::to_string(dotX));
+                }
+            }
+        }
         for (const char* name : {"word-shapes.odt", "word-shapes.docx", "word-shapes.doc", "word-shapes-word.docx"}) {
             const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
             UCRichDocument imported;

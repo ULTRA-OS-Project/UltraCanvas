@@ -5,6 +5,7 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.5.0 - Gradient fills (draw:gradient) read and written
 // Version: 1.4.0 - Drawn shapes: draw:rect, ellipse, line, path, polygon, polyline, custom-shape
 //                  and g read and written; a text frame's height and its words' vertical place
 //                  written
@@ -235,6 +236,7 @@ public:
             if (stylesRoot) {
                 CollectFontFaces(stylesRoot->FirstChildElement("office:font-face-decls"));
                 CollectDefaultStyle(stylesRoot->FirstChildElement("office:styles"));
+                CollectGradients(stylesRoot->FirstChildElement("office:styles"));
                 CollectStyles(stylesRoot->FirstChildElement("office:styles"));
                 CollectNamedStyles(stylesRoot->FirstChildElement("office:styles"));
                 CollectStyles(stylesRoot->FirstChildElement("office:automatic-styles"));
@@ -419,6 +421,7 @@ private:
         std::string fill, fillColor, backgroundColor, border, stroke, strokeColor, strokeWidth, padding, minHeight;
         // A drawn shape's line ends and dash, and where its words sit.
         std::string strokeDash, markerStart, markerEnd, textAreaVertical, paddingLeft;
+        std::string fillGradientName;
     };
     std::map<std::string, GraphicPlacement> graphicStyles_;
     GraphicPlacement defaultGraphic_;                          // style:default-style family="graphic"
@@ -602,6 +605,58 @@ private:
 
     // Default paragraph properties (style:default-style): the document's
     // default tab distance.
+    // draw:gradient definitions, by name: the stops, angle and kind a
+    // shape's draw:fill-gradient-name refers to. ODF turns its angle
+    // anticlockwise from top-to-bottom; the model's runs clockwise from
+    // left-to-right. Axial ones put the start colour on the middle line and
+    // the end at both edges; radial and the other round kinds the start at
+    // the edge and the end at the centre.
+    struct OdfGradient {
+        std::vector<RichShape::GradientStop> stops;
+        float angleDeg = 0.0f;
+        bool radial = false;
+        float centerX = 0.5f, centerY = 0.5f;
+    };
+    std::map<std::string, OdfGradient> gradients_;
+    void CollectGradients(tinyxml2::XMLElement* container) {
+        if (!container) return;
+        for (auto* element = container->FirstChildElement("draw:gradient"); element;
+             element = element->NextSiblingElement("draw:gradient")) {
+            const std::string kind = Attr(element, "draw:style");
+            const std::string start = Attr(element, "draw:start-color");
+            const std::string end = Attr(element, "draw:end-color");
+            if (start.size() != 7 || end.size() != 7) continue;
+            OdfGradient gradient;
+            // draw:angle: degrees, or with a unit (read as Writer reads it).
+            const std::string angleText = Attr(element, "draw:angle");
+            double angle = 0.0;
+            const size_t ends = WordFormatInternal::ReadNumberAt(angleText, 0, angle);
+            const std::string unit = angleText.substr(ends);
+            if (unit.find("grad") != std::string::npos) angle *= 0.9;
+            else if (unit.find("rad") != std::string::npos) angle *= 180.0 / 3.14159265358979323846;
+            double turn = std::fmod(90.0 - angle, 360.0);
+            if (turn < 0.0) turn += 360.0;
+            gradient.angleDeg = static_cast<float>(turn);
+            if (kind == "linear" || kind.empty()) {
+                gradient.stops = {{0.0f, start}, {1.0f, end}};
+            } else if (kind == "axial") {
+                gradient.stops = {{0.0f, end}, {0.5f, start}, {1.0f, end}};   // the start colour on the axis
+            } else {
+                gradient.radial = true;
+                gradient.stops = {{0.0f, end}, {1.0f, start}};
+                double centre = 50.0;
+                if (WordFormatInternal::ReadNumberAt(Attr(element, "draw:cx"), 0, centre) > 0) {
+                    gradient.centerX = static_cast<float>(std::clamp(centre / 100.0, 0.0, 1.0));
+                }
+                centre = 50.0;
+                if (WordFormatInternal::ReadNumberAt(Attr(element, "draw:cy"), 0, centre) > 0) {
+                    gradient.centerY = static_cast<float>(std::clamp(centre / 100.0, 0.0, 1.0));
+                }
+            }
+            gradients_[Attr(element, "draw:name")] = std::move(gradient);
+        }
+    }
+
     void CollectDefaultStyle(tinyxml2::XMLElement* container) {
         if (!container) return;
         for (auto* style = container->FirstChildElement("style:default-style"); style;
@@ -779,6 +834,7 @@ private:
                 placement.markerEnd = Attr(graphic, "draw:marker-end");
                 placement.textAreaVertical = Attr(graphic, "draw:textarea-vertical-align");
                 placement.paddingLeft = Attr(graphic, "fo:padding-left");
+                placement.fillGradientName = Attr(graphic, "draw:fill-gradient-name");
                 if (!name.empty()) graphicStyles_[name] = placement;
             }
             if (auto* cp = style->FirstChildElement("style:table-column-properties")) {
@@ -1451,6 +1507,15 @@ private:
             std::string colour = look(&GraphicPlacement::fillColor);
             if (colour.empty() && (fill == "solid" || fill.empty())) colour = "#729FCF";   // Writer's own default
             if (fill == "solid" || fill.empty() || fill == "gradient" || fill == "hatch") shape.fillColor = colour;
+            auto gradient = fill == "gradient" ? gradients_.find(look(&GraphicPlacement::fillGradientName)) : gradients_.end();
+            if (gradient != gradients_.end()) {
+                shape.gradientStops = gradient->second.stops;
+                shape.gradientAngleDeg = gradient->second.angleDeg;
+                shape.gradientRadial = gradient->second.radial;
+                shape.gradientCenterX = gradient->second.centerX;
+                shape.gradientCenterY = gradient->second.centerY;
+                shape.fillColor = shape.gradientStops.front().color;
+            }
         }
         const std::string stroke = look(&GraphicPlacement::stroke);
         if (stroke != "none") {
@@ -2649,9 +2714,11 @@ private:
     // ===== DRAWN SHAPES =====
     // A shape's fill, line (dash, arrowheads) and where its words sit, as
     // graphic-properties attributes.
-    static std::string ShapeLookAttributes(const RichShape& shape, float padding, RichShape::TextAnchor anchor) {
+    std::string ShapeLookAttributes(const RichShape& shape, float padding, RichShape::TextAnchor anchor) {
         std::string look;
         if (shape.fillColor.empty() || !shape.IsClosed()) look += " draw:fill=\"none\"";
+        else if (shape.HasGradient()) look += " draw:fill=\"gradient\" draw:fill-gradient-name=\"" + GradientName(shape)
+                                           + "\" draw:fill-color=\"" + EscapeXml(shape.fillColor) + "\"";
         else look += " draw:fill=\"solid\" draw:fill-color=\"" + EscapeXml(shape.fillColor) + "\"";
         if (shape.lineColor.empty()) {
             look += " draw:stroke=\"none\"";
@@ -2672,6 +2739,39 @@ private:
               + "\" fo:padding-right=\"" + inset + "\" fo:padding-top=\"" + inset + "\" fo:padding-bottom=\"" + inset
               + "\" draw:auto-grow-height=\"false\"";
         return look;
+    }
+
+    // A draw:gradient for a shape's gradient, defined once in office:styles.
+    // ODF holds two colours: the first and last stops (a three-stop one that
+    // comes back to its first colour is axial). Its angle turns anticlockwise
+    // from top-to-bottom, in degrees.
+    std::map<std::string, std::string> gradientNames_;   // key -> name
+    std::string gradientDefinitions_;
+    std::string GradientName(const RichShape& shape) {
+        const std::string first = shape.gradientStops.front().color, last = shape.gradientStops.back().color;
+        const bool axial = !shape.gradientRadial && shape.gradientStops.size() == 3
+                        && ToLower(first) == ToLower(last);
+        std::string style = shape.gradientRadial ? "radial" : axial ? "axial" : "linear";
+        std::string start = axial ? shape.gradientStops[1].color : first, end = axial ? first : last;
+        if (shape.gradientRadial) std::swap(start, end);           // ODF: the edge's colour first
+        double angle = 90.0 - static_cast<double>(shape.gradientAngleDeg);
+        angle = std::fmod(angle, 360.0);
+        if (angle < 0.0) angle += 360.0;
+        const long degrees = std::lround(angle) % 360;
+        const long cx = std::lround(std::clamp(shape.gradientCenterX, 0.0f, 1.0f) * 100.0f);
+        const long cy = std::lround(std::clamp(shape.gradientCenterY, 0.0f, 1.0f) * 100.0f);
+        const std::string centre = shape.gradientRadial
+            ? " draw:cx=\"" + std::to_string(cx) + "%\" draw:cy=\"" + std::to_string(cy) + "%\"" : std::string();
+        const std::string key = style + "|" + start + "|" + end + "|" + std::to_string(degrees) + centre;
+        auto found = gradientNames_.find(key);
+        if (found != gradientNames_.end()) return found->second;
+        const std::string name = "UC_Gradient_" + std::to_string(gradientNames_.size() + 1);
+        gradientNames_[key] = name;
+        gradientDefinitions_ += "<draw:gradient draw:name=\"" + name + "\" draw:style=\"" + style + "\"" + centre
+                              + " draw:start-color=\"" + EscapeXml(start) + "\" draw:end-color=\"" + EscapeXml(end)
+                              + "\" draw:start-intensity=\"100%\" draw:end-intensity=\"100%\" draw:angle=\""
+                              + std::to_string(degrees) + "deg\" draw:border=\"0%\"/>\n";
+        return name;
     }
 
     // A group member's style: its look alone.
@@ -2833,6 +2933,16 @@ private:
                           shape.textPaddingPt, shape.textAnchor, depth);
     }
 
+    // A shape's box (and its members') stretched by (sx, sy).
+    static void ScaleShape(RichShape& shape, float sx, float sy, int depth) {
+        shape.xPt *= sx;
+        shape.yPt *= sy;
+        shape.widthPt *= sx;
+        shape.heightPt *= sy;
+        if (depth > 16) return;
+        for (RichShape& member : shape.children) ScaleShape(member, sx, sy, depth + 1);
+    }
+
     // A drawing, anchored to its paragraph and placed as its run says: a lone
     // shape (with the frame's words), else a group of its shapes.
     void WriteDrawing(std::ostringstream& xml, const RichTextRun& run, const RichTextFrame& frame) {
@@ -2850,17 +2960,22 @@ private:
             WriteShapeElement(xml, shape, x, y, style, anchor, &frame.blocks, frame.paddingPt, frame.textAnchor, 0);
             return;
         }
-        // One group is the drawing's own; several shapes are grouped.
+        // One group is the drawing's own; several shapes are grouped. A
+        // resized drawing's shapes are scaled to its size (ODF draws them
+        // where they are).
         RichShape group;
         if (frame.shapes.size() == 1) {
             group = frame.shapes.front();
             group.xPt = group.yPt = 0.0f;
         } else {
             group.kind = RichShape::Kind::Group;
-            group.widthPt = run.imageWidthPt;
-            group.heightPt = run.imageHeightPt;
+            group.widthPt = frame.drawingWidthPt > 0.0f ? frame.drawingWidthPt : run.imageWidthPt;
+            group.heightPt = frame.drawingHeightPt > 0.0f ? frame.drawingHeightPt : run.imageHeightPt;
             group.children = frame.shapes;
         }
+        const float scaleX = group.widthPt > 0.0f && run.imageWidthPt > 0.0f ? run.imageWidthPt / group.widthPt : 1.0f;
+        const float scaleY = group.heightPt > 0.0f && run.imageHeightPt > 0.0f ? run.imageHeightPt / group.heightPt : 1.0f;
+        if (scaleX != 1.0f || scaleY != 1.0f) ScaleShape(group, scaleX, scaleY, 0);
         if (group.name.empty()) group.name = frame.name;
         WriteShapeElement(xml, group, x, y, FloatingFrameStyle(run), anchor, nullptr, 0.0f,
                           RichShape::TextAnchor::Top, 0);
@@ -3814,6 +3929,7 @@ private:
                    " draw:distance=\"300%\"/>\n"
                    "<draw:stroke-dash draw:name=\"UC_Dot\" draw:style=\"rect\" draw:dots1=\"1\" draw:dots1-length=\"100%\""
                    " draw:distance=\"200%\"/>\n";
+            xml << gradientDefinitions_;
         }
         xml << "</office:styles>\n";
         if (!masterStyles.empty()) {

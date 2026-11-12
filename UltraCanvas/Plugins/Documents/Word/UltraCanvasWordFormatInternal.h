@@ -2,7 +2,7 @@
 // Small helpers shared by the ODT and DOCX readers/writers. Internal to the
 // Word document module — not installed, not part of the public API.
 // Version: 1.2.0 - ApplyOfficeArtShapeType: Word 97 / VML shape types as RichShape geometry;
-//                  ReadNumberAt / ReadNumbers: dot-decimal shape geometry
+//                  ReadNumberAt / ReadNumbers: dot-decimal shape geometry; ApplyOfficeShade
 // Version: 1.1.1 - <cstdlib> for std::strtof, which libc++ no longer brings in
 //                  through <string> (MSYS2 CLANG64, 2026-10-09)
 // Last Modified: 2026-10-09
@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -162,6 +163,26 @@ inline size_t ReadNumbers(const std::string& text, double* out, size_t count) {
         at = next;
     }
     return found;
+}
+
+// A Word 97 / VML shade (gradient fill) as a shape's gradient: from `fill`
+// to `back` (VML's color2), whose place along the shade `focusPercent`
+// gives - 0 at the start, 100 at the end, 50 in the middle with `fill` at
+// both edges, negative counting from the end. `angle` turns anticlockwise
+// from top-to-bottom; a round shade starts at the centre.
+inline void ApplyOfficeShade(RichShape& shape, const std::string& fill, const std::string& back, double focusPercent,
+                             double angle, bool radial) {
+    double where = focusPercent / 100.0;
+    if (where < 0.0) where += 1.0;
+    where = std::clamp(where, 0.0, 1.0);
+    if (where < 0.25) shape.gradientStops = {{0.0f, back}, {1.0f, fill}};
+    else if (where > 0.75) shape.gradientStops = {{0.0f, fill}, {1.0f, back}};
+    else shape.gradientStops = {{0.0f, fill}, {0.5f, back}, {1.0f, fill}};
+    shape.gradientRadial = radial;
+    double turn = std::fmod(90.0 - angle, 360.0);
+    if (turn < 0.0) turn += 360.0;
+    shape.gradientAngleDeg = static_cast<float>(turn);
+    shape.fillColor = shape.gradientStops.front().color;
 }
 
 // A Word 97 / VML shape type (MSOSPT: 1 rectangle, 3 ellipse, 20 line,

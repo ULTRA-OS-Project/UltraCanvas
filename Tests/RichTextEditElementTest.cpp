@@ -1439,6 +1439,86 @@ int main() {
              !star.ApplyPreset("noSuchShape") && star.kind == RichShape::Kind::Rectangle);
     }
 
+    // ===== MOVING AND RESIZING FLOATS =====
+    std::cerr << "\n--- Moving and resizing floats ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame drawing;
+        RichShape box;
+        box.kind = RichShape::Kind::Ellipse;
+        box.widthPt = 120.0f;
+        box.heightPt = 60.0f;
+        box.fillColor = "#70AD47";
+        box.gradientStops = {{0.0f, "#FFFFFF"}, {1.0f, "#70AD47"}};
+        box.gradientRadial = true;
+        drawing.shapes = {box};
+        document->frames = {drawing};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 120.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Left;
+        RichTextRun words;
+        for (int i = 0; i < 30; i++) words.text += "word" + std::to_string(i) + " ";
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor, words};
+        document->blocks = {paragraph};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        auto runOf = [&]() -> const RichTextRun& { return edit->GetDocument()->blocks[0].runs[0]; };
+        Rect2Df on = edit->GetFloatElementRectForTest(0);
+        const float cx = on.x + on.width * 0.5f, cy = on.y + on.height * 0.5f;
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx, cy));
+        window->UpdateAndRender();
+        TEST("A click on a drawing selects it", edit->HasSelectedImage() && edit->GetSelectedImage().byteOffset == 0);
+
+        // Dragged 60 px right and 30 px down: offsets from its paragraph.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, cx + 30.0f, cy + 15.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, cx + 60.0f, cy + 30.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx + 60.0f, cy + 30.0f));
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("Dragging it moves it: offset " + std::to_string(runOf().imageOffsetXPt) + ", "
+             + std::to_string(runOf().imageOffsetYPt),
+             runOf().imageFloatAlign == RichTextAlign::Default && std::abs(runOf().imageOffsetXPt - 45.0f) < 1.0f
+             && std::abs(runOf().imageOffsetYPt - 22.5f) < 1.0f);
+        const Rect2Df moved = edit->GetFloatElementRectForTest(0);
+        TEST("...and it is drawn there", std::abs(moved.x - on.x - 60.0f) < 1.5f && std::abs(moved.y - on.y - 30.0f) < 1.5f);
+        TEST("...still selected", edit->HasSelectedImage());
+
+        // The bottom-right handle, dragged out: a corner keeps proportions,
+        // and the drawing remembers the size its shapes were drawn for.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, moved.x + moved.width, moved.y + moved.height));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, moved.x + moved.width + 80.0f, moved.y + moved.height + 40.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, moved.x + moved.width + 80.0f, moved.y + moved.height + 40.0f));
+        window->UpdateAndRender();
+        const RichTextFrame& resized = edit->GetDocument()->frames[0];
+        TEST("Its corner handle resizes it: " + std::to_string(runOf().imageWidthPt) + " x "
+             + std::to_string(runOf().imageHeightPt),
+             std::abs(runOf().imageWidthPt - 180.0f) < 1.5f && std::abs(runOf().imageHeightPt - 90.0f) < 1.5f);
+        TEST("...its shapes scale from the size they were drawn for",
+             resized.drawingWidthPt == 120.0f && resized.drawingHeightPt == 60.0f);
+        editor.Undo();
+        editor.Undo();
+        window->UpdateAndRender();
+        TEST("Undo puts it back where and as big as it was",
+             runOf().imageFloatAlign == RichTextAlign::Left && runOf().imageWidthPt == 120.0f);
+        // A frame behind the text leaves the text to the clicks.
+        edit->GetDocument()->blocks[0].runs[0].imageWrap = RichTextRun::ImageWrap::BehindText;
+        edit->SetDocument(edit->GetDocument());
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        on = edit->GetFloatElementRectForTest(0);
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, on.x + on.width * 0.5f, on.y + 4.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, on.x + on.width * 0.5f, on.y + 4.0f));
+        TEST("A drawing behind the text is not picked up by a click", !edit->HasSelectedImage());
+    }
+
     // ===== PDF =====
     std::cerr << "\n--- PDF export ---" << std::endl;
     {

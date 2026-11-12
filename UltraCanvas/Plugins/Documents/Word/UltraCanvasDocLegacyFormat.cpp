@@ -18,6 +18,7 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.2.0 - Gradient (shade) fills
 // Version: 2.1.0 - Drawn shapes and groups: lines, rectangles, ellipses, Word 97's other
 //                 shape types, freeforms, groups with pictures and words
 // Version: 2.0.1
@@ -1287,6 +1288,11 @@ private:
         int posH = -1, posRelH = -1, posV = -1, posRelV = -1;
         uint32_t fillColor = 0xFFFFFF;
         bool filled = true;
+        int fillType = 0;                       // 0 solid; 4, 7 linear shades; 5, 6 round ones
+        uint32_t fillBackColor = 0xFFFFFF;      // a shade's other colour
+        double fillAngle = 0.0;                 // anticlockwise from top-to-bottom
+        double fillTo[4] = {0.0, 0.0, 0.0, 0.0};   // a round shade's centre: left, top, right, bottom (the corner by default)
+        int fillFocus = 0;                      // percent: where the back colour sits along the shade
         uint32_t lineColor = 0;
         bool lined = true;
         int32_t lineWidth = 9525;               // EMU
@@ -1478,6 +1484,13 @@ private:
                         case 0x0081: shape.textLeft = static_cast<int32_t>(value); break;   // dxTextLeft
                         case 0x0104: shape.pib = value; break;                               // pib
                         case 0x0181: shape.fillColor = value; break;                         // fillColor
+                        case 0x0180: shape.fillType = static_cast<int>(value); break;        // fillType
+                        case 0x0183: shape.fillBackColor = value; break;                     // fillBackColor
+                        case 0x018B: shape.fillAngle = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
+                        case 0x018C: shape.fillFocus = static_cast<int32_t>(value); break;   // fillFocus
+                        case 0x018D: case 0x018E: case 0x018F: case 0x0190:                  // fillToLeft .. fillToBottom
+                            shape.fillTo[id - 0x018D] = static_cast<double>(static_cast<int32_t>(value)) / 65536.0;
+                            break;
                         case 0x01BF:                                                         // fFilled (with fUsefFilled)
                             if (value & 0x100000u) shape.filled = (value & 0x10u) != 0;
                             break;
@@ -1742,6 +1755,17 @@ private:
         }
         if (source.filled && (source.fillColor >> 24) == 0 && shape.mediaIndex < 0) {
             shape.fillColor = ColorRefHex(source.fillColor);
+            // A shade: from the fill colour to the back colour.
+            const bool linear = source.fillType == 4 || source.fillType == 7;
+            const bool round = source.fillType == 5 || source.fillType == 6;
+            if ((linear || round) && (source.fillBackColor >> 24) == 0) {
+                WordFormatInternal::ApplyOfficeShade(shape, shape.fillColor, ColorRefHex(source.fillBackColor),
+                                                     source.fillFocus, source.fillAngle, round);
+                if (round) {
+                    shape.gradientCenterX = static_cast<float>(std::clamp((source.fillTo[0] + source.fillTo[2]) * 0.5, 0.0, 1.0));
+                    shape.gradientCenterY = static_cast<float>(std::clamp((source.fillTo[1] + source.fillTo[3]) * 0.5, 0.0, 1.0));
+                }
+            }
         }
         if (source.lined) {
             shape.lineColor = (source.lineColor >> 24) == 0 ? ColorRefHex(source.lineColor) : "#000000";
