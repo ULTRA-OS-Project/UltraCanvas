@@ -3,6 +3,11 @@
 // configuration, credentials, proxy descriptor, transfer stats, and the
 // initialize/shutdown/version entrypoints. Full surface defined in the
 // UltraNet Master Registry v1.0.0.
+// Version: 0.3.0 - proxies: the system's by default (UltraNetProxyType::System,
+//                  the default of UltraNetConfig::proxy), Direct for one
+//                  request, a PAC address, SOCKS name resolution at the proxy;
+//                  UltraNet_ResolveProxy decides per URL for every protocol,
+//                  UltraNet_HostMatchesNoProxy / UltraNet_ParseNoProxyList
 // Version: 0.2.3 - UltraNetConfig::reuseHttpConnections: the synchronous verbs'
 //                  per-thread connection pool, off unless an application asks
 // Version: 0.2.2 - SshHostKeyUnknown, SshHostKeyChanged (UltraNetSsh.h)
@@ -10,7 +15,7 @@
 //                  thread's only one (UltraNet_SetThreadFtpCancel is gone)
 // Version: 0.2.0 - UltraNet_SetThreadAbortCheck: a running HTTP or FTP
 //                  transfer can be called off from outside it
-// Last Modified: 2026-10-19
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -145,17 +150,32 @@ struct UltraNetCredentials {
 };
 
 // ============================================================================
-// Proxy descriptor — required by UltraNetConfig and per-request options. The
-// detection of system-level proxy values is implemented per platform in
-// OS/<Platform>/UltraNetSupport.{cpp,mm}.
+// Proxy descriptor — the module-wide setting (UltraNetConfig::proxy,
+// UltraNet_SetGlobalProxy) and a request's own (UltraNetHttpOptions::proxy).
+// What the operating system is set to is read per platform in
+// OS/<Platform>/UltraNetSupport.{cpp,mm}; UltraNet_ResolveProxy turns a
+// setting into the proxy one URL goes through, and every libcurl handle
+// UltraNet opens - HTTP, WebSocket, FTP / SFTP and the IMAP / SMTP / POP3 /
+// WebDAV / LDAP / Telnet / gRPC plug-ins - is given that (UltraNetCurlProxy.h).
 // ============================================================================
 enum class UltraNetProxyType {
+    // As the module-wide setting: connect directly, and ignore the
+    // http_proxy / https_proxy environment as well. On a request's options:
+    // no setting of its own - the module-wide one applies.
     NoProxy,
     Http,
-    Https,
+    Https,      // TLS to the proxy itself
     Socks4,
     Socks5,
-    System
+    // Whatever the operating system is set to: Windows' Internet settings
+    // (including automatic detection and a PAC script), macOS' network
+    // settings (the same), on Linux and the BSDs the *_proxy environment
+    // variables, else GNOME's or KDE's proxy settings. Direct when it names
+    // none. The default of UltraNetConfig::proxy.
+    System,
+    // Connect directly whatever the module-wide setting says - for one
+    // request (a device on the local network, the proxy check itself).
+    Direct
 };
 
 struct UltraNetProxyConfig {
@@ -163,9 +183,36 @@ struct UltraNetProxyConfig {
     std::string host;
     int port = 0;
     UltraNetCredentials credentials;
+    // Hosts reached directly. Each entry is a name ("example.com" - and its
+    // subdomains), a pattern with * and ? ("*.example.com", "192.168.*"), a
+    // leading-dot suffix (".example.com"), an IPv4 range ("10.0.0.0/8"), "*"
+    // for every host, or "<local>" for a name without a dot. The machine
+    // itself (localhost, 127.0.0.0/8, ::1) is always reached directly.
     std::vector<std::string> noProxyHosts;
+    // SOCKS: the proxy looks the server's name up (socks5h / socks4a), so the
+    // name never goes to the local resolver - what a SOCKS proxy is usually
+    // for. Off: the address is looked up here and handed to the proxy.
+    bool remoteDns = true;
+    // System: evaluate the proxy auto-configuration (PAC) script at this
+    // address instead of what the operating system is set to. Where this
+    // build cannot run a PAC script (UltraNet_CanEvaluateProxyScript), the
+    // operating system's settings apply.
+    std::string autoConfigUrl;
 
     bool IsEnabled() const { return type != UltraNetProxyType::NoProxy; }
+
+    // The module-wide default: the operating system's proxy.
+    static UltraNetProxyConfig FromSystem() {
+        UltraNetProxyConfig p;
+        p.type = UltraNetProxyType::System;
+        return p;
+    }
+    // Connect directly (a request's options, or a resolved choice).
+    static UltraNetProxyConfig DirectConnection() {
+        UltraNetProxyConfig p;
+        p.type = UltraNetProxyType::Direct;
+        return p;
+    }
 };
 
 // ============================================================================
@@ -208,7 +255,9 @@ struct UltraNetConfig {
     bool verifyTlsHostname = true;
     std::string caBundlePath;       // empty = libcurl/system default
     std::string userAgent = "UltraNet/0.1";
-    UltraNetProxyConfig proxy;
+    // The operating system's proxy unless the application says otherwise
+    // (UltraNet_SetGlobalProxy - an application's proxy settings).
+    UltraNetProxyConfig proxy = UltraNetProxyConfig::FromSystem();
     UltraNetTlsVersion minTlsVersion = UltraNetTlsVersion::Tls12;
     int64_t maxReceiveSize = 0;     // 0 = unlimited
     bool enableHttp2 = true;
@@ -291,13 +340,60 @@ std::string    UltraNet_DescribePlatform();
 bool           UltraNet_HasHttp3();
 
 // ============================================================================
-// Proxy helpers. UltraNet_DetectSystemProxy is implemented in the per-platform
-// UltraNetSupport translation unit; the other two are pure config setters.
+// Proxy helpers. UltraNet_DetectSystemProxy / _For are implemented in the
+// per-platform UltraNetSupport translation unit; the rest are portable.
 // ============================================================================
+// The proxy the operating system names, for an https:// address - what a
+// settings page shows as "the system's proxy". NoProxy when it names none.
 void UltraNet_DetectSystemProxy(UltraNetProxyConfig& outProxy);
+// The proxy the operating system names for `url`: per scheme, after its
+// exceptions, and with a PAC script evaluated for that address where the
+// system is set to one (or, when `autoConfigUrl` is not empty, the script
+// there). NoProxy when the address is reached directly. Not cached - see
+// UltraNet_ResolveProxy.
+void UltraNet_DetectSystemProxyFor(const std::string& url,
+                                   const std::string& autoConfigUrl,
+                                   UltraNetProxyConfig& outProxy);
+// Whether this build can run a PAC script (UltraNetProxyConfig::autoConfigUrl):
+// Windows (WinHTTP) and macOS (CFNetwork) can; elsewhere false.
+bool UltraNet_CanEvaluateProxyScript();
+
+// The module-wide setting. Setting it (or disabling it) drops a source set
+// with UltraNet_SetGlobalProxySource.
 void UltraNet_SetGlobalProxy(const UltraNetProxyConfig& proxy);
 UltraNetProxyConfig UltraNet_GetGlobalProxy();
+// Sets the module-wide setting to NoProxy: every connection direct.
 void UltraNet_DisableProxy();
+// A function that supplies the module-wide setting, asked by
+// UltraNet_GetGlobalProxy (so before every connection) instead of the stored
+// one - for a setting kept outside the program that another program may
+// change while this one runs (UltraCanvas' shared proxy settings,
+// UltraCanvasProxySettings.h). It must be cheap and thread-safe. An empty
+// function removes it.
+void UltraNet_SetGlobalProxySource(std::function<UltraNetProxyConfig()> source);
+
+// The proxy a connection to `url` goes through: `requested` when it is
+// enabled (a request's own setting), else the module-wide one; System is
+// asked of the operating system (remembered for a minute per scheme and
+// host); then the exceptions (noProxyHosts) and the machine itself are taken
+// out. The result is Http, Https, Socks4 or Socks5 with a host - or NoProxy,
+// which here means "connect directly". Never System or Direct.
+UltraNetProxyConfig UltraNet_ResolveProxy(const std::string& url,
+                                          const UltraNetProxyConfig& requested = UltraNetProxyConfig());
+// Forgets what the operating system's proxy was found to be, so the next
+// connection asks again (after the system settings changed).
+void UltraNet_ForgetSystemProxy();
+
+// Whether `host` (a name or an address, no port) is reached directly under
+// `patterns` (UltraNetProxyConfig::noProxyHosts, case-insensitive).
+bool UltraNet_HostMatchesNoProxy(const std::string& host,
+                                 const std::vector<std::string>& patterns);
+// "*.example.com, 192.168.*; localhost" -> its entries: separated by commas,
+// semicolons or white space, each trimmed, the empty ones dropped.
+std::vector<std::string> UltraNet_ParseNoProxyList(const std::string& text);
+// "socks5h://proxy.example:1080", "http://10.0.0.1:3128" - a proxy as a
+// person reads it (no credentials). Empty for NoProxy, System and Direct.
+std::string UltraNet_DescribeProxy(const UltraNetProxyConfig& proxy);
 
 // ============================================================================
 // Cancellation & progress. Operate on a UltraNetHandle returned by an async

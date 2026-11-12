@@ -2,7 +2,7 @@
 # UltraAI_UI: the module's one library that draws - the "Get a local model"
 # dialog every application shows the same way - and its one bridge into the
 # UltraCanvas core: UltraAI as FileLoader's text recognizer
-# (UltraAITextRecognition.h). It needs the local runtime
+# (UltraAITextRecognition.h) and speech transcriber (UltraAISpeechTranscription.h). It needs the local runtime
 # and the UltraCanvas core, so it is built in-tree only; the dashboard and
 # Texter link it by this name.
 
@@ -20,6 +20,8 @@ add_library(UltraAI_UI STATIC
     # UltraAI as UltraCanvasFileLoader's text recognizer (OCR through a
     # vision provider, the framework's own as the fallback).
     src/TextRecognition.cpp
+    # ... and as its speech transcriber (UltraAISpeechTranscription.h).
+    src/SpeechTranscription.cpp
 )
 add_library(UltraAI::UI ALIAS UltraAI_UI)
 
@@ -32,3 +34,9 @@ target_link_libraries(UltraAI_UI
     PUBLIC UltraAI UltraAI_Runtime UltraAI_Core ${ULTRACANVAS_LIBRARY}
 )
 target_compile_features(UltraAI_UI PUBLIC cxx_std_20)
+# The speech transcriber takes the sound out of a video (and out of a sound
+# file the provider does not take) with VideoFX, where it is in the build.
+if(TARGET VideoFX)
+    target_link_libraries(UltraAI_UI PRIVATE VideoFX::VideoFX)
+    target_compile_definitions(UltraAI_UI PRIVATE ULTRAAI_UI_HAS_VIDEOFX=1)
+endif()

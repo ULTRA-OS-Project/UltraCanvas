@@ -8,7 +8,7 @@ common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
 
 **File Location**: `include/UltraCanvasDatePicker.h`
-**Version**: 1.4.0 - the version history is in the header's head
+**Version**: 1.5.0 - `FromTheme` on both styles, `ApplyTheme`: the pickers and the calendar follow the theme
 **Author**: UltraCanvas Framework
 
 ## Contents
@@ -129,6 +129,28 @@ Useful methods:
 Interaction: click the field to type, click the button (or press ↑/↓) to open
 the calendar; selecting a single date commits and closes; completing a range
 commits and closes; `Esc` cancels.
+
+**Following the theme.** `DatePickerStyle::FromTheme` and
+`CalendarStyle::FromTheme` put the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink and the caret in ink,
+faint ink for the hint, muted ink for the glyph; the raised panel for the
+calendar with ink for the cells, the accent with text on it for the
+selected day, today's ring and the footer, the soft accent for a range,
+danger for a blocked day's strike; the weekends keep their red unless the
+theme names `calendar.weekend`; the interface font at the body size. Under
+the theme policy a new picker, range picker or calendar view follows the
+theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto when = std::make_shared<UltraCanvasDatePicker>("when");
+DatePickerStyle compact = when->GetStyle();
+compact.calendarStyle = CalendarStyles::Compact();
+when->SetStyle(DatePickerStyle::FromTheme(UltraCanvasTheme::Current(), compact));   // the roles over the compact calendar
+when->SetFollowTheme(true);
+calendar->SetStyle(CalendarStyle::FromTheme());                                     // an inline calendar, the current theme
+```
 
 ## 5. `UltraCanvasCalendarView` (inline)
 

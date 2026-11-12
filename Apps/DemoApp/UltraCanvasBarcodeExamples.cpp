@@ -34,43 +34,68 @@ namespace UltraCanvas {
             const char* label;
             BarcodeSymbology symbology;
             const char* defaultData;
-            const char* note;
         };
 
         // One canonical sample per symbology. Choices below picked so that
         // the encoder accepts them without further options and the resulting
         // bars look distinct between symbologies.
         const SampleEntry kSamples[] = {
-            { "Code 39",          BarcodeSymbology::Code39,         "ULTRACANVAS-1",   "Alphanumeric, mod-43 check" },
-            { "Code 39 Extended", BarcodeSymbology::Code39Extended, "Hello, World!",   "Full ASCII via shift sequences" },
-            { "Code 93",          BarcodeSymbology::Code93,         "ULTRACANVAS93",   "Denser Code 39 + C/K checks" },
-            { "Code 128",         BarcodeSymbology::Code128,        "UltraCanvas-128", "Auto subset A/B/C selection" },
-            { "Code 128-A",       BarcodeSymbology::Code128A,       "ULTRA-128A",      "Subset A (uppercase + control)" },
-            { "Code 128-B",       BarcodeSymbology::Code128B,       "ultra-128B",      "Subset B (full keyboard)" },
-            { "Code 128-C",       BarcodeSymbology::Code128C,       "12345678",        "Subset C (numeric pairs)" },
-            { "GS1-128",          BarcodeSymbology::GS1_128,        "(01)04601234567893(17)241231", "FNC1 + AIs (parentheses HRI-only)" },
-            { "EAN-13",           BarcodeSymbology::EAN13,          "590123412345",    "12 digits — check digit auto" },
-            { "EAN-8",            BarcodeSymbology::EAN8,           "9638507",         "7 digits — check digit auto" },
-            { "UPC-A",            BarcodeSymbology::UPCA,           "03600029145",     "11 digits — US retail" },
-            { "UPC-E",            BarcodeSymbology::UPCE,           "0123456",         "NS + 5 data — compressed" },
-            { "ISBN-13",          BarcodeSymbology::ISBN,           "9780306406157",   "EAN-13 with 978/979 prefix" },
-            { "ITF",              BarcodeSymbology::ITF,            "1234567890",      "Interleaved 2 of 5" },
-            { "ITF-14",           BarcodeSymbology::ITF14,          "1540014128876",   "GTIN-14 with bearer bars" },
-            { "Standard 2 of 5",  BarcodeSymbology::Standard25,     "1234567890",      "Industrial 2 of 5 (Code 25)" },
-            { "Codabar",          BarcodeSymbology::Codabar,        "A1234567890B",    "A/B/C/D start/stop chars" },
-            { "MSI Plessey",      BarcodeSymbology::MSIPlessey,     "1234567",         "Mod-10 check digit" },
-            { "Pharmacode",       BarcodeSymbology::Pharmacode,     "1234",            "Laetus, 3..131070" },
+            { "Code 39",          BarcodeSymbology::Code39,        "ULTRACANVAS-1" },
+            { "Code 39 Extended", BarcodeSymbology::Code39Extended, "Hello, World!" },
+            { "Code 93",          BarcodeSymbology::Code93,        "ULTRACANVAS93" },
+            { "Code 128",         BarcodeSymbology::Code128,       "UltraCanvas-128" },
+            { "Code 128-A",       BarcodeSymbology::Code128A,      "ULTRA-128A" },
+            { "Code 128-B",       BarcodeSymbology::Code128B,      "ultra-128B" },
+            { "Code 128-C",       BarcodeSymbology::Code128C,      "12345678" },
+            { "GS1-128",          BarcodeSymbology::GS1_128,       "(01)04601234567893(17)241231" },
+            { "EAN-13",           BarcodeSymbology::EAN13,         "590123412345" },
+            { "EAN-8",            BarcodeSymbology::EAN8,          "9638507" },
+            { "UPC-A",            BarcodeSymbology::UPCA,          "03600029145" },
+            { "UPC-E",            BarcodeSymbology::UPCE,          "0123456" },
+            { "ISBN-13",          BarcodeSymbology::ISBN,          "9780306406157" },
+            { "ITF",              BarcodeSymbology::ITF,           "1234567890" },
+            { "ITF-14",           BarcodeSymbology::ITF14,         "1540014128876" },
+            { "Standard 2 of 5",  BarcodeSymbology::Standard25,    "1234567890" },
+            { "Codabar",          BarcodeSymbology::Codabar,       "A1234567890B" },
+            { "MSI Plessey",      BarcodeSymbology::MSIPlessey,    "1234567" },
+            { "Pharmacode",       BarcodeSymbology::Pharmacode,    "1234" },
         };
+
+        // The note under each sample, in kSamples' order; built when the page
+        // is, so it is in the language of the moment.
+        std::vector<std::string> SampleNotes() {
+            return {
+                Tr("Alphanumeric, mod-43 check"),
+                Tr("Full ASCII via shift sequences"),
+                Tr("Denser Code 39 + C/K checks"),
+                Tr("Auto subset A/B/C selection"),
+                Tr("Subset A (uppercase + control)"),
+                Tr("Subset B (full keyboard)"),
+                Tr("Subset C (numeric pairs)"),
+                Tr("FNC1 + AIs (parentheses HRI-only)"),
+                Tr("12 digits — check digit auto"),
+                Tr("7 digits — check digit auto"),
+                Tr("11 digits — US retail"),
+                Tr("NS + 5 data — compressed"),
+                Tr("EAN-13 with 978/979 prefix"),
+                Tr("Interleaved 2 of 5"),
+                Tr("GTIN-14 with bearer bars"),
+                Tr("Industrial 2 of 5 (Code 25)"),
+                Tr("A/B/C/D start/stop chars"),
+                Tr("Mod-10 check digit"),
+                Tr("Laetus, 3..131070")
+            };
+        }
 
         constexpr int kSampleCount = sizeof(kSamples) / sizeof(kSamples[0]);
 
         // Each card is a kit card: title + note + the barcode at a set height
         // (autoFitToBounds scales the symbol to the width it receives). The
         // card grows with its texts instead of squeezing the barcode.
-        std::shared_ptr<UltraCanvasContainer> BuildCard(const SampleEntry& s) {
+        std::shared_ptr<UltraCanvasContainer> BuildCard(const SampleEntry& s, const std::string& note) {
             auto card = DemoKit::CreateCard(std::string("BarcodeCard_") + s.label);
             DemoKit::AddHeading(card, std::string("Title_") + s.label, s.label);
-            DemoKit::AddCaption(card, std::string("Note_") + s.label, s.note);
+            DemoKit::AddCaption(card, std::string("Note_") + s.label, note);
 
             // Built unsized at (0,0) so it stays in flow; the column stretches it
             // across and autoFitToBounds scales the symbol to the cell.
@@ -95,18 +120,18 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarcodeExamples() {
-        auto root = DemoKit::CreatePage("BarcodeExamples", "UltraCanvas Barcode Widget — 1D Symbologies",
-                "From-scratch pure-C++20 1D encoders, rendered via Cairo.");
+        auto root = DemoKit::CreatePage("BarcodeExamples", Tr("UltraCanvas Barcode Widget — 1D Symbologies"),
+                Tr("From-scratch pure-C++20 1D encoders, rendered via Cairo."));
 
         // ===== INTERACTIVE PLAYGROUND =====
         auto playground = DemoKit::AddCard(root, "Playground",
-                "Live editor — try any symbology with your own data");
+                Tr("Live editor — try any symbology with your own data"));
 
         // --- Controls row (symbology + data + HRI/rotate toggles); wraps when narrow ---
         auto controls = DemoKit::AddRow(playground, "PlayControls", 8);
         controls->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        auto symLabel = DemoKit::CreateText("SymLabel", "Symbology:");
+        auto symLabel = DemoKit::CreateText("SymLabel", Tr("Symbology:"));
         symLabel->SetFontSize(11);
         DemoKit::Add(controls, symLabel);
 
@@ -118,7 +143,7 @@ namespace UltraCanvas {
         symDropdown->size.width = CSSLayout::Dimension::Px(170);
         DemoKit::AddFixed(controls, symDropdown);
 
-        auto dataLabel = DemoKit::CreateText("DataLabel", "Data:");
+        auto dataLabel = DemoKit::CreateText("DataLabel", Tr("Data:"));
         dataLabel->SetFontSize(11);
         DemoKit::Add(controls, dataLabel);
 
@@ -127,12 +152,12 @@ namespace UltraCanvas {
         DemoKit::Add(controls, dataInput, 1); // absorbs the horizontal slack
 
         auto textBtn = std::make_shared<UltraCanvasButton>("TextBtn", 0, 0, 130, 28);
-        textBtn->SetText("HRI: Below");
+        textBtn->SetText(Tr("HRI: Below"));
         textBtn->size.width = CSSLayout::Dimension::Px(130);
         DemoKit::AddFixed(controls, textBtn);
 
         auto rotBtn = std::make_shared<UltraCanvasButton>("RotBtn", 0, 0, 130, 28);
-        rotBtn->SetText("Rotate: 0°");
+        rotBtn->SetText(TrF("Rotate: {0}°", 0));
         rotBtn->size.width = CSSLayout::Dimension::Px(130);
         DemoKit::AddFixed(controls, rotBtn);
 
@@ -181,12 +206,12 @@ namespace UltraCanvas {
             static int state = 0;
             state = (state + 1) % 4;
             BarcodeTextPosition pos = BarcodeTextPosition::TextBelow;
-            const char* label = "HRI: Below";
+            std::string label = Tr("HRI: Below");
             switch (state) {
-                case 0: pos = BarcodeTextPosition::TextBelow;          label = "HRI: Below"; break;
-                case 1: pos = BarcodeTextPosition::TextAbove;          label = "HRI: Above"; break;
-                case 2: pos = BarcodeTextPosition::TextBothSides;  label = "HRI: Both"; break;
-                case 3: pos = BarcodeTextPosition::HiddenText;         label = "HRI: Off"; break;
+                case 0: pos = BarcodeTextPosition::TextBelow;          label = Tr("HRI: Below"); break;
+                case 1: pos = BarcodeTextPosition::TextAbove;          label = Tr("HRI: Above"); break;
+                case 2: pos = BarcodeTextPosition::TextBothSides;  label = Tr("HRI: Both"); break;
+                case 3: pos = BarcodeTextPosition::HiddenText;         label = Tr("HRI: Off"); break;
             }
             liveBarcode->SetTextPosition(pos);
             textBtn->SetText(label);
@@ -197,26 +222,28 @@ namespace UltraCanvas {
             static int state = 0;
             state = (state + 1) % 4;
             BarcodeRotation r = BarcodeRotation::Rotate0;
-            const char* label = "Rotate: 0°";
+            int degrees = 0;
             switch (state) {
-                case 0: r = BarcodeRotation::Rotate0;   label = "Rotate: 0°";   break;
-                case 1: r = BarcodeRotation::Rotate90;  label = "Rotate: 90°";  break;
-                case 2: r = BarcodeRotation::Rotate180; label = "Rotate: 180°"; break;
-                case 3: r = BarcodeRotation::Rotate270; label = "Rotate: 270°"; break;
+                case 0: r = BarcodeRotation::Rotate0;   degrees = 0;   break;
+                case 1: r = BarcodeRotation::Rotate90;  degrees = 90;  break;
+                case 2: r = BarcodeRotation::Rotate180; degrees = 180; break;
+                case 3: r = BarcodeRotation::Rotate270; degrees = 270; break;
             }
+            const std::string label = TrF("Rotate: {0}°", degrees);
             liveBarcode->SetRotation(r);
             rotBtn->SetText(label);
         };
 
         // ===== GALLERY (one card per symbology) =====
-        DemoKit::AddHeading(root, "GalleryTitle", "All symbologies — same widget, different encoders");
+        DemoKit::AddHeading(root, "GalleryTitle", Tr("All symbologies — same widget, different encoders"));
 
         // Single column: each barcode card is full-width, stacked one under another.
         auto gallery = DemoKit::CreateColumn("Gallery", DemoKit::kPageGap);
         DemoKit::Add(root, gallery);
 
+        const std::vector<std::string> notes = SampleNotes();
         for (int i = 0; i < kSampleCount; ++i) {
-            DemoKit::Add(gallery, BuildCard(kSamples[i]));
+            DemoKit::Add(gallery, BuildCard(kSamples[i], notes[i]));
         }
 
         return root;

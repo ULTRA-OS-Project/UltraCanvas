@@ -1,7 +1,7 @@
 // core/UltraCanvasStepper.cpp
 // Platform-independent stepper / wizard-progress control implementation.
 // Version: 1.0.2 - the completed marker's check is a stroked path, not a glyph
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasStepper.h"
@@ -15,6 +15,7 @@ namespace UltraCanvas {
                                            float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
         mouseCursor = UCMouseCursor::Default;
+        ApplyThemeIfFollowing();
     }
 
 // ===================================================================
@@ -477,6 +478,33 @@ namespace UltraCanvas {
                 break;
         }
         return false;
+    }
+
+// ===== THE THEME =====
+    StepperStyle StepperStyle::FromTheme(const UltraCanvasTheme& theme, const StepperStyle& base) {
+        StepperStyle s = base;
+        const ThemeRoles& r = theme.roles;
+        s.fontFamily = theme.fonts.ui.fontFamily;
+        s.titleFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+        s.descriptionFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
+        s.completedColor = r.accent;
+        s.activeColor = r.accent;
+        s.upcomingColor = r.lineStrong;
+        s.errorColor = r.danger;
+        s.disabledColor = r.panel;
+        s.markerBackground = r.raised;
+        s.completedGlyphColor = r.onAccent;
+        s.activeGlyphColor = r.onAccent;
+        s.upcomingGlyphColor = r.inkMuted;
+        // the element's own role, for a design whose error marker is not red on white
+        s.errorGlyphColor = theme.Role("stepper.on-error", base.errorGlyphColor);
+        s.connectorColor = r.line;
+        s.connectorCompletedColor = r.accent;
+        s.titleColor = r.ink;
+        s.activeTitleColor = r.accent;
+        s.descriptionColor = r.inkMuted;
+        s.disabledTextColor = r.inkFaint;
+        return s;
     }
 
 } // namespace UltraCanvas

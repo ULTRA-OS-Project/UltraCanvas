@@ -24,6 +24,7 @@
 #include <UltraNet/UltraNetCurlDebug.h>
 #include <UltraNet/UltraNetCurlError.h>
 #include <UltraNet/UltraNetCurlMailAuth.h>
+#include <UltraNet/UltraNetCurlProxy.h>
 #include <UltraNet/UltraNetCurlTls.h>
 #include <UltraNet/UltraNetMailAddr.h>
 
@@ -127,6 +128,7 @@ public:
             ultranet_curldebug::EnableIfRequested(h.get());
 
             curl_easy_setopt(h.get(), CURLOPT_URL, options.serverUrl.c_str());
+            ultranet_curlproxy::ApplyFor(h.get(), options.serverUrl, /*tunnel=*/true);
 
             // TLS is required either way here (CURLUSESSL_ALL below).
             ultranet_curlmailauth::RecordContext(

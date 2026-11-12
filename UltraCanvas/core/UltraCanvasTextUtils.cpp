@@ -131,6 +131,21 @@ std::string FormatFloatClassic(double value, int precision) {
     return out.str();
 }
 
+std::string FormatFixedClassic(double value, int decimals, bool keepPoint) {
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << std::fixed << std::setprecision(decimals) << value;
+    std::string text = out.str();
+    if (text.find('.') == std::string::npos) return text;   // decimals <= 0
+
+    // Strip the trailing zeros, and then the point itself unless the caller
+    // wants one digit behind it. find_last_not_of cannot run off the front
+    // here: the text always has a digit before the point.
+    size_t last = text.find_last_not_of('0');
+    if (text[last] == '.') last = keepPoint ? last + 1 : last - 1;
+    return text.substr(0, last + 1);
+}
+
 namespace {
 
 const char kBase64Alphabet[] =

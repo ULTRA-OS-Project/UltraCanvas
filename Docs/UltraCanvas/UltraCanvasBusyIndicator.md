@@ -6,6 +6,7 @@
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Style](#style)
+- [Following the theme](#following-the-theme)
 - [DotRing fades](#dotring-fades)
 - [Threading](#threading)
 
@@ -30,7 +31,7 @@ sit permanently in a status line and costs nothing while idle, because no
 timer runs.
 
 **File Location**: `include/UltraCanvasBusyIndicator.h`
-**Version**: 1.2.0
+**Version**: 1.3.0 - `BusyIndicatorStyle::FromTheme`, `ApplyTheme`: the indicator follows the theme
 **Author**: UltraCanvas Framework
 
 It is not the right element for:
@@ -107,6 +108,24 @@ busy->SetStyle(st);
 | `revolutionsPerSecond` | `1.0` | speed: cycles per second for every kind (one turn, one wave, one pass, one breath) |
 | `frameIntervalMs` | `33` | redraw period while running |
 | `hideWhenStopped` | `true` | draw nothing while stopped |
+
+## Following the theme
+
+`BusyIndicatorStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's kind and metrics: the accent
+for the moving part, ink at the track's faint alpha for the still one; the
+second arc keeps its orange unless the theme names
+`busy-indicator.second-arc`. Under the theme policy a new indicator follows
+the theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto busy = std::make_shared<UltraCanvasBusyIndicator>("busy", 0, 0, 24, 24);
+BusyIndicatorStyle dots = busy->GetStyle();
+dots.kind = BusyIndicatorKind::Dots;
+busy->SetStyle(BusyIndicatorStyle::FromTheme(UltraCanvasTheme::Current(), dots));
+busy->SetFollowTheme(true);
+```
 
 ## DotRing fades
 

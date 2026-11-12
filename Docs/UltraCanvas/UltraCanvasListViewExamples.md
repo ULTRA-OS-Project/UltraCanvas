@@ -43,7 +43,7 @@
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.1.0 - `onCellDoubleClicked`, `GetCellRect`: an editor over a cell
+**Version:** 1.2.0 - `ListViewStyle::FromTheme`, `ApplyTheme`: the list follows the theme, its default delegate with it
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -199,7 +199,30 @@ struct ListViewStyle {
     Color hoverBackgroundColor = Colors::SelectionHover;
 
     ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
+
+    // The framework theme's roles over a base's shape (UltraCanvasTheme.md)
+    static ListViewStyle FromTheme(const UltraCanvasTheme& theme, const ListViewStyle& base);
+    static ListViewStyle FromTheme(const UltraCanvasTheme& theme);
+    static ListViewStyle FromTheme();
 };
+```
+
+`FromTheme` puts the theme's roles over a base style's shape: the well for
+the rows, the panel for the header with ink and hairline grid lines, the
+panel for alternate rows, the accent for the selection, the hover fill, the
+header at the caption size, the scrollbars from `ScrollbarStyle::FromTheme`.
+Under the theme policy a new list follows the theme by itself
+(`ApplyTheme`), and when its delegate is the `UltraCanvasDefaultListDelegate`
+that delegate takes ink, text on the accent for a selected row and the body
+font with it; a `SetStyle` by hand stops the following, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto list = std::make_shared<UltraCanvasListView>("list", 300, 200);
+ListViewStyle striped = list->GetStyle();
+striped.alternateRowColors = true;
+list->SetStyle(ListViewStyle::FromTheme(UltraCanvasTheme::Current(), striped));
+list->SetFollowTheme(true);
 ```
 
 ### Column widths

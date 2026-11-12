@@ -13,11 +13,13 @@
 #include "UltraCanvasEPSConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#include "UltraCanvasTextUtils.h"   // FormatFixedClassic - dot-decimal, fixed point
 
 #include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <functional>
+#include <locale>
 #include <sstream>
 #include <variant>
 #include "UltraCanvasPathUtf8.h"
@@ -37,7 +39,12 @@ namespace UltraCanvas {
             public:
                 EpsEmitter(const VectorDocument& document,
                            std::function<void(const std::string&)> warnFn)
-                        : doc(document), warn(std::move(warnFn)) {}
+                        : doc(document), warn(std::move(warnFn)) {
+                    // The emitter's own stream, so imbued once here: the
+                    // numbers reach it through Num(), but the counts and
+                    // indices below are streamed straight in.
+                    out.imbue(std::locale::classic());
+                }
 
                 std::string Build() {
                     pageW = doc.Size.width;
@@ -85,21 +92,19 @@ namespace UltraCanvas {
             private:
                 const VectorDocument& doc;
                 std::function<void(const std::string&)> warn;
-                std::ostringstream out;
+                std::ostringstream out;       // imbued in the constructor
                 double pageW = 0, pageH = 0;   // points
                 bool warnedOpacity = false;
                 bool warnedGradient = false;
 
                 // ===== FORMATTING =====
 
-                static std::string Num(double v) {
-                    char buf[40];
-                    std::snprintf(buf, sizeof(buf), "%.3f", v);
-                    std::string s = buf;
-                    size_t last = s.find_last_not_of('0');
-                    if (s[last] == '.') --last;
-                    return s.substr(0, last + 1);
-                }
+                // PostScript separates an operator's operands with spaces and
+                // counts them, so a locale's comma does not round a number
+                // here, it changes how many there are: snprintf("%.3f") used to
+                // write `%%HiResBoundingBox: 0 0 420,5 297,25` and `1,5 setlinewidth`
+                // on a comma-decimal desktop, and no interpreter takes either.
+                static std::string Num(double v) { return FormatFixedClassic(v, 3); }
 
                 // Doc space (points, Y down) -> PostScript user space (Y up).
                 std::string Pt(const Point2Dd& p) const {

@@ -57,6 +57,20 @@ jobs:
         with:
           submodules: recursive
 
+      # The packages and package lists of the last run on main, as build.yml's
+      # Linux rows keep them (scripts/ci-apt.sh cache-in): fetched only when
+      # changed, and an `apt-get update` that cannot reach the mirror goes on
+      # with these lists, so the packages install from the cache.
+      - name: Restore the apt package cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-wayland-ubuntu-24.04-
+          restore-keys: apt-debs-wayland-ubuntu-24.04-
+
+      - name: Put the cached packages in apt's cache
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install dependencies
         timeout-minutes: 45
         run: |
@@ -98,6 +112,18 @@ jobs:
           # seat (wtype), a screenshot of the desktop (grim), and a session
           # bus for the portal test (dbus-run-session).
           scripts/ci-apt.sh install sway wtype grim
+
+      - name: Keep the downloaded packages (main)
+        if: github.ref == 'refs/heads/main'
+        id: apt-keep
+        run: echo "hash=$(scripts/ci-apt.sh cache-out "${{ runner.temp }}/apt-debs")" >> "$GITHUB_OUTPUT"
+
+      - name: Save the apt package cache (main)
+        if: github.ref == 'refs/heads/main' && steps.apt-keep.outputs.hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-wayland-ubuntu-24.04-${{ steps.apt-keep.outputs.hash }}
 
       - name: Install Clang
         timeout-minutes: 15

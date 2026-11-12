@@ -1,3 +1,55 @@
+#### 2026-11-12 *0.1.26*
+- **Consecutive same-role turns are merged before a chat template sees
+  them.** Two `user` messages in a row (or two `assistant` ones) now reach
+  the wire as one message, texts joined with a blank line and parts, tool
+  calls and names kept in order; tool results and turns from different named
+  speakers stay apart. OpenAI accepts either shape, but an OpenAI-compatible
+  server that hands the history to the model's chat template (LocalAI,
+  llama.cpp server, vLLM with Gemma, Llama 2 or Mistral) refuses two in a
+  row with *"Conversation roles must alternate user/assistant/user/assistant"*
+  - the HTTP 500 the dashboard's Chat hit through LiteLLM. The merge is
+  `MergeSameRoleTurns` in the shared adapter library
+  (`UltraAIMessageHistory.h`): the OpenAI adapter applies it, so the Qwen and
+  `local` providers that delegate to it are covered, and the in-process
+  llama.cpp adapter applies it before `llama_chat_apply_template`. The
+  dashboard no longer produces such a history since 0.1.20, and now no other
+  UltraAI client can trip it either.
+
+#### 2026-11-11 *0.1.25*
+- **Settings > Services > Proxy.** The cloud providers are reached through
+  the proxy every ULTRA OS application shares - the system's until another
+  is chosen - and the page opens the Proxy settings dialog to choose one; a
+  local model on this machine is never reached through it.
+
+#### 2026-11-10 *0.1.24*
+- **Speech to text for UltraCanvas applications.**
+  `RegisterUltraAISpeechTranscription()` (`UltraAISpeechTranscription.h`, in
+  `UltraAI_UI`) makes UltraAI `UltraCanvasFileLoader`'s speech transcriber:
+  the words spoken in a sound file or a video come from the first
+  speech-to-text provider on the default route (chosen, then local, a cloud
+  one only when chosen or allowed, never `mock`), chosen again at every file.
+  A sound file of a type the provider takes, within its size limit, goes as
+  it is; every video, another type or a file over the limit has its sound
+  track taken out with VideoFX first, as a mono 16 kHz MP3 at 64 kbit/s
+  (about 50 minutes in 25 MB). Without a provider the transcriber installed
+  before it transcribes. `FindSpeechProvider` and
+  `LastSpeechTranscriptionProvider` say which. `UltraAI_UI` links VideoFX
+  where it is in the build. `UltraAISpeechTranscriptionTest` covers it with a
+  generated WAV, the MP3 conversion, and a video where the ffmpeg command
+  line is installed.
+- **OpenAI speech to text.** `CreateOpenAISpeechToText` (`UltraAIOpenAI.h`)
+  transcribes over the audio API: a multipart upload to
+  `/v1/audio/transcriptions` (or `/v1/audio/translations` with `whisper-1`),
+  `gpt-4o-transcribe` by default, `whisper-1` with segment and word
+  timestamps (`verbose_json`), the language as its primary subtag, options as
+  form fields, 25 MB refused before upload, errors mapped. Without a key in
+  the config it reads the UltraVault entry `ai.openai.api_key`. Against a
+  custom `baseUrl` - a self-hosted OpenAI-compatible whisper server - it runs
+  keyless with `whisper-1` by default. Live transcription is not supported.
+  Registered as `"openai"` for `"speechtotext"`, a cloud provider used once
+  chosen (`ULTRAAI_DEFAULT_SPEECHTOTEXT=openai`). `ultraai.openai_speech`
+  tests it offline.
+
 #### 2026-11-10 *0.1.23*
 - **The Anthropic text adapter moves to the current API and models.**
   Requests send `anthropic-version: 2026-10-21` (migration guide:

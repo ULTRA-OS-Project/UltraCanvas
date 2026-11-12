@@ -1,6 +1,7 @@
 // UltraCloud/providers/UltraCloudMemory.cpp
+// Version: 0.2.0 - a transfer keeps the file's dates, as a real drive's does
 // Version: 0.1.0
-// Last Modified: 2026-09-03
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudMemory.h>
 #include <UltraCloud/UltraCloudWebDav.h>   // NormalizePath
@@ -13,6 +14,7 @@
 #include <mutex>
 #include <string>
 #include "../../UltraCanvas/include/UltraCanvasPathUtf8.h"
+#include "core/UltraCloudInternal.h"   // LocalFileDates / GiveFileDates / Rfc3339
 
 namespace UltraCloud {
 
@@ -22,6 +24,7 @@ struct Item {
     bool isDirectory = false;
     int64_t size = 0;
     std::string modified;
+    int64_t modifiedAt = 0, createdAt = 0;   // the uploaded file's dates (seconds)
     std::vector<uint8_t> data;
 };
 using Tree = std::map<std::string, Item>;   // path → item, "/" implicit
@@ -102,6 +105,8 @@ Result MemoryProvider::Upload(const Account& account, const Credentials&,
     Item item;
     item.data.assign(std::istreambuf_iterator<char>(is), std::istreambuf_iterator<char>());
     item.size = static_cast<int64_t>(item.data.size());
+    internal::LocalFileDates(localPath, item.modifiedAt, item.createdAt);
+    item.modified = internal::Rfc3339(item.modifiedAt);
     std::lock_guard<std::mutex> lock(Mutex());
     Stores()[account.accountId][NormalizePath(remotePath)] = std::move(item);
     return Result::Ok();
@@ -117,6 +122,9 @@ Result MemoryProvider::Download(const Account& account, const Credentials&,
     if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
     os.write(reinterpret_cast<const char*>(it->second.data.data()),
              static_cast<std::streamsize>(it->second.data.size()));
+    os.close();
+    if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
+    internal::GiveFileDates(localPath, it->second.modifiedAt, it->second.createdAt);
     return Result::Ok();
 }
 

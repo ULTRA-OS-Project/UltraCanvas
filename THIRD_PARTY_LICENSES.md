@@ -149,6 +149,22 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## Manrope and Inter (the UltraStore shop design's fonts)
+
+- **Used by:** every application through `media/fonts` (registered at start
+  with the Ubuntu family); UltraStore's window names them - Manrope for the
+  display text, Inter for the body text - after the UltraStore shop design.
+- **Upstream:** Manrope by Mikhail Sharanda — https://github.com/sharanda/manrope;
+  Inter by Rasmus Andersson — https://github.com/rsms/inter. Both taken from
+  Google Fonts (https://github.com/google/fonts, `ofl/manrope`, `ofl/inter`)
+  as the variable fonts.
+- **Vendored at:** `media/fonts/Manrope-Variable.ttf`, `media/fonts/Inter-Variable.ttf`
+- **License:** SIL Open Font License 1.1 — freely usable, embeddable and
+  redistributable, commercial use permitted; the fonts may not be sold by
+  themselves. Copyright 2018 The Manrope Project Authors; copyright 2016 The
+  Inter Project Authors.
+- **Full text:** `media/fonts/Manrope-OFL.txt`, `media/fonts/Inter-OFL.txt`
+
 ## MicroTeX (LaTeX math engine)
 
 - **Used by:** the LaTeX math plugin (`ULTRACANVAS_PLUGIN_LATEX`).

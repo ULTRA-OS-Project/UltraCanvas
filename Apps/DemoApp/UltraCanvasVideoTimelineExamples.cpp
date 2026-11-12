@@ -44,15 +44,15 @@ TimelineModel BuildDemoModel() {
     TimelineTrack titles;
     titles.id = "T1";
     titles.kind = TimelineTrackKind::Title;
-    titles.name = "Titles";
+    titles.name = Tr("Titles");
     titles.magnetic = false;
     {
         TimelineClip t;
-        t.id = "title-open"; t.kind = TimelineClipKind::Title; t.name = "Opening title";
+        t.id = "title-open"; t.kind = TimelineClipKind::Title; t.name = Tr("Opening title");
         t.start = 0.5; t.duration = 4.0;
         titles.clips.push_back(t);
         TimelineClip lower;
-        lower.id = "title-lower"; lower.kind = TimelineClipKind::Title; lower.name = "Lower third - Anna";
+        lower.id = "title-lower"; lower.kind = TimelineClipKind::Title; lower.name = TrF("Lower third - {0}", "Anna");
         lower.start = 18.0; lower.duration = 5.0;
         titles.clips.push_back(lower);
     }
@@ -60,7 +60,7 @@ TimelineModel BuildDemoModel() {
     TimelineTrack overlay;
     overlay.id = "V2";
     overlay.kind = TimelineTrackKind::Video;
-    overlay.name = "Overlay video";
+    overlay.name = Tr("Overlay video");
     overlay.magnetic = false;
     {
         TimelineClip drone;
@@ -72,10 +72,10 @@ TimelineModel BuildDemoModel() {
     TimelineTrack main;
     main.id = "V1";
     main.kind = TimelineTrackKind::MainVideo;
-    main.name = "Main track";
+    main.name = Tr("Main track");
     {
         TimelineClip black;
-        black.id = "black"; black.kind = TimelineClipKind::Card; black.name = "Black"; black.duration = 1.5; black.color = 0x101010;
+        black.id = "black"; black.kind = TimelineClipKind::Card; black.name = Tr("Black"); black.duration = 1.5; black.color = 0x101010;
         main.clips.push_back(black);
         TimelineClip beach;
         beach.id = "beach"; beach.kind = TimelineClipKind::Video; beach.name = "Beach_wide.mp4";
@@ -106,7 +106,7 @@ TimelineModel BuildDemoModel() {
     TimelineTrack music;
     music.id = "A1";
     music.kind = TimelineTrackKind::MainAudio;
-    music.name = "Music";
+    music.name = Tr("Music");
     {
         TimelineClip song;
         song.id = "song"; song.kind = TimelineClipKind::Audio; song.name = "Summer Drive - Night Lines (playlist, 2 songs)";
@@ -116,8 +116,8 @@ TimelineModel BuildDemoModel() {
 
     m.tracks = {titles, overlay, main, music};
     for (TimelineTrack& t : m.tracks) TimelineDeriveStarts(t);
-    m.markers.push_back({"m1", 8.0, 0xA65A00, "Chorus"});
-    m.markers.push_back({"m2", 20.0, 0x0B6AA6, "Check colour"});
+    m.markers.push_back({"m1", 8.0, 0xA65A00, Tr("Chorus")});
+    m.markers.push_back({"m2", 20.0, 0x0B6AA6, Tr("Check colour")});
     for (double b = 0.25; b < 30.0; b += 0.5) m.beats.push_back(b);   // 120 BPM
     return m;
 }
@@ -171,18 +171,24 @@ WaveformChannelData PaintPeaks(double in, double out, double blocksPerSecond) {
 
 std::string Describe(const TimelineChange& c) {
     switch (c.kind) {
-        case TimelineChangeKind::Move: return "Move on " + c.trackId;
-        case TimelineChangeKind::Trim: return "Trim on " + c.trackId + " to " + TimelineTimecode(c.at, 25.0);
-        case TimelineChangeKind::Split: return "Split " + (c.before.empty() ? std::string() : c.before[0].name) + " at " + TimelineTimecode(c.at, 25.0);
-        case TimelineChangeKind::Delete: return "Delete " + std::to_string(c.before.size()) + " clip(s) on " + c.trackId + (c.ripple ? ", ripple" : ", gap");
-        case TimelineChangeKind::Duplicate: return "Duplicate on " + c.trackId;
-        case TimelineChangeKind::TransitionSet: return "Transition " + (c.transitionAfter ? std::to_string(c.transitionAfter->seconds).substr(0, 4) + " s" : std::string());
-        case TimelineChangeKind::TransitionRemove: return "Transition removed";
-        case TimelineChangeKind::MarkerAdd: return "Marker at " + TimelineTimecode(c.at, 25.0);
-        case TimelineChangeKind::MarkerRemove: return "Marker removed";
-        case TimelineChangeKind::FadeSet: return "Fade set";
+        case TimelineChangeKind::Move: return TrF("Move on {0}", c.trackId);
+        case TimelineChangeKind::Trim: return TrF("Trim on {0} to {1}", c.trackId, TimelineTimecode(c.at, 25.0));
+        case TimelineChangeKind::Split: return TrF("Split {0} at {1}", c.before.empty() ? std::string() : c.before[0].name, TimelineTimecode(c.at, 25.0));
+        case TimelineChangeKind::Delete: {
+            const long long count = static_cast<long long>(c.before.size());
+            return LocalisationDetail::Substitute(
+                c.ripple ? TrN("Delete {n} clip on {0}, ripple", "Delete {n} clips on {0}, ripple", count)
+                         : TrN("Delete {n} clip on {0}, gap", "Delete {n} clips on {0}, gap", count),
+                {c.trackId});
+        }
+        case TimelineChangeKind::Duplicate: return TrF("Duplicate on {0}", c.trackId);
+        case TimelineChangeKind::TransitionSet: return c.transitionAfter ? TrF("Transition {0} s", std::to_string(c.transitionAfter->seconds).substr(0, 4)) : Tr("Transition");
+        case TimelineChangeKind::TransitionRemove: return Tr("Transition removed");
+        case TimelineChangeKind::MarkerAdd: return TrF("Marker at {0}", TimelineTimecode(c.at, 25.0));
+        case TimelineChangeKind::MarkerRemove: return Tr("Marker removed");
+        case TimelineChangeKind::FadeSet: return Tr("Fade set");
     }
-    return "Change";
+    return Tr("Change");
 }
 
 // The application's job: apply a reported change to the document. Here the
@@ -275,16 +281,16 @@ std::shared_ptr<UltraCanvasButton> MakeTimelineButton(const std::string& id, con
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTimelineExamples() {
-    auto page = DemoKit::CreatePage("VideoTimelineExamples", "Video Timeline",
-                                    "Drag clips to reorder the magnetic main track, drag their edges to trim, drag the overlay clip to any "
+    auto page = DemoKit::CreatePage("VideoTimelineExamples", Tr("Video Timeline"),
+                                    Tr("Drag clips to reorder the magnetic main track, drag their edges to trim, drag the overlay clip to any "
                                     "time, drag a transition's edge for its length. B is the blade, S splits at the playhead, Del deletes, "
-                                    "M adds a marker, I and O set the work area, the wheel zooms and Shift+wheel scrolls.");
+                                    "M adds a marker, I and O set the work area, the wheel zooms and Shift+wheel scrolls."));
     auto card = DemoKit::AddCard(page, "VideoTimelineCard");
 
     auto state = std::make_shared<TimelineDemoState>();
     state->model = BuildDemoModel();
 
-    auto status = DemoKit::AddText(card, "VideoTimelineStatus", "No change reported yet.");
+    auto status = DemoKit::AddText(card, "VideoTimelineStatus", Tr("No change reported yet."));
 
     auto timeline = CreateVideoTimeline("VideoTimeline", 0, 0, 960, 300);
     timeline->SetModel(state->model);
@@ -306,7 +312,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
     // The change loop: validate (everything is allowed here), apply, feed back
     timeline->onChangeRequested = [timeline = timeline.get(), state, status = status.get()](const TimelineChange& change) {
         if (!ApplyChange(state->model, change)) {
-            status->SetText("Refused: " + Describe(change));
+            status->SetText(TrF("Refused: {0}", Describe(change)));
             return false;
         }
         ++state->changes;
@@ -332,21 +338,21 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
     };
     timeline->onSelectionChanged = [status = status.get()](const std::vector<std::string>& ids) {
         if (ids.empty()) return;
-        std::string text = "Selected:";
-        for (const std::string& id : ids) text += " " + id;
-        status->SetText(text);
+        std::string list;
+        for (const std::string& id : ids) list += (list.empty() ? "" : " ") + id;
+        status->SetText(TrF("Selected: {0}", list));
     };
-    timeline->onClipActivated = [status = status.get()](const std::string& id) { status->SetText("Open the inspector for " + id); };
+    timeline->onClipActivated = [status = status.get()](const std::string& id) { status->SetText(TrF("Open the inspector for {0}", id)); };
     DemoKit::AddStretched(card, timeline);
 
     // controls under the timeline
     auto toolRow = AddControlRow(card, "VideoTimelineToolRow");
-    DemoKit::AddText(toolRow, "VideoTimelineToolLabel", "Tool");
+    DemoKit::AddText(toolRow, "VideoTimelineToolLabel", Tr("Tool"));
     auto toolDrop = CreateDropdown("VideoTimelineTool", 0, 0, 140, 30);
-    toolDrop->AddItem("Select  V");
-    toolDrop->AddItem("Blade  B");
-    toolDrop->AddItem("Trim  T");
-    toolDrop->AddItem("Slip  Y");
+    toolDrop->AddItem(Tr("Select") + "  V");
+    toolDrop->AddItem(Tr("Blade") + "  B");
+    toolDrop->AddItem(Tr("Trim") + "  T");
+    toolDrop->AddItem(Tr("Slip") + "  Y");
     toolDrop->SetSelectedIndex(0);
     toolDrop->onSelectionChanged = [timeline = timeline.get()](int index, const DropdownItem&) {
         timeline->SetTool(index == 1 ? TimelineTool::Blade : index == 2 ? TimelineTool::Trim : index == 3 ? TimelineTool::Slip : TimelineTool::Select);
@@ -356,35 +362,35 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
         toolDrop->SetSelectedIndex(tool == TimelineTool::Blade ? 1 : tool == TimelineTool::Trim ? 2 : tool == TimelineTool::Slip ? 3 : 0);
     };
 
-    auto snapBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineSnap", 0, 0, 0, 30, "Snapping  N");
+    auto snapBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineSnap", 0, 0, 0, 30, Tr("Snapping") + "  N");
     snapBox->SetChecked(true);
     snapBox->onStateChanged = [timeline = timeline.get()](CheckedState, CheckedState state) { timeline->SetSnapping(state == CheckedState::Checked); };
     DemoKit::Add(toolRow, snapBox);
-    auto beatsBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineBeats", 0, 0, 0, 30, "Beat marks");
+    auto beatsBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineBeats", 0, 0, 0, 30, Tr("Beat marks"));
     beatsBox->SetChecked(true);
     beatsBox->onStateChanged = [timeline = timeline.get()](CheckedState, CheckedState state) { timeline->SetShowBeats(state == CheckedState::Checked); };
     DemoKit::Add(toolRow, beatsBox);
-    auto darkBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineDark", 0, 0, 0, 30, "Dark palette");
+    auto darkBox = UltraCanvasCheckbox::CreateCheckbox("VideoTimelineDark", 0, 0, 0, 30, Tr("Dark palette"));
     darkBox->onStateChanged = [timeline = timeline.get()](CheckedState, CheckedState state) {
         timeline->SetStyle(state == CheckedState::Checked ? VideoTimelineStyle::DarkPalette() : VideoTimelineStyle::LightPalette());
     };
     DemoKit::Add(toolRow, darkBox);
 
-    auto fitButton = MakeTimelineButton("VideoTimelineFit", "Fit  Shift+Z");
+    auto fitButton = MakeTimelineButton("VideoTimelineFit", Tr("Fit") + "  Shift+Z");
     fitButton->onClick = [timeline = timeline.get()]() { timeline->ZoomToFit(); };
     DemoKit::Add(toolRow, fitButton);
-    auto resetButton = MakeTimelineButton("VideoTimelineReset", "Reset");
+    auto resetButton = MakeTimelineButton("VideoTimelineReset", Tr("Reset"));
     resetButton->onClick = [timeline = timeline.get(), state, status = status.get()]() {
         state->model = BuildDemoModel();
         state->changes = 0;
         timeline->SetModel(state->model);
-        status->SetText("Reset.");
+        status->SetText(Tr("Reset."));
     };
     DemoKit::Add(toolRow, resetButton);
 
     // the playhead as a timecode field (type a time, Enter) and as the transport's readout
     auto playheadRow = AddControlRow(card, "VideoTimelinePlayheadRow");
-    DemoKit::AddText(playheadRow, "VideoTimelinePlayheadLabel", "Playhead");
+    DemoKit::AddText(playheadRow, "VideoTimelinePlayheadLabel", Tr("Playhead"));
     auto playheadField = CreateTimecodeField("VideoTimelinePlayhead", 0, 0, 120, 28);
     playheadField->SetFrameRate(25.0);
     playheadField->SetMaximumFrames(static_cast<long long>(state->model.Length() * 25.0));
@@ -395,16 +401,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoTim
     readout->SetReadout(true);
     DemoKit::AddFixed(playheadRow, readout);
     DemoKit::AddCaption(card, "VideoTimelinePlayheadHint",
-                        "Click a segment and press the arrow keys, or type digits and Enter; +12 is twelve frames later.");
+                        Tr("Click a segment and press the arrow keys, or type digits and Enter; +12 is twelve frames later."));
     timeline->onPlayheadChanged = [playheadField = playheadField.get(), readout = readout.get()](double seconds) {
         playheadField->SetSeconds(seconds);
         readout->SetSeconds(seconds);
     };
 
     DemoKit::AddCaption(card, "VideoTimelineNotes",
-                        "The element never applies an edit: it reports it with the clips before and after, and this demo, "
+                        Tr("The element never applies an edit: it reports it with the clips before and after, and this demo, "
                         "standing in for the application, applies it to its model and calls SetModel. Thumbnails and the "
-                        "waveform are painted by the demo's providers; a real app decodes them with VideoFX.");
+                        "waveform are painted by the demo's providers; a real app decodes them with VideoFX."));
     return page;
 }
 

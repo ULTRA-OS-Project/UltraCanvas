@@ -1,8 +1,10 @@
 // include/UltraCanvasSlideshow.h
 // Timed image slideshow with optional info text panel and selectable indicator styles.
+// Version: 1.7.0 - SlideshowConfig::FromTheme, SlideshowIndicatorStyle::FromTheme, ApplyTheme: the slideshow
+//                  follows the theme; a SetConfig or SetIndicatorStyle by hand stops the following
 // Version: 1.6.0 - Make/Register descriptor: "slideshow" in the element registry, bundled or as a runtime module
 // Version: 1.5.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -159,6 +161,13 @@ namespace UltraCanvas {
         Color hoverColor    = Color(140, 140, 140, 255);
         Color textColor     = Color(60, 60, 60, 255);   // counter / labels
 
+        // The theme's roles over a base's own shape and placement: the
+        // control border for an inactive cell, the accent active, muted ink
+        // hovered, ink for the counter
+        static SlideshowIndicatorStyle FromTheme(const UltraCanvasTheme& theme, const SlideshowIndicatorStyle& base);
+        static SlideshowIndicatorStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SlideshowIndicatorStyle()); }
+        static SlideshowIndicatorStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
+
         // Placement inside the image area.
         // `edge` is the primary control (any of the four sides). `vertical` is
         // kept for source compatibility: if `edge` is left at its Bottom default
@@ -242,6 +251,15 @@ namespace UltraCanvas {
         std::string fontFamily;            // empty = system default
 
         SlideshowIndicatorStyle indicators;
+
+        // The theme's roles over a base's own timing, layout and sizes: the
+        // panel for the info panel with ink for the title and muted ink for
+        // the body in the interface font (the display sizes stay), the
+        // indicators from their reader; the stage keeps its black unless a
+        // theme names "slideshow.stage"
+        static SlideshowConfig FromTheme(const UltraCanvasTheme& theme, const SlideshowConfig& base);
+        static SlideshowConfig FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, SlideshowConfig()); }
+        static SlideshowConfig FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
     // ===== THE SLIDESHOW ELEMENT =====
@@ -265,6 +283,7 @@ namespace UltraCanvas {
         // ===== CONFIGURATION =====
         void SetConfig(const SlideshowConfig& cfg);
         const SlideshowConfig& GetConfig() const { return config; }
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         void SetIndicatorStyle(const SlideshowIndicatorStyle& style);
         const SlideshowIndicatorStyle& GetIndicatorStyle() const { return config.indicators; }

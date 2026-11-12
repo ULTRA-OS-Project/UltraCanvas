@@ -44,10 +44,10 @@ namespace {
     std::shared_ptr<GanttDataSource> BuildLaunchProject() {
         auto ds = std::make_shared<GanttDataSource>();
 
-        int planning = ds->AddTask("Planning", GanttDate(2026, 2, 2), GanttDate(2026, 2, 13));
-        int t11 = ds->AddTask("Vision & strategy", GanttDate(2026, 2, 2), GanttDate(2026, 2, 5), planning);
-        int t12 = ds->AddTask("Market research", GanttDate(2026, 2, 4), GanttDate(2026, 2, 10), planning);
-        int t13 = ds->AddTask("Budget approval", GanttDate(2026, 2, 11), GanttDate(2026, 2, 13), planning);
+        int planning = ds->AddTask(Tr("Planning"), GanttDate(2026, 2, 2), GanttDate(2026, 2, 13));
+        int t11 = ds->AddTask(Tr("Vision & strategy"), GanttDate(2026, 2, 2), GanttDate(2026, 2, 5), planning);
+        int t12 = ds->AddTask(Tr("Market research"), GanttDate(2026, 2, 4), GanttDate(2026, 2, 10), planning);
+        int t13 = ds->AddTask(Tr("Budget approval"), GanttDate(2026, 2, 11), GanttDate(2026, 2, 13), planning);
         ds->SetTaskProgress(t11, 1.0f);
         ds->SetTaskProgress(t12, 1.0f);
         ds->SetTaskProgress(t13, 0.8f);
@@ -56,38 +56,38 @@ namespace {
         ds->SetTaskAssignee(t13, "Alex Moro");
         ds->SetTaskPriority(t13, GanttPriority::High);
 
-        int design = ds->AddTask("Design", GanttDate(2026, 2, 16), GanttDate(2026, 3, 6));
-        int t21 = ds->AddTask("Concept sketches", GanttDate(2026, 2, 16), GanttDate(2026, 2, 20), design);
-        int t22 = ds->AddTask("Prototype", GanttDate(2026, 2, 23), GanttDate(2026, 3, 3), design);
-        int t23 = ds->AddTask("Design review", GanttDate(2026, 3, 4), GanttDate(2026, 3, 6), design);
+        int design = ds->AddTask(Tr("Design"), GanttDate(2026, 2, 16), GanttDate(2026, 3, 6));
+        int t21 = ds->AddTask(Tr("Concept sketches"), GanttDate(2026, 2, 16), GanttDate(2026, 2, 20), design);
+        int t22 = ds->AddTask(Tr("Prototype"), GanttDate(2026, 2, 23), GanttDate(2026, 3, 3), design);
+        int t23 = ds->AddTask(Tr("Design review"), GanttDate(2026, 3, 4), GanttDate(2026, 3, 6), design);
         ds->SetTaskProgress(t21, 1.0f);
         ds->SetTaskProgress(t22, 0.55f);
         ds->SetTaskAssignee(t21, "Iris Chen");
         ds->SetTaskAssignee(t22, "Iris Chen");
         ds->SetTaskAssignee(t23, "Sam Ortiz");
         ds->SetTaskPriority(t22, GanttPriority::Normal);
-        int msDesign = ds->AddMilestone("Design freeze", GanttDate(2026, 3, 6), design);
+        int msDesign = ds->AddMilestone(Tr("Design freeze"), GanttDate(2026, 3, 6), design);
 
-        int build = ds->AddTask("Implementation", GanttDate(2026, 3, 9), GanttDate(2026, 4, 10));
-        int t31 = ds->AddTask("Core engine", GanttDate(2026, 3, 9), GanttDate(2026, 3, 27), build);
-        int t32 = ds->AddTask("Integrations", GanttDate(2026, 3, 23), GanttDate(2026, 4, 3), build);
-        int t33 = ds->AddTask("QA & bugfixing", GanttDate(2026, 3, 30), GanttDate(2026, 4, 10), build);
+        int build = ds->AddTask(Tr("Implementation"), GanttDate(2026, 3, 9), GanttDate(2026, 4, 10));
+        int t31 = ds->AddTask(Tr("Core engine"), GanttDate(2026, 3, 9), GanttDate(2026, 3, 27), build);
+        int t32 = ds->AddTask(Tr("Integrations"), GanttDate(2026, 3, 23), GanttDate(2026, 4, 3), build);
+        int t33 = ds->AddTask(Tr("QA & bugfixing"), GanttDate(2026, 3, 30), GanttDate(2026, 4, 10), build);
         ds->SetTaskProgress(t31, 0.35f);
         ds->SetTaskAssignee(t31, "Priya Nair");
         ds->SetTaskAssignee(t32, "Leo Brandt");
-        ds->SetTaskAssignee(t33, "QA Team");
+        ds->SetTaskAssignee(t33, Tr("QA Team"));
         ds->SetTaskPriority(t31, GanttPriority::Urgent);
         ds->SetTaskPriority(t33, GanttPriority::High);
-        ds->SetTaskNotes(t31, "Includes the rendering pipeline rewrite");
+        ds->SetTaskNotes(t31, Tr("Includes the rendering pipeline rewrite"));
 
-        int launch = ds->AddTask("Launch", GanttDate(2026, 4, 13), GanttDate(2026, 4, 24));
-        int t41 = ds->AddTask("Marketing campaign", GanttDate(2026, 4, 13), GanttDate(2026, 4, 24), launch);
-        int t42 = ds->AddTask("Release packaging", GanttDate(2026, 4, 13), GanttDate(2026, 4, 17), launch);
+        int launch = ds->AddTask(Tr("Launch"), GanttDate(2026, 4, 13), GanttDate(2026, 4, 24));
+        int t41 = ds->AddTask(Tr("Marketing campaign"), GanttDate(2026, 4, 13), GanttDate(2026, 4, 24), launch);
+        int t42 = ds->AddTask(Tr("Release packaging"), GanttDate(2026, 4, 13), GanttDate(2026, 4, 17), launch);
         ds->SetTaskProgress(t41, 0.1f);
         ds->SetTaskAssignee(t41, "Dana Reyes");
         ds->SetTaskAssignee(t42, "Leo Brandt");
         ds->SetTaskPriority(t41, GanttPriority::Low);
-        int msGa = ds->AddMilestone("GA release", GanttDate(2026, 4, 24), launch);
+        int msGa = ds->AddMilestone(Tr("GA release"), GanttDate(2026, 4, 24), launch);
 
         ds->AddDependency(t11, t12);
         ds->AddDependency(t12, t13);
@@ -110,113 +110,113 @@ namespace {
 // MENU TABLES (keep dropdown order <-> enum mapping in one place)
 // =============================================================================
 
-    const std::vector<std::pair<std::string, GanttDesign>>& DesignMenu() {
-        static const std::vector<std::pair<std::string, GanttDesign>> menu = {
-                {"Modern",       GanttDesign::Modern},
-                {"Professional", GanttDesign::Professional},
-                {"Classic",      GanttDesign::Classic},
-                {"Soft",         GanttDesign::Soft},
-                {"Minimal",      GanttDesign::Minimal},
-                {"Dark",         GanttDesign::Dark},
+    std::vector<std::pair<std::string, GanttDesign>> DesignMenu() {
+        const std::vector<std::pair<std::string, GanttDesign>> menu = {
+                {Tr("Modern"),       GanttDesign::Modern},
+                {Tr("Professional"), GanttDesign::Professional},
+                {Tr("Classic"),      GanttDesign::Classic},
+                {Tr("Soft"),         GanttDesign::Soft},
+                {Tr("Minimal"),      GanttDesign::Minimal},
+                {Tr("Dark"),         GanttDesign::Dark},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttPalette>>& PaletteMenu() {
-        static const std::vector<std::pair<std::string, GanttPalette>> menu = {
-                {"Corporate Blue", GanttPalette::CorporateBlue},
-                {"Vibrant",        GanttPalette::Vibrant},
-                {"Pastel",         GanttPalette::Pastel},
-                {"Ocean",          GanttPalette::Ocean},
-                {"Sunset",         GanttPalette::Sunset},
-                {"Forest",         GanttPalette::Forest},
-                {"Slate",          GanttPalette::Slate},
-                {"Mono",           GanttPalette::Mono},
+    std::vector<std::pair<std::string, GanttPalette>> PaletteMenu() {
+        const std::vector<std::pair<std::string, GanttPalette>> menu = {
+                {Tr("Corporate Blue"), GanttPalette::CorporateBlue},
+                {Tr("Vibrant"),        GanttPalette::Vibrant},
+                {Tr("Pastel"),         GanttPalette::Pastel},
+                {Tr("Ocean"),          GanttPalette::Ocean},
+                {Tr("Sunset"),         GanttPalette::Sunset},
+                {Tr("Forest"),         GanttPalette::Forest},
+                {Tr("Slate"),          GanttPalette::Slate},
+                {Tr("Mono"),           GanttPalette::Mono},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttColorMode>>& ColorModeMenu() {
-        static const std::vector<std::pair<std::string, GanttColorMode>> menu = {
-                {"By phase",    GanttColorMode::ByPhase},
-                {"By row",      GanttColorMode::ByRow},
-                {"By priority", GanttColorMode::ByPriority},
-                {"Single",      GanttColorMode::Single},
+    std::vector<std::pair<std::string, GanttColorMode>> ColorModeMenu() {
+        const std::vector<std::pair<std::string, GanttColorMode>> menu = {
+                {Tr("By phase"),    GanttColorMode::ByPhase},
+                {Tr("By row"),      GanttColorMode::ByRow},
+                {Tr("By priority"), GanttColorMode::ByPriority},
+                {Tr("Single"),      GanttColorMode::Single},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttBarStyle>>& BarStyleMenu() {
-        static const std::vector<std::pair<std::string, GanttBarStyle>> menu = {
-                {"Flat",     GanttBarStyle::Flat},
-                {"Rounded",  GanttBarStyle::Rounded},
-                {"Pill",     GanttBarStyle::Pill},
-                {"Gradient", GanttBarStyle::Gradient},
-                {"Line",     GanttBarStyle::Line},
+    std::vector<std::pair<std::string, GanttBarStyle>> BarStyleMenu() {
+        const std::vector<std::pair<std::string, GanttBarStyle>> menu = {
+                {Tr("Flat"),     GanttBarStyle::Flat},
+                {Tr("Rounded"),  GanttBarStyle::Rounded},
+                {Tr("Pill"),     GanttBarStyle::Pill},
+                {Tr("Gradient"), GanttBarStyle::Gradient},
+                {Tr("Line"),     GanttBarStyle::Line},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttSummaryStyle>>& SummaryStyleMenu() {
-        static const std::vector<std::pair<std::string, GanttSummaryStyle>> menu = {
-                {"Bar",     GanttSummaryStyle::Bar},
-                {"Bracket", GanttSummaryStyle::Bracket},
-                {"Line",    GanttSummaryStyle::Line},
+    std::vector<std::pair<std::string, GanttSummaryStyle>> SummaryStyleMenu() {
+        const std::vector<std::pair<std::string, GanttSummaryStyle>> menu = {
+                {Tr("Bar"),     GanttSummaryStyle::Bar},
+                {Tr("Bracket"), GanttSummaryStyle::Bracket},
+                {Tr("Line"),    GanttSummaryStyle::Line},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttMilestoneStyle>>& MilestoneStyleMenu() {
-        static const std::vector<std::pair<std::string, GanttMilestoneStyle>> menu = {
-                {"Diamond", GanttMilestoneStyle::Diamond},
-                {"Circle",  GanttMilestoneStyle::Circle},
-                {"Square",  GanttMilestoneStyle::Square},
+    std::vector<std::pair<std::string, GanttMilestoneStyle>> MilestoneStyleMenu() {
+        const std::vector<std::pair<std::string, GanttMilestoneStyle>> menu = {
+                {Tr("Diamond"), GanttMilestoneStyle::Diamond},
+                {Tr("Circle"),  GanttMilestoneStyle::Circle},
+                {Tr("Square"),  GanttMilestoneStyle::Square},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttProgressStyle>>& ProgressStyleMenu() {
-        static const std::vector<std::pair<std::string, GanttProgressStyle>> menu = {
-                {"Hidden",      GanttProgressStyle::Hidden},
-                {"Darker fill", GanttProgressStyle::DarkerFill},
-                {"Light track", GanttProgressStyle::LightTrack},
-                {"Inner bar",   GanttProgressStyle::InnerBar},
+    std::vector<std::pair<std::string, GanttProgressStyle>> ProgressStyleMenu() {
+        const std::vector<std::pair<std::string, GanttProgressStyle>> menu = {
+                {Tr("Hidden"),      GanttProgressStyle::Hidden},
+                {Tr("Darker fill"), GanttProgressStyle::DarkerFill},
+                {Tr("Light track"), GanttProgressStyle::LightTrack},
+                {Tr("Inner bar"),   GanttProgressStyle::InnerBar},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttDependencyLineStyle>>& DependencyStyleMenu() {
-        static const std::vector<std::pair<std::string, GanttDependencyLineStyle>> menu = {
-                {"Hidden",   GanttDependencyLineStyle::Hidden},
-                {"Elbow",    GanttDependencyLineStyle::Elbow},
-                {"Straight", GanttDependencyLineStyle::Straight},
+    std::vector<std::pair<std::string, GanttDependencyLineStyle>> DependencyStyleMenu() {
+        const std::vector<std::pair<std::string, GanttDependencyLineStyle>> menu = {
+                {Tr("Hidden"),   GanttDependencyLineStyle::Hidden},
+                {Tr("Elbow"),    GanttDependencyLineStyle::Elbow},
+                {Tr("Straight"), GanttDependencyLineStyle::Straight},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttLabelPlacement>>& LabelPlacementMenu() {
-        static const std::vector<std::pair<std::string, GanttLabelPlacement>> menu = {
-                {"Hidden",       GanttLabelPlacement::Hidden},
-                {"Inside bar",   GanttLabelPlacement::InsideBar},
-                {"Right of bar", GanttLabelPlacement::RightOfBar},
-                {"Auto place",   GanttLabelPlacement::AutoPlace},
+    std::vector<std::pair<std::string, GanttLabelPlacement>> LabelPlacementMenu() {
+        const std::vector<std::pair<std::string, GanttLabelPlacement>> menu = {
+                {Tr("Hidden"),       GanttLabelPlacement::Hidden},
+                {Tr("Inside bar"),   GanttLabelPlacement::InsideBar},
+                {Tr("Right of bar"), GanttLabelPlacement::RightOfBar},
+                {Tr("Auto place"),   GanttLabelPlacement::AutoPlace},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttTimeScale>>& TimeScaleMenu() {
-        static const std::vector<std::pair<std::string, GanttTimeScale>> menu = {
-                {"Auto",     GanttTimeScale::Auto},
-                {"Days",     GanttTimeScale::Days},
-                {"Weeks",    GanttTimeScale::Weeks},
-                {"Months",   GanttTimeScale::Months},
-                {"Quarters", GanttTimeScale::Quarters},
+    std::vector<std::pair<std::string, GanttTimeScale>> TimeScaleMenu() {
+        const std::vector<std::pair<std::string, GanttTimeScale>> menu = {
+                {Tr("Auto"),     GanttTimeScale::Auto},
+                {Tr("Days"),     GanttTimeScale::Days},
+                {Tr("Weeks"),    GanttTimeScale::Weeks},
+                {Tr("Months"),   GanttTimeScale::Months},
+                {Tr("Quarters"), GanttTimeScale::Quarters},
         };
         return menu;
     }
 
-    const std::vector<std::pair<std::string, GanttDateFormat>>& DateFormatMenu() {
-        static const std::vector<std::pair<std::string, GanttDateFormat>> menu = {
+    std::vector<std::pair<std::string, GanttDateFormat>> DateFormatMenu() {
+        const std::vector<std::pair<std::string, GanttDateFormat>> menu = {
                 {"25/12/26",   GanttDateFormat::DayMonthYearSlash},
                 {"12/25/26",   GanttDateFormat::MonthDayYearSlash},
                 {"2026-12-25", GanttDateFormat::ISO},
@@ -229,15 +229,15 @@ namespace {
     std::vector<GanttColumn> ColumnPreset(int index) {
         switch (index) {
             case 1: return GanttChartStyle::ProjectColumns();
-            case 2: return {GanttColumn(GanttColumnType::Name, "Task", 240)};
-            case 3: return {GanttColumn(GanttColumnType::Name, "Activity", 200),
-                            GanttColumn(GanttColumnType::Duration, "Days", 56)};
-            case 4: return {GanttColumn(GanttColumnType::Wbs, "ID", 40),
-                            GanttColumn(GanttColumnType::Name, "Task", 180),
-                            GanttColumn(GanttColumnType::Assignee, "Owner", 100),
+            case 2: return {GanttColumn(GanttColumnType::Name, Tr("Task"), 240)};
+            case 3: return {GanttColumn(GanttColumnType::Name, Tr("Activity"), 200),
+                            GanttColumn(GanttColumnType::Duration, Tr("Days"), 56)};
+            case 4: return {GanttColumn(GanttColumnType::Wbs, Tr("ID"), 40),
+                            GanttColumn(GanttColumnType::Name, Tr("Task"), 180),
+                            GanttColumn(GanttColumnType::Assignee, Tr("Owner"), 100),
                             GanttColumn(GanttColumnType::Progress, "%", 46)};
-            case 5: return {GanttColumn(GanttColumnType::Wbs, "ID", 40),
-                            GanttColumn(GanttColumnType::Name, "Task", 240)};
+            case 5: return {GanttColumn(GanttColumnType::Wbs, Tr("ID"), 40),
+                            GanttColumn(GanttColumnType::Name, Tr("Task"), 240)};
             default: return GanttChartStyle::DefaultColumns();
         }
     }
@@ -382,7 +382,8 @@ namespace {
 
         auto chart = sc.chart;
         auto suppress = sc.suppress;
-        const auto* table = &menu;   // menu tables are function-local statics
+        // The callbacks keep their own copy: the menu tables are built per call.
+        auto table = std::make_shared<const std::vector<std::pair<std::string, T>>>(menu);
         dd->onSelectionChanged = [chart, suppress, table, apply](int index, const DropdownItem&) {
             if (*suppress) return;
             if (index < 0 || index >= static_cast<int>(table->size())) return;
@@ -423,7 +424,7 @@ namespace {
                    std::function<float(const GanttChartStyle&)> read) {
         const float current = read(sc.chart->GetStyle());
         auto cell = lay.Cell(id + "Cell");
-        auto lbl = lay.Caption(cell, id + "Lbl", caption + ": " + FormatFloat(current, decimals));
+        auto lbl = lay.Caption(cell, id + "Lbl", TrF("{0}: {1}", caption, FormatFloat(current, decimals)));
 
         auto sl = std::make_shared<UltraCanvasSlider>(id, 0, 0, lay.ColumnWidth(), 20);
         sl->SetRange(minValue, maxValue);
@@ -434,7 +435,7 @@ namespace {
         auto chart = sc.chart;
         auto suppress = sc.suppress;
         sl->onValueChanged = [chart, suppress, lbl, caption, decimals, apply](float v) {
-            lbl->SetText(caption + ": " + FormatFloat(v, decimals));
+            lbl->SetText(TrF("{0}: {1}", caption, FormatFloat(v, decimals)));
             if (*suppress) return;
             apply(chart->EditStyle(), v);
             chart->StyleChanged();
@@ -453,12 +454,12 @@ namespace {
         PanelLayout lay(panel, COL_W, COL_GAP);
 
         // ---- Design & colour -------------------------------------------------
-        lay.Heading("GsHeadDesign", "Design & colour");
+        lay.Heading("GsHeadDesign", Tr("Design & colour"));
 
         // The design preset replaces the whole style, so it drives every other
         // control back into sync instead of writing a single field.
         auto designCell = lay.Cell("GsDesignCell");
-        lay.Caption(designCell, "GsDesignLbl", "Design preset:");
+        lay.Caption(designCell, "GsDesignLbl", Tr("Design preset:"));
         auto designDd = std::make_shared<UltraCanvasDropdown>("GsDesign", 0, 0,
                                                                lay.ColumnWidth(), 23);
         for (const auto& entry : DesignMenu()) designDd->AddItem(entry.first);
@@ -479,10 +480,10 @@ namespace {
         // palette the selected design preset ships with, so a design swap can
         // reset this dropdown to a truthful value instead of a stale name.
         auto paletteCell = lay.Cell("GsPaletteCell");
-        lay.Caption(paletteCell, "GsPaletteLbl", "Palette:");
+        lay.Caption(paletteCell, "GsPaletteLbl", Tr("Palette:"));
         auto paletteDd = std::make_shared<UltraCanvasDropdown>("GsPalette", 0, 0,
                                                                lay.ColumnWidth(), 23);
-        paletteDd->AddItem("Design default");
+        paletteDd->AddItem(Tr("Design default"));
         for (const auto& entry : PaletteMenu()) paletteDd->AddItem(entry.first);
         paletteDd->SetSelectedIndex(0, false);
         {
@@ -510,59 +511,59 @@ namespace {
             if (auto dd = weakPalette.lock()) dd->SetSelectedIndex(0, false);
         });
 
-        AddEnumDropdown<GanttColorMode>(lay, *sc, "GsColorMode", "Colour mode:",
+        AddEnumDropdown<GanttColorMode>(lay, *sc, "GsColorMode", Tr("Colour mode:"),
                 ColorModeMenu(),
                 [](GanttChartStyle& s, GanttColorMode v) { s.colorMode = v; },
                 [](const GanttChartStyle& s) { return s.colorMode; });
 
-        AddEnumDropdown<GanttBarStyle>(lay, *sc, "GsBarStyle", "Task bars:",
+        AddEnumDropdown<GanttBarStyle>(lay, *sc, "GsBarStyle", Tr("Task bars:"),
                 BarStyleMenu(),
                 [](GanttChartStyle& s, GanttBarStyle v) { s.barStyle = v; },
                 [](const GanttChartStyle& s) { return s.barStyle; });
 
-        AddEnumDropdown<GanttSummaryStyle>(lay, *sc, "GsSummary", "Summary bars:",
+        AddEnumDropdown<GanttSummaryStyle>(lay, *sc, "GsSummary", Tr("Summary bars:"),
                 SummaryStyleMenu(),
                 [](GanttChartStyle& s, GanttSummaryStyle v) { s.summaryStyle = v; },
                 [](const GanttChartStyle& s) { return s.summaryStyle; });
 
-        AddEnumDropdown<GanttMilestoneStyle>(lay, *sc, "GsMilestone", "Milestones:",
+        AddEnumDropdown<GanttMilestoneStyle>(lay, *sc, "GsMilestone", Tr("Milestones:"),
                 MilestoneStyleMenu(),
                 [](GanttChartStyle& s, GanttMilestoneStyle v) { s.milestoneStyle = v; },
                 [](const GanttChartStyle& s) { return s.milestoneStyle; });
 
-        AddEnumDropdown<GanttProgressStyle>(lay, *sc, "GsProgress", "Progress:",
+        AddEnumDropdown<GanttProgressStyle>(lay, *sc, "GsProgress", Tr("Progress:"),
                 ProgressStyleMenu(),
                 [](GanttChartStyle& s, GanttProgressStyle v) { s.progressStyle = v; },
                 [](const GanttChartStyle& s) { return s.progressStyle; });
 
-        AddEnumDropdown<GanttDependencyLineStyle>(lay, *sc, "GsDeps", "Dependencies:",
+        AddEnumDropdown<GanttDependencyLineStyle>(lay, *sc, "GsDeps", Tr("Dependencies:"),
                 DependencyStyleMenu(),
                 [](GanttChartStyle& s, GanttDependencyLineStyle v) { s.dependencyStyle = v; },
                 [](const GanttChartStyle& s) { return s.dependencyStyle; });
 
-        AddEnumDropdown<GanttLabelPlacement>(lay, *sc, "GsLabels", "Bar labels:",
+        AddEnumDropdown<GanttLabelPlacement>(lay, *sc, "GsLabels", Tr("Bar labels:"),
                 LabelPlacementMenu(),
                 [](GanttChartStyle& s, GanttLabelPlacement v) { s.labelPlacement = v; },
                 [](const GanttChartStyle& s) { return s.labelPlacement; });
 
-        AddEnumDropdown<GanttTimeScale>(lay, *sc, "GsScale", "Time scale:",
+        AddEnumDropdown<GanttTimeScale>(lay, *sc, "GsScale", Tr("Time scale:"),
                 TimeScaleMenu(),
                 [](GanttChartStyle& s, GanttTimeScale v) { s.timeScale = v; },
                 [](const GanttChartStyle& s) { return s.timeScale; });
 
-        AddEnumDropdown<GanttDateFormat>(lay, *sc, "GsDateFmt", "Date format:",
+        AddEnumDropdown<GanttDateFormat>(lay, *sc, "GsDateFmt", Tr("Date format:"),
                 DateFormatMenu(),
                 [](GanttChartStyle& s, GanttDateFormat v) { s.dateFormat = v; },
                 [](const GanttChartStyle& s) { return s.dateFormat; });
 
         // Table columns: a preset list rather than a single style field.
         auto columnsCell = lay.Cell("GsColumnsCell");
-        lay.Caption(columnsCell, "GsColumnsLbl", "Table columns:");
+        lay.Caption(columnsCell, "GsColumnsLbl", Tr("Table columns:"));
         auto columnsDd = std::make_shared<UltraCanvasDropdown>("GsColumns", 0, 0,
                                                                lay.ColumnWidth(), 23);
-        for (const char* n : {"ID / task / dates", "Project (owner, priority, %)",
-                              "Task name only", "Activity + days", "ID / task / owner / %",
-                              "ID / task"})
+        for (const std::string& n : {Tr("ID / task / dates"), Tr("Project (owner, priority, %)"),
+                                     Tr("Task name only"), Tr("Activity + days"), Tr("ID / task / owner / %"),
+                                     Tr("ID / task")})
             columnsDd->AddItem(n);
         columnsDd->SetSelectedIndex(ColumnPresetIndexFor(chart->GetStyle().columns), false);
         {
@@ -581,56 +582,56 @@ namespace {
         });
 
         // ---- Elements --------------------------------------------------------
-        lay.Heading("GsHeadElements", "Chart elements");
+        lay.Heading("GsHeadElements", Tr("Chart elements"));
 
-        AddCheck(lay, *sc, "GsShowTable", "Task table",
+        AddCheck(lay, *sc, "GsShowTable", Tr("Task table"),
                  [](GanttChartStyle& s, bool v) { s.showTable = v; },
                  [](const GanttChartStyle& s) { return s.showTable; });
-        AddCheck(lay, *sc, "GsTwoTier", "Two-tier header",
+        AddCheck(lay, *sc, "GsTwoTier", Tr("Two-tier header"),
                  [](GanttChartStyle& s, bool v) { s.twoTierHeader = v; },
                  [](const GanttChartStyle& s) { return s.twoTierHeader; });
-        AddCheck(lay, *sc, "GsWeekdays", "Weekday letters",
+        AddCheck(lay, *sc, "GsWeekdays", Tr("Weekday letters"),
                  [](GanttChartStyle& s, bool v) { s.showWeekdayLetters = v; },
                  [](const GanttChartStyle& s) { return s.showWeekdayLetters; });
-        AddCheck(lay, *sc, "GsUpper", "Uppercase header",
+        AddCheck(lay, *sc, "GsUpper", Tr("Uppercase header"),
                  [](GanttChartStyle& s, bool v) { s.uppercaseHeader = v; },
                  [](const GanttChartStyle& s) { return s.uppercaseHeader; });
-        AddCheck(lay, *sc, "GsRowLines", "Row lines",
+        AddCheck(lay, *sc, "GsRowLines", Tr("Row lines"),
                  [](GanttChartStyle& s, bool v) { s.showRowLines = v; },
                  [](const GanttChartStyle& s) { return s.showRowLines; });
-        AddCheck(lay, *sc, "GsColLines", "Column lines",
+        AddCheck(lay, *sc, "GsColLines", Tr("Column lines"),
                  [](GanttChartStyle& s, bool v) { s.showColumnLines = v; },
                  [](const GanttChartStyle& s) { return s.showColumnLines; });
-        AddCheck(lay, *sc, "GsWeekend", "Shade weekends",
+        AddCheck(lay, *sc, "GsWeekend", Tr("Shade weekends"),
                  [](GanttChartStyle& s, bool v) { s.shadeWeekends = v; },
                  [](const GanttChartStyle& s) { return s.shadeWeekends; });
-        AddCheck(lay, *sc, "GsStripes", "Row striping",
+        AddCheck(lay, *sc, "GsStripes", Tr("Row striping"),
                  [](GanttChartStyle& s, bool v) {
                      s.rowAlternateColor = v ? Color(0, 0, 0, 12) : Colors::Transparent;
                  },
                  [](const GanttChartStyle& s) { return s.rowAlternateColor.a != 0; });
-        AddCheck(lay, *sc, "GsBoldSummary", "Bold summary rows",
+        AddCheck(lay, *sc, "GsBoldSummary", Tr("Bold summary rows"),
                  [](GanttChartStyle& s, bool v) { s.boldSummaryRows = v; },
                  [](const GanttChartStyle& s) { return s.boldSummaryRows; });
-        AddCheck(lay, *sc, "GsToday", "Today marker",
+        AddCheck(lay, *sc, "GsToday", Tr("Today marker"),
                  [](GanttChartStyle& s, bool v) { s.showTodayLine = v; },
                  [](const GanttChartStyle& s) { return s.showTodayLine; });
-        AddCheck(lay, *sc, "GsCritical", "Critical path",
+        AddCheck(lay, *sc, "GsCritical", Tr("Critical path"),
                  [](GanttChartStyle& s, bool v) { s.highlightCriticalPath = v; },
                  [](const GanttChartStyle& s) { return s.highlightCriticalPath; });
-        AddCheck(lay, *sc, "GsDashed", "Dashed arrows",
+        AddCheck(lay, *sc, "GsDashed", Tr("Dashed arrows"),
                  [](GanttChartStyle& s, bool v) { s.dependencyDashed = v; },
                  [](const GanttChartStyle& s) { return s.dependencyDashed; });
-        AddCheck(lay, *sc, "GsDepColor", "Arrows use bar colour",
+        AddCheck(lay, *sc, "GsDepColor", Tr("Arrows use bar colour"),
                  [](GanttChartStyle& s, bool v) { s.dependencyUsesBarColor = v; },
                  [](const GanttChartStyle& s) { return s.dependencyUsesBarColor; });
-        AddCheck(lay, *sc, "GsProgressText", "Progress % text",
+        AddCheck(lay, *sc, "GsProgressText", Tr("Progress % text"),
                  [](GanttChartStyle& s, bool v) { s.showProgressText = v; },
                  [](const GanttChartStyle& s) { return s.showProgressText; });
-        AddCheck(lay, *sc, "GsAssignee", "Assignee in labels",
+        AddCheck(lay, *sc, "GsAssignee", Tr("Assignee in labels"),
                  [](GanttChartStyle& s, bool v) { s.showAssigneeWithLabel = v; },
                  [](const GanttChartStyle& s) { return s.showAssigneeWithLabel; });
-        AddCheck(lay, *sc, "GsBarBorder", "Bar outline",
+        AddCheck(lay, *sc, "GsBarBorder", Tr("Bar outline"),
                  [](GanttChartStyle& s, bool v) {
                      s.barBorderColor = v ? Color(0, 0, 0, 70) : Colors::Transparent;
                      s.barBorderWidth = v ? 1.0f : 0.0f;
@@ -638,24 +639,24 @@ namespace {
                  [](const GanttChartStyle& s) { return s.barBorderWidth > 0.0f; });
 
         // ---- Metrics ---------------------------------------------------------
-        lay.Heading("GsHeadMetrics", "Metrics");
+        lay.Heading("GsHeadMetrics", Tr("Metrics"));
 
-        AddSlider(lay, *sc, "GsDayWidth", "Day width", 1.5f, 40.0f, 0.5f, 1,
+        AddSlider(lay, *sc, "GsDayWidth", Tr("Day width"), 1.5f, 40.0f, 0.5f, 1,
                   [](GanttChartStyle& s, float v) { s.dayWidth = v; },
                   [](const GanttChartStyle& s) { return s.dayWidth; });
-        AddSlider(lay, *sc, "GsRowHeight", "Row height", 18.0f, 48.0f, 1.0f, 0,
+        AddSlider(lay, *sc, "GsRowHeight", Tr("Row height"), 18.0f, 48.0f, 1.0f, 0,
                   [](GanttChartStyle& s, float v) { s.rowHeight = v; },
                   [](const GanttChartStyle& s) { return s.rowHeight; });
-        AddSlider(lay, *sc, "GsBarRatio", "Bar height", 0.25f, 0.9f, 0.02f, 2,
+        AddSlider(lay, *sc, "GsBarRatio", Tr("Bar height"), 0.25f, 0.9f, 0.02f, 2,
                   [](GanttChartStyle& s, float v) { s.barHeightRatio = v; },
                   [](const GanttChartStyle& s) { return s.barHeightRatio; });
-        AddSlider(lay, *sc, "GsCorner", "Corner radius", 0.0f, 14.0f, 1.0f, 0,
+        AddSlider(lay, *sc, "GsCorner", Tr("Corner radius"), 0.0f, 14.0f, 1.0f, 0,
                   [](GanttChartStyle& s, float v) { s.barCornerRadius = v; },
                   [](const GanttChartStyle& s) { return s.barCornerRadius; });
-        AddSlider(lay, *sc, "GsMsSize", "Milestone size", 0.2f, 0.9f, 0.05f, 2,
+        AddSlider(lay, *sc, "GsMsSize", Tr("Milestone size"), 0.2f, 0.9f, 0.05f, 2,
                   [](GanttChartStyle& s, float v) { s.milestoneSizeRatio = v; },
                   [](const GanttChartStyle& s) { return s.milestoneSizeRatio; });
-        AddSlider(lay, *sc, "GsDepWidth", "Arrow width", 0.5f, 4.0f, 0.1f, 1,
+        AddSlider(lay, *sc, "GsDepWidth", Tr("Arrow width"), 0.5f, 4.0f, 0.1f, 1,
                   [](GanttChartStyle& s, float v) { s.dependencyLineWidth = v; },
                   [](const GanttChartStyle& s) { return s.dependencyLineWidth; });
 
@@ -712,7 +713,7 @@ namespace {
         auto chart = CreateGanttChartWithData("GanttPal" + suffix, 0, 0, cellW, cellH - 17,
                                               data, GanttDesign::Professional);
         chart->SetPalette(menu[index].second);
-        chart->SetColumns({GanttColumn(GanttColumnType::Name, "Phase", 124)});
+        chart->SetColumns({GanttColumn(GanttColumnType::Name, Tr("Phase"), 124)});
         auto& st = chart->EditStyle();
         st.rowHeight = 24.0f;
         st.barHeightRatio = 0.6f;
@@ -740,10 +741,10 @@ namespace {
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         AddFlexChild(tab, MakeTabDescription("GanttPalDesc",
-                "The eight named palettes from GanttPalettes::Get(), applied to one shared design "
+                Tr("The eight named palettes from GanttPalettes::Get(), applied to one shared design "
                 "with the phases collapsed so each bar is one palette entry. SetPalette() swaps "
                 "only the bar colour cycle - layout, header and progress rendering stay exactly "
-                "as the design preset left them."), 0);
+                "as the design preset left them.")), 0);
 
         const int cols = 2, rows = 4;
         const int cellW = innerW / cols;
@@ -778,10 +779,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
     const int INNER_W = 1000;
     const int INNER_H = 640;
 
-    auto page = DemoKit::CreatePage("GanttRoot", "Gantt Charts - Design Studio, Presets & Palettes",
-            "Every example has its own tab. In all charts the wheel scrolls, "
+    auto page = DemoKit::CreatePage("GanttRoot", Tr("Gantt Charts - Design Studio, Presets & Palettes"),
+            Tr("Every example has its own tab. In all charts the wheel scrolls, "
             "Ctrl+wheel zooms the timeline, clicking selects a task and the "
-            "triangles collapse phases.");
+            "triangles collapse phases."));
     // The page is the display area's height and the tabs take what the title
     // and description leave; the charts scroll themselves.
     page->SetFillsArea(true);
@@ -842,61 +843,61 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
 
     AddFlexChild(studio, panel, 0);         // fixed-width option panel
     AddFlexChild(studio, studioChart, 1);   // chart fills the remaining width
-    tabs->AddTab("Design Studio", studio);
+    tabs->AddTab(Tr("Design Studio"), studio);
 
     // ---- Tabs 2..7: one per built-in design preset --------------------------
-    tabs->AddTab("Modern", MakeDesignTab("GanttTabModern",
-            "Modern preset: pill bars on a vibrant palette, two-tier day header with weekday "
+    tabs->AddTab(Tr("Modern"), MakeDesignTab("GanttTabModern",
+            Tr("Modern preset: pill bars on a vibrant palette, two-tier day header with weekday "
             "letters, phase names inside the summary bars, and elbow arrows that take the "
             "colour of their predecessor bar. Opens on the day scale - Ctrl+wheel to zoom out "
-            "to the whole schedule.",
+            "to the whole schedule."),
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
                 c->EditStyle().dayWidth = 11.0f;
             },
             GanttDesign::Modern, INNER_W, INNER_H));
 
-    tabs->AddTab("Professional", MakeDesignTab("GanttTabPro",
-            "Professional preset: the project-tool look - bracket summary bars, darker "
+    tabs->AddTab(Tr("Professional"), MakeDesignTab("GanttTabPro",
+            Tr("Professional preset: the project-tool look - bracket summary bars, darker "
             "progress fills with a % readout, task name plus assignee to the right of each "
-            "bar, and the critical path highlighted in red.",
+            "bar, and the critical path highlighted in red."),
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
                 c->SetShowCriticalPath(true);
                 c->FitToRange();
             },
             GanttDesign::Professional, INNER_W, INNER_H));
 
-    tabs->AddTab("Classic", MakeDesignTab("GanttTabClassic",
-            "Classic preset: the flat single-colour print style used in business plans - one "
+    tabs->AddTab(Tr("Classic"), MakeDesignTab("GanttTabClassic",
+            Tr("Classic preset: the flat single-colour print style used in business plans - one "
             "corporate blue for every bar, a single-tier month header, no weekend shading and "
             "solid elbow dependency arrows. FitToRange() picks the zoom so the whole project "
-            "lands on one screen.",
+            "lands on one screen."),
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
                 c->SetTimeScale(GanttTimeScale::Weeks);
                 c->FitToRange();
             },
             GanttDesign::Classic, INNER_W, INNER_H));
 
-    tabs->AddTab("Soft", MakeDesignTab("GanttTabSoft",
-            "Soft preset: a pastel report style - thin line bars with square end caps, striped "
+    tabs->AddTab(Tr("Soft"), MakeDesignTab("GanttTabSoft",
+            Tr("Soft preset: a pastel report style - thin line bars with square end caps, striped "
             "rows under a dark table header, and dashed orange dependency arrows between the "
-            "activities.",
+            "activities."),
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) { c->FitToRange(); },
             GanttDesign::Soft, INNER_W, INNER_H));
 
-    tabs->AddTab("Minimal", MakeDesignTab("GanttTabMinimal",
-            "Minimal preset: a wide project table carrying assignee, priority chips and "
+    tabs->AddTab(Tr("Minimal"), MakeDesignTab("GanttTabMinimal",
+            Tr("Minimal preset: a wide project table carrying assignee, priority chips and "
             "% complete, with light-track progress bars. Dependency arrows are off so the "
-            "table stays the focus; the scale is dropped to weeks to leave the wide table room.",
+            "table stays the focus; the scale is dropped to weeks to leave the wide table room."),
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
                 c->SetTimeScale(GanttTimeScale::Weeks);
                 c->FitToRange();
             },
             GanttDesign::Minimal, INNER_W, INNER_H));
 
-    tabs->AddTab("Dark", MakeDesignTab("GanttTabDark",
-            "Dark preset: the Modern layout on a dark surface, here combined with the Ocean "
+    tabs->AddTab(Tr("Dark"), MakeDesignTab("GanttTabDark",
+            Tr("Dark preset: the Modern layout on a dark surface, here combined with the Ocean "
             "palette and a today marker. Every colour in GanttChartStyle is independent, so a "
-            "dark theme is a palette plus a handful of surface colours.",
+            "dark theme is a palette plus a handful of surface colours."),
             [](const std::shared_ptr<UltraCanvasGanttChartElement>& c) {
                 c->SetPalette(GanttPalette::Ocean);
                 c->EditStyle().dayWidth = 11.0f;
@@ -904,7 +905,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGanttCha
             GanttDesign::Dark, INNER_W, INNER_H));
 
     // ---- Tab 8: palette gallery ---------------------------------------------
-    tabs->AddTab("Palette Gallery", MakePaletteTab(INNER_W, INNER_H));
+    tabs->AddTab(Tr("Palette Gallery"), MakePaletteTab(INNER_W, INNER_H));
 
     tabs->SetActiveTab(0);
     DemoKit::Add(card, tabs, 1);

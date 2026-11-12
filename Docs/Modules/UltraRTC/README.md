@@ -16,6 +16,7 @@ engine choice and phases: [`Docs/Research/ChatCubeDirectPlan.md`](../../Research
 | Engine | libdatachannel 0.24.6 + libjuice, usrsctp, libsrtp, plog — vendored, `UltraCanvas/third_party/libdatachannel/` |
 | Needs | OpenSSL (the engine's DTLS). Without it the module builds and every call answers `Unsupported`. Audio also needs libopus (pkg-config `opus`); without it `caps.audio` is false and `UltraRtc_AddAudioTrack` answers `Unsupported`. Video needs FFmpeg's libavcodec and libswscale (VideoFX's dependency) with a VP8 encoder (libvpx); without them `caps.video` is false |
 | Tests | `Tests/UltraRTC` (`-DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON`, binary `UltraRTCTests`) |
+| Status report | `UltraRtcApiStatus` (same option): WORKING / IMPLEMENTED / NOT IMPLEMENTED / BROKEN per function, for this build on this machine — [`ApiStatus.md`](ApiStatus.md) |
 
 ## Rules
 
@@ -30,12 +31,30 @@ engine choice and phases: [`Docs/Research/ChatCubeDirectPlan.md`](../../Research
   link end to end; a relay in the middle cannot substitute itself.
 - **No engine type in a public header.** The engine can be replaced (the
   proposal's Rust tier) without touching a caller.
+- **Nothing on stdout.** The engine's warnings are written to stderr, one
+  line each, starting `UltraRTC engine warning:`. A command-line program
+  that prints a report or speaks a protocol on stdout is not disturbed.
 - **Threading:** the engine runs its own threads. Events go through the
   dispatcher installed with `UltraRtc_SetEventDispatcher`; without one they
   run on an engine thread and must not block. Every function may be called
   from any thread, also from inside an event callback (closing a peer from
   its own callback included). Events queued for a peer that was closed are
   dropped.
+
+## What this build can do
+
+```cpp
+std::string version = UltraRtc_GetVersion();        // the API's version, "0.1.0"; engine or not
+UltraRtcCapabilities caps = UltraRtc_GetCapabilities();
+if (!caps.available) { /* no engine in this build: every call answers Unsupported */ }
+// caps.engine "libdatachannel 0.24.6"; caps.dataChannels, caps.audio (Opus), caps.video (VP8)
+```
+
+`UltraRtc_GetVersion` is the version of the `UltraRtc_*` surface, not of the
+engine behind it, and answers before `UltraRtc_Initialize` and in a build
+without an engine. To see what each function does on a given machine — a
+build without Opus, a host without a camera — run
+[`UltraRtcApiStatus`](ApiStatus.md).
 
 ## Connecting two peers
 

@@ -117,9 +117,9 @@ std::string FormatNumber(float value, int decimals) {
 }
 
 std::string FormatBytes(size_t bytes) {
-    if (bytes < 1024) return std::to_string(bytes) + " bytes";
-    if (bytes < 1024 * 1024) return FormatNumber(bytes / 1024.0f, 1) + " KB";
-    return FormatNumber(bytes / (1024.0f * 1024.0f), 1) + " MB";
+    if (bytes < 1024) return TrN("{n} byte", "{n} bytes", static_cast<long long>(bytes));
+    if (bytes < 1024 * 1024) return TrF("{0} KB", FormatNumber(bytes / 1024.0f, 1));
+    return TrF("{0} MB", FormatNumber(bytes / (1024.0f * 1024.0f), 1));
 }
 
 // ===== QUALITY PRESETS =====
@@ -151,50 +151,53 @@ VectorizerConfig MakeConfig(VectorizerColorMode colorMode,
     return cfg;
 }
 
-const std::vector<QualityPreset>& Presets() {
-    static const std::vector<QualityPreset> presets = {
-        { "Logo / icon (default)",
-          "Balanced colour tracing for logos, icons and flat artwork — the framework defaults.",
+// Built on every call (not cached) so the labels follow the current language.
+std::vector<QualityPreset> Presets() {
+    std::vector<QualityPreset> presets = {
+        { Tr("Logo / icon (default)"),
+          Tr("Balanced colour tracing for logos, icons and flat artwork — the framework defaults."),
           MakeConfig(VectorizerColorMode::Color, VectorizerHierarchy::Stacked,
                      VectorizerPathMode::Spline, 4, 6, 16, 60, 4.0, 45, 10) },
 
-        { "Detailed illustration",
-          "Keeps small shapes and subtle colour steps. Slower to trace and a noticeably larger SVG.",
+        { Tr("Detailed illustration"),
+          Tr("Keeps small shapes and subtle colour steps. Slower to trace and a noticeably larger SVG."),
           MakeConfig(VectorizerColorMode::Color, VectorizerHierarchy::Stacked,
                      VectorizerPathMode::Spline, 2, 8, 8, 45, 3.0, 45, 14) },
 
-        { "Photograph (compact)",
-          "Strong speckle and colour reduction so a photograph still produces a manageable SVG.",
+        { Tr("Photograph (compact)"),
+          Tr("Strong speckle and colour reduction so a photograph still produces a manageable SVG."),
           MakeConfig(VectorizerColorMode::Color, VectorizerHierarchy::Stacked,
                      VectorizerPathMode::Spline, 16, 4, 48, 80, 6.0, 60, 8) },
 
-        { "Poster / flat cutout",
-          "Non-overlapping polygon shapes — suits screen printing and cutting-plotter output.",
+        { Tr("Poster / flat cutout"),
+          Tr("Non-overlapping polygon shapes — suits screen printing and cutting-plotter output."),
           MakeConfig(VectorizerColorMode::Color, VectorizerHierarchy::Cutout,
                      VectorizerPathMode::Polygon, 8, 5, 32, 60, 5.0, 45, 10) },
 
-        { "Line art (black & white)",
-          "Single-colour silhouette tracing for sketches, scans and stencils.",
+        { Tr("Line art (black & white)"),
+          Tr("Single-colour silhouette tracing for sketches, scans and stencils."),
           MakeConfig(VectorizerColorMode::Binary, VectorizerHierarchy::Stacked,
                      VectorizerPathMode::Spline, 6, 8, 16, 60, 4.0, 45, 10) },
 
-        { "Pixel perfect (no fitting)",
-          "One path per pixel run: an exact reproduction with a very large SVG. Use for pixel art.",
+        { Tr("Pixel perfect (no fitting)"),
+          Tr("One path per pixel run: an exact reproduction with a very large SVG. Use for pixel art."),
           MakeConfig(VectorizerColorMode::Color, VectorizerHierarchy::Stacked,
                      VectorizerPathMode::Pixel, 0, 8, 0, 60, 4.0, 45, 10) },
 
-        { "Maximum detail (slow)",
-          "Every cluster preserved with tight curve fitting — the slowest and largest output.",
+        { Tr("Maximum detail (slow)"),
+          Tr("Every cluster preserved with tight curve fitting — the slowest and largest output."),
           MakeConfig(VectorizerColorMode::Color, VectorizerHierarchy::Stacked,
                      VectorizerPathMode::Spline, 0, 8, 4, 30, 2.0, 30, 20) },
     };
     return presets;
 }
 
-constexpr const char* kCustomPresetLabel =
-    "Custom";
-constexpr const char* kCustomPresetHelp =
-    "Custom parameters. Pick a preset above to return to a known-good starting point.";
+std::string CustomPresetLabel() {
+    return Tr("Custom");
+}
+std::string CustomPresetHelp() {
+    return Tr("Custom parameters. Pick a preset above to return to a known-good starting point.");
+}
 
 bool SameConfig(const VectorizerConfig& a, const VectorizerConfig& b) {
     return a.colorMode       == b.colorMode
@@ -273,10 +276,10 @@ std::shared_ptr<UltraCanvasButton> MakeVectorizerButton(const std::string& id, c
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateVectorizerExamples() {
     auto container = DemoKit::CreatePage("VectorizerDemoPage",
-        "Raster to SVG Vectorizer (VTracer backend)",
-        std::string("Load a bitmap, tune the tracing quality, press "
-                    "\"Vectorize\", then save the SVG.  Backend: ")
-        + UltraCanvasVectorizer::BackendVersion());
+        Tr("Raster to SVG Vectorizer (VTracer backend)"),
+        TrF("Load a bitmap, tune the tracing quality, press "
+            "\"Vectorize\", then save the SVG.  Backend: {0}",
+            UltraCanvasVectorizer::BackendVersion()));
     UltraCanvasContainer* pageRaw = container.get();
 
     // Input | parameters | output; a card that no longer fits beside the
@@ -288,7 +291,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     const int inputFrameW = 272, outputFrameW = 276, frameH = 494;
     const float cardChrome = 2 * DemoKit::kCardPadding + 2;
     auto inputCard = DemoKit::AddCard(columns, "VecInputCard", "", "", inputFrameW + cardChrome);
-    DemoKit::AddHeading(inputCard, "VecInputTitle", "Input bitmap");
+    DemoKit::AddHeading(inputCard, "VecInputTitle", Tr("Input bitmap"));
 
     // The preview frame keeps its size; the image sits inside it.
     auto inputFrame = std::make_shared<UltraCanvasContainer>(
@@ -320,17 +323,16 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     auto describeInput = [inputImage, inputSizeLabel]() {
         const Point2Di size = inputImage->GetImageSize();
         if (size.x > 0 && size.y > 0) {
-            inputSizeLabel->SetText(std::to_string(size.x) + " × "
-                                  + std::to_string(size.y) + " pixels");
+            inputSizeLabel->SetText(TrF("{0} × {1} pixels", size.x, size.y));
         } else {
-            inputSizeLabel->SetText("(no bitmap loaded)");
+            inputSizeLabel->SetText(Tr("(no bitmap loaded)"));
         }
     };
     describeInput();
 
     // ===== MIDDLE: tracing parameters =====
     auto paramCard = DemoKit::AddCard(columns, "VecParamCard", "", "", 360);
-    DemoKit::AddHeading(paramCard, "VecParamTitle", "Tracing parameters");
+    DemoKit::AddHeading(paramCard, "VecParamTitle", Tr("Tracing parameters"));
 
     // Shared configuration edited by every control on this card.
     auto cfg     = std::make_shared<VectorizerConfig>(Presets().front().cfg);
@@ -363,17 +365,17 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     std::vector<std::string> presetItems;
     for (const QualityPreset& p : Presets()) presetItems.push_back(p.label);
-    presetItems.push_back(kCustomPresetLabel);
+    presetItems.push_back(CustomPresetLabel());
 
-    auto presetDD = addDropdownRow("Preset", "Quality preset", presetItems, 0);
-    auto colorDD  = addDropdownRow("Color", "Colour mode",
-                                   {"Colour (clustered)", "Binary (black & white)"},
+    auto presetDD = addDropdownRow("Preset", Tr("Quality preset"), presetItems, 0);
+    auto colorDD  = addDropdownRow("Color", Tr("Colour mode"),
+                                   {Tr("Colour (clustered)"), Tr("Binary (black & white)")},
                                    IndexOfColorMode(cfg->colorMode));
-    auto hierDD   = addDropdownRow("Hier", "Shape hierarchy",
-                                   {"Stacked (overlapping)", "Cutout (no overlap)"},
+    auto hierDD   = addDropdownRow("Hier", Tr("Shape hierarchy"),
+                                   {Tr("Stacked (overlapping)"), Tr("Cutout (no overlap)")},
                                    IndexOfHierarchy(cfg->hierarchy));
-    auto pathDD   = addDropdownRow("Path", "Path mode",
-                                   {"Spline (curves)", "Polygon (straight)", "Pixel (exact)"},
+    auto pathDD   = addDropdownRow("Path", Tr("Path mode"),
+                                   {Tr("Spline (curves)"), Tr("Polygon (straight)"), Tr("Pixel (exact)")},
                                    IndexOfPathMode(cfg->pathMode));
 
     auto presetHelp = DemoKit::AddCaption(paramCard, "VecPresetHelp", Presets().front().help);
@@ -416,44 +418,44 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         return c.pathMode == VectorizerPathMode::Spline;
     };
 
-    addSlider("Speckle", "Speckle filter", " px", 0, 0, 64, 1,
+    addSlider("Speckle", Tr("Speckle filter"), " px", 0, 0, 64, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.filterSpeckle); },
               [](VectorizerConfig& c, float v) { c.filterSpeckle = static_cast<int>(v); },
               alwaysApplies);
 
-    addSlider("Precision", "Colour precision", " bits", 0, 1, 8, 1,
+    addSlider("Precision", Tr("Colour precision"), " " + Tr("bits"), 0, 1, 8, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.colorPrecision); },
               [](VectorizerConfig& c, float v) { c.colorPrecision = static_cast<int>(v); },
               colourOnly);
 
-    addSlider("Layer", "Layer difference", "", 0, 0, 255, 1,
+    addSlider("Layer", Tr("Layer difference"), "", 0, 0, 255, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.layerDifference); },
               [](VectorizerConfig& c, float v) { c.layerDifference = static_cast<int>(v); },
               colourOnly);
 
-    addSlider("Corner", "Corner threshold", "°", 0, 0, 180, 1,
+    addSlider("Corner", Tr("Corner threshold"), "°", 0, 0, 180, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.cornerThreshold); },
               [](VectorizerConfig& c, float v) { c.cornerThreshold = static_cast<int>(v); },
               curveOrPolygon);
 
-    addSlider("Length", "Path length threshold", " px", 1, 0.5f, 10.0f, 0.5f,
+    addSlider("Length", Tr("Path length threshold"), " px", 1, 0.5f, 10.0f, 0.5f,
               [](const VectorizerConfig& c) { return static_cast<float>(c.lengthThreshold); },
               [](VectorizerConfig& c, float v) { c.lengthThreshold = static_cast<double>(v); },
               curveOrPolygon);
 
-    addSlider("Splice", "Splice threshold", "°", 0, 0, 180, 1,
+    addSlider("Splice", Tr("Splice threshold"), "°", 0, 0, 180, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.spliceThreshold); },
               [](VectorizerConfig& c, float v) { c.spliceThreshold = static_cast<int>(v); },
               splineOnly);
 
-    addSlider("Iterations", "Curve-fitting iterations", "", 0, 1, 30, 1,
+    addSlider("Iterations", Tr("Curve-fitting iterations"), "", 0, 1, 30, 1,
               [](const VectorizerConfig& c) { return static_cast<float>(c.maxIterations); },
               [](VectorizerConfig& c, float v) { c.maxIterations = static_cast<int>(v); },
               splineOnly);
 
     // Across the card, as the sliders.
     auto resetBtn = std::make_shared<UltraCanvasButton>(
-        "VecResetBtn", 0, 0, 0, 32, "Reset to defaults");
+        "VecResetBtn", 0, 0, 0, 32, Tr("Reset to defaults"));
     SetFlatButtonIcon(*resetBtn, "menu/reset.svg");
     resetBtn->SetFontSize(12);
     resetBtn->SetColors(kNeutralBtn, kNeutralBtnH);
@@ -462,12 +464,12 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     DemoKit::Add(paramCard, resetBtn);
 
     auto paramNote = DemoKit::AddCaption(paramCard, "VecParamNote",
-        "Greyed-out controls have no effect in the selected colour / path mode.");
+        Tr("Greyed-out controls have no effect in the selected colour / path mode."));
     paramNote->SetTextColor(kTextFaded);
 
     // ===== RIGHT: SVG output + status =====
     auto outputCard = DemoKit::AddCard(columns, "VecOutputCard", "", "", outputFrameW + cardChrome);
-    DemoKit::AddHeading(outputCard, "VecOutputTitle", "SVG output");
+    DemoKit::AddHeading(outputCard, "VecOutputTitle", Tr("SVG output"));
 
     auto outputFrame = std::make_shared<UltraCanvasContainer>(
         "VecOutputFrame", 0, 0, outputFrameW, frameH);
@@ -481,7 +483,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     outputFrame->AddChild(outputImage);
 
     auto statusLabel = DemoKit::AddCaption(outputCard, "VecStatus",
-                                           "(press \"Vectorize\" to trace the input)");
+                                           Tr("(press \"Vectorize\" to trace the input)"));
     statusLabel->SetTextColor(kTextMuted);
 
     auto detailLabel = DemoKit::AddCaption(outputCard, "VecDetail", "");
@@ -489,7 +491,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     // Across the card, as the frame above it.
     auto saveBtn = std::make_shared<UltraCanvasButton>(
-        "VecSaveBtn", 0, 0, 0, 36, "Save SVG");
+        "VecSaveBtn", 0, 0, 0, 36, Tr("Save SVG"));
     SetFlatButtonIcon(*saveBtn, "menu/save.svg");
     saveBtn->SetFontSize(12);
     saveBtn->SetColors(kSaveBtn, kSaveBtnH);
@@ -540,7 +542,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         }
         presetDDPtr->SetSelectedIndex(index, false);
         presetHelpPtr->SetText(index < static_cast<int>(presets.size())
-                               ? presets[index].help : kCustomPresetHelp);
+                               ? presets[index].help : CustomPresetHelp());
     };
 
     // Runs after any single-parameter edit.
@@ -556,7 +558,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         [cfg, presetHelpPtr, refreshControls](int index, const DropdownItem&) {
             const std::vector<QualityPreset>& presets = Presets();
             if (index < 0 || index >= static_cast<int>(presets.size())) {
-                presetHelpPtr->SetText(kCustomPresetHelp);
+                presetHelpPtr->SetText(CustomPresetHelp());
                 return;
             }
             *cfg = presets[index].cfg;
@@ -608,7 +610,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     // ===== Tracing =====
     auto runVectorize = [outputImage, statusLabel, detailLabel, saveBtn,
                          currentPath, cfg, lastSvg]() {
-        statusLabel->SetText("Tracing… (large bitmaps can take a few seconds)");
+        statusLabel->SetText(Tr("Tracing… (large bitmaps can take a few seconds)"));
         detailLabel->SetText("");
 
         UltraCanvasVectorizer vec(*cfg);
@@ -616,7 +618,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         if (!r.Ok()) {
             lastSvg->clear();
             saveBtn->SetDisabled(true);
-            statusLabel->SetText("Vectorize failed: " + r.error);
+            statusLabel->SetText(TrF("Vectorize failed: {0}", r.error));
             return;
         }
 
@@ -625,21 +627,19 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
         const std::string outPath = TempSvgPath();
         if (!WriteFile(outPath, r.svg)) {
-            statusLabel->SetText("Traced OK, but the preview file could not be written");
-            detailLabel->SetText("Use \"Save SVG\" to write the result elsewhere");
+            statusLabel->SetText(Tr("Traced OK, but the preview file could not be written"));
+            detailLabel->SetText(Tr("Use \"Save SVG\" to write the result elsewhere"));
             return;
         }
         if (!outputImage->LoadFromFile(outPath, true)) {
-            statusLabel->SetText("Traced OK, but the image element rejected the SVG");
-            detailLabel->SetText("Preview file: " + outPath);
+            statusLabel->SetText(Tr("Traced OK, but the image element rejected the SVG"));
+            detailLabel->SetText(TrF("Preview file: {0}", outPath));
             return;
         }
 
-        statusLabel->SetText("OK · " + std::to_string(r.width) + "×"
-                           + std::to_string(r.height) + " · "
-                           + FormatBytes(r.svg.size()) + " · "
-                           + std::to_string(static_cast<long>(r.elapsedMs)) + " ms");
-        detailLabel->SetText("Preview file: " + outPath);
+        statusLabel->SetText(TrF("OK · {0}×{1} · {2} · {3} ms", r.width, r.height,
+                                FormatBytes(r.svg.size()), static_cast<long>(r.elapsedMs)));
+        detailLabel->SetText(TrF("Preview file: {0}", outPath));
     };
 
     // ===== Saving =====
@@ -649,7 +649,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     // reads it from.
     saveBtn->onClick = [pageRaw, statusLabel, detailLabel, lastSvg, currentPath]() {
         if (lastSvg->empty()) {
-            statusLabel->SetText("Nothing to save yet — press \"Vectorize\" first.");
+            statusLabel->SetText(Tr("Nothing to save yet — press \"Vectorize\" first."));
             return;
         }
         std::string readError;
@@ -657,19 +657,19 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         if (WriteFile(TempSvgPath(), *lastSvg))
             drawing = UltraCanvasFileLoader::LoadVectorDocument(TempSvgPath(), readError);
         FileDialogOptions opts;
-        opts.SetTitle("Save vectorized drawing")
+        opts.SetTitle(Tr("Save vectorized drawing"))
             .SetDefaultFileName(SuggestedSvgName(*currentPath))
             .SetInitialDirectory(ParentDir(*currentPath))
             .SetParentWindow(pageRaw ? pageRaw->GetWindow() : nullptr);
         if (drawing) UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *drawing);
-        else opts.AddFilter("SVG image", "svg");       // no vector writers installed: the SVG as traced
-        opts.AddFilter("All files", "*");
+        else opts.AddFilter(Tr("SVG image"), "svg");       // no vector writers installed: the SVG as traced
+        opts.AddFilter(Tr("All files"), "*");
 
         UltraCanvasFileLoader::SaveFileDialog(opts,
             [statusLabel, detailLabel, lastSvg, drawing]
             (DialogResult result, const std::string& path, const FileSaveImageSize& size) {
                 if (result != DialogResult::OK || path.empty()) {
-                    statusLabel->SetText("Save cancelled.");
+                    statusLabel->SetText(Tr("Save cancelled."));
                     return;
                 }
                 std::string target = drawing ? path : EnsureSvgExtension(path);
@@ -683,27 +683,26 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
                 if (ext != ".svg") {
                     std::string error;
                     if (!UltraCanvasFileLoader::SaveVectorDocument(*drawing, target, size, error)) {
-                        statusLabel->SetText("Could not save " + BaseName(target) + ": " + error);
+                        statusLabel->SetText(TrF("Could not save {0}: {1}", BaseName(target), error));
                         return;
                     }
-                    statusLabel->SetText("Saved the drawing as " + BaseName(target));
+                    statusLabel->SetText(TrF("Saved the drawing as {0}", BaseName(target)));
                     detailLabel->SetText(target);
                     return;
                 }
                 if (!WriteFile(target, *lastSvg)) {
-                    statusLabel->SetText("Could not write " + target);
+                    statusLabel->SetText(TrF("Could not write {0}", target));
                     return;
                 }
                 // SaveFileDialog already registered the chosen name with the
                 // shell's recent-documents list (opts.registerAsRecent).
-                statusLabel->SetText("Saved " + FormatBytes(lastSvg->size())
-                                   + " to " + BaseName(target));
+                statusLabel->SetText(TrF("Saved {0} to {1}", FormatBytes(lastSvg->size()), BaseName(target)));
                 detailLabel->SetText(target);
             });
     };
 
     // ===== INPUT ACTIONS =====
-    auto openBtn = MakeVectorizerButton("VecOpenBtn", "Open", 130, 36);
+    auto openBtn = MakeVectorizerButton("VecOpenBtn", Tr("Open"), 130, 36);
     SetFlatButtonIcon(*openBtn, "menu/folder.svg");
     openBtn->SetFontSize(12);
     openBtn->SetColors(kNeutralBtn, kNeutralBtnH);
@@ -712,18 +711,18 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     openBtn->onClick = [pageRaw, inputImage, inputPathLabel, currentPath, describeInput,
                         statusLabel, detailLabel, saveBtn, lastSvg]() {
         FileDialogOptions opts;
-        opts.SetTitle("Choose a raster image to vectorize")
+        opts.SetTitle(Tr("Choose a raster image to vectorize"))
             .SetParentWindow(pageRaw ? pageRaw->GetWindow() : nullptr);
-        UltraCanvasFileLoader::AddLoadTypes(opts, "Images", {MediaFormatCategory::Bitmap});
-        opts.AddFilter("All files", "*");
+        UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Images"), {MediaFormatCategory::Bitmap});
+        opts.AddFilter(Tr("All files"), "*");
         UltraCanvasFileLoader::OpenFileDialog(opts,
             [inputImage, inputPathLabel, currentPath, describeInput,
              statusLabel, detailLabel, saveBtn, lastSvg]
             (DialogResult r, const std::string& path) {
                 if (r != DialogResult::OK || path.empty()) return;
                 if (!inputImage->LoadFromFile(path)) {
-                    statusLabel->SetText("Could not load " + BaseName(path) + ": "
-                                       + inputImage->GetLastError());
+                    statusLabel->SetText(TrF("Could not load {0}: {1}", BaseName(path),
+                                            inputImage->GetLastError()));
                     return;
                 }
                 *currentPath = path;
@@ -736,13 +735,13 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
                 // source's name.
                 lastSvg->clear();
                 saveBtn->SetDisabled(true);
-                statusLabel->SetText("New bitmap loaded — press \"Vectorize\" to trace it.");
+                statusLabel->SetText(Tr("New bitmap loaded — press \"Vectorize\" to trace it."));
                 detailLabel->SetText("");
             });
     };
     DemoKit::Add(inputActions, openBtn);
 
-    auto runBtn = MakeVectorizerButton("VecRunBtn", "Vectorize", 134, 36);
+    auto runBtn = MakeVectorizerButton("VecRunBtn", Tr("Vectorize"), 134, 36);
     SetFlatButtonIcon(*runBtn, "menu/wand.svg");
     runBtn->SetFontSize(12);
     runBtn->SetColors(kRunBtn, kRunBtnH);

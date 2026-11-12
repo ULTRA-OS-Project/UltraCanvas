@@ -2,8 +2,10 @@
 // Tree view variant that renders IDE-style Name / Type / Value columns (plus
 // full-width section-header bars) on top of the generic UltraCanvasTreeView.
 // Extracted from the Modern display mode that used to live in the base tree.
+// Version: 1.1.0 - TreeColumnStyle::FromTheme, ApplyTheme: the view follows the theme; a SetColumnStyle by
+//                  hand stops the following; the constructors are its own
 // Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
-// Last Modified: 2026-07-26
+// Last Modified: 2026-11-10
 #pragma once
 
 #include "UltraCanvasTreeView.h"
@@ -52,13 +54,28 @@ struct TreeColumnStyle {
     Color headerBackground      = Color(60, 60, 60);
     Color headerTextColor       = Color(220, 220, 220);
     Color headerBorderColor     = Color(90, 90, 90);
+
+    // The theme's roles over a base's own shape: hairline separators, the
+    // panel for the header band with ink and a hairline; a section header
+    // keeps its black bar unless a theme names "columns-tree.group-header"
+    // and "columns-tree.on-group-header"
+    static TreeColumnStyle FromTheme(const UltraCanvasTheme& theme, const TreeColumnStyle& base);
+    static TreeColumnStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, TreeColumnStyle()); }
+    static TreeColumnStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== COLUMNS TREE VIEW =====
 class UltraCanvasColumnsTreeView : public UltraCanvasTreeView {
 public:
-    // Reuse the base constructors (identifier / x,y,w,h / w,h variants).
-    using UltraCanvasTreeView::UltraCanvasTreeView;
+    // The base constructors' three forms, each ending with the theme for a
+    // view that follows by default (the base's tail themes the tree part
+    // only, as a base constructor dispatches to its own ApplyTheme).
+    UltraCanvasColumnsTreeView(const std::string& identifier, float x, float y, float w, float h)
+        : UltraCanvasTreeView(identifier, x, y, w, h) { ApplyThemeIfFollowing(); }
+    UltraCanvasColumnsTreeView(const std::string& identifier, float w, float h)
+        : UltraCanvasTreeView(identifier, w, h) { ApplyThemeIfFollowing(); }
+    explicit UltraCanvasColumnsTreeView(const std::string& identifier = "TreeView")
+        : UltraCanvasTreeView(identifier) { ApplyThemeIfFollowing(); }
 
     // ===== DISPLAY MODE (Columns / Classic) =====
     // Switch between the columnar layout and the base single-text layout. Safe to
@@ -83,8 +100,12 @@ public:
     bool GetColumnsResizable() const { return resizable_; }
 
     // Global (non-per-column) geometry/colours used by Columns mode.
-    void SetColumnStyle(const TreeColumnStyle& style) { columnStyle = style; RequestRedraw(); }
+    void SetColumnStyle(const TreeColumnStyle& style) { StyleSetByHand(); columnStyle = style; RequestRedraw(); }
     const TreeColumnStyle& GetColumnStyle() const { return columnStyle; }
+    void ApplyTheme(const UltraCanvasTheme& theme) override {
+        UltraCanvasTreeView::ApplyTheme(theme);
+        SetColumnStyle(TreeColumnStyle::FromTheme(theme, columnStyle));
+    }
 
     // Intercept mouse events for column-boundary resizing; otherwise defers to base.
     bool OnEvent(const UCEvent& event) override;

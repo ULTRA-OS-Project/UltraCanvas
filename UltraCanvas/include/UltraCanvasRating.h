@@ -11,8 +11,10 @@
 //     "on" symbol to its left half over the "off" symbol — so half rendering
 //     works for any symbol, built-in or custom.
 //
+// Version: 1.1.0 - RatingStyle::FromTheme, ApplyTheme: the rating follows the theme;
+//                  a SetStyle by hand stops the following
 // Version: 1.0.1
-// Last Modified: 2026-07-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -53,6 +55,16 @@ namespace UltraCanvas {
         bool  tintCustom   = false;
 
         FontStyle fontStyle;
+
+        // The theme's roles: the control border for an empty symbol; the
+        // amber of a filled one, its hover and its outline are the element
+        // roles "rating.on", "rating.hover" and "rating.border" where a
+        // theme names them, else the base's own (a rating is amber on a
+        // light or a dark window); the interface font at the body size for
+        // a text symbol - over a base's own shape (size, spacing, flags)
+        static RatingStyle FromTheme(const UltraCanvasTheme& theme, const RatingStyle& base);
+        static RatingStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, RatingStyle()); }
+        static RatingStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== RATING COMPONENT =====
@@ -118,7 +130,8 @@ namespace UltraCanvas {
         }
         RatingStyle& GetStyle() { return style; }
         const RatingStyle& GetStyle() const { return style; }
-        void SetStyle(const RatingStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const RatingStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(RatingStyle::FromTheme(theme, style)); }
 
         // Preferred width for maxRating symbols at the current size/spacing.
         float GetPreferredWidth() const {

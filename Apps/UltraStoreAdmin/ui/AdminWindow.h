@@ -8,6 +8,8 @@
 // use - so the window and the command line never disagree. The slow ones
 // (a new key's Argon2id seal, a publish, a translation) run on a worker
 // thread and report through UltraCanvasApplication::PostToUIThread.
+// Version: 0.4.0 - the Marketplace page and the notices banner
+// Version: 0.3.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
 // Version: 0.1.0
@@ -15,11 +17,13 @@
 #pragma once
 
 #include "AdminDatabase.h"
+#include "Market.h"
 #include "PackageStore.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraCanvasChipGroup.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
@@ -83,6 +87,15 @@ private:
     void UploadNow();
     void BuildAffiliatesPage();
     void RefreshAffiliatesPage();
+    // The marketplace (Market.h): the standing, the notices with their
+    // acknowledgement, the terms with their acceptance, a submission, the
+    // submissions and the reports. The service is asked on a worker; the
+    // unacknowledged notices show as a banner above every page.
+    void BuildMarketPage();
+    void RefreshMarketPage();                // asks the service (a job)
+    void ShowMarketPage();                   // fills the page from what was fetched
+    void UpdateNoticesBanner();
+    Result<std::vector<uint8_t>> MarketSeed();   // the key opened with the page's passphrase
 
     // ----- the component form (AdminComponentPage.cpp) -----
     void BuildComponentPage();
@@ -121,6 +134,17 @@ private:
     std::vector<UltraStore::Component> components_;
     std::vector<UltraStore::Publisher> publishers_;
     std::vector<KeyRecord> keys_;
+    // ----- the marketplace page's state (fetched on a worker) -----
+    std::string marketStanding_, marketError_;
+    std::vector<Notice> notices_;
+    bool haveTerms_ = false;
+    Terms terms_;
+    std::vector<std::string> submissionLines_, reportLines_;
+    std::shared_ptr<Container> noticesBanner_;
+    std::shared_ptr<Label> bannerLabel_, marketStandingLabel_, marketTermsLabel_, marketTermsText_;
+    std::shared_ptr<Container> noticesList_, submissionsList_, reportsList_;
+    std::shared_ptr<Dropdown> submitApp_;
+    std::shared_ptr<TextInput> marketPassphrase_, marketAcceptedBy_, submitAnswers_;
     std::shared_ptr<int> alive_ = std::make_shared<int>(1);
     std::thread worker_;
     std::atomic<bool> busy_{false};
@@ -167,11 +191,13 @@ private:
     bool draftDirty_ = false;
     std::string formLanguage_ = "en";
     std::shared_ptr<TextInput> fId_, fName_, fLicense_, fHomepage_, fSupport_, fPrivacy_, fSource_, fSuccessor_,
-                               fCategories_, fTags_, fSourceLanguage_, fPrice_, fCurrency_, fTrialDays_, fUntil_, fIcon_,
+                               fTags_, fSourceLanguage_, fPrice_, fCurrency_, fTrialDays_, fUntil_, fIcon_,
                                fSummary_, fNewLanguage_;
     std::shared_ptr<TextArea> fDescription_;
     std::shared_ptr<Dropdown> fKind_, fPublisher_, fVisibility_, fLifecycle_, fAgeRating_, fPricingModel_, fUpdatePeriod_, fLanguage_;
-    std::shared_ptr<Checkbox> fOpenSource_, fRequiresAccount_;
+    std::shared_ptr<Checkbox> fOpenSource_, fRequiresAccount_, fFeatured_;
+    // The store's fixed categories (UltraStore::StoreCategories), any number.
+    std::shared_ptr<UltraCanvas::UltraCanvasChipGroup> fCategories_;
     std::shared_ptr<Container> fScreenshots_, fTexts_, fReleases_;
     std::shared_ptr<Label> fMachineNote_;
     // the add-release and add-package editors

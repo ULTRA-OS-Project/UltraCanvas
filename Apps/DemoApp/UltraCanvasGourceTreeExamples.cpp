@@ -239,10 +239,10 @@ void GenerateLargeFileSystem(UltraCanvasGourceTree* tree, int depth, int filesPe
 
 // ===== HELPER: Generate storage device visualization =====
 void GenerateStorageDeviceData(UltraCanvasGourceTree* tree) {
-    tree->SetRootNode("root", "Storage Drive", "/mnt/storage");
+    tree->SetRootNode("root", Tr("Storage Drive"), "/mnt/storage");
 
     // System folder
-    tree->AddDirectory("root", "system", "System");
+    tree->AddDirectory("root", "system", Tr("System"));
 
     GourceFileInfo sysInfo;
     sysInfo.fileSize = 500000;
@@ -254,13 +254,13 @@ void GenerateStorageDeviceData(UltraCanvasGourceTree* tree) {
     tree->AddFile("system", "system/config", "config", sysInfo);
 
     // User folder
-    tree->AddDirectory("root", "users", "Users");
+    tree->AddDirectory("root", "users", Tr("Users"));
     tree->AddDirectory("users", "alice", "Alice");
     tree->AddDirectory("users", "bob", "Bob");
 
     // Alice's files
-    tree->AddDirectory("alice", "alice_docs", "Documents");
-    tree->AddDirectory("alice", "alice_pics", "Pictures");
+    tree->AddDirectory("alice", "alice_docs", Tr("Documents"));
+    tree->AddDirectory("alice", "alice_pics", Tr("Pictures"));
 
     GourceFileInfo docInfo;
     docInfo.fileSize = 25000;
@@ -282,8 +282,8 @@ void GenerateStorageDeviceData(UltraCanvasGourceTree* tree) {
     tree->AddFile("alice_pics", "alice_pics/family.png", "family.png", picInfo);
 
     // Bob's files
-    tree->AddDirectory("bob", "bob_code", "Code");
-    tree->AddDirectory("bob", "bob_music", "Music");
+    tree->AddDirectory("bob", "bob_code", Tr("Code"));
+    tree->AddDirectory("bob", "bob_music", Tr("Music"));
 
     GourceFileInfo codeInfo;
     codeInfo.fileSize = 8500;
@@ -305,7 +305,7 @@ void GenerateStorageDeviceData(UltraCanvasGourceTree* tree) {
     tree->AddFile("bob_music", "bob_music/song2.flac", "song2.flac", musicInfo);
 
     // Applications folder
-    tree->AddDirectory("root", "apps", "Applications");
+    tree->AddDirectory("root", "apps", Tr("Applications"));
 
     GourceFileInfo appInfo;
     appInfo.fileSize = 15000000;
@@ -324,8 +324,8 @@ void GenerateStorageDeviceData(UltraCanvasGourceTree* tree) {
 
 // ===== MAIN DEMO IMPLEMENTATION =====
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTreeExamples() {
-    auto page = DemoKit::CreatePage("GourceTreeExamples", "Gource Tree Visualization",
-        "Radial tree visualization for file systems and storage devices - inspired by Gource");
+    auto page = DemoKit::CreatePage("GourceTreeExamples", Tr("Gource Tree Visualization"),
+        Tr("Radial tree visualization for file systems and storage devices - inspired by Gource"));
     // The trees pan and zoom themselves: the tabs fill the area.
     page->SetFillsArea(true);
 
@@ -339,7 +339,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
     // Status label for interaction feedback
     auto statusLabel = DemoKit::AddText(card, "GourceStatus",
-        "Ready - Click on nodes to select, double-click to expand/collapse directories");
+        Tr("Ready - Click on nodes to select, double-click to expand/collapse directories"));
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(60, 60, 60));
     statusLabel->SetBackgroundColor(Color(240, 240, 245));
@@ -349,50 +349,50 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     // TAB 1: PROJECT STRUCTURE EXAMPLE
     // ========================================
     auto projectContainer = MakeTabPage("ProjectTab", "ProjectDesc",
-        "Project Structure: Visualize a software project with source files, docs, and tests");
+        Tr("Project Structure: Visualize a software project with source files, docs, and tests"));
 
     // Control panel
     auto projectControls = MakeToolBar("ProjectControls");
 
-    DemoKit::Add(projectControls, MakeToolLabel("ThemeLabel", "Theme:"));
+    DemoKit::Add(projectControls, MakeToolLabel("ThemeLabel", Tr("Theme:")));
 
     auto themeDropdown = std::make_shared<UltraCanvasDropdown>(
         "ThemeDropdown", 0, 0, 110, 28
     );
-    themeDropdown->AddItem("Dark");
-    themeDropdown->AddItem("Light");
-    themeDropdown->AddItem("Colorful");
-    themeDropdown->AddItem("Mono");
+    themeDropdown->AddItem(Tr("Dark"));
+    themeDropdown->AddItem(Tr("Light"));
+    themeDropdown->AddItem(Tr("Colorful"));
+    themeDropdown->AddItem(Tr("Mono"));
     themeDropdown->SetSelectedIndex(0);
     DemoKit::Add(projectControls, themeDropdown);
 
-    DemoKit::Add(projectControls, MakeToolLabel("LayoutLabel", "Layout:"));
+    DemoKit::Add(projectControls, MakeToolLabel("LayoutLabel", Tr("Layout:")));
 
     auto layoutDropdown = std::make_shared<UltraCanvasDropdown>(
         "LayoutDropdown", 0, 0, 110, 28
     );
-    layoutDropdown->AddItem("Static");
-    layoutDropdown->AddItem("Animated");
-    layoutDropdown->AddItem("Hybrid");
+    layoutDropdown->AddItem(Tr("Static"));
+    layoutDropdown->AddItem(Tr("Animated"));
+    layoutDropdown->AddItem(Tr("Hybrid"));
     layoutDropdown->SetSelectedIndex(2);
     DemoKit::Add(projectControls, layoutDropdown);
 
     auto fileSizeCheck = std::make_shared<UltraCanvasCheckbox>(
-        "FileSizeCheck", 0, 0, 0, 20, "Show File Size"
+        "FileSizeCheck", 0, 0, 0, 20, Tr("Show File Size")
     );
     fileSizeCheck->SetChecked(true);
     //DemoKit::Add(projectControls, fileSizeCheck);
 
-    DemoKit::Add(projectControls, MakeToolLabel("HighlightLabel", "Highlight:"));
+    DemoKit::Add(projectControls, MakeToolLabel("HighlightLabel", Tr("Highlight:")));
 
     auto highlightDropdown = std::make_shared<UltraCanvasDropdown>(
         "HighlightDropdown", 0, 0, 150, 28
     );
-    highlightDropdown->AddItem("None");
-    highlightDropdown->AddItem("Last Access");
-    highlightDropdown->AddItem("Creation Date");
-    highlightDropdown->AddItem("Invert Access");
-    highlightDropdown->AddItem("Invert Creation");
+    highlightDropdown->AddItem(Tr("None"));
+    highlightDropdown->AddItem(Tr("Last Access"));
+    highlightDropdown->AddItem(Tr("Creation Date"));
+    highlightDropdown->AddItem(Tr("Invert Access"));
+    highlightDropdown->AddItem(Tr("Invert Creation"));
     highlightDropdown->SetSelectedIndex(0);
     DemoKit::Add(projectControls, highlightDropdown);
 
@@ -405,13 +405,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     auto zoomOutBtn = MakeToolButton("ZoomOutBtn", "-", 36);
     DemoKit::Add(projectControls, zoomOutBtn);
 
-    auto zoomFitBtn = MakeToolButton("ZoomFitBtn", "Fit", 50);
+    auto zoomFitBtn = MakeToolButton("ZoomFitBtn", Tr("Fit"), 50);
     DemoKit::Add(projectControls, zoomFitBtn);
 
-    auto expandAllBtn = MakeToolButton("ExpandAllBtn", "Expand", 80);
+    auto expandAllBtn = MakeToolButton("ExpandAllBtn", Tr("Expand"), 80);
     DemoKit::Add(projectControls, expandAllBtn);
 
-    auto collapseAllBtn = MakeToolButton("CollapseAllBtn", "Collapse", 90);
+    auto collapseAllBtn = MakeToolButton("CollapseAllBtn", Tr("Collapse"), 90);
     DemoKit::Add(projectControls, collapseAllBtn);
 
     DemoKit::Add(projectContainer, projectControls);
@@ -428,16 +428,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     projectTree->ZoomToFit();
 
     projectTree->onNodeClick = [statusLabel](const std::string& nodeId) {
-        statusLabel->SetText("Selected: " + nodeId);
+        statusLabel->SetText(TrF("Selected: {0}", nodeId));
     };
     projectTree->onNodeExpand = [statusLabel](const std::string& nodeId) {
-        statusLabel->SetText("Expanded: " + nodeId);
+        statusLabel->SetText(TrF("Expanded: {0}", nodeId));
     };
     projectTree->onNodeCollapse = [statusLabel](const std::string& nodeId) {
-        statusLabel->SetText("Collapsed: " + nodeId);
+        statusLabel->SetText(TrF("Collapsed: {0}", nodeId));
     };
     projectTree->onNodeHover = [statusLabel](const std::string& nodeId) {
-        statusLabel->SetText("Hovering: " + nodeId);
+        statusLabel->SetText(TrF("Hovering: {0}", nodeId));
     };
 
     themeDropdown->onSelectionChanged = [projectTree](int index, const DropdownItem& item) {
@@ -480,11 +480,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     // TAB 2: STORAGE DEVICE VISUALIZATION
     // ========================================
     auto storageContainer = MakeTabPage("StorageTab", "StorageDesc",
-        "Storage Device: Visualize disk contents with file sizes and access patterns");
+        Tr("Storage Device: Visualize disk contents with file sizes and access patterns"));
 
     auto depthControls = MakeToolBar("DepthControls");
 
-    DemoKit::Add(depthControls, MakeToolLabel("DepthLabel", "Max Depth:"));
+    DemoKit::Add(depthControls, MakeToolLabel("DepthLabel", Tr("Max Depth:")));
 
     auto depthSlider = std::make_shared<UltraCanvasSlider>(
         "DepthSlider", 0, 0, 150, 25
@@ -503,7 +503,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     DemoKit::Add(depthControls, depthValueLabel);
 
     auto unlimitedCheck = std::make_shared<UltraCanvasCheckbox>(
-        "UnlimitedCheck", 0, 0, 0, 20, "Unlimited"
+        "UnlimitedCheck", 0, 0, 0, 20, Tr("Unlimited")
     );
     unlimitedCheck->SetChecked(false);
     DemoKit::Add(depthControls, unlimitedCheck);
@@ -511,16 +511,16 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     // Stretch spacer pushes the highlight / Reset / Export group flush right.
     depthControls->AddStretchSpacer(1.0f);
 
-    auto showOldBtn = MakeToolButton("ShowOldBtn", "Highlight Old Files", 170);
+    auto showOldBtn = MakeToolButton("ShowOldBtn", Tr("Highlight Old Files"), 170);
     DemoKit::Add(depthControls, showOldBtn);
 
-    auto showRecentBtn = MakeToolButton("ShowRecentBtn", "Highlight Recent", 165);
+    auto showRecentBtn = MakeToolButton("ShowRecentBtn", Tr("Highlight Recent"), 165);
     DemoKit::Add(depthControls, showRecentBtn);
 
-    auto resetStorageBtn = MakeToolButton("ResetStorageBtn", "Reset", 80);
+    auto resetStorageBtn = MakeToolButton("ResetStorageBtn", Tr("Reset"), 80);
     DemoKit::Add(depthControls, resetStorageBtn);
 
-    auto exportBtn = MakeToolButton("ExportBtn", "Export SVG", 110);
+    auto exportBtn = MakeToolButton("ExportBtn", Tr("Export SVG"), 110);
     DemoKit::Add(depthControls, exportBtn);
 
     DemoKit::Add(storageContainer, depthControls);
@@ -537,10 +537,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     storageTree->PerformLayout();
 
     storageTree->onNodeClick = [statusLabel](const std::string& nodeId) {
-        statusLabel->SetText("Selected: " + nodeId);
+        statusLabel->SetText(TrF("Selected: {0}", nodeId));
     };
     storageTree->onNodeDoubleClick = [statusLabel](const std::string& nodeId) {
-        statusLabel->SetText("Double-clicked: " + nodeId + " (expanded/collapsed)");
+        statusLabel->SetText(TrF("Double-clicked: {0} (expanded/collapsed)", nodeId));
     };
 
     depthSlider->onValueChanged = [storageTree, depthValueLabel, unlimitedCheck](float value) {
@@ -562,22 +562,22 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     };
     showOldBtn->onClick = [storageTree, statusLabel]() {
         storageTree->SetHighlightMode(GourceHighlightMode::InvertLastAccess);
-        statusLabel->SetText("Highlighting old/unused files (more opaque = older)");
+        statusLabel->SetText(Tr("Highlighting old/unused files (more opaque = older)"));
     };
     showRecentBtn->onClick = [storageTree, statusLabel]() {
         storageTree->SetHighlightMode(GourceHighlightMode::LastAccess);
-        statusLabel->SetText("Highlighting recent files (more opaque = recently accessed)");
+        statusLabel->SetText(Tr("Highlighting recent files (more opaque = recently accessed)"));
     };
     resetStorageBtn->onClick = [storageTree, statusLabel]() {
         storageTree->SetHighlightMode(GourceHighlightMode::NoneHighlight);
         storageTree->ResetView();
-        statusLabel->SetText("View reset");
+        statusLabel->SetText(Tr("View reset"));
     };
     exportBtn->onClick = [storageTree, statusLabel]() {
         if (storageTree->SaveToSVG("/tmp/storage_tree.svg")) {
-            statusLabel->SetText("Exported to /tmp/storage_tree.svg");
+            statusLabel->SetText(TrF("Exported to {0}", "/tmp/storage_tree.svg"));
         } else {
-            statusLabel->SetText("Export failed!");
+            statusLabel->SetText(Tr("Export failed!"));
         }
     };
 
@@ -861,8 +861,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 //    customContainer->AddChild(customTree);
 
     // ===== ADD TABS =====
-    tabbedContainer->AddTab("Project", projectContainer);
-    tabbedContainer->AddTab("Storage", storageContainer);
+    tabbedContainer->AddTab(Tr("Project"), projectContainer);
+    tabbedContainer->AddTab(Tr("Storage"), storageContainer);
 //    tabbedContainer->AddTab("Performance", perfContainer);
 //    tabbedContainer->AddTab("Custom", customContainer);
 

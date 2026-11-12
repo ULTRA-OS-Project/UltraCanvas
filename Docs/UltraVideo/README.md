@@ -19,8 +19,13 @@ From top to bottom: the **app bar** with the project's name, its size, frame
 rate and *Saved* or *Edited* state, undo and redo, open, save, import,
 *Make a story*, the light-or-dark switch and **Export**; the **media bin**, the **viewer** and
 the **inspector** side by side in panes you can drag; the **timeline** with
-its toolbar under them. The design's dark palette is the default; the eye
-button in the app bar switches to the light one.
+its toolbar under them. The palette follows the desktop - the dark one on
+a dark desktop or under *Dark* on UOS-Settings' Look page, the light one
+on a light desktop - until the eye button in the app bar picks one: from
+then on the look is the project's, saved with it (`view.dark`), whatever
+the desktop does; a project that never picked keeps following. The
+palette is the framework theme under the application's `Own` policy
+(`UltraVideoTheme.h`, `ThemeFor`), with the desktop's fonts.
 
 ### The media bin
 

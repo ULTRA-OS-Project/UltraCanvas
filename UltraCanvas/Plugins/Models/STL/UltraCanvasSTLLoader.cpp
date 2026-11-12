@@ -7,6 +7,7 @@
 #include "UltraCanvasSTLLoader.h"
 
 #include <fstream>
+#include <locale>
 #include <sstream>
 #include <cstring>
 #include <cctype>
@@ -206,6 +207,13 @@ bool UltraCanvasSTLLoader::ParseBinary(const std::vector<uint8_t>& data, Mesh3D&
 bool UltraCanvasSTLLoader::ParseAscii(const std::string& text, Mesh3D& outMesh,
                                       std::string* outError) {
     std::istringstream in(text);
+    // ASCII STL is dot-decimal, like every other model format, and `>>` reads
+    // through the stream's locale: where ',' is the decimal point, '.' is a
+    // digit-group separator, `1.5` fails to extract outright and the stream
+    // then stays in its fail state - so a correct .stl did not load at all,
+    // it reported "contains no complete triangles". The stream is this
+    // function's own, so it is imbued here rather than guarded.
+    in.imbue(std::locale::classic());
     std::string token;
 
     Vec3 currentNormal;
@@ -336,6 +344,11 @@ bool UltraCanvasSTLLoader::WriteAscii(const std::string& filePath, const Mesh3D&
         SetError(outError, "Cannot open file for writing: " + filePath);
         return false;
     }
+
+    // The file's own locale, not the host's: a slicer reading `1,5e+00` either
+    // stops at the comma or takes it for a second coordinate. The stream is
+    // opened here and closed here, so imbuing it is enough.
+    out.imbue(std::locale::classic());
 
     std::string solidName = mesh.name.empty() ? "ultracanvas" : mesh.name;
     out << "solid " << solidName << "\n";

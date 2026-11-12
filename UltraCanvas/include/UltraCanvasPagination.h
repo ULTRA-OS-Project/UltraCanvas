@@ -8,8 +8,10 @@
 // at each end, `siblingCount` pages are shown either side of the current page,
 // and ellipses (…) fill the gaps.
 //
+// Version: 1.1.0 - PaginationStyle::FromTheme, ApplyTheme: the pagination follows the theme; a SetStyle by hand
+//                  stops the following
 // Version: 1.0.0
-// Last Modified: 2026-07-07
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -63,6 +65,16 @@ namespace UltraCanvas {
         float textPaddingH  = 10.0f;   // horizontal padding inside info / text cells
 
         FontStyle fontStyle;
+
+        // The theme's roles over a base's own metrics: the raised surface for
+        // a cell with the control border, the hover and pressed fills, ink;
+        // the accent with text on it for the current page; the panel and
+        // faint ink for a disabled end; muted ink for the chevrons and the
+        // info text, faint ink for an ellipsis; the interface font at the
+        // body size
+        static PaginationStyle FromTheme(const UltraCanvasTheme& theme, const PaginationStyle& base);
+        static PaginationStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, PaginationStyle()); }
+        static PaginationStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== PAGINATION COMPONENT =====
@@ -158,7 +170,8 @@ namespace UltraCanvas {
 
         PaginationStyle& GetStyle() { return style; }
         const PaginationStyle& GetStyle() const { return style; }
-        void SetStyle(const PaginationStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const PaginationStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(PaginationStyle::FromTheme(theme, style)); }
 
         // Rough preferred width for the current configuration (square cells only;
         // info/text cells are estimated). Useful for sizing in a layout.

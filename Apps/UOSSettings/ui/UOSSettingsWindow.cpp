@@ -1,6 +1,11 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.15.0 - every text through Tr / TrF / TrN; the window's colours and sizes are the theme's (the kit's functions)
+// Version: 0.14.0 - Appearance > Look: Appearance.conf (the look, accent, font, size, scale, contrast)
+//                  with a preview strip styled from the theme the choices give
+// Version: 0.13.0 - Network > Proxy: the proxy every ULTRA OS application connects
+//                  through (Proxy.conf, the shared proxy settings dialog)
 // Version: 0.12.0 - Desktop: where files dropped on the wallpaper go
 // Version: 0.11.0 - Desktop: the bars' theme (dark or light)
 // Version: 0.10.0 - on UltraCanvasSettingsPageKit (the window, the tree, the bottom bar,
@@ -17,7 +22,7 @@
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -31,6 +36,9 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasEmojiSettings.h"
+#include "UltraCanvasAppearanceSettings.h"
+#include "UltraCanvasApplication.h"   // GetInstalledFontFamilies, the host appearance
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasTextInput.h"
@@ -42,11 +50,15 @@
 #include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8
+#include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <iterator>
 #include <cstdlib>
 #include <set>
 #include <utility>
@@ -59,7 +71,7 @@ namespace UOSSettings {
 namespace {
     // The look of UltraFiler's settings window, so the two read as one
     // family: the framework's settings page kit.
-    using SettingsPageKit::kTitleFontSize;
+    using SettingsPageKit::TitleFontSize;
     // The Apps window's choices: when a category is split (0 = never) and
     // how many applications Recent shows.
     constexpr int kAppsSplitChoices[] = {0, 4, 6, 8, 10, 12, 16, 20};
@@ -80,13 +92,15 @@ namespace {
     }
     // The type scale and the colours are the kit's; the widths are this
     // window's own (its pages are wider than a dialog's).
-    using SettingsPageKit::kTextFontSize;
-    using SettingsPageKit::kNoteFontSize;
-    using SettingsPageKit::kTextColor;
-    using SettingsPageKit::kNoteTextColor;
-    const Color kMutedTextColor = Color(120, 120, 128, 255);
-    const Color kRuleColor      = Color(225, 225, 230, 255);
-    const Color kHeaderBackground = Color(243, 243, 246, 255);
+    using SettingsPageKit::TextFontSize;
+    using SettingsPageKit::NoteFontSize;
+    using SettingsPageKit::TextColor;
+    using SettingsPageKit::NoteTextColor;
+    using SettingsPageKit::PageBackground;
+    // The window's own colours are the theme's roles, as the kit's are.
+    inline Color MutedTextColor()   { return UltraCanvasTheme::Current().roles.inkMuted; }
+    inline Color RuleColor()        { return UltraCanvasTheme::Current().roles.line; }
+    inline Color HeaderBackground() { return UltraCanvasTheme::Current().roles.well; }
     constexpr int kSidebarWidth = 180;
     // The ULTRA OS logo over the page tree: ultraos-logo-light.png, 384 x 200.
     constexpr int kLogoWidth = 132;
@@ -110,12 +124,15 @@ namespace {
     constexpr const char* kPageLastFolder     = "file-dialogs/last-folder";
     constexpr const char* kSectionAppearance  = "appearance";
     constexpr const char* kPageEmoji          = "appearance/emoji";
+    constexpr const char* kPageLook           = "appearance/look";
     constexpr const char* kPageLanguage       = "language";
     constexpr const char* kPageTranslations   = "translations";
     constexpr const char* kSectionNotifications = "notifications";
     constexpr const char* kPageRegistrations  = "notifications/registrations";
     constexpr const char* kSectionDevices     = "devices";
     constexpr const char* kPageCertificates   = "devices/certificates";
+    constexpr const char* kSectionNetwork     = "network";
+    constexpr const char* kPageProxy          = "network/proxy";
 
     // Notification registrations table: the application column is fixed, the
     // click handler takes the rest.
@@ -143,8 +160,8 @@ namespace {
     std::shared_ptr<UltraCanvasLabel> MakeText(const std::string& id,
                                                const std::string& text,
                                                int width = kTextWidth,
-                                               float fontSize = kTextFontSize,
-                                               const Color& color = kTextColor) {
+                                               float fontSize = TextFontSize(),
+                                               const Color& color = TextColor()) {
         return SettingsPageKit::MakeText(id, text, width, fontSize, color);
     }
 
@@ -152,7 +169,7 @@ namespace {
                                                                  int width, int height) {
         auto sw = std::make_shared<UltraCanvasSegmentedControl>(id, 0, 0, width, height);
         SegmentedControlStyle style = sw->GetStyle();
-        style.fontSize = kTextFontSize;
+        style.fontSize = TextFontSize();
         style.paddingVertical = 2;
         style.paddingHorizontal = 8;
         sw->SetStyle(style);
@@ -181,8 +198,8 @@ namespace {
         table->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         table->size.height = CSSLayout::Dimension::Px(120);   // basis; it grows
-        table->SetBorders(1.0f, kRuleColor);
-        table->SetBackgroundColor(Color(255, 255, 255, 255));
+        table->SetBorders(1.0f, RuleColor());
+        table->SetBackgroundColor(PageBackground());
 
         auto header = std::make_shared<UltraCanvasContainer>(id + "-header");
         header->layout.SetFlexRow().SetFlexGap(12)
@@ -190,8 +207,8 @@ namespace {
         header->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         header->size.height = CSSLayout::Dimension::Px(28);
         header->SetPadding(0, kScrollbarRoom, 0, 10);
-        header->SetBackgroundColor(kHeaderBackground);
-        header->SetBorderBottom(1, kRuleColor);
+        header->SetBackgroundColor(HeaderBackground());
+        header->SetBorderBottom(1, RuleColor());
         for (const TableColumn& column : columns) {
             auto l = MakeLabel(id + "-h-" + column.id, column.title);
             l->SetFontWeight(FontWeight::Bold);
@@ -213,7 +230,7 @@ namespace {
         // Opaque, like the table around it: a scroll repaints only these
         // containers, and without backgrounds of their own the strip under the
         // last row kept the pixels of the rows that were there before.
-        rows->SetBackgroundColor(Color(255, 255, 255, 255));
+        rows->SetBackgroundColor(PageBackground());
         {
             // Vertically only: a vertical bar narrows the rows, which must not
             // turn into a horizontal overflow of its own width.
@@ -238,7 +255,7 @@ namespace {
         row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->size.height = CSSLayout::Dimension::Px(kRowHeight);
         row->SetPadding(0, kScrollbarRoom, 0, 10);
-        row->SetBorderBottom(1, kRuleColor);
+        row->SetBorderBottom(1, RuleColor());
         return row;
     }
 
@@ -248,7 +265,7 @@ namespace {
         auto notes = SettingsPageKit::MakeNotesBlock(id);
         for (size_t i = 0; i < texts.size(); ++i) {
             notes->AddChild(MakeText(id + "-" + std::to_string(i + 1), texts[i],
-                                     kNoteWidth, kNoteFontSize, kNoteTextColor));
+                                     kNoteWidth, NoteFontSize(), NoteTextColor()));
         }
         return notes;
     }
@@ -267,7 +284,7 @@ bool UOSSettingsWindow::Create() {
     logo->SetElementSize(Size2Df(static_cast<float>(kLogoWidth), static_cast<float>(kLogoHeight)));
     logo->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
     logo->SetMargin(14, 0, 10, 0);
-    logo->SetTooltip("ULTRA OS");
+    logo->SetTooltip(Tr("ULTRA OS"));
 
     SettingsPageKit::SettingsWindowOptions options;
     options.width = 860;
@@ -285,19 +302,24 @@ bool UOSSettingsWindow::Create() {
     AddTreeNode("settings", kSectionFileDialogs, Tr("File dialogs"));
     AddTreeNode(kSectionFileDialogs, kPageLastFolder, Tr("Last used folder"));
     AddTreeNode("settings", kSectionAppearance, Tr("Appearance"));
+    AddTreeNode(kSectionAppearance, kPageLook, Tr("Look"));
     AddTreeNode(kSectionAppearance, kPageEmoji, Tr("Emoji"));
     AddTreeNode("settings", kSectionNotifications, Tr("Notifications"));
     AddTreeNode(kSectionNotifications, kPageRegistrations, Tr("Registrations"));
     AddTreeNode("settings", kSectionDevices, Tr("Devices"));
     AddTreeNode(kSectionDevices, kPageCertificates, Tr("Trusted certificates"));
+    AddTreeNode("settings", kSectionNetwork, Tr("Network"));
+    AddTreeNode(kSectionNetwork, kPageProxy, Tr("Proxy"));
 
     BuildDesktopPage();
     BuildLastFolderPage();
     BuildLanguagePage();
     BuildTranslationsPage();
+    BuildLookPage();
     BuildEmojiPage();
     BuildNotificationsPage();
     BuildCertificatesPage();
+    AddPage(kPageProxy, MakeProxySettingsPage("uos-proxy", window.get()));
 
     // Another application may have written a page's file since it was
     // built: a page is re-read on the way in, shown as it is now.
@@ -305,6 +327,7 @@ bool UOSSettingsWindow::Create() {
         if (pageId == kPageLastFolder) RefreshLastFolderPage();
         if (pageId == kPageDesktop) RefreshDesktopPage();
         if (pageId == kPageCertificates) RefreshCertificatesPage();
+        if (pageId == kPageLook) RefreshLookPage();
         if (pageId == kPageEmoji) RefreshEmojiPage();
         if (pageId == kPageLanguage) RefreshLanguagePage();
         if (pageId == kPageTranslations) RefreshTranslationsPage();
@@ -332,13 +355,21 @@ void UOSSettingsWindow::BuildDesktopPage() {
     page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    {
+        // The longest page: in a large desktop font its rows outgrow the
+        // window, so it scrolls rather than losing its last rows under the bar.
+        ContainerStyle cs;
+        cs.autoShowScrollbars = true;
+        cs.autoShowHorizontalScrollbar = false;
+        page->SetContainerStyle(cs);
+    }
 
-    auto title = MakeLabel("uos-dt-title", "Desktop", kTitleFontSize);
+    auto title = MakeLabel("uos-dt-title", Tr("Desktop"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-dt-caption",
-            "The ULTRA OS desktop (UltraDesktop): where its taskbar sits, the "
-            "picture behind it, and what its buttons open.");
+            Tr("The ULTRA OS desktop (UltraDesktop): where its taskbar sits, the "
+            "picture behind it, and what its buttons open."));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
@@ -358,7 +389,8 @@ void UOSSettingsWindow::BuildDesktopPage() {
         row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->size.height = CSSLayout::Dimension::Px(30);
         auto label = MakeLabel(id + "-label", captionText);
-        label->size.width = CSSLayout::Dimension::Px(130);
+        // The caption column grows with the text size (130 px at 12 pt).
+        label->size.width = CSSLayout::Dimension::Px(static_cast<int>(130 * TextFontSize() / 12.0f));
         row->AddChild(label);
         field->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         field->size.width = CSSLayout::Dimension::Px(0);
@@ -380,9 +412,9 @@ void UOSSettingsWindow::BuildDesktopPage() {
     };
 
     edge_ = std::make_shared<UltraCanvasDropdown>("uos-dt-edge", 0, 0, 200, 28);
-    edge_->AddItem("Left", "left");
-    edge_->AddItem("Top", "top");
-    edge_->AddItem("Bottom", "bottom");
+    edge_->AddItem(Tr("Left"), "left");
+    edge_->AddItem(Tr("Top"), "top");
+    edge_->AddItem(Tr("Bottom"), "bottom");
     edge_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
@@ -408,7 +440,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     wallpaper_->SetPlaceholder(Tr("ULTRA OS A (the default picture)"));
     wireText(wallpaper_);
     auto browse = std::make_shared<UltraCanvasButton>("uos-dt-browse", 0, 0, 90, 28, Tr("Browse..."));
-    browse->SetFontSize(kTextFontSize);
+    browse->SetFontSize(TextFontSize());
     browse->SetOnClick([this]() { BrowseWallpaper(); });
     addRow("uos-dt-wallpaper-row", "Wallpaper", wallpaper_, browse);
 
@@ -431,8 +463,8 @@ void UOSSettingsWindow::BuildDesktopPage() {
     // The Apps window: its view, when a category is split into its
     // sub-categories, and how many applications Recent shows.
     appsView_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appsview", 0, 0, 200, 28);
-    appsView_->AddItem("Tiles", "tiles");
-    appsView_->AddItem("Categories and a list", "tree");
+    appsView_->AddItem(Tr("Tiles"), "tiles");
+    appsView_->AddItem(Tr("Categories and a list"), "tree");
     appsView_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
@@ -478,10 +510,10 @@ void UOSSettingsWindow::BuildDesktopPage() {
     // Only where there is a system desktop to take the place of (Windows).
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
         systemDesktop_ = std::make_shared<UltraCanvasDropdown>("uos-dt-replace", 0, 0, 300, 28);
-        systemDesktop_->AddItem("The Windows desktop", "none");
-        systemDesktop_->AddItem("UltraDesktop beside Explorer", "beside");
+        systemDesktop_->AddItem(Tr("The Windows desktop"), "none");
+        systemDesktop_->AddItem(Tr("UltraDesktop beside Explorer"), "beside");
         if (UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement::Instead)) {
-            systemDesktop_->AddItem("UltraDesktop instead of Explorer", "instead");
+            systemDesktop_->AddItem(Tr("UltraDesktop instead of Explorer"), "instead");
         }
         systemDesktop_->onSelectionChanged = [this](int index, const DropdownItem&) {
             if (refreshing_) return;
@@ -496,7 +528,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     // What starts with the desktop, unseen (UltraDesktop's own list):
     // ChatCube and UltraMail minimized, UltraClipboard and
     // UltraNotifications with no window, the Sticker board made ready.
-    auto startupTitle = MakeLabel("uos-dt-startup-title", "Start with the desktop", kTextFontSize);
+    auto startupTitle = MakeLabel("uos-dt-startup-title", Tr("Start with the desktop"), TextFontSize());
     startupTitle->SetFontWeight(FontWeight::Bold);
     startupTitle->SetMargin(16, 0, 4, 0);
     page->AddChild(startupTitle);
@@ -516,13 +548,13 @@ void UOSSettingsWindow::BuildDesktopPage() {
     // registry changes sign-in never sees): say why the choice is missing.
     if (const std::string why = UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason();
         !why.empty()) {
-        auto note = MakeText("uos-dt-replace-note", "At sign-in: " + why, kTextWidth, kTextFontSize,
-                             kMutedTextColor);
+        auto note = MakeText("uos-dt-replace-note", "At sign-in: " + why, kTextWidth, TextFontSize(),
+                             MutedTextColor());
         note->SetMargin(10, 0, 0, 0);
         page->AddChild(note);
     }
 
-    desktopStatus_ = MakeLabel("uos-dt-status", "", kTextFontSize, kMutedTextColor);
+    desktopStatus_ = MakeLabel("uos-dt-status", "", TextFontSize(), MutedTextColor());
     desktopStatus_->SetMargin(10, 0, 0, 0);
     page->AddChild(desktopStatus_);
 
@@ -532,39 +564,39 @@ void UOSSettingsWindow::BuildDesktopPage() {
     page->AddChild(spacer);
 
     std::vector<std::string> noteTexts = {
-            "Changes are saved at once - a text field when you leave it or press "
-            "Return - and a running desktop takes them over within a second.",
-            "The RAM disc is the folder the desktop's drive button opens - empty, "
-            "no button; the file manager is the program its folder buttons start. "
-            "Virtual desktops are asked of the window manager, which may offer a "
-            "different number.",
-            "The Apps window sorts the applications into Office, Internet, "
-            "Graphics, Video, Audio, CAD, Games, Tools and System, after the "
-            "ones started last (Recent). A category with more applications than "
-            "the Sub-categories choice is split into its kinds - Web browsers, "
-            "Painting, Board games - and the window's two icons at its top left "
-            "switch between the tiles and the categories beside a list.",
-            "A program that starts with the desktop opens minimized a few seconds "
-            "after it - unless it is running already - and keeps working in the "
-            "background: ChatCube receives messages, UltraMail fetches mail and "
-            "shows the unread count on the desktop's mail icon. The desktop's "
-            "settings button offers the same choice on its right-click menu."};
+            Tr("Changes are saved at once - a text field when you leave it or press "
+               "Return - and a running desktop takes them over within a second."),
+            Tr("The RAM disc is the folder the desktop's drive button opens - empty, "
+               "no button; the file manager is the program its folder buttons start. "
+               "Virtual desktops are asked of the window manager, which may offer a "
+               "different number."),
+            Tr("The Apps window sorts the applications into Office, Internet, "
+               "Graphics, Video, Audio, CAD, Games, Tools and System, after the "
+               "ones started last (Recent). A category with more applications than "
+               "the Sub-categories choice is split into its kinds - Web browsers, "
+               "Painting, Board games - and the window's two icons at its top left "
+               "switch between the tiles and the categories beside a list."),
+            Tr("A program that starts with the desktop opens minimized a few seconds "
+               "after it - unless it is running already - and keeps working in the "
+               "background: ChatCube receives messages, UltraMail fetches mail and "
+               "shows the unread count on the desktop's mail icon. The desktop's "
+               "settings button offers the same choice on its right-click menu.")};
     if (systemDesktop_) {
         noteTexts.push_back(
-            "At sign-in, for this account: beside Explorer, UltraDesktop starts "
-            "with the session and Explorer's taskbar hides itself, while "
-            "Explorer's tray, notifications and Start menu keep working - from "
-            "now on. Instead of Explorer, UltraDesktop is the whole desktop from "
-            "the next sign-in: it shows the programs' tray icons and offers "
-            "sign out, restart and shut down; Explorer does not start, and with "
-            "it go the parts of Windows it hosts (the Start menu, the quick "
-            "settings, the notification centre). Should UltraDesktop fail, "
-            "Explorer starts in its place for that session.");
+            Tr("At sign-in, for this account: beside Explorer, UltraDesktop starts "
+               "with the session and Explorer's taskbar hides itself, while "
+               "Explorer's tray, notifications and Start menu keep working - from "
+               "now on. Instead of Explorer, UltraDesktop is the whole desktop from "
+               "the next sign-in: it shows the programs' tray icons and offers "
+               "sign out, restart and shut down; Explorer does not start, and with "
+               "it go the parts of Windows it hosts (the Start menu, the quick "
+               "settings, the notification centre). Should UltraDesktop fail, "
+               "Explorer starts in its place for that session."));
         noteTexts.push_back(
-            "\"The Windows desktop\", or \"Switch back to the Windows desktop\" on "
-            "the desktop's settings button, brings Explorer back at once. If the "
-            "desktop ever does not respond: Ctrl+Shift+Esc, \"Run new task\", "
-            "UltraDesktop --restore-desktop.");
+            Tr("\"The Windows desktop\", or \"Switch back to the Windows desktop\" on "
+               "the desktop's settings button, brings Explorer back at once. If the "
+               "desktop ever does not respond: Ctrl+Shift+Esc, \"Run new task\", "
+               "UltraDesktop --restore-desktop."));
     }
     auto notes = MakeNotes("uos-dt-note", noteTexts);
     page->AddChild(notes);
@@ -611,8 +643,8 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     }
     refreshing_ = false;
     if (desktopStatus_) {
-        desktopStatus_->SetText(read ? "Settings file: " + path
-                                     : "The settings file could not be read: " + error);
+        desktopStatus_->SetText(read ? TrF("Settings file: {0}", path)
+                                     : TrF("The settings file could not be read: {0}", error));
     }
 }
 
@@ -650,7 +682,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
     }
     for (const auto& [program, box] : startup_) settings.SetStartsWithDesktop(program, box->IsChecked());
     if (!settings.Save(path, &error)) {
-        if (desktopStatus_) desktopStatus_->SetText("Not saved: " + error);
+        if (desktopStatus_) desktopStatus_->SetText(TrF("Not saved: {0}", error));
         return;
     }
     if (desktopStatus_) desktopStatus_->SetText("Saved to " + path);
@@ -669,21 +701,21 @@ void UOSSettingsWindow::SetSystemDesktop(DesktopReplacement how) {
                 if (w.appClass == "UltraDesktop") running = true;
             }
             if (!running && !UltraCanvasDesktopShell::LaunchProgram("UltraDesktop", {"--session"}, &error)) {
-                status = "UltraDesktop is the desktop from the next sign-in; it could not be started now: " + error;
+                status = TrF("UltraDesktop is the desktop from the next sign-in; it could not be started now: {0}", error);
             }
         }
     } else if (how == DesktopReplacement::Instead) {
         if (UltraCanvasDesktopShell::ReplaceSystemDesktop(program, {"--shell"}, &error, how)) {
-            status = "From the next sign-in UltraDesktop is the desktop and Explorer does not start. Sign out "
-                     "and in again to switch now.";
+            status = Tr("From the next sign-in UltraDesktop is the desktop and Explorer does not start. Sign out "
+                        "and in again to switch now.");
         }
     } else if (UltraCanvasDesktopShell::RestoreSystemDesktop(&error)) {
         status = UltraCanvasDesktopShell::IsSystemDesktopRunning()
-                     ? "The Windows desktop is back. A desktop started at sign-in closes within a second."
-                     : "The Windows desktop is back: UltraDesktop closes, and Explorer starts in its place.";
+                     ? Tr("The Windows desktop is back. A desktop started at sign-in closes within a second.")
+                     : Tr("The Windows desktop is back: UltraDesktop closes, and Explorer starts in its place.");
     }
     if (status.empty()) {
-        status = "Not changed: " + error;
+        status = TrF("Not changed: {0}", error);
         // The choice shows what is true, not what was asked for.
         refreshing_ = true;
         if (systemDesktop_) {
@@ -701,7 +733,7 @@ void UOSSettingsWindow::BrowseWallpaper() {
     FileDialogOptions options;
     options.title = Tr("Choose a wallpaper");
     options.parentWindow = window.get();
-    options.AddFilter("Pictures", std::vector<std::string>{"jpg", "jpeg", "png", "webp",
+    options.AddFilter(Tr("Pictures"), std::vector<std::string>{"jpg", "jpeg", "png", "webp",
                                                            "avif", "heic", "bmp"});
     UltraCanvasFileLoader::OpenFileDialog(options, [this](DialogResult result,
                                                           const std::string& path) {
@@ -721,13 +753,13 @@ void UOSSettingsWindow::BuildLastFolderPage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("uos-lf-title", "Last used folder", kTitleFontSize);
+    auto title = MakeLabel("uos-lf-title", Tr("Last used folder"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-lf-caption",
-            "Where the file dialog of an application opens when the application "
+            Tr("Where the file dialog of an application opens when the application "
             "does not ask for a folder itself - \"Attach file\" in UltraMail, for "
-            "one.");
+            "one."));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
@@ -738,7 +770,7 @@ void UOSSettingsWindow::BuildLastFolderPage() {
     modeRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     modeRow->size.height = CSSLayout::Dimension::Px(32);
     modeRow->SetMargin(14, 0, 0, 0);
-    modeRow->AddChild(MakeLabel("uos-lf-mode-label", "Applications use:"));
+    modeRow->AddChild(MakeLabel("uos-lf-mode-label", Tr("Applications use:")));
     modeSwitch_ = MakeScopeSwitch("uos-lf-mode", 320, 28);
     modeSwitch_->SetSegmentText(kSegmentGlobal, "One common folder");
     modeSwitch_->SetSegmentText(kSegmentIndividual, "Their own folders");
@@ -750,7 +782,7 @@ void UOSSettingsWindow::BuildLastFolderPage() {
     page->AddChild(modeRow);
 
     // ----- the table: header + scrolling rows -----
-    tableNote_ = MakeText("uos-lf-table-note", "", kTextWidth, kTextFontSize, kNoteTextColor);
+    tableNote_ = MakeText("uos-lf-table-note", "", kTextWidth, TextFontSize(), NoteTextColor());
     tableNote_->SetMargin(14, 0, 6, 0);
     page->AddChild(tableNote_);
 
@@ -819,15 +851,15 @@ void UOSSettingsWindow::RefreshLastFolderPage() {
         modeSwitch_->SetSelectedIndex(individual ? kSegmentIndividual : kSegmentGlobal);
     if (tableNote_) {
         tableNote_->SetText(individual
-                ? "Choose for each application whether it shares the common folder "
-                  "(Global) or keeps its own (Individual):"
-                : "Every application shares the common folder. Choose \"Their own "
-                  "folders\" above to set this per application.");
+                ? Tr("Choose for each application whether it shares the common folder "
+                     "(Global) or keeps its own (Individual):")
+                : Tr("Every application shares the common folder. Choose \"Their own "
+                     "folders\" above to set this per application."));
     }
     for (auto& [name, row] : rows_) {
         const std::string folder = settings.LastFolderFor(name);
         row.folder->SetText(folder.empty() ? "(not used yet)" : folder);
-        row.folder->SetTextColor(folder.empty() ? kMutedTextColor : kTextColor);
+        row.folder->SetTextColor(folder.empty() ? MutedTextColor() : TextColor());
         row.folder->SetTooltip(folder);
         // Under one common folder the per-application choice does not apply:
         // both halves greyed out (the control draws "disabled" per segment).
@@ -872,13 +904,13 @@ void UOSSettingsWindow::BuildEmojiPage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("uos-em-title", "Emoji", kTitleFontSize);
+    auto title = MakeLabel("uos-em-title", Tr("Emoji"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-em-caption",
-            "How the applications draw emoji - in a mail's subject, a chat, a file "
+            Tr("How the applications draw emoji - in a mail's subject, a chat, a file "
             "name. ULTRA OS brings two emoji fonts of its own, so they show on "
-            "every computer, whatever fonts it has.");
+            "every computer, whatever fonts it has."));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
@@ -888,11 +920,11 @@ void UOSSettingsWindow::BuildEmojiPage() {
     styleRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     styleRow->size.height = CSSLayout::Dimension::Px(32);
     styleRow->SetMargin(14, 0, 0, 0);
-    styleRow->AddChild(MakeLabel("uos-em-style-label", "Emoji:"));
+    styleRow->AddChild(MakeLabel("uos-em-style-label", Tr("Emoji:")));
     emojiStyle_ = std::make_shared<UltraCanvasSegmentedControl>("uos-em-style", 0, 0, 380, 28);
     {
         SegmentedControlStyle style = emojiStyle_->GetStyle();
-        style.fontSize = kTextFontSize;
+        style.fontSize = TextFontSize();
         style.paddingVertical = 2;
         style.paddingHorizontal = 8;
         emojiStyle_->SetStyle(style);
@@ -909,8 +941,8 @@ void UOSSettingsWindow::BuildEmojiPage() {
                                                           : EmojiStyle::Colour;
         if (emojiStatus_) {
             emojiStatus_->SetText(settings.Save()
-                    ? "Saved. Applications started from now on draw emoji this way."
-                    : "Could not write " + PathToUtf8(EmojiSettings::FilePath()) + ".");
+                    ? Tr("Saved. Applications started from now on draw emoji this way.")
+                    : TrF("Could not write {0}.", PathToUtf8(EmojiSettings::FilePath())));
         }
     };
     styleRow->AddChild(emojiStyle_);
@@ -925,7 +957,7 @@ void UOSSettingsWindow::BuildEmojiPage() {
     sample->SetMargin(14, 0, 0, 0);
     page->AddChild(sample);
 
-    emojiStatus_ = MakeLabel("uos-em-status", "", kTextFontSize, kMutedTextColor);
+    emojiStatus_ = MakeLabel("uos-em-status", "", TextFontSize(), MutedTextColor());
     emojiStatus_->SetMargin(10, 0, 0, 0);
     page->AddChild(emojiStatus_);
 
@@ -934,14 +966,14 @@ void UOSSettingsWindow::BuildEmojiPage() {
     page->AddChild(spacer);
 
     auto notes = MakeNotes("uos-em-note", {
-            "Colour: Noto Color Emoji, the same pictures on every computer.",
-            "Black and white: Noto Emoji, drawn in the colour of the text around "
-            "them - quieter, and the smaller font of the two.",
-            "System: the computer's own emoji font (Segoe UI Emoji on Windows); "
-            "Noto Color Emoji fills in where it has none.",
-            "The sample above shows the setting this window started with. An "
+            Tr("Colour: Noto Color Emoji, the same pictures on every computer."),
+            Tr("Black and white: Noto Emoji, drawn in the colour of the text around "
+            "them - quieter, and the smaller font of the two."),
+            Tr("System: the computer's own emoji font (Segoe UI Emoji on Windows); "
+            "Noto Color Emoji fills in where it has none."),
+            Tr("The sample above shows the setting this window started with. An "
             "application uses a change the next time it starts. On macOS the "
-            "applications always draw Apple's own emoji."});
+            "applications always draw Apple's own emoji.")});
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
@@ -959,6 +991,240 @@ void UOSSettingsWindow::RefreshEmojiPage() {
     refreshing_ = false;
 }
 
+// ===== APPEARANCE > LOOK =====
+
+namespace {
+    // The accent choices beside "System": a name and its colour.
+    struct AccentChoice { const char* name; const char* hex; };
+    const AccentChoice kAccents[] = {
+        {"Blue", "#0078d4"}, {"Orange", "#e95420"}, {"Green", "#2e7d32"}, {"Red", "#c62828"},
+        {"Purple", "#6a1b9a"}, {"Teal", "#00796b"}, {"Pink", "#ad1457"}, {"Slate", "#546e7a"},
+    };
+    const double kFontSizes[] = {8, 9, 10, 11, 12, 13, 14, 16, 18, 20, 24};
+    const int kScales[] = {100, 110, 125, 150, 175, 200};
+    constexpr int kSegmentSystem = 0;
+}
+
+void UOSSettingsWindow::BuildLookPage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-look");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto title = MakeLabel("uos-look-title", Tr("Look"), TitleFontSize());
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-look-caption",
+            Tr("The look every application takes: light or dark, the accent colour, the "
+               "font and its size, the text scale and high contrast. System follows the "
+               "computer's own setting; a choice here overrules it for every application "
+               "at once, and a running application follows within a moment."));
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    auto row = [&](const std::string& id, const std::string& label, int topMargin) {
+        auto r = std::make_shared<UltraCanvasContainer>(id);
+        r->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        r->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        r->size.height = CSSLayout::Dimension::Px(32);
+        r->SetMargin(static_cast<float>(topMargin), 0, 0, 0);
+        auto l = MakeLabel(id + "-label", label);
+        l->SetWidth(90);
+        r->AddChild(l);
+        page->AddChild(r);
+        return r;
+    };
+    auto segmented = [&](const std::string& id, const std::vector<std::string>& segments, int width) {
+        auto control = std::make_shared<UltraCanvasSegmentedControl>(id, 0, 0, static_cast<float>(width), 28);
+        SegmentedControlStyle style = control->GetStyle();
+        style.fontSize = TextFontSize();
+        style.paddingVertical = 2;
+        style.paddingHorizontal = 8;
+        control->SetStyle(style);
+        for (const std::string& segment : segments) control->AddSegment(segment);
+        control->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        control->onSegmentSelected = [this](int) { if (!refreshing_) SaveLook(); };
+        return control;
+    };
+    auto dropdown = [&](const std::string& id, int width) {
+        auto d = std::make_shared<UltraCanvasDropdown>(id, 0, 0, static_cast<float>(width), 28);
+        d->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        d->onSelectionChanged = [this](int, const DropdownItem&) { if (!refreshing_) SaveLook(); };
+        return d;
+    };
+
+    look_ = segmented("uos-look-look", {Tr("System"), Tr("Light"), Tr("Dark")}, 300);
+    row("uos-look-look-row", Tr("Look:"), 14)->AddChild(look_);
+
+    auto accentRow = row("uos-look-accent-row", Tr("Accent:"), 10);
+    accent_ = dropdown("uos-look-accent", 160);
+    accent_->AddItem(DropdownItem(Tr("System")));
+    for (const AccentChoice& choice : kAccents) accent_->AddItem(DropdownItem(Tr(choice.name)));
+    accent_->AddItem(DropdownItem(Tr("Other...")));
+    accentRow->AddChild(accent_);
+    accentHex_ = std::make_shared<UltraCanvasTextInput>("uos-look-accent-hex", 0, 0, 110, 28);
+    accentHex_->SetPlaceholder("#rrggbb");
+    accentHex_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    accentHex_->onEnterPressed = [this](const std::string&) { if (!refreshing_) SaveLook(); return true; };
+    accentHex_->onFocusLost = [this]() { if (!refreshing_) SaveLook(); };
+    accentRow->AddChild(accentHex_);
+
+    auto fontRow = row("uos-look-font-row", Tr("Font:"), 10);
+    font_ = dropdown("uos-look-font", 260);
+    font_->AddItem(DropdownItem(Tr("System")));
+    fontFamilies_ = GetInstalledFontFamilies();
+    std::sort(fontFamilies_.begin(), fontFamilies_.end());
+    for (const std::string& family : fontFamilies_) {
+        DropdownItem item(family);
+        item.fontFamily = family;   // each family shown in itself
+        font_->AddItem(item);
+    }
+    fontRow->AddChild(font_);
+    fontSize_ = dropdown("uos-look-size", 110);
+    fontSize_->AddItem(DropdownItem(Tr("System")));
+    for (double size : kFontSizes) {
+        char text[16];
+        std::snprintf(text, sizeof(text), "%g pt", size);
+        fontSize_->AddItem(DropdownItem(text));
+    }
+    fontRow->AddChild(fontSize_);
+
+    auto scaleRow = row("uos-look-scale-row", Tr("Text scale:"), 10);
+    scale_ = dropdown("uos-look-scale", 110);
+    for (int percent : kScales) scale_->AddItem(DropdownItem(std::to_string(percent) + " %"));
+    scaleRow->AddChild(scale_);
+
+    contrast_ = segmented("uos-look-contrast", {Tr("System"), Tr("High"), Tr("Normal")}, 300);
+    row("uos-look-contrast-row", Tr("Contrast:"), 10)->AddChild(contrast_);
+
+    // The preview: a few elements styled from the theme the choices give,
+    // on that theme's panel - the page shows the result by being it.
+    lookPreview_ = std::make_shared<UltraCanvasContainer>("uos-look-preview");
+    lookPreview_->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    lookPreview_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    lookPreview_->size.height = CSSLayout::Dimension::Px(56);
+    lookPreview_->SetPadding(12, 12, 12, 12);
+    lookPreview_->SetMargin(16, 0, 0, 0);
+    previewLabel_ = std::make_shared<UltraCanvasLabel>("uos-look-preview-label", 0, 0, 160, 28, Tr("A label in the look"));
+    previewButton_ = std::make_shared<UltraCanvasButton>("uos-look-preview-button", 0, 0, 90, 28, Tr("Button"));
+    previewInput_ = std::make_shared<UltraCanvasTextInput>("uos-look-preview-input", 0, 0, 160, 28);
+    previewInput_->SetText(Tr("A field"));
+    previewPick_ = std::make_shared<UltraCanvasDropdown>("uos-look-preview-pick", 0, 0, 120, 28);
+    previewPick_->AddItem(DropdownItem(Tr("A choice")));
+    previewPick_->SetSelectedIndex(0);
+    for (const std::shared_ptr<UltraCanvasUIElement>& e :
+         std::initializer_list<std::shared_ptr<UltraCanvasUIElement>>{previewLabel_, previewButton_, previewInput_, previewPick_}) {
+        e->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        lookPreview_->AddChild(e);
+    }
+    page->AddChild(lookPreview_);
+
+    lookStatus_ = MakeLabel("uos-look-status", "", TextFontSize(), MutedTextColor());
+    lookStatus_->SetMargin(10, 0, 0, 0);
+    page->AddChild(lookStatus_);
+
+    auto spacer = std::make_shared<UltraCanvasContainer>("uos-look-spacer");
+    spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    page->AddChild(spacer);
+
+    auto notes = MakeNotes("uos-look-note", {
+            Tr("System follows the computer: Windows' and macOS' light or dark mode and accent, "
+               "the desktop's theme and fonts on Linux. A choice here is for every UltraCanvas "
+               "application and comes before the computer's."),
+            Tr("The text scale multiplies the computer's own: 125 % makes every text a quarter larger."),
+            Tr("Written to Appearance.conf in the UltraCanvas settings folder; a running "
+               "application follows it within a moment, as it follows a change of the desktop."),
+            Tr("ULTRACANVAS_HOST_APPEARANCE still overrules it for one run.")});
+    notes->SetMargin(14, 0, 0, 0);
+    page->AddChild(notes);
+
+    pages[kPageLook] = page;
+    pageArea->AddChild(page);
+}
+
+void UOSSettingsWindow::RefreshLookPage() {
+    if (!look_) return;
+    const AppearanceSettings s = AppearanceSettings::Load();
+    refreshing_ = true;
+    look_->SetSelectedIndex(s.look == "light" ? 1 : s.look == "dark" ? 2 : kSegmentSystem);
+    int accentIndex = 0;
+    if (s.accent != "system") {
+        accentIndex = 1 + static_cast<int>(std::size(kAccents));   // Other...
+        for (size_t i = 0; i < std::size(kAccents); ++i) {
+            if (s.accent == kAccents[i].hex) accentIndex = static_cast<int>(i) + 1;
+        }
+    }
+    accent_->SetSelectedIndex(accentIndex);
+    accentHex_->SetText(s.accent == "system" ? std::string() : s.accent);
+    int fontIndex = 0;
+    for (size_t i = 0; i < fontFamilies_.size(); ++i) {
+        if (fontFamilies_[i] == s.font) fontIndex = static_cast<int>(i) + 1;
+    }
+    font_->SetSelectedIndex(fontIndex);
+    int sizeIndex = 0;
+    for (size_t i = 0; i < std::size(kFontSizes); ++i) {
+        if (s.fontSize > 0.0 && std::fabs(kFontSizes[i] - s.fontSize) < 0.01) sizeIndex = static_cast<int>(i) + 1;
+    }
+    fontSize_->SetSelectedIndex(sizeIndex);
+    int scaleIndex = 0;
+    for (size_t i = 0; i < std::size(kScales); ++i) {
+        if (std::fabs(kScales[i] / 100.0 - s.scale) < 0.001) scaleIndex = static_cast<int>(i);
+    }
+    scale_->SetSelectedIndex(scaleIndex);
+    contrast_->SetSelectedIndex(s.contrast == "high" ? 1 : s.contrast == "normal" ? 2 : kSegmentSystem);
+    refreshing_ = false;
+    RefreshLookPreview();
+}
+
+void UOSSettingsWindow::SaveLook() {
+    if (!look_) return;
+    AppearanceSettings s;
+    const int look = look_->GetSelectedIndex();
+    s.look = look == 1 ? "light" : look == 2 ? "dark" : "system";
+    const int accent = accent_->GetSelectedIndex();
+    if (accent >= 1 && accent <= static_cast<int>(std::size(kAccents))) {
+        s.accent = kAccents[accent - 1].hex;
+    } else if (accent > static_cast<int>(std::size(kAccents))) {
+        Color color;
+        s.accent = ColorFromHex(accentHex_->GetText(), color) ? HexOfColor(color) : "system";
+    }
+    const int font = font_->GetSelectedIndex();
+    if (font >= 1 && font <= static_cast<int>(fontFamilies_.size())) s.font = fontFamilies_[static_cast<size_t>(font - 1)];
+    const int size = fontSize_->GetSelectedIndex();
+    if (size >= 1 && size <= static_cast<int>(std::size(kFontSizes))) s.fontSize = kFontSizes[size - 1];
+    const int scale = scale_->GetSelectedIndex();
+    if (scale >= 0 && scale < static_cast<int>(std::size(kScales))) s.scale = kScales[scale] / 100.0;
+    const int contrast = contrast_->GetSelectedIndex();
+    s.contrast = contrast == 1 ? "high" : contrast == 2 ? "normal" : "system";
+    if (lookStatus_) {
+        lookStatus_->SetText(s.Save()
+                ? Tr("Saved. Every application follows it now.")
+                : TrF("Could not write {0}.", PathToUtf8(AppearanceSettings::FilePath())));
+    }
+    refreshing_ = true;
+    accentHex_->SetText(s.accent == "system" ? std::string() : s.accent);
+    refreshing_ = false;
+    RefreshLookPreview();
+}
+
+void UOSSettingsWindow::RefreshLookPreview() {
+    if (!lookPreview_) return;
+    // The theme the choices give over what this computer says.
+    auto* app = UltraCanvasApplication::GetInstance();
+    HostAppearance host = app ? app->GetHostAppearance() : DefaultHostAppearance();
+    AppearanceSettings::Load().ApplyTo(host);
+    const UltraCanvasTheme theme = UltraCanvasTheme::FromHost(host);
+    lookPreview_->SetBackgroundColor(theme.roles.panel);
+    lookPreview_->SetBorders(1, theme.roles.line, 6);
+    previewLabel_->SetStyle(LabelStyle::FromTheme(theme, previewLabel_->GetStyle()));
+    previewButton_->SetStyle(ButtonStyle::FromTheme(theme, previewButton_->GetStyle(), ButtonVariant::Primary));
+    previewInput_->SetStyle(TextInputStyle::FromTheme(theme, previewInput_->GetStyle()));
+    previewPick_->SetStyle(DropdownStyle::FromTheme(theme, previewPick_->GetStyle()));
+    lookPreview_->RequestRedraw();
+}
+
 // ===== NOTIFICATIONS > REGISTRATIONS =====
 
 void UOSSettingsWindow::BuildNotificationsPage() {
@@ -969,18 +1235,18 @@ void UOSSettingsWindow::BuildNotificationsPage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("uos-nr-title", "Notification registrations", kTitleFontSize);
+    auto title = MakeLabel("uos-nr-title", Tr("Notification registrations"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-nr-caption",
-            "What Windows keeps for each application whose notifications were shown: "
+            Tr("What Windows keeps for each application whose notifications were shown: "
             "its name and icon, and the program a click on one of its notifications "
             "starts. The uninstaller removes it; a folder unpacked from the ZIP "
-            "package has no uninstaller, so remove it here before deleting the folder.");
+            "package has no uninstaller, so remove it here before deleting the folder."));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
-    registrationNote_ = MakeText("uos-nr-table-note", "", kTextWidth, kTextFontSize, kNoteTextColor);
+    registrationNote_ = MakeText("uos-nr-table-note", "", kTextWidth, TextFontSize(), NoteTextColor());
     registrationNote_->SetMargin(14, 0, 6, 0);
     page->AddChild(registrationNote_);
 
@@ -996,20 +1262,20 @@ void UOSSettingsWindow::BuildNotificationsPage() {
     actions->size.height = CSSLayout::Dimension::Px(36);
     actions->SetMargin(10, 0, 0, 0);
     removeRegistrations_ = std::make_shared<UltraCanvasButton>("uos-nr-remove", 0, 0, 120, 28, Tr("Remove all"));
-    removeRegistrations_->SetFontSize(kTextFontSize);
+    removeRegistrations_->SetFontSize(TextFontSize());
     removeRegistrations_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     removeRegistrations_->SetOnClick([this]() { RemoveNotificationRegistrations(); });
     actions->AddChild(removeRegistrations_);
-    registrationStatus_ = MakeLabel("uos-nr-status", "", kTextFontSize, kMutedTextColor);
+    registrationStatus_ = MakeLabel("uos-nr-status", "", TextFontSize(), MutedTextColor());
     actions->AddChild(registrationStatus_);
     page->AddChild(actions);
 
     auto notes = MakeNotes("uos-nr-note", {
-            "An application registers again the next time it starts or shows a "
-            "notification, so removing does no harm to one you keep.",
-            "From a command prompt or a script: UOS-Settings "
-            "--remove-notification-registrations - which the ZIP package's "
-            "uc-remove-registrations.cmd runs."});
+            Tr("An application registers again the next time it starts or shows a "
+               "notification, so removing does no harm to one you keep."),
+            Tr("From a command prompt or a script: UOS-Settings "
+               "--remove-notification-registrations - which the ZIP package's "
+               "uc-remove-registrations.cmd runs.")});
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
@@ -1031,7 +1297,7 @@ void UOSSettingsWindow::RefreshNotificationsPage() {
         auto activator = MakeLabel(id + "-activator",
                 listed[i].activatorClassId.empty() ? "(nothing: a click reaches it only while the bus runs)"
                                                    : "the application itself, " + listed[i].activatorClassId,
-                kTextFontSize, listed[i].activatorClassId.empty() ? kMutedTextColor : kTextColor);
+                TextFontSize(), listed[i].activatorClassId.empty() ? MutedTextColor() : TextColor());
         activator->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         activator->size.width = CSSLayout::Dimension::Px(0);
         activator->SetTooltip(listed[i].activatorClassId);
@@ -1044,10 +1310,10 @@ void UOSSettingsWindow::RefreshNotificationsPage() {
     const bool windows = false;
 #endif
     if (registrationNote_) {
-        registrationNote_->SetText(!windows ? "Only Windows keeps notification registrations; there is nothing here to remove."
-                                   : listed.empty() ? "Nothing is registered: no application has shown a notification yet, "
-                                                      "or the registrations were removed."
-                                                    : "Registered for this Windows account:");
+        registrationNote_->SetText(!windows ? Tr("Only Windows keeps notification registrations; there is nothing here to remove.")
+                                   : listed.empty() ? Tr("Nothing is registered: no application has shown a notification yet, "
+                                                         "or the registrations were removed.")
+                                                    : Tr("Registered for this Windows account:"));
     }
     if (removeRegistrations_) removeRegistrations_->SetDisabled(listed.empty());
     if (pageArea) pageArea->InvalidateLayout();
@@ -1057,9 +1323,9 @@ void UOSSettingsWindow::RemoveNotificationRegistrations() {
     const size_t removed = UltraCanvas::RemoveNotificationRegistrations();
     RefreshNotificationsPage();
     if (registrationStatus_) {
-        registrationStatus_->SetText(removed == 0 ? "Nothing to remove."
-                                     : removed == 1 ? "Removed 1 registration."
-                                                    : "Removed " + std::to_string(removed) + " registrations.");
+        registrationStatus_->SetText(removed == 0 ? Tr("Nothing to remove.")
+                                                  : TrN("Removed {n} registration.", "Removed {n} registrations.",
+                                                        static_cast<long long>(removed)));
     }
 }
 
@@ -1073,7 +1339,7 @@ void UOSSettingsWindow::BuildLanguagePage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("uos-lang-title", Tr("Language"), kTitleFontSize);
+    auto title = MakeLabel("uos-lang-title", Tr("Language"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-lang-caption",
@@ -1129,7 +1395,7 @@ void UOSSettingsWindow::BuildLanguagePage() {
     translatorRow->AddChild(translator_);
     page->AddChild(translatorRow);
 
-    languageStatus_ = MakeLabel("uos-lang-status", "", kTextFontSize, kMutedTextColor);
+    languageStatus_ = MakeLabel("uos-lang-status", "", TextFontSize(), MutedTextColor());
     languageStatus_->SetMargin(10, 0, 0, 0);
     page->AddChild(languageStatus_);
 
@@ -1161,7 +1427,7 @@ void UOSSettingsWindow::BuildTranslationsPage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("uos-translations-title", Tr("Translations"), kTitleFontSize);
+    auto title = MakeLabel("uos-translations-title", Tr("Translations"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-translations-caption",
@@ -1228,19 +1494,19 @@ void UOSSettingsWindow::BuildCertificatesPage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("uos-tc-title", "Trusted certificates", kTitleFontSize);
+    auto title = MakeLabel("uos-tc-title", Tr("Trusted certificates"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText("uos-tc-caption",
-            "Network scanners and printers that are reached over HTTPS with a "
+            Tr("Network scanners and printers that are reached over HTTPS with a "
             "certificate they signed themselves. Each was trusted the first time "
             "it was reached; from then on it is reached only while it presents "
-            "the same key - shown here as the SHA-256 of its public key.");
+            "the same key - shown here as the SHA-256 of its public key."));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
-    certificateNote_ = MakeText("uos-tc-table-note", "", kTextWidth, kTextFontSize,
-                                kNoteTextColor);
+    certificateNote_ = MakeText("uos-tc-table-note", "", kTextWidth, TextFontSize(),
+                                NoteTextColor());
     certificateNote_->SetMargin(14, 0, 6, 0);
     page->AddChild(certificateNote_);
 
@@ -1251,7 +1517,7 @@ void UOSSettingsWindow::BuildCertificatesPage() {
                               {"forget", "", kForgetColumnWidth}},
                              certificateRows_));
 
-    certificateStatus_ = MakeLabel("uos-tc-status", "", kTextFontSize, kMutedTextColor);
+    certificateStatus_ = MakeLabel("uos-tc-status", "", TextFontSize(), MutedTextColor());
     certificateStatus_->SetMargin(10, 0, 0, 0);
     page->AddChild(certificateStatus_);
 
@@ -1285,14 +1551,14 @@ void UOSSettingsWindow::AddCertificateRow(const std::string& address) {
     where->SetTooltip(address);
     entry.row->AddChild(where);
 
-    entry.key = MakeLabel(id + "-key", "", kTextFontSize, kMutedTextColor);
+    entry.key = MakeLabel(id + "-key", "", TextFontSize(), MutedTextColor());
     entry.key->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     entry.key->size.width = CSSLayout::Dimension::Px(0);
     entry.row->AddChild(entry.key);
 
     auto forget = std::make_shared<UltraCanvasButton>(id + "-forget", 0, 0,
                                                       kForgetColumnWidth, 24, Tr("Forget"));
-    forget->SetFontSize(kTextFontSize);
+    forget->SetFontSize(TextFontSize());
     forget->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     forget->SetOnClick([this, address]() { ForgetCertificate(address); });
     entry.row->AddChild(forget);
@@ -1318,7 +1584,7 @@ void UOSSettingsWindow::RefreshCertificatesPage() {
         // A key learned before the device's name was known, or for one only
         // ever named by its address, has none to show.
         row.name->SetText(certificate.name.empty() ? "(name not known)" : certificate.name);
-        row.name->SetTextColor(certificate.name.empty() ? kMutedTextColor : kTextColor);
+        row.name->SetTextColor(certificate.name.empty() ? MutedTextColor() : TextColor());
         row.name->SetTooltip(certificate.name);
         // "sha256//" is the form the pin is stored in, not part of the key.
         std::string shown = certificate.pin;

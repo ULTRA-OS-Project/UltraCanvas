@@ -36,16 +36,16 @@ namespace UltraCanvas {
         std::uniform_real_distribution<double> angleDist(0.0, 360.0);
 
         struct SignalSpec {
-            const char* name;
+            std::string name;
             double meanRadius;
             double spread;
             Color color;
             PolarMarkerShape marker;
         };
         const SignalSpec specs[] = {
-            {"Signal A", 4.5, 2.0, Color(102, 178, 235, 255), PolarMarkerShape::Circle},
-            {"Signal B", 6.5, 3.0, Color( 25, 118, 210, 255), PolarMarkerShape::Diamond},
-            {"Signal C", 7.5, 2.5, Color(245, 130,  32, 255), PolarMarkerShape::Square}
+            {Tr("Signal A"), 4.5, 2.0, Color(102, 178, 235, 255), PolarMarkerShape::Circle},
+            {Tr("Signal B"), 6.5, 3.0, Color( 25, 118, 210, 255), PolarMarkerShape::Diamond},
+            {Tr("Signal C"), 7.5, 2.5, Color(245, 130,  32, 255), PolarMarkerShape::Square}
         };
 
         auto chart = CreatePolarChart(id, x, y, w, h);
@@ -84,10 +84,10 @@ namespace UltraCanvas {
         chart->SetRadialTickInterval(100.0);
         chart->SetSecondaryAngleAxisEnabled(true);
 
-        PolarSeries first("Series 1", PolarSeriesType::Line, Color(240, 120, 100, 255));
+        PolarSeries first(Tr("Series 1"), PolarSeriesType::Line, Color(240, 120, 100, 255));
         first.marker = PolarMarkerShape::NoMarker;
         first.lineWidth = 1.6f;
-        PolarSeries second("Series 2", PolarSeriesType::Line, Color(150, 150, 150, 255));
+        PolarSeries second(Tr("Series 2"), PolarSeriesType::Line, Color(150, 150, 150, 255));
         second.marker = PolarMarkerShape::NoMarker;
         second.lineWidth = 1.6f;
 
@@ -111,12 +111,12 @@ namespace UltraCanvas {
         chart->SetRadialRange(0.0, 10.0);
         chart->SetRadialTickInterval(5.0);
 
-        struct PetalSpec { const char* name; double centerDeg; Color color; };
+        struct PetalSpec { std::string name; double centerDeg; Color color; };
         const PetalSpec specs[] = {
-            {"North", 0.0,   Color( 66, 165, 245, 190)},
-            {"East",  90.0,  Color(236,  64, 122, 170)},
-            {"South", 180.0, Color(251, 192,  45, 190)},
-            {"West",  270.0, Color( 77, 208, 174, 190)}
+            {Tr("North"), 0.0,   Color( 66, 165, 245, 190)},
+            {Tr("East"),  90.0,  Color(236,  64, 122, 170)},
+            {Tr("South"), 180.0, Color(251, 192,  45, 190)},
+            {Tr("West"),  270.0, Color( 77, 208, 174, 190)}
         };
 
         for (const auto& spec : specs) {
@@ -142,14 +142,14 @@ namespace UltraCanvas {
         const std::string& id, int x, int y, int w, int h)
     {
         auto chart = CreatePolarChart(id, x, y, w, h);
-        chart->SetCategories({"Furniture", "Binders", "Phones", "Storage",
-                              "Chairs", "Tables", "Machines", "Copiers",
-                              "Paper", "Art"});
+        chart->SetCategories({Tr("Furniture"), Tr("Binders"), Tr("Phones"), Tr("Storage"),
+                              Tr("Chairs"), Tr("Tables"), Tr("Machines"), Tr("Copiers"),
+                              Tr("Paper"), Tr("Art")});
         chart->SetCategoryPlacement(PolarCategoryPlacement::OnSpokes);
         chart->SetGridShape(PolarGridShape::Circular);
         chart->SetRadialTickCount(6);
 
-        PolarSeries series("2018 Sales", PolarSeriesType::SplineArea,
+        PolarSeries series(Tr("2018 Sales"), PolarSeriesType::SplineArea,
                            Color(102, 187, 176, 255));
         series.fillOpacity = 0.45f;
         series.lineWidth = 2.0f;
@@ -167,19 +167,19 @@ namespace UltraCanvas {
         const std::string& id, int x, int y, int w, int h)
     {
         auto chart = CreatePolarChart(id, x, y, w, h);
-        chart->SetCategories({"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"});
+        chart->SetCategories({Tr("Jan"), Tr("Feb"), Tr("Mar"), Tr("Apr"), Tr("May"), Tr("Jun"),
+                              Tr("Jul"), Tr("Aug"), Tr("Sep"), Tr("Oct"), Tr("Nov"), Tr("Dec")});
         chart->SetCategoryPlacement(PolarCategoryPlacement::OnSpokes);
         chart->SetRadialRange(0.0, 100.0);
         chart->SetRadialTickInterval(20.0);
         chart->SetRadialLabelUnit(" ppm");
 
         // Under / normal / over absorption zones behind the data.
-        chart->AddRadialBand(0.0,  20.0,  Color(150, 160, 235, 150), "Under-Absorp");
-        chart->AddRadialBand(20.0, 60.0,  Color(150, 230, 160, 150), "Normal");
-        chart->AddRadialBand(60.0, 100.0, Color(240, 150, 150, 150), "Over-Absorp");
+        chart->AddRadialBand(0.0,  20.0,  Color(150, 160, 235, 150), Tr("Under-Absorp"));
+        chart->AddRadialBand(20.0, 60.0,  Color(150, 230, 160, 150), Tr("Normal"));
+        chart->AddRadialBand(60.0, 100.0, Color(240, 150, 150, 150), Tr("Over-Absorp"));
 
-        PolarSeries series("Concentration", PolarSeriesType::Line,
+        PolarSeries series(Tr("Concentration"), PolarSeriesType::Line,
                            Color(20, 40, 160, 255));
         series.lineWidth = 3.0f;
         series.marker = PolarMarkerShape::Circle;
@@ -200,8 +200,8 @@ namespace UltraCanvas {
         const std::string& id, int x, int y, int w, int h)
     {
         std::vector<std::string> products = {
-            "Powder", "Nail polish", "Eyebrow pencil", "Rouge", "Lipstick",
-            "Eyeshadows", "Eyeliner", "Foundation", "Lip gloss", "Mascara"
+            Tr("Powder"), Tr("Nail polish"), Tr("Eyebrow pencil"), Tr("Rouge"), Tr("Lipstick"),
+            Tr("Eyeshadows"), Tr("Eyeliner"), Tr("Foundation"), Tr("Lip gloss"), Tr("Mascara")
         };
         std::vector<std::pair<std::string, std::vector<double>>> years = {
             {"2023", {21, 11,  9,  6, 13, 18, 24, 26, 29, 20}},
@@ -236,11 +236,11 @@ namespace UltraCanvas {
             DemoKit::AddText(container, id, text)->SetFontWeight(FontWeight::Bold);
         };
 
-        addGroupLabel("PoGridHeader", "Grid Shape:");
+        addGroupLabel("PoGridHeader", Tr("Grid Shape:"));
 
         auto gridDropdown = std::make_shared<UltraCanvasDropdown>("PoGrid", 0, 0, 180, controlHeight);
-        gridDropdown->AddItem("Circular");
-        gridDropdown->AddItem("Polygonal (spider)");
+        gridDropdown->AddItem(Tr("Circular"));
+        gridDropdown->AddItem(Tr("Polygonal (spider)"));
         gridDropdown->SetSelectedIndex(0);
         gridDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             PolarGridShape shape = index == 1 ? PolarGridShape::Polygonal
@@ -249,12 +249,12 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(container, gridDropdown);
 
-        addGroupLabel("PoLabelHeader", "Angle Label Orientation:");
+        addGroupLabel("PoLabelHeader", Tr("Angle Label Orientation:"));
 
         auto labelDropdown = std::make_shared<UltraCanvasDropdown>("PoLabels", 0, 0, 180, controlHeight);
-        labelDropdown->AddItem("Horizontal");
-        labelDropdown->AddItem("Tangential");
-        labelDropdown->AddItem("Radial");
+        labelDropdown->AddItem(Tr("Horizontal"));
+        labelDropdown->AddItem(Tr("Tangential"));
+        labelDropdown->AddItem(Tr("Radial"));
         labelDropdown->SetSelectedIndex(0);
         labelDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             PolarLabelOrientation orientation;
@@ -267,12 +267,12 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(container, labelDropdown);
 
-        addGroupLabel("PoScaleHeader", "Radial Scale:");
+        addGroupLabel("PoScaleHeader", Tr("Radial Scale:"));
 
         auto scaleDropdown = std::make_shared<UltraCanvasDropdown>("PoScale", 0, 0, 180, controlHeight);
-        scaleDropdown->AddItem("Linear");
-        scaleDropdown->AddItem("Square Root");
-        scaleDropdown->AddItem("Logarithmic");
+        scaleDropdown->AddItem(Tr("Linear"));
+        scaleDropdown->AddItem(Tr("Square Root"));
+        scaleDropdown->AddItem(Tr("Logarithmic"));
         scaleDropdown->SetSelectedIndex(0);
         scaleDropdown->onSelectionChanged = [charts](int index, const DropdownItem&) {
             PolarRadialScale scale;
@@ -285,7 +285,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(container, scaleDropdown);
 
-        addGroupLabel("PoRotHeader", "Zero Angle (degrees):");
+        addGroupLabel("PoRotHeader", Tr("Zero Angle (degrees):"));
 
         auto rotationSlider = std::make_shared<UltraCanvasSlider>("PoRotation", 0, 0, 180, controlHeight);
         rotationSlider->SetRange(-180.0, 180.0);
@@ -296,7 +296,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(container, rotationSlider);
 
-        addGroupLabel("PoHoleHeader", "Inner Radius Fraction:");
+        addGroupLabel("PoHoleHeader", Tr("Inner Radius Fraction:"));
 
         auto holeSlider = std::make_shared<UltraCanvasSlider>("PoHole", 0, 0, 180, controlHeight);
         holeSlider->SetRange(0.0, 0.6);
@@ -307,7 +307,7 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(container, holeSlider);
 
-        addGroupLabel("PoSweepHeader", "Sweep Angle (degrees):");
+        addGroupLabel("PoSweepHeader", Tr("Sweep Angle (degrees):"));
 
         auto sweepSlider = std::make_shared<UltraCanvasSlider>("PoSweep", 0, 0, 180, controlHeight);
         sweepSlider->SetRange(90.0, 360.0);
@@ -318,37 +318,37 @@ namespace UltraCanvas {
         };
         DemoKit::AddFixed(container, sweepSlider);
 
-        addGroupLabel("PoExtrasHeader", "Extras:");
+        addGroupLabel("PoExtrasHeader", Tr("Extras:"));
 
-        auto bandsCheckbox = std::make_shared<UltraCanvasCheckbox>("PoBands", 0, 0, 0, controlHeight, "Alternating Bands");
+        auto bandsCheckbox = std::make_shared<UltraCanvasCheckbox>("PoBands", 0, 0, 0, controlHeight, Tr("Alternating Bands"));
         bandsCheckbox->SetChecked(false);
         bandsCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetAlternatingBands(newState == CheckedState::Checked);
         };
         DemoKit::Add(container, bandsCheckbox);
 
-        auto spokesCheckbox = std::make_shared<UltraCanvasCheckbox>("PoSpokes", 0, 0, 0, controlHeight, "Angular Grid Lines");
+        auto spokesCheckbox = std::make_shared<UltraCanvasCheckbox>("PoSpokes", 0, 0, 0, controlHeight, Tr("Angular Grid Lines"));
         spokesCheckbox->SetChecked(true);
         spokesCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetShowAngularGrid(newState == CheckedState::Checked);
         };
         DemoKit::Add(container, spokesCheckbox);
 
-        auto radialLabelsCheckbox = std::make_shared<UltraCanvasCheckbox>("PoRadialLabels", 0, 0, 0, controlHeight, "Radial Tick Labels");
+        auto radialLabelsCheckbox = std::make_shared<UltraCanvasCheckbox>("PoRadialLabels", 0, 0, 0, controlHeight, Tr("Radial Tick Labels"));
         radialLabelsCheckbox->SetChecked(true);
         radialLabelsCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetShowRadialLabels(newState == CheckedState::Checked);
         };
         DemoKit::Add(container, radialLabelsCheckbox);
 
-        auto rotateDragCheckbox = std::make_shared<UltraCanvasCheckbox>("PoDrag", 0, 0, 0, controlHeight, "Drag to Rotate");
+        auto rotateDragCheckbox = std::make_shared<UltraCanvasCheckbox>("PoDrag", 0, 0, 0, controlHeight, Tr("Drag to Rotate"));
         rotateDragCheckbox->SetChecked(false);
         rotateDragCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetRotateOnDrag(newState == CheckedState::Checked);
         };
         DemoKit::Add(container, rotateDragCheckbox);
 
-        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("PoHover", 0, 0, 0, controlHeight, "Hover Highlight");
+        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("PoHover", 0, 0, 0, controlHeight, Tr("Hover Highlight"));
         hoverCheckbox->SetChecked(true);
         hoverCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetHoverHighlightEnabled(newState == CheckedState::Checked);
@@ -360,10 +360,10 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePolarChartExamples() {
         auto container = DemoKit::CreatePage("PolarChartContainer",
-            "Polar Chart Examples - Angle / Radius Coordinate Plots",
-            "Every series plots an angular position against a radial value. Scatter, line, spline, area and column "
+            Tr("Polar Chart Examples - Angle / Radius Coordinate Plots"),
+            Tr("Every series plots an angular position against a radial value. Scatter, line, spline, area and column "
             "types share one coordinate system with configurable direction, zero angle, sweep, categorical or numeric "
-            "angle axes, linear / sqrt / log radial scales, tolerance bands, stacking, legend toggling and tooltips.");
+            "angle axes, linear / sqrt / log radial scales, tolerance bands, stacking, legend toggling and tooltips."));
 
         // The controls beside the charts; the charts two by two while they
         // fit, one under the other when not.
@@ -380,7 +380,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 1: POLAR SCATTER =====
         auto scatterCard = DemoKit::AddCard(chartGrid, "PoScatterCard", "", "", chartCardW);
-        DemoKit::AddHeading(scatterCard, "PoScatterLabel", "Polar Scatter (3 Signals, Numeric Angle Axis)");
+        DemoKit::AddHeading(scatterCard, "PoScatterLabel", Tr("Polar Scatter (3 Signals, Numeric Angle Axis)"));
 
         auto scatterChart = BuildSignalScatter("PolarScatter", 0, 0, 460, 380);
         scatterChart->SetLegendPosition(PolarLegendPosition::Top);
@@ -389,17 +389,17 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 2: DUAL ANGLE AXIS ROSE CURVES =====
         auto curveCard = DemoKit::AddCard(chartGrid, "PoCurveCard", "", "", chartCardW);
-        DemoKit::AddHeading(curveCard, "PoCurveLabel", "Analytic Curves (Dual Angle Axis, Negative Minimum)");
+        DemoKit::AddHeading(curveCard, "PoCurveLabel", Tr("Analytic Curves (Dual Angle Axis, Negative Minimum)"));
 
         auto curveChart = BuildRoseCurves("PolarCurves", 0, 0, 460, 380);
-        curveChart->SetChartTitle("Polar Angle Axis Position");
+        curveChart->SetChartTitle(Tr("Polar Angle Axis Position"));
         curveChart->SetLegendPosition(PolarLegendPosition::Right);
         curveChart->SetTooltipsEnabled(true);
         DemoKit::AddFixed(curveCard, curveChart);
 
         // ===== EXAMPLE 3: OVERLAPPING POLAR AREAS =====
         auto petalCard = DemoKit::AddCard(chartGrid, "PoPetalCard", "", "", chartCardW);
-        DemoKit::AddHeading(petalCard, "PoPetalLabel", "Polar Area (Overlapping Translucent Lobes)");
+        DemoKit::AddHeading(petalCard, "PoPetalLabel", Tr("Polar Area (Overlapping Translucent Lobes)"));
 
         auto petalChart = BuildPetalAreas("PolarPetals", 0, 0, 460, 340);
         petalChart->SetLegendPosition(PolarLegendPosition::Bottom);
@@ -409,7 +409,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 4: CATEGORICAL AREA =====
         auto salesCard = DemoKit::AddCard(chartGrid, "PoSalesCard", "", "", chartCardW);
-        DemoKit::AddHeading(salesCard, "PoSalesLabel", "Categorical Spline Area (Sales by Sub-Category)");
+        DemoKit::AddHeading(salesCard, "PoSalesLabel", Tr("Categorical Spline Area (Sales by Sub-Category)"));
 
         auto salesChart = BuildCategorySales("PolarSales", 0, 0, 460, 340);
         salesChart->SetLegendPosition(PolarLegendPosition::NoLegend);
@@ -419,7 +419,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 5: TOLERANCE BANDS =====
         auto chemCard = DemoKit::AddCard(chartGrid, "PoChemCard", "", "", chartCardW);
-        DemoKit::AddHeading(chemCard, "PoChemLabel", "Chemical Concentration (Radial Tolerance Bands)");
+        DemoKit::AddHeading(chemCard, "PoChemLabel", Tr("Chemical Concentration (Radial Tolerance Bands)"));
 
         auto chemChart = BuildConcentrationChart("PolarChem", 0, 0, 460, 210);
         chemChart->SetLegendPosition(PolarLegendPosition::NoLegend);
@@ -428,7 +428,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 6: STACKED POLAR COLUMNS (ROSE) =====
         auto roseCard = DemoKit::AddCard(chartGrid, "PoRoseCard", "", "", chartCardW);
-        DemoKit::AddHeading(roseCard, "PoRoseLabel", "Stacked Polar Columns (Profit by Product and Year)");
+        DemoKit::AddHeading(roseCard, "PoRoseLabel", Tr("Stacked Polar Columns (Profit by Product and Year)"));
 
         auto roseChart = BuildProfitRose("PolarRose", 0, 0, 460, 210);
         roseChart->SetLegendPosition(PolarLegendPosition::NoLegend);

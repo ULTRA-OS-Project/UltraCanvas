@@ -458,6 +458,47 @@ void TestSettings() {
 
 } // namespace
 
+void TestStartupDefaults() {
+    std::cout << "\nWhat starts with the desktop by default\n";
+    DesktopSettings fresh;
+    Check(fresh.StartsWithDesktop("UltraNotifications"), "a new desktop starts UltraNotifications (the bell counts)");
+    Check(!fresh.StartsWithDesktop("UltraClipboard") && !fresh.StartsWithDesktop("ChatCube"),
+          "and nothing else");
+
+    // A settings file from before the default: given it once.
+    DesktopSettings old;
+    std::string error;
+    Check(old.FromJson(R"({"taskbarEdge":"left","startWithDesktop":["UltraMail"]})", &error),
+          "a settings file from before the default reads" + (error.empty() ? "" : ": " + error));
+    Check(old.StartsWithDesktop("UltraMail") && old.StartsWithDesktop("UltraNotifications"),
+          "it keeps what it had, and gains UltraNotifications once");
+
+    // Unticked afterwards: the choice holds through a save.
+    old.SetStartsWithDesktop("UltraNotifications", false);
+    DesktopSettings reread;
+    Check(reread.FromJson(old.ToJson(), &error), "the settings read back");
+    Check(!reread.StartsWithDesktop("UltraNotifications") && reread.StartsWithDesktop("UltraMail"),
+          "UltraNotifications unticked stays unticked");
+
+    // A file from after UltraNotifications' default but before UltraSnip's
+    // gains UltraSnip once, and keeps it unticked after that.
+    DesktopSettings level1;
+    Check(level1.FromJson(R"({"startWithDesktop":["UltraMail"],"startupDefaults":1})", &error) &&
+              level1.StartsWithDesktop("UltraSnip") && level1.StartsWithDesktop("UltraMail") &&
+              !level1.StartsWithDesktop("UltraNotifications"),
+          "a file at the first default gains UltraSnip once, and nothing else");
+    level1.SetStartsWithDesktop("UltraSnip", false);
+    DesktopSettings level1Again;
+    Check(level1Again.FromJson(level1.ToJson(), &error) && !level1Again.StartsWithDesktop("UltraSnip"),
+          "UltraSnip unticked stays unticked");
+
+    // An empty list written with the defaults applied means none.
+    DesktopSettings none;
+    Check(none.FromJson(R"({"startWithDesktop":[],"startupDefaults":2})", &error) &&
+              none.startWithDesktop.empty(),
+          "an empty list, the defaults applied, starts nothing");
+}
+
 int main() {
     std::cout << "UltraDesktopAppCategoriesTest\n";
     TestFreedesktopCategories();
@@ -470,6 +511,7 @@ int main() {
     TestFoldersAndMoves();
     TestMacOSFolders();
     TestSettings();
+    TestStartupDefaults();
     std::cout << (g_failures == 0 ? "All passed\n" : std::to_string(g_failures) + " failed\n");
     return g_failures == 0 ? 0 : 1;
 }

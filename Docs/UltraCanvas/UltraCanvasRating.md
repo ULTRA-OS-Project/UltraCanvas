@@ -11,6 +11,7 @@
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
 - [Keyboard](#keyboard)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -22,7 +23,7 @@ files** for the three per-symbol states: **on** (filled), **off** (empty) and
 **half**.
 
 **File Location**: `include/UltraCanvasRating.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `RatingStyle::FromTheme`, `ApplyTheme`: the rating follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -132,6 +133,24 @@ std::function<void(float)> onHoverChanged;    // live hover value (-1 when the c
 | `Left` / `Down`  | Decrease by one step |
 | `Home`           | Clear (0) |
 | `End`            | Maximum |
+
+## Following the theme
+
+`RatingStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's shape: the control border for
+an empty symbol and the interface font at the body size for a text symbol.
+A filled symbol, its hover and its outline keep the struct's amber on a
+light or a dark window unless the theme names the element roles
+`rating.on`, `rating.hover` and `rating.border`. Under the theme policy a
+new rating follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto stars = std::make_shared<UltraCanvasRating>("stars", 160, 32);
+UltraCanvasTheme brand = UltraCanvasTheme::Current();
+brand.SetRole("rating.on", Color(242, 165, 58));
+stars->SetStyle(RatingStyle::FromTheme(brand, stars->GetStyle()));
+```
 
 ## Notes
 

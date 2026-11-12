@@ -552,16 +552,28 @@ jobs:
       # pins the vcpkg commit) and saved under a fresh key by every run that
       # built something, so a change rebuilds only the packages it touches;
       # `restore-keys` falls back to the newest cache for this leg.
+      #
+      # The leg is named by its runner AND its architecture, so that no leg's
+      # prefix is the start of another leg's key. Keyed by the runner alone,
+      # the arm64 leg's fallback `vcpkg-macos-15-` was also the start of every
+      # `vcpkg-macos-15-intel-...` key: on 2026-11-10, with no arm64 cache for
+      # a changed MacOS/deps, it restored the Intel leg's x86_64 libraries,
+      # used none of them and built all of them from source (45 minutes, then
+      # the build itself without ccache) - a macOS runner held for two hours
+      # by a job of thirty minutes. The third line reads the caches saved
+      # under that earlier key for the same MacOS/deps; it cannot meet the
+      # other leg, since the content hash follows the runner directly.
       - name: Restore vcpkg binary cache (macOS)
         if: runner.os == 'macOS'
         id: vcpkg-cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.vcpkg/binary-cache
-          key: vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
+          key: vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-${{ github.run_id }}
           restore-keys: |
+            vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
             vcpkg-${{ matrix.os }}-${{ hashFiles('MacOS/deps/**', 'scripts/macos-deps.sh') }}-
-            vcpkg-${{ matrix.os }}-
+            vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-
 
       # vcpkg's asset cache: the source archives and tools its ports download,
       # each kept under its SHA-512 and looked for there before the library's
@@ -854,9 +866,11 @@ jobs:
           if [ "$mupdf_downloaded" = true ]; then
             tar xzf "$MUPDF_TAR"
           else
-            rm -rf "$MUPDF_SRC"
-            git clone -q --depth 1 --branch "$MUPDF_VER" https://github.com/ArtifexSoftware/mupdf.git "$MUPDF_SRC"
-            git -C "$MUPDF_SRC" submodule -q update --init --depth 1 \
+            # Network steps retried (scripts/ci-retry.sh); a failed clone's
+            # half-made folder is removed before the next try.
+            scripts/ci-retry.sh --clean "$MUPDF_SRC" -- \
+              git clone -q --depth 1 --branch "$MUPDF_VER" https://github.com/ArtifexSoftware/mupdf.git "$MUPDF_SRC"
+            scripts/ci-retry.sh -- git -C "$MUPDF_SRC" submodule -q update --init --depth 1 \
               thirdparty/jbig2dec thirdparty/mujs thirdparty/gumbo-parser \
               thirdparty/lcms2 thirdparty/zlib thirdparty/extract
           fi
@@ -893,7 +907,12 @@ jobs:
           # /usr so pkg-config + package-linux.sh find/bundle it like a distro lib.
           OPUSENC_VER=0.3
 
-          curl -fsSL "https://github.com/xiph/libopusenc/releases/download/v${OPUSENC_VER}/libopusenc-${OPUSENC_VER}.tar.gz" | tar xz
+          # Downloaded whole under curl's retries, then unpacked: piped into
+          # tar, a dropped connection was a failed step with nothing retried.
+          curl -fsSL --connect-timeout 20 --retry 5 --retry-all-errors --retry-delay 10 \
+            -o "libopusenc-${OPUSENC_VER}.tar.gz" \
+            "https://github.com/xiph/libopusenc/releases/download/v${OPUSENC_VER}/libopusenc-${OPUSENC_VER}.tar.gz"
+          tar xzf "libopusenc-${OPUSENC_VER}.tar.gz"
           ( cd "libopusenc-${OPUSENC_VER}" && ./configure --prefix=/usr && make -j"$(nproc)" && sudo make install )
           # libcurl4-openssl-dev provides the SYSTEM libcurl used for the
           # WebSocket-capability probe. On ubuntu-22.04 that libcurl is 7.81,
@@ -930,7 +949,10 @@ jobs:
           # the multiarch libdir so pkg-config + package-linux.sh find/bundle it
           # like a distro lib.
           CARES_VER=1.34.5
-          curl -fsSL "https://github.com/c-ares/c-ares/releases/download/v${CARES_VER}/c-ares-${CARES_VER}.tar.gz" | tar xz
+          curl -fsSL --connect-timeout 20 --retry 5 --retry-all-errors --retry-delay 10 \
+            -o "c-ares-${CARES_VER}.tar.gz" \
+            "https://github.com/c-ares/c-ares/releases/download/v${CARES_VER}/c-ares-${CARES_VER}.tar.gz"
+          tar xzf "c-ares-${CARES_VER}.tar.gz"
           ( cd "c-ares-${CARES_VER}" && ./configure --prefix=/usr --libdir="/usr/lib/$MULTIARCH" && make -j"$(nproc)" && sudo make install )
 
       # ===== Linux: the C++20 compiler =====
@@ -972,9 +994,12 @@ jobs:
         run: |
           set -euo pipefail
           src="$RUNNER_TEMP/libjxl-src"
-          rm -rf "$src"
-          git clone --depth 1 --branch "v${LIBJXL_VERSION}" https://github.com/libjxl/libjxl.git "$src"
-          ( cd "$src" && git submodule update --init --depth 1 third_party/highway third_party/brotli third_party/lcms )
+          # The clone and its submodules retried (scripts/ci-retry.sh), the
+          # clone into an emptied folder each time.
+          scripts/ci-retry.sh --clean "$src" -- \
+            git clone --depth 1 --branch "v${LIBJXL_VERSION}" https://github.com/libjxl/libjxl.git "$src"
+          scripts/ci-retry.sh -- git -C "$src" submodule update --init --depth 1 \
+            third_party/highway third_party/brotli third_party/lcms
           # The library and its threads runner only: no tools, no tests, no
           # plug-ins, no benchmark; highway and Little-CMS bundled (static),
           # brotli the system's.
@@ -1192,13 +1217,18 @@ jobs:
           # The Linux arm64 runner image ships a smaller toolset than the
           # x86_64 one and may not preinstall rustup; bootstrap it when it is
           # missing so the Vectorizer gate below can't fail for that reason.
+          # The installer is fetched under curl's retries and run under
+          # scripts/ci-retry.sh, as is the toolchain download: rerunning
+          # either finishes what a failed try started.
           if ! command -v rustup >/dev/null 2>&1; then
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-              | sh -s -- -y --default-toolchain none --profile minimal
+            curl --proto '=https' --tlsv1.2 -sSf --connect-timeout 20 \
+              --retry 5 --retry-all-errors --retry-delay 10 \
+              -o "$RUNNER_TEMP/rustup-init.sh" https://sh.rustup.rs
+            scripts/ci-retry.sh -- sh "$RUNNER_TEMP/rustup-init.sh" -y --default-toolchain none --profile minimal
             echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
             export PATH="$HOME/.cargo/bin:$PATH"
           fi
-          rustup toolchain install stable --profile minimal
+          scripts/ci-retry.sh -- rustup toolchain install stable --profile minimal
           rustup default stable
           rustc --version
           cargo --version
@@ -1279,6 +1309,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREOPERATOR_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_JXL_TESTS=ON \
@@ -1322,6 +1353,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREOPERATOR_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
@@ -1685,6 +1717,14 @@ jobs:
           "$admin" --version
           "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" init
           "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" app list
+          # The operator's client against a fake service: the bearer header,
+          # the bodies, the records, the settings file; then the program.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreOperatorCore$")
+          op=build/ultrastoreop
+          [ "${{ runner.os }}" = "Windows" ] && op="$op.exe"
+          "$op" --version
+          "$op" --settings "$RUNNER_TEMP/ultrastoreop-smoke.json" settings set url https://market.example
+          "$op" --settings "$RUNNER_TEMP/ultrastoreop-smoke.json" settings
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version

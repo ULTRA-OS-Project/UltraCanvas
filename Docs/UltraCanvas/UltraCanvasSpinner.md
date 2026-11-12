@@ -13,6 +13,7 @@
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
 - [Keyboard Reference](#keyboard-reference)
+- [Following the theme](#following-the-theme)
 - [Notes](#notes)
 
 ## Overview
@@ -30,7 +31,7 @@ A value can be changed four ways:
 - **Typing** a value directly into the editable field (numeric modes)
 
 **File Location**: `include/UltraCanvasSpinner.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `SpinnerVisualStyle::FromTheme`, `ApplyTheme`: the spinner follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -177,6 +178,25 @@ bool IsStepping() const;                         // a run of steps is open
 | digits / `.` / `-` | Begin typing a value (editable numeric modes) |
 | `Enter` | Commit the typed value |
 | `Esc` | Cancel the edit and revert |
+
+## Following the theme
+
+`SpinnerVisualStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border and the focus ring for the field, ink for the value and the
+caret, the raised surface with the hover and pressed fills for the step
+buttons and muted ink for their glyphs, the panel disabled, the interface
+font at the body size. Under the theme policy a new spinner follows the
+theme by itself (`ApplyTheme`); a `SetStyle` by hand stops that,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto count = std::make_shared<UltraCanvasSpinner>("count", 90, 26);
+SpinnerVisualStyle wide = count->GetStyle();
+wide.buttonThickness = 24;
+count->SetStyle(SpinnerVisualStyle::FromTheme(UltraCanvasTheme::Current(), wide));
+count->SetFollowTheme(true);
+```
 
 ## Notes
 

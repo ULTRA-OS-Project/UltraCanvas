@@ -19,7 +19,7 @@ colours nobody can reach.
 
 **File Location**: `include/UltraCanvasColorSwatchBar.h`
 **Implementation**: `core/UltraCanvasColorSwatchBar.cpp`
-**Version**: 1.2.0
+**Version**: 1.3.0 - `ColorSwatchBarStyle::FromTheme`, `ApplyTheme`: the bar follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -172,6 +172,24 @@ uses it for its palette rows.
 
 The background is transparent by default — set `style.background` when the strip
 needs to read as a bar of its own.
+
+## Following the theme
+
+`ColorSwatchBarStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: a filled bar takes the
+panel, a transparent one stays so; the control border round a swatch, muted
+ink hovered, the accent selected; the checkerboard and the auto swatch keep
+their own greys. Under the theme policy a new bar follows the theme by
+itself (`ApplyTheme`); a `SetStyle` by hand stops that, `SetFollowTheme(true)`
+after it keeps both.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasColorSwatchBar>("swatches", 300, 28);
+ColorSwatchBarStyle roomy = bar->GetStyle();
+roomy.spacing = 6;
+bar->SetStyle(ColorSwatchBarStyle::FromTheme(UltraCanvasTheme::Current(), roomy));
+bar->SetFollowTheme(true);
+```
 
 ## Callbacks
 

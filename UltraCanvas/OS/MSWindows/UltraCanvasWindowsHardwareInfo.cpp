@@ -4,11 +4,14 @@
 // table (GetSystemFirmwareTable), the processor topology API, storage IOCTLs,
 // IP Helper, WLAN, SetupAPI and the Bluetooth API. Anything a header may be too
 // old to declare is guarded with __has_include and degrades to a warning.
+// Version: 0.1.2 - USB: a device property is read only as far as SetupAPI filled
+//                  it (a string filling the buffer has no terminator), long ones
+//                  read at their size, non-string ones as none
 // Version: 0.1.1 - Wi-Fi: the WLAN record found by the adapter's GUID with braces and
 //                  case aside (none was found, every adapter read as not joined); joined
 //                  from the enumeration's state when the details are refused
 // Version: 0.1.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 // The storage temperature IOCTL and the processor-group topology API are gated
@@ -1153,14 +1156,29 @@ void QueryNetwork(std::vector<NetworkInterfaceInfo>& out, std::vector<std::strin
 void QueryUSB(std::vector<USBControllerInfo>& controllers, std::vector<USBDeviceInfo>& devices,
               bool includeHubs, std::vector<std::string>& warnings) {
 #ifdef ULTRACANVAS_HAS_SETUPAPI
+    // SetupAPI copies the stored bytes as they are: a string that fills the
+    // buffer exactly arrives without its terminator, and reading it up to a
+    // NUL ran on past the buffer. Only the bytes it reports are read, a value
+    // longer than the first buffer is read again at its size, and a property
+    // that is not a string reads as none.
     auto ReadProperty = [](HDEVINFO set, SP_DEVINFO_DATA& data, DWORD property) -> std::string {
-        wchar_t buffer[512] = {0};
+        std::vector<wchar_t> buffer(512, L'\0');
         DWORD type = 0;
-        if (!::SetupDiGetDeviceRegistryPropertyW(set, &data, property, &type,
-                                                 reinterpret_cast<PBYTE>(buffer),
-                                                 sizeof(buffer), nullptr))
-            return std::string();
-        return Trim(WideToUtf8(buffer));
+        DWORD required = 0;
+        BOOL ok = ::SetupDiGetDeviceRegistryPropertyW(
+            set, &data, property, &type, reinterpret_cast<PBYTE>(buffer.data()),
+            static_cast<DWORD>(buffer.size() * sizeof(wchar_t)), &required);
+        if (!ok && ::GetLastError() == ERROR_INSUFFICIENT_BUFFER && required > 0) {
+            buffer.assign(required / sizeof(wchar_t) + 1, L'\0');
+            ok = ::SetupDiGetDeviceRegistryPropertyW(
+                set, &data, property, &type, reinterpret_cast<PBYTE>(buffer.data()),
+                static_cast<DWORD>(buffer.size() * sizeof(wchar_t)), &required);
+        }
+        if (!ok) return std::string();
+        if (type != REG_SZ && type != REG_EXPAND_SZ && type != REG_MULTI_SZ) return std::string();
+        const size_t stored = std::min<size_t>(required / sizeof(wchar_t), buffer.size());
+        const std::wstring text(buffer.data(), ::wcsnlen(buffer.data(), stored));
+        return Trim(WideToUtf8(text.c_str()));
     };
 
     // GUID_DEVCLASS_USB covers hubs and host controllers; the devices a person

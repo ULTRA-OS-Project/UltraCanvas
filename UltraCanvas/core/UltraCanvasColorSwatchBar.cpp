@@ -3,7 +3,7 @@
 // Version: 1.4.0 - the "auto" swatch
 // Version: 1.3.0 - onColorHovered; full wrapped lines where they fit
 // Version: 1.2.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorSwatchBar.h"
@@ -19,6 +19,7 @@ UltraCanvasColorSwatchBar::UltraCanvasColorSwatchBar(const std::string& identifi
                                                      float w, float h)
         : UltraCanvasUIElement(identifier, x, y, w, h) {
     mouseCursor = UCMouseCursor::Default;
+    ApplyThemeIfFollowing();
 }
 
 // ===================================================================
@@ -502,4 +503,15 @@ bool UltraCanvasColorSwatchBar::OnEvent(const UCEvent& event) {
     return false;
 }
 
+
+// ===== THE THEME =====
+ColorSwatchBarStyle ColorSwatchBarStyle::FromTheme(const UltraCanvasTheme& theme, const ColorSwatchBarStyle& base) {
+    ColorSwatchBarStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    if (base.background.a > 0) s.background = r.panel;
+    s.border = r.lineStrong;
+    s.hoverBorder = r.inkMuted;
+    s.selectedBorder = r.accent;
+    return s;
+}
 } // namespace UltraCanvas

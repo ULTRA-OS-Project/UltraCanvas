@@ -1,8 +1,12 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
+// Version: 1.9.0 - BreadcrumbStyle::FromTheme, ApplyTheme: the breadcrumb follows the theme; a SetStyle by hand
+//                  stops the following
+// Version: 1.8.0 - FolderBreadcrumbOptions::driveLabel: what a drive is called on the
+//                  strip ("My Passport Ultra (D:)" for "D:")
 // Version: 1.7.0 - drop-downs open anchored to their crumb (SlotRectInWindow)
 // Version: 1.6.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -223,6 +227,16 @@ namespace UltraCanvas {
         static BreadcrumbStyle Default();
         static BreadcrumbStyle Compact();
         static BreadcrumbStyle Pills();
+        // The theme's roles over a base's own shape (the item and separator
+        // styles, paddings, sizes, flags) and its fills: a filled strip
+        // takes the panel with a hairline, a transparent one stays so; the
+        // items in muted ink, the accent hovered, ink for the current one on
+        // the soft accent when it is filled, the hover and pressed fills,
+        // faint ink disabled and for the separator; the level badge in the
+        // accent with text on it; the interface font at the body size
+        static BreadcrumbStyle FromTheme(const UltraCanvasTheme& theme, const BreadcrumbStyle& base);
+        static BreadcrumbStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, Default()); }
+        static BreadcrumbStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
         static BreadcrumbStyle FileExplorer();
         static BreadcrumbStyle WebDocs();
         static BreadcrumbStyle Arrow();
@@ -256,6 +270,15 @@ namespace UltraCanvas {
         // a page of its own for the machine (UltraFiler's Computer page)
         // opens that instead. The node's dropdown lists the drives either way.
         std::function<void()> onComputerClick;
+        // What a drive or mounted volume is called on the strip - its own node
+        // and its entry in the "Computer" node's list - given its root ("D:\\",
+        // "/media/bob/USB STICK"). Unset, or an empty answer, keeps the
+        // default: the drive letter on Windows, the root path elsewhere. A
+        // file manager that has read the volumes' own names answers with
+        // "My Passport Ultra (D:)". Called on the UI thread as the strip is
+        // built and as the list opens, so it must answer from what is already
+        // known, not by asking the disk.
+        std::function<std::string(const std::string& root)> driveLabel;
     };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node,
@@ -349,6 +372,7 @@ namespace UltraCanvas {
 
         // ===== STYLE =====
         void SetStyle(const BreadcrumbStyle& newStyle);
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(BreadcrumbStyle::FromTheme(theme, style)); }
         const BreadcrumbStyle& GetStyle() const { return style; }
         BreadcrumbStyle& GetStyle() { return style; }
 

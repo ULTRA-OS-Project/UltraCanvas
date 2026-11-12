@@ -26,9 +26,11 @@
 //   shell->resets["look/colours"] = PageReset{"Restore defaults", 170, [&]() { settings.dark = false; }};
 //   shell->Finish("look/colours");
 //
+// Version: 1.2.0 - the colours and sizes are the theme's roles and text roles, read as functions
+//                  (TextColor(), TextFontSize() ...): a settings window is dark on a dark desktop
 // Version: 1.1.0 - ShowSaveSettingsDialog: a file type's settings in the window's type size
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -54,19 +56,27 @@ namespace SettingsPageKit {
 
 // ===== ONE TYPE SCALE =====
 // Titles above the text, the text and every control at one size, and the
-// notes a step below it and greyed: what is read first is the largest.
-constexpr float kTitleFontSize = 15.0f;   // page title (bold)
-constexpr float kTextFontSize = 10.0f;    // captions, choices, buttons, fields
-constexpr float kNoteFontSize = 9.0f;     // the notes under the controls
-constexpr float kTreeFontSize = 9.0f;     // the tree of pages
+// notes a step below it and greyed: what is read first is the largest. The
+// sizes are the theme's text roles - the desktop's interface font size and
+// the ratios of UltraCanvasTheme - and the colours its roles, read as
+// functions when a page is built, so a settings window is dark on a dark
+// desktop (T6 of the host theme proposal); a window built after the theme
+// changed takes the new look.
+inline float TitleFontSize() { return static_cast<float>(UltraCanvasTheme::Current().FontSize(ThemeTextRole::Heading)); }   // page title (bold)
+inline float TextFontSize()  { return static_cast<float>(UltraCanvasTheme::Current().FontSize(ThemeTextRole::Body)); }      // captions, choices, buttons, fields
+inline float NoteFontSize()  { return static_cast<float>(UltraCanvasTheme::Current().FontSize(ThemeTextRole::Caption)); }   // the notes under the controls
+inline float TreeFontSize()  { return static_cast<float>(UltraCanvasTheme::Current().FontSize(ThemeTextRole::Caption)); }   // the tree of pages
 
-inline const Color kTextColor(40, 40, 44, 255);
-inline const Color kNoteTextColor(96, 96, 104, 255);
-inline const Color kNoteBackground(244, 245, 248, 255);
-inline const Color kNoteAccent(160, 176, 200, 255);
-inline const Color kWindowBackground(249, 249, 251, 255);
-inline const Color kTreeBackground(243, 243, 246, 255);
-inline const Color kPageBackground(255, 255, 255, 255);
+inline Color TextColor()        { return UltraCanvasTheme::Current().roles.ink; }
+inline Color NoteTextColor()    { return UltraCanvasTheme::Current().roles.inkMuted; }
+inline Color NoteBackground()   { return UltraCanvasTheme::Current().roles.well; }
+inline Color NoteAccent()       { return UltraCanvasTheme::Current().roles.lineStrong; }
+inline Color WindowBackground() { return UltraCanvasTheme::Current().roles.ground; }
+inline Color TreeBackground()   { return UltraCanvasTheme::Current().roles.well; }
+inline Color PageBackground()   { return UltraCanvasTheme::Current().roles.panel; }
+inline Color ButtonFace()       { return UltraCanvasTheme::Current().roles.raised; }   // a button at rest
+inline Color ButtonHover()      { return UltraCanvasTheme::Current().roles.hover; }
+inline Color Rule()             { return UltraCanvasTheme::Current().roles.line; }     // hairlines and thin borders
 
 // Page geometry: the window is 700 wide, the tree takes 180, so a page has
 // 520; with its padding that leaves ~480 for content. Every text is wrapped
@@ -83,10 +93,10 @@ constexpr int kControlHeight = 22;  // one checkbox / radio row
 // ===== TEXT =====
 // A single-line label that hugs its text.
 std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
-                                            float fontSize = kTextFontSize, const Color& color = kTextColor);
+                                            float fontSize = TextFontSize(), const Color& color = TextColor());
 // A paragraph: word-wrapped at `width`, as tall as its lines.
 std::shared_ptr<UltraCanvasLabel> MakeText(const std::string& id, const std::string& text, int width = kTextWidth,
-                                           float fontSize = kTextFontSize, const Color& color = kTextColor);
+                                           float fontSize = TextFontSize(), const Color& color = TextColor());
 
 // ===== PAGE SKELETON =====
 // Title, caption, the controls, and the notes block at the foot - the same

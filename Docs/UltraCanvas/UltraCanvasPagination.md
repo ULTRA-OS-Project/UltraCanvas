@@ -9,6 +9,7 @@
 - [Windowing](#windowing)
 - [Factory Functions](#factory-functions)
 - [Key API](#key-api)
+- [Following the theme](#following-the-theme)
 - [Keyboard](#keyboard)
 - [Notes](#notes)
 
@@ -20,7 +21,7 @@ with ellipsis (…) gaps for large page counts, Next/Last controls, and an
 optional "page info" readout.
 
 **File Location**: `include/UltraCanvasPagination.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `PaginationStyle::FromTheme`, `ApplyTheme`: the pagination follows the theme
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -126,6 +127,25 @@ float GetPreferredWidth() const;
 
 // Callback
 std::function<void(int page)> onPageChanged;
+```
+
+## Following the theme
+
+`PaginationStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the raised surface
+for a cell with the control border, the hover and pressed fills, ink; the
+accent with text on it for the current page; the panel and faint ink for a
+disabled end; muted ink for the chevrons and the info text, faint ink for
+an ellipsis; the interface font at the body size. Under the theme policy a
+new pagination follows the theme by itself (`ApplyTheme`); a `SetStyle` by
+hand stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto pages = std::make_shared<UltraCanvasPagination>("pages", 400, 32);
+PaginationStyle round = pages->GetStyle();
+round.cornerRadius = 16;
+pages->SetStyle(PaginationStyle::FromTheme(UltraCanvasTheme::Current(), round));
+pages->SetFollowTheme(true);
 ```
 
 ## Keyboard

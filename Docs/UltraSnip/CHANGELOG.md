@@ -1,3 +1,36 @@
+#### 2026-11-11 *0.1.7*
+- **`--background`: UltraSnip waits for the session.** Started so (as
+  UltraDesktop does with the desktop), it shows no window and holds the
+  Print Screen key, so the key snips while no UltraSnip window is open, and
+  the desktop's screenshot button and Super+Shift+S reach a copy that is
+  running already. Its window, once a snip has shown it, hides when closed
+  instead of ending UltraSnip. A second `--background` start reaches the
+  running copy and changes nothing.
+
+#### 2026-11-11 *0.1.6*
+- **Print Screen starts a snip.** While UltraSnip runs, the Print Screen key
+  starts a snip with the shape, kind and delay chosen on the bar, as Start
+  does - taken from the system (`UltraCanvasGlobalShortcut::StartExclusive`),
+  so on Windows it no longer opens the Snipping Tool as well. Alt+Print
+  Screen and Win+Print Screen stay the system's. A press while a snip is
+  under way (the screen dimmed for a choice, the delay, a recording) is
+  ignored. *Settings > Behaviour > After a snip* has it, on by default.
+
+#### 2026-11-11 *0.1.5*
+- **The Start button is as wide as its word.** It was 72 pixels in every
+  language, growing only when a translation needed more ("Démarrer"), so a
+  short word ("開始") sat in empty room. It now takes the measured width of
+  its icon and its text in the language shown, in its own font, with the
+  button's padding.
+
+#### 2026-11-10 *0.1.4*
+- **Window mode shows the window it will take, in its own colours.** The
+  desktop is darkened further than in Rectangle mode, and the window under
+  the pointer is no longer tinted blue: it shows exactly as it will be
+  captured, framed, with its title and size beside it. It is lit as soon as
+  the selection opens or Window is chosen on the bar, from where the
+  pointer rests, rather than at the first movement of the mouse.
+
 #### 2026-11-07 *0.1.3*
 - **UltraSnip opens over the screen already dimmed, its bar at the top
   centre.** Started without a shape (from the menu, or a second start), it

@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.25 - Modules > Theme (UltraCanvasThemeExamples.cpp)
+// Version: 1.0.24 - Android: the tree filter's place and text are logged for the emulator test
 // Version: 1.0.23 - Charts > Histogram Chart (UltraCanvasHistogramChart)
 // Version: 1.0.22 - Charts > Line Chart: the Control Chart variant
 // Version: 1.0.21 - Charts > Ternary Chart: the Density variant (density bins, contours, zoom)
@@ -20,7 +22,7 @@
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-11-05
+// Last Modified: 2026-11-10
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -2185,6 +2187,15 @@ namespace UltraCanvas {
                                [this]() { return CreateLocalisationExamples(); },
                                "DemoApp/UltraCanvasLocalisationExamples.cpp",
                                "Docs/Modules/UltraLocalisation/README.md");
+        // The theme: the roles as swatches, the policy and the host, the
+        // fonts by role, elements following by default, Appearance.conf.
+        modulesBuilder.AddItem("theme", Tr("Theme"),
+                               Tr("UltraCanvasTheme - the roles of the current theme, what it follows and "
+                               "what the host said, the fonts by role, elements following it, Appearance.conf"),
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateThemeExamples(); },
+                               "DemoApp/UltraCanvasThemeExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasTheme.md");
         // Built into the core (core/IODeviceManager + OS backends): printers on
         // Linux, macOS and Windows plus IPP everywhere, scanners on Linux plus
         // eSCL, webcams on Linux; the other categories and platform backends are
@@ -2631,6 +2642,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::OnTreeFilterChanged(const std::string& text) {
+        // The emulator test types into the filter and waits for this line.
+        debugOutput << "Demo: tree filter '" << text << "'" << std::endl;
         if (!categoryTreeView) return;
         categoryTreeView->SetFilterText(Trim(text));
     }
@@ -2792,6 +2805,21 @@ namespace UltraCanvas {
         }
 
         auto app = UltraCanvasApplication::GetInstance();
+#ifdef __ANDROID__
+        // The emulator test (scripts/android-emulator-smoke.sh) taps the tree
+        // filter and types into it: say where it is, once it has been laid out.
+        if (treeFilterInput) {
+            app->StartTimer(250, true, [this, app](TimerId id) {
+                const Rect2Df bounds = treeFilterInput->GetBoundsInWindow();
+                if (bounds.width <= 0 || bounds.height <= 0) return;
+                debugOutput << "Demo: tree filter at "
+                            << static_cast<int>(bounds.x) << "," << static_cast<int>(bounds.y) << " "
+                            << static_cast<int>(bounds.width) << "x" << static_cast<int>(bounds.height)
+                            << std::endl;
+                app->StopTimer(id);
+            });
+        }
+#endif
         app->Run();
     }
 

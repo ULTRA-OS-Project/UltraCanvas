@@ -24,7 +24,7 @@
 //                  progress was computed and never drawn); activating an item
 //                  without an application no longer dereferences a null one
 // Version: 1.9.0 - round Checkbox indicators, aligned check and icon columns
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -1723,6 +1723,11 @@ namespace UltraCanvas {
     MenuStyle MenuStyle::FromTheme(const UltraCanvasTheme& theme, const MenuStyle& base) {
         MenuStyle s = base;
         const ThemeRoles& r = theme.roles;
+        // the entries in the interface font at the body size, as the
+        // desktops' menus are; an entry with a font of its own keeps it
+        const FontStyle body = theme.Font(ThemeTextRole::Body);
+        s.font.fontFamily = body.fontFamily;
+        s.font.fontSize = body.fontSize;
         s.backgroundColor = r.raised;
         s.borderColor = r.line;
         s.hoverColor = r.hover;

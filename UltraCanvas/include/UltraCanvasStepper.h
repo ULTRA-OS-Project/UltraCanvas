@@ -13,8 +13,10 @@
 //   * Marker style     — NumberedCircle, IconCheck, Dot, or Custom (SVG/image)
 //   * Navigation       — Linear, NonLinear, or Display-only
 //
+// Version: 1.1.0 - StepperStyle::FromTheme, ApplyTheme: the stepper follows the theme;
+//                  a SetStyle by hand stops the following
 // Version: 1.0.1
-// Last Modified: 2026-07-11
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -110,6 +112,18 @@ namespace UltraCanvas {
         bool  completedShowsCheck = true; // completed marker shows a check (else the number)
 
         std::string fontFamily;
+
+        // The theme's roles: the accent for a completed or active marker
+        // and its connector, with text on it; the control border for an
+        // upcoming marker over the raised surface, muted ink in it; danger
+        // for an error; ink for a title, the accent for the active one,
+        // muted ink for a description, faint ink disabled; the interface
+        // font, the titles at the body size and the descriptions at the
+        // caption size - over a base's own shape (metrics, the check), or a
+        // default one
+        static StepperStyle FromTheme(const UltraCanvasTheme& theme, const StepperStyle& base);
+        static StepperStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, StepperStyle()); }
+        static StepperStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== STEPPER COMPONENT =====
@@ -177,7 +191,8 @@ namespace UltraCanvas {
 
         StepperStyle& GetStyle() { return style; }
         const StepperStyle& GetStyle() const { return style; }
-        void SetStyle(const StepperStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const StepperStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(StepperStyle::FromTheme(theme, style)); }
 
         // ===== OVERRIDES =====
         bool AcceptsFocus() const override { return navigation != StepperNavigation::Display; }

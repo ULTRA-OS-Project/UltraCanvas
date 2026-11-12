@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
+// Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.1 - the chip's menu is anchored to the chip (OpenMenuAnchored): below
 //                  it, or above it at the foot of the window, ending just over it;
 //                  it no longer guessed the menu's height and covered the chip's top
@@ -7,7 +8,7 @@
 //                  drew as a box; a click opens the chip's menu under it, a
 //                  double-click still opens the attachment
 // Version: 0.2.1 - the strip is hidden while the message has no attachments
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-11
 // V0.2.0: chips are themed cards
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAttachmentStrip.h"
@@ -20,6 +21,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -58,8 +60,8 @@ AttachmentChip::AttachmentChip(const std::string& id, float x, float y, float w,
     // A small white card with the paperclip, the name and the size.
     SetShowVerticalScrollbar(false);
     SetShowHorizontalScrollbar(false);
-    SetBackgroundColor(Theme::kCardBackground);
-    SetBorders(1.0f, Theme::kCardBorder, 8.0f);
+    SetBackgroundColor(Theme::CardBackground());
+    SetBorders(1.0f, Theme::CardBorder(), 8.0f);
     // It is clicked, like a button.
     SetMouseCursor(UCMouseCursor::Hand);
 
@@ -79,13 +81,13 @@ AttachmentChip::AttachmentChip(const std::string& id, float x, float y, float w,
     AddChild(clip);
 
     auto nameLabel = CreateLabel(id + ".name", 32, 3, w - 38, 14, name);
-    nameLabel->SetFontSize(Theme::kSizeBody);
-    nameLabel->SetTextColor(Theme::kTextPrimary);
+    nameLabel->SetFontSize(Theme::SizeBody());
+    nameLabel->SetTextColor(Theme::TextPrimary());
     nameLabel->SetInteractive(false);
     AddChild(nameLabel);
     auto sizeLabel = CreateLabel(id + ".size", 32, 17, w - 38, 13, HumanSize(att.Size()));
-    sizeLabel->SetFontSize(Theme::kSizeSmall);
-    sizeLabel->SetTextColor(Theme::kTextMuted);
+    sizeLabel->SetFontSize(Theme::SizeSmall());
+    sizeLabel->SetTextColor(Theme::TextMuted());
     sizeLabel->SetInteractive(false);
     AddChild(sizeLabel);
 }
@@ -133,8 +135,8 @@ void AttachmentChip::ShowMenu(const UCEvent* atPointer) {
 
     menu_ = std::make_shared<UltraCanvasMenu>(GetIdentifier() + ".ctx", 0, 0, kMenuW, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
-    menu_->AddItem(MenuItemData::Action("Open", [this]() { if (onOpen_) onOpen_(); }));
-    menu_->AddItem(MenuItemData::Action("Save As…", [this]() { if (onSaveAs_) onSaveAs_(); }));
+    menu_->AddItem(MenuItemData::Action(Tr("Open"), [this]() { if (onOpen_) onOpen_(); }));
+    menu_->AddItem(MenuItemData::Action(Tr("Save As…"), [this]() { if (onSaveAs_) onSaveAs_(); }));
 
     PopupElementSettings settings;
     // Clicks on the chip still reach the chip while the menu is up: the

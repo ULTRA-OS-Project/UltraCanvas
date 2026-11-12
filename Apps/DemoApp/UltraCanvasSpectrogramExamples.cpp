@@ -167,14 +167,12 @@ namespace UltraCanvas {
         st->spec->Recompute();
         const SpectrogramResult& r = st->spec->GetResult();
         const SpectrogramParams& p = st->spec->GetParams();
-        const char* windowNames[] = {"Rectangular", "Hann", "Hamming", "Blackman"};
-        std::ostringstream oss;
-        oss << "STFT: " << r.frames << " frames x " << r.bins << " bins @ "
-            << static_cast<int>(r.sampleRate) << " Hz    (FFT " << p.fftSize
-            << ", hop " << (p.hopSize > 0 ? p.hopSize : p.fftSize / 4) << ", "
-            << windowNames[static_cast<int>(p.window)] << ", "
-            << (p.magnitude == SpectrogramMagnitude::Decibels ? "dB" : "linear") << ")";
-        st->info->SetText(oss.str());
+        const std::string windowNames[] = {Tr("Rectangular"), "Hann", "Hamming", "Blackman"};
+        st->info->SetText(TrF("STFT: {0} frames x {1} bins @ {2} Hz    (FFT {3}, hop {4}, {5}, {6})",
+                              r.frames, r.bins, static_cast<int>(r.sampleRate), p.fftSize,
+                              (p.hopSize > 0 ? p.hopSize : p.fftSize / 4),
+                              windowNames[static_cast<int>(p.window)],
+                              (p.magnitude == SpectrogramMagnitude::Decibels ? std::string("dB") : Tr("linear"))));
     }
 
     } // namespace
@@ -186,11 +184,11 @@ namespace UltraCanvas {
     UltraCanvasDemoApplication::CreateSpectrogramExamples() {
         const int PANEL_W = 300;
 
-        auto root = DemoKit::CreatePage("SpecRoot", "Spectrogram - Time x Frequency Analysis",
-                "Short-Time Fourier Transform of an audio signal rendered through the "
+        auto root = DemoKit::CreatePage("SpecRoot", Tr("Spectrogram - Time x Frequency Analysis"),
+                Tr("Short-Time Fourier Transform of an audio signal rendered through the "
                 "heatmap engine. Every STFT parameter and display option is live: pick a "
                 "signal, then experiment with FFT size, overlap, window, magnitude mode, "
-                "dynamic range, frequency cap and colour maps.");
+                "dynamic range, frequency cap and colour maps."));
 
         // ----- State + spectrogram element -----
         auto st = std::make_shared<SpectrogramDemoState>();
@@ -264,21 +262,21 @@ namespace UltraCanvas {
             DemoKit::Add(panel, cb);
         };
 
-        addHeading("SpecSigHead", "Signal");
+        addHeading("SpecSigHead", Tr("Signal"));
         {
             std::string trackItem = st->trackMono.empty()
-                    ? "Sample track (unavailable)"
-                    : "Sample track (first 8 s)";
+                    ? Tr("Sample track (unavailable)")
+                    : Tr("Sample track (first 8 s)");
             addDropdown("SpecSignal",
-                        {trackItem, "Chirp + steady tones", "Log sweep 100 Hz - 7 kHz",
-                         "Tone ladder (8 steps)", "Tremolo + noise bursts", "White noise"},
+                        {trackItem, Tr("Chirp + steady tones"), Tr("Log sweep 100 Hz - 7 kHz"),
+                         Tr("Tone ladder (8 steps)"), Tr("Tremolo + noise bursts"), Tr("White noise")},
                         st->trackMono.empty() ? 1 : 0,
                         [st](int index) { ApplySignalPreset(st, index); RefreshInfo(st); });
         }
 
-        addHeading("SpecStftHead", "STFT parameters");
+        addHeading("SpecStftHead", Tr("STFT parameters"));
 
-        addLabel("SpecFftLbl", "FFT size (frequency resolution):");
+        addLabel("SpecFftLbl", Tr("FFT size (frequency resolution):"));
         addDropdown("SpecFft", {"256", "512", "1024", "2048", "4096"}, 2, [st](int index) {
             static const int sizes[] = {256, 512, 1024, 2048, 4096};
             st->fftSize = sizes[std::clamp(index, 0, 4)];
@@ -287,18 +285,18 @@ namespace UltraCanvas {
             RefreshInfo(st);
         });
 
-        addLabel("SpecHopLbl", "Overlap (hop size):");
+        addLabel("SpecHopLbl", Tr("Overlap (hop size):"));
         addDropdown("SpecHop",
-                    {"87.5%  (hop = FFT/8)", "75%  (hop = FFT/4)",
-                     "50%  (hop = FFT/2)", "None  (hop = FFT)"}, 1, [st](int index) {
+                    {Tr("87.5%  (hop = FFT/8)"), Tr("75%  (hop = FFT/4)"),
+                     Tr("50%  (hop = FFT/2)"), Tr("None  (hop = FFT)")}, 1, [st](int index) {
             static const int divisors[] = {8, 4, 2, 1};
             st->hopDivisor = divisors[std::clamp(index, 0, 3)];
             ApplyHop(st);
             RefreshInfo(st);
         });
 
-        addLabel("SpecWinLbl", "Window function:");
-        addDropdown("SpecWin", {"Hann", "Hamming", "Blackman", "Rectangular"}, 0, [st](int index) {
+        addLabel("SpecWinLbl", Tr("Window function:"));
+        addDropdown("SpecWin", {"Hann", "Hamming", "Blackman", Tr("Rectangular")}, 0, [st](int index) {
             static const SpectrogramWindow windows[] = {
                 SpectrogramWindow::Hann, SpectrogramWindow::Hamming,
                 SpectrogramWindow::Blackman, SpectrogramWindow::Rectangular};
@@ -306,14 +304,14 @@ namespace UltraCanvas {
             RefreshInfo(st);
         });
 
-        addLabel("SpecMagLbl", "Magnitude mode:");
-        addDropdown("SpecMag", {"Decibels (log amplitude)", "Linear"}, 0, [st](int index) {
+        addLabel("SpecMagLbl", Tr("Magnitude mode:"));
+        addDropdown("SpecMag", {Tr("Decibels (log amplitude)"), Tr("Linear")}, 0, [st](int index) {
             st->spec->SetMagnitudeMode(index == 1 ? SpectrogramMagnitude::Linear
                                                   : SpectrogramMagnitude::Decibels);
             RefreshInfo(st);
         });
 
-        addLabel("SpecDynLbl", "Dynamic range (dB mode):  30 - 120 dB");
+        addLabel("SpecDynLbl", Tr("Dynamic range (dB mode):  30 - 120 dB"));
         {
             auto slider = std::make_shared<UltraCanvasSlider>("SpecDyn", 0, 0, pw, ctrlH);
             slider->SetRange(30.0f, 120.0f);
@@ -326,10 +324,10 @@ namespace UltraCanvas {
             DemoKit::AddStretched(panel, slider);
         }
 
-        addLabel("SpecMaxFLbl", "Displayed frequency range:");
+        addLabel("SpecMaxFLbl", Tr("Displayed frequency range:"));
         addDropdown("SpecMaxF",
-                    {"Full (up to Nyquist)", "Lower half (Nyquist/2)",
-                     "Lower quarter (Nyquist/4)", "Lower eighth (Nyquist/8)"}, 0, [st](int index) {
+                    {Tr("Full (up to Nyquist)"), Tr("Lower half (Nyquist/2)"),
+                     Tr("Lower quarter (Nyquist/4)"), Tr("Lower eighth (Nyquist/8)")}, 0, [st](int index) {
             // 0 => Nyquist. The cap follows the *current* signal's sample rate.
             const SpectrogramResult& r = st->spec->GetResult();
             double rate = r.sampleRate > 0 ? r.sampleRate : kSynthRate;
@@ -339,9 +337,9 @@ namespace UltraCanvas {
             RefreshInfo(st);
         });
 
-        addHeading("SpecDispHead", "Display");
+        addHeading("SpecDispHead", Tr("Display"));
 
-        addLabel("SpecCmapLbl", "Colour map:");
+        addLabel("SpecCmapLbl", Tr("Colour map:"));
         addDropdown("SpecCmap", [] {
             std::vector<std::string> names;
             for (const auto& m : SpecColormapMenu()) names.push_back(m.first);
@@ -352,11 +350,11 @@ namespace UltraCanvas {
                 st->spec->SetColormap(menu[index].second);
         });
 
-        addCheck("SpecReverse", "Reverse colour map", false,
+        addCheck("SpecReverse", Tr("Reverse colour map"), false,
                  [st](bool on) { st->spec->SetReverseColormap(on); });
-        addCheck("SpecColorBar", "Colour bar", true,
+        addCheck("SpecColorBar", Tr("Colour bar"), true,
                  [st](bool on) { st->spec->SetShowColorBar(on); });
-        addCheck("SpecLogScale", "Logarithmic colour scale (for linear mode)", false,
+        addCheck("SpecLogScale", Tr("Logarithmic colour scale (for linear mode)"), false,
                  [st](bool on) {
                      st->spec->SetScale(on ? HeatmapScale::Logarithmic : HeatmapScale::Linear);
                  });

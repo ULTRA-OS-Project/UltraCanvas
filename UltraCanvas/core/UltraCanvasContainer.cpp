@@ -17,7 +17,7 @@
 //                 scrolled text, slivers below it); FinishArrange
 // Version: 4.3.0 - clipChildren = false draws children unclipped (overflow: visible)
 // Version: 4.2.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -708,5 +708,12 @@ namespace UltraCanvas {
             if (!b) return false;
             return a->zIndex < b->zIndex;
         });
+    }
+
+// ===== THE THEME =====
+    ContainerStyle ContainerStyle::FromTheme(const UltraCanvasTheme& theme, const ContainerStyle& base) {
+        ContainerStyle s = base;
+        s.scrollbarStyle = ScrollbarStyle::FromTheme(theme, base.scrollbarStyle);
+        return s;
     }
 } // namespace UltraCanvas

@@ -31,6 +31,8 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.14.0 - Appearance > Look: the look, accent, font, size, scale and contrast every application
+//                  takes (Appearance.conf), with a preview strip that is the theme
 // Version: 0.10.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
 //                  tree, the bottom bar and the page switching are the kit's; nothing
 //                  changes on screen
@@ -45,7 +47,7 @@
 //                  beside Explorer, or UltraDesktop instead of Explorer
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -114,6 +116,13 @@ private:
     // Re-reads Emoji.conf into the page's switch.
     void RefreshLanguagePage();
     void RefreshEmojiPage();
+    // Appearance > Look: Appearance.conf, the look every application takes.
+    void BuildLookPage();
+    // Re-reads Appearance.conf into the page's controls and the preview.
+    void RefreshLookPage();
+    // Writes the controls to Appearance.conf and restyles the preview.
+    void SaveLook();
+    void RefreshLookPreview();
     void BuildNotificationsPage();
     // Re-reads the registrations into the page's table.
     void RefreshNotificationsPage();
@@ -168,6 +177,22 @@ private:
     std::vector<std::string> languageTags_;   // the dropdown's rows: "system", then the tags
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> emojiStyle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> emojiStatus_;
+
+    // ----- Appearance > Look -----
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> look_;        // System / Light / Dark
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> accent_;              // System or a colour
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> accentHex_;          // or #rrggbb
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> font_;                // System or an installed family
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> fontSize_;            // System or points
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> scale_;               // 100 % ...
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> contrast_;    // System / High / Normal
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> lookStatus_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> lookPreview_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> previewLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> previewButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> previewInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> previewPick_;
+    std::vector<std::string> fontFamilies_;    // the font dropdown's rows after "System"
 
     // ----- Notification registrations -----
     // The rows are rebuilt on every refresh: nothing in a row has a callback.

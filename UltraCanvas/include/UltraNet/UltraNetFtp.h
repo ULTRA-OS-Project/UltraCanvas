@@ -19,6 +19,9 @@
 // connection all the same, turned away at the login for "too many
 // connections" while the thread keeps another open, has the kept one closed
 // and is made again.
+// Version: 0.10.0 - setRemoteModificationTime / onRemoteModificationTime: a
+//                   transfer keeps the file's date (MFMT / SFTP mtime after an
+//                   upload, MDTM / stat on a download)
 // Version: 0.9.0 - an FTP change uses the kept connection (its commands after
 //                  libcurl's change of folder); every FTP call turned away for
 //                  "too many connections" closes the kept one and goes again
@@ -29,7 +32,7 @@
 // Version: 0.7.0 - isCancelled / UltraNet_SetThreadFtpCancel: a call can be called off
 // Version: 0.6.0 - SFTP with a private key: sshPrivateKeyFile, sshPublicKeyFile, sshKeyPassphrase
 // Version: 0.5.0 - connections kept open between calls, MLSD refusal remembered
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -112,6 +115,17 @@ struct UltraNetFtpOptions {
     // layer (UltraFiler's drive worker calls UltraCloud, which builds these
     // options itself) to call a call off.
     std::function<bool()> isCancelled;
+    // Upload: the date (Unix seconds, UTC) to give the file once it is
+    // written - FTP's MFMT, SFTP's mtime - so it keeps its original's
+    // modification date instead of the moment of the upload. 0 leaves the
+    // server's own. A server that cannot date a file still has the file: the
+    // command is allowed to fail. Ignored by every other call.
+    int64_t setRemoteModificationTime = 0;
+    // Download: told the file's modification date on the server (Unix
+    // seconds, UTC; FTP's MDTM, SFTP's stat) once the file has arrived, for
+    // the caller to give the local copy. Not called when the server did not
+    // say. Ignored by every other call.
+    std::function<void(int64_t unixSeconds)> onRemoteModificationTime;
 
     static UltraNetFtpOptions Default() { return {}; }
 };

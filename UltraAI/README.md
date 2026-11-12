@@ -75,6 +75,32 @@ default route uses it only once chosen - `ULTRAAI_DEFAULT_VISIONANALYZER=anthrop
 settings - with its key in UltraVault under `ai.anthropic.api_key` (or in the
 config). Pictures over 3.75 MB of PNG are halved until they fit.
 
+### Speech to text for UltraCanvas applications
+
+`UltraAI::RegisterUltraAISpeechTranscription()`
+(`ui/include/UltraAISpeechTranscription.h`, in `UltraAI_UI`) makes UltraAI
+`UltraCanvasFileLoader`'s speech transcriber: the words spoken in a sound file
+or a video come from the first speech-to-text provider on the default route
+(the one chosen for `"speechtotext"`, then the ones on this computer, a cloud
+one only when chosen or allowed, never `mock`). A sound file of a type the
+provider takes, within its size limit, goes as it is; anything else - every
+video, another type, a file over the limit - has its sound track taken out
+first with VideoFX as a mono 16 kHz MP3 at 64 kbit/s (about 50 minutes in
+25 MB). Without a provider the transcriber installed before it, if any,
+transcribes. `FindSpeechProvider` and `LastSpeechTranscriptionProvider` say
+which. UltraClipboard's *Extract text* uses it for copied recordings and
+videos.
+
+The provider that transcribes today is `openai` (`CreateOpenAISpeechToText`,
+`adapters/openai`): the audio API (`/v1/audio/transcriptions`, multipart),
+`gpt-4o-transcribe` by default, `whisper-1` for timestamps and translation,
+25 MB per file. It is a cloud provider, used once chosen -
+`ULTRAAI_DEFAULT_SPEECHTOTEXT=openai` or `SetDefaultProvider("speechtotext",
+"openai")` - with its key in UltraVault under `ai.openai.api_key`. A custom
+`baseUrl` points it at a self-hosted OpenAI-compatible whisper server
+(speaches, faster-whisper-server, LocalAI) instead: keyless, `whisper-1` by
+default, nothing leaves the network.
+
 ---
 
 ## Adapters
@@ -83,7 +109,7 @@ config). Pictures over 3.75 MB of PNG are halved until they fit.
 |---|---|---|---|
 | `mock` | all ten | in-process | `ULTRAAI_ADAPTER_MOCK` (ON) |
 | `anthropic` | `ITextLLM`, `ITextBatch`, `IVisionAnalyzer` (OCR) | cloud | `ULTRAAI_ADAPTER_ANTHROPIC` (ON) |
-| `openai` | `ITextLLM`, `IEmbeddings`, `ITextBatch` (hosted API) | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
+| `openai` | `ITextLLM`, `IEmbeddings`, `ITextBatch` (hosted API), `ISpeechToText` (audio API) | cloud, or any OpenAI-compatible server via `baseUrl` | `ULTRAAI_ADAPTER_OPENAI` (ON) |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud (MiniMax / Hailuo) | `ULTRAAI_ADAPTER_MINIMAX` (ON) |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local — Ollama, vLLM, llama.cpp server, LM Studio | `ULTRAAI_ADAPTER_QWEN` (ON) |
 | `comfyui` | `IImageGen`, `IVideoGen` | local — a ComfyUI server the user runs | `ULTRAAI_ADAPTER_COMFYUI` (ON) |
@@ -147,7 +173,7 @@ UltraAI/
 │   └── UltraAIBatch.h             # batches: native (anthropic, openai) or one at a time
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
-├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer (in-tree, on the UltraCanvas core)
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows, and UltraAI as FileLoader's text recognizer and speech transcriber (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -226,11 +252,11 @@ cmake -S UltraAI -B build \
 | 10 capability interfaces | Complete |
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
-| Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay) | Complete |
+| Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay, same-role turn merge) | Complete |
 | Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
-| OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server) | Complete |
+| OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server, LocalAI; two user or two assistant turns in a row are sent as one message, since a self-hosted chat template may demand alternating roles) | Complete |
 | Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > mock, with constructibility fallback; cloud providers only when named or when cloud fallback is allowed via `SetCloudFallbackAllowed` / `ULTRAAI_ALLOW_CLOUD_FALLBACK`) | Complete |
-| llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
+| llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; two user or two assistant turns in a row reach the chat template as one message; opt-in) | Complete (v0.1 — no tool calls yet) |
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |

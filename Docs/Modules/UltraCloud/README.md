@@ -297,6 +297,29 @@ within a fraction of a second, the sign-in ends as `ResultCode::Cancelled`,
 and `CloudService::AddAccount` / `SignInAccount` store no account. The
 dialog's *Cancel* and close box set it, and so does `watch.cancelled`.
 
+## A transfer keeps the file's dates
+
+A file copied to a drive keeps the date it was made, and a file copied off
+one is given the date the server holds - before, an upload was dated the
+moment it arrived and a download the moment it was written. Every provider
+reads the local file's dates (`UltraCanvas::GetFileTimes`) for an upload and
+sets the server's on a downloaded file (`UltraCanvas::SetFileTimes`); a
+service that cannot keep a date, or refuses, leaves the transfer a success.
+
+| Provider | Upload sends | Download takes |
+|---|---|---|
+| FTP / SFTP | modified - `MFMT` / SFTP `mtime` after the file is written (`UltraNetFtpOptions::setRemoteModificationTime`) | modified - `MDTM` / the SFTP stat |
+| WebDAV, Nextcloud | modified and created - `X-OC-Mtime` / `X-OC-CTime`, which Nextcloud and ownCloud keep; other WebDAV servers have no way and ignore them | modified - `Last-Modified` |
+| Dropbox | modified - `client_modified` (Dropbox keeps no creation date) | modified - `client_modified` of `Dropbox-API-Result` |
+| Google Drive | modified and created - `modifiedTime` / `createdTime` in the metadata (a replaced file: modified, in a metadata update after the bytes) | modified and created - the file's metadata |
+| OneDrive | modified and created - `fileSystemInfo` (with the upload session's item, or an update of the item after a simple upload) | modified and created - the item's `fileSystemInfo` |
+| Memory (demo) | modified and created | modified and created |
+
+A creation date is set on the local copy where the system lets a program set
+one (Windows, macOS). `HttpProviderBase::DownloadToFile` hands back the
+answer's headers (`answered`) for the providers that read the date there.
+`Tests/UltraCloud/test_file_dates.cpp` checks each row.
+
 ## Uploads to a server that writes them as they arrive
 
 An FTP, FTPS or SFTP server writes an upload into the file as it comes in
@@ -428,8 +451,9 @@ UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
         [](const std::string& id) { return id == "ftp"; },
         "Add an FTP / SFTP drive");
 // A stored account in the same form, to be changed: filled in, the provider
-// fixed, the password kept unless a new one is typed. False when there is no
-// such account (or its provider is not in this build).
+// fixed, the password kept unless a new one is typed. After a sign-in that
+// failed it offers "Save without signing in", for a server out of reach.
+// False when there is no such account (or its provider is not in this build).
 UltraCloud::ShowEditAccountDialog(window, cloud, accountId,
         [](const Account& saved) { /* re-read the list */ }, "Configure drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {

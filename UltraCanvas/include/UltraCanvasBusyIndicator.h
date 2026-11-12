@@ -12,8 +12,10 @@
 // For a known fraction use UltraCanvasGaugeDiagramElement (GaugeMode::LinearBar)
 // or UltraCanvasProgressDialog; this element has no value.
 //
+// Version: 1.4.0 - BusyIndicatorStyle::FromTheme, ApplyTheme: the indicator follows the theme; a SetStyle by hand
+//                  stops the following
 // Version: 1.3.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -73,6 +75,14 @@ namespace UltraCanvas {
         float revolutionsPerSecond = 1.0f;   // animation cycles per second, every kind
         unsigned int frameIntervalMs = 33;   // ~30 fps
         bool  hideWhenStopped = true;  // false draws the idle track (and a still arc)
+
+        // The theme's roles over a base's own kind and metrics: the accent
+        // for the moving part, ink at the track's faint alpha for the still
+        // one; the second arc keeps its orange unless a theme names
+        // "busy-indicator.second-arc"
+        static BusyIndicatorStyle FromTheme(const UltraCanvasTheme& theme, const BusyIndicatorStyle& base);
+        static BusyIndicatorStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, BusyIndicatorStyle()); }
+        static BusyIndicatorStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== BUSY INDICATOR COMPONENT =====
@@ -95,6 +105,7 @@ namespace UltraCanvas {
         BusyIndicatorStyle& GetStyle() { return style; }
         const BusyIndicatorStyle& GetStyle() const { return style; }
         void SetStyle(const BusyIndicatorStyle& s);
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(BusyIndicatorStyle::FromTheme(theme, style)); }
 
         bool AcceptsFocus() const override { return false; }
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
