@@ -18,6 +18,7 @@
   - [Dropdown State Control](#dropdown-state-control)
   - [Keyboard Focus](#keyboard-focus)
   - [Styling](#styling)
+  - [Width from the Items](#width-from-the-items)
   - [Event Callbacks](#event-callbacks)
 - [Styles](#styles)
 - [A font list: each font shown in itself](#a-font-list-each-font-shown-in-itself)
@@ -39,6 +40,7 @@
   - [Dynamic Item Management](#dynamic-item-management)
   - [Items with Icons and Multi-selection](#items-with-icons-and-multi-selection)
   - [Icon-only Button](#icon-only-button)
+  - [Width that follows the items](#width-that-follows-the-items)
 - [Performance Considerations](#performance-considerations)
 - [Integration Notes](#integration-notes)
   - [Z-Order Management](#z-order-management)
@@ -250,6 +252,15 @@ void SetAcceptsFocus(bool accept);  // false: out of the Tab order, mouse only
 void SetStyle(const DropdownStyle& newStyle);
 const DropdownStyle& GetStyle() const;
 ```
+
+### Width from the Items
+
+```cpp
+void SetFitWidthToItems(bool fit);  // on: as wide as the widest item needs
+bool GetFitWidthToItems() const;    // off by default: the width given
+```
+
+See [Width that follows the items](#width-that-follows-the-items).
 
 ### Event Callbacks
 
@@ -523,6 +534,36 @@ compact.iconSize = 18.0f;
 view->SetStyle(compact);
 view->SetSelectedIndex(0, false);
 view->SetAccessibleName("View");
+```
+
+### Width that follows the items
+
+A dropdown sized for the English entries cuts a longer translation off:
+the button clips its text, so German *Automatisch abspielen* reads
+*Automatisch al…*. With `SetFitWidthToItems(true)` the button is as wide as
+its widest item needs - the icon, the text and the arrow - and follows the
+items, the placeholder and the style's font as they change. The width given
+to the constructor stays the least it takes, so a layout made for the
+English text does not move where that text fits; `SetFitWidthToItems(false)`
+returns to that width.
+
+The width becomes an automatic one, sized by the layout engine: use it in a
+flex row - a toolbar, a form line - where an automatic width is the
+content's. In block flow an automatic width fills the line, as any block's
+does.
+
+```cpp
+auto row = std::make_shared<UltraCanvasContainer>("toolbar", 0, 0, 600, 32);
+row->layout.SetFlexRow().SetFlexGap(4);
+
+auto video = CreateDropdown("video-mode", 0, 0, 104, 26);
+video->AddItem("Autoplay");
+video->AddItem("5 s clip");
+video->AddItem("Still image");
+video->SetSelectedIndex(0, false);
+video->SetFitWidthToItems(true);   // 104 px, or what a translation needs
+video->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+row->AddChild(video);
 ```
 
 ## Performance Considerations

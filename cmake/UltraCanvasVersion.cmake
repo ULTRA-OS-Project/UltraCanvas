@@ -26,6 +26,7 @@
 #   ULTRACANVASSTART_VERSION    e.g. "0.1.0"   (Docs/UltraCanvasStart/CHANGELOG.md)
 #   ULTRASTORE_VERSION          e.g. "0.1.0"   (Docs/UltraStore/CHANGELOG.md)
 #   ULTRASTOREADMIN_VERSION     e.g. "0.1.0"   (Docs/UltraStoreAdmin/CHANGELOG.md)
+#   ULTRASTOREOPERATOR_VERSION  e.g. "0.1.0"   (Docs/UltraStoreOperator/CHANGELOG.md)
 #
 # and one <APP>_VERSION triple per application that keeps its own changelog:
 #
@@ -127,6 +128,7 @@ _ultracanvas_declare_product(ULTRACLEANER        "Docs/UltraCleaner/CHANGELOG.md
 _ultracanvas_declare_product(ULTRACANVASSTART    "Docs/UltraCanvasStart/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRASTORE          "Docs/UltraStore/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRASTOREADMIN     "Docs/UltraStoreAdmin/CHANGELOG.md")
+_ultracanvas_declare_product(ULTRASTOREOPERATOR  "Docs/UltraStoreOperator/CHANGELOG.md")
 _ultracanvas_declare_product(UOSSETTINGS         "Docs/UOSSettings/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLAUDE         "Docs/UltraClaude/CHANGELOG.md")
 _ultracanvas_declare_product(CHATCUBE            "Docs/ChatCube/CHANGELOG.md")

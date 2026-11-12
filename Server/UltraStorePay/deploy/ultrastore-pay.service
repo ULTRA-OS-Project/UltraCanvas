@@ -1,6 +1,6 @@
 [Unit]
 Description=UltraStore payment service (Skrill Quick Checkout, licences, receipts)
-After=network.target postgresql.service
+After=network.target postgresql.service mariadb.service mysql.service
 
 [Service]
 Type=simple

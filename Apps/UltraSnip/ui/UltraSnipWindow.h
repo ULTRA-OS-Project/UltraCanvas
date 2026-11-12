@@ -21,6 +21,7 @@
 #include "UltraSnipTypes.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasWindow.h"
 
 #include <cstdint>
@@ -49,6 +50,10 @@ public:
     // A request from the command line, the desktop or a second start: a
     // capture at once, or just the window forward
     void Present(const SnipRequest& request);
+    // Resident for the session (--background, as UltraDesktop starts it):
+    // closing the window hides it instead of ending UltraSnip, so the Print
+    // Screen key and the desktop's snips find it running
+    void SetResident(bool resident) { resident_ = resident; }
     // Begins a snip: the window hides, the delay passes, the screen is taken
     void StartCapture(const SnipRequest& request);
     // The bar at the top centre of the screen over the screen already
@@ -65,6 +70,10 @@ private:
     // The bar alone (no snip yet), or the bar with the snip under it
     void SetCompact(bool compact);
     void ApplySettingsToControls();
+    // The Print Screen key, held while the setting says so (and given back
+    // when it does not); a press starts a snip as Start does
+    void ApplyPrintKey();
+    void OnPrintKey();
     SnipRequest RequestFromControls() const;
 
     // The capture, step by step
@@ -100,6 +109,8 @@ private:
     UltraCanvas::UltraCanvasApplication& app_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     UltraSnipSettings settings_;
+    UltraCanvas::UltraCanvasGlobalShortcut printKey_;   // the Print Screen key, taken from the system
+    bool resident_ = false;                             // --background: a close hides the window
 
     // The bar
     std::shared_ptr<UltraCanvas::UltraCanvasButton> startButton_;

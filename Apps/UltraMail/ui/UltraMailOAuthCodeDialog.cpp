@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailOAuthCodeDialog.cpp
+// Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.0 - a header (globe tile, "Sign in with ..."); Continue carries
 //                  an icon
 // Version: 0.2.0 - accepts the redirect address as well as the bare code
@@ -14,6 +15,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cctype>
 #include <memory>
@@ -38,7 +40,7 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                            const std::string& email,
                            std::function<void(const std::string&)> onSubmit) {
     DialogConfig config;
-    config.title      = "Sign in with " + providerName;
+    config.title      = TrF("Sign in with {0}", providerName);
     config.width      = 440;
     config.height     = 270;
     config.dialogType = DialogType::Custom;
@@ -53,7 +55,7 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     auto content = CreateContainer("oauthCodeForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -61,12 +63,11 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     auto header = Theme::MakeDialogHeader("oauthCodeHeader", "globe",
-        "Sign in with " + providerName,
-        "Your browser has opened " + providerName + "'s sign-in page. Sign in as "
-        + email + " and allow UltraMail to read and send your mail. " + providerName
-        + " will then show an authorization code — copy it and paste it here. If the "
-        "browser lands on a page that cannot be reached instead, copy the whole address "
-        "from its address bar and paste that.", 96.0f);
+        TrF("Sign in with {0}", providerName),
+        TrF("Your browser has opened {0}'s sign-in page. Sign in as {1} and allow UltraMail to read "
+            "and send your mail. {0} will then show an authorization code — copy it and paste it "
+            "here. If the browser lands on a page that cannot be reached instead, copy the whole "
+            "address from its address bar and paste that.", providerName, email), 96.0f);
     header->SetMargin(0, 0, 4, 0);
     content->AddChild(header);
 
@@ -75,7 +76,7 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                .SetFlexGap(Theme::kInnerGap)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto label = Theme::MakeLine("oauthCodeLbl", "Code", Theme::kControlHeight,
-                                 Theme::kSizeBody, Theme::kTextSecondary);
+                                 Theme::SizeBody(), Theme::TextSecondary());
     label->SetElementSize(Size2Df(60.0f, Theme::kControlHeight));
     row->AddChild(label);
     auto code = CreateTextInput("oauthCodeField", 0, 0, 0, Theme::kControlHeight);
@@ -96,13 +97,13 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
 
-    auto cancelBtn = CreateButton("oauthCodeCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("oauthCodeCancel", 0, 0, 90, Theme::kControlHeight, Tr("Cancel"));
     Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
 
-    auto okBtn = CreateButton("oauthCodeOk", 0, 0, 140, Theme::kControlHeight, "Continue");
+    auto okBtn = CreateButton("oauthCodeOk", 0, 0, 140, Theme::kControlHeight, Tr("Continue"));
     Theme::FitToLabel(okBtn, 140);
     Theme::StylePrimary(okBtn);
     Theme::SetButtonIcon(okBtn, "arrow-right");
@@ -124,7 +125,7 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
             if (result != DialogResult::OK) return;   // cancelled: no sign-in
             const std::string entered = Trim(code->GetText());
             if (entered.empty()) {
-                AlertWarning(parent, "No code was entered.",
+                AlertWarning(parent, Tr("No code was entered."),
                              "Paste the code " + providerName + " showed after sign-in, "
                              "or add the account again to retry.");
                 return;

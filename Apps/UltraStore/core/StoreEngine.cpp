@@ -1,5 +1,7 @@
 // Apps/UltraStore/core/StoreEngine.cpp
 // Install, update, remove, collect (StoreEngine.h).
+// Version: 0.4.0 - SyncLicences
+// Version: 0.3.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.3.0 - the update terms of a purchase, the licence file
 // Version: 0.2.0 - the URL signer for restricted packages
 // Version: 0.1.0
@@ -9,11 +11,15 @@
 #include "Purchase.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <filesystem>
 #include <system_error>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace fs = std::filesystem;
 using UltraCanvas::PathFromUtf8;
@@ -36,12 +42,12 @@ std::string StoreEngine::CacheDir() const { return PathToUtf8(PathFromUtf8(root_
 std::string StoreEngine::DownloadsDir() const { return PathToUtf8(PathFromUtf8(root_) / "downloads"); }
 
 Result<void> StoreEngine::Open() {
-    if (root_.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "The store has no folder");
+    if (root_.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, Tr("The store has no folder"));
     std::error_code ec;
     const fs::path root = PathFromUtf8(root_);
     for (const char* sub : {"cache", "downloads", "apps", "components"}) {
         fs::create_directories(root / sub, ec);
-        if (ec) return Result<void>::Failure(ErrorCode::IoError, "The store folder could not be created", PathToUtf8(root / sub));
+        if (ec) return Result<void>::Failure(ErrorCode::IoError, Tr("The store folder could not be created"), PathToUtf8(root / sub));
     }
     if (const auto r = registry_.Open(PathToUtf8(root / "registry.sqlite")); !r) return r;
     downloader_ = std::make_unique<Downloader>(DownloadsDir());
@@ -52,7 +58,7 @@ Result<void> StoreEngine::Open() {
 Result<InstallOutcome> StoreEngine::Run(const Catalog& catalog, const Component& app, const Release& release,
                                         const PlatformInfo& platform, const EngineCallbacks& callbacks) {
     using R = Result<InstallOutcome>;
-    if (!registry_.IsOpen()) return R::Failure(ErrorCode::InvalidArgument, "The store is not open");
+    if (!registry_.IsOpen()) return R::Failure(ErrorCode::InvalidArgument, Tr("The store is not open"));
     const Result<InstallPlan> plan = PackageResolver::Plan(catalog, app, release, platform, registry_.Versions());
     if (!plan) return R::Failure(plan.error.code, plan.error.message, plan.error.detail);
 
@@ -63,8 +69,7 @@ Result<InstallOutcome> StoreEngine::Run(const Catalog& catalog, const Component&
         if (callbacks.onStep) callbacks.onStep(step);
         if (!ArchiveInstaller::SupportsFormat(step.package->format)) {
             return R::Failure(ErrorCode::NotAvailable,
-                              "This UltraStore cannot unpack " + step.package->format + " packages (" +
-                                  step.component->name + ")");
+                              TrF("This UltraStore cannot unpack {0} packages ({1})", step.package->format, step.component->name));
         }
         DownloadProgress progress;
         if (callbacks.onDownload) {
@@ -77,7 +82,7 @@ Result<InstallOutcome> StoreEngine::Run(const Catalog& catalog, const Component&
             const UrlSigner signer = Signer();
             const std::string signed_ = signer ? signer(*step.package, app) : std::string();
             if (signed_.empty()) {
-                return R::Failure(ErrorCode::NotAvailable, step.component->name + " is a paid app: buy it first, then install",
+                return R::Failure(ErrorCode::NotAvailable, TrF("{0} is a paid app: buy it first, then install", step.component->name),
                                   "the package is in restricted/ and this machine has no licence for " + app.id);
             }
             fetched.url = signed_;
@@ -115,15 +120,26 @@ Result<void> StoreEngine::WriteLicenceFile(std::string_view appId) {
     return UltraStore::WriteLicenceFile(LicenceFilePath(root_, std::string(appId)), licence.Value().token);
 }
 
+Result<LicenceSync> StoreEngine::SyncLicences(const std::string& paymentUrl, const std::string& licenceKeyHex, const HttpCall& http) {
+    const auto sync = UltraStore::SyncLicences(registry_, paymentUrl, licenceKeyHex, http);
+    if (!sync) return sync;
+    std::error_code ec;
+    for (const std::string& app : sync.Value().revoked) fs::remove(PathFromUtf8(LicenceFilePath(root_, app)), ec);
+    for (const std::string& app : sync.Value().renewed) {
+        if (fs::is_regular_file(PathFromUtf8(LicenceFilePath(root_, app)), ec)) WriteLicenceFile(app);   // installed: the file follows
+    }
+    return sync;
+}
+
 Result<InstallOutcome> StoreEngine::Install(const Catalog& catalog, std::string_view appId, const PlatformInfo& platform,
                                             std::string_view channel, const EngineCallbacks& callbacks) {
     using R = Result<InstallOutcome>;
     const Component* app = catalog.FindApp(appId);
-    if (!app) return R::Failure(ErrorCode::NotFound, "The catalog has no app " + std::string(appId));
+    if (!app) return R::Failure(ErrorCode::NotFound, TrF("The catalog has no app {0}", std::string(appId)));
     const Resolution res = PackageResolver::Resolve(*app, platform, channel);
     if (!res.Available()) {
-        return R::Failure(ErrorCode::NotAvailable, app->name + " is not available for your system",
-                          res.release ? "available for " + PackageResolver::SupportedSystems(*res.release) : std::string());
+        return R::Failure(ErrorCode::NotAvailable, TrF("{0} is not available for your system", app->name),
+                          res.release ? TrF("available for {0}", PackageResolver::SupportedSystems(*res.release)) : std::string());
     }
     return Run(catalog, *app, *res.release, platform, callbacks);
 }
@@ -134,16 +150,16 @@ Result<InstallOutcome> StoreEngine::Update(const Catalog& catalog, std::string_v
     const Result<InstalledRecord> current = registry_.Current(appId);
     if (!current) return R::Failure(current.error.code, current.error.message, current.error.detail);
     const Component* app = catalog.FindApp(appId);
-    if (!app) return R::Failure(ErrorCode::NotFound, "The catalog no longer lists " + std::string(appId));
+    if (!app) return R::Failure(ErrorCode::NotFound, TrF("The catalog no longer lists {0}", std::string(appId)));
     const std::string useChannel = channel.empty() ? current.Value().channel : std::string(channel);
     const Resolution res = PackageResolver::Resolve(*app, platform, useChannel);
     if (!res.Available()) {
-        return R::Failure(ErrorCode::NotAvailable, app->name + " has no release for your system any more");
+        return R::Failure(ErrorCode::NotAvailable, TrF("{0} has no release for your system any more", app->name));
     }
     if (!PurchaseCovers(appId, *res.release)) {
         const auto licence = registry_.GetLicence(appId);
         const auto terms = licence ? ParseLicence(licence.Value().token) : Result<Licence>::Failure(ErrorCode::NotFound, "");
-        return R::Failure(ErrorCode::NotAvailable, app->name + " " + res.release->version + " is not in your purchase: buy the update to install it",
+        return R::Failure(ErrorCode::NotAvailable, TrF("{0} is not in your purchase: buy the update to install it", app->name + " " + res.release->version),
                           terms ? terms.Value().UpdateTerms() : std::string());
     }
     if (!VersionLess(current.Value().version, res.release->version)) {
@@ -184,7 +200,7 @@ Result<std::vector<InstalledRecord>> StoreEngine::Remove(std::string_view appId)
     using R = Result<std::vector<InstalledRecord>>;
     const auto rows = registry_.Of(appId);
     if (!rows) return R::Failure(rows.error.code, rows.error.message, rows.error.detail);
-    if (rows.Value().empty()) return R::Failure(ErrorCode::NotFound, std::string(appId) + " is not installed");
+    if (rows.Value().empty()) return R::Failure(ErrorCode::NotFound, TrF("{0} is not installed", std::string(appId)));
     std::vector<InstalledRecord> removed;
     for (const InstalledRecord& r : rows.Value()) {
         if (const auto res = installer_->Remove(r.id, r.version); !res) return R::Failure(res.error.code, res.error.message, res.error.detail);

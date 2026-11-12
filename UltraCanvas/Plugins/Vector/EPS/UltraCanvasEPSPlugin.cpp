@@ -20,6 +20,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEPSPlugin.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic - dot-decimal, from_chars parity
 
 #include <algorithm>
 #include <cmath>
@@ -358,9 +359,19 @@ namespace {   // ===== INTERPRETER (internal) =====
                     }
                 } catch (...) { return false; }
             }
-            char* end = nullptr;
-            double v = std::strtod(t.c_str(), &end);
-            if (end && *end == '\0' && end != t.c_str()) {
+            // A PostScript number literal is dot-decimal, whatever the
+            // desktop: strtod read `1.5` as 1 on a comma-decimal one, and the
+            // trailing ".5" then scanned as a second number, so the operand
+            // count shifted and the rest of the page drew wrong. The whole
+            // token must be the number, as the strtod form checked - and a
+            // leading '+' is a literal PostScript writes ("+5 0 rmoveto"),
+            // which ParseFloatClassic leaves to the caller for from_chars
+            // parity, so it is stepped over here.
+            double v = 0.0;
+            const char* first = t.c_str();
+            const char* number = first + (t[0] == '+' ? 1 : 0);
+            const char* stopped = ParseFloatClassic(number, first + t.size(), v);
+            if (stopped != number && *stopped == '\0') {
                 out = PSObject::Number(v);
                 return true;
             }

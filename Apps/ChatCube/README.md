@@ -18,8 +18,10 @@ The first ChatCube draft, which this replaces, is kept under
 ## Using it
 
 1. Start ChatCube, type your name, your e-mail address and your phone number
-   (with `+` and the country code), the address of a ChatCube relay
-   (`Server/ChatCubeRelay`), and press **Create my ChatCube ID**. The e-mail
+   (with `+` and the country code), and press **Create my ChatCube ID**.
+   The relay is not asked for: it is a setting, *Settings > Networks >
+   Relay*, `https://relay-chatcube.ultraos.eu` unless you change it (any
+   ChatCube relay will do - `Server/ChatCubeRelay`). The e-mail
    address and the phone number are how you recover the account: they are
    kept in the encrypted key vault on your computer and on the relay, for you
    alone - your contacts see your name, never these. The relay e-mails you a
@@ -41,8 +43,13 @@ The first ChatCube draft, which this replaces, is kept under
    A protected ID asks at every start: the password, then the code, each on
    the sign-in card. Each code works once; after five wrong codes ChatCube
    waits 30 seconds before it takes another, twice as long after each
-   further one. Without a password, later starts sign in by themselves. **No relay?** Leave it empty: ChatCube then works on
-   your local network alone - the ChatCubes there find each other (mDNS) and
+   further one. Without a password, later starts sign in by themselves.
+   While ChatCube connects - at every start with an ID on the computer, and
+   after *Create* or *Unlock* - a **Connecting** page of its own shows the
+   relay it is reaching; when that fails, it says why and offers *Try
+   again* and *Settings* (to change the relay). **No relay?** Empty the
+   field in *Settings > Networks > Relay* before your ID is made: ChatCube
+   then works on your local network alone - the ChatCubes there find each other (mDNS) and
    talk directly. *Also find people on this network* does that next to a
    relay.
 2. **Edit profile** - the person button beside your ID - changes your name,
@@ -59,8 +66,8 @@ The first ChatCube draft, which this replaces, is kept under
    phone number by a code it texts - type it under that field. With the
    address confirmed, *Turn recovery on* (under *Getting this ID back*) lets
    the relay keep a copy of your key. On another computer, *Recover my
-   ChatCube ID* under the sign-in card asks for the relay and your e-mail
-   address, and the relay e-mails a link there. Open it, press *Yes - sign
+   ChatCube ID* under the sign-in card asks for your e-mail address (the
+   relay is the one in *Settings > Networks > Relay*), and the relay e-mails a link there. Open it, press *Yes - sign
    that computer in as my ChatCube ID* on the page, and ChatCube - which
    has been waiting - signs in as you by itself: same ID, same contacts. You
    get an e-mail whenever it happens. The window says the price plainly:
@@ -126,6 +133,19 @@ The first ChatCube draft, which this replaces, is kept under
    video or a file fetches it and opens it. People's Telegram profile
    pictures are their avatars in the sidebar, the header and, in a group,
    beside their bubbles.
+
+   A right click on a message opens its menu. A picture, a video or a file
+   has **Open** and **Save as** (a copy where you say, fetched first when it
+   is not on this computer yet). **Delete for me** removes a message from
+   your side only; **Delete for everyone** removes it from the other side
+   too and asks first, since it cannot be taken back. The menu offers what
+   the chat's messenger allows for that message. In a ChatCube chat you can
+   delete a text you sent for everyone until the other person has read it -
+   after that only for yourself - while a picture, a video or a file you
+   sent can be taken back at any time, and in a group so can any message of
+   yours. A file deleted for everyone is removed from the other person's
+   ChatCube as well; a copy they saved elsewhere is theirs. Matrix deletes
+   for everyone only; Telegram has both.
 
 6. **Call** rings the open contact, **Video** makes it a video call (1:1;
    the buttons are off for groups and while not connected). A bar across

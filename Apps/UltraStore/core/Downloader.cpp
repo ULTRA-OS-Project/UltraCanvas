@@ -1,11 +1,13 @@
 // Apps/UltraStore/core/Downloader.cpp
 // Package downloads on UltraNet (Downloader.h).
+// Version: 0.1.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Downloader.h"
 #include "Verifier.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 
@@ -15,6 +17,9 @@
 #include <system_error>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 namespace fs = std::filesystem;
 
@@ -51,12 +56,12 @@ void Downloader::Clear() {
 Result<std::string> Downloader::Fetch(const Package& package, const DownloadProgress& progress) {
     using R = Result<std::string>;
     if (package.url.empty() || package.sha256.size() != 64) {
-        return R::Failure(ErrorCode::InvalidArgument, "The package has no url or no SHA-256");
+        return R::Failure(ErrorCode::InvalidArgument, Tr("The package has no url or no SHA-256"));
     }
     std::error_code ec;
     const fs::path dir = UltraCanvas::PathFromUtf8(dir_);
     fs::create_directories(dir, ec);
-    if (ec) return R::Failure(ErrorCode::IoError, "The downloads folder could not be created", dir_);
+    if (ec) return R::Failure(ErrorCode::IoError, Tr("The downloads folder could not be created"), dir_);
     const fs::path finalPath = dir / UltraCanvas::PathFromUtf8(FileNameFor(package));
     const fs::path partPath = dir / UltraCanvas::PathFromUtf8(FileNameFor(package) + ".part");
     const std::string finalUtf8 = UltraCanvas::PathToUtf8(finalPath);
@@ -110,24 +115,24 @@ Result<std::string> Downloader::Fetch(const Package& package, const DownloadProg
     }
     handle_ = 0;
 
-    if (cancelled_) return R::Failure(ErrorCode::NetworkError, "The download was cancelled", package.url);
+    if (cancelled_) return R::Failure(ErrorCode::NetworkError, Tr("The download was cancelled"), package.url);
     if (!response.transferError.empty()) {
-        return R::Failure(ErrorCode::NetworkError, "The download did not finish", response.transferError + " (" + package.url + ")");
+        return R::Failure(ErrorCode::NetworkError, Tr("The download did not finish"), response.transferError + " (" + package.url + ")");
     }
     // 200 the whole file, 206 the rest of it, 416 the partial file was already complete.
     if (!(response.statusCode == 200 || response.statusCode == 206 || response.statusCode == 416)) {
         fs::remove(partPath, ec);
-        return R::Failure(ErrorCode::NetworkError, "The server answered " + std::to_string(response.statusCode), package.url);
+        return R::Failure(ErrorCode::NetworkError, TrF("The server answered {0}", response.statusCode), package.url);
     }
     const std::string got = Sha256HexOfFile(partUtf8);
-    if (got.empty()) return R::Failure(ErrorCode::IoError, "The downloaded file could not be read", partUtf8);
+    if (got.empty()) return R::Failure(ErrorCode::IoError, Tr("The downloaded file could not be read"), partUtf8);
     if (!PackageHashMatches(got, package.sha256)) {
         fs::remove(partPath, ec);
-        return R::Failure(ErrorCode::SignatureInvalid, "The downloaded file is not the one the catalog names",
+        return R::Failure(ErrorCode::SignatureInvalid, Tr("The downloaded file is not the one the catalog names"),
                           "sha256 " + got + " != " + package.sha256);
     }
     fs::rename(partPath, finalPath, ec);
-    if (ec) return R::Failure(ErrorCode::IoError, "The downloaded file could not be moved into place", ec.message());
+    if (ec) return R::Failure(ErrorCode::IoError, Tr("The downloaded file could not be moved into place"), ec.message());
     return R::Succeed(finalUtf8);
 }
 

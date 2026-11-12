@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSenderBadge.cpp
+// Version: 0.3.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.2.0 - website icons, iconKey, no icon on a spam or scam badge; the
 //                  verified sender domain in the tooltip
 // Version: 0.1.0
@@ -46,23 +47,23 @@ BadgeColors BadgeColorsFor(SenderClass cls) {
     BadgeColors c;
     switch (cls) {
         case SenderClass::Friend:
-            c.fill = Theme::kTrustFriendSoft;   c.border = Theme::kTrustFriend;
-            c.text = Theme::kTrustFriend;       c.outlined = false;  break;
+            c.fill = Theme::TrustFriendSoft();   c.border = Theme::TrustFriend();
+            c.text = Theme::TrustFriend();       c.outlined = false;  break;
         case SenderClass::Business:
-            c.fill = Theme::kTrustBusinessSoft; c.border = Theme::kTrustBusiness;
-            c.text = Theme::kTrustBusiness;     c.outlined = false;  break;
+            c.fill = Theme::TrustBusinessSoft(); c.border = Theme::TrustBusiness();
+            c.text = Theme::TrustBusiness();     c.outlined = false;  break;
         case SenderClass::New:
-            c.fill = Theme::kCardBackground;    c.border = Theme::kTrustNew;
-            c.text = Theme::kTrustNew;          c.outlined = true;   break;
+            c.fill = Theme::CardBackground();    c.border = Theme::TrustNew();
+            c.text = Theme::TrustNew();          c.outlined = true;   break;
         case SenderClass::Advertisement:
-            c.fill = Theme::kCardBackground;    c.border = Theme::kTrustAdvert;
-            c.text = Theme::kTrustAdvert;       c.outlined = true;   break;
+            c.fill = Theme::CardBackground();    c.border = Theme::TrustAdvert();
+            c.text = Theme::TrustAdvert();       c.outlined = true;   break;
         case SenderClass::Spam:
-            c.fill = Theme::kTrustSpamSoft;     c.border = Theme::kTrustSpam;
-            c.text = Theme::kTrustSpam;         c.outlined = true;   break;
+            c.fill = Theme::TrustSpamSoft();     c.border = Theme::TrustSpam();
+            c.text = Theme::TrustSpam();         c.outlined = true;   break;
         case SenderClass::Scam:
-            c.fill = Theme::kTrustScamSoft;     c.border = Theme::kTrustScam;
-            c.text = Theme::kTrustScam;         c.outlined = true;   break;
+            c.fill = Theme::TrustScamSoft();     c.border = Theme::TrustScam();
+            c.text = Theme::TrustScam();         c.outlined = true;   break;
     }
     return c;
 }

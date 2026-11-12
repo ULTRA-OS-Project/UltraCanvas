@@ -34,6 +34,9 @@
 //     keeps most Win-key combinations for itself (Win+V among them), so
 //     those are reported as taken while it runs. "Super" alone is a tap of
 //     the Win key, seen through a low-level keyboard hook on that thread.
+//     An exclusive shortcut (StartExclusive) registers no hot key: the same
+//     kind of hook swallows the key, so even one the system keeps (Print
+//     Screen for the Snipping Tool) reaches only this program.
 //   - Applications: the Start menu's shortcuts, the user's and the
 //     machine's, named as the Start menu names them (desktop.ini) and
 //     launched by opening the shortcut, as Explorer does; and the Microsoft
@@ -53,6 +56,7 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.9.0 - the exclusive global shortcut: a low-level hook that swallows the key (StartExclusive)
 // Version: 1.8.0 - OpenDisplaySettings: Settings > Display (ms-settings:display)
 // Version: 1.7.0 - CaptureWindowImage (PrintWindow with the full content);
 //                  DesktopWindowInfo::appUserModelId from the window or its
@@ -2229,9 +2233,17 @@ struct ShortcutState {
     bool winTap = false;
     HHOOK hook = nullptr;
     WinKeyTap tap;
+    // Taken from the system (StartExclusive): a low-level hook that swallows
+    // the key with exactly `modifiers` held, press and release, so neither
+    // the foreground program nor the system's own use of it (Print Screen
+    // for the Snipping Tool) sees it. `held` keeps the release with the
+    // press it follows; `pressed` is the news for ShortcutWait.
+    bool exclusive = false;
+    bool held = false;
+    bool pressed = false;
 };
 
-ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
+ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, bool exclusive) {
     // "Super+V" -> MOD_WIN and 'V'.
     UINT modifiers = 0;
     std::string key;
@@ -2271,6 +2283,23 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
     if (vk == 0) {
         error = "\"" + key + "\" is not a key name.";
         return nullptr;
+    }
+
+    // Taken from the system: no hot key to register (the system may hold
+    // this one - Print Screen, for the Snipping Tool), only the hook its
+    // thread sets (ShortcutWait).
+    if (exclusive) {
+        auto* state = new ShortcutState();
+        state->exclusive = true;
+        state->modifiers = modifiers;
+        state->key = vk;
+        state->wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!state->wake) {
+            delete state;
+            error = "No event for the shortcut's thread.";
+            return nullptr;
+        }
+        return state;
     }
 
     // A hot key belongs to the thread that registers it, and the shortcut's
@@ -2332,9 +2361,76 @@ static bool WaitForWinKeyTap(ShortcutState* state) {
     }
 }
 
+// The modifiers held as a low-level hook sees a key: their state before it.
+static UINT HeldModifiers() {
+    UINT held = 0;
+    if (GetAsyncKeyState(VK_CONTROL) & 0x8000) held |= MOD_CONTROL;
+    if (GetAsyncKeyState(VK_MENU) & 0x8000) held |= MOD_ALT;
+    if (GetAsyncKeyState(VK_SHIFT) & 0x8000) held |= MOD_SHIFT;
+    if ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) held |= MOD_WIN;
+    return held;
+}
+
+thread_local ShortcutState* t_exclusive = nullptr;
+
+// Swallows the shortcut's key: the press with exactly its modifiers held
+// (counted once, however long it is held), and the release that ends it.
+// Anything else passes on.
+static LRESULT CALLBACK OnExclusiveKey(int code, WPARAM wParam, LPARAM lParam) {
+    if (code == HC_ACTION && t_exclusive) {
+        const auto* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+        if (key->vkCode == t_exclusive->key) {
+            const bool down = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
+            if (down && (t_exclusive->held || HeldModifiers() == t_exclusive->modifiers)) {
+                if (!t_exclusive->held) {   // not the auto-repeat of a held key
+                    t_exclusive->held = true;
+                    t_exclusive->pressed = true;
+                }
+                return 1;
+            }
+            if (!down && t_exclusive->held) {
+                t_exclusive->held = false;
+                return 1;
+            }
+        }
+    }
+    return CallNextHookEx(nullptr, code, wParam, lParam);
+}
+
+// As the Win key's tap: the hook is set on the shortcut's own thread, whose
+// pump is where Windows calls it - promptly, or Windows drops a hook that
+// keeps the keyboard waiting.
+static bool WaitForExclusiveKey(ShortcutState* state) {
+    if (!state->hook) {
+        t_exclusive = state;
+        state->hook = SetWindowsHookExW(WH_KEYBOARD_LL, OnExclusiveKey, ThisModule(), 0);
+        if (!state->hook) {
+            t_exclusive = nullptr;
+            return false;
+        }
+    }
+    auto finish = [state]() {
+        if (state->hook) UnhookWindowsHookEx(state->hook);
+        state->hook = nullptr;
+        if (t_exclusive == state) t_exclusive = nullptr;
+        return false;
+    };
+    for (;;) {
+        const DWORD result = MsgWaitForMultipleObjectsEx(1, &state->wake, 200, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        if (result == WAIT_OBJECT_0 || result == WAIT_FAILED) return finish();   // woken to stop
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) DispatchMessageW(&msg);
+        if (state->pressed) {
+            state->pressed = false;
+            return true;
+        }
+    }
+}
+
 bool ShortcutWait(ShortcutState* state) {
     if (!state || !state->wake) return false;
     if (state->winTap) return WaitForWinKeyTap(state);
+    if (state->exclusive) return WaitForExclusiveKey(state);
     if (!state->registered) {
         if (!RegisterHotKey(nullptr, state->id, state->modifiers, state->key)) return false;
         state->registered = true;

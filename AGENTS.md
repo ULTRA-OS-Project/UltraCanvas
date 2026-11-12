@@ -629,6 +629,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraPassword/CHANGELOG.md` | UltraPassword — the password vault |
 | `Docs/UltraStore/CHANGELOG.md` | UltraStore — the app store |
 | `Docs/UltraStoreAdmin/CHANGELOG.md` | UltraStoreAdmin — the store's admin backend |
+| `Docs/UltraStoreOperator/CHANGELOG.md` | UltraStoreOperator — the marketplace operator's window and command line |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
@@ -786,9 +787,25 @@ and never introduce a new literal copy of one:
    `python3 scripts/check_callback_cycles.py`; CI runs that too.
    Writing a number into a file format or a protocol? Read it with
    `TryParseFloat` / `ParseFloatClassic` and write it with
-   `FormatFloatClassic`, never `std::stof` / `atof` / `std::to_string(double)`
-   / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
-   that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
+   `FormatFloatClassic` - or `FormatFixedClassic` where the format counts
+   decimal places rather than significant digits, which the drawing formats
+   do - never `std::stof` / `atof` / `std::to_string(double)` /
+   `snprintf("%g")`. Streaming it instead of formatting it to a string? Hold
+   a `ClassicNumbers` over the stream for as long as you are writing, or a
+   `ScopedPrecision` where the digit count matters too (both in
+   `UltraCanvasTextUtils.h`; a stream you own outright is imbued where it is
+   declared instead). A stream renders through the *C++ global* locale, which
+   is a different switch from the C one and the one a host sets to honour the
+   desktop's language, and `<<` of a plain `int` is grouped by it as well - a
+   STEP entity id or an OBJ face index written as `1.000` breaks a file that
+   carries no decimal number anywhere. Run
+   `python3 scripts/check_locale_numbers.py`; CI runs that too, but it reads
+   one file at a time and cannot see the locale of a stream a writer was
+   handed, so `Tests/ModelLocaleDecimalTest.cpp` and
+   `Tests/VectorLocaleTest.cpp` are what hold the writers to it: each writes
+   one document in two locales and compares the bytes, and a new writer
+   belongs in whichever of the two fits (`Tests/LocaleTestSupport.h` is the
+   shared half). Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
    `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
    `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI
@@ -800,10 +817,13 @@ and never introduce a new literal copy of one:
    `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION` for a member appended to the host
    table, or the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG` for a type that
    crosses to the plug-ins. Then run `python3 scripts/check_plugin_abi.py
-   --update`; CI runs the check. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
-   the Windows builds compile it against libc++, which refuses what libstdc++
-   lets through (`std::to_string` of a file time's tick count, say), and the
-   script type-checks the module against libc++ in seconds. Reading HTML,
+   --update`; CI runs the check. Changing C++ the Windows build compiles
+   (anything but an OS arm)? Run `python3 scripts/check_libcxx_syntax.py <dir
+   or file>`: the Windows builds compile against libc++, which refuses what
+   libstdc++ lets through (`std::to_string` of a file time's tick count,
+   say), and the script type-checks the units under that path against libc++
+   with the build's own flags - a module in seconds, the whole tree in twenty
+   minutes. Reading HTML,
    CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or

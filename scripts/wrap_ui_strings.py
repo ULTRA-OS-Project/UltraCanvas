@@ -30,12 +30,15 @@ MakeSliderRow, AddNote(parts, id, text), AddTreeNode(parent, id, text) -
 so POSITIONED_CALLS names the argument positions per call. A literal
 continued over several lines ("a " "b") is wrapped as one Tr(...).
 """
+# Version: 1.2.0 - an application's alert helpers (AlertError, AlertWarning, AlertSuccess and
+#                 their Retry forms: the summary and the detail after the parent window) and
+#                 a tooltip's AddText
 # Version: 1.1.0 - the settings page kit's helpers and AddTreeNode (the text in the
 #                 second or third argument), a dropdown's AddItem, AddCustomButton,
 #                 AddFilter, SetFilterEmptyAction, SetOpenPathMenuItemVisible,
 #                 MakeFolderNodeData; a literal continued over lines is one Tr
 # Version: 1.0.0
-# Last Modified: 2026-11-04
+# Last Modified: 2026-11-11
 # Author: UltraCanvas Framework
 import argparse
 import difflib
@@ -47,7 +50,7 @@ from pathlib import Path
 TEXT_METHODS = ["SetText", "SetTitle", "SetTooltip", "SetPlaceholder", "SetPlaceholderText", "SetLabel",
                 "SetWindowTitle", "SetStatus", "SetStatusText", "SetMessage", "SetCaption", "SetHint",
                 "SetHeaderText", "SetAccessibleName", "SetAccessibleDescription", "SetDescription",
-                "SetPrompt", "SetEmptyText", "SetGroupTitle", "SetButtonText"]
+                "SetPrompt", "SetEmptyText", "SetGroupTitle", "SetButtonText", "AddText"]
 # Free or static calls whose first (and second, where noted) argument is text
 TEXT_CALLS = {"ShowMessage": 2, "ShowInformation": 2, "ShowQuestion": 2, "ShowWarning": 2, "ShowError": 2,
               "ShowConfirmation": 2, "ShowInputDialog": 2, "ShowSimple": 2, "AddColumn": 1, "ListColumnDef": 1,
@@ -60,7 +63,11 @@ TEXT_CALLS = {"ShowMessage": 2, "ShowInformation": 2, "ShowQuestion": 2, "ShowWa
 POSITIONED_CALLS = {"MakePage": {1, 2}, "MakeButton": {1}, "MakeText": {1}, "MakeLabel": {1}, "MakeHeading": {1},
                     "MakeChoice": {1}, "MakeCheckbox": {1}, "MakeLabelledRow": {1}, "MakeSliderRow": {1},
                     "AddNote": {2}, "AddTreeNode": {2, 3}, "SetOpenPathMenuItemVisible": {1},
-                    "MakeFolderNodeData": {1}}
+                    "MakeFolderNodeData": {1},
+                    # an application's alert helpers (UltraMail's UltraMailAlerts.h): the
+                    # parent window first, then the summary and the detail
+                    "AlertError": {1, 2}, "AlertWarning": {1, 2}, "AlertSuccess": {1, 2},
+                    "AlertErrorRetry": {1, 2}, "AlertWarningRetry": {1, 2}}
 # MenuItemData builders: the label is the first argument
 MENU_BUILDERS = ["Action", "Checkbox", "Header", "Submenu", "Radio"]
 # Factories and element constructors: the text is any literal argument after

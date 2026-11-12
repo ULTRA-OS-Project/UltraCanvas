@@ -2,12 +2,13 @@
 // Telegram provider - the TDLib requests it sends, built in one place (td_api
 // names and fields), so the tests can hand every one of them to a real TDLib
 // and have it say whether it parses.
+// Version: 0.1.5 - SearchChatMessages
 // Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument (a local file with a caption)
 // Version: 0.1.2 - RequestQrCode
 // Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -69,6 +70,13 @@ TdObject EditText(int64_t chatId, int64_t messageId, const std::string& text);
 TdObject DeleteMessages(int64_t chatId, const std::vector<int64_t>& ids, bool forEveryone);
 TdObject ViewMessages(int64_t chatId, const std::vector<int64_t>& ids);
 TdObject SendTyping(int64_t chatId, bool typing);
+// Telegram's own search of one chat, newest first: `query` ("" = everything
+// the filter lets through), older than fromMessageId (0 = from the newest),
+// `filter` a SearchMessagesFilter's name ("searchMessagesFilterEmpty",
+// "...Photo", "...Video", "...PhotoAndVideo", "...Document", "...Url").
+// The answer (foundChatMessages) names where the next page starts.
+TdObject SearchChatMessages(int64_t chatId, const std::string& query, int64_t fromMessageId, int32_t limit,
+                            const std::string& filter);
 TdObject SearchPublicChat(const std::string& username);
 TdObject SearchUserByPhone(const std::string& phone);
 TdObject CreatePrivateChat(int64_t userId);

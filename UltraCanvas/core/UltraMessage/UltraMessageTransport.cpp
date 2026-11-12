@@ -2,6 +2,8 @@
 // Local stream transport: Unix domain sockets (Linux, macOS, BSD) and Windows
 // named pipes behind one Connection / Listener pair. Every blocking wait also
 // watches a private wake-up object so Close() from another thread returns it.
+// Version: 0.1.2 - Windows listener: a cancelled ConnectNamedPipe is waited for
+//                  before its stack OVERLAPPED goes out of scope
 // Version: 0.1.1 - ProcessIsTerminating
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -550,7 +552,11 @@ ConnectionPtr Listener::Accept() {
                     DWORD ignored = 0;
                     connected = ::GetOverlappedResult(pipe, &overlapped, &ignored, TRUE) != 0;
                 } else {
+                    // Wait for the cancel to land: until it has, the kernel
+                    // still owns `overlapped`, and it lives in this frame.
                     ::CancelIoEx(pipe, &overlapped);
+                    DWORD ignored = 0;
+                    ::GetOverlappedResult(pipe, &overlapped, &ignored, TRUE);
                 }
             }
         }

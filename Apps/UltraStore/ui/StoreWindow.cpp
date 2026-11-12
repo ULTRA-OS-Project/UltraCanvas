@@ -1,6 +1,10 @@
 // Apps/UltraStore/ui/StoreWindow.cpp
 // The shell, the pages and the app page after the shop design; the jobs are
 // in StoreJobs.cpp, the settings page in StoreSettingsPage.cpp.
+// Version: 0.6.1 - Report a problem on the app page, the outcome of a report
+// Version: 0.6.0 - the categories by their names in the person's language, from the catalog's fixed list
+// Version: 0.5.2 - the header in less room: Refresh, the wordmark and Settings as their icons, as far as it needs
+// Version: 0.5.1 - every text through Tr: the header, the filters, the buttons, the facts; dates in the language's order
 // Version: 0.5.0 - the shop design: the header, the Discover sections, the Categories filters, the app page
 // Version: 0.4.0 - the open order resumed, the update terms
 // Version: 0.3.0 - Buy through the payment service; the licences
@@ -19,6 +23,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
@@ -64,15 +69,49 @@ bool ReadWholeFile(const std::string& path, std::string& out) {
     return true;
 }
 
-// "2026-10-22" -> "22 Oct 2026"; anything else as it is.
+// A month's short name in the person's language (the standard set's).
+std::string ShortMonth(int month) {
+    switch (month) {
+        case 1: return TrC("month-short", "Jan");
+        case 2: return TrC("month-short", "Feb");
+        case 3: return TrC("month-short", "Mar");
+        case 4: return TrC("month-short", "Apr");
+        case 5: return TrC("month-short", "May");
+        case 6: return TrC("month-short", "Jun");
+        case 7: return TrC("month-short", "Jul");
+        case 8: return TrC("month-short", "Aug");
+        case 9: return TrC("month-short", "Sep");
+        case 10: return TrC("month-short", "Oct");
+        case 11: return TrC("month-short", "Nov");
+        default: return TrC("month-short", "Dec");
+    }
+}
+
+// "2026-10-22" -> "22 Oct 2026", in the language's order ("22. Okt. 2026",
+// "2026年10月22日"); anything else as it is.
 std::string PrettyDate(const std::string& iso) {
     if (iso.size() < 10 || iso[4] != '-' || iso[7] != '-') return iso;
-    static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
     const int month = std::atoi(iso.substr(5, 2).c_str());
     if (month < 1 || month > 12) return iso;
     std::string day = iso.substr(8, 2);
     if (day[0] == '0') day.erase(0, 1);
-    return day + " " + kMonths[month - 1] + " " + iso.substr(0, 4);
+    return LocalisationDetail::Substitute(TrC("day, month and year", "{0} {1} {2}"), {day, ShortMonth(month), iso.substr(0, 4)});
+}
+
+// The first `bytes` of a text and "…", never cutting a character in two.
+std::string Shorten(const std::string& text, size_t bytes) {
+    if (text.size() <= bytes + 2) return text;
+    return text.substr(0, utf8_align_boundary(text, bytes)) + "…";
+}
+
+// What a component is, as a person reads it.
+std::string KindLabel(ComponentKind kind) {
+    switch (kind) {
+        case ComponentKind::Runtime: return Tr("Runtime");
+        case ComponentKind::Library: return Tr("Library");
+        case ComponentKind::App: break;
+    }
+    return Tr("App");
 }
 
 // A language code as a person reads it, for the information column.
@@ -175,7 +214,7 @@ std::string OsLabel(OS os) {
         case OS::UltraOS: return Tr("ULTRA OS");
         case OS::IOS: return "iOS";
         case OS::Android: return "Android";
-        case OS::Wasm: return "Browser";
+        case OS::Wasm: return Tr("Browser");
         default: return OSName(os);
     }
 }
@@ -237,6 +276,10 @@ bool StoreWindow::Create() {
         LayoutForSize(static_cast<float>(w), static_cast<float>(h));
     };
     window_->onWindowClosing = [this]() { return OnClosing(); };
+    // The header's level is measured after each frame that laid it out.
+    window_->onFrameRendered = [this](const WindowFrameTiming& timing) {
+        if (timing.laidOut) FitHeader();
+    };
 
     RebuildAllPages();
     LoadSettingsIntoPage();
@@ -292,10 +335,10 @@ void StoreWindow::BuildHeader() {
 
     // The sections as pills.
     auto nav = Theme::Row("usNav", 4.0f);
-    nav->AddChild(MakeNavButton(kDiscover, "Discover", 96));
-    nav->AddChild(MakeNavButton(kCategories, "Categories", 108));
-    nav->AddChild(MakeNavButton(kInstalled, "Installed", 96));
-    nav->AddChild(MakeNavButton(kUpdates, "Updates", 92));
+    nav->AddChild(MakeNavButton(kDiscover, Tr("Discover"), 96));
+    nav->AddChild(MakeNavButton(kCategories, Tr("Categories"), 108));
+    nav->AddChild(MakeNavButton(kInstalled, Tr("Installed"), 96));
+    nav->AddChild(MakeNavButton(kUpdates, Tr("Updates"), 92));
     updatesBadge_ = Badge("usNav.updates.badge", "0", BadgeVariant::Neutral);
     updatesBadge_->SetColor(Theme::kTextPrimary);
     updatesBadge_->SetVisible(false);
@@ -309,6 +352,10 @@ void StoreWindow::BuildHeader() {
     searchInput_->SetFontSize(15.0f);
     searchInput_->SetPlaceholder(Tr("Search apps, publishers, tags"));
     searchInput_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    // The pill gives way first when the labels around it are long (a
+    // translation): it may shrink to this, the sections and buttons never.
+    searchInput_->boxConstraints = CSSLayout::BoxConstraints{};
+    searchInput_->boxConstraints->minWidth = CSSLayout::Dimension::Px(kSearchMinWidth);
     searchInput_->onTextChanged = [this](const std::string& text) {
         search_ = text;
         if (!search_.empty() && currentPage_ != kDiscover) {
@@ -319,21 +366,82 @@ void StoreWindow::BuildHeader() {
     };
     header_->AddChild(searchInput_);
 
-    auto refresh = Theme::Button("usRefresh", "Refresh", 96, Theme::ButtonKind::Ghost);
+    auto refresh = Theme::Button("usRefresh", Tr("Refresh"), 96, Theme::ButtonKind::Ghost);
     refresh->SetIcon(Theme::Icon("rotate-right.svg"));
     refresh->SetTooltip(Tr("Fetch the catalog from the store's servers"));
     refresh->onClick = [this]() { RefreshCatalog(); };
     header_->AddChild(refresh);
+    refreshButton_ = refresh;
 
     // Where the design puts "Sign in": the store has no accounts, so the
     // settings live here instead.
-    auto settings = Theme::Button("usSettings", "Settings", 104, Theme::ButtonKind::Secondary);
+    auto settings = Theme::Button("usSettings", Tr("Settings"), 104, Theme::ButtonKind::Secondary);
+    settings->SetTooltip(Tr("Settings"));
     settings->onClick = [this]() {
         if (currentPage_ == kSettings) return;
         detailsAppId_.clear();
         ShowPage(kSettings);
     };
     header_->AddChild(settings);
+    settingsButton_ = settings;
+}
+
+float StoreWindow::HeaderNeed() const {
+    // What the header takes at the level it is at: each part as wide as it
+    // is (a button as wide as its text), the search field at its least.
+    float need = header_->GetPaddingLeft() + header_->GetPaddingRight();
+    int parts = 0;
+    for (const auto& child : header_->GetChildren()) {
+        auto* part = dynamic_cast<UltraCanvasUIElement*>(child.get());
+        if (!part || !part->IsVisible()) continue;
+        need += part == searchInput_.get() ? kSearchMinWidth : part->GetWidth();
+        ++parts;
+    }
+    return need + Theme::kGap * static_cast<float>(std::max(0, parts - 1));
+}
+
+void StoreWindow::FitHeader() {
+    if (!header_ || headerLevelPosted_) return;
+    const float room = header_->GetWidth();
+    if (room <= 0.0f) return;
+    const float need = HeaderNeed();
+    headerNeed_[headerLevel_] = need;
+    int level = headerLevel_;
+    if (need > room + 0.5f && level < kHeaderLevels - 1) ++level;
+    else if (level > 0 && headerNeed_[level - 1] > 0.0f && headerNeed_[level - 1] <= room) --level;
+    if (level == headerLevel_) return;
+    // Not from inside the frame: the next turn of the loop, which this wakes.
+    headerLevelPosted_ = true;
+    std::weak_ptr<int> token = alive_;
+    app_.PostToUIThread([this, token, level]() {
+        if (token.expired()) return;
+        headerLevelPosted_ = false;
+        ApplyHeaderLevel(level);
+    });
+}
+
+void StoreWindow::ApplyHeaderLevel(int level) {
+    headerLevel_ = std::clamp(level, 0, kHeaderLevels - 1);
+    const float height = Theme::kControlHeight;
+    if (refreshButton_) {
+        const bool iconOnly = headerLevel_ >= 1;
+        refreshButton_->SetText(iconOnly ? std::string() : Tr("Refresh"));
+        refreshButton_->SetElementSize(CSSLayout::Dimension::Px(iconOnly ? height : 96.0f), CSSLayout::Dimension::Px(height));
+    }
+    if (logoButton_) {
+        const bool iconOnly = headerLevel_ >= 2;
+        logoButton_->SetText(iconOnly ? std::string() : std::string("UltraStore"));
+        logoButton_->SetElementSize(CSSLayout::Dimension::Px(iconOnly ? 48.0f : 164.0f), CSSLayout::Dimension::Px(48.0f));
+    }
+    if (settingsButton_) {
+        const bool iconOnly = headerLevel_ >= 3;
+        settingsButton_->SetText(iconOnly ? std::string() : Tr("Settings"));
+        if (iconOnly) settingsButton_->SetIcon(Theme::Icon("settings.svg"));
+        else settingsButton_->SetIcon(std::shared_ptr<UCImage>());
+        settingsButton_->SetElementSize(CSSLayout::Dimension::Px(iconOnly ? height : 104.0f), CSSLayout::Dimension::Px(height));
+    }
+    header_->InvalidateLayout();
+    header_->RequestRedraw();
 }
 
 void StoreWindow::BuildShell() {
@@ -364,7 +472,7 @@ void StoreWindow::BuildShell() {
         aside->SetElementSize(CSSLayout::Dimension::Px(Theme::kAsideWidth), CSSLayout::Dimension::Auto());
         {
             auto group = Theme::Column("usC.cat", Theme::kInnerGap);
-            group->AddChild(Theme::Eyebrow("usC.cat.title", "Category"));
+            group->AddChild(Theme::Eyebrow("usC.cat.title", Tr("Category")));
             categoryChips_ = Theme::Pin(CreateChipGroup("usCategoryChips", 0, 0, 0, 0));
             categoryChips_->SetChipStyle(Theme::ChipStyleFor());
             categoryChips_->SetSpacing(6.0f);
@@ -379,12 +487,12 @@ void StoreWindow::BuildShell() {
         }
         {
             auto group = Theme::Column("usC.price", Theme::kInnerGap);
-            group->AddChild(Theme::Eyebrow("usC.price.title", "Price"));
+            group->AddChild(Theme::Eyebrow("usC.price.title", Tr("Price")));
             auto segment = Theme::Row("usC.price.seg", 2.0f);
             segment->SetBackgroundColor(Theme::kSurfaceMuted);
             segment->SetBorderRadius(Theme::kControlHeight / 2.0f);
             segment->SetPadding(4.0f);
-            for (const auto& [key, label] : std::vector<std::pair<std::string, std::string>>{{"all", "All"}, {"free", "Free"}, {"paid", "Paid"}}) {
+            for (const auto& [key, label] : std::vector<std::pair<std::string, std::string>>{{"all", Tr("All")}, {"free", Tr("Free")}, {"paid", Tr("Paid")}}) {
                 auto b = Theme::Button("usC.price." + key, label, 72, Theme::ButtonKind::Ghost, 32);
                 b->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
                 const std::string value = key;
@@ -401,7 +509,7 @@ void StoreWindow::BuildShell() {
         }
         {
             auto group = Theme::Column("usC.more", Theme::kInnerGap);
-            group->AddChild(Theme::Eyebrow("usC.more.title", "More"));
+            group->AddChild(Theme::Eyebrow("usC.more.title", Tr("More")));
             openSourceBox_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("usC.oss", 0, 0, 200, 32, Tr("Open source only")));
             openSourceBox_->SetFont(Theme::kBodyFont, 14.0f);
             openSourceBox_->onStateChanged = [this](CheckedState, CheckedState) { RebuildCategories(); };
@@ -464,7 +572,7 @@ void StoreWindow::BuildShell() {
     }
 
     // The download queue along the bottom.
-    downloads_ = Theme::Pin(CreateCollapsiblePanel("usDownloads", "Downloads"));
+    downloads_ = Theme::Pin(CreateCollapsiblePanel("usDownloads", Tr("Downloads")));
     downloads_->SetExpandedHeight(static_cast<float>(std::max(100, settings_.downloadsHeight)));
     downloads_->SetExpanded(settings_.downloadsExpanded);
     downloads_->SetDetail(Tr("Nothing queued"));
@@ -730,7 +838,7 @@ std::string StoreWindow::PublisherName(const Component& app) const {
 }
 
 std::string StoreWindow::CategoryOf(const Component& app) const {
-    return app.categories.empty() ? std::string() : app.categories.front();
+    return PrimaryCategory(app);
 }
 
 std::string StoreWindow::LanguagesOf(const Component& app) const {
@@ -751,12 +859,8 @@ std::string StoreWindow::LanguagesOf(const Component& app) const {
 
 std::string StoreWindow::PriceText(const Component& app) const {
     const Pricing& pricing = app.pricing;
-    if (pricing.model == PricingModel::Free) return "Free";
-    std::string label = DiscountedPrice(pricing, CodeFor(app));
-    if (!pricing.currency.empty()) label += " " + pricing.currency;
-    if (pricing.model == PricingModel::Monthly) label += " / month";
-    else if (pricing.model == PricingModel::Yearly) label += " / year";
-    return label;
+    if (pricing.model == PricingModel::Free) return Tr("Free");
+    return PeriodPrice(pricing, DiscountedPrice(pricing, CodeFor(app)));
 }
 
 void StoreWindow::ApplyCode(const std::string& text) {
@@ -948,7 +1052,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeCategoryPills() {
     auto row = Theme::Row("usCats", Theme::kInnerGap, true);
     int n = 0;
     for (const std::string& c : categories_) {
-        auto pill = Theme::Button("usCats." + std::to_string(n++), c, static_cast<float>(28 + c.size() * 8), Theme::ButtonKind::Secondary);
+        auto pill = Theme::Button("usCats." + std::to_string(n++), CategoryName(c), 40, Theme::ButtonKind::Secondary);
         const std::string category = c;
         pill->onClick = [this, category]() {
             category_ = category;
@@ -992,16 +1096,16 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeCodeRow() {
     auto row = Theme::Row("usCode.row", Theme::kInnerGap, true);
     codeInput_ = Theme::Pin(CreateTextInput("usCode.input", 0, 0, 220, Theme::kControlHeight));
     codeInput_->SetStyle(Theme::SearchStyle(codeInput_->GetStyle()));
-    codeInput_->SetPlaceholder("Code");
+    codeInput_->SetPlaceholder(TrC("discount code", "Code"));
     codeInput_->SetText(settings_.code);
     row->AddChild(codeInput_);
-    auto apply = Theme::Button("usCode.apply", "Apply", 88, Theme::ButtonKind::Primary);
+    auto apply = Theme::Button("usCode.apply", Tr("Apply"), 88, Theme::ButtonKind::Primary);
     apply->onClick = [this]() { ApplyCode(codeInput_->GetText()); };
     row->AddChild(apply);
     if (const PromoCode* code = CodeInForce()) {
         const std::string what = DiscountLabel(*code);
         row->AddChild(Badge("usCode.inForce", TrF("In force: {0}", code->code) + (what.empty() ? "" : ", " + what), BadgeVariant::Successful));
-        auto forget = Theme::Button("usCode.forget", "Forget", 80, Theme::ButtonKind::Ghost);
+        auto forget = Theme::Button("usCode.forget", Tr("Forget"), 80, Theme::ButtonKind::Ghost);
         forget->onClick = [this]() { ApplyCode(""); };
         row->AddChild(forget);
     }
@@ -1106,7 +1210,7 @@ void StoreWindow::RebuildCategories() {
     // its count under the price filter; rebuilt only when the categories
     // changed, so a click does not rebuild the row under the pointer.
     std::vector<std::string> wanted = {Tr("All apps")};
-    wanted.insert(wanted.end(), categories_.begin(), categories_.end());
+    for (const std::string& id : categories_) wanted.push_back(CategoryName(id));
     bool same = categoryChips_->GetChipCount() == static_cast<int>(wanted.size());
     for (int i = 0; same && i < categoryChips_->GetChipCount(); ++i) same = categoryChips_->IndexOf(wanted[i]) == i;
     if (!same) {
@@ -1134,7 +1238,7 @@ void StoreWindow::RebuildCategories() {
         }
         SortListings(apps, sortMode_);
     }
-    categoryHeading_->SetText((category_.empty() ? Tr("All apps") : category_) + " · " + TrN("{n} app", "{n} apps", static_cast<long long>(apps.size())));
+    categoryHeading_->SetText((category_.empty() ? Tr("All apps") : CategoryName(category_)) + " · " + TrN("{n} app", "{n} apps", static_cast<long long>(apps.size())));
     std::string empty;
     if (!catalog_) empty = catalogNote_;
     else if (category_.empty() && priceFilter_ == "all") empty = Tr("The catalog lists no app.");
@@ -1147,11 +1251,11 @@ void StoreWindow::RebuildInstalled() {
     installedBody_->ClearChildren();
     const std::vector<InstalledRecord> apps = CurrentApps(installed_);
     auto head = Theme::Column("usI.head", 4.0f);
-    head->AddChild(Theme::Title("usI.title", "Installed"));
+    head->AddChild(Theme::Title("usI.title", Tr("Installed")));
     head->AddChild(Theme::Caption("usI.subtitle", TrN("{n} app on this machine, with the runtimes and libraries it shares.", "{n} apps on this machine, with the runtimes and libraries they share.", static_cast<long long>(apps.size()))));
     installedBody_->AddChild(head);
     auto bar = Theme::Row("usI.bar", Theme::kInnerGap, true);
-    auto reload = Theme::Button("usReloadInstalled", "Reload", 88, Theme::ButtonKind::Secondary);
+    auto reload = Theme::Button("usReloadInstalled", Tr("Reload"), 88, Theme::ButtonKind::Secondary);
     reload->SetTooltip(Tr("Read the registry of installed apps again"));
     reload->onClick = [this]() { ReloadInstalled(); };
     bar->AddChild(reload);
@@ -1182,7 +1286,7 @@ void StoreWindow::RebuildInstalled() {
         card->SetElementSize(CSSLayout::Dimension::Px(Theme::kCardWidth), CSSLayout::Dimension::Auto());
         card->AddContent(Theme::Caption(id + ".folder", rec.folder));
         if (!rec.entry.empty()) {
-            auto open = Theme::Button(id + ".open", "Open", 80, Theme::ButtonKind::Secondary);
+            auto open = Theme::Button(id + ".open", Tr("Open"), 80, Theme::ButtonKind::Secondary);
             const std::string appId = rec.id;
             open->onClick = [this, appId]() {
                 for (const InstalledRecord& r : installed_) {
@@ -1197,7 +1301,7 @@ void StoreWindow::RebuildInstalled() {
             };
             card->AddAction(open);
         }
-        auto remove = Theme::Button(id + ".remove", "Remove", 88, Theme::ButtonKind::Danger);
+        auto remove = Theme::Button(id + ".remove", Tr("Remove"), 88, Theme::ButtonKind::Danger);
         const std::string appId = rec.id;
         remove->onClick = [this, appId]() { RemoveApp(appId); };
         remove->SetDisabled(Busy());
@@ -1218,7 +1322,7 @@ void StoreWindow::RebuildInstalled() {
             auto title = Theme::Text("usI.comp" + std::to_string(c) + ".name", name + " " + rec.version, 14.0f, FontWeight::Bold);
             title->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
             row->AddChild(title);
-            row->AddChild(Theme::Caption("usI.comp" + std::to_string(c) + ".kind", Tr(ComponentKindName(rec.kind)) + " · " + rec.id));
+            row->AddChild(Theme::Caption("usI.comp" + std::to_string(c) + ".kind", KindLabel(rec.kind) + " · " + rec.id));
             surface->AddChild(row);
         }
         section->AddChild(surface);
@@ -1243,7 +1347,7 @@ void StoreWindow::RebuildUpdates() {
     }
     updatesBody_->ClearChildren();
     auto head = Theme::Column("usU.head", 4.0f);
-    head->AddChild(Theme::Title("usU.title", "Updates"));
+    head->AddChild(Theme::Title("usU.title", Tr("Updates")));
     head->AddChild(Theme::Caption("usU.subtitle", apps.empty() ? Tr("Everything is up to date.") : TrN("{n} app has a newer release for this machine.", "{n} apps have a newer release for this machine.", static_cast<long long>(apps.size()))));
     updatesBody_->AddChild(head);
     updateAllButton_ = Theme::Button("usUpdateAll", Tr("Update all"), 112, Theme::ButtonKind::Primary);
@@ -1311,7 +1415,7 @@ std::vector<std::string> StoreWindow::FactsOf(const AppListing& l) const {
     const Component& app = *l.app;
     std::vector<std::string> facts;
     if (app.pricing.model != PricingModel::Free && app.pricing.trialDays > 0 && !Bought(app.id))
-        facts.push_back(TrF("{0}-day free trial", app.pricing.trialDays));
+        facts.push_back(TrN("{n}-day free trial", "{n}-day free trial", app.pricing.trialDays));
     if (app.openSource) facts.push_back(Tr("Open source") + (app.license.empty() ? std::string() : " · " + app.license));
     else if (!app.license.empty()) facts.push_back(app.license);
     if (l.resolution.release) {
@@ -1337,7 +1441,7 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
     const bool busy = Busy() || HasJobFor(appId);
     if (l.Installed()) {
         if (!l.installedEntry.empty()) {
-            auto open = Theme::Button(id + ".open", "Open", 80, Theme::ButtonKind::Secondary);
+            auto open = Theme::Button(id + ".open", Tr("Open"), 80, Theme::ButtonKind::Secondary);
             open->onClick = [this, appId]() {
                 if (!catalog_) return;
                 if (const Component* app = catalog_->FindApp(appId)) LaunchApp(ListingFor(*catalog_, *app, platform_, installed_, channel_));
@@ -1352,12 +1456,12 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
             buy->SetDisabled(busy || storeError_.size() > 0);
             out.push_back(buy);
         } else if (l.updateAvailable) {
-            auto update = Theme::Button(id + ".update", "Update", 88, Theme::ButtonKind::Primary);
+            auto update = Theme::Button(id + ".update", Tr("Update"), 88, Theme::ButtonKind::Primary);
             update->onClick = [this, appId]() { UpdateApp(appId); };
             update->SetDisabled(busy);
             out.push_back(update);
         }
-        auto remove = Theme::Button(id + ".remove", "Remove", 88, Theme::ButtonKind::Danger);
+        auto remove = Theme::Button(id + ".remove", Tr("Remove"), 88, Theme::ButtonKind::Danger);
         remove->onClick = [this, appId]() { RemoveApp(appId); };
         remove->SetDisabled(busy);
         out.push_back(remove);
@@ -1368,14 +1472,14 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
     const bool paid = pricing.model != PricingModel::Free;
     if ((!paid || pricing.trialDays > 0) && !Bought(appId)) {
         auto install = Theme::Button(id + ".install", paid ? Tr("Try free") : Tr("Install"), paid ? 96 : 88, paid ? Theme::ButtonKind::Primary : Theme::ButtonKind::Soft);
-        if (paid) install->SetTooltip(TrF("Installs the full app for {0} days", pricing.trialDays));
+        if (paid) install->SetTooltip(TrN("Installs the full app for {n} day", "Installs the full app for {n} days", pricing.trialDays));
         install->onClick = [this, appId]() { InstallApp(appId); };
         install->SetDisabled(busy || storeError_.size() > 0);
         out.push_back(install);
     }
     if (paid && Bought(appId)) {
         // Bought here: the restricted package comes through the payment service's signed URL.
-        auto install = Theme::Button(id + ".install", "Install", 88, Theme::ButtonKind::Primary);
+        auto install = Theme::Button(id + ".install", Tr("Install"), 88, Theme::ButtonKind::Primary);
         install->SetTooltip(TrF("Bought: receipt no. {0}", Bought(appId)->receiptNo));
         install->onClick = [this, appId]() { InstallApp(appId); };
         install->SetDisabled(busy || storeError_.size() > 0);
@@ -1399,7 +1503,7 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
 std::shared_ptr<UltraCanvasCard> StoreWindow::MakeAppCard(const AppListing& l, const std::string& id) {
     const Component& app = *l.app;
     std::string meta = PublisherName(app);
-    if (const std::string category = CategoryOf(app); !category.empty()) meta += (meta.empty() ? "" : " · ") + category;
+    if (const std::string category = CategoryOf(app); !category.empty()) meta += (meta.empty() ? "" : " · ") + CategoryName(category);
     auto card = Theme::Pin(CreateCard(id, app.name, meta));
     card->SetStyle(CardStyleFor());
     card->SetElementSize(CSSLayout::Dimension::Px(Theme::kCardWidth), CSSLayout::Dimension::Auto());
@@ -1415,8 +1519,8 @@ std::shared_ptr<UltraCanvasCard> StoreWindow::MakeAppCard(const AppListing& l, c
     // bottom, where the design puts it, so the title keeps its room.
     std::shared_ptr<UltraCanvasBadge> badge;
     if (l.updateAvailable && Bought(app.id) && !PurchaseOf(app.id).Covers(l.resolution.release->date)) badge = Badge(id + ".badge", Tr("New purchase"), BadgeVariant::Warning);
-    else if (l.updateAvailable) badge = Badge(id + ".badge", "Update", BadgeVariant::Warning);
-    else if (Bought(app.id) && !l.Installed()) { badge = Badge(id + ".badge", "Bought", BadgeVariant::Successful); badge->SetColor(Theme::kSuccess); }
+    else if (l.updateAvailable) badge = Badge(id + ".badge", Tr("Update"), BadgeVariant::Warning);
+    else if (Bought(app.id) && !l.Installed()) { badge = Badge(id + ".badge", Tr("Bought"), BadgeVariant::Successful); badge->SetColor(Theme::kSuccess); }
     else if (!l.Available()) badge = Badge(id + ".badge", Tr("Not for this system"), BadgeVariant::Neutral);
     if (badge) card->SetTrailing(badge);
 
@@ -1424,7 +1528,7 @@ std::shared_ptr<UltraCanvasCard> StoreWindow::MakeAppCard(const AppListing& l, c
     if (!summary.empty()) card->AddContent(Theme::Text(id + ".summary", summary, 14.0f, FontWeight::Normal, Theme::kTextBody));
     std::string state = StateLine(l);
     if (!l.Installed() && app.pricing.model != PricingModel::Free && app.pricing.trialDays > 0 && !Bought(app.id))
-        state += " · " + TrF("{0}-day free trial", app.pricing.trialDays);
+        state += " · " + TrN("{n}-day free trial", "{n}-day free trial", app.pricing.trialDays);
     card->AddContent(Theme::Caption(id + ".state", state));
 
     // Along the bottom: "Free", the price or "Installed" on the left, and
@@ -1438,7 +1542,7 @@ std::shared_ptr<UltraCanvasCard> StoreWindow::MakeAppCard(const AppListing& l, c
     const auto actions = PrimaryActions(l, id);
     if (!actions.empty()) card->AddAction(actions.front());
     else {
-        auto details = Theme::Button(id + ".details", "Details", 88, Theme::ButtonKind::Secondary);
+        auto details = Theme::Button(id + ".details", Tr("Details"), 88, Theme::ButtonKind::Secondary);
         const std::string appId = app.id;
         details->onClick = [this, appId]() { ShowDetails(appId); };
         card->AddAction(details);
@@ -1455,7 +1559,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeAppRow(const AppListing& 
     std::string line;
     if (l.resolution.release) line = l.resolution.release->version;
     else if (!app.releases.empty()) line = app.releases.front().version;
-    if (const std::string category = CategoryOf(app); !category.empty()) line += (line.empty() ? "" : " · ") + category;
+    if (const std::string category = CategoryOf(app); !category.empty()) line += (line.empty() ? "" : " · ") + CategoryName(category);
     const std::string date = l.resolution.release ? l.resolution.release->date : (app.releases.empty() ? std::string() : app.releases.front().date);
     if (!date.empty()) line += (line.empty() ? "" : " · ") + PrettyDate(date);
     if (app.pricing.model != PricingModel::Free) line += (line.empty() ? "" : " · ") + PriceText(app);
@@ -1473,7 +1577,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeAppRow(const AppListing& 
     const auto actions = PrimaryActions(l, id);
     if (!actions.empty()) card->SetTrailing(actions.front());
     else {
-        auto details = Theme::Button(id + ".details", "Details", 88, Theme::ButtonKind::Secondary);
+        auto details = Theme::Button(id + ".details", Tr("Details"), 88, Theme::ButtonKind::Secondary);
         const std::string appId = app.id;
         details->onClick = [this, appId]() { ShowDetails(appId); };
         card->SetTrailing(details);
@@ -1487,7 +1591,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeAppRow(const AppListing& 
 std::shared_ptr<UltraCanvasContainer> StoreWindow::MakeAppLink(const AppListing& l, const std::string& id) {
     const Component& app = *l.app;
     std::string line = app.summary.Text(lang_);
-    if (line.size() > 40) line = line.substr(0, 38) + "…";
+    line = Shorten(line, 38);
     line += (line.empty() ? "" : " · ") + PriceText(app);
     auto card = Theme::Pin(CreateCard(id, app.name, line));
     CardStyle style = CardStyleFor(Theme::kRowRadius, 8.0f, 40.0f);
@@ -1543,7 +1647,7 @@ void StoreWindow::RebuildDetails() {
         crumbs->AddChild(home);
         if (!category.empty()) {
             crumbs->AddChild(Theme::Caption("usX.crumb.sep1", "  /  "));
-            auto cat = Theme::Button("usX.crumb.cat", category, static_cast<float>(24 + category.size() * 8), Theme::ButtonKind::Ghost, 32);
+            auto cat = Theme::Button("usX.crumb.cat", CategoryName(category), 40, Theme::ButtonKind::Ghost, 32);
             cat->onClick = [this, category]() {
                 category_ = category;
                 detailsAppId_.clear();
@@ -1606,12 +1710,61 @@ void StoreWindow::RebuildDetails() {
         auto actions = Theme::Row("usX.actions", Theme::kInnerGap, true);
         for (auto& button : PrimaryActions(l, "usX")) actions->AddChild(button);
         if (const LicenceRecord* bought = Bought(app->id); bought && catalog_ && !catalog_->paymentUrl.empty()) {
-            auto receipt = Theme::Button("usX.receipt", "Receipt", 88, Theme::ButtonKind::Secondary);
+            auto receipt = Theme::Button("usX.receipt", Tr("Receipt"), 88, Theme::ButtonKind::Secondary);
             const std::string url = catalog_->paymentUrl + "/v1/orders/" + bought->orderId + "/receipt?secret=" + bought->orderSecret;
             receipt->onClick = [url]() { OpenURL(url); };
             actions->AddChild(receipt);
         }
+        if (catalog_ && !catalog_->marketUrl.empty()) {
+            auto report = Theme::Button("usX.report", Tr("Report a problem"), 130, Theme::ButtonKind::Ghost);
+            report->onClick = [this]() { reportOpen_ = !reportOpen_; RebuildDetails(); };
+            actions->AddChild(report);
+        }
         middle->AddChild(actions);
+
+        // What became of the problems reported from here, and the form.
+        if (catalog_ && !catalog_->marketUrl.empty()) {
+            int n = 0;
+            for (const StoreSettings::SentReport& r : settings_.reports) {
+                if (r.app != app->id) continue;
+                std::string line = TrF("Your report of {0} ({1}): {2}", PrettyDate(r.sentAt), r.kind, r.state.empty() ? Tr("sent") : r.state);
+                if (!r.outcome.empty()) line += " - " + r.outcome;
+                middle->AddChild(Theme::Caption("usX.rep" + std::to_string(n++), line));
+            }
+            if (reportOpen_) {
+                reportForm_ = Theme::Surface("usX.reportForm", Theme::kInnerGap);
+                reportForm_->AddChild(Theme::Text("usX.reportForm.title", Tr("Report a problem with this app"), 13.0f, FontWeight::Bold, Theme::kTextPrimary));
+                reportForm_->AddChild(Theme::Caption("usX.reportForm.hint", Tr("The store's operator reads it; the merchant sees the report, never who sent it. You learn the outcome here.")));
+                reportKind_ = Theme::Pin(CreateDropdown("usX.reportKind", 0, 0, 220, Theme::kControlHeight));
+                reportKind_->AddItem(Tr("It crashes"), "crash");
+                reportKind_->AddItem(Tr("It does not work as described"), "not-working");
+                reportKind_->AddItem(Tr("Malware or a security problem"), "malware");
+                reportKind_->AddItem(Tr("Inappropriate content"), "content");
+                reportKind_->AddItem(Tr("A copyright problem"), "copyright");
+                reportKind_->AddItem(Tr("A privacy problem"), "privacy");
+                reportKind_->AddItem(Tr("Something else"), "other");
+                reportKind_->SetSelectedIndex(0);
+                reportForm_->AddChild(reportKind_);
+                reportText_ = Theme::Pin(std::make_shared<UltraCanvasTextArea>("usX.reportText", 0.0f, 96.0f));
+                reportText_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(96.0f));
+                reportText_->SetWordWrap(true);
+                reportText_->SetShowLineNumbers(false);
+                reportText_->SetHighlightSyntax(false);
+                reportText_->SetFontSize(12.0f);
+                reportText_->SetBackgroundColor(Theme::kPageBackground);
+                reportText_->SetBorders(1.0f, Theme::kBorder, 4.0f);
+                reportForm_->AddChild(reportText_);
+                auto buttons = Theme::Row("usX.reportButtons", Theme::kInnerGap, true);
+                auto send = Theme::Button("usX.reportSend", Tr("Send"), 90, Theme::ButtonKind::Primary);
+                send->onClick = [this, appId = app->id]() { SendReportNow(appId); };
+                buttons->AddChild(send);
+                auto cancel = Theme::Button("usX.reportCancel", Tr("Cancel"), 90, Theme::ButtonKind::Ghost);
+                cancel->onClick = [this]() { reportOpen_ = false; RebuildDetails(); };
+                buttons->AddChild(cancel);
+                reportForm_->AddChild(buttons);
+                middle->AddChild(reportForm_);
+            }
+        }
 
         // What this machine downloads: the plan, in one line.
         if (const std::optional<InstallPlan> plan = PlanFor(l)) {
@@ -1636,11 +1789,11 @@ void StoreWindow::RebuildDetails() {
         auto facts2 = Theme::Surface("usX.release.facts", 10.0f, Theme::kSurfaceSoft);
         facts2->SetElementSize(CSSLayout::Dimension::Px(Theme::kInfoWidth), CSSLayout::Dimension::Auto());
         if (release) {
-            facts2->AddChild(FactLine("usX.f.version", "Version", release->version));
-            if (!release->date.empty()) facts2->AddChild(FactLine("usX.f.date", "Released", PrettyDate(release->date)));
+            facts2->AddChild(FactLine("usX.f.version", Tr("Version"), release->version));
+            if (!release->date.empty()) facts2->AddChild(FactLine("usX.f.date", Tr("Released"), PrettyDate(release->date)));
             facts2->AddChild(FactLine("usX.f.channel", Tr("Channel"), release->channel == "beta" ? Tr("Beta") : Tr("Stable")));
         }
-        if (!category.empty()) facts2->AddChild(FactLine("usX.f.category", "Category", category));
+        if (!category.empty()) facts2->AddChild(FactLine("usX.f.category", Tr("Category"), CategoryName(category)));
         if (release) {
             std::string runs;
             std::set<std::string> seen;
@@ -1659,7 +1812,7 @@ void StoreWindow::RebuildDetails() {
 
     // Screenshots, side by side, scrolled horizontally.
     if (!app->screenshots.empty()) {
-        auto section = Theme::Section("usX.shots", "Screenshots");
+        auto section = Theme::Section("usX.shots", Tr("Screenshots"));
         auto strip = Theme::Pin(CreateScrollableContainer("usX.shots.strip", 0, 0, 0, 0, false, true));
         strip->layout.SetFlexRow().SetFlexGap(Theme::kGap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         strip->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(292));
@@ -1714,7 +1867,7 @@ void StoreWindow::RebuildDetails() {
                     if (!r->date.empty()) line += " · " + PrettyDate(r->date);
                     if (r->channel == "beta") line += " · " + Tr("beta");
                     const std::string rnotes = r->notes.Text(lang_);
-                    if (!rnotes.empty()) line += " - " + (rnotes.size() > 120 ? rnotes.substr(0, 118) + "…" : rnotes);
+                    if (!rnotes.empty()) line += " - " + Shorten(rnotes, 118);
                     history->AddChild(Theme::Text("usX.history." + std::to_string(n++), line, 13.0f, FontWeight::Normal, Theme::kTextBody));
                 }
                 if (earlier.size() > kVersionHistoryCount) history->AddChild(Theme::Caption("usX.history.more", TrN("and {n} earlier release", "and {n} earlier releases", static_cast<long long>(earlier.size() - kVersionHistoryCount))));
@@ -1734,9 +1887,7 @@ void StoreWindow::RebuildDetails() {
                 texts->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
                 texts->AddChild(Theme::Text("usX.step" + std::to_string(n) + ".name",
                     (step.component->name.empty() ? step.component->id : step.component->name) + (step.release ? " " + step.release->version : ""), 14.0f, FontWeight::Bold));
-                std::string what = ComponentKindName(step.component->kind);
-                what[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(what[0])));
-                what = Tr(what);
+                std::string what = KindLabel(step.component->kind);
                 if (step.alreadyInstalled) what += " · " + Tr("already installed");
                 else {
                     what += " · " + Tr("will be downloaded");
@@ -1766,18 +1917,18 @@ void StoreWindow::RebuildDetails() {
         aside->SetElementSize(CSSLayout::Dimension::Px(Theme::kInfoWidth), CSSLayout::Dimension::Auto());
         {
             auto info = Theme::Surface("usX.info", 10.0f);
-            info->AddChild(Theme::Heading("usX.info.title", "Information"));
-            if (!app->publisher.empty()) info->AddChild(FactLine("usX.i.publisher", "Publisher", PublisherName(*app)));
-            if (!app->license.empty()) info->AddChild(FactLine("usX.i.licence", "Licence", app->license));
+            info->AddChild(Theme::Heading("usX.info.title", Tr("Information")));
+            if (!app->publisher.empty()) info->AddChild(FactLine("usX.i.publisher", Tr("Publisher"), PublisherName(*app)));
+            if (!app->license.empty()) info->AddChild(FactLine("usX.i.licence", Tr("Licence"), app->license));
             info->AddChild(FactLine("usX.i.price", Tr("Price"), app->pricing.model == PricingModel::Free ? Tr("Free") : TrF("{0}, one-time", PriceText(*app))));
             if (app->pricing.model != PricingModel::Free && app->pricing.trialDays > 0)
-                info->AddChild(FactLine("usX.i.trial", Tr("Trial"), TrF("{0} days, full app", app->pricing.trialDays)));
+                info->AddChild(FactLine("usX.i.trial", Tr("Trial"), TrN("{n} day, full app", "{n} days, full app", app->pricing.trialDays)));
             if (app->pricing.model != PricingModel::Free) {
                 const std::string updates = app->updates.period == UpdatePeriod::Until ? TrF("Free until {0}", PrettyDate(app->updates.until))
                                           : app->updates.period == UpdatePeriod::Never ? Tr("The bought version only") : Tr("Free, always");
-                info->AddChild(FactLine("usX.i.updates", "Updates", updates));
+                info->AddChild(FactLine("usX.i.updates", Tr("Updates"), updates));
             }
-            if (const std::string languages = LanguagesOf(*app); !languages.empty()) info->AddChild(FactLine("usX.i.languages", "Languages", languages));
+            if (const std::string languages = LanguagesOf(*app); !languages.empty()) info->AddChild(FactLine("usX.i.languages", Tr("Languages"), languages));
             if (!app->ageRating.empty()) info->AddChild(FactLine("usX.i.age", Tr("Age rating"), TrF("PEGI {0}", app->ageRating)));
             auto links = Theme::Column("usX.links", 2.0f);
             auto link = [&](const char* id, const std::string& text, const std::string& url) {
@@ -1791,8 +1942,8 @@ void StoreWindow::RebuildDetails() {
                 b->onClick = [url]() { OpenURL(url); };
                 links->AddChild(b);
             };
-            link("usX.home", "Homepage", app->homepage);
-            link("usX.support", "Support", app->supportUrl);
+            link("usX.home", Tr("Homepage"), app->homepage);
+            link("usX.support", Tr("Support"), app->supportUrl);
             if (app->openSource) link("usX.source", Tr("Source code"), app->sourceUrl);
             link("usX.privacy", Tr("Privacy policy"), app->privacyUrl);
             if (!links->GetChildren().empty()) info->AddChild(links);
@@ -1980,6 +2131,30 @@ void StoreWindow::RequestPicture(const std::string& url, const std::weak_ptr<Ult
         });
     }
     pictureWake_.notify_one();
+}
+
+void StoreWindow::SendReportNow(const std::string& appId) {
+    if (!catalog_ || catalog_->marketUrl.empty() || !reportText_ || !reportKind_) return;
+    const std::string text = reportText_->GetText();
+    if (text.empty()) { SetStatus(Tr("Say what is wrong before sending the report"), true); return; }
+    const int at = reportKind_->GetSelectedIndex();
+    const std::string kind = at >= 0 ? reportKind_->GetItem(at)->value : std::string("other");
+    const std::string reporter = Bought(appId) ? Bought(appId)->licenceId : std::string();
+    const std::string marketUrl = catalog_->marketUrl;
+    SetStatus(Tr("Sending the report"));
+    std::weak_ptr<int> token = alive_;
+    std::thread([this, token, marketUrl, appId, kind, text, reporter]() {
+        const auto sent = SendReport(marketUrl, "app", appId, kind, text, reporter, UltraNetHttpCall());
+        app_.PostToUIThread([this, token, sent, appId, kind]() {
+            if (!token.lock()) return;
+            if (!sent) { SetStatus(sent.error.message, true); return; }
+            settings_.RememberReport({sent.Value().id, sent.Value().secret, appId, kind, Today(), "open", ""});
+            settings_.Save();
+            reportOpen_ = false;
+            SetStatus(Tr("Report sent. The outcome shows on this page once the operator has answered."));
+            if (detailsAppId_ == appId) RebuildDetails();
+        });
+    }).detach();
 }
 
 void StoreWindow::PictureReady(const std::string& url, const std::string& path) {

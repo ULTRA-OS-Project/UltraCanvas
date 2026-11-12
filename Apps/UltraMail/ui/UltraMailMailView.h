@@ -159,6 +159,12 @@ public:
     // Settings > Reading > Attachments: the reading pane's attachments in a
     // column at the right of the message (true) or a row under it.
     void SetAttachmentsRight(bool right) { preview_.SetAttachmentsRight(right); }
+    // Settings > Display > Email warnings: the kinds of warning the reading
+    // pane's strip shows; the message on screen is shown again when they change.
+    void SetWarningStrip(const WarningStripOptions& options) {
+        preview_.SetWarningStrip(options);
+        RecheckShownMessage();
+    }
     // Settings > Display > Links: a link's address as a tooltip over the link
     // (false: only reported through onLinkHovered, for the status line). The
     // message on screen is shown again.

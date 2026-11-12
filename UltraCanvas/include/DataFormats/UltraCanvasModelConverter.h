@@ -9,8 +9,9 @@
 // directory (UltraCanvas/Plugins/Models/<FORMAT>/); only the interface and the
 // document are core.
 //
+// Version: 1.1.0 - DigitsFor, so the text writers stop each spelling 17/9/6 themselves
 // Version: 1.0.0
-// Last Modified: 2026-09-10
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,6 +22,7 @@
 
 #include <functional>
 #include <istream>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -112,6 +114,23 @@ enum class NumericPrecision {
     // six significant digits.
     Full
 };
+
+// The digit count the setting above means for one number, to hand to
+// UltraCanvas::ScopedPrecision (UltraCanvasTextUtils.h). `forDouble` picks the
+// type's own round-trip width: positions are double in the document, normals
+// and texture coordinates are float, so a writer switches between the two as
+// it goes and the digits follow the data rather than the file.
+//
+// Here rather than in each writer because four of them spelled 17, 9 and 6 out
+// themselves, in four private guards that drifted apart. A format with its own
+// policy still states it at the call site — STEP writes 15 digits even in its
+// compact mode, because the reason to write STEP at all is that the numbers
+// are exact.
+inline int DigitsFor(NumericPrecision precision, bool forDouble) {
+    if (precision != NumericPrecision::Full) return 6;   // the stream's own default
+    return forDouble ? std::numeric_limits<double>::max_digits10
+                     : std::numeric_limits<float>::max_digits10;
+}
 
 struct ConversionOptions {
     // --- geometry ---

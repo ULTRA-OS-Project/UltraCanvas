@@ -10,13 +10,16 @@
 // whether I see when they are), Networks > Accounts (each network's state,
 // my ChatCube ID to copy, signing out of Matrix and Telegram), Networks >
 // Local network (whether the people found on this network are listed in the
-// sidebar), Extras > Data folder (where ChatCube keeps its identity, its
+// sidebar), Networks > Relay (the relay server ChatCube Direct signs in
+// through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.4.0 - Networks > Relay: the relay server, no longer asked on the sign-in page
+// Version: 0.3.0 - Appearance > Look: System beside Light and Dark
 // Version: 0.2.0 - Networks > Proxy: the proxy Matrix and the relay are
 //                  reached through, shared by every ULTRA OS application
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettingsWindow.h"
@@ -33,10 +36,12 @@
 #include "UltraCanvasProxySettingsDialog.h"   // the shared Proxy page
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSwitch.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
+#include <cctype>
 #include <functional>
 #include <map>
 #include <utility>
@@ -77,6 +82,7 @@ constexpr const char* kPageNetworks    = "networks";
 constexpr const char* kPageAccounts    = "networks/accounts";
 constexpr const char* kPageLocal       = "networks/local";
 constexpr const char* kPageProxy       = "networks/proxy";
+constexpr const char* kPageRelay       = "networks/relay";
 constexpr const char* kPageExtras      = "extras";
 constexpr const char* kPageDataFolder  = "extras/data";
 constexpr const char* kPageAbout       = "extras/about";
@@ -110,7 +116,7 @@ struct ChatCubeSettingsWindow::State {
     std::string                           shownPage;
 
     // Appearance > Look
-    std::shared_ptr<UltraCanvasRadio> lightRadio, darkRadio;
+    std::shared_ptr<UltraCanvasRadio> systemRadio, lightRadio, darkRadio;
     UltraCanvasRadioGroup             lookGroup;
     // Appearance > Time & date
     std::shared_ptr<UltraCanvasRadio> clock24Radio, clock12Radio;
@@ -126,6 +132,8 @@ struct ChatCubeSettingsWindow::State {
     std::shared_ptr<UltraCanvasContainer> accountsBox;
     // Networks > Local network
     std::shared_ptr<UltraCanvasSwitch> showNearbySwitch;
+    // Networks > Relay
+    std::shared_ptr<UltraCanvasTextInput> relayInput;
     // Extras > Data folder
     std::shared_ptr<UltraCanvasLabel>  dataStatus;
 };
@@ -296,29 +304,57 @@ std::shared_ptr<UltraCanvasSwitch> MakeSwitch(const std::string& id, const std::
     return sw;
 }
 
+// A one-line text field in ChatCube's look.
+std::shared_ptr<UltraCanvasTextInput> MakeTextField(const std::string& id, const std::string& placeholder,
+                                                    int width) {
+    auto t = std::make_shared<UltraCanvasTextInput>(id, 0, 0, width, 28);
+    t->SetPlaceholder(placeholder);
+    t->SetFontSize(kTextFontSize);
+    t->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    TextInputStyle st = t->GetStyle();
+    st.backgroundColor = L().panel;
+    st.borderColor = L().line;
+    st.focusBorderColor = L().accent;
+    st.textColor = L().ink;
+    st.placeholderColor = L().inkFaint;
+    st.caretColor = L().ink;
+    st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
+    st.borderRadius = 8;
+    st.paddingLeft = st.paddingRight = 10;
+    t->SetStyle(st);
+    return t;
+}
+
 // ===== APPEARANCE > LOOK =====
 
 std::shared_ptr<UltraCanvasContainer> BuildLookPage(State* d) {
     PageParts parts = MakePage("cc-set-page-look", "Look", "The colours of the ChatCube window:");
-    d->lightRadio = MakeChoice("cc-set-look-light", "Light - dark text on warm white", !d->settings->dark);
-    d->darkRadio = MakeChoice("cc-set-look-dark", "Dark - light text on a dark ground", d->settings->dark);
+    d->systemRadio = MakeChoice("cc-set-look-system", "System - the computer's look, light or dark",
+                                d->settings->look == "system");
+    d->lightRadio = MakeChoice("cc-set-look-light", "Light - dark text on warm white", d->settings->look == "light");
+    d->darkRadio = MakeChoice("cc-set-look-dark", "Dark - light text on a dark ground", d->settings->look == "dark");
+    d->lookGroup.AddRadioButton(d->systemRadio);
     d->lookGroup.AddRadioButton(d->lightRadio);
     d->lookGroup.AddRadioButton(d->darkRadio);
     d->lookGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
         if (!selected) return;
-        d->settings->dark = selected.get() == d->darkRadio.get();
+        d->settings->look = selected.get() == d->darkRadio.get() ? "dark"
+                          : selected.get() == d->lightRadio.get() ? "light" : "system";
         ApplyAndSave(d);
     };
+    parts.body->AddChild(d->systemRadio);
     parts.body->AddChild(d->lightRadio);
     parts.body->AddChild(d->darkRadio);
     d->resets[kPageLook] = [d]() {
-        d->settings->dark = false;
-        d->lookGroup.SelectButton(d->lightRadio);
+        d->settings->look = "system";
+        d->lookGroup.SelectButton(d->systemRadio);
     };
 
     AddNote(parts, "cc-set-look-note1",
             "The look is chosen when ChatCube starts, since every part of the window takes its colours as "
-            "it is built: a change here shows the next time ChatCube is started.");
+            "it is built: a change here, or of the computer's look under System, shows the next time "
+            "ChatCube is started. System is the computer's own light or dark mode, and the Look page of "
+            "UOS-Settings over it.");
     AddNote(parts, "cc-set-look-note2",
             "Started with --dark, ChatCube is dark whatever is chosen here.");
     return parts.page;
@@ -506,6 +542,38 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
     return parts.page;
 }
 
+// ===== NETWORKS > RELAY =====
+
+std::shared_ptr<UltraCanvasContainer> BuildRelayPage(State* d) {
+    PageParts parts = MakePage("cc-set-page-relay", "Relay",
+                               "The relay server ChatCube Direct signs in through:");
+    d->relayInput = MakeTextField("cc-set-relay", "e.g. https://relay.example.org", kTextWidth);
+    d->relayInput->SetText(d->settings->relayServer);
+    // Saved as it is typed; used from the next sign-in.
+    d->relayInput->onTextChanged = [d](const std::string& text) {
+        std::string url = text;
+        while (!url.empty() && std::isspace(static_cast<unsigned char>(url.front()))) url.erase(url.begin());
+        while (!url.empty() && std::isspace(static_cast<unsigned char>(url.back()))) url.pop_back();
+        if (url == d->settings->relayServer) return;
+        d->settings->relayServer = url;
+        ApplyAndSave(d);
+    };
+    parts.body->AddChild(d->relayInput);
+    d->resets[kPageRelay] = [d]() {
+        d->settings->relayServer = Settings::kDefaultRelay;
+        d->relayInput->SetText(d->settings->relayServer);
+    };
+
+    AddNote(parts, "cc-set-relay-note1",
+            std::string("The relay connects you with your contacts, keeps messages for the people who are "
+                        "offline and sends the links that bring an ID back. Messages are end-to-end encrypted: "
+                        "the relay cannot read them. ULTRA OS's own relay is ") + Settings::kDefaultRelay + ".");
+    AddNote(parts, "cc-set-relay-note2",
+            "A change is used from the next sign-in - the next start of ChatCube. Empty: the relay this "
+            "computer used last, or, when there was none, the local network only.");
+    return parts.page;
+}
+
 // ===== NETWORKS > LOCAL NETWORK =====
 
 std::shared_ptr<UltraCanvasContainer> BuildLocalNetworkPage(State* d) {
@@ -527,7 +595,7 @@ std::shared_ptr<UltraCanvasContainer> BuildLocalNetworkPage(State* d) {
             "without typing their ID.");
     AddNote(parts, "cc-set-local-note2",
             "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is "
-            "made (\"Also find people on this network\"); without a relay it always does. Off here, they "
+            "made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they "
             "are still found - only not listed.");
     return parts.page;
 }
@@ -617,8 +685,8 @@ std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
     AddNote(parts, "cc-set-start-note2",
             "Messages - the key that sends, and whether typing is shown, to the other side and to you.");
     AddNote(parts, "cc-set-start-note3",
-            "Networks - your ChatCube ID, the Matrix and Telegram accounts and signing out of them, and the "
-            "people on this network.");
+            "Networks - your ChatCube ID, the Matrix and Telegram accounts and signing out of them, the "
+            "people on this network, the proxy and the relay server.");
     AddNote(parts, "cc-set-start-note4",
             "Extras - the folder ChatCube keeps your identity, contacts and history in, and the version.");
     AddNote(parts, "cc-set-start-note5",
@@ -710,6 +778,7 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     AddTreeNode(d, kPageNetworks, kPageAccounts, "Accounts");
     AddTreeNode(d, kPageNetworks, kPageLocal, "Local network");
     AddTreeNode(d, kPageNetworks, kPageProxy, "Proxy");
+    AddTreeNode(d, kPageNetworks, kPageRelay, "Relay");
     AddTreeNode(d, "settings", kPageExtras, "Extras");
     AddTreeNode(d, kPageExtras, kPageDataFolder, "Data folder");
     AddTreeNode(d, kPageExtras, kPageAbout, "About");
@@ -730,6 +799,7 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     AddPage(d, kPageAccounts, BuildAccountsPage(d));
     AddPage(d, kPageLocal, BuildLocalNetworkPage(d));
     AddPage(d, kPageProxy, MakeProxySettingsPage("cc-set-proxy", d->window.get()));
+    AddPage(d, kPageRelay, BuildRelayPage(d));
     AddPage(d, kPageDataFolder, BuildDataFolderPage(d));
     AddPage(d, kPageAbout, BuildAboutPage(d));
     AddPage(d, kPageStart, BuildStartPage());

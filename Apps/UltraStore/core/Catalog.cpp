@@ -1,5 +1,8 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
+// Version: 0.6.1 - market_url
+// Version: 0.6.0 - categories from one fixed list: StoreCategories, CategoryId, CheckCategories; read case-insensitively
+// Version: 0.5.1 - the messages a person reads through Tr, as whole sentences
 // Version: 0.5.0 - payment_url, licence_key
 // Version: 0.4.0 - codes
 // Version: 0.3.0 - trusted_keys
@@ -8,12 +11,17 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Catalog.h"
 
+#include "UltraLocalisation/UltraLocalisation.h"
+
 #include "DataFormats/UltraCanvasJSON.h"
 
 #include <algorithm>
 #include <cctype>
 
 namespace UltraStore {
+
+using UltraCanvas::Tr;
+using UltraCanvas::TrF;
 
 using UltraCanvas::JSONValue;
 
@@ -96,18 +104,18 @@ JSONValue WriteStrings(const std::vector<std::string>& items) {
 
 // where: "apps[2].releases[0].packages[1]" for the error detail.
 Result<Package> ReadPackage(const JSONValue& v, const std::string& where, bool requireUrl) {
-    if (!v.IsObject()) return Result<Package>::Failure(ErrorCode::ParseError, "A package entry is not an object", where);
+    if (!v.IsObject()) return Result<Package>::Failure(ErrorCode::ParseError, Tr("A package entry is not an object"), where);
     Package p;
     p.target.os = ParseOS(v.Get("os").GetString());
     p.target.arch = ParseArch(v.Get("arch").GetString());
     if (p.target.os == OS::Unknown || p.target.arch == Arch::Unknown) {
-        return Result<Package>::Failure(ErrorCode::ParseError, "A package names no known os / arch",
+        return Result<Package>::Failure(ErrorCode::ParseError, Tr("A package names no known os / arch"),
                                         where + ": os=" + v.Get("os").GetString() + " arch=" + v.Get("arch").GetString());
     }
     p.target.variants = ReadStrings(v.Get("variant"));
     p.minOs = v.Get("min_os").GetString();
     if (!p.minOs.empty() && !IsVersionLike(p.minOs)) {
-        return Result<Package>::Failure(ErrorCode::ParseError, "A package's min_os is not a version", where + ": " + p.minOs);
+        return Result<Package>::Failure(ErrorCode::ParseError, Tr("A package's min_os is not a version"), where + ": " + p.minOs);
     }
     p.format = v.Get("format").GetString();
     p.url = v.Get("url").GetString();
@@ -116,25 +124,25 @@ Result<Package> ReadPackage(const JSONValue& v, const std::string& where, bool r
     p.entry = v.Get("entry").GetString();
     p.size = static_cast<uint64_t>(std::max<int64_t>(0, v.Get("size").GetInteger()));
     if (p.url.rfind("https://", 0) != 0 && p.url.rfind("http://", 0) != 0) {
-        if (requireUrl) return Result<Package>::Failure(ErrorCode::ParseError, "A package has no absolute http(s) url", where + ": " + p.url);
+        if (requireUrl) return Result<Package>::Failure(ErrorCode::ParseError, Tr("A package has no absolute http(s) url"), where + ": " + p.url);
     }
     if (!IsHex64(p.sha256)) {
-        return Result<Package>::Failure(ErrorCode::ParseError, "A package has no SHA-256 of 64 hex characters", where);
+        return Result<Package>::Failure(ErrorCode::ParseError, Tr("A package has no SHA-256 of 64 hex characters"), where);
     }
     if (p.format.empty()) {
-        return Result<Package>::Failure(ErrorCode::ParseError, "A package names no format", where);
+        return Result<Package>::Failure(ErrorCode::ParseError, Tr("A package names no format"), where);
     }
     return Result<Package>::Succeed(std::move(p));
 }
 
 Result<Release> ReadRelease(const JSONValue& v, const std::string& where, bool requireUrls) {
-    if (!v.IsObject()) return Result<Release>::Failure(ErrorCode::ParseError, "A release entry is not an object", where);
+    if (!v.IsObject()) return Result<Release>::Failure(ErrorCode::ParseError, Tr("A release entry is not an object"), where);
     Release r;
     r.version = v.Get("version").GetString();
-    if (r.version.empty()) return Result<Release>::Failure(ErrorCode::ParseError, "A release has no version", where);
+    if (r.version.empty()) return Result<Release>::Failure(ErrorCode::ParseError, Tr("A release has no version"), where);
     r.channel = v.Get("channel").GetString("stable");
     if (r.channel != "stable" && r.channel != "beta") {
-        return Result<Release>::Failure(ErrorCode::ParseError, "A release's channel is neither stable nor beta", where + ": " + r.channel);
+        return Result<Release>::Failure(ErrorCode::ParseError, Tr("A release's channel is neither stable nor beta"), where + ": " + r.channel);
     }
     r.date = v.Get("date").GetString();
     r.notes = ReadText(v.Get("notes"));
@@ -143,7 +151,7 @@ Result<Release> ReadRelease(const JSONValue& v, const std::string& where, bool r
         dep.id = d.Get("id").GetString();
         dep.version = d.Get("version").GetString();
         if (dep.id.empty() || dep.version.empty()) {
-            return Result<Release>::Failure(ErrorCode::ParseError, "A dependency has no id or no version", where);
+            return Result<Release>::Failure(ErrorCode::ParseError, Tr("A dependency has no id or no version"), where);
         }
         r.depends.push_back(std::move(dep));
     }
@@ -157,11 +165,11 @@ Result<Release> ReadRelease(const JSONValue& v, const std::string& where, bool r
 }
 
 Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, const std::string& where, bool requireUrls) {
-    if (!v.IsObject()) return Result<Component>::Failure(ErrorCode::ParseError, "An entry is not an object", where);
+    if (!v.IsObject()) return Result<Component>::Failure(ErrorCode::ParseError, Tr("An entry is not an object"), where);
     Component c;
     c.id = v.Get("id").GetString();
     if (!IsReverseDns(c.id)) {
-        return Result<Component>::Failure(ErrorCode::ParseError, "An entry has no reverse-DNS id", where + ": \"" + c.id + "\"");
+        return Result<Component>::Failure(ErrorCode::ParseError, Tr("An entry has no reverse-DNS id"), where + ": \"" + c.id + "\"");
     }
     c.kind = v.Contains("kind") ? ParseComponentKind(v.Get("kind").GetString()) : defaultKind;
     c.publisher = v.Get("publisher").GetString();
@@ -173,44 +181,47 @@ Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, c
     c.description = ReadText(v.Get("description"));
     c.sourceLanguage = v.Get("source_language").GetString();
     c.machineTranslated = ReadStrings(v.Get("machine_translated"));
-    c.categories = ReadStrings(v.Get("categories"));
+    for (const std::string& written : ReadStrings(v.Get("categories"))) {
+        const std::string id = CategoryId(written);
+        if (!id.empty() && std::find(c.categories.begin(), c.categories.end(), id) == c.categories.end()) c.categories.push_back(id);
+    }
     c.screenshots = ReadStrings(v.Get("screenshots"));
     c.tags = ReadStrings(v.Get("tags"));
     if (v.Contains("pricing")) {
         const JSONValue& pr = v.Get("pricing");
         const std::string model = pr.Get("model").GetString("free");
         if (model != "free" && model != "one-time" && model != "monthly" && model != "yearly") {
-            return Result<Component>::Failure(ErrorCode::ParseError, "An entry's pricing model is unknown", where + ": " + model);
+            return Result<Component>::Failure(ErrorCode::ParseError, Tr("An entry's pricing model is unknown"), where + ": " + model);
         }
         c.pricing.model = ParsePricingModel(model);
         c.pricing.price = pr.Get("price").GetString();
         c.pricing.currency = pr.Get("currency").GetString();
         c.pricing.trialDays = pr.Get("trial_days").GetInteger(0);
         if (c.pricing.model != PricingModel::Free && (c.pricing.price.empty() || c.pricing.currency.size() != 3)) {
-            return Result<Component>::Failure(ErrorCode::ParseError, "A paid entry has no price or no 3-letter currency", where);
+            return Result<Component>::Failure(ErrorCode::ParseError, Tr("A paid entry has no price or no 3-letter currency"), where);
         }
     }
     if (v.Contains("updates")) {
         const JSONValue& up = v.Get("updates");
         const std::string period = up.Get("period").GetString("always");
         if (period != "always" && period != "never" && period != "until") {
-            return Result<Component>::Failure(ErrorCode::ParseError, "An entry's update period is unknown", where + ": " + period);
+            return Result<Component>::Failure(ErrorCode::ParseError, Tr("An entry's update period is unknown"), where + ": " + period);
         }
         c.updates.period = ParseUpdatePeriod(period);
         c.updates.until = up.Get("until").GetString();
         if (c.updates.period == UpdatePeriod::Until && !IsIsoDate(c.updates.until)) {
-            return Result<Component>::Failure(ErrorCode::ParseError, "An entry's updates run until no date (YYYY-MM-DD)", where);
+            return Result<Component>::Failure(ErrorCode::ParseError, Tr("An entry's updates run until no date (YYYY-MM-DD)"), where);
         }
     }
     {
         const std::string vis = v.Get("visibility").GetString("listed");
         if (vis != "listed" && vis != "unlisted" && vis != "hidden") {
-            return Result<Component>::Failure(ErrorCode::ParseError, "An entry's visibility is unknown", where + ": " + vis);
+            return Result<Component>::Failure(ErrorCode::ParseError, Tr("An entry's visibility is unknown"), where + ": " + vis);
         }
         c.visibility = ParseVisibility(vis);
         const std::string life = v.Get("lifecycle").GetString("active");
         if (life != "active" && life != "deprecated" && life != "withdrawn") {
-            return Result<Component>::Failure(ErrorCode::ParseError, "An entry's lifecycle is unknown", where + ": " + life);
+            return Result<Component>::Failure(ErrorCode::ParseError, Tr("An entry's lifecycle is unknown"), where + ": " + life);
         }
         c.lifecycle = ParseLifecycle(life);
     }
@@ -389,6 +400,38 @@ std::string LifecycleName(Lifecycle lifecycle) {
     return "active";
 }
 
+const std::vector<std::string>& StoreCategories() {
+    static const std::vector<std::string> kCategories = {
+        "audio", "video", "graphics", "office", "communication", "internet", "development",
+        "education", "science", "finance", "security", "games", "system", "utilities",
+    };
+    return kCategories;
+}
+
+std::string CategoryId(std::string_view text) {
+    size_t begin = 0, end = text.size();
+    while (begin < end && std::isspace(static_cast<unsigned char>(text[begin]))) ++begin;
+    while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) --end;
+    std::string id(text.substr(begin, end - begin));
+    for (char& ch : id) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return id;
+}
+
+bool IsStoreCategory(std::string_view id) {
+    const auto& all = StoreCategories();
+    return std::find(all.begin(), all.end(), id) != all.end();
+}
+
+Result<void> CheckCategories(const std::vector<std::string>& categories) {
+    for (const std::string& c : categories) {
+        if (IsStoreCategory(c)) continue;
+        std::string list;
+        for (const std::string& id : StoreCategories()) list += (list.empty() ? "" : " ") + id;
+        return Result<void>::Failure(ErrorCode::InvalidArgument, TrF("\"{0}\" is not one of the store's categories", c), list);
+    }
+    return Result<void>::Succeed();
+}
+
 std::string ComponentKindName(ComponentKind kind) {
     switch (kind) {
         case ComponentKind::Runtime: return "runtime";
@@ -429,7 +472,7 @@ Result<Component> ParseComponent(const std::string& jsonText, ComponentKind defa
     UltraCanvas::JSONParseResult parse;
     const JSONValue root = UltraCanvas::JSON::Parse(jsonText, &parse);
     if (!parse.success || !root.IsObject()) {
-        return Result<Component>::Failure(ErrorCode::ParseError, "The component is not valid JSON",
+        return Result<Component>::Failure(ErrorCode::ParseError, Tr("The component is not valid JSON"),
                                           parse.errorMessage + " at line " + std::to_string(parse.errorLine));
     }
     return ReadComponent(root, defaultKind, "component", requirePackageUrls);
@@ -485,26 +528,26 @@ Result<PromoCode> ReadCode(const JSONValue& v, const std::string& where) {
     using R = Result<PromoCode>;
     PromoCode c;
     c.code = v.Get("code").GetString();
-    if (NormalizeCode(c.code).empty()) return R::Failure(ErrorCode::ParseError, "A code has no text", where);
+    if (NormalizeCode(c.code).empty()) return R::Failure(ErrorCode::ParseError, Tr("A code has no text"), where);
     for (char ch : c.code) {
         if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != '_') {
-            return R::Failure(ErrorCode::ParseError, "A code is letters, digits, '-' and '_'", where + ": " + c.code);
+            return R::Failure(ErrorCode::ParseError, Tr("A code is letters, digits, '-' and '_'"), where + ": " + c.code);
         }
     }
     c.kind = ParseCodeKind(v.Get("kind").GetString("discount"));
     c.discountPercent = static_cast<int>(v.Get("discount_percent").GetInteger(0));
-    if (c.discountPercent < 0 || c.discountPercent > 100) return R::Failure(ErrorCode::ParseError, "A discount is 0 to 100 percent", where + ": " + c.code);
+    if (c.discountPercent < 0 || c.discountPercent > 100) return R::Failure(ErrorCode::ParseError, Tr("A discount is 0 to 100 percent"), where + ": " + c.code);
     c.discountAmount = v.Get("discount_amount").GetString();
-    if (!c.discountAmount.empty() && !IsDecimal(c.discountAmount)) return R::Failure(ErrorCode::ParseError, "A discount amount is a decimal", where + ": " + c.discountAmount);
+    if (!c.discountAmount.empty() && !IsDecimal(c.discountAmount)) return R::Failure(ErrorCode::ParseError, Tr("A discount amount is a decimal"), where + ": " + c.discountAmount);
     c.currency = v.Get("currency").GetString();
     for (const JSONValue& a : v.Get("apps").GetElements()) if (!a.GetString().empty()) c.apps.push_back(a.GetString());
     c.validFrom = v.Get("valid_from").GetString();
     c.validUntil = v.Get("valid_until").GetString();
     if ((!c.validFrom.empty() && !IsIsoDate(c.validFrom)) || (!c.validUntil.empty() && !IsIsoDate(c.validUntil))) {
-        return R::Failure(ErrorCode::ParseError, "A code's validity is YYYY-MM-DD", where + ": " + c.code);
+        return R::Failure(ErrorCode::ParseError, Tr("A code's validity is YYYY-MM-DD"), where + ": " + c.code);
     }
     c.affiliate = v.Get("affiliate").GetString();
-    if (c.kind == CodeKind::Affiliate && c.affiliate.empty()) return R::Failure(ErrorCode::ParseError, "An affiliate code names its affiliate", where + ": " + c.code);
+    if (c.kind == CodeKind::Affiliate && c.affiliate.empty()) return R::Failure(ErrorCode::ParseError, Tr("An affiliate code names its affiliate"), where + ": " + c.code);
     return R::Succeed(std::move(c));
 }
 
@@ -532,29 +575,29 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
     UltraCanvas::JSONParseResult parse;
     const JSONValue root = UltraCanvas::JSON::Parse(jsonText, &parse);
     if (!parse.success || !root.IsObject()) {
-        return Result<Catalog>::Failure(ErrorCode::ParseError, "The catalog is not valid JSON",
+        return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("The catalog is not valid JSON"),
                                         parse.errorMessage + " at line " + std::to_string(parse.errorLine));
     }
     Catalog catalog;
     catalog.schema = static_cast<int>(root.Get("schema").GetInteger(0));
     if (catalog.schema < 1) {
-        return Result<Catalog>::Failure(ErrorCode::ParseError, "The catalog names no schema version");
+        return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("The catalog names no schema version"));
     }
     if (catalog.schema > kSupportedSchema) {
         return Result<Catalog>::Failure(ErrorCode::SchemaTooNew,
-                                        "This catalog needs a newer UltraStore",
+                                        Tr("This catalog needs a newer UltraStore"),
                                         "schema " + std::to_string(catalog.schema) + ", this build reads " +
                                             std::to_string(kSupportedSchema));
     }
     const int64_t sequence = root.Get("sequence").GetInteger(-1);
-    if (sequence < 0) return Result<Catalog>::Failure(ErrorCode::ParseError, "The catalog has no sequence number");
+    if (sequence < 0) return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("The catalog has no sequence number"));
     catalog.sequence = static_cast<uint64_t>(sequence);
     catalog.generated = root.Get("generated").GetString();
     for (const JSONValue& k : root.Get("trusted_keys").GetElements()) {
         std::string hex = k.GetString();
         std::vector<uint8_t> bytes;
         if (!FromHex(hex, bytes) || bytes.size() != 32) {
-            return Result<Catalog>::Failure(ErrorCode::ParseError, "A trusted key is not a 32-byte hex public key", hex);
+            return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("A trusted key is not a 32-byte hex public key"), hex);
         }
         hex = ToHex(bytes);   // lower case, as the store compares them
         if (std::find(catalog.trustedKeys.begin(), catalog.trustedKeys.end(), hex) == catalog.trustedKeys.end()) {
@@ -563,19 +606,23 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
     }
     catalog.paymentUrl = root.Get("payment_url").GetString();
     if (!catalog.paymentUrl.empty() && catalog.paymentUrl.rfind("https://", 0) != 0 && catalog.paymentUrl.rfind("http://", 0) != 0) {
-        return Result<Catalog>::Failure(ErrorCode::ParseError, "The payment service is an http(s) URL", catalog.paymentUrl);
+        return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("The payment service is an http(s) URL"), catalog.paymentUrl);
+    }
+    catalog.marketUrl = root.Get("market_url").GetString();
+    if (!catalog.marketUrl.empty() && catalog.marketUrl.rfind("https://", 0) != 0 && catalog.marketUrl.rfind("http://", 0) != 0) {
+        return Result<Catalog>::Failure(ErrorCode::ParseError, "The marketplace service is an http(s) URL", catalog.marketUrl);
     }
     catalog.licenceKey = root.Get("licence_key").GetString();
     if (!catalog.licenceKey.empty()) {
         std::vector<uint8_t> bytes;
-        if (!FromHex(catalog.licenceKey, bytes) || bytes.size() != 32) return Result<Catalog>::Failure(ErrorCode::ParseError, "The licence key is not a 32-byte hex public key", catalog.licenceKey);
+        if (!FromHex(catalog.licenceKey, bytes) || bytes.size() != 32) return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("The licence key is not a 32-byte hex public key"), catalog.licenceKey);
         catalog.licenceKey = ToHex(bytes);
     }
     const JSONValue& codes = root.Get("codes");
     for (size_t i = 0; i < codes.GetSize(); ++i) {
         auto c = ReadCode(codes.At(i), "codes[" + std::to_string(i) + "]");
         if (!c) return Result<Catalog>::Failure(c.error.code, c.error.message, c.error.detail);
-        if (catalog.FindCode(c.Value().code)) return Result<Catalog>::Failure(ErrorCode::ParseError, "Two codes read the same", c.Value().code);
+        if (catalog.FindCode(c.Value().code)) return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("Two codes read the same"), c.Value().code);
         catalog.codes.push_back(std::move(c.Value()));
     }
     for (const JSONValue& p : root.Get("publishers").GetElements()) {
@@ -590,7 +637,7 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
         auto c = ReadComponent(apps.At(i), ComponentKind::App, "apps[" + std::to_string(i) + "]", true);
         if (!c) return Result<Catalog>::Failure(c.error.code, c.error.message, c.error.detail);
         if (c.Value().kind != ComponentKind::App) {
-            return Result<Catalog>::Failure(ErrorCode::ParseError, "A component is listed among the apps",
+            return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("A component is listed among the apps"),
                                             "apps[" + std::to_string(i) + "]: " + c.Value().id);
         }
         catalog.apps.push_back(std::move(c.Value()));
@@ -600,7 +647,7 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
         auto c = ReadComponent(components.At(i), ComponentKind::Runtime, "components[" + std::to_string(i) + "]", true);
         if (!c) return Result<Catalog>::Failure(c.error.code, c.error.message, c.error.detail);
         if (c.Value().kind == ComponentKind::App) {
-            return Result<Catalog>::Failure(ErrorCode::ParseError, "An app is listed among the components",
+            return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("An app is listed among the components"),
                                             "components[" + std::to_string(i) + "]: " + c.Value().id);
         }
         catalog.components.push_back(std::move(c.Value()));
@@ -612,7 +659,7 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
     std::sort(ids.begin(), ids.end());
     const auto dup = std::adjacent_find(ids.begin(), ids.end());
     if (dup != ids.end()) {
-        return Result<Catalog>::Failure(ErrorCode::ParseError, "Two entries share an id", *dup);
+        return Result<Catalog>::Failure(ErrorCode::ParseError, Tr("Two entries share an id"), *dup);
     }
     return Result<Catalog>::Succeed(std::move(catalog));
 }
@@ -640,6 +687,7 @@ std::string SerializeCatalog(const Catalog& catalog) {
     root.Set("publishers", std::move(publishers));
     if (!catalog.paymentUrl.empty()) root.Set("payment_url", catalog.paymentUrl);
     if (!catalog.licenceKey.empty()) root.Set("licence_key", catalog.licenceKey);
+    if (!catalog.marketUrl.empty()) root.Set("market_url", catalog.marketUrl);
     if (!catalog.codes.empty()) {
         JSONValue codes = JSONValue::MakeArray();
         for (const PromoCode& c : catalog.codes) codes.Append(WriteCode(c));

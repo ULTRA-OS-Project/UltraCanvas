@@ -20,9 +20,22 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.13.0 - the media elements and the viewers read the theme: the audio and video players and recorders, the video tile, the slideshow, the font viewer and the curve editor (T4, sixth and last part)
-**Last Modified:** 2026-11-10
+**Version:** 1.15.0 - TakeHostFonts for an Own provider; the four Own applications on the policy (T6)
+**Last Modified:** 2026-11-11
 **Author:** UltraCanvas Framework
+
+## Contents
+
+- [Status](#status)
+- [The roles](#the-roles)
+  - [Readability](#readability)
+- [Using it](#using-it)
+  - [Following the theme](#following-the-theme)
+- [Fonts and text roles](#fonts-and-text-roles)
+- [The theme from the host](#the-theme-from-the-host)
+- [The policy](#the-policy)
+- [The setting](#the-setting)
+- [Related](#related)
 
 ## Status
 
@@ -339,16 +352,71 @@ on every change when it gave one. An application that calls `SetCurrent`
 itself under another policy has taken over: the policy does not put its
 theme back over it.
 
+An `Own` provider builds the application's theme and takes the host's
+fonts onto it with `TakeHostFonts` - the interface and monospace fonts
+where the host names one, the text scale where it is positive, as
+`FromHost` does - so the application's colours come with the desktop's
+fonts. UltraVideo, UltraPress, ChatCube and UltraDBAdmin do this: their
+`ThemeFor` / `AppTheme` is the provider, the look picked from their own
+setting (`system`, which follows the desktop, `light` or `dark`) where
+they have one.
+
 ```cpp
 app->SetThemePolicy(ThemePolicy::Own);
 app->SetThemeProvider([](const HostAppearance& host) {
     UltraCanvasTheme theme = host.dark ? UltraCanvasTheme::Dark() : UltraCanvasTheme::Light();
     theme.name = "My app";
-    theme.fonts.ui = host.uiFont;
+    theme.TakeHostFonts(host);
     return theme;
 });
 ThemePolicy policy = app->GetThemePolicy();
 bool fromPolicy = app->ThemeIsFromPolicy();                      // the current theme is the policy's
+```
+
+## The setting
+
+A person's choices over the desktop, for every UltraCanvas application at
+once: `Appearance.conf` in the UltraCanvas settings folder
+(`UltraCanvasSettingsFolder.h`), the `Emoji.conf` pattern - every line
+optional, a missing or `system` line meaning "what the host says":
+
+```
+look=system          system | light | dark
+accent=system        system | #rrggbb
+font=system          system | <family>
+fontsize=system      system | <points>
+scale=1.0            over the host's text scale, 0.5 to 4
+contrast=system      system | high | normal
+```
+
+`AppearanceSettings` (`UltraCanvasAppearanceSettings.h`) is the file:
+`Parse` and `Serialize` are the text and back, `ApplyTo` puts the choices
+over a `HostAppearance` (the source gains `+settings`), `Load` and `Save`
+are the file, written beside and renamed over. The application applies it
+on every read of the host, before the `ULTRACANVAS_HOST_APPEARANCE`
+override, which still wins for one run; under `FollowHost` the theme is
+then built from the result, so `look=dark` on a light desktop is a dark
+theme in the desktop's font, and `scale=1.25` makes every text a quarter
+larger than the desktop's. UOS-Settings > Appearance > Look writes it
+(`Docs/UOSSettings/README.md`); an application may write it too, with
+`Save`, when a choice of its own should be a choice for every application.
+
+A change reaches a running application without a restart: the application
+base owns one `UltraCanvasSettingsWatcher` (`UltraCanvasSettingsWatcher.h`)
+on the settings folder - one `UltraCanvasFolderWatcher` where the build has
+a native backend, a five-second poll of the files' modification times where
+it has none - and a change to `Appearance.conf` re-reads the host, so the
+policy, the elements that follow and the host appearance handlers all hear
+it as they hear a change of the desktop. `Watch(fileName, handler)` takes
+another file; the handlers run on the UI thread once per burst of changes.
+
+```cpp
+AppearanceSettings settings = AppearanceSettings::Load();      // the file, or the defaults
+settings.look = "dark";
+settings.scale = 1.25;
+settings.Save();                                                 // every application follows within a moment
+HostAppearance host = app->GetHostAppearance();                  // the host with the file applied
+bool fromSettings = host.source.find("+settings") != std::string::npos;
 ```
 
 ## Related

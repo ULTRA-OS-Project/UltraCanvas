@@ -32,6 +32,7 @@ add_library(UltraStoreAdminCore STATIC
     core/Uploader.cpp
     core/Affiliates.cpp
     core/PageFrame.cpp
+    core/Market.cpp
 )
 set_target_properties(UltraStoreAdminCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON

@@ -909,8 +909,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`SetThemePolicy`: FollowHost by default, Light, Dark, Own with
   `SetThemeProvider`) applies it in `Initialize` and on every host change,
   a window built with the default background taking the theme's ground.
-  Phases T1 to T3 of `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`;
-  see `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
+  `Appearance.conf` (`UltraCanvasAppearanceSettings.h`: `AppearanceSettings`
+  `Parse` / `Serialize` / `ApplyTo` / `Load` / `Save` - look, accent, font,
+  size, scale, contrast, each `system` when the host decides) is applied
+  over the host on every read, before the override, and
+  `UltraCanvasSettingsWatcher` (`UltraCanvasSettingsWatcher.h`, one folder
+  watcher on the settings folder owned by the application base, a poll where
+  the build has no backend) makes a change to it live; UOS-Settings >
+  Appearance > Look writes it, and the DemoApp page *ULTRA OS modules >
+  Theme* (`Apps/DemoApp/UltraCanvasThemeExamples.cpp`) shows the roles, the
+  policy and the host, the fonts by role and the file. `SettingsWatcherTest`
+  covers the watcher. Phases T1 to T5 of
+  `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md`; see
+  `Docs/UltraCanvas/UltraCanvasHostAppearance.md` and
   `Docs/UltraCanvas/UltraCanvasTheme.md`.
 
   Emoji come from a bundled font the emoji setting picks
@@ -2897,6 +2908,14 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_SetEventDispatcher`, `UltraIM_Subscribe`, `UltraIM_Unsubscribe`
 - `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
 - `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
+- `UltraIM_GetDeleteChoices` (what `UltraIM_DeleteMessage` can do to one
+  message now - for oneself, for everyone - by its messenger's own rules)
+- `UltraIM_SearchMessages` (words, or everything of one kind - pictures,
+  videos, files, links - in a provider's history, a page at a time),
+  `UltraIM_MessageMatchesSearch`, `UltraIM_ExtractLinks`, `UltraIM_FoldCase`
+  (the matcher, the links in a text and the case folding it uses),
+  `UltraIM_SearchByFetching` (for providers: a search answered by reading
+  history through `FetchMessages`)
 - `UltraIM_SendText`, `UltraIM_SendFile`, `UltraIM_SendImage`,
   `UltraIM_SendVideo`, `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`,
   `UltraIM_DeleteMessage`, `UltraIM_EditMessage`, `UltraIM_MarkRead`,
@@ -2973,7 +2992,7 @@ mandatory. Built when OpenSSL is found; otherwise every call answers
   `UltraRtc_AddIceCandidate`, `UltraRtc_GetConnectionState`
 - `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
 
-Also: `UltraRtc_IsAvailable`, `UltraRtc_GetLocalDescription`,
+Also: `UltraRtc_IsAvailable`, `UltraRtc_GetVersion`, `UltraRtc_GetLocalDescription`,
 `UltraRtc_GetRemoteDescription`, `UltraRtc_GetIceGatheringState`,
 `UltraRtc_GetSignalingState`, `UltraRtc_DataChannelSendText` /
 `UltraRtc_DataChannelSendBinary`, `UltraRtc_GetDataChannelLabel`,
@@ -2999,7 +3018,10 @@ sink); VP8 video tracks (libvpx through FFmpeg's libavcodec, our own RFC 7741
 payload handlers, key-frame recovery by PLI) with the camera through
 `UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
 `opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
-Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
+Tests in `Tests/UltraRTC`; `UltraRtcApiStatus` there probes every function
+and reports WORKING / IMPLEMENTED / NOT IMPLEMENTED / BROKEN for the build and
+the machine it runs on (`Docs/Modules/UltraRTC/ApiStatus.md`). See
+`Docs/Modules/UltraRTC/README.md`.
 
 ---
 

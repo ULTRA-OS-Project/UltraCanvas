@@ -19,6 +19,8 @@
 // Display > Links (a link's address in the status bar or in a tooltip) and
 // Display > Notifications (a notification on screen when new mail arrives),
 // Display > Treeview (the folder tree lists the current account or all),
+// Display > Email warnings (which kinds of warning the strip above a
+// message shows),
 // Handling > Email send notification (a sent message reported in a popup
 // window or in the status bar) and
 // Warnings > Spam/scam warnings (which kinds of warning the content scan gives)
@@ -29,6 +31,9 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.20.0 - Display > Email warnings: which kinds of warning the strip above
+//                   a message shows (phishing, scam, love scam, loan, crypto, other)
+// Version: 1.19.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation)
 // Version: 1.18.0 - Mail > Proxy: the proxy the mail servers are reached through,
 //                  shared by every ULTRA OS application (MakeProxySettingsPage)
 // Version: 1.17.0 - Handling > Email send notification: a popup window or the
@@ -58,12 +63,13 @@
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
 
 #include "UltraCanvasButton.h"
+#include "UltraCanvasLocalisationEditor.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasChip.h"   // UltraCanvasTagInput
 #include "UltraCanvasContainer.h"
@@ -75,6 +81,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cctype>
 #include <cmath>
@@ -129,6 +136,7 @@ namespace {
     constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageNotify      = "display/notifications";
     constexpr const char* kPageTreeview    = "display/treeview";
+    constexpr const char* kPageEmailWarnings = "display/email-warnings";
     constexpr const char* kPageHandling    = "handling";
     constexpr const char* kPageSendNotify  = "handling/send-notification";
     constexpr const char* kPageWarnings    = "warnings";
@@ -227,6 +235,10 @@ namespace {
         std::shared_ptr<UltraCanvasRadio> treeCurrentRadio;
         std::shared_ptr<UltraCanvasRadio> treeAllRadio;
         UltraCanvasRadioGroup             treeContentGroup;
+
+        // Display > Email warnings: one box per kind of warning strip
+        std::vector<std::pair<bool WarningStripOptions::*,
+                              std::shared_ptr<UltraCanvasCheckbox>>> stripBoxes;
 
         // Handling > Email send notification
         std::shared_ptr<UltraCanvasRadio> sendPopupRadio;
@@ -484,6 +496,8 @@ namespace {
                                             ? d->sendStatusRadio : d->sendPopupRadio);
         for (const auto& [option, box] : d->warningBoxes)
             if (box) box->SetChecked(p.scamWarnings.*option);
+        for (const auto& [option, box] : d->stripBoxes)
+            if (box) box->SetChecked(p.warningStrip.*option);
         if (d->trustedSendersInput)
             d->trustedSendersInput->SetTags(ListTags(p.senderLists.trusted));
         if (d->blockedSendersInput)
@@ -494,8 +508,8 @@ namespace {
 
     // ===== MAIL > NEW MAIL =====
     std::shared_ptr<UltraCanvasContainer> BuildNewMailPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-new-mail", "New mail",
-                "How often every account is checked for new mail:");
+        PageParts parts = MakePage("um-set-page-new-mail", Tr("New mail"),
+                Tr("How often every account is checked for new mail:"));
 
         auto dropdown = CreateDropdown("um-set-check-mail", 0, 0, 160, kControlHeight + 4);
         const auto& choices = Preferences::CheckMailChoices();
@@ -531,25 +545,25 @@ namespace {
         } };
 
         AddNote(parts, "um-set-new-mail-note1",
-                "Every account is checked in the background at this interval, and "
+                Tr("Every account is checked in the background at this interval, and "
                 "right after UltraMail starts and the computer wakes up. Update in "
                 "the toolbar checks the account on screen straight away, whatever "
-                "is set here.");
+                "is set here."));
         AddNote(parts, "um-set-new-mail-note2",
-                "A check that is still running when the next one is due is left "
-                "to finish - an account is never checked twice at once.");
+                Tr("A check that is still running when the next one is due is left "
+                "to finish - an account is never checked twice at once."));
         AddNote(parts, "um-set-new-mail-note3",
-                "A short interval signs in to the server more often. Some "
+                Tr("A short interval signs in to the server more often. Some "
                 "providers limit how often that may happen; if an account starts "
-                "to report sign-in errors, choose a longer interval.");
+                "to report sign-in errors, choose a longer interval."));
         return parts.page;
     }
 
     // ===== MAIL > CONNECTION =====
     std::shared_ptr<UltraCanvasContainer> BuildConnectionPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-connection", "Connection",
-                "After the computer was switched on, alerts about mail checks that "
-                "fail wait:");
+        PageParts parts = MakePage("um-set-page-connection", Tr("Connection"),
+                Tr("After the computer was switched on, alerts about mail checks that "
+                "fail wait:"));
 
         auto dropdown = CreateDropdown("um-set-switch-on-quiet", 0, 0, 160, kControlHeight + 4);
         const auto& choices = Preferences::SwitchOnQuietChoices();
@@ -584,32 +598,32 @@ namespace {
         } };
 
         AddNote(parts, "um-set-connection-note1",
-                "UltraMail remembers when it last reached a mail server. When it "
+                Tr("UltraMail remembers when it last reached a mail server. When it "
                 "starts, or the computer wakes up, and that was more than ten minutes "
                 "ago, the computer was most likely switched off - and right after it "
-                "is switched on, the network is often not up yet.");
+                "is switched on, the network is often not up yet."));
         AddNote(parts, "um-set-connection-note2",
-                "For the time chosen here, a mail check that fails in the background "
+                Tr("For the time chosen here, a mail check that fails in the background "
                 "says so on the status line and in the connection indicator only, not "
                 "in an alert. When the time is up, UltraMail checks those accounts "
-                "again and reports what still fails.");
+                "again and reports what still fails."));
         AddNote(parts, "um-set-connection-note3",
-                "Update in the toolbar always reports at once. A server that cannot "
+                Tr("Update in the toolbar always reports at once. A server that cannot "
                 "be reached at all is tried again every minute and reported after ten "
-                "minutes, whatever is set here.");
+                "minutes, whatever is set here."));
         return parts.page;
     }
 
     // ===== READING > LAYOUT =====
     std::shared_ptr<UltraCanvasContainer> BuildLayoutPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-layout", "Layout",
-                "Where a message opens when it is clicked in the list:");
+        PageParts parts = MakePage("um-set-page-layout", Tr("Layout"),
+                Tr("Where a message opens when it is clicked in the list:"));
 
         const bool beside = d->prefs->showReadingPane;
         d->paneBesideRadio = MakeChoice("um-set-pane-beside",
-                "Beside the list, in the preview pane", beside);
+                Tr("Beside the list, in the preview pane"), beside);
         d->paneInPlaceRadio = MakeChoice("um-set-pane-inplace",
-                "In place of the list, with \"Back to list\" to return", !beside);
+                Tr("In place of the list, with \"Back to list\" to return"), !beside);
         d->paneGroup.AddRadioButton(d->paneBesideRadio);
         d->paneGroup.AddRadioButton(d->paneInPlaceRadio);
         d->paneGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -624,8 +638,8 @@ namespace {
         AddBodyCaption(parts, "um-set-tree-width-caption", "Width of the folder list:");
         const bool fit = d->prefs->folderTreeWidthMode == FolderTreeWidthMode::FitToText;
         d->treeFitRadio = MakeChoice("um-set-tree-fit",
-                "Auto - 10 px wider than the longest folder or account name", fit);
-        d->treeFixedRadio = MakeChoice("um-set-tree-fixed", "Fixed width:", !fit, 110);
+                Tr("Auto - 10 px wider than the longest folder or account name"), fit);
+        d->treeFixedRadio = MakeChoice("um-set-tree-fixed", Tr("Fixed width:"), !fit, 110);
         d->treeWidthGroup.AddRadioButton(d->treeFitRadio);
         d->treeWidthGroup.AddRadioButton(d->treeFixedRadio);
         d->treeWidthGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -673,29 +687,29 @@ namespace {
         } };
 
         AddNote(parts, "um-set-layout-note1",
-                "Beside the list, the list stays in view while you read, and the "
-                "arrow keys move from message to message.");
+                Tr("Beside the list, the list stays in view while you read, and the "
+                "arrow keys move from message to message."));
         AddNote(parts, "um-set-layout-note2",
-                "In place of the list, a message gets the whole width of the "
+                Tr("In place of the list, a message gets the whole width of the "
                 "window - better on a small screen - and the list comes back with "
-                "\"Back to list\".");
+                "\"Back to list\"."));
         AddNote(parts, "um-set-layout-note3",
-                "Auto fits the folder list to the account and folder names it "
+                Tr("Auto fits the folder list to the account and folder names it "
                 "shows, and fits it again as folders arrive. Dragging the divider "
-                "still resizes the list for the moment.");
+                "still resizes the list for the moment."));
         return parts.page;
     }
 
     // ===== READING > ATTACHMENTS =====
     std::shared_ptr<UltraCanvasContainer> BuildAttachmentsPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-attachments", "Attachments",
-                "Where the attachments of a message are shown:");
+        PageParts parts = MakePage("um-set-page-attachments", Tr("Attachments"),
+                Tr("Where the attachments of a message are shown:"));
 
         const bool right = d->prefs->AttachmentsRight();
         d->attachBottomRadio = MakeChoice("um-set-attach-bottom",
-                "At the bottom, in a row under the message", !right);
+                Tr("At the bottom, in a row under the message"), !right);
         d->attachRightRadio = MakeChoice("um-set-attach-right",
-                "On the right side, in a column beside the message", right);
+                Tr("On the right side, in a column beside the message"), right);
         d->attachGroup.AddRadioButton(d->attachBottomRadio);
         d->attachGroup.AddRadioButton(d->attachRightRadio);
         d->attachGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -715,25 +729,25 @@ namespace {
         } };
 
         AddNote(parts, "um-set-attach-note1",
-                "This is for reading a message and for writing one: the compose "
-                "window puts the files you attach in the same place.");
+                Tr("This is for reading a message and for writing one: the compose "
+                "window puts the files you attach in the same place."));
         AddNote(parts, "um-set-attach-note2",
-                "On the right side, the message keeps its whole height, and a "
+                Tr("On the right side, the message keeps its whole height, and a "
                 "message with many attachments lists them all one under the "
-                "other; at the bottom, the message keeps its whole width.");
+                "other; at the bottom, the message keeps its whole width."));
         return parts.page;
     }
 
     // ===== READING > MESSAGES =====
     std::shared_ptr<UltraCanvasContainer> BuildMessagesPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-messages", "Messages",
-                "How the text of a message is shown:");
+        PageParts parts = MakePage("um-set-page-messages", Tr("Messages"),
+                Tr("How the text of a message is shown:"));
 
         const bool html = d->prefs->showHtml;
         d->htmlRadio = MakeChoice("um-set-view-html",
-                "Formatted, as the sender designed it (HTML)", html);
+                Tr("Formatted, as the sender designed it (HTML)"), html);
         d->plainRadio = MakeChoice("um-set-view-plain",
-                "As plain text - no layout, no pictures", !html);
+                Tr("As plain text - no layout, no pictures"), !html);
         d->viewGroup.AddRadioButton(d->htmlRadio);
         d->viewGroup.AddRadioButton(d->plainRadio);
         d->viewGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -769,20 +783,20 @@ namespace {
         } };
 
         AddNote(parts, "um-set-messages-note1",
-                "Plain text shows the words of an HTML message without its "
+                Tr("Plain text shows the words of an HTML message without its "
                 "layout. Nothing it links to is downloaded, so it is also the "
-                "most private way to read mail.");
+                "most private way to read mail."));
         AddNote(parts, "um-set-messages-note2",
-                "The text size is where a message's text starts from: text, "
+                Tr("The text size is where a message's text starts from: text, "
                 "headings and small print that the message does not size itself "
-                "follow it. Sizes a message sets in pixels stay as they are.");
+                "follow it. Sizes a message sets in pixels stay as they are."));
         return parts.page;
     }
 
     // ===== READING > WAITING FOR REPLY =====
     std::shared_ptr<UltraCanvasContainer> BuildWaitingPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-waiting", "Waiting for reply",
-                "Which unanswered mail sent to you counts as waiting for your reply:");
+        PageParts parts = MakePage("um-set-page-waiting", Tr("Waiting for reply"),
+                Tr("Which unanswered mail sent to you counts as waiting for your reply:"));
 
         for (const auto& choice : kWaitingAges) {
             auto radio = MakeChoice("um-set-age-" + std::to_string(choice.days), choice.label,
@@ -800,7 +814,7 @@ namespace {
 
         AddBodyCaption(parts, "um-set-waiting-who-caption", "From whom:");
         d->writtenToBox = MakeCheckbox("um-set-waiting-written-to",
-                "Only from people I have written to", d->prefs->needsAnswerOnlyWrittenTo,
+                Tr("Only from people I have written to"), d->prefs->needsAnswerOnlyWrittenTo,
                 [d](bool on) {
             if (!d->prefs) return;
             d->prefs->needsAnswerOnlyWrittenTo = on;
@@ -817,33 +831,33 @@ namespace {
         } };
 
         AddNote(parts, "um-set-waiting-note1",
-                "Only mail in the inbox that was sent to you by name, is not a "
+                Tr("Only mail in the inbox that was sent to you by name, is not a "
                 "newsletter or an automatic message, and has not been answered "
                 "can wait for a reply. These choices narrow that down: the count "
-                "on the account and the \xE2\x86\xA9 in the list follow them.");
+                "on the account and the \xE2\x86\xA9 in the list follow them."));
         AddNote(parts, "um-set-waiting-note2",
                 "\"People I have written to\" are the addresses in your Sent "
                 "mail. Until the Sent folder has been fetched, this choice "
                 "leaves every sender in.");
         AddNote(parts, "um-set-waiting-note3",
-                "A message you mark \"Needs an answer\" yourself always counts, "
-                "whatever its age or sender.");
+                Tr("A message you mark \"Needs an answer\" yourself always counts, "
+                "whatever its age or sender."));
         return parts.page;
     }
 
     // ===== PRIVACY > IMAGES =====
     std::shared_ptr<UltraCanvasContainer> BuildImagesPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-images", "Images",
-                "When the pictures a message links to on the web are downloaded:");
+        PageParts parts = MakePage("um-set-page-images", Tr("Images"),
+                Tr("When the pictures a message links to on the web are downloaded:"));
 
         const RemoteImagePolicy policy = d->prefs->remoteImages;
-        d->imagesAlwaysRadio = MakeChoice("um-set-img-always", "Load always",
+        d->imagesAlwaysRadio = MakeChoice("um-set-img-always", Tr("Load always"),
                 policy == RemoteImagePolicy::LoadAlways);
         d->imagesTrustedRadio = MakeChoice("um-set-img-trusted",
-                "Load only from trusted websites, trusted senders and my contacts",
+                Tr("Load only from trusted websites, trusted senders and my contacts"),
                 policy == RemoteImagePolicy::LoadTrusted);
         d->imagesNeverRadio = MakeChoice("um-set-img-never",
-                "Never load them by themselves - ask each time",
+                Tr("Never load them by themselves - ask each time"),
                 policy == RemoteImagePolicy::LoadNever);
         d->imagesGroup.AddRadioButton(d->imagesAlwaysRadio);
         d->imagesGroup.AddRadioButton(d->imagesTrustedRadio);
@@ -919,27 +933,27 @@ namespace {
         } };
 
         AddNote(parts, "um-set-img-note1",
-                "Loading a picture from the web tells its sender that, and when, "
+                Tr("Loading a picture from the web tells its sender that, and when, "
                 "you opened the message. Pictures inside the message itself are "
-                "always shown.");
+                "always shown."));
         AddNote(parts, "um-set-img-note2",
-                "Trusted: mail from a trusted sender, a trusted website's domain "
+                Tr("Trusted: mail from a trusted sender, a trusted website's domain "
                 "(example.com covers news.example.com too) or a contact shows its "
                 "pictures; other mail loads only those hosted on a trusted website. "
-                "\"Always from <sender>\" above a message adds the sender here.");
+                "\"Always from <sender>\" above a message adds the sender here."));
         AddNote(parts, "um-set-img-note3",
-                "Junk and suspicious mail never load pictures by themselves; "
-                "\"Show images\" above it still can, for that one message.");
+                Tr("Junk and suspicious mail never load pictures by themselves; "
+                "\"Show images\" above it still can, for that one message."));
         return parts.page;
     }
 
     // ===== PRIVACY > SENDER ICONS =====
     std::shared_ptr<UltraCanvasContainer> BuildSenderIconsPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-senders", "Sender icons",
-                "The badge beside a message shows who sent it:");
+        PageParts parts = MakePage("um-set-page-senders", Tr("Sender icons"),
+                Tr("The badge beside a message shows who sent it:"));
 
         d->senderIconsBox = MakeCheckbox("um-set-sender-icons",
-                "Download the icons of known senders", d->prefs->fetchSenderIcons,
+                Tr("Download the icons of known senders"), d->prefs->fetchSenderIcons,
                 [d](bool on) {
             if (!d->prefs) return;
             d->prefs->fetchSenderIcons = on;
@@ -948,7 +962,7 @@ namespace {
         parts.body->AddChild(d->senderIconsBox);
 
         d->siteIconsBox = MakeCheckbox("um-set-site-icons",
-                "Show other senders' website icons", d->prefs->fetchSiteIcons,
+                Tr("Show other senders' website icons"), d->prefs->fetchSiteIcons,
                 [d](bool on) {
             if (!d->prefs) return;
             d->prefs->fetchSiteIcons = on;
@@ -965,21 +979,21 @@ namespace {
         } };
 
         AddNote(parts, "um-set-senders-note1",
-                "Known senders: the services on UltraMail's own list (banks, "
+                Tr("Known senders: the services on UltraMail's own list (banks, "
                 "shops, social networks, ...) are asked for their icon once each, "
-                "from the address on that list.");
+                "from the address on that list."));
         AddNote(parts, "um-set-senders-note2",
-                "Website icons: for any other sender whose mail passed the scam "
+                Tr("Website icons: for any other sender whose mail passed the scam "
                 "check, the home page of the domain it writes from is read for "
                 "its icon - once, and again after a week if there was none. "
                 "That tells the sender's web server that someone looked, though "
                 "not which message; never asked for spam, scams, the junk folder "
-                "or a mailbox provider such as gmail.com.");
+                "or a mailbox provider such as gmail.com."));
         AddNote(parts, "um-set-senders-note3",
-                "Icons are fetched in the background, only for the senders shown "
+                Tr("Icons are fetched in the background, only for the senders shown "
                 "in the list, so they never slow down getting mail. Switched "
                 "off, the badge shows the sender's initial instead; icons "
-                "already fetched stay. Downloading off turns both off.");
+                "already fetched stay. Downloading off turns both off."));
         return parts.page;
     }
 
@@ -997,8 +1011,8 @@ namespace {
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildPrimaryPasswordPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-primary", "Primary Password",
-                "A password only you know, asked for when UltraMail starts:");
+        PageParts parts = MakePage("um-set-page-primary", Tr("Primary Password"),
+                Tr("A password only you know, asked for when UltraMail starts:"));
 
         d->primaryStateLabel = MakeText("um-set-primary-state", "");
         d->primaryStateLabel->SetFontWeight(FontWeight::Bold);
@@ -1016,11 +1030,11 @@ namespace {
                 if (g_dialog.get() == d && !d->closed) SyncPrimaryPassword(d);
             });
         };
-        d->primarySetButton = MakeButton("um-set-primary-set", "Set a Primary Password...", 200,
+        d->primarySetButton = MakeButton("um-set-primary-set", Tr("Set a Primary Password..."), 200,
                                          [run]() { run(g_security.setPrimaryPassword); });
-        d->primaryChangeButton = MakeButton("um-set-primary-change", "Change...", 110,
+        d->primaryChangeButton = MakeButton("um-set-primary-change", Tr("Change..."), 110,
                                             [run]() { run(g_security.changePrimaryPassword); });
-        d->primaryRemoveButton = MakeButton("um-set-primary-remove", "Remove...", 110,
+        d->primaryRemoveButton = MakeButton("um-set-primary-remove", Tr("Remove..."), 110,
                                             [run]() { run(g_security.removePrimaryPassword); });
         row->AddChild(d->primarySetButton);
         row->AddChild(d->primaryChangeButton);
@@ -1029,33 +1043,33 @@ namespace {
         SyncPrimaryPassword(d);
 
         AddNote(parts, "um-set-primary-note1",
-                "What it protects: the passwords of your mail accounts, and the key the "
+                Tr("What it protects: the passwords of your mail accounts, and the key the "
                 "mail stored on this computer is encrypted with - the mailbox, the address "
                 "book, the outbox and every downloaded message. Without it nobody can read "
-                "them, not even someone who copies the whole data folder.");
+                "them, not even someone who copies the whole data folder."));
         AddNote(parts, "um-set-primary-note2",
-                "Without a Primary Password that key is kept beside the vault, so UltraMail "
+                Tr("Without a Primary Password that key is kept beside the vault, so UltraMail "
                 "starts without asking: the encryption then protects copies of the mail "
                 "files - a backup, a disk taken out - but not this computer account, whose "
-                "programs can open the key as UltraMail does.");
+                "programs can open the key as UltraMail does."));
         AddNote(parts, "um-set-primary-note3",
-                "It is not stored anywhere. Forgotten, it cannot be recovered: the mail kept "
+                Tr("It is not stored anywhere. Forgotten, it cannot be recovered: the mail kept "
                 "on this computer has to be downloaded again from the mail servers, and the "
                 "mail passwords entered again. Mail that is only on this computer - the "
-                "outbox - is lost.");
+                "outbox - is lost."));
         return parts.page;
     }
 
     // ===== DISPLAY > LINKS =====
     std::shared_ptr<UltraCanvasContainer> BuildLinksPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-links", "Links",
-                "Where the address behind a link in a message is shown:");
+        PageParts parts = MakePage("um-set-page-links", Tr("Links"),
+                Tr("Where the address behind a link in a message is shown:"));
 
         const bool tooltip = d->prefs->linkDisplay == LinkDisplay::Tooltip;
         d->linksStatusRadio = MakeChoice("um-set-links-status",
-                "Show in status bar", !tooltip);
+                Tr("Show in status bar"), !tooltip);
         d->linksTooltipRadio = MakeChoice("um-set-links-tooltip",
-                "Show as tooltip", tooltip);
+                Tr("Show as tooltip"), tooltip);
         d->linksGroup.AddRadioButton(d->linksStatusRadio);
         d->linksGroup.AddRadioButton(d->linksTooltipRadio);
         d->linksGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -1075,30 +1089,30 @@ namespace {
         } };
 
         AddNote(parts, "um-set-links-note1",
-                "In the status bar, the bottom of the window counts a message's "
+                Tr("In the status bar, the bottom of the window counts a message's "
                 "links and names the websites they lead to - its tooltip lists "
                 "every link - and shows the full address of the link under the "
-                "pointer.");
+                "pointer."));
         AddNote(parts, "um-set-links-note2",
-                "As a tooltip, the address appears beside the pointer while it "
+                Tr("As a tooltip, the address appears beside the pointer while it "
                 "rests on a link, and the status bar stays free for the mail "
-                "itself.");
+                "itself."));
         AddNote(parts, "um-set-links-note3",
-                "Either way, check where a link really goes before you click it: "
-                "the words of a link can name one website and lead to another.");
+                Tr("Either way, check where a link really goes before you click it: "
+                "the words of a link can name one website and lead to another."));
         return parts.page;
     }
 
     // ===== DISPLAY > TREEVIEW =====
     std::shared_ptr<UltraCanvasContainer> BuildTreeviewPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-treeview", "Treeview",
-                "Treeview content:");
+        PageParts parts = MakePage("um-set-page-treeview", Tr("Treeview"),
+                Tr("Treeview content:"));
 
         const bool current = d->prefs->folderTreeContent == FolderTreeContent::CurrentAccount;
         d->treeCurrentRadio = MakeChoice("um-set-tree-current",
-                "Show current email account", current);
+                Tr("Show current email account"), current);
         d->treeAllRadio = MakeChoice("um-set-tree-all",
-                "Show all email accounts", !current);
+                Tr("Show all email accounts"), !current);
         d->treeContentGroup.AddRadioButton(d->treeCurrentRadio);
         d->treeContentGroup.AddRadioButton(d->treeAllRadio);
         d->treeContentGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -1119,27 +1133,79 @@ namespace {
         } };
 
         AddNote(parts, "um-set-treeview-note1",
-                "With the current account only, the folder tree on the left lists "
+                Tr("With the current account only, the folder tree on the left lists "
                 "the folders of the account chosen in the account bar, and a click "
-                "on another account there shows that one's folders instead.");
+                "on another account there shows that one's folders instead."));
         AddNote(parts, "um-set-treeview-note2",
-                "With all accounts, every account is listed with its folders, one "
+                Tr("With all accounts, every account is listed with its folders, one "
                 "below the other, in the order of the account bar - drag an "
-                "account there to move it.");
+                "account there to move it."));
         AddNote(parts, "um-set-treeview-note3",
-                "A right-click on a folder in the tree adds a folder inside it or "
+                Tr("A right-click on a folder in the tree adds a folder inside it or "
                 "deletes it; on an account or its inbox, it adds a folder at the "
-                "top of the account.");
+                "top of the account."));
+        return parts.page;
+    }
+
+    // ===== DISPLAY > EMAIL WARNINGS =====
+    std::shared_ptr<UltraCanvasContainer> BuildEmailWarningsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-email-warnings", Tr("Email warnings"),
+                Tr("Show the warning above a message:"));
+
+        struct Kind { const char* id; std::string text; bool WarningStripOptions::* option; };
+        const Kind kinds[] = {
+            { "um-set-strip-phishing", Tr("Show phishing warning"),
+              &WarningStripOptions::phishing },
+            { "um-set-strip-scam", Tr("Show scam warning (advance-fee letters, letters in an "
+                                      "agency's name)"),
+              &WarningStripOptions::scam },
+            { "um-set-strip-romance", Tr("Show love-scam (romance scam) warning"),
+              &WarningStripOptions::romance },
+            { "um-set-strip-loan", Tr("Show loan-scam warning"),
+              &WarningStripOptions::loan },
+            { "um-set-strip-crypto-scam", Tr("Show cryptocurrency-scam warning"),
+              &WarningStripOptions::cryptoScam },
+            { "um-set-strip-crypto-caution", Tr("Show the caution on mail about cryptocurrency"),
+              &WarningStripOptions::cryptoCaution },
+            { "um-set-strip-suspicious", Tr("Show other warnings (blocked sender, suspicious "
+                                            "message)"),
+              &WarningStripOptions::suspicious },
+        };
+        d->stripBoxes.clear();
+        for (const Kind& kind : kinds) {
+            bool WarningStripOptions::* option = kind.option;
+            auto box = MakeCheckbox(kind.id, kind.text, d->prefs->warningStrip.*option,
+                    [d, option](bool on) {
+                if (!d->prefs) return;
+                d->prefs->warningStrip.*option = on;
+                ApplyAndSave(d);
+            });
+            d->stripBoxes.emplace_back(option, box);
+            parts.body->AddChild(box);
+        }
+
+        d->resets[kPageEmailWarnings] = PageReset{ "Show all", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->warningStrip = WarningStripOptions{};
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-email-warnings-note1",
+                Tr("This only hides the strip above the message. The message is still "
+                "checked, and its badge beside the sender still turns red or orange - "
+                "to stop looking for a kind altogether, use Warnings > Spam/scam "
+                "warnings."));
         return parts.page;
     }
 
     // ===== DISPLAY > NOTIFICATIONS =====
     std::shared_ptr<UltraCanvasContainer> BuildNotificationsPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-notify", "Notifications",
-                "When new mail arrives while UltraMail runs:");
+        PageParts parts = MakePage("um-set-page-notify", Tr("Notifications"),
+                Tr("When new mail arrives while UltraMail runs:"));
 
         d->notifyBox = MakeCheckbox("um-set-notify-new-mail",
-                "Show a notification on the screen", d->prefs->notifyNewMail,
+                Tr("Show a notification on the screen"), d->prefs->notifyNewMail,
                 [d](bool on) {
             if (!d->prefs) return;
             d->prefs->notifyNewMail = on;
@@ -1155,30 +1221,30 @@ namespace {
         } };
 
         AddNote(parts, "um-set-notify-note1",
-                "The notification names the sender and the subject - or counts "
+                Tr("The notification names the sender and the subject - or counts "
                 "the messages when several came at once - and a click on it "
-                "brings UltraMail to the front with the mail open.");
+                "brings UltraMail to the front with the mail open."));
         AddNote(parts, "um-set-notify-note2",
-                "It goes out through UltraMessage, the desktop's message "
+                Tr("It goes out through UltraMessage, the desktop's message "
                 "channel, and the desktop's own notification service shows it "
                 "like any other program's: its look, its sound and do-not-disturb "
-                "are set there.");
+                "are set there."));
         AddNote(parts, "um-set-notify-note3",
-                "Mail you have already read elsewhere, and the first download of "
-                "a new account, raise no notification.");
+                Tr("Mail you have already read elsewhere, and the first download of "
+                "a new account, raise no notification."));
         return parts.page;
     }
 
     // ===== HANDLING > EMAIL SEND NOTIFICATION =====
     std::shared_ptr<UltraCanvasContainer> BuildSendNotificationPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-send-notify", "Email send notification",
-                "When a message has been sent successfully:");
+        PageParts parts = MakePage("um-set-page-send-notify", Tr("Email send notification"),
+                Tr("When a message has been sent successfully:"));
 
         const bool statusBar = d->prefs->sendNotification == SendNotification::StatusBar;
         d->sendPopupRadio = MakeChoice("um-set-send-popup",
-                "Show in popup window", !statusBar);
+                Tr("Show in popup window"), !statusBar);
         d->sendStatusRadio = MakeChoice("um-set-send-status",
-                "Display success in status bar", statusBar);
+                Tr("Display success in status bar"), statusBar);
         d->sendNotifyGroup.AddRadioButton(d->sendPopupRadio);
         d->sendNotifyGroup.AddRadioButton(d->sendStatusRadio);
         d->sendNotifyGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
@@ -1199,23 +1265,23 @@ namespace {
         } };
 
         AddNote(parts, "um-set-send-notify-note1",
-                "In a popup window, \"Message sent to ...\" names the recipients "
-                "and stays on the screen until you choose OK.");
+                Tr("In a popup window, \"Message sent to ...\" names the recipients "
+                "and stays on the screen until you choose OK."));
         AddNote(parts, "um-set-send-notify-note2",
-                "In the status bar, the same words appear at the bottom of the "
+                Tr("In the status bar, the same words appear at the bottom of the "
                 "main window and nothing has to be closed - the next thing "
-                "UltraMail does, such as checking for new mail, replaces them.");
+                "UltraMail does, such as checking for new mail, replaces them."));
         AddNote(parts, "um-set-send-notify-note3",
-                "A message that could not be sent is always reported in a "
+                Tr("A message that could not be sent is always reported in a "
                 "window, whatever is set here: it stays in the outbox, and the "
-                "window offers to try again.");
+                "window offers to try again."));
         return parts.page;
     }
 
     // ===== WARNINGS > SPAM/SCAM WARNINGS =====
     std::shared_ptr<UltraCanvasContainer> BuildScamWarningsPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-scams", "Spam/scam warnings",
-                "Warn about a message when it looks like:");
+        PageParts parts = MakePage("um-set-page-scams", Tr("Spam/scam warnings"),
+                Tr("Warn about a message when it looks like:"));
 
         struct Kind { const char* id; const char* text; bool ThreatScanOptions::* option; };
         static const Kind kinds[] = {
@@ -1268,24 +1334,24 @@ namespace {
         } };
 
         AddNote(parts, "um-set-scams-note1",
-                "A warning is the badge's red or orange frame beside the subject, "
+                Tr("A warning is the badge's red or orange frame beside the subject, "
                 "the reasons in its tooltip and the strip above the message. A kind "
                 "switched off is not looked for: its messages are labelled as if "
-                "the check did not exist.");
+                "the check did not exist."));
         AddNote(parts, "um-set-scams-note2",
-                "Mail already checked is checked again with the new choice - the "
+                Tr("Mail already checked is checked again with the new choice - the "
                 "open message at once, the others in the background with each "
-                "mail check.");
+                "mail check."));
         AddNote(parts, "um-set-scams-note3",
-                "Nothing is ever hidden, moved or deleted either way: UltraMail "
-                "only labels mail, and you decide.");
+                Tr("Nothing is ever hidden, moved or deleted either way: UltraMail "
+                "only labels mail, and you decide."));
         return parts.page;
     }
 
     // ===== WARNINGS > TRUSTED AND BLOCKED SENDERS =====
     std::shared_ptr<UltraCanvasContainer> BuildSenderListsPage(DialogState* d) {
-        PageParts parts = MakePage("um-set-page-senders", "Trusted and blocked senders",
-                "The senders you trust, and those whose mail is spam to you:");
+        PageParts parts = MakePage("um-set-page-senders", Tr("Trusted and blocked senders"),
+                Tr("The senders you trust, and those whose mail is spam to you:"));
 
         // One field per list. What is typed is kept as an address (or, on the
         // blocked list, a domain) and shown that way; an address put on one
@@ -1326,58 +1392,75 @@ namespace {
                 "e.g. offers@example.com or example.com", true);
 
         AddNote(parts, "um-set-senders-note1",
-                "A trusted sender's mail gets no guessed warnings - no romance or "
+                Tr("A trusted sender's mail gets no guessed warnings - no romance or "
                 "advance-fee letter, no crypto caution, no spam markers - and its "
                 "pictures load like a contact's. What catches a lie still counts: a "
                 "link that hides where it goes, a forged sender address, a program "
-                "dressed as a document.");
+                "dressed as a document."));
         AddNote(parts, "um-set-senders-note2",
-                "A blocked sender's mail is marked as spam: the orange frame and the "
+                Tr("A blocked sender's mail is marked as spam: the orange frame and the "
                 "strip above the message. A blocked domain blocks its subdomains too. "
                 "Nothing is moved or deleted - \"Mark as spam\" moves a message to "
-                "the junk folder.");
+                "the junk folder."));
         AddNote(parts, "um-set-senders-note3",
-                "Right-click a sender - in the list or above the message - to trust "
+                Tr("Right-click a sender - in the list or above the message - to trust "
                 "or block them, or the whole domain; the same menu undoes it. Their "
-                "mail is checked again at once.");
+                "mail is checked again at once."));
         return parts.page;
     }
 
     // ===== START PAGE =====
-    std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
-        PageParts parts = MakePage("um-set-page-start", "Settings",
-                "Open a section on the left and choose the page to set:");
+    std::shared_ptr<UltraCanvasContainer> BuildStartPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-start", Tr("Settings"),
+                Tr("Open a section on the left and choose the page to set:"));
         AddNote(parts, "um-set-start-note0",
-                "Mail - how often every account is checked for new mail, and how "
+                Tr("Mail - how often every account is checked for new mail, and how "
                 "long alerts about failed checks wait after the computer was "
-                "switched on.");
+                "switched on."));
         AddNote(parts, "um-set-start-note1",
-                "Reading - where a message opens, how wide the folder list is, "
+                Tr("Reading - where a message opens, how wide the folder list is, "
                 "whether HTML mail is shown formatted or as plain text, the size "
                 "of its text, which mail counts as waiting for your reply, and "
-                "where a message's attachments are shown.");
+                "where a message's attachments are shown."));
         AddNote(parts, "um-set-start-note2",
-                "Privacy - when pictures on the web are downloaded (always, only "
+                Tr("Privacy - when pictures on the web are downloaded (always, only "
                 "from websites and senders you trust and your contacts, or never "
                 "by themselves), whether the known senders' icons are fetched, and "
-                "a Primary Password asked for at every start.");
+                "a Primary Password asked for at every start."));
         AddNote(parts, "um-set-start-note3",
-                "Display - whether a link's address is shown in the status bar or "
+                Tr("Display - whether a link's address is shown in the status bar or "
                 "as a tooltip, whether new mail shows a notification on the "
                 "screen, and whether the folder tree lists the current account "
-                "or all of them.");
+                "or all of them."));
         AddNote(parts, "um-set-start-note6",
-                "Handling - whether a message that has been sent is reported in a "
-                "popup window or in the status bar.");
+                Tr("Handling - whether a message that has been sent is reported in a "
+                "popup window or in the status bar."));
         AddNote(parts, "um-set-start-note5",
-                "Warnings - which kinds of spam and scam UltraMail warns about: "
+                Tr("Warnings - which kinds of spam and scam UltraMail warns about: "
                 "phishing, romance scams, advance-fee letters, letters in an "
                 "agency's name, cryptocurrency, dangerous attachments - and the "
-                "senders you trust or block.");
+                "senders you trust or block."));
         AddNote(parts, "um-set-start-note4",
-                "An account's servers, sign-in and name are in its own Account "
+                Tr("An account's servers, sign-in and name are in its own Account "
                 "Settings. Every change here applies straight away and is saved; "
-                "there is nothing to confirm.");
+                "there is nothing to confirm."));
+        // The localisation editor on UltraMail's own set, in the language it
+        // runs in: the "Translate this application..." entry of the
+        // localisation proposal (§5), here because UltraMail has no menu bar.
+        auto translateRow = std::make_shared<UltraCanvasContainer>("um-set-start-translate-row");
+        translateRow->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        translateRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        translateRow->size.height = CSSLayout::Dimension::Px(32);
+        translateRow->AddChild(MakeButton("um-set-start-translate", Tr("Translate UltraMail..."), 200,
+                [d]() {
+                    ShowLocalisationEditorDialog(d->window.get(), UltraLocalisation::CurrentApplication(),
+                                                 UltraLocalisation::CurrentLanguage());
+                }));
+        parts.body->AddChild(translateRow);
+        AddNote(parts, "um-set-start-note-translate",
+                Tr("Every text UltraMail shows, in one grid with the sets it comes from: "
+                   "its own set, the Communication base set and the standard set. A change is "
+                   "saved into the settings folder and shows the next time UltraMail starts."));
         return parts.page;
     }
 
@@ -1414,7 +1497,7 @@ namespace {
 
     // `icon`: a section's mark, a name in media/icons/ultramail/ (the pages
     // under a section have none).
-    void AddTreeNode(DialogState* d, const char* parentId, const char* id, const char* text,
+    void AddTreeNode(DialogState* d, const char* parentId, const char* id, const std::string& text,
                      const char* icon = nullptr) {
         TreeNodeData data;
         data.nodeId = id;
@@ -1427,7 +1510,7 @@ namespace {
 
     void BuildDialog(DialogState* d, UltraCanvasWindowBase* parent) {
         WindowConfig wc;
-        wc.title = "UltraMail - Settings";
+        wc.title = Tr("UltraMail - Settings");
         wc.width = 700;
         wc.height = 560;
         wc.resizable = true;
@@ -1461,32 +1544,33 @@ namespace {
 
         TreeNodeData rootData;
         rootData.nodeId = "settings";
-        rootData.text = "Settings";
+        rootData.text = Tr("Settings");
         d->tree->SetRootNode(rootData);
-        AddTreeNode(d, "settings", kPageMail, "Mail", "section-mail");
-        AddTreeNode(d, kPageMail, kPageNewMail, "New mail");
-        AddTreeNode(d, kPageMail, kPageConnection, "Connection");
-        AddTreeNode(d, kPageMail, kPageProxy, "Proxy");
-        AddTreeNode(d, "settings", kPageReading, "Reading", "section-reading");
-        AddTreeNode(d, kPageReading, kPageLayout, "Layout");
-        AddTreeNode(d, kPageReading, kPageMessages, "Messages");
-        AddTreeNode(d, kPageReading, kPageWaiting, "Waiting for reply");
-        AddTreeNode(d, kPageReading, kPageAttachments, "Attachments");
-        AddTreeNode(d, "settings", kPagePrivacy, "Privacy", "section-privacy");
-        AddTreeNode(d, kPagePrivacy, kPageImages, "Images");
-        AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
-        AddTreeNode(d, kPagePrivacy, kPagePrimaryPassword, "Primary Password");
-        AddTreeNode(d, "settings", kPageDisplay, "Display", "section-display");
-        AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
-        AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
-        AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
-        AddTreeNode(d, "settings", kPageHandling, "Handling", "section-handling");
-        AddTreeNode(d, kPageHandling, kPageSendNotify, "Email send notification");
-        AddTreeNode(d, "settings", kPageWarnings, "Warnings", "section-warnings");
-        AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
+        AddTreeNode(d, "settings", kPageMail, Tr("Mail"), "section-mail");
+        AddTreeNode(d, kPageMail, kPageNewMail, Tr("New mail"));
+        AddTreeNode(d, kPageMail, kPageConnection, Tr("Connection"));
+        AddTreeNode(d, kPageMail, kPageProxy, Tr("Proxy"));
+        AddTreeNode(d, "settings", kPageReading, Tr("Reading"), "section-reading");
+        AddTreeNode(d, kPageReading, kPageLayout, Tr("Layout"));
+        AddTreeNode(d, kPageReading, kPageMessages, Tr("Messages"));
+        AddTreeNode(d, kPageReading, kPageWaiting, Tr("Waiting for reply"));
+        AddTreeNode(d, kPageReading, kPageAttachments, Tr("Attachments"));
+        AddTreeNode(d, "settings", kPagePrivacy, Tr("Privacy"), "section-privacy");
+        AddTreeNode(d, kPagePrivacy, kPageImages, Tr("Images"));
+        AddTreeNode(d, kPagePrivacy, kPageSenderIcons, Tr("Sender icons"));
+        AddTreeNode(d, kPagePrivacy, kPagePrimaryPassword, Tr("Primary Password"));
+        AddTreeNode(d, "settings", kPageDisplay, Tr("Display"), "section-display");
+        AddTreeNode(d, kPageDisplay, kPageLinks, Tr("Links"));
+        AddTreeNode(d, kPageDisplay, kPageNotify, Tr("Notifications"));
+        AddTreeNode(d, kPageDisplay, kPageTreeview, Tr("Treeview"));
+        AddTreeNode(d, kPageDisplay, kPageEmailWarnings, Tr("Email warnings"));
+        AddTreeNode(d, "settings", kPageHandling, Tr("Handling"), "section-handling");
+        AddTreeNode(d, kPageHandling, kPageSendNotify, Tr("Email send notification"));
+        AddTreeNode(d, "settings", kPageWarnings, Tr("Warnings"), "section-warnings");
+        AddTreeNode(d, kPageWarnings, kPageScamWarnings, Tr("Spam/scam warnings"));
         // The page's title is "Trusted and blocked senders"; the tree has
         // room for less.
-        AddTreeNode(d, kPageWarnings, kPageSenderLists, "Trusted & blocked");
+        AddTreeNode(d, kPageWarnings, kPageSenderLists, Tr("Trusted & blocked"));
         // After the nodes: hiding the root promotes the sections to the top.
         d->tree->SetRootVisible(false);
         content->AddChild(d->tree);
@@ -1513,10 +1597,11 @@ namespace {
         AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageNotify, BuildNotificationsPage(d));
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
+        AddPage(d, kPageEmailWarnings, BuildEmailWarningsPage(d));
         AddPage(d, kPageSendNotify, BuildSendNotificationPage(d));
         AddPage(d, kPageScamWarnings, BuildScamWarningsPage(d));
         AddPage(d, kPageSenderLists, BuildSenderListsPage(d));
-        AddPage(d, kPageStart, BuildStartPage());
+        AddPage(d, kPageStart, BuildStartPage(d));
         d->window->AddChild(content);
 
         // ----- bottom bar: [Restore default ...]            [Close] -----
@@ -1532,14 +1617,14 @@ namespace {
         bottomLeft->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
         bottomLeft->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->restoreButton = MakeButton("um-set-restore", "Restore defaults", 170, [d]() {
+        d->restoreButton = MakeButton("um-set-restore", Tr("Restore defaults"), 170, [d]() {
             auto it = d->resets.find(d->shownPage);
             if (it != d->resets.end() && it->second.action) it->second.action();
         });
         d->restoreButton->SetVisible(false);
         bottomLeft->AddChild(d->restoreButton);
         bottom->AddChild(bottomLeft);
-        bottom->AddChild(MakeButton("um-set-close", "Close", 90,
+        bottom->AddChild(MakeButton("um-set-close", Tr("Close"), 90,
                 [d]() { if (d->window) d->window->Close(); }));
         d->window->AddChild(bottom);
 
@@ -1601,7 +1686,7 @@ std::shared_ptr<UltraCanvasButton> SettingsDialog::MakeGearButton(
     gear->SetIconSpacing(0);
     gear->SetUseIconAsMask(true);
     gear->SetIconMaskColor(Color(55, 55, 60, 255));
-    gear->SetTooltip("Settings");
+    gear->SetTooltip(Tr("Settings"));
     if (onClick) gear->onClick = std::move(onClick);
     gear->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return gear;

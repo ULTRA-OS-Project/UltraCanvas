@@ -1,6 +1,10 @@
 {
   "@language": "pt-BR",
   "@translated-by": "machine draft 2026-11-05, reviewed by -",
+  "fps": "fps",
+  "mono": "mono",
+  "no sound": "sem som",
+  "stereo": "estéreo",
   "The title was emptied: it keeps its text (delete the title on its lane to remove it)": "O título ficou vazio: ele mantém o texto (exclua o título em sua faixa para removê-lo)",
   "Title Font": "Fonte do título",
   "Title Strikethrough": "Tachado do título",

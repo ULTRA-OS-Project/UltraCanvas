@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.14.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.13.0 - Send, the attach buttons and Cancel on top; every
 //                   formatting tool in one row; Font and Size show the text
 //                   at the cursor; the attachments under the body or in a
@@ -25,7 +26,7 @@
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -39,6 +40,7 @@
 #include "UltraMailRichComposer.h"
 #include "UltraMailSignature.h"   // PlainBodyToRichDocument
 #include "UltraMailTheme.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <sstream>
@@ -107,23 +109,23 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-    auto sendBtn = CreateButton("cSend", 0, 0, 100, Theme::kControlHeight, "Send");
+    auto sendBtn = CreateButton("cSend", 0, 0, 100, Theme::kControlHeight, Tr("Send"));
     Theme::FitToLabel(sendBtn, 100);
     Theme::StylePrimary(sendBtn);
     Theme::SetButtonIcon(sendBtn, "send");
-    sendBtn->SetTooltip("Send the message now");
+    sendBtn->SetTooltip(Tr("Send the message now"));
     sendBtn->onClick = [this]() { if (onSend) onSend(CollectDraft()); };
     toolbar->AddChild(sendBtn);
 
-    auto attachBtn = CreateButton("cAttach", 0, 0, 120, Theme::kControlHeight, "Attach file…");
+    auto attachBtn = CreateButton("cAttach", 0, 0, 120, Theme::kControlHeight, Tr("Attach file…"));
     Theme::FitToLabel(attachBtn, 120);
     Theme::StyleSecondary(attachBtn);
     Theme::SetButtonIcon(attachBtn, "attach");
-    attachBtn->SetTooltip("Attach a file from this computer");
+    attachBtn->SetTooltip(Tr("Attach a file from this computer"));
     attachBtn->onClick = [this]() { ChooseFileToAttach(); };
     toolbar->AddChild(attachBtn);
 
-    auto cloudBtn = CreateButton("cCloud", 0, 0, 120, Theme::kControlHeight, "Cloud link…");
+    auto cloudBtn = CreateButton("cCloud", 0, 0, 120, Theme::kControlHeight, Tr("Cloud link…"));
     Theme::FitToLabel(cloudBtn, 120);
     Theme::StyleSecondary(cloudBtn);
     Theme::SetButtonIcon(cloudBtn, "cloud");
@@ -134,7 +136,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
 
     toolbar->AddStretchSpacer(1);
 
-    auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, Tr("Cancel"));
     Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() { if (onCancel) onCancel(); };
@@ -153,7 +155,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
         Theme::StyleInput(input);
@@ -197,12 +199,12 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
 
     to_ = makeRecipientField("cTo");
     to_->SetText(Join(draft_.to));
-    to_->SetPlaceholder("recipient@example.com, …");
+    to_->SetPlaceholder(Tr("recipient@example.com, …"));
     addField("cTo", "To", to_);
 
     cc_ = makeRecipientField("cCc");
     cc_->SetText(Join(draft_.cc));
-    cc_->SetPlaceholder("Optional");
+    cc_->SetPlaceholder(Tr("Optional"));
     auto ccRow = addField("cCc", "Cc", cc_);
 
     // Blind copies: the Bcc toggle at the end of the Cc row shows their row.
@@ -211,17 +213,17 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     // empties it - nothing is sent to an address that is out of sight.
     bcc_ = makeRecipientField("cBcc");
     bcc_->SetText(Join(draft_.bcc));
-    bcc_->SetPlaceholder("Hidden from the other recipients");
+    bcc_->SetPlaceholder(Tr("Hidden from the other recipients"));
     bccRow_ = addField("cBcc", "Bcc", bcc_);
     const bool showBcc = !draft_.bcc.empty();
     bccRow_->SetVisible(showBcc);
 
-    bccToggle_ = CreateButton("cBccToggle", 0, 0, 48, Theme::kControlHeight, "Bcc");
+    bccToggle_ = CreateButton("cBccToggle", 0, 0, 48, Theme::kControlHeight, Tr("Bcc"));
     Theme::FitToLabel(bccToggle_, 48);
     Theme::StyleSecondary(bccToggle_);
     bccToggle_->SetCanToggled(true);
     bccToggle_->SetPressed(showBcc);
-    bccToggle_->SetTooltip("Show or hide the Bcc row: blind copies the other recipients don't see");
+    bccToggle_->SetTooltip(Tr("Show or hide the Bcc row: blind copies the other recipients don't see"));
     bccToggle_->onToggle = [this](bool shown) {
         if (!shown && bcc_) bcc_->SetText("");
         if (bccRow_) bccRow_->SetVisible(shown);
@@ -232,7 +234,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
 
     subject_ = CreateTextInput("cSubj", 0, 0, 0, Theme::kControlHeight);
     subject_->SetText(draft_.subject);
-    subject_->SetPlaceholder("Subject");
+    subject_->SetPlaceholder(Tr("Subject"));
     addField("cSubj", "Subject", subject_);
 
     // Security: off, or a method to sign and/or encrypt with. A reply to
@@ -247,7 +249,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine("cSecureLbl", "Security", Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
         secureMethod_ = CreateSegmentedControl("cSecure", 0, 0, 90.0f * (methods.size() + 1),
@@ -255,8 +257,8 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
         Theme::StyleSegmented(secureMethod_);
         secureMethod_->AddSegment("Off");
         for (const std::string& m : methods) secureMethod_->AddSegment(m);
-        secureMethod_->SetTooltip("Sign and encrypt the message with S/MIME (a certificate) or "
-                                  "OpenPGP (a key in GnuPG)");
+        secureMethod_->SetTooltip(Tr("Sign and encrypt the message with S/MIME (a certificate) or "
+                                  "OpenPGP (a key in GnuPG)"));
         int chosen = 0;
         for (size_t i = 0; i < methods.size(); ++i)
             if (methods[i] == draft_.secureMethod) chosen = static_cast<int>(i) + 1;
@@ -266,17 +268,17 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
         auto makeBox = [&row](const std::string& id, const std::string& text, bool checked,
                               const std::string& tip) {
             auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 90.0f, Theme::kControlHeight, text);
-            box->SetFontSize(Theme::kSizeBody);
+            box->SetFontSize(Theme::SizeBody());
             box->SetChecked(checked);
             box->SetTooltip(tip);
             row->AddChild(box);
             return box;
         };
         signBox_ = makeBox("cSign", "Sign", chosen > 0 ? draft_.sign : true,
-                           "Signed: the recipient can check that it is from you and unchanged");
+                           Tr("Signed: the recipient can check that it is from you and unchanged"));
         encryptBox_ = makeBox("cEncrypt", "Encrypt", chosen > 0 && draft_.encrypt,
-                              "Encrypted: only the recipients (and you) can read it; every "
-                              "recipient needs a certificate or key");
+                              Tr("Encrypted: only the recipients (and you) can read it; every "
+                                 "recipient needs a certificate or key"));
         auto sync = [this]() {
             const bool on = secureMethod_ && secureMethod_->GetSelectedIndex() > 0;
             if (signBox_) signBox_->SetDisabled(!on);
@@ -342,7 +344,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     }
     mode_->AddSegment("Plain text", Theme::MailIcon("plain-text"));
     mode_->AddSegment("Formatted", Theme::MailIcon("formatted"));
-    mode_->SetTooltip("Plain text, or formatted text (sent as HTML with a plain-text version)");
+    mode_->SetTooltip(Tr("Plain text, or formatted text (sent as HTML with a plain-text version)"));
     mode_->onSegmentSelected = [this](int segment) {
         if (!switchingMode_) SetFormatted(segment == 1);
     };
@@ -366,7 +368,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
 
     rich_ = CreateRichTextEdit("cRich", 0, 0, 0, 0);
     RichTextEditStyle richStyle = rich_->GetStyle();
-    richStyle.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the plain body
+    richStyle.baseFont.fontSize = Theme::SizeBody() + 1.0f;   // as the plain body
     richStyle.drawBorder = false;
     rich_->SetStyle(richStyle);
     // A mail names fonts the sender has (Calibri, Arial ...) and draws fine
@@ -416,8 +418,8 @@ void ComposeView::PlaceAttachments() {
     attachWrap_->SetContainerStyle(style);
     if (attachmentsRight_) {
         // A tinted column, set off from the text by a line.
-        attachWrap_->SetBackgroundColor(Theme::kSidebar);
-        attachWrap_->SetBorderLeft(1.0f, Theme::kDivider);
+        attachWrap_->SetBackgroundColor(Theme::Sidebar());
+        attachWrap_->SetBorderLeft(1.0f, Theme::Divider());
         attachWrap_->size.width  = CSSLayout::Dimension::Px(AttachmentStrip::ColumnWidth() + 1.0f);
         attachWrap_->size.height = CSSLayout::Dimension::Auto();
         attachWrap_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
@@ -497,8 +499,8 @@ void ComposeView::SetFormatted(bool formatted, bool ask) {
                         || text.find_first_not_of(" \t\r\n") != std::string::npos;
     if (!ask || !something) { SwitchToPlain(); return; }
     UltraCanvasDialogManager::ShowConfirmation(
-        "Send this message as plain text? Its formatting, links and pictures are removed.",
-        "Plain text",
+        Tr("Send this message as plain text? Its formatting, links and pictures are removed."),
+        Tr("Plain text"),
         [weak = weak_from_this()](bool confirmed) {
             auto self = weak.lock();
             if (!self) return;   // the window closed while the question was open
@@ -530,14 +532,14 @@ void ComposeView::InsertLink(const std::string& name, const std::string& url) {
 
 void ComposeView::ChooseFileToAttach() {
     FileDialogOptions options;
-    options.title = "Attach file";
+    options.title = Tr("Attach file");
     options.parentWindow = parent_;
     UltraCanvasFileLoader::OpenFileDialog(
         options, [weak = weak_from_this()](DialogResult result, const std::string& path) {
             auto self = weak.lock();
             if (!self || result != DialogResult::OK || path.empty()) return;
             if (!self->AttachFile(path))
-                UltraCanvasDialogManager::ShowError("Could not read " + path, "Attach file",
+                UltraCanvasDialogManager::ShowError("Could not read " + path, Tr("Attach file"),
                                                     nullptr, self->parent_);
         });
 }
@@ -545,7 +547,7 @@ void ComposeView::ChooseFileToAttach() {
 void ComposeView::ChooseCloudLink() {
     if (!cloud_) {
         UltraCanvasDialogManager::ShowInformation(
-            "Cloud storage is not set up in this application.", "Attach cloud link",
+            Tr("Cloud storage is not set up in this application."), Tr("Attach cloud link"),
             nullptr, parent_);
         return;
     }
@@ -574,18 +576,18 @@ void ComposeView::ShowRecipientMenu(const std::shared_ptr<UltraCanvasAutoComplet
     recipientMenu_ = std::make_shared<UltraCanvasMenu>("cRecipientMenu", 0, 0, 190, 0);
     recipientMenu_->SetMenuType(MenuType::PopupMenu);
     if (editRecipientContact) {
-        recipientMenu_->AddItem(MenuItemData::Action("Edit contact…", [this, address, done]() {
+        recipientMenu_->AddItem(MenuItemData::Action(Tr("Edit contact…"), [this, address, done]() {
             editRecipientContact(address, done);
         }));
     }
     if (deleteRecipientAddress) {
-        recipientMenu_->AddItem(MenuItemData::Action("Delete address", [this, address, done]() {
+        recipientMenu_->AddItem(MenuItemData::Action(Tr("Delete address"), [this, address, done]() {
             deleteRecipientAddress(address, done);
         }));
     }
     if (markRecipientSpam) {
         recipientMenu_->AddItem(MenuItemData::Separator());
-        recipientMenu_->AddItem(MenuItemData::Action("Set as SPAM", [this, address, done]() {
+        recipientMenu_->AddItem(MenuItemData::Action(Tr("Set as SPAM"), [this, address, done]() {
             markRecipientSpam(address, done);
         }));
     }

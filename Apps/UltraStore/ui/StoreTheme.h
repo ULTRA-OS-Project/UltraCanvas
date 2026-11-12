@@ -7,6 +7,7 @@
 // helpers every page uses: a wrapping text, the headings, a caption, a
 // styled button, a plain row or column, a card surface. Nothing here
 // paints; the elements do.
+// Version: 0.2.1 - an eyebrow upper-cases any script, not only ASCII
 // Version: 0.2.0 - the shop design: tokens, fonts, pills, the section helpers
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -20,6 +21,8 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
+
+#include <glib.h>
 
 #include <memory>
 #include <string>
@@ -134,8 +137,11 @@ inline std::shared_ptr<UltraCanvas::UltraCanvasLabel> Caption(const std::string&
 // The small bold uppercase label over a group ("CATEGORY", "FEATURED APP").
 inline std::shared_ptr<UltraCanvas::UltraCanvasLabel> Eyebrow(const std::string& id, const std::string& text,
                                                               const UltraCanvas::Color& color = kTextSecondary) {
-    std::string upper;
-    for (char c : text) upper += static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    // A translation's letters too ("Catégorie" -> "CATÉGORIE"); a script
+    // without case stays as it is.
+    gchar* raised = g_utf8_strup(text.c_str(), static_cast<gssize>(text.size()));
+    const std::string upper = raised ? std::string(raised) : text;
+    g_free(raised);
     return Text(id, upper, 12.0f, UltraCanvas::FontWeight::Bold, color);
 }
 

@@ -1,14 +1,15 @@
 # The UltraStore payment service (Server/UltraStorePay): its tests, on
-# every change to it, on both databases: SQLite (tests and development)
-# and PostgreSQL (production), the latter as a service container.
+# every change to it or to the shared database layer (Server/UltraStoreDb),
+# on every database: SQLite (tests and development), PostgreSQL and MySQL
+# (production), the latter two as service containers.
 name: UltraStore payment service
 
 on:
   push:
     branches: [main]
-    paths: ['Server/UltraStorePay/**', '.github/workflows/ultrastore-pay.yml']
+    paths: ['Server/UltraStorePay/**', 'Server/UltraStoreDb/**', '.github/workflows/ultrastore-pay.yml']
   pull_request:
-    paths: ['Server/UltraStorePay/**', '.github/workflows/ultrastore-pay.yml']
+    paths: ['Server/UltraStorePay/**', 'Server/UltraStoreDb/**', '.github/workflows/ultrastore-pay.yml']
 
 jobs:
   test:
@@ -26,15 +27,33 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_USER: ultrastore
+          MARIADB_PASSWORD: ultrastore
+          MARIADB_DATABASE: ultrastore_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     defaults:
       run:
         working-directory: Server/UltraStorePay
     env:
       ULTRASTORE_PAY_TEST_PG_URL: postgresql://ultrastore_pay:ultrastore_pay@127.0.0.1:5432/ultrastore_pay_test
+      ULTRASTORE_PAY_TEST_MYSQL_URL: mysql://ultrastore:ultrastore@127.0.0.1:3306/ultrastore_test
+      ULTRASTORE_TEST_PG_URL: postgresql://ultrastore_pay:ultrastore_pay@127.0.0.1:5432/ultrastore_pay_test
+      ULTRASTORE_TEST_MYSQL_URL: mysql://ultrastore:ultrastore@127.0.0.1:3306/ultrastore_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -e '.[test,postgres]'
+      - run: pip install -e '../UltraStoreDb[test,postgres,mysql]' -e '.[test,postgres,mysql]'
+      - name: The shared database layer on every engine
+        run: python -m pytest -q ../UltraStoreDb/tests
       - run: python -m pytest -q

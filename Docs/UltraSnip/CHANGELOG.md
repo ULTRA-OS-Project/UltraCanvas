@@ -1,3 +1,21 @@
+#### 2026-11-11 *0.1.7*
+- **`--background`: UltraSnip waits for the session.** Started so (as
+  UltraDesktop does with the desktop), it shows no window and holds the
+  Print Screen key, so the key snips while no UltraSnip window is open, and
+  the desktop's screenshot button and Super+Shift+S reach a copy that is
+  running already. Its window, once a snip has shown it, hides when closed
+  instead of ending UltraSnip. A second `--background` start reaches the
+  running copy and changes nothing.
+
+#### 2026-11-11 *0.1.6*
+- **Print Screen starts a snip.** While UltraSnip runs, the Print Screen key
+  starts a snip with the shape, kind and delay chosen on the bar, as Start
+  does - taken from the system (`UltraCanvasGlobalShortcut::StartExclusive`),
+  so on Windows it no longer opens the Snipping Tool as well. Alt+Print
+  Screen and Win+Print Screen stay the system's. A press while a snip is
+  under way (the screen dimmed for a choice, the delay, a recording) is
+  ignored. *Settings > Behaviour > After a snip* has it, on by default.
+
 #### 2026-11-11 *0.1.5*
 - **The Start button is as wide as its word.** It was 72 pixels in every
   language, growing only when a translation needed more ("Démarrer"), so a

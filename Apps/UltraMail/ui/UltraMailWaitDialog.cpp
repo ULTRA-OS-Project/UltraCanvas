@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailWaitDialog.cpp
+// Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.0 - the title in a header with an icon tile, a busy bar under
 //                  the text
 // Version: 0.2.0
@@ -11,6 +12,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 using namespace UltraCanvas;
 
@@ -36,7 +38,7 @@ std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     dialog->AddChild(Theme::MakeDialogHeader("waitHeader", icon, title, text, 64.0f));
 
@@ -45,8 +47,8 @@ std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
     auto busy = CreateBusyIndicator("waitBusy", 0, 0, 0, 4, BusyIndicatorKind::Bar);
     {
         BusyIndicatorStyle style = busy->GetStyle();
-        style.arcColor   = Theme::kAccent;
-        style.trackColor = Theme::kAccentSoft;
+        style.arcColor   = Theme::Accent();
+        style.trackColor = Theme::AccentSoft();
         busy->SetStyle(style);
     }
     busy->SetMargin(0, 0, 0, 52);   // under the text, past the header's icon
@@ -63,7 +65,7 @@ std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
                      .SetFlexGap(Theme::kInnerGap)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
-    auto cancelBtn = CreateButton("waitCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("waitCancel", 0, 0, 90, Theme::kControlHeight, Tr("Cancel"));
     Theme::FitToLabel(cancelBtn, 90);
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };

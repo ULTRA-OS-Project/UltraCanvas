@@ -30,6 +30,8 @@ TEST(settings_round_trip_through_the_file) {
     s.downloadsExpanded = true;
     s.downloadsHeight = 240;
     s.openOrder = {"o-1", "secret", "org.x.app", "9.90", "EUR", "https://pay.example/pay/o-1", "2026-10-27"};
+    s.RememberReport({"r-00000007", "sec-7", "org.x.app", "crash", "2026-11-11", "", ""});
+    s.RememberReport({"r-00000008", "sec-8", "org.x.other", "content", "2026-11-11", "resolved", "Fixed in 1.0.1."});
     {
         auto f = UltraCanvas::UltraCanvasAppSettings::AtFile(file);
         s.WriteTo(f);
@@ -55,6 +57,17 @@ TEST(settings_round_trip_through_the_file) {
     REQUIRE(back.OrderToResume("2026-10-30").Empty());                            // older: dropped
     REQUIRE(back.OrderToResume("2026-10-26").Empty());                            // a clock set back: dropped
     REQUIRE(StoreSettings().OrderToResume("2026-10-29").Empty());
+    REQUIRE_EQ(back.reports.size(), size_t(2));
+    REQUIRE_EQ(back.reports[0].id, std::string("r-00000007"));
+    REQUIRE_EQ(back.reports[0].secret, std::string("sec-7"));
+    REQUIRE(!back.reports[0].Closed());
+    REQUIRE_EQ(back.reports[1].outcome, std::string("Fixed in 1.0.1."));
+    REQUIRE(back.reports[1].Closed());
+    // Past the limit the oldest goes.
+    StoreSettings many;
+    for (size_t i = 0; i < StoreSettings::kMaxReports + 3; ++i) many.RememberReport({"r-" + std::to_string(i), "s", "org.x.app", "other", "2026-11-11", "", ""});
+    REQUIRE_EQ(many.reports.size(), StoreSettings::kMaxReports);
+    REQUIRE_EQ(many.reports[0].id, std::string("r-3"));
     std::error_code ec;
     std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir), ec);
 }
