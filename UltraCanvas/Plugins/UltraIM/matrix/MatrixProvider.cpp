@@ -1,7 +1,8 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
 // Version: 0.2.3 - a room renamed, members invited and kicked, a room left (ManageGroups, LeaveConversation);
-//                  a room renamed by someone else updates its conversation as the sync brings it
+//                  a room renamed by someone else updates its conversation as the sync brings it;
+//                  the members' names on the conversation
 // Version: 0.2.2 - a picture or a video sent goes with its preview picture (UltraIM_MakePreview)
 // Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
@@ -1062,7 +1063,10 @@ UltraIMConversation MatrixProvider::ConversationOf(const Room& room) const {
         for (size_t i = 0; i < names.size() && i < 3; ++i) c.title += (i ? ", " : "") + names[i];
         if (c.title.empty()) c.title = "Empty room";
     }
-    for (const auto& m : room.joined) c.memberIds.push_back(m);
+    for (const auto& m : room.joined) {
+        c.memberIds.push_back(m);
+        c.memberNames[m] = NameOf(room, m);
+    }
     c.isEncrypted = room.encrypted;
     if (!c.directContactId.empty()) {
         auto p = presence_.find(c.directContactId);

@@ -1363,9 +1363,14 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     for (const auto& m : group["members"].GetElements()) conversation.memberIds.push_back(m.GetString());
     store_.UpsertConversation(conversation);
     store_.GetConversation(id, conversation);
-    FillOwner(conversation);
+    FillGroupDetails(conversation);
+    // A member we have no key for yet: fetched, and the group told again
+    // with their name once it is here.
     for (const auto& member : conversation.memberIds) {
-        if (member != identity_.userId) FetchUser(member, [](bool) {});
+        if (member == identity_.userId || !KeyOf(member).empty()) continue;
+        FetchUser(member, [this, id](bool known) {
+            if (known) EmitGroup(id);
+        });
     }
     UltraIMEvent event;
     event.type = UltraIMEventType::ConversationUpdate;
@@ -1389,7 +1394,7 @@ void DirectProvider::FetchConversations(UltraIMConversationsCallback onResult) {
     std::vector<UltraIMConversation> list = store_.ListConversations();
     for (auto& c : list) {
         if (!c.isGroup && !c.directContactId.empty()) c.presence = EffectivePresence(c.directContactId);
-        if (c.isGroup) FillOwner(c);
+        if (c.isGroup) FillGroupDetails(c);
     }
     onResult(UltraIMResult::Ok(), list);
 }
@@ -1535,15 +1540,36 @@ void DirectProvider::CreateGroup(const std::string& title, const std::vector<std
         UpsertGroup(r.body);
         UltraIMConversation conversation;
         store_.GetConversation(r.body["conversation"].GetString(), conversation);
-        FillOwner(conversation);
+        FillGroupDetails(conversation);
         onResult(UltraIMResult::Ok(), conversation);
     });
 }
 
-void DirectProvider::FillOwner(UltraIMConversation& conversation) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    const auto found = groupOwners_.find(conversation.conversationId);
-    if (found != groupOwners_.end()) conversation.ownerId = found->second;
+void DirectProvider::FillGroupDetails(UltraIMConversation& conversation) {
+    if (!conversation.isGroup) return;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const auto found = groupOwners_.find(conversation.conversationId);
+        if (found != groupOwners_.end()) conversation.ownerId = found->second;
+    }
+    for (const std::string& member : conversation.memberIds) {
+        StoredContact contact;
+        if (member == identity_.userId) {
+            if (!displayName_.empty()) conversation.memberNames[member] = displayName_;
+        } else if (store_.GetContact(member, contact) && !contact.displayName.empty()) {
+            conversation.memberNames[member] = contact.displayName;
+        }
+    }
+}
+
+void DirectProvider::EmitGroup(const std::string& conversationId) {
+    UltraIMEvent event;
+    event.type = UltraIMEventType::ConversationUpdate;
+    event.providerId = providerId_;
+    event.conversationId = conversationId;
+    if (!store_.GetConversation(conversationId, event.conversation)) return;
+    FillGroupDetails(event.conversation);
+    Emit(event);
 }
 
 void DirectProvider::EmitRemoved(const std::string& conversationId) {
@@ -1581,7 +1607,7 @@ void DirectProvider::RenameGroup(const std::string& conversationId, const std::s
         UpsertGroup(r.body);
         UltraIMConversation conversation;
         store_.GetConversation(conversationId, conversation);
-        FillOwner(conversation);
+        FillGroupDetails(conversation);
         onResult(UltraIMResult::Ok(), conversation);
     });
 }
@@ -1609,7 +1635,7 @@ void DirectProvider::AddMembersFrom(std::shared_ptr<RelayClient> relay, std::str
     if (index >= ids.size()) {
         UltraIMConversation conversation;
         store_.GetConversation(conversationId, conversation);
-        FillOwner(conversation);
+        FillGroupDetails(conversation);
         onResult(UltraIMResult::Ok(), conversation);
         return;
     }
@@ -1873,7 +1899,7 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
     updated.providerId = providerId_;
     updated.conversationId = conversation.conversationId;
     store_.GetConversation(conversation.conversationId, updated.conversation);
-    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
+    FillGroupDetails(updated.conversation);   // a group's owner and names, which the store does not keep
     Emit(updated);
 
     if (!group) SendReceipt(envelope.from, {envelope.id}, "delivered");
@@ -2100,7 +2126,7 @@ UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const
     updated.providerId = providerId_;
     updated.conversationId = conversationId;
     store_.GetConversation(conversationId, updated.conversation);
-    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
+    FillGroupDetails(updated.conversation);   // a group's owner and names, which the store does not keep
     Emit(updated);
     return UltraIMResult::Ok();
 }
@@ -2174,7 +2200,7 @@ void DirectProvider::HandleFileBody(const Envelope& envelope, const JSONValue& b
     updated.providerId = providerId_;
     updated.conversationId = conversation.conversationId;
     store_.GetConversation(conversation.conversationId, updated.conversation);
-    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
+    FillGroupDetails(updated.conversation);   // a group's owner and names, which the store does not keep
     Emit(updated);
     if (!group) SendReceipt(envelope.from, {envelope.id}, "delivered");
     TryAssemble(fileId);        // the parts may have come first
@@ -2309,7 +2335,7 @@ UltraIMResult DirectProvider::SendText(const std::string& conversationId, const 
     updated.providerId = providerId_;
     updated.conversationId = conversationId;
     store_.GetConversation(conversationId, updated.conversation);
-    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
+    FillGroupDetails(updated.conversation);   // a group's owner and names, which the store does not keep
     Emit(updated);
     return UltraIMResult::Ok();
 }
@@ -2383,7 +2409,7 @@ bool DirectProvider::RemoveLocally(const std::string& conversationId, const std:
     updated.providerId = providerId_;
     updated.conversationId = conversationId;
     if (store_.GetConversation(conversationId, updated.conversation)) {
-        FillOwner(updated.conversation);   // a group's owner, which the store does not keep
+        FillGroupDetails(updated.conversation);   // a group's owner and names, which the store does not keep
         Emit(updated);
     }
     return true;
@@ -2460,7 +2486,7 @@ UltraIMResult DirectProvider::MarkRead(const std::string& conversationId, const 
     updated.providerId = providerId_;
     updated.conversationId = conversationId;
     store_.GetConversation(conversationId, updated.conversation);
-    FillOwner(updated.conversation);   // a group's owner, which the store does not keep
+    FillGroupDetails(updated.conversation);   // a group's owner and names, which the store does not keep
     Emit(updated);
     return UltraIMResult::Ok();
 }

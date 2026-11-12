@@ -1,7 +1,7 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
 // Version: 0.1.9 - groups managed after they are made: UltraIMCapabilityFlags ManageGroups and
-//                  LeaveConversation; UltraIMConversation::ownerId
+//                  LeaveConversation; UltraIMConversation::ownerId and memberNames
 // Version: 0.1.8 - deleting a message for oneself or for everyone: UltraIMDeleteScope, UltraIMDeleteChoices
 // Version: 0.1.7 - searching messages: UltraIMSearchKind, UltraIMMessageSearch, UltraIMSearchPage,
 //                  UltraIMSearchCallback, the SearchMessages capability
@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -191,6 +192,9 @@ struct UltraIMConversation {
     // A group's creator, who alone may remove other members ("" when the
     // network does not say, or any member may).
     std::string     ownerId;
+    // The members' names where the network knows them (member id -> name);
+    // one missing here is shown by its id.
+    std::map<std::string, std::string> memberNames;
     UltraIMPresence presence = UltraIMPresence::Unknown; // Of directContactId
     std::string     lastMessageSnippet;
     int64_t         lastMessageTimeMs = 0;

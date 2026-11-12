@@ -2,6 +2,7 @@
   "@language": "en",
   "@inherited": [
     "All files",
+    "and {n} more",
     "Open",
     "Save as",
     "Unpin"

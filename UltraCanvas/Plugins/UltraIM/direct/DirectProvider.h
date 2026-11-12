@@ -18,7 +18,8 @@
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
 // Version: 0.1.8 - a group renamed (PATCH /v1/groups/{id}), members added and removed, a group left
-//                  and a 1:1 conversation deleted on this device; the group's owner on its conversation
+//                  and a 1:1 conversation deleted on this device; the group's owner and members' names
+//                  on its conversation
 // Version: 0.1.7 - DeleteMessage / GetDeleteChoices: for oneself always; for everyone the sender's text until
 //                  it is read, a file at any time, anything in a group
 // Version: 0.1.6 - SearchMessages: the history searched in the store, one conversation or all
@@ -253,8 +254,11 @@ private:
     UltraIMConversation EnsureDirectConversation(const std::string& userId);
     void RefreshGroups();
     void UpsertGroup(const UltraCanvas::JSONValue& group);
-    // The group's owner, as the relay last said, onto its conversation.
-    void FillOwner(UltraIMConversation& conversation);
+    // What the store does not keep onto a group's conversation: its owner, as
+    // the relay last said, and the names of the members it knows.
+    void FillGroupDetails(UltraIMConversation& conversation);
+    // The group as it is now, to everyone listening (a member's name arrived).
+    void EmitGroup(const std::string& conversationId);
     // The relay's group of a group conversation, or an error for the callback.
     UltraIMResult GroupRequestTarget(const std::string& conversationId, std::shared_ptr<RelayClient>& relay,
                                      std::string& groupId) const;

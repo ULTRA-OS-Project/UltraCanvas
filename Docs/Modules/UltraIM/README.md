@@ -72,7 +72,8 @@ A group after it is made (the `ManageGroups` capability):
 the group as it is now - and `UltraIM_RemoveGroupMember(provider,
 conversation, id, cb)`, which the network may allow to the group's owner
 alone (`PermissionDenied`; `UltraIMConversation::ownerId` names the owner
-where the network has one, `""` where it does not say). Every member hears
+where the network has one, `""` where it does not say;
+`UltraIMConversation::memberNames` names the members it knows). Every member hears
 of the change as a `ConversationUpdate`. `UltraIM_LeaveConversation(provider,
 conversation, cb)` (`LeaveConversation`) takes the local user out of a group,
 or deletes a 1:1 conversation with its history on this device - the other
@@ -685,7 +686,16 @@ process.
   private chats, basic groups and supergroups, channels. A conversation's id
   is the chat id, a message's the message id, a contact's the user id.
   `AddContact` takes `@username`, a `t.me/` link or `+phone`; `CreateGroup`
-  makes a basic group of such members.
+  makes a basic group of such members. `RenameGroup` (`setChatTitle`),
+  `AddGroupMembers` (`addChatMembers`, the same addresses; those whose
+  privacy settings refuse it come back as `PermissionDenied`),
+  `RemoveGroupMember` (`setChatMemberStatus` to left: a kick, also in a
+  supergroup) and `LeaveConversation` (`leaveChat`; a private chat's history
+  deleted for us alone with `deleteChatHistory`) - what an administrator
+  may do in most groups answers `PermissionDenied` to anyone else. A basic
+  group's members, their names and its creator come from its full info
+  (`getBasicGroupFullInfo`, then `updateBasicGroupFullInfo`); a supergroup
+  lists none.
 - **Messages:** text with replies, photos, files, audio, voice notes,
   videos (and animations, video notes) and stickers with their captions and
   attachments, the group's service messages as system lines; edits

@@ -164,8 +164,9 @@ The first ChatCube draft, which this replaces, is kept under
    computer; they keep theirs. A group: *Members*, each with *Send a
    message*, *Copy ID* and, for the group's owner, *Remove from group*;
    *Add members*, *Rename group* and *Leave group*. What the chat's network
-   cannot do is not offered (Telegram groups have none of the group items
-   yet). Pins and unread marks are kept in the settings file.
+   cannot do is not offered, and what it refuses the account (in most
+   Telegram groups only administrators rename or take people out) says so
+   on the status line. Pins and unread marks are kept in the settings file.
 
 8. **Settings** - the gear beside the copy button at the top of the sidebar
    - opens a window laid out as UltraFiler's: the sections on the left, the

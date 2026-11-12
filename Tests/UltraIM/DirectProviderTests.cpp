@@ -742,6 +742,8 @@ void TestGroupManagement(DirectProvider& alice, Events& aliceEvents, DirectProvi
     UltraIMConversation renamed;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob.RenameGroup(groupId, "Crew", cb); }, renamed));
     CHECK(renamed.title == "Crew" && renamed.ownerId == aliceId);
+    // The members by name: Bob's own and Alice (a contact of his) - not just ids.
+    CHECK(renamed.memberNames.count(bobId) && renamed.memberNames.count(aliceId));
     UltraIMEvent seen;
     CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return isUpdate(e) && e.conversation.title == "Crew"; },
                               &seen, 30));
@@ -1537,7 +1539,10 @@ void TestEndToEnd() {
     CHECK(!bob->CanCall(group.conversationId, false));
     // A picture to the group goes through the relay, a copy per member.
     CHECK(PictureArrives(*alice, *bob, bobEvents, group.conversationId, picture, pictureBytes, "for the team"));
-    TestGroupManagement(*alice, aliceEvents, *bob, bobEvents, group.conversationId, aliceId, bobId);
+    // A group of its own: the rest of the test goes on in "Team", with Bob in it.
+    UltraIMConversation managed;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->CreateGroup("Managed", {bobId}, cb); }, managed));
+    TestGroupManagement(*alice, aliceEvents, *bob, bobEvents, managed.conversationId, aliceId, bobId);
 
     if (UltraRtc_GetCapabilities().audio && UltraRtc_GetCapabilities().video) {
         TestVideoCall(*alice, aliceEvents, *bob, bobEvents, bobId);

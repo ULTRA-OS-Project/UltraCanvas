@@ -76,6 +76,7 @@ constexpr int   kInputHeight = 48;
 constexpr int   kTileSide = 64;         // a staged picture's tile in the composer
 constexpr int   kFileTileWidth = 180;   // a staged file's tile: its name and size
 constexpr int   kTileClose = 20;        // the x on a tile
+constexpr size_t  kMenuMembers = 40;     // members listed in a group's menu before "and N more"
 constexpr int64_t kTypingShownMs = 5000;
 constexpr int64_t kTypingResendMs = 3000;
 
@@ -1286,7 +1287,17 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
         // Every member with a menu of their own.
         const std::string me = info.localUserId;
         std::vector<MenuItemData> members;
+        size_t listed = 0;
         for (const std::string& member : c.memberIds) {
+            // A big group: the first ones, and a line saying how many more.
+            if (++listed > kMenuMembers) {
+                MenuItemData more = MenuItemData::Action(
+                    TrN("and {n} more", "and {n} more", static_cast<long long>(c.memberIds.size() - kMenuMembers)),
+                    []() {});
+                more.enabled = false;
+                members.push_back(more);
+                break;
+            }
             const bool self = member == me;
             std::vector<MenuItemData> actions;
             if (!self) {
@@ -1304,7 +1315,7 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
             members.push_back(MenuItemData::Submenu(name, actions));
         }
         if (!members.empty()) {
-            who.push_back(MenuItemData::Submenu(TrF("Members ({0})", static_cast<long long>(members.size())), members));
+            who.push_back(MenuItemData::Submenu(TrF("Members ({0})", static_cast<long long>(c.memberIds.size())), members));
         }
         if (manage) {
             who.push_back(MenuItemData::Action(Tr("Add members"), [this, id]() { AskToAddMembers(id); }));
@@ -1393,6 +1404,8 @@ void ChatCubeWindow::CopyAddress(const std::string& address) {
 }
 
 std::string ChatCubeWindow::MemberName(const UltraIMConversation& group, const std::string& memberId) const {
+    const auto named = group.memberNames.find(memberId);
+    if (named != group.memberNames.end() && !named->second.empty()) return named->second;
     for (const UltraIMConversation& c : conversations_->Conversations()) {
         if (!c.isGroup && c.providerId == group.providerId && c.directContactId == memberId && !c.title.empty())
             return c.title;

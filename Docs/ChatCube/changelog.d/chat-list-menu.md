@@ -8,8 +8,10 @@
   and its messages on this computer only - they keep theirs, and a new
   message from them starts it again. For a group: *Members*, each with a menu
   of their own (*Send a message*, *Copy ID*, and - for the group's owner -
-  *Remove from group*), *Add members*, *Rename group* and *Leave group*. What
-  a network cannot do is not offered: ChatCube and Matrix groups have all of
-  it, Telegram groups not yet. Pins and unread marks are kept with the
-  settings. Renaming a ChatCube group needs ChatCube relay 1.3.0.
+  *Remove from group*), *Add members*, *Rename group* and *Leave group*.
+  Members are shown by name; a big group lists its first 40 and says how
+  many more. ChatCube, Matrix and Telegram groups have all of it, as far as
+  the network lets the account (in most Telegram groups renaming and taking
+  people out is for administrators). Pins and unread marks are kept with
+  the settings. Renaming a ChatCube group needs ChatCube relay 1.3.0.
 - **"1 member", not "1 members"**, under a group's name.
