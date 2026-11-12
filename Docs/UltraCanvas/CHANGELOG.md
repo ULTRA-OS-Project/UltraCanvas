@@ -1,3 +1,90 @@
+#### 2026-11-12 *0.9.545*
+- **3D files written on a localised desktop were unreadable, and COLLADA read
+  back short.** A C++ stream renders its numbers through the *C++ global*
+  locale — a separate switch from the C one, and the one a host application
+  sets when it honours the desktop's language (`std::locale::global`) — so
+  every model writer that streams its numbers put that locale into the file.
+  STEP wrote `COLOUR_RGB('Steel',0,720000028610229.,0,…)`, where the comma is
+  Part 21's parameter separator: a three-parameter entity became six and no
+  CAD system would open the file at all. ASCII PLY wrote `element vertex
+  12.227` for a mesh of 12227 vertices — digit grouping is the same locale's
+  business, so a header with no floating-point number in it came out broken
+  too. COLLADA wrote `count="33.639"` and `-0,012582`. OBJ's face lines, which
+  are written between its guarded coordinate blocks rather than inside one,
+  went out as `f 1.000/1.000/1.000`.
+  - **COLLADA's reader lost geometry for the mirror-image reason:** `>>` takes
+    the '.' for a digit-group separator in such a locale, so a `<float_array>`
+    stopped extracting at its first coordinate and a mesh came back short or
+    empty rather than slightly wrong — and `<p>` index lists re-read a written
+    `1.000` as 1.
+  - Every one of those sites now pins its stream to the classic locale.
+    `ClassicNumbers` (`UltraCanvasTextUtils.h`) is the new guard for the
+    common case: it imbues a stream for as long as the writer is writing and
+    gives the caller's own locale back afterwards, because an application that
+    hands a writer its `std::ostream` has not asked for that stream to be
+    changed.
+  - **`ModelLocaleDecimalTest` grew the half that was missing.** It compared
+    the readers' meshes between the two locales but nothing compared what the
+    writers produced, and it set only the C locale — which leaves every stream
+    writing '.' however the writer is built, so the whole class was invisible
+    to it. It now sets both locales and compares each text writer's bytes
+    between "C" and a comma-decimal locale: OBJ, PLY, X3D, COLLADA and STEP.
+    Four of the five failed the first time it ran.
+  - The STEP, FBX, PLY and DirectX `.x` readers were already dot-decimal from
+    0.9.43; what remained for those four formats was all on the writing side,
+    and FBX and `.x` have no writer at all.
+- **Every drawing the framework writes was wrong on a localised desktop, and a
+  DXF or EPS one could not be opened at all.** The same defect as the model
+  writers above, in the formats where a misplaced comma is not a rounded
+  number but a different drawing - or a count the reader cannot resolve:
+  - **PDF** wrote `/MediaBox [0 0 420,5 297,25]`, a five-element array where
+    a reader counts four, and the same comma in every `cm`, `re` and `l`
+    operator of the content stream.
+  - **DXF** wrote `$EXTMIN` as `0,` and every coordinate after it the same
+    way. No CAD program opens that drawing.
+  - **EPS** wrote `%%HiResBoundingBox: 0 0 420,5 297,25` and `1,5
+    setlinewidth`; PostScript counts an operator's operands, so neither is a
+    number out by a factor of ten - it is a syntax error.
+  - **ASCII STL**, which is the one text form a person chooses deliberately
+    (a slicer that wants a readable file), wrote `1,5e+00` - and its reader
+    could not read even a correct file, because `>>` takes the '.' for a
+    digit-group separator in such a locale and stops. A .stl saved as text and
+    loaded again came back empty.
+  - **DWG** reads by converting to DXF text in memory, and wrote `1,5` into
+    that text, so a .dwg lost its geometry on the way in; the DXF reader's own
+    `atof` and the EPS reader's `strtod` were the other half of the same trip.
+  - PDF's object numbers, byte offsets and stream lengths were streamed
+    unimbued as well, so a drawing with more than a thousand objects also
+    carried `/Length 1.234` and a grouped xref count.
+  - **The SVG reader lost a dash pattern, a polygon's points and a symbol's
+    viewBox** the same way: three of its `istringstream` number readers were
+    never imbued, while two beside them were. `SVGLocaleTest` could not see it
+    because it set only the C locale, which leaves a stream reading '.'
+    however it is built; it now sets both.
+  - `Tests/VectorLocaleTest.cpp` writes one drawing with all ten vector
+    writers under "C" and under a comma-decimal locale, compares the bytes,
+    and - for the formats that read back - reads each file under both locales
+    and compares the drawing. PDF, EPS, DXF and the SVG reader failed it the
+    first time it ran; EMF, WMF, CDR and XAR passed. `ModelLocaleDecimalTest`
+    gained the ASCII STL cases, both halves.
+- **One guard for the numbers a text format writes, instead of five copies.**
+  `ScopedPrecision` (`UltraCanvasTextUtils.h`) now pins both halves of a
+  stream's number shape - the decimal point and the digit count - and the OBJ,
+  X3D, COLLADA and STEP writers use it in place of a private copy each; three
+  of those copies had had the locale half wrong or missing at some point, and
+  one had it right in a scope too small to cover the file. `DigitsFor`
+  (`UltraCanvasModelConverter.h`) is where `NumericPrecision` becomes a digit
+  count, so the writers stop spelling 17, 9 and 6 out themselves, and
+  `FormatFixedClassic` is the fixed-point formatter the three drawing writers
+  had each written with `snprintf`. Byte-for-byte identical output: every
+  writer's file is unchanged under "C", and 400,000 random values round-trip
+  through the shared formatter exactly as the three `snprintf` copies did.
+- `scripts/check_locale_numbers.py` recognises those guards, so a writer that
+  holds one is not reported for the stream it guards - and its own comment now
+  says what it cannot see (the locale of a stream a writer is handed, which is
+  what the two locale tests are for). The baseline is down to 12 keys, 49
+  sites; the whole `Plugins/Vector` tree is off it.
+
 #### 2026-11-12 *0.9.544*
 - **TextArea: zooming out at the end of a long document left the view blank.**
   A smaller font shortened the content, but `verticalScrollOffset` kept its old
