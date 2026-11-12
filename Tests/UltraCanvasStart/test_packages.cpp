@@ -1,5 +1,6 @@
 // Tests/UltraCanvasStart/test_packages.cpp
 // The dependency table and the install command.
+// Version: 0.1.1 - with the SDK on Linux, the CDR plug-in's link libraries
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -29,6 +30,7 @@ TEST(Table_ids_are_unique_and_core_covers_every_manager) {
 
 TEST(DependenciesFor_follows_the_groups_and_the_manager) {
     Choices choices;    // toolchain + core
+    choices.useSdk = false;   // from source: the groups alone decide
     const auto apt = DependenciesFor(choices, PackageManager::Apt);
     REQUIRE(!apt.empty());
     for (const auto* d : apt) {
@@ -43,6 +45,29 @@ TEST(DependenciesFor_follows_the_groups_and_the_manager) {
     bool sawCdr = false;
     for (const auto* d : DependenciesFor(choices, PackageManager::Apt)) sawCdr |= d->id == "libcdr";
     REQUIRE(sawCdr);
+}
+
+TEST(DependenciesFor_adds_the_sdk_plugins_link_libraries_on_linux) {
+    // The skeleton links the SDK's static CDR plug-in, which names librevenge,
+    // lcms2 and ICU: with the SDK on Linux they are installed without the
+    // CDR group, and not when the framework is built from source, nor on
+    // macOS, whose SDK carries them in deps/.
+    const auto has = [](const std::vector<const Dependency*>& list, const char* id) {
+        for (const auto* d : list) if (d->id == id) return true;
+        return false;
+    };
+    Choices choices;    // toolchain + core, the SDK
+    choices.platform = Platform::Linux;
+    const auto sdk = DependenciesFor(choices, PackageManager::Apt);
+    REQUIRE(has(sdk, "librevenge"));
+    REQUIRE(has(sdk, "lcms2"));
+    REQUIRE(has(sdk, "icu"));
+    REQUIRE(!has(sdk, "libcdr"));
+    choices.useSdk = false;
+    REQUIRE(!has(DependenciesFor(choices, PackageManager::Apt), "librevenge"));
+    choices.useSdk = true;
+    choices.platform = Platform::MacOS;
+    REQUIRE(!has(DependenciesFor(choices, PackageManager::Homebrew), "librevenge"));
 }
 
 TEST(PackageNames_match_the_guide) {

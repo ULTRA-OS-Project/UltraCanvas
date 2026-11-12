@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartPackages.cpp
+// Version: 0.1.3 - with the SDK on Linux, the CDR plug-in's link libraries too
 // Version: 0.1.2 - Msys2UpdateSteps apart: an installed MSYS2 is updated before pacman -S
 // Version: 0.1.1 - Msys2SetupSteps
 // Version: 0.1.0
@@ -138,9 +139,19 @@ const std::vector<Dependency>& AllDependencies() {
 
 std::vector<const Dependency*> DependenciesFor(const Choices& choices,
                                                PackageManager manager) {
+    // The SDK's CDR plug-in is a static archive, compiled into the
+    // application with the libraries it names: a Linux machine building
+    // against the SDK needs their development files, as Choices' groups do
+    // not say (a clean Ubuntu 22.04 stopped at -lrevenge-0.0 without them).
+    const bool sdkOnLinux = choices.useSdk &&
+        (choices.platform == Platform::Linux ||
+         (choices.platform == Platform::Unknown && PlatformOf(manager) == Platform::Linux));
+    const auto linkedBySdkPlugin = [](const Dependency& d) {
+        return d.id == "librevenge" || d.id == "lcms2" || d.id == "icu";
+    };
     std::vector<const Dependency*> result;
     for (const auto& dependency : AllDependencies()) {
-        if (!choices.Has(dependency.group)) continue;
+        if (!choices.Has(dependency.group) && !(sdkOnLinux && linkedBySdkPlugin(dependency))) continue;
         if (manager != PackageManager::NoPackageManager && dependency.PackageFor(manager).empty()) continue;
         result.push_back(&dependency);
     }

@@ -19,6 +19,10 @@ namespace UltraCanvasStart {
 const std::vector<Dependency>& AllDependencies();
 
 // The dependencies in the chosen groups that have a package on `manager`.
+// With the SDK on Linux, also what the SDK's static CDR plug-in links in an
+// application (librevenge, lcms2, ICU), whatever groups are chosen: the
+// skeleton links every plug-in, and the Linux SDK carries no development
+// files of its own (Windows and macOS carry them in the SDK's deps/).
 std::vector<const Dependency*> DependenciesFor(const Choices& choices,
                                                PackageManager manager);
 

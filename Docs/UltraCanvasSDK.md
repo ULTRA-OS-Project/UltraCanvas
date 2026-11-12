@@ -17,7 +17,7 @@ attaches the same six archives to a GitHub release:
 
 | Artifact | Contents |
 |---|---|
-| `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
+| `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` and the run-time libraries a 22.04 machine set up by UltraCanvasStart lacks, all beside the core in `lib/` |
 | `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | shared core (`lib/libUltraCanvas.dylib`), built against the vcpkg libraries CI makes for the oldest supported macOS, with those libraries' development files in `deps/` |
 | `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
 
@@ -119,9 +119,11 @@ The core is a shared library on every platform, and the modules (UltraNet,
 UltraDatabase, UltraCrypt, UltraVault, UltraMessage, VirtualFS, ...) are
 inside it: `UltraCanvas::UltraDatabase` and the other module targets resolve
 to the core, which exports their whole API, so an application links nothing
-else. On Linux the shared core sits in `lib/`; run an application with that
-directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
-the executable the way `package-linux.sh` does. On macOS it is
+else. On Linux the shared core sits in `lib/` with the libraries it needs
+beside it. CMake gives a build-tree executable a run path to that directory,
+and the core finds the rest through its own `$ORIGIN` runpath, so the
+application starts without `LD_LIBRARY_PATH`. For a package, copy the `.so`
+files beside the executable the way `package-linux.sh` does. On macOS it is
 `lib/libUltraCanvas.dylib` with an `@rpath` install name: the application
 needs a run path to that directory (CMake writes one into a build-tree
 executable), or the dylib copied beside it the way `package-macos.sh` does
@@ -168,18 +170,43 @@ glib, tinyxml2 and libvips through pkg-config:
   the executable as `package-win.sh` does. `ULTRACANVAS_DEPS_DIR` names the
   directory, or is empty.
 - **The Linux SDK does not**: the distribution's `-dev` packages are the
-  right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them.
-  Only the ones an application compiles against are needed. The core also
-  records some of its own dependencies by the full path CI found them at,
-  such as `/usr/lib/x86_64-linux-gnu/libmp3lame.so`, which exists only
-  where `libmp3lame-dev` is installed, and `/usr/lib/libmupdf.a`, which CI
-  builds from source. The core is a shared library, so those are already
-  inside it or loaded with it at run time, and an application does not need
-  them on its link line. `UltraCanvasConfig.cmake` therefore leaves out any
-  such path the consuming machine does not have, and lists them in the
-  configure output (`UltraCanvas: not on this machine, left off the link
-  line ...`), instead of letting the build stop with *No rule to make
-  target*.
+  right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them,
+  and UltraCanvasStart installs. Only the ones an application compiles
+  against are needed:
+  - **The link line.** The core links a long list of libraries of its own:
+    FLAC, GStreamer, Vorbis, zbar, GTK, MuPDF and more. It is a shared
+    library, so those are inside it or loaded with it at run time, and an
+    application does not link them. `UltraCanvasConfig.cmake` keeps on the
+    application's link line only the libraries the public headers include,
+    which it finds through pkg-config (cairo, pango, glib, freetype,
+    harfbuzz, tinyxml2, libvips). It also keeps the imported targets, and
+    says in the configure output how many it left out. It also leaves out a
+    build-machine path the consuming machine does not have, such as
+    `/usr/lib/libmupdf.a`, which CI builds from source, and lists it.
+    VirtualFS is folded into the core too, so `VirtualFS::VirtualFS` gives
+    way to a target with only its headers and definitions.
+  - **The static plug-ins.** The plug-ins are static archives, compiled into
+    the application, so the libraries they name are the application's: the
+    CDR plug-in's are librevenge, lcms2 and ICU. UltraCanvasStart installs
+    their `-dev` packages on Linux when the SDK is chosen.
+  - **Run time.** The core's run-time libraries that such a machine does not
+    have are in the SDK's `lib/`, beside the core: libmp3lame, the FFmpeg
+    libraries, GStreamer, MuPDF's libraries and the rest. They are not
+    development files, so nothing links against them. The core and each of
+    them carry an `$ORIGIN` runpath, so the loader finds them beside the
+    file that needs them.
+  - **How CI decides and tests this.** The `sdk-linux` job of
+    `.github/workflows/build.yml` runs `scripts/sdk-linux-clean-consumer.sh`
+    in a clean `ubuntu:22.04` container, which has a desktop's libraries and
+    nothing else:
+    1. It runs the standalone UltraCanvasStart's install command, and
+       `--check` must then find nothing missing.
+    2. It adds to the SDK what the core still cannot load, from
+       UltraCanvasStart's own `lib/`.
+    3. It builds UltraCanvasStart's skeleton with the Build step's two
+       commands, and builds and runs `PackageConsumer`.
+
+    The SDK the release publishes is the one that job packed.
 
 ## Compatibility
 

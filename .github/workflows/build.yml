@@ -2739,6 +2739,77 @@ jobs:
           compression-level: 0
           retention-days: 7
 
+  # ===== THE LINUX SDK ON A CLEAN UBUNTU 22.04 =====
+  # The build legs test the CMake package on the runner that built it, where
+  # every library the framework uses is installed, so they cannot see what a
+  # user's machine lacks: on 2026-11-03 a skeleton built against the 0.9.465
+  # SDK stopped at "No rule to make target
+  # '/usr/lib/x86_64-linux-gnu/libmp3lame.so'", a file only the runner had.
+  # This job is that user. In a clean ubuntu:22.04 container with a desktop's
+  # libraries and nothing else, the standalone UltraCanvasStart of this build
+  # installs what its plan says and must then find nothing missing; the SDK
+  # gets, beside its core, the run-time libraries the core still cannot load
+  # there; UltraCanvasStart's skeleton is built the way its Build step builds
+  # it, and PackageConsumer is built and run
+  # (scripts/sdk-linux-clean-consumer.sh). The SDK it packs again replaces
+  # the build leg's artifact of the same name, so the release publishes the
+  # one tested here: publish-sdk needs this job.
+  sdk-linux:
+    name: Linux SDK on a clean Ubuntu 22.04 (${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: ubuntu:22.04
+    # The apt installs are most of it (about 10 minutes); the cap is for a
+    # mirror that stalls.
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      - name: Download this build's Linux SDK
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvas-SDK-Linux-*-${{ matrix.arch }}
+          path: sdk-in
+          merge-multiple: true
+
+      - name: Download this build's standalone UltraCanvasStart
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvasStart-Linux-*-${{ matrix.arch }}
+          path: start-in
+          merge-multiple: true
+
+      - name: Set the machine up with UltraCanvasStart, then build against the SDK
+        id: clean
+        shell: bash
+        run: |
+          set -eu
+          sdk=$(ls sdk-in/UltraCanvas-SDK-Linux-*.tar.xz)
+          start=$(ls start-in/UltraCanvasStart-Linux-*.tar.xz)
+          bash scripts/sdk-linux-clean-consumer.sh "$sdk" "$start" sdk-out
+          echo "name=$(basename "$sdk" .tar.xz)" >> "$GITHUB_OUTPUT"
+
+      - name: Replace the SDK artifact with the one tested here
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.clean.outputs.name }}
+          path: sdk-out/*.tar.xz
+          overwrite: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
   # ===== THE SDKS AND ULTRACANVASSTART AS RELEASE ASSETS =====
   # Workflow artifacts last seven days and need a signed-in browser. Each
   # release build of main - the dispatch changelog-fold.yml sends for its
@@ -2755,7 +2826,9 @@ jobs:
   # version replaces the assets and keeps the release.
   publish-sdk:
     name: Publish the SDKs and UltraCanvasStart as release assets
-    needs: build
+    # sdk-linux: the Linux SDKs it replaced, with the run-time libraries a
+    # machine set up by UltraCanvasStart lacks.
+    needs: [build, sdk-linux]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)
     runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     permissions:
