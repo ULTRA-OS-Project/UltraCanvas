@@ -1,1 +1,0 @@
-- **File ▸ Close Tab has an icon**, at 16 px for the menu (`media/icons/artcreator/16/close-tab.svg`) and 24 px for the toolbar (`media/icons/artcreator/close-tab.svg`): a tab with a cross, in the line style of the rest of the set.
