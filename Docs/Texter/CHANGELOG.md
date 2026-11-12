@@ -1,3 +1,9 @@
+#### 2026-11-12 *1.81*
+- **Zooming out at the end of a long document no longer blanks the page.** The
+  line at the top of the window stays there (framework TextArea fix).
+- **Zoom steps:** Decrease Font Size no longer reads past the end of the zoom
+  list, and Increase Font Size now reaches the last step, 200%.
+
 #### 2026-11-11 *1.80*
 - **The look is the desktop's, and *View > Theme* is a choice for every
   application.** The dark and light looks follow the framework theme - the
