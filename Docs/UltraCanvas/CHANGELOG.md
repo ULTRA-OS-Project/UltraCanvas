@@ -1,3 +1,12 @@
+#### 2026-11-12 *0.9.541*
+- **The settings page kit follows the theme (T6 of the host theme
+  proposal).** `UltraCanvasSettingsPageKit`'s colours and sizes are the
+  theme's roles and text roles now, read as functions (`TextColor()`,
+  `TextFontSize()`, `PageBackground()` ...) where they were constants, and
+  its buttons, colour boxes and bottom bar take the roles too: a settings
+  window built on the kit - UOS-Settings, UltraFiler's and UltraSnip's
+  settings - is dark on a dark desktop, in the desktop's font and size.
+
 #### 2026-11-11 *0.9.540*
 - **CI: an Ubuntu mirror outage no longer stops the Linux jobs at
   `apt-get update`.** On 2026-11-11 `azure.archive.ubuntu.com` could not be
