@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailFormatBar.cpp
+// Version: 0.6.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.5.0 - the Font list shows each font in itself (DropdownItem::fontFamily)
 // Version: 0.4.0 - Options::singleRow (every tool in one row); Font and Size
 //                  show the font and size at the cursor (Sync); a Text |
@@ -28,6 +29,7 @@
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasTextUtils.h"   // Trim, TryParseFloat, FormatFloatClassic
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <string>
 #include <vector>
@@ -138,7 +140,7 @@ FormatBar FormatBar::Build(const Options& options) {
         bar.root->SetContainerStyle(style);
     }
     bar.root->SetPadding(kStripPadding);
-    bar.root->SetBackgroundColor(Theme::kSidebar);
+    bar.root->SetBackgroundColor(Theme::Sidebar());
     CapToParentWidth(*bar.root);
 
     // Every tool goes on the list SetToolsVisible hides; the host's own
@@ -180,7 +182,7 @@ FormatBar FormatBar::Build(const Options& options) {
     // Font and Size show what the text at the cursor is in (Sync); "Default"
     // is no font or size of its own, which the reader's program chooses.
     auto font = CreateDropdown(id + "Font", 0, 0, 130, Theme::kControlHeight);
-    font->AddItem("Default", "");
+    font->AddItem(Tr("Default"), "");
     for (const char* name : kFonts) {
         DropdownItem item(name, name);
         item.fontFamily = name;   // shown in itself
@@ -188,7 +190,7 @@ FormatBar FormatBar::Build(const Options& options) {
     }
     Theme::StyleDropdown(font);
     font->SetSelectedIndex(0, /*runNotifications=*/false);
-    font->SetTooltip("Font of the selected text");
+    font->SetTooltip(Tr("Font of the selected text"));
     font->onSelectionChanged = [editor](int, const DropdownItem& item) {
         const std::string family = item.value;   // "" = the reader's default
         OnEditor(editor, [family](UltraCanvasRichTextEdit& e) { e.SetFontFamily(family); });
@@ -199,11 +201,11 @@ FormatBar FormatBar::Build(const Options& options) {
     bar.font_ = font.get();
 
     auto size = CreateDropdown(id + "Size", 0, 0, 72, Theme::kControlHeight);
-    size->AddItem("Default", "");
+    size->AddItem(Tr("Default"), "");
     for (int pt : kSizes) size->AddItem(std::to_string(pt), std::to_string(pt));
     Theme::StyleDropdown(size);
     size->SetSelectedIndex(0, /*runNotifications=*/false);
-    size->SetTooltip("Size of the selected text, in points");
+    size->SetTooltip(Tr("Size of the selected text, in points"));
     size->onSelectionChanged = [editor](int, const DropdownItem& item) {
         float pt = 0.0f;   // "Default"
         if (!item.value.empty() && !TryParseFloat(item.value, pt)) return;
@@ -231,7 +233,7 @@ FormatBar FormatBar::Build(const Options& options) {
     target->AddSegment("", Theme::MailIcon("text-colour"));
     target->AddSegment("", Theme::MailIcon("highlight"));
     target->SetSelectedIndex(kColourText);
-    target->SetTooltip("What a colour is for: the text, or the background behind it");
+    target->SetTooltip(Tr("What a colour is for: the text, or the background behind it"));
     UltraCanvasColorSwatchBar* swatches = colours.get();   // a sibling in this row
     target->onSegmentSelected = [swatches](int segment) {
         swatches->SetColors(segment == kColourBackground ? BackgroundPalette() : TextPalette());
@@ -246,7 +248,7 @@ FormatBar FormatBar::Build(const Options& options) {
     // A fixed width: the swatches fit themselves into it. At its preferred
     // width (swatches at full size) the row outgrew the compose window.
     colours->SetElementSize(Size2Df(kSwatchBarWidth, Theme::kControlHeight - 4.0f));
-    colours->SetTooltip("Colour of the selected text");
+    colours->SetTooltip(Tr("Colour of the selected text"));
     UltraCanvasSegmentedControl* targetRaw = target.get();   // a sibling in this row
     colours->onColorSelected = [editor, targetRaw](const Color& c) {
         const bool background = targetRaw->GetSelectedIndex() == kColourBackground;
@@ -296,7 +298,7 @@ FormatBar FormatBar::Build(const Options& options) {
                 [](UltraCanvasRichTextEdit& e) { e.DecreaseQuoteLevel(); });
     }
     separator(paraRow, "Sep4");
-    addTool(paraRow, id + "Rule", "rule", "A horizontal line",
+    addTool(paraRow, id + "Rule", "rule", Tr("A horizontal line"),
             [](UltraCanvasRichTextEdit& e) { e.InsertHorizontalRule(); });
 
     // Link: the address for the selected text (or the address itself, typed
@@ -307,7 +309,7 @@ FormatBar FormatBar::Build(const Options& options) {
                                       kToolButton);
     link->onClick = [editor, parent]() {
         UltraCanvasDialogManager::ShowInputDialog(
-            "Web page or e-mail address", "Link", "https://", InputType::Text,
+            Tr("Web page or e-mail address"), Tr("Link"), "https://", InputType::Text,
             [editor](DialogResult result, const std::string& value) {
                 if (result != DialogResult::OK) return;
                 std::string target = Trim(value);
@@ -338,17 +340,17 @@ FormatBar FormatBar::Build(const Options& options) {
                                          kToolButton);
     picture->onClick = [editor, parent]() {
         FileDialogOptions dialog;
-        dialog.title = "Insert picture";
+        dialog.title = Tr("Insert picture");
         dialog.parentWindow = parent;
-        dialog.AddFilter("Pictures", std::vector<std::string>{"png", "jpg", "jpeg", "gif"});
+        dialog.AddFilter(Tr("Pictures"), std::vector<std::string>{"png", "jpg", "jpeg", "gif"});
         UltraCanvasFileLoader::OpenFileDialog(
             dialog, [editor, parent](DialogResult result, const std::string& path) {
                 if (result != DialogResult::OK || path.empty()) return;
                 UltraCanvasRichTextEdit* e = editor ? editor() : nullptr;
                 if (!e) return;
                 if (!e->InsertInlineImageFromFile(path)) {
-                    UltraCanvasDialogManager::ShowError("Could not read the picture " + path,
-                                                        "Insert picture", nullptr, parent);
+                    UltraCanvasDialogManager::ShowError(TrF("Could not read the picture {0}", path),
+                                                        Tr("Insert picture"), nullptr, parent);
                     return;
                 }
                 e->SetFocus(true);

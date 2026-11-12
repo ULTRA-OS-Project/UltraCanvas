@@ -1,3 +1,11 @@
+#### 2026-11-11 *0.4.17*
+- **UltraSnip starts with the desktop.** It is in the *Start with the
+  desktop* menu as `UltraSnip --background`, ticked by default: from the
+  first sign-in the Print Screen key snips in UltraSnip instead of opening
+  the Windows Snipping Tool, and the screenshot button opens at once. A
+  settings file from before gets it once (`startupDefaults` 2); unticking it
+  holds. `UltraDesktopAppCategoriesTest` checks both.
+
 #### 2026-11-10 *0.4.16*
 - **UltraNotifications starts with the desktop by default**, with no window,
   so the bell on the right bar counts unread notifications from the first

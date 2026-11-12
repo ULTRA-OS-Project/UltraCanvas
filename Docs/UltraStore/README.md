@@ -171,10 +171,32 @@ Per app, what the admin backend offers and the catalog carries:
 | Source | `open_source`, `source_url` | shown as a badge with the link |
 | Featured | `featured` | the admin's pick: the store's Discover shows the newest featured app as its hero and the featured apps as *Editor's picks* |
 | Links | `homepage`, `support_url`, `privacy_url` | |
-| Search | `categories`, `tags` | categories from the fixed list the store's sidebar shows; tags free-form |
+| Search | `categories`, `tags` | categories from the store's fixed list (below); tags free-form |
 | Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback; `source_language` names what the creator wrote, `machine_translated` the languages the server's UltraAI added (see *Translations*) |
 | Media | `icon`, `screenshots` | relative to the catalog URL, served from the same place |
 | Codes | `codes[]` (catalog-wide) | the discount and affiliate codes in force: see *Affiliates and codes* |
+
+**Categories** come from one fixed list, so the store can name each in the
+buyer's language; the catalog writes the ids, and the store's browser shows
+them in this order (`StoreCategories()`, `Catalog.h`; the names are
+`CategoryName()`, `StoreQuery.h`):
+
+| Id | Name (English) | | Id | Name (English) |
+|---|---|---|---|---|
+| `audio` | Music and audio | | `education` | Education |
+| `video` | Video | | `science` | Science |
+| `graphics` | Graphics and photos | | `finance` | Finance |
+| `office` | Office | | `security` | Security |
+| `communication` | Communication | | `games` | Games |
+| `internet` | Internet | | `system` | System |
+| `development` | Developer tools | | `utilities` | Utilities |
+
+The store reads an id in any case and trims it, so a catalog from before
+the list (`"Office"`) still files its apps; an id it does not know - a
+later list's - is kept and not shown, so an older store reads a newer
+catalog. The admin backend writes only the list's: its form offers the
+list, and `PutComponent` and `app set <id> categories` refuse any other
+word (`CheckCategories`).
 
 Pricing is **shown** by the store from 0.1.0 on; the purchase itself is
 milestone 7, with its own design (*Payment*), and until then the store
@@ -313,8 +335,14 @@ the original a click away; a translation the creator later supplies replaces
 the machine's and leaves the list. For ULTRA OS apps the same service reads
 the app's own localisation folder, so the app's strings get the same
 treatment as its description. The store's own interface strings are not in
-the catalog; they follow the framework's translation facility when it
-exists (none does today) and a local table in the app until then.
+the catalog: they go through the framework's `Tr` (UltraLocalisation), from
+`media/locale/<lang>/UltraStore.json` over the standard set, in the
+language the desktop or `Language.conf` picks - every page, button, fact,
+price, date (the language's month names and order), size unit and the
+messages of the core (a refused install, a catalog that does not verify, a
+failed download) the window shows. The command line (`ultrastore list`,
+`install` ...) stays English: its output is read by scripts and logs, and it
+runs before any language is loaded.
 
 ### Affiliates and codes
 

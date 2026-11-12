@@ -1,3 +1,76 @@
+#### 2026-11-11 *0.9.540*
+- **CI: an Ubuntu mirror outage no longer stops the Linux jobs at
+  `apt-get update`.** On 2026-11-11 `azure.archive.ubuntu.com` could not be
+  resolved for a quarter of an hour, and the Linux, Wayland and Android
+  jobs all failed before building anything, although the packages they
+  needed were in the package cache. `scripts/ci-apt.sh` 1.2.0 keeps apt's
+  package lists with the cached packages (`cache-out`, `cache-in`). An
+  `update` that cannot reach the mirror in its attempts goes on with those
+  lists, or without them with the runner's own, and with a warning instead
+  of an error. The packages in the cache then install without the mirror;
+  one that is not cached still fails at its install, naming it. The Wayland
+  and Android workflows now restore and save the package cache as
+  `build.yml` does.
+
+#### 2026-11-11 *0.9.539*
+- **A container sized to its content grows with a button grown to its
+  text.** The first layout read a fixed-width button's given width before
+  the button measured its text; the button grew afterwards, but its row
+  kept the width it had measured, so a group of header buttons came out as
+  wide as the English labels and the next item was laid over the last one
+  (UltraStore's German "Updates" tab under its search field, "Clear
+  finished" off the Downloads panel). A button grown during a layout pass
+  now asks for one more pass, and `UltraCanvasWindowBase::UpdateAndRender`
+  runs it at the next frame: a layout an element invalidated while being
+  drawn is laid out and drawn again, and the event loop is woken for it
+  instead of waiting for the next mouse move. `ButtonGrowToFitTest` covers a
+  group of grown buttons in a header row.
+
+#### 2026-11-11 *0.9.538*
+- **Word documents: text frames and floats placed from the page.** A
+  letterhead's sender block now stands beside the address instead of
+  following it in the text.
+  - The model gains text frames: a run with `RichTextRun::frameIndex` refers
+    to a `RichTextFrame` in `UCRichDocument::frames` (its paragraphs, fill,
+    border and padding) and floats like a floating picture.
+  - Floats can be placed from the page's edges or its text area as well as
+    from the paragraph (`floatHorizontalFrom`, `floatVerticalFrom`,
+    `floatVerticalAlign`).
+  - The ODT reader reads `draw:text-box` frames (Writer frames and drawing
+    text boxes) and page-anchored frames and pictures, with
+    `style:horizontal-rel` / `vertical-rel`.
+  - The DOCX reader reads text boxes (`wps:txbx`, and VML `v:textbox`
+    fallbacks) and every `wp:positionH` / `wp:positionV` `relativeFrom`.
+  - The DOC reader reads floating pictures and text boxes, which it used to
+    drop: OfficeArt shapes from `PlcSpaMom`, `DggInfo` and the text-box story.
+  - `UltraCanvasRichTextEdit` places and draws frames and page-placed floats
+    in page view, with text wrapping round them.
+  - Both writers save frames and placement (ODF `draw:frame` with
+    `draw:text-box`; DOCX `wps` text boxes and `wp:anchor` relations), and
+    LibreOffice reads the saved files back with the frames in place.
+  - Markdown, HTML and plain text spell a frame's text before its paragraph
+    (`UCRichDocument::WithFramesInline`).
+  - New fixture `Tests/fixtures/word-frames.*`.
+- **`UltraCanvasRichTextEdit`: text wraps round floats line by line.** A
+  paragraph beside a floating picture or frame is narrowed only for the lines
+  level with it; its lines below take the column's full width again, as in
+  Writer. A top-and-bottom picture set lower down in its paragraph keeps the
+  lines that fit above it there and continues the paragraph below it. Before,
+  the whole paragraph was narrowed, or moved below the picture.
+- **Frames and floating pictures in headers and footers float.** A Word
+  letterhead's logo and sender block, kept in the header, now stand at their
+  place on every page instead of being drawn in line in the header, and the
+  page's body wraps round them. A frame in a header shows each page's page
+  number and page count. The DOC reader reads shapes in headers and footers
+  too (`PlcSpaHdr` and the header text-box story). New fixture
+  `Tests/fixtures/word-header-frames.*`.
+- **`UltraCanvasRichTextEdit::SetZoomFit`: page width and whole page.** In
+  page view the zoom follows the element's size, so a narrow window shows the
+  whole page. `SetZoom` and Ctrl+wheel end it; printing stays at 100 %.
+- **DOCX writer: floating pictures keep their placement from the page or
+  margin.** Before, every floating picture was written as placed from the
+  column and the paragraph.
+
 #### 2026-11-11 *0.9.537*
 - **`UltraCanvasTheme::TakeHostFonts`, and the four applications with a
   theme of their own on the policy (T6 of the host theme proposal, first

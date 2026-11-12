@@ -136,6 +136,7 @@ void MapSymbolFontRuns(UCRichDocument& document) {
         mapBlocks(furniture->header);
         mapBlocks(furniture->footer);
     }
+    for (RichTextFrame& frame : document.frames) mapBlocks(frame.blocks);
 }
 
 } // namespace WordFormatInternal

@@ -8,6 +8,9 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
+// Version: 0.8.0 - the colours and type sizes are the framework theme's roles and text roles,
+//                  read as functions (PageBackground(), TextPrimary(), SizeBody() ...): a dark
+//                  desktop gives a dark UltraMail (T6 of the host theme proposal)
 // Version: 0.7.0 - UltraMail's line icons (media/icons/ultramail/): MailIcon,
 //                  SetButtonIcon, the flat ToolButton / MakeToolButton of the
 //                  formatting bar, MakeToolSeparator, and MakeDialogHeader (an
@@ -19,7 +22,7 @@
 //                  surface's text and icons reaches the surface
 // Version: 0.4.0 - StyleSegmented (the signature editor, the compose window)
 // Version: 0.3.0 - sender-badge colours (kTrust*) and the badge metric
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -32,6 +35,7 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTheme.h"
 
 #include <algorithm>
 #include <functional>
@@ -44,39 +48,54 @@ namespace Theme {
 // ---------------------------------------------------------------------------
 // Colour
 // ---------------------------------------------------------------------------
-// A near-white page with white cards, so a card reads as raised without a
-// shadow (the catalogue has no shadow primitive). The page, the card and its
-// border are the framework's section-card colours, which UltraPaint's side
-// panel uses too: taken from there, so the two applications cannot drift
-// apart. (Compile-time constants, so they are set before any other static.)
-inline const UltraCanvas::Color kPageBackground = UltraCanvas::Colors::SectionPage;
-inline const UltraCanvas::Color kCardBackground = UltraCanvas::Colors::SectionCardBackground;
-inline const UltraCanvas::Color kCardBorder     = UltraCanvas::Colors::SectionCardBorder;
-inline const UltraCanvas::Color kDivider        {234, 236, 240};
-inline const UltraCanvas::Color kSidebar        {249, 250, 251};
+// The colours are the framework theme's roles (UltraCanvasTheme.h): the
+// desktop's light or dark look, or Appearance.conf's over it, so a dark
+// desktop gives a dark UltraMail. Each is a function read when an element
+// is styled; a window built after the theme changed takes the new look (T6
+// of the host theme proposal - the surfaces set at build time follow at
+// the next start, the elements that follow the theme by themselves at once).
+inline const UltraCanvas::ThemeRoles& Roles() { return UltraCanvas::UltraCanvasTheme::Current().roles; }
+inline bool Dark() { return UltraCanvas::UltraCanvasTheme::Current().dark; }
+// A colour moved toward white (by > 0) or black (by < 0).
+inline UltraCanvas::Color Shade(const UltraCanvas::Color& c, int by) {
+    auto step = [by](uint8_t v) { return static_cast<uint8_t>(std::max(0, std::min(255, static_cast<int>(v) + by))); };
+    return UltraCanvas::Color(step(c.r), step(c.g), step(c.b), c.a);
+}
+// A soft surface of a strong colour: the light tint on a light look, the
+// colour itself at low alpha over a dark panel.
+inline UltraCanvas::Color Tint(const UltraCanvas::Color& strong, const UltraCanvas::Color& lightTint) {
+    return Dark() ? strong.WithAlpha(56) : lightTint;
+}
+// A strong colour that reads on the look's panel: lifted on a dark one.
+inline UltraCanvas::Color Strong(const UltraCanvas::Color& light) { return Dark() ? Shade(light, 70) : light; }
 
-inline const UltraCanvas::Color kTextPrimary    { 24,  28,  35};
-inline const UltraCanvas::Color kTextSecondary  {104, 112, 125};
-inline const UltraCanvas::Color kTextMuted      {142, 150, 163};
+inline UltraCanvas::Color PageBackground() { return Roles().ground; }    // the window behind the cards
+inline UltraCanvas::Color CardBackground() { return Roles().panel; }     // a card, a list, a field
+inline UltraCanvas::Color CardBorder()     { return Roles().line; }
+inline UltraCanvas::Color Divider()        { return Roles().line; }
+inline UltraCanvas::Color Sidebar()        { return Roles().well; }
 
-inline const UltraCanvas::Color kAccent         { 37,  99, 235};   // primary actions, selection
-inline const UltraCanvas::Color kAccentHover    { 29,  78, 216};
-inline const UltraCanvas::Color kAccentPressed  { 30,  64, 175};
-inline const UltraCanvas::Color kAccentSoft     {232, 240, 254};   // tinted surfaces (selected)
-// A list's rows on a card: the framework's list-row colours (UltraPaint's
-// layer list takes them too).
-inline const UltraCanvas::Color kRowHover       = UltraCanvas::Colors::ListRowHover;
-inline const UltraCanvas::Color kRowSelected    = UltraCanvas::Colors::ListRowSelected;
+inline UltraCanvas::Color TextPrimary()    { return Roles().ink; }
+inline UltraCanvas::Color TextSecondary()  { return Roles().inkMuted; }
+inline UltraCanvas::Color TextMuted()      { return Roles().inkFaint; }
+
+inline UltraCanvas::Color Accent()         { return Roles().accent; }        // primary actions, selection
+inline UltraCanvas::Color AccentHover()    { return Roles().accentHover; }
+inline UltraCanvas::Color AccentPressed()  { return Shade(Roles().accentHover, Dark() ? 20 : -20); }
+inline UltraCanvas::Color AccentSoft()     { return Roles().accentSoft; }    // tinted surfaces (selected)
+// A list's rows on a card
+inline UltraCanvas::Color RowHover()       { return Roles().hover; }
+inline UltraCanvas::Color RowSelected()    { return Roles().accentSoft; }
 
 // Counter tints: a soft background with a strong text colour of the same
 // hue. Blue = new today, green = unread from before today, orange = waiting
 // for a reply — the same three hues as the original design, toned down.
-inline const UltraCanvas::Color kNewTodayTint   {219, 234, 254};
-inline const UltraCanvas::Color kNewTodayText   { 29,  78, 216};
-inline const UltraCanvas::Color kUnreadTint     {220, 252, 231};
-inline const UltraCanvas::Color kUnreadText     { 21, 128,  61};
-inline const UltraCanvas::Color kWaitingTint    {255, 237, 213};
-inline const UltraCanvas::Color kWaitingText    {194,  65,  12};
+inline UltraCanvas::Color NewTodayText()   { return Strong(UltraCanvas::Color( 29,  78, 216)); }
+inline UltraCanvas::Color NewTodayTint()   { return Tint(NewTodayText(), UltraCanvas::Color(219, 234, 254)); }
+inline UltraCanvas::Color UnreadText()     { return Strong(UltraCanvas::Color( 21, 128,  61)); }
+inline UltraCanvas::Color UnreadTint()     { return Tint(UnreadText(), UltraCanvas::Color(220, 252, 231)); }
+inline UltraCanvas::Color WaitingText()    { return Strong(UltraCanvas::Color(194,  65,  12)); }
+inline UltraCanvas::Color WaitingTint()    { return Tint(WaitingText(), UltraCanvas::Color(255, 237, 213)); }
 
 // Sender-badge colours. The badge left of a subject line says, at a glance,
 // who a message is from: a filled tile for someone the address book knows, an
@@ -84,27 +103,28 @@ inline const UltraCanvas::Color kWaitingText    {194,  65,  12};
 // message can be trusted. The hues are the ones the rest of the app already
 // uses for the same ideas (green = good, blue = business/known, orange =
 // waiting/caution, red = stop).
-inline const UltraCanvas::Color kTrustFriend       { 22, 163,  74};   // address book, private
-inline const UltraCanvas::Color kTrustFriendSoft   {220, 252, 231};
-inline const UltraCanvas::Color kTrustBusiness     { 37,  99, 235};   // address book, work
-inline const UltraCanvas::Color kTrustBusinessSoft {219, 234, 254};
-inline const UltraCanvas::Color kTrustNew          { 30,  35,  45};   // unknown sender
-inline const UltraCanvas::Color kTrustAdvert       { 30,  58, 138};   // bulk / marketing
-inline const UltraCanvas::Color kTrustSpam         {234,  88,  12};   // likely spam
-inline const UltraCanvas::Color kTrustSpamSoft     {255, 237, 213};
-inline const UltraCanvas::Color kTrustScam         {220,  38,  38};   // likely scam / phishing
-inline const UltraCanvas::Color kTrustScamSoft     {254, 226, 226};
+inline UltraCanvas::Color TrustFriend()       { return Strong(UltraCanvas::Color( 22, 163,  74)); }   // address book, private
+inline UltraCanvas::Color TrustFriendSoft()   { return Tint(TrustFriend(), UltraCanvas::Color(220, 252, 231)); }
+inline UltraCanvas::Color TrustBusiness()     { return Strong(UltraCanvas::Color( 37,  99, 235)); }   // address book, work
+inline UltraCanvas::Color TrustBusinessSoft() { return Tint(TrustBusiness(), UltraCanvas::Color(219, 234, 254)); }
+inline UltraCanvas::Color TrustNew()          { return Roles().ink; }                                  // unknown sender
+inline UltraCanvas::Color TrustAdvert()       { return Strong(UltraCanvas::Color( 30,  58, 138)); }   // bulk / marketing
+inline UltraCanvas::Color TrustSpam()         { return Strong(UltraCanvas::Color(234,  88,  12)); }   // likely spam
+inline UltraCanvas::Color TrustSpamSoft()     { return Tint(TrustSpam(), UltraCanvas::Color(255, 237, 213)); }
+inline UltraCanvas::Color TrustScam()         { return Roles().danger; }                               // likely scam / phishing
+inline UltraCanvas::Color TrustScamSoft()     { return Tint(TrustScam(), UltraCanvas::Color(254, 226, 226)); }
 
 // ---------------------------------------------------------------------------
 // Type
 // ---------------------------------------------------------------------------
-// The scale matches UltraFiler's UI font (9pt for controls, lists and body
-// text), so the two apps read the same size side by side.
-constexpr float kSizeTitle     = 13.0f;   // window / pane titles
-constexpr float kSizeHeading   = 11.0f;   // card headings, account name
-constexpr float kSizeBody      = 9.0f;
-constexpr float kSizeSecondary = 8.5f;
-constexpr float kSizeSmall     = 8.0f;
+// The sizes are the theme's text roles - the desktop's interface font size
+// and the ratios of UltraCanvasTheme - so UltraMail reads the same size as
+// the rest of the desktop, and as UltraFiler beside it.
+inline float SizeTitle()     { return static_cast<float>(UltraCanvas::UltraCanvasTheme::Current().FontSize(UltraCanvas::ThemeTextRole::Title)); }
+inline float SizeHeading()   { return static_cast<float>(UltraCanvas::UltraCanvasTheme::Current().FontSize(UltraCanvas::ThemeTextRole::Heading)); }
+inline float SizeBody()      { return static_cast<float>(UltraCanvas::UltraCanvasTheme::Current().FontSize(UltraCanvas::ThemeTextRole::Body)); }
+inline float SizeSecondary() { return static_cast<float>(UltraCanvas::UltraCanvasTheme::Current().FontSize(UltraCanvas::ThemeTextRole::Caption)); }
+inline float SizeSmall()     { return static_cast<float>(UltraCanvas::UltraCanvasTheme::Current().FontSize(UltraCanvas::ThemeTextRole::Small)); }
 
 // ---------------------------------------------------------------------------
 // Metrics
@@ -125,36 +145,36 @@ constexpr float kBadgeSize     = 18.0f;   // the sender badge in a message-list 
 // The filled accent button: one per window, for the action the user came for.
 inline UltraCanvas::ButtonStyle PrimaryButton() {
     UltraCanvas::ButtonStyle s;
-    s.normalColor      = kAccent;
-    s.hoverColor       = kAccentHover;
-    s.pressedColor     = kAccentPressed;
+    s.normalColor      = Accent();
+    s.hoverColor       = AccentHover();
+    s.pressedColor     = AccentPressed();
     s.disabledColor    = UltraCanvas::Color(191, 205, 235, 255);
     s.normalTextColor  = UltraCanvas::Colors::White;
     s.hoverTextColor   = UltraCanvas::Colors::White;
     s.pressedTextColor = UltraCanvas::Colors::White;
     s.disabledTextColor= UltraCanvas::Colors::White;
     s.borderWidth      = 0.0f;
-    s.borderColor      = kAccent;
+    s.borderColor      = Accent();
     s.cornerRadius     = kControlRadius;
-    s.fontSize         = kSizeBody;
+    s.fontSize         = SizeBody();
     return s;
 }
 
 // The quiet white button with a hairline border, for everything else.
 inline UltraCanvas::ButtonStyle SecondaryButton() {
     UltraCanvas::ButtonStyle s;
-    s.normalColor      = kCardBackground;
-    s.hoverColor       = kRowHover;
-    s.pressedColor     = kRowSelected;
-    s.disabledColor    = kPageBackground;
-    s.normalTextColor  = kTextPrimary;
-    s.hoverTextColor   = kTextPrimary;
-    s.pressedTextColor = kTextPrimary;
-    s.disabledTextColor= kTextMuted;
+    s.normalColor      = CardBackground();
+    s.hoverColor       = RowHover();
+    s.pressedColor     = RowSelected();
+    s.disabledColor    = PageBackground();
+    s.normalTextColor  = TextPrimary();
+    s.hoverTextColor   = TextPrimary();
+    s.pressedTextColor = TextPrimary();
+    s.disabledTextColor= TextMuted();
     s.borderWidth      = 1.0f;
-    s.borderColor      = kCardBorder;
+    s.borderColor      = CardBorder();
     s.cornerRadius     = kControlRadius;
-    s.fontSize         = kSizeBody;
+    s.fontSize         = SizeBody();
     return s;
 }
 
@@ -163,7 +183,7 @@ inline UltraCanvas::ButtonStyle SecondaryButton() {
 // buttons in the row.
 inline UltraCanvas::ButtonStyle DangerButton() {
     UltraCanvas::ButtonStyle s;
-    s.normalColor      = kTrustScam;                        // red-600
+    s.normalColor      = TrustScam();                        // red-600
     s.hoverColor       = UltraCanvas::Color(185,  28,  28); // red-700
     s.pressedColor     = UltraCanvas::Color(153,  27,  27); // red-800
     s.disabledColor    = UltraCanvas::Color(240, 180, 180, 255);
@@ -172,9 +192,9 @@ inline UltraCanvas::ButtonStyle DangerButton() {
     s.pressedTextColor = UltraCanvas::Colors::White;
     s.disabledTextColor= UltraCanvas::Colors::White;
     s.borderWidth      = 0.0f;
-    s.borderColor      = kTrustScam;
+    s.borderColor      = TrustScam();
     s.cornerRadius     = kControlRadius;
-    s.fontSize         = kSizeBody;
+    s.fontSize         = SizeBody();
     return s;
 }
 
@@ -194,17 +214,17 @@ inline void StyleDanger(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b
 inline UltraCanvas::ButtonStyle ToolButton() {
     UltraCanvas::ButtonStyle s;
     s.normalColor      = UltraCanvas::Colors::Transparent;
-    s.hoverColor       = kRowHover;
-    s.pressedColor     = kAccentSoft;
+    s.hoverColor       = RowHover();
+    s.pressedColor     = AccentSoft();
     s.disabledColor    = UltraCanvas::Colors::Transparent;
-    s.normalTextColor  = kTextPrimary;
-    s.hoverTextColor   = kTextPrimary;
-    s.pressedTextColor = kAccent;
-    s.disabledTextColor= kTextMuted;
+    s.normalTextColor  = TextPrimary();
+    s.hoverTextColor   = TextPrimary();
+    s.pressedTextColor = Accent();
+    s.disabledTextColor= TextMuted();
     s.borderWidth      = 0.0f;
     s.borderColor      = UltraCanvas::Colors::Transparent;
     s.cornerRadius     = kControlRadius;
-    s.fontSize         = kSizeBody;
+    s.fontSize         = SizeBody();
     return s;
 }
 
@@ -260,7 +280,7 @@ MakeToolButton(const std::string& id, const std::string& icon, const std::string
 inline std::shared_ptr<UltraCanvas::UltraCanvasContainer>
 MakeToolSeparator(const std::string& id, float height = kControlHeight - 6.0f) {
     auto line = UltraCanvas::CreateContainer(id, 0, 0, 1, height);
-    line->SetBackgroundColor(kCardBorder);
+    line->SetBackgroundColor(CardBorder());
     line->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     // A little air on both sides on top of the row's own gap.
     line->SetMargin(0, 3, 0, 3);
@@ -286,15 +306,15 @@ inline void FitToLabel(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b,
 inline void ApplyCard(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& c,
                       float radius = kCardRadius) {
     if (!c) return;
-    c->SetBackgroundColor(kCardBackground);
-    c->SetBorders(1.0f, kCardBorder, radius);
+    c->SetBackgroundColor(CardBackground());
+    c->SetBorders(1.0f, CardBorder(), radius);
 }
 
 // A group box drawn as a card with a quiet caption: the framework's
 // SectionCard, with the caption at the body size.
 inline UltraCanvas::GroupBoxVisualStyle CardGroupBox(float contentPadding = kGap) {
     UltraCanvas::GroupBoxVisualStyle s = UltraCanvas::GroupBoxVisualStyle::SectionCard();
-    s.titleFont.fontSize    = kSizeBody;
+    s.titleFont.fontSize    = SizeBody();
     s.contentPadding        = contentPadding;
     return s;
 }
@@ -302,15 +322,15 @@ inline UltraCanvas::GroupBoxVisualStyle CardGroupBox(float contentPadding = kGap
 // Text inputs: hairline border, accent focus ring, body-size text.
 inline UltraCanvas::TextInputStyle InputStyle() {
     UltraCanvas::TextInputStyle s;
-    s.borderColor      = kCardBorder;
-    s.focusBorderColor = kAccent;
-    s.validBorderColor = kCardBorder;
-    s.textColor        = kTextPrimary;
-    s.placeholderColor = kTextMuted;
+    s.borderColor      = CardBorder();
+    s.focusBorderColor = Accent();
+    s.validBorderColor = CardBorder();
+    s.textColor        = TextPrimary();
+    s.placeholderColor = TextMuted();
     s.borderRadius     = static_cast<int>(kControlRadius);
     s.paddingLeft      = 6;
     s.paddingRight     = 6;
-    s.fontStyle.fontSize = kSizeBody;
+    s.fontStyle.fontSize = SizeBody();
     return s;
 }
 inline void StyleInput(const std::shared_ptr<UltraCanvas::UltraCanvasTextInput>& in) {
@@ -324,11 +344,11 @@ template <typename TextAreaPtr>
 inline void StyleTextArea(const TextAreaPtr& ta, bool bordered = true) {
     if (!ta) return;
     auto& s = ta->GetStyle();
-    s.borderColor     = bordered ? kCardBorder : UltraCanvas::Colors::Transparent;
-    s.backgroundColor = kCardBackground;
-    s.fontColor       = kTextPrimary;
+    s.borderColor     = bordered ? CardBorder() : UltraCanvas::Colors::Transparent;
+    s.backgroundColor = CardBackground();
+    s.fontColor       = TextPrimary();
     s.textPadding     = 6.0f;
-    ta->SetFontSize(kSizeBody + 1.0f);
+    ta->SetFontSize(SizeBody() + 1.0f);
 }
 
 // Dropdowns: body-size text (the element's default is larger). A template for
@@ -337,7 +357,7 @@ template <typename DropdownPtr>
 inline void StyleDropdown(const DropdownPtr& dd) {
     if (!dd) return;
     auto s = dd->GetStyle();
-    s.fontSize = kSizeBody;
+    s.fontSize = SizeBody();
     dd->SetStyle(s);
 }
 
@@ -348,12 +368,12 @@ template <typename SegmentedPtr>
 inline void StyleSegmented(const SegmentedPtr& sc) {
     if (!sc) return;
     auto style = sc->GetStyle();
-    style.fontSize        = kSizeBody;
-    style.selectedColor   = kAccent;
-    style.hoverColor      = kAccentSoft;
-    style.normalColor     = kCardBackground;
-    style.borderColor     = kCardBorder;
-    style.separatorColor  = kCardBorder;
+    style.fontSize        = SizeBody();
+    style.selectedColor   = Accent();
+    style.hoverColor      = AccentSoft();
+    style.normalColor     = CardBackground();
+    style.borderColor     = CardBorder();
+    style.separatorColor  = CardBorder();
     style.cornerRadius    = kControlRadius;
     style.paddingVertical = 3;
     sc->SetStyle(style);
@@ -363,8 +383,8 @@ inline void StyleSegmented(const SegmentedPtr& sc) {
 // Label helpers
 // ---------------------------------------------------------------------------
 inline std::shared_ptr<UltraCanvas::UltraCanvasLabel>
-MakeText(const std::string& id, const std::string& text, float size = kSizeBody,
-         const UltraCanvas::Color& color = kTextPrimary,
+MakeText(const std::string& id, const std::string& text, float size = SizeBody(),
+         const UltraCanvas::Color& color = TextPrimary(),
          UltraCanvas::FontWeight weight = UltraCanvas::FontWeight::Normal) {
     auto label = UltraCanvas::CreateLabel(id, text);
     label->SetFontSize(size);
@@ -376,7 +396,7 @@ MakeText(const std::string& id, const std::string& text, float size = kSizeBody,
 // A fixed-height, stretch-width line of text (for flex columns).
 inline std::shared_ptr<UltraCanvas::UltraCanvasLabel>
 MakeLine(const std::string& id, const std::string& text, float height,
-         float size = kSizeBody, const UltraCanvas::Color& color = kTextPrimary,
+         float size = SizeBody(), const UltraCanvas::Color& color = TextPrimary(),
          UltraCanvas::FontWeight weight = UltraCanvas::FontWeight::Normal) {
     auto label = UltraCanvas::CreateLabel(id, 0, 0, 0, height, text);
     label->SetFontSize(size);
@@ -391,8 +411,8 @@ MakeLine(const std::string& id, const std::string& text, float height,
 inline std::shared_ptr<UltraCanvas::UltraCanvasContainer>
 MakeDialogHeader(const std::string& id, const std::string& icon, const std::string& title,
                  const std::string& text, float textHeight = 32.0f,
-                 const UltraCanvas::Color& tint = kAccentSoft,
-                 const UltraCanvas::Color& ink = kAccent) {
+                 const UltraCanvas::Color& tint = AccentSoft(),
+                 const UltraCanvas::Color& ink = Accent()) {
     constexpr float kTile = 40.0f;
     constexpr float kTitleHeight = 20.0f;
     auto header = UltraCanvas::CreateContainer(id, 0, 0, 0, 0);
@@ -423,11 +443,11 @@ MakeDialogHeader(const std::string& id, const std::string& icon, const std::stri
                  .SetFlexGap(2)
                  .SetFlexAlignItems(UltraCanvas::CSSLayout::AlignItems::Stretch);
     words->SetContainerStyle(style);
-    auto heading = MakeLine(id + ".title", title, kTitleHeight, kSizeHeading, kTextPrimary,
+    auto heading = MakeLine(id + ".title", title, kTitleHeight, SizeHeading(), TextPrimary(),
                             UltraCanvas::FontWeight::Bold);
     words->AddChild(heading);
     if (!text.empty()) {
-        auto line = MakeLine(id + ".text", text, textHeight, kSizeBody, kTextSecondary);
+        auto line = MakeLine(id + ".text", text, textHeight, SizeBody(), TextSecondary());
         line->SetWrap(UltraCanvas::TextWrap::WrapWord);
         words->AddChild(line);
     }
@@ -442,7 +462,7 @@ MakeDialogHeader(const std::string& id, const std::string& icon, const std::stri
 // A 1px horizontal rule for flex columns.
 inline std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeDivider(const std::string& id) {
     auto rule = UltraCanvas::CreateContainer(id, 0, 0, 0, 1);
-    rule->SetBackgroundColor(kDivider);
+    rule->SetBackgroundColor(Divider());
     rule->layoutItem.SetAlignSelf(UltraCanvas::CSSLayout::AlignSelf::Stretch);
     return rule;
 }
@@ -450,8 +470,8 @@ inline std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeDivider(const std:
 // The initial-in-a-tinted-square avatar used for accounts and contacts.
 inline std::shared_ptr<UltraCanvas::UltraCanvasContainer>
 MakeAvatar(const std::string& id, const std::string& initial, float side = kAvatarSize,
-           const UltraCanvas::Color& tint = kAccentSoft,
-           const UltraCanvas::Color& text = kAccent) {
+           const UltraCanvas::Color& tint = AccentSoft(),
+           const UltraCanvas::Color& text = Accent()) {
     auto box = UltraCanvas::CreateContainer(id, 0, 0, side, side);
     box->SetBackgroundColor(tint);
     box->SetBorders(0.0f, UltraCanvas::Colors::Transparent, side * 0.25f);

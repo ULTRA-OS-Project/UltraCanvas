@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.7.0 - resident (--background, started by UltraDesktop): a close hides the window
 // Version: 0.6.0 - the Print Screen key starts a snip, taken from the system (StartExclusive)
 // Version: 0.5.1 - the Start button as wide as its measured icon and text
 // Version: 0.5.0 - opens at the top centre of the screen over the screen already dimmed
@@ -141,6 +142,12 @@ bool UltraSnipWindow::Create() {
         Disarm();
         if (recorder_ && recorder_->IsRecording()) StopRecording();
         settings_.Save();
+        if (resident_) {
+            // Started by the desktop for the session: the window goes, UltraSnip
+            // and the Print Screen key stay
+            window_->Hide();
+            return false;
+        }
         app_.RequestExit();
         return true;
     };
@@ -394,6 +401,11 @@ void UltraSnipWindow::Show() {
 }
 
 void UltraSnipWindow::Present(const SnipRequest& request) {
+    // The desktop starting it in the background while it runs: stay as it is
+    if (request.background) {
+        resident_ = true;
+        return;
+    }
     if (request.startAtOnce) {
         StartCapture(request);
         return;

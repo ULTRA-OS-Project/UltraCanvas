@@ -2,6 +2,8 @@
 // The Settings page: the channel, the texts' language, the servers, the keys
 // the user trusts beside the compiled-in ones, and what the store knows
 // about this machine, its folder and the catalog it has.
+// Version: 0.3.1 - the last labels through Tr: the title, Catalog, Channel, Stable,
+//                  Servers, Save, Revert, Proxy settings
 // Version: 0.3.0 - Proxy settings: the shared dialog, for the proxy the catalog,
 //                  the downloads and the purchases go through
 // Version: 0.2.0 - the announced keys in the catalog state
@@ -70,7 +72,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     auto header = Theme::Row("usS.header", Theme::kGap);
     header->layoutItem.SetFlexShrink(0);
-    header->AddChild(Theme::Heading("usS.title", "Settings"));
+    header->AddChild(Theme::Heading("usS.title", Tr("Settings")));
     page->AddChild(header);
 
     auto scroll = CreateScrollableContainer("usS.scroll", 0, 0, 0, 0);
@@ -86,12 +88,12 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
 
     // ----- the catalog -----
     auto catalog = Theme::Surface("usS.catalog", Theme::kGap);
-    catalog->AddChild(Theme::Text("usS.catalog.title", "Catalog", 14.0f, FontWeight::Bold));
+    catalog->AddChild(Theme::Text("usS.catalog.title", Tr("Catalog"), 14.0f, FontWeight::Bold));
 
     channelDropdown_ = Theme::Pin(CreateDropdown("usS.channel", 0, 0, 160, Theme::kControlHeight));
-    channelDropdown_->AddItem("Stable", "stable");
+    channelDropdown_->AddItem(Tr("Stable"), "stable");
     channelDropdown_->AddItem(Tr("Beta (and stable)"), "beta");
-    catalog->AddChild(FieldRow("usS.channelRow", "Channel", channelDropdown_));
+    catalog->AddChild(FieldRow("usS.channelRow", Tr("Channel"), channelDropdown_));
     catalog->AddChild(Theme::Caption("usS.channelHint",
         Tr("Beta shows pre-releases beside the stable ones; an app installed from beta keeps following beta.")));
 
@@ -101,7 +103,7 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
     catalog->AddChild(Theme::Caption("usS.languageHint",
         TrF("Two letters (de, fr, th); empty follows the system ({0}). English is the fallback for a text that has no translation.", SystemLanguage())));
 
-    catalog->AddChild(Theme::Text("usS.serversLabel", "Servers", 12.0f));
+    catalog->AddChild(Theme::Text("usS.serversLabel", Tr("Servers"), 12.0f));
     serversArea_ = ListArea("usS.servers", 72.0f);
     serversArea_->SetPlaceholder("https://store.ultraos.eu/v1");
     catalog->AddChild(serversArea_);
@@ -120,17 +122,17 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
     catalog->AddChild(refreshOnStartBox_);
 
     auto buttons = Theme::Row("usS.buttons", Theme::kGap, true);
-    auto save = Theme::Button("usS.save", "Save", 90, Theme::ButtonKind::Primary);
+    auto save = Theme::Button("usS.save", Tr("Save"), 90, Theme::ButtonKind::Primary);
     save->onClick = [this]() { SaveSettingsFromPage(); };
     buttons->AddChild(save);
-    auto revert = Theme::Button("usS.revert", "Revert", 90);
+    auto revert = Theme::Button("usS.revert", Tr("Revert"), 90);
     revert->onClick = [this]() { LoadSettingsIntoPage(); SetStatus(Tr("Settings read again")); };
     buttons->AddChild(revert);
     auto refresh = Theme::Button("usS.refresh", Tr("Refresh catalog now"), 150);
     refresh->onClick = [this]() { RefreshCatalog(); };
     buttons->AddChild(refresh);
     // The proxy every ULTRA OS application connects through
-    auto proxy = Theme::Button("usS.proxy", "Proxy settings", 130);
+    auto proxy = Theme::Button("usS.proxy", Tr("Proxy settings"), 130);
     proxy->onClick = [this]() { ShowProxySettingsDialog(window_.get()); };
     buttons->AddChild(proxy);
     catalog->AddChild(buttons);
@@ -233,7 +235,8 @@ void StoreWindow::RefreshSettingsInfo() {
     text += "\n" + TrF("Settings file: {0}", UltraCanvasAppSettings("UltraStore").File());
     text += "\n" + TrF("Catalog: {0}", catalogNote_.empty() ? Tr("none") : catalogNote_);
     if (catalog_) {
-        text += "\n  " + TrF("{0} apps, {1} components, schema {2}", catalog_->apps.size(), catalog_->components.size(), catalog_->schema);
+        text += "\n  " + TrF("{0}, {1}, schema {2}", TrN("{n} app", "{n} apps", static_cast<long long>(catalog_->apps.size())),
+                                  TrN("{n} component", "{n} components", static_cast<long long>(catalog_->components.size())), catalog_->schema);
         if (!catalog_->trustedKeys.empty()) {
             text += "\n  " + TrN("announces {n} key that may sign the next catalogs", "announces {n} keys that may sign the next catalogs", static_cast<long long>(catalog_->trustedKeys.size()));
         }

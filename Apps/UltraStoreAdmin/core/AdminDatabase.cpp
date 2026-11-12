@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/AdminDatabase.cpp
+// Version: 0.3.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.3.0 - sales.reference
 // Version: 0.2.0 - affiliates, codes, sales
 // Version: 0.1.0
@@ -172,6 +173,8 @@ Result<std::vector<Publisher>> AdminDatabase::Publishers() const {
 // ===== components =====
 Result<void> AdminDatabase::PutComponent(const Component& component) {
     if (component.id.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "A component needs an id");
+    // Only the store's categories: it names them in the buyer's language.
+    if (const auto ok = UltraStore::CheckCategories(component.categories); !ok) return ok;
     const std::string json = UltraStore::SerializeComponent(component);
     // What is written is what the store reads: parse it back before storing.
     if (const auto check = UltraStore::ParseComponent(json, component.kind, false); !check) {
