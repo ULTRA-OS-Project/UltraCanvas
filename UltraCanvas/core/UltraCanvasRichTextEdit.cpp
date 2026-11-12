@@ -464,6 +464,18 @@ void UltraCanvasRichTextEdit::RecalculateVisibleArea() {
     visibleAreaDirty = false;
     UpdateColumnGeometry();
     hScrollOffset = std::clamp(hScrollOffset, 0.0f, MaxHorizontalScroll());
+    // The vertical offset too. Zooming out - or a taller element - leaves more
+    // of the document in view, so the end of the scroll range moves up, and a
+    // view sitting at the old end is left past the document's last page. The
+    // layout pass clamps this where it recomputes contentHeight, but a zoom
+    // change in page view does not dirty the layout (the wrap width is the
+    // page's, not the view's), so nothing clamped it at all there. Only while
+    // contentHeight describes the current layout: when the layout is dirty the
+    // pass about to run owns the clamp.
+    if (!layoutsDirty && contentHeight > 0.0f) {
+        scrollOffset = std::clamp(scrollOffset, 0.0f,
+                                  std::max(0.0f, contentHeight - visibleArea.height));
+    }
 }
 
 float UltraCanvasRichTextEdit::ContentWidth() const {

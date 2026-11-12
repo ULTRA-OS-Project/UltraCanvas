@@ -1887,6 +1887,85 @@ int main() {
         window->RemoveChild(fontEdit);
     }
 
+    // ===== ZOOMING OUT AT THE END OF A LONG DOCUMENT =====
+    // A zoom-out leaves more of the document in view, so the end of the
+    // scroll range moves up. A view sitting at the old end has to come with
+    // it, or it shows the desk below the last page with no way to tell why.
+    std::cerr << "\n--- Zoom at the end of a long document ---" << std::endl;
+    {
+        std::string lines;
+        for (int i = 0; i < 400; i++) lines += "Paragraph " + std::to_string(i) + ".\n\n";
+        edit->SetMarkdown(lines);
+        edit->SetPageView(true);
+        edit->SetZoom(1.0f);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("The sample runs over several pages: " + std::to_string(edit->GetPageCount()),
+             edit->GetPageCount() > 3);
+
+        // The caret goes to the last paragraph first: a zoom asks the view to
+        // show the caret again, so a caret left at the top would pull the view
+        // back by itself and nothing here would be at the end at all.
+        editor.SetCaret(RichDocPosition(editor.GetBlockCount() - 1, 0), false);
+        window->UpdateAndRender();
+        // SetScrollOffset clamps to the end of the range as the view stands,
+        // so this is "scroll to the bottom" without reaching inside.
+        edit->SetScrollOffset(1.0e9f);
+        window->UpdateAndRender();
+        const float atEnd = edit->GetScrollOffset();
+        TEST("The view can scroll to the end: " + std::to_string(atEnd), atEnd > 0.0f);
+
+        // Being past the end is what is under test, so each case asks the view
+        // where the end is now and compares: SetScrollOffset clamps to it.
+        const auto notPastTheEnd = [&](const std::string& what) {
+            const float after = edit->GetScrollOffset();
+            edit->SetScrollOffset(1.0e9f);
+            const float end = edit->GetScrollOffset();
+            TEST(what + " does not leave the view past the end: " +
+                         std::to_string(after) + " <= " + std::to_string(end),
+                 after <= end + 0.5f);
+        };
+
+        // A chosen zoom asks for a fresh layout, and the layout pass clamps
+        // where it recomputes the content height, so these two held already -
+        // they are here so they go on holding.
+        for (const float factor : {0.5f, 0.25f}) {
+            edit->SetZoom(1.0f);
+            window->UpdateAndRender();
+            edit->SetScrollOffset(1.0e9f);
+            edit->SetZoom(factor);
+            window->UpdateAndRender();
+            notPastTheEnd("Zooming out to " + std::to_string(static_cast<int>(factor * 100)) + "%");
+        }
+
+        // A fitting zoom does not: it is applied while the visible area is
+        // recomputed, and in page view it dirties no layout, because the wrap
+        // width is the page's and not the view's. Nothing clamped the vertical
+        // offset there at all.
+        edit->SetZoom(1.0f);
+        edit->SetScrollOffset(1.0e9f);
+        window->UpdateAndRender();
+        edit->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);
+        window->UpdateAndRender();
+        notPastTheEnd("Fitting the whole page");
+
+        // And neither does a taller element, which is the same thing again
+        // without a zoom: the window is resized at the end of the document.
+        edit->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::Off);
+        edit->SetZoom(1.0f);
+        window->UpdateAndRender();
+        edit->SetScrollOffset(1.0e9f);
+        window->UpdateAndRender();
+        edit->SetSize(780.0f, 1100.0f);
+        window->UpdateAndRender();
+        notPastTheEnd("Growing the element taller");
+
+        edit->SetSize(780.0f, 560.0f);
+        edit->SetPageView(false);
+        edit->SetScrollOffset(0.0f);
+        window->UpdateAndRender();
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;
