@@ -170,8 +170,11 @@ jobs:
           esac
           case "${{ matrix.platform }}" in
             win-*)
-              # The C runtime linked in, so no Visual C++ redistributable is needed.
-              args+=(-DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded) ;;
+              # The C runtime linked in, so no Visual C++ redistributable is
+              # needed; no OpenMP, whose runtime (vcomp140.dll, LLVM's
+              # libomp140.*.dll) a user's computer lacks - ggml's own thread
+              # pool does the work.
+              args+=(-DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DGGML_OPENMP=OFF) ;;
           esac
           if [ "${{ matrix.platform }}" = "win-arm64" ]; then
             args+=(-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DGGML_CPU_ARM_ARCH=armv8.2-a)
