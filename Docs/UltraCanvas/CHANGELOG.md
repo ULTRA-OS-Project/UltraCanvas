@@ -1,3 +1,183 @@
+#### 2026-11-13 *0.9.551*
+- **The Linux SDK is tested and finished on a clean Ubuntu 22.04, the way a
+  user meets it.** The CMake package test runs on the runner that built the
+  SDK, where every library the framework uses is installed, so it could not
+  see what a user's machine lacks.
+  - **New CI job.** `sdk-linux` in `.github/workflows/build.yml`, for
+    x86_64 and arm64, runs `scripts/sdk-linux-clean-consumer.sh` in a
+    `ubuntu:22.04` container that has only a desktop's libraries (those
+    `package-linux.sh` leaves to the host):
+    1. The standalone UltraCanvasStart of the same build runs `--plan`.
+       The job runs the install command it prints, and `--check` must then
+       find nothing missing.
+    2. The SDK gets the run-time libraries its core still cannot load there.
+    3. UltraCanvasStart's skeleton is built with the Build step's two
+       commands, and `PackageConsumer` is built and run.
+
+    The SDK it packs replaces the build leg's artifact, and `publish-sdk`
+    waits for it, so the release publishes the tested one.
+  - **What it found at once.**
+    - The 0.9.465 SDK stopped with "No rule to make target
+      '/usr/lib/x86_64-linux-gnu/libmp3lame.so'" (fixed by #1093).
+    - With that fixed, the link stopped at `-lFLAC`, `-larchive`, GStreamer,
+      Vorbis, Opus, `-lzbar` and `-lrevenge-0.0`. On the job's first run, with
+      0.9.548, the newer OCR plug-in's `-ltesseract`, `-llept` and
+      `-larchive` were also missing.
+    - The core could not load 31 libraries, such as `libmp3lame.so.0` and
+      `libavcodec.so.58`, 63 with their own dependencies.
+  - **The link line.** For a shared core without `deps/` (the Linux SDK),
+    `UltraCanvasConfig.cmake` keeps on the application's link line only the
+    libraries the public headers include, which pkg-config re-finds, plus
+    imported targets, generator expressions and flags. The core's own 35
+    are left out, and the configure output says how many. VirtualFS is
+    folded into the core, so `VirtualFS::VirtualFS` gives way to
+    `UltraCanvas::VirtualFSHeaders`, its include directories and definitions
+    without `libVirtualFS.a` and `-larchive`.
+  - **Run time.** The Linux SDK carries the core's run-time libraries that a
+    22.04 machine set up by UltraCanvasStart lacks, beside the core in
+    `lib/`. They come from the standalone UltraCanvasStart's `lib/`, which
+    holds the core's whole closure. They and the core carry an `$ORIGIN`
+    runpath, so an application starts without `LD_LIBRARY_PATH`. The x86_64
+    archive grows from about 61 MB to 82 MB.
+  - **Checked** by running the script in a clean Ubuntu 22.04 root against
+    the 0.9.465 SDK and standalone UltraCanvasStart, with the new
+    `UltraCanvasConfig.cmake` sections applied:
+    - without `librevenge-dev`, the skeleton stopped only at
+      `-lrevenge-0.0`, which UltraCanvasStart now installs (its changelog);
+    - with it, the skeleton built with no library missing, and
+      `PackageConsumer` built and ran without `LD_LIBRARY_PATH`;
+    - the same against 0.9.547, with the static plug-ins' six `-dev`
+      packages that UltraCanvasStart now installs: 64 libraries added, and
+      the skeleton and `PackageConsumer` built and ran.
+
+#### 2026-11-13 *0.9.550*
+- **UltraIM: a group managed after it is made, and a conversation left.**
+  `UltraIM_RenameGroup`, `UltraIM_AddGroupMembers` and
+  `UltraIM_RemoveGroupMember` (capability `ManageGroups`), and
+  `UltraIM_LeaveConversation` (`LeaveConversation`: out of a group, or a 1:1
+  conversation deleted with its history on this device);
+  `UltraIMConversation::ownerId` names a group's owner where the network has
+  one, and `memberNames` the members by name. Provider ABI 6
+  (`ULTRAIM_PLUGIN_HOST_ABI_VERSION`): modules built for 5 are skipped until
+  rebuilt. ChatCube Direct does it through the relay (`PATCH /v1/groups/{id}`
+  renames, ChatCube relay 1.3.0), Matrix through `m.room.name`, invite,
+  kick, leave and forget, Telegram through TDLib's `setChatTitle`,
+  `addChatMembers`, `setChatMemberStatus` (left), `leaveChat` and
+  `deleteChatHistory` - a basic group's members and creator from its full
+  info (`getBasicGroupFullInfo`, `updateBasicGroupFullInfo`).
+- **UltraIM Direct: a group's owner on every update.** One re-read from the
+  store (a message read, sent, received or deleted) went out without it.
+- **UltraIM Matrix: a room renamed by someone else is renamed in the list.**
+  A new `m.room.name` or alias arriving in a live sync changed the room
+  without a `ConversationUpdate`, so the old title stayed until a restart.
+- **UltraCanvasListView: `SetSelectsOnContextMenu(false)`.** A right press
+  then hands `onContextMenu` the row under the pointer without selecting it,
+  for a list where selecting does something of its own (a messenger's chat
+  list opens the chat).
+
+#### 2026-11-13 *0.9.549*
+- **IGES files open and save.** The Models plugin has a second exact B-rep
+  format beside STEP: IGES 5.3 (`.igs`, `.iges`), read into and written out of
+  `ModelDocument::Brep` by `ModelConverter::IgesConverter`
+  (`Plugins/Models/IGES/`), and reached through `LoadModelDocument` /
+  `SaveModelDocument` and the FileLoader inventory like every other 3D format.
+  - **Both shapes an IGES file takes are read.** Manifold solid B-rep objects
+    (186, with shells, faces, loops, edge and vertex lists) arrive as closed
+    solids whose faces share their edges; trimmed surfaces (144 with 142
+    boundaries), bounded planes and untrimmed bounded surfaces - what most IGES
+    files contain - arrive as one open body. Curves: lines, arcs, ellipses,
+    copious data, parametric splines (converted exactly to B-splines),
+    rational B-splines and composites, each under its transformation matrix.
+    Surfaces: planes (108, 190), cylinder, cone, sphere, torus (192-198),
+    ruled, revolution, tabulated cylinder and rational B-spline. Colours (the
+    standard numbers and colour definitions), name properties, the unit and
+    the sender's details come from the file.
+  - **A trimming curve in (u, v) has to agree with its edge to be kept.** It
+    is lifted onto the surface and checked against the model-space edge at its
+    ends and through its length, turned round if it runs the other way, and
+    dropped with a warning if it does not lie on the edge at all - so a writer
+    that parameterises a surface differently from the reader costs a projection,
+    not a wrong face.
+  - **Writing keeps a solid a solid.** A closed body is written as a manifold
+    solid B-rep object with one vertex list and one edge list, an open one as
+    trimmed surfaces with model-space boundaries (and (u, v) boundaries on
+    B-spline faces); analytic surfaces stay analytic and NURBS stay NURBS. A
+    document holding only meshes is written as a faceted solid, with the same
+    warning the STEP writer gives. Every number is built as a dot-decimal
+    string, never streamed, so the file is the same on a comma-decimal desktop
+    (`ModelLocaleDecimalTest` writes two IGES cases in both locales).
+  - Not read, and named in a warning when met: hyperbolic and parabolic arcs
+    (read as their chord), offset surfaces (140), bounded surfaces (143),
+    subfigure instances (408), and the compressed and binary forms of the file.
+- **`ModelIgesTest`** covers the card syntax (redefined delimiters, Hollerith
+  strings holding them, D exponents, decks with no line ends or CR LF ends,
+  strings split across cards) and measures the readers' results against two
+  samples in `media/3D/IGES` that `make_samples.py` builds entity by entity
+  without the C++ writer: a block whose meshed volume must be 6000, and a
+  plate-with-hole and boss whose area must be the plate less its hole plus the
+  boss's side. Every STEP sample also goes STEP -> IGES -> back and must mesh
+  to the same area and volume.
+- **The 3D model table in `Docs/Modules/FileLoader/formats.md` lists what the
+  Models plugin reads and writes.** It still said only STL was implemented and
+  that OBJ, FBX, 3DS, PLY and COLLADA were not, which had not been true since
+  the Models plugin arrived. The demo app has an IGES page with both samples.
+- **The file browser names and colours CAD files.** `.step`, `.stp`, `.p21`,
+  `.igs` and `.iges` had no entry in `UltraCanvasFilerWidget`'s type table, so
+  they showed with no type name on the generic 3D colour. They are now "STEP
+  Model" and "IGES Model" on the 3D ramp - STEP on glTF's rung, the older
+  IGES on the last - and `FilerFormatColorTest` checks the rungs.
+- **Word documents show their drawn shapes.** Lines, rectangles, rounded
+  rectangles, ellipses, freeform outlines and groups from `.odt`, `.docx` and
+  `.doc` were dropped; a letterhead's rules, a boxed heading and a diagram
+  now stand where the document puts them, in page view and when printed.
+  - Model: `RichShape` (kind, box, turn, mirroring, fill, line, dash,
+    arrowheads, outline points, group members, words, a picture in a group)
+    in `RichTextFrame::shapes`; `RichShape::ApplyPreset` knows about forty of
+    Word's named outlines; `RichTextFrame::textAnchor` centres a box's words.
+  - ODT: `draw:rect`, `draw:ellipse`, `draw:line`, `draw:path`,
+    `draw:polygon`, `draw:polyline`, `draw:custom-shape` and `draw:g` are read
+    and written.
+  - DOCX: `wps:wsp` shapes with preset or custom outlines, theme colours
+    (`wps:style`, `a:schemeClr` with tint, shade and luminance), `wpg:wgp`
+    groups with pictures and text boxes, and VML shapes and groups are read;
+    drawings are written as `wps` shapes and `wpg` groups. A header's
+    pictures now load (its own relationships were not read).
+  - DOC: OfficeArt shapes and groups - shape types, freeform vertices,
+    turns, flips, dashes and arrowheads.
+  - `UltraCanvasRichTextEdit` draws them (`DrawShape`); a drawing with no
+    words is as tall as it was drawn, so a rule takes no room.
+  - ODT text frames are written with their height and their words' vertical
+    place, so Writer no longer shrinks them; DOCX text boxes with a height
+    keep it instead of shrinking to their text.
+- **Frames and drawings in a Word document can be moved and resized on the
+  page.** A click selects a floating text frame or drawing as it does a
+  picture (one behind the text leaves the text to the clicks); dragging it
+  moves it, its handles resize it, and the new place and size are saved.
+  - `UCRichDocumentEditor::SetFloatOffset` moves a floating object (one undo
+    step); the picture calls address text frames and drawings too.
+  - A resized drawing keeps the size its shapes were drawn for
+    (`RichTextFrame::drawingWidthPt` / `drawingHeightPt`); its shapes scale
+    with it, on screen and in the saved file.
+- **Gradient fills are drawn as gradients**, not in their first colour:
+  `RichShape::gradientStops`, `gradientAngleDeg`, `gradientRadial` and the
+  radial centre, read from ODF `draw:gradient`, DOCX `a:gradFill`, VML
+  `v:fill` and Word 97 shades, and written to ODT and DOCX.
+- **VML pictures show.** A logo kept the Word 2003 way (`v:shape` with
+  `v:imagedata`) is read as a picture, in the line or floating where its
+  position says.
+
+#### 2026-11-12 *0.9.548*
+- **CI: a "Build result" commit status says whether the Build workflow really
+  built a commit.** A new workflow, `build-result.yml`, follows every Build
+  run from outside it (`workflow_run`): the status is pending while a run is
+  going, green only when the newest run of that commit succeeded and ran jobs,
+  and red when it failed, timed out, was cancelled, failed to start or ended
+  with no jobs. Until now a run that never started any job left nothing red on
+  the commit, and a pull request read as mergeable although no platform had
+  built it (#1153 on 2026-11-09). Make "Build result" a required status check
+  of `main` in the branch protection settings so that such a pull request
+  cannot be merged.
+
 #### 2026-11-12 *0.9.547*
 - **The UltraCanvas runtime for browsers (prototype): apps keep the whole
   C++ API and ship only their own code.** UltraCanvas, cairo, pango, glib

@@ -1,8 +1,9 @@
 // UltraAI/ui/src/LocalModelDialog.cpp
 // The "Get a local model" dialog (UltraAILocalModelDialog.h).
+// Version: 0.2.1 - a speech-to-text model's title
 // Version: 0.2.0 - in the module's UI library, for every application
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 
 #include "UltraAILocalRuntime.h"
@@ -126,7 +127,10 @@ void UltraAILocalModelDialog::CreateLocalModelDialog() {
 
     long y = kMargin;
     auto title = Text("lm-title", kMargin, y, kInner, 22,
-                      serviceName_ + " needs " + (capability_ == "embeddings" ? "an embedding" : "a language") +
+                      serviceName_ + " needs " +
+                          (capability_ == "embeddings"     ? "an embedding"
+                           : capability_ == "speechtotext" ? "a speech-to-text"
+                                                           : "a language") +
                           " model on this computer.", false);
     title->SetFontWeight(FontWeight::Bold);
     title->SetFontSize(12.0f);

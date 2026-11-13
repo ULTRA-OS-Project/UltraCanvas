@@ -13,9 +13,13 @@
 //     over, gets the sound as a small mono MP3 (VideoFX, where FFmpeg is in
 //     the build), and so does a video's sound track (one made with the
 //     ffmpeg command line, where there is one);
+//   - the local runtime's engine ("local", a stand-in here) counts once it
+//     offers a model; with none downloaded it steps aside for the
+//     transcriber installed before, or the error says what to download;
 //   - a provider's error comes back with its id.
 //
 // Headless.
+// Version: 1.1.0 - the local engine that steps aside
 // Version: 1.0.0
 // Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
@@ -108,6 +112,45 @@ private:
     Seen* seen_;
 };
 
+// The local runtime's provider as the bridge sees it: it offers a model
+// (or none, as on a computer it has no engine build for) and, with the
+// model not downloaded, answers "needs-install".
+bool g_localOffers = false;
+int g_localCalls = 0;
+
+class FakeLocal : public UltraAI::ISpeechToText {
+public:
+    UltraAI::STTProviderCapabilities GetCapabilities() const override {
+        UltraAI::STTProviderCapabilities caps;
+        caps.providerId = "local";
+        caps.supportedEncodings = {UltraAI::AudioEncoding::Wav};
+        if (g_localOffers) {
+            UltraAI::STTModelInfo m;
+            m.id = "whisper-small";
+            m.displayName = "Whisper Small (not installed)";
+            m.runsLocally = true;
+            caps.models.push_back(m);
+        }
+        return caps;
+    }
+    UltraAI::TranscribeResponse Transcribe(const UltraAI::TranscribeRequest&) override {
+        ++g_localCalls;
+        UltraAI::TranscribeResponse r;
+        r.error.code = UltraAI::ErrorCode::ModelNotFound;
+        r.error.message = "Whisper Small must be downloaded first";
+        r.error.providerCode = "needs-install";
+        return r;
+    }
+    std::future<UltraAI::TranscribeResponse> TranscribeAsync(const UltraAI::TranscribeRequest& r) override {
+        std::promise<UltraAI::TranscribeResponse> p;
+        p.set_value(Transcribe(r));
+        return p.get_future();
+    }
+    UltraAI::LiveTranscriber StartLiveTranscribe(const UltraAI::TranscribeRequest&, UltraAI::TranscriptCallback) override {
+        return nullptr;
+    }
+};
+
 UltraAI::TranscribeResponse Words(const std::string& text) {
     UltraAI::TranscribeResponse r;
     r.text = text;
@@ -139,10 +182,16 @@ int main() {
     UltraAI::SetCloudFallbackAllowed(false);
     UltraCanvasFileLoader::SetSpeechTranscriber(nullptr);
     UltraAI::RegisterUltraAISpeechTranscription();
+    // In place of the local runtime's provider, which would look at this
+    // computer's own models.
+    UltraAI::RegisterSpeechToTextProvider("local", [](const UltraAI::SpeechToTextConfig&, UltraAI::Error*) {
+        return std::make_unique<FakeLocal>();
+    });
 
     // ----- no provider -----
     std::string provider;
-    Check(!UltraAI::FindSpeechProvider(provider), "only mock registered: no speech provider (mock never counts)");
+    Check(!UltraAI::FindSpeechProvider(provider),
+          "mock, and a local engine that offers no model: no speech provider");
     auto result = UltraCanvasFileLoader::ExtractText(wav);
     Check(!result.Ok() && result.method == UltraCanvasFileLoader::TextExtractionMethod::Transcription &&
           Contains(result.error, "Speech to text is not available"),
@@ -159,6 +208,22 @@ int main() {
     Check(result.Ok() && result.text == "from the application's own engine" && fallbackCalls == 1,
           "... or the transcriber installed before transcribes");
 
+    // ----- the local engine with no model downloaded -----
+    g_localOffers = true;
+    Check(UltraAI::FindSpeechProvider(provider) && provider == "local",
+          "the local engine counts once it offers a model");
+    result = UltraCanvasFileLoader::ExtractText(wav);
+    Check(result.Ok() && result.text == "from the application's own engine" && fallbackCalls == 2 &&
+          g_localCalls == 1 && UltraAI::LastSpeechTranscriptionProvider().empty(),
+          "... and with none downloaded it steps aside for the transcriber installed before");
+    UltraCanvasFileLoader::SetSpeechTranscriber(nullptr);
+    UltraAI::RegisterUltraAISpeechTranscription();
+    result = UltraCanvasFileLoader::ExtractText(wav);
+    Check(!result.Ok() && Contains(result.error, "Speech to text is not available") &&
+          Contains(result.error, "local: Whisper Small must be downloaded first"),
+          "... or, with none, the error says what to download");
+    g_localOffers = false;
+
     // ----- a chosen provider that takes WAV -----
     UltraAI::RegisterSpeechToTextProvider("test-stt", [](const UltraAI::SpeechToTextConfig&, UltraAI::Error*) {
         return std::make_unique<FakeSpeech>(g_takes, g_maxBytes, g_answer, &g_seen);
@@ -170,8 +235,8 @@ int main() {
     g_takes = {UltraAI::AudioEncoding::Wav, UltraAI::AudioEncoding::Mp3};
     g_answer = Words("Hello from the recording");
     result = UltraCanvasFileLoader::ExtractText(wav);
-    Check(result.Ok() && result.text == "Hello from the recording" && fallbackCalls == 1,
-          "a provider that takes WAV transcribes, instead of the engine before");
+    Check(result.Ok() && result.text == "Hello from the recording" && fallbackCalls == 2,
+          "a provider that takes WAV transcribes");
     Check(g_seen.bytes == tone && g_seen.mime == "audio/wav" && g_seen.filename == "memo.wav",
           "... handed the file as it is, with its MIME type and name");
     Check(UltraAI::LastSpeechTranscriptionProvider() == "test-stt", "... and LastSpeechTranscriptionProvider names it");

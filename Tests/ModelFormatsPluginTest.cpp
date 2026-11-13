@@ -53,6 +53,7 @@ static const std::vector<Sample>& Samples() {
             {"obj", "OBJ/E-45-Aircraft.obj", true},
             {"dxf", "DXF/E-45-Aircraft.dxf", true},
             {"step", "STEP/Box.step", true},
+            {"igs", "IGES/Block.igs", true},
             {"abc", "Alembic/E-45-Aircraft.abc", true},
             {"ply", "PLY/E-45-Aircraft.ply", true},
             {"x", "XFile/E-45-Aircraft.x", true},

@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeTheme.cpp
 // See ChatCubeTheme.h.
+// Version: 0.1.3 - PaintPin: the mark of a conversation pinned to the top
 // Version: 0.1.2 - PaintTicks: the ticks as strokes, for the fonts that have no check mark
 // Version: 0.1.1 - an avatar from the person's picture; a picture in a rounded box; a play mark
 // Version: 0.1.0
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -254,6 +256,34 @@ void PaintTicks(IRenderContext* ctx, const Rect2Dd& area, int count, const Color
         ctx->StrokePathPreserve();
         ctx->ClearPath();
         x += std::lround(area.height * 0.9) / 2.0;
+    }
+    ctx->PopState();
+}
+
+void PaintPin(IRenderContext* ctx, const Rect2Dd& area, const Color& color) {
+    if (!ctx || area.width <= 0 || area.height <= 0) return;
+    // The 24-unit drawing of the pin icon, scaled into the area.
+    const double side = std::min(area.width, area.height);
+    const double k = side / 24.0;
+    const double ox = area.x + (area.width - side) / 2.0;
+    const double oy = area.y + (area.height - side) / 2.0;
+    auto at = [&](double x, double y) { return Point2Dd(ox + x * k, oy + y * k); };
+    ctx->PushState();
+    ctx->SetStrokePaint(color);
+    ctx->SetStrokeWidth(std::max(1.2, 2.0 * k));
+    ctx->SetLineCap(LineCap::Round);
+    ctx->SetLineJoin(LineJoin::Round);
+    const std::vector<std::vector<Point2Dd>> strokes = {
+        {at(9, 2), at(15, 2)},
+        {at(10, 2), at(10, 8), at(6, 12), at(6, 14), at(18, 14), at(18, 12), at(14, 8), at(14, 2)},
+        {at(12, 14), at(12, 22)},
+    };
+    for (const auto& stroke : strokes) {
+        ctx->ClearPath();
+        ctx->MoveTo(stroke.front().x, stroke.front().y);
+        for (size_t i = 1; i < stroke.size(); ++i) ctx->LineTo(stroke[i].x, stroke[i].y);
+        ctx->StrokePathPreserve();
+        ctx->ClearPath();
     }
     ctx->PopState();
 }

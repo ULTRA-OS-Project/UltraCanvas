@@ -76,6 +76,9 @@ void TestResolutionOrder() {
     EXPECT_EQ(ResolveProviderId("speechtotext",
                                 {"mock", "whisper-cpp", "deepgram"}),
               std::string("whisper-cpp"));
+    // The local runtime's whisper engine before a whisper server the user runs.
+    EXPECT_EQ(ResolveProviderId("speechtotext", {"mock", "whisper-cpp", "local", "openai"}),
+              std::string("local"));
     // Cloud providers are not in the order at all.
     const std::vector<std::string> order = ResolveProviderOrder(
         "imagegen", {"minimax", "comfyui", "mock"});

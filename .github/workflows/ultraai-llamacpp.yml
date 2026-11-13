@@ -1,0 +1,96 @@
+# The llama.cpp adapter of UltraAI (ULTRAAI_ADAPTER_LLAMACPP=ON), built and
+# run for real: the adapter is opt-in because it vendors and builds the
+# llama.cpp engine, so build.yml's rows never compile it, and until this
+# workflow a change to it was compile-checked by hand at best. The test runs
+# on a model fixture the build writes with the pinned llama.cpp's gguf-py
+# (UltraAI/tests/make_tiny_llama_gguf.py): a random one-layer llama with a
+# chat template, ~115 KB, so nothing is downloaded but the engine's source.
+#
+# ubuntu-24.04: python3-numpy is a package, and the build is the standalone
+# UltraAI tree (cmake -S UltraAI), not the framework, so no other library is
+# needed. The engine is cached by the commit the adapter pins.
+name: UltraAI llama.cpp adapter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'UltraAI/**'
+      - '.github/workflows/ultraai-llamacpp.yml'
+  pull_request:
+    paths:
+      - 'UltraAI/**'
+      - '.github/workflows/ultraai-llamacpp.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ultraai-llamacpp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  llamacpp:
+    name: llama.cpp adapter (ubuntu-24.04, Release)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 300M
+      CCACHE_COMPILERCHECK: content
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install cmake ninja-build ccache clang python3-numpy
+
+      - name: The llama.cpp commit the adapter pins
+        id: pin
+        run: |
+          tag=$(sed -n 's/^set(ULTRAAI_LLAMACPP_GIT_TAG "\([0-9a-f]*\)".*/\1/p' UltraAI/adapters/llamacpp/CMakeLists.txt)
+          test -n "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # The fetched engine source, keyed by the pinned commit: FetchContent
+      # finds its stamp files in _deps and skips the clone.
+      - name: Restore the llama.cpp sources
+        uses: actions/cache@v5
+        with:
+          path: build-ultraai/_deps
+          key: llamacpp-src-${{ steps.pin.outputs.tag }}
+
+      - name: Restore ccache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-ultraai-llamacpp-${{ steps.pin.outputs.tag }}-${{ github.sha }}
+          restore-keys: |
+            ccache-ultraai-llamacpp-${{ steps.pin.outputs.tag }}-
+            ccache-ultraai-llamacpp-
+
+      - name: Configure
+        run: |
+          cmake -S UltraAI -B build-ultraai -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DULTRAAI_BUILD_TESTS=ON \
+            -DULTRAAI_ADAPTER_LLAMACPP=ON
+
+      - name: Build
+        run: cmake --build build-ultraai
+
+      # The test skips its inference checks when the fixture is missing (no
+      # numpy, no gguf-py); here that is a failure, not a pass, so the run
+      # asserts the checks happened.
+      - name: Run the llama.cpp adapter test on the generated fixture
+        run: |
+          test -s build-ultraai/tests/tiny-llama.gguf
+          ctest --test-dir build-ultraai --output-on-failure --no-tests=error \
+                -V -R "^ultraai\.llamacpp_adapter$" 2>&1 | tee llamacpp-test.log
+          grep -q "test_llamacpp_adapter: all checks passed" llamacpp-test.log
+
+      - name: ccache statistics
+        if: always()
+        run: ccache -s

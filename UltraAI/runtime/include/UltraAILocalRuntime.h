@@ -35,13 +35,15 @@
 //
 // Nothing here draws. The framework's "Get a local model" dialog and the
 // dashboard's Local models and Model topics pages are built on top of it.
+// Version: 0.4.0 - speech models (whisper-server); ListModels leaves out
+//                  models whose engine has no build for this platform
 // Version: 0.3.0 - signed galleries: trustedKeys, keys.json pinned on first
 //                  use, every refreshed document checked (RefreshGallery)
 // Version: 0.2.0 - topics: the server's topics.json, the user's model per
 //                  topic, new models (ListTopics, ModelForTopic,
 //                  TopicPreferences, NewModels, ApplyTopicUpdates)
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-12
 // Author: UltraAI Module
 #pragma once
 
@@ -315,7 +317,9 @@ public:
     // ----- Inventory (local folders only; no network) -----
 
     // The catalogue's models and the user-added ones, with their state on
-    // this machine; `capability` filters ("" = all).
+    // this machine; `capability` filters ("" = all). A catalogue model whose
+    // engine has no build for this platform (whisper-server on macOS) is
+    // left out unless it is installed.
     std::vector<LocalModelInfo> ListModels(const std::string& capability = "") const;
     // One model by id; false when unknown.
     bool FindModel(const std::string& modelId, LocalModelInfo& out) const;
@@ -344,7 +348,8 @@ public:
 
     // Register a GGUF (or other model file) the user has, in place: no copy.
     // The id comes back as "file:<path>". `capability` is "textllm" or
-    // "embeddings"; `engineId` defaults to the engine serving it.
+    // "embeddings" (a GGUF, served by llama-server) or "speechtotext" (a
+    // whisper.cpp ggml .bin, served by whisper-server).
     Error AddModelFile(const std::string& pathUtf8, const std::string& capability,
                        const std::string& displayName, std::string& outModelId);
     // Register a Hugging Face file for download: repo "org/name", file

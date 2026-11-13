@@ -1,8 +1,9 @@
 // UltraAI/runtime/src/LocalRuntimeHardware.cpp
 // This machine as the runtime sees it, and the pure decisions made from it:
 // which bundle, how a model fits, what to put on the engine's command line.
+// Version: 0.2.0 - whisper-server's command line
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 
 #include "LocalRuntimeInternal.h"
@@ -169,14 +170,16 @@ std::vector<std::string> OffloadArgs(const LocalModelInfo& model, const Hardware
         args.push_back("--n-gpu-layers");
         args.push_back("0");
     }
+    for (const std::string& a : ThreadArgs(hardware)) args.push_back(a);
+    return args;
+}
+
+std::vector<std::string> ThreadArgs(const HardwareProfile& hardware) {
     int threads = hardware.physicalCores > 0 ? hardware.physicalCores
                                              : hardware.logicalCores / 2;
     if (threads > 4) threads -= 2;      // leave the desktop two cores
-    if (threads > 0) {
-        args.push_back("--threads");
-        args.push_back(std::to_string(threads));
-    }
-    return args;
+    if (threads <= 0) return {};
+    return {"--threads", std::to_string(threads)};
 }
 
 std::vector<std::string> BuildEngineArgs(const EngineInfo& engine, const LocalModelInfo& model,
@@ -186,8 +189,23 @@ std::vector<std::string> BuildEngineArgs(const EngineInfo& engine, const LocalMo
     std::vector<std::string> args = {
         "--host", "127.0.0.1",
         "--port", std::to_string(port),
-        "--api-key-file", apiKeyFileUtf8,
     };
+    if (engine.id == "whisper-server") {
+        // whisper.cpp's server takes no key (it listens on loopback only).
+        // The OpenAI audio API's path, so the OpenAI adapter speaks to it as
+        // it is; any language, where the server's own default is English.
+        if (!model.primaryFile.empty()) {
+            args.push_back("--model");
+            args.push_back(model.primaryFile);
+        }
+        for (const char* a : {"--inference-path", kWhisperInferencePath, "--language", "auto"}) args.push_back(a);
+        for (const std::string& a : ThreadArgs(hardware)) args.push_back(a);
+        for (const std::string& a : engine.defaultArgs) args.push_back(a);
+        for (const std::string& a : model.engineArgs) args.push_back(a);
+        return args;
+    }
+    args.push_back("--api-key-file");
+    args.push_back(apiKeyFileUtf8);
     if (!model.primaryFile.empty()) {
         args.push_back("--model");
         args.push_back(model.primaryFile);

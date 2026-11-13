@@ -9,6 +9,9 @@
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
 // username or phone number, new groups.
+// Version: 0.1.6 - a group after it is made: renamed (setChatTitle), members added (addChatMembers) and taken
+//                  out (setChatMemberStatus left), a group left and a private chat deleted for us; a basic
+//                  group's members, their names and its creator (basicGroupFullInfo)
 // Version: 0.1.5 - DeleteMessage's scope (deleteMessages' revoke), GetDeleteChoices
 // Version: 0.1.4 - SearchMessages: Telegram's own search of a chat (searchChatMessages)
 // Version: 0.1.3 - sign-in by a QR code (requestQrCodeAuthentication), at the start or in place of a code
@@ -16,7 +19,7 @@
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
 //                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -89,6 +92,18 @@ public:
     // memberIds: addresses as AddContact takes them, or user ids.
     void CreateGroup(const std::string& title, const std::vector<std::string>& memberIds,
                      UltraIMConversationCallback onResult) override;
+    // The chat's title; members (addresses as AddContact takes them, or user
+    // ids) added, one taken out - what Telegram allows the account (an
+    // administrator's right in most groups: PermissionDenied otherwise); a
+    // group or channel left, a private chat's history deleted for us alone
+    // and the chat off the list.
+    void RenameGroup(const std::string& conversationId, const std::string& title,
+                     UltraIMConversationCallback onResult) override;
+    void AddGroupMembers(const std::string& conversationId, const std::vector<std::string>& memberIds,
+                         UltraIMConversationCallback onResult) override;
+    void RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
+                           UltraIMResultCallback onResult) override;
+    void LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) override;
 
     UltraIMResult SendText(const std::string& conversationId, const std::string& text,
                            const UltraIMSendOptions& options) override;
@@ -147,6 +162,10 @@ private:
         bool        hasLast = false;
         std::deque<UltraIMMessage> recent;   // the newest, oldest first
         std::map<std::string, Media> media;  // message id -> its files, for the messages in recent
+        int64_t     basicGroupId = 0;    // a basic group's, for its full info
+        bool        fullInfoAsked = false;
+        std::vector<int64_t> members;    // a basic group's, from its full info
+        int64_t     creatorId = 0;
     };
 
     struct User {
@@ -203,6 +222,8 @@ private:
     // Sends downloadFile for everything WantFile queued (never with the mutex
     // held: the answer may come at once).
     void FlushDownloads();
+    // The answer to a chat request (an error, or anything else): a result.
+    static UltraIMResult ResultOf(const TdObject& answer);
     // A file as TDLib reports it (updateFile, downloadFile's answer): once
     // complete, what it was wanted for gets its path, and the events and the
     // DownloadAttachment callbacks waiting for it follow.
@@ -211,6 +232,8 @@ private:
 
     // ---- mutex held -------------------------------------------------------------------
     Chat& StoreChat(const TdObject& chat, std::vector<UltraIMEvent>& events);
+    // A basic group's members and creator (basicGroupFullInfo).
+    void TakeBasicGroupInfo(int64_t basicGroupId, const TdObject& info, std::vector<UltraIMEvent>& events);
     bool MessageFrom(const TdObject& message, UltraIMMessage& out);
     // The attachment of a photo, video, animation, video note, document,
     // audio, voice note or sticker, and the files behind it.
@@ -274,6 +297,7 @@ private:
     std::map<int32_t, std::vector<FileUse>> fileUses_;                       // files on their way in
     std::map<int32_t, std::vector<UltraIMAttachmentCallback>> fileWaiters_;  // DownloadAttachment's callbacks
     std::vector<std::pair<int32_t, int32_t>> downloadQueue_;                 // file id, priority - for FlushDownloads
+    std::vector<int64_t> groupInfoQueue_;                                    // basic groups whose full info to ask for, also by FlushDownloads
 };
 
 } // namespace UltraIMTelegram

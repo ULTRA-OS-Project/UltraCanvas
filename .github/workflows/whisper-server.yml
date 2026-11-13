@@ -1,0 +1,329 @@
+# whisper-server for the UltraAI local runtime's gallery.
+#
+# Builds whisper.cpp's server (https://github.com/ggml-org/whisper.cpp) at a
+# release tag for the platforms and accelerators upstream does not publish -
+# macOS (Metal on Apple silicon, CPU on Intel), Windows on ARM (CPU and
+# Vulkan), and Vulkan builds for Linux and Windows x64 - and publishes them as
+# one release of this repository with SHA256SUMS and the gallery's bundle
+# entries (whisper-server.gallery.json, from scripts/whisper_gallery_entries.py),
+# which go into UltraAI/runtime/src/LocalRuntimeBuiltinData.cpp as they are.
+# Docs/Modules/UltraAI/LocalRuntime.md ("Engines built here") has the steps.
+#
+# Every build except Windows Vulkan is tested the way UltraAI runs it: the
+# server is started with the runtime's command line, a tiny model and
+# whisper.cpp's own JFK sample are sent to /v1/audio/transcriptions, and the
+# words must come back. (A Windows runner has no Vulkan loader, so the
+# Windows Vulkan build is only checked to be there.) Linux Vulkan runs on
+# Mesa's software device.
+#
+# Run it from the Actions tab (workflow_dispatch) to publish. A pull request
+# that changes this workflow or the script builds and tests every row without
+# publishing (macOS runners bill at 10x, so nothing else triggers it). A
+# published release is never replaced: a rebuild takes the next revision
+# (-r2, -r3 ...), because the gallery pins every archive by its hash.
+
+name: whisper-server
+
+on:
+  workflow_dispatch:
+    inputs:
+      whisper_version:
+        description: "whisper.cpp release tag to build"
+        required: true
+        default: "v1.9.0"
+      revision:
+        description: "Build revision of this repository (r1, r2 ...): a new one for every rebuild"
+        required: true
+        default: "r1"
+      publish:
+        description: "Publish the release (off: build and test only)"
+        type: boolean
+        default: true
+  pull_request:
+    paths: ['.github/workflows/whisper-server.yml', 'scripts/whisper_gallery_entries.py']
+
+permissions:
+  contents: read
+
+# A pull request has no inputs: the defaults below stand in.
+concurrency:
+  group: whisper-server-${{ github.event_name == 'pull_request' && github.ref || inputs.revision }}-${{ inputs.whisper_version || 'v1.9.0' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  WHISPER_VERSION: ${{ inputs.whisper_version || 'v1.9.0' }}
+  REVISION: ${{ inputs.revision || 'r1' }}
+  # The model the smoke test transcribes with: the smallest multilingual one.
+  TEST_MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+  # The runtime's minimum for macOS bundles (the gallery's "minOs").
+  MACOS_MIN: "13.3"
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}-${{ matrix.accel }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: macos-arm64, accel: metal,  runner: macos-15,        smoke: true }
+          - { platform: macos-x64,   accel: cpu,    runner: macos-15-intel,  smoke: true }
+          - { platform: win-arm64,   accel: cpu,    runner: windows-11-arm,  smoke: true }
+          - { platform: win-arm64,   accel: vulkan, runner: windows-11-arm,  smoke: false }
+          - { platform: win-x64,     accel: vulkan, runner: windows-2022,    smoke: false }
+          - { platform: linux-x64,   accel: vulkan, runner: ubuntu-24.04,     smoke: true }
+          - { platform: linux-arm64, accel: vulkan, runner: ubuntu-24.04-arm, smoke: true }
+    env:
+      NAME: whisper-server-${{ inputs.whisper_version || 'v1.9.0' }}-${{ inputs.revision || 'r1' }}-${{ matrix.platform }}-${{ matrix.accel }}
+    steps:
+      - name: Check out whisper.cpp ${{ env.WHISPER_VERSION }}
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/whisper.cpp
+          ref: ${{ env.WHISPER_VERSION }}
+          path: whisper.cpp
+
+      # ----- toolchains -----
+
+      - name: macOS - Ninja
+        if: runner.os == 'macOS'
+        run: command -v ninja || brew install ninja
+
+      - name: Linux - Vulkan and SPIR-V headers, glslc, Mesa's software device for the test
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libvulkan-dev glslc spirv-headers mesa-vulkan-drivers
+
+      - name: Windows - Vulkan SDK
+        if: runner.os == 'Windows' && matrix.accel == 'vulkan'
+        shell: pwsh
+        run: |
+          # LunarG names Windows on ARM "warm", with its own latest version.
+          $arch = if ("${{ matrix.platform }}" -eq "win-arm64") { "ARM64" } else { "X64" }
+          $platforms = if ($arch -eq "ARM64") { @("warm", "windows") } else { @("windows") }
+          $installer = "$env:RUNNER_TEMP\VulkanSDK.exe"
+          $got = $null
+          foreach ($platform in $platforms) {
+            try { $v = (Invoke-WebRequest -UseBasicParsing "https://vulkan.lunarg.com/sdk/latest/$platform.txt").Content.Trim() } catch { continue }
+            foreach ($url in @("https://sdk.lunarg.com/sdk/download/$v/$platform/vulkansdk-windows-$arch-$v.exe",
+                               "https://sdk.lunarg.com/sdk/download/$v/$platform/vulkan_sdk.exe")) {
+              try {
+                Invoke-WebRequest -UseBasicParsing -OutFile $installer $url
+                $got = $url; $version = $v; break
+              } catch { Write-Host "not there: $url" }
+            }
+            if ($got) { break }
+          }
+          if (-not $got) { throw "no Vulkan SDK installer for $arch" }
+          Write-Host "Vulkan SDK $version from $got"
+          & $installer --accept-licenses --default-answer --confirm-command install | Out-Host
+          $sdk = "C:\VulkanSDK\$version"
+          if (-not (Test-Path $sdk)) { $sdk = (Get-ChildItem C:\VulkanSDK -Directory | Sort-Object Name | Select-Object -Last 1).FullName }
+          if (-not (Test-Path "$sdk\Bin\glslc.exe")) { throw "the Vulkan SDK $version has no glslc at $sdk" }
+          "VULKAN_SDK=$sdk" | Out-File -Append $env:GITHUB_ENV
+          "$sdk\Bin" | Out-File -Append $env:GITHUB_PATH
+          "VULKAN_SDK_VERSION=$version" | Out-File -Append $env:GITHUB_ENV
+
+      # ggml's CPU backend refuses MSVC on ARM: Windows on ARM builds with
+      # clang-cl from Visual Studio, under the ARM64 developer environment.
+      - name: Windows - developer environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.platform == 'win-arm64' && 'arm64' || 'x64' }}
+
+      - name: Windows on ARM - clang-cl
+        if: matrix.platform == 'win-arm64'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command clang-cl -ErrorAction SilentlyContinue)) {
+            $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+            $llvm = Join-Path $vs "VC\Tools\Llvm\ARM64\bin"
+            if (-not (Test-Path "$llvm\clang-cl.exe")) { throw "no clang-cl in Visual Studio ($llvm): install the C++ Clang tools" }
+            $llvm | Out-File -Append $env:GITHUB_PATH
+          }
+
+      # ----- configure and build -----
+
+      - name: Configure
+        shell: bash
+        working-directory: whisper.cpp
+        run: |
+          args=(
+            -B build -G Ninja
+            -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_SHARED_LIBS=OFF
+            -DGGML_NATIVE=OFF
+            -DWHISPER_BUILD_TESTS=OFF
+            -DWHISPER_BUILD_EXAMPLES=ON
+            -DWHISPER_BUILD_SERVER=ON
+            -DWHISPER_SDL2=OFF
+            -DWHISPER_CURL=OFF
+          )
+          case "${{ matrix.platform }}" in
+            macos-arm64) args+=(-DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON -DCMAKE_OSX_ARCHITECTURES=arm64
+                                -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_MIN) ;;
+            macos-x64)   args+=(-DGGML_METAL=OFF -DGGML_BLAS=OFF -DCMAKE_OSX_ARCHITECTURES=x86_64
+                                -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_MIN) ;;
+            linux-arm64) args+=(-DGGML_CPU_ARM_ARCH=armv8-a) ;;
+          esac
+          case "${{ matrix.platform }}" in
+            win-*)
+              # The C runtime linked in, so no Visual C++ redistributable is
+              # needed; no OpenMP, whose runtime (vcomp140.dll, LLVM's
+              # libomp140.*.dll) a user's computer lacks - ggml's own thread
+              # pool does the work.
+              args+=(-DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DGGML_OPENMP=OFF) ;;
+          esac
+          if [ "${{ matrix.platform }}" = "win-arm64" ]; then
+            args+=(-DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DGGML_CPU_ARM_ARCH=armv8.2-a)
+          fi
+          if [ "${{ matrix.accel }}" = "vulkan" ]; then args+=(-DGGML_VULKAN=ON); fi
+          echo "cmake ${args[*]}"
+          cmake "${args[@]}"
+          echo "CMAKE_ARGS=${args[*]}" >> "$GITHUB_ENV"
+
+      - name: Build whisper-server
+        shell: bash
+        working-directory: whisper.cpp
+        run: cmake --build build --config Release --target whisper-server -j 4
+
+      # ----- the bundle -----
+
+      - name: Stage the bundle
+        shell: bash
+        run: |
+          exe=whisper-server; [ "${{ runner.os }}" = "Windows" ] && exe=whisper-server.exe
+          built=$(find whisper.cpp/build -type f -name "$exe" | head -n 1)
+          [ -n "$built" ] || { echo "::error::no $exe in the build"; exit 1; }
+          mkdir -p "stage/$NAME"
+          cp "$built" "stage/$NAME/$exe"
+          cp whisper.cpp/LICENSE "stage/$NAME/LICENSE"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            codesign --force --sign - "stage/$NAME/$exe"     # ad hoc: what Apple silicon requires to run it
+          fi
+          {
+            echo "whisper.cpp ${WHISPER_VERSION} ($(git -C whisper.cpp rev-parse HEAD))"
+            echo "platform ${{ matrix.platform }}, accelerator ${{ matrix.accel }}, runner ${{ matrix.runner }}"
+            echo "cmake ${CMAKE_ARGS}"
+            [ -n "${VULKAN_SDK_VERSION:-}" ] && echo "Vulkan SDK ${VULKAN_SDK_VERSION}"
+            echo "built by ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > "stage/$NAME/BUILD.txt"
+          cat "stage/$NAME/BUILD.txt"
+          echo "EXE=stage/$NAME/$exe" >> "$GITHUB_ENV"
+
+      - name: What the executable links against
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   ldd "$EXE" ;;
+            macOS)   otool -L "$EXE" ;;
+            Windows) dumpbin //dependents "$EXE" ;;
+          esac
+
+      # ----- the smoke test: UltraAI's command line, a real transcription -----
+
+      - name: Test model
+        if: matrix.smoke
+        uses: actions/cache@v4
+        with:
+          path: test-model
+          key: whisper-ggml-tiny
+
+      - name: Transcribe whisper.cpp's sample as UltraAI would
+        if: matrix.smoke
+        shell: bash
+        run: |
+          mkdir -p test-model
+          [ -s test-model/ggml-tiny.bin ] || curl -fsSL --retry 3 -o test-model/ggml-tiny.bin "$TEST_MODEL_URL"
+          # The runtime's arguments (local_detail::BuildEngineArgs for whisper-server).
+          # MSYS_NO_PATHCONV: Git Bash on Windows would rewrite the inference
+          # path into a Windows path (the runtime passes it as it is).
+          MSYS_NO_PATHCONV=1 "$EXE" --host 127.0.0.1 --port 8178 --model test-model/ggml-tiny.bin \
+                 --inference-path /v1/audio/transcriptions --language auto --threads 2 > server.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 120); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8178/health || true)
+            [ "$code" = "200" ] && break
+            kill -0 $pid 2>/dev/null || { cat server.log; echo "::error::whisper-server ended while starting"; exit 1; }
+            sleep 1
+          done
+          [ "$code" = "200" ] || { cat server.log; echo "::error::no /health within 120 s"; exit 1; }
+          reply=$(curl -s -F file=@whisper.cpp/samples/jfk.wav -F model=whisper-1 -F response_format=json \
+                       http://127.0.0.1:8178/v1/audio/transcriptions)
+          kill $pid || true
+          echo "reply: $reply"
+          tail -n 20 server.log
+          echo "$reply" | grep -qi "ask not what your country" || { echo "::error::the sample was not transcribed"; exit 1; }
+
+      - name: Archive
+        shell: bash
+        working-directory: stage
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a -tzip "../$NAME.zip" "$NAME" > /dev/null
+          else
+            tar -czf "../$NAME.tar.gz" "$NAME"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: |
+            ${{ env.NAME }}.zip
+            ${{ env.NAME }}.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: whisper-server-${{ inputs.whisper_version }}-${{ inputs.revision }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Refuse to replace a published release
+        run: |
+          if gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "::error::$TAG is published already and the gallery pins its hashes: run again with the next revision"
+            exit 1
+          fi
+
+      - name: Hashes and the gallery's bundle entries
+        run: |
+          cd artifacts
+          sha256sum -- * > ../SHA256SUMS
+          cd ..
+          cat SHA256SUMS
+          python3 -I scripts/whisper_gallery_entries.py \
+            --dir artifacts \
+            --url-base "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG" \
+            --min-macos "$MACOS_MIN" > whisper-server.gallery.json
+          cat whisper-server.gallery.json
+
+      # Not "latest": the SDK releases of this repository are, and an engine
+      # release must not take that over.
+      - name: Publish
+        run: |
+          {
+            echo "whisper.cpp's whisper-server ${WHISPER_VERSION}, built for the UltraAI local runtime's gallery."
+            echo
+            echo "The bundle entries for the gallery are in whisper-server.gallery.json; SHA256SUMS lists every archive."
+            echo "Built by ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}."
+          } > notes.md
+          gh release create "$TAG" --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "whisper-server ${WHISPER_VERSION} (${REVISION})" --notes-file notes.md --latest=false \
+            artifacts/* SHA256SUMS whisper-server.gallery.json

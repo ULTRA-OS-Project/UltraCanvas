@@ -2,9 +2,10 @@
 // The `local` provider: the runtime supplies an engine endpoint for the
 // model, the OpenAI adapter speaks to it. Resolution is lazy and per
 // model: a request naming another installed model gets its own engine.
+// Version: 0.3.0 - speech to text on whisper-server
 // Version: 0.2.0 - providerOptions["topic"]: the model the user set for a topic
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 
 #include "UltraAILocal.h"
@@ -295,6 +296,101 @@ protected:
     }
 };
 
+// ---------------------------------------------------------------------
+// ISpeechToText
+// ---------------------------------------------------------------------
+
+// whisper-server answers on the OpenAI audio API's path (the runtime starts
+// it so), and the OpenAI adapter speaks to it. What differs is said here.
+class LocalSpeechToText : public ISpeechToText, public LocalBase<ISpeechToText, SpeechToTextConfig> {
+public:
+    LocalSpeechToText(SpeechToTextConfig config, LocalRuntime* runtime, std::shared_ptr<ITransport> transport)
+        : LocalBase(std::move(config), runtime, std::move(transport), "speechtotext") {
+        if (topic_.empty()) topic_ = "transcription";
+        // An hour of sound takes minutes on the CPU: the default 60 s would
+        // cut a long recording off. A timeout the caller set is kept.
+        if (config_.timeoutMs == ProviderConfig{}.timeoutMs) config_.timeoutMs = 30 * 60 * 1000;
+    }
+
+    STTProviderCapabilities GetCapabilities() const override {
+        STTProviderCapabilities caps;
+        caps.providerId = "local";
+        // What whisper.cpp decodes itself (miniaudio, stb_vorbis); no upload
+        // limit on this machine.
+        caps.supportedEncodings = {AudioEncoding::Wav, AudioEncoding::Mp3, AudioEncoding::Flac,
+                                   AudioEncoding::Ogg};
+        caps.maxFileSizeBytes = 0;
+        for (int pass = 0; pass < 2; ++pass) {
+            for (const LocalModelInfo& m : runtime_->ListModels("speechtotext")) {
+                if ((pass == 0) != m.installed) continue;
+                if (m.fit == ModelFit::TooLarge) continue;
+                STTModelInfo info;
+                info.id                     = m.id;
+                info.displayName            = m.installed ? m.displayName : m.displayName + " (not installed)";
+                info.supportsTranslation    = true;
+                info.supportsWordTimestamps = true;
+                info.runsLocally            = true;
+                caps.models.push_back(std::move(info));
+            }
+        }
+        return caps;
+    }
+
+    TranscribeResponse Transcribe(const TranscribeRequest& request) override {
+        TranscribeResponse out;
+        const std::string modelId = ResolveModelId(request.model, &out.error);
+        if (modelId.empty()) return out;
+        ISpeechToText* inner = DelegateFor(modelId, &out.error);
+        if (!inner) return out;
+        TranscribeRequest resolved = request;
+        // The server ignores the model field; the adapter asks for segments
+        // (verbose_json) of "whisper-1" only.
+        resolved.model = "whisper-1";
+        // The server translates on its one path, with the "translate" field
+        // (the adapter would post to /v1/audio/translations).
+        if (resolved.translateToEnglish) {
+            resolved.translateToEnglish = false;
+            resolved.options["translate"] = true;
+        }
+        TranscribeResponse response = inner->Transcribe(resolved);
+        // whisper.cpp times every token; they are wanted only when asked for.
+        if (!request.wordTimestamps) {
+            for (TranscriptSegment& segment : response.segments) segment.words.clear();
+        }
+        return response;
+    }
+
+    std::future<TranscribeResponse> TranscribeAsync(const TranscribeRequest& request) override {
+        return std::async(std::launch::async, [this, request] { return Transcribe(request); });
+    }
+
+    LiveTranscriber StartLiveTranscribe(const TranscribeRequest&, TranscriptCallback onEvent) override {
+        if (onEvent) {
+            StreamingTranscriptEvent event;
+            event.kind          = StreamingTranscriptKind::Error;
+            event.error.code    = ErrorCode::InvalidRequest;
+            event.error.message = "live transcription is not supported by the local whisper engine";
+            onEvent(event);
+        }
+        return nullptr;
+    }
+
+    void* RawProvider() override {
+        Error ignored;
+        const std::string modelId = ResolveModelId("", &ignored);
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = delegates_.find(modelId);
+        return it == delegates_.end() ? nullptr : it->second.inner.get();
+    }
+
+protected:
+    std::unique_ptr<ISpeechToText> Create(const SpeechToTextConfig& config, Error* outError) const override {
+        SpeechToTextConfig keyless = config;
+        keyless.apiKey.clear();     // whisper-server takes none
+        return CreateOpenAISpeechToText(keyless, outError, transport_);
+    }
+};
+
 } // namespace
 
 std::unique_ptr<ITextLLM> CreateLocalTextLLM(const TextLLMConfig& config, Error* outError,
@@ -309,6 +405,13 @@ std::unique_ptr<IEmbeddings> CreateLocalEmbeddings(const EmbeddingsConfig& confi
                                                    std::shared_ptr<ITransport> transport) {
     if (outError) *outError = Error{};
     return std::make_unique<LocalEmbeddings>(config, runtime, std::move(transport));
+}
+
+std::unique_ptr<ISpeechToText> CreateLocalSpeechToText(const SpeechToTextConfig& config, Error* outError,
+                                                       LocalRuntime* runtime,
+                                                       std::shared_ptr<ITransport> transport) {
+    if (outError) *outError = Error{};
+    return std::make_unique<LocalSpeechToText>(config, runtime, std::move(transport));
 }
 
 } // namespace UltraAI

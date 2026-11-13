@@ -4,12 +4,13 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.3 - conversations pinned to the top and marked unread (SetMarks), each shown in its row
 // Version: 0.2.2 - times and dates written as the Settings window says (SetDateTimeStyle)
 // Version: 0.2.1 - pictures: avatars from the person's photo, photos and video previews in the bubbles,
 //                  a sender's avatar beside their bubble in a group, files as their name and size
 // Version: 0.2.0 - avatars, a rounded selection, the theme's colours
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -21,6 +22,7 @@
 
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -129,6 +131,14 @@ private:
 
 class ConversationListModel : public UltraCanvas::IListModel {
 public:
+    // The key of a conversation in the marks: "<provider>/<conversation id>".
+    static std::string MarkKey(const UltraIMConversation& conversation);
+    // Pinned conversations come first (newest first among them); one marked
+    // unread shows so with nothing new in it. Keys as MarkKey makes them.
+    void SetMarks(std::set<std::string> pinned, std::set<std::string> markedUnread);
+    bool IsPinned(const UltraIMConversation& conversation) const;
+    bool IsMarkedUnread(const UltraIMConversation& conversation) const;
+
     void SetConversations(std::vector<UltraIMConversation> conversations);
     // Inserts or replaces one, keeping newest first. Returns its row.
     int Upsert(const UltraIMConversation& conversation);
@@ -148,11 +158,14 @@ public:
 private:
     void Sort();
     std::vector<UltraIMConversation> list_;
+    std::set<std::string> pinned_;
+    std::set<std::string> markedUnread_;
 };
 
 // One row: the avatar (initials on the person's colour, a presence dot at
 // its corner; a group mark for a group), the title, the last message, its
-// time and the unread count, on a rounded tint when selected or hovered.
+// time and the unread count - a dot when it was marked unread - and a pin
+// when pinned, on a rounded tint when selected or hovered.
 class ConversationDelegate : public UltraCanvas::IItemDelegate {
 public:
     void RenderItem(UltraCanvas::IRenderContext* ctx, const UltraCanvas::IListModel* model,

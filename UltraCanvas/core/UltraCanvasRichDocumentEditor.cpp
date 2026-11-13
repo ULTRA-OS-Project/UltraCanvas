@@ -7,6 +7,8 @@
 // paragraph). That byte belongs to the run it precedes, so a run's byte span
 // is [start, start + (lineBreakBefore ? 1 : 0) + text.size()).
 //
+// Version: 1.4.0 - SetFloatOffset; text frames and drawings are addressed like pictures, and
+//                  a resized drawing keeps the size its shapes were drawn for
 // Version: 1.3.0 - letter spacing: a delta sets a run's own, the format state reports it, a
 //                  changed character style restyles it
 // Version: 1.2.1 - RunsText is UCRichDocument::ConcatenateRunText (one definition of
@@ -3184,7 +3186,7 @@ const RichTextRun* ImageRunAt(const std::vector<RichTextRun>& runs, int byteOffs
     for (const RichTextRun& run : runs) {
         const int start = position + (run.lineBreakBefore ? 1 : 0);
         position = start + static_cast<int>(run.text.size());
-        if (run.IsInlineImage() && start == byteOffset) return &run;
+        if ((run.IsInlineImage() || run.IsTextFrame()) && start == byteOffset) return &run;
         if (start > byteOffset) break;
     }
     return nullptr;
@@ -3230,9 +3232,37 @@ bool UCRichDocumentEditor::SetImageSize(const RichDocPosition& image, float widt
             block.imageHeightPt = heightPt;
         } else {
             RichTextRun* run = const_cast<RichTextRun*>(ImageRunAt(*MutableRunsAt(image), image.byteOffset));
+            // A drawing remembers the size its shapes were drawn for, so they
+            // scale to the new one. (Not undone: it only names the size the
+            // shapes already have.)
+            if (run->frameIndex >= 0 && run->frameIndex < static_cast<int>(doc->frames.size())) {
+                RichTextFrame& frame = doc->frames[static_cast<size_t>(run->frameIndex)];
+                if (frame.IsDrawing() && frame.drawingWidthPt <= 0.0f && frame.drawingHeightPt <= 0.0f) {
+                    frame.drawingWidthPt = run->imageWidthPt;
+                    frame.drawingHeightPt = run->imageHeightPt;
+                }
+            }
             run->imageWidthPt = widthPt;
             run->imageHeightPt = heightPt;
         }
+    }
+    coalescing = false;
+    NotifyChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SetFloatOffset(const RichDocPosition& object, float offsetXPt, float offsetYPt) {
+    if (object.blockIndex < 0 || object.blockIndex >= GetBlockCount()) return false;
+    const std::vector<RichTextRun>* runs = RunsAt(object);
+    const RichTextRun* found = runs ? ImageRunAt(*runs, object.byteOffset) : nullptr;
+    if (!found || !found->IsFloatingObject()) return false;
+    {
+        EditScope scope(*this, object.blockIndex, 1);
+        RichTextRun* run = const_cast<RichTextRun*>(ImageRunAt(*MutableRunsAt(object), object.byteOffset));
+        run->imageFloatAlign = RichTextAlign::Default;
+        run->floatVerticalAlign = RichTextRun::FloatVerticalAlign::Top;
+        run->imageOffsetXPt = offsetXPt;
+        run->imageOffsetYPt = offsetYPt;
     }
     coalescing = false;
     NotifyChanged();

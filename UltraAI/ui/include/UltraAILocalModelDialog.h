@@ -50,7 +50,8 @@ namespace UltraAI {
 
 class UltraAILocalModelDialog : public UltraCanvas::UltraCanvasModalDialog {
 public:
-    // Open the dialog for `capability` ("textllm", "embeddings"); the
+    // Open the dialog for `capability` ("textllm", "embeddings",
+    // "speechtotext"); the
     // service name is what the user sees ("Chat"). `preferredModelId` is
     // preselected when it is offered (the endpoint's model); empty takes
     // the runtime's recommendation. `onReady(modelId)` runs on the UI

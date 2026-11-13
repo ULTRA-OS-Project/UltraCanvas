@@ -1919,6 +1919,8 @@ namespace UltraCanvas {
         const ModelFormatEntry kModelFormats[] = {
                 {"stepmodels", "step", Tr("STEP 3D Models"),
                  Tr("ISO 10303 exact B-rep: analytic surfaces closed into solids, tessellated on import because the file carries no mesh")},
+                {"igesmodels", "igs", Tr("IGES 3D Models"),
+                 Tr("IGES 5.3 exact B-rep: manifold solids and trimmed surfaces, tessellated on import")},
                 {"ms3dmodels", "ms3d", Tr("MilkShape 3D Models"),
                  Tr("A game format of packed little-endian structs - groups become meshes and smoothing groups arrive as a bitmask")},
                 {"fbxmodels", "fbx", Tr("FBX 3D Models"),

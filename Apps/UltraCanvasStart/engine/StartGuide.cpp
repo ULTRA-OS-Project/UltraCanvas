@@ -1,4 +1,5 @@
 // Apps/UltraCanvasStart/engine/StartGuide.cpp
+// Version: 0.2.7 - Linux: an application finds the SDK's libraries itself, no LD_LIBRARY_PATH
 // Version: 0.2.6 - the SDK by its address on start.ultraos.eu, fetched by Download
 // Version: 0.2.5 - MSYS2 is updated first
 // Version: 0.2.4 - InstallPreview: MSYS2 set up by winget first, every command listed
@@ -57,8 +58,8 @@ std::string PlatformGuide(Platform platform, const std::string& version,
             out += "3. Get the framework, one of:\n";
             out += "   - " + SdkLine(platform, version, architecture, "") + "\n";
             out += "   - clone " + Link("the repository", kRepository) + " and build it with " + Code("cmake") + ".\n";
-            out += "4. Run an application with " + Code("LD_LIBRARY_PATH") + " pointing at the SDK's " +
-                   Code("lib/") + ".\n";
+            out += "4. Run the application from its build folder: it finds the SDK's " + Code("lib/") +
+                   " by itself, with no " + Code("LD_LIBRARY_PATH") + ".\n";
             out += "5. For a standalone package, let " + Code("package-linux.sh") +
                    " bundle the libraries next to the executable.\n";
             break;

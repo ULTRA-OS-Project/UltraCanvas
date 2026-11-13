@@ -20,12 +20,15 @@
 // answers every message with "echo: <text>". The code is always 12345.
 // The number +1 555 9999 is never answered (a network that is down), for the
 // provider's step timeout.
+// Version: 0.1.5 - a basic group after it is made: setChatTitle, addChatMembers, setChatMemberStatus (left;
+//                  the creator alone takes others out), leaveChat, deleteChatHistory (the chat off the
+//                  deleter's list; the history stays), getBasicGroupFullInfo and updateBasicGroupFullInfo
 // Version: 0.1.4 - files: profile photos, photos, videos and documents sent, downloadFile and updateFile
 // Version: 0.1.3 - sign-in by QR code (requestQrCodeAuthentication, scanned and refreshed through td_execute)
 // Version: 0.1.2 - the code to the app first, by SMS on resendAuthenticationCode (as Telegram does)
 // Version: 0.1.1 - a phone number whose code never comes
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasJSON.h"
@@ -92,6 +95,7 @@ struct Message {
 
 struct ChatRec {
     int64_t     groupId = 0;    // 0 = private
+    int64_t     creator = 0;    // a group's
     std::string title;
     std::vector<int64_t> members;
     std::vector<Message> messages;          // oldest first
@@ -493,6 +497,52 @@ void Announce(Client& c, const ChatRec& chat) {
     }
 }
 
+// A basic group's members and creator, as getBasicGroupFullInfo answers.
+JSONValue BasicGroupFullInfo(const ChatRec& chat) {
+    JSONValue o = Obj("basicGroupFullInfo");
+    o.Set("description", JSONValue(""));
+    o.Set("creator_user_id", JSONValue(chat.creator));
+    JSONValue members = JSONValue::MakeArray();
+    for (int64_t m : chat.members) {
+        JSONValue member = Obj("chatMember");
+        JSONValue sender = Obj("messageSenderUser");
+        sender.Set("user_id", JSONValue(m));
+        member.Set("member_id", sender);
+        member.Set("status", Obj(m == chat.creator ? "chatMemberStatusCreator" : "chatMemberStatusMember"));
+        members.Append(member);
+    }
+    o.Set("members", members);
+    return o;
+}
+
+// Everyone in the group hears of its members (as TDLib does once the full
+// info was asked for), and of everyone in it.
+void GroupInfoChanged(const ChatRec& chat) {
+    for (int64_t member : chat.members) {
+        for (Client* other : ClientsOf(member)) {
+            for (int64_t m : chat.members) KnowUser(*other, m);
+            JSONValue u = Obj("updateBasicGroupFullInfo");
+            u.Set("basic_group_id", JSONValue(chat.groupId));
+            u.Set("basic_group_full_info", BasicGroupFullInfo(chat));
+            Push(*other, u);
+        }
+    }
+}
+
+// The chat off `user`'s list (left, taken out, deleted): order 0.
+void OffTheList(const ChatRec& chat, int64_t user) {
+    for (Client* other : ClientsOf(user)) {
+        JSONValue u = Obj("updateChatPosition");
+        u.Set("chat_id", JSONValue(ViewId(chat, user)));
+        JSONValue p = Obj("chatPosition");
+        p.Set("list", Obj("chatListMain"));
+        p.Set("order", JSONValue("0"));
+        p.Set("is_pinned", JSONValue(false));
+        u.Set("position", p);
+        Push(*other, u);
+    }
+}
+
 void PresenceChanged(int64_t user) {
     for (auto& entry : S().clients) {
         Client& c = entry.second;
@@ -711,6 +761,7 @@ void Handle(Client& c, const JSONValue& r) {
     if (type == "createNewBasicGroupChat") {
         ChatRec group;
         group.groupId = S().nextGroup++;
+        group.creator = c.user;
         group.title = r["title"].GetString();
         group.members.push_back(c.user);
         for (const auto& u : r["user_ids"].GetElements()) {
@@ -732,6 +783,79 @@ void Handle(Client& c, const JSONValue& r) {
         failed.Set("failed_to_add_members", JSONValue::MakeArray());
         answer.Set("failed_to_add_members", failed);
         return Answer(c, extra, answer);
+    }
+    if (type == "getBasicGroupFullInfo") {
+        auto it = S().chats.find("g:" + std::to_string(r["basic_group_id"].GetInteger(0)));
+        if (it == S().chats.end() || !ChatOf(c.user, -it->second.groupId)) return fail(400, "Group not found");
+        return Answer(c, extra, BasicGroupFullInfo(it->second));
+    }
+    if (type == "setChatTitle") {
+        ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
+        if (!chat) return fail(400, "Chat not found");
+        if (!chat->groupId) return fail(400, "Chat title can't be changed");
+        chat->title = r["title"].GetString();
+        ok();
+        for (int64_t member : chat->members) {
+            for (Client* other : ClientsOf(member)) {
+                JSONValue u = Obj("updateChatTitle");
+                u.Set("chat_id", JSONValue(-chat->groupId));
+                u.Set("title", JSONValue(chat->title));
+                Push(*other, u);
+            }
+        }
+        return;
+    }
+    if (type == "addChatMembers") {
+        ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
+        if (!chat || !chat->groupId) return fail(400, "Chat not found");
+        std::vector<int64_t> added;
+        for (const auto& u : r["user_ids"].GetElements()) {
+            const int64_t id = u.GetInteger(0);
+            if (!S().accounts.count(id)) return fail(400, "USER_ID_INVALID");
+            if (std::find(chat->members.begin(), chat->members.end(), id) == chat->members.end()) {
+                chat->members.push_back(id);
+                added.push_back(id);
+            }
+        }
+        JSONValue answer = Obj("failedToAddMembers");
+        answer.Set("failed_to_add_members", JSONValue::MakeArray());
+        Answer(c, extra, answer);
+        for (int64_t id : added) {
+            for (Client* other : ClientsOf(id)) Announce(*other, *chat);
+        }
+        GroupInfoChanged(*chat);
+        return;
+    }
+    if (type == "setChatMemberStatus") {
+        ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
+        if (!chat || !chat->groupId) return fail(400, "Chat not found");
+        if (r["status"]["@type"].GetString() != "chatMemberStatusLeft") return fail(400, "Not supported by the fake");
+        const int64_t member = r["member_id"]["user_id"].GetInteger(0);
+        if (member != c.user && c.user != chat->creator) return fail(400, "CHAT_ADMIN_REQUIRED");
+        auto at = std::find(chat->members.begin(), chat->members.end(), member);
+        if (at == chat->members.end()) return fail(400, "USER_NOT_PARTICIPANT");
+        chat->members.erase(at);
+        ok();
+        OffTheList(*chat, member);
+        GroupInfoChanged(*chat);
+        return;
+    }
+    if (type == "leaveChat") {
+        ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
+        if (!chat || !chat->groupId) return fail(400, "Chat not found");
+        chat->members.erase(std::find(chat->members.begin(), chat->members.end(), c.user));
+        ok();
+        OffTheList(*chat, c.user);
+        GroupInfoChanged(*chat);
+        return;
+    }
+    if (type == "deleteChatHistory") {
+        ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
+        if (!chat) return fail(400, "Chat not found");
+        // The other side keeps theirs (revoke false); this one's list loses the chat.
+        ok();
+        OffTheList(*chat, c.user);
+        return;
     }
     if (type == "sendMessage") {
         ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));

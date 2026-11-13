@@ -1,8 +1,11 @@
 // UltraAI/tests/test_llamacpp_adapter.cpp
-// Smoke test for the llama.cpp ITextLLM adapter. Needs a real GGUF model:
-// set ULTRAAI_TEST_LLAMA_MODEL to a model path (a tiny test model like
-// stories260K.gguf is enough). Without it the test reports SKIP and
-// passes, so suites with the adapter enabled stay green in CI.
+// Smoke test for the llama.cpp ITextLLM adapter. The inference checks need
+// a GGUF model in ULTRAAI_TEST_LLAMA_MODEL: the build writes one
+// (make_tiny_llama_gguf.py, a random one-layer llama with Gemma's chat
+// template, built so greedy decoding never picks end-of-sequence) and
+// `ctest` sets the variable to it; any other model works when the binary
+// is run by hand (a tiny real one like stories260K.gguf is enough). Without
+// the variable the test reports SKIP and passes.
 //
 // Uses plain asserts so the test suite has no third-party dependency.
 
@@ -98,6 +101,27 @@ int main() {
 
     // Exact token counting counts the templated prompt.
     EXPECT_TRUE(llm->CountTokens("", req.messages) > 0);
+
+    // Two user turns in a row are merged before the chat template sees
+    // them (MergeSameRoleTurns), so the history a client left an unanswered
+    // turn in prompts exactly as the merged turn does: same templated token
+    // count, same greedy reply.
+    {
+        ChatRequest split = req;
+        Message again; again.role = Role::User; again.text = "in a land far away";
+        split.messages.push_back(again);
+        ChatRequest merged = req;
+        merged.messages[0].text = "Once upon a time\n\nin a land far away";
+        EXPECT_TRUE(llm->CountTokens("", split.messages) ==
+                    llm->CountTokens("", merged.messages));
+        EXPECT_TRUE(llm->CountTokens("", split.messages) >
+                    llm->CountTokens("", req.messages));
+        ChatResponse splitResp  = llm->Chat(split);
+        ChatResponse mergedResp = llm->Chat(merged);
+        EXPECT_TRUE(splitResp.error.IsOk() && mergedResp.error.IsOk());
+        EXPECT_TRUE(splitResp.usage.inputTokens == mergedResp.usage.inputTokens);
+        EXPECT_TRUE(splitResp.text == mergedResp.text);
+    }
 
     // Structured output stays valid JSON whether the schema compiles to a
     // GBNF grammar (llama.cpp common linked) or the universal grammar

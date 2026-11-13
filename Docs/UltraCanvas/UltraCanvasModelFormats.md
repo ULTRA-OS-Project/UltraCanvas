@@ -93,9 +93,10 @@ Reported by the converters themselves in a build with tinyxml2 and zlib:
 | Alembic (`.abc`) | ✓ (first time sample) | — | — | — |
 | Blender (`.blend`) | ✓ | ✓ | — | — |
 | STEP (`.step .stp .p21`) | ✓ | ✓ | ✓ | ✓ |
+| IGES (`.igs .iges`) | — | ✓ | ✓ | ✓ |
 | AutoCAD DXF — 3D entities | — | ✓ | — | — |
 
-Six formats are writable — OBJ, PLY, STEP, 3DS, COLLADA and X3D/VRML — and the
+Seven formats are writable — OBJ, PLY, STEP, IGES, 3DS, COLLADA and X3D/VRML — and the
 rest are read-only. That is a property of the writers this repository has, not
 of the formats. `ModelWriterTest` asserts that this list and the converters'
 own `CanExport()` agree in both directions, so a format cannot be advertised
@@ -146,6 +147,29 @@ becomes its own face. The writer says so through `WarningCallback` rather than
 leaving you to notice. A document that already holds exact bodies is written as
 those bodies, losslessly, and does not go through faceting at all.
 
+**IGES is written in the form each body needs.** A closed solid becomes a
+manifold solid B-rep object (entity 186) with its vertex and edge lists, so its
+faces still share their edges when it is read back; an open body becomes
+trimmed surfaces (144) with their boundaries in model space, and B-spline
+faces also carry their trimming curves in (u, v). Analytic surfaces keep their
+IGES 5.3 entities (planes 190, cylinders 192, cones 194, spheres 196, tori
+198) rather than being converted to NURBS, so a reader older than IGES 5.2
+that knows only 128 will not take them. A mesh is written as a faceted solid,
+as for STEP, with the same warning. IGES must state a unit; a document that
+states none is written as millimetres, the format's own default.
+
+**The IGES reader takes both of the format's shapes.** A file of manifold solid
+B-rep objects arrives as closed solids with shared edges; a file of trimmed
+surfaces - which is what most IGES files are - arrives as one open body of
+independent faces, the way STEP's `shell_based_surface_model` does. Trimming
+curves in a surface's (u, v) are used only when, lifted onto the surface, they
+lie on the model-space edge they belong to; any that do not are dropped with a
+warning and the edge is projected instead, so a writer that parameterises a
+surface differently costs time, not a wrong face. Hyperbolic and parabolic
+arcs (read as their chord), offset surfaces (140), bounded surfaces (143),
+subfigure instances (408), and the compressed and binary forms of the file
+are not read, and the reader names each one it skipped.
+
 `.dxf` is deliberately **not** claimed by this plugin: a DXF is a drawing far
 more often than a model, so the Vector plugin's reader stays the default for
 it. A caller that wants the 3D entities asks for the converter by name —
@@ -158,7 +182,7 @@ surfaces with the topology that closes them into solids, in
 `ModelDocument::Brep`. A document holding only exact bodies is *not* empty, and
 `TotalFaceCount()` is zero until something tessellates it — which is what
 `TessellateOnImport` asks for, at the tolerance in
-`ConversionOptions::Tessellation`. A converter writing STEP to IGES wants it
+`ConversionOptions::Tessellation`. IGES is the same. A converter writing STEP to IGES wants it
 off, because tessellating and discarding is exactly the loss the B-rep
 structure exists to prevent.
 

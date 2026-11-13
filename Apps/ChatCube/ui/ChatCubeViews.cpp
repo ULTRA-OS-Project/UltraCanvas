@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.5 - pinned conversations first, with a pin; one marked unread with a dot
 // Version: 0.2.4 - times on a 12-hour clock and dates in three orders, from the Settings window
 // Version: 0.2.3 - the ticks drawn as strokes (no font needed); a file that is a picture - an SVG
 //                  drawing above all - shows it in the bubble as a photo does
@@ -18,6 +19,7 @@
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -139,13 +141,13 @@ std::string MessageText(const UltraIMMessage& m) {
         case UltraIMMessageType::Video:       return m.text;
         case UltraIMMessageType::Sticker:     return a.localPath.empty() ? m.text : std::string();
         case UltraIMMessageType::File: {
-            std::string line = a.fileName.empty() ? std::string("File") : a.fileName;
+            std::string line = a.fileName.empty() ? Tr("File") : a.fileName;
             if (a.fileSizeBytes > 0) line += "  " + FormatSize(a.fileSizeBytes);
             if (!m.text.empty()) line += "\n" + m.text;
             return line;
         }
         case UltraIMMessageType::Audio: {
-            std::string line = a.fileName.empty() ? std::string("Voice message") : a.fileName;
+            std::string line = a.fileName.empty() ? Tr("Voice message") : a.fileName;
             if (a.durationSeconds > 0) line += "  " + FormatDuration(a.durationSeconds);
             return line;
         }
@@ -190,7 +192,8 @@ std::string FormatTime(int64_t timestampMs) {
         // "2:05 PM": no leading zero, and AM / PM whatever the locale says
         // (strftime's %p is empty in many of them).
         const int hour = tm.tm_hour % 12 == 0 ? 12 : tm.tm_hour % 12;
-        std::snprintf(buffer, sizeof(buffer), "%d:%02d %s", hour, tm.tm_min, tm.tm_hour < 12 ? "AM" : "PM");
+        std::snprintf(buffer, sizeof(buffer), "%d:%02d", hour, tm.tm_min);
+        return tm.tm_hour < 12 ? TrF("{0} AM", buffer) : TrF("{0} PM", buffer);
     }
     return buffer;
 }
@@ -218,21 +221,23 @@ std::string FormatDuration(double seconds) {
 }
 
 std::string FormatSize(int64_t bytes) {
-    if (bytes < 1000) return std::to_string(bytes) + " bytes";
+    if (bytes < 1000) return TrN("{n} byte", "{n} bytes", bytes);
     // One decimal, in tenths, so no float is formatted.
-    const char* unit = "KB";
+    int unit = 0;               // 0 KB, 1 MB, 2 GB
     int64_t tenths = bytes * 10 / 1000;
     if (tenths >= 10000) {
-        unit = "MB";
+        unit = 1;
         tenths = bytes * 10 / (1000 * 1000);
     }
     if (tenths >= 10000) {
-        unit = "GB";
+        unit = 2;
         tenths = bytes * 10 / (1000LL * 1000 * 1000);
     }
     std::string out = std::to_string(tenths / 10);
     if (tenths < 100) out += "." + std::to_string(tenths % 10);
-    return out + " " + unit;
+    if (unit == 0) return TrF("{0} KB", out);
+    if (unit == 1) return TrF("{0} MB", out);
+    return TrF("{0} GB", out);
 }
 
 bool HasPicture(const UltraIMMessage& message) {
@@ -553,10 +558,10 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
         if (!painted) {
             ctx->DrawFilledRectangle(box, look.well, 0.0f, Colors::Transparent, kPictureRadius);
             std::string waiting;
-            if (m.deliveryStatus == UltraIMDeliveryStatus::Sending) waiting = "Sending\xE2\x80\xA6";
-            else if (m.deliveryStatus == UltraIMDeliveryStatus::Failed) waiting = "Not sent";
-            else if (m.type == UltraIMMessageType::Video) waiting = "Video";
-            else waiting = "Fetching the picture\xE2\x80\xA6";
+            if (m.deliveryStatus == UltraIMDeliveryStatus::Sending) waiting = Tr("Sending\xE2\x80\xA6");
+            else if (m.deliveryStatus == UltraIMDeliveryStatus::Failed) waiting = Tr("Not sent");
+            else if (m.type == UltraIMMessageType::Video) waiting = Tr("Video");
+            else waiting = Tr("Fetching the picture\xE2\x80\xA6");
             ctx->SetFontSize(kMetaFont + 0.5f);
             ctx->SetFontWeight(FontWeight::Normal);
             ctx->SetTextWrap(TextWrap::WrapNone);
@@ -625,8 +630,29 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
 // CONVERSATION LIST
 // ============================================================================
 
+std::string ConversationListModel::MarkKey(const UltraIMConversation& conversation) {
+    return conversation.providerId + "/" + conversation.conversationId;
+}
+
+void ConversationListModel::SetMarks(std::set<std::string> pinned, std::set<std::string> markedUnread) {
+    pinned_ = std::move(pinned);
+    markedUnread_ = std::move(markedUnread);
+    Sort();
+    NotifyDataChanged();
+}
+
+bool ConversationListModel::IsPinned(const UltraIMConversation& conversation) const {
+    return pinned_.count(MarkKey(conversation)) > 0;
+}
+
+bool ConversationListModel::IsMarkedUnread(const UltraIMConversation& conversation) const {
+    return markedUnread_.count(MarkKey(conversation)) > 0;
+}
+
 void ConversationListModel::Sort() {
-    std::stable_sort(list_.begin(), list_.end(), [](const UltraIMConversation& a, const UltraIMConversation& b) {
+    std::stable_sort(list_.begin(), list_.end(), [this](const UltraIMConversation& a, const UltraIMConversation& b) {
+        const bool pa = IsPinned(a), pb = IsPinned(b);
+        if (pa != pb) return pa;
         if (a.lastMessageTimeMs != b.lastMessageTimeMs) return a.lastMessageTimeMs > b.lastMessageTimeMs;
         return a.title < b.title;
     });
@@ -686,7 +712,7 @@ ListDataValue ConversationListModel::GetData(const ListIndex& index, ListDataRol
     const UltraIMConversation& c = list_[static_cast<size_t>(index.row)];
     if (role == ListDataRole::DisplayRole) return c.title;
     if (role == ListDataRole::ToolTipRole)
-        return c.isGroup ? c.title + "\n" + std::to_string(c.memberIds.size()) + " members"
+        return c.isGroup ? c.title + "\n" + TrN("{n} member", "{n} members", static_cast<long long>(c.memberIds.size()))
                          : c.title + "\n" + GroupUserId(c.directContactId);
     return ListDataValue();
 }
@@ -724,6 +750,9 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     const double textX = avatar.x + kAvatarRadius + 12;
     const double rightEdge = inset.x + inset.width - 10;
     const double topY = cell.y + 13;
+    // Marked unread with nothing new in it: a dot where the count would be.
+    const bool markedUnread = c.unreadCount <= 0 && list->IsMarkedUnread(c);
+    const bool unread = c.unreadCount > 0 || markedUnread;
 
     // The time, top right; the unread count under it.
     ctx->SetFontSize(kSnippetFont);
@@ -734,11 +763,14 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     if (!time.empty()) {
         ctx->SetTextAlignment(TextAlignment::Right);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextPaint(c.unreadCount > 0 ? look.accent : look.inkFaint);
+        ctx->SetTextPaint(unread ? look.accent : look.inkFaint);
         ctx->DrawTextInRect(time, Rect2Dd(rightEdge - timeWidth - 2, topY, timeWidth + 2, 18));
     }
     int badgeWidth = 0;
-    if (c.unreadCount > 0) {
+    if (markedUnread) {
+        badgeWidth = 12;
+        ctx->DrawFilledCircle(Point2Dd(rightEdge - 6, topY + 31), 6.0f, look.accent);
+    } else if (c.unreadCount > 0) {
         const std::string count = c.unreadCount > 99 ? "99+" : std::to_string(c.unreadCount);
         ctx->SetFontWeight(FontWeight::Bold);
         badgeWidth = std::max(20, ctx->GetTextLineWidth(count) + 12);
@@ -749,9 +781,16 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
         ctx->SetTextPaint(look.onAccent);
         ctx->DrawTextInRect(count, pill);
     }
+    // Pinned: the pin left of the count (or where the count would be).
+    if (list->IsPinned(c)) {
+        const double pinSide = 14;
+        const double pinX = rightEdge - badgeWidth - (badgeWidth > 0 ? 6 : 0) - pinSide;
+        PaintPin(ctx, Rect2Dd(pinX, topY + 24, pinSide, pinSide), look.inkFaint);
+        badgeWidth += static_cast<int>(pinSide) + (badgeWidth > 0 ? 6 : 0);
+    }
 
     ctx->SetFontSize(kTitleFont);
-    ctx->SetFontWeight(c.unreadCount > 0 ? FontWeight::Bold : FontWeight::Normal);
+    ctx->SetFontWeight(unread ? FontWeight::Bold : FontWeight::Normal);
     ctx->SetTextAlignment(TextAlignment::Left);
     ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
     ctx->SetTextPaint(look.ink);
@@ -759,9 +798,9 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
 
     ctx->SetFontSize(kSnippetFont);
     ctx->SetFontWeight(FontWeight::Normal);
-    ctx->SetTextPaint(c.unreadCount > 0 ? look.ink : look.inkMuted);
-    std::string snippet = c.lastMessageSnippet.empty() ? std::string("No messages yet") : c.lastMessageSnippet;
-    if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = "End-to-end encrypted";
+    ctx->SetTextPaint(unread ? look.ink : look.inkMuted);
+    std::string snippet = c.lastMessageSnippet.empty() ? Tr("No messages yet") : c.lastMessageSnippet;
+    if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = Tr("End-to-end encrypted");
     ctx->DrawTextInRect(snippet, Rect2Dd(textX, topY + 22, rightEdge - textX - badgeWidth - 8, 18));
 }
 
