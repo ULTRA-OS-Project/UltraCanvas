@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.23.0 - a key pressed with the focus on a popup's own window goes to the window the popup belongs
+//                  to: Escape closes the menu, the arrow keys and Enter work in it
 // Version: 1.22.0 - ApplyThemePolicy logs a theme set after Initialize (a provider, a host change)
 // Version: 1.21.0 - Appearance.conf over the host on every read; the settings watcher re-reads it on a change
 // Version: 1.20.0 - under a policy the elements follow the theme by default (SetFollowThemeByDefault)
@@ -46,7 +48,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAppearanceSettings.h"
@@ -2041,6 +2043,27 @@ namespace UltraCanvas {
                 forwarded.pointerWindow.x += static_cast<int>(std::lround(at.x));
                 forwarded.pointerWindow.y += static_cast<int>(std::lround(at.y));
                 forwarded.pointer = forwarded.pointerWindow;
+                forwarded.targetWindow = ownerPtr;
+                forwarded.nativeWindowHandle = owner->GetNativeHandle();
+                DispatchEvent(forwarded);
+                return;
+            }
+        }
+        // The keyboard too. Where the focus follows the pointer (X11 with no
+        // window manager, or one set that way) a key pressed over a popup's
+        // own window goes to that window, which holds nothing: Escape left
+        // the menu open, the arrow keys and Enter did nothing, and the next
+        // click was spent closing the menu. To the window it belongs to, as
+        // the key would have gone there with the popup composited on it.
+        if (event.IsKeyboardEvent()) {
+            UltraCanvasWindowBase* host = nullptr;
+            if (auto tw = event.targetWindow.lock()) host = tw.get();
+            else if (event.nativeWindowHandle != 0) host = FindWindow(event.nativeWindowHandle);
+            if (host && host->IsPopupHost()) {
+                UltraCanvasWindowBase* owner = host->GetPopupHostOwner();
+                auto ownerPtr = owner ? owner->GetWindowWeakPtr().lock() : nullptr;
+                if (!ownerPtr) return;
+                UCEvent forwarded = event;
                 forwarded.targetWindow = ownerPtr;
                 forwarded.nativeWindowHandle = owner->GetNativeHandle();
                 DispatchEvent(forwarded);

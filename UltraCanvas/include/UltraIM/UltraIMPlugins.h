@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.11 - ABI 7: UltraIMConversation::memberCount
 // Version: 0.1.10 - ABI 6: a group managed after it is made (RenameGroup, AddGroupMembers, RemoveGroupMember)
 //                   and a conversation left (LeaveConversation); UltraIMConversation::ownerId and memberNames
 // Version: 0.1.9 - ABI 5: DeleteMessage takes a scope (for everyone, for me); GetDeleteChoices
@@ -14,7 +15,7 @@
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
 // Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -417,9 +418,10 @@ protected:
 // Version 5 (2026-11): DeleteMessage's scope, GetDeleteChoices.
 // Version 6 (2026-11): a group renamed, members added and removed, a
 // conversation left; UltraIMConversation::ownerId and memberNames.
+// Version 7 (2026-11): UltraIMConversation::memberCount.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 6;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 7;
 
 struct UltraIMPluginHost {
     int abiVersion;

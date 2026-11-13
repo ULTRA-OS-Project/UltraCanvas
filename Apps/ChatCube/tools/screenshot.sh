@@ -27,6 +27,8 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.5 - no extra click after the menus: Escape reaches a menu's own window now (UltraCanvas 1.23.0
+#                  application, 1.9.1 X11 window), so the menus close and the next click lands
 # Version: 0.1.4 - the relay in the settings file (Settings > Networks > Relay; the card has no field for it
 #                  now), the card's fields where they are now; menu.png and group-menu.png, the chat
 #                  list's right-click menu (xinput rclick and move)
@@ -34,7 +36,7 @@
 # Version: 0.1.2 - the card's fields 21 pixels higher ("Recover my ChatCube ID" under the button)
 # Version: 0.1.1 - the e-mail and phone on the sign-in card; profile.png, the Edit profile window
 # Version: 0.1.0
-# Last Modified: 2026-11-12
+# Last Modified: 2026-11-13
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -142,9 +144,6 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     "$XINPUT" rclick 160 236 sleep 1200 move 230 319 sleep 1200 move 420 319 move 470 347 sleep 1200
     import -window root "$OUT/group-menu.png"
     "$XINPUT" key Escape sleep 300 key Escape sleep 300 key Escape sleep 600
-    # A click on the empty message area: the press that a closed menu would
-    # otherwise swallow, so the next click lands.
-    "$XINPUT" click 660 450 sleep 600
     # The person button beside the ID: the Edit profile window.
     "$XINPUT" click 292 25 sleep 2500
     import -window root "$OUT/profile.png"

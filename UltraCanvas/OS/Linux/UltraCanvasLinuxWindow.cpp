@@ -1,5 +1,7 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.9.1 - a popup's own window takes the keys pressed over it too (no window manager: the focus
+//                  follows the pointer), which the application hands to the window the popup belongs to
 // Version: 1.9.0 - WindowType::Popup: override-redirect, _NET_WM_WINDOW_TYPE_POPUP_MENU, takes
 //                  the pointer, mapped raised; SetNativeWindowShape (the shape extension)
 // Version: 1.8.0 - WindowType::Tooltip: override-redirect, _NET_WM_WINDOW_TYPE_TOOLTIP, an
@@ -182,12 +184,17 @@ namespace UltraCanvas {
         }
         // A popup's own window: the same, but it takes the pointer, which the
         // application hands to the window the popup belongs to. The keys stay
-        // with that window, which keeps the focus.
+        // with that window, which keeps the focus - except where the focus
+        // follows the pointer (no window manager: X's PointerRoot), where a
+        // key pressed over the popup goes to this window. Unselected, X passed
+        // it on to the root and nobody had it: Escape did not close a menu.
+        // Selected, the application hands it on like the pointer.
         if (config_.type == WindowType::Popup) {
             attrs.override_redirect = True;
             attrs.save_under = True;
             attrs.event_mask = ExposureMask | StructureNotifyMask | ButtonPressMask | ButtonReleaseMask |
-                               PointerMotionMask | EnterWindowMask | LeaveWindowMask;
+                               PointerMotionMask | EnterWindowMask | LeaveWindowMask | KeyPressMask |
+                               KeyReleaseMask;
             valueMask |= CWOverrideRedirect | CWSaveUnder;
         }
 
