@@ -1027,6 +1027,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Used by `UltraCanvasFilerWidget` under Display > File icons > Host OS icons.
   See `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`.
 
+- **UltraCanvasFilePreviews** (`UltraCanvasFilePreviews.h`) — the registry of
+  file preview providers: a format registers, under its extensions, a
+  thumbnail (`RenderThumbnail`, at a `FileThumbnailRequest` size) and/or a
+  preview document (`ReadDocument`, the start of its text as a
+  `UCRichDocument`); callers ask `RenderFileThumbnailFromProvider`,
+  `RenderFileThumbnailAs`, `ReadPreviewDocument` and `CanRenderFileThumbnail` /
+  `CanReadPreviewDocument`. Any number of providers, the latest registration
+  of an extension winning; thread-safe for the Filer's thumbnail workers. The
+  formats compiled in register on the first query
+  (`RegisterBuiltinFilePreviewProviders`, `core/UltraCanvasFilePreviewsBuiltin.cpp`):
+  PDF first page, EPUB / Mobipocket covers, video poster frames, Word-processing
+  documents and PowerPoint decks. `UltraCanvasFilerWidget` reaches those
+  formats only through it. The single-provider seams
+  `UltraCanvasVectorPreview.h` and `UltraCanvasModelPreview.h` predate it. See
+  `Docs/UltraCanvas/UltraCanvasFilePreviews.md`; tests in
+  `Tests/FilePreviewsTest.cpp`.
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
   document rather than as something to render text with: its name records are
@@ -31176,6 +31192,34 @@ on Windows the module needs the shared core). The table:
 | `Album` | `album` | `ultracanvas-widget-album` | UltraVideo, DemoApp |
 | `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
 | `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
+| `MediaViewer` | `media-viewer` | `ultracanvas-widget-media-viewer` (shared core only) | UltraViewer, UltraFiler, UltraMail, EmailCleaner, ChatCube, UltraClipboard, UltraSnip, DemoApp |
+
+**Static or shared core.** The shipping configuration is a shared core
+(`ULTRACANVAS_BUILD_SHARED`, on by default whenever DemoApp is built): every
+module links `libUltraCanvas` and finds the core there. With a static core a
+module resolves the core from the host executable instead, so the host must
+keep every core object the module uses; the anchors below do that, at the cost
+of keeping those objects in the host. That is cheap for a widget that needs one
+to five of them, and pointless for the MediaViewer, which reaches about 45 (a
+view for every kind of file) and UltraNet and UltraCrypt besides: its module is
+built against a shared core only (`UC_WIDGET_<key>_SHARED_CORE_ONLY`), and a
+static build has to compile it in.
+
+**Every widget exists in one form.** A widget left out of `ULTRACANVAS_WIDGETS`
+must be buildable as a module, or the configure stops, naming it and the ways
+out. Three things rule a module out: no runtime modules in the build
+(WebAssembly, Android, or `ULTRACANVAS_WIDGET_RUNTIME_MODULES=OFF`), a static
+core on Windows (a module there links the core DLL), and a static core for a
+shared-core-only widget. Before, the first two warned or skipped and the build
+went on without the widget, so an application asking for it by name found out
+only at run time.
+
+Charts follow the same rule (`ULTRACANVAS_CHARTS`), with one difference: their
+selection is empty by default, so on a platform that cannot load a module at
+all (WebAssembly, Android) a chart left out is compiled in instead - the
+compile-time fallback of the chart engine proposal (§12.11). Turning the chart
+modules off, or a static core on Windows, still stops the configure for a chart
+left out.
 
 ```cpp
 // At startup - registers the widgets compiled in. In a static core it also
@@ -31192,7 +31236,9 @@ leaves them out, with the applications that use them:
 
 ```
 cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF \
-      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF
+      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF \
+      -DBUILD_ULTRAFILER_APP=OFF -DBUILD_ULTRAVIEWER_APP=OFF -DBUILD_ULTRAMAIL=OFF \
+      -DBUILD_EMAILCLEANER=OFF -DBUILD_CHATCUBE=OFF -DBUILD_ULTRACLIPBOARD=OFF -DBUILD_ULTRASNIP=OFF
 ```
 
 An application that uses a widget's typed API (its class, its `Create…`
@@ -31203,11 +31249,17 @@ when one it builds would not link. A host that loads widget modules from a
 static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
 modules' hosts.
 
+A widget module is compiled with the core library's own include paths and
+compile definitions (taken from its target), so a header whose classes change
+with a feature switch - `ULTRACANVAS_PLUGIN_PDF`, the network or video flags -
+means the same on both sides of the module boundary.
+
 `ElementModulesTest` creates every selectable widget, and the chart of the
 chart module, by name in whichever form the build has them. Loading a module
 also checks that it carries the framework headers id the loader insists on.
 The *Element modules* workflow (`.github/workflows/element-modules.yml`)
-builds this lean configuration on every pull request that touches the
+builds this lean configuration - once with a static core and once with a
+shared one - on every pull request that touches the
 framework, runs `ElementModulesTest`, `UltraCanvasThemeTest` and
 `VectorEditTest` against it, and checks that the configure refuses an
 application whose widgets are left out. `build.yml` compiles every widget
@@ -31225,6 +31277,9 @@ in, so this is the only CI row that builds the modules.
    (with the headers in `_ANCHOR_INCLUDES`): one expression for each core
    object file the module needs that a host with a UI may not link anyway - a
    function, a member function or `&typeid(Class)` defined there.
+   A widget that needs too much of the core for that sets
+   `_SHARED_CORE_ONLY ON` instead, and its module is built with a shared core
+   only.
 4. Add the widget to `ElementModulesTest`'s list in `Tests/CMakeLists.txt`
    and build with the widget left out. A missing anchor fails the test with
    the undefined symbol; `nm` on the archive names its object file.
@@ -32868,6 +32923,145 @@ nor existence, that a missing file, a directory and an empty path answer
 On a platform without a backend the detection checks are skipped, not failed.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFilePreviews.md
+==============================================================================
+
+# UltraCanvasFilePreviews
+
+What a file looks like, from whoever reads its format: a registry of **file
+preview providers**. A format registers, under its extensions, a picture of a
+file (a thumbnail) and/or the start of its text (a preview document); a caller
+asks the registry and never names the format.
+
+- Header: `include/UltraCanvasFilePreviews.h`
+- Registry: `core/UltraCanvasFilePreviews.cpp`
+- Built-in providers: `core/UltraCanvasFilePreviewsBuiltin.cpp`
+- Tests: `Tests/FilePreviewsTest.cpp` (`ctest -R FilePreviewsTest`)
+
+**Version:** 1.0.0
+**Last Modified:** 2026-11-10
+**Author:** UltraCanvas Framework
+**Namespace:** `UltraCanvas`
+
+## Contents
+
+- [Why it exists](#why-it-exists)
+- [Asking for a preview](#asking-for-a-preview)
+- [Registering a provider](#registering-a-provider)
+- [The built-in providers](#the-built-in-providers)
+- [Threads](#threads)
+- [Related](#related)
+
+## Why it exists
+
+`UltraCanvasFilerWidget` used to call every format it previews by name: the PDF
+engine for a first page, the e-book engines for a cover, the video backend for
+a poster frame, the Word and PowerPoint readers for a page of text. The file
+display depended on each of them, and a format could not preview without the
+Filer knowing it. Now a format registers a provider and the Filer asks the
+registry, so a format can move into a runtime module and take its previews
+with it.
+
+`UltraCanvasVectorPreview.h` and `UltraCanvasModelPreview.h` do the same for
+one family each, with a single provider; this registry holds any number.
+
+## Asking for a preview
+
+```cpp
+#include "UltraCanvasFilePreviews.h"
+#include "UltraCanvasRichDocument.h"
+
+FileThumbnailRequest request;
+request.width = 96;              // logical pixels
+request.height = 72;
+request.fit = ImageFitMode::Contain;
+request.scale = 2.0f;            // device pixels per logical pixel
+
+if (CanRenderFileThumbnail("/home/user/Report.pdf")) {
+    std::shared_ptr<UCPixmap> page = RenderFileThumbnailFromProvider("/home/user/Report.pdf", request);
+}
+
+// A file whose name hides its format: an Illustrator .ai that is a PDF.
+auto drawing = RenderFileThumbnailAs("/home/user/Logo.ai", "pdf", request);
+
+UCRichDocument document;
+if (ReadPreviewDocument("/home/user/Letter.docx", document)) {
+    // document.blocks: the paragraphs and tables, laid out as the caller likes
+}
+
+std::vector<std::string> pictures = FileThumbnailExtensions();   // "epub", "pdf", ...
+std::vector<std::string> texts = PreviewDocumentExtensions();    // "docx", "pptx", ...
+```
+
+An extension may be given with or without its dot and in any case, or as a
+whole path, whose last extension is used. A thumbnail request of no size draws
+nothing. Every query returns null or false when no provider answers, the
+provider is not available in this process (`Available()`), or it cannot read
+the file - a damaged or password-protected one - so the caller shows the
+type's icon.
+
+## Registering a provider
+
+```cpp
+FilePreviewProvider provider;
+provider.name = "my-format";                   // a later registration of this name replaces it
+provider.thumbnailExtensions = {"myf"};
+provider.documentExtensions = {"myf"};
+provider.Available = [] { return true; };      // optional: a backend present at run time
+provider.RenderThumbnail = [](const std::string& path, const FileThumbnailRequest& r) {
+    std::shared_ptr<UCPixmap> pixmap;          // draw the file at r.width x r.height, r.scale
+    (void)path; (void)r;
+    return pixmap;                             // null: no picture of this file
+};
+provider.ReadDocument = [](const std::string& path, UCRichDocument& document) {
+    (void)path; (void)document;                // fill document.blocks
+    return false;                              // false: cannot read this file
+};
+RegisterFilePreviewProvider(std::move(provider));
+```
+
+- Extensions are matched lowercase and without a leading dot; a two-part one
+  such as `fb2.zip` keeps both parts.
+- Of two providers listing one extension, the later registered answers; one
+  not available now is passed over for the next.
+- A provider with no name, or with neither a `RenderThumbnail` and thumbnail
+  extensions nor a `ReadDocument` and document extensions, is ignored.
+- A provider that throws is contained: the query answers null or false.
+- A plugin registers from its init; the framework's own formats register
+  themselves (below), so an application never has to call anything first.
+
+## The built-in providers
+
+`RegisterBuiltinFilePreviewProviders()` registers the formats compiled into the
+framework, once, on the first query:
+
+| Provider | Answers | Extensions |
+|---|---|---|
+| `pdf` | the first page (PDF plugin builds, with an engine) | `pdf` |
+| `ebook-cover` | the cover the book declares | `epub`, `mobi`, `prc`, `azw`, `azw3` |
+| `video-poster` | a frame a short way into the clip | the containers the media codec registry decodes |
+| `word-processing` | the document, the first page's header and footer inline | `odt`, `docx`, `doc`, `tex` |
+| `powerpoint` | each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm` |
+
+The Filer draws its own styling over these: an outline round a PDF page, a
+shaded edge on a book cover.
+
+## Threads
+
+Every function is safe to call from several threads at once, including while
+another thread registers; the Filer's thumbnail workers do. A provider is
+called outside the registry's lock, so it must itself be safe to run
+concurrently - each call opening its own document, as the built-in ones do.
+
+## Related
+
+- `UltraCanvasFilerWidget` (`Docs/UltraCanvas/UltraCanvasFilerWidget.md`) -
+  the tiles, the preview pane and `RenderFileThumbnail`
+- `UltraCanvasVectorPreview.h`, `UltraCanvasModelPreview.h` - the
+  single-provider seams for vector drawings and 3D models
+- `UltraCanvasMediaCodecRegistry.h` - which video containers have a poster frame
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileRemoval.md
 ==============================================================================
 
@@ -33673,7 +33867,10 @@ Needs the VirtualFS module (`ULTRACANVAS_HAS_VIRTUALFS`); without it
 ## Selective previews
 
 A **content preview** is a tile rendered from the file itself instead of the
-generic category glyph. Two independent sets of switches decide what a file
+generic category glyph. The PDF page, the e-book cover, the video poster frame
+and the Word / PowerPoint text come from the formats' preview providers
+([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)); a format registered
+there previews here without the widget knowing it. Two independent sets of switches decide what a file
 may show, and every kind is enabled in both by default:
 
 - **Thumbnails** (`Display > Thumbnails`) — the tile the widget draws.
@@ -51622,6 +51819,19 @@ cache against the file: a picture saved over since it was last shown opens as
 it is now, not as the cache remembered it. The viewer does not watch the file
 it shows; a host that wants it followed reopens it when the file changes, as
 UltraFiler's preview pane does after a rescan finds the selected file changed.
+
+## As a runtime module
+
+The viewer is in the element registry as `"media-viewer"` (category Widget,
+`MakeMediaViewerDescriptor`). It is a selectable widget: compiled into the
+core by default, or built as the `ultracanvas-widget-media-viewer` runtime
+module when `ULTRACANVAS_WIDGETS` leaves `MediaViewer` out - with a shared
+core (`ULTRACANVAS_BUILD_SHARED`) only, since the viewer reaches some 45 core
+objects that a static host would otherwise have to keep for it. The applications
+that use its classes - UltraViewer, UltraFiler, UltraMail, EmailCleaner,
+ChatCube, UltraClipboard, UltraSnip and DemoApp - need it compiled in. See
+*Widgets as runtime modules* in
+[`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md).
 
 ## Embedding as a preview pane
 
