@@ -13,6 +13,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasAccessibilityBridge.h"
@@ -1431,6 +1432,22 @@ int main() {
         TEST("Plain text spells a drawing's words and its members'",
              document->ToPlainText().find("Boxed") != std::string::npos
              && document->ToPlainText().find("Member words") != std::string::npos);
+        // Pattern and picture fills draw (a tile, a picture repeated).
+        {
+            auto patterned = std::make_shared<UCRichDocument>(*document);
+            patterned->frames[1].shapes[0].fillPattern = "dkDnDiag";
+            patterned->frames[1].shapes[0].patternBackColor = "";
+            const std::vector<uint8_t> png = Base64Decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAFklEQVR4nGP4z8DAwMDAgCQGEYEJAgAXEgL+H2YqsAAAAABJRU5ErkJggg==");
+            const int media = patterned->AddMedia("tile.png", "image/png", png);
+            patterned->frames[2].shapes[0].children[2].fillMediaIndex = media;
+            edit->SetDocument(patterned);
+            window->UpdateAndRender();
+            window->UpdateAndRender();
+            TEST("Pattern and picture fills draw", edit->GetFloatRectForTest(1).height > 0.0f);
+            edit->SetDocument(document);
+            window->UpdateAndRender();
+        }
         // A preset outline from Word's names.
         RichShape star;
         TEST("Presets give outlines: star5", star.ApplyPreset("star5") && star.kind == RichShape::Kind::Path
@@ -1517,6 +1534,71 @@ int main() {
         edit->OnEvent(MouseEvent(UCEventType::MouseDown, on.x + on.width * 0.5f, on.y + 4.0f));
         edit->OnEvent(MouseEvent(UCEventType::MouseUp, on.x + on.width * 0.5f, on.y + 4.0f));
         TEST("A drawing behind the text is not picked up by a click", !edit->HasSelectedImage());
+    }
+
+    // ===== FLOATS IN A HEADER, WHILE IT IS EDITED =====
+    std::cerr << "\n--- Floats in an edited header ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame drawing;
+        RichShape logo;
+        logo.kind = RichShape::Kind::Ellipse;
+        logo.widthPt = 60.0f;
+        logo.heightPt = 40.0f;
+        logo.fillColor = "#4472C4";
+        drawing.shapes = {logo};
+        document->frames = {drawing};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 60.0f;
+        anchor.imageHeightPt = 40.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::InFrontOfText;
+        anchor.imageFloatAlign = RichTextAlign::Default;
+        anchor.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+        anchor.floatVerticalFrom = RichTextRun::FloatOrigin::Page;
+        anchor.imageOffsetXPt = 400.0f;
+        anchor.imageOffsetYPt = 20.0f;
+        RichTextRun sender;
+        sender.text = "Sender line";
+        RichDocBlock header;
+        header.runs = {anchor, sender};
+        document->pageFurniture.header = {header};
+        RichDocBlock body;
+        RichTextRun bodyWords;
+        bodyWords.text = "Body text.";
+        body.runs = {bodyWords};
+        document->blocks = {body};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("A header can be edited", edit->EditHeader(0));
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df on = edit->GetFloatElementRectForTest(0);
+        TEST("The edited header's drawing is placed as its own: " + std::to_string(on.width) + " wide",
+             std::abs(on.width - 80.0f) < 1.0f);
+        const float cx = on.x + on.width * 0.5f, cy = on.y + on.height * 0.5f;
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx, cy));
+        window->UpdateAndRender();
+        TEST("A click on it picks it up and stays in the header",
+             edit->HasSelectedImage() && edit->IsEditingHeaderOrFooter());
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, cx - 40.0f, cy + 20.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx - 40.0f, cy + 20.0f));
+        window->UpdateAndRender();
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        const RichTextRun& moved = edit->GetDocument()->pageFurniture.header[0].runs[0];
+        TEST("Dragged, it keeps its new place in the document's header: " + std::to_string(moved.imageOffsetXPt)
+             + ", " + std::to_string(moved.imageOffsetYPt),
+             std::abs(moved.imageOffsetXPt - 370.0f) < 1.0f && std::abs(moved.imageOffsetYPt - 35.0f) < 1.0f
+             && moved.floatHorizontalFrom == RichTextRun::FloatOrigin::Page);
+        edit->SetPageView(false);
+        window->UpdateAndRender();
     }
 
     // ===== PDF =====

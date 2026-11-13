@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.6.0 - Pattern fills (a:pattFill) and picture fills (a:blipFill) read and written
 // Version: 1.5.0 - Gradient fills read and written (a:gradFill, VML v:fill); VML pictures
 //                  (v:imagedata) as pictures in the line or floating
 // Version: 1.4.0 - Drawn shapes: wps shapes (preset and custom outlines, theme colours), wpg
@@ -1307,7 +1308,7 @@ private:
         const std::string name = preset ? Attr(preset, "prst") : "rect";
         if (name != "rect") return false;
         // A fill or line from the theme (wps:style) needs the shape's colours.
-        for (const char* tag : {"a:gradFill", "a:pattFill"}) {
+        for (const char* tag : {"a:gradFill", "a:pattFill", "a:blipFill"}) {
             if (spPr->FirstChildElement(tag)) return false;
         }
         // A dashed outline is a shape's, not a frame border's.
@@ -1488,8 +1489,24 @@ private:
             } else if (auto* gradient = spPr->FirstChildElement("a:gradFill")) {
                 ReadGradient(gradient, shape);
                 fillStated = true;
+            } else if (auto* picture = spPr->FirstChildElement("a:blipFill")) {
+                // A picture fill: tiled, or stretched over the shape.
+                auto* blip = picture->FirstChildElement("a:blip");
+                shape.fillMediaIndex = blip ? LoadImageByRelId(Attr(blip, "r:embed")) : -1;
+                shape.fillPictureTiled = picture->FirstChildElement("a:tile") != nullptr;
+                fillStated = shape.fillMediaIndex >= 0;
             } else if (auto* pattern = spPr->FirstChildElement("a:pattFill")) {
+                // A preset pattern: its foreground on its background.
                 shape.fillColor = DrawingColor(pattern->FirstChildElement("a:fgClr"));
+                if (shape.fillColor.empty()) shape.fillColor = "#000000";
+                auto* back = pattern->FirstChildElement("a:bgClr");
+                shape.patternBackColor = back ? DrawingColor(back) : "#FFFFFF";
+                // A background made all but invisible is none.
+                auto* backColour = back ? back->FirstChildElement() : nullptr;
+                auto* alpha = backColour ? backColour->FirstChildElement("a:alpha") : nullptr;
+                if (alpha && alpha->IntAttribute("val", 100000) < 50000) shape.patternBackColor.clear();
+                shape.fillPattern = Attr(pattern, "prst");
+                if (shape.fillPattern.empty()) shape.fillPattern = "pct5";   // DrawingML's default
                 fillStated = true;
             }
         }
@@ -3601,8 +3618,21 @@ private:
             }
             default: xml << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"; break;
         }
-        if (shape.fillColor.empty() || !shape.IsClosed()) {
+        if (shape.HasPictureFill() && shape.IsClosed()) {
+            xml << "<a:blipFill rotWithShape=\"1\"><a:blip r:embed=\"rIdImg" << (shape.fillMediaIndex + 1) << "\"/>"
+                << (shape.fillPictureTiled
+                        ? "<a:tile tx=\"0\" ty=\"0\" sx=\"100000\" sy=\"100000\" flip=\"none\" algn=\"tl\"/>"
+                        : "<a:stretch><a:fillRect/></a:stretch>")
+                << "</a:blipFill>";
+        } else if (shape.fillColor.empty() || !shape.IsClosed()) {
             xml << "<a:noFill/>";
+        } else if (shape.HasPattern()) {
+            // No background: white, made fully transparent (as Writer saves it).
+            xml << "<a:pattFill prst=\"" << EscapeXml(RichShape::NearestPresetPattern(shape.fillPattern))
+                << "\"><a:fgClr><a:srgbClr val=\"" << EscapeXml(rgb(shape.fillColor)) << "\"/></a:fgClr><a:bgClr>"
+                << (shape.patternBackColor.empty() ? std::string("<a:srgbClr val=\"FFFFFF\"><a:alpha val=\"0\"/></a:srgbClr>")
+                                                   : "<a:srgbClr val=\"" + EscapeXml(rgb(shape.patternBackColor)) + "\"/>")
+                << "</a:bgClr></a:pattFill>";
         } else if (shape.HasGradient()) {
             xml << "<a:gradFill rotWithShape=\"1\"><a:gsLst>";
             for (const RichShape::GradientStop& stop : shape.gradientStops) {

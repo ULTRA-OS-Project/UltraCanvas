@@ -18,6 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.12.0 - PlacedFloat::inFooter: a header's or footer's floats picked up while it is edited
 // Version: 1.11.0 - floating frames and drawings selected, moved and resized like pictures;
 //                   gradient fills; GetFloatRectForTest
 // Version: 1.10.0 - DrawShape / TraceShape: a drawing's shapes (RichTextFrame::shapes)
@@ -815,6 +816,7 @@ private:
         // page's text area), in the same coordinates as `rect`: a float
         // dragged elsewhere gets its offsets from it.
         float areaLeft = 0.0f, areaTop = 0.0f;
+        bool inFooter = false;                    // a page's furniture float: the footer's, else the header's
     };
     // The placed float whose placeholder is at `object`, or null.
     const PlacedFloat* PlacedFloatAt(const RichDocPosition& object) const;

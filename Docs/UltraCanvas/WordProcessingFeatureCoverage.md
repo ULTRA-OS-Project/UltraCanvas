@@ -101,7 +101,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Picture on its own line | yes | yes | yes | yes | yes | |
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
-| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradient fills (linear, axial, radial with their centre: ODF `draw:gradient`, DOCX `a:gradFill`, VML `v:fill`, DOC shades) are drawn and saved; pattern fills draw in one colour; no shadows, 3-D or WordArt. In page view a floating frame, drawing or picture is selected, moved by dragging and resized; the new place and size are saved. |
+| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradient fills (linear, axial, radial with their centre: ODF `draw:gradient`, DOCX `a:gradFill`, VML `v:fill`, DOC shades) are drawn and saved. Pattern fills draw as their pattern: DOCX `a:pattFill` (all of Word's presets), ODF `draw:hatch` (lines, single or crossed), DOC pattern bitmaps; saved to DOCX by name, to ODT as a hatch or, for dots and checks, as the pattern's tile. Picture fills (DOCX `a:blipFill`, ODF `draw:fill-image`, DOC textures and pictures) are drawn tiled or stretched and saved. Writer's DOC export keeps hatches as EMF textures, which are not decoded (they draw in the fill colour). No shadows, 3-D or WordArt. In page view a floating frame, drawing or picture is selected, moved by dragging and resized - in a header or footer while it is being edited; the new place and size are saved. |
 | Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
 
@@ -197,10 +197,11 @@ model or a reader can already carry, or that a document needs, but
   resized, but its words are changed only by editing the document's source.
 - **A drawing is edited as a whole**: it is selected, moved and resized
   like a picture, but its shapes cannot be picked out one by one, and its
-  words cannot be edited. Frames and pictures in headers and footers cannot
-  be picked up at all. Pattern fills draw in one colour; shadows, glow, 3-D
-  and WordArt are not drawn; text wraps round a shape's box, not its
-  outline. Word's named outlines outside
+  words cannot be edited. Frames and pictures in a header or footer are
+  picked up only while it is being edited. A picture fill stored as a
+  metafile (EMF, WMF - Writer's DOC export of a hatch) draws in its fill
+  colour; shadows, glow, 3-D and WordArt are not drawn; text wraps round a
+  shape's box, not its outline. Word's named outlines outside
   the forty or so the model knows (`RichShape::ApplyPreset`) draw as their
   box.
 - **One page setup per document.** Sections can have their own columns, but
@@ -230,8 +231,9 @@ triangle, a group and a turned box). `word-shapes-word.docx` is built by
 `make-word-shapes-fixture.py`: shapes as Word itself writes them, which
 LibreOffice's export does not produce (theme colours, a custom outline with
 an arc, a group with a picture, VML-only drawings, a VML picture).
-`word-gradients.fodt` (a linear, an axial and a radial fill) is converted
-like the others.
+`word-gradients.fodt` (a linear, an axial and a radial fill) and
+`word-patterns.fodt` (a hatch on white, a grid with no background) are
+converted like the others.
 
 `WordFormatsTest` checks that all three readers recover the same structure and
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it
