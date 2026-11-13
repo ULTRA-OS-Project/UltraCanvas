@@ -66312,6 +66312,27 @@ and VML) and DOC (OfficeArt) shapes and groups read into it, and both writers
 save it. A drawing is moved and resized like a picture; the shapes in it are
 not edited one by one.
 
+**A frame's words, edited in place.** A double-click on a floating text frame
+(or a drawing with words) in the body opens its paragraphs where the frame
+stands: they are laid out at its inner width over its fill and border, and
+typed, formatted and undone like the body's; a click outside the frame, or
+Escape, goes back, and they are written into `UCRichDocument::frames`.
+`EditFrame(frameIndex)` does the same from code, `IsEditingFrame()` says
+whether it is open, and `FinishHeaderFooterEditing()` closes it.
+
+```cpp
+if (editor->EditFrame(0)) {
+    editor->GetEditor().InsertText("Example Company");
+    editor->FinishHeaderFooterEditing();
+}
+```
+
+**Metafile pictures.** EMF and WMF pictures and picture fills (Word 97 keeps
+many pictures, and Writer's DOC export its hatches, that way) are drawn
+through the Vector plugin's readers, at twice their size so they stay sharp
+when zoomed; an application that does not register the plugin shows an empty
+box in their place.
+
 ```cpp
 RichShape rule;
 rule.kind = RichShape::Kind::Line;
@@ -92474,7 +92495,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 
 | Feature | ODT | DOCX | DOC | Model | View | Note |
 |---|---|---|---|---|---|---|
-| Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. DOCX: VML pictures (`v:imagedata`, Word 2003 and older) in the line or floating. |
+| Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG, JPEG, EMF and WMF BLIPs (metafiles inflated); DIB pictures not decoded. EMF and WMF pictures and fills (all three formats) are drawn through the Vector plugin's readers when the application registers it, at twice their size. DOCX: VML pictures (`v:imagedata`, Word 2003 and older) in the line or floating. |
 | Picture on its own line | yes | yes | yes | yes | yes | |
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
@@ -92569,15 +92590,18 @@ model or a reader can already carry, or that a document needs, but
   headers and footers cannot be selected or moved on the page, and are
   drawn under the body's text (Word's order; Writer draws a frame set in
   front of the text over it).
-- **A frame's text cannot be edited**: a click selects the frame (one
-  behind the text passes the click to the text) and it can be moved and
-  resized, but its words are changed only by editing the document's source.
+- **A frame's words are edited in place**, but only a frame in the body:
+  a double-click opens them (`EditFrame`), a click outside the frame or
+  Escape goes back. A frame in a header, footer or table cell, and a group
+  member's words, are not edited.
 - **A drawing is edited as a whole**: it is selected, moved and resized
-  like a picture, but its shapes cannot be picked out one by one, and its
-  words cannot be edited. Frames and pictures in a header or footer are
-  picked up only while it is being edited. A picture fill stored as a
-  metafile (EMF, WMF - Writer's DOC export of a hatch) draws in its fill
-  colour; shadows, glow, 3-D and WordArt are not drawn; text wraps round a
+  like a picture, but its shapes cannot be picked out one by one. Frames and
+  pictures in a header or footer are picked up only while it is being
+  edited. An EMF or WMF picture or fill needs the Vector plugin registered
+  (every application linking the format plugins has it); without it, it
+  draws as an empty box or its fill colour. Word 97 pattern bitmaps are read
+  to the file format's description but have not been checked against a
+  file saved by Word. Shadows, glow, 3-D and WordArt are not drawn; text wraps round a
   shape's box, not its outline. Word's named outlines outside
   the forty or so the model knows (`RichShape::ApplyPreset`) draw as their
   box.
@@ -112486,24 +112510,6 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/folder-tree-keeps-its-place.md
-==============================================================================
-
-- **The folder tree no longer scrolls back to the top while you read.** With
-  more than one account the tree is taller than its pane, and every folder
-  rescan - which runs after each mail check, not only when you ask for it -
-  rebuilt it row by row and left the view on the first row: the folder you had
-  open scrolled out of sight behind your back, moments after you had picked
-  it. The rebuild now holds the view (the framework's new
-  `TreeRebuildScope`): the tree comes back scrolled exactly as you left it,
-  with the open folder still selected and still at the same height, even when
-  the rescan found new folders above it.
-- **A folder opened from outside the tree is scrolled into view.** Opening an
-  account's inbox from the account bar, or a folder from a message, selected
-  its row without bringing it on screen, so in a tall tree the selection was
-  invisible. A row already on screen stays exactly where it is.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
