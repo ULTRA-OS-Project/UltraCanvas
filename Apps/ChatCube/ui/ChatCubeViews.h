@@ -4,6 +4,7 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.4 - MemberCount: a big group's whole number, not only the members listed
 // Version: 0.2.3 - conversations pinned to the top and marked unread (SetMarks), each shown in its row
 // Version: 0.2.2 - times and dates written as the Settings window says (SetDateTimeStyle)
 // Version: 0.2.1 - pictures: avatars from the person's photo, photos and video previews in the bubbles,
@@ -39,6 +40,9 @@ std::string FormatDuration(double seconds);
 std::string FormatSize(int64_t bytes);
 // A photo, a video or a sticker: shown as a picture in its bubble.
 bool HasPicture(const UltraIMMessage& message);
+// How many are in a group: memberCount where the network lists only a first
+// page of them (a big Telegram supergroup), else everyone in memberIds.
+long long MemberCount(const UltraIMConversation& conversation);
 // A user id in groups of four, so two people can read it to each other.
 std::string GroupUserId(const std::string& userId);
 

@@ -7,6 +7,7 @@
 // the names and fields are TDLib's. The library: ULTRAIM_TDJSON_PATH, else
 // the one the configure step fetched into Plugins/UltraIM/tdlib; skips with
 // neither unless ULTRAIM_TEST_TDLIB_REQUIRED is set (CI).
+// Version: 0.1.6 - getSupergroupMembers
 // Version: 0.1.5 - the group requests: setChatTitle, addChatMembers, setChatMemberStatus, leaveChat,
 //                  deleteChatHistory, getBasicGroupFullInfo
 // Version: 0.1.4 - searchChatMessages, with each filter
@@ -140,6 +141,7 @@ void TestRequests() {
         {"leaveChat", Request::LeaveChat(-4000)},
         {"deleteChatHistory", Request::DeleteChatHistory(777000)},
         {"getBasicGroupFullInfo", Request::GetBasicGroupFullInfo(4000)},
+        {"getSupergroupMembers", Request::GetSupergroupMembers(4000, 0, 200)},
         {"checkAuthenticationCode", Request::CheckCode("12345")},
         {"resendAuthenticationCode", Request::ResendCode()},
         {"checkAuthenticationPassword", Request::CheckPassword("x")},

@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.1.8 - a supergroup's members (the first 200), its creator and its member count
 // Version: 0.1.7 - a group renamed, members added and taken out, a group left and a private chat deleted;
 //                  a basic group's members and creator on its conversation (getBasicGroupFullInfo)
 // Version: 0.1.6 - a file sent that is a picture (an SVG drawing) goes with its preview picture too
@@ -49,6 +50,7 @@ constexpr size_t kRecentCap = 300;      // messages kept per chat in memory
 constexpr int32_t kPriorityAsked = 32;
 constexpr int32_t kPriorityMedia = 8;
 constexpr int32_t kPriorityAvatar = 4;
+constexpr int32_t kSupergroupMembersPage = 200;   // a supergroup's members asked for: TDLib's most per call
 // A photo's size to fetch: the smallest whose longer side is at least this
 // (TDLib's "x", 800), else the largest there is.
 constexpr int64_t kPhotoSide = 800;
@@ -888,6 +890,18 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
             }
         } else if (type == "updateNewChat") {
             StoreChat(update["chat"], events);
+        } else if (type == "updateSupergroupFullInfo") {
+            const int64_t supergroupId = TdInt(update["supergroup_id"]);
+            const int count = static_cast<int>(update["supergroup_full_info"]["member_count"].GetInteger(0));
+            for (auto& entry : chats_) {
+                Chat& chat = entry.second;
+                if (chat.kind != ChatKind::Supergroup || chat.supergroupId != supergroupId) continue;
+                if (count > 0 && count != chat.memberCount) {
+                    chat.memberCount = count;
+                    supergroupQueue_.push_back(supergroupId);   // who they are now
+                    ConversationChanged(chat, events);
+                }
+            }
         } else if (type == "updateBasicGroupFullInfo") {
             TakeBasicGroupInfo(TdInt(update["basic_group_id"]), update["basic_group_full_info"], events);
         } else if (type == "updateChatTitle") {
@@ -961,6 +975,13 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
             if (it != chats_.end() && MessageFrom(message, m)) {
                 Remember(it->second, m);
                 FetchMedia(it->second, m);
+                // Someone joined or left a supergroup: its members asked for again
+                // (TDLib tells of a basic group's itself, updateBasicGroupFullInfo).
+                const std::string content = TdType(message["content"]);
+                if (it->second.kind == ChatKind::Supergroup && it->second.supergroupId &&
+                    (content == "messageChatAddMembers" || content == "messageChatDeleteMember" ||
+                     content == "messageChatJoinByLink" || content == "messageChatJoinByRequest"))
+                    supergroupQueue_.push_back(it->second.supergroupId);
                 // Ours on its way out: the optimistic row stands for it until
                 // updateMessageSendSucceeded.
                 if (m.deliveryStatus != UltraIMDeliveryStatus::Sending) {
@@ -1103,14 +1124,32 @@ void TelegramProvider::WantFile(int32_t fileId, const FileUse& use, int32_t prio
 void TelegramProvider::FlushDownloads() {
     std::vector<std::pair<int32_t, int32_t>> queue;
     std::vector<int64_t> groups;
+    std::vector<int64_t> supergroups;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         queue.swap(downloadQueue_);
         groups.swap(groupInfoQueue_);
+        supergroups.swap(supergroupQueue_);
     }
-    if (queue.empty() && groups.empty()) return;
+    if (queue.empty() && groups.empty() && supergroups.empty()) return;
     std::shared_ptr<TdClient> client = Client();
     if (!client->IsOpen()) return;
+    std::sort(supergroups.begin(), supergroups.end());
+    supergroups.erase(std::unique(supergroups.begin(), supergroups.end()), supergroups.end());
+    for (const int64_t supergroupId : supergroups) {
+        // One page, the most recently active first: what a menu can show. The
+        // count says how many more there are.
+        client->Send(Request::GetSupergroupMembers(supergroupId, 0, kSupergroupMembersPage),
+                     [this, supergroupId](const TdObject& members) {
+            if (IsError(members)) return;
+            std::vector<UltraIMEvent> events;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                TakeSupergroupMembers(supergroupId, members, events);
+            }
+            for (const auto& e : events) Emit(e);
+        });
+    }
     for (const int64_t basicGroupId : groups) {
         client->Send(Request::GetBasicGroupFullInfo(basicGroupId), [this, basicGroupId](const TdObject& info) {
             if (IsError(info)) return;
@@ -1331,6 +1370,13 @@ TelegramProvider::Chat& TelegramProvider::StoreChat(const TdObject& object, std:
         }
     } else if (t == "chatTypeSupergroup") {
         chat.kind = type["is_channel"].GetBoolean(false) ? ChatKind::Channel : ChatKind::Supergroup;
+        chat.supergroupId = TdInt(type["supergroup_id"]);
+        // A supergroup's members (not a channel's subscribers): asked once, and
+        // again when updateSupergroupFullInfo says their number changed.
+        if (chat.kind == ChatKind::Supergroup && chat.supergroupId && !chat.fullInfoAsked) {
+            chat.fullInfoAsked = true;
+            supergroupQueue_.push_back(chat.supergroupId);
+        }
     }
     if (object.Contains("photo")) TakeChatPhoto(chat, object["photo"]);
     for (const auto& p : object["positions"].GetElements()) {
@@ -1345,6 +1391,24 @@ TelegramProvider::Chat& TelegramProvider::StoreChat(const TdObject& object, std:
     }
     ConversationChanged(chat, events);
     return chat;
+}
+
+void TelegramProvider::TakeSupergroupMembers(int64_t supergroupId, const TdObject& members,
+                                             std::vector<UltraIMEvent>& events) {
+    for (auto& entry : chats_) {
+        Chat& chat = entry.second;
+        if (chat.kind != ChatKind::Supergroup || chat.supergroupId != supergroupId) continue;
+        chat.members.clear();
+        for (const auto& member : members["members"].GetElements()) {
+            const TdObject& sender = member["member_id"];
+            if (TdType(sender) != "messageSenderUser") continue;
+            const int64_t user = TdInt(sender["user_id"]);
+            chat.members.push_back(user);
+            if (TdType(member["status"]) == "chatMemberStatusCreator") chat.creatorId = user;
+        }
+        chat.memberCount = static_cast<int>(members["total_count"].GetInteger(static_cast<int64_t>(chat.members.size())));
+        ConversationChanged(chat, events);
+    }
 }
 
 void TelegramProvider::TakeBasicGroupInfo(int64_t basicGroupId, const TdObject& info,
@@ -1593,9 +1657,12 @@ UltraIMConversation TelegramProvider::ConversationOf(const Chat& chat) const {
         auto u = users_.find(chat.userId);
         if (u != users_.end()) c.presence = u->second.presence;
     }
-    if (chat.kind == ChatKind::BasicGroup) {
+    if (chat.kind == ChatKind::BasicGroup || chat.kind == ChatKind::Supergroup) {
         for (const int64_t m : chat.members) c.memberIds.push_back(std::to_string(m));
         if (chat.creatorId) c.ownerId = std::to_string(chat.creatorId);
+        // A supergroup lists a first page; the count is everyone.
+        if (chat.kind == ChatKind::Supergroup && chat.memberCount > static_cast<int>(chat.members.size()))
+            c.memberCount = chat.memberCount;
     }
     for (const std::string& m : c.memberIds) {
         const std::string name = NameOf(ToId(m));
@@ -1978,6 +2045,14 @@ void TelegramProvider::AddGroupMembers(const std::string& conversationId, const 
                     c = ConversationOf(chat);
                 }
             }
+            {
+                // A supergroup's page of members, as it is now.
+                std::lock_guard<std::mutex> lock(mutex_);
+                auto it = chats_.find(chatId);
+                if (it != chats_.end() && it->second.kind == ChatKind::Supergroup && it->second.supergroupId)
+                    supergroupQueue_.push_back(it->second.supergroupId);
+            }
+            FlushDownloads();
             if (refused > 0) {
                 return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
                                                      std::to_string(refused) + " of them could not be added: "
@@ -1997,8 +2072,19 @@ void TelegramProvider::RemoveGroupMember(const std::string& conversationId, cons
     const int64_t userId = ToId(Trim(memberId));
     if (userId <= 0) return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Not a Telegram user id"));
     if (userId == myId_) return LeaveConversation(conversationId, onResult);
-    Client()->Send(Request::RemoveChatMember(chatId, userId), [onResult](const TdObject& answer) {
-        onResult(ResultOf(answer));
+    Client()->Send(Request::RemoveChatMember(chatId, userId), [this, chatId, onResult](const TdObject& answer) {
+        const UltraIMResult r = ResultOf(answer);
+        if (r) {
+            // A supergroup's page of members, as it is now.
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                auto it = chats_.find(chatId);
+                if (it != chats_.end() && it->second.kind == ChatKind::Supergroup && it->second.supergroupId)
+                    supergroupQueue_.push_back(it->second.supergroupId);
+            }
+            FlushDownloads();
+        }
+        onResult(r);
     });
 }
 

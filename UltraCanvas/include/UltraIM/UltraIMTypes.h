@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.10 - UltraIMConversation::memberCount: everyone in a group whose memberIds are a first page
 // Version: 0.1.9 - groups managed after they are made: UltraIMCapabilityFlags ManageGroups and
 //                  LeaveConversation; UltraIMConversation::ownerId and memberNames
 // Version: 0.1.8 - deleting a message for oneself or for everyone: UltraIMDeleteScope, UltraIMDeleteChoices
@@ -16,7 +17,7 @@
 // Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -195,6 +196,10 @@ struct UltraIMConversation {
     // The members' names where the network knows them (member id -> name);
     // one missing here is shown by its id.
     std::map<std::string, std::string> memberNames;
+    // How many are in it when memberIds lists only some of them (a big
+    // Telegram supergroup, asked for a page at a time); 0 when memberIds is
+    // everyone.
+    int             memberCount = 0;
     UltraIMPresence presence = UltraIMPresence::Unknown; // Of directContactId
     std::string     lastMessageSnippet;
     int64_t         lastMessageTimeMs = 0;

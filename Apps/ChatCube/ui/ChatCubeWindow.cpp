@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.1 - a group's whole member count (MemberCount) in its menu and under its name: a Telegram
+//                  supergroup lists only its most active members
 // Version: 0.3.0 - the chat list's menu (a right-click): read / unread, pinned, calls, the ID, a group's
 //                  members, adding, renaming and leaving; a chat deleted; "1 member" in the singular
 // Version: 0.2.9 - the relay from the settings (Networks > Relay) instead of a field on the sign-in
@@ -1287,17 +1289,11 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
         // Every member with a menu of their own.
         const std::string me = info.localUserId;
         std::vector<MenuItemData> members;
-        size_t listed = 0;
+        const long long total = MemberCount(c);
+        long long listed = 0;
         for (const std::string& member : c.memberIds) {
-            // A big group: the first ones, and a line saying how many more.
-            if (++listed > kMenuMembers) {
-                MenuItemData more = MenuItemData::Action(
-                    TrN("and {n} more", "and {n} more", static_cast<long long>(c.memberIds.size() - kMenuMembers)),
-                    []() {});
-                more.enabled = false;
-                members.push_back(more);
-                break;
-            }
+            if (listed == static_cast<long long>(kMenuMembers)) break;
+            ++listed;
             const bool self = member == me;
             std::vector<MenuItemData> actions;
             if (!self) {
@@ -1314,9 +1310,14 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
             if (!c.ownerId.empty() && member == c.ownerId) name = TrF("{0} (owner)", name);
             members.push_back(MenuItemData::Submenu(name, actions));
         }
-        if (!members.empty()) {
-            who.push_back(MenuItemData::Submenu(TrF("Members ({0})", static_cast<long long>(c.memberIds.size())), members));
+        // A big group: the first ones, and a line saying how many more - also
+        // those the network did not list (a supergroup's members past its first page).
+        if (total > listed && listed > 0) {
+            MenuItemData more = MenuItemData::Action(TrN("and {n} more", "and {n} more", total - listed), []() {});
+            more.enabled = false;
+            members.push_back(more);
         }
+        if (!members.empty()) who.push_back(MenuItemData::Submenu(TrF("Members ({0})", total), members));
         if (manage) {
             who.push_back(MenuItemData::Action(Tr("Add members"), [this, id]() { AskToAddMembers(id); }));
             who.push_back(MenuItemData::Action(Tr("Rename group"), [this, id]() { AskToRenameGroup(id); }));
@@ -1945,7 +1946,7 @@ void ChatCubeWindow::UpdateHeader() {
     if (!typingContact_.empty() && NowMs() < typingUntilMs_) {
         subtitle_->SetText(Tr("typing\xE2\x80\xA6"));
     } else if (c->isGroup) {
-        subtitle_->SetText(TrN("{n} member", "{n} members", static_cast<long long>(c->memberIds.size())) +
+        subtitle_->SetText(TrN("{n} member", "{n} members", MemberCount(*c)) +
                            (c->isEncrypted ? " \xC2\xB7 " + Tr("end-to-end encrypted") : std::string()));
     } else if (c->providerId == providerId_) {
         subtitle_->SetText(PresenceText(c->presence));

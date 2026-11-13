@@ -1603,6 +1603,11 @@ void DirectProvider::RenameGroup(const std::string& conversationId, const std::s
     JSONValue body = JSONValue::MakeObject();
     body.Set("title", JSONValue(title));
     relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, conversationId, onResult](const RelayResponse& r) {
+        // A relay before 1.3.0 has the group's address for GET alone.
+        if (r.status == 405)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                                 "This relay cannot rename groups yet - it needs ChatCube relay 1.3.0 "
+                                                 "or later (its operator updates it)"), {});
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
         UpsertGroup(r.body);
         UltraIMConversation conversation;

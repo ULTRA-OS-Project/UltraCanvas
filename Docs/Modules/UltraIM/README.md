@@ -73,7 +73,8 @@ the group as it is now - and `UltraIM_RemoveGroupMember(provider,
 conversation, id, cb)`, which the network may allow to the group's owner
 alone (`PermissionDenied`; `UltraIMConversation::ownerId` names the owner
 where the network has one, `""` where it does not say;
-`UltraIMConversation::memberNames` names the members it knows). Every member hears
+`UltraIMConversation::memberNames` names the members it knows, and
+`memberCount` counts everyone where `memberIds` lists only a first page). Every member hears
 of the change as a `ConversationUpdate`. `UltraIM_LeaveConversation(provider,
 conversation, cb)` (`LeaveConversation`) takes the local user out of a group,
 or deletes a 1:1 conversation with its history on this device - the other
@@ -694,8 +695,11 @@ process.
   deleted for us alone with `deleteChatHistory`) - what an administrator
   may do in most groups answers `PermissionDenied` to anyone else. A basic
   group's members, their names and its creator come from its full info
-  (`getBasicGroupFullInfo`, then `updateBasicGroupFullInfo`); a supergroup
-  lists none.
+  (`getBasicGroupFullInfo`, then `updateBasicGroupFullInfo`). A supergroup
+  lists its 200 most recently active members (`getSupergroupMembers`) and
+  its creator, with everyone counted in `UltraIMConversation::memberCount`;
+  the page is asked for again when someone joins or leaves. A channel lists
+  none (its subscribers are not members to manage).
 - **Messages:** text with replies, photos, files, audio, voice notes,
   videos (and animations, video notes) and stickers with their captions and
   attachments, the group's service messages as system lines; edits

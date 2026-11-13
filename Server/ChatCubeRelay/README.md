@@ -202,6 +202,30 @@ Settings come from the environment (`.env.example` lists them). Deployment:
 WebSocket upgrade in front of it), `deploy/turnserver.conf` (coturn, sharing
 `CHATCUBE_RELAY_TURN_SECRET`).
 
+### Updating a running relay
+
+A ChatCube newer than its relay works, but what needs the newer relay says
+so instead of happening: renaming a group needs 1.3.0, and an older relay
+answers ChatCube with `405 Method Not Allowed`, which ChatCube shows as "This
+relay cannot rename groups yet - it needs ChatCube relay 1.3.0 or later". On
+the server, with the layout of `deploy/chatcube-relay.service`:
+
+```bash
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.2.0"}
+sudo systemctl stop chatcube-relay
+# The database first: an upgrade migrates it, and the older relay then refuses it.
+sudo cp /var/lib/chatcube-relay/relay.sqlite3 /var/lib/chatcube-relay/relay.sqlite3.bak
+# This directory's new code into /opt/chatcube-relay (a checkout: git pull;
+# a copy: rsync -a --exclude .venv Server/ChatCubeRelay/ /opt/chatcube-relay/)
+sudo -u chatcube-relay /opt/chatcube-relay/.venv/bin/pip install -e /opt/chatcube-relay
+sudo systemctl start chatcube-relay
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.3.0"}
+```
+
+(The database's file is whatever `CHATCUBE_RELAY_DB` names in
+`/etc/chatcube-relay.env`.) Clients stay signed in across the restart: their
+sessions are in the database, and they reconnect by themselves.
+
 Give ChatCube the relay's `https://` address. A bare host is taken as
 `https://`, and an `http://` address that the server redirects to `https://`
 (the usual port-80 block in nginx) is followed and the new address kept -

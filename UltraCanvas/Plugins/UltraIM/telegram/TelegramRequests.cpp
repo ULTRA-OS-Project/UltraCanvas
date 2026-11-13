@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramRequests.cpp
 // Telegram provider - the TDLib requests it sends
+// Version: 0.1.6 - GetSupergroupMembers
 // Version: 0.1.5 - SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat, DeleteChatHistory, GetBasicGroupFullInfo
 // Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument
@@ -322,6 +323,15 @@ TdObject DeleteChatHistory(int64_t chatId) {
 TdObject GetBasicGroupFullInfo(int64_t basicGroupId) {
     TdObject o = Make("getBasicGroupFullInfo");
     o.Set("basic_group_id", TdObject(basicGroupId));
+    return o;
+}
+
+TdObject GetSupergroupMembers(int64_t supergroupId, int32_t offset, int32_t limit) {
+    TdObject o = Make("getSupergroupMembers");
+    o.Set("supergroup_id", TdObject(supergroupId));
+    o.Set("filter", Make("supergroupMembersFilterRecent"));
+    o.Set("offset", TdObject(static_cast<int64_t>(offset)));
+    o.Set("limit", TdObject(static_cast<int64_t>(limit)));
     return o;
 }
 

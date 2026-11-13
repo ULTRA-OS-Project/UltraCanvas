@@ -20,6 +20,8 @@
 // answers every message with "echo: <text>". The code is always 12345.
 // The number +1 555 9999 is never answered (a network that is down), for the
 // provider's step timeout.
+// Version: 0.1.6 - supergroups: fakeCreateSupergroup (td_execute), chatTypeSupergroup with TDLib's -100... ids,
+//                  getSupergroupMembers a page at a time, updateSupergroupFullInfo with the member count
 // Version: 0.1.5 - a basic group after it is made: setChatTitle, addChatMembers, setChatMemberStatus (left;
 //                  the creator alone takes others out), leaveChat, deleteChatHistory (the chat off the
 //                  deleter's list; the history stays), getBasicGroupFullInfo and updateBasicGroupFullInfo
@@ -28,7 +30,7 @@
 // Version: 0.1.2 - the code to the app first, by SMS on resendAuthenticationCode (as Telegram does)
 // Version: 0.1.1 - a phone number whose code never comes
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasJSON.h"
@@ -96,6 +98,7 @@ struct Message {
 struct ChatRec {
     int64_t     groupId = 0;    // 0 = private
     int64_t     creator = 0;    // a group's
+    bool        super = false;  // a supergroup (its chat id -100..., getSupergroupMembers), not a basic group
     std::string title;
     std::vector<int64_t> members;
     std::vector<Message> messages;          // oldest first
@@ -329,8 +332,11 @@ std::string PrivateKey(int64_t a, int64_t b) {
 }
 
 // The chat's id as `viewer` sees it: the other person's id, or -group.
+// TDLib's supergroup and channel chat ids are -100 followed by the supergroup's id.
+constexpr int64_t kSupergroupBase = 1000000000000LL;
+
 int64_t ViewId(const ChatRec& chat, int64_t viewer) {
-    if (chat.groupId) return -chat.groupId;
+    if (chat.groupId) return chat.super ? -(kSupergroupBase + chat.groupId) : -chat.groupId;
     for (int64_t m : chat.members) {
         if (m != viewer) return m;
     }
@@ -339,7 +345,10 @@ int64_t ViewId(const ChatRec& chat, int64_t viewer) {
 
 ChatRec* ChatOf(int64_t viewer, int64_t chatId) {
     if (chatId < 0) {
-        auto it = S().chats.find("g:" + std::to_string(-chatId));
+        // A supergroup's id is -100<id> as TDLib has it, a basic group's -<id>.
+        const int64_t id = -chatId > kSupergroupBase ? -chatId - kSupergroupBase : -chatId;
+        auto it = S().chats.find("g:" + std::to_string(id));
+        if (it != S().chats.end() && it->second.super != (-chatId > kSupergroupBase)) return nullptr;
         if (it == S().chats.end()) return nullptr;
         for (int64_t m : it->second.members) {
             if (m == viewer) return &it->second;
@@ -450,8 +459,9 @@ JSONValue ChatObject(const ChatRec& chat, int64_t viewer) {
     JSONValue o = Obj("chat");
     o.Set("id", JSONValue(ViewId(chat, viewer)));
     if (chat.groupId) {
-        JSONValue t = Obj("chatTypeBasicGroup");
-        t.Set("basic_group_id", JSONValue(chat.groupId));
+        JSONValue t = Obj(chat.super ? "chatTypeSupergroup" : "chatTypeBasicGroup");
+        t.Set(chat.super ? "supergroup_id" : "basic_group_id", JSONValue(chat.groupId));
+        if (chat.super) t.Set("is_channel", JSONValue(false));
         o.Set("type", t);
         o.Set("title", JSONValue(chat.title));
     } else {
@@ -521,6 +531,16 @@ void GroupInfoChanged(const ChatRec& chat) {
     for (int64_t member : chat.members) {
         for (Client* other : ClientsOf(member)) {
             for (int64_t m : chat.members) KnowUser(*other, m);
+            if (chat.super) {
+                // A supergroup's full info has the count; the members are asked for.
+                JSONValue u = Obj("updateSupergroupFullInfo");
+                u.Set("supergroup_id", JSONValue(chat.groupId));
+                JSONValue info = Obj("supergroupFullInfo");
+                info.Set("member_count", JSONValue(static_cast<int64_t>(chat.members.size())));
+                u.Set("supergroup_full_info", info);
+                Push(*other, u);
+                continue;
+            }
             JSONValue u = Obj("updateBasicGroupFullInfo");
             u.Set("basic_group_id", JSONValue(chat.groupId));
             u.Set("basic_group_full_info", BasicGroupFullInfo(chat));
@@ -789,6 +809,30 @@ void Handle(Client& c, const JSONValue& r) {
         if (it == S().chats.end() || !ChatOf(c.user, -it->second.groupId)) return fail(400, "Group not found");
         return Answer(c, extra, BasicGroupFullInfo(it->second));
     }
+    if (type == "getSupergroupMembers") {
+        // A page of the members, the creator first, and how many there are.
+        auto it = S().chats.find("g:" + std::to_string(r["supergroup_id"].GetInteger(0)));
+        if (it == S().chats.end() || !it->second.super || !ChatOf(c.user, ViewId(it->second, c.user)))
+            return fail(400, "Supergroup not found");
+        const ChatRec& chat = it->second;
+        const int64_t offset = std::max<int64_t>(0, r["offset"].GetInteger(0));
+        const int64_t limit = std::min<int64_t>(200, std::max<int64_t>(1, r["limit"].GetInteger(200)));
+        JSONValue answer = Obj("chatMembers");
+        answer.Set("total_count", JSONValue(static_cast<int64_t>(chat.members.size())));
+        JSONValue page = JSONValue::MakeArray();
+        for (int64_t i = offset; i < static_cast<int64_t>(chat.members.size()) && i < offset + limit; ++i) {
+            const int64_t m = chat.members[static_cast<size_t>(i)];
+            KnowUser(c, m);
+            JSONValue member = Obj("chatMember");
+            JSONValue sender = Obj("messageSenderUser");
+            sender.Set("user_id", JSONValue(m));
+            member.Set("member_id", sender);
+            member.Set("status", Obj(m == chat.creator ? "chatMemberStatusCreator" : "chatMemberStatusMember"));
+            page.Append(member);
+        }
+        answer.Set("members", page);
+        return Answer(c, extra, answer);
+    }
     if (type == "setChatTitle") {
         ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
         if (!chat) return fail(400, "Chat not found");
@@ -798,7 +842,7 @@ void Handle(Client& c, const JSONValue& r) {
         for (int64_t member : chat->members) {
             for (Client* other : ClientsOf(member)) {
                 JSONValue u = Obj("updateChatTitle");
-                u.Set("chat_id", JSONValue(-chat->groupId));
+                u.Set("chat_id", JSONValue(ViewId(*chat, member)));
                 u.Set("title", JSONValue(chat->title));
                 Push(*other, u);
             }
@@ -1157,6 +1201,29 @@ FAKE_TD_EXPORT const char* td_execute(const char* request) {
             waiting->loginToken.clear();
             AccountFound(*waiting, true);
         }
+    } else if (type == "fakeCreateSupergroup") {
+        // A supergroup, as a client could not make it here (createNewSupergroupChat
+        // is not played): its owner, its title and its members (user ids).
+        ChatRec group;
+        group.groupId = S().nextGroup++;
+        group.super = true;
+        group.creator = r["owner"].GetInteger(0);
+        group.title = r["title"].GetString();
+        group.members.push_back(group.creator);
+        for (const auto& u : r["member_ids"].GetElements()) {
+            if (S().accounts.count(u.GetInteger(0))) group.members.push_back(u.GetInteger(0));
+        }
+        Message created;
+        created.id = (S().nextMessage++) << 20;
+        created.sender = group.creator;
+        created.date = ++S().clock;
+        created.service = "messageSupergroupChatCreate";
+        created.title = group.title;
+        group.messages.push_back(created);
+        ChatRec& stored = S().chats["g:" + std::to_string(group.groupId)] = group;
+        Deliver(stored, created, -1);
+        answer = Obj("chat");
+        answer.Set("id", JSONValue(ViewId(stored, group.creator)));
     } else if (type == "getOption") {
         answer = Obj("optionValueString");
         answer.Set("value", JSONValue("fake"));
