@@ -222,6 +222,13 @@ shared-core-only widget. Before, the first two warned or skipped and the build
 went on without the widget, so an application asking for it by name found out
 only at run time.
 
+Charts follow the same rule (`ULTRACANVAS_CHARTS`), with one difference: their
+selection is empty by default, so on a platform that cannot load a module at
+all (WebAssembly, Android) a chart left out is compiled in instead - the
+compile-time fallback of the chart engine proposal (§12.11). Turning the chart
+modules off, or a static core on Windows, still stops the configure for a chart
+left out.
+
 ```cpp
 // At startup - registers the widgets compiled in. In a static core it also
 // keeps in the executable the core objects the widget modules need.

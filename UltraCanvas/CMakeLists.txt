@@ -1259,8 +1259,28 @@ if(ULTRACANVAS_ENABLE_CHARTS)
             list(APPEND UC_CHART_MODULE_KEYS ${key})
         endif()
     endforeach()
-    if(NOT ULTRACANVAS_CHART_RUNTIME_MODULES AND UC_CHART_MODULE_KEYS)
-        message(WARNING "Charts not selected and runtime modules off - unavailable: ${UC_CHART_MODULE_KEYS}")
+    # A chart left out must exist as a module, or the build would have it in
+    # no form at all - and a document naming it would find out only at run
+    # time. On a platform that cannot load a module (WebAssembly, Android) the
+    # selection falls back to compiling it in (proposal §12.11): there is no
+    # other way to have it, and the selection is empty by default, so leaving a
+    # chart out there is not a choice anybody made. Where modules were turned
+    # off, or a static core on Windows rules them out (a module there links the
+    # core DLL), leaving a chart out loses it, and the configure stops.
+    if(UC_CHART_MODULE_KEYS AND (EMSCRIPTEN OR ANDROID))
+        message(STATUS "Charts: no runtime modules on this platform - compiling in [${UC_CHART_MODULE_KEYS}]")
+        list(APPEND UC_CHART_SELECTED_KEYS ${UC_CHART_MODULE_KEYS})
+        set(UC_CHART_MODULE_KEYS "")
+    elseif(UC_CHART_MODULE_KEYS AND (NOT ULTRACANVAS_CHART_RUNTIME_MODULES OR (WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)))
+        if(NOT ULTRACANVAS_CHART_RUNTIME_MODULES)
+            set(uc_charts_unavailable_why "ULTRACANVAS_CHART_RUNTIME_MODULES is off")
+        else()
+            set(uc_charts_unavailable_why "a module on Windows needs the shared core (ULTRACANVAS_BUILD_SHARED=ON)")
+        endif()
+        string(REPLACE ";" ", " uc_charts_unavailable_text "${UC_CHART_MODULE_KEYS}")
+        message(FATAL_ERROR "${uc_charts_unavailable_text} would be neither compiled in nor built as a "
+            "module: ${uc_charts_unavailable_why}. Add ${uc_charts_unavailable_text} to "
+            "ULTRACANVAS_CHARTS (or use 'all'), or turn the runtime modules on with a shared core.")
     endif()
 
     foreach(key IN LISTS UC_CHART_SELECTED_KEYS)
@@ -2326,14 +2346,13 @@ endif()
 # One MODULE DSO per unselected selectable chart, following the LaTeX plugin
 # pattern: on Unix the module's undefined core symbols resolve from the host
 # executable at dlopen() time (ENABLE_EXPORTS + RTLD_GLOBAL); on Windows the
-# module links the shared core DLL, so a Windows static build skips modules.
+# module links the shared core DLL (a static core there leaves no chart out:
+# the selection stops the configure first).
 if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
     foreach(key IN LISTS UC_CHART_MODULE_KEYS)
         set(uc_chart_target "ultracanvas-chart-${UC_CHART_${key}_KEBAB}")
-        if(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
-            message(STATUS "  [−] chart module ${uc_chart_target} - SKIPPED (needs shared core on Windows)")
-            continue()
-        endif()
+        # Every module here can be built: the selection above stops the
+        # configure for a chart whose module this build cannot have.
         add_library(${uc_chart_target} MODULE
             ${UC_CHART_${key}_SOURCES}
             ${UC_CHART_${key}_PLUGIN})
