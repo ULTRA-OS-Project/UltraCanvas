@@ -10,3 +10,6 @@
     fontconfig's `49-sansserif.conf` rule: a request naming no generic family
     has `sans-serif` appended, so any family nobody installed falls to the sans
     font.
+  - The same rule draws a mail's web font (PayPal's `SupremeLLTest`, from an
+    `@font-face` the reader does not load) in the sans font, not in a stray
+    one.
