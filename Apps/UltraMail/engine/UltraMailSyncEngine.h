@@ -11,7 +11,8 @@
 // mailbox — no live server required.
 // Version: 0.8.0 - CacheDirectoryOf: a trailing '.' or space, a Windows device
 //                  name and the characters that make two spellings of a name
-//                  for macOS are escapes too (~t ~n ~z ~x); .layout-4
+//                  for macOS are escapes too (~t ~n ~z ~x, the last from the
+//                  UCD's NFC quick check); .layout-4
 // Version: 0.7.0 - CacheDirectoryOf escapes '_', '\', ':' and the characters
 //                  Windows refuses, so "a/b" and "a_b" no longer share a
 //                  directory; MigrateBodyCache moves both earlier layouts
@@ -281,11 +282,12 @@ std::string CachedBodyPath(const std::string& emlDir, const std::string& account
 //     > ~g, | ~p ("a_b" -> "a~ub");
 //   - a trailing '.' or space, which Windows drops, as ~t or ~n ("Notes."
 //     -> "Notes~t", "." -> "~t");
-//   - a character that composes with another or stands for one - combining
-//     marks, kana voicing marks, Hangul jamo, Indic nukta, Greek Extended,
-//     the Ohm, Kelvin and Angstrom signs, CJK compatibility ideographs - as
-//     ~x and six hex digits of its code ("u" + U+0308 -> "u~x000308"), so
-//     that no two spellings of a name meet on macOS;
+//   - a character that could keep the name from being in Unicode NFC - one
+//     whose NFC quick check is No or Maybe (the Ohm sign, a combining accent,
+//     an Indic vowel sign, a Hangul medial vowel) or with a non-zero
+//     combining class - as ~x and six hex digits of its code ("u" + U+0308
+//     -> "u~x000308"); every directory name is then NFC, and two different
+//     NFC names are never one name to macOS (UltraMailNfcEscapeTable.h);
 //   - a name not in title case followed by '~' and a hex mask of the letters
 //     whose case differs from it ("work" -> "work~1");
 //   - a Windows device name (CON, PRN, AUX, NUL, COM1-9, LPT1-9, CONIN$,

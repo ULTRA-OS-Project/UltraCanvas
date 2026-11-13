@@ -7,8 +7,10 @@
   `C~zon`).
 - **Two folders whose names are spelled in different Unicode forms no longer
   share their downloaded messages on macOS.** macOS takes "ü" written as one
-  character and "u" followed by a combining "¨" as the same name. A character
-  that can make such a second spelling (combining accents, Hangul jamo,
-  polytonic Greek, the Ohm and Kelvin signs and a few more) is written in the
-  cache directory as `~x` and its code, so each spelling has its own directory.
-  The first start moves the messages of folders whose directory changes.
+  character and "u" followed by a combining "¨" as the same name. Every
+  character that can give a name such a second spelling - in any script, as
+  the Unicode data lists them (combining accents, Indic vowel signs, Hangul
+  jamo, the Ohm and Kelvin signs, ...) - is written in the cache directory as
+  `~x` and its code, so every directory name is in one normal form and each
+  spelling has its own directory. The first start moves the messages of
+  folders whose directory changes.

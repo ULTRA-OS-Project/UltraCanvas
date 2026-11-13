@@ -2,10 +2,11 @@
 // Version: 0.9.0 - a body directory every file system takes as one name of its
 //                  own: a trailing '.' or space ~t / ~n, a Windows device name
 //                  (CON, NUL, COM1, ...) marked ~z, and the characters that
-//                  make two spellings of one name for macOS (combining marks,
-//                  Hangul jamo, Greek Extended, the Ohm, Kelvin and Angstrom
-//                  signs, ...) ~x and their code; MigrateBodyCache moves all
-//                  three earlier layouts (.layout-4)
+//                  keep a name from being in Unicode NFC - the NFC quick check's
+//                  No and Maybe and every combining character, generated from
+//                  the UCD (UltraMailNfcEscapeTable.h) - ~x and their code, so
+//                  no two spellings of a name meet on macOS; MigrateBodyCache
+//                  moves all three earlier layouts (.layout-4)
 // Version: 0.8.0 - a body directory names its folder unambiguously: '/' is
 //                  '_' as before, and a literal '_', '\' and ':' - which
 //                  were '_' too ("a/b" and "a_b" shared one directory) - and
@@ -38,6 +39,7 @@
 #include "UltraMailMimeCodec.h"
 
 #include "UltraMailThreatScan.h"
+#include "UltraMailNfcEscapeTable.h"
 
 #include <algorithm>
 #include <cctype>
@@ -374,29 +376,18 @@ constexpr char kTrailingDot = 't';
 constexpr char kTrailingSpace = 'n';
 constexpr char kCodePoint = 'x';
 
-// A code point written as ~x and its code, so that a name is never two names
-// to macOS: APFS and HFS+ take a name in any Unicode normalization form as
-// the same name ("ü" and "u" + U+0308), so a directory name holds no
-// character that composes with another or stands for one: combining marks,
-// the voicing marks of kana, Hangul jamo, the nukta of Indic scripts, and the
-// blocks and signs that are another character's canonical equivalent - Greek
-// Extended, the Ohm, Kelvin and Angstrom signs, CJK compatibility ideographs.
+// A code point written as ~x and its code, so that every directory name is in
+// Unicode Normalization Form C: APFS and HFS+ take canonically equivalent
+// names ("ü" and "u" + U+0308) as one name, and two different NFC strings
+// are never equivalent. The code points are those that do not pass the NFC
+// quick check on their own - NFC_Quick_Check No or Maybe, or a non-zero
+// combining class - generated from the Unicode Character Database
+// (UltraMailNfcEscapeTable.h, scripts/generate_ultramail_nfc_table.py).
 bool NeedsCodeEscape(char32_t cp) {
-    return (cp >= 0x0300 && cp <= 0x036F) || cp == 0x0374 || cp == 0x037E || cp == 0x0387 ||
-           (cp >= 0x0483 && cp <= 0x0489) || (cp >= 0x0591 && cp <= 0x05C7) ||
-           (cp >= 0x0610 && cp <= 0x061A) || (cp >= 0x064B && cp <= 0x065F) || cp == 0x0670 ||
-           cp == 0x093C || cp == 0x09BC || cp == 0x0A3C || cp == 0x0ABC || cp == 0x0B3C ||
-           cp == 0x09BE || cp == 0x09D7 || cp == 0x0B3E || cp == 0x0B56 || cp == 0x0B57 ||
-           cp == 0x0BBE || cp == 0x0BD7 || cp == 0x0CC2 || cp == 0x0CD5 || cp == 0x0CD6 ||
-           cp == 0x0D3E || cp == 0x0D57 || cp == 0x0DCA || cp == 0x0DCF || cp == 0x0DDF ||
-           cp == 0x102E || cp == 0x1B35 ||
-           (cp >= 0x1100 && cp <= 0x11FF) || (cp >= 0x1AB0 && cp <= 0x1AFF) ||
-           (cp >= 0x1DC0 && cp <= 0x1DFF) || (cp >= 0x1F00 && cp <= 0x1FFF) ||
-           cp == 0x2000 || cp == 0x2001 || (cp >= 0x20D0 && cp <= 0x20FF) ||
-           cp == 0x2126 || cp == 0x212A || cp == 0x212B || cp == 0x2329 || cp == 0x232A ||
-           cp == 0x3099 || cp == 0x309A || (cp >= 0xA960 && cp <= 0xA97F) ||
-           (cp >= 0xD7B0 && cp <= 0xD7FF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
-           (cp >= 0xFE20 && cp <= 0xFE2F) || (cp >= 0x2F800 && cp <= 0x2FA1F);
+    const auto* end = std::end(kNfcEscapeRanges);
+    const auto* it = std::upper_bound(std::begin(kNfcEscapeRanges), end, cp,
+        [](char32_t c, const NfcEscapeRange& r) { return c < r.first; });
+    return it != std::begin(kNfcEscapeRanges) && cp <= (it - 1)->last;
 }
 
 void AppendUtf8(std::string& out, char32_t cp) {
