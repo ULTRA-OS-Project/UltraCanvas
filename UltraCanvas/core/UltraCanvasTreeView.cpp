@@ -412,6 +412,51 @@ namespace UltraCanvas {
         return rootNode ? rootNode->FindDescendant(nodeId) : nullptr;
     }
 
+    void UltraCanvasTreeView::BeginRebuild() {
+        if (rebuildDepth++ > 0) return;       // an inner scope: the outermost one holds the view
+        rebuildScrollOffset = scrollOffsetY;
+        rebuildAnchorId.clear();
+        rebuildAnchorScreenY = 0;
+        // The row to put back where it is now: the selected one. Its id, not
+        // its pointer - SetRootNode frees the whole node graph.
+        if (const TreeNode *selected = GetFirstSelectedNode()) {
+            const int nodeY = FindShownNodeY(selected);
+            if (nodeY >= 0) {
+                rebuildAnchorId = selected->data.nodeId;
+                rebuildAnchorScreenY = nodeY - scrollOffsetY;
+            }
+        }
+    }
+
+    void UltraCanvasTreeView::EndRebuild() {
+        if (rebuildDepth == 0) return;        // unbalanced call: no rebuild is open
+        if (--rebuildDepth > 0) return;       // an inner scope closed
+        // The rows are all there now: measure once, for the whole rebuild.
+        UpdateScrollbars();
+        // A wheel glide still in flight would write over the restored offset a
+        // frame later.
+        scrollAnim.Cancel();
+        scrollOffsetY = rebuildScrollOffset;
+        ClampScrollOffset();
+
+        TreeNode *selected = GetFirstSelectedNode();
+        const bool sameRow = selected && !rebuildAnchorId.empty()
+                             && selected->data.nodeId == rebuildAnchorId;
+        const int nodeY = sameRow ? FindShownNodeY(selected) : -1;
+        if (nodeY >= 0) {
+            // The same row as before: back to the height it was at, so rows
+            // added or dropped above it do not slide it under the pointer.
+            scrollOffsetY = nodeY - rebuildAnchorScreenY;
+            ClampScrollOffset();
+        } else if (selected) {
+            // Another row is selected by now (the account was switched, the
+            // folder the anchor stood for is gone): keep that one in view.
+            ScrollTo(selected);
+        }
+        rebuildAnchorId.clear();
+        RequestRedraw();
+    }
+
     void UltraCanvasTreeView::SetAutoSortChildren(bool enable, bool ascending) {
         autoSortChildren = enable;
         autoSortAscending = ascending;
@@ -1160,6 +1205,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTreeView::UpdateScrollbars() {
+        // Mid-rebuild the tree is half-built - right after SetRootNode it is
+        // empty - so measuring it now would clamp the scroll offset against a
+        // content height that is not the real one, which is exactly how a
+        // rebuilt tree used to jump back to the top. EndRebuild() measures.
+        if (rebuildDepth > 0) return;
         if (!rootNode) {
             maxScrollY = 0;
             verticalScrollbar->SetVisible(false);

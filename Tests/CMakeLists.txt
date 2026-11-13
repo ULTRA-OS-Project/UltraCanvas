@@ -7712,6 +7712,28 @@ else()
     message(STATUS "  TreeViewScrollButtonsTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TREE VIEW REBUILD SCROLL TEST =====
+# UltraCanvasTreeView::BeginRebuild / EndRebuild (TreeRebuildScope): a tree
+# built again from its source keeps the scroll position and the selected row's
+# place on screen, instead of falling back to the first row. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewRebuildScrollTest...")
+    add_executable(TreeViewRebuildScrollTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewRebuildScrollTest.cpp
+    )
+    target_include_directories(TreeViewRebuildScrollTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewRebuildScrollTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewRebuildScrollTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewRebuildScrollTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewRebuildScrollTest COMMAND TreeViewRebuildScrollTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewRebuildScrollTest")
+else()
+    message(STATUS "  TreeViewRebuildScrollTest skipped (UltraCanvas target not present)")
+endif()
+
 # UltraCanvasTreeView::SetFilterText: the rows matching a text, expanded to
 # them, and the tree put back when the filter ends. Headless.
 if(TARGET UltraCanvas)

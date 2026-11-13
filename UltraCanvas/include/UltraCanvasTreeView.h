@@ -1,5 +1,8 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.13.0 - 2026-11-13 - BeginRebuild / EndRebuild (TreeRebuildScope): a tree rebuilt
+//                   from its source keeps the view where the user left it instead of jumping back
+//                   to the top, and is measured once instead of after every AddNode
 // Version: 1.12.0 - 2026-11-10 - ApplyTheme: the tree follows the theme (rows, lines, the +/- box, the check
 //                   flags, the floating buttons, the scrollbar); SetSelectionTextColor: the text of a
 //                   selected row (the theme's text on the accent)
@@ -32,7 +35,7 @@
 //                  into the removed subtree
 // Version: 1.0.0 - the tree view: rows with icons and text, expanders, check flags, lines
 //                  (the numbers before 1.6.0 were given afterwards, from the framework changelog)
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-13
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -357,9 +360,18 @@ private:
     // itself. This drives the same glide for the direct ScrollBy() path used
     // when no scrollbar is up (see UltraCanvasSmoothScroll.h); everything that
     // positions the tree exactly — the scrollbar's own callback, revealing a
-    // node, a rebuilt tree returning to the top — cancels it first.
+    // node, a rebuilt tree finding its place again — cancels it first.
     UltraCanvasSmoothScroll scrollAnim;
     int maxScrollY;                // Maximum scroll value
+
+    // Rebuilding the rows in place (BeginRebuild / EndRebuild). While the
+    // depth is above zero the tree is half-built - briefly empty, right after
+    // SetRootNode - so it is not measured; EndRebuild() measures once and puts
+    // the view back where these three recorded it.
+    int rebuildDepth = 0;              // open BeginRebuild() calls
+    int rebuildScrollOffset = 0;       // scrollOffsetY when the rebuild began
+    std::string rebuildAnchorId;       // the row selected then, empty if none was on show
+    int rebuildAnchorScreenY = 0;      // its height above the top of the view
 
     // Floating "move to the top" button (bottom-right of the content area)
     bool showScrollToTopButton = true;   // feature is on by default
@@ -478,6 +490,30 @@ public:
     // point), null below the last row - where something dragged from
     // another element (a list's row) is dropped.
     TreeNode* GetNodeAtY(int y);
+
+    // ===== REBUILDING THE ROWS IN PLACE =====
+    // A tree built again from its source - a folder rescan, a refresh that
+    // calls SetRootNode and AddNode for every row - used to throw the view
+    // back to the top: SetRootNode leaves the tree empty for a moment, the
+    // measure that follows finds no content at all, and the scroll offset is
+    // clamped to 0, so once the rows come back the row the user had selected
+    // is often off screen. Wrap the rebuild in BeginRebuild() / EndRebuild()
+    // - or in a TreeRebuildScope, which does both - and the view stays where
+    // the user left it:
+    //   * while a rebuild is open the scrollbar is not re-measured, so a tree
+    //     of n rows is measured once at the end instead of n times,
+    //   * EndRebuild() puts the scroll offset back, and when the row that was
+    //     selected is still there it is returned to the same height on screen,
+    //     so rows added or removed above it do not shift it,
+    //   * when another row is selected by the end of the rebuild (the account
+    //     changed, the folder is gone), that row is scrolled into view instead.
+    // Nothing else changes: the rows, the selection and the expanded state are
+    // the caller's to set as before, and no callback fires. Calls nest, and
+    // the outermost pair is the one that counts.
+    void BeginRebuild();
+    void EndRebuild();
+    // True between BeginRebuild() and the EndRebuild() that closes it.
+    bool IsRebuilding() const { return rebuildDepth > 0; }
     
     // ===== SELECTION MANAGEMENT =====
     void SelectNode(TreeNode* node, bool addToSelection = false);
@@ -956,6 +992,38 @@ private:
 
     void ExpandFirstChildNode(TreeNode *node);
     void BuildVisibleNodeList(TreeNode* node, std::vector<TreeNode*>& list);
+};
+
+// ===== REBUILD SCOPE =====
+// BeginRebuild() / EndRebuild() around a block, so an early return or an
+// exception cannot leave a tree unmeasured:
+//
+//     {
+//         TreeRebuildScope keepTheView(*folderTree);
+//         folderTree->SetRootNode(...);
+//         for (const Folder& folder : folders) folderTree->AddNode(...);
+//     }   // measured once here, and the view is back where it was
+class TreeRebuildScope {
+public:
+    explicit TreeRebuildScope(UltraCanvasTreeView& tree) : tree(tree) { tree.BeginRebuild(); }
+    ~TreeRebuildScope() { End(); }
+    TreeRebuildScope(const TreeRebuildScope&) = delete;
+    TreeRebuildScope& operator=(const TreeRebuildScope&) = delete;
+
+    // End the rebuild here instead of at the end of the block - for a caller
+    // that goes on to measure the tree once the rows are back. Its required
+    // width counts the vertical scrollbar, and EndRebuild() is what decides
+    // whether there is one. Calling it again, or letting the destructor run
+    // after it, does nothing.
+    void End() {
+        if (!open) return;
+        open = false;
+        tree.EndRebuild();
+    }
+
+private:
+    UltraCanvasTreeView& tree;
+    bool open = true;
 };
 
 // ===== FACTORY FUNCTIONS =====
