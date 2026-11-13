@@ -1,5 +1,8 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.13.1 - 2026-11-13 - the rows' viewport is the content box, not the whole element:
+//                   the last row can be scrolled fully into view, and a page of rows (Page Up /
+//                   Page Down) is the rows a page really shows
 // Version: 1.13.0 - 2026-11-13 - BeginRebuild / EndRebuild (TreeRebuildScope): a tree rebuilt
 //                   from its source keeps the view where the user left it instead of jumping back
 //                   to the top, and is measured once instead of after every AddNode
@@ -876,6 +879,13 @@ private:
     void CreateScrollbar();
 
     void ClampScrollOffset();
+
+    // The height the rows are shown in: the content box (the element without
+    // its border and padding), less the fixed header band - exactly what
+    // Render() clips them to. Every measure of what fits, every scroll that
+    // reveals a row and every page of rows is taken from this, not from
+    // GetHeight(), which counts the border and the padding as room for rows.
+    int GetRowsViewHeight() const;
 
     int GetTotalVisibleHeight();
 

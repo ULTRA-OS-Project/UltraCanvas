@@ -665,7 +665,7 @@ namespace UltraCanvas {
         scrollAnim.Cancel();
 
         int nodeY = GetNodeDisplayY(node);
-        int viewHeight = GetHeight() - GetHeaderHeight();   // visible rows sit below the header band
+        int viewHeight = GetRowsViewHeight();
         if (nodeY < scrollOffsetY) {
             scrollOffsetY = nodeY;
         } else if (nodeY >= scrollOffsetY + viewHeight - rowHeight) {
@@ -719,7 +719,7 @@ namespace UltraCanvas {
         if (nodeY < 0) return;   // filtered out or hidden: nothing to scroll to
 
         // Centre the row in the visible area below the header band.
-        int viewHeight = GetHeight() - GetHeaderHeight();
+        int viewHeight = GetRowsViewHeight();
         int target = std::clamp(nodeY - (viewHeight - rowHeight) / 2, 0, std::max(0, maxScrollY));
         if (verticalScrollbar && verticalScrollbar->IsVisible()) {
             // Animated like ScrollToTop(); onScrollChange writes scrollOffsetY back.
@@ -819,7 +819,7 @@ namespace UltraCanvas {
         if (nodeY < 0) return true;   // under a collapsed parent
 
         // Hidden as soon as the whole row is inside the visible area.
-        int viewHeight = static_cast<int>(GetHeight()) - GetHeaderHeight();
+        int viewHeight = GetRowsViewHeight();
         bool fullyVisible = nodeY >= scrollOffsetY && nodeY + rowHeight <= scrollOffsetY + viewHeight;
         if (fullyVisible) return false;
         return GetFloatingButtonSlotRect(1).width > 0;
@@ -1218,7 +1218,7 @@ namespace UltraCanvas {
 
         int headerHeight = GetHeaderHeight();
         int totalHeight = GetTotalVisibleHeight();
-        int viewHeight = GetHeight() - headerHeight;   // rows live below the fixed header band
+        int viewHeight = GetRowsViewHeight();   // what the rows are actually shown in
 
         maxScrollY = std::max(0, totalHeight - viewHeight);
         bool hasVerticalScrollbar = maxScrollY > 0;
@@ -1249,6 +1249,18 @@ namespace UltraCanvas {
         if (verticalScrollbar->IsVisible()) {
             verticalScrollbar->SetScrollPosition(scrollOffsetY);
         }
+    }
+
+    int UltraCanvasTreeView::GetRowsViewHeight() const {
+        // Exactly what Render() clips the rows to: the content box - the
+        // element without its border and padding - less the fixed header band.
+        // GetHeight() counts the border and the padding as room for rows,
+        // which it is not: a tree with a 1 px border measured two pixels more
+        // than it shows, so the last row ended under the content edge, the
+        // scroll range stopped that much short of it, and a page of rows was
+        // one row longer than a page.
+        const Rect2Di content = UltraCanvasUIElement::GetLocalContentRect();
+        return std::max(0, content.height - GetHeaderHeight());
     }
 
     int UltraCanvasTreeView::GetTotalVisibleHeight() {
@@ -2104,7 +2116,7 @@ namespace UltraCanvas {
         std::vector<TreeNode *> visibleNodes = GetVisibleNodeList();
         auto it = std::find(visibleNodes.begin(), visibleNodes.end(), focusedNode);
         if (it == visibleNodes.end()) return;
-        const int rowsPerPage = std::max(1, (static_cast<int>(GetHeight()) - GetHeaderHeight()) / std::max(1, rowHeight));
+        const int rowsPerPage = std::max(1, GetRowsViewHeight() / std::max(1, rowHeight));
         int index = static_cast<int>(it - visibleNodes.begin());
         // Already on the first row: nothing above to go to.
         if (index == 0) return;
@@ -2123,7 +2135,7 @@ namespace UltraCanvas {
         std::vector<TreeNode *> visibleNodes = GetVisibleNodeList();
         auto it = std::find(visibleNodes.begin(), visibleNodes.end(), focusedNode);
         if (it == visibleNodes.end()) return;
-        const int rowsPerPage = std::max(1, (static_cast<int>(GetHeight()) - GetHeaderHeight()) / std::max(1, rowHeight));
+        const int rowsPerPage = std::max(1, GetRowsViewHeight() / std::max(1, rowHeight));
         const int last = static_cast<int>(visibleNodes.size()) - 1;
         int index = static_cast<int>(it - visibleNodes.begin());
         if (index >= last) return;
@@ -2179,7 +2191,7 @@ namespace UltraCanvas {
         if (scrollOffsetY >= maxScrollY) return;
 
         int nodeY = GetNodeDisplayY(node);
-        int visibleBottom = scrollOffsetY + GetHeight();
+        int visibleBottom = scrollOffsetY + GetRowsViewHeight();
 
         // The node counts as the last visible row when the row directly beneath
         // it would not fully fit inside the current viewport. In that case scroll

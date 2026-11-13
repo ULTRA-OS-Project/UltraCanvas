@@ -780,6 +780,13 @@ void ScrollTo(TreeNode* node);
 void ScrollBy(int deltaY);
 ```
 
+The room the rows are shown in - and with it how far the view scrolls, where
+`ScrollTo` leaves a row and how many rows **Page Up** / **Page Down** move - is
+the tree's **content box**: its bounds less its border and its padding, and
+less the fixed header band of `UltraCanvasColumnsTreeView`. A tree 120 px high
+with the default 1 px border shows 118 px of rows, so size a tree that must
+show *n* whole rows as `n * rowHeight` plus its border and padding.
+
 Behaviour:
 
 - **Enabled by default.** `SetShowScrollToTopButton(false)` turns it off, e.g.
