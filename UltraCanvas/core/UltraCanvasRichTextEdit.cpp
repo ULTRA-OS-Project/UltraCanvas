@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.9.0 - a text frame's words edited in place (EditFrame); EMF and WMF pictures and
+//                  fills drawn through the vector readers (LoadDocumentPicture)
 // Version: 1.8.0 - pattern and picture fills; a header's or footer's floats are placed, picked up,
 //                  moved and resized while it is edited (they used to vanish)
 // Version: 1.7.0 - floating frames and drawings are selected, moved by dragging (their new
@@ -30,6 +32,9 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPdfSurface.h"
 #include "UltraCanvasUtils.h"           // OpenURL
+#include "UltraCanvasVectorPreview.h"   // a metafile picture drawn through the vector readers
+#include "DataFormats/UltraCanvasVectorStorage.h"
+#include "miniz.h"                      // ...and handed to UCImage as a PNG
 
 #include <algorithm>
 #include <limits>
@@ -55,6 +60,58 @@ namespace {
 // text they belong to.
 constexpr float kPixelsPerPoint = 96.0f / 72.0f;
 inline float Px(float points) { return points * kPixelsPerPoint; }
+
+// A document's picture as pixels. PNG, JPEG, GIF and the rest load
+// directly; a Windows metafile (EMF, WMF - Word 97's and its writers'
+// pictures and fills) is read by the vector readers a registered plugin
+// lends core and drawn at twice its own size, so it stays sharp at 200%.
+// Null when nothing can draw it.
+std::shared_ptr<UCImage> LoadDocumentPicture(const RichDocMedia& media) {
+    if (media.data.empty()) return nullptr;
+    std::string kind;
+    const std::vector<uint8_t>& d = media.data;
+    if (media.mimeType == "image/x-emf" || (d.size() > 44 && d[40] == ' ' && d[41] == 'E' && d[42] == 'M' && d[43] == 'F')) {
+        kind = "emf";
+    } else if (media.mimeType == "image/x-wmf"
+               || (d.size() > 4 && d[0] == 0xD7 && d[1] == 0xCD && d[2] == 0xC6 && d[3] == 0x9A)) {
+        kind = "wmf";
+    }
+    if (kind.empty()) {
+        auto image = UCImage::LoadFromMemory(media.data);
+        return image && image->GetWidth() > 0 ? image : nullptr;
+    }
+    auto drawing = LoadVectorPreviewDocumentFromMemory(kind, d.data(), d.size());
+    if (!drawing) return nullptr;
+    // Its size in points (as the readers give it) as pixels, kept sane.
+    double width = drawing->Size.width * 96.0 / 72.0, height = drawing->Size.height * 96.0 / 72.0;
+    if (!(width > 0.0) || !(height > 0.0)) width = height = 256.0;
+    const double fit = std::min(1.0, 2048.0 / std::max(width, height));
+    const int w = std::max(1, static_cast<int>(std::lround(width * fit)));
+    const int h = std::max(1, static_cast<int>(std::lround(height * fit)));
+    auto pixmap = RenderVectorDocumentPixmap(*drawing, w, h, 2.0f);
+    if (!pixmap || pixmap->GetWidth() <= 0 || pixmap->GetHeight() <= 0) return nullptr;
+    const int pw = pixmap->GetWidth(), ph = pixmap->GetHeight();
+    std::vector<uint8_t> rgba(static_cast<size_t>(pw) * static_cast<size_t>(ph) * 4);
+    for (int y = 0; y < ph; ++y) {
+        for (int x = 0; x < pw; ++x) {
+            const uint32_t p = pixmap->GetPixel(x, y);              // premultiplied ARGB
+            const uint32_t a = p >> 24;
+            uint8_t* out = &rgba[(static_cast<size_t>(y) * static_cast<size_t>(pw) + static_cast<size_t>(x)) * 4];
+            auto channel = [&](uint32_t c) { return static_cast<uint8_t>(a ? std::min<uint32_t>(255, c * 255 / a) : 0); };
+            out[0] = channel((p >> 16) & 0xFF);
+            out[1] = channel((p >> 8) & 0xFF);
+            out[2] = channel(p & 0xFF);
+            out[3] = static_cast<uint8_t>(a);
+        }
+    }
+    size_t length = 0;
+    void* png = tdefl_write_image_to_png_file_in_memory_ex(rgba.data(), pw, ph, 4, &length, MZ_BEST_SPEED, MZ_FALSE);
+    if (!png) return nullptr;
+    std::vector<uint8_t> bytes(static_cast<uint8_t*>(png), static_cast<uint8_t*>(png) + length);
+    mz_free(png);
+    auto image = UCImage::LoadFromMemory(bytes);
+    return image && image->GetWidth() > 0 ? image : nullptr;
+}
 // resizeHandle's value while a float is dragged whole rather than resized.
 constexpr int kMoveHandle = 8;
 
@@ -1237,7 +1294,7 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
             // A picture in a group.
             const RichDocMedia& media = document.media[static_cast<size_t>(shape.mediaIndex)];
             std::shared_ptr<UCImage>& image = shapeImages[{media.data.data(), media.data.size()}];
-            if (!image) image = UCImage::LoadFromMemory(media.data);
+            if (!image) image = LoadDocumentPicture(media);
             if (image) ctx->DrawImage(*image, Rect2Dd(x, y, w, h), ImageFitMode::Fill);
         }
         TraceShape(ctx, shape, x, y, w, h);
@@ -1273,7 +1330,7 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
             // the outline.
             const RichDocMedia& media = document.media[static_cast<size_t>(shape.fillMediaIndex)];
             std::shared_ptr<UCImage>& image = shapeImages[{media.data.data(), media.data.size()}];
-            if (!image) image = UCImage::LoadFromMemory(media.data);
+            if (!image) image = LoadDocumentPicture(media);
             if (image && image->GetWidth() > 0 && image->GetHeight() > 0 && w > 0.0 && h > 0.0) {
                 ctx->PushState();
                 ctx->ClipPath();
@@ -1879,7 +1936,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             std::shared_ptr<UCImage> image;
             const UCRichDocument& document = *editor.GetDocument();
             if (run.mediaIndex >= 0 && run.mediaIndex < static_cast<int>(document.media.size())) {
-                image = UCImage::LoadFromMemory(document.media[static_cast<size_t>(run.mediaIndex)].data);
+                image = LoadDocumentPicture(document.media[static_cast<size_t>(run.mediaIndex)]);
             }
             float width = 0.0f, height = 0.0f;
             if (run.IsTextFrame()) {
@@ -1933,7 +1990,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             std::shared_ptr<UCImage> image;
             const UCRichDocument& document = *editor.GetDocument();
             if (run.mediaIndex >= 0 && run.mediaIndex < static_cast<int>(document.media.size())) {
-                image = UCImage::LoadFromMemory(document.media[static_cast<size_t>(run.mediaIndex)].data);
+                image = LoadDocumentPicture(document.media[static_cast<size_t>(run.mediaIndex)]);
             }
             float width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt)
                         : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
@@ -2359,7 +2416,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
             const UCRichDocument& document = *editor.GetDocument();
             if (block.mediaIndex >= 0
                 && block.mediaIndex < static_cast<int>(document.media.size())) {
-                bl.image = UCImage::LoadFromMemory(document.media[static_cast<size_t>(block.mediaIndex)].data);
+                bl.image = LoadDocumentPicture(document.media[static_cast<size_t>(block.mediaIndex)]);
             }
             float width = block.imageWidthPt > 0 ? Px(block.imageWidthPt)
                                                  : (bl.image ? static_cast<float>(bl.image->GetWidth()) : 160.0f);
@@ -2709,6 +2766,9 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
     float viewTop = scrollOffset - visibleArea.height;
     float viewBottom = scrollOffset + 2 * visibleArea.height;
 
+    // A text frame's words are laid out at its inner width.
+    const float savedWidthOverride = columnWidthOverride;
+    if (IsEditingFrame()) columnWidthOverride = furnitureEdit->frameInnerWidth;
     for (int i = 0; i < blockCount; i++) {
         BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
         bool visible = pageView || furnitureEdit || ((y + bl.bounds.height >= viewTop) && (y <= viewBottom));
@@ -2724,6 +2784,7 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
         }
         y += bl.bounds.height + GapAfterBlock(i);
     }
+    columnWidthOverride = savedWidthOverride;
     y = furnitureEdit ? PlaceFurnitureBeingEdited(ctx) : PlaceBody(ctx);
     // A page number in the body shows the page its block landed on, which is
     // only known now. Renumbering can change a block's width ("9" to "10"),
@@ -3283,8 +3344,10 @@ void UltraCanvasRichTextEdit::ForEachImage(
         }
     };
     for (const PlacedFloat& placed : placedFloats) {
-        // A frame or drawing behind the text leaves the text to the clicks.
+        // A frame or drawing behind the text leaves the text to the clicks;
+        // the box of a frame whose words are being edited is not picked up.
         if (placed.frameIndex >= 0 && placed.wrap == RichTextRun::ImageWrap::BehindText) continue;
+        if (placed.blockIndex < 0) continue;
         visit(RichDocPosition(placed.blockIndex, placed.byteOffset),
               Rect2Df(ColumnLeft() + placed.rect.x, visibleArea.y + placed.rect.y - scrollOffset,
                       placed.rect.width, placed.rect.height));
@@ -4458,8 +4521,16 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     // its lines) stays in it.
     if (furnitureEdit && !blockLayouts.empty()) {
         const float contentY = ToDocument(event.pointer).y - visibleArea.y + scrollOffset;
-        const float top = blockLayouts.front().bounds.y - 8.0f;
-        const float bottom = blockLayouts.back().bounds.y + blockLayouts.back().bounds.height + 8.0f;
+        float top = blockLayouts.front().bounds.y - 8.0f;
+        float bottom = blockLayouts.back().bounds.y + blockLayouts.back().bounds.height + 8.0f;
+        if (const PlacedFloat* frame = EditedFramePlacement()) {
+            // A frame's words: a click outside the frame leaves them.
+            const float contentX = ToDocument(event.pointer).x - ColumnLeft();
+            const bool inside = contentX >= frame->rect.x && contentX <= frame->rect.x + frame->rect.width;
+            top = frame->rect.y;
+            bottom = std::max(frame->rect.y + frame->rect.height, blockLayouts.back().bounds.y + blockLayouts.back().bounds.height);
+            if (!inside) top = bottom + 1.0f;     // anywhere across from it is outside
+        }
         RichDocPosition object;
         Rect2Df objectRect;
         const bool onFloat = ImageAtPoint(ToDocument(event.pointer), object, objectRect) && PlacedFloatAt(object);
@@ -4749,6 +4820,24 @@ bool UltraCanvasRichTextEdit::HandleDoubleClick(const UCEvent& event) {
         const bool inFurniture = FurnitureRegionAt(contentY, page, footer);
         // A note, or a note's reference, opens the note.
         const int noteArea = NoteAreaAt(contentY);
+        // A text frame (or a drawing with words) opens its words.
+        if (!furnitureEdit) {
+            RichDocPosition object;
+            Rect2Df rect;
+            if (ImageAtPoint(ToDocument(event.pointer), object, rect)) {
+                const PlacedFloat* placed = PlacedFloatAt(object);
+                if (placed && placed->frameIndex >= 0 && EditFrame(placed->frameIndex)) {
+                    editor.SetCaret(PositionFromPoint(ToDocument(event.pointer)), false);
+                    AfterSelectionChange();
+                    return true;
+                }
+            }
+        }
+        if (IsEditingFrame()) {
+            editor.SelectWordAt(PositionFromPoint(ToDocument(event.pointer)));
+            AfterSelectionChange();
+            return true;
+        }
         if (!furnitureEdit) {
             const int referenced = noteArea >= 0 ? noteArea : editor.NoteAt(PositionFromPoint(ToDocument(event.pointer)));
             if (referenced >= 0 && EditNote(referenced)) return true;
@@ -5456,6 +5545,15 @@ void UltraCanvasRichTextEdit::SyncFurnitureToDocument() {
     if (!furnitureEdit) return;
     const std::shared_ptr<UCRichDocument>& body = furnitureEdit->bodyEditor.GetDocument();
     const std::shared_ptr<UCRichDocument>& edited = editor.GetDocument();
+    if (furnitureEdit->frameIndex >= 0) {
+        if (furnitureEdit->frameIndex < static_cast<int>(body->frames.size())) {
+            body->frames[static_cast<size_t>(furnitureEdit->frameIndex)].blocks = edited->blocks;
+        }
+        for (size_t i = body->media.size(); i < edited->media.size(); i++) body->media.push_back(edited->media[i]);
+        furnitureEdit->bodyEditor.SetModified(true);
+        furnitureCache.clear();
+        return;
+    }
     if (furnitureEdit->noteIndex >= 0) {
         if (furnitureEdit->noteIndex < static_cast<int>(body->notes.size())) {
             body->notes[static_cast<size_t>(furnitureEdit->noteIndex)].blocks = edited->blocks;
@@ -5519,6 +5617,27 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
     float total = 0.0f;
     for (int i = 0; i < count; i++) total += blockLayouts[static_cast<size_t>(i)].bounds.height + GapAfterBlock(i);
     float y = 0.0f;
+    if (furnitureEdit->frameIndex >= 0) {
+        // A frame's words: inside the frame, where it stands on the page,
+        // over its fill and border (drawn without its old words).
+        const PlacedFloat* placed = EditedFramePlacement();
+        if (placed) {
+            const float inset = TextFrameInset(furnitureEdit->frameIndex);
+            PlacedFloat box = *placed;
+            box.frameContent.reset();
+            box.blockIndex = -1;                  // its box, not something to pick up
+            placedFloats.push_back(std::move(box));
+            y = placed->rect.y + inset;
+            for (int i = 0; i < count; i++) {
+                BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+                bl.columnX = placed->rect.x + inset;
+                bl.bounds.x = bl.textLeft;
+                bl.bounds.y = y;
+                y += bl.bounds.height + GapAfterBlock(i);
+            }
+        }
+        return std::max(furnitureEdit->bodyContentHeight, y);
+    }
     if (furnitureEdit->noteIndex >= 0) {
         // A note is edited where it is shown.
         y = furnitureEdit->bodyContentHeight;
@@ -5611,7 +5730,7 @@ void UltraCanvasRichTextEdit::RenderBodyBackdrop(IRenderContext* ctx) {
         ctx->DrawFilledRectangle(Rect2Dd(x, visibleArea.y + top - scrollOffset, width, height), wash, 0.0f,
                                  Colors::Transparent);
     }
-    if (!blockLayouts.empty() && !pages.empty()) {
+    if (!blockLayouts.empty() && !pages.empty() && furnitureEdit->frameIndex < 0) {
         const BlockLayout& first = blockLayouts.front();
         const BlockLayout& last = blockLayouts.back();
         const bool below = furnitureEdit->footer || furnitureEdit->noteIndex >= 0;
@@ -5667,6 +5786,46 @@ bool UltraCanvasRichTextEdit::InsertNoteOf(RichNote::Kind kind) {
 }
 
 bool UltraCanvasRichTextEdit::EditNote(int noteIndex) { return BeginNoteEditing(noteIndex); }
+
+// ===== EDITING A TEXT FRAME'S WORDS =====
+
+const UltraCanvasRichTextEdit::PlacedFloat* UltraCanvasRichTextEdit::EditedFramePlacement() const {
+    if (!furnitureEdit || furnitureEdit->frameIndex < 0) return nullptr;
+    for (const PlacedFloat& placed : parkedFloats) {
+        if (placed.blockIndex >= 0 && placed.frameIndex == furnitureEdit->frameIndex) return &placed;
+    }
+    return nullptr;
+}
+
+bool UltraCanvasRichTextEdit::EditFrame(int frameIndex) {
+    if (readOnly) return false;
+    if (furnitureEdit) {
+        if (furnitureEdit->frameIndex == frameIndex) return true;
+        FinishHeaderFooterEditing();
+    }
+    const std::shared_ptr<UCRichDocument> body = editor.GetDocument();
+    if (!body || frameIndex < 0 || frameIndex >= static_cast<int>(body->frames.size())) return false;
+    // Only a frame placed in the body (it has a place to be edited at).
+    const PlacedFloat* placed = nullptr;
+    for (const PlacedFloat& candidate : placedFloats) {
+        if (candidate.blockIndex >= 0 && candidate.frameIndex == frameIndex) placed = &candidate;
+    }
+    if (!placed) return false;
+    auto frameDoc = std::make_shared<UCRichDocument>();
+    frameDoc->blocks = body->frames[static_cast<size_t>(frameIndex)].blocks;
+    if (frameDoc->blocks.empty()) frameDoc->blocks.emplace_back();
+    frameDoc->media = body->media;
+    frameDoc->frames = body->frames;            // its look is drawn from the document's own
+    frameDoc->page = body->page;
+    frameDoc->defaultTabStopPt = body->defaultTabStopPt;
+    frameDoc->styles = body->styles;
+
+    auto state = std::make_unique<FurnitureEditState>();
+    state->frameIndex = frameIndex;
+    state->frameInnerWidth = std::max(8.0f, placed->rect.width - 2.0f * TextFrameInset(frameIndex));
+    StartEditingPart(std::move(frameDoc), std::move(state));
+    return true;
+}
 
 bool UltraCanvasRichTextEdit::BeginNoteEditing(int noteIndex) {
     if (readOnly) return false;

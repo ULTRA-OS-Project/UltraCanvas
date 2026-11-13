@@ -1536,6 +1536,58 @@ int main() {
         TEST("A drawing behind the text is not picked up by a click", !edit->HasSelectedImage());
     }
 
+    // ===== A TEXT FRAME'S WORDS, EDITED IN PLACE =====
+    std::cerr << "\n--- Editing a frame's words ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame frame;
+        RichDocBlock words;
+        RichTextRun line;
+        line.text = "Sender";
+        words.runs = {line};
+        frame.blocks = {words};
+        frame.backgroundColor = "#EEEEEE";
+        frame.paddingPt = 4.0f;
+        document->frames = {frame};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 150.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun body;
+        body.text = "Body text beside the frame.";
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor, body};
+        document->blocks = {paragraph};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df on = edit->GetFloatElementRectForTest(0);
+        const float cx = on.x + on.width * 0.5f, cy = on.y + 12.0f;
+        UCEvent twice = MouseEvent(UCEventType::MouseDoubleClick, cx, cy);
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx, cy));
+        edit->OnEvent(twice);
+        window->UpdateAndRender();
+        TEST("A double-click on a text frame opens its words", edit->IsEditingFrame());
+        editor.SetCaret(editor.DocumentEnd());
+        editor.InsertText(" Company");
+        window->UpdateAndRender();
+        const Rect2Df caret = edit->GetCaretRectForTest();
+        TEST("...laid out inside the frame: caret at " + std::to_string(caret.x) + ", " + std::to_string(caret.y),
+             caret.x > on.x && caret.x < on.x + on.width && caret.y >= on.y - 1.0f && caret.y < on.y + on.height);
+        // A click outside the frame goes back to the body.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, on.x - 120.0f, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, on.x - 120.0f, cy));
+        window->UpdateAndRender();
+        TEST("A click outside it goes back to the body", !edit->IsEditingFrame());
+        TEST("...and the frame holds the new words",
+             UCRichDocument::ConcatenateRunText(edit->GetDocument()->frames[0].blocks[0].runs) == "Sender Company");
+    }
+
     // ===== FLOATS IN A HEADER, WHILE IT IS EDITED =====
     std::cerr << "\n--- Floats in an edited header ---" << std::endl;
     {

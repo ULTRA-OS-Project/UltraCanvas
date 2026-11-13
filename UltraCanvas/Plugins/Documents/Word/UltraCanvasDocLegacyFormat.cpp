@@ -18,6 +18,7 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.4.0 - EMF and WMF pictures (their compressed BLIPs inflated), pictures and fills
 // Version: 2.3.0 - Pattern fills (their 1-bit bitmaps), texture and picture fills
 // Version: 2.2.0 - Gradient (shade) fills
 // Version: 2.1.0 - Drawn shapes and groups: lines, rectangles, ellipses, Word 97's other
@@ -29,6 +30,7 @@
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasCompoundFile.h"
+#include "miniz.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1031,8 +1033,9 @@ bool IsMonospaceFont(const std::string& family) {
 // the Data stream at a PICF header followed by OfficeArt records; the image
 // itself is a BLIP record among them.
 
-// A PNG or JPEG BLIP record at data[at] (its 8-byte header first), ending
-// by `end`: the picture's bytes. Anything else, or a damaged record, is not.
+// A PNG, JPEG, EMF or WMF BLIP record at data[at] (its 8-byte header first),
+// ending by `end`: the picture's bytes (a metafile inflated). Anything else,
+// or a damaged record, is not.
 bool ReadBlipRecord(const std::vector<uint8_t>& data, size_t at, size_t end,
                     std::vector<uint8_t>& image, std::string& mimeType) {
     if (at + 8 > end || end > data.size()) return false;
@@ -1048,6 +1051,43 @@ bool ReadBlipRecord(const std::vector<uint8_t>& data, size_t at, size_t end,
     } else if (type == 0xF01D || type == 0xF02A) {         // JPEG
         header = (instance == 0x46B || instance == 0x6E3) ? 33 : 17;
         mimeType = "image/jpeg";
+    } else if (type == 0xF01A || type == 0xF01B) {         // EMF, WMF
+        // One or two UIDs, then a metafile header (its uncompressed size,
+        // bounds, size, saved size, compression), then the metafile -
+        // DEFLATE-compressed (0x00) or as it is (0xFE).
+        const bool emf = type == 0xF01A;
+        const size_t uids = (instance == (emf ? 0x3D5 : 0x217)) ? 32 : 16;
+        const size_t meta = at + 8 + uids;
+        if (meta + 34 > at + 8 + length) return false;
+        const size_t rawSize = ReadU32(data, meta);
+        const size_t savedSize = ReadU32(data, meta + 28);
+        const uint8_t compression = data[meta + 32];
+        const size_t start = meta + 34;
+        if (savedSize == 0 || start + savedSize > at + 8 + length || rawSize == 0 || rawSize > 64u * 1024u * 1024u) {
+            return false;
+        }
+        if (compression == 0x00) {
+            image.resize(rawSize);
+            mz_ulong out = static_cast<mz_ulong>(rawSize);
+            if (mz_uncompress(image.data(), &out, data.data() + start, static_cast<mz_ulong>(savedSize)) != MZ_OK) {
+                image.clear();
+                return false;
+            }
+            image.resize(out);
+        } else if (compression == 0xFE) {
+            image.assign(data.begin() + static_cast<std::ptrdiff_t>(start),
+                         data.begin() + static_cast<std::ptrdiff_t>(start + savedSize));
+        } else {
+            return false;
+        }
+        mimeType = emf ? "image/x-emf" : "image/x-wmf";
+        // An EMF says " EMF" at byte 40; a WMF starts with its header (type
+        // 1 or 2, nine words long).
+        const bool looksRight = emf ? (image.size() > 44 && image[40] == ' ' && image[41] == 'E')
+                                    : (image.size() > 18 && image[2] == 9 && image[3] == 0);
+        if (looksRight) return true;
+        image.clear();
+        return false;
     } else {
         return false;
     }

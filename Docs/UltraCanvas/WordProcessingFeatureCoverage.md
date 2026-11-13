@@ -97,7 +97,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 
 | Feature | ODT | DOCX | DOC | Model | View | Note |
 |---|---|---|---|---|---|---|
-| Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. DOCX: VML pictures (`v:imagedata`, Word 2003 and older) in the line or floating. |
+| Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG, JPEG, EMF and WMF BLIPs (metafiles inflated); DIB pictures not decoded. EMF and WMF pictures and fills (all three formats) are drawn through the Vector plugin's readers when the application registers it, at twice their size. DOCX: VML pictures (`v:imagedata`, Word 2003 and older) in the line or floating. |
 | Picture on its own line | yes | yes | yes | yes | yes | |
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
@@ -192,15 +192,18 @@ model or a reader can already carry, or that a document needs, but
   headers and footers cannot be selected or moved on the page, and are
   drawn under the body's text (Word's order; Writer draws a frame set in
   front of the text over it).
-- **A frame's text cannot be edited**: a click selects the frame (one
-  behind the text passes the click to the text) and it can be moved and
-  resized, but its words are changed only by editing the document's source.
+- **A frame's words are edited in place**, but only a frame in the body:
+  a double-click opens them (`EditFrame`), a click outside the frame or
+  Escape goes back. A frame in a header, footer or table cell, and a group
+  member's words, are not edited.
 - **A drawing is edited as a whole**: it is selected, moved and resized
-  like a picture, but its shapes cannot be picked out one by one, and its
-  words cannot be edited. Frames and pictures in a header or footer are
-  picked up only while it is being edited. A picture fill stored as a
-  metafile (EMF, WMF - Writer's DOC export of a hatch) draws in its fill
-  colour; shadows, glow, 3-D and WordArt are not drawn; text wraps round a
+  like a picture, but its shapes cannot be picked out one by one. Frames and
+  pictures in a header or footer are picked up only while it is being
+  edited. An EMF or WMF picture or fill needs the Vector plugin registered
+  (every application linking the format plugins has it); without it, it
+  draws as an empty box or its fill colour. Word 97 pattern bitmaps are read
+  to the file format's description but have not been checked against a
+  file saved by Word. Shadows, glow, 3-D and WordArt are not drawn; text wraps round a
   shape's box, not its outline. Word's named outlines outside
   the forty or so the model knows (`RichShape::ApplyPreset`) draw as their
   box.
