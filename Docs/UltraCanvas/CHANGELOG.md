@@ -1,3 +1,55 @@
+#### 2026-11-13 *0.9.553*
+- **A chart the build would have in no form now stops the configure, or is
+  compiled in.** A chart left out of `ULTRACANVAS_CHARTS` (the default
+  selection is empty) must be buildable as a runtime module. On WebAssembly
+  and Android, which load no modules, it is now compiled in, as the chart
+  engine proposal's compile-time fallback (§12.11) says. Before, it was left
+  out with a warning, so the default WebAssembly and Android builds had no
+  parallel coordinate chart. With `ULTRACANVAS_CHART_RUNTIME_MODULES=OFF`, or
+  a static core on Windows, the configure now stops and names the chart and
+  the ways out, as it does for widgets.
+- **`UltraCanvasFilePreviews`: a registry of file preview providers.** A format
+  registers, under its extensions, a thumbnail (`RenderThumbnail`) and/or a
+  preview document (`ReadDocument`, the start of its text). Callers ask
+  `RenderFileThumbnailFromProvider`, `RenderFileThumbnailAs` and
+  `ReadPreviewDocument`. Any number of providers can be registered, and the
+  latest registration of an extension wins. The registry is thread-safe for
+  the Filer's thumbnail workers. The formats compiled in register themselves
+  on the first query: the PDF first page, EPUB and Mobipocket covers, video
+  poster frames, Word-processing documents and PowerPoint decks.
+  `UltraCanvasFilerWidget` no longer includes the PDF, Word, PowerPoint,
+  e-book or video-thumbnail code; it asks the registry. Its tiles, text
+  previews and `RenderFileThumbnail` are unchanged: identical lines and
+  pixels for every test file, before and after.
+- **The MediaViewer can be a runtime module.** It joins the selectable
+  widgets in `ULTRACANVAS_WIDGETS` as `"media-viewer"`
+  (`MakeMediaViewerDescriptor`, `RegisterMediaViewerElement`). It is still
+  compiled in by default. Left out, it is built as
+  `ultracanvas-widget-media-viewer`, together with
+  `UltraCanvasMediaViewerWindow`. That happens only with a shared core, the
+  shipping configuration. The viewer reaches about 45 core objects, and a
+  static host would have to keep all of them for it. UltraViewer, UltraFiler, UltraMail,
+  EmailCleaner, ChatCube, UltraClipboard, UltraSnip and DemoApp use its
+  classes, so the configure stops if one of them is built without it.
+  Widget modules are now compiled with the core library's own include paths
+  and compile definitions, so a feature switch means the same on both sides of
+  the module boundary. The Element modules CI job now runs twice, with a static
+  and with a shared core, and builds the viewer's module in the shared one.
+- **A widget the build would have in no form now stops the configure.** A
+  widget left out of `ULTRACANVAS_WIDGETS` must be buildable as a runtime
+  module. Three things rule a module out:
+  - the build has no runtime modules (WebAssembly, Android, or
+    `ULTRACANVAS_WIDGET_RUNTIME_MODULES=OFF`);
+  - a static core on Windows;
+  - a static core for a widget built against a shared core only (the
+    MediaViewer).
+
+  The configure now stops and names the widgets and the ways out. Before, it
+  warned or skipped them, and an application asking for one by name found out
+  only at run time. The Element modules CI job's static row compiles the
+  MediaViewer in, and a new step checks that leaving it out of a static core
+  is refused.
+
 #### 2026-11-13 *0.9.552*
 - **A menu in its own window answers the keyboard wherever the key lands.**
   Where the focus follows the pointer (X11 with no window manager), a key
