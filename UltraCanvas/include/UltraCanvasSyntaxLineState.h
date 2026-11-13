@@ -33,6 +33,9 @@ namespace UltraCanvas {
         // ("]==]" for [==[) - still open at the end of the line; empty when
         // none is. No escapes apply inside either.
         std::string rawStringEnd;
+        // Inside that string a doubled end marker ("" in a C# verbatim
+        // string) is a quote character, not the end.
+        bool rawStringDoubledQuotes = false;
         // The same for a block comment whose end marker depends on its
         // opening: Lua's --[==[ ... ]==] ("]==]"); empty when none is.
         std::string blockCommentEnd;
@@ -61,7 +64,8 @@ namespace UltraCanvas {
             return blockComment == o.blockComment && openString == o.openString &&
                    openStringSpansLines == o.openStringSpansLines &&
                    lineComment == o.lineComment && openLongString == o.openLongString &&
-                   rawStringEnd == o.rawStringEnd && blockCommentEnd == o.blockCommentEnd &&
+                   rawStringEnd == o.rawStringEnd && rawStringDoubledQuotes == o.rawStringDoubledQuotes &&
+                   blockCommentEnd == o.blockCommentEnd &&
                    cssContext == o.cssContext &&
                    cssPreludeParent == o.cssPreludeParent && cssDepth == o.cssDepth &&
                    cssStack == o.cssStack && cssExpectProperty == o.cssExpectProperty &&

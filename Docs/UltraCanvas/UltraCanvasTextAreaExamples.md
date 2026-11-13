@@ -880,7 +880,7 @@ for (const std::string& line : lines) {
 at `\n` (or `\r\n`), carries the state from line to line, and puts one
 `TokenType::Newline` token at each break - the tokens the text area colours.
 
-A string ends at its line unless the language lets it run on. Five switches
+A string ends at its line unless the language lets it run on. Seven switches
 in `SyntaxTokenizationRules` say which strings do:
 
 | Rule | Languages | Example |
@@ -890,6 +890,8 @@ in `SyntaxTokenizationRules` say which strings do:
 | `stringLineContinuation` (a `\` ends the line) | C, C++, Python, JavaScript / TypeScript | `"abc\` then `def"` |
 | `delimitedRawStrings` (`R"delim( … )delim"`, optional `u8` / `u` / `U` / `L`) | C++ | a raw string ends only at its own `)delim"` |
 | `levelledLongBrackets` (`[[ … ]]`, `[==[ … ]==]`, and after `--` a comment) | Lua | `[==[` ends only at `]==]` |
+| `hashRawStrings` (`r"…"`, `r#"…"#`, `br`, `cr`) | Rust | `r"C:\"` is complete; `r#"say "hi""#` holds quotes |
+| `verbatimStrings` (`@"…"`, `$@"…"`, `@$"…"`) | C# | `@"C:\"` is complete; `""` inside is a quote; spans lines |
 
 A string the language does not let span lines - an unclosed `"` in Java -
 still ends at the line, so a typo colours one line rather than the rest of the

@@ -93,6 +93,13 @@ namespace UltraCanvas {
         //     the place of fixed "[[" entries in multiLineStrings and
         //     multiLineComments for line-by-line highlighting.
         bool levelledLongBrackets = false;
+        //   hashRawStrings: Rust raw strings, r"..", r#".."#, r##".."## (also
+        //     br / cr), which end at a quote followed by as many '#', with no
+        //     escapes - r"C:\" is complete and r#"say "hi""# holds quotes.
+        bool hashRawStrings = false;
+        //   verbatimStrings: C# verbatim strings, @"..", $@"..", @$"..": no
+        //     escapes, a doubled "" stands for a quote, and they may span lines.
+        bool verbatimStrings = false;
         // Letters written directly before a string's opening quote that are
         // part of the string - Python's r"..", b"..", f"..", rb"..", C's
         // L"..", u8"..". Matched in any case. The prefix is coloured with the
@@ -1141,6 +1148,7 @@ namespace UltraCanvas {
         rules.interpolationDelimiters = {{"${", "}"}};
 
         rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
+        rules.verbatimStrings = true;
         return rules;
     }
 
@@ -1800,6 +1808,7 @@ namespace UltraCanvas {
                                      {"#![", "]"}};
 
         rules.multiLineStringDelimiters = {'"'};
+        rules.hashRawStrings = true;
         return rules;
     }
 

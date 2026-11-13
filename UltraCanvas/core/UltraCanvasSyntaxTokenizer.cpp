@@ -116,6 +116,78 @@ namespace UltraCanvas {
         return true;
     }
 
+// A Rust raw string opening at `pos`: [b|c]r, any number of '#', '"' - not
+// inside a word, and not a raw identifier (r#match has no quote). On a match
+// `endMarker` is '"' and as many '#'.
+    static bool MatchHashRawString(const std::string& line, size_t pos,
+                                   size_t& bodyStart, std::string& endMarker) {
+        if (pos > 0) {
+            unsigned char prev = static_cast<unsigned char>(line[pos - 1]);
+            if (std::isalnum(prev) || prev == '_') return false;
+        }
+        size_t i = pos;
+        if (i < line.length() && (line[i] == 'b' || line[i] == 'c')) i++;
+        if (i >= line.length() || line[i] != 'r') return false;
+        i++;
+        size_t hashStart = i;
+        while (i < line.length() && line[i] == '#') i++;
+        if (i >= line.length() || line[i] != '"') return false;
+        endMarker = "\"" + std::string(i - hashStart, '#');
+        bodyStart = i + 1;
+        return true;
+    }
+
+// A C# verbatim string opening at `pos`: @", $@" or @$" - not inside a word.
+    static bool MatchVerbatimString(const std::string& line, size_t pos, size_t& bodyStart) {
+        if (pos > 0) {
+            unsigned char prev = static_cast<unsigned char>(line[pos - 1]);
+            if (std::isalnum(prev) || prev == '_' || prev == '@' || prev == '$') return false;
+        }
+        for (const char* open : {"@\"", "$@\"", "@$\""}) {
+            size_t n = std::strlen(open);
+            if (line.compare(pos, n, open) == 0) {
+                bodyStart = pos + n;
+                return true;
+            }
+        }
+        return false;
+    }
+
+// A string that ends only at its own marker - a C++ raw string, a Lua long
+// bracket, a Rust raw string, a C# verbatim string - opening at `pos`, as
+// the language's rules allow. `doubledQuotes`: a doubled marker inside it
+// is a quote character (C#).
+    static bool MatchMarkedString(const SyntaxTokenizationRules& rules, const std::string& line,
+                                  size_t pos, size_t& bodyStart, std::string& endMarker,
+                                  bool& doubledQuotes) {
+        doubledQuotes = false;
+        if (rules.levelledLongBrackets && MatchLongBracket(line, pos, bodyStart, endMarker)) return true;
+        if (rules.delimitedRawStrings && MatchRawStringOpen(line, pos, bodyStart, endMarker)) return true;
+        if (rules.hashRawStrings && MatchHashRawString(line, pos, bodyStart, endMarker)) return true;
+        if (rules.verbatimStrings && MatchVerbatimString(line, pos, bodyStart)) {
+            endMarker = "\"";
+            doubledQuotes = true;
+            return true;
+        }
+        return false;
+    }
+
+// Where such a string ends from `from` on: just past its marker, or npos
+// when it is still open at the end of the line.
+    static size_t FindMarkedEnd(const std::string& line, size_t from, const std::string& marker,
+                                bool doubledQuotes) {
+        size_t i = from;
+        while (true) {
+            size_t at = line.find(marker, i);
+            if (at == std::string::npos) return std::string::npos;
+            if (doubledQuotes && line.compare(at + marker.length(), marker.length(), marker) == 0) {
+                i = at + 2 * marker.length();   // "" - a quote inside the string
+                continue;
+            }
+            return at + marker.length();
+        }
+    }
+
 // Does a string opened with `delimiter` and still open at the end of `line`
 // carry on into the next line? Per language: a quote whose strings span lines,
 // or a backslash continuation (an odd run of backslashes ends the line).
@@ -224,15 +296,15 @@ namespace UltraCanvas {
         }
         state.openLongString = -1;
         if (!state.rawStringEnd.empty()) {
-            size_t endPos = line.find(state.rawStringEnd);
-            if (endPos == std::string::npos) {
+            size_t end = FindMarkedEnd(line, 0, state.rawStringEnd, state.rawStringDoubledQuotes);
+            if (end == std::string::npos) {
                 tokens.push_back({TokenType::String, line, line.length()});
                 return tokens;
             }
-            size_t end = endPos + state.rawStringEnd.length();
             tokens.push_back({TokenType::String, line.substr(0, end), end});
             position = end;
             state.rawStringEnd.clear();
+            state.rawStringDoubledQuotes = false;
         }
         if (state.openString) {
             bool closed = false;
@@ -334,40 +406,23 @@ namespace UltraCanvas {
                 }
             }
 
-            // Lua long strings: like raw strings, no escapes and their own end.
-            if (currentRules->levelledLongBrackets) {
+            // Strings that end only at their own marker, with no escapes:
+            // C++ raw strings, Lua long brackets, Rust raw strings, C#
+            // verbatim strings.
+            {
                 size_t bodyStart = 0;
                 std::string endMarker;
-                if (MatchLongBracket(line, position, bodyStart, endMarker)) {
-                    size_t endPos = line.find(endMarker, bodyStart);
-                    size_t end = endPos == std::string::npos ? line.length() : endPos + endMarker.length();
+                bool doubledQuotes = false;
+                if (MatchMarkedString(*currentRules, line, position, bodyStart, endMarker, doubledQuotes)) {
+                    size_t endAt = FindMarkedEnd(line, bodyStart, endMarker, doubledQuotes);
+                    size_t end = endAt == std::string::npos ? line.length() : endAt;
                     token.type = TokenType::String;
                     token.length = end - position;
                     token.text = line.substr(position, token.length);
                     tokens.push_back(token);
-                    if (endPos == std::string::npos) {
+                    if (endAt == std::string::npos) {
                         state.rawStringEnd = endMarker;
-                        return tokens;
-                    }
-                    currentColumn += token.length;
-                    position = end;
-                    continue;
-                }
-            }
-
-            // C++ raw strings: no escapes, and they end at their own marker.
-            if (currentRules->delimitedRawStrings) {
-                size_t bodyStart = 0;
-                std::string endMarker;
-                if (MatchRawStringOpen(line, position, bodyStart, endMarker)) {
-                    size_t endPos = line.find(endMarker, bodyStart);
-                    size_t end = endPos == std::string::npos ? line.length() : endPos + endMarker.length();
-                    token.type = TokenType::String;
-                    token.length = end - position;
-                    token.text = line.substr(position, token.length);
-                    tokens.push_back(token);
-                    if (endPos == std::string::npos) {
-                        state.rawStringEnd = endMarker;
+                        state.rawStringDoubledQuotes = doubledQuotes;
                         return tokens;
                     }
                     currentColumn += token.length;

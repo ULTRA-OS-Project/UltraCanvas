@@ -15,7 +15,8 @@
 // whose opener starts with the line-comment marker (Lua's --[[); C++ raw
 // strings, R"delim( ... )delim"; Lua's long brackets at any level,
 // --[==[ ... ]==] and [==[ ... ]==]; string prefixes (Python's r"..", C's
-// L".."), coloured with their string; and the whole-text Tokenize, which
+// L".."), coloured with their string; Rust raw strings (r#".."#) and C#
+// verbatim strings (@".."); and the whole-text Tokenize, which
 // must give the same tokens.
 // Version: 1.1.0
 // Last Modified: 2026-11-11
@@ -350,6 +351,43 @@ int main() {
         Expect(c[0], "u8\"utf\"", TokenType::String, "C++: u8\"..\"");
     }
 
+    std::cout << "Rust raw strings and C# verbatim strings\n";
+    {
+        tk.SetLanguage("Rust");
+        auto r = Highlight(tk, {{"let p = r\"C:\\\"; return p;"}, {}});
+        Expect(r[0], "r\"C:\\\"", TokenType::String, "Rust: r\"C:\\\" is complete - no escapes");
+        Expect(r[0], "return", TokenType::Keyword, "Rust: code after it");
+        auto h = Highlight(tk, {{"let s = r#\"say \"hi\"\"# + x;"}, {}});
+        Expect(h[0], "r#\"say \"hi\"\"#", TokenType::String, "Rust: r#\"..\"# holds quotes");
+        Expect(h[0], "x", TokenType::Identifier, "Rust: code after it");
+        auto two = Highlight(tk, {{"let s = r##\"a \"# b", "c\"## ; return s;"}, {}});
+        Expect(two[0], "r##\"a \"# b", TokenType::String, "Rust: \"# does not close r##\"");
+        Expect(two[1], "c\"##", TokenType::String, "Rust: ...\"## closes it on the next line");
+        Expect(two[1], "return", TokenType::Keyword, "Rust: code after it");
+        auto br = Highlight(tk, {{"let b = br\"\\x\"; return b;"}, {}});
+        Expect(br[0], "br\"\\x\"", TokenType::String, "Rust: br\"..\"");
+        auto ident = Highlight(tk, {{"let r#match = 1;"}, {}});
+        Expect(ident[0], "match", TokenType::Keyword, "Rust: r#match is a raw identifier, not a string");
+        auto plain = Highlight(tk, {{"let s = \"a\\\"b\"; return s;"}, {}});
+        Expect(plain[0], "\"a\\\"b\"", TokenType::String, "Rust: an ordinary string still has escapes");
+
+        tk.SetLanguage("C#");
+        auto v = Highlight(tk, {{"var p = @\"C:\\\"; return p;"}, {}});
+        Expect(v[0], "@\"C:\\\"", TokenType::String, "C#: @\"C:\\\" is complete - no escapes");
+        Expect(v[0], "return", TokenType::Keyword, "C#: code after it");
+        auto q = Highlight(tk, {{"var s = @\"say \"\"hi\"\"\" + x;"}, {}});
+        Expect(q[0], "@\"say \"\"hi\"\"\"", TokenType::String, "C#: \"\" inside is a quote");
+        Expect(q[0], "x", TokenType::Identifier, "C#: code after it");
+        auto ml = Highlight(tk, {{"var s = $@\"first", "return \"\"x\"\"", "last\"; return s;"}, {}});
+        Expect(ml[1], "return \"\"x\"\"", TokenType::String, "C#: $@\"..\" spans lines");
+        Expect(ml[2], "last\"", TokenType::String, "C#: ...closed on the third line");
+        Expect(ml[2], "return", TokenType::Keyword, "C#: code after it");
+        auto at = Highlight(tk, {{"var @class = 1; return @class;"}, {}});
+        Expect(at[0], "return", TokenType::Keyword, "C#: @class is a name, not a string");
+        auto ord = Highlight(tk, {{"var s = \"unclosed", "return s;"}, {}});
+        Expect(ord[1], "return", TokenType::Keyword, "C#: an ordinary string ends at the line");
+    }
+
     std::cout << "Tokenize: the whole text, as the text area sees it\n";
     {
         // Every language and construct the line state covers, through
@@ -361,6 +399,8 @@ int main() {
             {"C++", "auto s = R\"x(a\n)\" )x\";\n/* c\nd */ int y;"},
             {"CSS", "a {\n  color: red; }\n/* x\ny */ b { top: 0 }"},
             {"JavaScript", "const t = `a\r\n\r\nb`; return t;"},
+            {"Rust", "let s = r#\"a\n\"b\"#; return s;"},
+            {"C#", "var s = @\"a\n\"\"b\"; return s;"},
         };
         for (const Case& c : cases) {
             tk.SetLanguage(c.language);
