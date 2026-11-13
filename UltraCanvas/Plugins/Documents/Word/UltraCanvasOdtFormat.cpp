@@ -5,6 +5,9 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.6.0 - Pattern fills: draw:hatch read and written, other patterns as their tile
+//                  (an inline draw:fill-image, read too);
+//                  picture fills: draw:fill-image read and written
 // Version: 1.5.0 - Gradient fills (draw:gradient) read and written
 // Version: 1.4.0 - Drawn shapes: draw:rect, ellipse, line, path, polygon, polyline, custom-shape
 //                  and g read and written; a text frame's height and its words' vertical place
@@ -22,6 +25,7 @@
 #include "UltraCanvasTextUtils.h"
 
 #include "tinyxml2.h"
+#include "miniz.h"
 
 #include <algorithm>
 #include <cmath>
@@ -421,7 +425,7 @@ private:
         std::string fill, fillColor, backgroundColor, border, stroke, strokeColor, strokeWidth, padding, minHeight;
         // A drawn shape's line ends and dash, and where its words sit.
         std::string strokeDash, markerStart, markerEnd, textAreaVertical, paddingLeft;
-        std::string fillGradientName;
+        std::string fillGradientName, fillHatchName, fillHatchSolid, fillImageName, repeat;
     };
     std::map<std::string, GraphicPlacement> graphicStyles_;
     GraphicPlacement defaultGraphic_;                          // style:default-style family="graphic"
@@ -618,8 +622,73 @@ private:
         float centerX = 0.5f, centerY = 0.5f;
     };
     std::map<std::string, OdfGradient> gradients_;
+    // draw:hatch definitions: lines, single or crossed, as the nearest of
+    // Word's patterns, with their colour.
+    struct OdfHatch {
+        std::string pattern;
+        std::string color;
+    };
+    std::map<std::string, OdfHatch> hatches_;
+    // draw:fill-image: its picture's href, or the picture itself inline
+    // (office:binary-data, as a pattern's tile is written); loaded once.
+    struct OdfFillImage {
+        std::string href, base64;
+        int mediaIndex = -2;                                   // -2 = not loaded yet
+    };
+    std::map<std::string, OdfFillImage> fillImages_;
+    int FillImageMedia(OdfFillImage& image) {
+        if (image.mediaIndex != -2) return image.mediaIndex;
+        image.mediaIndex = -1;
+        if (!image.href.empty()) {
+            image.mediaIndex = LoadPicture(image.href);
+        } else if (!image.base64.empty()) {
+            std::vector<uint8_t> bytes = Base64Decode(image.base64);
+            const bool png = bytes.size() > 4 && bytes[0] == 0x89 && bytes[1] == 'P';
+            const bool jpeg = bytes.size() > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8;
+            const bool bmp = bytes.size() > 2 && bytes[0] == 'B' && bytes[1] == 'M';
+            if (png || jpeg || bmp) {
+                const std::string name = "fill" + std::to_string(doc_->media.size() + 1) + (png ? ".png" : jpeg ? ".jpg" : ".bmp");
+                image.mediaIndex = doc_->AddMedia(name, UCRichDocument::MimeTypeForImageName(name), std::move(bytes));
+            }
+        }
+        return image.mediaIndex;
+    }
     void CollectGradients(tinyxml2::XMLElement* container) {
         if (!container) return;
+        for (auto* element = container->FirstChildElement("draw:fill-image"); element;
+             element = element->NextSiblingElement("draw:fill-image")) {
+            OdfFillImage image;
+            image.href = Attr(element, "xlink:href");
+            if (auto* data = element->FirstChildElement("office:binary-data")) {
+                image.base64 = data->GetText() ? data->GetText() : "";
+            }
+            fillImages_[Attr(element, "draw:name")] = std::move(image);
+        }
+        for (auto* element = container->FirstChildElement("draw:hatch"); element;
+             element = element->NextSiblingElement("draw:hatch")) {
+            // draw:rotation: tenths of a degree, or with a unit; anticlockwise.
+            const std::string rotationText = Attr(element, "draw:rotation");
+            double rotation = 0.0;
+            const size_t ends = WordFormatInternal::ReadNumberAt(rotationText, 0, rotation);
+            if (rotationText.substr(ends).find("deg") == std::string::npos) rotation /= 10.0;
+            rotation = std::fmod(rotation, 180.0);
+            if (rotation < 0.0) rotation += 180.0;
+            const int nearest = static_cast<int>(std::lround(rotation / 45.0)) % 4;   // 0, 45, 90, 135
+            const std::string style = Attr(element, "draw:style");
+            const float distance = ParseLengthPt(Attr(element, "draw:distance"));
+            const bool close = distance > 0.0f && distance <= 2.5f;
+            OdfHatch hatch;
+            if (style == "double" || style == "triple") {
+                hatch.pattern = nearest % 2 == 0 ? (close ? "smGrid" : "lgGrid") : "diagCross";
+            } else {
+                static const char* kSingle[4][2] = {{"horz", "ltHorz"}, {"upDiag", "ltUpDiag"},
+                                                    {"vert", "ltVert"}, {"dnDiag", "ltDnDiag"}};
+                hatch.pattern = kSingle[nearest][close ? 1 : 0];
+            }
+            hatch.color = Attr(element, "draw:color");
+            if (hatch.color.size() != 7) hatch.color = "#000000";
+            hatches_[Attr(element, "draw:name")] = std::move(hatch);
+        }
         for (auto* element = container->FirstChildElement("draw:gradient"); element;
              element = element->NextSiblingElement("draw:gradient")) {
             const std::string kind = Attr(element, "draw:style");
@@ -835,6 +904,10 @@ private:
                 placement.textAreaVertical = Attr(graphic, "draw:textarea-vertical-align");
                 placement.paddingLeft = Attr(graphic, "fo:padding-left");
                 placement.fillGradientName = Attr(graphic, "draw:fill-gradient-name");
+                placement.fillHatchName = Attr(graphic, "draw:fill-hatch-name");
+                placement.fillHatchSolid = Attr(graphic, "draw:fill-hatch-solid");
+                placement.fillImageName = Attr(graphic, "draw:fill-image-name");
+                placement.repeat = Attr(graphic, "style:repeat");
                 if (!name.empty()) graphicStyles_[name] = placement;
             }
             if (auto* cp = style->FirstChildElement("style:table-column-properties")) {
@@ -1499,7 +1572,7 @@ private:
 
     // A shape's fill, line and words' place from its graphic style.
     void ReadShapeStyle(tinyxml2::XMLElement* element, RichShape& shape, float* padding,
-                        RichShape::TextAnchor* anchor) const {
+                        RichShape::TextAnchor* anchor) {
         const std::string style = Attr(element, "draw:style-name");
         auto look = [&](std::string GraphicPlacement::*field) { return ShapeAttribute(style, field); };
         const std::string fill = look(&GraphicPlacement::fill);
@@ -1507,6 +1580,20 @@ private:
             std::string colour = look(&GraphicPlacement::fillColor);
             if (colour.empty() && (fill == "solid" || fill.empty())) colour = "#729FCF";   // Writer's own default
             if (fill == "solid" || fill.empty() || fill == "gradient" || fill == "hatch") shape.fillColor = colour;
+            // A bitmap fill: its picture, repeated (Writer's default) or stretched.
+            auto image = fill == "bitmap" ? fillImages_.find(look(&GraphicPlacement::fillImageName)) : fillImages_.end();
+            if (image != fillImages_.end()) {
+                shape.fillMediaIndex = FillImageMedia(image->second);
+                shape.fillPictureTiled = look(&GraphicPlacement::repeat) != "stretch";
+            }
+            auto hatch = fill == "hatch" ? hatches_.find(look(&GraphicPlacement::fillHatchName)) : hatches_.end();
+            if (hatch != hatches_.end()) {
+                // Lines in the hatch's colour, over the fill colour when the
+                // hatch is solid.
+                shape.fillPattern = hatch->second.pattern;
+                shape.patternBackColor = look(&GraphicPlacement::fillHatchSolid) == "true" ? colour : "";
+                shape.fillColor = hatch->second.color;
+            }
             auto gradient = fill == "gradient" ? gradients_.find(look(&GraphicPlacement::fillGradientName)) : gradients_.end();
             if (gradient != gradients_.end()) {
                 shape.gradientStops = gradient->second.stops;
@@ -2716,9 +2803,13 @@ private:
     // graphic-properties attributes.
     std::string ShapeLookAttributes(const RichShape& shape, float padding, RichShape::TextAnchor anchor) {
         std::string look;
-        if (shape.fillColor.empty() || !shape.IsClosed()) look += " draw:fill=\"none\"";
+        if (shape.HasPictureFill() && shape.IsClosed() && shape.fillMediaIndex < static_cast<int>(doc_->media.size())) {
+            look += " draw:fill=\"bitmap\" draw:fill-image-name=\"" + FillImageName(shape.fillMediaIndex)
+                  + "\" style:repeat=\"" + (shape.fillPictureTiled ? "repeat" : "stretch") + "\"";
+        } else if (shape.fillColor.empty() || !shape.IsClosed()) look += " draw:fill=\"none\"";
         else if (shape.HasGradient()) look += " draw:fill=\"gradient\" draw:fill-gradient-name=\"" + GradientName(shape)
                                            + "\" draw:fill-color=\"" + EscapeXml(shape.fillColor) + "\"";
+        else if (shape.HasPattern()) look += PatternFill(shape);
         else look += " draw:fill=\"solid\" draw:fill-color=\"" + EscapeXml(shape.fillColor) + "\"";
         if (shape.lineColor.empty()) {
             look += " draw:stroke=\"none\"";
@@ -2772,6 +2863,112 @@ private:
                               + "\" draw:start-intensity=\"100%\" draw:end-intensity=\"100%\" draw:angle=\""
                               + std::to_string(degrees) + "deg\" draw:border=\"0%\"/>\n";
         return name;
+    }
+
+    // A picture fill's draw:fill-image, defined once per picture in office:styles.
+    std::map<int, std::string> fillImageNames_;
+    std::string FillImageName(int mediaIndex) {
+        auto found = fillImageNames_.find(mediaIndex);
+        if (found != fillImageNames_.end()) return found->second;
+        const std::string name = "UC_Fill_" + std::to_string(fillImageNames_.size() + 1);
+        fillImageNames_[mediaIndex] = name;
+        gradientDefinitions_ += "<draw:fill-image draw:name=\"" + name + "\" xlink:href=\""
+                              + PictureHref(static_cast<size_t>(mediaIndex))
+                              + "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>\n";
+        return name;
+    }
+
+    // A pattern fill: ODF hatches its lines (draw:hatch, defined once in
+    // office:styles); a pattern of dots or squares, which no hatch draws,
+    // becomes the colour it looks like from afar.
+    std::map<std::string, std::string> hatchNames_;
+    std::string PatternFill(const RichShape& shape) {
+        const std::string p = RichShape::NearestPresetPattern(shape.fillPattern);
+        auto has = [&](const char* part) { return p.find(part) != std::string::npos; };
+        std::string style = "single";
+        int rotation = -1;                                    // degrees, anticlockwise
+        if (has("Horz") || p == "horz") rotation = 0;
+        else if (has("Vert") || p == "vert") rotation = 90;
+        else if (has("UpDiag") || p == "upDiag") rotation = 45;
+        else if (has("DnDiag") || p == "dnDiag") rotation = 135;
+        else if (p == "cross" || p == "smGrid" || p == "lgGrid" || p == "dotGrid") { style = "double"; rotation = 0; }
+        else if (p == "diagCross") { style = "double"; rotation = 45; }
+        const std::string back = shape.patternBackColor;
+        if (rotation < 0) {
+            // Dots, checks, bricks: no hatch draws them, so the 8 x 8 tile
+            // itself, a picture held in the style, repeated (a 96 DPI PNG
+            // with its background left clear when it has none).
+            const std::string tile = PatternTilePng(shape);
+            if (!tile.empty()) {
+                const std::string key = "tile|" + shape.fillPattern + "|" + shape.fillColor + "|" + back;
+                auto found = hatchNames_.find(key);
+                std::string name;
+                if (found != hatchNames_.end()) {
+                    name = found->second;
+                } else {
+                    name = "UC_Pattern_" + std::to_string(hatchNames_.size() + 1);
+                    hatchNames_[key] = name;
+                    gradientDefinitions_ += "<draw:fill-image draw:name=\"" + name + "\"><office:binary-data>" + tile
+                                          + "</office:binary-data></draw:fill-image>\n";
+                }
+                return " draw:fill=\"bitmap\" draw:fill-image-name=\"" + name + "\" style:repeat=\"repeat\"";
+            }
+            // The tile's share of foreground, over its background.
+            int on = 0;
+            for (int i = 0; i < 64; ++i) on += RichShape::PatternBit(shape.fillPattern, i % 8, i / 8) ? 1 : 0;
+            const float share = static_cast<float>(on) / 64.0f;
+            auto channel = [](const std::string& hex, size_t at) {
+                return hex.size() == 7 ? std::strtol(hex.substr(at, 2).c_str(), nullptr, 16) : 255L;
+            };
+            char mixed[8];
+            std::snprintf(mixed, sizeof mixed, "#%02X%02X%02X",
+                          static_cast<int>(std::lround(channel(shape.fillColor, 1) * share + channel(back, 1) * (1.0f - share))),
+                          static_cast<int>(std::lround(channel(shape.fillColor, 3) * share + channel(back, 3) * (1.0f - share))),
+                          static_cast<int>(std::lround(channel(shape.fillColor, 5) * share + channel(back, 5) * (1.0f - share))));
+            return std::string(" draw:fill=\"solid\" draw:fill-color=\"") + mixed + "\"";
+        }
+        // Light and narrow patterns draw their lines closer together.
+        const float distance = has("nar") ? 1.5f : (has("lt") || has("dk") || p == "smGrid" || p == "dotGrid") ? 3.0f : 6.0f;
+        const std::string key = style + "|" + std::to_string(rotation) + "|" + shape.fillColor + "|" + Pt(distance);
+        auto found = hatchNames_.find(key);
+        std::string name;
+        if (found != hatchNames_.end()) {
+            name = found->second;
+        } else {
+            name = "UC_Hatch_" + std::to_string(hatchNames_.size() + 1);
+            hatchNames_[key] = name;
+            gradientDefinitions_ += "<draw:hatch draw:name=\"" + name + "\" draw:style=\"" + style + "\" draw:color=\""
+                                  + EscapeXml(shape.fillColor) + "\" draw:distance=\"" + Pt(distance)
+                                  + "\" draw:rotation=\"" + std::to_string(rotation * 10) + "\"/>\n";
+        }
+        std::string out = " draw:fill=\"hatch\" draw:fill-hatch-name=\"" + name + "\"";
+        if (!back.empty()) out += " draw:fill-hatch-solid=\"true\" draw:fill-color=\"" + EscapeXml(back) + "\"";
+        else out += " draw:fill-hatch-solid=\"false\"";
+        return out;
+    }
+
+    // A pattern's 8 x 8 tile as a PNG, in base64: the foreground's pixels,
+    // the background's (clear when there is none).
+    static std::string PatternTilePng(const RichShape& shape) {
+        auto channel = [](const std::string& hex, size_t at) {
+            return static_cast<uint8_t>(hex.size() == 7 ? std::strtol(hex.substr(at, 2).c_str(), nullptr, 16) : 0L);
+        };
+        std::vector<uint8_t> pixels(8 * 8 * 4);
+        for (int i = 0; i < 64; ++i) {
+            const bool fore = RichShape::PatternBit(shape.fillPattern, i % 8, i / 8);
+            const std::string& colour = fore ? shape.fillColor : shape.patternBackColor;
+            uint8_t* px = &pixels[static_cast<size_t>(i) * 4];
+            px[0] = channel(colour, 1);
+            px[1] = channel(colour, 3);
+            px[2] = channel(colour, 5);
+            px[3] = (!fore && shape.patternBackColor.empty()) ? 0 : 255;
+        }
+        size_t length = 0;
+        void* png = tdefl_write_image_to_png_file_in_memory(pixels.data(), 8, 8, 4, &length);
+        if (!png) return "";
+        std::vector<uint8_t> bytes(static_cast<uint8_t*>(png), static_cast<uint8_t*>(png) + length);
+        mz_free(png);
+        return Base64Encode(bytes, false);
     }
 
     // A group member's style: its look alone.

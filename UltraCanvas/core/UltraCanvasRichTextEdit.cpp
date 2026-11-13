@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.8.0 - pattern and picture fills; a header's or footer's floats are placed, picked up,
+//                  moved and resized while it is edited (they used to vanish)
 // Version: 1.7.0 - floating frames and drawings are selected, moved by dragging (their new
 //                  offsets kept) and resized - a drawing's shapes scale with it; gradient fills
 // Version: 1.6.0 - drawn shapes in frames (RichTextFrame::shapes): lines, rectangles,
@@ -971,20 +973,21 @@ void UltraCanvasRichTextEdit::PlaceFurnitureFloats(IRenderContext* ctx, PageFram
                                                    int pageNumber, int pageCount) {
     frame.furnitureFloats.clear();
     const PageFrame* page = pageView ? &frame : nullptr;
-    auto place = [&](const std::shared_ptr<FurnitureLayout>& furniture, float top) {
+    auto place = [&](const std::shared_ptr<FurnitureLayout>& furniture, float top, bool footer) {
         if (!furniture) return;
         for (const BlockLayout& bl : furniture->layouts) {
             for (const BlockLayout::InlineImage& image : bl.inlineImages) {
                 if (!image.floating) continue;
                 PlacedFloat placed = PlaceFloat(ctx, image, top + bl.bounds.y, bl.bounds.height, page,
                                                 pageNumber, pageCount);
-                placed.blockIndex = -1;           // not the body's: never selected, never in placedFloats
+                placed.blockIndex = -1;           // not the body's: picked up only while its part is edited
+                placed.inFooter = footer;
                 frame.furnitureFloats.push_back(std::move(placed));
             }
         }
     };
-    place(frame.header, pageView ? frame.headerTop : 0.0f);
-    place(frame.footer, frame.footerTop);
+    place(frame.header, pageView ? frame.headerTop : 0.0f, false);
+    place(frame.footer, frame.footerTop, true);
 }
 
 float UltraCanvasRichTextEdit::FlowAroundFloats(IRenderContext* ctx, int index, float top,
@@ -1215,6 +1218,7 @@ static void DrawArrowhead(IRenderContext* ctx, double fromX, double fromY, doubl
 void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& shape,
                                         double originX, double originY, int depth) {
     if (depth > 8) return;
+    const UCRichDocument& document = *editor.GetDocument();
     const double x = originX + Px(shape.xPt), y = originY + Px(shape.yPt);
     const double w = Px(shape.widthPt), h = Px(shape.heightPt);
     const double cx = x + w * 0.5, cy = y + h * 0.5;
@@ -1229,7 +1233,6 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
     if (shape.kind == RichShape::Kind::Group) {
         for (const RichShape& member : shape.children) DrawShape(ctx, member, x, y, depth + 1);
     } else {
-        const UCRichDocument& document = *editor.GetDocument();
         if (shape.mediaIndex >= 0 && shape.mediaIndex < static_cast<int>(document.media.size())) {
             // A picture in a group.
             const RichDocMedia& media = document.media[static_cast<size_t>(shape.mediaIndex)];
@@ -1262,6 +1265,74 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
             }
             if (pattern) ctx->SetFillPaint(pattern);
             else ctx->SetFillPaint(ParseHexColor(shape.gradientStops.front().color, Colors::Transparent));
+            ctx->FillPathPreserve();
+        } else if (shape.IsClosed() && shape.HasPictureFill() && shape.mediaIndex < 0
+                   && shape.fillMediaIndex < static_cast<int>(document.media.size())) {
+            // A picture fill: the picture repeated at its own size (a 96 DPI
+            // pixel is a pixel of the page), or stretched over the box, inside
+            // the outline.
+            const RichDocMedia& media = document.media[static_cast<size_t>(shape.fillMediaIndex)];
+            std::shared_ptr<UCImage>& image = shapeImages[{media.data.data(), media.data.size()}];
+            if (!image) image = UCImage::LoadFromMemory(media.data);
+            if (image && image->GetWidth() > 0 && image->GetHeight() > 0 && w > 0.0 && h > 0.0) {
+                ctx->PushState();
+                ctx->ClipPath();
+                std::shared_ptr<IPaintPattern> pattern;
+                if (shape.fillPictureTiled) {
+                    auto pixmap = image->GetPixmap(image->GetWidth(), image->GetHeight(), ImageFitMode::Fill,
+                                                   ctx->GetDeviceScale());
+                    if (pixmap) {
+                        pattern = ctx->CreatePixmapPattern(*pixmap, Rect2Dd(x, y, image->GetWidth(), image->GetHeight()),
+                                                           PatternExtend::Repeat);
+                    }
+                }
+                if (pattern) {
+                    ctx->SetFillPaint(pattern);
+                    ctx->FillRectangle(Rect2Dd(x, y, w, h));
+                } else {
+                    ctx->DrawImage(*image, Rect2Dd(x, y, w, h), ImageFitMode::Fill);
+                }
+                ctx->PopState();
+                TraceShape(ctx, shape, x, y, w, h);      // the clip took the outline
+            } else if (!shape.fillColor.empty()) {
+                ctx->SetFillPaint(ParseHexColor(shape.fillColor, Colors::Transparent));
+                ctx->FillPathPreserve();
+            }
+        } else if (shape.IsClosed() && shape.HasPattern() && !shape.fillColor.empty() && shape.mediaIndex < 0) {
+            // A pattern: its 8 x 8 tile, one pixel per dot at 100%, repeated
+            // from the box's corner.
+            const Color fore = ParseHexColor(shape.fillColor, Colors::Black);
+            const Color back = shape.patternBackColor.empty() ? Colors::Transparent
+                                                              : ParseHexColor(shape.patternBackColor, Colors::White);
+            auto argb = [](const Color& c) {
+                return (static_cast<uint32_t>(c.a) << 24) | (static_cast<uint32_t>(c.r) << 16)
+                     | (static_cast<uint32_t>(c.g) << 8) | static_cast<uint32_t>(c.b);
+            };
+            std::shared_ptr<IPaintPattern> pattern;
+            UCPixmap tile;
+            if (tile.Init(8, 8)) {
+                for (int ty = 0; ty < 8; ++ty) {
+                    for (int tx = 0; tx < 8; ++tx) {
+                        tile.SetPixel(tx, ty, argb(RichShape::PatternBit(shape.fillPattern, tx, ty) ? fore : back));
+                    }
+                }
+                tile.MarkDirty();
+                pattern = ctx->CreatePixmapPattern(tile, Rect2Dd(x, y, Px(6.0f), Px(6.0f)), PatternExtend::Repeat);
+            }
+            if (pattern) {
+                ctx->SetFillPaint(pattern);
+            } else {
+                // No pattern support: the colour it looks like from afar.
+                int on = 0;
+                for (int i = 0; i < 64; ++i) on += RichShape::PatternBit(shape.fillPattern, i % 8, i / 8) ? 1 : 0;
+                const float share = static_cast<float>(on) / 64.0f;
+                auto mix = [&](uint8_t a, uint8_t b) {
+                    return static_cast<uint8_t>(std::lround(static_cast<float>(a) * share + static_cast<float>(b) * (1.0f - share)));
+                };
+                ctx->SetFillPaint(shape.patternBackColor.empty()
+                                  ? Color(fore.r, fore.g, fore.b, static_cast<uint8_t>(std::lround(255.0f * share)))
+                                  : Color(mix(fore.r, back.r), mix(fore.g, back.g), mix(fore.b, back.b), 255));
+            }
             ctx->FillPathPreserve();
         } else if (shape.IsClosed() && !shape.fillColor.empty() && shape.mediaIndex < 0) {
             ctx->SetFillPaint(ParseHexColor(shape.fillColor, Colors::Transparent));
@@ -1300,7 +1371,6 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
     }
     ctx->PopState();
     // A group member's words, in its box.
-    const UCRichDocument& document = *editor.GetDocument();
     if (shape.textFrame >= 0 && shape.textFrame < static_cast<int>(document.frames.size()) && w > 4.0 && h > 4.0) {
         const float inset = Px(std::max(0.0f, shape.textPaddingPt));
         auto content = LayoutTextFrame(ctx, shape.textFrame, std::max(8.0f, static_cast<float>(w) - 2.0f * inset));
@@ -2830,8 +2900,9 @@ void UltraCanvasRichTextEdit::RenderPages(IRenderContext* ctx) {
         // header's text, the rest over it - all of them under the body's.
         const float viewTopFloat = scrollOffset, viewBottomFloat = scrollOffset + visibleArea.height;
         auto floats = [&](bool behind) {
-            if (editedPage) return;                // the part being edited draws its own
             for (const PlacedFloat& placed : frame.furnitureFloats) {
+                // The part being edited draws its own (and they can be picked up).
+                if (editedPage && placed.inFooter == furnitureEdit->footer) continue;
                 if ((placed.wrap == RichTextRun::ImageWrap::BehindText) != behind) continue;
                 if (placed.rect.y + placed.rect.height < viewTopFloat || placed.rect.y > viewBottomFloat) continue;
                 DrawPlacedFloat(ctx, placed);
@@ -4383,11 +4454,20 @@ bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
 
     // While a header or footer is edited, a click outside it leaves it and
     // lands in the body as any click would.
+    // A click on one of its floats (a logo placed from the page, away from
+    // its lines) stays in it.
     if (furnitureEdit && !blockLayouts.empty()) {
         const float contentY = ToDocument(event.pointer).y - visibleArea.y + scrollOffset;
         const float top = blockLayouts.front().bounds.y - 8.0f;
         const float bottom = blockLayouts.back().bounds.y + blockLayouts.back().bounds.height + 8.0f;
-        if (contentY < top || contentY > bottom) FinishHeaderFooterEditing();
+        RichDocPosition object;
+        Rect2Df objectRect;
+        const bool onFloat = ImageAtPoint(ToDocument(event.pointer), object, objectRect) && PlacedFloatAt(object);
+        bool onHandle = false;
+        if (HasSelectedImage() && ImageRectFor(selectedImage, objectRect)) {
+            onHandle = ImageHandleAt(objectRect, ToDocument(event.pointer)) >= 0;
+        }
+        if ((contentY < top || contentY > bottom) && !onFloat && !onHandle) FinishHeaderFooterEditing();
     }
 
     if (event.button == UCMouseButton::Right) {
@@ -5391,6 +5471,9 @@ void UltraCanvasRichTextEdit::SyncFurnitureToDocument() {
     const bool empty = edited->blocks.size() == 1 && edited->blocks[0].type == RichBlockType::Paragraph
                        && UCRichDocumentEditor::RunsText(edited->blocks[0].runs).empty();
     target = empty ? std::vector<RichDocBlock>{} : edited->blocks;
+    // Its frames carry what resizing a drawing recorded (the size its shapes
+    // were drawn for); the edited copy began as the document's own.
+    if (edited->frames.size() == body->frames.size()) body->frames = edited->frames;
     // Pictures inserted into it join the document's media.
     for (size_t i = body->media.size(); i < edited->media.size(); i++) body->media.push_back(edited->media[i]);
     furnitureEdit->bodyEditor.SetModified(true);
@@ -5458,6 +5541,24 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
         bl.bounds.x = bl.textLeft;
         bl.bounds.y = y;
         y += bl.bounds.height + GapAfterBlock(i);
+    }
+    // Its floating pictures, frames and drawings: placed on its page as when
+    // the page is drawn, but as its own, so a click picks one up, a drag
+    // moves it and its handles resize it.
+    if (furnitureEdit->noteIndex < 0 && !pages.empty()) {
+        const int pageIndex = std::clamp(furnitureEdit->pageIndex, 0, static_cast<int>(pages.size()) - 1);
+        const PageFrame* page = pageView ? &pages[static_cast<size_t>(pageIndex)] : nullptr;
+        for (int i = 0; i < count; i++) {
+            const BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
+            for (const BlockLayout::InlineImage& image : bl.inlineImages) {
+                if (!image.floating) continue;
+                PlacedFloat placed = PlaceFloat(ctx, image, bl.bounds.y, bl.bounds.height, page, pageIndex + 1,
+                                                static_cast<int>(pages.size()));
+                placed.blockIndex = i;
+                placed.inFooter = furnitureEdit->footer;
+                placedFloats.push_back(std::move(placed));
+            }
+        }
     }
     return std::max(furnitureEdit->bodyContentHeight, y);
 }
