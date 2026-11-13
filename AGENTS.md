@@ -397,6 +397,14 @@ recognises it; and no leg's `restore-keys` prefix may be the start of another
 leg's key. `vcpkg-macos-15-` once matched `vcpkg-macos-15-intel-...`, and the
 arm64 leg restored x86_64 libraries and rebuilt them all; name a leg by its
 runner and its architecture (`vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-`).
+`scripts/check_cache_keys.py` enforces the first rule in CI (`cache-keys.yml`):
+a key ending in a commit hash or carrying `github.run_number` is never
+pruned, the combined `actions/cache` with a run-numbered key saves on every
+run of every branch (restore on every run, save on `main` alone), and a
+workflow that saves run-numbered caches must be on `cache-prune.yml`'s list.
+A release build saves its ccache only when it compiled something, and merges
+that land within minutes of each other are folded and released together
+(`changelog-fold.yml` waits for `main` to go quiet first).
 A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
 ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
 its runner is five to ten times slower and the two macOS rows share one code
