@@ -551,7 +551,8 @@ what it is placed from - its paragraph, the page or the page's text area -
 by `UCRichDocumentEditor::SetFloatOffset`, one undo step, and both writers
 save the new place. A resized drawing keeps the size its shapes were drawn for
 (`RichTextFrame::drawingWidthPt` / `drawingHeightPt`) and its shapes scale to
-the new one. Frames and pictures in headers and footers are not picked up.
+the new one. Frames and pictures in a header or footer are picked up, moved
+and resized the same way while that header or footer is being edited.
 
 ```cpp
 // Move the floating object whose placeholder is at {block, offset}.
@@ -667,7 +668,11 @@ words are a frame of their own (`RichShape::textFrame`, with `shapeText`
 set), and a group member with a `mediaIndex` is a picture. A shape with two
 or more `gradientStops` is filled with a gradient: linear at
 `gradientAngleDeg` (clockwise from left-to-right), or radial from
-`gradientCenterX` / `gradientCenterY`. A drawing with no
+`gradientCenterX` / `gradientCenterY`. A `fillPattern` (Word's preset names
+- `"pct50"`, `"dnDiag"`, `"smCheck"` ... - or an 8 x 8 tile of its own,
+`"bits:"` and 16 hex digits) draws in `fillColor` on `patternBackColor`
+(none when empty); a `fillMediaIndex` fills the shape with a picture,
+repeated at its own size or stretched (`fillPictureTiled`). A drawing with no
 words is exactly as tall as it was drawn, so a rule (a line with no height)
 takes no room. `RichShape::ApplyPreset` takes Word's outline names
 (`"star5"`, `"rightArrow"`, `"flowChartDecision"`, ...). ODT, DOCX (DrawingML

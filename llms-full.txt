@@ -1027,6 +1027,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Used by `UltraCanvasFilerWidget` under Display > File icons > Host OS icons.
   See `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`.
 
+- **UltraCanvasFilePreviews** (`UltraCanvasFilePreviews.h`) — the registry of
+  file preview providers: a format registers, under its extensions, a
+  thumbnail (`RenderThumbnail`, at a `FileThumbnailRequest` size) and/or a
+  preview document (`ReadDocument`, the start of its text as a
+  `UCRichDocument`); callers ask `RenderFileThumbnailFromProvider`,
+  `RenderFileThumbnailAs`, `ReadPreviewDocument` and `CanRenderFileThumbnail` /
+  `CanReadPreviewDocument`. Any number of providers, the latest registration
+  of an extension winning; thread-safe for the Filer's thumbnail workers. The
+  formats compiled in register on the first query
+  (`RegisterBuiltinFilePreviewProviders`, `core/UltraCanvasFilePreviewsBuiltin.cpp`):
+  PDF first page, EPUB / Mobipocket covers, video poster frames, Word-processing
+  documents and PowerPoint decks. `UltraCanvasFilerWidget` reaches those
+  formats only through it. The single-provider seams
+  `UltraCanvasVectorPreview.h` and `UltraCanvasModelPreview.h` predate it. See
+  `Docs/UltraCanvas/UltraCanvasFilePreviews.md`; tests in
+  `Tests/FilePreviewsTest.cpp`.
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
   document rather than as something to render text with: its name records are
@@ -31176,6 +31192,34 @@ on Windows the module needs the shared core). The table:
 | `Album` | `album` | `ultracanvas-widget-album` | UltraVideo, DemoApp |
 | `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
 | `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
+| `MediaViewer` | `media-viewer` | `ultracanvas-widget-media-viewer` (shared core only) | UltraViewer, UltraFiler, UltraMail, EmailCleaner, ChatCube, UltraClipboard, UltraSnip, DemoApp |
+
+**Static or shared core.** The shipping configuration is a shared core
+(`ULTRACANVAS_BUILD_SHARED`, on by default whenever DemoApp is built): every
+module links `libUltraCanvas` and finds the core there. With a static core a
+module resolves the core from the host executable instead, so the host must
+keep every core object the module uses; the anchors below do that, at the cost
+of keeping those objects in the host. That is cheap for a widget that needs one
+to five of them, and pointless for the MediaViewer, which reaches about 45 (a
+view for every kind of file) and UltraNet and UltraCrypt besides: its module is
+built against a shared core only (`UC_WIDGET_<key>_SHARED_CORE_ONLY`), and a
+static build has to compile it in.
+
+**Every widget exists in one form.** A widget left out of `ULTRACANVAS_WIDGETS`
+must be buildable as a module, or the configure stops, naming it and the ways
+out. Three things rule a module out: no runtime modules in the build
+(WebAssembly, Android, or `ULTRACANVAS_WIDGET_RUNTIME_MODULES=OFF`), a static
+core on Windows (a module there links the core DLL), and a static core for a
+shared-core-only widget. Before, the first two warned or skipped and the build
+went on without the widget, so an application asking for it by name found out
+only at run time.
+
+Charts follow the same rule (`ULTRACANVAS_CHARTS`), with one difference: their
+selection is empty by default, so on a platform that cannot load a module at
+all (WebAssembly, Android) a chart left out is compiled in instead - the
+compile-time fallback of the chart engine proposal (§12.11). Turning the chart
+modules off, or a static core on Windows, still stops the configure for a chart
+left out.
 
 ```cpp
 // At startup - registers the widgets compiled in. In a static core it also
@@ -31192,7 +31236,9 @@ leaves them out, with the applications that use them:
 
 ```
 cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF \
-      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF
+      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF \
+      -DBUILD_ULTRAFILER_APP=OFF -DBUILD_ULTRAVIEWER_APP=OFF -DBUILD_ULTRAMAIL=OFF \
+      -DBUILD_EMAILCLEANER=OFF -DBUILD_CHATCUBE=OFF -DBUILD_ULTRACLIPBOARD=OFF -DBUILD_ULTRASNIP=OFF
 ```
 
 An application that uses a widget's typed API (its class, its `Create…`
@@ -31203,11 +31249,17 @@ when one it builds would not link. A host that loads widget modules from a
 static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
 modules' hosts.
 
+A widget module is compiled with the core library's own include paths and
+compile definitions (taken from its target), so a header whose classes change
+with a feature switch - `ULTRACANVAS_PLUGIN_PDF`, the network or video flags -
+means the same on both sides of the module boundary.
+
 `ElementModulesTest` creates every selectable widget, and the chart of the
 chart module, by name in whichever form the build has them. Loading a module
 also checks that it carries the framework headers id the loader insists on.
 The *Element modules* workflow (`.github/workflows/element-modules.yml`)
-builds this lean configuration on every pull request that touches the
+builds this lean configuration - once with a static core and once with a
+shared one - on every pull request that touches the
 framework, runs `ElementModulesTest`, `UltraCanvasThemeTest` and
 `VectorEditTest` against it, and checks that the configure refuses an
 application whose widgets are left out. `build.yml` compiles every widget
@@ -31225,6 +31277,9 @@ in, so this is the only CI row that builds the modules.
    (with the headers in `_ANCHOR_INCLUDES`): one expression for each core
    object file the module needs that a host with a UI may not link anyway - a
    function, a member function or `&typeid(Class)` defined there.
+   A widget that needs too much of the core for that sets
+   `_SHARED_CORE_ONLY ON` instead, and its module is built with a shared core
+   only.
 4. Add the widget to `ElementModulesTest`'s list in `Tests/CMakeLists.txt`
    and build with the widget left out. A missing anchor fails the test with
    the undefined symbol; `nm` on the archive names its object file.
@@ -32868,6 +32923,145 @@ nor existence, that a missing file, a directory and an empty path answer
 On a platform without a backend the detection checks are skipped, not failed.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFilePreviews.md
+==============================================================================
+
+# UltraCanvasFilePreviews
+
+What a file looks like, from whoever reads its format: a registry of **file
+preview providers**. A format registers, under its extensions, a picture of a
+file (a thumbnail) and/or the start of its text (a preview document); a caller
+asks the registry and never names the format.
+
+- Header: `include/UltraCanvasFilePreviews.h`
+- Registry: `core/UltraCanvasFilePreviews.cpp`
+- Built-in providers: `core/UltraCanvasFilePreviewsBuiltin.cpp`
+- Tests: `Tests/FilePreviewsTest.cpp` (`ctest -R FilePreviewsTest`)
+
+**Version:** 1.0.0
+**Last Modified:** 2026-11-10
+**Author:** UltraCanvas Framework
+**Namespace:** `UltraCanvas`
+
+## Contents
+
+- [Why it exists](#why-it-exists)
+- [Asking for a preview](#asking-for-a-preview)
+- [Registering a provider](#registering-a-provider)
+- [The built-in providers](#the-built-in-providers)
+- [Threads](#threads)
+- [Related](#related)
+
+## Why it exists
+
+`UltraCanvasFilerWidget` used to call every format it previews by name: the PDF
+engine for a first page, the e-book engines for a cover, the video backend for
+a poster frame, the Word and PowerPoint readers for a page of text. The file
+display depended on each of them, and a format could not preview without the
+Filer knowing it. Now a format registers a provider and the Filer asks the
+registry, so a format can move into a runtime module and take its previews
+with it.
+
+`UltraCanvasVectorPreview.h` and `UltraCanvasModelPreview.h` do the same for
+one family each, with a single provider; this registry holds any number.
+
+## Asking for a preview
+
+```cpp
+#include "UltraCanvasFilePreviews.h"
+#include "UltraCanvasRichDocument.h"
+
+FileThumbnailRequest request;
+request.width = 96;              // logical pixels
+request.height = 72;
+request.fit = ImageFitMode::Contain;
+request.scale = 2.0f;            // device pixels per logical pixel
+
+if (CanRenderFileThumbnail("/home/user/Report.pdf")) {
+    std::shared_ptr<UCPixmap> page = RenderFileThumbnailFromProvider("/home/user/Report.pdf", request);
+}
+
+// A file whose name hides its format: an Illustrator .ai that is a PDF.
+auto drawing = RenderFileThumbnailAs("/home/user/Logo.ai", "pdf", request);
+
+UCRichDocument document;
+if (ReadPreviewDocument("/home/user/Letter.docx", document)) {
+    // document.blocks: the paragraphs and tables, laid out as the caller likes
+}
+
+std::vector<std::string> pictures = FileThumbnailExtensions();   // "epub", "pdf", ...
+std::vector<std::string> texts = PreviewDocumentExtensions();    // "docx", "pptx", ...
+```
+
+An extension may be given with or without its dot and in any case, or as a
+whole path, whose last extension is used. A thumbnail request of no size draws
+nothing. Every query returns null or false when no provider answers, the
+provider is not available in this process (`Available()`), or it cannot read
+the file - a damaged or password-protected one - so the caller shows the
+type's icon.
+
+## Registering a provider
+
+```cpp
+FilePreviewProvider provider;
+provider.name = "my-format";                   // a later registration of this name replaces it
+provider.thumbnailExtensions = {"myf"};
+provider.documentExtensions = {"myf"};
+provider.Available = [] { return true; };      // optional: a backend present at run time
+provider.RenderThumbnail = [](const std::string& path, const FileThumbnailRequest& r) {
+    std::shared_ptr<UCPixmap> pixmap;          // draw the file at r.width x r.height, r.scale
+    (void)path; (void)r;
+    return pixmap;                             // null: no picture of this file
+};
+provider.ReadDocument = [](const std::string& path, UCRichDocument& document) {
+    (void)path; (void)document;                // fill document.blocks
+    return false;                              // false: cannot read this file
+};
+RegisterFilePreviewProvider(std::move(provider));
+```
+
+- Extensions are matched lowercase and without a leading dot; a two-part one
+  such as `fb2.zip` keeps both parts.
+- Of two providers listing one extension, the later registered answers; one
+  not available now is passed over for the next.
+- A provider with no name, or with neither a `RenderThumbnail` and thumbnail
+  extensions nor a `ReadDocument` and document extensions, is ignored.
+- A provider that throws is contained: the query answers null or false.
+- A plugin registers from its init; the framework's own formats register
+  themselves (below), so an application never has to call anything first.
+
+## The built-in providers
+
+`RegisterBuiltinFilePreviewProviders()` registers the formats compiled into the
+framework, once, on the first query:
+
+| Provider | Answers | Extensions |
+|---|---|---|
+| `pdf` | the first page (PDF plugin builds, with an engine) | `pdf` |
+| `ebook-cover` | the cover the book declares | `epub`, `mobi`, `prc`, `azw`, `azw3` |
+| `video-poster` | a frame a short way into the clip | the containers the media codec registry decodes |
+| `word-processing` | the document, the first page's header and footer inline | `odt`, `docx`, `doc`, `tex` |
+| `powerpoint` | each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm` |
+
+The Filer draws its own styling over these: an outline round a PDF page, a
+shaded edge on a book cover.
+
+## Threads
+
+Every function is safe to call from several threads at once, including while
+another thread registers; the Filer's thumbnail workers do. A provider is
+called outside the registry's lock, so it must itself be safe to run
+concurrently - each call opening its own document, as the built-in ones do.
+
+## Related
+
+- `UltraCanvasFilerWidget` (`Docs/UltraCanvas/UltraCanvasFilerWidget.md`) -
+  the tiles, the preview pane and `RenderFileThumbnail`
+- `UltraCanvasVectorPreview.h`, `UltraCanvasModelPreview.h` - the
+  single-provider seams for vector drawings and 3D models
+- `UltraCanvasMediaCodecRegistry.h` - which video containers have a poster frame
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileRemoval.md
 ==============================================================================
 
@@ -33673,7 +33867,10 @@ Needs the VirtualFS module (`ULTRACANVAS_HAS_VIRTUALFS`); without it
 ## Selective previews
 
 A **content preview** is a tile rendered from the file itself instead of the
-generic category glyph. Two independent sets of switches decide what a file
+generic category glyph. The PDF page, the e-book cover, the video poster frame
+and the Word / PowerPoint text come from the formats' preview providers
+([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)); a format registered
+there previews here without the widget knowing it. Two independent sets of switches decide what a file
 may show, and every kind is enabled in both by default:
 
 - **Thumbnails** (`Display > Thumbnails`) — the tile the widget draws.
@@ -51623,6 +51820,19 @@ it is now, not as the cache remembered it. The viewer does not watch the file
 it shows; a host that wants it followed reopens it when the file changes, as
 UltraFiler's preview pane does after a rescan finds the selected file changed.
 
+## As a runtime module
+
+The viewer is in the element registry as `"media-viewer"` (category Widget,
+`MakeMediaViewerDescriptor`). It is a selectable widget: compiled into the
+core by default, or built as the `ultracanvas-widget-media-viewer` runtime
+module when `ULTRACANVAS_WIDGETS` leaves `MediaViewer` out - with a shared
+core (`ULTRACANVAS_BUILD_SHARED`) only, since the viewer reaches some 45 core
+objects that a static host would otherwise have to keep for it. The applications
+that use its classes - UltraViewer, UltraFiler, UltraMail, EmailCleaner,
+ChatCube, UltraClipboard, UltraSnip and DemoApp - need it compiled in. See
+*Widgets as runtime modules* in
+[`UltraCanvasElementPlugins.md`](UltraCanvasElementPlugins.md).
+
 ## Embedding as a preview pane
 
 ```cpp
@@ -65973,7 +66183,8 @@ what it is placed from - its paragraph, the page or the page's text area -
 by `UCRichDocumentEditor::SetFloatOffset`, one undo step, and both writers
 save the new place. A resized drawing keeps the size its shapes were drawn for
 (`RichTextFrame::drawingWidthPt` / `drawingHeightPt`) and its shapes scale to
-the new one. Frames and pictures in headers and footers are not picked up.
+the new one. Frames and pictures in a header or footer are picked up, moved
+and resized the same way while that header or footer is being edited.
 
 ```cpp
 // Move the floating object whose placeholder is at {block, offset}.
@@ -66089,7 +66300,11 @@ words are a frame of their own (`RichShape::textFrame`, with `shapeText`
 set), and a group member with a `mediaIndex` is a picture. A shape with two
 or more `gradientStops` is filled with a gradient: linear at
 `gradientAngleDeg` (clockwise from left-to-right), or radial from
-`gradientCenterX` / `gradientCenterY`. A drawing with no
+`gradientCenterX` / `gradientCenterY`. A `fillPattern` (Word's preset names
+- `"pct50"`, `"dnDiag"`, `"smCheck"` ... - or an 8 x 8 tile of its own,
+`"bits:"` and 16 hex digits) draws in `fillColor` on `patternBackColor`
+(none when empty); a `fillMediaIndex` fills the shape with a picture,
+repeated at its own size or stretched (`fillPictureTiled`). A drawing with no
 words is exactly as tall as it was drawn, so a rule (a line with no height)
 takes no room. `RichShape::ApplyPreset` takes Word's outline names
 (`"star5"`, `"rightArrow"`, `"flowChartDecision"`, ...). ODT, DOCX (DrawingML
@@ -77605,10 +77820,53 @@ for (const std::string& line : lines) {
 }
 ```
 
-Strings do not continue across a real line break, so C's `\`-continued
-strings and Python's triple-quoted strings are still coloured on their first
-line only. Fenced code blocks in Markdown mode are highlighted line by line
-without state.
+`SyntaxTokenizer::Tokenize(text)` does the same over a whole text: it splits it
+at `\n` (or `\r\n`), carries the state from line to line, and puts one
+`TokenType::Newline` token at each break - the tokens the text area colours.
+
+A string ends at its line unless the language lets it run on. Seven switches
+in `SyntaxTokenizationRules` say which strings do:
+
+| Rule | Languages | Example |
+|---|---|---|
+| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, C#, Elixir (`"""`) | a docstring |
+| `multiLineStringDelimiters` (quotes whose strings span lines) | JavaScript / TypeScript, Go (`` ` ``); Shell, Ruby, PHP, Perl (`"`, `'`); Rust (`"`) | a template literal |
+| `stringLineContinuation` (a `\` ends the line) | C, C++, Python, JavaScript / TypeScript | `"abc\` then `def"` |
+| `delimitedRawStrings` (`R"delim( … )delim"`, optional `u8` / `u` / `U` / `L`) | C++ | a raw string ends only at its own `)delim"` |
+| `levelledLongBrackets` (`[[ … ]]`, `[==[ … ]==]`, and after `--` a comment) | Lua | `[==[` ends only at `]==]` |
+| `hashRawStrings` (`r"…"`, `r#"…"#`, `br`, `cr`) | Rust | `r"C:\"` is complete; `r#"say "hi""#` holds quotes |
+| `verbatimStrings` (`@"…"`, `$@"…"`, `@$"…"`) | C# | `@"C:\"` is complete; `""` inside is a quote; spans lines |
+
+A string the language does not let span lines - an unclosed `"` in Java -
+still ends at the line, so a typo colours one line rather than the rest of the
+file.
+
+Letters written directly against a string's opening quote that belong to
+it - `stringPrefixes`: Python's `r`, `b`, `u`, `f` and their pairs (`rb`,
+`fr`, in any case), C and C++'s `L`, `u`, `U`, `u8` - are coloured with the
+string. A prefix never changes where the string ends: in Python a backslash
+keeps a quote from closing even a raw string, so `r"\""` is one string and
+`r"C:\"` is unterminated, as Python reads them.
+
+Block comments are matched before line comments, so a block opener that
+starts with the line-comment marker - Lua's `--[[ … ]]` (at any level,
+`--[==[ … ]==]`), MATLAB's `%{ … %}` - opens the block rather than being read
+as a line comment.
+
+In Markdown mode the lines of a fenced code block (```` ```cpp ````) carry the
+state the same way, with the fence's language: a `/* comment */` over several
+lines is coloured on all of them. The opening fence starts every block empty,
+so a comment left open in one block ends at its closing fence. The raw line
+under the cursor is read with the Markdown rules and starts empty too - it
+never takes a code block's state. Indented (four-space) code blocks are not
+highlighted.
+
+The fence's info string names the language through
+`SyntaxTokenizer::SetLanguageByTag`: its first word, matched against the
+language names in any case (`python`, `C++`), then file extensions (`py`,
+`cpp`, `js`), then common aliases (`golang`, `shell`, `csharp`); `{.rust}`
+works too. A tag that names no known language, such as `foo` or `text`,
+clears the language, and the block is shown plain.
 
 ### Single Selection
 The text area has one cursor and one selection; there is no multi-cursor API.
@@ -83535,6 +83793,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 - [API Reference](#api-reference)
   - [Constructor](#constructor)
   - [Tree Structure Management](#tree-structure-management)
+  - [Rebuilding the Rows in Place](#rebuilding-the-rows-in-place)
   - [Selection Management](#selection-management)
   - [Expansion Management](#expansion-management)
   - [Filtering](#filtering)
@@ -83926,6 +84185,67 @@ if (TreeNode* node = treeView->GetNodeAtY(static_cast<int>(local.y))) {
 }
 ```
 
+### Rebuilding the Rows in Place
+
+A tree built again from its source - a folder rescan, a refresh that calls
+`SetRootNode` and then an `AddNode` per row - used to throw the view back to
+the first row: `SetRootNode` leaves the tree empty for a moment, the measure
+that follows finds no content at all, and the scroll offset is clamped to 0.
+The rows came back under a view nobody asked for, with the row the user had
+selected often off screen. Wrap the rebuild instead:
+
+#### `BeginRebuild` / `EndRebuild`
+```cpp
+void BeginRebuild();
+void EndRebuild();
+bool IsRebuilding() const;
+```
+While a rebuild is open the tree is not measured, so a tree of *n* rows is
+measured once at the end rather than after every `AddNode`. `EndRebuild()`
+measures it and puts the view back:
+
+- the scroll position is the one the tree had when the rebuild began;
+- when the row that was selected is in the tree again, it is returned to the
+  same height on screen, so rows added or dropped above it do not slide it;
+- when another row is selected by the end of the rebuild - the account was
+  switched, the folder is gone - that row is scrolled into view instead.
+
+The rows, the selection and the expanded state stay the caller's to set, and
+no callback fires. Calls nest; the outermost pair settles the view.
+
+#### `TreeRebuildScope`
+```cpp
+class TreeRebuildScope {
+public:
+    explicit TreeRebuildScope(UltraCanvasTreeView& tree);
+    ~TreeRebuildScope();
+    void End();
+};
+```
+`BeginRebuild()` / `EndRebuild()` around a block, so an early return cannot
+leave a tree unmeasured. `End()` ends the rebuild before the block closes -
+for a caller that goes on to measure the tree, since `GetRequiredWidth()`
+counts the vertical scrollbar and `EndRebuild()` is what decides whether
+there is one.
+
+```cpp
+// An account's folders, built again after every rescan: the user keeps the
+// view - and the folder they are reading - exactly where it was.
+void ShowFolders(UltraCanvasTreeView* tree,
+                 const std::vector<std::string>& folders,
+                 const std::string& currentFolder) {
+    TreeRebuildScope keepTheView(*tree);
+    tree->SetRootNode(TreeNodeData("root", "Folders"));
+    for (const std::string& folder : folders) {
+        tree->AddNode("root", TreeNodeData("folder:" + folder, folder));
+    }
+    tree->ExpandAll();
+    if (TreeNode* node = tree->FindNode("folder:" + currentFolder)) {
+        tree->SelectNode(node);
+    }
+}   // measured once here, and the view is back where the user left it
+```
+
 ### Selection Management
 
 #### `SelectNode`
@@ -84234,6 +84554,13 @@ The other scrolling calls bring a node into view or move the view by pixels:
 void ScrollTo(TreeNode* node);
 void ScrollBy(int deltaY);
 ```
+
+The room the rows are shown in - and with it how far the view scrolls, where
+`ScrollTo` leaves a row and how many rows **Page Up** / **Page Down** move - is
+the tree's **content box**: its bounds less its border and its padding, and
+less the fixed header band of `UltraCanvasColumnsTreeView`. A tree 120 px high
+with the default 1 px border shows 118 px of rows, so size a tree that must
+show *n* whole rows as `n * rowHeight` plus its border and padding.
 
 Behaviour:
 
@@ -92151,7 +92478,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Picture on its own line | yes | yes | yes | yes | yes | |
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
-| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradient fills (linear, axial, radial with their centre: ODF `draw:gradient`, DOCX `a:gradFill`, VML `v:fill`, DOC shades) are drawn and saved; pattern fills draw in one colour; no shadows, 3-D or WordArt. In page view a floating frame, drawing or picture is selected, moved by dragging and resized; the new place and size are saved. |
+| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradient fills (linear, axial, radial with their centre: ODF `draw:gradient`, DOCX `a:gradFill`, VML `v:fill`, DOC shades) are drawn and saved. Pattern fills draw as their pattern: DOCX `a:pattFill` (all of Word's presets), ODF `draw:hatch` (lines, single or crossed), DOC pattern bitmaps; saved to DOCX by name, to ODT as a hatch or, for dots and checks, as the pattern's tile. Picture fills (DOCX `a:blipFill`, ODF `draw:fill-image`, DOC textures and pictures) are drawn tiled or stretched and saved. Writer's DOC export keeps hatches as EMF textures, which are not decoded (they draw in the fill colour). No shadows, 3-D or WordArt. In page view a floating frame, drawing or picture is selected, moved by dragging and resized - in a header or footer while it is being edited; the new place and size are saved. |
 | Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
 
@@ -92247,10 +92574,11 @@ model or a reader can already carry, or that a document needs, but
   resized, but its words are changed only by editing the document's source.
 - **A drawing is edited as a whole**: it is selected, moved and resized
   like a picture, but its shapes cannot be picked out one by one, and its
-  words cannot be edited. Frames and pictures in headers and footers cannot
-  be picked up at all. Pattern fills draw in one colour; shadows, glow, 3-D
-  and WordArt are not drawn; text wraps round a shape's box, not its
-  outline. Word's named outlines outside
+  words cannot be edited. Frames and pictures in a header or footer are
+  picked up only while it is being edited. A picture fill stored as a
+  metafile (EMF, WMF - Writer's DOC export of a hatch) draws in its fill
+  colour; shadows, glow, 3-D and WordArt are not drawn; text wraps round a
+  shape's box, not its outline. Word's named outlines outside
   the forty or so the model knows (`RichShape::ApplyPreset`) draw as their
   box.
 - **One page setup per document.** Sections can have their own columns, but
@@ -92280,8 +92608,9 @@ triangle, a group and a turned box). `word-shapes-word.docx` is built by
 `make-word-shapes-fixture.py`: shapes as Word itself writes them, which
 LibreOffice's export does not produce (theme colours, a custom outline with
 an arc, a group with a picture, VML-only drawings, a VML picture).
-`word-gradients.fodt` (a linear, an axial and a radial fill) is converted
-like the others.
+`word-gradients.fodt` (a linear, an axial and a radial fill) and
+`word-patterns.fodt` (a hatch on white, a grid with no background) are
+converted like the others.
 
 `WordFormatsTest` checks that all three readers recover the same structure and
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it
@@ -112157,6 +112486,24 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/folder-tree-keeps-its-place.md
+==============================================================================
+
+- **The folder tree no longer scrolls back to the top while you read.** With
+  more than one account the tree is taller than its pane, and every folder
+  rescan - which runs after each mail check, not only when you ask for it -
+  rebuilt it row by row and left the view on the first row: the folder you had
+  open scrolled out of sight behind your back, moments after you had picked
+  it. The rebuild now holds the view (the framework's new
+  `TreeRebuildScope`): the tree comes back scrolled exactly as you left it,
+  with the open folder still selected and still at the same height, even when
+  the rescan found new folders above it.
+- **A folder opened from outside the tree is scrolled into view.** Opening an
+  account's inbox from the account bar, or a folder from a message, selected
+  its row without bringing it on screen, so in a tall tree the selection was
+  invisible. A row already on screen stays exactly where it is.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md

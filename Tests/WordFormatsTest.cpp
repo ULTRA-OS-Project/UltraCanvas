@@ -336,12 +336,22 @@ static void CheckDrawnShapes(const UCRichDocument& d, const std::string& label) 
 static void CheckWordShapes(const UCRichDocument& d, const std::string& label) {
     using Kind = RichShape::Kind;
     const std::vector<const RichTextRun*> runs = FloatingFrames(d);
-    CHECK_MSG(runs.size() == 7, label + ": seven drawings");
-    if (runs.size() != 7) return;
+    CHECK_MSG(runs.size() == 9, label + ": nine drawings");
+    if (runs.size() != 9) return;
     auto only = [&](size_t i) -> const RichShape* {
         const RichTextFrame* frame = d.FrameFor(*runs[i]);
         return frame && frame->shapes.size() == 1 ? &frame->shapes.front() : nullptr;
     };
+    // ODF names no such pattern: through .odt it is its tile, repeated.
+    const RichShape* checks = only(7);
+    const bool throughOdt = label.size() > 4 && label.compare(label.size() - 4, 4, ".odt") == 0;
+    CHECK_MSG(checks && (throughOdt ? checks->HasPictureFill() && checks->fillPictureTiled
+                                    : checks->fillPattern == "smCheck" && Lower(checks->fillColor) == "#7030a0"
+                                      && Lower(checks->patternBackColor) == "#ffff00"),
+              label + ": a pattern fill");
+    const RichShape* tiled = only(8);
+    CHECK_MSG(tiled && tiled->fillMediaIndex >= 0 && tiled->fillMediaIndex < static_cast<int>(d.media.size())
+              && tiled->fillPictureTiled, label + ": a tiled picture fill");
     const RichShape* themed = only(0);
     const RichTextFrame* themedFrame = d.FrameFor(*runs[0]);
     CHECK_MSG(themed && themed->kind == Kind::RoundRectangle && Near(themed->cornerRadius * 100.0f, 25.0f)
@@ -399,6 +409,24 @@ static void CheckWordShapes(const UCRichDocument& d, const std::string& label) {
     CHECK_MSG(logo && logo->mediaIndex >= 0 && Near(logo->imageWidthPt, 90.0f) && Near(logo->imageHeightPt, 45.0f)
               && logo->imageFloatAlign == RichTextAlign::Right && logo->imageWrap == RichTextRun::ImageWrap::Square,
               label + ": the VML picture");
+}
+
+// Pattern fills (word-patterns.*): red lines rising on white, a blue grid
+// with no background.
+static void CheckPatterns(const UCRichDocument& d, const std::string& label) {
+    const std::vector<const RichTextRun*> runs = FloatingFrames(d);
+    CHECK_MSG(runs.size() == 2, label + ": two hatched shapes");
+    if (runs.size() != 2) return;
+    auto only = [&](size_t i) -> const RichShape* {
+        const RichTextFrame* frame = d.FrameFor(*runs[i]);
+        return frame && frame->shapes.size() == 1 ? &frame->shapes.front() : nullptr;
+    };
+    const RichShape* rising = only(0);
+    CHECK_MSG(rising && rising->fillPattern.find("pDiag") != std::string::npos && Lower(rising->fillColor) == "#c00000"
+              && Lower(rising->patternBackColor) == "#ffffff", label + ": lines rising, on white");
+    const RichShape* grid = only(1);
+    CHECK_MSG(grid && (grid->fillPattern == "lgGrid" || grid->fillPattern == "smGrid" || grid->fillPattern == "cross")
+              && Lower(grid->fillColor) == "#1f4e79" && grid->patternBackColor.empty(), label + ": a grid with no background");
 }
 
 // Gradient fills (word-gradients.*): top to bottom, axial at 45 degrees,
@@ -898,6 +926,25 @@ int main(int argc, char** argv) {
     // ===== 5d3. Drawn shapes: lines, boxes, outlines and groups =====
 #ifdef WORDTEST_FIXTURE_DIR
     {
+        for (const char* name : {"word-patterns.odt", "word-patterns.docx"}) {
+            const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
+            UCRichDocument imported;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(fixture, imported, err), err);
+            CheckPatterns(imported, name);
+            for (const char* ext : {".odt", ".docx"}) {
+                const std::string saved = TmpPath(std::string("resaved-") + name + ext);
+                CHECK_MSG(UCWordDocumentIO::Save(saved, imported, err), err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(saved, back, err), err);
+                CheckPatterns(back, std::string(name) + " -> " + ext);
+            }
+        }
+        // A pattern tile of its own (Word 97 keeps its patterns as bitmaps):
+        // read bit by bit, and named by its nearest preset where a format names them.
+        CHECK(RichShape::PatternBit("bits:AA55AA55AA55AA55", 0, 0) && !RichShape::PatternBit("bits:AA55AA55AA55AA55", 1, 0));
+        CHECK(RichShape::NearestPresetPattern("bits:AA55AA55AA55AA55") == "pct50");
+        CHECK(RichShape::NearestPresetPattern("bits:FF000000FF000000") == "ltHorz");
         for (const char* name : {"word-gradients.odt", "word-gradients.docx", "word-gradients.doc"}) {
             const std::string fixture = std::string(WORDTEST_FIXTURE_DIR) + "/" + name;
             UCRichDocument imported;

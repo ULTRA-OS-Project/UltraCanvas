@@ -11,7 +11,12 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFontViewer.h"
+#ifndef UC_TEST_HAS_MEDIA_VIEWER
+#define UC_TEST_HAS_MEDIA_VIEWER 1
+#endif
+#if UC_TEST_HAS_MEDIA_VIEWER
 #include "UltraCanvasMediaViewer.h"
+#endif
 
 #include <filesystem>
 #include <iostream>
@@ -318,6 +323,7 @@ void TestArrangedByALayoutPass() {
     Check(narrowed.x + narrowed.width <= 520, "a narrower pass pulls the slider in");
 }
 
+#if UC_TEST_HAS_MEDIA_VIEWER   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
 void TestMediaViewerIntegration() {
     std::cout << "\nDetail-pane classification\n";
     Check(UltraCanvasMediaViewer::IsSupportedMedia("Ubuntu-R.ttf"),
@@ -335,6 +341,7 @@ void TestMediaViewerIntegration() {
     Check(!UltraCanvasMediaViewer::IsSupportedMedia("archive.zip"),
           "while a zip is still not media");
 }
+#endif
 
 } // namespace
 
@@ -347,7 +354,9 @@ int main() {
     TestCellSize();
     TestControlPlacement();
     TestArrangedByALayoutPass();
+#if UC_TEST_HAS_MEDIA_VIEWER
     TestMediaViewerIntegration();
+#endif
     std::cout << "\n" << (g_failures ? "FAILED" : "PASSED") << " ("
               << g_failures << " failure" << (g_failures == 1 ? "" : "s") << ")\n";
     return g_failures == 0 ? 0 : 1;

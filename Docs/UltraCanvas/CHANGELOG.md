@@ -1,3 +1,188 @@
+#### 2026-11-13 *0.9.556*
+- **A tree view built again from its source no longer throws the view back to
+  the first row.** `UltraCanvasTreeView::SetRootNode` empties the tree before
+  the new rows are added, and the measure that followed each `AddNode` found
+  no content at all and clamped the scroll offset to 0 - so an application
+  that rebuilds its tree on a refresh (a folder rescan, a device list, a
+  reload) left the user looking at the top of a tree they had scrolled
+  through, with the row they had selected often off screen. The rebuild is now
+  wrapped: `BeginRebuild()` / `EndRebuild()`, or the `TreeRebuildScope` that
+  calls both for a block, hold the view while the rows are replaced. The
+  scroll position comes back as it was, the row that was selected returns to
+  the same height on screen even when rows were added above it, and a
+  selection that moved on during the rebuild - another account, a folder that
+  is gone - is scrolled into view instead. The tree is also measured once at
+  the end rather than after every row, so a rebuild of *n* rows is no longer
+  *n* measures of the whole tree. Nothing changes for a caller that does not
+  wrap its rebuild.
+- **A tree view's last row can be scrolled fully into view.** The tree
+  measured the room it has for rows as its whole height less the header band,
+  although `Render` draws them in the content box - the element without its
+  border and padding. A tree with the default 1 px border therefore counted
+  two pixels it does not show: scrolled to the end, the last row sat a border's
+  width under the content edge and no scrolling could bring it out, Page Up and
+  Page Down moved one row more than a page really shows, and the floating "go to
+  the selected entry" button hid itself while the row it pointed at was still
+  partly cut off. All of them now measure what `Render` clips the rows to, so
+  the scroll range reaches the last row and a page is the rows a page shows.
+  A tree given padding gains the most, having had that much more phantom room.
+
+#### 2026-11-13 *0.9.555*
+- **Pattern and picture fills are drawn as they are**, not in one colour.
+  `RichShape::fillPattern` holds Word's preset patterns (`"pct50"`,
+  `"dnDiag"`, `"smCheck"`, ...) or an 8 x 8 tile of their own, drawn in the
+  fill colour on `patternBackColor`; `fillMediaIndex` fills a shape with a
+  picture, tiled or stretched.
+  - Read from DOCX `a:pattFill` and `a:blipFill`, ODF `draw:hatch` and
+    `draw:fill-image` (inline pictures too), and DOC pattern bitmaps,
+    textures and picture fills.
+  - Written to DOCX by name; to ODT as a hatch, or for dots and checks as
+    the pattern's tile.
+- **Frames, drawings and pictures in a header or footer can be picked up
+  while it is being edited**: they are drawn and placed as its own (they
+  used to vanish while it was open), selected by a click (which no longer
+  leaves the header), moved by dragging and resized, and saved in place.
+
+#### 2026-11-13 *0.9.554*
+- **Lua long brackets are coloured at every level.** Lua's long strings and
+  block comments take any number of `=` between the brackets - `[==[ … ]==]`,
+  `--[=[ … ]=]` - and end only at the bracket with the same number. The
+  tokenizer knew only the level-0 `[[ ]]` and `--[[ ]]`, so a levelled comment
+  was read as a line comment and the lines after it as code, and a `]]` inside
+  a `[==[` string closed it early. A new switch, `levelledLongBrackets` (on
+  for Lua), matches the opening at any level and keeps the comment or string
+  open, without escapes, until its own closing bracket; the line state carries
+  that marker from line to line (`SyntaxLineState::blockCommentEnd`, and
+  `rawStringEnd` as C++ raw strings use).
+- **A block comment inside a Markdown code fence is coloured on every line.**
+  Fenced code (```` ```cpp ````) in Markdown mode was highlighted one line at a
+  time with no state, so only the first line of a `/* … */` spanning several
+  lines was drawn as a comment and the rest as code. The fence's lines now hand
+  each other the line state, as a plain code file's lines have since 0.9.57;
+  each opening fence starts empty, so a comment left open in one block ends at
+  its closing fence. The raw line under the cursor, which is read with the
+  Markdown rules, never takes a code block's state: in those rules it would
+  have meant an open `<!-- -->` comment.
+- **Rust raw strings and C# verbatim strings end where the compiler says.**
+  Their prefix changes where the string ends, and the tokenizer read them as
+  ordinary strings with escapes: C#'s `@"C:\"` ran past its closing quote to
+  the end of the line, Rust's `r"C:\"` on into the lines after it (Rust's
+  ordinary strings may span lines), `r#"say "hi""#` ended at the
+  first inner quote, and a C# verbatim string's doubled `""` or its second
+  line came out as code. Two switches, `hashRawStrings` (Rust: `r`, `br`, `cr`
+  with any number of `#`) and `verbatimStrings` (C#: `@"`, `$@"`, `@$"`), open
+  them with no escapes and keep them open to their own end - `"` and as many
+  `#`, or a `"` that is not doubled - across lines, through the same end marker
+  in the line state that C++ raw strings and Lua long brackets use. Rust's raw
+  identifiers (`r#match`) and C#'s (`@class`) stay names.
+- **A string's prefix is coloured with the string.** Python's `r"…"`,
+  `rb"…"`, `f"…"` and C / C++'s `L"…"`, `u8"…"` showed the prefix as a separate
+  name in front of the string. A per-language list, `stringPrefixes`, now joins
+  a listed prefix written directly against the quote to its string, in any
+  case. Where the string ends is unchanged, and rightly: Python still lets a
+  backslash keep a quote from closing a raw string (`r"\""` is one string).
+- **A variable named `e`, `f`, `L` or `u` is no longer coloured as a number.**
+  The number test accepted a word made only of a number suffix (`f`, `L`, `u`)
+  or the exponent letter (`e`, and so `e1`), in every language. A number now
+  has to start with a digit or a point and hold a digit; `1e5`, `.5` and
+  `1.5f` are unchanged.
+- `SyntaxTokenizationRules::hasRawStrings` and `rawStringPrefix` are removed:
+  nothing read them, and the string switches that do the work replaced them.
+- **Lua's `--[[ … ]]` and MATLAB's `%{ … %}` block comments are coloured.**
+  The tokenizer looked for line comments before block comments, so `--`
+  claimed `--[[` and the rest of its line, the block never opened, and the
+  lines inside it were coloured as code; MATLAB's `%{` went the same way under
+  `%`. Block comments are now matched first, in the line-by-line and the
+  whole-text tokenizer.
+- **C++ raw strings are coloured to their end, across lines.**
+  `R"(…)"`, `R"delim(…)delim"` and the `u8R` / `uR` / `UR` / `LR` forms were
+  read as a name and an ordinary string, which ended at the first `"` inside
+  the raw text and at the end of the line. A fourth string switch,
+  `delimitedRawStrings` (on for C++), matches the opening, takes its delimiter,
+  and keeps the string open, without escapes, until its own `)delim"` -
+  carried from line to line in `SyntaxLineState::rawStringEnd`.
+- **Strings that run across lines are coloured on every line, per language.**
+  A string ended at the end of its line in every language, so a Python
+  docstring, a JavaScript template literal or a C string continued with a
+  backslash was coloured on its first line only, and the lines after it as
+  code. Three rules in `SyntaxTokenizationRules` now say which strings span
+  lines: `multiLineStrings` (`"""` / `'''` in Python and Dart, `"""` in Kotlin,
+  Swift, Java, Scala, C# and Elixir), `multiLineStringDelimiters`
+  (the backtick in JavaScript, TypeScript and Go; both quotes in Shell, Ruby,
+  PHP and Perl; `"` in Rust) and `stringLineContinuation` (a trailing `\` in C,
+  C++, Python and JavaScript). Elsewhere an unclosed string still stops at its
+  line, so a missing quote colours one line, not the rest of the file.
+- **A Markdown code fence in an unknown language is shown plain.** The fence's
+  language was looked up by exact name, then by extension, and when both failed
+  the shared code-block tokenizer kept the previous fence's language: a block
+  tagged `foo` after a C++ one was coloured as C++. And since names were
+  matched case-sensitively, a block tagged `python` only ever worked when the
+  block before it was Python. The new `SyntaxTokenizer::SetLanguageByTag`
+  matches names in any case, then extensions, then common aliases (`golang`,
+  `shell`, `csharp`, `{.rust}`), and clears the language when nothing matches.
+- **`SyntaxTokenizer::Tokenize(text)` gives the tokens the text area colours.**
+  The whole-text tokenizer was a separate scanner that had fallen behind the
+  line-by-line one: it knew only level-0 Lua brackets, none of the strings that
+  span lines, no C++ raw strings, and it dropped every line break - it built a
+  `Newline` token for each and never added it to the result. It now runs
+  `TokenizeLine` over each line with the line state carried between them, with
+  one `Newline` token per `\n` or `\r\n`, so the two can no longer disagree.
+  Seven private helpers only the old scanner used (`ParseString`,
+  `ParseComment`, `ParseWord`, `ParseCharacter`, `ParsePreprocessor`,
+  `ParseStringInLine`, `IsIdentifier`) were removed.
+
+#### 2026-11-13 *0.9.553*
+- **A chart the build would have in no form now stops the configure, or is
+  compiled in.** A chart left out of `ULTRACANVAS_CHARTS` (the default
+  selection is empty) must be buildable as a runtime module. On WebAssembly
+  and Android, which load no modules, it is now compiled in, as the chart
+  engine proposal's compile-time fallback (§12.11) says. Before, it was left
+  out with a warning, so the default WebAssembly and Android builds had no
+  parallel coordinate chart. With `ULTRACANVAS_CHART_RUNTIME_MODULES=OFF`, or
+  a static core on Windows, the configure now stops and names the chart and
+  the ways out, as it does for widgets.
+- **`UltraCanvasFilePreviews`: a registry of file preview providers.** A format
+  registers, under its extensions, a thumbnail (`RenderThumbnail`) and/or a
+  preview document (`ReadDocument`, the start of its text). Callers ask
+  `RenderFileThumbnailFromProvider`, `RenderFileThumbnailAs` and
+  `ReadPreviewDocument`. Any number of providers can be registered, and the
+  latest registration of an extension wins. The registry is thread-safe for
+  the Filer's thumbnail workers. The formats compiled in register themselves
+  on the first query: the PDF first page, EPUB and Mobipocket covers, video
+  poster frames, Word-processing documents and PowerPoint decks.
+  `UltraCanvasFilerWidget` no longer includes the PDF, Word, PowerPoint,
+  e-book or video-thumbnail code; it asks the registry. Its tiles, text
+  previews and `RenderFileThumbnail` are unchanged: identical lines and
+  pixels for every test file, before and after.
+- **The MediaViewer can be a runtime module.** It joins the selectable
+  widgets in `ULTRACANVAS_WIDGETS` as `"media-viewer"`
+  (`MakeMediaViewerDescriptor`, `RegisterMediaViewerElement`). It is still
+  compiled in by default. Left out, it is built as
+  `ultracanvas-widget-media-viewer`, together with
+  `UltraCanvasMediaViewerWindow`. That happens only with a shared core, the
+  shipping configuration. The viewer reaches about 45 core objects, and a
+  static host would have to keep all of them for it. UltraViewer, UltraFiler, UltraMail,
+  EmailCleaner, ChatCube, UltraClipboard, UltraSnip and DemoApp use its
+  classes, so the configure stops if one of them is built without it.
+  Widget modules are now compiled with the core library's own include paths
+  and compile definitions, so a feature switch means the same on both sides of
+  the module boundary. The Element modules CI job now runs twice, with a static
+  and with a shared core, and builds the viewer's module in the shared one.
+- **A widget the build would have in no form now stops the configure.** A
+  widget left out of `ULTRACANVAS_WIDGETS` must be buildable as a runtime
+  module. Three things rule a module out:
+  - the build has no runtime modules (WebAssembly, Android, or
+    `ULTRACANVAS_WIDGET_RUNTIME_MODULES=OFF`);
+  - a static core on Windows;
+  - a static core for a widget built against a shared core only (the
+    MediaViewer).
+
+  The configure now stops and names the widgets and the ways out. Before, it
+  warned or skipped them, and an application asking for one by name found out
+  only at run time. The Element modules CI job's static row compiles the
+  MediaViewer in, and a new step checks that leaving it out of a static core
+  is refused.
+
 #### 2026-11-13 *0.9.552*
 - **A menu in its own window answers the keyboard wherever the key lands.**
   Where the focus follows the pointer (X11 with no window manager), a key

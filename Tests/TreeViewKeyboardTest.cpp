@@ -216,7 +216,11 @@ void TestHiddenRoot() {
 }
 
 void TestPages() {
-    Fixture f(60);   // three rows per page
+    // A page is what the rows are shown in - the content box - divided by the
+    // row height, not the whole element: 80 px less the 1 px border top and
+    // bottom shows three rows of 20, with 18 px over, so a page is three rows
+    // and not the four the element's own height would suggest.
+    Fixture f(80);
     f.Send(UCKeys::Home);
     TEST("Page Down moves a page of rows", f.Send(UCKeys::PageDown) && f.Selected() == "a2");
     TEST("Page Down clamps at the last row", f.Send(UCKeys::PageDown) && f.Selected() == "c"

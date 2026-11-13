@@ -14,8 +14,15 @@
 // (the counter counts the part from before today), and the
 // filter is reported (onFilterChanged) until a folder switch clears it.
 //
+// A tree of several accounts is taller than its pane, and a folder rescan -
+// which follows every mail check - rebuilds every row of it. The view stays
+// where the user left it: the folder being read keeps its place on screen
+// instead of the tree falling back to its first row.
+//
 // Builds the mail view on an in-memory store in a real window, so it runs
 // under Xvfb (xvfb-run -a) and skips itself without a DISPLAY.
+// Version: 1.2.0 - a rebuilt tree keeps the view, and a folder opened from
+//                  outside the tree is scrolled into it
 // Version: 1.1.0 - the account bar's counters as filters (ShowInbox, onFilterChanged)
 // Version: 1.0.1 - UltraMail::Folder qualified (Windows' shldisp.h has a Folder)
 // Last Modified: 2026-10-09
@@ -72,6 +79,19 @@ const MenuItemData* Find(const std::vector<MenuItemData>& items, const std::stri
     for (const auto& item : items)
         if (item.label == label) return &item;
     return nullptr;
+}
+
+// Where the row of `nodeId` is on screen: the topmost element-local y it
+// covers, or -1 when it is not on screen at all. Scanned rather than
+// calculated, because the scroll position is not a whole number of rows.
+int ScreenYOf(UltraCanvasTreeView* tree, const std::string& nodeId) {
+    const Rect2Df content = tree->GetLocalContentRect();
+    const int bottom = static_cast<int>(content.y + content.height);
+    for (int y = static_cast<int>(content.y); y < bottom; ++y) {
+        TreeNode* node = tree->GetNodeAtY(y);
+        if (node && node->data.nodeId == nodeId) return y;
+    }
+    return -1;
 }
 
 } // namespace
@@ -274,6 +294,61 @@ int main() {
     view.ShowFolder("erika", "Sent");
     TEST("another folder clears the filter, and says so",
          !view.Filter().Active() && !reported.back().second.Active());
+
+    // ----- a rebuilt tree keeps the view the user had -----
+    // A third account with folders enough to make the tree taller than its
+    // pane, as a second or third mailbox does in practice.
+    Account third;
+    third.accountId = "many";
+    third.email = "erika@mailbox.example";
+    third.shortName = "many";
+    store.UpsertAccount(third);
+    accounts.push_back(third);
+    store.UpsertFolder(MakeFolder("many", "INBOX", FolderRole::Inbox));
+    // Numbered so that the tree's order by name is the order here: "Folder 40"
+    // is its last row, far below the pane's foot.
+    for (int i = 1; i <= 40; ++i) {
+        const std::string number = (i < 10 ? "0" : "") + std::to_string(i);
+        store.UpsertFolder(MakeFolder("many", "Folder " + number));
+    }
+    view.SetAccounts(accounts);
+    view.ShowAccount("many");
+    frames();
+
+    // The last folder of the account: its row is below the pane's foot until
+    // the tree scrolls to it.
+    view.ShowFolder("many", "Folder 40");
+    frames();
+    TEST("a folder opened below the pane's foot is scrolled into view",
+         ScreenYOf(tree, "f::many::Folder 40") >= 0);
+    TEST("the tree is scrolled down, past the first account",
+         ScreenYOf(tree, "acct::erika") == -1);
+
+    // A folder the user then picks in the middle of the scrolled view: the
+    // tree does not move for it, so its place on screen is the one the rebuild
+    // has to give back - and not the one a scroll-into-view would, which is
+    // the pane's foot.
+    const std::string deepFolder = "f::many::Folder 30";
+    view.ShowFolder("many", "Folder 30");
+    frames();
+    const int whereBefore = ScreenYOf(tree, deepFolder);
+    const int paneFoot = static_cast<int>(tree->GetLocalContentRect().y +
+                                          tree->GetLocalContentRect().height) - tree->GetRowHeight();
+    TEST("the folder is on screen, and not at the pane's foot",
+         whereBefore >= 0 && whereBefore < paneFoot - tree->GetRowHeight());
+
+    // What a mail check ends in: the folders are read again and every row of
+    // the tree is replaced.
+    view.ShowAccount("many");
+    frames();
+    TEST("the rebuilt tree still has the folder selected",
+         view.CurrentFolder() == "Folder 30" &&
+         tree->GetFirstSelectedNode() &&
+         tree->GetFirstSelectedNode()->data.nodeId == deepFolder);
+    TEST("and leaves it exactly where it was on screen",
+         ScreenYOf(tree, deepFolder) == whereBefore);
+    TEST("the view did not fall back to the first row",
+         ScreenYOf(tree, "acct::erika") == -1);
 
     std::cerr << std::endl << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

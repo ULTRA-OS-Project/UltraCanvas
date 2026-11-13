@@ -24,7 +24,12 @@
 
 #include "UltraCanvasCompoundFile.h"
 #include "UltraCanvasFilerWidget.h"
+#ifndef UC_TEST_HAS_MEDIA_VIEWER
+#define UC_TEST_HAS_MEDIA_VIEWER 1
+#endif
+#if UC_TEST_HAS_MEDIA_VIEWER
 #include "UltraCanvasMediaViewer.h"
+#endif
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSpreadsheetXls.h"
@@ -604,11 +609,13 @@ void TestFilerAndViewer() {
     Check(!UltraCanvasFilerWidget::TextPreviewLines(Fixture("xls-biff5-encrypted.xls"), lines, tabular),
           "an encrypted workbook keeps its type glyph");
 
+#if UC_TEST_HAS_MEDIA_VIEWER   // a selectable widget (ULTRACANVAS_WIDGETS), absent from a lean core
     for (const char* name : {"book.xls", "book.xlsx", "BOOK.XLS"}) {
         Check(UltraCanvasMediaViewer::IsSupportedMedia(name) &&
                   UltraCanvasMediaViewer::ClassifyFile(name) == MediaKind::Sheet,
               std::string(name) + " opens in the detail pane as a spreadsheet");
     }
+#endif
     const auto xls = UltraCanvasSupportedFormats::FindByExtension("xls");
     Check(xls && xls->canLoad && !xls->canSave &&
               xls->category == MediaFormatCategory::Spreadsheet,

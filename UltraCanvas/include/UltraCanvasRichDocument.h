@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)
 // Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
 //                  (RichTextFrame::drawingWidthPt / drawingHeightPt)
 // Version: 1.6.0 - Drawn shapes (RichShape, RichTextFrame::shapes)
@@ -569,6 +570,23 @@ struct RichShape {
     std::vector<GradientStop> gradientStops;
     float gradientAngleDeg = 0.0f;
     bool gradientRadial = false;
+    // A pattern fill: Word's preset name ("pct50", "horz", "dnDiag",
+    // "smCheck", ...) in fillColor (its foreground) on patternBackColor.
+    std::string fillPattern;
+    std::string patternBackColor;         // "#RRGGBB"; empty = none (the foreground's lines alone)
+    bool HasPattern() const { return !fillPattern.empty(); }
+    // A tile of its own (Word 97 stores its patterns as bitmaps) is
+    // "bits:" and 16 hex digits, its eight rows top to bottom, high bit left.
+    // Whether pixel (x, y) of the pattern's 8 x 8 tile takes the foreground.
+    static bool PatternBit(const std::string& pattern, int x, int y);
+    // The preset name closest to `pattern` (itself when it is one), for a
+    // format that names its patterns.
+    static std::string NearestPresetPattern(const std::string& pattern);
+    // A picture fill: UCRichDocument::media[fillMediaIndex] repeated at its
+    // own size from the box's corner (tiled), or stretched over the box.
+    int fillMediaIndex = -1;
+    bool fillPictureTiled = true;
+    bool HasPictureFill() const { return fillMediaIndex >= 0; }
     // A radial gradient's centre, from 0 to 1 across and down the box.
     float gradientCenterX = 0.5f, gradientCenterY = 0.5f;
     bool HasGradient() const { return gradientStops.size() >= 2; }

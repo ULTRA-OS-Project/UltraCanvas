@@ -18,6 +18,7 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.3.0 - Pattern fills (their 1-bit bitmaps), texture and picture fills
 // Version: 2.2.0 - Gradient (shade) fills
 // Version: 2.1.0 - Drawn shapes and groups: lines, rectangles, ellipses, Word 97's other
 //                 shape types, freeforms, groups with pictures and words
@@ -1060,6 +1061,40 @@ bool ReadBlipRecord(const std::vector<uint8_t>& data, size_t at, size_t end,
     return false;
 }
 
+// A pattern fill's bitmap (a DIB BLIP holding an 8 x 8, 1-bit picture) as
+// RichShape's "bits:" tile: the darker of its two colours is the pattern.
+bool ReadPatternBlip(const std::vector<uint8_t>& data, size_t at, size_t end, std::string& tile) {
+    if (at + 8 > end || end > data.size()) return false;
+    const uint16_t verInstance = ReadU16(data, at);
+    const uint16_t type = ReadU16(data, at + 2);
+    const uint32_t length = ReadU32(data, at + 4);
+    if (type != 0xF01F || at + 8 + length > end) return false;
+    const size_t header = (verInstance >> 4) == 0x7A9 ? 33 : 17;
+    const size_t dib = at + 8 + header;
+    if (dib + 40 + 8 > at + 8 + length) return false;
+    const size_t infoSize = ReadU32(data, dib);
+    const int32_t width = static_cast<int32_t>(ReadU32(data, dib + 4));
+    const int32_t height = static_cast<int32_t>(ReadU32(data, dib + 8));
+    const uint16_t bits = ReadU16(data, dib + 14);
+    if (bits != 1 || width < 8 || height == 0 || std::abs(height) < 8 || infoSize < 40) return false;
+    const size_t palette = dib + infoSize;
+    auto brightness = [&](size_t entry) { return data[entry] + data[entry + 1] + data[entry + 2]; };   // B, G, R
+    const bool oneIsDark = brightness(palette + 4) < brightness(palette);
+    const size_t stride = ((static_cast<size_t>(width) + 31) / 32) * 4;
+    const size_t pixels = palette + 8;
+    if (pixels + stride * static_cast<size_t>(std::abs(height)) > at + 8 + length) return false;
+    tile = "bits:";
+    for (int y = 0; y < 8; ++y) {
+        // Rows are stored bottom-up unless the height is negative.
+        const int row = height > 0 ? height - 1 - y : y;
+        const uint8_t value = data[pixels + static_cast<size_t>(row) * stride];
+        char hex[3];
+        std::snprintf(hex, sizeof hex, "%02X", static_cast<unsigned>(oneIsDark ? value : static_cast<uint8_t>(~value)));
+        tile += hex;
+    }
+    return true;
+}
+
 bool ExtractPicture(const std::vector<uint8_t>& data, int32_t location, std::vector<uint8_t>& image,
                     std::string& mimeType, float& widthPt, float& heightPt) {
     if (location < 0 || static_cast<size_t>(location) + 0x44 > data.size()) return false;
@@ -1288,7 +1323,8 @@ private:
         int posH = -1, posRelH = -1, posV = -1, posRelV = -1;
         uint32_t fillColor = 0xFFFFFF;
         bool filled = true;
-        int fillType = 0;                       // 0 solid; 4, 7 linear shades; 5, 6 round ones
+        int fillType = 0;
+        uint32_t fillBlip = 0;                  // a pattern's or texture's picture (BStore, 1-based)                       // 0 solid; 4, 7 linear shades; 5, 6 round ones
         uint32_t fillBackColor = 0xFFFFFF;      // a shade's other colour
         double fillAngle = 0.0;                 // anticlockwise from top-to-bottom
         double fillTo[4] = {0.0, 0.0, 0.0, 0.0};   // a round shade's centre: left, top, right, bottom (the corner by default)
@@ -1485,6 +1521,7 @@ private:
                         case 0x0104: shape.pib = value; break;                               // pib
                         case 0x0181: shape.fillColor = value; break;                         // fillColor
                         case 0x0180: shape.fillType = static_cast<int>(value); break;        // fillType
+                        case 0x0186: shape.fillBlip = value; break;                          // fillBlip
                         case 0x0183: shape.fillBackColor = value; break;                     // fillBackColor
                         case 0x018B: shape.fillAngle = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
                         case 0x018C: shape.fillFocus = static_cast<int32_t>(value); break;   // fillFocus
@@ -1756,6 +1793,27 @@ private:
         if (source.filled && (source.fillColor >> 24) == 0 && shape.mediaIndex < 0) {
             shape.fillColor = ColorRefHex(source.fillColor);
             // A shade: from the fill colour to the back colour.
+            // A pattern (fillType 1): its bitmap in the fill colour on the
+            // back colour. A texture (2) or picture (3): its picture,
+            // repeated or stretched.
+            const BlipRef* fillBlip = source.fillBlip > 0 && source.fillBlip <= blips_.size()
+                && blips_[source.fillBlip - 1].stream ? &blips_[source.fillBlip - 1] : nullptr;
+            if (source.fillType == 1 && fillBlip) {
+                std::string tile;
+                if (ReadPatternBlip(*fillBlip->stream, fillBlip->at, fillBlip->end, tile)) {
+                    shape.fillPattern = tile;
+                    shape.patternBackColor = (source.fillBackColor >> 24) == 0 ? ColorRefHex(source.fillBackColor) : "#FFFFFF";
+                }
+            } else if ((source.fillType == 2 || source.fillType == 3) && fillBlip) {
+                std::vector<uint8_t> bytes;
+                std::string mimeType;
+                if (ReadBlipRecord(*fillBlip->stream, fillBlip->at, fillBlip->end, bytes, mimeType)) {
+                    const std::string name = "image" + std::to_string(doc_.media.size() + 1)
+                                           + UCRichDocument::FileExtensionForMimeType(mimeType);
+                    shape.fillMediaIndex = doc_.AddMedia(name, mimeType, std::move(bytes));
+                    shape.fillPictureTiled = source.fillType == 2;
+                }
+            }
             const bool linear = source.fillType == 4 || source.fillType == 7;
             const bool round = source.fillType == 5 || source.fillType == 6;
             if ((linear || round) && (source.fillBackColor >> 24) == 0) {

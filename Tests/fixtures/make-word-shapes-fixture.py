@@ -2,7 +2,7 @@
 # word-shapes-word.docx): drawn shapes as Word writes them - theme colours
 # through wps:style, a custom outline with an arc, a group with a picture and
 # words, VML-only shapes as Word 2007 writes them, a VML picture as Word 2003
-# keeps a logo. Synthetic content.
+# keeps a logo, a pattern fill and a picture fill. Synthetic content.
 import base64, sys, zipfile
 out = sys.argv[1]
 png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAADwAAAAeCAIAAAD/+uoYAAAAOklEQVR4nO3OAQkAIBAAMeOYycTGMob3MFiArX3uOOv7QDpMWlo6QFpaOkBaWjpAWlo6QFpaOmBk+gFSlRDY5nT27gAAAABJRU5ErkJggg==")
@@ -103,9 +103,22 @@ v8 = ('<w:pict><v:shape id="Logo" type="#_x0000_t75" alt="Company logo" style="p
       'mso-position-vertical-relative:text"><v:imagedata r:id="rIdLogo" o:title="logo"/><w10:wrap type="square"/>'
       '</v:shape></w:pict>')
 
+# 9. A pattern fill (small checks) and a picture fill (the logo tiled).
+cx, cy = 108*EMU, 54*EMU
+def filled(i, name, fill):
+    return choice("wps", anchor(i, name, cx, cy) +
+        f'<a:graphic><a:graphicData uri="{gwps}"><wps:wsp><wps:cNvSpPr/><wps:spPr>'
+        f'<a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        + fill + '<a:ln w="9525"><a:solidFill><a:srgbClr val="000000"/></a:solidFill></a:ln></wps:spPr>'
+        '<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor>')
+s9 = filled(9, "Checks", '<a:pattFill prst="smCheck"><a:fgClr><a:srgbClr val="7030A0"/></a:fgClr>'
+                         '<a:bgClr><a:srgbClr val="FFFF00"/></a:bgClr></a:pattFill>')
+s10 = filled(10, "Tiled", '<a:blipFill rotWithShape="1"><a:blip r:embed="rIdLogo"/>'
+                          '<a:tile tx="0" ty="0" sx="100000" sy="100000" flip="none" algn="tl"/></a:blipFill>')
+
 body = (para("Shapes as Word draws them.") + para("A themed rounded rectangle.", s1) + para("A custom outline.", s2)
         + para("A group with a picture and words.", s3) + para("A dotted pointer.", s4)
-        + para("An old drawing.", v5) + para("A rule.", v6) + para("A labelled box.", s7) + para("A VML logo.", v8) + para("Closing line."))
+        + para("An old drawing.", v5) + para("A rule.", v6) + para("A labelled box.", s7) + para("A VML logo.", v8) + para("A pattern fill.", s9) + para("A picture fill.", s10) + para("Closing line."))
 document = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document {NS}><w:body>{body}'
             '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1418" '
             'w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>')

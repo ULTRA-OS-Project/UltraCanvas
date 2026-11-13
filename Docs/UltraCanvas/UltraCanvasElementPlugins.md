@@ -200,6 +200,34 @@ on Windows the module needs the shared core). The table:
 | `Album` | `album` | `ultracanvas-widget-album` | UltraVideo, DemoApp |
 | `ColorPaletteManager` | `color-palette-manager` | `ultracanvas-widget-color-palette-manager` | UltraPaint, ArtCreator, DemoApp |
 | `VectorCanvas` | `vector-canvas` | `ultracanvas-widget-vector-canvas` | ArtCreator, DemoApp |
+| `MediaViewer` | `media-viewer` | `ultracanvas-widget-media-viewer` (shared core only) | UltraViewer, UltraFiler, UltraMail, EmailCleaner, ChatCube, UltraClipboard, UltraSnip, DemoApp |
+
+**Static or shared core.** The shipping configuration is a shared core
+(`ULTRACANVAS_BUILD_SHARED`, on by default whenever DemoApp is built): every
+module links `libUltraCanvas` and finds the core there. With a static core a
+module resolves the core from the host executable instead, so the host must
+keep every core object the module uses; the anchors below do that, at the cost
+of keeping those objects in the host. That is cheap for a widget that needs one
+to five of them, and pointless for the MediaViewer, which reaches about 45 (a
+view for every kind of file) and UltraNet and UltraCrypt besides: its module is
+built against a shared core only (`UC_WIDGET_<key>_SHARED_CORE_ONLY`), and a
+static build has to compile it in.
+
+**Every widget exists in one form.** A widget left out of `ULTRACANVAS_WIDGETS`
+must be buildable as a module, or the configure stops, naming it and the ways
+out. Three things rule a module out: no runtime modules in the build
+(WebAssembly, Android, or `ULTRACANVAS_WIDGET_RUNTIME_MODULES=OFF`), a static
+core on Windows (a module there links the core DLL), and a static core for a
+shared-core-only widget. Before, the first two warned or skipped and the build
+went on without the widget, so an application asking for it by name found out
+only at run time.
+
+Charts follow the same rule (`ULTRACANVAS_CHARTS`), with one difference: their
+selection is empty by default, so on a platform that cannot load a module at
+all (WebAssembly, Android) a chart left out is compiled in instead - the
+compile-time fallback of the chart engine proposal (§12.11). Turning the chart
+modules off, or a static core on Windows, still stops the configure for a chart
+left out.
 
 ```cpp
 // At startup - registers the widgets compiled in. In a static core it also
@@ -216,7 +244,9 @@ leaves them out, with the applications that use them:
 
 ```
 cmake -S . -B build -DULTRACANVAS_WIDGETS= -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF \
-      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF
+      -DBUILD_ULTRAPAINT_APP=OFF -DBUILD_ARTCREATOR_APP=OFF \
+      -DBUILD_ULTRAFILER_APP=OFF -DBUILD_ULTRAVIEWER_APP=OFF -DBUILD_ULTRAMAIL=OFF \
+      -DBUILD_EMAILCLEANER=OFF -DBUILD_CHATCUBE=OFF -DBUILD_ULTRACLIPBOARD=OFF -DBUILD_ULTRASNIP=OFF
 ```
 
 An application that uses a widget's typed API (its class, its `Create…`
@@ -227,11 +257,17 @@ when one it builds would not link. A host that loads widget modules from a
 static core exports its symbols (`ENABLE_EXPORTS`), the same as the chart
 modules' hosts.
 
+A widget module is compiled with the core library's own include paths and
+compile definitions (taken from its target), so a header whose classes change
+with a feature switch - `ULTRACANVAS_PLUGIN_PDF`, the network or video flags -
+means the same on both sides of the module boundary.
+
 `ElementModulesTest` creates every selectable widget, and the chart of the
 chart module, by name in whichever form the build has them. Loading a module
 also checks that it carries the framework headers id the loader insists on.
 The *Element modules* workflow (`.github/workflows/element-modules.yml`)
-builds this lean configuration on every pull request that touches the
+builds this lean configuration - once with a static core and once with a
+shared one - on every pull request that touches the
 framework, runs `ElementModulesTest`, `UltraCanvasThemeTest` and
 `VectorEditTest` against it, and checks that the configure refuses an
 application whose widgets are left out. `build.yml` compiles every widget
@@ -249,6 +285,9 @@ in, so this is the only CI row that builds the modules.
    (with the headers in `_ANCHOR_INCLUDES`): one expression for each core
    object file the module needs that a host with a UI may not link anyway - a
    function, a member function or `&typeid(Class)` defined there.
+   A widget that needs too much of the core for that sets
+   `_SHARED_CORE_ONLY ON` instead, and its module is built with a shared core
+   only.
 4. Add the widget to `ElementModulesTest`'s list in `Tests/CMakeLists.txt`
    and build with the widget left out. A missing anchor fails the test with
    the undefined symbol; `nm` on the archive names its object file.

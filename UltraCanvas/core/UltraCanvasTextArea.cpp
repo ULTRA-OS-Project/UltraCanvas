@@ -3908,12 +3908,10 @@ namespace UltraCanvas {
         };
         int prevLogicalLineNumber = 0;
         int currentLogicalLineNumber = 1;
-        const bool carrySyntaxState = style.highlightSyntax && syntaxTokenizer &&
-                                      editingMode == TextAreaEditingMode::PlainText;
         for(int i = 0; i < (int)lines.size(); i++) {
             // A line highlighted from what the line above used to leave open
             // (an edit opened or closed a /* comment */ further up) is stale.
-            if (lineLayouts[i] && carrySyntaxState &&
+            if (lineLayouts[i] && lineLayouts[i]->syntaxTracked &&
                 lineLayouts[i]->syntaxEntry != SyntaxStateBefore(i)) {
                 lineLayouts[i].reset();
             }
@@ -4068,8 +4066,13 @@ namespace UltraCanvas {
         }
 
         if (style.highlightSyntax && syntaxTokenizer) {
-            SyntaxLineState state = SyntaxStateBefore(lineIndex);
+            // In Markdown mode a plain line is the raw source of one Markdown
+            // line, read with the Markdown rules: it neither takes nor hands on
+            // state (a fence's code lines carry theirs among themselves).
+            const bool chain = editingMode == TextAreaEditingMode::PlainText;
+            SyntaxLineState state = chain ? SyntaxStateBefore(lineIndex) : SyntaxLineState{};
             ll->syntaxEntry = state;
+            ll->syntaxTracked = chain;
             auto tokens = syntaxTokenizer->TokenizeLine(txt, state);  // txt is already content-only
             ll->syntaxExit = state;
 
@@ -4128,8 +4131,9 @@ namespace UltraCanvas {
 
     SyntaxLineState UltraCanvasTextArea::SyntaxStateBefore(int lineIndex) const {
         int prev = lineIndex - 1;
-        if (prev < 0 || prev >= static_cast<int>(lineLayouts.size()) || !lineLayouts[prev]) {
-            return {};
+        if (prev < 0 || prev >= static_cast<int>(lineLayouts.size()) || !lineLayouts[prev] ||
+            !lineLayouts[prev]->syntaxTracked) {
+            return {};   // nothing above, or a line not highlighted with the same rules
         }
         const SyntaxLineState& exit = lineLayouts[prev]->syntaxExit;
         return LineHasNewline(prev) ? exit.AtLineBreak() : exit;
