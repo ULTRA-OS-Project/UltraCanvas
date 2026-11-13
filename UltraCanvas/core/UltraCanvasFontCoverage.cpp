@@ -1,6 +1,7 @@
 // core/UltraCanvasFontCoverage.cpp
 // The characters of a text no font covers, by script. See UltraCanvasFontCoverage.h.
-// Version: 1.1.0 - IsFontFamilyAvailable from a list made once per font set (GetFontSetGeneration)
+// Version: 1.1.0 - IsFontFamilyAvailable from a list made once per font set (GetFontSetGeneration);
+//                  FirstInstalledFontFamily
 // Version: 1.0.0
 // Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
@@ -205,6 +206,15 @@ namespace UltraCanvas {
             generation = current;
         }
         return families.count(lower(family)) > 0;
+    }
+
+    std::string FirstInstalledFontFamily(const std::vector<std::string>& families) {
+        for (const std::string& family : families) {
+            if (family.empty() || family == "sans-serif" || family == "serif" ||
+                family == "monospace" || IsFontFamilyAvailable(family))
+                return family;
+        }
+        return std::string();
     }
 
 } // namespace UltraCanvas

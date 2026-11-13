@@ -23,3 +23,8 @@
   - `IsFontFamilyAvailable` is cheap: the installed families are listed once
     per font set (`GetFontSetGeneration`), not on every call, and listed again
     when the Windows system fonts arrive after the start.
+  - A reply's or a forward's quote keeps the font the reading pane drew:
+    `ImportHTMLToRichDocument` gives a run the first installed entry of its
+    list (`FirstInstalledFontFamily`, new in `UltraCanvasFontCoverage.h`), not
+    its first name - "-apple-system" or a mail's web font, which the editor
+    drew in a stray substitute.

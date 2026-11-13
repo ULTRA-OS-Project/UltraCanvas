@@ -122,7 +122,7 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextSelection.h"
-#include "UltraCanvasFontCoverage.h"   // IsFontFamilyAvailable: the first installed font of a list
+#include "UltraCanvasFontCoverage.h"   // FirstInstalledFontFamily: the first installed font of a list
 
 #include <algorithm>
 #include <cctype>
@@ -329,16 +329,12 @@ bool OnlyWhitespace(const std::vector<Node*>& run) {
 // The family a style's text is drawn in: the first entry of its font-family
 // list the text engine has - "Helvetica Neue, Arial" is Arial on Windows -
 // the interface font ("") or a generic family where the list names one
-// first. A list with nothing installed is the interface font: a name no
-// system has would fall to whatever font fontconfig ranks first.
+// first (FirstInstalledFontFamily). A list with nothing installed is the
+// interface font: a name no system has would fall to whatever font
+// fontconfig ranks first.
 std::string FirstInstalledFamily(const ComputedStyle& style) {
     if (style.fontFamilyList.size() < 2) return style.fontFamily;
-    for (const std::string& family : style.fontFamilyList) {
-        if (family.empty() || family == "sans-serif" || family == "serif" || family == "monospace" ||
-            IsFontFamilyAvailable(family))
-            return family;
-    }
-    return std::string();
+    return FirstInstalledFontFamily(style.fontFamilyList);
 }
 
 FontStyle FontOf(const ComputedStyle& style) {
