@@ -1,3 +1,91 @@
+#### 2026-11-13 *0.9.554*
+- **Lua long brackets are coloured at every level.** Lua's long strings and
+  block comments take any number of `=` between the brackets - `[==[ … ]==]`,
+  `--[=[ … ]=]` - and end only at the bracket with the same number. The
+  tokenizer knew only the level-0 `[[ ]]` and `--[[ ]]`, so a levelled comment
+  was read as a line comment and the lines after it as code, and a `]]` inside
+  a `[==[` string closed it early. A new switch, `levelledLongBrackets` (on
+  for Lua), matches the opening at any level and keeps the comment or string
+  open, without escapes, until its own closing bracket; the line state carries
+  that marker from line to line (`SyntaxLineState::blockCommentEnd`, and
+  `rawStringEnd` as C++ raw strings use).
+- **A block comment inside a Markdown code fence is coloured on every line.**
+  Fenced code (```` ```cpp ````) in Markdown mode was highlighted one line at a
+  time with no state, so only the first line of a `/* … */` spanning several
+  lines was drawn as a comment and the rest as code. The fence's lines now hand
+  each other the line state, as a plain code file's lines have since 0.9.57;
+  each opening fence starts empty, so a comment left open in one block ends at
+  its closing fence. The raw line under the cursor, which is read with the
+  Markdown rules, never takes a code block's state: in those rules it would
+  have meant an open `<!-- -->` comment.
+- **Rust raw strings and C# verbatim strings end where the compiler says.**
+  Their prefix changes where the string ends, and the tokenizer read them as
+  ordinary strings with escapes: C#'s `@"C:\"` ran past its closing quote to
+  the end of the line, Rust's `r"C:\"` on into the lines after it (Rust's
+  ordinary strings may span lines), `r#"say "hi""#` ended at the
+  first inner quote, and a C# verbatim string's doubled `""` or its second
+  line came out as code. Two switches, `hashRawStrings` (Rust: `r`, `br`, `cr`
+  with any number of `#`) and `verbatimStrings` (C#: `@"`, `$@"`, `@$"`), open
+  them with no escapes and keep them open to their own end - `"` and as many
+  `#`, or a `"` that is not doubled - across lines, through the same end marker
+  in the line state that C++ raw strings and Lua long brackets use. Rust's raw
+  identifiers (`r#match`) and C#'s (`@class`) stay names.
+- **A string's prefix is coloured with the string.** Python's `r"…"`,
+  `rb"…"`, `f"…"` and C / C++'s `L"…"`, `u8"…"` showed the prefix as a separate
+  name in front of the string. A per-language list, `stringPrefixes`, now joins
+  a listed prefix written directly against the quote to its string, in any
+  case. Where the string ends is unchanged, and rightly: Python still lets a
+  backslash keep a quote from closing a raw string (`r"\""` is one string).
+- **A variable named `e`, `f`, `L` or `u` is no longer coloured as a number.**
+  The number test accepted a word made only of a number suffix (`f`, `L`, `u`)
+  or the exponent letter (`e`, and so `e1`), in every language. A number now
+  has to start with a digit or a point and hold a digit; `1e5`, `.5` and
+  `1.5f` are unchanged.
+- `SyntaxTokenizationRules::hasRawStrings` and `rawStringPrefix` are removed:
+  nothing read them, and the string switches that do the work replaced them.
+- **Lua's `--[[ … ]]` and MATLAB's `%{ … %}` block comments are coloured.**
+  The tokenizer looked for line comments before block comments, so `--`
+  claimed `--[[` and the rest of its line, the block never opened, and the
+  lines inside it were coloured as code; MATLAB's `%{` went the same way under
+  `%`. Block comments are now matched first, in the line-by-line and the
+  whole-text tokenizer.
+- **C++ raw strings are coloured to their end, across lines.**
+  `R"(…)"`, `R"delim(…)delim"` and the `u8R` / `uR` / `UR` / `LR` forms were
+  read as a name and an ordinary string, which ended at the first `"` inside
+  the raw text and at the end of the line. A fourth string switch,
+  `delimitedRawStrings` (on for C++), matches the opening, takes its delimiter,
+  and keeps the string open, without escapes, until its own `)delim"` -
+  carried from line to line in `SyntaxLineState::rawStringEnd`.
+- **Strings that run across lines are coloured on every line, per language.**
+  A string ended at the end of its line in every language, so a Python
+  docstring, a JavaScript template literal or a C string continued with a
+  backslash was coloured on its first line only, and the lines after it as
+  code. Three rules in `SyntaxTokenizationRules` now say which strings span
+  lines: `multiLineStrings` (`"""` / `'''` in Python and Dart, `"""` in Kotlin,
+  Swift, Java, Scala, C# and Elixir), `multiLineStringDelimiters`
+  (the backtick in JavaScript, TypeScript and Go; both quotes in Shell, Ruby,
+  PHP and Perl; `"` in Rust) and `stringLineContinuation` (a trailing `\` in C,
+  C++, Python and JavaScript). Elsewhere an unclosed string still stops at its
+  line, so a missing quote colours one line, not the rest of the file.
+- **A Markdown code fence in an unknown language is shown plain.** The fence's
+  language was looked up by exact name, then by extension, and when both failed
+  the shared code-block tokenizer kept the previous fence's language: a block
+  tagged `foo` after a C++ one was coloured as C++. And since names were
+  matched case-sensitively, a block tagged `python` only ever worked when the
+  block before it was Python. The new `SyntaxTokenizer::SetLanguageByTag`
+  matches names in any case, then extensions, then common aliases (`golang`,
+  `shell`, `csharp`, `{.rust}`), and clears the language when nothing matches.
+- **`SyntaxTokenizer::Tokenize(text)` gives the tokens the text area colours.**
+  The whole-text tokenizer was a separate scanner that had fallen behind the
+  line-by-line one: it knew only level-0 Lua brackets, none of the strings that
+  span lines, no C++ raw strings, and it dropped every line break - it built a
+  `Newline` token for each and never added it to the result. It now runs
+  `TokenizeLine` over each line with the line state carried between them, with
+  one `Newline` token per `\n` or `\r\n`, so the two can no longer disagree.
+  Seven private helpers only the old scanner used (`ParseString`,
+  `ParseComment`, `ParseWord`, `ParseCharacter`, `ParsePreprocessor`,
+  `ParseStringInLine`, `IsIdentifier`) were removed.
+
 #### 2026-11-13 *0.9.553*
 - **A chart the build would have in no form now stops the configure, or is
   compiled in.** A chart left out of `ULTRACANVAS_CHARTS` (the default
