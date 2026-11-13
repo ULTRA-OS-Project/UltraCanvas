@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.9 - groups managed after they are made: UltraIMCapabilityFlags ManageGroups and
+//                  LeaveConversation; UltraIMConversation::ownerId and memberNames
 // Version: 0.1.8 - deleting a message for oneself or for everyone: UltraIMDeleteScope, UltraIMDeleteChoices
 // Version: 0.1.7 - searching messages: UltraIMSearchKind, UltraIMMessageSearch, UltraIMSearchPage,
 //                  UltraIMSearchCallback, the SearchMessages capability
@@ -14,12 +16,13 @@
 // Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 #pragma once
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -186,6 +189,12 @@ struct UltraIMConversation {
     bool            isGroup = false;
     std::string     directContactId;    // The other person of a 1:1 conversation
     std::vector<std::string> memberIds; // Everyone in it, including the local user
+    // A group's creator, who alone may remove other members ("" when the
+    // network does not say, or any member may).
+    std::string     ownerId;
+    // The members' names where the network knows them (member id -> name);
+    // one missing here is shown by its id.
+    std::map<std::string, std::string> memberNames;
     UltraIMPresence presence = UltraIMPresence::Unknown; // Of directContactId
     std::string     lastMessageSnippet;
     int64_t         lastMessageTimeMs = 0;
@@ -229,7 +238,9 @@ enum class UltraIMCapabilityFlags : uint32_t {
     AccountProfile  = 1u << 26,  // UltraIM_FetchAccountProfile / UltraIM_UpdateAccountProfile
     SignInProtection = 1u << 27, // UltraIM_SetSignInProtection: a password, an authenticator code
     AccountRecovery = 1u << 28,  // UltraIM_StartRecovery / FinishRecovery: back by a link e-mailed to the owner
-    SearchMessages  = 1u << 29   // UltraIM_SearchMessages: words, pictures, files and links in the history
+    SearchMessages  = 1u << 29,  // UltraIM_SearchMessages: words, pictures, files and links in the history
+    ManageGroups    = 1u << 30,  // UltraIM_RenameGroup, UltraIM_AddGroupMembers, UltraIM_RemoveGroupMember
+    LeaveConversation = 1u << 31 // UltraIM_LeaveConversation: leave a group, delete a 1:1 conversation
 };
 
 inline UltraIMCapabilityFlags operator|(UltraIMCapabilityFlags a, UltraIMCapabilityFlags b) {

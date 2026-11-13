@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.0 - the chat list's menu (a right-click): read / unread, pinned, calls, the ID, a group's
+//                  members, adding, renaming and leaving; a chat deleted; "1 member" in the singular
 // Version: 0.2.9 - the relay from the settings (Networks > Relay) instead of a field on the sign-in
 //                  page; a Connecting page while ChatCube Direct signs in, with Try again on a failure
 // Version: 0.2.8 - a message's right-click menu: its file opened or saved, the message deleted for oneself or
@@ -74,6 +76,7 @@ constexpr int   kInputHeight = 48;
 constexpr int   kTileSide = 64;         // a staged picture's tile in the composer
 constexpr int   kFileTileWidth = 180;   // a staged file's tile: its name and size
 constexpr int   kTileClose = 20;        // the x on a tile
+constexpr size_t  kMenuMembers = 40;     // members listed in a group's menu before "and N more"
 constexpr int64_t kTypingShownMs = 5000;
 constexpr int64_t kTypingResendMs = 3000;
 
@@ -600,6 +603,14 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
         if (rows.front() >= 0 && rows.front() < static_cast<int>(list.size()))
             OpenConversation(list[static_cast<size_t>(rows.front())].conversationId);
     };
+    // A right-click opens the conversation's menu, not the conversation:
+    // selecting a row here opens it, so the press leaves the selection alone.
+    conversationList_->SetSelectsOnContextMenu(false);
+    conversationList_->onContextMenu = [this](int row, const UCEvent& event) {
+        ShowConversationMenu(row, event.pointerWindow.x, event.pointerWindow.y);
+    };
+    marks_.Load();
+    ApplyMarks();
     sidebar->AddChild(conversationList_);
     return sidebar;
 }
@@ -1206,6 +1217,345 @@ void ChatCubeWindow::RefreshConversations() {
     });
 }
 
+// ======================================================= the chat list's menu
+
+bool ChatCubeWindow::ProviderCan(const std::string& providerId, UltraIMCapabilityFlags capability) const {
+    UltraIMProviderInfo info;
+    return UltraIM_GetProviderInfo(providerId, info) && UltraIM_HasCapability(info.capabilities, capability);
+}
+
+void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
+    if (!window_ || row < 0 || row >= conversations_->GetRowCount()) return;
+    // A copy: the list may change while the menu is open, so the actions
+    // look the conversation up again by its id.
+    const UltraIMConversation c = conversations_->Conversations()[static_cast<size_t>(row)];
+    const std::string id = c.conversationId;
+    const std::string provider = c.providerId.empty() ? providerId_ : c.providerId;
+    UltraIMProviderInfo info;
+    UltraIM_GetProviderInfo(provider, info);
+    const bool connected = info.connectionState == UltraIMConnectionState::Connected;
+    const bool manage = connected && UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::ManageGroups);
+    const bool leave = UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::LeaveConversation);
+    const bool active = id == activeConversation_;
+
+    // Sections, with a line between those that have something in them.
+    std::vector<std::vector<MenuItemData>> sections(3);
+
+    // ---- the conversation in the list
+    std::vector<MenuItemData>& list = sections[0];
+    if (!active) list.push_back(MenuItemData::Action(Tr("Open"), [this, id]() { OpenConversation(id); }));
+    if (c.unreadCount > 0 || conversations_->IsMarkedUnread(c)) {
+        list.push_back(MenuItemData::Action(Tr("Mark as read"), [this, id]() { MarkConversationRead(id); }));
+    } else if (!active) {
+        list.push_back(MenuItemData::Action(Tr("Mark as unread"), [this, id]() { SetMarkedUnread(id, true); }));
+    }
+    const bool pinned = conversations_->IsPinned(c);
+    list.push_back(MenuItemData::Action(pinned ? Tr("Unpin") : Tr("Pin to top"),
+                                        [this, id, pinned]() { SetPinned(id, !pinned); }));
+
+    // ---- the person, or the group
+    std::vector<MenuItemData>& who = sections[1];
+    if (!c.isGroup) {
+        const auto addCall = [&](bool video) {
+            const UltraIMCapabilityFlags needed = video ? UltraIMCapabilityFlags::VideoCalls
+                                                        : UltraIMCapabilityFlags::VoiceCalls;
+            if (!UltraIM_HasCapability(info.capabilities, needed)) return;
+            MenuItemData item = MenuItemData::Action(video ? Tr("Video call") : Tr("Voice call"),
+                                                     [this, id, video]() { CallFromMenu(id, video); });
+            item.enabled = callId_.empty() && UltraIM_CanCall(provider, id, video);
+            who.push_back(item);
+        };
+        addCall(false);
+        addCall(true);
+        const std::string contact = c.directContactId;
+        if (!contact.empty()) {
+            who.push_back(MenuItemData::Action(provider == providerId_ ? Tr("Copy ChatCube ID") : Tr("Copy address"),
+                                               [this, contact]() { CopyAddress(contact); }));
+        }
+        // Into one of the groups of the same network it is not in yet.
+        if (manage && !contact.empty()) {
+            std::vector<MenuItemData> groups;
+            for (const UltraIMConversation& g : conversations_->Conversations()) {
+                if (!g.isGroup || g.providerId != c.providerId) continue;
+                if (std::find(g.memberIds.begin(), g.memberIds.end(), contact) != g.memberIds.end()) continue;
+                const std::string groupId = g.conversationId;
+                groups.push_back(MenuItemData::Action(g.title, [this, groupId, contact]() { AddToGroup(groupId, contact); }));
+            }
+            if (!groups.empty()) who.push_back(MenuItemData::Submenu(Tr("Add to group"), groups));
+        }
+    } else {
+        // Every member with a menu of their own.
+        const std::string me = info.localUserId;
+        std::vector<MenuItemData> members;
+        size_t listed = 0;
+        for (const std::string& member : c.memberIds) {
+            // A big group: the first ones, and a line saying how many more.
+            if (++listed > kMenuMembers) {
+                MenuItemData more = MenuItemData::Action(
+                    TrN("and {n} more", "and {n} more", static_cast<long long>(c.memberIds.size() - kMenuMembers)),
+                    []() {});
+                more.enabled = false;
+                members.push_back(more);
+                break;
+            }
+            const bool self = member == me;
+            std::vector<MenuItemData> actions;
+            if (!self) {
+                actions.push_back(MenuItemData::Action(Tr("Send a message"),
+                                                       [this, provider, member]() { MessageMember(provider, member); }));
+            }
+            actions.push_back(MenuItemData::Action(Tr("Copy ID"), [this, member]() { CopyAddress(member); }));
+            // Someone else out: the owner's, where the network has one.
+            if (manage && !self && (c.ownerId.empty() || c.ownerId == me)) {
+                actions.push_back(MenuItemData::Action(Tr("Remove from group"),
+                                                       [this, id, member]() { RemoveMember(id, member); }));
+            }
+            std::string name = self ? Tr("You") : MemberName(c, member);
+            if (!c.ownerId.empty() && member == c.ownerId) name = TrF("{0} (owner)", name);
+            members.push_back(MenuItemData::Submenu(name, actions));
+        }
+        if (!members.empty()) {
+            who.push_back(MenuItemData::Submenu(TrF("Members ({0})", static_cast<long long>(c.memberIds.size())), members));
+        }
+        if (manage) {
+            who.push_back(MenuItemData::Action(Tr("Add members"), [this, id]() { AskToAddMembers(id); }));
+            who.push_back(MenuItemData::Action(Tr("Rename group"), [this, id]() { AskToRenameGroup(id); }));
+        }
+    }
+
+    // ---- out of it
+    if (leave) {
+        sections[2].push_back(MenuItemData::Action(c.isGroup ? Tr("Leave group") : Tr("Delete chat"),
+                                                   [this, id]() { AskToLeave(id); }));
+    }
+
+    conversationMenu_ = std::make_shared<UltraCanvasMenu>("cc-conversation-menu", 0, 0, 240, 0);
+    conversationMenu_->SetMenuType(MenuType::PopupMenu);
+    conversationMenu_->AddItem(MenuItemData::Header(c.title));
+    bool first = true;
+    for (const auto& section : sections) {
+        if (section.empty()) continue;
+        if (!first) conversationMenu_->AddItem(MenuItemData::Separator());
+        first = false;
+        for (const MenuItemData& item : section) conversationMenu_->AddItem(item);
+    }
+    PopupElementSettings settings;
+    conversationMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+void ChatCubeWindow::ApplyMarks() {
+    fillingList_ = true;
+    conversations_->SetMarks(marks_.pinned, marks_.unread);
+    const int row = conversations_->FindRow(activeConversation_);
+    if (row >= 0) conversationList_->GetSelection()->Select(row);
+    fillingList_ = false;
+    if (conversationList_) conversationList_->RequestRedraw();
+}
+
+void ChatCubeWindow::UpsertConversation(const UltraIMConversation& conversation) {
+    fillingList_ = true;
+    conversations_->Upsert(conversation);
+    const int row = conversations_->FindRow(activeConversation_);
+    if (row >= 0) conversationList_->GetSelection()->Select(row);
+    fillingList_ = false;
+    if (conversation.conversationId == activeConversation_) UpdateHeader();
+}
+
+void ChatCubeWindow::SetPinned(const std::string& conversationId, bool pinned) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c) return;
+    const std::string key = ConversationListModel::MarkKey(*c);
+    if (pinned) marks_.pinned.insert(key);
+    else marks_.pinned.erase(key);
+    marks_.Save();
+    ApplyMarks();
+}
+
+void ChatCubeWindow::SetMarkedUnread(const std::string& conversationId, bool unread) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c) return;
+    const std::string key = ConversationListModel::MarkKey(*c);
+    if (unread) marks_.unread.insert(key);
+    else marks_.unread.erase(key);
+    marks_.Save();
+    ApplyMarks();
+}
+
+void ChatCubeWindow::MarkConversationRead(const std::string& conversationId) {
+    const UltraIMConversation* found = conversations_->Find(conversationId);
+    if (!found) return;
+    UltraIMConversation c = *found;
+    UltraIM_MarkRead(c.providerId.empty() ? providerId_ : c.providerId, conversationId);
+    if (c.unreadCount > 0) {
+        c.unreadCount = 0;
+        UpsertConversation(c);
+    }
+    if (conversations_->IsMarkedUnread(c)) SetMarkedUnread(conversationId, false);
+}
+
+void ChatCubeWindow::CallFromMenu(const std::string& conversationId, bool video) {
+    if (conversationId != activeConversation_) OpenConversation(conversationId);
+    StartCall(video);
+}
+
+void ChatCubeWindow::CopyAddress(const std::string& address) {
+    if (address.empty()) return;
+    if (SetClipboardText(address)) SetStatus(TrF("{0} is on the clipboard.", address));
+}
+
+std::string ChatCubeWindow::MemberName(const UltraIMConversation& group, const std::string& memberId) const {
+    const auto named = group.memberNames.find(memberId);
+    if (named != group.memberNames.end() && !named->second.empty()) return named->second;
+    for (const UltraIMConversation& c : conversations_->Conversations()) {
+        if (!c.isGroup && c.providerId == group.providerId && c.directContactId == memberId && !c.title.empty())
+            return c.title;
+    }
+    // Nobody we chat with: their ID, in groups of four for a ChatCube ID.
+    return group.providerId == providerId_ ? GroupUserId(memberId) : memberId;
+}
+
+void ChatCubeWindow::MessageMember(const std::string& providerId, const std::string& memberId) {
+    for (const UltraIMConversation& c : conversations_->Conversations()) {
+        if (!c.isGroup && c.providerId == providerId && c.directContactId == memberId) {
+            OpenConversation(c.conversationId);
+            return;
+        }
+    }
+    SetStatus(Tr("Opening the chat\xE2\x80\xA6"));
+    UltraIM_AddContact(providerId, memberId, [this](const UltraIMResult& r, const UltraIMConversation& c) {
+        if (!r) {
+            SetStatus(TrF("Could not open the chat: {0}", r.message));
+            return;
+        }
+        UpsertConversation(c);
+        SetStatus(std::string());
+        OpenConversation(c.conversationId);
+    });
+}
+
+void ChatCubeWindow::RemoveMember(const std::string& conversationId, const std::string& memberId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c) return;
+    const std::string provider = c->providerId.empty() ? providerId_ : c->providerId;
+    const std::string name = MemberName(*c, memberId);
+    const std::string question = TrF("Take {0} out of {1}?", name, c->title);
+    UltraCanvasDialogManager::ShowConfirmation(question, Tr("Remove from group"),
+                                               [this, provider, conversationId, memberId, name](bool yes) {
+        if (!yes) return;
+        UltraIM_RemoveGroupMember(provider, conversationId, memberId, [this, name](const UltraIMResult& r) {
+            SetStatus(r ? TrF("{0} is no longer in the group.", name)
+                        : TrF("Could not remove {0}: {1}", name, r.message));
+        });
+    }, window_.get());
+}
+
+void ChatCubeWindow::AskToRenameGroup(const std::string& conversationId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c) return;
+    const std::string provider = c->providerId.empty() ? providerId_ : c->providerId;
+    const std::string current = c->title;
+    UltraCanvasDialogManager::ShowInputDialog(Tr("The group's new name:"), Tr("Rename group"), current, InputType::Text,
+                                              [this, provider, conversationId, current](DialogResult result,
+                                                                                         const std::string& text) {
+        const std::string title = Trim(text);
+        if (result != DialogResult::OK || title.empty() || title == current) return;
+        UltraIM_RenameGroup(provider, conversationId, title,
+                            [this, title](const UltraIMResult& r, const UltraIMConversation& c) {
+            if (!r) {
+                SetStatus(TrF("Could not rename the group: {0}", r.message));
+                return;
+            }
+            if (!c.conversationId.empty()) UpsertConversation(c);
+            SetStatus(TrF("The group is called {0} now.", title));
+        });
+    }, window_.get());
+}
+
+void ChatCubeWindow::AskToAddMembers(const std::string& conversationId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c) return;
+    const std::string provider = c->providerId.empty() ? providerId_ : c->providerId;
+    const std::string prompt = provider == providerId_
+        ? Tr("The ChatCube IDs of the people to add, separated by commas:")
+        : Tr("The addresses of the people to add (@name:server), separated by commas:");
+    UltraCanvasDialogManager::ShowInputDialog(prompt, TrF("Add members to {0}", c->title), "", InputType::Text,
+                                              [this, provider, conversationId](DialogResult result,
+                                                                               const std::string& text) {
+        if (result != DialogResult::OK) return;
+        std::vector<std::string> ids;
+        std::stringstream stream(text);
+        std::string item;
+        while (std::getline(stream, item, ',')) {
+            std::string id;
+            for (char ch : item) {
+                if (ch != ' ' && ch != '\t') id += ch;
+            }
+            if (!id.empty()) ids.push_back(id);
+        }
+        if (ids.empty()) return;
+        SetStatus(Tr("Adding to the group\xE2\x80\xA6"));
+        UltraIM_AddGroupMembers(provider, conversationId, ids,
+                                [this, count = ids.size()](const UltraIMResult& r, const UltraIMConversation& c) {
+            if (!r) {
+                SetStatus(TrF("Could not add to the group: {0}", r.message));
+                return;
+            }
+            if (!c.conversationId.empty()) UpsertConversation(c);
+            SetStatus(TrN("Added {n} person to the group.", "Added {n} people to the group.",
+                          static_cast<long long>(count)));
+        });
+    }, window_.get());
+}
+
+void ChatCubeWindow::AddToGroup(const std::string& groupId, const std::string& memberId) {
+    const UltraIMConversation* g = conversations_->Find(groupId);
+    if (!g) return;
+    const std::string provider = g->providerId.empty() ? providerId_ : g->providerId;
+    const std::string name = MemberName(*g, memberId);
+    const std::string title = g->title;
+    UltraIM_AddGroupMembers(provider, groupId, {memberId},
+                            [this, name, title](const UltraIMResult& r, const UltraIMConversation& c) {
+        if (!r) {
+            SetStatus(TrF("Could not add {0} to {1}: {2}", name, title, r.message));
+            return;
+        }
+        if (!c.conversationId.empty()) UpsertConversation(c);
+        SetStatus(TrF("Added {0} to {1}.", name, title));
+    });
+}
+
+void ChatCubeWindow::AskToLeave(const std::string& conversationId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c) return;
+    const std::string provider = c->providerId.empty() ? providerId_ : c->providerId;
+    const bool group = c->isGroup;
+    const std::string title = c->title;
+    const std::string question = group
+        ? TrF("Leave {0}? Its messages stop coming to you, and the others are told you left.", title)
+        : TrF("Delete the chat with {0} and its messages on this computer? {0} keeps theirs.", title);
+    UltraCanvasDialogManager::ShowConfirmation(question, group ? Tr("Leave group") : Tr("Delete chat"),
+                                               [this, provider, conversationId, group, title](bool yes) {
+        if (!yes) return;
+        // The conversation leaves the list with the ConversationRemove that follows.
+        UltraIM_LeaveConversation(provider, conversationId, [this, group, title](const UltraIMResult& r) {
+            if (!r) {
+                SetStatus(group ? TrF("Could not leave {0}: {1}", title, r.message)
+                                : TrF("Could not delete the chat: {0}", r.message));
+                return;
+            }
+            SetStatus(group ? TrF("You left {0}.", title) : TrF("Deleted the chat with {0}.", title));
+        });
+    }, window_.get());
+}
+
+void ChatCubeWindow::CloseConversationView() {
+    activeConversation_.clear();
+    messages_->Clear();
+    messageList_->SetVisible(false);
+    emptyHint_->SetVisible(true);
+    UpdateHeader();
+}
+
 void ChatCubeWindow::CopyMyId() {
     UltraIMProviderInfo info;
     if (!UltraIM_GetProviderInfo(providerId_, info) || info.localUserId.empty()) return;
@@ -1537,6 +1887,8 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     activeProvider_ = ProviderOf(conversationId);
     typingContact_.clear();
     const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (c && conversations_->IsMarkedUnread(*c)) SetMarkedUnread(conversationId, false);   // read now
+    c = conversations_->Find(conversationId);
     messages_->SetGroup(c && c->isGroup);
     messages_->Clear();
     emptyHint_->SetVisible(false);
@@ -2355,13 +2707,7 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
         if (c.providerId == providerId) gone.push_back(c.conversationId);
     }
     for (const std::string& id : gone) conversations_->Remove(id);
-    if (activeProvider_ == providerId && !activeConversation_.empty()) {
-        activeConversation_.clear();
-        messages_->Clear();
-        messageList_->SetVisible(false);
-        emptyHint_->SetVisible(true);
-        UpdateHeader();
-    }
+    if (activeProvider_ == providerId && !activeConversation_.empty()) CloseConversationView();
     if (providerId == matrixProviderId_) {
         SetNetworkButton(matrixToggle_, "Matrix", Tr("Matrix account"));
         matrixKeysForm_->SetVisible(false);
@@ -2407,16 +2753,17 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (c.conversationId == activeConversation_) UpdateHeader();
             break;
         }
-        case UltraIMEventType::ConversationRemove:
+        case UltraIMEventType::ConversationRemove: {
             conversations_->Remove(e.conversationId);
-            if (e.conversationId == activeConversation_) {
-                activeConversation_.clear();
-                messages_->Clear();
-                messageList_->SetVisible(false);
-                emptyHint_->SetVisible(true);
-                UpdateHeader();
+            // Its marks go with it.
+            const std::string key = e.providerId + "/" + e.conversationId;
+            if (marks_.pinned.erase(key) + marks_.unread.erase(key) > 0) {
+                marks_.Save();
+                ApplyMarks();
             }
+            if (e.conversationId == activeConversation_) CloseConversationView();
             break;
+        }
         case UltraIMEventType::PresenceChange:
             conversations_->SetPresence(e.contactId, e.presence);
             if (e.conversationId == activeConversation_) UpdateHeader();

@@ -1,5 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.7.0 - SetSelectsOnContextMenu(false): a right press leaves the selection as it is
 // Version: 1.6.0 - SetColumnFitting
 // Version: 1.5.0 - a horizontal scrollbar when the columns are wider than the view
 // Version: 1.4.0 - onCellDoubleClicked, GetCellRect
@@ -1090,7 +1091,7 @@ namespace UltraCanvas {
             event.button == UCMouseButton::Right && Contains(event.pointer)) {
             SetFocus(true);
             const int row = GetRowAtY(event.pointer.y);
-            if (row >= 0) {
+            if (row >= 0 && selectsOnContextMenu) {
                 focusedRow = row;
                 if (selection && !selection->IsSelected(row)) selection->Select(row, false);
                 RequestRedraw();

@@ -2,13 +2,15 @@
 // Telegram provider - the TDLib requests it sends, built in one place (td_api
 // names and fields), so the tests can hand every one of them to a real TDLib
 // and have it say whether it parses.
+// Version: 0.1.6 - a group after it is made: SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat,
+//                  DeleteChatHistory, GetBasicGroupFullInfo
 // Version: 0.1.5 - SearchChatMessages
 // Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument (a local file with a caption)
 // Version: 0.1.2 - RequestQrCode
 // Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -81,6 +83,16 @@ TdObject SearchPublicChat(const std::string& username);
 TdObject SearchUserByPhone(const std::string& phone);
 TdObject CreatePrivateChat(int64_t userId);
 TdObject CreateBasicGroup(const std::vector<int64_t>& userIds, const std::string& title);
+// A group after it is made: its name, members in (addChatMembers) and out
+// (setChatMemberStatus to left - a kick, in a supergroup too), leaving it;
+// a private chat's history deleted for us alone and the chat off the list;
+// a basic group's members and creator (basicGroupFullInfo).
+TdObject SetChatTitle(int64_t chatId, const std::string& title);
+TdObject AddChatMembers(int64_t chatId, const std::vector<int64_t>& userIds);
+TdObject RemoveChatMember(int64_t chatId, int64_t userId);
+TdObject LeaveChat(int64_t chatId);
+TdObject DeleteChatHistory(int64_t chatId);
+TdObject GetBasicGroupFullInfo(int64_t basicGroupId);
 TdObject Close();
 
 } // namespace Request

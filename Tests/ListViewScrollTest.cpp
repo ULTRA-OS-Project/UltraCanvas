@@ -34,6 +34,11 @@
 //    caller's bounds, until the user drags a border. UltraDBAdmin's grids
 //    estimated widths from a character count: a column of narrow glyphs
 //    was wider than it needed to be, a wide one still cut its text.
+//  - A right press and the selection. It selects the row under it before
+//    onContextMenu, as every desktop does - unless SetSelectsOnContextMenu
+//    (false) says not to: in ChatCube's chat list selecting a row opens the
+//    chat, so the menu must act on the row it is handed and leave the
+//    selection (the open chat) where it was.
 // No window and no display: the view is sized with SetBounds, and text is
 // measured on an offscreen render context.
 #include "UltraCanvasListView.h"
@@ -208,6 +213,35 @@ static void TestKeyboardFollowsSelectionSetInCode() {
     // Home still starts over.
     view->OnEvent(Key(UCKeys::Home));
     CHECK_EQ(view->GetSelection()->GetCurrentRow(), 0);
+}
+
+static void TestContextMenuSelection() {
+    // Header 22 px, rows 22 px: y = 22 + 3 * 22 + 5 is inside row 3.
+    UCEvent press;
+    press.type = UCEventType::MouseDown;
+    press.button = UCMouseButton::Right;
+    press.pointer = Point2Di(40, 22 + 3 * 22 + 5);
+    press.pointerWindow = press.pointer;
+
+    auto view = MakeView(10);
+    view->SetBounds(Rect2Df(0, 0, 400, 300));
+    view->GetSelection()->Select(7);
+    int menuRow = -1;
+    view->onContextMenu = [&menuRow](int row, const UCEvent&) { menuRow = row; };
+    CHECK_EQ(view->SelectsOnContextMenu(), true);
+    CHECK_EQ(view->OnEvent(press), true);
+    CHECK_EQ(menuRow, 3);
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 3);     // the default: what was pointed at
+
+    view->GetSelection()->Select(7);
+    int selectionChanges = 0;
+    view->onSelectionChanged = [&selectionChanges](const std::vector<int>&) { ++selectionChanges; };
+    view->SetSelectsOnContextMenu(false);
+    menuRow = -1;
+    CHECK_EQ(view->OnEvent(press), true);
+    CHECK_EQ(menuRow, 3);
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 7);     // left where it was
+    CHECK_EQ(selectionChanges, 0);
 }
 
 // `text` on one line in `font`, rounded up - what the view's measurements
@@ -533,6 +567,7 @@ int main() {
     TestSelectionFollowsInsertedAndRemovedRows();
     TestMultiSelectionShift();
     TestKeyboardFollowsSelectionSetInCode();
+    TestContextMenuSelection();
     TestColumnFitMeasurements();
     TestColumnFitting();
     TestModelOutlivesView();

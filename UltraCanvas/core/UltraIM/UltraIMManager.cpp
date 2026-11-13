@@ -1,5 +1,6 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.7 - UltraIM_RenameGroup, _AddGroupMembers, _RemoveGroupMember, _LeaveConversation
 // Version: 0.1.6 - UltraIM_DeleteMessage's scope, UltraIM_GetDeleteChoices
 // Version: 0.1.5 - UltraIM_SearchMessages
 // Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
@@ -645,6 +646,68 @@ void UltraIM_CreateGroup(const std::string& providerId, const std::string& title
     }
     provider->CreateGroup(title, memberIds,
                           callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
+}
+
+void UltraIM_RenameGroup(const std::string& providerId, const std::string& conversationId,
+                         const std::string& title, UltraIMConversationCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    if (conversationId.empty() || title.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation or name"), {});
+        return;
+    }
+    provider->RenameGroup(conversationId, title,
+                          callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
+}
+
+void UltraIM_AddGroupMembers(const std::string& providerId, const std::string& conversationId,
+                             const std::vector<std::string>& memberIds, UltraIMConversationCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    if (conversationId.empty() || memberIds.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "No one to add"), {});
+        return;
+    }
+    provider->AddGroupMembers(conversationId, memberIds,
+                              callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
+}
+
+void UltraIM_RemoveGroupMember(const std::string& providerId, const std::string& conversationId,
+                               const std::string& memberId, UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    if (conversationId.empty() || memberId.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation or member"));
+        return;
+    }
+    provider->RemoveGroupMember(conversationId, memberId, callback ? callback : [](const UltraIMResult&) {});
+}
+
+void UltraIM_LeaveConversation(const std::string& providerId, const std::string& conversationId,
+                               UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    if (conversationId.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation"));
+        return;
+    }
+    provider->LeaveConversation(conversationId, callback ? callback : [](const UltraIMResult&) {});
 }
 
 // ============================================================================
