@@ -53835,9 +53835,10 @@ Reported by the converters themselves in a build with tinyxml2 and zlib:
 | Alembic (`.abc`) | ✓ (first time sample) | — | — | — |
 | Blender (`.blend`) | ✓ | ✓ | — | — |
 | STEP (`.step .stp .p21`) | ✓ | ✓ | ✓ | ✓ |
+| IGES (`.igs .iges`) | — | ✓ | ✓ | ✓ |
 | AutoCAD DXF — 3D entities | — | ✓ | — | — |
 
-Six formats are writable — OBJ, PLY, STEP, 3DS, COLLADA and X3D/VRML — and the
+Seven formats are writable — OBJ, PLY, STEP, IGES, 3DS, COLLADA and X3D/VRML — and the
 rest are read-only. That is a property of the writers this repository has, not
 of the formats. `ModelWriterTest` asserts that this list and the converters'
 own `CanExport()` agree in both directions, so a format cannot be advertised
@@ -53888,6 +53889,29 @@ becomes its own face. The writer says so through `WarningCallback` rather than
 leaving you to notice. A document that already holds exact bodies is written as
 those bodies, losslessly, and does not go through faceting at all.
 
+**IGES is written in the form each body needs.** A closed solid becomes a
+manifold solid B-rep object (entity 186) with its vertex and edge lists, so its
+faces still share their edges when it is read back; an open body becomes
+trimmed surfaces (144) with their boundaries in model space, and B-spline
+faces also carry their trimming curves in (u, v). Analytic surfaces keep their
+IGES 5.3 entities (planes 190, cylinders 192, cones 194, spheres 196, tori
+198) rather than being converted to NURBS, so a reader older than IGES 5.2
+that knows only 128 will not take them. A mesh is written as a faceted solid,
+as for STEP, with the same warning. IGES must state a unit; a document that
+states none is written as millimetres, the format's own default.
+
+**The IGES reader takes both of the format's shapes.** A file of manifold solid
+B-rep objects arrives as closed solids with shared edges; a file of trimmed
+surfaces - which is what most IGES files are - arrives as one open body of
+independent faces, the way STEP's `shell_based_surface_model` does. Trimming
+curves in a surface's (u, v) are used only when, lifted onto the surface, they
+lie on the model-space edge they belong to; any that do not are dropped with a
+warning and the edge is projected instead, so a writer that parameterises a
+surface differently costs time, not a wrong face. Hyperbolic and parabolic
+arcs (read as their chord), offset surfaces (140), bounded surfaces (143),
+subfigure instances (408), and the compressed and binary forms of the file
+are not read, and the reader names each one it skipped.
+
 `.dxf` is deliberately **not** claimed by this plugin: a DXF is a drawing far
 more often than a model, so the Vector plugin's reader stays the default for
 it. A caller that wants the 3D entities asks for the converter by name —
@@ -53900,7 +53924,7 @@ surfaces with the topology that closes them into solids, in
 `ModelDocument::Brep`. A document holding only exact bodies is *not* empty, and
 `TotalFaceCount()` is zero until something tessellates it — which is what
 `TessellateOnImport` asks for, at the tolerance in
-`ConversionOptions::Tessellation`. A converter writing STEP to IGES wants it
+`ConversionOptions::Tessellation`. IGES is the same. A converter writing STEP to IGES wants it
 off, because tessellating and discarding is exactly the loss the B-rep
 structure exists to prevent.
 
@@ -65891,6 +65915,20 @@ undo step (`imageWidthPt` / `imageHeightPt`, never wider than the column).
 Delete removes a selected picture. A right-click selects the picture under the
 pointer first, so a host's context menu can offer picture items.
 
+Floating text frames and drawings are selected the same way (not one behind
+the text, which leaves the text to the clicks), and anything floating is
+**moved by dragging it**: on release it is no longer aligned but offset from
+what it is placed from - its paragraph, the page or the page's text area -
+by `UCRichDocumentEditor::SetFloatOffset`, one undo step, and both writers
+save the new place. A resized drawing keeps the size its shapes were drawn for
+(`RichTextFrame::drawingWidthPt` / `drawingHeightPt`) and its shapes scale to
+the new one. Frames and pictures in headers and footers are not picked up.
+
+```cpp
+// Move the floating object whose placeholder is at {block, offset}.
+editor->GetEditor().SetFloatOffset(RichDocPosition(block, placeholderOffset), /*xPt*/ 72, /*yPt*/ 12);
+```
+
 ```cpp
 if (editor->HasSelectedImage()) {
     editor->SetSelectedImageAltText("Quarterly revenue by region");
@@ -65988,6 +66026,41 @@ name.text = "Recipient Name";
 address.runs = {box, name};
 document->blocks.push_back(address);
 editor->SetDocument(document);
+```
+
+**Drawings.** A frame with `shapes` is a drawing: each `RichShape` - a
+`Line`, `Rectangle`, `RoundRectangle`, `Ellipse`, `Path` (an outline from 0
+to 1 across its box) or `Group` - is drawn in the frame's box with its
+`fillColor`, `lineColor`, `lineWidthPt`, `dash` and arrowheads, turned by
+`rotationDeg` and mirrored by `flipH` / `flipV`. The frame's own words sit
+over its shapes, at `textAnchor` (top, middle or bottom); a group member's
+words are a frame of their own (`RichShape::textFrame`, with `shapeText`
+set), and a group member with a `mediaIndex` is a picture. A shape with two
+or more `gradientStops` is filled with a gradient: linear at
+`gradientAngleDeg` (clockwise from left-to-right), or radial from
+`gradientCenterX` / `gradientCenterY`. A drawing with no
+words is exactly as tall as it was drawn, so a rule (a line with no height)
+takes no room. `RichShape::ApplyPreset` takes Word's outline names
+(`"star5"`, `"rightArrow"`, `"flowChartDecision"`, ...). ODT, DOCX (DrawingML
+and VML) and DOC (OfficeArt) shapes and groups read into it, and both writers
+save it. A drawing is moved and resized like a picture; the shapes in it are
+not edited one by one.
+
+```cpp
+RichShape rule;
+rule.kind = RichShape::Kind::Line;
+rule.widthPt = 425.0f;                // across the column; no height
+rule.lineColor = "#1F4E79";
+rule.lineWidthPt = 1.5f;
+RichTextFrame drawing;
+drawing.shapes = {rule};
+document->frames.push_back(drawing);
+
+RichTextRun under;
+under.text = RichTextRun::kObjectReplacement;
+under.frameIndex = static_cast<int>(document->frames.size()) - 1;
+under.imageWidthPt = 425.0f;
+under.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
 ```
 
 ### Check lists
@@ -92023,11 +92096,11 @@ View = `UltraCanvasRichTextEdit` draws it.
 
 | Feature | ODT | DOCX | DOC | Model | View | Note |
 |---|---|---|---|---|---|---|
-| Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. |
+| Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. DOCX: VML pictures (`v:imagedata`, Word 2003 and older) in the line or floating. |
 | Picture on its own line | yes | yes | yes | yes | yes | |
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
-| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | no | no | no | no | no | |
+| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradient fills (linear, axial, radial with their centre: ODF `draw:gradient`, DOCX `a:gradFill`, VML `v:fill`, DOC shades) are drawn and saved; pattern fills draw in one colour; no shadows, 3-D or WordArt. In page view a floating frame, drawing or picture is selected, moved by dragging and resized; the new place and size are saved. |
 | Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
 
@@ -92090,15 +92163,16 @@ orphan control, repeated table header rows), footnotes and endnotes, zoom
 and sideways scrolling, and (2026-11) positioned frames, text boxes and
 floating pictures placed from the page, text wrapping round them line by
 line, frames and floating pictures in headers and footers (DOC included),
-and zoom to the page's width or the whole page
-(`UltraCanvasRichTextEdit::SetZoomFit`).
+zoom to the page's width or the whole page
+(`UltraCanvasRichTextEdit::SetZoomFit`), and drawn shapes and groups from
+all three formats.
 
 1. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
    (their text lies after the main text in the piece table: `ccpFtn`,
    `ccpEdn`), comments and revision marks, sections and their columns,
    bookmarks and caption / cross-reference fields. ODT and DOCX read all of
    these.
-2. Shapes and charts: read-only display first.
+2. Charts: read-only display first.
 
 Each can be checked against a LibreOffice-generated fixture the way
 `Tests/fixtures/word97-formatting.*` is.
@@ -92117,10 +92191,17 @@ model or a reader can already carry, or that a document needs, but
   headers and footers cannot be selected or moved on the page, and are
   drawn under the body's text (Word's order; Writer draws a frame set in
   front of the text over it).
-- **A frame's text cannot be edited**, and a frame cannot be moved or
-  resized; clicks pass through it to the text underneath.
-- **Group shapes and drawn shapes** (lines, arrows, WordArt) are not shown;
-  only a shape's picture or text box is.
+- **A frame's text cannot be edited**: a click selects the frame (one
+  behind the text passes the click to the text) and it can be moved and
+  resized, but its words are changed only by editing the document's source.
+- **A drawing is edited as a whole**: it is selected, moved and resized
+  like a picture, but its shapes cannot be picked out one by one, and its
+  words cannot be edited. Frames and pictures in headers and footers cannot
+  be picked up at all. Pattern fills draw in one colour; shadows, glow, 3-D
+  and WordArt are not drawn; text wraps round a shape's box, not its
+  outline. Word's named outlines outside
+  the forty or so the model knows (`RichShape::ApplyPreset`) draw as their
+  box.
 - **One page setup per document.** Sections can have their own columns, but
   not their own size, margins or orientation; even/odd headers are not
   modelled.
@@ -92142,7 +92223,14 @@ soffice --headless --convert-to docx word97-formatting.fodt
 
 `word-frames.fodt` (a letterhead-like page: a page-anchored sender frame
 beside the address, a note box a paragraph wraps round, a floating picture)
-is converted the same way to `word-frames.odt`, `.doc` and `.docx`.
+is converted the same way to `word-frames.odt`, `.doc` and `.docx`, and so
+is `word-shapes.fodt` (a rule, a box of words, an ellipse, a dashed arrow, a
+triangle, a group and a turned box). `word-shapes-word.docx` is built by
+`make-word-shapes-fixture.py`: shapes as Word itself writes them, which
+LibreOffice's export does not produce (theme colours, a custom outline with
+an arc, a group with a picture, VML-only drawings, a VML picture).
+`word-gradients.fodt` (a linear, an axial and a radial fill) is converted
+like the others.
 
 `WordFormatsTest` checks that all three readers recover the same structure and
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it
@@ -92758,7 +92846,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 
 **Images** (libvips, build-dependent): PNG, JPEG, WebP, AVIF, HEIC/HEIF, GIF, BMP, TIFF, TGA, HDR, EXR, JPEG XL, JPEG 2000, Netpbm, QOI, PSD, ICO, FITS
 **Vector:** SVG/SVGZ (load); CorelDRAW, Xara (via plugins)
-**3D Models:** STL (load + save, via plugin)
+**3D Models** (via plugins): STL, STEP, IGES, OBJ, PLY, 3DS, COLLADA, X3D/VRML (load + save); FBX, Alembic, DirectX `.x`, MilkShape 3D, Blender (load)
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
@@ -92931,11 +93019,29 @@ than its name, so it is loadable without being an advertised extension.
 | Format | Extension(s) | Load | Save | Provider |
 |--------|--------------|:----:|:----:|----------|
 | STL | `.stl` | ✅ ‡ | ✅ ‡ | STL plugin (built-in, ASCII + binary) |
+| STEP (ISO 10303 AP203 / AP214 / AP242) | `.step`, `.stp`, `.p21` | ✅ ‡ | ✅ ‡ | Models plugin: exact B-rep solids and surfaces |
+| IGES 5.3 | `.igs`, `.iges` | ✅ ‡ | ✅ ‡ | Models plugin: exact B-rep solids (186) and trimmed surfaces (144) |
+| Wavefront OBJ | `.obj` | ✅ ‡ | ✅ ‡ | Models plugin |
+| Stanford PLY | `.ply` | ✅ ‡ | ✅ ‡ | Models plugin (ASCII + binary) |
+| 3D Studio | `.3ds` | ✅ ‡ | ✅ ‡ | Models plugin |
+| COLLADA | `.dae` | ✅ ‡ | ✅ ‡ | Models plugin, when built with tinyxml2 |
+| X3D / VRML | `.x3d`, `.x3dv`, `.wrl`, `.vrml` | ✅ ‡ | ✅ ‡ | Models plugin, when built with tinyxml2 |
+| Autodesk FBX | `.fbx` | ✅ ‡ | — | Models plugin, when built with zlib (binary + ASCII) |
+| Alembic | `.abc` | ✅ ‡ | — | Models plugin (Ogawa archives; the first time sample) |
+| DirectX | `.x` | ✅ ‡ | — | Models plugin (text + binary) |
+| MilkShape 3D | `.ms3d` | ✅ ‡ | — | Models plugin |
+| Blender | `.blend` | ✅ ‡ | — | Models plugin, when built with zlib (the stored geometry, before modifiers) |
 
-STL support is provided by the STL graphics plugin; register it with
-`RegisterSTLPlugin()`. Other 3D formats (OBJ, glTF/GLB, FBX, 3DS, PLY,
-COLLADA) are **not** implemented by the FileLoader path — the demo app has a
-minimal OBJ reader for its GL viewer only.
+STL comes from the STL plugin and everything else from the Models plugin
+(`UltraCanvas/Plugins/Models/`); `RegisterModelFormatsPlugin()` registers both.
+The Models plugin reads into an editable `ModelStorage::ModelDocument`, and
+STEP and IGES carry exact surfaces rather than triangles - a viewer asks for a
+mesh with `ConversionOptions::TessellateOnImport`. What each reader and writer
+keeps and loses is in
+[UltraCanvasModelFormats](../../UltraCanvas/UltraCanvasModelFormats.md).
+The Models plugin also reads the 3D entities of a `.dxf` when a caller asks
+for its converter by name; it does not claim the extension, which stays with
+the Vector plugin's drawing reader.
 
 ### Documents
 
