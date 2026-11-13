@@ -1996,6 +1996,26 @@ else()
     message(STATUS "  VideoTimelineElementTest skipped (UltraCanvas target not present, or VideoTimeline not compiled in)")
 endif()
 
+# ===== FILE PREVIEWS TEST =====
+# The preview provider registry (UltraCanvasFilePreviews.h): extensions in any
+# case or dot and paths by their last extension, replacement by name, the later
+# of two providers winning, unavailable and throwing providers, queries from
+# several threads while another registers; the built-in providers' extensions;
+# and a Word document's and a PowerPoint deck's text preview through the Filer,
+# which reaches them only through the registry. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilePreviewsTest...")
+    add_executable(FilePreviewsTest ${CMAKE_CURRENT_SOURCE_DIR}/FilePreviewsTest.cpp)
+    target_include_directories(FilePreviewsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilePreviewsTest PRIVATE cxx_std_20)
+    target_compile_definitions(FilePreviewsTest PRIVATE
+        FILEPREVIEWS_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+    target_link_libraries(FilePreviewsTest PRIVATE UltraCanvas)
+    set_target_properties(FilePreviewsTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME FilePreviewsTest COMMAND FilePreviewsTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilePreviewsTest")
+endif()
+
 # ===== ELEMENT MODULES TEST =====
 # The selectable widgets (ULTRACANVAS_WIDGETS) and charts (ULTRACANVAS_CHARTS)
 # through the element registry, by type name: registered at startup when
@@ -2019,6 +2039,7 @@ if(TARGET UltraCanvas)
         album:Widget:Album:ultracanvas-widget-album
         color-palette-manager:Widget:ColorPaletteManager:ultracanvas-widget-color-palette-manager
         vector-canvas:Widget:VectorCanvas:ultracanvas-widget-vector-canvas
+        media-viewer:Widget:MediaViewer:ultracanvas-widget-media-viewer
         parallel-coordinate-chart:Chart:ParallelCoordinate:ultracanvas-chart-parallel-coordinate)
     get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
     set(uc_compiled_in ${uc_widgets_in})
@@ -5361,6 +5382,13 @@ if(TARGET UltraCanvas)
     add_executable(SpreadsheetXlsFileTest
         ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetXlsFileTest.cpp
     )
+    get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    if("MediaViewer" IN_LIST uc_widgets_in)
+        target_compile_definitions(SpreadsheetXlsFileTest PRIVATE UC_TEST_HAS_MEDIA_VIEWER=1)
+    else()
+        # A lean core builds the viewer as a module: its checks are left out.
+        target_compile_definitions(SpreadsheetXlsFileTest PRIVATE UC_TEST_HAS_MEDIA_VIEWER=0)
+    endif()
     target_include_directories(SpreadsheetXlsFileTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(SpreadsheetXlsFileTest PRIVATE cxx_std_20)
     target_link_libraries(SpreadsheetXlsFileTest PRIVATE UltraCanvas)
@@ -6139,6 +6167,13 @@ if(TARGET UltraCanvas)
     add_executable(FontViewerTest
         ${CMAKE_CURRENT_SOURCE_DIR}/FontViewerTest.cpp
     )
+    get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+    if("MediaViewer" IN_LIST uc_widgets_in)
+        target_compile_definitions(FontViewerTest PRIVATE UC_TEST_HAS_MEDIA_VIEWER=1)
+    else()
+        # A lean core builds the viewer as a module: its checks are left out.
+        target_compile_definitions(FontViewerTest PRIVATE UC_TEST_HAS_MEDIA_VIEWER=0)
+    endif()
     target_include_directories(FontViewerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(FontViewerTest PRIVATE cxx_std_20)
     target_compile_definitions(FontViewerTest PRIVATE
@@ -7149,7 +7184,10 @@ add_test(NAME AudioStreamingTest COMMAND AudioStreamingTest
 # colour sliders or Curves for a drawing, a document, a 3D model, video or
 # audio, and a photo's adjustments never tint the drawing browsed to next.
 # Headless - the viewer and its toolbars are built without a window.
-if(TARGET UltraCanvas)
+# Uses UltraCanvasMediaViewer's classes: only with MediaViewer compiled into
+# the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "MediaViewer" IN_LIST uc_widgets_in)
     message(STATUS "  Building MediaViewerToolsTest...")
     add_executable(MediaViewerToolsTest
         ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerToolsTest.cpp
@@ -7167,13 +7205,16 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: MediaViewerToolsTest")
 else()
-    message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
+    message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present, or MediaViewer not compiled in)")
 endif()
 
 # MediaViewerDetailsPanelTest - the Details panel is a group box (the title as
 # its caption, a close button), a GIF's colour table is shown as swatches, and
 # a Markdown table's header fill meets its one-pixel grid. Headless.
-if(TARGET UltraCanvas)
+# Uses UltraCanvasMediaViewer's classes: only with MediaViewer compiled into
+# the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "MediaViewer" IN_LIST uc_widgets_in)
     message(STATUS "  Building MediaViewerDetailsPanelTest...")
     add_executable(MediaViewerDetailsPanelTest
         ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerDetailsPanelTest.cpp
@@ -7190,12 +7231,15 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: MediaViewerDetailsPanelTest")
 else()
-    message(STATUS "  MediaViewerDetailsPanelTest skipped (UltraCanvas target not present)")
+    message(STATUS "  MediaViewerDetailsPanelTest skipped (UltraCanvas target not present, or MediaViewer not compiled in)")
 endif()
 
 # MediaViewerLoadingTest - OpenFileWhenShown: a loading ring and the file's
 # name (never "No media") until a frame is drawn, then the file opens. Xvfb.
-if(TARGET UltraCanvas)
+# Uses UltraCanvasMediaViewer's classes: only with MediaViewer compiled into
+# the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "MediaViewer" IN_LIST uc_widgets_in)
     message(STATUS "  Building MediaViewerLoadingTest...")
     add_executable(MediaViewerLoadingTest
         ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerLoadingTest.cpp
@@ -7212,7 +7256,7 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: MediaViewerLoadingTest")
 else()
-    message(STATUS "  MediaViewerLoadingTest skipped (UltraCanvas target not present)")
+    message(STATUS "  MediaViewerLoadingTest skipped (UltraCanvas target not present, or MediaViewer not compiled in)")
 endif()
 
 # OutlookMessageTest - the Outlook .msg reader (UltraCanvasOutlookMessage.h):
@@ -7287,7 +7331,10 @@ endif()
 # Save image as at another size and with the type's save settings: a bitmap
 # resized, an SVG drawn again at the size chosen (sharp), the stored JPEG
 # quality applied. Headless; the settings go to a scratch folder.
-if(TARGET UltraCanvas)
+# Uses UltraCanvasMediaViewer's classes: only with MediaViewer compiled into
+# the core (ULTRACANVAS_WIDGETS).
+get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
+if(TARGET UltraCanvas AND "MediaViewer" IN_LIST uc_widgets_in)
     message(STATUS "  Building MediaViewerSaveTest...")
     add_executable(MediaViewerSaveTest
         ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerSaveTest.cpp
@@ -7302,7 +7349,7 @@ if(TARGET UltraCanvas)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: MediaViewerSaveTest")
 else()
-    message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present)")
+    message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present, or MediaViewer not compiled in)")
 endif()
 
 # ===== NODE DIAGRAM: NO OVERLAPS, CARD NODES =====

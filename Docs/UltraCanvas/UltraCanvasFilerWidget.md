@@ -690,7 +690,10 @@ Needs the VirtualFS module (`ULTRACANVAS_HAS_VIRTUALFS`); without it
 ## Selective previews
 
 A **content preview** is a tile rendered from the file itself instead of the
-generic category glyph. Two independent sets of switches decide what a file
+generic category glyph. The PDF page, the e-book cover, the video poster frame
+and the Word / PowerPoint text come from the formats' preview providers
+([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)); a format registered
+there previews here without the widget knowing it. Two independent sets of switches decide what a file
 may show, and every kind is enabled in both by default:
 
 - **Thumbnails** (`Display > Thumbnails`) — the tile the widget draws.

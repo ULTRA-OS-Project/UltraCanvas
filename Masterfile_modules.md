@@ -824,6 +824,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Used by `UltraCanvasFilerWidget` under Display > File icons > Host OS icons.
   See `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`.
 
+- **UltraCanvasFilePreviews** (`UltraCanvasFilePreviews.h`) — the registry of
+  file preview providers: a format registers, under its extensions, a
+  thumbnail (`RenderThumbnail`, at a `FileThumbnailRequest` size) and/or a
+  preview document (`ReadDocument`, the start of its text as a
+  `UCRichDocument`); callers ask `RenderFileThumbnailFromProvider`,
+  `RenderFileThumbnailAs`, `ReadPreviewDocument` and `CanRenderFileThumbnail` /
+  `CanReadPreviewDocument`. Any number of providers, the latest registration
+  of an extension winning; thread-safe for the Filer's thumbnail workers. The
+  formats compiled in register on the first query
+  (`RegisterBuiltinFilePreviewProviders`, `core/UltraCanvasFilePreviewsBuiltin.cpp`):
+  PDF first page, EPUB / Mobipocket covers, video poster frames, Word-processing
+  documents and PowerPoint decks. `UltraCanvasFilerWidget` reaches those
+  formats only through it. The single-provider seams
+  `UltraCanvasVectorPreview.h` and `UltraCanvasModelPreview.h` predate it. See
+  `Docs/UltraCanvas/UltraCanvasFilePreviews.md`; tests in
+  `Tests/FilePreviewsTest.cpp`.
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
   document rather than as something to render text with: its name records are

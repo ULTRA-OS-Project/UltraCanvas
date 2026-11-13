@@ -620,8 +620,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageAnimation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageViewer.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewer.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewerWindow.cpp
+        # UltraCanvasMediaViewer.cpp: part of the selectable MediaViewer widget - see WIDGET SYSTEM below
+        # UltraCanvasMediaViewerWindow.cpp: part of the selectable MediaViewer widget - see WIDGET SYSTEM below
         # Raster editing: layer / selection / document model, brush engine and
         # the editable paint surface (UltraPaint)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterLayer.cpp
@@ -706,6 +706,8 @@ set(ULTRACANVAS_CORE_SOURCES
         # UltraCanvasSlideshow.cpp: a selectable widget - see WIDGET SYSTEM below
         # UltraCanvasAlbum.cpp: a selectable widget - see WIDGET SYSTEM below
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilePreviews.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilePreviewsBuiltin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
         # The icon the HOST desktop draws for a file type (Explorer / Finder /
         # the icon theme), as opposed to the one a file carries itself. The
@@ -1268,8 +1270,28 @@ if(ULTRACANVAS_ENABLE_CHARTS)
             list(APPEND UC_CHART_MODULE_KEYS ${key})
         endif()
     endforeach()
-    if(NOT ULTRACANVAS_CHART_RUNTIME_MODULES AND UC_CHART_MODULE_KEYS)
-        message(WARNING "Charts not selected and runtime modules off - unavailable: ${UC_CHART_MODULE_KEYS}")
+    # A chart left out must exist as a module, or the build would have it in
+    # no form at all - and a document naming it would find out only at run
+    # time. On a platform that cannot load a module (WebAssembly, Android) the
+    # selection falls back to compiling it in (proposal §12.11): there is no
+    # other way to have it, and the selection is empty by default, so leaving a
+    # chart out there is not a choice anybody made. Where modules were turned
+    # off, or a static core on Windows rules them out (a module there links the
+    # core DLL), leaving a chart out loses it, and the configure stops.
+    if(UC_CHART_MODULE_KEYS AND (EMSCRIPTEN OR ANDROID))
+        message(STATUS "Charts: no runtime modules on this platform - compiling in [${UC_CHART_MODULE_KEYS}]")
+        list(APPEND UC_CHART_SELECTED_KEYS ${UC_CHART_MODULE_KEYS})
+        set(UC_CHART_MODULE_KEYS "")
+    elseif(UC_CHART_MODULE_KEYS AND (NOT ULTRACANVAS_CHART_RUNTIME_MODULES OR (WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)))
+        if(NOT ULTRACANVAS_CHART_RUNTIME_MODULES)
+            set(uc_charts_unavailable_why "ULTRACANVAS_CHART_RUNTIME_MODULES is off")
+        else()
+            set(uc_charts_unavailable_why "a module on Windows needs the shared core (ULTRACANVAS_BUILD_SHARED=ON)")
+        endif()
+        string(REPLACE ";" ", " uc_charts_unavailable_text "${UC_CHART_MODULE_KEYS}")
+        message(FATAL_ERROR "${uc_charts_unavailable_text} would be neither compiled in nor built as a "
+            "module: ${uc_charts_unavailable_why}. Add ${uc_charts_unavailable_text} to "
+            "ULTRACANVAS_CHARTS (or use 'all'), or turn the runtime modules on with a shared core.")
     endif()
 
     foreach(key IN LISTS UC_CHART_SELECTED_KEYS)
@@ -1357,7 +1379,7 @@ endif()
 # it calls UltraCanvas_RegisterSelectedWidgets(), so the module resolves them
 # at dlopen. ElementModulesTest loads every module into a host with nothing but
 # one plain element, so a missing anchor fails it with the undefined symbol.
-set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+set(UC_WIDGET_KEYS VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
 set(UC_WIDGET_VideoTimeline_KEBAB    "video-timeline")
 set(UC_WIDGET_VideoTimeline_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTimeline.cpp)
@@ -1420,6 +1442,22 @@ set(UC_WIDGET_VectorCanvas_ANCHOR_INCLUDES "DataFormats/UltraCanvasVectorEdit.h"
 set(UC_WIDGET_VectorCanvas_ANCHORS
     "&VectorEdit::OwnPaintBounds")
 
+set(UC_WIDGET_MediaViewer_KEBAB    "media-viewer")
+set(UC_WIDGET_MediaViewer_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewerWindow.cpp)
+set(UC_WIDGET_MediaViewer_PLUGIN
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Widgets/UltraCanvasMediaViewerPlugin.cpp)
+set(UC_WIDGET_MediaViewer_HEADER   "UltraCanvasMediaViewer.h")
+set(UC_WIDGET_MediaViewer_REGISTER "RegisterMediaViewerElement")
+# The viewer reaches some 45 core objects (every view it shows a file in) and
+# the modules folded into a shared core (UltraNet's MIME reader, UltraCrypt).
+# Anchoring all of that into a static host would keep the viewer's whole
+# weight in every lean application, which is what leaving it out was for; so
+# its module is built against the shared core only - the shipping
+# configuration on every desktop platform - and needs no anchors there.
+set(UC_WIDGET_MediaViewer_SHARED_CORE_ONLY ON)
+
 set(UC_WIDGET_SELECTED_KEYS "")
 set(UC_WIDGET_MODULE_KEYS "")
 if(ULTRACANVAS_WIDGETS STREQUAL "all")
@@ -1437,8 +1475,32 @@ foreach(key IN LISTS UC_WIDGET_KEYS)
         list(APPEND UC_WIDGET_MODULE_KEYS ${key})
     endif()
 endforeach()
-if(NOT ULTRACANVAS_WIDGET_RUNTIME_MODULES AND UC_WIDGET_MODULE_KEYS)
-    message(WARNING "Widgets not selected and runtime modules off - unavailable: ${UC_WIDGET_MODULE_KEYS}")
+# A widget left out must exist as a module, or the build would have it in no
+# form at all - and an application or a document asking for it by name would
+# only find out at run time. Three things can rule its module out: no runtime
+# modules here (WebAssembly, Android, or the option off), a static core on
+# Windows (a module there links the core DLL), and a static core for a widget
+# whose module is built against a shared core only (MediaViewer). Any of them
+# stops the configure, naming the widgets and the ways out.
+set(uc_widgets_unavailable "")
+set(uc_widgets_unavailable_why "")
+foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+    if(NOT ULTRACANVAS_WIDGET_RUNTIME_MODULES)
+        list(APPEND uc_widgets_unavailable ${key})
+        set(uc_widgets_unavailable_why "this build has no runtime modules (ULTRACANVAS_WIDGET_RUNTIME_MODULES is off, or the platform cannot load one)")
+    elseif(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
+        list(APPEND uc_widgets_unavailable ${key})
+        set(uc_widgets_unavailable_why "a module on Windows needs the shared core (ULTRACANVAS_BUILD_SHARED=ON)")
+    elseif(UC_WIDGET_${key}_SHARED_CORE_ONLY AND NOT ULTRACANVAS_BUILD_SHARED)
+        list(APPEND uc_widgets_unavailable ${key})
+        set(uc_widgets_unavailable_why "its module is built against a shared core only (ULTRACANVAS_BUILD_SHARED=ON)")
+    endif()
+endforeach()
+if(uc_widgets_unavailable)
+    string(REPLACE ";" ", " uc_widgets_unavailable_text "${uc_widgets_unavailable}")
+    message(FATAL_ERROR "${uc_widgets_unavailable_text} would be neither compiled in nor built as a "
+        "module: ${uc_widgets_unavailable_why}. Add ${uc_widgets_unavailable_text} to "
+        "ULTRACANVAS_WIDGETS (or use 'all'), or build a shared core.")
 endif()
 foreach(key IN LISTS UC_WIDGET_SELECTED_KEYS)
     list(APPEND ULTRACANVAS_CORE_SOURCES ${UC_WIDGET_${key}_SOURCES})
@@ -2295,14 +2357,13 @@ endif()
 # One MODULE DSO per unselected selectable chart, following the LaTeX plugin
 # pattern: on Unix the module's undefined core symbols resolve from the host
 # executable at dlopen() time (ENABLE_EXPORTS + RTLD_GLOBAL); on Windows the
-# module links the shared core DLL, so a Windows static build skips modules.
+# module links the shared core DLL (a static core there leaves no chart out:
+# the selection stops the configure first).
 if(ULTRACANVAS_ENABLE_CHARTS AND ULTRACANVAS_CHART_RUNTIME_MODULES)
     foreach(key IN LISTS UC_CHART_MODULE_KEYS)
         set(uc_chart_target "ultracanvas-chart-${UC_CHART_${key}_KEBAB}")
-        if(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
-            message(STATUS "  [−] chart module ${uc_chart_target} - SKIPPED (needs shared core on Windows)")
-            continue()
-        endif()
+        # Every module here can be built: the selection above stops the
+        # configure for a chart whose module this build cannot have.
         add_library(${uc_chart_target} MODULE
             ${UC_CHART_${key}_SOURCES}
             ${UC_CHART_${key}_PLUGIN})
@@ -2334,22 +2395,26 @@ endif()
 # ===== WIDGET RUNTIME MODULES =====
 # One MODULE DSO per unselected selectable widget, the same way as the chart
 # modules above (ENABLE_EXPORTS + RTLD_GLOBAL on Unix, the shared core DLL on
-# Windows, so a Windows static build skips them).
+# Windows).
 if(ULTRACANVAS_WIDGET_RUNTIME_MODULES)
     foreach(key IN LISTS UC_WIDGET_MODULE_KEYS)
+        # Every module here can be built: the selection above stops the
+        # configure for a widget whose module this build cannot have.
         set(uc_widget_target "ultracanvas-widget-${UC_WIDGET_${key}_KEBAB}")
-        if(WIN32 AND NOT ULTRACANVAS_BUILD_SHARED)
-            message(STATUS "  [−] widget module ${uc_widget_target} - SKIPPED (needs shared core on Windows)")
-            continue()
-        endif()
         add_library(${uc_widget_target} MODULE
             ${UC_WIDGET_${key}_SOURCES}
             ${UC_WIDGET_${key}_PLUGIN})
+        # Compiled as the core's own sources are: its include paths and its
+        # compile definitions (ULTRACANVAS_PLUGIN_PDF, the feature switches), so
+        # a header whose classes change with a switch means the same thing on
+        # both sides of the module boundary. generated/include carries
+        # UltraCanvasFrameworkHeadersId.h, without which the loader refuses it.
         target_include_directories(${uc_widget_target} PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
             ${CMAKE_CURRENT_BINARY_DIR}/generated/include
-            ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
-            ${HARFBUZZ_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+            $<TARGET_PROPERTY:${ULTRACANVAS_LIB_NAME},INCLUDE_DIRECTORIES>)
+        target_compile_definitions(${uc_widget_target} PRIVATE
+            $<TARGET_PROPERTY:${ULTRACANVAS_LIB_NAME},COMPILE_DEFINITIONS>)
         target_compile_features(${uc_widget_target} PRIVATE cxx_std_20)
         set_target_properties(${uc_widget_target} PROPERTIES
             PREFIX ""

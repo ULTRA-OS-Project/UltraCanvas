@@ -46,7 +46,15 @@ concurrency:
 
 jobs:
   modules:
-    name: element modules (ubuntu-24.04, static core)
+    # Both cores: the shipping one (shared - every module links
+    # libUltraCanvas, and the MediaViewer module exists only here) and a
+    # static one (the modules resolve the core from the host, through the
+    # anchors UltraCanvas_RegisterSelectedWidgets keeps).
+    strategy:
+      fail-fast: false
+      matrix:
+        core: [static, shared]
+    name: element modules (ubuntu-24.04, ${{ matrix.core }} core)
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -94,17 +102,19 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ github.workspace }}/.ccache
-          key: ccache-element-modules-ubuntu-24.04-${{ github.run_id }}
+          key: ccache-element-modules-${{ matrix.core }}-ubuntu-24.04-${{ github.run_id }}
           restore-keys: |
-            ccache-element-modules-ubuntu-24.04-
+            ccache-element-modules-${{ matrix.core }}-ubuntu-24.04-
 
       # A configure that keeps an application whose widgets are left out
       # must stop and name them (ultracanvas_require_widgets).
       - name: The configure refuses an application without its widgets
         run: |
           set -uo pipefail
+          # MediaViewer stays compiled in, so the static core this makes has
+          # every widget in one form or the other (the step below).
           if cmake -B build-refused -G Ninja \
-               -DULTRACANVAS_WIDGETS= -DBUILD_ARTCREATOR_APP=ON \
+               -DULTRACANVAS_WIDGETS=MediaViewer -DBUILD_ARTCREATOR_APP=ON \
                -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF -DBUILD_ULTRAPAINT_APP=OFF \
                > refused.log 2>&1; then
             echo "::error::the configure accepted ArtCreator with ColorPaletteManager and VectorCanvas left out"
@@ -113,21 +123,54 @@ jobs:
           grep -q "ArtCreator needs ColorPaletteManager, VectorCanvas compiled into the core" refused.log
           rm -rf build-refused
 
-      - name: Configure CMake (every widget and chart as a module)
+      # A widget left out must exist as a module: a static core cannot have
+      # MediaViewer's, so leaving it out there stops the configure.
+      - name: The configure refuses a widget it could build in no form
+        run: |
+          set -uo pipefail
+          if cmake -B build-nowhere -G Ninja \
+               -DULTRACANVAS_BUILD_SHARED=OFF -DULTRACANVAS_WIDGETS= \
+               -DBUILD_ULTRAVIDEO=OFF -DBUILD_DEMO_APP=OFF -DBUILD_ULTRAPAINT_APP=OFF \
+               -DBUILD_ARTCREATOR_APP=OFF \
+               > nowhere.log 2>&1; then
+            echo "::error::the configure accepted MediaViewer with neither a module nor a place in the core"
+            exit 1
+          fi
+          grep -q "MediaViewer would be neither compiled in nor built as a" nowhere.log
+          rm -rf build-nowhere
+
+      # Every widget and chart as a module - but MediaViewer's, built against
+      # a shared core only, is compiled in on the static row.
+      - name: Configure CMake (the widgets and charts as modules)
         run: |
           set -euo pipefail
+          if [ "${{ matrix.core }}" = shared ]; then
+            widgets=""
+            expected="Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas;MediaViewer\]"
+          else
+            widgets="MediaViewer"
+            expected="Widgets: compiled in \[MediaViewer\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas\]"
+          fi
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_TESTS=ON \
-            -DULTRACANVAS_WIDGETS= \
+            -DULTRACANVAS_BUILD_SHARED=${{ matrix.core == 'shared' && 'ON' || 'OFF' }} \
+            -DULTRACANVAS_WIDGETS="$widgets" \
             -DULTRACANVAS_CHARTS= \
             -DBUILD_ULTRAVIDEO=OFF \
             -DBUILD_DEMO_APP=OFF \
             -DBUILD_ULTRAPAINT_APP=OFF \
-            -DBUILD_ARTCREATOR_APP=OFF 2>&1 | tee configure.log
-          grep -q "Widgets: compiled in \[\], modules \[VideoTimeline;Slideshow;Album;ColorPaletteManager;VectorCanvas\]" configure.log
+            -DBUILD_ARTCREATOR_APP=OFF \
+            -DBUILD_ULTRAFILER_APP=OFF \
+            -DBUILD_ULTRAVIEWER_APP=OFF \
+            -DBUILD_ULTRAMAIL=OFF \
+            -DBUILD_EMAILCLEANER=OFF \
+            -DBUILD_CHATCUBE=OFF \
+            -DBUILD_ULTRACLIPBOARD=OFF \
+            -DBUILD_ULTRASNIP=OFF 2>&1 | tee configure.log
+          grep -q "$expected" configure.log
           grep -q "Charts: compiled in \[\], modules \[ParallelCoordinate\]" configure.log
 
       - name: Build the core, the modules and the tests
@@ -136,6 +179,13 @@ jobs:
           cmake --build build --target ElementModulesTest UltraCanvasThemeTest VectorEditTest -j"$(nproc)"
           ccache -s
           ls -la build/Plugins/Elements
+          # The viewer's module is built against a shared core only; the
+          # static row has it compiled in.
+          if [ "${{ matrix.core }}" = shared ]; then
+            test -f build/Plugins/Elements/ultracanvas-widget-media-viewer.so
+          else
+            test ! -e build/Plugins/Elements/ultracanvas-widget-media-viewer.so
+          fi
 
       - name: Save ccache (main)
         if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
