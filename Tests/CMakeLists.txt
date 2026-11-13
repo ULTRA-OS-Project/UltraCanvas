@@ -226,6 +226,7 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
         ${_uw_dir}/host/UltraWebCookies.cpp
         ${_uw_dir}/host/UltraWebPages.cpp
         ${_uw_dir}/host/UltraWebStorage.cpp
+        ${_uw_dir}/host/UltraWebPermissions.cpp
         ${_uw_dir}/ui/UltraWebTab.cpp)
     target_include_directories(UltraWebTabTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
@@ -260,7 +261,8 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
         ${_uw_dir}/host/UltraWebRtc.cpp
         ${_uw_dir}/host/UltraWebNetworkRtc.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
-        ${_uw_dir}/host/UltraWebStorage.cpp)
+        ${_uw_dir}/host/UltraWebStorage.cpp
+        ${_uw_dir}/host/UltraWebPermissions.cpp)
     target_include_directories(UltraWebRealtimeTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
     target_compile_features(UltraWebRealtimeTest PRIVATE cxx_std_20)

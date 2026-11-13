@@ -1,10 +1,10 @@
 # UltraWeb
 
 **Status:** Phases 1 and 2 under way. UltraWeb 0.3.0 runs WebAssembly
-apps on Linux, with timers, fetch, storage, the clipboard, WebSockets and
-peer-to-peer data channels, and shows web pages through the HTML reader,
-with cookies, video and audio, without JavaScript.
-**Last Modified:** 2026-11-11
+apps on Linux, with timers, fetch, storage, the clipboard, WebSockets,
+peer-to-peer data channels and audio and video calls, and shows web pages
+through the HTML reader, with cookies, video and audio, without JavaScript.
+**Last Modified:** 2026-11-12
 **Author:** UltraCanvas Framework / ULTRA OS
 
 UltraWeb is the ULTRA OS browser. It shows **web pages** - HTML and CSS
@@ -175,6 +175,7 @@ both framework pieces (`Docs/UltraCanvas/UltraCanvasHTMLReader.md`):
 | Copy text for the user | `uc_clipboard_write`, only while it handles a click, a toggle or an edit |
 | Keep a connection to its server open | `uc_ws_*`: WebSockets (ws / wss) through UltraNet, TLS verified, no cookies, the app's origin in an `Origin` header (below) |
 | Talk to another app directly | `uc_rtc_*`: WebRTC peer connections and data channels through UltraRTC, DTLS-encrypted; the app does its own signalling (below) |
+| Make a call | `uc_rtc_audio_add` / `uc_rtc_video_add`: audio and video tracks; the camera and the microphone **only once the user allows it** in the tab's bar; pictures in a `VideoTile` (below) |
 | Log | `uc_log` (stderr in this version, where UltraWeb also says why it refused a fetch or a clipboard write) |
 | Clocks, random numbers, stdout/stderr | WASI preview 1 |
 
@@ -185,7 +186,7 @@ app: **2 s per call** into it (a call that runs longer is interrupted and the
 app stopped), **256 MB** of memory (a `memory.grow` past it fails),
 **20,000 elements**, **1 MB** per text property, **16 fetches** open at
 once (a finished one counts until it is closed), **8 WebSockets**, **4
-peers** with **16 channels** each. An app that traps, or is
+peers** with **16 channels** and **4 audio and 4 video tracks** each. An app that traps, or is
 stopped, is torn down and its error shown in its place; it cannot crash or
 freeze the browser.
 
@@ -275,8 +276,35 @@ names, which UltraRTC cannot yet); an app from a file or about: may connect
 directly. Limits: 256 KB a message, 1,000 events waiting a peer (past that
 the oldest messages go). The engine's events are posted to the UI thread;
 UltraWeb installs no process-wide dispatcher (`host/UltraWebNetworkRtc.cpp`).
-Audio and video tracks are the next step
-([`UltraWebRTCIntegration.md`](UltraWebRTCIntegration.md)).
+
+#### Calls (ABI v4)
+
+An app adds audio (Opus) and video (VP8) tracks to a peer -
+`uc_rtc_audio_add(peer, mid, direction)` and `uc_rtc_video_add(peer, mid,
+direction, width, height, fps, kbps)` - on both sides with the same media
+id, then the side that calls makes the offer with `uc_rtc_offer` (tracks do
+not start a negotiation by themselves; the answer follows by itself). A track
+the other side added and this side has not arrives as `UC_RTC_TRACK`, and
+`UC_RTC_TRACK_OPEN` / `UC_RTC_TRACK_CLOSE` say when media flows and stops.
+Received audio plays with `uc_rtc_playback`; received pictures show in a
+**`VideoTile`** element (`uc_create("VideoTile")`; its `TEXT` is the caption
+without a picture, `UC_PROP_FIT` contain or cover, `UC_PROP_MIRRORED`) with
+`uc_rtc_video_show(track, tile)`. The pixels go from the engine to the tile
+on their own thread, never through the app's memory, so a call costs the
+app nothing of its 2 s per call. `uc_rtc_track_enabled` mutes a track or
+turns its camera picture off while the device keeps running.
+
+**The camera and the microphone are the user's.** The first
+`uc_rtc_camera(track, on, selfView)` or `uc_rtc_microphone(track, on)` of an
+app shows a bar above the app in its tab - "x.org wants to use your camera",
+**Allow** / **Block** - and the call returns at once; what became of it
+arrives as `UC_RTC_PERMISSION` (on, blocked, or allowed but the device would
+not open). The answer is kept for the app's origin in
+`<settings folder>/UltraWeb/permissions.txt`, so the bar asks once; an app
+the user blocked is refused at once (`UC_ERR_DENIED`) after that.
+**Ctrl+Shift+Delete** forgets these answers with the cookies. The camera's
+own pictures show, mirrored, in the `selfView` tile. Closing the peer, or
+the tab, stops the devices.
 
 ## Writing an app
 
@@ -400,7 +428,7 @@ newer ABI can export `uc_abi_version()`, returning the `UC_ABI_VERSION` it
 needs; an older UltraWeb then refuses it with a message instead of failing
 in the middle.
 
-### Element ABI at a glance (v3)
+### Element ABI at a glance (v4)
 
 | Kind (`uc_create`) | Text properties | Number properties | Events |
 |---|---|---|---|
@@ -409,6 +437,7 @@ in the middle.
 | `Button` | `TEXT` | `FONT_SIZE` | `CLICK` |
 | `TextInput` (240 × 28 unless sized; `WIDTH` 0 makes it automatic) | `TEXT`, `PLACEHOLDER` | `FONT_SIZE` | `CHANGE`, `SUBMIT` |
 | `Checkbox` | `TEXT` | `CHECKED` | `TOGGLE` (detail 1 / 0) |
+| `VideoTile` (v4; 320 × 240 unless sized) | `TEXT` (the caption without a picture) | `FIT` (`UC_FIT_CONTAIN` / `COVER`), `MIRRORED` | — |
 | every kind | | `ENABLED`, `VISIBLE`, `WIDTH`, `HEIGHT` (px, 0 = automatic), `GROW` | |
 
 The root takes the container properties too. Nothing is stretched unless
@@ -432,8 +461,10 @@ app area — both as of the last layout pass, so not yet right after a change
 | Clipboard | `uc_clipboard_write(text)` | — |
 | WebSockets (v3) | `uc_ws_open(url, protocols)` → id; `uc_ws_state`, `uc_ws_send(data, binary)`, `uc_ws_receive`, `uc_ws_close_code`, `uc_ws_close(code, reason)` | `uc_event(0, UC_EVENT_WS, id)`: opened, closed or failed, or a message while none waited |
 | Peers (v3) | `uc_rtc_peer_open(config)` → id; `uc_rtc_set_remote`, `uc_rtc_add_candidate`, `uc_rtc_channel_open` → channel id, `uc_rtc_send`, `uc_rtc_channel_close`, `uc_rtc_poll`, `uc_rtc_peer_close` | `uc_event(0, UC_EVENT_RTC, peer)` when an event waits where none did |
+| Calls (v4) | `uc_rtc_audio_add`, `uc_rtc_video_add` → track id; `uc_rtc_offer`, `uc_rtc_microphone`, `uc_rtc_camera(track, on, selfView)`, `uc_rtc_playback`, `uc_rtc_video_show(track, tile)`, `uc_rtc_track_enabled` | the peer's events: `UC_RTC_TRACK`, `TRACK_OPEN`, `TRACK_CLOSE`, `PERMISSION` |
 
-An app that uses the v3 services exports `uc_abi_version` returning 3. The
+An app that uses the v3 services exports `uc_abi_version` returning 3, one
+that makes calls 4. The
 results a service adds to the element ABI's: `UC_ERR_NOT_FOUND` (no such
 key, header, timer, fetch, socket, peer or channel, or nothing waiting), `UC_ERR_DENIED` (the sandbox does not allow
 it, or this UltraWeb lacks the service), `UC_ERR_NETWORK` (no complete
@@ -457,7 +488,8 @@ Apps/UltraWeb/
     ├── UltraWebSocket.*      the WebSocket rules (ws / wss, mixed content, origin, subprotocols)
     ├── UltraWebNetworkSocket.cpp  the UltraNet service that opens an app's WebSockets
     ├── UltraWebRtc.*         the peer interface and its rules (configuration, TURN-only from the network)
-    ├── UltraWebNetworkRtc.cpp  the UltraRTC service behind an app's peers
+    ├── UltraWebNetworkRtc.cpp  the UltraRTC service behind an app's peers and calls
+    ├── UltraWebPermissions.*  what the user answered for an app's camera and microphone, per origin
     ├── UltraWebStorage.*     the per-origin store and its file
     ├── UltraWebLoader.*      address → module bytes (about:, file, file://, http(s) via UltraNet)
     ├── UltraWebPages.*       the page services (UltraNet, files, URLs, charsets, redirects); app or page?
@@ -501,9 +533,12 @@ UltraCanvas/{include,core}/WasmHost/   the WebAssembly runner (Masterfile_module
   network and clipboard); neither needs a display, a network or a wasm
   toolchain. Pages: `Tests/HTMLPageLoaderTest.cpp` and
   `Tests/WebViewTest.cpp`, against a fake web; `Tests/UltraWebRealtimeTest.cpp`,
-  WebSockets and peers - the rules, guests against fake services, then
-  UltraNet against a loopback WebSocket server and two UltraRTC peers
-  exchanging data-channel messages in one process; `Tests/HTMLMediaTest.cpp`,
+  WebSockets, peers and calls - the rules, guests against fake services
+  (tracks, the permission answers, pictures into a tile), the permission
+  store, then UltraNet against a loopback WebSocket server and two UltraRTC
+  peers exchanging data-channel messages and video in one process;
+  `Tests/UltraWebTabTest.cpp` also shows the permission bar;
+  `Tests/HTMLMediaTest.cpp`,
   video and audio; `Tests/UltraWebCookiesTest.cpp`, the page services with
   cookies against a loopback server (the jar's rules:
   `Tests/UltraNet/test_cookie_jar.cpp`).
@@ -521,6 +556,6 @@ history, the downloads list and the open tabs kept across runs; a cookie
 manager (one site's cookies, blocking a site); a `<video>`'s poster and
 text tracks; then modern layout beyond flex and grid, the live DOM, and
 JavaScript. For real-time apps ([`UltraWebRTCIntegration.md`](UltraWebRTCIntegration.md)):
-audio and video tracks, a `VideoTile` element kind and the permission bar
-for the camera and the microphone (W3), then WebRTC for pages once
-JavaScript arrives.
+`about:call`, a built-in two-tab call (W4); choosing the camera and the
+microphone (UltraRTC opens the defaults); a mark on the tab while a device
+runs; then WebRTC for pages once JavaScript arrives.

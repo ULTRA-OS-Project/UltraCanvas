@@ -52349,7 +52349,10 @@ UltraDesktop's bars, whose window is kept below all others, opened under the
 applications' windows. The menu stays that window's in every other way - it is
 laid out and drawn there, keeps the keyboard there, and a click in its own
 window reaches it as a click in that window, at the same place - so nothing
-about building or handling a menu changes.
+about building or handling a menu changes. A key that reaches the menu's own
+window - where the focus follows the pointer, as on X11 with no window
+manager - is handed to that window too, so Escape, the arrow keys and Enter
+work in the menu whichever window the system gave the key to.
 
 The menu's window is cut to the panel's outline (transparent outside it on
 macOS and Wayland), so the rounded corners show whatever is beneath. It has no
@@ -101139,7 +101142,8 @@ the group as it is now - and `UltraIM_RemoveGroupMember(provider,
 conversation, id, cb)`, which the network may allow to the group's owner
 alone (`PermissionDenied`; `UltraIMConversation::ownerId` names the owner
 where the network has one, `""` where it does not say;
-`UltraIMConversation::memberNames` names the members it knows). Every member hears
+`UltraIMConversation::memberNames` names the members it knows, and
+`memberCount` counts everyone where `memberIds` lists only a first page). Every member hears
 of the change as a `ConversationUpdate`. `UltraIM_LeaveConversation(provider,
 conversation, cb)` (`LeaveConversation`) takes the local user out of a group,
 or deletes a 1:1 conversation with its history on this device - the other
@@ -101760,8 +101764,11 @@ process.
   deleted for us alone with `deleteChatHistory`) - what an administrator
   may do in most groups answers `PermissionDenied` to anyone else. A basic
   group's members, their names and its creator come from its full info
-  (`getBasicGroupFullInfo`, then `updateBasicGroupFullInfo`); a supergroup
-  lists none.
+  (`getBasicGroupFullInfo`, then `updateBasicGroupFullInfo`). A supergroup
+  lists its 200 most recently active members (`getSupergroupMembers`) and
+  its creator, with everyone counted in `UltraIMConversation::memberCount`;
+  the page is asked for again when someone joins or leaves. A channel lists
+  none (its subscribers are not members to manage).
 - **Messages:** text with replies, photos, files, audio, voice notes,
   videos (and animations, video notes) and stickers with their captions and
   attachments, the group's service messages as system lines; edits
@@ -110324,30 +110331,6 @@ action per numbered step, the SDK named for real, the report plain).
 The version is the first line of `Docs/UltraCanvasStart/CHANGELOG.md`, read by
 `cmake/UltraCanvasVersion.cmake` into `ULTRACANVASSTART_VERSION`. Every change
 to the application gets a new entry there.
-
-==============================================================================
-FILE: Docs/UltraCanvasStart/changelog.d/sdk-plugin-link-libraries.md
-==============================================================================
-
-- **On Linux with the SDK, Install also sets up the static plug-ins' link
-  libraries.** The SDK's plug-ins are static archives that the skeleton
-  links:
-  - the CDR plug-in names librevenge, lcms2 and ICU;
-  - the OCR plug-in names Tesseract, Leptonica and libarchive.
-
-  These were in the optional CDR and OCR groups, and libarchive had no entry
-  at all. On a clean Ubuntu 22.04 the skeleton stopped at `-lrevenge-0.0`,
-  then at `-ltesseract`, `-llept` and `-larchive`. With the SDK chosen on
-  Linux, the Tools step now checks and installs `librevenge-dev`,
-  `liblcms2-dev`, `libicu-dev`, `libtesseract-dev`, `libleptonica-dev` and
-  `libarchive-dev`, whatever groups are chosen. libarchive is a new entry in
-  the OCR group. A build from source, and macOS and Windows, whose SDKs
-  carry them in `deps/`, are unchanged (`StartPackages` 0.1.3,
-  `DependenciesFor`; test `DependenciesFor_adds_the_sdk_plugins_link_libraries_on_linux`).
-- **The Linux guide no longer says to set `LD_LIBRARY_PATH`.** The Linux SDK
-  carries the run-time libraries its core needs, beside it, with an
-  `$ORIGIN` runpath (framework changelog: `sdk-linux-clean-ubuntu`), so an
-  application built against it starts from its build folder as it is.
 
 ==============================================================================
 FILE: Docs/UltraMail/AccountSetup.md

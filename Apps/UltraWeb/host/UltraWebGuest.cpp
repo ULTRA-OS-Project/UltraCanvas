@@ -4,9 +4,10 @@
 // element callbacks that become uc_event calls, and (ABI v2) the app's
 // timers, fetches, storage and clipboard, and (ABI v3) its WebSockets and
 // peer connections with their data channels.
+// Version: 0.4.0 - ABI v4: tracks, devices behind the user's permission, VideoTile
 // Version: 0.3.0 - ABI v3: uc_ws_* and uc_rtc_*
 // Version: 0.2.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebGuest.h"
@@ -17,6 +18,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasVideoTile.h"
 
 #include <algorithm>
 #include <cctype>
@@ -143,6 +145,11 @@ UltraWebGuest::~UltraWebGuest() {
     // A closed tab is a hung-up call and a closed socket.
     for (auto& [id, socket] : sockets_) {
         if (socket.connection) socket.connection->Close(1001, "the app was closed");
+    }
+    // No picture reaches a tile from here on; then the peers stop their devices.
+    for (auto& [id, track] : tracks_) {
+        ClearSlot(track.view);
+        ClearSlot(track.selfView);
     }
     for (auto& [id, peer] : peers_) {
         if (peer.peer) peer.peer->Close();
@@ -476,6 +483,55 @@ void UltraWebGuest::AddRealtimeImports(std::vector<WasmImport>& imports) {
     add("uc_rtc_channel_close", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
         r[0].i32 = CloseChannel(a[0].i32);
     });
+    // ABI v4: calls.
+    add("uc_rtc_audio_add", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        const uint32_t length = uint32_t(a[2].i32);
+        if (length > RtcRules::kMaxLabelBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::string mid;
+        if (!c.ReadMemory(uint32_t(a[1].i32), length, mid)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        r[0].i32 = AddTrack(a[0].i32, false, mid, uint32_t(a[3].i32), RtcVideoConfig{});
+    });
+    add("uc_rtc_video_add", {T::I32, T::I32, T::I32, T::I32, T::I32, T::I32, T::I32, T::I32}, {T::I32},
+        [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+            const uint32_t length = uint32_t(a[2].i32);
+            if (length > RtcRules::kMaxLabelBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+            std::string mid;
+            if (!c.ReadMemory(uint32_t(a[1].i32), length, mid)) { r[0].i32 = UC_ERR_MEMORY; return; }
+            RtcVideoConfig config;
+            std::string reason;
+            const int32_t checked = RtcRules::VideoConfig(uint32_t(a[4].i32), uint32_t(a[5].i32), uint32_t(a[6].i32),
+                                                          uint32_t(a[7].i32), config, reason);
+            if (checked != UC_OK) {
+                Log("rtc: the video track was refused: " + reason);
+                r[0].i32 = checked;
+                return;
+            }
+            r[0].i32 = AddTrack(a[0].i32, true, mid, uint32_t(a[3].i32), config);
+        });
+    add("uc_rtc_offer", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = peers_.find(a[0].i32);
+        r[0].i32 = at == peers_.end() ? UC_ERR_NOT_FOUND : at->second.peer->Offer();
+    });
+    add("uc_rtc_microphone", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = SetDevice(a[0].i32, "microphone", a[1].i32 != 0, UC_NO_HANDLE);
+    });
+    add("uc_rtc_camera", {T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = SetDevice(a[0].i32, "camera", a[1].i32 != 0, uint32_t(a[2].i32));
+    });
+    add("uc_rtc_playback", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = tracks_.find(a[0].i32);
+        if (at == tracks_.end()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        if (at->second.video) { r[0].i32 = UC_ERR_STATE; return; }
+        r[0].i32 = peers_.at(at->second.peer).peer->SetPlayback(at->second.service, a[1].i32 != 0);
+    });
+    add("uc_rtc_video_show", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = ShowVideo(a[0].i32, uint32_t(a[1].i32));
+    });
+    add("uc_rtc_track_enabled", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = tracks_.find(a[0].i32);
+        if (at == tracks_.end()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        r[0].i32 = peers_.at(at->second.peer).peer->SetTrackEnabled(at->second.service, a[1].i32 != 0);
+    });
     add("uc_rtc_poll", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
         auto at = peers_.find(a[0].i32);
         if (at == peers_.end() || at->second.events.empty()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
@@ -542,6 +598,12 @@ uint32_t UltraWebGuest::Create(const std::string& kind) {
         element = CreateTextInput(id, 0, 0, kInputWidth, kInputHeight);
     } else if (kind == UC_KIND_CHECKBOX) {
         element = UltraCanvasCheckbox::CreateCheckbox(id, 0, 0, 0, 0, "", false);
+    } else if (kind == UC_KIND_VIDEO_TILE) {
+        // 320 x 240 until the app sizes it: a picture has no size of its own
+        // before its first frame.
+        auto tile = std::make_shared<UltraCanvasVideoTile>(id, 0, 0, 320, 240);
+        tile->SetElementSize(CSSLayout::Dimension::Px(320), CSSLayout::Dimension::Px(240));
+        element = tile;
     }
     if (!element) {
         freeHandles_.push_back(handle);
@@ -563,6 +625,7 @@ int32_t UltraWebGuest::Release(uint32_t handle) {
     if (!entry) return UC_ERR_HANDLE;
     const std::vector<uint32_t> children = entry->children;   // Release edits the list
     for (uint32_t child : children) Release(child);
+    if (entry->kind == UC_KIND_VIDEO_TILE) TileReleased(handle);
     Detach(handle);
     // The element may be the one whose callback is running this guest call
     // (a button that removes itself on click): keep it alive until the call
@@ -639,6 +702,7 @@ int32_t UltraWebGuest::SetText(uint32_t handle, uint32_t property, const std::st
         else if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(element)) button->SetText(value);
         else if (auto input = std::dynamic_pointer_cast<UltraCanvasTextInput>(element)) input->SetText(value);
         else if (auto box = std::dynamic_pointer_cast<UltraCanvasCheckbox>(element)) box->SetText(value);
+        else if (auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element)) tile->SetCaption(value);
         else return UC_ERR_PROPERTY;
     } else if (property == UC_PROP_PLACEHOLDER) {
         auto input = std::dynamic_pointer_cast<UltraCanvasTextInput>(element);
@@ -728,6 +792,20 @@ int32_t UltraWebGuest::SetNumber(uint32_t handle, uint32_t property, double valu
             label->SetTextColor(Color::FromRGBA(static_cast<uint32_t>(value)));
             break;
         }
+        case UC_PROP_FIT: {
+            auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element);
+            if (!tile) return UC_ERR_PROPERTY;
+            if (value == UC_FIT_CONTAIN) tile->SetFit(VideoTileFit::Contain);
+            else if (value == UC_FIT_COVER) tile->SetFit(VideoTileFit::Cover);
+            else return UC_ERR_LIMIT;
+            break;
+        }
+        case UC_PROP_MIRRORED: {
+            auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element);
+            if (!tile) return UC_ERR_PROPERTY;
+            tile->SetMirrored(value != 0);
+            break;
+        }
         case UC_PROP_BACKGROUND:
             if (!isContainer && !std::dynamic_pointer_cast<UltraCanvasLabel>(element)) return UC_ERR_PROPERTY;
             if (!InRange(value, 0, 4294967295.0)) return UC_ERR_LIMIT;
@@ -750,6 +828,7 @@ int32_t UltraWebGuest::GetText(uint32_t handle, uint32_t property, std::string& 
         else if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(element)) out = button->GetText();
         else if (auto input = std::dynamic_pointer_cast<UltraCanvasTextInput>(element)) out = input->GetText();
         else if (auto box = std::dynamic_pointer_cast<UltraCanvasCheckbox>(element)) out = box->GetText();
+        else if (auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element)) out = tile->GetCaption();
         else return UC_ERR_PROPERTY;
         return UC_OK;
     }
@@ -781,6 +860,14 @@ double UltraWebGuest::GetNumber(uint32_t handle, uint32_t property) {
                 case CSSLayout::AlignItems::Stretch: return UC_ALIGN_STRETCH;
                 default:                             return UC_ALIGN_START;
             }
+        }
+        case UC_PROP_FIT: {
+            auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element);
+            return tile ? (tile->GetFit() == VideoTileFit::Cover ? UC_FIT_COVER : UC_FIT_CONTAIN) : none;
+        }
+        case UC_PROP_MIRRORED: {
+            auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element);
+            return tile ? (tile->IsMirrored() ? 1.0 : 0.0) : none;
         }
         case UC_PROP_ENABLED: return element->IsDisabled() ? 0.0 : 1.0;
         case UC_PROP_VISIBLE: return element->IsVisible() ? 1.0 : 0.0;
@@ -1045,7 +1132,7 @@ int32_t UltraWebGuest::NextRealtimeId() {
     for (;;) {
         const int32_t id = nextRealtimeId_;
         nextRealtimeId_ = nextRealtimeId_ == std::numeric_limits<int32_t>::max() ? 1 : nextRealtimeId_ + 1;
-        if (!peers_.count(id) && !channels_.count(id)) return id;
+        if (!peers_.count(id) && !channels_.count(id) && !tracks_.count(id)) return id;
     }
 }
 
@@ -1086,6 +1173,7 @@ int32_t UltraWebGuest::ClosePeer(int32_t id) {
     if (at == peers_.end()) return UC_ERR_NOT_FOUND;
     std::shared_ptr<RtcPeer> peer = std::move(at->second.peer);
     for (const auto& [service, channel] : at->second.channelIds) channels_.erase(channel);
+    for (const auto& [service, track] : at->second.trackIds) DropTrack(track);
     peers_.erase(at);
     if (peer) peer->Close();
     return UC_OK;
@@ -1099,7 +1187,34 @@ void UltraWebGuest::PeerEventArrived(int32_t id, RtcEvent event) {
     queued.kind = event.kind;
     queued.number = event.number;
     queued.text = std::move(event.text);
-    if (event.channel != 0) {
+    const bool aboutTrack = event.kind == UC_RTC_TRACK || event.kind == UC_RTC_TRACK_OPEN ||
+                            event.kind == UC_RTC_TRACK_CLOSE;
+    if (aboutTrack) {
+        auto known = peer.trackIds.find(event.channel);
+        if (known != peer.trackIds.end()) {
+            queued.channel = known->second;
+        } else if (event.kind == UC_RTC_TRACK) {
+            // The other side added a track this side has not: it gets an id,
+            // within the limit.
+            const bool video = event.number == UC_RTC_VIDEO;
+            size_t& count = video ? peer.videoTracks : peer.audioTracks;
+            if (count >= RtcRules::kMaxTracksPerKind) {
+                Log("rtc: the other side added more than " + std::to_string(RtcRules::kMaxTracksPerKind) +
+                    (video ? " video" : " audio") + " tracks; the rest are ignored");
+                return;
+            }
+            ++count;
+            queued.channel = NextRealtimeId();
+            peer.trackIds[event.channel] = queued.channel;
+            Track track;
+            track.peer = id;
+            track.service = event.channel;
+            track.video = video;
+            tracks_[queued.channel] = std::move(track);
+        } else {
+            return;   // a track the app no longer has
+        }
+    } else if (event.channel != 0) {
         auto known = peer.channelIds.find(event.channel);
         if (known != peer.channelIds.end()) {
             queued.channel = known->second;
@@ -1165,6 +1280,203 @@ int32_t UltraWebGuest::CloseChannel(int32_t id) {
     peer->second.channelIds.erase(channel.serviceChannel);
     peer->second.peer->CloseChannel(channel.serviceChannel);
     return UC_OK;
+}
+
+// ===== CALLS =====
+
+int32_t UltraWebGuest::AddTrack(int32_t peerId, bool video, const std::string& mid, uint32_t direction,
+                                const RtcVideoConfig& config) {
+    auto at = peers_.find(peerId);
+    if (at == peers_.end()) return UC_ERR_NOT_FOUND;
+    if (mid.empty()) return UC_ERR_STATE;
+    if (direction != UC_RTC_SENDRECV && direction != UC_RTC_SENDONLY && direction != UC_RTC_RECVONLY) return UC_ERR_STATE;
+    Peer& peer = at->second;
+    size_t& count = video ? peer.videoTracks : peer.audioTracks;
+    if (count >= RtcRules::kMaxTracksPerKind) return UC_ERR_LIMIT;
+    uint64_t service = 0;
+    const int32_t result = peer.peer->AddTrack(video, mid, direction, config, service);
+    if (result != UC_OK) return result;
+    ++count;
+    const int32_t id = NextRealtimeId();
+    peer.trackIds[service] = id;
+    Track track;
+    track.peer = peerId;
+    track.service = service;
+    track.video = video;
+    tracks_[id] = std::move(track);
+    return id;
+}
+
+UltraCanvasVideoTile* UltraWebGuest::TileOf(uint32_t handle) {
+    Entry* entry = Find(handle);
+    if (!entry || entry->kind != UC_KIND_VIDEO_TILE) return nullptr;
+    return static_cast<UltraCanvasVideoTile*>(entry->element.get());
+}
+
+std::shared_ptr<UltraWebGuest::FrameSlot> UltraWebGuest::SlotFor(UltraCanvasVideoTile* tile) {
+    auto slot = std::make_shared<FrameSlot>();
+    slot->tile = tile;
+    return slot;
+}
+
+RtcFrameSink UltraWebGuest::SinkFor(const std::shared_ptr<FrameSlot>& slot) {
+    return [slot](const uint8_t* rgba, int width, int height) {
+        std::lock_guard<std::mutex> lock(slot->mutex);
+        if (slot->tile) slot->tile->PushFrame(rgba, width, height);
+    };
+}
+
+void UltraWebGuest::ClearSlot(const std::shared_ptr<FrameSlot>& slot) {
+    if (!slot) return;
+    std::lock_guard<std::mutex> lock(slot->mutex);
+    slot->tile = nullptr;
+}
+
+int32_t UltraWebGuest::ShowVideo(int32_t trackId, uint32_t tile) {
+    auto at = tracks_.find(trackId);
+    if (at == tracks_.end()) return UC_ERR_NOT_FOUND;
+    Track& track = at->second;
+    if (!track.video) return UC_ERR_STATE;
+    UltraCanvasVideoTile* target = nullptr;
+    if (tile != UC_NO_HANDLE) {
+        target = TileOf(tile);
+        if (!target) return Find(tile) ? UC_ERR_PROPERTY : UC_ERR_HANDLE;
+    }
+    ClearSlot(track.view);
+    track.view.reset();
+    track.viewTile = UC_NO_HANDLE;
+    RtcPeer& peer = *peers_.at(track.peer).peer;
+    if (!target) return peer.ShowVideo(track.service, nullptr);
+    std::shared_ptr<FrameSlot> slot = SlotFor(target);
+    const int32_t result = peer.ShowVideo(track.service, SinkFor(slot));
+    if (result != UC_OK) return result;
+    track.view = std::move(slot);
+    track.viewTile = tile;
+    return UC_OK;
+}
+
+int32_t UltraWebGuest::SetDevice(int32_t trackId, const std::string& device, bool on, uint32_t selfTile) {
+    auto at = tracks_.find(trackId);
+    if (at == tracks_.end()) return UC_ERR_NOT_FOUND;
+    Track& track = at->second;
+    const bool camera = device == "camera";
+    if (track.video != camera) return UC_ERR_STATE;   // a camera feeds a video track, a microphone an audio one
+    if (camera && selfTile != UC_NO_HANDLE && !TileOf(selfTile)) return Find(selfTile) ? UC_ERR_PROPERTY : UC_ERR_HANDLE;
+    std::vector<DeviceRequest>& waiting = waiting_[device];
+    if (!on) {
+        waiting.erase(std::remove_if(waiting.begin(), waiting.end(),
+                                     [trackId](const DeviceRequest& r) { return r.track == trackId; }),
+                      waiting.end());
+        bool& running = camera ? track.camera : track.microphone;
+        if (!running) return UC_OK;
+        running = false;
+        if (camera) {
+            ClearSlot(track.selfView);
+            track.selfView.reset();
+            track.selfTile = UC_NO_HANDLE;
+        }
+        RtcPeer& peer = *peers_.at(track.peer).peer;
+        return camera ? peer.SetCamera(track.service, false, nullptr) : peer.SetMicrophone(track.service, false);
+    }
+    if ((camera ? track.camera : track.microphone)) return UC_OK;   // runs already
+    auto decided = devices_.find(device);
+    if (decided != devices_.end()) {
+        if (!decided->second) return UC_ERR_DENIED;
+        StartDevice(trackId, device, selfTile);
+        return UC_OK;
+    }
+    if (!options_.services.askPermission) return UC_ERR_DENIED;
+    for (const DeviceRequest& r : waiting) {
+        if (r.track == trackId) return UC_OK;   // asked already
+    }
+    const bool askNow = waiting.empty();
+    waiting.push_back(DeviceRequest{trackId, selfTile});
+    if (askNow) {
+        std::weak_ptr<int> alive = alive_;
+        options_.services.askPermission(device, [this, alive, device](bool allowed) {
+            if (!alive.expired()) DeviceAnswered(device, allowed);
+        });
+    }
+    return UC_OK;
+}
+
+void UltraWebGuest::DeviceAnswered(const std::string& device, bool allowed) {
+    devices_[device] = allowed;
+    std::vector<DeviceRequest> waiting = std::move(waiting_[device]);
+    waiting_[device].clear();
+    for (const DeviceRequest& request : waiting) {
+        if (!tracks_.count(request.track)) continue;   // its peer closed meanwhile
+        if (allowed) StartDevice(request.track, device, request.selfTile);
+        else QueueTrackEvent(request.track, UC_RTC_PERMISSION, uint32_t(UC_RTC_DEVICE_BLOCKED), device);
+    }
+}
+
+void UltraWebGuest::StartDevice(int32_t trackId, const std::string& device, uint32_t selfTile) {
+    auto at = tracks_.find(trackId);
+    if (at == tracks_.end()) return;
+    Track& track = at->second;
+    RtcPeer& peer = *peers_.at(track.peer).peer;
+    int32_t result;
+    if (device == "camera") {
+        // The tile may have gone while the user decided.
+        UltraCanvasVideoTile* tile = selfTile != UC_NO_HANDLE ? TileOf(selfTile) : nullptr;
+        std::shared_ptr<FrameSlot> slot = tile ? SlotFor(tile) : nullptr;
+        if (tile) tile->SetMirrored(true);
+        result = peer.SetCamera(track.service, true, slot ? SinkFor(slot) : RtcFrameSink());
+        if (result == UC_OK) {
+            track.camera = true;
+            track.selfView = std::move(slot);
+            track.selfTile = tile ? selfTile : UC_NO_HANDLE;
+        }
+    } else {
+        result = peer.SetMicrophone(track.service, true);
+        if (result == UC_OK) track.microphone = true;
+    }
+    if (result != UC_OK) Log("rtc: the " + device + " could not be opened");
+    QueueTrackEvent(trackId, UC_RTC_PERMISSION, uint32_t(result == UC_OK ? UC_RTC_DEVICE_ON : UC_RTC_DEVICE_FAILED), device);
+}
+
+void UltraWebGuest::QueueTrackEvent(int32_t trackId, uint32_t kind, uint32_t number, const std::string& text) {
+    auto at = tracks_.find(trackId);
+    if (at == tracks_.end()) return;
+    auto peer = peers_.find(at->second.peer);
+    if (peer == peers_.end()) return;
+    PeerEvent event;
+    event.kind = kind;
+    event.channel = trackId;
+    event.number = number;
+    event.text = text;
+    QueuePeerEvent(peer->second, at->second.peer, std::move(event));
+}
+
+void UltraWebGuest::DropTrack(int32_t id) {
+    auto at = tracks_.find(id);
+    if (at == tracks_.end()) return;
+    ClearSlot(at->second.view);
+    ClearSlot(at->second.selfView);
+    for (auto& [device, waiting] : waiting_) {
+        waiting.erase(std::remove_if(waiting.begin(), waiting.end(), [id](const DeviceRequest& r) { return r.track == id; }),
+                      waiting.end());
+    }
+    tracks_.erase(at);
+}
+
+void UltraWebGuest::TileReleased(uint32_t handle) {
+    for (auto& [id, track] : tracks_) {
+        if (track.viewTile == handle) {
+            ClearSlot(track.view);
+            track.viewTile = UC_NO_HANDLE;
+        }
+        if (track.selfTile == handle) {
+            ClearSlot(track.selfView);
+            track.selfTile = UC_NO_HANDLE;
+        }
+    }
+    for (auto& [device, waiting] : waiting_) {
+        for (DeviceRequest& request : waiting) {
+            if (request.selfTile == handle) request.selfTile = UC_NO_HANDLE;
+        }
+    }
 }
 
 // The callbacks capture the guest raw, with the handle: the element owns the

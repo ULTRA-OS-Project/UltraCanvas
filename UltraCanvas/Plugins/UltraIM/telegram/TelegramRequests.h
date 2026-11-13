@@ -2,6 +2,7 @@
 // Telegram provider - the TDLib requests it sends, built in one place (td_api
 // names and fields), so the tests can hand every one of them to a real TDLib
 // and have it say whether it parses.
+// Version: 0.1.7 - GetSupergroupMembers (a page of them, the recent ones first)
 // Version: 0.1.6 - a group after it is made: SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat,
 //                  DeleteChatHistory, GetBasicGroupFullInfo
 // Version: 0.1.5 - SearchChatMessages
@@ -93,6 +94,8 @@ TdObject RemoveChatMember(int64_t chatId, int64_t userId);
 TdObject LeaveChat(int64_t chatId);
 TdObject DeleteChatHistory(int64_t chatId);
 TdObject GetBasicGroupFullInfo(int64_t basicGroupId);
+// A supergroup's members, `limit` (up to 200) from `offset`, and how many there are (chatMembers).
+TdObject GetSupergroupMembers(int64_t supergroupId, int32_t offset, int32_t limit);
 TdObject Close();
 
 } // namespace Request

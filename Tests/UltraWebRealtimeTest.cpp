@@ -8,23 +8,31 @@
 //     opened, refused, read until empty, written, closed by either side or
 //     lost, and a peer whose descriptions, candidates, channels and messages
 //     the app polls - and both closed when the guest goes;
+//   - calls (ABI v4): tracks, the offer, the camera and the microphone
+//     behind the user's answer (asked once, kept per origin in the
+//     permission store), pictures into a VideoTile, a track the other side
+//     added, and nothing reaching a tile once the guest is gone;
 //   - the real services: UltraNet against a loopback WebSocket server that
 //     checks the Origin header and the subprotocol (POSIX only), and two
 //     UltraRTC peers that connect in this process and exchange data-channel
-//     messages (when the build has the engine).
+//     messages, then video pictures (when the build has the engine).
+// Version: 0.2.0 - calls: tracks, devices, permissions, VideoTile, real video
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "host/UltraWebFetch.h"
 #include "host/UltraWebGuest.h"
+#include "host/UltraWebPermissions.h"
 #include "host/UltraWebRtc.h"
 #include "host/UltraWebSocket.h"
 
 #include "ultraweb.h"
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextUtils.h"
+#include "UltraCanvasVideoTile.h"
 #include "UltraNet/UltraNetCore.h"
 #include "WasmHost/UltraCanvasWasmHost.h"
 
@@ -39,7 +47,9 @@
 #include <cstdio>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -238,6 +248,42 @@ struct FakePeer : RtcPeer {
         return UC_OK;
     }
     void Close() override { closed = true; }
+
+    // Calls: recorded, the sinks kept so the test can feed pictures.
+    std::map<uint64_t, RtcFrameSink> sinks;
+    std::map<uint64_t, RtcFrameSink> selfViews;
+    int32_t AddTrack(bool video, const std::string& mid, uint32_t direction, const RtcVideoConfig& config,
+                     uint64_t& out) override {
+        out = nextChannel++;
+        std::string call = std::string("track ") + (video ? "video " : "audio ") + mid + " " + std::to_string(direction);
+        if (video) call += " " + std::to_string(config.width) + "x" + std::to_string(config.height) + "@" +
+                           std::to_string(config.fps) + "/" + std::to_string(config.kbps);
+        calls.push_back(call);
+        return UC_OK;
+    }
+    int32_t Offer() override { calls.push_back("offer"); return UC_OK; }
+    int32_t SetMicrophone(uint64_t track, bool on) override {
+        calls.push_back("mic " + std::to_string(track) + (on ? " on" : " off"));
+        return UC_OK;
+    }
+    int32_t SetCamera(uint64_t track, bool on, RtcFrameSink selfView) override {
+        calls.push_back("camera " + std::to_string(track) + (on ? " on" : " off") + (selfView ? " view" : ""));
+        selfViews[track] = std::move(selfView);
+        return UC_OK;
+    }
+    int32_t SetPlayback(uint64_t track, bool on) override {
+        calls.push_back("playback " + std::to_string(track) + (on ? " on" : " off"));
+        return UC_OK;
+    }
+    int32_t SetTrackEnabled(uint64_t track, bool enabled) override {
+        calls.push_back("enabled " + std::to_string(track) + (enabled ? " on" : " off"));
+        return UC_OK;
+    }
+    int32_t ShowVideo(uint64_t track, RtcFrameSink sink) override {
+        calls.push_back("show " + std::to_string(track) + (sink ? " sink" : " none"));
+        sinks[track] = std::move(sink);
+        return UC_OK;
+    }
 };
 
 struct FakeRtc {
@@ -269,6 +315,9 @@ struct Harness {
     // The fakes before the guest: it closes sockets and peers as it goes.
     FakeSockets sockets;
     FakeRtc rtc;
+    // What the app asked the user for, with the bar's answer to give.
+    std::vector<std::pair<std::string, std::function<void(bool)>>> asked;
+    bool canAsk = true;
     std::vector<std::string> logs;
     std::string failure;
     std::unique_ptr<UltraWebGuest> guest;
@@ -282,6 +331,11 @@ struct Harness {
         if (withServices) {
             sockets.Install(options.services);
             rtc.Install(options.services);
+            if (canAsk) {
+                options.services.askPermission = [this](const std::string& device, std::function<void(bool)> answer) {
+                    asked.emplace_back(device, std::move(answer));
+                };
+            }
         }
         std::string error;
         guest = UltraWebGuest::Start(Bytes(wat), root, std::move(options), error);
@@ -322,8 +376,19 @@ const char* const kPrelude = R"(
   (import "ultracanvas" "uc_rtc_send" (func $rtc_send (param i32 i32 i32 i32) (result i32)))
   (import "ultracanvas" "uc_rtc_channel_close" (func $rtc_channel_close (param i32) (result i32)))
   (import "ultracanvas" "uc_rtc_poll" (func $rtc_poll (param i32 i32 i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_audio_add" (func $rtc_audio_add (param i32 i32 i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_video_add" (func $rtc_video_add (param i32 i32 i32 i32 i32 i32 i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_offer" (func $rtc_offer (param i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_microphone" (func $rtc_microphone (param i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_camera" (func $rtc_camera (param i32 i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_playback" (func $rtc_playback (param i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_video_show" (func $rtc_video_show (param i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_track_enabled" (func $rtc_track_enabled (param i32 i32) (result i32)))
+  (import "ultracanvas" "uc_create" (func $create (param i32 i32) (result i32)))
+  (import "ultracanvas" "uc_insert" (func $insert (param i32 i32 i32) (result i32)))
+  (import "ultracanvas" "uc_release" (func $release (param i32) (result i32)))
   (memory (export "memory") 1)
-  (func (export "uc_abi_version") (result i32) (i32.const 3))
+  (func (export "uc_abi_version") (result i32) (i32.const 4))
   ;; A signed decimal at $dst; returns its length.
   (func $num (param $v i32) (param $dst i32) (result i32)
     (local $u i32) (local $n i32) (local $i i32) (local $t i32)
@@ -633,6 +698,167 @@ void TestPeerTeardown() {
     }
 }
 
+// ===== CALLS THROUGH A GUEST ==================================================
+
+// Opens a peer, two VideoTiles (a remote view and a self view), an audio and
+// a video track, makes the offer, asks for the microphone and the camera,
+// shows the video track's pictures, plays the audio, mutes it. On each event
+// it reads the peer's events; a blocked device it asks for again, and a
+// track the other side added it shows in the tile.
+const char* const kCallGuest = R"(
+  (data (i32.const 0) "VideoTile")
+  (data (i32.const 16) "audio")
+  (data (i32.const 24) "video")
+  (data (i32.const 32) "v2")
+  (data (i32.const 64) "peer")
+  (data (i32.const 72) "audio")
+  (data (i32.const 80) "video")
+  (data (i32.const 88) "bad")
+  (data (i32.const 96) "offer")
+  (data (i32.const 104) "mic")
+  (data (i32.const 112) "cam")
+  (data (i32.const 120) "show")
+  (data (i32.const 128) "showbad")
+  (data (i32.const 136) "play")
+  (data (i32.const 144) "mute")
+  (data (i32.const 152) "kind")
+  (data (i32.const 160) "ch")
+  (data (i32.const 168) "num")
+  (data (i32.const 176) "again")
+  (data (i32.const 184) "camaudio")
+  (global $peer (mut i32) (i32.const 0))
+  (global $tile (mut i32) (i32.const 0))
+  (global $self (mut i32) (i32.const 0))
+  (global $audio (mut i32) (i32.const 0))
+  (global $video (mut i32) (i32.const 0))
+  (func (export "uc_main")
+    (global.set $peer (call $rtc_peer_open (i32.const 0) (i32.const 0)))
+    (call $say (i32.const 64) (i32.const 4) (global.get $peer))
+    (global.set $tile (call $create (i32.const 0) (i32.const 9)))
+    (global.set $self (call $create (i32.const 0) (i32.const 9)))
+    (drop (call $insert (i32.const 1) (global.get $tile) (i32.const 0)))
+    (drop (call $insert (i32.const 1) (global.get $self) (i32.const 0)))
+    (global.set $audio (call $rtc_audio_add (global.get $peer) (i32.const 16) (i32.const 5) (i32.const 0)))
+    (call $say (i32.const 72) (i32.const 5) (global.get $audio))
+    (global.set $video (call $rtc_video_add (global.get $peer) (i32.const 24) (i32.const 5) (i32.const 0)
+                                            (i32.const 320) (i32.const 240) (i32.const 15) (i32.const 300)))
+    (call $say (i32.const 80) (i32.const 5) (global.get $video))
+    (call $say (i32.const 88) (i32.const 3) (call $rtc_video_add (global.get $peer) (i32.const 32) (i32.const 2)
+                                            (i32.const 0) (i32.const 5000) (i32.const 0) (i32.const 0) (i32.const 0)))
+    (call $say (i32.const 96) (i32.const 5) (call $rtc_offer (global.get $peer)))
+    (call $say (i32.const 104) (i32.const 3) (call $rtc_microphone (global.get $audio) (i32.const 1)))
+    (call $say (i32.const 112) (i32.const 3) (call $rtc_camera (global.get $video) (i32.const 1) (global.get $self)))
+    (call $say (i32.const 184) (i32.const 8) (call $rtc_camera (global.get $audio) (i32.const 1) (i32.const 0)))
+    (call $say (i32.const 120) (i32.const 4) (call $rtc_video_show (global.get $video) (global.get $tile)))
+    (call $say (i32.const 128) (i32.const 7) (call $rtc_video_show (global.get $audio) (global.get $tile)))
+    (call $say (i32.const 136) (i32.const 4) (call $rtc_playback (global.get $audio) (i32.const 1)))
+    (call $say (i32.const 144) (i32.const 4) (call $rtc_track_enabled (global.get $audio) (i32.const 0))))
+  (func (export "uc_event") (param $h i32) (param $e i32) (param $id i32)
+    (local $n i32)
+    (block $done
+      (loop $read
+        (local.set $n (call $rtc_poll (local.get $id) (i32.const 4000) (i32.const 2048) (i32.const 1024)))
+        (br_if $done (i32.lt_s (local.get $n) (i32.const 0)))
+        (call $say (i32.const 152) (i32.const 4) (i32.load (i32.const 4000)))
+        (call $say (i32.const 160) (i32.const 2) (i32.load (i32.const 4004)))
+        (call $say (i32.const 168) (i32.const 3) (i32.load (i32.const 4008)))
+        (call $log (i32.const 2048) (local.get $n))
+        (if (i32.and (i32.eq (i32.load (i32.const 4000)) (i32.const 11)) (i32.eqz (i32.load (i32.const 4008))))
+          (then (call $say (i32.const 176) (i32.const 5)
+            (call $rtc_camera (i32.load (i32.const 4004)) (i32.const 1) (global.get $self)))))
+        (if (i32.eq (i32.load (i32.const 4000)) (i32.const 8))
+          (then (call $say (i32.const 120) (i32.const 4)
+            (call $rtc_video_show (i32.load (i32.const 4004)) (global.get $tile)))))
+        (br $read))))
+)";
+
+void TestCallsThroughGuest() {
+    std::printf("calls through a guest\n");
+    Harness h;
+    CHECK(h.Start(Guest(kCallGuest)));
+    if (!h.guest) return;
+    // The camera on an audio track is refused; asking does not wait for the answer.
+    CHECK(SameLines(h.AppLogs(), {"peer 1", "audio 2", "video 3", "bad -5", "offer 0", "mic 0", "cam 0",
+                                  "camaudio -5", "show 0", "showbad -5", "play 0", "mute 0"}));
+    if (h.rtc.peers.empty()) return;
+    FakePeer& peer = *h.rtc.peers[0];
+    // No device runs before the user answers.
+    CHECK((peer.calls == std::vector<std::string>{"track audio audio 0", "track video video 0 320x240@15/300", "offer",
+                                                  "show 101 sink", "playback 100 on", "enabled 100 off"}));
+    CHECK(h.asked.size() == 2);
+    if (h.asked.size() != 2) return;
+    CHECK(h.asked[0].first == "microphone" && h.asked[1].first == "camera");
+
+    // The microphone allowed: it starts, and the app hears so.
+    h.asked[0].second(true);
+    CHECK(SameLines(h.AppLogs(), {"kind 11", "ch 2", "num 1", "microphone"}));
+    CHECK(peer.calls.back() == "mic 100 on");
+    // The camera blocked: the app hears so, and asking again is refused at
+    // once, without another question.
+    h.asked[1].second(false);
+    CHECK(SameLines(h.AppLogs(), {"kind 11", "ch 3", "num 0", "camera", "again -8"}));
+    CHECK(h.asked.size() == 2);
+    CHECK(peer.calls.back() == "mic 100 on");   // no camera started
+
+    // Pictures go straight to the tile the app named.
+    auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(h.guest->ElementForTest(2));
+    CHECK(tile && !tile->HasFrame());
+    const uint8_t rgba[16] = {255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255};
+    if (peer.sinks[101]) peer.sinks[101](rgba, 2, 2);
+    CHECK(tile && tile->HasFrame());
+
+    // The other side adds a video track: the app gets an id for it and shows it.
+    h.rtc.Emit(0, UC_RTC_TRACK, 200, UC_RTC_VIDEO, "video2");
+    CHECK(SameLines(h.AppLogs(), {"kind 8", "ch 4", "num 1", "video2", "show 0"}));
+    CHECK(peer.calls.back() == "show 200 sink");
+    h.rtc.Emit(0, UC_RTC_TRACK_OPEN, 200, 0, "");
+    CHECK(SameLines(h.AppLogs(), {"kind 9", "ch 4", "num 0", ""}));
+    CHECK(h.guest->TrackCount() == 3);
+
+    // The guest goes: the peer stops, and a picture still on its way reaches no tile.
+    RtcFrameSink late = peer.sinks[101];
+    std::shared_ptr<FakePeer> holder = h.rtc.peers[0];
+    h.guest.reset();
+    CHECK(holder->closed);
+    if (late) late(rgba, 2, 2);   // must not touch the released tile
+    CHECK(true);
+}
+
+void TestCallsWithoutAsking() {
+    std::printf("calls: an UltraWeb that cannot ask\n");
+    Harness h;
+    h.canAsk = false;
+    CHECK(h.Start(Guest(kCallGuest)));
+    if (!h.guest) return;
+    const std::vector<std::string> logs = h.AppLogs();
+    // The devices are refused at once; the rest works.
+    CHECK(logs.size() == 12 && logs[5] == "mic -8" && logs[6] == "cam -8" && logs[8] == "show 0");
+}
+
+void TestPermissionStore() {
+    std::printf("the permission store\n");
+    std::error_code ec;
+    const std::filesystem::path dir = std::filesystem::temp_directory_path(ec) / "UltraWebPermissionTest";
+    std::filesystem::remove_all(dir, ec);
+    const std::string path = PathToUtf8(dir / "permissions.txt");
+    {
+        PermissionStore store(path);
+        CHECK(store.Get("https://x.org", "camera") == PermissionStore::Answer::NotAsked);
+        store.Set("https://x.org", "camera", true);
+        store.Set("https://x.org", "microphone", false);
+        store.Set("file:///home/me/app.wasm", "camera", false);
+        CHECK(store.Count() == 3);
+    }
+    PermissionStore again(path);
+    CHECK(again.Get("https://x.org", "camera") == PermissionStore::Answer::Allowed);
+    CHECK(again.Get("https://x.org", "microphone") == PermissionStore::Answer::Blocked);
+    CHECK(again.Get("file:///home/me/app.wasm", "camera") == PermissionStore::Answer::Blocked);
+    CHECK(again.Get("https://y.org", "camera") == PermissionStore::Answer::NotAsked);
+    again.Clear();
+    CHECK(again.Count() == 0 && !std::filesystem::exists(PathFromUtf8(path)));
+    std::filesystem::remove_all(dir, ec);
+}
+
 // ===== THE REAL SOCKET SERVICE ===============================================
 
 #ifndef _WIN32
@@ -911,8 +1137,70 @@ void TestEnginePeers() {
     CHECK(connected);
     a.peer->Close();
     b.peer->Close();
+}
+
+// Two peers with a video track each, the same media id: A offers, B answers
+// by itself; A's pictures, fed straight to the engine, reach B's sink.
+void TestEngineVideo() {
+    std::printf("video between two UltraRTC peers\n");
 #ifdef ULTRAWEB_HAS_RTC
-    UltraRtc_Shutdown();
+    RtcService service = MakeEngineRtc(Post);
+    if (!service || !UltraRtc_GetCapabilities().video) {
+        std::printf("  (no video in this build)\n");
+        return;
+    }
+    std::shared_ptr<RtcPeer> a, b;
+    bool aOpen = false, bOpen = false;
+    std::atomic<int> received{0};
+    std::atomic<int> width{0};
+    auto relay = [](std::shared_ptr<RtcPeer>& to, bool& open) {
+        return [&to, &open](RtcEvent e) {
+            if (e.kind == UC_RTC_LOCAL_DESCRIPTION && to) to->SetRemote(e.number, e.text);
+            if (e.kind == UC_RTC_CANDIDATE && to) {
+                const size_t newline = e.text.find('\n');
+                to->AddCandidate(e.text.substr(newline + 1), e.text.substr(0, newline));
+            }
+            if (e.kind == UC_RTC_TRACK_OPEN) open = true;
+        };
+    };
+    std::string error;
+    a = service(RtcConfig{}, relay(b, aOpen), error);
+    b = service(RtcConfig{}, relay(a, bOpen), error);
+    CHECK(a && b);
+    if (!a || !b) return;
+    RtcVideoConfig small;
+    small.width = 160;
+    small.height = 120;
+    small.fps = 15;
+    small.kbps = 200;
+    uint64_t aTrack = 0, bTrack = 0;
+    CHECK(a->AddTrack(true, "video", UC_RTC_SENDRECV, small, aTrack) == UC_OK);
+    CHECK(b->AddTrack(true, "video", UC_RTC_SENDRECV, small, bTrack) == UC_OK);
+    CHECK(b->ShowVideo(bTrack, [&](const uint8_t*, int w, int) { width = w; ++received; }) == UC_OK);
+    CHECK(a->Offer() == UC_OK);
+    CHECK(Pump([&] { return aOpen && bOpen; }, 30));
+    // Pictures from a thread of their own, as a camera's would come.
+    std::atomic<bool> sending{true};
+    std::thread feeder([&] {
+        UltraRtcVideoFrame frame;
+        frame.width = 160;
+        frame.height = 120;
+        frame.rgba.assign(size_t(160) * 120 * 4, 128);
+        for (int i = 0; sending && i < 400; ++i) {
+            UltraRtc_SendVideoFrame(UltraRtcHandle(aTrack), frame);
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    });
+    CHECK(Pump([&] { return received >= 3; }, 20) || received >= 3);
+    sending = false;
+    feeder.join();
+    CHECK(received >= 3);
+    CHECK(width == 160);
+    CHECK(b->ShowVideo(bTrack, nullptr) == UC_OK);
+    a->Close();
+    b->Close();
+#else
+    std::printf("  (built without UltraRTC)\n");
 #endif
 }
 
@@ -930,6 +1218,8 @@ int main() {
         TestSocketEndings();
         TestPeersThroughGuest();
         TestPeerTeardown();
+        TestCallsThroughGuest();
+        TestCallsWithoutAsking();
     } else {
         std::printf("guests: skipped (no WebAssembly engine)\n");
     }
@@ -939,7 +1229,12 @@ int main() {
 #else
     std::printf("the UltraNet socket service: skipped (POSIX sockets)\n");
 #endif
+    TestPermissionStore();
     TestEnginePeers();
+    TestEngineVideo();
+#ifdef ULTRAWEB_HAS_RTC
+    UltraRtc_Shutdown();
+#endif
     UltraNet_Shutdown();
     std::printf("UltraWebRealtimeTest: %d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;

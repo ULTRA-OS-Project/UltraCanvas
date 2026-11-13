@@ -10,6 +10,7 @@
 // picture fetched, a photo, a video and a file sent and received - the photo
 // and the video's preview picture arriving by themselves, the video when
 // asked for.
+// Version: 0.1.8 - a supergroup: its members (a page of 200 out of more) and creator, and the count after one leaves
 // Version: 0.1.7 - a group after it is made: its members and creator, renamed, a member taken out (by its
 //                  creator alone) and added back, left; a private chat deleted on one side
 // Version: 0.1.6 - what can be deleted (for oneself, one's own for everyone)
@@ -241,6 +242,19 @@ int64_t AddAccount(const std::string& phone, const std::string& first, const std
     r.Set("password", TdObject(password));
     r.Set("photo", TdObject(photo));
     return TdInt(TdJsonLibrary::Instance().Execute(r)["id"]);
+}
+
+// A supergroup made by `owner` with `members` (the fake's own request: no
+// client makes one here). Its chat id, as everyone sees it.
+std::string CreateSupergroup(int64_t owner, const std::string& title, const std::vector<int64_t>& members) {
+    TdObject r = TdObject::MakeObject();
+    r.Set("@type", TdObject("fakeCreateSupergroup"));
+    r.Set("owner", TdObject(owner));
+    r.Set("title", TdObject(title));
+    TdObject ids = TdObject::MakeArray();
+    for (int64_t m : members) ids.Append(TdObject(m));
+    r.Set("member_ids", ids);
+    return std::to_string(TdInt(TdJsonLibrary::Instance().Execute(r)["id"]));
 }
 
 // A file to send: a few bytes under `base`.
@@ -746,6 +760,32 @@ void TestTelegram() {
         CHECK(!aliceEvents.WaitFor([&](const UltraIMEvent& e) {
             return e.type == UltraIMEventType::ConversationRemove && e.conversationId == dm.conversationId;
         }, nullptr, 1));
+    }
+
+    // A supergroup of more than one page: Alice sees the first 200 members,
+    // herself (its creator) among them, and how many there are; Bob leaves
+    // and the count follows.
+    {
+        std::vector<int64_t> crowd = {bobId, std::stoll(carolId)};
+        for (int i = 0; i < 205; ++i)
+            crowd.push_back(AddAccount("1555700" + std::to_string(1000 + i), "Member" + std::to_string(i), "", ""));
+        const std::string sg = CreateSupergroup(aliceId, "Big room", crowd);
+        const std::string a = std::to_string(aliceId), b = std::to_string(bobId);
+        UltraIMEvent seen;
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == sg &&
+                   e.conversation.memberIds.size() == 200;
+        }, &seen));
+        CHECK(seen.conversation.isGroup && seen.conversation.title == "Big room");
+        CHECK(seen.conversation.memberCount == 208 && seen.conversation.ownerId == a);
+        CHECK(seen.conversation.memberNames.count(b) && seen.conversation.memberNames[b] == "Bob");
+        CHECK(Await([&](UltraIMResultCallback cb) { bob->LeaveConversation(sg, cb); }).success);
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == sg &&
+                   e.conversation.memberCount == 207 &&
+                   std::find(e.conversation.memberIds.begin(), e.conversation.memberIds.end(), b) ==
+                       e.conversation.memberIds.end();
+        }));
     }
 
     // Bob goes: Alice sees him offline.

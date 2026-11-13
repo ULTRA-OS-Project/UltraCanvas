@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.6 - a group's member count from MemberCount (a big supergroup lists a first page)
 // Version: 0.2.5 - pinned conversations first, with a pin; one marked unread with a dot
 // Version: 0.2.4 - times on a 12-hour clock and dates in three orders, from the Settings window
 // Version: 0.2.3 - the ticks drawn as strokes (no font needed); a file that is a picture - an SVG
@@ -238,6 +239,10 @@ std::string FormatSize(int64_t bytes) {
     if (unit == 0) return TrF("{0} KB", out);
     if (unit == 1) return TrF("{0} MB", out);
     return TrF("{0} GB", out);
+}
+
+long long MemberCount(const UltraIMConversation& conversation) {
+    return std::max<long long>(conversation.memberCount, static_cast<long long>(conversation.memberIds.size()));
 }
 
 bool HasPicture(const UltraIMMessage& message) {
@@ -712,7 +717,7 @@ ListDataValue ConversationListModel::GetData(const ListIndex& index, ListDataRol
     const UltraIMConversation& c = list_[static_cast<size_t>(index.row)];
     if (role == ListDataRole::DisplayRole) return c.title;
     if (role == ListDataRole::ToolTipRole)
-        return c.isGroup ? c.title + "\n" + TrN("{n} member", "{n} members", static_cast<long long>(c.memberIds.size()))
+        return c.isGroup ? c.title + "\n" + TrN("{n} member", "{n} members", MemberCount(c))
                          : c.title + "\n" + GroupUserId(c.directContactId);
     return ListDataValue();
 }

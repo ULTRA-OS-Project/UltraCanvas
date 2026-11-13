@@ -17,6 +17,7 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.9 - renaming on a relay before 1.3.0 (405) says so, not "the relay refused the request"
 // Version: 0.1.8 - a group renamed (PATCH /v1/groups/{id}), members added and removed, a group left
 //                  and a 1:1 conversation deleted on this device; the group's owner and members' names
 //                  on its conversation
