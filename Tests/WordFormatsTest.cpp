@@ -940,6 +940,30 @@ int main(int argc, char** argv) {
                 CheckPatterns(back, std::string(name) + " -> " + ext);
             }
         }
+        // Writer's DOC keeps those hatches as EMF textures: inflated, and
+        // kept as EMF pictures repeated across the shapes.
+        {
+            UCRichDocument d;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/word-patterns.doc", d, err), err);
+            std::vector<const RichTextRun*> runs = FloatingFrames(d);
+            const RichTextFrame* frame = runs.empty() ? nullptr : d.FrameFor(*runs[0]);
+            const RichShape* shape = frame && frame->shapes.size() == 1 ? &frame->shapes.front() : nullptr;
+            const RichDocMedia* texture = shape && shape->fillMediaIndex >= 0
+                && shape->fillMediaIndex < static_cast<int>(d.media.size()) ? &d.media[static_cast<size_t>(shape->fillMediaIndex)] : nullptr;
+            CHECK_MSG(texture && texture->mimeType == "image/x-emf" && texture->data.size() > 44
+                      && texture->data[40] == ' ' && texture->data[41] == 'E' && shape->fillPictureTiled,
+                      "word-patterns.doc: the hatch's EMF texture");
+        }
+        // Metafile pictures in a DOCX (a WMF, an EMF) are kept as they are.
+        for (const char* name : {"word-metafile-wmf.docx", "word-metafile-emf.docx"}) {
+            UCRichDocument d;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/" + name, d, err), err);
+            const bool wmf = std::string(name).find("wmf") != std::string::npos;
+            CHECK_MSG(d.media.size() == 1 && d.media[0].mimeType == (wmf ? "image/x-wmf" : "image/x-emf"),
+                      std::string(name) + ": the metafile picture");
+        }
         // A pattern tile of its own (Word 97 keeps its patterns as bitmaps):
         // read bit by bit, and named by its nearest preset where a format names them.
         CHECK(RichShape::PatternBit("bits:AA55AA55AA55AA55", 0, 0) && !RichShape::PatternBit("bits:AA55AA55AA55AA55", 1, 0));

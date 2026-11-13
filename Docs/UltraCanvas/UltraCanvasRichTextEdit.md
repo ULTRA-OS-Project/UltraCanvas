@@ -680,6 +680,27 @@ and VML) and DOC (OfficeArt) shapes and groups read into it, and both writers
 save it. A drawing is moved and resized like a picture; the shapes in it are
 not edited one by one.
 
+**A frame's words, edited in place.** A double-click on a floating text frame
+(or a drawing with words) in the body opens its paragraphs where the frame
+stands: they are laid out at its inner width over its fill and border, and
+typed, formatted and undone like the body's; a click outside the frame, or
+Escape, goes back, and they are written into `UCRichDocument::frames`.
+`EditFrame(frameIndex)` does the same from code, `IsEditingFrame()` says
+whether it is open, and `FinishHeaderFooterEditing()` closes it.
+
+```cpp
+if (editor->EditFrame(0)) {
+    editor->GetEditor().InsertText("Example Company");
+    editor->FinishHeaderFooterEditing();
+}
+```
+
+**Metafile pictures.** EMF and WMF pictures and picture fills (Word 97 keeps
+many pictures, and Writer's DOC export its hatches, that way) are drawn
+through the Vector plugin's readers, at twice their size so they stay sharp
+when zoomed; an application that does not register the plugin shows an empty
+box in their place.
+
 ```cpp
 RichShape rule;
 rule.kind = RichShape::Kind::Line;
