@@ -12,10 +12,12 @@
 // is reported through onFailure on a later UI-thread turn, never from
 // inside the element callback that ran the guest, so the owner can tear
 // the guest down safely.
+// Version: 0.4.0 - ABI v4: audio and video tracks, the devices behind the user's
+//                  permission (GuestServices::askPermission), VideoTile
 // Version: 0.3.0 - ABI v3: WebSockets (uc_ws_*) and peer connections with data
 //                  channels (uc_rtc_*)
 // Version: 0.2.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -32,8 +34,11 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
+
+namespace UltraCanvas { class UltraCanvasVideoTile; }
 
 namespace UltraWeb {
 
@@ -57,6 +62,11 @@ struct GuestServices {
     // Opens peer connections (uc_rtc_*); empty when this UltraWeb has no
     // WebRTC engine.
     RtcService rtc;
+    // Asks the user whether the app may use a device - "camera" or
+    // "microphone" - and calls `answer` once, on the UI thread. UltraWeb
+    // shows a bar in the app's tab and keeps the answer per origin. Empty:
+    // the devices are refused.
+    std::function<void(const std::string& device, std::function<void(bool allowed)> answer)> askPermission;
 };
 
 struct GuestOptions {
@@ -99,6 +109,7 @@ public:
     size_t SocketCount() const { return sockets_.size(); }
     size_t PeerCount() const { return peers_.size(); }
     size_t ChannelCount() const { return channels_.size(); }
+    size_t TrackCount() const { return tracks_.size(); }
     bool HasFailed() const { return failed_; }
 
     // For tests: deliver an event as if the user had caused it.
@@ -145,7 +156,32 @@ private:
         std::shared_ptr<RtcPeer> peer;
         std::deque<PeerEvent> events;
         std::map<uint64_t, int32_t> channelIds;   // the service's id -> the app's
+        std::map<uint64_t, int32_t> trackIds;     // the same, for tracks
+        size_t audioTracks = 0;
+        size_t videoTracks = 0;
         bool warnedFull = false;
+    };
+    // Where a media thread's pictures go: the tile, while it is shown there.
+    // The thread pushes with the lock held; the UI thread clears `tile` under
+    // the lock before the tile goes, so no picture reaches a tile that is gone.
+    struct FrameSlot {
+        std::mutex mutex;
+        UltraCanvas::UltraCanvasVideoTile* tile = nullptr;
+    };
+    struct Track {
+        int32_t peer = 0;
+        uint64_t service = 0;
+        bool video = false;
+        bool microphone = false;              // a device runs for it
+        bool camera = false;
+        std::shared_ptr<FrameSlot> view;      // received pictures (uc_rtc_video_show)
+        std::shared_ptr<FrameSlot> selfView;  // the camera's (uc_rtc_camera)
+        uint32_t viewTile = 0;
+        uint32_t selfTile = 0;
+    };
+    struct DeviceRequest {
+        int32_t track = 0;
+        uint32_t selfTile = 0;
     };
     struct Channel {
         int32_t peer = 0;
@@ -193,6 +229,21 @@ private:
     int32_t OpenChannel(int32_t peer, const std::string& label, uint32_t flags, int32_t maxRetransmits);
     int32_t CloseChannel(int32_t id);
     int32_t NextRealtimeId();
+
+    int32_t AddTrack(int32_t peer, bool video, const std::string& mid, uint32_t direction, const RtcVideoConfig& config);
+    int32_t SetDevice(int32_t track, const std::string& device, bool on, uint32_t selfTile);
+    void DeviceAnswered(const std::string& device, bool allowed);
+    void StartDevice(int32_t track, const std::string& device, uint32_t selfTile);
+    void QueueTrackEvent(int32_t track, uint32_t kind, uint32_t number, const std::string& text);
+    int32_t ShowVideo(int32_t track, uint32_t tile);
+    UltraCanvas::UltraCanvasVideoTile* TileOf(uint32_t handle);
+    // A slot showing in `tile` now; RtcFrameSink that pushes through it.
+    static std::shared_ptr<FrameSlot> SlotFor(UltraCanvas::UltraCanvasVideoTile* tile);
+    static RtcFrameSink SinkFor(const std::shared_ptr<FrameSlot>& slot);
+    static void ClearSlot(const std::shared_ptr<FrameSlot>& slot);
+    // A track, or every track of a peer, forgotten: its slots cleared.
+    void DropTrack(int32_t id);
+    void TileReleased(uint32_t handle);
     void Log(const std::string& line);
 
     Entry* Find(uint32_t handle);
@@ -229,8 +280,13 @@ private:
     std::map<int32_t, Socket> sockets_;
     std::map<int32_t, Peer> peers_;
     std::map<int32_t, Channel> channels_;
+    std::map<int32_t, Track> tracks_;
+    // What the user answered for this app, this run ("camera", "microphone"),
+    // and the devices waiting for an answer.
+    std::map<std::string, bool> devices_;
+    std::map<std::string, std::vector<DeviceRequest>> waiting_;
     int32_t nextSocketId_ = 1;
-    int32_t nextRealtimeId_ = 1;          // peers and channels share it: an id names one or the other
+    int32_t nextRealtimeId_ = 1;          // peers, channels and tracks share it: an id names one of them
     std::deque<std::pair<uint32_t, int32_t>> appEvents_;   // event, detail
     // Timer and network callbacks hold this weakly: the guest may be gone
     // by the time they run.

@@ -47,6 +47,7 @@ add_executable(UltraWeb
     host/UltraWebDownloads.cpp
     host/UltraWebDownloadList.cpp
     host/UltraWebStorage.cpp
+    host/UltraWebPermissions.cpp
     ui/UltraWebDownloadsPanel.cpp
     ui/UltraWebTab.cpp
     ui/UltraWebWindow.cpp
