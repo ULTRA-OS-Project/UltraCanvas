@@ -11,6 +11,8 @@
 // - A selected row under a collapsed parent counts as out of view; the click
 //   opens the parent first.
 // - SetShowScrollToSelectionButton(false) switches the button off.
+// - The rows are shown in the content box, so the last row scrolls fully into
+//   it rather than ending a border's width under its edge.
 //
 // Runs headless: no application, so the scrollbar jumps instead of gliding.
 // Version: 1.0.0
@@ -101,6 +103,11 @@ struct Fixture {
         TreeNode* node = tree->GetFirstSelectedNode();
         return node ? node->data.nodeId : "";
     }
+    // The row covering element-local y, or "" where no row does.
+    std::string RowAt(int y) const {
+        TreeNode* node = tree->GetNodeAtY(y);
+        return node ? node->data.nodeId : "";
+    }
     bool Press(const Rect2Di& r) {
         UCEvent down;
         down.type = UCEventType::MouseDown;
@@ -157,6 +164,29 @@ void TestSelectionButton() {
          && f.tree->GetScrollToSelectionButtonRect().width == 0);
 }
 
+void TestRowsFitTheContentBox() {
+    Fixture f;
+    f.tree->OnEvent(Key(UCKeys::End));   // selects the last row and scrolls to it
+    Rect2Di content = f.tree->GetLocalContentRect();
+    const int rowHeight = f.tree->GetRowHeight();
+    TEST("the end of the list is the end of the rows",
+         f.Selected() == "p1" && f.RowAt(content.Bottom() - 1) == "p1");
+    // The row the view ends on is whole: it starts a row's height above the
+    // content's foot, not a border's width below it, which is where a
+    // viewport measured as the whole element used to leave it.
+    TEST("the last row sits fully inside the content box",
+         f.RowAt(content.Bottom() - rowHeight) == "p1");
+    TEST("and no floating button offers to go to it",
+         !f.tree->IsScrollToSelectionButtonActive());
+
+    // The same for a row revealed by ScrollTo rather than by the keyboard.
+    f.tree->ScrollToTop();
+    f.tree->ScrollTo(f.tree->FindNode("n19"));
+    TEST("a row scrolled to from above is whole as well",
+         f.RowAt(content.Bottom() - 1) == "n19" &&
+         f.RowAt(content.Bottom() - rowHeight) == "n19");
+}
+
 void TestSelectionUnderCollapsedParent() {
     Fixture f;
     f.tree->SelectNode(f.tree->FindNode("p1"));
@@ -175,6 +205,7 @@ void TestSelectionUnderCollapsedParent() {
 int main() {
     TestTopButtonStaysInCorner();
     TestSelectionButton();
+    TestRowsFitTheContentBox();
     TestSelectionUnderCollapsedParent();
     std::cerr << testCount - failCount << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

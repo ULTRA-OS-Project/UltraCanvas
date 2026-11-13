@@ -18,6 +18,7 @@
 - [API Reference](#api-reference)
   - [Constructor](#constructor)
   - [Tree Structure Management](#tree-structure-management)
+  - [Rebuilding the Rows in Place](#rebuilding-the-rows-in-place)
   - [Selection Management](#selection-management)
   - [Expansion Management](#expansion-management)
   - [Filtering](#filtering)
@@ -409,6 +410,67 @@ if (TreeNode* node = treeView->GetNodeAtY(static_cast<int>(local.y))) {
 }
 ```
 
+### Rebuilding the Rows in Place
+
+A tree built again from its source - a folder rescan, a refresh that calls
+`SetRootNode` and then an `AddNode` per row - used to throw the view back to
+the first row: `SetRootNode` leaves the tree empty for a moment, the measure
+that follows finds no content at all, and the scroll offset is clamped to 0.
+The rows came back under a view nobody asked for, with the row the user had
+selected often off screen. Wrap the rebuild instead:
+
+#### `BeginRebuild` / `EndRebuild`
+```cpp
+void BeginRebuild();
+void EndRebuild();
+bool IsRebuilding() const;
+```
+While a rebuild is open the tree is not measured, so a tree of *n* rows is
+measured once at the end rather than after every `AddNode`. `EndRebuild()`
+measures it and puts the view back:
+
+- the scroll position is the one the tree had when the rebuild began;
+- when the row that was selected is in the tree again, it is returned to the
+  same height on screen, so rows added or dropped above it do not slide it;
+- when another row is selected by the end of the rebuild - the account was
+  switched, the folder is gone - that row is scrolled into view instead.
+
+The rows, the selection and the expanded state stay the caller's to set, and
+no callback fires. Calls nest; the outermost pair settles the view.
+
+#### `TreeRebuildScope`
+```cpp
+class TreeRebuildScope {
+public:
+    explicit TreeRebuildScope(UltraCanvasTreeView& tree);
+    ~TreeRebuildScope();
+    void End();
+};
+```
+`BeginRebuild()` / `EndRebuild()` around a block, so an early return cannot
+leave a tree unmeasured. `End()` ends the rebuild before the block closes -
+for a caller that goes on to measure the tree, since `GetRequiredWidth()`
+counts the vertical scrollbar and `EndRebuild()` is what decides whether
+there is one.
+
+```cpp
+// An account's folders, built again after every rescan: the user keeps the
+// view - and the folder they are reading - exactly where it was.
+void ShowFolders(UltraCanvasTreeView* tree,
+                 const std::vector<std::string>& folders,
+                 const std::string& currentFolder) {
+    TreeRebuildScope keepTheView(*tree);
+    tree->SetRootNode(TreeNodeData("root", "Folders"));
+    for (const std::string& folder : folders) {
+        tree->AddNode("root", TreeNodeData("folder:" + folder, folder));
+    }
+    tree->ExpandAll();
+    if (TreeNode* node = tree->FindNode("folder:" + currentFolder)) {
+        tree->SelectNode(node);
+    }
+}   // measured once here, and the view is back where the user left it
+```
+
 ### Selection Management
 
 #### `SelectNode`
@@ -717,6 +779,13 @@ The other scrolling calls bring a node into view or move the view by pixels:
 void ScrollTo(TreeNode* node);
 void ScrollBy(int deltaY);
 ```
+
+The room the rows are shown in - and with it how far the view scrolls, where
+`ScrollTo` leaves a row and how many rows **Page Up** / **Page Down** move - is
+the tree's **content box**: its bounds less its border and its padding, and
+less the fixed header band of `UltraCanvasColumnsTreeView`. A tree 120 px high
+with the default 1 px border shows 118 px of rows, so size a tree that must
+show *n* whole rows as `n * rowHeight` plus its border and padding.
 
 Behaviour:
 

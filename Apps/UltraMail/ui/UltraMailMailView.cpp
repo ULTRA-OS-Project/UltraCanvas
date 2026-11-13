@@ -1035,6 +1035,13 @@ SenderClass MailView::ClassFor(const MessageEnvelope& m) const {
 void MailView::RebuildFolderTree() {
     if (!folderTree_) return;
     Trace::Stage trace("Folder tree", 0);
+    // Every row is replaced below, and this runs on each folder rescan - after
+    // every mail check - not only when the user asks for it. Without the scope
+    // the tree is measured empty for a moment and the view jumps back to the
+    // first row, so the folder the user is reading scrolls out of sight behind
+    // their back; with it the rows come back under the same selection, at the
+    // same height (UltraCanvasTreeView::BeginRebuild).
+    TreeRebuildScope keepTheView(*folderTree_);
     folderNodeId_.clear();
     folderDelims_.clear();
 
@@ -1118,6 +1125,10 @@ void MailView::RebuildFolderTree() {
     Trace::Stage step("Expand the tree, select the folder, fit its width", 0);
     folderTree_->ExpandAll();
     SelectFolderNode(curAccount_, curFolder_);
+    // The rows are all there: measure the tree once, put the view back, and
+    // only then fit the pane to it (the fit counts the scrollbar, which is
+    // what the measure decides).
+    keepTheView.End();
     if (folderTreeFitToText_) ApplyFolderTreeWidth();
 }
 
@@ -1130,6 +1141,12 @@ void MailView::SelectFolderNode(const std::string& accountId, const std::string&
     suppressTreeCallback_ = true;
     folderTree_->SelectNode(node);
     suppressTreeCallback_ = false;
+    // The folder was opened from outside the tree (a search result, the
+    // account bar, a message moved): its row may be scrolled away, and a
+    // selection nobody can see is no selection. A row already on screen stays
+    // exactly where it is. Inside a rebuild this is settled again by
+    // TreeRebuildScope, which holds the view the user had.
+    folderTree_->ScrollTo(node);
 }
 
 void MailView::SetTreeCurrentAccountOnly(bool currentOnly) {
