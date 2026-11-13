@@ -185,15 +185,29 @@ void TestBuiltinData() {
             EXPECT_TRUE(b.url.rfind("https://", 0) == 0);
         }
     }
-    // whisper.cpp's server: the CPU builds upstream publishes (none for
-    // macOS or Windows on ARM).
+    // whisper.cpp's server on every platform: upstream's CPU builds for
+    // Linux and Windows x64, ours for the rest (Metal on Apple silicon,
+    // Windows on ARM, Vulkan). The Linux Vulkan builds need glibc 2.39, so
+    // Auto never picks them.
     const EngineInfo* whisper = gallery.Find("whisper-server");
     EXPECT_TRUE(whisper != nullptr);
     EXPECT_TRUE(std::find(whisper->serves.begin(), whisper->serves.end(), "speechtotext") != whisper->serves.end());
-    for (const char* platform : {"linux-x64", "linux-arm64", "win-x64"}) {
-        EXPECT_TRUE(std::any_of(whisper->bundles.begin(), whisper->bundles.end(), [&](const EngineBundleInfo& b) {
-            return b.platform == platform && b.accelerator == "cpu";
-        }));
+    auto whisperBundle = [&](const std::string& platform, const std::string& accel) -> const EngineBundleInfo* {
+        for (const auto& b : whisper->bundles) {
+            if (b.platform == platform && b.accelerator == accel) return &b;
+        }
+        return nullptr;
+    };
+    for (const char* platform : {"linux-x64", "linux-arm64", "win-x64", "macos-x64", "win-arm64"}) {
+        EXPECT_TRUE(whisperBundle(platform, "cpu") != nullptr);
+    }
+    EXPECT_TRUE(whisperBundle("macos-arm64", "metal") != nullptr);
+    EXPECT_EQ(whisperBundle("macos-arm64", "metal")->minOs, std::string("13.3"));
+    for (const char* platform : {"win-x64", "win-arm64"}) {
+        EXPECT_TRUE(whisperBundle(platform, "vulkan") != nullptr && !whisperBundle(platform, "vulkan")->optional);
+    }
+    for (const char* platform : {"linux-x64", "linux-arm64"}) {
+        EXPECT_TRUE(whisperBundle(platform, "vulkan") != nullptr && whisperBundle(platform, "vulkan")->optional);
     }
     Catalogue catalogue;
     EXPECT_TRUE(ParseCatalogue(BuiltinCatalogueJson(), catalogue, error));
