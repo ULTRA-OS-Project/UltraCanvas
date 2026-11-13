@@ -238,12 +238,93 @@ if(_ultracanvas_core_type STREQUAL "SHARED_LIBRARY")
         endif()
     endif()
 endif()
+set(_ultracanvas_core_is_shared FALSE)
+if(_ultracanvas_core_type STREQUAL "SHARED_LIBRARY")
+    set(_ultracanvas_core_is_shared TRUE)
+endif()
 unset(_ultracanvas_core_type)
 unset(_ultracanvas_libs)
 unset(_ultracanvas_lib)
 unset(_ultracanvas_kept)
 unset(_ultracanvas_dropped)
 unset(_ultracanvas_dropped_text)
+
+# Where the consumer's own packages provide the libraries (the Linux SDK, a
+# plain cmake --install: no deps/), a shared core keeps on the application's
+# link line only what the application compiles against - the libraries the
+# public headers include, which pkg-config found above - plus imported targets,
+# generator expressions and linker flags. Everything else the core links is
+# its own: FLAC, GStreamer, Vorbis, zbar, GTK, MuPDF and the rest are inside
+# libUltraCanvas or loaded with it at run time (the Linux SDK carries the
+# ones a machine set up by UltraCanvasStart lacks, beside the core, which
+# finds them through its $ORIGIN runpath). Named on the link line they would
+# need their -dev packages on every machine that builds an application, which
+# UltraCanvasStart does not install and should not have to.
+# VirtualFS is folded into the shared core as well: the application needs its
+# headers and definitions, not libVirtualFS.a and its -larchive again, so
+# VirtualFS::VirtualFS gives way to a target that carries only those.
+if(_ultracanvas_core_is_shared AND NOT ULTRACANVAS_DEPS_DIR)
+    set(_ultracanvas_public ${_ultracanvas_deps_LIBRARIES} ${_ultracanvas_vips_LIBRARIES}
+        pthread dl m rt)
+    get_target_property(_ultracanvas_libs UltraCanvas::UltraCanvas INTERFACE_LINK_LIBRARIES)
+    if(_ultracanvas_libs)
+        set(_ultracanvas_kept "")
+        set(_ultracanvas_dropped "")
+        foreach(_ultracanvas_lib IN LISTS _ultracanvas_libs)
+            set(_ultracanvas_name "")
+            if(_ultracanvas_lib MATCHES "\\$<" OR _ultracanvas_lib MATCHES "^-")
+                list(APPEND _ultracanvas_kept "${_ultracanvas_lib}")
+                continue()
+            elseif(_ultracanvas_lib STREQUAL "VirtualFS::VirtualFS")
+                if(NOT TARGET UltraCanvas::VirtualFSHeaders)
+                    add_library(UltraCanvas::VirtualFSHeaders INTERFACE IMPORTED)
+                    foreach(_ultracanvas_prop INTERFACE_INCLUDE_DIRECTORIES
+                            INTERFACE_COMPILE_DEFINITIONS INTERFACE_COMPILE_FEATURES)
+                        get_target_property(_ultracanvas_value VirtualFS::VirtualFS ${_ultracanvas_prop})
+                        if(_ultracanvas_value)
+                            set_property(TARGET UltraCanvas::VirtualFSHeaders
+                                PROPERTY ${_ultracanvas_prop} ${_ultracanvas_value})
+                        endif()
+                    endforeach()
+                endif()
+                list(APPEND _ultracanvas_kept UltraCanvas::VirtualFSHeaders)
+                continue()
+            elseif(_ultracanvas_lib MATCHES "::")
+                list(APPEND _ultracanvas_kept "${_ultracanvas_lib}")
+                continue()
+            elseif(IS_ABSOLUTE "${_ultracanvas_lib}")
+                # /usr/lib/x86_64-linux-gnu/libfreetype.so -> freetype
+                get_filename_component(_ultracanvas_name "${_ultracanvas_lib}" NAME)
+                string(REGEX REPLACE "^lib" "" _ultracanvas_name "${_ultracanvas_name}")
+                string(REGEX REPLACE "\\.(so|a)(\\..*)?$" "" _ultracanvas_name "${_ultracanvas_name}")
+            else()
+                set(_ultracanvas_name "${_ultracanvas_lib}")
+            endif()
+            if(_ultracanvas_name IN_LIST _ultracanvas_public)
+                list(APPEND _ultracanvas_kept "${_ultracanvas_lib}")
+            else()
+                list(APPEND _ultracanvas_dropped "${_ultracanvas_name}")
+            endif()
+        endforeach()
+        if(_ultracanvas_dropped)
+            list(REMOVE_DUPLICATES _ultracanvas_dropped)
+            list(LENGTH _ultracanvas_dropped _ultracanvas_count)
+            message(STATUS "UltraCanvas: the shared core's own ${_ultracanvas_count} libraries "
+                           "are left off the application's link line")
+            set_property(TARGET UltraCanvas::UltraCanvas PROPERTY INTERFACE_LINK_LIBRARIES ${_ultracanvas_kept})
+        endif()
+    endif()
+endif()
+unset(_ultracanvas_public)
+unset(_ultracanvas_libs)
+unset(_ultracanvas_lib)
+unset(_ultracanvas_name)
+unset(_ultracanvas_kept)
+unset(_ultracanvas_dropped)
+unset(_ultracanvas_count)
+unset(_ultracanvas_prop)
+unset(_ultracanvas_value)
+unset(_ultracanvas_core_is_shared)
 
 _ultracanvas_native_dirs(_ultracanvas_dep_includes ${_ultracanvas_dep_includes})
 _ultracanvas_native_dirs(_ultracanvas_dep_libdirs  ${_ultracanvas_dep_libdirs})

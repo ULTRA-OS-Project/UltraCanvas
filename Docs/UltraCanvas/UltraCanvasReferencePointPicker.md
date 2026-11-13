@@ -18,7 +18,7 @@ fields give the position of - the small square of dots at the left of the
 selector bar in Xara, Illustrator, InDesign or Affinity.
 
 **File Location**: `include/UltraCanvasReferencePointPicker.h`
-**Version**: 1.0.0
+**Version**: 1.1.0 - `ReferencePointPickerStyle::FromTheme`, `ApplyTheme`: the picker follows the theme
 **Author**: UltraCanvas Framework
 
 ## Use
@@ -85,6 +85,23 @@ std::shared_ptr<UltraCanvasReferencePointPicker> CreateReferencePointPicker(
 `ReferencePointPickerStyle` holds the frame, background, point, hover,
 selected, focus and disabled colours, the frame width and corner radius, and
 the side of a point and of the picked point.
+
+## Following the theme
+
+`ReferencePointPickerStyle::FromTheme` puts the framework theme's roles
+(`UltraCanvasTheme.md`) over a base style's metrics: the well with the
+control border, faint ink for the points not picked, muted ink hovered, the
+accent picked, the focus ring, a hairline disabled. Under the theme policy a
+new picker follows the theme by itself (`ApplyTheme`); a `SetStyle` by hand
+stops that, `SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto anchor = std::make_shared<UltraCanvasReferencePointPicker>("anchor", 48, 48);
+ReferencePointPickerStyle big = anchor->GetStyle();
+big.pointSize = 7;
+anchor->SetStyle(ReferencePointPickerStyle::FromTheme(UltraCanvasTheme::Current(), big));
+anchor->SetFollowTheme(true);
+```
 
 ## Notes
 

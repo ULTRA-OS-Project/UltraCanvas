@@ -93,6 +93,14 @@ for (int top = 0; top < 480; top += 120)
 std::array<uint64_t, 256> allChannels = whole.RgbTotal();
 ```
 
+`ClippedRange` gives the levels a channel spans once a fraction of its pixels
+is let go at each end - what an auto contrast stretches to fill 0..255
+(UltraPaint's *Auto contrast* lets 0.2 % go at each end):
+
+```cpp
+HistogramRange red = whole.ClippedRange(HistogramChannel::Red, 0.002);   // red.low, red.high
+```
+
 ## Appearance and interaction
 
 ```cpp
@@ -119,8 +127,8 @@ level under the pointer.
 ## Tests
 
 `Tests/HistogramModelTest.cpp` counts every pixel layout, premultiplied and
-transparent pixels, luminosity, statistics and percentiles, adding strips and
-the red-green-blue total. `Tests/CurveHistogramTest.cpp` fills the Curves
+transparent pixels, luminosity, statistics and percentiles, adding strips,
+the red-green-blue total and the clipped range. `Tests/CurveHistogramTest.cpp` fills the Curves
 backdrop from it.
 `Tests/HistogramChartRenderTest.cpp` draws Combined and each channel, the
 logarithmic scale, the hover read-out and the legend, and counts a decoded

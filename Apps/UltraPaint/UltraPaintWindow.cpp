@@ -542,7 +542,7 @@ void UltraPaintWindow::BuildMenuBar() {
             M::ActionWithShortcut("Export with Options...", "Ctrl+E", MenuIconPath("export.svg"), [this]() { CmdExport(); }),
             M::Action("Password Protection...", MenuIconPath("password.svg"), [this]() { CmdPassword(); }),
             M::Separator(),
-            M::ActionWithShortcut(Tr("Close Tab"), "Ctrl+W", [this]() { CmdCloseTab(); }),
+            M::ActionWithShortcut(Tr("Close Tab"), "Ctrl+W", MenuIconPath("close-tab.svg"), [this]() { CmdCloseTab(); }),
             M::ActionWithShortcut(Tr("Next Tab"), "Ctrl+Tab", [this]() { CmdNextTab(1); }),
             M::ActionWithShortcut(Tr("Previous Tab"), "Ctrl+Shift+Tab", [this]() { CmdNextTab(-1); }),
             M::Separator(),

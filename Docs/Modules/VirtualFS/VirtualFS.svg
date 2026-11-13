@@ -1,74 +1,109 @@
-<svg width="100%" viewBox="0 0 680 612" role="img" xmlns="http://www.w3.org/2000/svg" font-family="sans-serif">
-<title>VirtualFS module overview</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title>VirtualFS module overview (16:9)</title>
 <desc>VirtualFS exposes one stable C++ public API that treats archives as virtual folders, routed by a singleton manager through self-registering format providers backed by swappable compression libraries.</desc>
 <defs>
 <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
 <style>
-.t{font-size:14px;font-weight:400}
-.ts{font-size:12px;font-weight:400}
-.th{font-size:14px;font-weight:500}
-.c-gray rect{fill:#F1EFE8;stroke:#5F5E5A}
-.c-gray text{fill:#2C2C2A}
-.c-purple rect{fill:#EEEDFE;stroke:#534AB7}
-.c-purple text{fill:#26215C}
-.c-teal rect{fill:#E1F5EE;stroke:#0F6E56}
-.c-teal text{fill:#04342C}
-.c-coral rect{fill:#FAECE7;stroke:#993C1D}
-.c-coral text{fill:#4A1B0C}
+.th{font-size:15px;font-weight:500}
+.ts{font-size:13px;font-weight:400}
+.blue-fill{fill:#E6F1FB;stroke:#185FA5}
+.blue-t{fill:#0C447C}.blue-s{fill:#185FA5}
+.teal-fill{fill:#E1F5EE;stroke:#0F6E56}
+.teal-sub{fill:#9FE1CB;stroke:#0F6E56}
+.teal-t{fill:#085041}.teal-s{fill:#0F6E56}
+.coral-fill{fill:#FAECE7;stroke:#993C1D}
+.coral-sub{fill:#F3CFC2;stroke:#993C1D}
+.coral-t{fill:#712B13}.coral-s{fill:#993C1D}
+.amber-fill{fill:#FAEEDA;stroke:#854F0B}
+.amber-sub{fill:#F2D9A6;stroke:#854F0B}
+.amber-t{fill:#633806}.amber-s{fill:#854F0B}
+.purple-fill{fill:#EEEDFE;stroke:#534AB7}
+.purple-sub{fill:#CECBF6;stroke:#534AB7}
+.purple-t{fill:#3C3489}.purple-s{fill:#534AB7}
+.pchip{font-size:13px;font-weight:500}
 .arr{stroke:#73726c;stroke-width:1.5;fill:none}
 </style>
 </defs>
 
-<g class="c-gray">
-<rect x="40" y="40" width="600" height="48" rx="8" stroke-width="0.5"/>
-<text class="th" x="340" y="60" text-anchor="middle" dominant-baseline="central">VirtualFS</text>
-<text class="ts" x="340" y="76" text-anchor="middle" dominant-baseline="central">Browse archives as folders — transparent virtual file system</text>
-</g>
-<line x1="340" y1="88" x2="340" y2="112" class="arr" marker-end="url(#arrow)"/>
+<!-- Entry point (full width) -->
+<rect class="blue-fill" x="40" y="30" width="1200" height="58" rx="10" stroke-width="0.5"/>
+<text class="th blue-t" x="640" y="49" text-anchor="middle" dominant-baseline="central">VirtualFS</text>
+<text class="ts blue-s" x="640" y="69" text-anchor="middle" dominant-baseline="central">Browse archives as folders — transparent virtual file system</text>
 
-<g class="c-purple">
-<rect x="40" y="112" width="600" height="208" rx="12" stroke-width="0.5"/>
-</g>
-<text class="th" x="56" y="134" dominant-baseline="central" fill="#26215C">VirtualFS public API</text>
-<text class="ts" x="624" y="134" text-anchor="end" dominant-baseline="central" fill="#3C3489">VirtualFS_[Action]() · path-transparent</text>
+<line x1="640" y1="88" x2="640" y2="104" class="arr" marker-end="url(#arrow)"/>
 
-<g class="c-purple"><rect x="56" y="150" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="125" y="165" text-anchor="middle" dominant-baseline="central">Path resolve</text><text class="ts" x="125" y="181" text-anchor="middle" dominant-baseline="central">Nested archive paths</text></g>
-<g class="c-purple"><rect x="204" y="150" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="273" y="165" text-anchor="middle" dominant-baseline="central">List directory</text><text class="ts" x="273" y="181" text-anchor="middle" dominant-baseline="central">Filter, recurse, enum</text></g>
-<g class="c-purple"><rect x="352" y="150" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="421" y="165" text-anchor="middle" dominant-baseline="central">Entry info</text><text class="ts" x="421" y="181" text-anchor="middle" dominant-baseline="central">Exists, type, size</text></g>
-<g class="c-purple"><rect x="500" y="150" width="124" height="44" rx="8" stroke-width="0.5"/><text class="th" x="562" y="165" text-anchor="middle" dominant-baseline="central">Read file</text><text class="ts" x="562" y="181" text-anchor="middle" dominant-baseline="central">Full, partial, text</text></g>
+<!-- Public API (full width) -->
+<rect class="purple-fill" x="40" y="106" width="1200" height="246" rx="10" stroke-width="0.5"/>
+<text class="th purple-t" x="62" y="129" dominant-baseline="central">VirtualFS public API<tspan class="ts purple-s" dx="14">VirtualFS_[Action]() · path-transparent</tspan></text>
 
-<g class="c-purple"><rect x="56" y="204" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="125" y="219" text-anchor="middle" dominant-baseline="central">Stream</text><text class="ts" x="125" y="235" text-anchor="middle" dominant-baseline="central">Large-file, seek</text></g>
-<g class="c-purple"><rect x="204" y="204" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="273" y="219" text-anchor="middle" dominant-baseline="central">Extract</text><text class="ts" x="273" y="235" text-anchor="middle" dominant-baseline="central">File, all, filtered</text></g>
-<g class="c-purple"><rect x="352" y="204" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="421" y="219" text-anchor="middle" dominant-baseline="central">Create archive</text><text class="ts" x="421" y="235" text-anchor="middle" dominant-baseline="central">Write, compress</text></g>
-<g class="c-purple"><rect x="500" y="204" width="124" height="44" rx="8" stroke-width="0.5"/><text class="th" x="562" y="219" text-anchor="middle" dominant-baseline="central">Password</text><text class="ts" x="562" y="235" text-anchor="middle" dominant-baseline="central">Encrypted archives</text></g>
+<rect class="purple-sub" x="60" y="146" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="199" y="163" text-anchor="middle" dominant-baseline="central">Path resolve</text>
+<text class="ts purple-s" x="199" y="183" text-anchor="middle" dominant-baseline="central">Nested archive paths</text>
+<rect class="purple-sub" x="354" y="146" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="493" y="163" text-anchor="middle" dominant-baseline="central">List directory</text>
+<text class="ts purple-s" x="493" y="183" text-anchor="middle" dominant-baseline="central">Filter, recurse, enum</text>
+<rect class="purple-sub" x="648" y="146" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="787" y="163" text-anchor="middle" dominant-baseline="central">Entry info</text>
+<text class="ts purple-s" x="787" y="183" text-anchor="middle" dominant-baseline="central">Exists, type, size</text>
+<rect class="purple-sub" x="942" y="146" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="1081" y="163" text-anchor="middle" dominant-baseline="central">Read file</text>
+<text class="ts purple-s" x="1081" y="183" text-anchor="middle" dominant-baseline="central">Full, partial, text</text>
 
-<g class="c-purple"><rect x="56" y="258" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="125" y="273" text-anchor="middle" dominant-baseline="central">Mount</text><text class="ts" x="125" y="289" text-anchor="middle" dominant-baseline="central">Virtual mount points</text></g>
-<g class="c-purple"><rect x="204" y="258" width="138" height="44" rx="8" stroke-width="0.5"/><text class="th" x="273" y="273" text-anchor="middle" dominant-baseline="central">Callbacks</text><text class="ts" x="273" y="289" text-anchor="middle" dominant-baseline="central">Progress, error</text></g>
-<g class="c-purple"><rect x="352" y="258" width="272" height="44" rx="8" stroke-width="0.5" stroke-dasharray="4 3"/><text class="ts" x="488" y="280" text-anchor="middle" dominant-baseline="central" fill="#3C3489">Regular files and archives handled the same</text></g>
+<rect class="purple-sub" x="60" y="212" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="199" y="229" text-anchor="middle" dominant-baseline="central">Stream</text>
+<text class="ts purple-s" x="199" y="249" text-anchor="middle" dominant-baseline="central">Large-file, seek</text>
+<rect class="purple-sub" x="354" y="212" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="493" y="229" text-anchor="middle" dominant-baseline="central">Extract</text>
+<text class="ts purple-s" x="493" y="249" text-anchor="middle" dominant-baseline="central">File, all, filtered</text>
+<rect class="purple-sub" x="648" y="212" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="787" y="229" text-anchor="middle" dominant-baseline="central">Create archive</text>
+<text class="ts purple-s" x="787" y="249" text-anchor="middle" dominant-baseline="central">Write, compress</text>
+<rect class="purple-sub" x="942" y="212" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="1081" y="229" text-anchor="middle" dominant-baseline="central">Password</text>
+<text class="ts purple-s" x="1081" y="249" text-anchor="middle" dominant-baseline="central">Encrypted archives</text>
 
-<line x1="340" y1="320" x2="340" y2="344" class="arr" marker-end="url(#arrow)"/>
+<rect class="purple-sub" x="60" y="278" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="199" y="295" text-anchor="middle" dominant-baseline="central">Mount</text>
+<text class="ts purple-s" x="199" y="315" text-anchor="middle" dominant-baseline="central">Virtual mount points</text>
+<rect class="purple-sub" x="354" y="278" width="278" height="54" rx="6" stroke-width="0.5"/>
+<text class="th purple-t" x="493" y="295" text-anchor="middle" dominant-baseline="central">Callbacks</text>
+<text class="ts purple-s" x="493" y="315" text-anchor="middle" dominant-baseline="central">Progress, error</text>
+<rect class="purple-sub" x="648" y="278" width="572" height="54" rx="6" stroke-width="0.5" stroke-dasharray="4 3"/>
+<text class="ts purple-s" x="934" y="305" text-anchor="middle" dominant-baseline="central">Regular files and archives handled the same</text>
 
-<g class="c-gray">
-<rect x="40" y="344" width="600" height="56" rx="12" stroke-width="0.5"/>
-<text class="th" x="340" y="364" text-anchor="middle" dominant-baseline="central">VirtualFSManager (singleton)</text>
-<text class="ts" x="340" y="384" text-anchor="middle" dominant-baseline="central">Path parser · Provider registry · Cache manager · Mount table</text>
-</g>
-<line x1="340" y1="400" x2="340" y2="424" class="arr" marker-end="url(#arrow)"/>
+<line x1="640" y1="352" x2="640" y2="378" class="arr" marker-end="url(#arrow)"/>
 
-<g class="c-teal">
-<rect x="40" y="424" width="600" height="64" rx="12" stroke-width="0.5"/>
-<text class="th" x="340" y="444" text-anchor="middle" dominant-baseline="central">Self-registering format providers · IVirtualFSProvider</text>
-</g>
-<g class="c-teal"><rect x="56" y="458" width="92" height="22" rx="6" stroke-width="0.5"/><text class="ts" x="102" y="469" text-anchor="middle" dominant-baseline="central">LocalFS</text></g>
-<g class="c-teal"><rect x="160" y="458" width="92" height="22" rx="6" stroke-width="0.5"/><text class="ts" x="206" y="469" text-anchor="middle" dominant-baseline="central">ZIP</text></g>
-<g class="c-teal"><rect x="264" y="458" width="92" height="22" rx="6" stroke-width="0.5"/><text class="ts" x="310" y="469" text-anchor="middle" dominant-baseline="central">7z</text></g>
-<g class="c-teal"><rect x="368" y="458" width="92" height="22" rx="6" stroke-width="0.5"/><text class="ts" x="414" y="469" text-anchor="middle" dominant-baseline="central">TAR / GZ</text></g>
-<g class="c-teal"><rect x="472" y="458" width="72" height="22" rx="6" stroke-width="0.5"/><text class="ts" x="508" y="469" text-anchor="middle" dominant-baseline="central">RAR</text></g>
-<g class="c-teal"><rect x="556" y="458" width="68" height="22" rx="6" stroke-width="0.5"/><text class="ts" x="590" y="469" text-anchor="middle" dominant-baseline="central">ISO · …</text></g>
+<!-- Manager (full width) -->
+<rect class="amber-fill" x="40" y="380" width="1200" height="58" rx="10" stroke-width="0.5"/>
+<text class="th amber-t" x="640" y="399" text-anchor="middle" dominant-baseline="central">VirtualFSManager (singleton)</text>
+<text class="ts amber-s" x="640" y="419" text-anchor="middle" dominant-baseline="central">Path parser · Provider registry · Cache manager · Mount table</text>
 
-<line x1="340" y1="488" x2="340" y2="528" class="arr" marker-end="url(#arrow)"/>
-<text class="ts" x="340" y="508" text-anchor="middle" dominant-baseline="central" fill="#5F5E5A">library-agnostic</text>
+<line x1="640" y1="438" x2="640" y2="462" class="arr" marker-end="url(#arrow)"/>
 
-<g class="c-coral"><rect x="40" y="528" width="290" height="56" rx="12" stroke-width="0.5"/><text class="th" x="185" y="548" text-anchor="middle" dominant-baseline="central">libarchive</text><text class="ts" x="185" y="566" text-anchor="middle" dominant-baseline="central">ZIP · 7z · TAR · RAR · ISO · CAB</text></g>
-<g class="c-coral"><rect x="350" y="528" width="290" height="56" rx="12" stroke-width="0.5"/><text class="th" x="495" y="548" text-anchor="middle" dominant-baseline="central">Compression codecs</text><text class="ts" x="495" y="566" text-anchor="middle" dominant-baseline="central">zlib · liblzma · lz4 · zstd</text></g>
+<!-- Providers (full width) -->
+<rect class="teal-fill" x="40" y="464" width="1200" height="90" rx="10" stroke-width="0.5"/>
+<text class="th teal-t" x="62" y="487" dominant-baseline="central">Self-registering format providers<tspan class="ts teal-s" dx="14">IVirtualFSProvider</tspan></text>
+<rect class="teal-sub" x="60" y="504" width="180" height="34" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="150" y="521" text-anchor="middle" dominant-baseline="central">LocalFS</text>
+<rect class="teal-sub" x="256" y="504" width="180" height="34" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="346" y="521" text-anchor="middle" dominant-baseline="central">ZIP</text>
+<rect class="teal-sub" x="452" y="504" width="180" height="34" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="542" y="521" text-anchor="middle" dominant-baseline="central">7z</text>
+<rect class="teal-sub" x="648" y="504" width="180" height="34" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="738" y="521" text-anchor="middle" dominant-baseline="central">TAR / GZ</text>
+<rect class="teal-sub" x="844" y="504" width="180" height="34" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="934" y="521" text-anchor="middle" dominant-baseline="central">RAR</text>
+<rect class="teal-sub" x="1040" y="504" width="180" height="34" rx="6" stroke-width="0.5"/>
+<text class="pchip teal-t" x="1130" y="521" text-anchor="middle" dominant-baseline="central">ISO · …</text>
+
+<line x1="640" y1="554" x2="640" y2="598" class="arr" marker-end="url(#arrow)"/>
+<text class="ts" x="654" y="576" dominant-baseline="central" fill="#5F5E5A">library-agnostic</text>
+
+<!-- Backing libraries -->
+<rect class="coral-fill" x="40" y="600" width="590" height="76" rx="10" stroke-width="0.5"/>
+<text class="th coral-t" x="335" y="627" text-anchor="middle" dominant-baseline="central">libarchive</text>
+<text class="ts coral-s" x="335" y="649" text-anchor="middle" dominant-baseline="central">ZIP · 7z · TAR · RAR · ISO · CAB</text>
+<rect class="coral-fill" x="650" y="600" width="590" height="76" rx="10" stroke-width="0.5"/>
+<text class="th coral-t" x="945" y="627" text-anchor="middle" dominant-baseline="central">Compression codecs</text>
+<text class="ts coral-s" x="945" y="649" text-anchor="middle" dominant-baseline="central">zlib · liblzma · lz4 · zstd</text>
 </svg>

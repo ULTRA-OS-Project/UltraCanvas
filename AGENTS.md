@@ -388,6 +388,15 @@ dead, which apt itself waits out for as long as the job lasts. The build's
 Linux legs also restore the packages the last run on `main` downloaded
 (`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
 serves only what changed.
+The repository has 10 GB of Actions cache, and GitHub evicts past that.
+`cache-prune.yml` (`scripts/prune_actions_caches.py`) deletes every
+run-numbered entry (a key ending in `${{ github.run_id }}`) but the newest of
+its kind, and closed pull requests' caches, after each build. Two rules for a
+new cache: a key that grows with every run ends in the run id, so the prune
+recognises it; and no leg's `restore-keys` prefix may be the start of another
+leg's key. `vcpkg-macos-15-` once matched `vcpkg-macos-15-intel-...`, and the
+arm64 leg restored x86_64 libraries and rebuilt them all; name a leg by its
+runner and its architecture (`vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-`).
 A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
 ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
 its runner is five to ten times slower and the two macOS rows share one code
@@ -396,7 +405,21 @@ Intel toolchain would catch (the macOS platform layer, the packaging, a
 bundled library) asks for that row with the `ci:intel` label; adding it
 starts a run with the full matrix.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
-then `ctest --test-dir build`. Framework tests live under `Tests/`.
+then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
+llama.cpp adapter is built (the engine is fetched from GitHub, or taken from
+`ULTRAAI_LLAMACPP_SOURCE_DIR`) and its test runs on a model the build
+generates (`UltraAI/tests/make_tiny_llama_gguf.py`, needs Python with
+numpy); `ultraai-llamacpp.yml` runs that in CI, since the build rows never
+compile the adapter. Framework tests live under `Tests/`.
+
+**Downloads in CI retry.** Apt installs go through `ci-apt.sh`; every other
+download a CI step makes retries too: a file through
+`curl -fsSL --retry 5 --retry-all-errors` into a file (never piped straight
+into `tar`), and a tool with no retry of its own - a `git clone`, a
+submodule update, `emsdk install`, an installer script - through
+`scripts/ci-retry.sh [--clean DIR] -- <command>`, three tries 30 s and 60 s
+apart, `--clean` emptying a clone's folder between them. A bare `wget` of
+`llvm.sh` once failed both Linux legs in under a second.
 
 **Cloud sessions.** The Claude Code cloud image is a general Ubuntu 24.04
 without most of the libraries CI installs, and CMake leaves a missing optional
@@ -611,6 +634,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraPassword/CHANGELOG.md` | UltraPassword — the password vault |
 | `Docs/UltraStore/CHANGELOG.md` | UltraStore — the app store |
 | `Docs/UltraStoreAdmin/CHANGELOG.md` | UltraStoreAdmin — the store's admin backend |
+| `Docs/UltraStoreOperator/CHANGELOG.md` | UltraStoreOperator — the marketplace operator's window and command line |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
@@ -768,9 +792,25 @@ and never introduce a new literal copy of one:
    `python3 scripts/check_callback_cycles.py`; CI runs that too.
    Writing a number into a file format or a protocol? Read it with
    `TryParseFloat` / `ParseFloatClassic` and write it with
-   `FormatFloatClassic`, never `std::stof` / `atof` / `std::to_string(double)`
-   / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
-   that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
+   `FormatFloatClassic` - or `FormatFixedClassic` where the format counts
+   decimal places rather than significant digits, which the drawing formats
+   do - never `std::stof` / `atof` / `std::to_string(double)` /
+   `snprintf("%g")`. Streaming it instead of formatting it to a string? Hold
+   a `ClassicNumbers` over the stream for as long as you are writing, or a
+   `ScopedPrecision` where the digit count matters too (both in
+   `UltraCanvasTextUtils.h`; a stream you own outright is imbued where it is
+   declared instead). A stream renders through the *C++ global* locale, which
+   is a different switch from the C one and the one a host sets to honour the
+   desktop's language, and `<<` of a plain `int` is grouped by it as well - a
+   STEP entity id or an OBJ face index written as `1.000` breaks a file that
+   carries no decimal number anywhere. Run
+   `python3 scripts/check_locale_numbers.py`; CI runs that too, but it reads
+   one file at a time and cannot see the locale of a stream a writer was
+   handed, so `Tests/ModelLocaleDecimalTest.cpp` and
+   `Tests/VectorLocaleTest.cpp` are what hold the writers to it: each writes
+   one document in two locales and compares the bytes, and a new writer
+   belongs in whichever of the two fits (`Tests/LocaleTestSupport.h` is the
+   shared half). Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
    `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
    `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI
@@ -782,10 +822,13 @@ and never introduce a new literal copy of one:
    `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION` for a member appended to the host
    table, or the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG` for a type that
    crosses to the plug-ins. Then run `python3 scripts/check_plugin_abi.py
-   --update`; CI runs the check. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
-   the Windows builds compile it against libc++, which refuses what libstdc++
-   lets through (`std::to_string` of a file time's tick count, say), and the
-   script type-checks the module against libc++ in seconds. Reading HTML,
+   --update`; CI runs the check. Changing C++ the Windows build compiles
+   (anything but an OS arm)? Run `python3 scripts/check_libcxx_syntax.py <dir
+   or file>`: the Windows builds compile against libc++, which refuses what
+   libstdc++ lets through (`std::to_string` of a file time's tick count,
+   say), and the script type-checks the units under that path against libc++
+   with the build's own flags - a module in seconds, the whole tree in twenty
+   minutes. Reading HTML,
    CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or

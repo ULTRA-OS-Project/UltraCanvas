@@ -189,6 +189,10 @@ class MemberBody(BaseModel):
     user_id: str
 
 
+class TitleBody(BaseModel):
+    title: str = Field(min_length=1, max_length=64)
+
+
 def user_json(user, online: bool | None = None) -> dict[str, Any]:
     out = {"user_id": user.user_id,
            "public_key": base64.b64encode(user.public_key).decode(),
@@ -669,6 +673,14 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
     @app.get("/v1/groups/{group_id}")
     async def get_group(group_id: str, user_id: str = Depends(current_user)):
         return group_json(member_group(group_id, user_id))
+
+    @app.patch("/v1/groups/{group_id}")
+    async def rename_group(group_id: str, body: TitleBody, user_id: str = Depends(current_user)):
+        member_group(group_id, user_id)         # any member renames, as any member adds
+        store.rename_group(group_id, body.title)
+        group = store.get_group(group_id)
+        await push_group(group)
+        return group_json(group)
 
     @app.post("/v1/groups/{group_id}/members")
     async def add_member(group_id: str, body: MemberBody, user_id: str = Depends(current_user)):

@@ -7,6 +7,8 @@
 # without wasmtime it reports that it cannot run apps) and UltraNet, which
 # fetches apps from https:// addresses.
 #
+# Version: 0.9.0 - WebSockets and peer connections for apps (host/UltraWebSocket.cpp,
+#                  UltraWebNetworkSocket.cpp, UltraWebRtc.cpp, UltraWebNetworkRtc.cpp)
 # Version: 0.8.0 - cookies (host/UltraWebCookies.cpp)
 # Version: 0.7.0 - tabs (ui/UltraWebTab.cpp)
 # Version: 0.6.0 - a downloads list (host/UltraWebDownloadList.cpp, ui/UltraWebDownloadsPanel.cpp)
@@ -34,6 +36,10 @@ add_executable(UltraWeb
     main.cpp
     host/UltraWebFetch.cpp
     host/UltraWebNetworkFetch.cpp
+    host/UltraWebSocket.cpp
+    host/UltraWebNetworkSocket.cpp
+    host/UltraWebRtc.cpp
+    host/UltraWebNetworkRtc.cpp
     host/UltraWebGuest.cpp
     host/UltraWebLoader.cpp
     host/UltraWebCookies.cpp
@@ -41,6 +47,7 @@ add_executable(UltraWeb
     host/UltraWebDownloads.cpp
     host/UltraWebDownloadList.cpp
     host/UltraWebStorage.cpp
+    host/UltraWebPermissions.cpp
     ui/UltraWebDownloadsPanel.cpp
     ui/UltraWebTab.cpp
     ui/UltraWebWindow.cpp
@@ -60,6 +67,12 @@ target_include_directories(UltraWeb PRIVATE
 # under a static core ("MODULE HOMES" in UltraCanvas/CMakeLists.txt). The
 # module before the core on the link line: GNU ld resolves left to right.
 target_link_libraries(UltraWeb PRIVATE WasmHost UltraNet ${ULTRACANVAS_LIBRARY})
+# Peer connections for apps (uc_rtc_*) on UltraRTC, when the build has it;
+# without it they answer UC_ERR_DENIED.
+if(TARGET UltraRTC)
+    target_link_libraries(UltraWeb PRIVATE UltraRTC)
+    target_compile_definitions(UltraWeb PRIVATE ULTRAWEB_HAS_RTC=1)
+endif()
 find_package(Threads REQUIRED)
 target_link_libraries(UltraWeb PRIVATE Threads::Threads)
 target_compile_features(UltraWeb PRIVATE cxx_std_20)

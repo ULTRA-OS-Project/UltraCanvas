@@ -2,6 +2,8 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.5.0 - Drawn shapes: RichShape presets; plain text, Markdown and HTML
+//                  spell a drawing's group members' words
 // Version: 1.4.0 - ToHTML writes a run's own letter-spacing; a character style's letter
 //                  spacing applies and overlays
 // Version: 1.3.2 - ToHTML writes font sizes dot-decimal under any locale
@@ -725,6 +727,167 @@ std::string UCRichDocument::ConcatenateRunText(const std::vector<RichTextRun>& r
 
 // ===== MARKDOWN SERIALIZER =====
 
+namespace {
+
+// WithFramesInlineIn's work; `depth` stops a frame that (in a damaged file)
+// contains itself.
+std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std::vector<RichDocBlock>& in,
+                                       int depth) {
+    bool any = false;
+    for (const RichDocBlock& block : in) {
+        for (const RichTextRun& run : block.runs) any = any || run.IsTextFrame();
+    }
+    if (!any) return in;
+    std::vector<RichDocBlock> out;
+    out.reserve(in.size());
+    for (const RichDocBlock& block : in) {
+        std::vector<RichTextRun> kept;
+        bool hadFrame = false;
+        bool pendingBreak = false;
+        for (const RichTextRun& run : block.runs) {
+            if (run.IsTextFrame()) {
+                hadFrame = true;
+                pendingBreak = pendingBreak || run.lineBreakBefore;
+                const RichTextFrame* frame = document.FrameFor(run);
+                if (frame && depth < 8) {
+                    std::vector<RichDocBlock> inner = FramesInline(document, frame->blocks, depth + 1);
+                    out.insert(out.end(), std::make_move_iterator(inner.begin()), std::make_move_iterator(inner.end()));
+                    // A drawing's words: those in its group members' boxes.
+                    std::vector<const RichShape*> stack;
+                    for (auto it = frame->shapes.rbegin(); it != frame->shapes.rend(); ++it) stack.push_back(&*it);
+                    while (!stack.empty()) {
+                        const RichShape* shape = stack.back();
+                        stack.pop_back();
+                        if (shape->textFrame >= 0 && shape->textFrame < static_cast<int>(document.frames.size())) {
+                            std::vector<RichDocBlock> words = FramesInline(
+                                document, document.frames[static_cast<size_t>(shape->textFrame)].blocks, depth + 1);
+                            out.insert(out.end(), std::make_move_iterator(words.begin()), std::make_move_iterator(words.end()));
+                        }
+                        for (auto it = shape->children.rbegin(); it != shape->children.rend(); ++it) stack.push_back(&*it);
+                    }
+                }
+                continue;
+            }
+            kept.push_back(run);
+            if (pendingBreak) {
+                kept.back().lineBreakBefore = kept.size() > 1;
+                pendingBreak = false;
+            }
+        }
+        // A paragraph that only anchored frames has nothing left to say.
+        if (hadFrame && kept.empty() && block.type == RichBlockType::Paragraph) continue;
+        RichDocBlock copy = block;
+        if (hadFrame) copy.runs = std::move(kept);
+        out.push_back(std::move(copy));
+    }
+    return out;
+}
+
+} // namespace
+
+// ===== DRAWN SHAPES =====
+
+bool RichShape::IsOpen() const {
+    if (kind == Kind::Line) return true;
+    if (kind != Kind::Path) return false;
+    for (const PathPoint& point : path) {
+        if (point.op == PathPoint::Op::Close) return false;
+    }
+    return true;
+}
+
+bool RichShape::ApplyPreset(const std::string& preset) {
+    using Op = PathPoint::Op;
+    path.clear();
+    auto polygon = [&](std::initializer_list<std::pair<float, float>> points) {
+        kind = Kind::Path;
+        bool first = true;
+        for (const auto& [x, y] : points) {
+            PathPoint point;
+            point.op = first ? Op::Move : Op::Line;
+            point.x = x;
+            point.y = y;
+            path.push_back(point);
+            first = false;
+        }
+        PathPoint close;
+        close.op = Op::Close;
+        path.push_back(close);
+    };
+    kind = Kind::Rectangle;
+    if (preset == "rect" || preset == "flowChartProcess" || preset == "textBox" || preset == "frame") return true;
+    if (preset == "roundRect" || preset == "flowChartAlternateProcess") { kind = Kind::RoundRectangle; return true; }
+    if (preset == "flowChartTerminator") { kind = Kind::RoundRectangle; cornerRadius = 0.5f; return true; }
+    if (preset == "ellipse" || preset == "flowChartConnector") { kind = Kind::Ellipse; return true; }
+    if (preset == "line" || preset.rfind("straightConnector", 0) == 0) { kind = Kind::Line; return true; }
+    if (preset == "triangle" || preset == "flowChartExtract") { polygon({{0.5f, 0}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "flowChartMerge") { polygon({{0, 0}, {1, 0}, {0.5f, 1}}); return true; }
+    if (preset == "rtTriangle") { polygon({{0, 0}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "diamond" || preset == "flowChartDecision") { polygon({{0.5f, 0}, {1, 0.5f}, {0.5f, 1}, {0, 0.5f}}); return true; }
+    if (preset == "parallelogram" || preset == "flowChartInputOutput") {
+        polygon({{0.25f, 0}, {1, 0}, {0.75f, 1}, {0, 1}});
+        return true;
+    }
+    if (preset == "trapezoid") { polygon({{0.25f, 0}, {0.75f, 0}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "pentagon") { polygon({{0.5f, 0}, {1, 0.38f}, {0.81f, 1}, {0.19f, 1}, {0, 0.38f}}); return true; }
+    if (preset == "hexagon" || preset == "flowChartPreparation") {
+        polygon({{0.25f, 0}, {0.75f, 0}, {1, 0.5f}, {0.75f, 1}, {0.25f, 1}, {0, 0.5f}});
+        return true;
+    }
+    if (preset == "octagon") {
+        polygon({{0.29f, 0}, {0.71f, 0}, {1, 0.29f}, {1, 0.71f}, {0.71f, 1}, {0.29f, 1}, {0, 0.71f}, {0, 0.29f}});
+        return true;
+    }
+    if (preset == "homePlate") { polygon({{0, 0}, {0.8f, 0}, {1, 0.5f}, {0.8f, 1}, {0, 1}}); return true; }
+    if (preset == "chevron") { polygon({{0, 0}, {0.8f, 0}, {1, 0.5f}, {0.8f, 1}, {0, 1}, {0.2f, 0.5f}}); return true; }
+    if (preset == "plus" || preset == "mathPlus") {
+        polygon({{0.35f, 0}, {0.65f, 0}, {0.65f, 0.35f}, {1, 0.35f}, {1, 0.65f}, {0.65f, 0.65f}, {0.65f, 1},
+                 {0.35f, 1}, {0.35f, 0.65f}, {0, 0.65f}, {0, 0.35f}, {0.35f, 0.35f}});
+        return true;
+    }
+    if (preset == "rightArrow") {
+        polygon({{0, 0.25f}, {0.6f, 0.25f}, {0.6f, 0}, {1, 0.5f}, {0.6f, 1}, {0.6f, 0.75f}, {0, 0.75f}});
+        return true;
+    }
+    if (preset == "leftArrow") {
+        polygon({{1, 0.25f}, {0.4f, 0.25f}, {0.4f, 0}, {0, 0.5f}, {0.4f, 1}, {0.4f, 0.75f}, {1, 0.75f}});
+        return true;
+    }
+    if (preset == "upArrow") {
+        polygon({{0.25f, 1}, {0.25f, 0.4f}, {0, 0.4f}, {0.5f, 0}, {1, 0.4f}, {0.75f, 0.4f}, {0.75f, 1}});
+        return true;
+    }
+    if (preset == "downArrow") {
+        polygon({{0.25f, 0}, {0.25f, 0.6f}, {0, 0.6f}, {0.5f, 1}, {1, 0.6f}, {0.75f, 0.6f}, {0.75f, 0}});
+        return true;
+    }
+    if (preset == "star5") {
+        polygon({{0.5f, 0}, {0.62f, 0.38f}, {1, 0.38f}, {0.69f, 0.62f}, {0.81f, 1}, {0.5f, 0.76f},
+                 {0.19f, 1}, {0.31f, 0.62f}, {0, 0.38f}, {0.38f, 0.38f}});
+        return true;
+    }
+    if (preset == "star4") {
+        polygon({{0.5f, 0}, {0.6f, 0.4f}, {1, 0.5f}, {0.6f, 0.6f}, {0.5f, 1}, {0.4f, 0.6f}, {0, 0.5f}, {0.4f, 0.4f}});
+        return true;
+    }
+    return false;
+}
+
+std::vector<RichDocBlock> UCRichDocument::WithFramesInlineIn(const std::vector<RichDocBlock>& blocks) const {
+    return FramesInline(*this, blocks, 0);
+}
+
+UCRichDocument UCRichDocument::WithFramesInline() const {
+    UCRichDocument flat = *this;
+    flat.blocks = WithFramesInlineIn(blocks);
+    for (RichPageFurniture* furniture : {&flat.pageFurniture, &flat.firstPageFurniture}) {
+        furniture->header = WithFramesInlineIn(furniture->header);
+        furniture->footer = WithFramesInlineIn(furniture->footer);
+    }
+    flat.frames.clear();
+    return flat;
+}
+
 UCRichDocument UCRichDocument::WithFirstPageFurnitureInline() const {
     UCRichDocument flat = *this;
     flat.pageFurniture = RichPageFurniture{};
@@ -818,6 +981,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
     // Text output has no pages: the first page's header and footer go before
     // and after the body, set off by rules.
     if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToMarkdown(options);
+    if (!frames.empty()) return WithFramesInline().ToMarkdown(options);
     // Write referenced media to disk once, remembering the path per index.
     std::vector<std::string> mediaPaths(media.size());
     if (!options.imageDirectory.empty()) {
@@ -1389,6 +1553,7 @@ const char* AlignCss(RichTextAlign align) {
 
 std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const {
     if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToHTML(options);
+    if (!frames.empty()) return WithFramesInline().ToHTML(options);
     std::ostringstream html;
     int openListLevel = -1;   // -1 = no list open
     std::vector<bool> listOrderedStack;
@@ -1569,6 +1734,7 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
 
 std::string UCRichDocument::ToPlainText() const {
     if (!FurnitureForPage(0).IsEmpty()) return WithFirstPageFurnitureInline().ToPlainText();
+    if (!frames.empty()) return WithFramesInline().ToPlainText();
     std::ostringstream out;
     bool first = true;
     int previousQuote = 0;

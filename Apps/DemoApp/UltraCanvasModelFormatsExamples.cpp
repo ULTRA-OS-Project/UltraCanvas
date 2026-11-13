@@ -108,6 +108,14 @@ namespace {
                 {"STEP/NurbsSheet.step", "step",
                  Tr("A trimmed NURBS sheet rather than a solid. Same reader, and\n"
                  "the tessellation tolerance decides the triangle count.")},
+                {"IGES/Block.igs", "igs",
+                 Tr("IGES manifold solid B-rep object: a vertex list, an edge\n"
+                 "list and six faces sharing their edges, so it reads as a\n"
+                 "closed solid. One face is coloured by a colour definition.")},
+                {"IGES/Bracket.igs", "igs",
+                 Tr("IGES trimmed surfaces - what most IGES files hold. A plate\n"
+                 "with a hole on a B-spline patch, and a boss on a cylinder\n"
+                 "whose top circle is mirrored into place by a matrix.")},
                 {"MS3D/E-45-Aircraft.ms3d", "ms3d",
                  Tr("A game format: a fixed sequence of packed little-endian\n"
                  "structs, no chunks or offsets. Groups become meshes - here\n"
@@ -386,6 +394,7 @@ namespace {
         struct Named { const char* extension; std::string title; };
         const Named kNames[] = {
                 {"step", Tr("STEP 3D Models - Exact B-rep Solids")},
+                {"igs",  Tr("IGES 3D Models - Exact B-rep Surfaces")},
                 {"ms3d", Tr("MilkShape 3D Models")},
                 {"fbx",  Tr("FBX 3D Models")},
                 {"abc",  Tr("Alembic 3D Models - A Sampled Cache")},

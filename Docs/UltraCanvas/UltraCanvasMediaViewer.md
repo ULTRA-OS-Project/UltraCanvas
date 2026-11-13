@@ -515,6 +515,23 @@ browsing, and the panel follows to the next file. The panel's text is built
 only while it is open (on opening, then for each file loaded): browsing with
 it closed reads no metadata.
 
+A **video** is read through `ReadVideoFileInfo` (`UltraCanvasVideoFileInfo.h`,
+see `UltraCanvasVideo.md`): its headers once per file, so MP4 / MOV,
+Matroska / WebM and AVI say the same on every platform. The info bar carries
+the picture size (with the display size after it when the pixels are not
+square), frame rate, video codec, the sound (codec, sample rate, channels -
+or *no audio*), the length, the file size and a rotation:
+`clip.mp4 · VIDEO · 1920 x 1080 · 29.97 fps · H.264 · AAC LC 48 kHz Stereo ·
+1:23 · 17.5 MB · 2 / 2`. The Details panel (*Video information*) adds the
+container and brand, exact duration, overall bit rate, title, encoder and
+creation time, then a *Video* section (codec, profile and level, dimensions,
+display size, aspect ratio, frame rate, frames, bit rate, bit depth,
+rotation), an *Audio* section (codec, sample rate, channels, bit depth, bit
+rate, language) and, for a file with more than one video or sound track or
+with subtitles, a *Tracks* section. For a container the reader does not know
+(WMV, MPEG-TS) the size, frame rate and length come from the playback
+backend's `VideoStreamInfo` once it has opened the file.
+
 A picture whose header reads but whose pixels do not decode (a HEIC on a
 build without an HEVC decoder, a truncated file) says so instead of leaving
 the area empty: the display shows *Cannot decode this picture*, the info bar

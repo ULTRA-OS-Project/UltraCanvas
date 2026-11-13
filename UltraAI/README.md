@@ -91,7 +91,16 @@ transcribes. `FindSpeechProvider` and `LastSpeechTranscriptionProvider` say
 which. UltraClipboard's *Extract text* uses it for copied recordings and
 videos.
 
-The provider that transcribes today is `openai` (`CreateOpenAISpeechToText`,
+First on the route is `local`: whisper.cpp's `whisper-server`, downloaded
+and started by the local runtime ([LocalRuntime.md](../Docs/Modules/UltraAI/LocalRuntime.md)) with
+Whisper Small by default - nothing leaves the computer. It is offered on
+Linux, macOS and Windows, x64 and ARM: upstream's CPU builds, and the rest
+(Metal on Apple silicon, Windows on ARM, Vulkan) built by this repository.
+When its model is not downloaded and the download policy does
+not let the call fetch it, it steps aside for the next provider and the
+error says what to install.
+
+The cloud provider is `openai` (`CreateOpenAISpeechToText`,
 `adapters/openai`): the audio API (`/v1/audio/transcriptions`, multipart),
 `gpt-4o-transcribe` by default, `whisper-1` for timestamps and translation,
 25 MB per file. It is a cloud provider, used once chosen -
@@ -121,7 +130,8 @@ default, nothing leaves the network.
 option keys and limits. ComfyUI, Ollama and vLLM are separate programs the
 user installs; UltraAI talks to them over HTTP and links none of their code.
 The `local` provider needs no such program: the local runtime
-(`Docs/Modules/UltraAI/LocalRuntime.md`) fetches llama.cpp's server and a
+(`Docs/Modules/UltraAI/LocalRuntime.md`) fetches llama.cpp's server (or
+whisper.cpp's, for speech to text) and a
 model from a gallery and a catalogue on demand and runs them itself.
 
 ---
@@ -252,15 +262,15 @@ cmake -S UltraAI -B build \
 | 10 capability interfaces | Complete |
 | Mock adapters (every capability) | Complete |
 | Registry / factory plumbing | Complete |
-| Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay) | Complete |
+| Shared adapter infrastructure (credentials, error map, retry, transport seam, cassette record/replay, same-role turn merge) | Complete |
 | Anthropic adapter (`ITextLLM`: chat, streaming, tools, structured output, token counting) | Complete |
-| OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server) | Complete |
+| OpenAI adapter (`ITextLLM` + `IEmbeddings`: Chat Completions, streaming, tools, structured output, embeddings; a custom `baseUrl` serves keyless OpenAI-compatible servers — Ollama, vLLM, llama.cpp server, LocalAI; two user or two assistant turns in a row are sent as one message, since a self-hosted chat template may demand alternating roles) | Complete |
 | Default-provider routing (`UltraAIRouting.h`: explicit > env > local-first > mock, with constructibility fallback; cloud providers only when named or when cloud fallback is allowed via `SetCloudFallbackAllowed` / `ULTRAAI_ALLOW_CLOUD_FALLBACK`) | Complete |
-| llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; opt-in) | Complete (v0.1 — no tool calls yet) |
+| llama.cpp adapter (`ITextLLM` + `IEmbeddings`: local chat, streaming, schema→GBNF structured output, exact token counting, pooled embeddings; two user or two assistant turns in a row reach the chat template as one message; opt-in) | Complete (v0.1 — no tool calls yet) |
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
-| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server` the runtime downloads from a hash-verified gallery, starts on loopback with a key, shares across applications and stops when idle; curated model catalogue, user GGUFs, Hugging Face files; hardware fit) | Complete (v0.1 — chat and embeddings; no dashboard page or framework dialog yet) |
+| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server`, `ISpeechToText` on a `whisper-server`, which the runtime downloads from a hash-verified gallery, starts on loopback, shares across applications and stops when idle; curated model catalogue, user GGUFs and whisper models, Hugging Face files; hardware fit) | Complete (v0.1 — chat, embeddings and speech to text) |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |

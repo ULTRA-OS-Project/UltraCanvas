@@ -10,6 +10,8 @@
 // are fetched as the message arrives, the rest when asked for, and a local
 // file is uploaded as a photo, a video or a file - encrypted (AES-256-CTR,
 // the m.file format) in an encrypted room.
+// Version: 0.2.4 - DeleteMessage's scope (for everyone only), GetDeleteChoices
+// Version: 0.2.3 - SearchMessages: a room's history read page by page and matched on this device
 // Version: 0.2.2 - preview pictures sent along; SetCreateEncrypted (tests)
 // Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
@@ -70,11 +72,24 @@ public:
     void FetchConversations(UltraIMConversationsCallback onResult) override;
     void FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                        UltraIMMessagesCallback onResult) override;
+    // One room at a time: its history is read back page by page (decrypted
+    // here, so an encrypted room is searched like any other) and matched on
+    // this device.
+    void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) override;
     void FetchContacts(UltraIMContactsCallback onResult) override;
     // address: "@user:server" - opens (or finds) a direct chat with them.
     void AddContact(const std::string& address, UltraIMConversationCallback onResult) override;
     void CreateGroup(const std::string& title, const std::vector<std::string>& memberIds,
                      UltraIMConversationCallback onResult) override;
+    // A room's name (m.room.name), invitations and kicks, and leaving it
+    // (then forgetting it); the sync brings the rest to everyone.
+    void RenameGroup(const std::string& conversationId, const std::string& title,
+                     UltraIMConversationCallback onResult) override;
+    void AddGroupMembers(const std::string& conversationId, const std::vector<std::string>& memberIds,
+                         UltraIMConversationCallback onResult) override;
+    void RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
+                           UltraIMResultCallback onResult) override;
+    void LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) override;
 
     // In an invitation, sending accepts it first.
     UltraIMResult SendText(const std::string& conversationId, const std::string& text,
@@ -94,7 +109,11 @@ public:
                             UltraIMAttachmentCallback onResult) override;
     UltraIMResult EditMessage(const std::string& conversationId, const std::string& messageId,
                               const std::string& newText) override;
-    UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId) override;
+    // Matrix deletes for everyone (a redaction) or not at all: one's own messages.
+    UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                UltraIMDeleteScope scope) override;
+    UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
+                                          const std::string& messageId) const override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
@@ -167,6 +186,11 @@ private:
     };
 
     // ---- helpers --------------------------------------------------------------
+    // A page of history for a search: FetchMessages, asked again while a
+    // page from the server held nothing to show (state changes only) and the
+    // room has more behind it.
+    void FetchPageForSearch(const std::string& conversationId, const std::string& beforeMessageId, int limit,
+                            int tries, UltraIMMessagesCallback onResult);
     void Emit(const UltraIMEvent& event);
     // The MessageDelivered event of our own message.
     void Delivered(const std::string& conversationId, const std::string& clientId, UltraIMDeliveryStatus status,

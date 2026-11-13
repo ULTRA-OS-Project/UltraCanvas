@@ -1,5 +1,8 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.7 - UltraIM_RenameGroup, _AddGroupMembers, _RemoveGroupMember, _LeaveConversation
+// Version: 0.1.6 - UltraIM_DeleteMessage's scope, UltraIM_GetDeleteChoices
+// Version: 0.1.5 - UltraIM_SearchMessages
 // Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
 // Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.2 - UltraIM_ResendAuthCode
@@ -8,7 +11,7 @@
 // Version: 0.1.2 - the account's profile and its sign-in protection
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraIM/UltraIMCore.h"
@@ -564,6 +567,17 @@ void UltraIM_FetchMessages(const std::string& providerId,
                             callback ? callback : [](const UltraIMResult&, const std::vector<UltraIMMessage>&) {});
 }
 
+void UltraIM_SearchMessages(const std::string& providerId, const UltraIMMessageSearch& search,
+                            UltraIMSearchCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMSearchPage>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMSearchPage());
+        return;
+    }
+    provider->SearchMessages(search, callback ? callback : [](const UltraIMResult&, const UltraIMSearchPage&) {});
+}
+
 void UltraIM_FetchContacts(const std::string& providerId, UltraIMContactsCallback onResult) {
     auto callback = Redispatch<UltraIMResult, std::vector<UltraIMContact>>(std::move(onResult));
     ProviderPtr provider = FindProvider(providerId);
@@ -634,6 +648,68 @@ void UltraIM_CreateGroup(const std::string& providerId, const std::string& title
                           callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
 }
 
+void UltraIM_RenameGroup(const std::string& providerId, const std::string& conversationId,
+                         const std::string& title, UltraIMConversationCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    if (conversationId.empty() || title.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation or name"), {});
+        return;
+    }
+    provider->RenameGroup(conversationId, title,
+                          callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
+}
+
+void UltraIM_AddGroupMembers(const std::string& providerId, const std::string& conversationId,
+                             const std::vector<std::string>& memberIds, UltraIMConversationCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    if (conversationId.empty() || memberIds.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "No one to add"), {});
+        return;
+    }
+    provider->AddGroupMembers(conversationId, memberIds,
+                              callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
+}
+
+void UltraIM_RemoveGroupMember(const std::string& providerId, const std::string& conversationId,
+                               const std::string& memberId, UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    if (conversationId.empty() || memberId.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation or member"));
+        return;
+    }
+    provider->RemoveGroupMember(conversationId, memberId, callback ? callback : [](const UltraIMResult&) {});
+}
+
+void UltraIM_LeaveConversation(const std::string& providerId, const std::string& conversationId,
+                               UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    if (conversationId.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation"));
+        return;
+    }
+    provider->LeaveConversation(conversationId, callback ? callback : [](const UltraIMResult&) {});
+}
+
 // ============================================================================
 // SENDING
 // ============================================================================
@@ -698,10 +774,17 @@ void UltraIM_DownloadAttachment(const std::string& providerId, const std::string
 }
 
 UltraIMResult UltraIM_DeleteMessage(const std::string& providerId, const std::string& conversationId,
-                                    const std::string& messageId) {
+                                    const std::string& messageId, UltraIMDeleteScope scope) {
     ProviderPtr provider = FindProvider(providerId);
     if (!provider) return NotFound(providerId);
-    return provider->DeleteMessage(conversationId, messageId);
+    return provider->DeleteMessage(conversationId, messageId, scope);
+}
+
+UltraIMDeleteChoices UltraIM_GetDeleteChoices(const std::string& providerId, const std::string& conversationId,
+                                              const std::string& messageId) {
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return UltraIMDeleteChoices();
+    return provider->GetDeleteChoices(conversationId, messageId);
 }
 
 UltraIMResult UltraIM_EditMessage(const std::string& providerId, const std::string& conversationId,

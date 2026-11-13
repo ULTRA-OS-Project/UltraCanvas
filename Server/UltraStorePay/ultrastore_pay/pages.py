@@ -5,6 +5,7 @@ a dark look where the browser asks for one. The admin backend's partner
 landing pages (Affiliates.cpp, CodeLandingPage) carry the same stylesheet,
 so everything a buyer reads in a browser looks like one product.
 
+Version: 0.2.0 - the receipt of one payment (a renewal, a refund, a chargeback)
 Version: 0.1.0
 """
 from __future__ import annotations
@@ -73,26 +74,47 @@ def page(title: str, body: str, *, static_base: str = "/pay/static", heading: st
     )
 
 
-def receipt_html(order) -> str:
-    """The receipt as a page, for a browser; receipt_text is the same for a terminal."""
-    rows = [("Date", order.paid_at), ("Order", order.id),
-            ("App", f"{order.app_name} ({order.app})"), ("List price", f"{order.list_price} {order.currency}")]
-    if order.code_applied:
-        rows.append(("Code", f"{order.code} applied"))
-    rows += [("Skrill transaction", order.skrill_transaction or "-"), ("Licence", order.licence_id)]
-    table = "".join(f"<tr><th>{html.escape(k)}</th><td>{html.escape(v)}</td></tr>" for k, v in rows)
-    table += f"<tr class=\"total\"><th>Paid</th><td>{html.escape(order.amount)} {html.escape(order.currency)}</td></tr>"
+KIND_NAMES = {"sale": "Purchase", "renewal": "Renewal", "refund": "Refund", "chargeback": "Chargeback"}
+
+
+def _receipt_rows(order, payment) -> list[tuple[str, str]]:
+    kind = payment.kind if payment else "sale"
+    rows = [("Date", payment.at if payment else order.paid_at), ("Order", order.id),
+            ("App", f"{order.app_name} ({order.app})"), ("Kind", KIND_NAMES.get(kind, kind))]
+    if kind == "sale":
+        rows.append(("List price", f"{order.list_price} {order.currency}"))
+        if order.code_applied:
+            rows.append(("Code", f"{order.code} applied"))
+    if order.cycle:
+        rows.append(("Billing", f"{order.list_price} {order.currency} every {order.cycle}"))
+        if kind in ("sale", "renewal") and order.paid_until:
+            rows.append(("Paid until", order.paid_until))
+    rows += [("Skrill transaction", (payment.skrill_transaction if payment else order.skrill_transaction) or "-"), ("Licence", order.licence_id)]
+    return rows
+
+
+def _receipt_total(order, payment) -> tuple[str, str]:
+    kind = payment.kind if payment else "sale"
+    amount = payment.amount if payment else order.amount
+    return ("Refunded" if kind in ("refund", "chargeback") else "Paid"), f"{amount} {order.currency}"
+
+
+def receipt_html(order, payment=None) -> str:
+    """The receipt of one payment as a page, for a browser (the sale when
+    `payment` is not given); receipt_text is the same for a terminal."""
+    no = payment.receipt_no if payment else order.receipt_no
+    table = "".join(f"<tr><th>{html.escape(k)}</th><td>{html.escape(v)}</td></tr>" for k, v in _receipt_rows(order, payment))
+    label, total = _receipt_total(order, payment)
+    table += f"<tr class=\"total\"><th>{label}</th><td>{html.escape(total)}</td></tr>"
     body = f"<table class=\"receipt\">{table}</table>\n<p class=\"muted\">Thank you for buying through UltraStore. Print or save this page for your records.</p>"
-    return page(f"Receipt no. {order.receipt_no}", body)
+    return page(f"Receipt no. {no}", body)
 
 
-def receipt_text(order) -> str:
-    lines = [f"UltraStore receipt no. {order.receipt_no}", f"Date: {order.paid_at}", f"Order: {order.id}", "",
-             f"{order.app_name} ({order.app})", f"List price: {order.list_price} {order.currency}"]
-    if order.code_applied:
-        lines.append(f"Code {order.code} applied")
-    lines += [f"Paid: {order.amount} {order.currency}", f"Skrill transaction: {order.skrill_transaction}", f"Licence: {order.licence_id}", "",
-              "Thank you for buying through UltraStore."]
+def receipt_text(order, payment=None) -> str:
+    no = payment.receipt_no if payment else order.receipt_no
+    lines = [f"UltraStore receipt no. {no}"] + [f"{k}: {v}" for k, v in _receipt_rows(order, payment)]
+    label, total = _receipt_total(order, payment)
+    lines += [f"{label}: {total}", "", "Thank you for buying through UltraStore."]
     return "\n".join(lines) + "\n"
 
 

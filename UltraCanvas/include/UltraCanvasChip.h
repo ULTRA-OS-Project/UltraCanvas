@@ -14,12 +14,14 @@
 // Both are self-rendered (no child widgets) and follow the standard element
 // conventions.
 //
+// Version: 1.1.0 - ChipStyle::FromTheme, TagInputStyle::FromTheme, ApplyTheme: the chip and the tag input follow
+//                  the theme; a SetStyle by hand stops the following
 // Version: 1.0.3 - CreateTagInput: no height given, the field starts as tall as
 //                  one row of chips (OneRowHeight), so it does not grow on the
 //                  first frame
 // Version: 1.0.2 - TagInput: autoHeight grows the field inside a layout
 // Version: 1.0.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -69,6 +71,15 @@ namespace UltraCanvas {
         float borderWidth   = 1.0f;
 
         FontStyle fontStyle;
+
+        // The theme's roles over a base's own shape: the panel for the fill
+        // with the control border, the hover and pressed fills, ink; the
+        // accent with text on it selected; the panel and faint ink disabled;
+        // the close mark in muted ink, danger when hovered; the interface
+        // font at the body size
+        static ChipStyle FromTheme(const UltraCanvasTheme& theme, const ChipStyle& base);
+        static ChipStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ChipStyle()); }
+        static ChipStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== SINGLE CHIP =====
@@ -118,7 +129,8 @@ namespace UltraCanvas {
 
         ChipStyle& GetStyle() { return style; }
         const ChipStyle& GetStyle() const { return style; }
-        void SetStyle(const ChipStyle& s) { style = s; InvalidateLayout(); RequestRedraw(); }
+        void SetStyle(const ChipStyle& s) { StyleSetByHand(); style = s; InvalidateLayout(); RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ChipStyle::FromTheme(theme, style)); }
 
         float GetPreferredWidth(IRenderContext* ctx) const;
 
@@ -168,6 +180,14 @@ namespace UltraCanvas {
         float minInputWidth = 60.0f;
 
         FontStyle fontStyle;
+
+        // The theme's roles over a base's own shape: the well with the
+        // control border and the focus ring, ink and the caret in ink, faint
+        // ink for the hint, the chips from ChipStyle::FromTheme, the
+        // interface font at the body size
+        static TagInputStyle FromTheme(const UltraCanvasTheme& theme, const TagInputStyle& base);
+        static TagInputStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, TagInputStyle()); }
+        static TagInputStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
     };
 
 // ===== TAG INPUT (token field) =====
@@ -221,7 +241,8 @@ namespace UltraCanvas {
 
         TagInputStyle& GetStyle() { return style; }
         const TagInputStyle& GetStyle() const { return style; }
-        void SetStyle(const TagInputStyle& s) { style = s; RequestRedraw(); }
+        void SetStyle(const TagInputStyle& s) { StyleSetByHand(); style = s; RequestRedraw(); }
+        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(TagInputStyle::FromTheme(theme, style)); }
 
         float GetContentHeight() const { return contentHeight; }
         // The height of the field with one row of chips: the chip height

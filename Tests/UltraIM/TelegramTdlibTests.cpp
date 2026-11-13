@@ -7,11 +7,15 @@
 // the names and fields are TDLib's. The library: ULTRAIM_TDJSON_PATH, else
 // the one the configure step fetched into Plugins/UltraIM/tdlib; skips with
 // neither unless ULTRAIM_TEST_TDLIB_REQUIRED is set (CI).
+// Version: 0.1.6 - getSupergroupMembers
+// Version: 0.1.5 - the group requests: setChatTitle, addChatMembers, setChatMemberStatus, leaveChat,
+//                  deleteChatHistory, getBasicGroupFullInfo
+// Version: 0.1.4 - searchChatMessages, with each filter
 // Version: 0.1.3 - the media requests: a photo, a video, a document, downloadFile
 // Version: 0.1.2 - requestQrCodeAuthentication
 // Version: 0.1.1 - the fetched libtdjson by default
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
@@ -121,10 +125,23 @@ void TestRequests() {
         {"viewMessages", Request::ViewMessages(777000, {1048576})},
         {"sendChatAction typing", Request::SendTyping(777000, true)},
         {"sendChatAction cancel", Request::SendTyping(777000, false)},
+        {"searchChatMessages", Request::SearchChatMessages(777000, "hello", 0, 50, "searchMessagesFilterEmpty")},
+        {"searchChatMessages (photos, a page on)", Request::SearchChatMessages(777000, "", 1048576, 100, "searchMessagesFilterPhoto")},
+        {"searchChatMessages (videos)", Request::SearchChatMessages(777000, "", 0, 50, "searchMessagesFilterVideo")},
+        {"searchChatMessages (photos and videos)", Request::SearchChatMessages(777000, "", 0, 50, "searchMessagesFilterPhotoAndVideo")},
+        {"searchChatMessages (documents)", Request::SearchChatMessages(777000, "", 0, 50, "searchMessagesFilterDocument")},
+        {"searchChatMessages (links)", Request::SearchChatMessages(777000, "", 0, 50, "searchMessagesFilterUrl")},
         {"searchPublicChat", Request::SearchPublicChat("telegram")},
         {"searchUserByPhoneNumber", Request::SearchUserByPhone("15550001")},
         {"createPrivateChat", Request::CreatePrivateChat(777000)},
         {"createNewBasicGroupChat", Request::CreateBasicGroup({777000}, "Team")},
+        {"setChatTitle", Request::SetChatTitle(-4000, "Crew")},
+        {"addChatMembers", Request::AddChatMembers(-4000, {777000})},
+        {"setChatMemberStatus left", Request::RemoveChatMember(-4000, 777000)},
+        {"leaveChat", Request::LeaveChat(-4000)},
+        {"deleteChatHistory", Request::DeleteChatHistory(777000)},
+        {"getBasicGroupFullInfo", Request::GetBasicGroupFullInfo(4000)},
+        {"getSupergroupMembers", Request::GetSupergroupMembers(4000, 0, 200)},
         {"checkAuthenticationCode", Request::CheckCode("12345")},
         {"resendAuthenticationCode", Request::ResendCode()},
         {"checkAuthenticationPassword", Request::CheckPassword("x")},

@@ -62,6 +62,22 @@ account without an SMTP server sends through JMAP.
 > bodies show in a read-only text area. Still to come: a live login-verify
 > against a real server.
 
+## The look and the language
+
+UltraMail is light or dark as the desktop is - Windows' and macOS' light or
+dark mode, the desktop's theme on Linux - or as *Look* on UOS-Settings'
+Appearance page says, in the desktop's font and size: every colour and
+text size of its own (`ui/UltraMailTheme.h`) is a role of the framework
+theme, read when a window is built. The elements that follow the theme by
+themselves take a change while UltraMail runs at once; the surfaces set
+when a window was built take it at the next start.
+
+Every text it shows goes through `Tr` (UltraLocalisation): its own set is
+`media/locale/<lang>/UltraMail.json` over the Communication base set and
+the standard set, and *Translate UltraMail...* on the Settings page opens
+the localisation editor on them. The engine's signature verdicts are
+English for now (the engine library stands apart from the framework).
+
 ## Layout
 
 ```

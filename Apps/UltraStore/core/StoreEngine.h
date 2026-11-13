@@ -4,6 +4,7 @@
 // collect what nothing uses any more. Resolves with PackageResolver, fetches
 // with Downloader, unpacks with ArchiveInstaller, remembers in
 // SqliteRegistry; the layout is Installer.h's under one root.
+// Version: 0.4.0 - SyncLicences: renewed and revoked licences, with their files
 // Version: 0.3.0 - the update terms of a purchase, the licence file
 // Version: 0.2.0 - the URL signer for restricted packages
 // Version: 0.1.0
@@ -15,6 +16,7 @@
 #include "Installer.h"
 #include "PackageResolver.h"
 #include "PlatformInfo.h"
+#include "Purchase.h"
 #include "Registry.h"
 
 #include <functional>
@@ -71,6 +73,13 @@ public:
     // licence.ulic (Purchase.h, the licence file): after an install and
     // after a purchase. NotFound when the app was not bought here.
     Result<void> WriteLicenceFile(std::string_view appId);
+
+    // Asks the payment service about every licence in the registry
+    // (Purchase.h, SyncLicences): a licence taken back by a refund or a
+    // chargeback is removed with its file, a subscription's re-issued token
+    // replaces the old one in the registry and in the file. Done when the
+    // catalog is refreshed. NotAvailable without a payment service.
+    Result<LicenceSync> SyncLicences(const std::string& paymentUrl, const std::string& licenceKeyHex, const HttpCall& http);
 
     // Every installed app in turn; the outcomes in the same order.
     Result<std::vector<std::pair<std::string, Result<InstallOutcome>>>> UpdateAll(

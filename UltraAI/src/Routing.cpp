@@ -1,8 +1,9 @@
 // UltraAI/src/Routing.cpp
 // Implementation of the default-provider routing policy.
+// Version: 0.4.0 - "local" first for speechtotext too (whisper-server)
 // Version: 0.3.0 - "local" ranks first among the local providers
 // Version: 0.2.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraAI Module
 
 #include "UltraAIRouting.h"
@@ -38,7 +39,7 @@ std::vector<std::string> KnownLocalProviders(const std::string& capability) {
     if (capability == "textllm")      return {"local", "llama-cpp", "qwen"};
     if (capability == "embeddings")   return {"local", "llama-cpp", "qwen"};
     if (capability == "translator")   return {"local", "llama-cpp", "qwen"};   // text-LLM translator
-    if (capability == "speechtotext") return {"whisper-cpp"};
+    if (capability == "speechtotext") return {"local", "whisper-cpp"};
     if (capability == "texttospeech") return {"piper"};
     if (capability == "imagegen")     return {"comfyui", "stable-diffusion-cpp"};
     if (capability == "videogen")     return {"comfyui"};

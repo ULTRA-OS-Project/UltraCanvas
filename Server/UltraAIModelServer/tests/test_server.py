@@ -191,7 +191,7 @@ def test_engines_and_import(tmp_path):
     assert c.get("/gallery/index.json").json()["engines"] == []
     docs = {n: json.loads((SEED_DIR / f"{n}.json").read_text()) for n in ("index", "catalogue", "topics")}
     r = c.post("/v1/admin/import", headers=auth(), json={**docs, "publish": False})
-    assert r.json() == {"engines": 1, "models": 6, "topics": 6}
+    assert r.json() == {"engines": 2, "models": 9, "topics": 7}   # llama-server and whisper-server
     # Imported as drafts: nothing offered yet, and the topics list none.
     assert c.get("/gallery/catalogue.json").json()["models"] == []
     assert all(t["models"] == [] for t in c.get("/gallery/topics.json").json()["topics"])
@@ -213,3 +213,34 @@ def test_prune_deletes_unused_uploads(tmp_path):
     r = c.post("/v1/admin/blobs/prune", headers=auth()).json()
     assert r == {"deleted": 1, "bytes": 3}
     assert len(c.get("/v1/admin/blobs", headers=auth()).json()["blobs"]) == 1
+
+
+def test_documents_are_signed(tmp_path):
+    from ultraai_models.signing import verify_hex
+
+    c = make(tmp_path)
+    keys = c.get("/gallery/keys.json").json()
+    assert keys["formatVersion"] == 1 and keys["algorithm"] == "ed25519" and len(keys["keys"]) == 1
+    key = keys["keys"][0]
+    assert c.get("/v1/admin/whoami", headers=auth()).json()["signingKey"] == key
+    for name in ("index.json", "catalogue.json", "topics.json"):
+        r = c.get(f"/gallery/{name}")
+        sig = r.headers["X-UltraAI-Signature"]
+        assert len(sig) == 128 and verify_hex(r.content, sig, key), name
+        # The .sig beside it signs the same bytes while nothing changed.
+        assert c.get(f"/gallery/{name}.sig").text.strip() == sig
+        # A changed byte does not verify.
+        assert not verify_hex(r.content.replace(b"1", b"2", 1), sig, key)
+    assert c.get("/gallery/other.json").status_code == 404
+
+
+def test_signing_key_is_kept_and_can_be_given(tmp_path):
+    first = make(tmp_path).get("/gallery/keys.json").json()["keys"][0]
+    # The same database: the same key after a restart.
+    assert make(tmp_path).get("/gallery/keys.json").json()["keys"][0] == first
+    seed = "11" * 32
+    s = Settings(database=str(tmp_path / "other.sqlite3"), data_dir=str(tmp_path / "d2"), super_token=SUPER,
+                 signing_seed=seed, next_public_keys=["ab" * 32])
+    keys = TestClient(create_app(s)).get("/gallery/keys.json").json()["keys"]
+    from ultraai_models.signing import SigningKey
+    assert keys == [SigningKey(bytes.fromhex(seed)).public_hex, "ab" * 32]

@@ -1,5 +1,7 @@
 // Apps/UltraClipboard/ui/ClipboardDialogs.cpp
 // The edit and settings dialogs. See ClipboardDialogs.h.
+// Version: 0.1.7 - Proxy settings at the foot of the settings dialog (the shared
+//                  dialog: the cloud text recognition goes through that proxy)
 // Version: 0.1.6 - every text through Tr (UltraLocalisation)
 // Version: 0.1.5
 // Author: UltraCanvas Framework / ULTRA OS
@@ -20,6 +22,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasProxySettingsDialog.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -303,6 +306,14 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     securityLabel->SetFontSize(8.5f);
     securityLabel->SetTextColor(Color(90, 96, 105));
     dialog->AddDialogElement(securityLabel);
+
+    // The proxy every ULTRA OS application connects through - text
+    // recognition by a cloud model goes through it - at the left of the bar.
+    auto proxyButton = CreateButton("cbs.proxy", 0, 0, 0, 28, Tr("Proxy settings"));
+    proxyButton->size.width = CSSLayout::Dimension::Auto();
+    UltraCanvasModalDialog* settingsDialog = dialog.get();   // the button is the dialog's: reached raw
+    proxyButton->onClick = [settingsDialog]() { ShowProxySettingsDialog(settingsDialog); };
+    dialog->AddFooterElement(proxyButton);
 
     dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
     dialog->AddCustomButton(Tr("Save"), DialogResult::OK, DialogButtonRole::Default);

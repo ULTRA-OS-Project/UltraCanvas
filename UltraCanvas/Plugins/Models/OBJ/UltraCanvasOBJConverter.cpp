@@ -18,17 +18,15 @@
 // Author: UltraCanvas Framework
 
 #include "Models/OBJ/UltraCanvasOBJConverter.h"
-#include "UltraCanvasTextUtils.h"   // TryParseFloat - dot-decimal, non-throwing
+#include "UltraCanvasTextUtils.h"   // TryParseFloat, ClassicNumbers, ScopedPrecision
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
-#include <limits>
 #include <map>
 #include <sstream>
-#include <locale>
 #include <unordered_map>
 #include "UltraCanvasPathUtf8.h"
 
@@ -638,43 +636,17 @@ private:
 
 // ===== WRITER =====
 
-// Sets a stream's precision for as long as it is in scope, then puts back what
-// was there. Positions are double and attributes are float, so the two need
-// different digit counts to round-trip exactly and the writer switches between
-// them as it goes.
-class ScopedPrecision {
-public:
-    ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
-            : stream_(stream), previous_(stream.precision()),
-              previousLocale_(stream.getloc()) {
-        // Shaping a model file's numbers means the decimal point too, and
-        // before the Compact early-out below: without this the writer emitted
-        // `v 1,5 0 2` on a comma-decimal desktop, which every other OBJ reader
-        // takes as a different vertex - OBJ separates components with spaces,
-        // so the comma silently changes what the line means.
-        stream_.imbue(std::locale::classic());
-        if (precision == NumericPrecision::Compact) return;
-        // max_digits10: the shortest digit count that guarantees
-        // value -> text -> value returns the identical value.
-        stream_.precision(forDouble ? std::numeric_limits<double>::max_digits10
-                                    : std::numeric_limits<float>::max_digits10);
-    }
-    ~ScopedPrecision() {
-        stream_.precision(previous_);
-        stream_.imbue(previousLocale_);
-    }
-
-    ScopedPrecision(const ScopedPrecision&) = delete;
-    ScopedPrecision& operator=(const ScopedPrecision&) = delete;
-
-private:
-    std::ostream& stream_;
-    std::streamsize previous_;
-    std::locale previousLocale_;
-};
-
 void WriteGeometry(const ModelDocument& document, std::ostream& out,
                    const std::string& materialLibrary, const ConversionOptions& options) {
+    // The whole file, not only the coordinate blocks: ScopedPrecision below
+    // pins the decimal point as well, but it is taken per block, and the face
+    // lines are written between them. A face is all integers, so it looked
+    // like the one part of an OBJ that could not care about numbers - until a
+    // host set the C++ global locale and `f 1000/1000/1000` went out as
+    // `f 1.000/1.000/1.000`, because digit grouping is that locale's business
+    // too. Nothing reads that file.
+    const ClassicNumbers dotDecimal(out);
+
     out << "# Wavefront OBJ written by " << options.Generator << "\n";
     if (!document.Title.empty()) out << "# " << document.Title << "\n";
     if (!materialLibrary.empty()) out << "mtllib " << materialLibrary << "\n";
@@ -698,7 +670,7 @@ void WriteGeometry(const ModelDocument& document, std::ostream& out,
                 // Positions carry the document's double precision, and are the
                 // reason the Full setting exists: a CAD coordinate far from the
                 // origin has already lost millimetres by six digits.
-                ScopedPrecision digits(out, options.Precision, true);
+                ScopedPrecision digits(out, DigitsFor(options.Precision, true));
                 for (const auto& p : prim.Positions) {
                     const Vec3d w = world.TransformPoint(p);
                     out << "v " << w.x << " " << w.y << " " << w.z << "\n";
@@ -709,7 +681,7 @@ void WriteGeometry(const ModelDocument& document, std::ostream& out,
             {
                 // Texture coordinates and normals are float in the document, so
                 // float's exact-round-trip digit count is all they can use.
-                ScopedPrecision digits(out, options.Precision, false);
+                ScopedPrecision digits(out, DigitsFor(options.Precision, false));
                 if (uv) {
                     for (size_t i = 0; i + 1 < uv->Values.size(); i += 2)
                         out << "vt " << uv->Values[i] << " " << uv->Values[i + 1] << "\n";
@@ -874,7 +846,7 @@ std::string OBJConverter::BuildMaterialLibrary(const ModelDocument& document,
     std::ostringstream out;
     // Material parameters are float, so float's exact digit count is the most
     // they can carry.
-    ScopedPrecision digits(out, precision, false);
+    ScopedPrecision digits(out, DigitsFor(precision, false));
     out << "# MTL library written by UltraCanvas\n";
     for (const auto& material : document.Materials) {
         ModelMaterial resolved = material;

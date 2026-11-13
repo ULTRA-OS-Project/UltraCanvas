@@ -1,4 +1,5 @@
 // Apps/UltraPassword/ui/EntryDialog.cpp
+// Version: 0.2.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (Theme.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EntryDialog.h"
@@ -11,6 +12,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPasswordStrengthMeter.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <functional>
 #include <memory>
@@ -73,7 +75,7 @@ void EntryDialog::Show(UltraCanvasWindowBase* parent, const PasswordVault& vault
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     auto content = CreateContainer("edForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -88,7 +90,7 @@ void EntryDialog::Show(UltraCanvasWindowBase* parent, const PasswordVault& vault
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Label", labelText, Theme::kControlHeight,
-                                     Theme::kSizeBody, Theme::kTextSecondary);
+                                     Theme::SizeBody(), Theme::TextSecondary());
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
         row->AddChild(label);
@@ -113,7 +115,7 @@ void EntryDialog::Show(UltraCanvasWindowBase* parent, const PasswordVault& vault
     addRow("edUrl", "Website", {url});
 
     auto user = CreateTextInput("edUser", 0, 0, 0, Theme::kControlHeight);
-    user->SetPlaceholder("User name or e-mail address");
+    user->SetPlaceholder(Tr("User name or e-mail address"));
     user->SetText(entry.username);
     Theme::StyleInput(user);
     addRow("edUser", "User name", {user});
@@ -132,24 +134,24 @@ void EntryDialog::Show(UltraCanvasWindowBase* parent, const PasswordVault& vault
     addRow("edMethod", "Sign-in", {method});
 
     auto methodInfo = Theme::MakeLine("edMethodInfo", MethodLine(entry.method), 42,
-                                      Theme::kSizeSmall, Theme::kTextSecondary);
+                                      Theme::SizeSmall(), Theme::TextSecondary());
     methodInfo->SetWrap(TextWrap::WrapWord);
     methodInfo->SetTextColor(Theme::SecurityColor(GetSignInMethodInfo(entry.method).level));
     content->AddChild(methodInfo);
 
     auto sso = CreateTextInput("edSso", 0, 0, 0, Theme::kControlHeight);
-    sso->SetPlaceholder("Google, Apple, Microsoft, GitHub, ...");
+    sso->SetPlaceholder(Tr("Google, Apple, Microsoft, GitHub, ..."));
     sso->SetText(entry.ssoProvider);
     Theme::StyleInput(sso);
-    auto ssoRow = addRow("edSso", "Signs in with", {sso});
+    auto ssoRow = addRow("edSso", Tr("Signs in with"), {sso});
     ssoRow->SetVisible(entry.method == SignInMethod::SingleSignOn);
 
     // ----- password + generator -----
     auto password = CreatePasswordInput("edPass", 0, 0, 0, Theme::kControlHeight);
     password->SetText(entry.password);
     Theme::StyleInput(password);
-    auto generate = Theme::MakeButton("edGenerate", "Generate", 80);
-    generate->SetTooltip("Fill in a random 20-character password");
+    auto generate = Theme::MakeButton("edGenerate", Tr("Generate"), 80);
+    generate->SetTooltip(Tr("Fill in a random 20-character password"));
     // Raw pointer: the input lives in the dialog that owns the button.
     generate->onClick = [password = password.get()]() {
         std::string fresh = GeneratePassword();
@@ -201,14 +203,14 @@ void EntryDialog::Show(UltraCanvasWindowBase* parent, const PasswordVault& vault
     notes->SetShowLineNumbers(false);
     notes->SetHighlightSyntax(false);
     notes->SetText(entry.notes, false);
-    notes->SetPlaceholder("Recovery codes, security questions, ...");
-    notes->SetFontSize(Theme::kSizeBody + 1.0f);
-    notes->GetStyle().borderColor     = Theme::kCardBorder;
-    notes->GetStyle().backgroundColor = Theme::kCardBackground;
+    notes->SetPlaceholder(Tr("Recovery codes, security questions, ..."));
+    notes->SetFontSize(Theme::SizeBody() + 1.0f);
+    notes->GetStyle().borderColor     = Theme::CardBorder();
+    notes->GetStyle().backgroundColor = Theme::CardBackground();
     notes->GetStyle().textPadding     = 6.0f;
     addRow("edNotes", "Notes", {notes}, 70);
 
-    auto error = Theme::MakeLine("edError", "", 18, Theme::kSizeBody, Theme::kDanger);
+    auto error = Theme::MakeLine("edError", "", 18, Theme::SizeBody(), Theme::Danger());
     content->AddChild(error);
 
     dialog->AddChild(content);
@@ -220,13 +222,13 @@ void EntryDialog::Show(UltraCanvasWindowBase* parent, const PasswordVault& vault
                      .SetFlexGap(Theme::kInnerGap)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
-    auto cancelBtn = Theme::MakeButton("edCancel", "Cancel", 90);
+    auto cancelBtn = Theme::MakeButton("edCancel", Tr("Cancel"), 90);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
     auto saveBtn = Theme::MakeButton("edSave", editing ? "Save" : "Add", 90, /*primary=*/true);
     saveBtn->onClick = [dlg, title = title.get(), url = url.get(), error = error.get()]() {
         if (title->GetText().empty() && url->GetText().empty()) {
-            error->SetText("Give the password a title or a website.");
+            error->SetText(Tr("Give the password a title or a website."));
             return;
         }
         dlg->CloseDialog(DialogResult::OK);

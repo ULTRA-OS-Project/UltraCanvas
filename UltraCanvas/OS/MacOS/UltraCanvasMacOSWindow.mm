@@ -1,5 +1,8 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
+// Version: 2.9.0 - a dialog is a child window of its parent's NSWindow while both are shown
+//                  (SetTransientParent, Show, Hide, DestroyNative): kept above its own
+//                  window, and no longer above every application's at the floating level
 // Version: 2.8.0 - screen positions are top-left (y down from the top of the primary screen),
 //                  as on X11 and Windows: SetWindowPosition, GetWindowPosition,
 //                  GetContentScreenOrigin, GetScreenBounds, a window's create-time
@@ -13,7 +16,7 @@
 //   draws compositions gets the input method's pre-edit as TextComposition
 //   events, its candidate window at the caret
 // Version: 2.4.0 - the content view hands VoiceOver the window's elements (children, hit test, focus)
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -28,6 +31,7 @@
 #include <iostream>
 #include <cstring>
 #include <algorithm>
+#include <vector>
 #include <cmath>
 #include "UltraCanvasDebug.h"
 
@@ -395,8 +399,15 @@ namespace UltraCanvas {
                 windowDelegate = nullptr;
             }
 
-            // Close and release window
+            // Close and release window - out of its parent's child windows
+            // first, and with none of its own: a closed window neither holds
+            // another nor is held by one
             if (nsWindow) {
+                DetachFromParentWindow();
+                NSArray<NSWindow*>* children = [[nsWindow childWindows] copy];
+                for (NSWindow* child in children) {
+                    [nsWindow removeChildWindow:child];
+                }
                 [nsWindow close];
                 nsWindow = nullptr;
             }
@@ -661,6 +672,18 @@ namespace UltraCanvas {
     }
 
     // ===== WINDOW MANAGEMENT =====
+    // The application's windows whose parent is `parent` (its dialogs among them).
+    static std::vector<UltraCanvasMacOSWindow*> ChildWindowsOf(const UltraCanvasWindowBase* parent) {
+        std::vector<UltraCanvasMacOSWindow*> children;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app || !parent) return children;
+        for (const auto& window : app->GetWindows()) {
+            if (!window || window.get() == parent || window->GetConfig().parentWindow != parent) continue;
+            if (auto* child = dynamic_cast<UltraCanvasMacOSWindow*>(window.get())) children.push_back(child);
+        }
+        return children;
+    }
+
     void UltraCanvasMacOSWindow::Show() {
         if (!_created || _windowVisible) return;
 
@@ -686,6 +709,13 @@ namespace UltraCanvas {
                 [nsWindow deminiaturize:nil];
             }
             _windowVisible = true;
+
+            // A dialog over its parent, as the parent's child window; and this
+            // window's own dialogs, detached while it was hidden, back over it
+            AttachToParentWindow();
+            for (UltraCanvasMacOSWindow* child : ChildWindowsOf(this)) {
+                if (child->IsWindowVisible()) child->AttachToParentWindow();
+            }
         }
         HandleWindowShown();
 
@@ -701,6 +731,13 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas macOS: Hiding window..." << std::endl;
 
         @autoreleasepool {
+            // Out of the parent link first, both ways: a child window goes
+            // wherever its parent goes, so a dialog left attached to a window
+            // being hidden would vanish with it while still counted as shown
+            DetachFromParentWindow();
+            for (UltraCanvasMacOSWindow* child : ChildWindowsOf(this)) {
+                child->DetachFromParentWindow();
+            }
             [nsWindow orderOut:nil];
             _windowVisible = false;
         }
@@ -754,6 +791,45 @@ namespace UltraCanvas {
         @autoreleasepool {
             [nsWindow makeKeyAndOrderFront:nil];
             [NSApp activateIgnoringOtherApps:YES];
+        }
+    }
+
+    // ===== PARENT LINK =====
+    void UltraCanvasMacOSWindow::SetTransientParent(UltraCanvasWindowBase* parent) {
+        if (!parent || parent == this) return;
+        UltraCanvasWindowBase::SetTransientParent(parent);
+        // Already on screen: over the new parent now. Otherwise Show() does it
+        // (ShowModal sets the parent before it shows the dialog).
+        if (_created && _windowVisible) AttachToParentWindow();
+    }
+
+    void UltraCanvasMacOSWindow::AttachToParentWindow() {
+        // Dialogs only: a popup, a tooltip or the splash screen has a level of
+        // its own, and a child window moves with its parent. Never a desktop
+        // window, which is held below every other.
+        if (!_created || !nsWindow || config_.type != WindowType::Dialog) return;
+        UltraCanvasWindowBase* parent = GetParentWindow();   // null once it is gone
+        if (!parent || parent == this || parent->GetConfig().type == WindowType::Desktop) return;
+
+        @autoreleasepool {
+            NSWindow* parentNS = (__bridge NSWindow*)parent->GetNativeHandle();
+            if (!parentNS || parentNS == nsWindow || [nsWindow parentWindow] == parentNS) return;
+            // A hidden or minimised parent would take the dialog off screen
+            if (![parentNS isVisible]) return;
+            // Never under one of its own children: AppKit would loop
+            for (NSWindow* up = parentNS; up; up = [up parentWindow]) {
+                if (up == nsWindow) return;
+            }
+            DetachFromParentWindow();
+            [parentNS addChildWindow:nsWindow ordered:NSWindowAbove];
+        }
+    }
+
+    void UltraCanvasMacOSWindow::DetachFromParentWindow() {
+        if (!nsWindow) return;
+        @autoreleasepool {
+            NSWindow* parentNS = [nsWindow parentWindow];
+            if (parentNS) [parentNS removeChildWindow:nsWindow];
         }
     }
 

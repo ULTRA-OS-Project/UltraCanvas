@@ -1,3 +1,21 @@
+#### 2026-11-12 *0.7.10*
+- **A new app icon.** UltraVideo's icon is now a film frame of four colour
+  fields (green, pink, yellow, cyan) with a pencil across it, in place of the
+  play mark on amber. `media/appicon/UltraVideo.png` (the window, the
+  taskbar, the Windows `.exe`, the macOS bundle and the 256x256 theme icon on
+  Linux) is the new picture, and `media/appicon/UltraVideo.svg` (the scalable
+  theme icon, which Linux desktops prefer) is redrawn to match, so no desktop
+  shows the old one.
+
+#### 2026-11-11 *0.7.9*
+- **The palette follows the desktop until the eye picks one.** The theme
+  is set under the application's `Own` policy with `ThemeFor` as the
+  provider: the dark palette on a dark desktop (or under *Dark* on
+  UOS-Settings' Look page), the light one on a light desktop, and a change
+  while UltraVideo runs is taken at once. The eye button makes the look the
+  project's, saved with it (`view.dark`); a project that never picked keeps
+  following. The fonts are the desktop's.
+
 #### 2026-11-05 *0.7.8*
 - **Pictures along the whole clip on the timeline.** A long clip zoomed in
   showed pictures only over its first part (at most 200 were asked for,

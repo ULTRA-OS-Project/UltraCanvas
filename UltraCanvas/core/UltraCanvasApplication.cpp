@@ -1,5 +1,9 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.23.0 - a key pressed with the focus on a popup's own window goes to the window the popup belongs
+//                  to: Escape closes the menu, the arrow keys and Enter work in it
+// Version: 1.22.0 - ApplyThemePolicy logs a theme set after Initialize (a provider, a host change)
+// Version: 1.21.0 - Appearance.conf over the host on every read; the settings watcher re-reads it on a change
 // Version: 1.20.0 - under a policy the elements follow the theme by default (SetFollowThemeByDefault)
 // Version: 1.19.0 - the pointer over a popup's own window is the pointer over the window the
 //                  popup belongs to, at the popup's place in it; a popup's window is no
@@ -44,9 +48,12 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasAppearanceSettings.h"
+#include "UltraCanvasSettingsWatcher.h"
+#include "UltraCanvasSettingsFolder.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -67,6 +74,7 @@
 #include "UltraCanvasSettingsFolder.h"
 #include "UltraCanvasSystemLanguage.h"
 #include "UltraLocalisation/UltraLocalisation.h"
+#include "UltraCanvasProxySettings.h"     // UseSharedProxySettings
 
 #if !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
@@ -244,6 +252,9 @@ namespace UltraCanvas {
     }
 
     const char* const kEmbeddedAllFonts[] = {
+        // Manrope (display) and Inter (body), the UltraStore shop design's
+        // type; variable fonts, one file each, SIL Open Font License.
+        "Manrope-Variable.ttf", "Inter-Variable.ttf",
         "Ubuntu-R.ttf", "Ubuntu-B.ttf",
         "Ubuntu-RI.ttf", "Ubuntu-BI.ttf",
         "Ubuntu-C.ttf", "Ubuntu-L.ttf",
@@ -1150,6 +1161,9 @@ namespace UltraCanvas {
             HostAppearance host = (app.*detect)();
             if (host.uiFont.fontFamily.empty() || host.uiFont.fontSize <= 0) host.uiFont = DefaultHostAppearance().uiFont;
             if (host.monoFont.fontFamily.empty() || host.monoFont.fontSize <= 0) host.monoFont = DefaultHostAppearance().monoFont;
+            // The person's choices for every application (Appearance.conf),
+            // then the one run's override, which wins.
+            AppearanceSettings::Load().ApplyTo(host);
             ApplyHostAppearanceOverride(host, GetEnvUtf8("ULTRACANVAS_HOST_APPEARANCE"));
             return host;
         }
@@ -1176,6 +1190,33 @@ namespace UltraCanvas {
         for (const auto& [id, handler] : handlers) {
             if (handler) handler(hostAppearance_.value());
         }
+    }
+
+    void UltraCanvasApplicationBase::StartSettingsWatcher() {
+        StopSettingsWatcher();
+        const std::filesystem::path folder = UltraCanvasSettingsFolder();
+        if (folder.empty()) return;
+        settingsWatcher_ = std::make_shared<UltraCanvasSettingsWatcher>();
+        settingsWatcher_->Watch("Appearance.conf", [this]() { RefreshHostAppearance(); });
+        const bool native = settingsWatcher_->Start(folder, [this](std::function<void()> task) { PostToUIThread(std::move(task)); });
+        if (!native) {
+            // No native watch in this build: the stat of a file every five
+            // seconds, which is nothing, and a change still arrives.
+            std::weak_ptr<UltraCanvasSettingsWatcher> weak = settingsWatcher_;
+            settingsPollTimer_ = StartTimer(5000, true, [weak](TimerId) {
+                if (auto watcher = weak.lock()) watcher->Poll();
+            });
+        }
+        debugOutput << "UltraCanvas: settings folder " << PathToUtf8(folder) << (native ? " watched" : " polled") << std::endl;
+    }
+
+    void UltraCanvasApplicationBase::StopSettingsWatcher() {
+        if (settingsPollTimer_ != InvalidTimerId) {
+            StopTimer(settingsPollTimer_);
+            settingsPollTimer_ = InvalidTimerId;
+        }
+        if (settingsWatcher_) settingsWatcher_->Stop();
+        settingsWatcher_.reset();
     }
 
     void UltraCanvasApplicationBase::ScheduleHostAppearanceRefresh() {
@@ -1229,12 +1270,21 @@ namespace UltraCanvas {
                 theme = themeProvider_(host);
                 break;
         }
+        const bool again = themePolicyApplied_;
         themePolicyApplied_ = true;
         policyThemeName_ = theme.name;
         // Under a policy the elements follow the theme by default, so the
         // whole window takes the look; an Own application decides itself
         if (themePolicy_ != ThemePolicy::Own) UltraCanvasUIElement::SetFollowThemeByDefault(true);
         UltraCanvasTheme::SetCurrent(theme);
+        // Initialize reports the first theme itself; a later one - a
+        // policy or provider set after it, a change of the desktop - here.
+        if (again) {
+            debugOutput << "UltraCanvas: theme " << theme.name << " ("
+                        << (themePolicy_ == ThemePolicy::FollowHost ? "follows the host"
+                            : themePolicy_ == ThemePolicy::Light ? "light" : themePolicy_ == ThemePolicy::Dark ? "dark" : "the application's own")
+                        << "), font " << theme.fonts.ui.fontFamily << " " << theme.fonts.ui.fontSize << std::endl;
+        }
     }
 
     int UltraCanvasApplicationBase::AddHostAppearanceHandler(HostAppearanceHandler handler) {
@@ -1324,6 +1374,11 @@ namespace UltraCanvas {
         UCImage::InitializeImageSubsysterm(appName.c_str());
         endStep("image subsystem");
 
+        // Every connection follows the proxy settings shared by all
+        // UltraCanvas applications (Proxy.conf; the system's proxy until one
+        // is chosen) - read when the first connection is made, not here.
+        UseSharedProxySettings();
+
         // The translation catalogues (UltraLocalisation): the shipped tree
         // under media/locale/, the person's overrides and Language.conf in
         // the UltraCanvas settings folder, the language from --lang /
@@ -1358,6 +1413,9 @@ namespace UltraCanvas {
                             : themePolicy_ == ThemePolicy::Light ? "light" : themePolicy_ == ThemePolicy::Dark ? "dark" : "the application's own")
                         << "), font " << UltraCanvasTheme::Current().fonts.ui.fontFamily << " "
                         << UltraCanvasTheme::Current().FontSize(ThemeTextRole::Body) << std::endl;
+            // Appearance.conf as a live setting: a change reaches this
+            // application as a change of the desktop does.
+            StartSettingsWatcher();
             endStep("bundled and system fonts");
 
             if (!InitializeClipboard()) {
@@ -1514,6 +1572,7 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas: main loop completed, shutting down.." << std::endl;
         
         ShutdownClipboard();
+        StopSettingsWatcher();
         ShutdownNative();
 
         UCImage::ShutdownImageSubsysterm();
@@ -1984,6 +2043,27 @@ namespace UltraCanvas {
                 forwarded.pointerWindow.x += static_cast<int>(std::lround(at.x));
                 forwarded.pointerWindow.y += static_cast<int>(std::lround(at.y));
                 forwarded.pointer = forwarded.pointerWindow;
+                forwarded.targetWindow = ownerPtr;
+                forwarded.nativeWindowHandle = owner->GetNativeHandle();
+                DispatchEvent(forwarded);
+                return;
+            }
+        }
+        // The keyboard too. Where the focus follows the pointer (X11 with no
+        // window manager, or one set that way) a key pressed over a popup's
+        // own window goes to that window, which holds nothing: Escape left
+        // the menu open, the arrow keys and Enter did nothing, and the next
+        // click was spent closing the menu. To the window it belongs to, as
+        // the key would have gone there with the popup composited on it.
+        if (event.IsKeyboardEvent()) {
+            UltraCanvasWindowBase* host = nullptr;
+            if (auto tw = event.targetWindow.lock()) host = tw.get();
+            else if (event.nativeWindowHandle != 0) host = FindWindow(event.nativeWindowHandle);
+            if (host && host->IsPopupHost()) {
+                UltraCanvasWindowBase* owner = host->GetPopupHostOwner();
+                auto ownerPtr = owner ? owner->GetWindowWeakPtr().lock() : nullptr;
+                if (!ownerPtr) return;
+                UCEvent forwarded = event;
                 forwarded.targetWindow = ownerPtr;
                 forwarded.nativeWindowHandle = owner->GetNativeHandle();
                 DispatchEvent(forwarded);

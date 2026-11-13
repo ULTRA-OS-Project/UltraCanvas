@@ -10,19 +10,26 @@
 // picture fetched, a photo, a video and a file sent and received - the photo
 // and the video's preview picture arriving by themselves, the video when
 // asked for.
+// Version: 0.1.8 - a supergroup: its members (a page of 200 out of more) and creator, and the count after one leaves
+// Version: 0.1.7 - a group after it is made: its members and creator, renamed, a member taken out (by its
+//                  creator alone) and added back, left; a private chat deleted on one side
+// Version: 0.1.6 - what can be deleted (for oneself, one's own for everyone)
+// Version: 0.1.5 - searching a chat: words, kinds, pages
 // Version: 0.1.4 - avatars, photos, videos and files
 // Version: 0.1.3 - sign-in by a QR code
 // Version: 0.1.2 - the code asked for another way
 // Version: 0.1.1 - the step timeout
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
 #include "TelegramProvider.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraIM/UltraIMCore.h"
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -79,6 +86,30 @@ struct Events {
     }
 };
 
+// How many of the events so far match: to wait for one more after them.
+size_t CountOf(Events& events, const std::function<bool(const UltraIMEvent&)>& match) {
+    std::lock_guard<std::mutex> lock(events.mutex);
+    size_t n = 0;
+    for (const auto& e : events.list) n += match(e) ? 1 : 0;
+    return n;
+}
+
+UltraIMResult Await(const std::function<void(UltraIMResultCallback)>& start) {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    UltraIMResult out = UltraIMResult::Error(UltraIMResultCode::Timeout, "no answer");
+    start([&](const UltraIMResult& r) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = r;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; });
+    return out;
+}
+
 UltraIMResult SignIn(TelegramProvider& p, const UltraIMCredentials& c) {
     std::mutex mutex;
     std::condition_variable cv;
@@ -123,6 +154,31 @@ std::vector<UltraIMMessage> Fetch(TelegramProvider& p, const std::string& conver
     p.FetchMessages(conversation, before, limit, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& m) {
         std::lock_guard<std::mutex> lock(mutex);
         out = m;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; });
+    return out;
+}
+
+UltraIMSearchPage Search(TelegramProvider& p, const std::string& conversation, const std::string& text,
+                         UltraIMSearchKind kind = UltraIMSearchKind::AnyKind, int limit = 50,
+                         const std::string& cursor = "", UltraIMResult* result = nullptr) {
+    UltraIMMessageSearch search;
+    search.conversationId = conversation;
+    search.text = text;
+    search.kind = kind;
+    search.limit = limit;
+    search.cursor = cursor;
+    UltraIMSearchPage out;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    p.SearchMessages(search, [&](const UltraIMResult& r, const UltraIMSearchPage& page) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = page;
+        if (result) *result = r;
         done = true;
         cv.notify_all();
     });
@@ -186,6 +242,19 @@ int64_t AddAccount(const std::string& phone, const std::string& first, const std
     r.Set("password", TdObject(password));
     r.Set("photo", TdObject(photo));
     return TdInt(TdJsonLibrary::Instance().Execute(r)["id"]);
+}
+
+// A supergroup made by `owner` with `members` (the fake's own request: no
+// client makes one here). Its chat id, as everyone sees it.
+std::string CreateSupergroup(int64_t owner, const std::string& title, const std::vector<int64_t>& members) {
+    TdObject r = TdObject::MakeObject();
+    r.Set("@type", TdObject("fakeCreateSupergroup"));
+    r.Set("owner", TdObject(owner));
+    r.Set("title", TdObject(title));
+    TdObject ids = TdObject::MakeArray();
+    for (int64_t m : members) ids.Append(TdObject(m));
+    r.Set("member_ids", ids);
+    return std::to_string(TdInt(TdJsonLibrary::Instance().Execute(r)["id"]));
 }
 
 // A file to send: a few bytes under `base`.
@@ -432,7 +501,13 @@ void TestTelegram() {
     UltraIMEvent oops;
     CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }, &oops));
     CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }, &oops));
-    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId));
+    // Telegram's rules: anything for oneself, one's own for everyone.
+    UltraIMDeleteChoices choices = alice->GetDeleteChoices(dm.conversationId, oops.message.messageId);
+    CHECK(choices.forMe && choices.forEveryone);
+    choices = bob->GetDeleteChoices(got.conversationId, oops.message.messageId);
+    CHECK(choices.forMe && !choices.forEveryone);
+    CHECK(!bob->GetDeleteChoices(got.conversationId, "424242").forMe);     // no such message
+    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId, UltraIMDeleteScope::ForEveryone));
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
         return e.type == UltraIMEventType::MessageDelete && e.message.messageId == oops.message.messageId;
     }));
@@ -579,6 +654,139 @@ void TestTelegram() {
     alice->FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) { list = l; });
     CHECK(list.size() == 2);
     if (list.size() == 2) CHECK(list[0].conversationId == dm.conversationId);   // the newest message first
+
+    // Searching a chat: Telegram's own search, newest first, by words and by kind.
+    CHECK(UltraIM_HasCapability(bob->GetCapabilities(), UltraIMCapabilityFlags::SearchMessages));
+    CHECK(alice->SendText(dm.conversationId, "the plan: https://example.com/plan", UltraIMSendOptions()));
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "the plan: https://example.com/plan"); }));
+    {
+        UltraIMResult result;
+        UltraIMSearchPage found = Search(*bob, got.conversationId, "Message 2", UltraIMSearchKind::AnyKind, 50, "", &result);
+        CHECK(result && found.messages.size() == 11 && found.nextCursor.empty());   // 2 and 20 to 29
+        if (found.messages.size() == 11)
+            CHECK(found.messages.front().text == "message 29" && found.messages.back().text == "message 2");
+        if (!found.messages.empty())
+            CHECK(found.messages[0].conversationId == got.conversationId && !found.messages[0].senderName.empty());
+
+        // A page at a time: the cursor is where the next one starts.
+        found = Search(*bob, got.conversationId, "message", UltraIMSearchKind::AnyKind, 4);
+        CHECK(found.messages.size() == 4 && !found.nextCursor.empty());
+        if (found.messages.size() == 4) CHECK(found.messages[0].text == "message 29" && found.messages[3].text == "message 26");
+        found = Search(*bob, got.conversationId, "message", UltraIMSearchKind::AnyKind, 4, found.nextCursor);
+        CHECK(found.messages.size() == 4);
+        if (found.messages.size() == 4) CHECK(found.messages[0].text == "message 25" && found.messages[3].text == "message 22");
+        CHECK(Search(*bob, got.conversationId, "nowhere to be found").messages.empty());
+
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Images);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty())
+            CHECK(found.messages[0].type == UltraIMMessageType::Image && found.messages[0].attachment.localPath == picture);
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Videos);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty()) CHECK(found.messages[0].type == UltraIMMessageType::Video);
+        CHECK(Search(*bob, got.conversationId, "", UltraIMSearchKind::Media).messages.size() == 2);
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Files);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty())
+            CHECK(found.messages[0].type == UltraIMMessageType::File && found.messages[0].attachment.fileName == "notes.pdf");
+        CHECK(Search(*bob, got.conversationId, "NOTES", UltraIMSearchKind::Files).messages.size() == 1);
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Links);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty())
+            CHECK(UltraIM_ExtractLinks(found.messages[0].text) == std::vector<std::string>{"https://example.com/plan"});
+
+        // "Alice created the group" is no result; one chat at a time; a chat that is not there.
+        found = Search(*alice, group.conversationId, "");
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty()) CHECK(found.messages[0].text == "hi team");
+        Search(*bob, "", "message", UltraIMSearchKind::AnyKind, 50, "", &result);
+        CHECK(!result && result.code == UltraIMResultCode::CapabilityMissing);
+        Search(*bob, "123456789", "message", UltraIMSearchKind::AnyKind, 50, "", &result);
+        CHECK(!result && result.code == UltraIMResultCode::NotFound);
+    }
+
+    // The group after it is made: its members and creator (the basic group's
+    // full info), renamed by Carol; Carol may not take Bob out, Alice (who
+    // made it) takes Carol out and adds her back; Bob leaves. Then Bob
+    // deletes his chat with Alice: off his list, still on hers.
+    {
+        const std::string a = std::to_string(aliceId), b = std::to_string(bobId), g = group.conversationId;
+        const auto groupUpdate = [&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == g;
+        };
+        const auto groupRemoved = [&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationRemove && e.conversationId == g;
+        };
+        UltraIMEvent seen;
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return groupUpdate(e) && e.conversation.memberIds.size() == 3;
+        }, &seen));
+        CHECK(seen.conversation.ownerId == a);
+        CHECK(seen.conversation.memberNames.count(b) && seen.conversation.memberNames[b] == "Bob");
+        CHECK(seen.conversation.memberNames.count(carolId) && seen.conversation.memberNames[carolId] == "Carol Smith");
+
+        UltraIMConversation renamed;
+        CHECK(WaitConversation([&](UltraIMConversationCallback cb) { carol->RenameGroup(g, "Crew", cb); }, renamed));
+        CHECK(renamed.title == "Crew");
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return groupUpdate(e) && e.conversation.title == "Crew"; }));
+
+        UltraIMResult refused = Await([&](UltraIMResultCallback cb) { carol->RemoveGroupMember(g, b, cb); });
+        CHECK(!refused && refused.code == UltraIMResultCode::PermissionDenied);
+
+        CHECK(Await([&](UltraIMResultCallback cb) { alice->RemoveGroupMember(g, carolId, cb); }).success);
+        CHECK(carolEvents.WaitFor(groupRemoved));
+        const size_t carolUpdates = CountOf(carolEvents, groupUpdate);
+        UltraIMConversation back;
+        CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->AddGroupMembers(g, {"+15550003"}, cb); }, back));
+        CHECK(std::find(back.memberIds.begin(), back.memberIds.end(), carolId) != back.memberIds.end());
+        bool backInList = false;     // Carol's list has the group again
+        for (int i = 0; i < 100 && !backInList; ++i) {
+            backInList = CountOf(carolEvents, groupUpdate) > carolUpdates;
+            if (!backInList) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        CHECK(backInList);
+
+        CHECK(Await([&](UltraIMResultCallback cb) { bob->LeaveConversation(g, cb); }).success);
+        CHECK(bobEvents.WaitFor(groupRemoved));
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return groupUpdate(e) && e.conversation.memberIds.size() == 2 &&
+                   std::find(e.conversation.memberIds.begin(), e.conversation.memberIds.end(), b) == e.conversation.memberIds.end();
+        }));
+
+        CHECK(Await([&](UltraIMResultCallback cb) { bob->LeaveConversation(got.conversationId, cb); }).success);
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationRemove && e.conversationId == got.conversationId;
+        }));
+        CHECK(!aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationRemove && e.conversationId == dm.conversationId;
+        }, nullptr, 1));
+    }
+
+    // A supergroup of more than one page: Alice sees the first 200 members,
+    // herself (its creator) among them, and how many there are; Bob leaves
+    // and the count follows.
+    {
+        std::vector<int64_t> crowd = {bobId, std::stoll(carolId)};
+        for (int i = 0; i < 205; ++i)
+            crowd.push_back(AddAccount("1555700" + std::to_string(1000 + i), "Member" + std::to_string(i), "", ""));
+        const std::string sg = CreateSupergroup(aliceId, "Big room", crowd);
+        const std::string a = std::to_string(aliceId), b = std::to_string(bobId);
+        UltraIMEvent seen;
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == sg &&
+                   e.conversation.memberIds.size() == 200;
+        }, &seen));
+        CHECK(seen.conversation.isGroup && seen.conversation.title == "Big room");
+        CHECK(seen.conversation.memberCount == 208 && seen.conversation.ownerId == a);
+        CHECK(seen.conversation.memberNames.count(b) && seen.conversation.memberNames[b] == "Bob");
+        CHECK(Await([&](UltraIMResultCallback cb) { bob->LeaveConversation(sg, cb); }).success);
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == sg &&
+                   e.conversation.memberCount == 207 &&
+                   std::find(e.conversation.memberIds.begin(), e.conversation.memberIds.end(), b) ==
+                       e.conversation.memberIds.end();
+        }));
+    }
 
     // Bob goes: Alice sees him offline.
     bob->Shutdown();

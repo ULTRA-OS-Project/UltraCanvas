@@ -2,9 +2,11 @@
 // The facade: inventory, install jobs, engine supervision and the shared
 // record of running engines (runtime.json), composed from the parts in
 // LocalRuntimeInternal.h.
+// Version: 0.4.0 - whisper-server: speech models, models whose engine has no build here are not offered
+// Version: 0.3.0 - signed galleries (RefreshGallery verifies, keys pinned)
 // Version: 0.2.0 - topics: topics.json, the topic preferences, new models
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-12
 // Author: UltraAI Module
 
 #include "UltraAILocalRuntime.h"
@@ -26,6 +28,7 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <thread>
 
@@ -38,6 +41,11 @@ using UltraCanvas::PathToUtf8;
 using namespace local_detail;
 
 namespace {
+
+// The engine that serves a user-added model of a capability.
+std::string EngineForCapability(const std::string& capability) {
+    return capability == "speechtotext" ? "whisper-server" : "llama-server";
+}
 
 // How long a start may take before it is given up, scaled with the model:
 // a cold disk reads about 100 MB/s, so 8 GB is 80 s; never under 30 s.
@@ -209,6 +217,13 @@ public:
     // installed bundle (the chosen one, else any for this platform).
     bool InstalledEngineExecutableLocked(const EngineInfo& engine, std::string& outExe,
                                          std::string& outAccelerator) const;
+    // Whether an engine can run here: a developer's override, an installed
+    // bundle or a gallery build for this platform. True for an engine the
+    // gallery does not name (starting it says what is wrong).
+    bool EngineRunsHereLocked(const std::string& engineId) const;
+    // Whether the gallery has a GPU build of an engine for this platform
+    // (true for an engine it does not name).
+    bool EngineHasGpuBuildLocked(const std::string& engineId) const;
     fs::path ModelFolder(const std::string& modelId) const;
     fs::path BundleFolder(const EngineBundleInfo& bundle) const;
     bool IsModelInstalled(const LocalModelInfo& model, std::string& outPrimary) const;
@@ -372,6 +387,13 @@ bool LocalRuntime::Impl::IsModelInstalled(const LocalModelInfo& model, std::stri
 
 void LocalRuntime::Impl::DecorateModelLocked(LocalModelInfo& model) const {
     model.fit = ComputeFit(model, hardware_);
+    // An engine whose builds here are CPU builds only (llama-server and
+    // whisper-server on an Intel Mac) runs the model on the CPU whatever the
+    // GPU; a developer's own build (an override) may use it.
+    if (model.fit == ModelFit::Recommended && !engineOverrides_.count(model.engineId) &&
+        !EngineHasGpuBuildLocked(model.engineId)) {
+        model.fit = ModelFit::RunsOnCpu;
+    }
     std::string primary;
     model.installed = IsModelInstalled(model, primary);
     model.running   = false;
@@ -393,8 +415,34 @@ std::vector<LocalModelInfo> LocalRuntime::Impl::AllModelsLocked() const {
             out.push_back(m);
         }
     }
+    // A catalogue model whose engine has no build for this platform is not
+    // offered (a gallery that leaves a platform out): it could not be started.
     for (auto& m : out) DecorateModelLocked(m);
+    std::map<std::string, bool> runsHere;
+    out.erase(std::remove_if(out.begin(), out.end(), [&](const LocalModelInfo& m) {
+        if (m.installed || m.source != LocalModelSource::Catalogue) return false;
+        auto it = runsHere.find(m.engineId);
+        if (it == runsHere.end()) it = runsHere.emplace(m.engineId, EngineRunsHereLocked(m.engineId)).first;
+        return !it->second;
+    }), out.end());
     return out;
+}
+
+bool LocalRuntime::Impl::EngineRunsHereLocked(const std::string& engineId) const {
+    const EngineInfo* engine = gallery_.Find(engineId);
+    if (!engine || engineOverrides_.count(engineId)) return true;
+    EngineBundleInfo bundle;
+    if (ChooseBundleFor(*engine, hardware_, settings_.preferredAccelerator, bundle)) return true;
+    std::string exe, accelerator;
+    return InstalledEngineExecutableLocked(*engine, exe, accelerator);
+}
+
+bool LocalRuntime::Impl::EngineHasGpuBuildLocked(const std::string& engineId) const {
+    const EngineInfo* engine = gallery_.Find(engineId);
+    if (!engine) return true;   // unknown: the memory figures decide
+    return std::any_of(engine->bundles.begin(), engine->bundles.end(), [&](const EngineBundleInfo& b) {
+        return b.platform == hardware_.platform && b.accelerator != "cpu";
+    });
 }
 
 bool LocalRuntime::Impl::FindModelLocked(const std::string& modelId, LocalModelInfo& out) const {
@@ -1044,15 +1092,16 @@ Error LocalRuntime::AddModelFile(const std::string& pathUtf8, const std::string&
     if (!fs::is_regular_file(PathFromUtf8(pathUtf8), ec)) {
         return MakeError(ErrorCode::InvalidRequest, "not a file: " + pathUtf8);
     }
-    if (capability != "textllm" && capability != "embeddings") {
+    if (capability != "textllm" && capability != "embeddings" && capability != "speechtotext") {
         return MakeError(ErrorCode::InvalidRequest,
-                         "a model file serves \"textllm\" or \"embeddings\", not \"" + capability + "\"");
+                         "a model file serves \"textllm\", \"embeddings\" or \"speechtotext\", not \"" +
+                             capability + "\"");
     }
     LocalModelInfo model;
     model.id          = "file:" + pathUtf8;
     model.displayName = displayName.empty() ? PathToUtf8(PathFromUtf8(pathUtf8).filename()) : displayName;
     model.capability  = capability;
-    model.engineId    = "llama-server";
+    model.engineId    = EngineForCapability(capability);
     model.source      = LocalModelSource::File;
     LocalModelFile file;
     file.name      = pathUtf8;
@@ -1080,15 +1129,16 @@ Error LocalRuntime::AddHuggingFaceModel(const std::string& repo, const std::stri
         return MakeError(ErrorCode::InvalidRequest,
                          "a Hugging Face model is \"organisation/repository\" and a file name in it");
     }
-    if (capability != "textllm" && capability != "embeddings") {
+    if (capability != "textllm" && capability != "embeddings" && capability != "speechtotext") {
         return MakeError(ErrorCode::InvalidRequest,
-                         "a GGUF serves \"textllm\" or \"embeddings\", not \"" + capability + "\"");
+                         "a model serves \"textllm\", \"embeddings\" (a GGUF) or \"speechtotext\" (a whisper.cpp "
+                         "ggml .bin), not \"" + capability + "\"");
     }
     LocalModelInfo model;
     model.id          = "hf:" + repo + ":" + file;
     model.displayName = displayName.empty() ? file : displayName;
     model.capability  = capability;
-    model.engineId    = "llama-server";
+    model.engineId    = EngineForCapability(capability);
     model.source      = LocalModelSource::HuggingFace;
     model.license     = "see the repository";
     LocalModelFile f;
@@ -1407,20 +1457,34 @@ LocalRuntimeSettings LocalRuntime::GetSettings() const {
 
 void LocalRuntime::SetSettings(const LocalRuntimeSettings& settings) {
     std::lock_guard<std::mutex> lock(impl_->mutex_);
-    impl_->settings_ = settings;
+    LocalRuntimeSettings next = settings;
+    // Keys pinned for one server say nothing about another: a new gallery
+    // address that came without keys of its own starts unpinned.
+    if (next.galleryUrl != impl_->settings_.galleryUrl && next.trustedKeys == impl_->settings_.trustedKeys) {
+        next.trustedKeys.clear();
+    }
+    impl_->settings_ = next;
     impl_->SaveSettings();
 }
 
 Error LocalRuntime::RefreshGallery() {
     std::string url;
+    std::vector<std::string> trustedKeys;
     {
         std::lock_guard<std::mutex> lock(impl_->mutex_);
         url = impl_->settings_.galleryUrl.empty() ? DefaultGalleryUrl() : impl_->settings_.galleryUrl;
+        trustedKeys = impl_->settings_.trustedKeys;
     }
     if (!impl_->transport_) {
         return MakeError(ErrorCode::NetworkError, "this build has no network transport");
     }
-    auto fetchText = [&](const std::string& u, std::string& out) -> Error {
+    // One document: its bytes and, when it comes with one, its signature
+    // (the X-UltraAI-Signature header, else <url>.sig).
+    struct Fetched {
+        std::string body;
+        std::string signature;
+    };
+    auto fetchText = [&](const std::string& u, std::string& out, std::string* outSignature) -> Error {
         TransportRequest req;
         req.method    = "GET";
         req.url       = u;
@@ -1433,44 +1497,89 @@ Error LocalRuntime::RefreshGallery() {
                              "the gallery answered HTTP " + std::to_string(resp.statusCode) + " for " + u);
         }
         out = resp.body;
+        if (outSignature) *outSignature = resp.GetHeader("X-UltraAI-Signature");
         return {};
     };
-    std::string indexText;
-    Error error = fetchText(url, indexText);
+    auto fetchDocument = [&](const std::string& u, Fetched& out) -> Error {
+        Error error = fetchText(u, out.body, &out.signature);
+        if (!error.IsOk()) return error;
+        if (out.signature.empty()) {
+            std::string sig;
+            if (fetchText(u + ".sig", sig, nullptr).IsOk()) out.signature = sig;
+        }
+        return {};
+    };
+    auto badSignature = [](const std::string& what) {
+        Error e = MakeError(ErrorCode::ProviderError,
+                            "the gallery's " + what + " is not signed by a key this computer trusts; nothing was changed");
+        e.providerCode = "bad-signature";
+        return e;
+    };
+    const size_t slash = url.rfind('/');
+    const std::string base = slash == std::string::npos ? std::string() : url.substr(0, slash + 1);
+
+    Fetched index;
+    Error error = fetchDocument(url, index);
     if (!error.IsOk()) return error;
     Gallery gallery;
     std::string parseError;
-    if (!ParseGallery(indexText, gallery, parseError)) {
+    if (!ParseGallery(index.body, gallery, parseError)) {
         return MakeError(ErrorCode::ProviderError, "the gallery index is not usable: " + parseError);
     }
-    // The catalogue sits beside the index.
-    std::string catalogueUrl = url;
-    const size_t slash = catalogueUrl.rfind('/');
-    catalogueUrl = (slash == std::string::npos ? std::string() : catalogueUrl.substr(0, slash + 1)) +
-                   "catalogue.json";
-    std::string catalogueText;
+
+    // The keys: the pinned ones, else - trust on first use - the ones the
+    // server publishes beside the index, kept when the index verifies
+    // against them. A gallery that publishes none stays unsigned.
+    std::vector<std::string> pinNow;
+    if (trustedKeys.empty()) {
+        std::string keysText;
+        std::vector<std::string> published;
+        if (fetchText(base + "keys.json", keysText, nullptr).IsOk() && ParseGalleryKeys(keysText, published)) {
+            if (!VerifyDocumentSignature(index.body, index.signature, published)) return badSignature("index");
+            trustedKeys = published;
+            pinNow = published;
+        }
+    }
+    const bool signedGallery = !trustedKeys.empty();
+    if (signedGallery && !VerifyDocumentSignature(index.body, index.signature, trustedKeys)) {
+        return badSignature("index");
+    }
+
+    // The catalogue and the topics sit beside the index. One that is not
+    // there keeps the copy in use (a plain mirror may publish no topics);
+    // one that is there must verify when the gallery is signed.
+    Fetched catalogueDoc, topicsDoc;
     Catalogue catalogue;
-    const bool haveCatalogue = fetchText(catalogueUrl, catalogueText).IsOk() &&
-                               ParseCatalogue(catalogueText, catalogue, parseError);
-    // The topics too, when the server publishes them (a plain mirror of
-    // the gallery may not: the built-in or last copy stays then).
-    const std::string topicsUrl = catalogueUrl.substr(0, catalogueUrl.size() - std::string("catalogue.json").size()) +
-                                  "topics.json";
-    std::string topicsText;
     Topics topics;
-    const bool haveTopics = fetchText(topicsUrl, topicsText).IsOk() &&
-                            ParseTopics(topicsText, topics, parseError);
+    bool haveCatalogue = false, haveTopics = false;
+    if (fetchDocument(base + "catalogue.json", catalogueDoc).IsOk()) {
+        if (signedGallery && !VerifyDocumentSignature(catalogueDoc.body, catalogueDoc.signature, trustedKeys)) {
+            return badSignature("catalogue");
+        }
+        haveCatalogue = ParseCatalogue(catalogueDoc.body, catalogue, parseError);
+    }
+    if (fetchDocument(base + "topics.json", topicsDoc).IsOk()) {
+        if (signedGallery && !VerifyDocumentSignature(topicsDoc.body, topicsDoc.signature, trustedKeys)) {
+            return badSignature("topics");
+        }
+        haveTopics = ParseTopics(topicsDoc.body, topics, parseError);
+    }
+
     std::string writeError;
     std::lock_guard<std::mutex> lock(impl_->mutex_);
+    if (!pinNow.empty() && impl_->settings_.trustedKeys.empty()) {
+        impl_->settings_.trustedKeys = pinNow;
+        impl_->SaveSettings();
+    }
     impl_->gallery_ = gallery;
-    WriteFileAtomic(impl_->paths_.galleryJson, indexText, writeError);
+    WriteFileAtomic(impl_->paths_.galleryJson, index.body, writeError);
     if (haveCatalogue) {
         impl_->catalogue_ = catalogue;
-        WriteFileAtomic(impl_->paths_.catalogueJson, catalogueText, writeError);
+        WriteFileAtomic(impl_->paths_.catalogueJson, catalogueDoc.body, writeError);
     }
     if (haveTopics) {
         impl_->topics_ = topics;
-        WriteFileAtomic(impl_->paths_.topicsJson, topicsText, writeError);
+        WriteFileAtomic(impl_->paths_.topicsJson, topicsDoc.body, writeError);
     }
     return {};
 }

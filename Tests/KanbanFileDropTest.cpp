@@ -14,6 +14,7 @@
 // larger preview over the board (ShowCardPreview) are checked the same way.
 // With KANBAN_TEST_PNG_DIR set, the three Sticker board displays and the
 // preview are written there as PNGs to look at.
+// Version: 1.1.1 - the hover test runs with tooltips on again (no window: no tooltip, no crash)
 // Version: 1.1.0 - card displays, context menu, hover, preview, their settings
 // Version: 1.0.0
 // Last Modified: 2026-11-06
@@ -356,7 +357,6 @@ void TestHoverAndPreview() {
     Board board;
     const int card = board.data->AddCard(board.docs, "Holiday photo.jpg");
     const int other = board.data->AddCard(board.home, "notes.txt");
-    board.element->SetEnableTooltips(false);   // a tooltip needs a window
     Draw(board);
     std::vector<int> hovered;
     board.element->onCardHoverChanged = [&](int cardId) { hovered.push_back(cardId); };

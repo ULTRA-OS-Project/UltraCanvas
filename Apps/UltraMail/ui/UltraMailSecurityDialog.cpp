@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSecurityDialog.cpp
+// Version: 0.2.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSecurityDialog.h"
@@ -12,6 +13,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <memory>
 
@@ -29,8 +31,8 @@ std::shared_ptr<UltraCanvasContainer> Row(const std::string& id, const std::stri
     row->layout.SetFlexRow()
                .SetFlexGap(Theme::kInnerGap)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    auto label = Theme::MakeLine(id + "Lbl", text, Theme::kControlHeight, Theme::kSizeBody,
-                                 Theme::kTextSecondary);
+    auto label = Theme::MakeLine(id + "Lbl", text, Theme::kControlHeight, Theme::SizeBody(),
+                                 Theme::TextSecondary());
     label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     row->AddChild(label);
     column->AddChild(row);
@@ -39,7 +41,7 @@ std::shared_ptr<UltraCanvasContainer> Row(const std::string& id, const std::stri
 }
 
 std::shared_ptr<UltraCanvasLabel> Note(const std::string& id, const std::string& text) {
-    auto note = Theme::MakeLine(id, text, Theme::kControlHeight, Theme::kSizeBody, Theme::kTextSecondary);
+    auto note = Theme::MakeLine(id, text, Theme::kControlHeight, Theme::SizeBody(), Theme::TextSecondary());
     note->SetWrap(TextWrap::WrapWord);
     return note;
 }
@@ -58,7 +60,7 @@ std::string SecurityDialog::Describe(const AccountSecurity& security, bool hasCe
 void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
     const bool hasIntro = !options.intro.empty();
     DialogConfig config;
-    config.title      = "Mail security";
+    config.title      = Tr("Mail security");
     config.width      = 560;
     config.height     = 256 + (hasIntro ? 40 : 0);
     config.dialogType = DialogType::Custom;
@@ -70,16 +72,16 @@ void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::kCardBackground);
+    dialog->SetBackgroundColor(Theme::CardBackground());
 
     auto content = CreateContainer("secForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
                    .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     content->AddChild(Theme::MakeDialogHeader(
-        "secHeader", "lock", "Mail security",
-        "How " + options.email + " signs and encrypts mail, and how its new messages start - "
-        "each one can still be changed as it is written.",
+        "secHeader", "lock", Tr("Mail security"),
+        TrF("How {0} signs and encrypts mail, and how its new messages start - "
+            "each one can still be changed as it is written.", options.email),
         32.0f));
     if (hasIntro) {
         auto intro = Note("secIntro", options.intro);
@@ -120,14 +122,14 @@ void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
     {
         auto row = Row("secSmime", "S/MIME", content);
         if (!options.smimeBuilt) {
-            auto note = Note("secSmimeNone", "Not built into this UltraMail (its UltraCrypt has no OpenSSL 3)");
+            auto note = Note("secSmimeNone", Tr("Not built into this UltraMail (its UltraCrypt has no OpenSSL 3)"));
             row->AddChild(note);
             note->layoutItem.SetFlexGrow(1);
         } else {
             auto summary = Theme::MakeLine("secSmimeSummary",
-                                           options.smimeSummary.empty() ? std::string("No certificate")
+                                           options.smimeSummary.empty() ? Tr("No certificate")
                                                                         : options.smimeSummary,
-                                           Theme::kControlHeight, Theme::kSizeBody, Theme::kTextPrimary);
+                                           Theme::kControlHeight, Theme::SizeBody(), Theme::TextPrimary());
             summary->SetTooltip(options.smimeSummary.empty()
                 ? std::string("Import your S/MIME certificate (a .p12 or .pfx file) to sign mail and to read "
                               "mail encrypted to you")
@@ -135,13 +137,13 @@ void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
             row->AddChild(summary);
             summary->layoutItem.SetFlexGrow(1);
             UltraCanvasLabel* summaryLabel = summary.get();
-            auto removeBtn = CreateButton("secSmimeRemove", 0, 0, 90, Theme::kControlHeight, "Remove");
+            auto removeBtn = CreateButton("secSmimeRemove", 0, 0, 90, Theme::kControlHeight, Tr("Remove"));
             Theme::FitToLabel(removeBtn, 90);
             Theme::StyleSecondary(removeBtn);
             removeBtn->SetVisible(state->hasCertificate);
             UltraCanvasButton* removeRaw = removeBtn.get();
             auto shown = [state, summaryLabel, removeRaw, sync](const std::string& now) {
-                summaryLabel->SetText(now.empty() ? std::string("No certificate") : now);
+                summaryLabel->SetText(now.empty() ? Tr("No certificate") : now);
                 summaryLabel->SetTooltip(now);
                 removeRaw->SetVisible(!now.empty());
                 state->hasCertificate = !now.empty();
@@ -166,29 +168,29 @@ void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
     // OpenPGP: the key to sign with.
     std::shared_ptr<UltraCanvasDropdown> keyBox;
     {
-        auto row = Row("secPgp", "OpenPGP key", content);
+        auto row = Row("secPgp", Tr("OpenPGP key"), content);
         if (!options.openPgpBuilt) {
-            auto note = Note("secPgpNone", "Not available: GnuPG is not installed, or this UltraMail is built "
-                                           "without it");
+            auto note = Note("secPgpNone", Tr("Not available: GnuPG is not installed, or this UltraMail is built "
+                                              "without it"));
             row->AddChild(note);
             note->layoutItem.SetFlexGrow(1);
         } else if (options.openPgpKeys.empty()) {
-            auto note = Note("secPgpNoKey", "No secret key in your GnuPG keyring - make one with "
-                                            "gpg --quick-generate-key " + options.email);
+            auto note = Note("secPgpNoKey", TrF("No secret key in your GnuPG keyring - make one with "
+                                                "gpg --quick-generate-key {0}", options.email));
             row->AddChild(note);
             note->layoutItem.SetFlexGrow(1);
         } else {
             keyBox = CreateDropdown("secPgpKey", 0, 0, 0, Theme::kControlHeight);
             Theme::StyleDropdown(keyBox);
-            keyBox->AddItem("The key for " + options.email, "");
+            keyBox->AddItem(TrF("The key for {0}", options.email), "");
             int selected = 0;
             for (size_t i = 0; i < options.openPgpKeys.size(); ++i) {
                 keyBox->AddItem(options.openPgpKeys[i].second, options.openPgpKeys[i].first);
                 if (options.openPgpKeys[i].first == options.current.openPgpKey) selected = static_cast<int>(i) + 1;
             }
             keyBox->SetSelectedIndex(selected, /*runNotifications=*/false);
-            keyBox->SetTooltip("The secret key messages from this account are signed with; GnuPG asks for "
-                               "its passphrase itself");
+            keyBox->SetTooltip(Tr("The secret key messages from this account are signed with; GnuPG asks for "
+                               "its passphrase itself"));
             row->AddChild(keyBox);
             keyBox->layoutItem.SetFlexGrow(1);
         }
@@ -207,19 +209,19 @@ void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
             if (state->methods[i] == options.current.method) chosen = static_cast<int>(i) + 1;
         }
         method->SetSelectedIndex(chosen);
-        method->SetTooltip("How a new message, reply or forward from this account starts out");
+        method->SetTooltip(Tr("How a new message, reply or forward from this account starts out"));
         row->AddChild(method);
         state->method = method.get();
         auto box = [&row](const std::string& id, const std::string& text, bool checked, const std::string& tip) {
             auto b = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 90.0f, Theme::kControlHeight, text);
-            b->SetFontSize(Theme::kSizeBody);
+            b->SetFontSize(Theme::SizeBody());
             b->SetChecked(checked);
             b->SetTooltip(tip);
             row->AddChild(b);
             return b;
         };
-        auto signBox = box("secSign", "Sign", options.current.sign,
-                           "Signed: the recipient can check that it is from you and unchanged");
+        auto signBox = box("secSign", Tr("Sign"), options.current.sign,
+                           Tr("Signed: the recipient can check that it is from you and unchanged"));
         auto encryptBox = box("secEncrypt", "Encrypt", options.current.encrypt,
                               "Encrypted: only the recipients (and you) can read it; every recipient needs a "
                               "certificate or key, and a message to one without is not sent until it is "
@@ -248,7 +250,7 @@ void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
-    auto saveBtn = CreateButton("secSave", 0, 0, 100, Theme::kControlHeight, "Save");
+    auto saveBtn = CreateButton("secSave", 0, 0, 100, Theme::kControlHeight, Tr("Save"));
     Theme::FitToLabel(saveBtn, 100);
     Theme::StylePrimary(saveBtn);
     Theme::SetButtonIcon(saveBtn, "check");

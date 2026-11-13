@@ -1,25 +1,27 @@
 # UltraAI Local Runtime — models on this computer, nothing to install
 
-**Version:** 0.2.0
-**Last Modified:** 2026-11-06
+**Version:** 0.3.1
+**Last Modified:** 2026-11-13
 
 ## Overview
 
-The local runtime runs language and embedding models on the user's own
-machine the way LocalAI's galleries do, without the user installing
-anything: the inference engine (llama.cpp's `llama-server`) and the model
-files are downloaded on demand, verified, started as a loopback process,
-shared between every UltraCanvas application that wants the same model,
-and stopped when nothing has used them for a while. The `local` provider
-serves `ITextLLM` and `IEmbeddings` through it and ranks first in the
-module's local-first routing, so an application that leaves `providerId`
-empty gets a model on this computer whenever one is installed or can be.
+The local runtime runs language, embedding and speech-to-text models on the
+user's own machine the way LocalAI's galleries do, without the user
+installing anything: the inference engine (llama.cpp's `llama-server`, or
+whisper.cpp's `whisper-server` for speech) and the model files are
+downloaded on demand, verified, started as a loopback process, shared
+between every UltraCanvas application that wants the same model, and
+stopped when nothing has used them for a while. The `local` provider serves
+`ITextLLM`, `IEmbeddings` and `ISpeechToText` through it and ranks first in
+the module's local-first routing, so an application that leaves
+`providerId` empty gets a model on this computer whenever one is installed
+or can be.
 
 Header: `UltraAILocalRuntime.h` (the runtime) and `UltraAILocal.h` (the
 provider). Design: [`../../Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md);
 this document is phase 1 of its plan (chat and embeddings over
-`llama-server`), with the user interface, speech, images and the
-supervisor process still to come. Built in-tree only
+`llama-server`) and the speech-to-text part of phase 3 (`whisper-server`),
+with text to speech, images and the supervisor process still to come. Built in-tree only
 (`ULTRAAI_LOCAL_RUNTIME`, default ON): it needs UltraNet, UltraCrypt and
 VirtualFS, which live in the shared core.
 
@@ -53,12 +55,12 @@ recommends and ask.
 
 | Part | What it is | Where |
 |---|---|---|
-| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
-| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
-| **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded). | `<root>/user-models.json` |
+| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20, and whisper.cpp's server v1.9.0 for Linux, macOS and Windows on x64 and arm64 - upstream's CPU builds for Linux and Windows x64, and the rest (Metal on Apple silicon, CPU on Intel Macs, Windows on ARM, Vulkan) built here (*Engines built here*), hashed on 2026-11-13; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
+| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. A model whose engine has no build for this platform (and is not installed or overridden) is left out of `ListModels`. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
+| **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded); for `"speechtotext"`, a whisper.cpp ggml `.bin`, served by `whisper-server`. | `<root>/user-models.json` |
 | **Installs** | Background jobs on the runtime's worker: download to a `.part` file (resumed when one exists), verify the SHA-256 through UltraCrypt, move into place; an engine bundle is unpacked through VirtualFS and gets a `bundle.json`; a model gets its `model.json` last, so a half-installed model never counts as installed. | `InstallModel`, `InstallEngine`, `Cancel`, `ListJobs` |
-| **Supervision** | `Ensure(modelId)` starts `llama-server` on a free loopback port with `--api-key-file`, waits for `/health`, and records it in `runtime.json` — shared between processes under a lock file — so a second application finds the running engine instead of starting its own. Idle engines are stopped by `StopIdle()` (run by every `Ensure`). A model whose engine died twice in a row is marked and not retried until it is stopped or reinstalled. | `Ensure`, `Touch`, `StopIdle`, `StopModel`, `StopAll`, `ListRunning` |
-| **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
+| **Supervision** | `Ensure(modelId)` starts the model's engine on a free loopback port (`llama-server` with `--api-key-file`), waits for `/health`, and records it in `runtime.json` — shared between processes under a lock file — so a second application finds the running engine instead of starting its own. Idle engines are stopped by `StopIdle()` (run by every `Ensure`). A model whose engine died twice in a row is marked and not retried until it is stopped or reinstalled. | `Ensure`, `Touch`, `StopIdle`, `StopModel`, `StopAll`, `ListRunning` |
+| **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*; a model whose engine has CPU builds only for this platform (llama-server and whisper-server on an Intel Mac) is at most *runs on CPU*, unless the engine is an override. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
 
 ### Storage
 
@@ -91,7 +93,8 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 |---|---|---|
 | `policy` | `Ask` | `Never`: installs only from a settings page; `Ask`: `Ensure` installs when the caller passes `allowDownload` (the dialog's answer); `Automatic`: `Ensure` installs silently |
 | `preferredAccelerator` | `""` (Auto) | `"cpu"`, `"vulkan"`, `"metal"`, `"cuda12"`, `"rocm"` — the bundle to use when the gallery has one for this platform |
-| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` is read from beside it |
+| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` and `topics.json` are read from beside it |
+| `trustedKeys` | `[]` | Ed25519 public keys (hex) the gallery's documents must be signed with; pinned from `keys.json` on the first refresh (see *Signed galleries*) |
 | `idleMinutes` | 15 | stop an engine nobody used for this long (0 stops at the next sweep) |
 | `diskCapBytes` | 20 GB | an install that would exceed it fails with `QuotaExceeded` |
 | `startTimeoutSeconds` | 0 | how long a start may take; 0 scales it with the model's size (about 100 MB/s plus 20 s, at least 30 s) |
@@ -108,6 +111,16 @@ cores (two left for the desktop), then the gallery's `defaultArgs`
 `--pooling`). `local_detail::BuildEngineArgs` is the one place this is
 decided.
 
+For `whisper-server`: `--host 127.0.0.1 --port <free> --model <file>
+--inference-path /v1/audio/transcriptions --language auto --threads <n>`,
+then the gallery's and the model's arguments. The inference path is the
+OpenAI audio API's, so the OpenAI adapter speaks to it unchanged; `auto`
+because the server's own default language is English. whisper.cpp's server
+takes no key: like every engine it listens on loopback only, but any
+process of the user's can reach it there. Auto picks Metal on Apple
+silicon and Vulkan on Windows with a GPU; on Linux the CPU build, as the
+Vulkan builds (glibc 2.39) are optional and run only when chosen.
+
 Engines reach their libraries through their own folder (`$ORIGIN` on
 Linux, the bundle's layout on macOS and Windows), so a bundle runs from
 wherever it was unpacked.
@@ -118,9 +131,40 @@ wherever it was unpacked.
 variable `ULTRAAI_LOCAL_ENGINE_LLAMA_SERVER`, names a folder holding (or
 the path of) a `llama-server` executable; the runtime uses it instead of a
 bundle and downloads no engine. A developer's own CUDA build, or a test's
-fake engine.
+fake engine. `ULTRAAI_LOCAL_ENGINE_WHISPER_SERVER` does the same for
+`whisper-server`.
 
 ---
+
+### Engines built here
+
+Where upstream publishes no build, this repository makes one:
+`.github/workflows/whisper-server.yml` builds whisper.cpp's server at a
+release tag for macOS on Apple silicon (Metal, the library embedded) and on
+Intel (CPU), both for macOS 13.3 and later and signed ad hoc; Windows on ARM
+(CPU and Vulkan, with clang-cl, as ggml refuses MSVC on ARM); and Vulkan
+builds for Windows x64 and Linux x64 and arm64 (glibc 2.39 and the system's
+Vulkan loader). Each is linked statically against whisper.cpp and ggml (and
+the C runtime on Windows), and each archive holds the executable,
+whisper.cpp's `LICENSE` and a `BUILD.txt` naming the commit, the CMake
+arguments and the run.
+
+Every build but Windows Vulkan (a hosted Windows runner has no Vulkan
+loader) is started with the runtime's own command line and must transcribe
+whisper.cpp's `samples/jfk.wav` sent to `/v1/audio/transcriptions` with the
+tiny model; Linux Vulkan runs on Mesa's software device. A pull request that
+changes the workflow or `scripts/whisper_gallery_entries.py` runs every build
+and test without publishing.
+
+To publish: Actions → *whisper-server* → *Run workflow* with the
+whisper.cpp tag and a revision (`r1`, then `r2` for every rebuild of the same
+tag - a published release is never replaced, because the gallery pins its
+hashes). The release `whisper-server-<tag>-<revision>` of this repository,
+not marked *latest*, carries the archives, `SHA256SUMS` and
+`whisper-server.gallery.json`: the bundle entries to add to the
+`whisper-server` engine in `LocalRuntimeBuiltinData.cpp` and to the model
+server's seed (`Server/UltraAIModelServer/ultraai_models/seed/index.json`).
+The engine's `version` stays the whisper.cpp tag.
 
 ## The gallery index
 
@@ -194,6 +238,40 @@ install time.
 
 ---
 
+## Signed galleries
+
+A model server ([`Server/UltraAIModelServer`](../../../Server/UltraAIModelServer/README.md))
+signs `index.json`, `catalogue.json` and `topics.json` with its Ed25519
+key: a detached signature over the exact bytes served, 128 lower-case hex
+characters (the convention of UltraStore's `catalog.json.sig`), in the
+document's `X-UltraAI-Signature` header and as `<document>.sig` beside it.
+`keys.json` beside the index lists the keys a client may trust:
+
+```json
+{"formatVersion": 1, "algorithm": "ed25519", "keys": ["3b6a27bc..."]}
+```
+
+`RefreshGallery()`:
+
+- with `trustedKeys` empty, reads `keys.json`; when there is one, the index
+  must verify against it and its keys are pinned into the settings (trust on
+  first use, over TLS). A gallery without `keys.json` - the built-in default,
+  a plain mirror - stays unsigned and works as before;
+- with `trustedKeys` set, the index, and the catalogue and the topics when
+  they are there, must each carry a signature by one of those keys: an
+  unsigned or wrongly signed one fails the refresh with `ProviderError` /
+  `providerCode` `"bad-signature"`, and nothing is replaced. What `keys.json`
+  says that day does not matter - a server that changes its key is refused
+  until the user resets the pin (or the server announced the next key
+  beforehand and signed with it, `ULTRAAI_MODELS_NEXT_PUBLIC_KEYS`);
+- a new `galleryUrl` set through `SetSettings` without new `trustedKeys`
+  drops the old pins: they belong to the old server.
+
+An administrator who wants no first-use step hands users the key (UltraAI
+ServerAdmin shows it on its Connection page) to put in `trustedKeys`.
+
+---
+
 ## Topics
 
 A topic is what a model is used for: general chat, programming,
@@ -261,9 +339,10 @@ is the user's view of all of this.
 
 ## The `local` provider
 
-`CreateTextLLM` / `CreateEmbeddings` with `providerId = "local"`, or an
-empty `providerId` when nothing names another provider: `local` is first
-in `KnownLocalProviders` for `textllm`, `embeddings` and `translator`.
+`CreateTextLLM` / `CreateEmbeddings` / `CreateSpeechToText` with
+`providerId = "local"`, or an empty `providerId` when nothing names another
+provider: `local` is first in `KnownLocalProviders` for `textllm`,
+`embeddings`, `translator` and `speechtotext`.
 
 | Config field | Meaning |
 |---|---|
@@ -278,6 +357,19 @@ A request's `model` names another local model; each gets its own engine.
 catalogue's for this computer with ` (not installed)` in the name, each
 `runsLocally`, so a picker shows both. `RawProvider()` is the OpenAI
 delegate of the default model once it has been used.
+
+Speech to text (`CreateLocalSpeechToText`): the topic is `transcription`
+unless one is set (Whisper Small by default; Whisper Base and Whisper
+Large v3 Turbo are offered). Files only - live transcription is an error
+event. WAV, MP3, FLAC and Ogg Vorbis go as they are (whisper.cpp decodes
+them), with no size limit; `translateToEnglish` is whisper's own
+`translate` field on the same path; segments come with `verbose_json`, and
+their word timings only when `wordTimestamps` is asked for. The default
+60 s timeout is raised to 30 minutes, as an hour of sound takes minutes on
+the CPU; a timeout set by the caller is kept. UltraAI's speech transcriber
+for UltraCanvas applications (`UltraAISpeechTranscription.h`) uses it
+first; a `local` with nothing downloaded under the *Ask* policy steps aside
+for the next provider.
 
 Errors: `ModelNotFound` / `"needs-install"` (a download is needed and not
 allowed), `ModelNotFound` / `"too-large"` (the model does not fit this
@@ -329,7 +421,10 @@ loopback: the built-in data parses; the fit and the bundle choice; an
 install through an injected copy fetcher (progress, a wrong hash refused,
 a failed transfer resumed, `model.json` last); `Ensure` under each policy,
 the shared record found by a second runtime, the idle stop, the restart
-marker; and the `local` provider's chat and embeddings end to end. Nothing
+marker; and the `local` provider's chat, embeddings and speech to text end
+to end (the fake engine started as `whisper-server` answers on its
+inference path; a speech model whose engine has no build here is not
+offered). Nothing
 in it touches the network. `ULTRACANVAS_BUILD_ULTRAAI_TESTS=ON` builds the
 module's suite in-tree and CI runs it with the rest.
 
@@ -344,8 +439,14 @@ LocalRuntime::Instance().SetSettings(s);
 
 ## Limits (0.1.0)
 
-- Chat and embeddings only: speech-to-text, image generation and
-  text-to-speech engines are the proposal's phase 3.
+- Chat, embeddings and speech to text: image generation and text-to-speech
+  engines are still to come.
+- `whisper-server` comes from whisper.cpp's own release archives (CPU
+  builds for Linux and Windows x64) and from this repository's release
+  `whisper-server-v1.9.0-r1` for the rest (*Engines built here*, above).
+  The Linux Vulkan builds need glibc 2.39 and are optional. No CUDA or
+  ROCm build yet. The whisper models' hashes are taken from Hugging Face
+  at install time; their sizes are whisper.cpp's published figures.
 - One `llama-server` process per model; the router mode (one process for
   every GGUF) and the `UltraAIHost` supervisor are phase 2. An engine
   started by an application that exits stays until an idle sweep from any
@@ -358,8 +459,8 @@ LocalRuntime::Instance().SetSettings(s);
 - The catalogue's hashes are taken from Hugging Face at install time until
   they are pinned; the file names and sizes were checked against the
   repositories on 2026-10-21.
-- The gallery index is not yet signed; it is fetched over TLS from a URL
-  the settings control.
+- The built-in gallery (llama.cpp's release archives) is not signed; a
+  model server's gallery is (see *Signed galleries*).
 - The *Get a local model* dialog is the module's (`UltraAI/ui/`,
   `UltraAILocalModelDialog.h`, library `UltraAI_UI`): an application links
   `UltraAI_UI` beside `UltraAI_Core`, tests an error with

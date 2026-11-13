@@ -58,7 +58,19 @@ else
   LINK_THREAD_FLAG="-pthread"
   MESON_LINK_THREAD="'-pthread', "
 fi
-export CFLAGS="-O2 $THREAD_FLAG -fwasm-exceptions -fvisibility=hidden -msimd128"
+# WASM_PIC=1 compiles everything position-independent, for a runtime that
+# loads apps as side modules (Emscripten dynamic linking: every object in
+# the main module must be -fPIC). Its own directory, like the thread
+# setting: a -fPIC sysroot and a plain one never share one.
+WASM_PIC=${WASM_PIC:-0}
+if [ "$WASM_PIC" = "1" ]; then
+  PIC_FLAG="-fPIC"
+  MESON_PIC="'-fPIC', "
+else
+  PIC_FLAG=""
+  MESON_PIC=""
+fi
+export CFLAGS="-O2 $THREAD_FLAG $PIC_FLAG -fwasm-exceptions -fvisibility=hidden -msimd128"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="$LINK_THREAD_FLAG -fwasm-exceptions -L$SYSROOT/lib"
 export CHOST=wasm32-unknown-linux
@@ -87,9 +99,9 @@ pkg-config = ['$WORK/wasm-pkg-config', '--static']
 exe_wrapper = '$NODE_BIN'
 
 [built-in options]
-c_args = ['-O2', $MESON_THREAD'-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
+c_args = ['-O2', $MESON_THREAD$MESON_PIC'-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
 c_link_args = [$MESON_LINK_THREAD'-fwasm-exceptions']
-cpp_args = ['-O2', $MESON_THREAD'-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
+cpp_args = ['-O2', $MESON_THREAD$MESON_PIC'-fwasm-exceptions', '-fvisibility=hidden', '-msimd128']
 cpp_link_args = [$MESON_LINK_THREAD'-fwasm-exceptions']
 default_library = 'static'
 # Keep -sPTHREAD_POOL_SIZE out of generated .pc files
@@ -276,7 +288,7 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
   # hb-subset tool links with -pthread from meson's threads dependency
   # whatever the cross file says, which a WASM_THREADS=0 sysroot refuses.
   meson setup _build $MESON_ARGS \
-    "-Dcpp_args=-O2 $THREAD_FLAG -fwasm-exceptions -fvisibility=hidden -msimd128 -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR" \
+    "-Dcpp_args=-O2 $THREAD_FLAG $PIC_FLAG -fwasm-exceptions -fvisibility=hidden -msimd128 -DHB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR" \
     -Dfreetype=enabled -Dglib=enabled -Dgobject=disabled -Dicu=disabled \
     -Dcairo=disabled -Dchafa=disabled -Dtests=disabled -Ddocs=disabled \
     -Dintrospection=disabled -Dbenchmark=disabled -Dutilities=disabled

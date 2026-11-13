@@ -1,8 +1,10 @@
 // UltraCloud/providers/UltraCloudDropbox.cpp
+// Version: 0.6.0 - a transfer keeps the file's date: client_modified on an upload,
+//                  Dropbox-API-Result's on a download
 // Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile),
 //                  an upload sent from the file as it goes (bodyFilePath)
 // Version: 0.4.0 - each further page of a listing is logged
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudDropbox.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -161,6 +163,11 @@ Result DropboxProvider::Upload(const Account&, const Credentials& credentials,
     commit.Set("path", DropboxPath(remotePath));
     commit.Set("mode", "overwrite");
     commit.Set("mute", true);
+    // The file keeps its own date: Dropbox shows client_modified as the
+    // file's date (it keeps no creation date). Whole seconds, as it asks.
+    int64_t modified = 0, created = 0;
+    LocalFileDates(localPath, modified, created);
+    if (modified > 0) commit.Set("client_modified", Rfc3339(modified));
 
     // Every body below is read from the file as it is sent: memory stays at
     // libcurl's buffer, whatever the size of the file or the chunk.
@@ -215,7 +222,16 @@ Result DropboxProvider::Download(const Account&, const Credentials& credentials,
     req.method = UltraNetHttpMethod::Post;
     req.headers.Set("Dropbox-API-Arg", ToJson(arg));
     // Written to disk as it arrives, not held in memory first.
-    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
+    UltraNetResponse answer;
+    Result r = DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath,
+                              &answer);
+    // The copy keeps the file's date: the metadata rides in this header.
+    if (r) {
+        const JSONValue meta = ParseJson(answer.headers.Get("Dropbox-API-Result"));
+        if (meta.IsObject())
+            GiveFileDates(localPath, ParseRfc3339(meta["client_modified"].GetString()), 0);
+    }
+    return r;
 }
 
 Result DropboxProvider::CreateShareLink(const Account&, const Credentials& credentials,

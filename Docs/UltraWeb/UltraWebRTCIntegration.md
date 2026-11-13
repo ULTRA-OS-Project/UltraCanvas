@@ -1,7 +1,9 @@
 # UltraRTC in UltraWeb
 
-**Status:** Plan, no code yet.
-**Last Modified:** 2026-10-22
+**Status:** W1, W2 and W3 done (WebSockets, peers and data channels for
+apps, ABI v3; audio and video calls with the permission bar, ABI v4); W4
+onward planned.
+**Last Modified:** 2026-11-11
 **Author:** UltraCanvas Framework / ULTRA OS
 **Reads with:** [`UltraWeb.md`](UltraWeb.md) (what the browser is),
 [`Docs/Modules/UltraRTC/README.md`](../Modules/UltraRTC/README.md) (the
@@ -74,34 +76,50 @@ Two facts shape the design:
 
 ### The imports
 
-ABI v3 of `ultraweb.h`, in its style: handles are small numbers in a
-per-guest table that maps to `UltraRtcHandle`s, so a guest never holds an
-engine handle, and every call returns `UC_OK` or a `UC_ERR_*`. An app asks
-for v3 with `uc_abi_version()`; an older UltraWeb refuses it.
+ABI v3 and v4 of `ultraweb.h` (built in W1 to W3; the contract is the header):
+ids are small numbers in per-guest tables that map to the service's own
+handles, so a guest never holds an engine handle, and every call returns
+`UC_OK` or a `UC_ERR_*`. An app asks for v3 with `uc_abi_version()`; an
+older UltraWeb refuses it.
 
 | Import | UltraRTC call | Notes |
 |---|---|---|
-| `uc_rtc_peer_create(configJson, len)` → peer | `UltraRtc_CreatePeer` | ICE servers as JSON (`[{"urls":"turn:...","username":..,"credential":..}]`), the shape `RTCConfiguration` has |
+| `uc_rtc_peer_open(configJson, len)` → peer | `UltraRtc_CreatePeer` | `RTCConfiguration`-shaped JSON (`{"iceServers": [...]}`) |
 | `uc_rtc_peer_close(peer)` | `UltraRtc_ClosePeer` | also on teardown |
-| `uc_rtc_set_local(peer, type)` | `UltraRtc_SetLocalDescription` | with `autoNegotiation` off: the app decides when to offer |
 | `uc_rtc_set_remote(peer, type, sdp, len)` | `UltraRtc_SetRemoteDescription` | SDP untouched |
 | `uc_rtc_add_candidate(peer, cand, len, mid, len)` | `UltraRtc_AddIceCandidate` | |
-| `uc_rtc_channel_create(peer, label, len, flags)` → channel | `UltraRtc_CreateDataChannel` | flags: unordered, max retransmits |
+| `uc_rtc_channel_open(peer, label, len, flags, maxRetransmits)` → channel | `UltraRtc_CreateDataChannel` | `UC_RTC_UNORDERED`; a resend limit or reliable |
 | `uc_rtc_send(channel, data, len, binary)` | `UltraRtc_DataChannelSendText` / `Binary` | |
-| `uc_rtc_audio_add(peer, mid, len, direction)` → track | `UltraRtc_AddAudioTrack` | |
-| `uc_rtc_video_add(peer, mid, len, direction, w, h, fps, kbps)` → track | `UltraRtc_AddVideoTrack` | `UltraRtcVideoConfig` |
-| `uc_rtc_microphone(track, on)`, `uc_rtc_camera(track, on)` | `UltraRtc_StartMicrophone` / `StartCamera` and the Stops | asks the user first (rules below) |
-| `uc_rtc_playback(track, on)` | `UltraRtc_StartPlayback` | the speaker |
-| `uc_rtc_track_enabled(track, on)` | `UltraRtc_SetTrackEnabled` | mute, camera off |
-| `uc_rtc_read(id, out, capacity)` | - | the text of the event `id`: an SDP, a candidate, a message, a channel label |
+| `uc_rtc_channel_close(channel)` | `UltraRtc_DataChannelClose` | |
+| `uc_rtc_poll(peer, info, out, capacity)` | - | the peer's oldest event: kind, channel, number, and its text |
+| `uc_rtc_audio_add(peer, mid, len, direction)` → track (v4) | `UltraRtc_AddAudioTrack` | |
+| `uc_rtc_video_add(peer, mid, len, direction, w, h, fps, kbps)` → track (v4) | `UltraRtc_AddVideoTrack` | `UltraRtcVideoConfig`; 0 takes the default |
+| `uc_rtc_offer(peer)` (v4) | `UltraRtc_SetLocalDescription(Offer)` | tracks do not start a negotiation by themselves |
+| `uc_rtc_microphone(track, on)`, `uc_rtc_camera(track, on, selfView)` (v4) | `UltraRtc_StartMicrophone` / `StartCamera` and the Stops | asks the user first (rules below) |
+| `uc_rtc_playback(track, on)` (v4) | `UltraRtc_StartPlayback` | the speaker |
+| `uc_rtc_video_show(track, tile)` (v4) | `UltraRtc_SetVideoFrameCallback` → the tile | below |
+| `uc_rtc_track_enabled(track, on)` (v4) | `UltraRtc_SetTrackEnabled` | mute, camera off |
 
-Events arrive as `uc_event(handle, UC_EVENT_RTC, detail)`, `handle` the peer,
-channel or track, `detail` naming what happened (a local description, a
-candidate, a state change, a channel opened or closed, a message, a track
-open); anything with text is read with `uc_rtc_read`, then dropped once the
-app returns from `uc_event`, as `uc_fetch_body` works. Messages wait in a
-queue per channel (at most 1 MB): an app that does not read loses the
-oldest, and a log line says so.
+The calls became ABI v4 rather than part of v3, which had shipped: an app
+that needs them asks for 4, and an UltraWeb with only v3 refuses it with a
+message instead of failing at an import it does not have.
+
+Negotiation is automatic (UltraRTC's `autoNegotiation`): the first channel
+makes the offer, a remote offer makes the answer, so the planned
+`uc_rtc_set_local` was not needed. Events wait in a queue per peer:
+`uc_event(UC_NO_HANDLE, UC_EVENT_RTC, peer)` comes when one arrives while none
+was waiting, and the app reads them with `uc_rtc_poll` until
+`UC_ERR_NOT_FOUND` - so a burst of messages is one call into the app, not
+one each. An event is taken off the queue only once its text fitted the
+app's buffer. At most 1,000 events wait; past that the oldest message goes
+(a state change or a description is kept), and a log line says so.
+
+The bridge sees WebRTC through an interface (`RtcService` / `RtcPeer`,
+`Apps/UltraWeb/host/UltraWebRtc.h`), not UltraRTC itself: the browser
+runtime builds the same bridge with Emscripten, where the service would be
+the page's own `RTCPeerConnection`. UltraRTC's events are posted to the UI
+thread by that service; UltraWeb installs no process-wide dispatcher, which
+another module in the process might want.
 
 ### Pictures: the VideoTile element
 
@@ -109,47 +127,67 @@ A new element kind, `UC_KIND_VIDEO_TILE` ("VideoTile"), is an
 `UltraCanvasVideoTile` in the app's tree. `uc_rtc_video_show(track, tile)`
 connects a remote track's frames (`UltraRtc_SetVideoFrameCallback` →
 `PushFrame`, from the media thread, which the tile accepts) and, for a local
-track, the camera's self view (mirrored). The app lays the tiles out like any
-other element; the pixels never pass through guest memory, which keeps a
-640 x 480 call at 24 fps out of the 2 s per call budget.
+track, the camera's self view (mirrored), given to `uc_rtc_camera`. The app
+lays the tiles out like any other element; the pixels never pass through
+guest memory, which keeps a 640 x 480 call at 24 fps out of the 2 s per call
+budget. A tile the app releases while pictures still arrive is safe: each
+track's sink pushes through a slot whose lock the UI thread takes to empty
+it before the tile goes.
 
 ### Signalling
 
-WebRTC leaves signalling to the app. An app can already relay the SDP
-through `uc_fetch` to its server, under CORS; that works for a demo and
-polls for the answer. A call app needs a push channel: **`uc_ws_*`
-imports** (`open`, `send`, `close`; messages as `UC_EVENT_WS`) on UltraNet's
-WebSocket, under the same origin and CORS-style rules as fetch: the app's
-own origin freely, another origin only when its handshake answers with an
-`Access-Control-Allow-Origin` that admits the app, `wss:` only from an
-https app. That is useful beyond calls (chat, live updates), so it is its
-own step (phase W1 below).
+WebRTC leaves signalling to the app. An app can relay the SDP through
+`uc_fetch` to its server, under CORS; that works for a demo and polls for
+the answer. A call app needs a push channel: the **`uc_ws_*` imports**
+(W1) on UltraNet's WebSocket. They follow a browser's rules, not fetch's:
+there is no CORS for WebSockets, so the handshake carries the app's origin
+in an `Origin` header and the server decides; no cookies; `wss:` only from
+an https app. (The plan first had a CORS-style check on the handshake's
+answer. Browsers do not do that, and a server written for browsers would
+not send the header, so the browser's rule was kept.) That is useful beyond
+calls (chat, live updates).
 
 ### The rules
 
 - **Camera and microphone ask the user.** The first `uc_rtc_camera` or
   `uc_rtc_microphone` of an origin shows a bar above the tab's area - "x.org
-  wants to use your camera: Allow / Block" - and the call answers
-  `UC_ERR_STATE` until the user decides (then `UC_EVENT_RTC` says which).
-  The decision is kept per origin in UltraWeb's settings. A tab in the
-  background cannot start a device. While a device is on, the tab strip
-  shows it.
+  wants to use your camera: Allow / Block" - and the call returns `UC_OK`
+  at once; `UC_RTC_PERMISSION` says what became of it (on, blocked, or
+  allowed but the device would not open). The decision is kept per origin
+  in `<settings folder>/UltraWeb/permissions.txt`, and an origin the user
+  blocked is refused at once after that; Ctrl+Shift+Delete forgets the
+  decisions with the cookies. *Not yet:* a mark on the tab strip while a
+  device runs, and holding back a background tab's request until it is
+  shown.
 - **Local addresses stay local.** ICE host candidates carry the machine's
   LAN addresses to the other side. A browser hides them (mDNS candidates);
   libjuice does not. Until UltraRTC can, an app from the network gets
-  `iceTransportPolicy` Relay unless the user allows it, as with the camera,
-  and an app from `about:` or a file gets All.
-- **Limits per app:** 4 peers, 16 data channels a peer, 256 KB a message, 4
-  video and 4 audio tracks, ICE servers only `stun:`, `turn:`, `turns:`.
+  `iceTransportPolicy` Relay - in W2 always, so it needs a TURN server (the
+  console says so when its configuration names none) - and an app from
+  `about:` or a file gets All. Letting the user allow direct connections
+  for an origin, through the same bar, is still open.
+- **Limits per app:** 4 peers, 16 data channels a peer, 256 KB a message, 8
+  ICE servers, only `stun:`, `turn:`, `turns:`, 4 video and 4 audio tracks
+  a peer.
 - **DTLS is always on**, as in UltraRTC; the app relays SDP untouched, so the
   fingerprint check holds end to end.
 - **Teardown:** the guest's destructor closes its peers (UltraRTC stops the
   devices it started), so a closed tab is a hung-up call.
 
-Tests: two guests in one `UltraWebGuestTest` process, connected through a
-fake signalling relay, exchange a data-channel message and then audio frames
-fed with `UltraRtc_SendAudioFrame` (no devices, no network: loopback ICE, as
-`Tests/UltraRTC` does), with the permission bar answered by the test.
+Tests (`Tests/UltraWebRealtimeTest.cpp`, W1 and W2): the socket and
+configuration rules; guests written as WebAssembly text against fake socket
+and peer services (open, refuse, read until empty, write, close by either
+side, lose, poll descriptions, candidates, channels and messages, tear
+down); UltraNet's sockets against a loopback WebSocket server that checks
+the `Origin` header and the subprotocol; and two UltraRTC peers that connect
+in one process through the test's signalling and exchange text and binary
+data-channel messages. W3 adds a call guest against a fake peer (tracks, the
+offer, both answers to the bar, a blocked device refused at once, pictures
+into a tile, a track the other side added, nothing reaching a tile after the
+guest goes), the permission store, and video between two real UltraRTC
+peers (pictures fed to the engine reach the other side's sink; no camera
+needed); `Tests/UltraWebTabTest.cpp` shows the bar in a tab, answers it, and
+opens the app again unasked.
 
 ## Seam 2: pages, once there is JavaScript
 
@@ -190,16 +228,15 @@ the proposal's phases 3 to 5):
 
 | Phase | What | Needs |
 |---|---|---|
-| W1 | `uc_ws_*`: WebSockets for apps, under the fetch rules | UltraNet WebSocket (exists) |
-| W2 | `uc_rtc_*` data channels and peers; the event dispatcher; teardown; tests with two guests | W1 for real apps; tests need none |
-| W3 | Audio and video tracks, `VideoTile`, the permission bar and its per-origin memory, Relay by default | W2 |
+| W1 | **Done.** `uc_ws_*`: WebSockets for apps, under a browser's rules | UltraNet WebSocket (exists) |
+| W2 | **Done.** `uc_rtc_*` data channels and peers; events posted to the UI thread; teardown; tests with two real peers | W1 for real apps; tests need none |
+| W3 | **Done.** Audio and video tracks, `VideoTile`, the permission bar and its per-origin memory (ABI v4) | W2 |
 | W4 | `about:call`: a built-in demo app, a two-tab call through a loopback relay | W3 |
 | P1 | Pages: the JavaScript binding (seam 2) | JavaScript in UltraWeb |
 
 ## Recommendation
 
-Start with W1 and W2: they are small (one import table each, on code that
-exists) and give WebAssembly apps peer-to-peer data at once. Do W3 together
-with the permission bar, which UltraWeb needs for camera and microphone
-anyway. Leave pages to the JavaScript phase. The host code from W2 and W3 is
+W1 to W3 are done: WebAssembly apps have WebSockets, peer-to-peer data
+channels and audio and video calls behind the user's permission. W4, a
+built-in `about:call`, is next. Leave pages to the JavaScript phase. The host code from W2 and W3 is
 what that phase binds to, so it is not written twice.

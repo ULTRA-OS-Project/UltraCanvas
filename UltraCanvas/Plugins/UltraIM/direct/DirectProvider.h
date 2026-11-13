@@ -17,6 +17,13 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.9 - renaming on a relay before 1.3.0 (405) says so, not "the relay refused the request"
+// Version: 0.1.8 - a group renamed (PATCH /v1/groups/{id}), members added and removed, a group left
+//                  and a 1:1 conversation deleted on this device; the group's owner and members' names
+//                  on its conversation
+// Version: 0.1.7 - DeleteMessage / GetDeleteChoices: for oneself always; for everyone the sender's text until
+//                  it is read, a file at any time, anything in a group
+// Version: 0.1.6 - SearchMessages: the history searched in the store, one conversation or all
 // Version: 0.1.5 - the e-mail address confirmed by the link the relay e-mails; recovery by an e-mailed link
 //                  (POST /v1/recovery/poll with the token only this computer holds)
 // Version: 0.1.4 - confirming the e-mail and phone with the relay's codes; account recovery (the relay
@@ -123,11 +130,22 @@ public:
     void FetchConversations(UltraIMConversationsCallback onResult) override;
     void FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                        UltraIMMessagesCallback onResult) override;
+    void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) override;
     void FetchContacts(UltraIMContactsCallback onResult) override;
     void FetchNearbyContacts(UltraIMContactsCallback onResult) override;
     void AddContact(const std::string& address, UltraIMConversationCallback onResult) override;
     void CreateGroup(const std::string& title, const std::vector<std::string>& memberIds,
                      UltraIMConversationCallback onResult) override;
+    // Through the relay, which tells every member (group.update). Only the
+    // group's owner takes someone else out; anyone leaves. Leaving a 1:1
+    // conversation deletes it and its messages here, and keeps the contact.
+    void RenameGroup(const std::string& conversationId, const std::string& title,
+                     UltraIMConversationCallback onResult) override;
+    void AddGroupMembers(const std::string& conversationId, const std::vector<std::string>& memberIds,
+                         UltraIMConversationCallback onResult) override;
+    void RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
+                           UltraIMResultCallback onResult) override;
+    void LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) override;
     // "telegram": the Telegram application's API ID and hash the relay keeps
     // (GET /v1/telegram-credentials; NotFound when it keeps none).
     void FetchSharedCredentials(const std::string& forProviderId, UltraIMSharedCredentialsCallback onResult) override;
@@ -149,6 +167,15 @@ public:
     // it is here.
     void DownloadAttachment(const std::string& conversationId, const std::string& messageId,
                             UltraIMAttachmentCallback onResult) override;
+    // ChatCube's own rules. For oneself: any message, any time. For
+    // everyone, by its sender: a text until the other person has read it, a
+    // picture, video or file at any time, and anything in a group at any
+    // time (a group has no read receipts). The other side checks the same
+    // before it lets a message go.
+    UltraIMResult DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                UltraIMDeleteScope scope) override;
+    UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
+                                          const std::string& messageId) const override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
@@ -228,6 +255,18 @@ private:
     UltraIMConversation EnsureDirectConversation(const std::string& userId);
     void RefreshGroups();
     void UpsertGroup(const UltraCanvas::JSONValue& group);
+    // What the store does not keep onto a group's conversation: its owner, as
+    // the relay last said, and the names of the members it knows.
+    void FillGroupDetails(UltraIMConversation& conversation);
+    // The group as it is now, to everyone listening (a member's name arrived).
+    void EmitGroup(const std::string& conversationId);
+    // The relay's group of a group conversation, or an error for the callback.
+    UltraIMResult GroupRequestTarget(const std::string& conversationId, std::shared_ptr<RelayClient>& relay,
+                                     std::string& groupId) const;
+    // Adds ids[index..] one by one, then answers the group.
+    void AddMembersFrom(std::shared_ptr<RelayClient> relay, std::string groupId, std::string conversationId,
+                        std::vector<std::string> ids, size_t index, UltraIMConversationCallback onResult);
+    void EmitRemoved(const std::string& conversationId);
     void FetchQueue();
     // Online if the relay says so or a local connection to them is up.
     UltraIMPresence EffectivePresence(const std::string& userId);
@@ -257,6 +296,16 @@ private:
     // The "file" and "chunk" bodies.
     void HandleFileBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
     void HandleChunkBody(const UltraCanvas::JSONValue& body);
+    // A "delete" from the sender of the messages it names.
+    void HandleDeleteBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    // A message out of this device's record, with the file it brought into
+    // the cache (never a file of the user's own that was sent from where it
+    // lies); MessageDelete and ConversationUpdate follow.
+    bool RemoveLocally(const std::string& conversationId, const std::string& clientId);
+    // Whether its sender deleted an arriving message before it got here.
+    bool IsDeletedBeforeArrival(const UltraIMMessage& message);
+    // Whether a path is one of the files this provider keeps (MediaPath).
+    bool IsMediaFile(const std::string& path) const;
 
     // ---- outgoing ---------------------------------------------------------------
     void QueueBody(const std::string& conversation, const std::vector<std::string>& recipients,
@@ -274,7 +323,7 @@ private:
     ProviderTimings timings_;
 
     std::atomic<UltraIMConnectionState> state_{UltraIMConnectionState::Disconnected};
-    Store           store_;
+    mutable Store   store_;         // (its reads lock and are not const)
     bool            storeOpen_ = false;
     UltraVault::DeviceKeyVault vault_;
     bool            vaultOpen_ = false;
@@ -305,6 +354,7 @@ private:
     mutable std::mutex mutex_;
     std::map<std::string, Attempt> attempts_;           // clientId|recipient
     std::map<std::string, UltraIMPresence> presence_;   // user id -> presence
+    std::map<std::string, std::string> groupOwners_;    // group conversation -> its owner's user id
     std::set<std::string> fetchingUsers_;
     // Proven by a local connection's handshake: user id -> (key, name).
     std::map<std::string, std::pair<std::vector<uint8_t>, std::string>> lanKeys_;

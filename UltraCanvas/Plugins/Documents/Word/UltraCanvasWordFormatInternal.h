@@ -1,6 +1,8 @@
 // Plugins/Documents/Word/UltraCanvasWordFormatInternal.h
 // Small helpers shared by the ODT and DOCX readers/writers. Internal to the
 // Word document module — not installed, not part of the public API.
+// Version: 1.2.0 - ApplyOfficeArtShapeType: Word 97 / VML shape types as RichShape geometry;
+//                  ReadNumberAt / ReadNumbers: dot-decimal shape geometry; ApplyOfficeShade
 // Version: 1.1.1 - <cstdlib> for std::strtof, which libc++ no longer brings in
 //                  through <string> (MSYS2 CLANG64, 2026-10-09)
 // Last Modified: 2026-10-09
@@ -9,12 +11,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <vector>
 
 #include "UltraCanvasRichDocument.h"
+#include "UltraCanvasTextUtils.h"
 
 namespace UltraCanvas {
 namespace WordFormatInternal {
@@ -135,10 +139,74 @@ inline bool StartsNewList(const std::vector<RichDocBlock>& blocks, size_t index)
 // Unicode for `codepoint` set in `fontFamily` when that is one of the Windows
 // symbol fonts (Symbol, Wingdings, Wingdings 2/3, Webdings); accepts the bare
 // font code and the U+F000 + code form. 0 = not a symbol font, or unmapped.
+// A dot-decimal number starting at text[at] (a leading '+' allowed), in
+// `out`; returns where it ends, or `at` when there is none. Shape geometry
+// ("1501,0", "0 0 3000 2000", "rotate (-0.52)") is read with it, never
+// through the process locale.
+inline size_t ReadNumberAt(const std::string& text, size_t at, double& out) {
+    size_t from = at;
+    if (from < text.size() && text[from] == '+') ++from;
+    if (from >= text.size()) return at;
+    const char* begin = text.c_str() + from;
+    const char* end = ParseFloatClassic(begin, text.c_str() + text.size(), out);
+    return end == begin ? at : static_cast<size_t>(end - text.c_str());
+}
+
+// Up to `count` numbers from a list separated by spaces or commas; returns
+// how many were read.
+inline size_t ReadNumbers(const std::string& text, double* out, size_t count) {
+    size_t found = 0;
+    for (size_t at = 0; at < text.size() && found < count;) {
+        const size_t next = ReadNumberAt(text, at, out[found]);
+        if (next == at) { ++at; continue; }
+        ++found;
+        at = next;
+    }
+    return found;
+}
+
+// A Word 97 / VML shade (gradient fill) as a shape's gradient: from `fill`
+// to `back` (VML's color2), whose place along the shade `focusPercent`
+// gives - 0 at the start, 100 at the end, 50 in the middle with `fill` at
+// both edges, negative counting from the end. `angle` turns anticlockwise
+// from top-to-bottom; a round shade starts at the centre.
+inline void ApplyOfficeShade(RichShape& shape, const std::string& fill, const std::string& back, double focusPercent,
+                             double angle, bool radial) {
+    double where = focusPercent / 100.0;
+    if (where < 0.0) where += 1.0;
+    where = std::clamp(where, 0.0, 1.0);
+    if (where < 0.25) shape.gradientStops = {{0.0f, back}, {1.0f, fill}};
+    else if (where > 0.75) shape.gradientStops = {{0.0f, fill}, {1.0f, back}};
+    else shape.gradientStops = {{0.0f, fill}, {0.5f, back}, {1.0f, fill}};
+    shape.gradientRadial = radial;
+    double turn = std::fmod(90.0 - angle, 360.0);
+    if (turn < 0.0) turn += 360.0;
+    shape.gradientAngleDeg = static_cast<float>(turn);
+    shape.fillColor = shape.gradientStops.front().color;
+}
+
+// A Word 97 / VML shape type (MSOSPT: 1 rectangle, 3 ellipse, 20 line,
+// ...) as a RichShape's geometry; false for one it does not know (a
+// freeform, 0, has its own outline).
+inline bool ApplyOfficeArtShapeType(int type, RichShape& shape) {
+    static const std::pair<int, const char*> kTypes[] = {
+        {1, "rect"}, {2, "roundRect"}, {3, "ellipse"}, {4, "diamond"}, {5, "triangle"}, {6, "rtTriangle"},
+        {7, "parallelogram"}, {8, "trapezoid"}, {9, "hexagon"}, {10, "octagon"}, {11, "plus"}, {12, "star5"},
+        {13, "rightArrow"}, {15, "homePlate"}, {20, "line"}, {32, "straightConnector1"}, {55, "chevron"},
+        {56, "pentagon"}, {66, "leftArrow"}, {67, "downArrow"}, {68, "upArrow"}, {109, "flowChartProcess"},
+        {110, "flowChartDecision"}, {111, "flowChartInputOutput"}, {116, "flowChartTerminator"},
+        {117, "flowChartPreparation"}, {120, "flowChartConnector"}, {127, "flowChartExtract"},
+        {128, "flowChartMerge"}, {176, "flowChartAlternateProcess"}, {187, "star4"}, {202, "rect"}};
+    for (const auto& [id, name] : kTypes) {
+        if (id == type) return shape.ApplyPreset(name);
+    }
+    return false;
+}
+
 uint32_t SymbolFontCharToUnicode(const std::string& fontFamily, uint32_t codepoint);
-// Rewrites every run set in a symbol font (body, table cells, headers and
-// footers) as the Unicode characters it depicts, and drops the symbol font
-// from the run.
+// Rewrites every run set in a symbol font (body, table cells, headers,
+// footers and text frames) as the Unicode characters it depicts, and drops
+// the symbol font from the run.
 void MapSymbolFontRuns(UCRichDocument& document);
 // Decodes the UTF-8 sequence at text[at] and advances `at` past it.
 uint32_t DecodeUtf8(const std::string& text, size_t& at);

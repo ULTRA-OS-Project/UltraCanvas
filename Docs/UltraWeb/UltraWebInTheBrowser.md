@@ -34,6 +34,11 @@ not have the extension.
 - [Limits of the prototype](#limits-of-the-prototype)
 - [What would make it a product](#what-would-make-it-a-product)
 
+An app written against the full UltraCanvas C++ API, rather than the
+small UltraWeb interface, has its own runtime and extension: UltraCanvas as
+a shared main module that loads apps as side modules -
+[`Docs/UltraCanvas/UltraCanvasWasmRuntime.md`](../UltraCanvas/UltraCanvasWasmRuntime.md).
+
 ## The three ways an app reaches the screen
 
 | | Where UltraCanvas is | What the site sends | Status |
@@ -140,6 +145,8 @@ the `WasmHost` library's engine under Emscripten.
 | Fetch | UltraNet, under `FetchRules` | the page's `fetch()` without credentials, under the same `FetchRules`. The browser applies CORS itself; a cross-origin answer that reached script is passed to the rules as allowed for this origin, since the browser hides that header from script. |
 | Storage | a JSON file per origin in the settings folder | the same file, in an IndexedDB-backed directory of the page's origin (synced every 2 s, and when the page is hidden or closed) |
 | Clipboard | the system clipboard | `navigator.clipboard`, through the backend's `SetClipboardText` |
+| WebSockets (v3) | UltraNet, under `SocketRules` | not yet: `uc_ws_open` answers `UC_ERR_DENIED`. The page's `WebSocket` is the obvious service, under the same rules |
+| Peers and calls (v3, v4) | UltraRTC; the tab's permission bar for the devices | not yet: `uc_rtc_peer_open` answers `UC_ERR_DENIED`. The page's `RTCPeerConnection` and `getUserMedia` are the obvious services (`UltraRTCDesignProposal.md`, the WebAssembly tier) |
 
 The page's origin is the app's origin: an app loaded from
 `https://x.org/app/hello.wasm` fetches and stores as `https://x.org`.

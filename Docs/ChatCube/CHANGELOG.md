@@ -1,3 +1,95 @@
+#### 2026-11-13 *0.1.23*
+- **ChatCube speaks 30 more languages.** Every text it shows is translated
+  into Arabic, Catalan, Chinese (simplified and traditional), Czech,
+  Danish, Dutch, Finnish, French, German, Greek, Hebrew, Hindi, Hungarian,
+  Indonesian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese
+  (Portugal and Brazil), Romanian, Russian, Spanish, Swedish, Thai,
+  Turkish, Ukrainian and Vietnamese - `media/locale/<lang>/ChatCube.json`,
+  367 texts each, in the terms each language's standard catalogue
+  already uses. They are machine drafts (`@translated-by: machine draft
+  2026-11-13, reviewed by -`) until a speaker of the language reviews them.
+
+#### 2026-11-13 *0.1.22*
+- **Escape closes the chat list's menus, and the next click works**, also with
+  the pointer over a submenu on a desktop where the focus follows the pointer
+  (UltraCanvas: a popup's own window hands its keys on).
+- **Telegram supergroups show their members** in the chat list's menu: the
+  most recently active, by name, the creator marked owner, and "Members
+  (5,240)" with "and 5,200 more" for the rest - also under the group's name.
+- **Renaming a ChatCube group on an older relay says why it cannot be done**:
+  "This relay cannot rename groups yet - it needs ChatCube relay 1.3.0 or
+  later". The relay's README says how its operator updates it.
+
+#### 2026-11-13 *0.1.21*
+- **A right-click on a chat in the list opens its menu** - without opening
+  the chat. For every chat: *Open*, *Mark as read* / *Mark as unread* (a dot
+  where the count would be, until you open it), *Pin to top* / *Unpin*
+  (pinned chats stay above the rest, with a pin). For a person: *Voice call*
+  and *Video call* where the network can call them, *Copy ChatCube ID* (or
+  *Copy address* on Matrix and Telegram), *Add to group* with the groups of
+  that network they are not in yet, and *Delete chat*, which deletes the chat
+  and its messages on this computer only - they keep theirs, and a new
+  message from them starts it again. For a group: *Members*, each with a menu
+  of their own (*Send a message*, *Copy ID*, and - for the group's owner -
+  *Remove from group*), *Add members*, *Rename group* and *Leave group*.
+  Members are shown by name; a big group lists its first 40 and says how
+  many more. ChatCube, Matrix and Telegram groups have all of it, as far as
+  the network lets the account (in most Telegram groups renaming and taking
+  people out is for administrators). Pins and unread marks are kept with
+  the settings. Renaming a ChatCube group needs ChatCube relay 1.3.0.
+- **"1 member", not "1 members"**, under a group's name.
+
+#### 2026-11-12 *0.1.20*
+- **Every text ChatCube shows goes through UltraLocalisation (`Tr`)**, so
+  ChatCube can be translated: the sign-in, recovery and Connecting pages,
+  the sidebar, the conversation pane, calls, the status line, the Edit
+  profile window and every Settings page. The English catalogue,
+  `media/locale/en/ChatCube.json`, now holds all 329 texts. Sentences with
+  a name or a number in them are whole texts with placeholders, so a
+  translation can put them in its own order.
+  - In English, "1 member", "1 byte" and "1 room key imported" are now
+    singular.
+
+#### 2026-11-12 *0.1.19*
+- **The relay is a setting, not a field on the sign-in page.** ChatCube
+  Direct signs in through `https://relay-chatcube.ultraos.eu` unless it is
+  changed in the new *Settings > Networks > Relay* page (*Restore defaults*
+  brings ULTRA OS's relay back). Making an ID and recovering one use it too.
+- **Connecting has a page of its own.** At every start with an ID on the
+  computer, and after *Create my ChatCube ID* or *Unlock*, ChatCube shows
+  *Connecting…* with the relay's address instead of the create-account
+  form. When an ID cannot connect, the page says why and offers *Try again*
+  and *Settings*; a password or code to type goes back to the form.
+
+#### 2026-11-11 *0.1.18*
+- **Settings > Appearance > Look: *System*.** Beside *Light* and *Dark*, the
+  computer's own look - its light or dark mode, and the Look page of
+  UOS-Settings over it - is the default. The theme is set under the
+  application's `Own` policy with `ThemeFor` as the provider; the look is
+  still decided when ChatCube starts, and the fonts are the desktop's.
+
+#### 2026-11-11 *0.1.17*
+- **A right click on a message opens a menu.**
+  - **Open** and **Save as** for a picture, a video or a file, received or
+    sent: *Save as* puts a copy where you choose, fetching the file first
+    when it is not on this computer yet.
+  - **Delete for me** removes the message from your side only.
+  - **Delete for everyone** removes it from the other side too, and asks
+    first because it cannot be undone.
+  - The menu shows what the chat's messenger allows for that message. In a
+    ChatCube chat: a text you sent can be deleted for everyone until the
+    other person has read it, afterwards only for yourself; a picture, a
+    video or a file you sent at any time; in a group, any message of yours
+    at any time. A file deleted for everyone is also removed from the other
+    person's ChatCube. Matrix offers *for everyone* only, Telegram both.
+  - Needs the framework's UltraIM delete scope (its changelog:
+    `ultraim-delete-scope`).
+
+#### 2026-11-11 *0.1.16*
+- **Settings > Networks > Proxy.** Matrix and the ChatCube relay are reached
+  through the proxy every ULTRA OS application shares, and the page opens
+  the Proxy settings dialog to choose it.
+
 #### 2026-11-04 *0.1.15*
 - **Your e-mail address is confirmed by a link.** Right after you make your
   ChatCube ID, the relay e-mails a link to the address you gave; opening it

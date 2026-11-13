@@ -8,14 +8,17 @@
 // cover it with a second one, open a menu in the first and read the screen
 // back: the menu must be on top, cut to its rounded outline, take clicks in
 // its own window as clicks in the window it belongs to, close on a click
-// outside it and when focus leaves the application, and go with its window,
-// so it never keeps the application running.
+// outside it and when focus leaves the application, close on Escape pressed
+// with the keyboard's focus on its own window (focus follows the pointer
+// there with no window manager), and go with its window, so it never keeps
+// the application running.
 //
 // X11 only (it reads the X server's stacking order, shapes and the screen's
 // pixels); runs headless under Xvfb. Skips - rather than fails - without a
 // display.
+// Version: 1.1.0 - Escape sent to the menu's own window closes it (the keyboard goes to the window it belongs to)
 // Version: 1.0.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -304,6 +307,27 @@ int main() {
     Click(app, target, Point2Di(380, 280));
     Frames(app);
     TEST("a click outside it closes it", !menu->IsVisible() && target->GetPopupWindow(*menu) == nullptr);
+
+    // A key pressed while the keyboard's focus is on the menu's own window -
+    // the window under the pointer, where focus follows it (no window
+    // manager) - reaches the window the menu belongs to: Escape closes it.
+    menu->OpenMenu(Point2Di(60, 40), *target, settings);
+    Frames(app);
+    {
+        auto ownWindow = Shared(app, target->GetPopupWindow(*menu));
+        TEST("opened for Escape: in a window of its own", ownWindow != nullptr);
+        if (ownWindow) {
+            UCEvent escape;
+            escape.type = UCEventType::KeyDown;
+            escape.virtualKey = UCKeys::Escape;
+            escape.targetWindow = ownWindow;
+            escape.nativeWindowHandle = ownWindow->GetNativeHandle();
+            app.DispatchEvent(escape);
+            Frames(app);
+        }
+        TEST("Escape in the menu's own window closes it",
+             !menu->IsVisible() && target->GetPopupWindow(*menu) == nullptr);
+    }
 
     // Focus leaving the application closes it: it floats above every window
     menu->OpenMenu(Point2Di(60, 40), *target, settings);

@@ -215,6 +215,15 @@ Registry<ISpeechToText, SpeechToTextConfig>& SttReg() {
                 };
             }
 #endif
+#ifdef ULTRAAI_HAS_LOCAL_ADAPTER
+            // whisper.cpp's server, downloaded and started by the local
+            // runtime: first on the local-first route.
+            if (!r.providers.count("local")) {
+                r.providers["local"] = [](const SpeechToTextConfig& cfg, Error* err) {
+                    return CreateLocalSpeechToText(cfg, err);
+                };
+            }
+#endif
         };
     });
     return r;

@@ -5,9 +5,13 @@
 //
 // The engine bundles are llama.cpp's own release archives for build b11669
 // (https://github.com/ggml-org/llama.cpp/releases/tag/b11669), hashed on
-// 2026-10-20. The UltraCanvas-built gallery of the design proposal (§5:
-// our names, signed, whisper.cpp and Piper built by our CI) replaces this
-// list when it exists; the format does not change.
+// 2026-10-20, and whisper.cpp v1.9.0's server: upstream's CPU builds for
+// Linux and Windows x64, hashed on 2026-11-10, and the rest built by this
+// repository's .github/workflows/whisper-server.yml (release
+// whisper-server-v1.9.0-r1, 2026-11-13). Its Linux Vulkan builds need glibc
+// 2.39, so they are optional: offered, never chosen by Auto. The
+// UltraCanvas-built gallery of the design proposal (§5: our names, signed)
+// replaces this list when it exists; the format does not change.
 //
 // The catalogue's files are Hugging Face "resolve" URLs. A file whose
 // sha256 is empty here is verified against the hash Hugging Face reports
@@ -15,9 +19,10 @@
 // hash is recorded in the model's model.json. Pinning the hashes here is
 // the curation step the proposal describes (§6.3); sizes are approximate
 // until then and are corrected from the host at install time.
+// Version: 0.3.0 - whisper-server: our builds for macOS, Windows on ARM and Vulkan
 // Version: 0.2.0 - the built-in topics
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-13
 // Author: UltraAI Module
 
 #include "LocalRuntimeInternal.h"
@@ -52,6 +57,26 @@ const char* BuiltinGalleryJson() {
         {"platform": "win-x64",     "accel": "vulkan", "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-win-vulkan-x64.zip",         "sha256": "2c07574e7bde71321cb785282b20cc821e951132149eeceeea32ddebdbf0598e", "size": 32182350},
         {"platform": "win-arm64",   "accel": "cpu",    "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-win-cpu-arm64.zip",          "sha256": "9cff39ffed17edcd03a7d876073f74d7b48cd43a1e5eafdd59ee094185ad871b", "size": 12442177},
         {"platform": "win-arm64",   "accel": "vulkan", "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11669/llama-b11669-bin-win-vulkan-arm64.zip",       "sha256": "963d3b185362cadca3de643409f916a5ce95dd0f7fd8617ba9ee5d8833ac1ef3", "size": 24817965}
+      ]
+    },
+    {
+      "id": "whisper-server",
+      "version": "v1.9.0",
+      "license": "MIT",
+      "executable": "whisper-server",
+      "serves": ["speechtotext"],
+      "defaultArgs": [],
+      "bundles": [
+        {"platform": "linux-x64",     "accel": "cpu",    "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.0/whisper-bin-ubuntu-x64.tar.gz", "sha256": "478ccaeb4fac4c57aa841763473760d7636e68aabedc9efc853db0b60d3e6150", "size": 13194601},
+        {"platform": "linux-x64",     "accel": "vulkan", "url": "https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/whisper-server-v1.9.0-r1/whisper-server-v1.9.0-r1-linux-x64-vulkan.tar.gz", "sha256": "aeb6cf06f5314fcd6714d1fee09aa103737b0f2beccde88585d600659d1adc06", "size": 20498403, "optional": true},
+        {"platform": "linux-arm64",   "accel": "cpu",    "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.0/whisper-bin-ubuntu-arm64.tar.gz", "sha256": "4cff5dca013b99573d61fc7b654f376eb87d05a2fdb1ec22bd270cf434ccf1f2", "size": 12641400},
+        {"platform": "linux-arm64",   "accel": "vulkan", "url": "https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/whisper-server-v1.9.0-r1/whisper-server-v1.9.0-r1-linux-arm64-vulkan.tar.gz", "sha256": "53f65d47b6d238b98493168fa866cfdcf7ba2f032efe474df27d26ed3db75420", "size": 20401622, "optional": true},
+        {"platform": "macos-arm64",   "accel": "metal",  "url": "https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/whisper-server-v1.9.0-r1/whisper-server-v1.9.0-r1-macos-arm64-metal.tar.gz", "sha256": "bf2a25c11242f4d3c2c147474a336f5f59e88cb45366477d19070ade34a8aa6e", "size": 1308641, "minOs": "13.3"},
+        {"platform": "macos-x64",     "accel": "cpu",    "url": "https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/whisper-server-v1.9.0-r1/whisper-server-v1.9.0-r1-macos-x64-cpu.tar.gz", "sha256": "46645fbedbb4dc46f40da0b76261ce6bc74457d16af61197a5bf22254d4e332d", "size": 1340497, "minOs": "13.3"},
+        {"platform": "win-x64",       "accel": "cpu",    "url": "https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.0/whisper-bin-x64.zip", "sha256": "00c4304b6be363a224a4b69829df49009f74131df8c3ce6a5878b89a11cd26ef", "size": 5410599},
+        {"platform": "win-x64",       "accel": "vulkan", "url": "https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/whisper-server-v1.9.0-r1/whisper-server-v1.9.0-r1-win-x64-vulkan.zip", "sha256": "6aace61b933c95d0b1bdb9c21c7ffc2d3f987e16df4b860949602b0d30f8bf8d", "size": 22295450},
+        {"platform": "win-arm64",     "accel": "cpu",    "url": "https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/whisper-server-v1.9.0-r1/whisper-server-v1.9.0-r1-win-arm64-cpu.zip", "sha256": "a449f73c91990bafd93d0de97a656a0ce4ef9109a9bd0a1346f4a2542f8226d0", "size": 1137529},
+        {"platform": "win-arm64",     "accel": "vulkan", "url": "https://github.com/ULTRA-OS-Project/UltraCanvas/releases/download/whisper-server-v1.9.0-r1/whisper-server-v1.9.0-r1-win-arm64-vulkan.zip", "sha256": "8ad9b32011440f7b62e6ec2e3881bffa9e1dc861f7891369143820fb2fe6c7cc", "size": 22215283}
       ]
     }
   ]
@@ -147,6 +172,39 @@ const char* BuiltinCatalogueJson() {
       "features": {"contextWindow": 8192, "embeddingDimensions": 768},
       "engineArgs": ["--ctx-size", "8192", "--pooling", "mean"],
       "tags": ["embeddings", "small"]
+    },
+    {
+      "id": "whisper-small",
+      "displayName": "Whisper Small",
+      "description": "Speech to text in about 100 languages, for recordings and the sound of videos. A good balance of accuracy and speed on a computer without a GPU.",
+      "capability": "speechtotext",
+      "engine": "whisper-server",
+      "license": "MIT",
+      "files": [{"name": "ggml-small.bin", "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin", "size": 488636416}],
+      "requires": {"memoryBytes": 1000000000},
+      "tags": ["speech", "multilingual", "recommended"]
+    },
+    {
+      "id": "whisper-base",
+      "displayName": "Whisper Base",
+      "description": "Small and fast speech to text in about 100 languages. Less accurate than Whisper Small; for an older or smaller computer.",
+      "capability": "speechtotext",
+      "engine": "whisper-server",
+      "license": "MIT",
+      "files": [{"name": "ggml-base.bin", "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin", "size": 148897792}],
+      "requires": {"memoryBytes": 500000000},
+      "tags": ["speech", "multilingual", "small"]
+    },
+    {
+      "id": "whisper-large-v3-turbo-q5",
+      "displayName": "Whisper Large v3 Turbo (Q5_0)",
+      "description": "The most accurate local speech to text, in about 100 languages. Slower: best on a computer with 8 cores or more.",
+      "capability": "speechtotext",
+      "engine": "whisper-server",
+      "license": "MIT",
+      "files": [{"name": "ggml-large-v3-turbo-q5_0.bin", "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin", "size": 573571072}],
+      "requires": {"memoryBytes": 1600000000},
+      "tags": ["speech", "multilingual"]
     }
   ]
 })json";
@@ -200,6 +258,13 @@ const char* BuiltinTopicsJson() {
       "description": "Embeddings for finding related text.",
       "capability": "embeddings",
       "models": [{"id": "qwen3-embedding-0.6b-q8", "default": true}, {"id": "nomic-embed-text-v1.5-q8"}]
+    },
+    {
+      "id": "transcription",
+      "name": "Transcription",
+      "description": "Turning recordings and the sound of videos into text.",
+      "capability": "speechtotext",
+      "models": [{"id": "whisper-small", "default": true}, {"id": "whisper-base"}, {"id": "whisper-large-v3-turbo-q5"}]
     }
   ]
 })json";

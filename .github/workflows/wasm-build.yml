@@ -41,6 +41,7 @@ on:
       - '.github/workflows/wasm-build.yml'
       - 'UltraCanvas/OS/WASM/**'
       - 'cmake/UltraCanvasWasmSysroot.cmake'
+      - 'cmake/UltraCanvasWasmApp.cmake'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
       - 'UltraCanvas/libspecific/Cairo/**'
@@ -59,6 +60,7 @@ on:
       - '.github/workflows/wasm-build.yml'
       - 'UltraCanvas/OS/WASM/**'
       - 'cmake/UltraCanvasWasmSysroot.cmake'
+      - 'cmake/UltraCanvasWasmApp.cmake'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
       - 'UltraCanvas/libspecific/Cairo/**'
@@ -127,10 +129,21 @@ jobs:
             threads: 0
             configure: -DCMAKE_BUILD_TYPE=Release -DULTRACANVAS_WASM_THREADS=OFF
             experimental: false
+          # The UltraCanvas runtime (UltraCanvas/OS/WASM/runtime,
+          # Docs/UltraCanvas/UltraCanvasWasmRuntime.md): everything -fPIC
+          # against a sysroot built WASM_PIC=1, so apps load as side modules
+          # into one UltraCanvas main module. Single-threaded, as dynamic
+          # linking in a browser is; the pages and tests of the single-thread
+          # variant run here too, on the -fPIC build.
+          - variant: dynamic
+            threads: 0
+            pic: 1
+            configure: -DCMAKE_BUILD_TYPE=Release -DULTRACANVAS_WASM_THREADS=OFF -DULTRACANVAS_WASM_DYNAMIC=ON
+            experimental: false
     env:
       # One sysroot per thread setting: objects built with -pthread do not
       # link without it, so the two never share a directory or a cache key.
-      SYSROOT: ${{ github.workspace }}/wasm-sysroot-threads${{ matrix.threads }}
+      SYSROOT: ${{ github.workspace }}/wasm-sysroot-threads${{ matrix.threads }}${{ matrix.pic && '-pic' || '' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -162,9 +175,14 @@ jobs:
       - name: Set up Emscripten
         timeout-minutes: 15
         run: |
-          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          # The clone and the toolchain download retried (scripts/ci-retry.sh),
+          # the clone into an emptied folder each time. `emsdk install` needs
+          # no cleaning between tries: without EMSDK_KEEP_DOWNLOADS it fetches
+          # every archive again rather than reusing a cut-off one.
+          scripts/ci-retry.sh --clean "$RUNNER_TEMP/emsdk" -- \
+            git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          scripts/ci-retry.sh -- "$RUNNER_TEMP/emsdk/emsdk" install "$EMSDK_VERSION"
           cd "$RUNNER_TEMP/emsdk"
-          ./emsdk install "$EMSDK_VERSION"
           ./emsdk activate "$EMSDK_VERSION"
           source ./emsdk_env.sh
           echo "$EMSDK" >> "$GITHUB_PATH"
@@ -182,13 +200,14 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.SYSROOT }}
-          key: wasm-sysroot-${{ runner.os }}-${{ env.EMSDK_VERSION }}-threads${{ matrix.threads }}-${{ hashFiles('UltraCanvas/OS/WASM/build-wasm-sysroot.sh', 'UltraCanvas/OS/WASM/patches/**') }}
+          key: wasm-sysroot-${{ runner.os }}-${{ env.EMSDK_VERSION }}-threads${{ matrix.threads }}${{ matrix.pic && '-pic' || '' }}-${{ hashFiles('UltraCanvas/OS/WASM/build-wasm-sysroot.sh', 'UltraCanvas/OS/WASM/patches/**') }}
 
       - name: Build wasm sysroot
         if: steps.sysroot-cache.outputs.cache-hit != 'true'
         working-directory: UltraCanvas/OS/WASM
         env:
           WASM_THREADS: ${{ matrix.threads }}
+          WASM_PIC: ${{ matrix.pic || 0 }}
         run: ./build-wasm-sysroot.sh "$SYSROOT" "${{ runner.temp }}/wasm-sysroot-build"
 
       - name: Save wasm sysroot
@@ -348,6 +367,26 @@ jobs:
           node build-wasm/Apps/UltraWeb/browser/wasmhost-browser-test.js
           npx playwright install chromium
           node Apps/UltraWeb/browser/test/runtime-test.mjs build-wasm/Apps/UltraWeb/browser
+
+      # The UltraCanvas runtime: the sample C++ app, a side module, in
+      # Chromium without the extension (the runtime from the site) and with it
+      # (the site sends only the page, the loader and the app). Its button,
+      # checkbox and own element must answer real clicks.
+      - name: UltraCanvas runtime in Chromium
+        if: matrix.pic == 1
+        env:
+          UCR_OUT: ucr-${{ matrix.variant }}
+        run: |
+          npx playwright install chromium
+          node UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs build-wasm/UltraCanvas/OS/WASM/runtime
+
+      - name: Upload the UltraCanvas runtime screenshots and logs
+        if: always() && matrix.pic == 1
+        uses: actions/upload-artifact@v6
+        with:
+          name: ultracanvas-runtime-${{ matrix.variant }}
+          path: ucr-${{ matrix.variant }}
+          if-no-files-found: ignore
 
       - name: Upload the UltraWeb runtime screenshots and logs
         if: always() && matrix.threads == 0

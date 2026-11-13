@@ -3,9 +3,11 @@
 // tested on their own: the gallery and catalogue formats, the hardware fit,
 // the storage layout, files, hashing, archives and processes. The facade in
 // LocalRuntime.cpp composes them.
+// Version: 0.4.0 - whisper-server's command line
+// Version: 0.3.0 - gallery signatures
 // Version: 0.2.0 - topics
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-12
 // Author: UltraAI Module
 #pragma once
 
@@ -77,6 +79,14 @@ std::string HuggingFaceTreeUrl(const std::string& repo, const std::string& revis
 // oid). False when the file is not listed.
 bool ParseHuggingFaceTree(const std::string& json, const std::string& file,
                           uint64_t& outSize, std::string& outSha256);
+// Whether `bytes` carry an Ed25519 signature (`signatureHex`: 128 hex
+// characters, whitespace around it ignored) by one of `publicKeysHex`.
+// False for a malformed signature or key, or without a crypto backend.
+bool VerifyDocumentSignature(const std::string& bytes, const std::string& signatureHex,
+                             const std::vector<std::string>& publicKeysHex);
+// The keys of a keys.json ({"formatVersion": 1, "algorithm": "ed25519",
+// "keys": [hex, ...]}), lower-cased; false when it is not one.
+bool ParseGalleryKeys(const std::string& json, std::vector<std::string>& outKeysHex);
 // Settings to and from JSON.
 std::string SerializeSettings(const LocalRuntimeSettings& settings);
 bool ParseSettings(const std::string& json, LocalRuntimeSettings& out);
@@ -97,7 +107,16 @@ bool ChooseBundleFor(const EngineInfo& engine, const HardwareProfile& hardware,
 // The GPU-offload and thread arguments for llama.cpp-family engines.
 std::vector<std::string> OffloadArgs(const LocalModelInfo& model, const HardwareProfile& hardware,
                                      const std::string& accelerator);
-// The whole command line for an engine start, without the executable.
+// "--threads N": the physical cores, less two for the desktop above four.
+std::vector<std::string> ThreadArgs(const HardwareProfile& hardware);
+// Where whisper-server is told to take transcriptions: the OpenAI audio
+// API's path, so the OpenAI adapter speaks to it unchanged.
+inline constexpr const char* kWhisperInferencePath = "/v1/audio/transcriptions";
+// The whole command line for an engine start, without the executable:
+// llama-server's (the runtime key, the offload, --alias, --mmproj,
+// --embeddings) or whisper-server's (the model, the inference path,
+// --language auto, the threads); then the engine's and the model's own
+// arguments.
 std::vector<std::string> BuildEngineArgs(const EngineInfo& engine, const LocalModelInfo& model,
                                          const std::string& accelerator, int port,
                                          const std::string& apiKeyFileUtf8,

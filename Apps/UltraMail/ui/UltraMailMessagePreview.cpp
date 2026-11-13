@@ -1,4 +1,10 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.23.1 - the warning strip's advice, footnotes and crypto caution title go
+//                   through Tr (they were English only)
+// Version: 0.23.0 - the warning strip in markup: the domain mismatch and the scan's
+//                   reasons as a numbered list, the domains bold in the strip's colour;
+//                   each kind of strip can be hidden (Settings > Display > Email warnings)
+// Version: 0.22.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.21.1 - the body's file through CachedBodyPath (its own copy of the
 //                  folder-directory rule went stale)
 // Version: 0.21.0 - signed and encrypted mail: opened off the UI thread, its
@@ -67,7 +73,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailStorage.h"
@@ -89,6 +95,7 @@
 
 #include "UltraMailMimeCodec.h"
 #include "UltraMailTheme.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <UltraNet/UltraNetHttp.h>
 #include <UltraNet/UltraNetMime.h>
@@ -120,10 +127,10 @@ constexpr float kHeaderHeight = 44.0f;
 // One sender check as a small bordered label: the method's name, in the
 // colour of its result, the details as its tooltip.
 std::shared_ptr<UltraCanvasLabel> MakeAuthTag(const std::string& id, const AuthCheck& check) {
-    const Color color = check.state == AuthCheckState::Passed ? Theme::kTrustFriend
-                      : check.state == AuthCheckState::Failed ? Theme::kTrustScam
-                                                              : Theme::kTextMuted;
-    auto tag = Theme::MakeText(id, check.label, Theme::kSizeSmall, color, FontWeight::Bold);
+    const Color color = check.state == AuthCheckState::Passed ? Theme::TrustFriend()
+                      : check.state == AuthCheckState::Failed ? Theme::TrustScam()
+                                                              : Theme::TextMuted();
+    auto tag = Theme::MakeText(id, check.label, Theme::SizeSmall(), color, FontWeight::Bold);
     tag->SetBorders(1.0f, color, 3.0f);
     tag->SetPadding(1.0f, 4.0f);
     tag->SetTooltip(check.tooltip);
@@ -404,10 +411,10 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     auto moreBtn = makeActionButton("prevMore", "More", "");
     moreMenu_ = std::make_shared<UltraCanvasMenu>("prevMoreMenu", 0, 0, 200, 0);
     moreMenu_->SetMenuType(MenuType::PopupMenu);
-    moreMenu_->AddItem(MenuItemData::Action("Mark as Unread", [this]() {
+    moreMenu_->AddItem(MenuItemData::Action(Tr("Mark as Unread"), [this]() {
         if (onMarkUnread && hasMessage_) onMarkUnread(curEnv_);
     }));
-    moreMenu_->AddItem(MenuItemData::Action("View source", [this]() {
+    moreMenu_->AddItem(MenuItemData::Action(Tr("View source"), [this]() {
         if (onViewSource && hasMessage_) onViewSource(current_.subject, curRaw_);
     }));
     UltraCanvasButton* moreRaw = moreBtn.get();
@@ -426,8 +433,8 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     // Auto-height, word-wrapping subject: a long subject wraps to the pane
     // width and grows downward instead of overflowing horizontally (which drew
     // a scrollbar and painted over the header row). Never shrink it.
-    subject_ = Theme::MakeText("prevSubject", "Select a message", kSubjectFont,
-                               Theme::kTextPrimary, FontWeight::Bold);
+    subject_ = Theme::MakeText("prevSubject", Tr("Select a message"), kSubjectFont,
+                               Theme::TextPrimary(), FontWeight::Bold);
     subject_->SetWrap(TextWrap::WrapWord);
     root_->AddChild(subject_);
     subject_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -464,10 +471,10 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     // Auto-height labels so each sizes to its own glyph line — a fixed-height
     // box cropped the second line regardless of the row height.
-    from_ = Theme::MakeText("prevFrom", "", Theme::kSizeBody,
-                            Theme::kTextPrimary, FontWeight::Bold);
-    to_   = Theme::MakeText("prevTo", "", Theme::kSizeSecondary,
-                            Theme::kTextSecondary);
+    from_ = Theme::MakeText("prevFrom", "", Theme::SizeBody(),
+                            Theme::TextPrimary(), FontWeight::Bold);
+    to_   = Theme::MakeText("prevTo", "", Theme::SizeSecondary(),
+                            Theme::TextSecondary());
     who->AddChild(from_);
     who->AddChild(to_);
     header->AddChild(who);
@@ -480,8 +487,8 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     header->AddChild(authRow_);
     authRow_->layoutItem.SetFlexShrink(0);
 
-    date_ = Theme::MakeLine("prevDate", "", kHeaderLine, Theme::kSizeSecondary,
-                            Theme::kTextSecondary);
+    date_ = Theme::MakeLine("prevDate", "", kHeaderLine, Theme::SizeSecondary(),
+                            Theme::TextSecondary());
     date_->SetElementSize(Size2Df(kDateWidth, kHeaderLine));
     date_->SetAlignment(TextAlignment::Right);
     header->AddChild(date_);
@@ -507,11 +514,11 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                     .SetFlexGap(2)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     warning_->SetPadding(8.0f, 10.0f);
-    warningTitle_ = Theme::MakeText("prevWarningTitle", "", Theme::kSizeBody,
-                                    Theme::kTrustScam, FontWeight::Bold);
+    warningTitle_ = Theme::MakeText("prevWarningTitle", "", Theme::SizeBody(),
+                                    Theme::TrustScam(), FontWeight::Bold);
     warningTitle_->SetWrap(TextWrap::WrapWord);
-    warningText_ = Theme::MakeText("prevWarningText", "", Theme::kSizeSecondary,
-                                   Theme::kTextPrimary);
+    warningText_ = Theme::MakeText("prevWarningText", "", Theme::SizeSecondary(),
+                                   Theme::TextPrimary());
     warningText_->SetWrap(TextWrap::WrapWord);
     warning_->AddChild(warningTitle_);
     warning_->AddChild(warningText_);
@@ -530,10 +537,10 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                       .SetFlexGap(6)
                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     remoteBar_->SetPadding(6.0f, 10.0f);
-    remoteBar_->SetBackgroundColor(Theme::kSidebar);
-    remoteBar_->SetBorders(1.0f, Theme::kCardBorder, Theme::kControlRadius);
-    remoteText_ = Theme::MakeText("prevRemoteText", "", Theme::kSizeSecondary,
-                                  Theme::kTextSecondary);
+    remoteBar_->SetBackgroundColor(Theme::Sidebar());
+    remoteBar_->SetBorders(1.0f, Theme::CardBorder(), Theme::kControlRadius);
+    remoteText_ = Theme::MakeText("prevRemoteText", "", Theme::SizeSecondary(),
+                                  Theme::TextSecondary());
     remoteText_->SetWrap(TextWrap::WrapWord);
     remoteBar_->AddChild(remoteText_);
     remoteText_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -542,13 +549,13 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                          .SetFlexGap(Theme::kInnerGap)
                          .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     remoteBar_->AddChild(remoteButtons);
-    remoteShow_ = CreateButton("prevRemoteShow", 0, 0, 100, Theme::kControlHeight, "Show images");
+    remoteShow_ = CreateButton("prevRemoteShow", 0, 0, 100, Theme::kControlHeight, Tr("Show images"));
     Theme::FitToLabel(remoteShow_, 100);
     Theme::StyleSecondary(remoteShow_);
     remoteShow_->onClick = [this]() { FetchRemoteImages(); };
     remoteButtons->AddChild(remoteShow_);
     remoteAlways_ = CreateButton("prevRemoteAlways", 0, 0, 120, Theme::kControlHeight,
-                                 "Always from this sender");
+                                 Tr("Always from this sender"));
     Theme::FitToLabel(remoteAlways_, 120);
     Theme::StyleSecondary(remoteAlways_);
     remoteAlways_->onClick = [this]() {
@@ -570,22 +577,22 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                     .SetFlexGap(Theme::kInnerGap)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     codeBar_->SetPadding(6.0f, 10.0f);
-    codeBar_->SetBackgroundColor(Theme::kSidebar);
-    codeBar_->SetBorders(1.0f, Theme::kCardBorder, Theme::kControlRadius);
+    codeBar_->SetBackgroundColor(Theme::Sidebar());
+    codeBar_->SetBorders(1.0f, Theme::CardBorder(), Theme::kControlRadius);
     if (auto st = codeBar_->GetContainerStyle(); true) {
         st.autoShowScrollbars = false;
         codeBar_->SetContainerStyle(st);
     }
-    auto codeCaption = Theme::MakeText("prevCodeCaption", "Code", Theme::kSizeSecondary,
-                                       Theme::kTextSecondary);
+    auto codeCaption = Theme::MakeText("prevCodeCaption", Tr("Code"), Theme::SizeSecondary(),
+                                       Theme::TextSecondary());
     codeBar_->AddChild(codeCaption);
     codeCaption->layoutItem.SetFlexShrink(0);
-    codeText_ = Theme::MakeText("prevCodeText", "", Theme::kSizeHeading, Theme::kTextPrimary,
+    codeText_ = Theme::MakeText("prevCodeText", "", Theme::SizeHeading(), Theme::TextPrimary(),
                                 FontWeight::Bold);
     codeText_->SetSelectable(true);
     codeBar_->AddChild(codeText_);
     codeText_->layoutItem.SetFlexShrink(0);
-    codeCopy_ = CreateButton("prevCodeCopy", 0, 0, 80, Theme::kControlHeight, "Copy");
+    codeCopy_ = CreateButton("prevCodeCopy", 0, 0, 80, Theme::kControlHeight, Tr("Copy"));
     Theme::FitToLabel(codeCopy_, 80);
     Theme::StyleSecondary(codeCopy_);
     codeCopy_->SetIcon(IconPath("copy.svg"));
@@ -593,7 +600,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     codeCopy_->SetIconSize(14, 14);
     codeCopy_->SetIconSpacing(6);
     codeCopy_->SetUseIconAsMask(true);
-    codeCopy_->SetTooltip("Copy the code");
+    codeCopy_->SetTooltip(Tr("Copy the code"));
     codeCopy_->onClick = [this]() {
         if (!codes_.empty()) CopyCode(codes_.front().code, codeCopy_.get());
     };
@@ -860,7 +867,7 @@ void MessagePreview::ShowTextMenu(const UCEvent& event, bool canCopy,
     textMenu_->SetMenuType(MenuType::PopupMenu);
     // Over a link: its address, as the message wrote it, for pasting elsewhere.
     if (!link.empty()) {
-        textMenu_->AddItem(MenuItemData::Action("Copy link", [link]() { SetClipboardText(link); }));
+        textMenu_->AddItem(MenuItemData::Action(Tr("Copy link"), [link]() { SetClipboardText(link); }));
         textMenu_->AddItem(MenuItemData::Separator());
     }
     MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
@@ -975,7 +982,7 @@ void MessagePreview::ShowOneTimeCodes(const std::vector<std::string>& blocks,
     const bool bar = !codes_.empty() && !placed;
     if (bar) codeText_->SetText(codes_.front().shown);
     if (codeCopy_) {
-        codeCopy_->SetText("Copy");
+        codeCopy_->SetText(Tr("Copy"));
         codeCopy_->SetIcon(IconPath("copy.svg"));
     }
     codeBar_->SetVisible(bar);
@@ -987,14 +994,14 @@ void MessagePreview::CopyCode(const std::string& code, UltraCanvasButton* button
     // A check mark (and "Copied") for a moment, then the copy icon again.
     const bool hasText = !button->GetText().empty();
     button->SetIcon(IconPath("clipboard/check.svg"));
-    if (hasText) button->SetText("Copied");
+    if (hasText) button->SetText(Tr("Copied"));
     std::weak_ptr<UltraCanvasUIElement> weak = button->weak_from_this();
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         app->StartTimer(1500, false, [weak, hasText](TimerId) {
             auto b = std::dynamic_pointer_cast<UltraCanvasButton>(weak.lock());
             if (!b) return;
             b->SetIcon(IconPath("copy.svg"));
-            if (hasText) b->SetText("Copy");
+            if (hasText) b->SetText(Tr("Copy"));
         });
     }
 }
@@ -1032,7 +1039,7 @@ void MessagePreview::UpdateRemoteBar() {
     remoteBar_->SetVisible(show || fetchingRemote_);
     if (!show && !fetchingRemote_) return;
     if (fetchingRemote_) {
-        remoteText_->SetText("Loading images\xE2\x80\xA6");
+        remoteText_->SetText(Tr("Loading images\xE2\x80\xA6"));
         remoteShow_->SetVisible(false);
         remoteAlways_->SetVisible(false);
         return;
@@ -1173,6 +1180,75 @@ MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
     return sec;
 }
 
+namespace {
+
+// Text for the warning strip's label, which reads Pango markup: <, > and &
+// written as entities.
+std::string WarningMarkup(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char ch : text) {
+        switch (ch) {
+            case '&': out += "&amp;"; break;
+            case '<': out += "&lt;";  break;
+            case '>': out += "&gt;";  break;
+            default:  out += ch;      break;
+        }
+    }
+    return out;
+}
+
+bool IsHostChar(char ch) {
+    return std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '.' ||
+           (static_cast<unsigned char>(ch) & 0x80);
+}
+
+// Whether text[at, at + len) is a whole host name, not part of a longer one:
+// "woo.com" is not inside "mywoo.com" or "trk.woo.com", but is in "woo.com." at
+// the end of a sentence.
+bool WholeHost(const std::string& text, std::size_t at, std::size_t len) {
+    if (at > 0 && IsHostChar(text[at - 1])) return false;
+    const std::size_t end = at + len;
+    if (end >= text.size() || !IsHostChar(text[end])) return true;
+    return text[end] == '.' && (end + 1 >= text.size() || !IsHostChar(text[end + 1]));
+}
+
+// `text` as markup, with every occurrence of the domains in `domains` bold and
+// in `colour` - the names the reader should compare stand out of the sentence.
+std::string HighlightDomains(const std::string& text, std::vector<std::string> domains,
+                             const Color& colour) {
+    domains.erase(std::remove_if(domains.begin(), domains.end(),
+                                 [](const std::string& d) { return d.empty(); }),
+                  domains.end());
+    // The longest first, so "trk.woo.com" is not cut at a shorter "woo.com".
+    std::sort(domains.begin(), domains.end(),
+              [](const std::string& a, const std::string& b) { return a.size() > b.size(); });
+    const std::string open = "<span foreground=\"" + colour.ToHexString() + "\"><b>";
+    std::string out;
+    std::size_t pos = 0;
+    while (pos < text.size()) {
+        std::size_t best = std::string::npos;
+        std::size_t bestLen = 0;
+        for (const std::string& d : domains) {
+            std::size_t at = text.find(d, pos);
+            while (at != std::string::npos && !WholeHost(text, at, d.size()))
+                at = text.find(d, at + 1);
+            if (at != std::string::npos && (at < best || (at == best && d.size() > bestLen))) {
+                best = at;
+                bestLen = d.size();
+            }
+        }
+        if (best == std::string::npos) break;
+        out += WarningMarkup(text.substr(pos, best - pos));
+        out += open + WarningMarkup(text.substr(best, bestLen)) + "</b></span>";
+        pos = best + bestLen;
+    }
+    if (pos < text.size()) out += WarningMarkup(text.substr(pos));
+    return out;
+}
+
+} // namespace
+
 void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                                          const MessageSecurity& security,
                                          const std::string& raw) {
@@ -1193,24 +1269,25 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     // or with the scan's own reasons beside it.
     const bool blocked = security.HasFinding("blocked-sender");
     const bool onlyBlocked = blocked && security.findings == "blocked-sender";
-    const char* cryptoAdvice =
-        "A crypto payment cannot be called back: whoever receives it keeps it. No genuine "
-        "wallet, exchange or help desk asks for your recovery phrase (seed phrase) or "
-        "private key, and no genuine investment guarantees a profit. Never send crypto to "
-        "someone you only know from email or the internet.";
+    const std::string cryptoAdvice =
+        Tr("A crypto payment cannot be called back: whoever receives it keeps it. No genuine "
+           "wallet, exchange or help desk asks for your recovery phrase (seed phrase) or "
+           "private key, and no genuine investment guarantees a profit. Never send crypto to "
+           "someone you only know from email or the internet.");
 
     // Only the two verdicts worth interrupting a reader for. Advertisements and
     // unknown senders are the badge's business, not a banner's - except that
     // any mail about crypto gets a word of caution, whoever sent it.
     if (!status.Dangerous()) {
-        if (!crypto) {
+        if (!crypto || !warningStrip_.cryptoCaution) {
             warning_->SetVisible(false);
             return;
         }
-        warning_->SetBackgroundColor(Theme::kTrustSpamSoft);
-        warning_->SetBorders(1.0f, Theme::kTrustSpam, Theme::kControlRadius);
-        warningTitle_->SetTextColor(Theme::kTrustSpam);
-        warningTitle_->SetText("\xE2\x9A\xA0 Caution: this message is about cryptocurrency");
+        warningText_->SetTextIsMarkup(false);
+        warning_->SetBackgroundColor(Theme::TrustSpamSoft());
+        warning_->SetBorders(1.0f, Theme::TrustSpam(), Theme::kControlRadius);
+        warningTitle_->SetTextColor(Theme::TrustSpam());
+        warningTitle_->SetText("\xE2\x9A\xA0 " + Tr("Caution: this message is about cryptocurrency"));
         warningText_->SetText(cryptoAdvice);
         warning_->SetVisible(true);
         return;
@@ -1226,77 +1303,125 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         mismatch = FindDomainMismatchInRaw(raw);
     const bool phishing = mismatch.found;
 
+    // Settings > Display > Email warnings: the strip for the kind told (the
+    // same order as the title below) may be switched off. The badge still says.
+    const bool kindShown = romance                         ? warningStrip_.romance
+                         : phishing || lookalike || webPage ? warningStrip_.phishing
+                         : cryptoScam                      ? warningStrip_.cryptoScam
+                         : loan                            ? warningStrip_.loan
+                         : status.cls == SenderClass::Scam ? warningStrip_.scam
+                                                           : warningStrip_.suspicious;
+    if (!kindShown) {
+        warning_->SetVisible(false);
+        return;
+    }
+
     // The scam the scan named comes first: a love letter that links to a
     // "verification" site is a romance scam, and is told as one.
     const bool scam = status.cls == SenderClass::Scam || phishing;
-    const Color accent = scam ? Theme::kTrustScam : Theme::kTrustSpam;
-    warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
+    const Color accent = scam ? Theme::TrustScam() : Theme::TrustSpam();
+    warning_->SetBackgroundColor(scam ? Theme::TrustScamSoft() : Theme::TrustSpamSoft());
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
-    const char* what = romance                ? "romance scam"
-                     : phishing || lookalike || webPage ? "phishing"
-                     : cryptoScam ? "cryptocurrency scam"
-                     : loan       ? "loan scam"
-                     : nullptr;
+    const std::string what = romance                ? Tr("romance scam")
+                           : phishing || lookalike || webPage ? Tr("phishing")
+                           : cryptoScam ? Tr("cryptocurrency scam")
+                           : loan       ? Tr("loan scam")
+                           : std::string();
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
-        (what ? std::string(scam ? "Warning: This is likely a " : "Warning: This may be a ") +
-                    what + "* email!"
+        (!what.empty() ? (scam ? TrF("Warning: This is likely a {0}* email!", what)
+                               : TrF("Warning: This may be a {0}* email!", what))
          : status.cls == SenderClass::Scam
-              ? std::string("This message looks like a scam or phishing attempt")
-         : blocked ? std::string("You blocked this sender")
-              : std::string("Parts of this message do not add up")));
+              ? Tr("This message looks like a scam or phishing attempt")
+         : blocked ? Tr("You blocked this sender")
+              : Tr("Parts of this message do not add up")));
 
+    // The strip's text is markup: the domains the reader should compare are
+    // bold and in the strip's colour wherever they appear, and the evidence is
+    // a numbered list - the sender's domain, where the button goes, then each
+    // reason the scan gave.
+    const std::vector<std::string> domains = {mismatch.senderDomain, mismatch.linkDomain};
+    const auto mark = [&](const std::string& plain) {
+        return HighlightDomains(plain, domains, accent);
+    };
     std::string text;
+    int item = 0;
+    const auto numbered = [&item, &mark](const std::string& plain) {
+        return "  " + std::to_string(++item) + ".  " + mark(plain) + "\n";
+    };
     if (phishing) {
-        text = "Mismatch of domains\n"
-               "Sender domain: " + mismatch.senderDomain + "\n" +
-               (mismatch.isButton ? "Button domain: " : "Link domain: ") +
-               mismatch.linkDomain;
+        text = "<b>" + WarningMarkup(Tr("Mismatch of domains")) + ":</b>\n";
+        text += numbered(TrF("Sender domain: {0}", mismatch.senderDomain));
+        std::string link = mismatch.isButton ? TrF("Button domain: {0}", mismatch.linkDomain)
+                                             : TrF("Link domain: {0}", mismatch.linkDomain);
         if (!mismatch.linkText.empty())
-            text += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
-        text += "\n";
-    } else if (!onlyBlocked) {
-        text = status.reason;
+            link += "  (\xE2\x80\x9C" + mismatch.linkText + "\xE2\x80\x9D)";
+        text += numbered(link);
+    } else if (!onlyBlocked && !status.reason.empty()) {
+        text = mark(status.reason) + "\n";
     }
-    if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
+    // The scan's reasons, "• one\n• two": numbered on from the domains when
+    // there is a mismatch, as bullets otherwise.
+    if (!security.reason.empty()) {
+        std::size_t pos = 0;
+        while (pos <= security.reason.size()) {
+            std::size_t nl = security.reason.find('\n', pos);
+            if (nl == std::string::npos) nl = security.reason.size();
+            std::string line = security.reason.substr(pos, nl - pos);
+            pos = nl + 1;
+            if (line.empty()) continue;
+            static const std::string bullet = "\xE2\x80\xA2 ";   // "• "
+            const bool isBullet = line.compare(0, bullet.size(), bullet) == 0;
+            if (phishing && isBullet)
+                text += numbered(line.substr(bullet.size()));
+            else
+                text += mark(line) + "\n";
+        }
+    }
+    std::string advice;
     if (onlyBlocked)
-        text += "\nRight-click the sender to unblock them. \"Mark as spam\" moves the "
-                "message to the junk folder.";
+        advice = Tr("Right-click the sender to unblock them. \"Mark as spam\" moves the "
+                 "message to the junk folder.");
     else if (loan)
-        text += "\nDo not pay any fee, insurance or charge to receive a loan, and do not "
-                "send copies of your passport or bank details. Ask your own bank if you need "
-                "credit.";
+        advice = Tr("Do not pay any fee, insurance or charge to receive a loan, and do not "
+                 "send copies of your passport or bank details. Ask your own bank if you need "
+                 "credit.");
     else if (webPage && !romance)
-        text += "\nDo not open the attached web page, and do not sign in or pay on a page it "
-                "opens. If you are unsure whether you owe something, contact the company at an "
-                "address you already know.";
+        advice = Tr("Do not open the attached web page, and do not sign in or pay on a page it "
+                 "opens. If you are unsure whether you owe something, contact the company at an "
+                 "address you already know.");
     else if (romance)
-        text += "\nDo not send money, gift cards or crypto to someone you only know from "
-                "email or the internet, and do not sign up or give card details on a site "
-                "they send you to.";
+        advice = Tr("Do not send money, gift cards or crypto to someone you only know from "
+                 "email or the internet, and do not sign up or give card details on a site "
+                 "they send you to.");
     else
-        text += "\nDo not sign in, pay or reply through the links in this message unless "
-                "you are sure who sent it.";
-    if (crypto && !romance) text += std::string("\n") + cryptoAdvice;
+        advice = Tr("Do not sign in, pay or reply through the links in this message unless "
+                 "you are sure who sent it.");
+    if (!text.empty()) text += "\n";   // a blank line between the evidence and the advice
+    text += mark(advice);
+    if (crypto && !romance) text += "\n" + WarningMarkup(cryptoAdvice);
+    std::string footnote;
     if (romance)
-        text += "\n\n* Romance scams are love letters from strangers - a made-up "
-                "profile, someone else's photos, \"destiny\" - written to win your trust "
-                "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
-                "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
-                "search of the photo often finds it under another name.";
+        footnote = "* " + Tr("Romance scams are love letters from strangers - a made-up "
+                   "profile, someone else's photos, \"destiny\" - written to win your trust "
+                   "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
+                   "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
+                   "search of the photo often finds it under another name.");
     else if (phishing || lookalike || webPage)
-        text += "\n\n* Phishing emails are emails that try to get your credentials "
-                "to hack your accounts on other websites.";
+        footnote = "* " + Tr("Phishing emails are emails that try to get your credentials "
+                   "to hack your accounts on other websites.");
     else if (loan && !cryptoScam)
-        text += "\n\n* Loan scams offer credit or \"project funding\" - often "
-                "millions at a few percent - to strangers by email. Only a bank may lend, and "
-                "banks do not write to people out of the blue: the \"lender\" collects a "
-                "processing fee, an insurance or a transfer charge, and the loan never comes.";
+        footnote = "* " + Tr("Loan scams offer credit or \"project funding\" - often "
+                   "millions at a few percent - to strangers by email. Only a bank may lend, and "
+                   "banks do not write to people out of the blue: the \"lender\" collects a "
+                   "processing fee, an insurance or a transfer charge, and the loan never comes.");
     else if (cryptoScam)
-        text += "\n\n* Cryptocurrency scams ask for a wallet's recovery phrase, "
-                "demand payment to a wallet address (blackmail, fake invoices) or promise "
-                "profits on an \"investment platform\" that shows made-up gains and keeps "
-                "what is paid in.";
+        footnote = "* " + Tr("Cryptocurrency scams ask for a wallet's recovery phrase, "
+                   "demand payment to a wallet address (blackmail, fake invoices) or promise "
+                   "profits on an \"investment platform\" that shows made-up gains and keeps "
+                   "what is paid in.");
+    if (!footnote.empty()) text += "\n\n" + WarningMarkup(footnote);
+    warningText_->SetTextIsMarkup(true);
     warningText_->SetText(text);
     warning_->SetVisible(true);
 }
@@ -1331,10 +1456,10 @@ void MessagePreview::Clear() {
     curRaw_.clear();
     // Empty state: a quiet hint, no header chrome.
     if (subject_) {
-        subject_->SetText("Select a message to read it here");
-        subject_->SetFontSize(Theme::kSizeHeading);
+        subject_->SetText(Tr("Select a message to read it here"));
+        subject_->SetFontSize(Theme::SizeHeading());
         subject_->SetFontWeight(FontWeight::Normal);
-        subject_->SetTextColor(Theme::kTextMuted);
+        subject_->SetTextColor(Theme::TextMuted());
     }
     if (actions_) actions_->SetVisible(false);
     if (header_)  header_->SetVisible(false);
@@ -1377,14 +1502,14 @@ std::vector<AuthCheck> SecureChecks(const std::string& received, const SecureMes
     if (!secure) {
         AuthCheck c;
         c.label = method;
-        c.tooltip = encrypted ? "Encrypted with " + method + ": being decrypted."
-                              : "Signed with " + method + ": the signature is being checked.";
+        c.tooltip = encrypted ? TrF("Encrypted with {0}: being decrypted.", method)
+                              : TrF("Signed with {0}: the signature is being checked.", method);
         out.push_back(c);
         return out;
     }
     if (secure->encrypted) {
         AuthCheck c;
-        c.label = "Encrypted";
+        c.label = Tr("Encrypted");
         const std::string by = SecureMethodName(secure->encryption);
         c.state = secure->decrypted ? AuthCheckState::Passed : AuthCheckState::Failed;
         c.tooltip = secure->decrypted
@@ -1404,9 +1529,9 @@ std::vector<AuthCheck> SecureChecks(const std::string& received, const SecureMes
         }
         std::string who = sig.signerName;
         if (!sig.signerEmail.empty()) who += (who.empty() ? "" : " ") + std::string("<") + sig.signerEmail + ">";
-        c.tooltip = (who.empty() ? std::string("Signed") : "Signed by " + who) + "\n" + sig.detail;
+        c.tooltip = (who.empty() ? Tr("Signed") : TrF("Signed by {0}", who)) + "\n" + sig.detail;
         if (sig.verdict != SignatureVerdict::Invalid && !sig.matchesFrom && !sig.signerEmail.empty())
-            c.tooltip += "\nNot the sender's address: the message says it is from " + fromAddr + ".";
+            c.tooltip += "\n" + TrF("Not the sender's address: the message says it is from {0}.", fromAddr);
         if (!sig.issuer.empty()) c.tooltip += "\nCertificate issued by " + sig.issuer + ".";
         if (!sig.fingerprint.empty()) c.tooltip += "\nFingerprint " + sig.fingerprint;
         out.push_back(c);
@@ -1505,7 +1630,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         subject_->SetText(subject.empty() ? "(no subject)" : subject);
         subject_->SetFontSize(kSubjectFont);
         subject_->SetFontWeight(FontWeight::Bold);
-        subject_->SetTextColor(Theme::kTextPrimary);
+        subject_->SetTextColor(Theme::TextPrimary());
         subject_->SetTooltip(subject);
     }
     if (actions_) actions_->SetVisible(true);
@@ -1585,11 +1710,11 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         // and a .p7m or .asc attachment nobody can open.
         curRaw_ = raw;
         received = raw;
-        RenderBody("This message is encrypted (" + std::string(SecureMethodName(secure->encryption)) +
-                   "), and it cannot be opened here.\n\n" + secure->problem +
+        RenderBody(TrF("This message is encrypted ({0}), and it cannot be opened here.",
+                       std::string(SecureMethodName(secure->encryption))) + "\n\n" + secure->problem + "\n\n" +
                    (secure->encryption == SecureMethod::Smime
-                        ? "\n\nIf it was sent to your certificate, import it in Account Settings (S/MIME)."
-                        : "\n\nIt needs the secret key it was encrypted to in your GnuPG keyring."),
+                        ? Tr("If it was sent to your certificate, import it in Account Settings (S/MIME).")
+                        : Tr("It needs the secret key it was encrypted to in your GnuPG keyring.")),
                    false);
         attachmentStrip_.SetAttachments({});
         SyncAttachmentColumn();

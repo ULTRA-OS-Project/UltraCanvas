@@ -101,6 +101,7 @@ inline UltraStore::Catalog FixtureCatalog() {
     video.updates.until = "2027-12-31";
     video.ageRating = "3";
     video.openSource = true;
+    video.featured = true;
     video.sourceUrl = "https://github.com/ULTRA-OS-Project/UltraCanvas";
     {
         Release r;

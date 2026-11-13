@@ -1,5 +1,10 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.11 - ABI 7: UltraIMConversation::memberCount
+// Version: 0.1.10 - ABI 6: a group managed after it is made (RenameGroup, AddGroupMembers, RemoveGroupMember)
+//                   and a conversation left (LeaveConversation); UltraIMConversation::ownerId and memberNames
+// Version: 0.1.9 - ABI 5: DeleteMessage takes a scope (for everyone, for me); GetDeleteChoices
+// Version: 0.1.8 - ABI 4: SearchMessages (words, pictures, files and links in the history)
 // Version: 0.1.7 - ABI 3: confirming the e-mail (by a link) and the phone (by a code), and account recovery
 //                  by a link e-mailed to the owner (FinishRecovery asks whether it was approved)
 // Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
@@ -10,7 +15,7 @@
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
 // Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -158,10 +163,24 @@ public:
     }
 
     // ---- Message actions -----------------------------------------------------
+    // Deletes a message for everyone or for this account alone
+    // (UltraIMDeleteScope); a MessageDelete event follows where it is gone.
+    // PermissionDenied when the messenger's rules do not allow that scope
+    // for this message now - GetDeleteChoices says beforehand, so a menu
+    // offers only what will work. CapabilityMissing for a scope the
+    // messenger does not have at all.
     virtual UltraIMResult DeleteMessage(const std::string& conversationId,
-                                        const std::string& messageId) {
-        (void)conversationId; (void)messageId;
+                                        const std::string& messageId,
+                                        UltraIMDeleteScope scope) {
+        (void)conversationId; (void)messageId; (void)scope;
         return Unsupported("deleting messages");
+    }
+    // What DeleteMessage would accept for this message now; nothing for a
+    // message the provider does not know.
+    virtual UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
+                                                  const std::string& messageId) const {
+        (void)conversationId; (void)messageId;
+        return UltraIMDeleteChoices();
     }
     virtual UltraIMResult EditMessage(const std::string& conversationId,
                                       const std::string& messageId,
@@ -317,6 +336,49 @@ public:
         if (onResult) onResult(Unsupported("account recovery"));
     }
 
+    // ---- Searching the history ---------------------------------------------------
+    // (SearchMessages capability.) The messages matching search, newest
+    // first, a page at a time (UltraIMMessageSearch, UltraIMSearchPage). Each
+    // provider answers from wherever its history lives: its own database
+    // (ChatCube Direct), its service's search (Telegram), or the history read
+    // page by page and matched on this device, which is the only way into an
+    // encrypted conversation (Matrix - UltraIM_SearchByFetching does it for
+    // any provider with FetchMessages). NotFound for a conversation the
+    // provider does not have.
+    virtual void SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) {
+        (void)search;
+        if (onResult) onResult(Unsupported("searching messages"), UltraIMSearchPage());
+    }
+
+    // ---- A group after it is made; leaving a conversation -----------------------
+    // (ManageGroups and LeaveConversation capabilities.) Each finishes through
+    // the callback; the changed conversation also arrives for everyone
+    // listening as a ConversationUpdate, a left one as a ConversationRemove.
+    // RenameGroup and AddGroupMembers answer the group as it is now.
+    // RemoveGroupMember takes someone else out (the network may allow that to
+    // the group's owner alone: PermissionDenied); LeaveConversation takes the local
+    // user out of a group, or deletes a 1:1 conversation with its history on
+    // this device (the other side keeps theirs).
+    virtual void RenameGroup(const std::string& conversationId, const std::string& title,
+                             UltraIMConversationCallback onResult) {
+        (void)conversationId; (void)title;
+        if (onResult) onResult(Unsupported("renaming groups"), {});
+    }
+    virtual void AddGroupMembers(const std::string& conversationId, const std::vector<std::string>& memberIds,
+                                 UltraIMConversationCallback onResult) {
+        (void)conversationId; (void)memberIds;
+        if (onResult) onResult(Unsupported("adding group members"), {});
+    }
+    virtual void RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
+                                   UltraIMResultCallback onResult) {
+        (void)conversationId; (void)memberId;
+        if (onResult) onResult(Unsupported("removing group members"));
+    }
+    virtual void LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) {
+        (void)conversationId;
+        if (onResult) onResult(Unsupported("leaving conversations"));
+    }
+
 protected:
     static UltraIMResult Unsupported(const std::string& what) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
@@ -352,9 +414,14 @@ protected:
 // sign-in protection, UltraIMCredentials::email - and the version check.
 // Version 3 (2026-11): the profile's verified flags and recovery state,
 // confirming the e-mail and phone, account recovery by an e-mailed link.
+// Version 4 (2026-11): SearchMessages and its types.
+// Version 5 (2026-11): DeleteMessage's scope, GetDeleteChoices.
+// Version 6 (2026-11): a group renamed, members added and removed, a
+// conversation left; UltraIMConversation::ownerId and memberNames.
+// Version 7 (2026-11): UltraIMConversation::memberCount.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 3;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 7;
 
 struct UltraIMPluginHost {
     int abiVersion;

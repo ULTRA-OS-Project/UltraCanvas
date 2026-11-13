@@ -1,3 +1,8 @@
+#### 2026-11-12 *0.1.1*
+- The Connection page shows the key the server signs its lists with, to
+  give to users who want to check what their client pinned.
+- Every text of the window goes through `Tr` (`media/locale/<lang>/UltraAIServerAdmin.json`).
+
 #### 2026-11-06 *0.1.0*
 - **UltraAI ServerAdmin, the super administrator's tool for an UltraAI model
   server** (`Server/UltraAIModelServer`): which AI models UltraAI clients may

@@ -2,9 +2,12 @@
 // The host side of the UltraWeb element ABI (UltraWeb/guest/ultraweb.h):
 // a handle table over real UltraCanvas elements, the element imports, the
 // element callbacks that become uc_event calls, and (ABI v2) the app's
-// timers, fetches, storage and clipboard.
+// timers, fetches, storage and clipboard, and (ABI v3) its WebSockets and
+// peer connections with their data channels.
+// Version: 0.4.0 - ABI v4: tracks, devices behind the user's permission, VideoTile
+// Version: 0.3.0 - ABI v3: uc_ws_* and uc_rtc_*
 // Version: 0.2.0
-// Last Modified: 2026-10-06
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebGuest.h"
@@ -15,6 +18,7 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasVideoTile.h"
 
 #include <algorithm>
 #include <cctype>
@@ -37,6 +41,7 @@ constexpr size_t kMaxTimers = 256;
 constexpr uint32_t kMinTimerMs = 4;
 constexpr size_t kMaxOpenFetches = 16;
 constexpr uint32_t kMaxHeaderNameBytes = 256;
+constexpr uint32_t kMaxCloseReasonBytes = 123;   // a close frame's payload is 125 bytes, 2 of them the code
 // User actions: the events a guest may answer with a clipboard write.
 constexpr uint32_t kUserActions = UC_EVENT_CLICK | UC_EVENT_CHANGE | UC_EVENT_SUBMIT | UC_EVENT_TOGGLE;
 
@@ -137,6 +142,18 @@ UltraWebGuest::~UltraWebGuest() {
     for (auto& [id, fetch] : fetches_) {
         if (fetch.cancel) fetch.cancel();
     }
+    // A closed tab is a hung-up call and a closed socket.
+    for (auto& [id, socket] : sockets_) {
+        if (socket.connection) socket.connection->Close(1001, "the app was closed");
+    }
+    // No picture reaches a tile from here on; then the peers stop their devices.
+    for (auto& [id, track] : tracks_) {
+        ClearSlot(track.view);
+        ClearSlot(track.selfView);
+    }
+    for (auto& [id, peer] : peers_) {
+        if (peer.peer) peer.peer->Close();
+    }
     if (options_.services.storage) options_.services.storage->Flush();
     // Element callbacks next, so nothing calls back into a guest being
     // destroyed; then the root's children - everything else hangs below them.
@@ -233,6 +250,7 @@ std::vector<WasmImport> UltraWebGuest::MakeImports() {
         if (c.ReadMemory(uint32_t(a[0].i32), length, line) && options_.onLog) options_.onLog(line);
     });
     AddServiceImports(imports);
+    AddRealtimeImports(imports);
     return imports;
 }
 
@@ -352,6 +370,181 @@ void UltraWebGuest::AddServiceImports(std::vector<WasmImport>& imports) {
     });
 }
 
+// ABI v3: WebSockets, peer connections and data channels.
+void UltraWebGuest::AddRealtimeImports(std::vector<WasmImport>& imports) {
+    using T = WasmValueType;
+    auto add = [&imports](const char* name, std::vector<T> params, std::vector<T> results, WasmHostFunction fn) {
+        imports.push_back({"ultracanvas", name, std::move(params), std::move(results), std::move(fn)});
+    };
+    add("uc_ws_open", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        const uint32_t urlLength = uint32_t(a[1].i32), protocolsLength = uint32_t(a[3].i32);
+        if (urlLength > SocketRules::kMaxUrlBytes || protocolsLength > SocketRules::kMaxProtocolsBytes) {
+            r[0].i32 = UC_ERR_LIMIT;
+            return;
+        }
+        std::string url, protocols;
+        if (!c.ReadMemory(uint32_t(a[0].i32), urlLength, url) || !c.ReadMemory(uint32_t(a[2].i32), protocolsLength, protocols)) {
+            r[0].i32 = UC_ERR_MEMORY;
+            return;
+        }
+        r[0].i32 = OpenSocket(url, protocols);
+    });
+    add("uc_ws_state", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = sockets_.find(a[0].i32);
+        r[0].i32 = at == sockets_.end() ? UC_ERR_NOT_FOUND : at->second.state;
+    });
+    add("uc_ws_send", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        const uint32_t length = uint32_t(a[2].i32);
+        if (length > SocketRules::kMaxMessageBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::vector<uint8_t> data;
+        if (!ReadBytes(c, uint32_t(a[1].i32), length, data)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        r[0].i32 = SendSocket(a[0].i32, data, a[3].i32 != 0);
+    });
+    add("uc_ws_receive", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        auto at = sockets_.find(a[0].i32);
+        if (at == sockets_.end() || at->second.messages.empty()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        Socket& socket = at->second;
+        const auto& [data, binary] = socket.messages.front();
+        const uint32_t binaryAt = uint32_t(a[3].i32);
+        const uint32_t flag = binary ? 1u : 0u;
+        if (binaryAt != 0 && !c.WriteMemory(binaryAt, &flag, sizeof(flag))) { r[0].i32 = UC_ERR_MEMORY; return; }
+        const int32_t length = CopyOut(c, uint32_t(a[1].i32), uint32_t(a[2].i32), data.data(), data.size());
+        if (length >= 0 && data.size() <= uint32_t(a[2].i32)) {
+            socket.queuedBytes -= data.size();
+            socket.messages.pop_front();
+        }
+        r[0].i32 = length;
+    });
+    add("uc_ws_close_code", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = sockets_.find(a[0].i32);
+        r[0].i32 = at == sockets_.end() ? UC_ERR_NOT_FOUND : at->second.closeCode;
+    });
+    add("uc_ws_close", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        const uint32_t reasonLength = uint32_t(a[3].i32);
+        if (reasonLength > kMaxCloseReasonBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::string reason;
+        if (!c.ReadMemory(uint32_t(a[2].i32), reasonLength, reason)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        r[0].i32 = CloseSocket(a[0].i32, uint32_t(a[1].i32), reason);
+    });
+
+    add("uc_rtc_peer_open", {T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        const uint32_t length = uint32_t(a[1].i32);
+        if (length > RtcRules::kMaxConfigBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::string config;
+        if (!c.ReadMemory(uint32_t(a[0].i32), length, config)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        r[0].i32 = OpenPeer(config);
+    });
+    add("uc_rtc_peer_close", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = ClosePeer(a[0].i32);
+    });
+    add("uc_rtc_set_remote", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        auto at = peers_.find(a[0].i32);
+        if (at == peers_.end()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        const uint32_t length = uint32_t(a[3].i32);
+        if (length > RtcRules::kMaxSdpBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::string sdp;
+        if (!c.ReadMemory(uint32_t(a[2].i32), length, sdp)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        r[0].i32 = at->second.peer->SetRemote(uint32_t(a[1].i32), sdp);
+        if (r[0].i32 != UC_OK) Log("rtc: the engine refused the remote description");
+    });
+    add("uc_rtc_add_candidate", {T::I32, T::I32, T::I32, T::I32, T::I32}, {T::I32},
+        [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+            auto at = peers_.find(a[0].i32);
+            if (at == peers_.end()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+            const uint32_t candidateLength = uint32_t(a[2].i32), midLength = uint32_t(a[4].i32);
+            if (candidateLength > RtcRules::kMaxCandidateBytes || midLength > RtcRules::kMaxLabelBytes) {
+                r[0].i32 = UC_ERR_LIMIT;
+                return;
+            }
+            std::string candidate, mid;
+            if (!c.ReadMemory(uint32_t(a[1].i32), candidateLength, candidate) || !c.ReadMemory(uint32_t(a[3].i32), midLength, mid)) {
+                r[0].i32 = UC_ERR_MEMORY;
+                return;
+            }
+            r[0].i32 = at->second.peer->AddCandidate(candidate, mid);
+        });
+    add("uc_rtc_channel_open", {T::I32, T::I32, T::I32, T::I32, T::I32}, {T::I32},
+        [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+            const uint32_t length = uint32_t(a[2].i32);
+            if (length > RtcRules::kMaxLabelBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+            std::string label;
+            if (!c.ReadMemory(uint32_t(a[1].i32), length, label)) { r[0].i32 = UC_ERR_MEMORY; return; }
+            r[0].i32 = OpenChannel(a[0].i32, label, uint32_t(a[3].i32), a[4].i32);
+        });
+    add("uc_rtc_send", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        auto at = channels_.find(a[0].i32);
+        if (at == channels_.end()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        const uint32_t length = uint32_t(a[2].i32);
+        if (length > RtcRules::kMaxMessageBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::vector<uint8_t> data;
+        if (!ReadBytes(c, uint32_t(a[1].i32), length, data)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        r[0].i32 = peers_.at(at->second.peer).peer->Send(at->second.serviceChannel, data, a[3].i32 != 0);
+    });
+    add("uc_rtc_channel_close", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = CloseChannel(a[0].i32);
+    });
+    // ABI v4: calls.
+    add("uc_rtc_audio_add", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        const uint32_t length = uint32_t(a[2].i32);
+        if (length > RtcRules::kMaxLabelBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+        std::string mid;
+        if (!c.ReadMemory(uint32_t(a[1].i32), length, mid)) { r[0].i32 = UC_ERR_MEMORY; return; }
+        r[0].i32 = AddTrack(a[0].i32, false, mid, uint32_t(a[3].i32), RtcVideoConfig{});
+    });
+    add("uc_rtc_video_add", {T::I32, T::I32, T::I32, T::I32, T::I32, T::I32, T::I32, T::I32}, {T::I32},
+        [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+            const uint32_t length = uint32_t(a[2].i32);
+            if (length > RtcRules::kMaxLabelBytes) { r[0].i32 = UC_ERR_LIMIT; return; }
+            std::string mid;
+            if (!c.ReadMemory(uint32_t(a[1].i32), length, mid)) { r[0].i32 = UC_ERR_MEMORY; return; }
+            RtcVideoConfig config;
+            std::string reason;
+            const int32_t checked = RtcRules::VideoConfig(uint32_t(a[4].i32), uint32_t(a[5].i32), uint32_t(a[6].i32),
+                                                          uint32_t(a[7].i32), config, reason);
+            if (checked != UC_OK) {
+                Log("rtc: the video track was refused: " + reason);
+                r[0].i32 = checked;
+                return;
+            }
+            r[0].i32 = AddTrack(a[0].i32, true, mid, uint32_t(a[3].i32), config);
+        });
+    add("uc_rtc_offer", {T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = peers_.find(a[0].i32);
+        r[0].i32 = at == peers_.end() ? UC_ERR_NOT_FOUND : at->second.peer->Offer();
+    });
+    add("uc_rtc_microphone", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = SetDevice(a[0].i32, "microphone", a[1].i32 != 0, UC_NO_HANDLE);
+    });
+    add("uc_rtc_camera", {T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = SetDevice(a[0].i32, "camera", a[1].i32 != 0, uint32_t(a[2].i32));
+    });
+    add("uc_rtc_playback", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = tracks_.find(a[0].i32);
+        if (at == tracks_.end()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        if (at->second.video) { r[0].i32 = UC_ERR_STATE; return; }
+        r[0].i32 = peers_.at(at->second.peer).peer->SetPlayback(at->second.service, a[1].i32 != 0);
+    });
+    add("uc_rtc_video_show", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        r[0].i32 = ShowVideo(a[0].i32, uint32_t(a[1].i32));
+    });
+    add("uc_rtc_track_enabled", {T::I32, T::I32}, {T::I32}, [this](WasmCaller&, const WasmValue* a, WasmValue* r) {
+        auto at = tracks_.find(a[0].i32);
+        if (at == tracks_.end()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        r[0].i32 = peers_.at(at->second.peer).peer->SetTrackEnabled(at->second.service, a[1].i32 != 0);
+    });
+    add("uc_rtc_poll", {T::I32, T::I32, T::I32, T::I32}, {T::I32}, [this](WasmCaller& c, const WasmValue* a, WasmValue* r) {
+        auto at = peers_.find(a[0].i32);
+        if (at == peers_.end() || at->second.events.empty()) { r[0].i32 = UC_ERR_NOT_FOUND; return; }
+        Peer& peer = at->second;
+        const PeerEvent& event = peer.events.front();
+        const uint32_t info[3] = {event.kind, uint32_t(event.channel), event.number};
+        if (!c.WriteMemory(uint32_t(a[1].i32), info, sizeof(info))) { r[0].i32 = UC_ERR_MEMORY; return; }
+        const int32_t length = CopyOut(c, uint32_t(a[2].i32), uint32_t(a[3].i32), event.text.data(), event.text.size());
+        if (length >= 0 && event.text.size() <= uint32_t(a[3].i32)) peer.events.pop_front();
+        r[0].i32 = length;
+    });
+}
+
 // ===== HANDLES =====
 
 UltraWebGuest::Entry* UltraWebGuest::Find(uint32_t handle) {
@@ -405,6 +598,12 @@ uint32_t UltraWebGuest::Create(const std::string& kind) {
         element = CreateTextInput(id, 0, 0, kInputWidth, kInputHeight);
     } else if (kind == UC_KIND_CHECKBOX) {
         element = UltraCanvasCheckbox::CreateCheckbox(id, 0, 0, 0, 0, "", false);
+    } else if (kind == UC_KIND_VIDEO_TILE) {
+        // 320 x 240 until the app sizes it: a picture has no size of its own
+        // before its first frame.
+        auto tile = std::make_shared<UltraCanvasVideoTile>(id, 0, 0, 320, 240);
+        tile->SetElementSize(CSSLayout::Dimension::Px(320), CSSLayout::Dimension::Px(240));
+        element = tile;
     }
     if (!element) {
         freeHandles_.push_back(handle);
@@ -426,6 +625,7 @@ int32_t UltraWebGuest::Release(uint32_t handle) {
     if (!entry) return UC_ERR_HANDLE;
     const std::vector<uint32_t> children = entry->children;   // Release edits the list
     for (uint32_t child : children) Release(child);
+    if (entry->kind == UC_KIND_VIDEO_TILE) TileReleased(handle);
     Detach(handle);
     // The element may be the one whose callback is running this guest call
     // (a button that removes itself on click): keep it alive until the call
@@ -502,6 +702,7 @@ int32_t UltraWebGuest::SetText(uint32_t handle, uint32_t property, const std::st
         else if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(element)) button->SetText(value);
         else if (auto input = std::dynamic_pointer_cast<UltraCanvasTextInput>(element)) input->SetText(value);
         else if (auto box = std::dynamic_pointer_cast<UltraCanvasCheckbox>(element)) box->SetText(value);
+        else if (auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element)) tile->SetCaption(value);
         else return UC_ERR_PROPERTY;
     } else if (property == UC_PROP_PLACEHOLDER) {
         auto input = std::dynamic_pointer_cast<UltraCanvasTextInput>(element);
@@ -591,6 +792,20 @@ int32_t UltraWebGuest::SetNumber(uint32_t handle, uint32_t property, double valu
             label->SetTextColor(Color::FromRGBA(static_cast<uint32_t>(value)));
             break;
         }
+        case UC_PROP_FIT: {
+            auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element);
+            if (!tile) return UC_ERR_PROPERTY;
+            if (value == UC_FIT_CONTAIN) tile->SetFit(VideoTileFit::Contain);
+            else if (value == UC_FIT_COVER) tile->SetFit(VideoTileFit::Cover);
+            else return UC_ERR_LIMIT;
+            break;
+        }
+        case UC_PROP_MIRRORED: {
+            auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element);
+            if (!tile) return UC_ERR_PROPERTY;
+            tile->SetMirrored(value != 0);
+            break;
+        }
         case UC_PROP_BACKGROUND:
             if (!isContainer && !std::dynamic_pointer_cast<UltraCanvasLabel>(element)) return UC_ERR_PROPERTY;
             if (!InRange(value, 0, 4294967295.0)) return UC_ERR_LIMIT;
@@ -613,6 +828,7 @@ int32_t UltraWebGuest::GetText(uint32_t handle, uint32_t property, std::string& 
         else if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(element)) out = button->GetText();
         else if (auto input = std::dynamic_pointer_cast<UltraCanvasTextInput>(element)) out = input->GetText();
         else if (auto box = std::dynamic_pointer_cast<UltraCanvasCheckbox>(element)) out = box->GetText();
+        else if (auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element)) out = tile->GetCaption();
         else return UC_ERR_PROPERTY;
         return UC_OK;
     }
@@ -644,6 +860,14 @@ double UltraWebGuest::GetNumber(uint32_t handle, uint32_t property) {
                 case CSSLayout::AlignItems::Stretch: return UC_ALIGN_STRETCH;
                 default:                             return UC_ALIGN_START;
             }
+        }
+        case UC_PROP_FIT: {
+            auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element);
+            return tile ? (tile->GetFit() == VideoTileFit::Cover ? UC_FIT_COVER : UC_FIT_CONTAIN) : none;
+        }
+        case UC_PROP_MIRRORED: {
+            auto tile = std::dynamic_pointer_cast<UltraCanvasVideoTile>(element);
+            return tile ? (tile->IsMirrored() ? 1.0 : 0.0) : none;
         }
         case UC_PROP_ENABLED: return element->IsDisabled() ? 0.0 : 1.0;
         case UC_PROP_VISIBLE: return element->IsVisible() ? 1.0 : 0.0;
@@ -802,6 +1026,457 @@ int32_t UltraWebGuest::WriteClipboard(const std::string& text) {
     }
     if (!options_.services.writeClipboard) return UC_ERR_DENIED;
     return options_.services.writeClipboard(text) ? UC_OK : UC_ERR_STATE;
+}
+
+// ===== WEBSOCKETS =====
+
+int32_t UltraWebGuest::OpenSocket(const std::string& url, const std::string& protocols) {
+    if (!options_.services.webSocket) return UC_ERR_DENIED;
+    if (!instance_->HasFunction("uc_event")) return UC_ERR_STATE;
+    if (sockets_.size() >= SocketRules::kMaxOpen) {
+        Log("WebSocket " + url + ": " + std::to_string(SocketRules::kMaxOpen) + " sockets are open already; close some");
+        return UC_ERR_LIMIT;
+    }
+    SocketRequest request;
+    std::string reason;
+    const int32_t result = SocketRules::Prepare(options_.address, url, protocols, request, reason);
+    if (result != UC_OK) {
+        Log("WebSocket " + url + " refused: " + reason);
+        return result;
+    }
+    const int32_t id = NextId(nextSocketId_, sockets_);
+    sockets_[id];   // there before the service can answer
+    std::weak_ptr<int> alive = alive_;
+    SocketEvents events;
+    events.onOpen = [this, alive, id]() { if (!alive.expired()) SocketOpened(id); };
+    events.onMessage = [this, alive, id](std::vector<uint8_t> data, bool binary) {
+        if (!alive.expired()) SocketMessage(id, std::move(data), binary);
+    };
+    events.onClose = [this, alive, id](int code, std::string) {
+        if (!alive.expired()) SocketEnded(id, UC_WS_CLOSED, code);
+    };
+    events.onError = [this, alive, id, url](std::string error, bool tooLarge) {
+        if (alive.expired()) return;
+        Log("WebSocket " + url + ": " + error);
+        SocketEnded(id, tooLarge ? UC_ERR_LIMIT : UC_ERR_NETWORK, tooLarge ? 1009 : 1006);
+    };
+    std::shared_ptr<SocketConnection> connection = options_.services.webSocket(request, std::move(events));
+    auto at = sockets_.find(id);
+    if (at == sockets_.end()) return id;   // cannot happen: nothing runs the guest meanwhile
+    if (!connection) {
+        sockets_.erase(at);
+        Log("WebSocket " + url + ": could not be started");
+        return UC_ERR_NETWORK;
+    }
+    at->second.connection = std::move(connection);
+    return id;
+}
+
+void UltraWebGuest::SocketOpened(int32_t id) {
+    auto at = sockets_.find(id);
+    if (at == sockets_.end() || at->second.state != UC_WS_CONNECTING) return;
+    at->second.state = UC_WS_OPEN;
+    DeliverAppEvent(UC_EVENT_WS, id);
+}
+
+void UltraWebGuest::SocketMessage(int32_t id, std::vector<uint8_t> data, bool binary) {
+    auto at = sockets_.find(id);
+    if (at == sockets_.end() || at->second.state != UC_WS_OPEN) return;
+    Socket& socket = at->second;
+    if (data.size() > SocketRules::kMaxMessageBytes) return;   // the service ends such a connection
+    // Unread messages past the limit: the oldest go.
+    while (!socket.messages.empty() && socket.queuedBytes + data.size() > SocketRules::kMaxQueuedBytes) {
+        socket.queuedBytes -= socket.messages.front().first.size();
+        socket.messages.pop_front();
+        if (!socket.warnedFull) {
+            Log("WebSocket " + std::to_string(id) + ": the app reads too slowly; the oldest messages are dropped");
+            socket.warnedFull = true;
+        }
+    }
+    const bool wasEmpty = socket.messages.empty();
+    socket.queuedBytes += data.size();
+    socket.messages.emplace_back(std::move(data), binary);
+    if (wasEmpty) DeliverAppEvent(UC_EVENT_WS, id);
+}
+
+void UltraWebGuest::SocketEnded(int32_t id, int32_t state, int32_t closeCode) {
+    auto at = sockets_.find(id);
+    if (at == sockets_.end() || at->second.state == UC_WS_CLOSED || at->second.state < 0) return;
+    at->second.state = state;
+    at->second.closeCode = closeCode;
+    DeliverAppEvent(UC_EVENT_WS, id);
+}
+
+int32_t UltraWebGuest::SendSocket(int32_t id, const std::vector<uint8_t>& data, bool binary) {
+    auto at = sockets_.find(id);
+    if (at == sockets_.end()) return UC_ERR_NOT_FOUND;
+    if (at->second.state != UC_WS_OPEN || !at->second.connection) return UC_ERR_STATE;
+    return at->second.connection->Send(data, binary) ? UC_OK : UC_ERR_STATE;
+}
+
+int32_t UltraWebGuest::CloseSocket(int32_t id, uint32_t code, const std::string& reason) {
+    auto at = sockets_.find(id);
+    if (at == sockets_.end()) return UC_ERR_NOT_FOUND;
+    // RFC 6455 7.4: an application may send 1000 or 3000-4999.
+    if (code == 0) code = 1000;
+    if (code != 1000 && (code < 3000 || code > 4999)) return UC_ERR_STATE;
+    std::shared_ptr<SocketConnection> connection = std::move(at->second.connection);
+    sockets_.erase(at);
+    if (connection) connection->Close(int(code), reason);
+    return UC_OK;
+}
+
+// ===== PEER CONNECTIONS =====
+
+int32_t UltraWebGuest::NextRealtimeId() {
+    for (;;) {
+        const int32_t id = nextRealtimeId_;
+        nextRealtimeId_ = nextRealtimeId_ == std::numeric_limits<int32_t>::max() ? 1 : nextRealtimeId_ + 1;
+        if (!peers_.count(id) && !channels_.count(id) && !tracks_.count(id)) return id;
+    }
+}
+
+int32_t UltraWebGuest::OpenPeer(const std::string& config) {
+    if (!options_.services.rtc) return UC_ERR_DENIED;
+    if (!instance_->HasFunction("uc_event")) return UC_ERR_STATE;
+    if (peers_.size() >= RtcRules::kMaxPeers) {
+        Log("rtc: " + std::to_string(RtcRules::kMaxPeers) + " peers are open already; close some");
+        return UC_ERR_LIMIT;
+    }
+    RtcConfig parsed;
+    std::string reason;
+    const int32_t result = RtcRules::ParseConfig(config, options_.address, parsed, reason);
+    if (result != UC_OK) {
+        Log("rtc: the configuration was refused: " + reason);
+        return result;
+    }
+    if (parsed.relayOnly && std::none_of(parsed.iceServers.begin(), parsed.iceServers.end(), [](const RtcIceServer& s) {
+            return s.url.rfind("turn", 0) == 0 || s.url.rfind("TURN", 0) == 0;
+        })) {
+        Log("rtc: an app from the network connects through TURN relays only, and its configuration names none");
+    }
+    const int32_t id = NextRealtimeId();
+    std::weak_ptr<int> alive = alive_;
+    std::shared_ptr<RtcPeer> peer = options_.services.rtc(parsed, [this, alive, id](RtcEvent event) {
+        if (!alive.expired()) PeerEventArrived(id, std::move(event));
+    }, reason);
+    if (!peer) {
+        Log("rtc: the peer could not be made: " + reason);
+        return UC_ERR_STATE;
+    }
+    peers_[id].peer = std::move(peer);
+    return id;
+}
+
+int32_t UltraWebGuest::ClosePeer(int32_t id) {
+    auto at = peers_.find(id);
+    if (at == peers_.end()) return UC_ERR_NOT_FOUND;
+    std::shared_ptr<RtcPeer> peer = std::move(at->second.peer);
+    for (const auto& [service, channel] : at->second.channelIds) channels_.erase(channel);
+    for (const auto& [service, track] : at->second.trackIds) DropTrack(track);
+    peers_.erase(at);
+    if (peer) peer->Close();
+    return UC_OK;
+}
+
+void UltraWebGuest::PeerEventArrived(int32_t id, RtcEvent event) {
+    auto at = peers_.find(id);
+    if (at == peers_.end()) return;   // closed meanwhile
+    Peer& peer = at->second;
+    PeerEvent queued;
+    queued.kind = event.kind;
+    queued.number = event.number;
+    queued.text = std::move(event.text);
+    const bool aboutTrack = event.kind == UC_RTC_TRACK || event.kind == UC_RTC_TRACK_OPEN ||
+                            event.kind == UC_RTC_TRACK_CLOSE;
+    if (aboutTrack) {
+        auto known = peer.trackIds.find(event.channel);
+        if (known != peer.trackIds.end()) {
+            queued.channel = known->second;
+        } else if (event.kind == UC_RTC_TRACK) {
+            // The other side added a track this side has not: it gets an id,
+            // within the limit.
+            const bool video = event.number == UC_RTC_VIDEO;
+            size_t& count = video ? peer.videoTracks : peer.audioTracks;
+            if (count >= RtcRules::kMaxTracksPerKind) {
+                Log("rtc: the other side added more than " + std::to_string(RtcRules::kMaxTracksPerKind) +
+                    (video ? " video" : " audio") + " tracks; the rest are ignored");
+                return;
+            }
+            ++count;
+            queued.channel = NextRealtimeId();
+            peer.trackIds[event.channel] = queued.channel;
+            Track track;
+            track.peer = id;
+            track.service = event.channel;
+            track.video = video;
+            tracks_[queued.channel] = std::move(track);
+        } else {
+            return;   // a track the app no longer has
+        }
+    } else if (event.channel != 0) {
+        auto known = peer.channelIds.find(event.channel);
+        if (known != peer.channelIds.end()) {
+            queued.channel = known->second;
+        } else if (event.kind == UC_RTC_CHANNEL) {
+            // The other side opened a channel: it gets an id, within the limit.
+            if (peer.channelIds.size() >= RtcRules::kMaxChannels) {
+                Log("rtc: the other side opened more than " + std::to_string(RtcRules::kMaxChannels) +
+                    " channels; the rest are closed");
+                peer.peer->CloseChannel(event.channel);
+                return;
+            }
+            queued.channel = NextRealtimeId();
+            peer.channelIds[event.channel] = queued.channel;
+            channels_[queued.channel] = Channel{id, event.channel};
+        } else {
+            return;   // a channel the app has closed
+        }
+    }
+    if (queued.kind == UC_RTC_MESSAGE && queued.text.size() > RtcRules::kMaxMessageBytes) {
+        Log("rtc: a message over " + std::to_string(RtcRules::kMaxMessageBytes / 1024) + " KB was dropped");
+        return;
+    }
+    QueuePeerEvent(peer, id, std::move(queued));
+}
+
+void UltraWebGuest::QueuePeerEvent(Peer& peer, int32_t id, PeerEvent event) {
+    if (peer.events.size() >= RtcRules::kMaxQueuedEvents) {
+        // The oldest message goes - a state change or a description matters more.
+        auto oldest = std::find_if(peer.events.begin(), peer.events.end(),
+                                   [](const PeerEvent& e) { return e.kind == UC_RTC_MESSAGE; });
+        peer.events.erase(oldest != peer.events.end() ? oldest : peer.events.begin());
+        if (!peer.warnedFull) {
+            Log("rtc: the app reads too slowly; the oldest messages are dropped");
+            peer.warnedFull = true;
+        }
+    }
+    const bool wasEmpty = peer.events.empty();
+    peer.events.push_back(std::move(event));
+    if (wasEmpty) DeliverAppEvent(UC_EVENT_RTC, id);
+}
+
+int32_t UltraWebGuest::OpenChannel(int32_t peerId, const std::string& label, uint32_t flags, int32_t maxRetransmits) {
+    auto at = peers_.find(peerId);
+    if (at == peers_.end()) return UC_ERR_NOT_FOUND;
+    Peer& peer = at->second;
+    if (peer.channelIds.size() >= RtcRules::kMaxChannels) return UC_ERR_LIMIT;
+    uint64_t service = 0;
+    const int32_t result = peer.peer->OpenChannel(label, (flags & UC_RTC_UNORDERED) == 0, maxRetransmits, service);
+    if (result != UC_OK) return result;
+    const int32_t id = NextRealtimeId();
+    peer.channelIds[service] = id;
+    channels_[id] = Channel{peerId, service};
+    return id;
+}
+
+int32_t UltraWebGuest::CloseChannel(int32_t id) {
+    auto at = channels_.find(id);
+    if (at == channels_.end()) return UC_ERR_NOT_FOUND;
+    const Channel channel = at->second;
+    channels_.erase(at);
+    auto peer = peers_.find(channel.peer);
+    if (peer == peers_.end()) return UC_OK;
+    peer->second.channelIds.erase(channel.serviceChannel);
+    peer->second.peer->CloseChannel(channel.serviceChannel);
+    return UC_OK;
+}
+
+// ===== CALLS =====
+
+int32_t UltraWebGuest::AddTrack(int32_t peerId, bool video, const std::string& mid, uint32_t direction,
+                                const RtcVideoConfig& config) {
+    auto at = peers_.find(peerId);
+    if (at == peers_.end()) return UC_ERR_NOT_FOUND;
+    if (mid.empty()) return UC_ERR_STATE;
+    if (direction != UC_RTC_SENDRECV && direction != UC_RTC_SENDONLY && direction != UC_RTC_RECVONLY) return UC_ERR_STATE;
+    Peer& peer = at->second;
+    size_t& count = video ? peer.videoTracks : peer.audioTracks;
+    if (count >= RtcRules::kMaxTracksPerKind) return UC_ERR_LIMIT;
+    uint64_t service = 0;
+    const int32_t result = peer.peer->AddTrack(video, mid, direction, config, service);
+    if (result != UC_OK) return result;
+    ++count;
+    const int32_t id = NextRealtimeId();
+    peer.trackIds[service] = id;
+    Track track;
+    track.peer = peerId;
+    track.service = service;
+    track.video = video;
+    tracks_[id] = std::move(track);
+    return id;
+}
+
+UltraCanvasVideoTile* UltraWebGuest::TileOf(uint32_t handle) {
+    Entry* entry = Find(handle);
+    if (!entry || entry->kind != UC_KIND_VIDEO_TILE) return nullptr;
+    return static_cast<UltraCanvasVideoTile*>(entry->element.get());
+}
+
+std::shared_ptr<UltraWebGuest::FrameSlot> UltraWebGuest::SlotFor(UltraCanvasVideoTile* tile) {
+    auto slot = std::make_shared<FrameSlot>();
+    slot->tile = tile;
+    return slot;
+}
+
+RtcFrameSink UltraWebGuest::SinkFor(const std::shared_ptr<FrameSlot>& slot) {
+    return [slot](const uint8_t* rgba, int width, int height) {
+        std::lock_guard<std::mutex> lock(slot->mutex);
+        if (slot->tile) slot->tile->PushFrame(rgba, width, height);
+    };
+}
+
+void UltraWebGuest::ClearSlot(const std::shared_ptr<FrameSlot>& slot) {
+    if (!slot) return;
+    std::lock_guard<std::mutex> lock(slot->mutex);
+    slot->tile = nullptr;
+}
+
+int32_t UltraWebGuest::ShowVideo(int32_t trackId, uint32_t tile) {
+    auto at = tracks_.find(trackId);
+    if (at == tracks_.end()) return UC_ERR_NOT_FOUND;
+    Track& track = at->second;
+    if (!track.video) return UC_ERR_STATE;
+    UltraCanvasVideoTile* target = nullptr;
+    if (tile != UC_NO_HANDLE) {
+        target = TileOf(tile);
+        if (!target) return Find(tile) ? UC_ERR_PROPERTY : UC_ERR_HANDLE;
+    }
+    ClearSlot(track.view);
+    track.view.reset();
+    track.viewTile = UC_NO_HANDLE;
+    RtcPeer& peer = *peers_.at(track.peer).peer;
+    if (!target) return peer.ShowVideo(track.service, nullptr);
+    std::shared_ptr<FrameSlot> slot = SlotFor(target);
+    const int32_t result = peer.ShowVideo(track.service, SinkFor(slot));
+    if (result != UC_OK) return result;
+    track.view = std::move(slot);
+    track.viewTile = tile;
+    return UC_OK;
+}
+
+int32_t UltraWebGuest::SetDevice(int32_t trackId, const std::string& device, bool on, uint32_t selfTile) {
+    auto at = tracks_.find(trackId);
+    if (at == tracks_.end()) return UC_ERR_NOT_FOUND;
+    Track& track = at->second;
+    const bool camera = device == "camera";
+    if (track.video != camera) return UC_ERR_STATE;   // a camera feeds a video track, a microphone an audio one
+    if (camera && selfTile != UC_NO_HANDLE && !TileOf(selfTile)) return Find(selfTile) ? UC_ERR_PROPERTY : UC_ERR_HANDLE;
+    std::vector<DeviceRequest>& waiting = waiting_[device];
+    if (!on) {
+        waiting.erase(std::remove_if(waiting.begin(), waiting.end(),
+                                     [trackId](const DeviceRequest& r) { return r.track == trackId; }),
+                      waiting.end());
+        bool& running = camera ? track.camera : track.microphone;
+        if (!running) return UC_OK;
+        running = false;
+        if (camera) {
+            ClearSlot(track.selfView);
+            track.selfView.reset();
+            track.selfTile = UC_NO_HANDLE;
+        }
+        RtcPeer& peer = *peers_.at(track.peer).peer;
+        return camera ? peer.SetCamera(track.service, false, nullptr) : peer.SetMicrophone(track.service, false);
+    }
+    if ((camera ? track.camera : track.microphone)) return UC_OK;   // runs already
+    auto decided = devices_.find(device);
+    if (decided != devices_.end()) {
+        if (!decided->second) return UC_ERR_DENIED;
+        StartDevice(trackId, device, selfTile);
+        return UC_OK;
+    }
+    if (!options_.services.askPermission) return UC_ERR_DENIED;
+    for (const DeviceRequest& r : waiting) {
+        if (r.track == trackId) return UC_OK;   // asked already
+    }
+    const bool askNow = waiting.empty();
+    waiting.push_back(DeviceRequest{trackId, selfTile});
+    if (askNow) {
+        std::weak_ptr<int> alive = alive_;
+        options_.services.askPermission(device, [this, alive, device](bool allowed) {
+            if (!alive.expired()) DeviceAnswered(device, allowed);
+        });
+    }
+    return UC_OK;
+}
+
+void UltraWebGuest::DeviceAnswered(const std::string& device, bool allowed) {
+    devices_[device] = allowed;
+    std::vector<DeviceRequest> waiting = std::move(waiting_[device]);
+    waiting_[device].clear();
+    for (const DeviceRequest& request : waiting) {
+        if (!tracks_.count(request.track)) continue;   // its peer closed meanwhile
+        if (allowed) StartDevice(request.track, device, request.selfTile);
+        else QueueTrackEvent(request.track, UC_RTC_PERMISSION, uint32_t(UC_RTC_DEVICE_BLOCKED), device);
+    }
+}
+
+void UltraWebGuest::StartDevice(int32_t trackId, const std::string& device, uint32_t selfTile) {
+    auto at = tracks_.find(trackId);
+    if (at == tracks_.end()) return;
+    Track& track = at->second;
+    RtcPeer& peer = *peers_.at(track.peer).peer;
+    int32_t result;
+    if (device == "camera") {
+        // The tile may have gone while the user decided.
+        UltraCanvasVideoTile* tile = selfTile != UC_NO_HANDLE ? TileOf(selfTile) : nullptr;
+        std::shared_ptr<FrameSlot> slot = tile ? SlotFor(tile) : nullptr;
+        if (tile) tile->SetMirrored(true);
+        result = peer.SetCamera(track.service, true, slot ? SinkFor(slot) : RtcFrameSink());
+        if (result == UC_OK) {
+            track.camera = true;
+            track.selfView = std::move(slot);
+            track.selfTile = tile ? selfTile : UC_NO_HANDLE;
+        }
+    } else {
+        result = peer.SetMicrophone(track.service, true);
+        if (result == UC_OK) track.microphone = true;
+    }
+    if (result != UC_OK) Log("rtc: the " + device + " could not be opened");
+    QueueTrackEvent(trackId, UC_RTC_PERMISSION, uint32_t(result == UC_OK ? UC_RTC_DEVICE_ON : UC_RTC_DEVICE_FAILED), device);
+}
+
+void UltraWebGuest::QueueTrackEvent(int32_t trackId, uint32_t kind, uint32_t number, const std::string& text) {
+    auto at = tracks_.find(trackId);
+    if (at == tracks_.end()) return;
+    auto peer = peers_.find(at->second.peer);
+    if (peer == peers_.end()) return;
+    PeerEvent event;
+    event.kind = kind;
+    event.channel = trackId;
+    event.number = number;
+    event.text = text;
+    QueuePeerEvent(peer->second, at->second.peer, std::move(event));
+}
+
+void UltraWebGuest::DropTrack(int32_t id) {
+    auto at = tracks_.find(id);
+    if (at == tracks_.end()) return;
+    ClearSlot(at->second.view);
+    ClearSlot(at->second.selfView);
+    for (auto& [device, waiting] : waiting_) {
+        waiting.erase(std::remove_if(waiting.begin(), waiting.end(), [id](const DeviceRequest& r) { return r.track == id; }),
+                      waiting.end());
+    }
+    tracks_.erase(at);
+}
+
+void UltraWebGuest::TileReleased(uint32_t handle) {
+    for (auto& [id, track] : tracks_) {
+        if (track.viewTile == handle) {
+            ClearSlot(track.view);
+            track.viewTile = UC_NO_HANDLE;
+        }
+        if (track.selfTile == handle) {
+            ClearSlot(track.selfView);
+            track.selfTile = UC_NO_HANDLE;
+        }
+    }
+    for (auto& [device, waiting] : waiting_) {
+        for (DeviceRequest& request : waiting) {
+            if (request.selfTile == handle) request.selfTile = UC_NO_HANDLE;
+        }
+    }
 }
 
 // The callbacks capture the guest raw, with the handle: the element owns the

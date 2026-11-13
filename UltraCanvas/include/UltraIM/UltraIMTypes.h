@@ -1,5 +1,11 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.10 - UltraIMConversation::memberCount: everyone in a group whose memberIds are a first page
+// Version: 0.1.9 - groups managed after they are made: UltraIMCapabilityFlags ManageGroups and
+//                  LeaveConversation; UltraIMConversation::ownerId and memberNames
+// Version: 0.1.8 - deleting a message for oneself or for everyone: UltraIMDeleteScope, UltraIMDeleteChoices
+// Version: 0.1.7 - searching messages: UltraIMSearchKind, UltraIMMessageSearch, UltraIMSearchPage,
+//                  UltraIMSearchCallback, the SearchMessages capability
 // Version: 0.1.6 - account recovery by a link e-mailed to the confirmed address (UltraIMRecoveryAnswer
 //                  without codes); the e-mail address confirmed by a link, the phone by a code
 // Version: 0.1.5 - UltraIMPreviewMaker: the application's way of making a preview picture of a file to send
@@ -11,12 +17,13 @@
 // Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 #pragma once
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -92,6 +99,69 @@ struct UltraIMMessage {
 };
 
 // ============================================================================
+// DELETING MESSAGES
+// ============================================================================
+
+// Whom a message is deleted for (UltraIM_DeleteMessage).
+enum class UltraIMDeleteScope {
+    ForEveryone,    // gone from every member's device (and the service, where it keeps one)
+    ForMe           // gone from this account's own history; the others keep it
+};
+
+// What can be done to one message now (UltraIM_GetDeleteChoices). Every
+// messenger has rules of its own, so the provider says: ChatCube Direct
+// lets the sender delete a text for everyone until the other person has read
+// it and a picture, video or file at any time, in a group always, and
+// anyone delete anything for themselves; Matrix knows only "for everyone".
+// A menu offers what is true here and nothing else.
+struct UltraIMDeleteChoices {
+    bool forMe = false;
+    bool forEveryone = false;
+};
+
+// ============================================================================
+// SEARCHING MESSAGES
+// ============================================================================
+
+// What a search is for (UltraIM_SearchMessages): everything, or one kind of
+// message - the "Media / Files / Links" tabs of a conversation.
+enum class UltraIMSearchKind {
+    AnyKind,        // every message a person wrote or sent (not the SystemEvent lines)
+    Images,         // pictures
+    Videos,
+    Media,          // pictures and videos
+    Files,          // documents: file attachments
+    Links           // messages whose text holds a link (UltraIM_ExtractLinks)
+};
+
+// One search. The words are found without regard to case, anywhere in a
+// message's text or its attachment's file name; several words must all be
+// there. No words at all asks for everything of the kind.
+struct UltraIMMessageSearch {
+    // "" = every conversation of the provider (ChatCube Direct; a provider
+    // that can search one conversation at a time answers CapabilityMissing).
+    std::string       conversationId;
+    std::string       text;
+    UltraIMSearchKind kind = UltraIMSearchKind::AnyKind;
+    // "" = the newest matches; UltraIMSearchPage::nextCursor of the page
+    // before = the ones older than it. A cursor belongs to the search that
+    // produced it: the same provider, conversation, text and kind.
+    std::string       cursor;
+    int               limit = 50;   // at most this many per page (<= 0: 50)
+};
+
+// One page of what a search found, newest first.
+struct UltraIMSearchPage {
+    std::vector<UltraIMMessage> messages;
+    // Where the next, older page starts; "" when the search has reached the
+    // beginning of the history. A provider that reads history from its
+    // service as it searches (Matrix) stops after a stretch of it, so a page
+    // can hold fewer messages than asked for - even none - and still have a
+    // cursor: ask again with it to search further back.
+    std::string nextCursor;
+};
+
+// ============================================================================
 // CONTACTS AND CONVERSATIONS
 // ============================================================================
 
@@ -120,6 +190,16 @@ struct UltraIMConversation {
     bool            isGroup = false;
     std::string     directContactId;    // The other person of a 1:1 conversation
     std::vector<std::string> memberIds; // Everyone in it, including the local user
+    // A group's creator, who alone may remove other members ("" when the
+    // network does not say, or any member may).
+    std::string     ownerId;
+    // The members' names where the network knows them (member id -> name);
+    // one missing here is shown by its id.
+    std::map<std::string, std::string> memberNames;
+    // How many are in it when memberIds lists only some of them (a big
+    // Telegram supergroup, asked for a page at a time); 0 when memberIds is
+    // everyone.
+    int             memberCount = 0;
     UltraIMPresence presence = UltraIMPresence::Unknown; // Of directContactId
     std::string     lastMessageSnippet;
     int64_t         lastMessageTimeMs = 0;
@@ -162,7 +242,10 @@ enum class UltraIMCapabilityFlags : uint32_t {
     CreateGroup     = 1u << 25,  // UltraIM_CreateGroup
     AccountProfile  = 1u << 26,  // UltraIM_FetchAccountProfile / UltraIM_UpdateAccountProfile
     SignInProtection = 1u << 27, // UltraIM_SetSignInProtection: a password, an authenticator code
-    AccountRecovery = 1u << 28   // UltraIM_StartRecovery / FinishRecovery: back by a link e-mailed to the owner
+    AccountRecovery = 1u << 28,  // UltraIM_StartRecovery / FinishRecovery: back by a link e-mailed to the owner
+    SearchMessages  = 1u << 29,  // UltraIM_SearchMessages: words, pictures, files and links in the history
+    ManageGroups    = 1u << 30,  // UltraIM_RenameGroup, UltraIM_AddGroupMembers, UltraIM_RemoveGroupMember
+    LeaveConversation = 1u << 31 // UltraIM_LeaveConversation: leave a group, delete a 1:1 conversation
 };
 
 inline UltraIMCapabilityFlags operator|(UltraIMCapabilityFlags a, UltraIMCapabilityFlags b) {
@@ -464,6 +547,13 @@ using UltraIMContactsCallback     = std::function<void(const UltraIMResult& resu
                                                        const std::vector<UltraIMContact>& contacts)>;
 using UltraIMMessagesCallback     = std::function<void(const UltraIMResult& result,
                                                        const std::vector<UltraIMMessage>& messages)>;
+using UltraIMSearchCallback       = std::function<void(const UltraIMResult& result,
+                                                       const UltraIMSearchPage& page)>;
+// For providers: one page of a conversation's history, as FetchMessages
+// gives it (UltraIM_SearchByFetching reads history through this).
+using UltraIMFetchPage            = std::function<void(const std::string& conversationId,
+                                                       const std::string& beforeMessageId, int limit,
+                                                       UltraIMMessagesCallback onResult)>;
 using UltraIMStickerPacksCallback = std::function<void(const UltraIMResult& result,
                                                        const std::vector<UltraIMStickerPack>& packs)>;
 using UltraIMKeyExportCallback    = std::function<void(const UltraIMResult& result, const std::string& data)>;

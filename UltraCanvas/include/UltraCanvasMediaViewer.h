@@ -87,8 +87,12 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
-// Version: 1.26.0 - MakeMediaViewerDescriptor / RegisterMediaViewerElement: "media-viewer" in the element
+// Version: 1.27.0 - MakeMediaViewerDescriptor / RegisterMediaViewerElement: "media-viewer" in the element
 //                  registry, compiled in or as the ultracanvas-widget-media-viewer runtime module
+// Version: 1.26.0 - a video's Details panel and info bar carry its technical facts, read
+//                   from the file's headers by ReadVideoFileInfo (ShownVideoInfo): size,
+//                   frame rate, codec and profile, bit rates, the sound's codec, rate and
+//                   channels, rotation, track counts and the file's own tags
 // Version: 1.25.0 - text shown in the text view or the Details panel can be copied: a press
 //                   there gives the widget the keyboard, and Ctrl+C / Ctrl+Insert copy the
 //                   selection, Ctrl+A selects all; a right-click opens Copy / Select All
@@ -135,6 +139,7 @@
 #include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "Models/STL/UltraCanvas3DTypes.h"  // Mesh3D / ModelViewPose for the 3D pane
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasVideoFileInfo.h"  // VideoFileInfo for the Details panel / status bar
 #include "UltraCanvasSessionLock.h"   // ForgetPasswords when the session locks
 #include <string>
 #include <vector>
@@ -799,6 +804,10 @@ private:
     // bitmap, none for anything else.
     MediaAdjustments SurfaceAdjustmentsFor(const std::string& path) const;
     void UpdateInfoBar();
+    // The shown video's technical facts: its headers read once per file
+    // (ReadVideoFileInfo), with what the playback backend reports filling the
+    // gaps of a container that reader does not know (WMV, MPEG-TS).
+    const VideoFileInfo& ShownVideoInfo(const std::string& path);
     // Unlock's question; `note` heads it when it is asked again.
     void AskForPassword(const std::string& note);
     // What a locked PDF shows: a note in the text view.
@@ -1049,6 +1058,11 @@ private:
     // A finished PreviewClip stays muted while it sits paused; the sound comes
     // back when the user resumes it themselves (the video element's onPlay).
     bool videoClipUnmutePending = false;
+    // ShownVideoInfo's last read, and the file (path and size) it is for.
+    VideoFileInfo videoFileInfo;
+    std::string videoFileInfoPath;
+    uintmax_t videoFileInfoSize = 0;
+    VideoFileInfo shownVideoInfo;      // videoFileInfo plus the backend's facts
     MediaTransition transition = MediaTransition::CrossFade;
     int transitionDurationMs = 450;
 

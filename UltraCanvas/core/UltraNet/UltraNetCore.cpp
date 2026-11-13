@@ -1,8 +1,9 @@
 // core/UltraNet/UltraNetCore.cpp
 // Lifecycle, global config, version reporting. Per-platform UltraNetSupport.*
 // supplies UltraNet_DetectSystemProxy.
+// Version: 0.3.0 - the system's proxy by default; UltraNet_SetGlobalProxySource
 // Version: 0.2.0 - UltraNet_SetThreadAbortCheck
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetCore.h"
@@ -34,6 +35,9 @@ namespace {
     std::mutex          g_mutex;
     bool                g_initialized = false;
     UltraNetConfig      g_config = UltraNetConfig::Default();
+
+    // UltraNet_SetGlobalProxySource: asked instead of g_config.proxy.
+    std::function<UltraNetProxyConfig()> g_proxySource;
 
     std::mutex                 g_xferCbMutex;
     UltraNetTransferCallbacks  g_xferCallbacks;
@@ -106,18 +110,37 @@ bool UltraNet_HasHttp3() {
 }
 
 void UltraNet_SetGlobalProxy(const UltraNetProxyConfig& proxy) {
-    std::lock_guard<std::mutex> lk(g_mutex);
-    g_config.proxy = proxy;
+    {
+        std::lock_guard<std::mutex> lk(g_mutex);
+        g_config.proxy = proxy;
+        g_proxySource = nullptr;
+    }
+    UltraNet_ForgetSystemProxy();
 }
 
 UltraNetProxyConfig UltraNet_GetGlobalProxy() {
-    std::lock_guard<std::mutex> lk(g_mutex);
-    return g_config.proxy;
+    std::function<UltraNetProxyConfig()> source;
+    {
+        std::lock_guard<std::mutex> lk(g_mutex);
+        if (!g_proxySource) return g_config.proxy;
+        source = g_proxySource;
+    }
+    // Outside the lock: the source may read a file, or call back in here.
+    return source();
 }
 
 void UltraNet_DisableProxy() {
     std::lock_guard<std::mutex> lk(g_mutex);
     g_config.proxy = UltraNetProxyConfig{};
+    g_proxySource = nullptr;
+}
+
+void UltraNet_SetGlobalProxySource(std::function<UltraNetProxyConfig()> source) {
+    {
+        std::lock_guard<std::mutex> lk(g_mutex);
+        g_proxySource = std::move(source);
+    }
+    UltraNet_ForgetSystemProxy();
 }
 
 UltraNetTransferCallbacks UltraNet_SetTransferCallbacks(

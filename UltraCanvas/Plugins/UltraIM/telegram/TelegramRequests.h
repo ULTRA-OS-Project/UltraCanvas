@@ -2,12 +2,16 @@
 // Telegram provider - the TDLib requests it sends, built in one place (td_api
 // names and fields), so the tests can hand every one of them to a real TDLib
 // and have it say whether it parses.
+// Version: 0.1.7 - GetSupergroupMembers (a page of them, the recent ones first)
+// Version: 0.1.6 - a group after it is made: SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat,
+//                  DeleteChatHistory, GetBasicGroupFullInfo
+// Version: 0.1.5 - SearchChatMessages
 // Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument (a local file with a caption)
 // Version: 0.1.2 - RequestQrCode
 // Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -69,10 +73,29 @@ TdObject EditText(int64_t chatId, int64_t messageId, const std::string& text);
 TdObject DeleteMessages(int64_t chatId, const std::vector<int64_t>& ids, bool forEveryone);
 TdObject ViewMessages(int64_t chatId, const std::vector<int64_t>& ids);
 TdObject SendTyping(int64_t chatId, bool typing);
+// Telegram's own search of one chat, newest first: `query` ("" = everything
+// the filter lets through), older than fromMessageId (0 = from the newest),
+// `filter` a SearchMessagesFilter's name ("searchMessagesFilterEmpty",
+// "...Photo", "...Video", "...PhotoAndVideo", "...Document", "...Url").
+// The answer (foundChatMessages) names where the next page starts.
+TdObject SearchChatMessages(int64_t chatId, const std::string& query, int64_t fromMessageId, int32_t limit,
+                            const std::string& filter);
 TdObject SearchPublicChat(const std::string& username);
 TdObject SearchUserByPhone(const std::string& phone);
 TdObject CreatePrivateChat(int64_t userId);
 TdObject CreateBasicGroup(const std::vector<int64_t>& userIds, const std::string& title);
+// A group after it is made: its name, members in (addChatMembers) and out
+// (setChatMemberStatus to left - a kick, in a supergroup too), leaving it;
+// a private chat's history deleted for us alone and the chat off the list;
+// a basic group's members and creator (basicGroupFullInfo).
+TdObject SetChatTitle(int64_t chatId, const std::string& title);
+TdObject AddChatMembers(int64_t chatId, const std::vector<int64_t>& userIds);
+TdObject RemoveChatMember(int64_t chatId, int64_t userId);
+TdObject LeaveChat(int64_t chatId);
+TdObject DeleteChatHistory(int64_t chatId);
+TdObject GetBasicGroupFullInfo(int64_t basicGroupId);
+// A supergroup's members, `limit` (up to 200) from `offset`, and how many there are (chatMembers).
+TdObject GetSupergroupMembers(int64_t supergroupId, int32_t offset, int32_t limit);
 TdObject Close();
 
 } // namespace Request

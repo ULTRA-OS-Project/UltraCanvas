@@ -1,4 +1,10 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.8.0 - a body directory names its folder unambiguously: '/' is
+//                  '_' as before, and a literal '_', '\' and ':' - which
+//                  were '_' too ("a/b" and "a_b" shared one directory) - and
+//                  the characters Windows refuses in a name (* ? " < > |) are
+//                  '~' escapes (CacheDirectoryOf); MigrateBodyCache moves both
+//                  earlier layouts (.layout-3)
 // Version: 0.7.0 - collision-free body directories: a folder whose name is not
 //                  in title case ("work", "WORK") is cached under its name and
 //                  a ~<case mask> suffix (CacheDirectoryOf), so case twins no
@@ -190,17 +196,132 @@ bool SameNameNoCase(const std::string& a, const std::string& b) {
     return true;
 }
 
-bool IsAsciiLetter(unsigned char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+// ---- Letter case beyond ASCII ----------------------------------------------
+// The simple one-to-one case pairs of the scripts a folder name is likely to
+// be in - Latin (Latin-1, Extended-A, -B and Additional), Greek, Cyrillic,
+// Armenian, Georgian and fullwidth Latin - the pairs a file system that ignores
+// case (NTFS's upcase table, APFS) folds alike. Letters with more than two
+// forms (dotless i, long s, final sigma, the sharp s) are left out: they are
+// not a pair.
+struct CaseRange {
+    char32_t first, last;   // the upper-case letters of the range
+    int32_t  delta;         // lower = upper + delta; 0: alternating pairs
+    bool     oddUpper;      // alternating pairs: the upper case is the odd one
+};
+constexpr CaseRange kCaseRanges[] = {
+    { 0x0041, 0x005A, 32, false },  { 0x00C0, 0x00D6, 32, false },
+    { 0x00D8, 0x00DE, 32, false },  { 0x0100, 0x012F, 0, false },
+    { 0x0132, 0x0137, 0, false },   { 0x0139, 0x0148, 0, true },
+    { 0x014A, 0x0177, 0, false },   { 0x0179, 0x017E, 0, true },
+    { 0x0182, 0x0185, 0, false },   { 0x01A0, 0x01A5, 0, false },
+    { 0x01CD, 0x01DC, 0, true },    { 0x01DE, 0x01EF, 0, false },
+    { 0x01F8, 0x021F, 0, false },   { 0x0222, 0x0233, 0, false },
+    { 0x0246, 0x024F, 0, false },
+    { 0x0386, 0x0386, 38, false },  { 0x0388, 0x038A, 37, false },
+    { 0x038C, 0x038C, 64, false },  { 0x038E, 0x038F, 63, false },
+    { 0x0391, 0x03A1, 32, false },  { 0x03A3, 0x03AB, 32, false },
+    { 0x03D8, 0x03EF, 0, false },
+    { 0x0400, 0x040F, 80, false },  { 0x0410, 0x042F, 32, false },
+    { 0x0460, 0x0481, 0, false },   { 0x048A, 0x04BF, 0, false },
+    { 0x04C0, 0x04C0, 15, false },  { 0x04C1, 0x04CE, 0, true },
+    { 0x04D0, 0x052F, 0, false },
+    { 0x0531, 0x0556, 48, false },
+    { 0x10A0, 0x10C5, 7264, false },
+    { 0x1E00, 0x1E95, 0, false },   { 0x1EA0, 0x1EFF, 0, false },
+    { 0xFF21, 0xFF3A, 32, false },
+};
 
-// The casing a name's directory is plain in: each word's first letter upper
-// case and the rest lower ("Sent Items", "[Gmail]_All Mail", "INBOX.Drafts"),
-// a leading "inbox" level as INBOX. A word starts after anything but a letter,
-// a digit or a byte of a multi-byte character. One fixed form per spelling:
-// of two names that differ only in case, at most one is in it.
-std::string TitleCase(const std::string& name) {
-    std::string out = name;
+// The upper and the lower case of `cp`; both `cp` itself for a character
+// without case (or one left out above).
+void CaseForms(char32_t cp, char32_t& upper, char32_t& lower) {
+    upper = lower = cp;
+    if (cp == 0x00FF || cp == 0x0178) { upper = 0x0178; lower = 0x00FF; return; }   // ÿ Ÿ
+    for (const CaseRange& r : kCaseRanges) {
+        if (r.delta != 0) {
+            if (cp >= r.first && cp <= r.last) { upper = cp; lower = cp + static_cast<char32_t>(r.delta); return; }
+            const char32_t lo = r.first + static_cast<char32_t>(r.delta), hi = r.last + static_cast<char32_t>(r.delta);
+            if (cp >= lo && cp <= hi) { upper = cp - static_cast<char32_t>(r.delta); lower = cp; return; }
+            continue;
+        }
+        if (cp < r.first || cp > r.last) continue;
+        const bool odd = (cp & 1u) != 0;
+        if (odd == r.oddUpper) { upper = cp; lower = cp + 1; } else { upper = cp - 1; lower = cp; }
+        if (upper < r.first || lower > r.last) { upper = lower = cp; }   // the range's loose end
+        return;
+    }
+}
+
+// The code points of `s` with where each starts; a byte that is not valid
+// UTF-8 stands for itself (and has no case).
+struct CodePoint { char32_t cp; std::size_t at; };
+std::vector<CodePoint> DecodeUtf8(const std::string& s) {
+    std::vector<CodePoint> out;
+    for (std::size_t i = 0; i < s.size();) {
+        const auto b = static_cast<unsigned char>(s[i]);
+        int extra = b >= 0xF0 && b < 0xF8 ? 3 : b >= 0xE0 ? 2 : b >= 0xC2 && b < 0xE0 ? 1 : 0;
+        if (b >= 0xF8) extra = 0;
+        char32_t cp = extra == 3 ? (b & 0x07u) : extra == 2 ? (b & 0x0Fu) : extra == 1 ? (b & 0x1Fu) : b;
+        bool ok = b < 0x80 || extra > 0;
+        for (int k = 1; ok && k <= extra; ++k) {
+            const unsigned char c = i + static_cast<std::size_t>(k) < s.size()
+                ? static_cast<unsigned char>(s[i + static_cast<std::size_t>(k)])
+                : static_cast<unsigned char>(0);
+            if ((c & 0xC0u) != 0x80u) { ok = false; break; }
+            cp = (cp << 6) | (c & 0x3Fu);
+        }
+        if (!ok) { out.push_back({ static_cast<char32_t>(0xDC00u + b), i }); ++i; continue; }   // a lone byte
+        out.push_back({ cp, i });
+        i += 1 + static_cast<std::size_t>(extra);
+    }
+    return out;
+}
+
+// Which letters of `name` differ from its title case - each word's first
+// letter upper case and the rest lower ("Sent Items", "[Gmail]/All Mail",
+// "Über", "Входящие"), a leading "inbox" level as INBOX - one bit each in
+// letter order, four to a hex digit, lowest first; "" when none does. A word
+// starts after anything that is neither a letter nor a digit. Of two names
+// that differ only in case, at most one is in title case, and the two masks
+// differ.
+std::string CaseMask(const std::string& name) {
+    const std::vector<CodePoint> cps = DecodeUtf8(name);
+    // The leading "inbox" level reads as INBOX.
+    std::size_t inboxEnd = 0;
+    if (name.size() >= 5 && SameNameNoCase(name.substr(0, 5), "INBOX") &&
+        (name.size() == 5 || !(std::isalnum(static_cast<unsigned char>(name[5])) ||
+                               static_cast<unsigned char>(name[5]) >= 0x80)))
+        inboxEnd = 5;
+    std::string mask;
+    int nibble = 0, bit = 0;
     bool wordStart = true;
-    for (char& ch : out) {
+    for (const CodePoint& c : cps) {
+        char32_t upper, lower;
+        CaseForms(c.cp, upper, lower);
+        if (upper == lower) {   // no case: a digit or another letter keeps the word going
+            wordStart = c.cp < 0x80 ? !std::isdigit(static_cast<int>(c.cp)) : false;
+            if (c.cp >= 0xDC00 && c.cp <= 0xDCFF) wordStart = false;
+            continue;
+        }
+        const char32_t title = (c.at < inboxEnd || wordStart) ? upper : lower;
+        wordStart = false;
+        if (c.cp != title) nibble |= 1 << bit;
+        if (++bit == 4) {
+            mask.push_back("0123456789abcdef"[nibble]);
+            nibble = 0; bit = 0;
+        }
+    }
+    if (bit > 0) mask.push_back("0123456789abcdef"[nibble]);
+    while (!mask.empty() && mask.back() == '0') mask.pop_back();
+    return mask;
+}
+
+// The mask the second layout used: ASCII letters only, a byte outside ASCII
+// neither a letter nor a word break.
+bool IsAsciiLetter(unsigned char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+std::string AsciiCaseMask(const std::string& name) {
+    std::string title = name;
+    bool wordStart = true;
+    for (char& ch : title) {
         const auto c = static_cast<unsigned char>(ch);
         if (IsAsciiLetter(c)) {
             ch = static_cast<char>(wordStart ? std::toupper(c) : std::tolower(c));
@@ -209,30 +330,16 @@ std::string TitleCase(const std::string& name) {
             wordStart = !(std::isdigit(c) || c >= 0x80);
         }
     }
-    if (out.size() >= 5 && SameNameNoCase(out.substr(0, 5), "INBOX") &&
-        (out.size() == 5 || !(std::isalnum(static_cast<unsigned char>(out[5])) ||
-                              static_cast<unsigned char>(out[5]) >= 0x80)))
+    if (title.size() >= 5 && SameNameNoCase(title.substr(0, 5), "INBOX") &&
+        (title.size() == 5 || !(std::isalnum(static_cast<unsigned char>(title[5])) ||
+                                static_cast<unsigned char>(title[5]) >= 0x80)))
         for (std::size_t i = 0; i < 5; ++i)
-            out[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[i])));
-    return out;
-}
-
-// The directory an earlier version cached the folder's bodies in.
-std::string LegacyCacheDirectory(const std::string& folder) { return SanitizeFolder(folder); }
-
-} // namespace
-
-std::string CacheDirectoryOf(const std::string& folder) {
-    const std::string name = SanitizeFolder(folder);
-    const std::string title = TitleCase(name);
-    // Which letters differ from the title case, one bit each in letter order,
-    // four to a hex digit, lowest first.
+            title[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[i])));
     std::string mask;
     int nibble = 0, bit = 0;
-    bool any = false;
     for (std::size_t i = 0; i < name.size(); ++i) {
         if (!IsAsciiLetter(static_cast<unsigned char>(name[i]))) continue;
-        if (name[i] != title[i]) { nibble |= 1 << bit; any = true; }
+        if (name[i] != title[i]) nibble |= 1 << bit;
         if (++bit == 4) {
             mask.push_back("0123456789abcdef"[nibble]);
             nibble = 0; bit = 0;
@@ -240,22 +347,68 @@ std::string CacheDirectoryOf(const std::string& folder) {
     }
     if (bit > 0) mask.push_back("0123456789abcdef"[nibble]);
     while (!mask.empty() && mask.back() == '0') mask.pop_back();
-    // A '~' of the name doubled, so the one before the mask stands alone.
+    return mask;
+}
+
+// A character a directory name cannot carry as itself, and the letter it is
+// written as after a '~'. None of the letters is a hex digit, so an escape
+// never reads as the case mask.
+struct Escape { char c; char code; };
+constexpr Escape kEscapes[] = {
+    { '~', '~' }, { '_', 'u' }, { '\\', 'r' }, { ':', 'k' }, { '*', 's' },
+    { '?', 'q' }, { '"', 'w' }, { '<', 'l' }, { '>', 'g' }, { '|', 'p' },
+};
+
+// The directories earlier versions cached the folder's bodies in: the name
+// with '/', '\' and ':' as '_' (layout 1), and that with the case mask, '~'
+// doubled (layout 2).
+std::string Layout1CacheDirectory(const std::string& folder) { return SanitizeFolder(folder); }
+std::string Layout2CacheDirectory(const std::string& folder) {
+    const std::string name = SanitizeFolder(folder);
     std::string out;
     for (char c : name) {
         out.push_back(c);
         if (c == '~') out.push_back('~');
     }
-    if (any) out += "~" + mask;
+    const std::string mask = AsciiCaseMask(name);
+    if (!mask.empty()) out += "~" + mask;
+    return out;
+}
+
+} // namespace
+
+std::string CacheDirectoryOf(const std::string& folder) {
+    const std::string name = folder.empty() ? std::string("INBOX") : folder;
+    std::string out;
+    for (char c : name) {
+        if (c == '/') { out.push_back('_'); continue; }
+        bool escaped = false;
+        for (const Escape& e : kEscapes) {
+            if (c != e.c) continue;
+            out.push_back('~');
+            out.push_back(e.code);
+            escaped = true;
+            break;
+        }
+        if (!escaped) out.push_back(c);
+    }
+    const std::string mask = CaseMask(name);
+    if (!mask.empty()) out += "~" + mask;
     return out;
 }
 
 std::string FolderOfCacheDirectory(const std::string& directory) {
     std::string out;
     for (std::size_t i = 0; i < directory.size(); ++i) {
-        if (directory[i] != '~') { out.push_back(directory[i]); continue; }
-        if (i + 1 < directory.size() && directory[i + 1] == '~') { out.push_back('~'); ++i; continue; }
-        break;   // the lone '~' before the case mask
+        const char c = directory[i];
+        if (c == '_') { out.push_back('/'); continue; }
+        if (c != '~') { out.push_back(c); continue; }
+        const char code = i + 1 < directory.size() ? directory[i + 1] : '\0';
+        const Escape* found = nullptr;
+        for (const Escape& e : kEscapes) if (e.code == code) found = &e;
+        if (!found) break;   // the lone '~' before the case mask
+        out.push_back(found->c);
+        ++i;
     }
     return out;
 }
@@ -284,7 +437,7 @@ bool MoveBodyFile(const fs::path& from, const fs::path& to) {
 
 int MigrateBodyCache(const std::string& emlDir, const LocalStore& store) {
     const fs::path root = PathFromUtf8(emlDir);
-    const fs::path marker = root / ".layout-2";
+    const fs::path marker = root / ".layout-3";
     std::error_code ec;
     if (fs::exists(marker, ec)) return 0;
     int moved = 0;
@@ -296,63 +449,79 @@ int MigrateBodyCache(const std::string& emlDir, const LocalStore& store) {
         if (!fs::is_directory(accountDir, ec)) continue;
         std::vector<Folder> folders;
         store.ListFolders(account.accountId, folders);
+        // Every directory a folder's bodies may be in: the present one first.
+        auto directoriesOf = [](const std::string& name) {
+            std::vector<std::string> dirs = { CacheDirectoryOf(name) };
+            for (const std::string& d : { Layout2CacheDirectory(name), Layout1CacheDirectory(name) })
+                if (std::find(dirs.begin(), dirs.end(), d) == dirs.end()) dirs.push_back(d);
+            return dirs;
+        };
         for (const auto& folder : folders) {
-            const std::string legacyName = LegacyCacheDirectory(folder.name);
-            const std::string newName = CacheDirectoryOf(folder.name);
-            if (legacyName == newName) continue;
-            const fs::path legacy = accountDir / PathFromUtf8(legacyName);
-            const fs::path target = accountDir / PathFromUtf8(newName);
-            if (!fs::is_directory(legacy, ec)) continue;
+            const std::vector<std::string> dirs = directoriesOf(folder.name);
+            const fs::path target = accountDir / PathFromUtf8(dirs.front());
+            for (std::size_t li = 1; li < dirs.size(); ++li) {
+                const fs::path legacy = accountDir / PathFromUtf8(dirs[li]);
+                if (!fs::is_directory(legacy, ec)) continue;
+                std::error_code same;
+                if (fs::exists(target, same) && fs::equivalent(legacy, target, same)) continue;
 
-            // The folders whose old directory is this one: their names differ
-            // only in case, on a file system that ignores it (Windows, macOS).
-            std::set<int64_t> twinUids;
-            bool shared = false;
-            for (const auto& other : folders) {
-                if (other.name == folder.name) continue;
-                const fs::path otherLegacy = accountDir / PathFromUtf8(LegacyCacheDirectory(other.name));
-                std::error_code eq;
-                if (!fs::exists(otherLegacy, eq) || !fs::equivalent(legacy, otherLegacy, eq) || eq)
-                    continue;
-                shared = true;
-                std::vector<int64_t> uids;
-                store.ListUids(account.accountId, other.name, uids);
-                twinUids.insert(uids.begin(), uids.end());
-            }
-
-            if (!shared && !fs::exists(target, ec)) {
-                fs::rename(legacy, target, ec);
-                if (ec) complete = false; else ++moved;
-                continue;
-            }
-            // File by file: into a directory that is there already, or out of
-            // one a twin shares - then only this folder's own bodies, and one
-            // both numbered alike is nobody's for sure: it goes, and each
-            // folder downloads its own again when it is read.
-            std::set<int64_t> own;
-            if (shared) {
-                std::vector<int64_t> uids;
-                store.ListUids(account.accountId, folder.name, uids);
-                own.insert(uids.begin(), uids.end());
-            }
-            std::vector<fs::path> files;
-            for (const auto& entry : fs::directory_iterator(legacy, ec))
-                if (entry.is_regular_file(ec)) files.push_back(entry.path());
-            for (const auto& file : files) {
-                const int64_t uid = UidOfBodyFile(file);
-                if (shared) {
-                    if (uid < 0 || !own.count(uid)) continue;   // the twin's
-                    if (twinUids.count(uid)) { fs::remove(file, ec); continue; }
+                // The folders this directory is also one of: a name that
+                // differs only in case on a file system that ignores it
+                // (Windows, macOS), or "a/b" and "a_b", which the first
+                // layout wrote alike.
+                std::set<int64_t> twinUids;
+                bool shared = false;
+                for (const auto& other : folders) {
+                    if (other.name == folder.name) continue;
+                    bool theirs = false;
+                    for (const std::string& d : directoriesOf(other.name)) {
+                        const fs::path p = accountDir / PathFromUtf8(d);
+                        std::error_code eq;
+                        if (fs::exists(p, eq) && fs::equivalent(legacy, p, eq) && !eq) theirs = true;
+                    }
+                    if (!theirs) continue;
+                    shared = true;
+                    std::vector<int64_t> uids;
+                    store.ListUids(account.accountId, other.name, uids);
+                    twinUids.insert(uids.begin(), uids.end());
                 }
-                if (!MoveBodyFile(file, target / file.filename())) complete = false;
+
+                if (!shared && !fs::exists(target, ec)) {
+                    fs::rename(legacy, target, ec);
+                    if (ec) complete = false; else ++moved;
+                    continue;
+                }
+                // File by file: into a directory that is there already, or out
+                // of one another folder shares - then only this folder's own
+                // bodies, and one both numbered alike is nobody's for sure: it
+                // goes, and each folder downloads its own again when it is read.
+                std::set<int64_t> own;
+                if (shared) {
+                    std::vector<int64_t> uids;
+                    store.ListUids(account.accountId, folder.name, uids);
+                    own.insert(uids.begin(), uids.end());
+                }
+                std::vector<fs::path> files;
+                for (const auto& entry : fs::directory_iterator(legacy, ec))
+                    if (entry.is_regular_file(ec)) files.push_back(entry.path());
+                bool touched = false;
+                for (const auto& file : files) {
+                    const int64_t uid = UidOfBodyFile(file);
+                    if (shared) {
+                        if (uid < 0 || !own.count(uid)) continue;   // the other's
+                        if (twinUids.count(uid)) { fs::remove(file, ec); touched = true; continue; }
+                    }
+                    if (MoveBodyFile(file, target / file.filename())) touched = true;
+                    else complete = false;
+                }
+                fs::remove(legacy, ec);   // only once it is empty
+                if (touched) ++moved;
             }
-            fs::remove(legacy, ec);   // only once it is empty
-            ++moved;
         }
     }
     if (complete) {
         fs::create_directories(root, ec);
-        std::ofstream(marker) << "2\n";
+        std::ofstream(marker) << "3\n";
     }
     return moved;
 }

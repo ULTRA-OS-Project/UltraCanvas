@@ -1,0 +1,105 @@
+name: Build result
+
+# One commit status, "Build result", that says whether the Build workflow
+# (build.yml) really built a commit - set from OUTSIDE that workflow, so it
+# also speaks for a run that never got as far as a job.
+#
+# Why: on 2026-11-09 a Build run of pull request #1153 ended "failure" with
+# no jobs at all (it failed to start), its earlier run had been cancelled by
+# the push, and nothing else on the head commit was red - so the pull request
+# read as mergeable although no platform had built that commit. A job inside
+# build.yml cannot report a run that has no jobs; a workflow_run event can.
+#
+#   requested -> "Build result" pending
+#   completed -> success only when the run succeeded AND ran jobs; a run that
+#                failed, timed out, failed to start, was cancelled or ended
+#                with no jobs leaves it red, so the pull request does not read
+#                as green until a run succeeds.
+#
+# Only the newest run (and attempt) of Build for a commit sets its status: a
+# late event of a superseded run or of an earlier attempt changes nothing.
+#
+# Make "Build result" a required status check of main's branch protection
+# (Settings > Branches): then a pull request cannot be merged until a Build
+# run of its head commit has succeeded. A workflow_run workflow runs as it is
+# on the default branch, so this one takes effect once it is on main.
+#
+# Nothing of the pull request is checked out or run here: the job reads the
+# run's metadata and writes one status, which is why it may hold
+# statuses: write for pull requests from forks too.
+
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [requested, completed]
+
+permissions:
+  actions: read
+  statuses: write
+
+concurrency:
+  # One status per commit: events of the same commit wait for each other.
+  group: build-result-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  status:
+    runs-on: ubuntu-22.04   # the pool the build legs use (see build.yml)
+    steps:
+      - name: Set "Build result" on the commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ACTION: ${{ github.event.action }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+        run: |
+          set -euo pipefail
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a commit: $SHA"; exit 1; }
+
+          # The newest Build run of this commit, and its attempt: only it may
+          # set the status.
+          read -r newest_id newest_attempt < <(gh api \
+            "repos/$REPO/actions/workflows/$WORKFLOW_ID/runs?head_sha=$SHA&per_page=1" \
+            --jq '.workflow_runs[0] | "\(.id) \(.run_attempt)"')
+          if [ "$newest_id" != "$RUN_ID" ] || [ "$newest_attempt" != "$ATTEMPT" ]; then
+            echo "Run $RUN_ID attempt $ATTEMPT is not the newest for $SHA" \
+                 "(that is $newest_id attempt $newest_attempt): status left as it is."
+            exit 0
+          fi
+
+          set_status() {   # state, description
+            gh api -X POST "repos/$REPO/statuses/$SHA" \
+              -f state="$1" -f context="Build result" \
+              -f description="$2" -f target_url="$RUN_URL" > /dev/null
+            echo "Build result: $1 - $2"
+          }
+
+          if [ "$ACTION" = "requested" ]; then
+            set_status pending "Build run $RUN_ID (attempt $ATTEMPT) is running"
+            exit 0
+          fi
+
+          jobs=$(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs?per_page=1" \
+                   --jq '.total_count')
+          case "$CONCLUSION" in
+            success)
+              if [ "$jobs" -gt 0 ]; then
+                set_status success "Built: $jobs job(s) of run $RUN_ID passed"
+              else
+                set_status failure "The Build run ended with no jobs - re-run it"
+              fi ;;
+            cancelled)
+              set_status error "The Build run was cancelled - re-run it" ;;
+            *)
+              if [ "$jobs" -eq 0 ]; then
+                set_status failure "The Build run failed to start (${CONCLUSION:-no conclusion}, no jobs) - re-run it"
+              else
+                set_status failure "The Build run ended: ${CONCLUSION:-no conclusion}"
+              fi ;;
+          esac

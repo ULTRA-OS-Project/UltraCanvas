@@ -53,6 +53,8 @@ endif()
 add_executable(ultraweb-runtime
     UltraWebRuntime.cpp
     ../host/UltraWebFetch.cpp
+    ../host/UltraWebSocket.cpp
+    ../host/UltraWebRtc.cpp
     ../host/UltraWebGuest.cpp
     ../host/UltraWebStorage.cpp
 )

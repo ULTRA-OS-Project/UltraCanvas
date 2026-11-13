@@ -2,9 +2,11 @@
 // Composite UI control wrapping UltraCanvasAudioRecorder, built from child widgets
 // (icon buttons, level meter, label, dropdown, buttons) arranged by a flex row
 // layout so the framework owns alignment/centering.
+// Version: 0.4.0 - AudioRecorderStyle::FromTheme, ApplyTheme: the bar follows the theme; a SetStyle by hand
+//                  stops the following
 // Version: 0.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 0.3.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -140,6 +142,15 @@ struct AudioRecorderStyle {
     bool  showSaveDiscard = true;        // Buttons appear after Stop()
     bool  showEmbeddedPlayer = false;    // Preview just-recorded audio inline
     bool  compact = false;
+
+    // The theme's roles over a base's own shape and flags: the panel with a
+    // hairline, danger for the record button (its pulse is the element role
+    // "audio-recorder.pulse" where a theme names it), the pressed fill
+    // behind the level meter whose green, amber and red keep their meaning,
+    // ink, the icons in muted ink, faint ink disabled
+    static AudioRecorderStyle FromTheme(const UltraCanvasTheme& theme, const AudioRecorderStyle& base);
+    static AudioRecorderStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, AudioRecorderStyle()); }
+    static AudioRecorderStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // ===== AUDIO RECORDER UI ELEMENT =====
@@ -176,6 +187,7 @@ public:
 
     // ===== STYLE =====
     void SetStyle(const AudioRecorderStyle& s);
+    void ApplyTheme(const UltraCanvasTheme& theme) override;
     const AudioRecorderStyle& GetStyle() const { return style; }
 
     // ===== ACCESS =====

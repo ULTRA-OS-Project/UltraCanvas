@@ -18,6 +18,9 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.2.0 - Gradient (shade) fills
+// Version: 2.1.0 - Drawn shapes and groups: lines, rectangles, ellipses, Word 97's other
+//                 shape types, freeforms, groups with pictures and words
 // Version: 2.0.1
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
@@ -28,8 +31,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -1024,6 +1030,36 @@ bool IsMonospaceFont(const std::string& family) {
 // the Data stream at a PICF header followed by OfficeArt records; the image
 // itself is a BLIP record among them.
 
+// A PNG or JPEG BLIP record at data[at] (its 8-byte header first), ending
+// by `end`: the picture's bytes. Anything else, or a damaged record, is not.
+bool ReadBlipRecord(const std::vector<uint8_t>& data, size_t at, size_t end,
+                    std::vector<uint8_t>& image, std::string& mimeType) {
+    if (at + 8 > end || end > data.size()) return false;
+    const uint16_t verInstance = ReadU16(data, at);
+    const uint16_t type = ReadU16(data, at + 2);
+    const uint32_t length = ReadU32(data, at + 4);
+    if ((verInstance & 0x0F) != 0 || at + 8 + length > end) return false;
+    const uint16_t instance = verInstance >> 4;
+    size_t header = 0;
+    if (type == 0xF01E) {                                  // PNG
+        header = (instance == 0x6E1) ? 33 : 17;
+        mimeType = "image/png";
+    } else if (type == 0xF01D || type == 0xF02A) {         // JPEG
+        header = (instance == 0x46B || instance == 0x6E3) ? 33 : 17;
+        mimeType = "image/jpeg";
+    } else {
+        return false;
+    }
+    if (header >= length) return false;
+    image.assign(data.begin() + static_cast<std::ptrdiff_t>(at + 8 + header),
+                 data.begin() + static_cast<std::ptrdiff_t>(at + 8 + length));
+    const bool png = image.size() > 4 && image[0] == 0x89 && image[1] == 'P';
+    const bool jpeg = image.size() > 3 && image[0] == 0xFF && image[1] == 0xD8;
+    if ((mimeType == "image/png" && png) || (mimeType == "image/jpeg" && jpeg)) return true;
+    image.clear();
+    return false;
+}
+
 bool ExtractPicture(const std::vector<uint8_t>& data, int32_t location, std::vector<uint8_t>& image,
                     std::string& mimeType, float& widthPt, float& heightPt) {
     if (location < 0 || static_cast<size_t>(location) + 0x44 > data.size()) return false;
@@ -1041,28 +1077,7 @@ bool ExtractPicture(const std::vector<uint8_t>& data, int32_t location, std::vec
     // and DIBs are not decoded.
     const size_t end = pic + total;
     for (size_t at = pic + headerSize; at + 8 <= end; ++at) {
-        const uint16_t verInstance = ReadU16(data, at);
-        const uint16_t type = ReadU16(data, at + 2);
-        const uint32_t length = ReadU32(data, at + 4);
-        if ((verInstance & 0x0F) != 0 || at + 8 + length > end) continue;
-        const uint16_t instance = verInstance >> 4;
-        size_t header = 0;
-        if (type == 0xF01E) {                                  // PNG
-            header = (instance == 0x6E1) ? 33 : 17;
-            mimeType = "image/png";
-        } else if (type == 0xF01D || type == 0xF02A) {         // JPEG
-            header = (instance == 0x46B || instance == 0x6E3) ? 33 : 17;
-            mimeType = "image/jpeg";
-        } else {
-            continue;
-        }
-        if (header >= length) continue;
-        image.assign(data.begin() + static_cast<std::ptrdiff_t>(at + 8 + header),
-                     data.begin() + static_cast<std::ptrdiff_t>(at + 8 + length));
-        const bool png = image.size() > 4 && image[0] == 0x89 && image[1] == 'P';
-        const bool jpeg = image.size() > 3 && image[0] == 0xFF && image[1] == 0xD8;
-        if ((mimeType == "image/png" && png) || (mimeType == "image/jpeg" && jpeg)) return true;
-        image.clear();
+        if (ReadBlipRecord(data, at, end, image, mimeType)) return true;
     }
     return false;
 }
@@ -1095,11 +1110,20 @@ public:
         const uint32_t ccpText = ReadU32(word_, lw + 2 + 3 * 4);
         const uint32_t ccpFtn = ReadU32(word_, lw + 2 + 4 * 4);
         const uint32_t ccpHdd = ReadU32(word_, lw + 2 + 5 * 4);
+        const uint32_t ccpAtn = cslw > 7 ? ReadU32(word_, lw + 2 + 7 * 4) : 0;
+        const uint32_t ccpEdn = cslw > 8 ? ReadU32(word_, lw + 2 + 8 * 4) : 0;
+        const uint32_t ccpTxbx = cslw > 9 ? ReadU32(word_, lw + 2 + 9 * 4) : 0;
+        const uint32_t ccpHdrTxbx = cslw > 10 ? ReadU32(word_, lw + 2 + 10 * 4) : 0;
 
-        // The main text, then the footnotes, then the header/footer stories -
-        // one run of character positions through the piece table.
+        // The main text, then the footnotes, the header/footer stories, the
+        // comments, the endnotes and the text boxes' text - one run of
+        // character positions through the piece table.
         std::vector<DocChar> allChars;
-        if (!ReadPieces(ccpText + ccpFtn + ccpHdd, allChars, error)) return false;
+        if (!ReadPieces(ccpText + ccpFtn + ccpHdd + ccpAtn + ccpEdn + ccpTxbx + ccpHdrTxbx, allChars, error)) {
+            return false;
+        }
+        textBoxStoryStart_ = static_cast<size_t>(ccpText) + ccpFtn + ccpHdd + ccpAtn + ccpEdn;
+        headerTextBoxStoryStart_ = textBoxStoryStart_ + ccpTxbx;
         std::vector<DocChar> chars(allChars.begin(),
                                    allChars.begin() + static_cast<std::ptrdiff_t>(std::min<size_t>(ccpText, allChars.size())));
 
@@ -1115,9 +1139,16 @@ public:
             if (dxaTab > 0) doc_.defaultTabStopPt = static_cast<float>(dxaTab) / 20.0f;
         }
 
+        LoadOfficeArt();
+        LoadShapeAnchors(40, anchors_);            // PlcSpaMom: the main text's shapes
+        LoadShapeAnchors(41, headerAnchors_);      // PlcSpaHdr: the headers' and footers'
+        activeAnchors_ = &anchors_;
+        anchorCpBase_ = 0;
         BuildBlocks(chars);
+        activeAnchors_ = nullptr;
         LoadSection();
         LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
+        LoadTextBoxStories(allChars);
         return true;
     }
 
@@ -1175,7 +1206,11 @@ public:
             // The stories are read with the body's machinery, into their own list.
             std::vector<RichDocBlock> body = std::move(doc_.blocks);
             doc_.blocks.clear();
+            // Shapes anchored in it: PlcSpaHdr counts from the header stories' start.
+            activeAnchors_ = &headerAnchors_;
+            anchorCpBase_ = begin;
             BuildBlocks(text);
+            activeAnchors_ = nullptr;
             out = std::move(doc_.blocks);
             doc_.blocks = std::move(body);
             while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
@@ -1239,6 +1274,605 @@ private:
     bool cellHasParagraph_ = false;
     struct RowBorders { bool present = false; RichBorder sides[6]; };
     std::vector<RowBorders> rowTableBorders_;   // per row of the table being built
+
+    // ===== FLOATING SHAPES =====
+    // Word 97 keeps a floating picture or text box as an OfficeArt shape: its
+    // anchor (a 0x08 character), rectangle and wrap in PlcSpaMom's FSPA, its
+    // picture, text-box id, placement and look in the shape's OfficeArt
+    // properties (DggInfo), its text in the text-box story (PlcftxbxTxt).
+    struct OfficeArtShape {
+        int type = 0;                           // MSOSPT: 1 rectangle, 3 ellipse, 20 line, 75 picture, 202 text box
+        uint32_t flags = 0;                     // FSP: 0x1 group, 0x40 flipped across, 0x80 flipped down
+        int32_t textId = 0;                     // lTxid: text box (index << 16) | sequence
+        uint32_t pib = 0;                       // BStore index, 1-based
+        int posH = -1, posRelH = -1, posV = -1, posRelV = -1;
+        uint32_t fillColor = 0xFFFFFF;
+        bool filled = true;
+        int fillType = 0;                       // 0 solid; 4, 7 linear shades; 5, 6 round ones
+        uint32_t fillBackColor = 0xFFFFFF;      // a shade's other colour
+        double fillAngle = 0.0;                 // anticlockwise from top-to-bottom
+        double fillTo[4] = {0.0, 0.0, 0.0, 0.0};   // a round shade's centre: left, top, right, bottom (the corner by default)
+        int fillFocus = 0;                      // percent: where the back colour sits along the shade
+        uint32_t lineColor = 0;
+        bool lined = true;
+        int32_t lineWidth = 9525;               // EMU
+        int32_t textLeft = 91440;               // EMU
+        int anchorText = 0;                     // 0 top, 1 middle, 2 bottom (and their centred kinds)
+        double rotation = 0.0;                  // degrees, clockwise
+        int lineDashing = 0;                    // 0 solid, 2 dotted, other dashes
+        bool arrowStart = false, arrowEnd = false;
+        int32_t adjust = -1;                    // adjustValue: a rounded rectangle's corner, of 21600
+        int32_t geoLeft = 0, geoTop = 0, geoRight = 21600, geoBottom = 21600;
+        std::vector<std::pair<int32_t, int32_t>> vertices;   // a freeform's points (pVertices)
+        std::vector<uint16_t> segments;         // and how they join (pSegmentInfo)
+        bool hasChildAnchor = false;            // a group member: its rectangle in the group's space
+        int32_t child[4] = {0, 0, 0, 0};
+        bool hasGroupSpace = false;             // a group: its members' coordinate space (FSPGR)
+        int32_t group[4] = {0, 0, 1, 1};
+        std::vector<uint32_t> members;          // a group's members, by spid
+    };
+    std::map<uint32_t, OfficeArtShape> shapes_;  // by spid
+    struct BlipRef { const std::vector<uint8_t>* stream = nullptr; size_t at = 0; size_t end = 0; };
+    std::vector<BlipRef> blips_;                 // the BStore, in order
+    struct Anchor {
+        uint32_t spid = 0;
+        int32_t left = 0, top = 0, right = 0, bottom = 0;   // twips
+        int bx = 0, by = 0, wr = 0;
+        bool belowText = false;
+    };
+    std::map<size_t, std::vector<Anchor>> anchors_;          // main text, by CP of the 0x08 character
+    std::map<size_t, std::vector<Anchor>> headerAnchors_;    // headers and footers, by CP in their story
+    // While a story is read: its anchors, and the CP of its first character.
+    const std::map<size_t, std::vector<Anchor>>* activeAnchors_ = nullptr;
+    size_t anchorCpBase_ = 0;
+    struct PendingTextBox { int frameIndex = -1; int story = -1; bool header = false; };
+    std::vector<PendingTextBox> pendingTextBoxes_;
+    size_t textBoxStoryStart_ = 0;
+    size_t headerTextBoxStoryStart_ = 0;
+
+    // DggInfo: an OfficeArtDggContainer (holding the BStore), then per
+    // drawing a one-byte label and an OfficeArtDgContainer of shapes.
+    void LoadOfficeArt() {
+        const uint32_t fc = FcAt(50), lcb = LcbAt(50);
+        if (lcb < 8 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        const size_t end = static_cast<size_t>(fc) + lcb;
+        size_t pos = fc;
+        bool first = true;
+        while (pos + 8 <= end) {
+            if (!first) pos += 1;                // dgglbl: main document or header drawing
+            if (pos + 8 > end) break;
+            const size_t length = ReadU32(table_, pos + 4);
+            if (pos + 8 + length > end) break;
+            WalkOfficeArt(pos + 8, pos + 8 + length, 0);
+            pos += 8 + length;
+            first = false;
+        }
+    }
+
+    void WalkOfficeArt(size_t from, size_t to, int depth) {
+        if (depth > 16) return;
+        for (size_t pos = from; pos + 8 <= to;) {
+            const uint16_t verInstance = ReadU16(table_, pos);
+            const uint16_t type = ReadU16(table_, pos + 2);
+            const size_t length = ReadU32(table_, pos + 4);
+            const size_t body = pos + 8;
+            if (body + length > to) break;
+            if (type == 0xF001) {
+                ReadBStore(body, body + length);
+            } else if (type == 0xF003) {
+                ReadGroup(body, body + length, depth + 1);
+            } else if (type == 0xF004) {
+                ReadShape(body, body + length);
+            } else if ((verInstance & 0x0F) == 0x0F) {
+                WalkOfficeArt(body, body + length, depth + 1);
+            }
+            pos = body + length;
+        }
+    }
+
+    // A group (spgrContainer): its own shape first (with its members'
+    // coordinate space), then its members - shapes and groups. Returns the
+    // group's spid (0 for none).
+    uint32_t ReadGroup(size_t from, size_t to, int depth) {
+        if (depth > 16) return 0;
+        uint32_t groupSpid = 0;
+        bool first = true;
+        std::vector<uint32_t> members;
+        for (size_t pos = from; pos + 8 <= to;) {
+            const uint16_t type = ReadU16(table_, pos + 2);
+            const size_t length = ReadU32(table_, pos + 4);
+            const size_t body = pos + 8;
+            if (body + length > to) break;
+            uint32_t spid = 0;
+            if (type == 0xF004) spid = ReadShape(body, body + length);
+            else if (type == 0xF003) spid = ReadGroup(body, body + length, depth + 1);
+            if (type == 0xF004 && first) groupSpid = spid;
+            else if (spid != 0) members.push_back(spid);
+            if (type == 0xF004 || type == 0xF003) first = false;
+            pos = body + length;
+        }
+        auto found = shapes_.find(groupSpid);
+        if (found != shapes_.end()) found->second.members = std::move(members);
+        return groupSpid;
+    }
+
+    // FBSE records: the picture is embedded after the record's header, or
+    // lies in the WordDocument stream at foDelay.
+    void ReadBStore(size_t from, size_t to) {
+        for (size_t pos = from; pos + 8 <= to;) {
+            const uint16_t type = ReadU16(table_, pos + 2);
+            const size_t length = ReadU32(table_, pos + 4);
+            const size_t body = pos + 8;
+            if (body + length > to) break;
+            BlipRef blip;
+            if (type == 0xF007 && length >= 36) {
+                const size_t cbName = table_[body + 33];
+                const size_t embedded = body + 36 + cbName;
+                if (embedded + 8 <= body + length) {
+                    blip = BlipRef{&table_, embedded, body + length};
+                } else {
+                    const size_t foDelay = ReadU32(table_, body + 28);
+                    const size_t size = ReadU32(table_, body + 20);
+                    if (foDelay + 8 <= word_.size()) {
+                        blip = BlipRef{&word_, foDelay, std::min(word_.size(), foDelay + std::max<size_t>(size, 8))};
+                    }
+                }
+            }
+            blips_.push_back(blip);
+            pos = body + length;
+        }
+    }
+
+    // A shape container's FSP (its spid, type and flips), its rectangle in
+    // its group (FChildAnchor) or its members' space (FSPGR), and its
+    // property tables. Returns the spid (0 for none).
+    uint32_t ReadShape(size_t from, size_t to) {
+        uint32_t spid = 0;
+        bool haveSpid = false;
+        OfficeArtShape shape;
+        for (size_t pos = from; pos + 8 <= to;) {
+            const uint16_t verInstance = ReadU16(table_, pos);
+            const uint16_t type = ReadU16(table_, pos + 2);
+            const size_t length = ReadU32(table_, pos + 4);
+            const size_t body = pos + 8;
+            if (body + length > to) break;
+            if (type == 0xF00A && length >= 8) {
+                spid = ReadU32(table_, body);
+                shape.flags = ReadU32(table_, body + 4);
+                shape.type = verInstance >> 4;
+                haveSpid = true;
+            } else if ((type == 0xF00F || type == 0xF009) && length >= 16) {
+                int32_t* rect = type == 0xF00F ? shape.child : shape.group;
+                for (size_t i = 0; i < 4; ++i) rect[i] = static_cast<int32_t>(ReadU32(table_, body + i * 4));
+                (type == 0xF00F ? shape.hasChildAnchor : shape.hasGroupSpace) = true;
+            } else if (type == 0xF00B || type == 0xF122) {
+                const size_t count = verInstance >> 4;
+                size_t complexAt = body + count * 6;   // complex values follow the table, in order
+                for (size_t i = 0; i < count && body + i * 6 + 6 <= body + length; ++i) {
+                    const uint16_t rawId = ReadU16(table_, body + i * 6);
+                    const uint16_t id = rawId & 0x3FFF;
+                    const uint32_t value = ReadU32(table_, body + i * 6 + 2);
+                    if (rawId & 0x8000) {
+                        const size_t at = complexAt;
+                        size_t size = value;
+                        // A geometry array (IMsoArray) whose stated size leaves
+                        // out its 6-byte header - as some writers store it.
+                        if (id >= 0x0140 && id < 0x0180 && at + 6 <= body + length) {
+                            const size_t count = ReadU16(table_, at);
+                            const uint16_t cb = ReadU16(table_, at + 4);
+                            const size_t element = cb == 0xFFF0 ? 4 : cb;
+                            if (count * element == value) size = value + 6;
+                        }
+                        complexAt += size;
+                        if (complexAt > body + length) break;
+                        if (id == 0x0145) ReadVertices(at, at + size, shape);
+                        else if (id == 0x0146) ReadSegments(at, at + size, shape);
+                        continue;
+                    }
+                    switch (id) {
+                        case 0x0004: shape.rotation = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
+                        case 0x0087: shape.anchorText = static_cast<int>(value); break;               // anchorText
+                        case 0x0140: shape.geoLeft = static_cast<int32_t>(value); break;
+                        case 0x0141: shape.geoTop = static_cast<int32_t>(value); break;
+                        case 0x0142: shape.geoRight = static_cast<int32_t>(value); break;
+                        case 0x0143: shape.geoBottom = static_cast<int32_t>(value); break;
+                        case 0x0147: shape.adjust = static_cast<int32_t>(value); break;               // adjustValue
+                        case 0x01CE: shape.lineDashing = static_cast<int>(value); break;              // lineDashing
+                        case 0x01D0: shape.arrowStart = value != 0; break;                            // lineStartArrowhead
+                        case 0x01D1: shape.arrowEnd = value != 0; break;                              // lineEndArrowhead
+                        case 0x0080: shape.textId = static_cast<int32_t>(value); break;     // lTxid
+                        case 0x0081: shape.textLeft = static_cast<int32_t>(value); break;   // dxTextLeft
+                        case 0x0104: shape.pib = value; break;                               // pib
+                        case 0x0181: shape.fillColor = value; break;                         // fillColor
+                        case 0x0180: shape.fillType = static_cast<int>(value); break;        // fillType
+                        case 0x0183: shape.fillBackColor = value; break;                     // fillBackColor
+                        case 0x018B: shape.fillAngle = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
+                        case 0x018C: shape.fillFocus = static_cast<int32_t>(value); break;   // fillFocus
+                        case 0x018D: case 0x018E: case 0x018F: case 0x0190:                  // fillToLeft .. fillToBottom
+                            shape.fillTo[id - 0x018D] = static_cast<double>(static_cast<int32_t>(value)) / 65536.0;
+                            break;
+                        case 0x01BF:                                                         // fFilled (with fUsefFilled)
+                            if (value & 0x100000u) shape.filled = (value & 0x10u) != 0;
+                            break;
+                        case 0x01C0: shape.lineColor = value; break;                         // lineColor
+                        case 0x01CB: shape.lineWidth = static_cast<int32_t>(value); break;  // lineWidth
+                        case 0x01FF:                                                         // fLine (with fUsefLine)
+                            if (value & 0x80000u) shape.lined = (value & 0x08u) != 0;
+                            break;
+                        case 0x038F: shape.posH = static_cast<int>(value); break;           // posh
+                        case 0x0390: shape.posRelH = static_cast<int>(value); break;        // posrelh
+                        case 0x0391: shape.posV = static_cast<int>(value); break;           // posv
+                        case 0x0392: shape.posRelV = static_cast<int>(value); break;        // posrelv
+                        default: break;
+                    }
+                }
+            }
+            pos = body + length;
+        }
+        if (!haveSpid || (shape.flags & 0x8)) return 0;   // fDeleted
+        shapes_[spid] = std::move(shape);
+        return spid;
+    }
+
+    // An IMsoArray: element count, allocated count, element size, elements.
+    // Vertices are two 16-bit numbers (size 0xFFF0 or 4) or two 32-bit ones.
+    void ReadVertices(size_t from, size_t to, OfficeArtShape& shape) const {
+        if (from + 6 > to) return;
+        const size_t count = ReadU16(table_, from);
+        const uint16_t size = ReadU16(table_, from + 4);
+        const size_t step = (size == 0xFFF0 || size == 4) ? 4 : 8;
+        for (size_t i = 0; i < count && from + 6 + (i + 1) * step <= to; ++i) {
+            const size_t at = from + 6 + i * step;
+            if (step == 4) {
+                shape.vertices.emplace_back(static_cast<int16_t>(ReadU16(table_, at)),
+                                            static_cast<int16_t>(ReadU16(table_, at + 2)));
+            } else {
+                shape.vertices.emplace_back(static_cast<int32_t>(ReadU32(table_, at)),
+                                            static_cast<int32_t>(ReadU32(table_, at + 4)));
+            }
+        }
+    }
+
+    void ReadSegments(size_t from, size_t to, OfficeArtShape& shape) const {
+        if (from + 6 > to) return;
+        const size_t count = ReadU16(table_, from);
+        for (size_t i = 0; i < count && from + 6 + (i + 1) * 2 <= to; ++i) {
+            shape.segments.push_back(ReadU16(table_, from + 6 + i * 2));
+        }
+    }
+
+    // PlcSpaMom / PlcSpaHdr: shapes by the CP of their anchor.
+    void LoadShapeAnchors(size_t fibIndex, std::map<size_t, std::vector<Anchor>>& anchors) {
+        const uint32_t fc = FcAt(fibIndex), lcb = LcbAt(fibIndex);
+        if (lcb < 4 + 30 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        const size_t count = (lcb - 4) / 30;
+        const size_t data = fc + (count + 1) * 4;
+        for (size_t i = 0; i < count; ++i) {
+            const size_t cp = ReadU32(table_, fc + i * 4);
+            const size_t at = data + i * 26;
+            Anchor anchor;
+            anchor.spid = ReadU32(table_, at);
+            anchor.left = static_cast<int32_t>(ReadU32(table_, at + 4));
+            anchor.top = static_cast<int32_t>(ReadU32(table_, at + 8));
+            anchor.right = static_cast<int32_t>(ReadU32(table_, at + 12));
+            anchor.bottom = static_cast<int32_t>(ReadU32(table_, at + 16));
+            const uint16_t flags = ReadU16(table_, at + 20);
+            anchor.bx = (flags >> 1) & 0x3;
+            anchor.by = (flags >> 3) & 0x3;
+            anchor.wr = (flags >> 5) & 0xF;
+            anchor.belowText = (flags & 0x4000) != 0;
+            anchors[cp].push_back(anchor);
+        }
+    }
+
+    // The floating pictures and text boxes anchored at `cp`, as runs.
+    void AppendShapes(std::vector<RichTextRun>& runs, size_t cp, bool lineBreak) {
+        auto found = activeAnchors_->find(cp);
+        if (found == activeAnchors_->end()) return;
+        for (const Anchor& anchor : found->second) {
+            auto shapeIt = shapes_.find(anchor.spid);
+            if (shapeIt == shapes_.end()) continue;
+            const OfficeArtShape& shape = shapeIt->second;
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.imageWidthPt = static_cast<float>(anchor.right - anchor.left) / 20.0f;
+            run.imageHeightPt = static_cast<float>(anchor.bottom - anchor.top) / 20.0f;
+            PlaceShape(anchor, shape, run);
+            const bool plainTextBox = !(shape.flags & 0x1) && shape.textId > 0 && (shape.type == 202 || shape.type == 1)
+                                   && std::fmod(shape.rotation, 360.0) == 0.0;
+            const bool picture = !(shape.flags & 0x1) && shape.textId <= 0 && shape.pib > 0;
+            if (!plainTextBox && !picture) {
+                // A drawing: a group, or a line, rectangle, ellipse or
+                // freeform - with its words, when it has some.
+                RichShape drawn = BuildShape(shape, 0.0f, 0.0f, run.imageWidthPt, run.imageHeightPt, 0);
+                if (drawn.kind != RichShape::Kind::Group && drawn.kind == RichShape::Kind::Rectangle
+                    && shape.type == 0 && shape.vertices.empty()) continue;      // nothing it can draw
+                if (drawn.kind == RichShape::Kind::Group && drawn.children.empty()) continue;
+                // The frame keeps the anchor's rectangle - the turned shape's
+                // bounds - and the shape turns inside it.
+                RichTextFrame frame;
+                if (shape.textId > 0 && !(shape.flags & 0x1)) {
+                    frame.paddingPt = std::max(0.0f, static_cast<float>(shape.textLeft) / 12700.0f);
+                    frame.textAnchor = TextAnchorOf(shape.anchorText);
+                    pendingTextBoxes_.push_back({static_cast<int>(doc_.frames.size()), (shape.textId >> 16) - 1,
+                                                 activeAnchors_ == &headerAnchors_});
+                }
+                frame.shapes.push_back(std::move(drawn));
+                run.frameIndex = static_cast<int>(doc_.frames.size());
+                doc_.frames.push_back(std::move(frame));
+                run.lineBreakBefore = lineBreak;
+                lineBreak = false;
+                runs.push_back(std::move(run));
+                continue;
+            }
+            if (shape.textId > 0) {
+                // A text box: its text is read once the body is, from its story.
+                RichTextFrame frame;
+                if (shape.filled && (shape.fillColor >> 24) == 0) frame.backgroundColor = ColorRefHex(shape.fillColor);
+                if (shape.lined && (shape.lineColor >> 24) == 0) {
+                    frame.border.color = ColorRefHex(shape.lineColor);
+                    frame.border.widthPt = std::max(0.5f, static_cast<float>(shape.lineWidth) / 12700.0f);
+                }
+                frame.paddingPt = std::max(0.0f, static_cast<float>(shape.textLeft) / 12700.0f);
+                frame.textAnchor = TextAnchorOf(shape.anchorText);
+                run.frameIndex = static_cast<int>(doc_.frames.size());
+                pendingTextBoxes_.push_back({run.frameIndex, (shape.textId >> 16) - 1,
+                                             activeAnchors_ == &headerAnchors_});
+                doc_.frames.push_back(std::move(frame));
+            } else if (shape.pib > 0 && shape.pib <= blips_.size() && blips_[shape.pib - 1].stream) {
+                const BlipRef& blip = blips_[shape.pib - 1];
+                std::vector<uint8_t> bytes;
+                std::string mimeType;
+                if (!ReadBlipRecord(*blip.stream, blip.at, blip.end, bytes, mimeType)) continue;
+                const std::string name = "image" + std::to_string(doc_.media.size() + 1)
+                                       + UCRichDocument::FileExtensionForMimeType(mimeType);
+                run.mediaIndex = doc_.AddMedia(name, mimeType, std::move(bytes));
+            } else {
+                continue;                           // a drawn shape: not shown
+            }
+            run.lineBreakBefore = lineBreak;
+            lineBreak = false;
+            runs.push_back(std::move(run));
+        }
+    }
+
+    // Where a shape floats: FSPA's anchor frame (bx: margin, page, column;
+    // by: margin, page, paragraph) and offsets, which the shape's own posrelh
+    // / posrelv and posh / posv (alignment) override; how text wraps (wr).
+    static void PlaceShape(const Anchor& anchor, const OfficeArtShape& shape, RichTextRun& run) {
+        using Origin = RichTextRun::FloatOrigin;
+        using VAlign = RichTextRun::FloatVerticalAlign;
+        // posrelh: 0 margin, 1 page, 2 column, 3 character; FSPA bx: 0 margin, 1 page, 2 column.
+        const int across = shape.posRelH >= 0 ? shape.posRelH : anchor.bx;
+        run.floatHorizontalFrom = across == 1 ? Origin::Page : Origin::Margin;
+        // posrelv: 0 margin, 1 page, 2 paragraph, 3 line; FSPA by: 0 margin, 1 page, 2 paragraph.
+        const int down = shape.posRelV >= 0 ? shape.posRelV : anchor.by;
+        run.floatVerticalFrom = down == 1 ? Origin::Page : down == 0 ? Origin::Margin : Origin::Paragraph;
+        const float x = static_cast<float>(anchor.left) / 20.0f;
+        const float y = static_cast<float>(anchor.top) / 20.0f;
+        switch (shape.posH) {
+            case 1: case 4: run.imageFloatAlign = RichTextAlign::Left; break;
+            case 2: run.imageFloatAlign = RichTextAlign::Center; break;
+            case 3: case 5: run.imageFloatAlign = RichTextAlign::Right; break;
+            default:
+                run.imageFloatAlign = RichTextAlign::Default;
+                run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+                break;
+        }
+        switch (shape.posV) {
+            case 1: run.floatVerticalAlign = VAlign::Top; break;
+            case 2: run.floatVerticalAlign = VAlign::Middle; break;
+            case 3: run.floatVerticalAlign = VAlign::Bottom; break;
+            default:
+                run.floatVerticalAlign = VAlign::Top;
+                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+                break;
+        }
+        // wr: 0 around, 1 top and bottom, 2 square, 3 none (in front or
+        // behind), 4 tight, 5 through.
+        switch (anchor.wr) {
+            case 1: run.imageWrap = RichTextRun::ImageWrap::TopAndBottom; break;
+            case 3:
+                run.imageWrap = anchor.belowText ? RichTextRun::ImageWrap::BehindText
+                                                 : RichTextRun::ImageWrap::InFrontOfText;
+                break;
+            default: run.imageWrap = RichTextRun::ImageWrap::Square; break;
+        }
+    }
+
+    // A shape turned between 45 and 135 degrees (or 225 and 315) keeps the
+    // box it would have upright on its side: its width and height swap
+    // about its centre.
+    static void RotatedBox(double rotation, float& x, float& y, float& w, float& h) {
+        double turn = std::fmod(rotation, 360.0);
+        if (turn < 0.0) turn += 360.0;
+        if ((turn >= 45.0 && turn < 135.0) || (turn >= 225.0 && turn < 315.0)) {
+            const float cx = x + w * 0.5f, cy = y + h * 0.5f;
+            std::swap(w, h);
+            x = cx - w * 0.5f;
+            y = cy - h * 0.5f;
+        }
+    }
+
+    static RichShape::TextAnchor TextAnchorOf(int anchorText) {
+        switch (anchorText) {
+            case 1: case 4: case 7: return RichShape::TextAnchor::Middle;
+            case 2: case 5: case 8: return RichShape::TextAnchor::Bottom;
+            default: return RichShape::TextAnchor::Top;
+        }
+    }
+
+    // An OfficeArt shape as a RichShape in the box (x, y, w, h) points, its
+    // members (a group's) mapped from the group's coordinate space.
+    RichShape BuildShape(const OfficeArtShape& source, float x, float y, float w, float h, int depth) {
+        RichShape shape;
+        RotatedBox(source.rotation, x, y, w, h);
+        shape.xPt = x;
+        shape.yPt = y;
+        shape.widthPt = w;
+        shape.heightPt = h;
+        shape.rotationDeg = static_cast<float>(source.rotation);
+        shape.flipH = (source.flags & 0x40) != 0;
+        shape.flipV = (source.flags & 0x80) != 0;
+        if (source.flags & 0x1) {
+            shape.kind = RichShape::Kind::Group;
+            if (depth > 16) return shape;
+            const double spanX = std::max<int32_t>(1, source.group[2] - source.group[0]);
+            const double spanY = std::max<int32_t>(1, source.group[3] - source.group[1]);
+            // Members are placed in the group's upright box.
+            for (uint32_t spid : source.members) {
+                auto found = shapes_.find(spid);
+                if (found == shapes_.end() || !found->second.hasChildAnchor) continue;
+                const OfficeArtShape& member = found->second;
+                const float mx = static_cast<float>((member.child[0] - source.group[0]) / spanX * w);
+                const float my = static_cast<float>((member.child[1] - source.group[1]) / spanY * h);
+                const float mw = static_cast<float>((member.child[2] - member.child[0]) / spanX * w);
+                const float mh = static_cast<float>((member.child[3] - member.child[1]) / spanY * h);
+                RichShape child = BuildShape(member, mx, my, mw, mh, depth + 1);
+                if (child.kind == RichShape::Kind::Group && child.children.empty()) continue;
+                shape.children.push_back(std::move(child));
+            }
+            return shape;
+        }
+        if (source.pib > 0 && source.pib <= blips_.size() && blips_[source.pib - 1].stream) {
+            // A picture in a group.
+            const BlipRef& blip = blips_[source.pib - 1];
+            std::vector<uint8_t> bytes;
+            std::string mimeType;
+            if (ReadBlipRecord(*blip.stream, blip.at, blip.end, bytes, mimeType)) {
+                const std::string name = "image" + std::to_string(doc_.media.size() + 1)
+                                       + UCRichDocument::FileExtensionForMimeType(mimeType);
+                shape.mediaIndex = doc_.AddMedia(name, mimeType, std::move(bytes));
+            }
+        }
+        if (!source.vertices.empty()) {
+            ReadFreeform(source, shape);
+        } else if (!WordFormatInternal::ApplyOfficeArtShapeType(source.type, shape)) {
+            shape.kind = RichShape::Kind::Rectangle;
+        }
+        if (shape.kind == RichShape::Kind::RoundRectangle && source.adjust >= 0) {
+            shape.cornerRadius = std::clamp(static_cast<float>(source.adjust) / 21600.0f, 0.0f, 0.5f);
+        }
+        if (source.filled && (source.fillColor >> 24) == 0 && shape.mediaIndex < 0) {
+            shape.fillColor = ColorRefHex(source.fillColor);
+            // A shade: from the fill colour to the back colour.
+            const bool linear = source.fillType == 4 || source.fillType == 7;
+            const bool round = source.fillType == 5 || source.fillType == 6;
+            if ((linear || round) && (source.fillBackColor >> 24) == 0) {
+                WordFormatInternal::ApplyOfficeShade(shape, shape.fillColor, ColorRefHex(source.fillBackColor),
+                                                     source.fillFocus, source.fillAngle, round);
+                if (round) {
+                    shape.gradientCenterX = static_cast<float>(std::clamp((source.fillTo[0] + source.fillTo[2]) * 0.5, 0.0, 1.0));
+                    shape.gradientCenterY = static_cast<float>(std::clamp((source.fillTo[1] + source.fillTo[3]) * 0.5, 0.0, 1.0));
+                }
+            }
+        }
+        if (source.lined) {
+            shape.lineColor = (source.lineColor >> 24) == 0 ? ColorRefHex(source.lineColor) : "#000000";
+            shape.lineWidthPt = std::max(0.25f, static_cast<float>(source.lineWidth) / 12700.0f);
+        }
+        if (source.lineDashing == 2) shape.dash = RichShape::Dash::Dotted;
+        else if (source.lineDashing != 0) shape.dash = RichShape::Dash::Dashed;
+        shape.arrowStart = source.arrowStart;
+        shape.arrowEnd = source.arrowEnd;
+        if (!shape.IsClosed()) shape.fillColor.clear();
+        if (source.textId > 0 && depth > 0) {
+            // A member's words: a frame of their own, read with the stories.
+            RichTextFrame words;
+            words.shapeText = true;
+            shape.textFrame = static_cast<int>(doc_.frames.size());
+            shape.textPaddingPt = std::max(0.0f, static_cast<float>(source.textLeft) / 12700.0f);
+            shape.textAnchor = TextAnchorOf(source.anchorText);
+            pendingTextBoxes_.push_back({shape.textFrame, (source.textId >> 16) - 1, activeAnchors_ == &headerAnchors_});
+            doc_.frames.push_back(std::move(words));
+        }
+        return shape;
+    }
+
+    // A freeform's outline: its vertices in its geometry's space (geoLeft
+    // .. geoRight), joined as pSegmentInfo says (or by straight lines).
+    static void ReadFreeform(const OfficeArtShape& source, RichShape& shape) {
+        using Op = RichShape::PathPoint::Op;
+        shape.kind = RichShape::Kind::Path;
+        const double spanX = std::max<int32_t>(1, source.geoRight - source.geoLeft);
+        const double spanY = std::max<int32_t>(1, source.geoBottom - source.geoTop);
+        auto at = [&](size_t i, float& x, float& y) {
+            x = static_cast<float>((source.vertices[i].first - source.geoLeft) / spanX);
+            y = static_cast<float>((source.vertices[i].second - source.geoTop) / spanY);
+        };
+        auto add = [&](Op op, size_t i) {
+            RichShape::PathPoint point;
+            point.op = op;
+            at(i, point.x, point.y);
+            shape.path.push_back(point);
+        };
+        const size_t count = source.vertices.size();
+        if (source.segments.empty()) {
+            for (size_t i = 0; i < count; ++i) add(i == 0 ? Op::Move : Op::Line, i);
+            return;
+        }
+        size_t v = 0;
+        for (uint16_t segment : source.segments) {
+            const int type = segment >> 13;
+            const size_t n = std::max<size_t>(1, segment & 0x1FFF);
+            if (type == 0) {                                   // lines
+                for (size_t i = 0; i < n && v < count; ++i) add(Op::Line, v++);
+            } else if (type == 1) {                            // curves, three vertices each
+                for (size_t i = 0; i < n && v + 2 < count; ++i) {
+                    RichShape::PathPoint point;
+                    point.op = Op::Curve;
+                    at(v, point.c1x, point.c1y);
+                    at(v + 1, point.c2x, point.c2y);
+                    at(v + 2, point.x, point.y);
+                    shape.path.push_back(point);
+                    v += 3;
+                }
+            } else if (type == 2) {                            // move
+                if (v < count) add(Op::Move, v++);
+            } else if (type == 3) {                            // close
+                RichShape::PathPoint point;
+                point.op = Op::Close;
+                shape.path.push_back(point);
+            } else if (type == 4) {                            // end
+                break;
+            } else {                                           // an escape: skips its vertices
+                v += segment & 0xFF;
+            }
+        }
+        if (!shape.path.empty() && shape.path.front().op != Op::Move) shape.path.front().op = Op::Move;
+    }
+
+    // An OfficeArt COLORREF (0x00BBGGRR) as "#RRGGBB".
+    static std::string ColorRefHex(uint32_t color) {
+        char hex[8];
+        std::snprintf(hex, sizeof hex, "#%02X%02X%02X", color & 0xFF, (color >> 8) & 0xFF, (color >> 16) & 0xFF);
+        return hex;
+    }
+
+    // The text boxes' text (PlcftxbxTxt: CPs into the text-box story), read
+    // with the body's machinery into each text frame.
+    // The headers' text boxes have a story of their own (PlcfHdrtxbxTxt).
+    void LoadTextBoxStories(const std::vector<DocChar>& allChars) {
+        for (const PendingTextBox& pending : pendingTextBoxes_) {
+            const uint32_t fc = FcAt(pending.header ? 58 : 56), lcb = LcbAt(pending.header ? 58 : 56);
+            if (lcb < 4 + 26 || static_cast<size_t>(fc) + lcb > table_.size()) continue;
+            const size_t count = (lcb - 4) / 26;
+            const size_t storyStart = pending.header ? headerTextBoxStoryStart_ : textBoxStoryStart_;
+            if (pending.story < 0 || static_cast<size_t>(pending.story) >= count) continue;
+            const size_t begin = storyStart + ReadU32(table_, fc + static_cast<size_t>(pending.story) * 4);
+            const size_t end = storyStart + ReadU32(table_, fc + (static_cast<size_t>(pending.story) + 1) * 4);
+            if (end <= begin || end > allChars.size()) continue;
+            std::vector<DocChar> text(allChars.begin() + static_cast<std::ptrdiff_t>(begin),
+                                      allChars.begin() + static_cast<std::ptrdiff_t>(end));
+            std::vector<RichDocBlock> body = std::move(doc_.blocks);
+            doc_.blocks.clear();
+            BuildBlocks(text);
+            std::vector<RichDocBlock> out = std::move(doc_.blocks);
+            doc_.blocks = std::move(body);
+            while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
+            doc_.frames[static_cast<size_t>(pending.frameIndex)].blocks = std::move(out);
+        }
+    }
 
     uint32_t FcAt(size_t index) const {
         return index < fcLcbCount_ ? ReadU32(word_, fcLcb_ + index * 8) : 0;
@@ -1470,6 +2104,13 @@ private:
             if (ch == 0x0B) { lineBreak = true; continue; }
             if (ch == 0x01 && props.special) {
                 AppendPicture(runs, props, lineBreak);
+                lineBreak = false;
+                continue;
+            }
+            if (ch == 0x08) {
+                // A drawn object's anchor: the floating picture or text box
+                // anchored here (in the main text or a header or footer).
+                if (activeAnchors_) AppendShapes(runs, anchorCpBase_ + i, lineBreak);
                 lineBreak = false;
                 continue;
             }

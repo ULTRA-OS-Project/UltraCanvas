@@ -187,6 +187,8 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     add_executable(UltraWebGuestTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebGuestTest.cpp
         ${_uw_dir}/host/UltraWebFetch.cpp
+        ${_uw_dir}/host/UltraWebSocket.cpp
+        ${_uw_dir}/host/UltraWebRtc.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
         ${_uw_dir}/host/UltraWebLoader.cpp
         ${_uw_dir}/host/UltraWebStorage.cpp)
@@ -215,22 +217,66 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebTabTest.cpp
         ${_uw_dir}/host/UltraWebFetch.cpp
         ${_uw_dir}/host/UltraWebNetworkFetch.cpp
+        ${_uw_dir}/host/UltraWebSocket.cpp
+        ${_uw_dir}/host/UltraWebNetworkSocket.cpp
+        ${_uw_dir}/host/UltraWebRtc.cpp
+        ${_uw_dir}/host/UltraWebNetworkRtc.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
         ${_uw_dir}/host/UltraWebLoader.cpp
         ${_uw_dir}/host/UltraWebCookies.cpp
         ${_uw_dir}/host/UltraWebPages.cpp
         ${_uw_dir}/host/UltraWebStorage.cpp
+        ${_uw_dir}/host/UltraWebPermissions.cpp
         ${_uw_dir}/ui/UltraWebTab.cpp)
     target_include_directories(UltraWebTabTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
     target_compile_features(UltraWebTabTest PRIVATE cxx_std_20)
     target_link_libraries(UltraWebTabTest PRIVATE WasmHost UltraNet UltraCanvas)
+    if(TARGET UltraRTC)
+        target_link_libraries(UltraWebTabTest PRIVATE UltraRTC)
+        target_compile_definitions(UltraWebTabTest PRIVATE ULTRAWEB_HAS_RTC=1)
+    endif()
     set_target_properties(UltraWebTabTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME UltraWebTabTest COMMAND UltraWebTabTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraWebTabTest")
+endif()
+
+# ===== ULTRAWEB REALTIME TEST =====
+# Apps' WebSockets and peer connections (ABI v3, uc_ws_* and uc_rtc_*): the
+# rules, guests written as WebAssembly text against fake services, then the
+# real services - UltraNet against a loopback WebSocket server (POSIX), and
+# two UltraRTC peers that connect in one process and exchange data-channel
+# messages (when the build has the engine).
+if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
+    message(STATUS "  Building UltraWebRealtimeTest...")
+    set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
+    add_executable(UltraWebRealtimeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebRealtimeTest.cpp
+        ${_uw_dir}/host/UltraWebFetch.cpp
+        ${_uw_dir}/host/UltraWebSocket.cpp
+        ${_uw_dir}/host/UltraWebNetworkSocket.cpp
+        ${_uw_dir}/host/UltraWebRtc.cpp
+        ${_uw_dir}/host/UltraWebNetworkRtc.cpp
+        ${_uw_dir}/host/UltraWebGuest.cpp
+        ${_uw_dir}/host/UltraWebStorage.cpp
+        ${_uw_dir}/host/UltraWebPermissions.cpp)
+    target_include_directories(UltraWebRealtimeTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir} ${ULTRACANVAS_ROOT}/UltraWeb/guest)
+    target_compile_features(UltraWebRealtimeTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraWebRealtimeTest PRIVATE WasmHost UltraNet UltraCanvas)
+    if(TARGET UltraRTC)
+        target_link_libraries(UltraWebRealtimeTest PRIVATE UltraRTC)
+        target_compile_definitions(UltraWebRealtimeTest PRIVATE ULTRAWEB_HAS_RTC=1)
+    endif()
+    set_target_properties(UltraWebRealtimeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraWebRealtimeTest COMMAND UltraWebRealtimeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraWebRealtimeTest")
 endif()
 
 # ===== ULTRAWEB COOKIES TEST =====
@@ -487,6 +533,40 @@ if(ULTRACANVAS_HAS_NATIVE_TRASH AND UNIX AND NOT APPLE)
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: TrashTest")
 endif()
+
+# ===== FILE TIMES TEST =====
+# CopyFileTimes (UltraCanvasFileTimes.h): a copy given the original's dates, a
+# file and a folder, in a private temporary folder. Built from the core file
+# plus this platform's backend - or the core file's std::filesystem fallback
+# where there is none - so each CI row tests what its library ships.
+message(STATUS "  Building FileTimesTest...")
+set(_file_times_test_sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileTimesTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasFileTimes.cpp)
+if(ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+    if(WIN32)
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFileTimes.cpp)
+    elseif(APPLE)
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MacOS/UltraCanvasMacOSFileTimes.cpp)
+    else()
+        list(APPEND _file_times_test_sources
+             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFileTimes.cpp)
+    endif()
+endif()
+add_executable(FileTimesTest ${_file_times_test_sources})
+target_include_directories(FileTimesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FileTimesTest PRIVATE cxx_std_20)
+if(ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+    target_compile_definitions(FileTimesTest PRIVATE ULTRACANVAS_HAS_NATIVE_FILE_TIMES)
+endif()
+set_target_properties(FileTimesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FileTimesTest COMMAND FileTimesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FileTimesTest")
 
 # ===== PORTABLE DEVICES TEST =====
 # The platform-independent half of UltraCanvasPortableDevices - its path rules
@@ -1235,6 +1315,26 @@ else()
     message(STATUS "  TooltipOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
+# A tooltip asked for by an element with no window yet (offscreen, in a test),
+# in a program with no application: nothing shown, nothing crashes. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TooltipNoWindowTest...")
+    add_executable(TooltipNoWindowTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TooltipNoWindowTest.cpp
+    )
+    target_include_directories(TooltipNoWindowTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TooltipNoWindowTest PRIVATE cxx_std_20)
+    target_link_libraries(TooltipNoWindowTest PRIVATE UltraCanvas)
+    set_target_properties(TooltipNoWindowTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TooltipNoWindowTest COMMAND TooltipNoWindowTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TooltipNoWindowTest")
+else()
+    message(STATUS "  TooltipNoWindowTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== POPUP OWN WINDOW TEST =====
 # Popups in windows of their own: a menu above a window that covers the one it
 # belongs to (as an application's window covers the desktop's bars), cut to its
@@ -1684,6 +1784,25 @@ add_test(NAME VideoTimelineModelTest COMMAND VideoTimelineModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: VideoTimelineModelTest")
 
+# ===== VIDEO FILE INFO TEST =====
+# ReadVideoFileInfo (UltraCanvasVideoFileInfo.h): MP4, fragmented MP4, WebM and
+# AVI headers built in memory, read back, and the formatting helpers. The
+# reader has no framework dependency, so the test compiles its source directly
+# and links nothing; it needs no media assets and no display.
+message(STATUS "  Building VideoFileInfoTest...")
+add_executable(VideoFileInfoTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/VideoFileInfoTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasVideoFileInfo.cpp
+)
+target_include_directories(VideoFileInfoTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VideoFileInfoTest PRIVATE cxx_std_20)
+set_target_properties(VideoFileInfoTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VideoFileInfoTest COMMAND VideoFileInfoTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VideoFileInfoTest")
+
 # ===== THEME TEST =====
 # UltraCanvasTheme without a display: the presets, element roles, the
 # current theme, and the timeline's and the timecode field's FromTheme.
@@ -1694,9 +1813,9 @@ if(TARGET UltraCanvas)
     target_link_libraries(UltraCanvasThemeTest PRIVATE ${ULTRACANVAS_LIBRARY})
     target_compile_features(UltraCanvasThemeTest PRIVATE cxx_std_20)
     get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
-    # The timeline's, the album's and the palette manager's FromTheme only
-    # with them compiled in (a lean core builds them as runtime modules).
-    foreach(uc_pair IN ITEMS VideoTimeline:VIDEO_TIMELINE Album:ALBUM ColorPaletteManager:COLOR_PALETTE_MANAGER)
+    # The timeline's, the album's, the palette manager's and the slideshow's
+    # FromTheme only with them compiled in (a lean core builds them as runtime modules).
+    foreach(uc_pair IN ITEMS VideoTimeline:VIDEO_TIMELINE Album:ALBUM ColorPaletteManager:COLOR_PALETTE_MANAGER Slideshow:SLIDESHOW)
         string(REPLACE ":" ";" uc_pair "${uc_pair}")
         list(GET uc_pair 0 uc_key)
         list(GET uc_pair 1 uc_macro)
@@ -1724,6 +1843,17 @@ if(TARGET UltraCanvas)
     set_target_properties(HostAppearanceTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME HostAppearanceTest COMMAND HostAppearanceTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: HostAppearanceTest")
+endif()
+
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SettingsWatcherTest...")
+    add_executable(SettingsWatcherTest ${CMAKE_CURRENT_SOURCE_DIR}/SettingsWatcherTest.cpp)
+    target_include_directories(SettingsWatcherTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(SettingsWatcherTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(SettingsWatcherTest PRIVATE cxx_std_20)
+    set_target_properties(SettingsWatcherTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME SettingsWatcherTest COMMAND SettingsWatcherTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SettingsWatcherTest")
 endif()
 
 # ===== ULTRALOCALISATION TEST =====
@@ -2743,6 +2873,41 @@ add_test(
 )
 message(STATUS "    Test registered: ModelStepTest")
 
+# ===== IGES READER / WRITER TEST =====
+# The second B-rep reader: the 80-column card syntax as unit tests, and the
+# IGES 5.3 entity meanings against the samples in media/3D/IGES, which
+# make_samples.py builds entity by entity - sharing no code with the writer -
+# in other exporters' habits. The assertions are measurements again: the
+# block's meshed volume, the plate's area with its hole, the boss's side.
+message(STATUS "  Building ModelIgesTest...")
+add_executable(ModelIgesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelIgesTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/IGES/UltraCanvasIgesFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/IGES/UltraCanvasIgesConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp   # TryParseFloat / FormatFloatClassic
+)
+target_include_directories(ModelIgesTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelIgesTest PRIVATE cxx_std_20)
+set_target_properties(ModelIgesTest PROPERTIES
+    OUTPUT_NAME "ModelIgesTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelIgesTest
+    COMMAND ModelIgesTest "${ULTRACANVAS_ROOT}/media/3D"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelIgesTest")
+
 # ===== B-REP STORAGE TEST =====
 # ModelStorage::BrepData - exact trimmed surfaces and the topology that closes
 # them into solids, plus the tessellator that approximates them. The assertions
@@ -3120,6 +3285,8 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/IGES/UltraCanvasIgesFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/IGES/UltraCanvasIgesConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp
@@ -4038,6 +4205,45 @@ if(LIBARCHIVE_TEST_FOUND)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: VirtualFSExtractSafetyTest")
+
+    # A file taken out of an archive keeps its dates: ExtractFile and
+    # ExtractAll give it the entry's modification date (and follow
+    # preserveTimestamps), from a ZIP, a 7z and a tar; a packed file's date
+    # survives the round trip.
+    message(STATUS "  Building VirtualFSExtractDatesTest...")
+    add_executable(VirtualFSExtractDatesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSExtractDatesTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSExtractDatesTest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSExtractDatesTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSExtractDatesTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSExtractDatesTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSExtractDatesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSExtractDatesTest
+        COMMAND VirtualFSExtractDatesTest ${CMAKE_BINARY_DIR}/vfs-extract-dates-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSExtractDatesTest")
 else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()
@@ -4476,6 +4682,36 @@ else()
     message(STATUS "  SVGLocaleTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# The same rule for every other vector writer, and through the half
+# check_locale_numbers.py cannot see: a stream renders its numbers through the
+# C++ global locale, which a host sets to honour the desktop's language, and
+# the checker reads one file at a time and never sees the locale of a stream a
+# writer was handed. One drawing is written by all ten writers twice - once
+# under "C", once under a comma-decimal locale - and the two files must be
+# identical. PDF, EPS and DXF each failed it the first time it ran. Reports a
+# skip rather than failing where no comma-decimal locale is installed, and for
+# a writer that needs an external tool this machine lacks (DWG wants dxf2dwg).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorLocaleTest...")
+    add_executable(VectorLocaleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorLocaleTest.cpp
+    )
+    target_include_directories(VectorLocaleTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Vector
+    )
+    target_compile_features(VectorLocaleTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorLocaleTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorLocaleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorLocaleTest COMMAND VectorLocaleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorLocaleTest")
+else()
+    message(STATUS "  VectorLocaleTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # Validates the Vector plugin's PDF writer: structural checks (an xref table
 # whose offsets really point at their objects, resources, operators) plus a
 # ghostscript rasterization with pixel checks when gs is installed.
@@ -4714,6 +4950,20 @@ set_target_properties(ButtonGrowToFitTest PROPERTIES
 add_test(NAME ButtonGrowToFitTest COMMAND ButtonGrowToFitTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonGrowToFitTest")
+
+message(STATUS "  Building DropdownFitWidthTest...")
+add_executable(DropdownFitWidthTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DropdownFitWidthTest.cpp
+)
+target_include_directories(DropdownFitWidthTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(DropdownFitWidthTest PRIVATE cxx_std_20)
+target_link_libraries(DropdownFitWidthTest PRIVATE UltraCanvas)
+set_target_properties(DropdownFitWidthTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DropdownFitWidthTest COMMAND DropdownFitWidthTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DropdownFitWidthTest")
 
 message(STATUS "  Building SpreadsheetSortMenuTest...")
 add_executable(SpreadsheetSortMenuTest
@@ -5487,6 +5737,28 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DialogCloseAllTest")
 else()
     message(STATUS "  DialogCloseAllTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== DIALOG STACKING TEST =====
+# A dialog is kept above its own window (WM_TRANSIENT_FOR), not above every
+# application's (_NET_WM_STATE_ABOVE, which DialogConfig used to ask for).
+# The config checks run anywhere; the window checks skip without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building DialogStackingTest...")
+    add_executable(DialogStackingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DialogStackingTest.cpp
+    )
+    target_include_directories(DialogStackingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DialogStackingTest PRIVATE cxx_std_20)
+    target_link_libraries(DialogStackingTest PRIVATE UltraCanvas)
+    set_target_properties(DialogStackingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DialogStackingTest COMMAND DialogStackingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DialogStackingTest")
+else()
+    message(STATUS "  DialogStackingTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
 # ===== UNDECODABLE IMAGE TEST =====

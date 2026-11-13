@@ -1087,6 +1087,168 @@ int main() {
         TEST("...addressed by its place in the text", edit->GetSelectedImage() == RichDocPosition(0, 0));
     }
 
+    // ===== TEXT FRAMES =====
+    std::cerr << "\n--- Text frames ---" << std::endl;
+    {
+        // A text box 300 pt (400 px) wide at the column's right edge: the
+        // paragraph anchoring it wraps in the room left of it.
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame frame;
+        RichDocBlock inFrame;
+        RichTextRun frameWords;
+        frameWords.text = "Sender Company";
+        inFrame.runs = {frameWords};
+        frame.blocks = {inFrame};
+        frame.backgroundColor = "#eeeeee";
+        document->frames.push_back(frame);
+        RichDocBlock paragraph;
+        RichTextRun box;
+        box.text = RichTextRun::kObjectReplacement;
+        box.frameIndex = 0;
+        box.imageWidthPt = 300.0f;
+        box.imageHeightPt = 400.0f;                    // taller than the paragraph
+        box.imageWrap = RichTextRun::ImageWrap::Square;
+        box.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun words;
+        for (int i = 0; i < 40; i++) words.text += "word" + std::to_string(i) + " ";
+        paragraph.runs = {box, words};
+        document->blocks.push_back(paragraph);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float rightmost = 0.0f;
+        const int length = static_cast<int>(editor.BlockText(0).size());
+        for (int offset = 3; offset <= length; offset += 5) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            rightmost = std::max(rightmost, edit->GetCaretRectForTest().x);
+        }
+        TEST("Text beside a text frame wraps short of it: rightmost caret at " + std::to_string(rightmost),
+             rightmost > 100.0f && rightmost < 380.0f);
+        TEST("Plain text spells the frame's text before its paragraph",
+             document->ToPlainText().rfind("Sender Company", 0) == 0);
+
+        // A short frame (a single line's height): only the lines level with
+        // it are narrowed, the ones below take the column's full width.
+        RichTextRun shortBox = box;
+        shortBox.imageHeightPt = 12.0f;
+        RichDocBlock longParagraph;
+        RichTextRun longWords;
+        for (int i = 0; i < 120; i++) longWords.text += "word" + std::to_string(i) + " ";
+        longParagraph.runs = {shortBox, longWords};
+        document->frames[0].blocks.front().runs.front().text = "S";
+        document->blocks = {longParagraph};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float firstLineRight = 0.0f, laterRight = 0.0f;
+        const int longLength = static_cast<int>(editor.BlockText(0).size());
+        float firstTop = -1.0f;
+        for (int offset = 3; offset <= longLength; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const Rect2Df caret = edit->GetCaretRectForTest();
+            if (firstTop < 0.0f) firstTop = caret.y;
+            if (std::abs(caret.y - firstTop) < 2.0f) firstLineRight = std::max(firstLineRight, caret.x);
+            else if (caret.y > firstTop + 60.0f) laterRight = std::max(laterRight, caret.x);
+        }
+        TEST("Beside a short frame only its own lines are narrowed: first line to " + std::to_string(firstLineRight)
+             + ", later lines to " + std::to_string(laterRight),
+             firstLineRight < 380.0f && laterRight > 600.0f);
+        // A click on a later line lands in the text below the frame.
+        editor.SetCaret(RichDocPosition(0, longLength));
+        window->UpdateAndRender();
+        const Rect2Df end = edit->GetCaretRectForTest();
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, static_cast<int>(end.x) - 1, static_cast<int>(end.y + end.height / 2)));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, static_cast<int>(end.x) - 1, static_cast<int>(end.y + end.height / 2)));
+        window->UpdateAndRender();
+        TEST("...and clicks there land in it", editor.GetCaret().blockIndex == 0
+             && editor.GetCaret().byteOffset > longLength - 8);
+
+        // A top-and-bottom picture set lower down in its paragraph: the lines
+        // above it stay above, the rest go on below it.
+        RichTextRun picture;
+        picture.text = RichTextRun::kObjectReplacement;
+        picture.mediaIndex = document->AddMedia("dot.png", "image/png", kDotPng);
+        picture.imageWidthPt = 60.0f;
+        picture.imageHeightPt = 60.0f;                 // 80 px
+        picture.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+        picture.imageFloatAlign = RichTextAlign::Right;
+        picture.imageOffsetYPt = 40.0f;                // 53 px down: two lines fit above
+        RichDocBlock withPicture;
+        withPicture.runs = {picture, longWords};
+        document->blocks = {withPicture};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        editor.SetCaret(RichDocPosition(0, 4));
+        window->UpdateAndRender();
+        const float startY = edit->GetCaretRectForTest().y;
+        float largestGap = 0.0f, previous = startY;
+        for (int offset = 4; offset <= longLength; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const float y = edit->GetCaretRectForTest().y;
+            largestGap = std::max(largestGap, y - previous);
+            previous = y;
+        }
+        TEST("Text starts above a picture set lower in its paragraph and goes on below it: first line at "
+             + std::to_string(startY) + ", gap " + std::to_string(largestGap),
+             startY < 40.0f && largestGap > 80.0f);
+    }
+
+    // ===== FRAMES IN THE HEADER =====
+    std::cerr << "\n--- Frames in the header ---" << std::endl;
+    {
+        // A letterhead: the sender block is a frame in the header, placed
+        // from the page beside the top of the body; the body wraps round it.
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame sender;
+        RichDocBlock senderLine;
+        RichTextRun senderText;
+        senderText.text = "Sender";
+        senderLine.runs = {senderText};
+        sender.blocks = {senderLine};
+        document->frames.push_back(sender);
+        RichTextRun box;
+        box.text = RichTextRun::kObjectReplacement;
+        box.frameIndex = 0;
+        box.imageWidthPt = 150.0f;
+        box.imageHeightPt = 150.0f;
+        box.imageWrap = RichTextRun::ImageWrap::Square;
+        box.imageFloatAlign = RichTextAlign::Default;
+        box.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+        box.floatVerticalFrom = RichTextRun::FloatOrigin::Page;
+        box.imageOffsetXPt = 380.0f;
+        box.imageOffsetYPt = 56.7f;                    // the body's top (2 cm margins)
+        RichDocBlock headerParagraph;
+        headerParagraph.runs = {box};
+        document->pageFurniture.header = {headerParagraph};
+        RichDocBlock paragraph;
+        RichTextRun words;
+        for (int i = 0; i < 200; i++) words.text += "word" + std::to_string(i) + " ";
+        paragraph.runs = {words};
+        document->blocks = {paragraph};
+        edit->SetDocument(document);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        float besideRight = 0.0f, belowRight = 0.0f, firstTop = -1.0f;
+        const int length = static_cast<int>(editor.BlockText(0).size());
+        for (int offset = 3; offset <= length; offset += 3) {
+            editor.SetCaret(RichDocPosition(0, offset));
+            window->UpdateAndRender();
+            const Rect2Df caret = edit->GetCaretRectForTest();
+            if (firstTop < 0.0f) firstTop = caret.y;
+            if (caret.y < firstTop + 150.0f) besideRight = std::max(besideRight, caret.x);
+            else if (caret.y > firstTop + 230.0f && caret.y < 540.0f) belowRight = std::max(belowRight, caret.x);
+        }
+        TEST("The body wraps round a frame in the header: beside it to " + std::to_string(besideRight)
+             + ", below it to " + std::to_string(belowRight),
+             besideRight > 200.0f && besideRight < 500.0f && belowRight > 600.0f);
+        edit->SetPageView(false);
+    }
+
     // ===== BLOCKS RUNNING OVER PAGES =====
     std::cerr << "\n--- Page splitting ---" << std::endl;
     {
@@ -1148,9 +1310,213 @@ int main() {
         window->UpdateAndRender();
         window->UpdateAndRender();
         TEST("...and not when it fits", edit->GetHorizontalScrollOffset() == 0.0f);
+
+        // Fitting zooms follow the element's size.
+        edit->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);
+        window->UpdateAndRender();
+        const float wholePage = edit->GetZoom();
+        TEST("Whole page fits an A4 page into the view: " + std::to_string(wholePage),
+             wholePage > 0.3f && wholePage < 0.55f);
+        edit->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::PageWidth);
+        window->UpdateAndRender();
+        const float pageWidth = edit->GetZoom();
+        TEST("Page width fills the width: " + std::to_string(pageWidth), pageWidth > wholePage && pageWidth < 1.0f);
+        TEST("...with no sideways scrolling", edit->GetHorizontalScrollOffset() == 0.0f);
+        edit->SetZoom(1.0f);
+        TEST("A chosen zoom ends the fitting one", edit->GetZoomFit() == UltraCanvasRichTextEdit::ZoomFit::Off);
         edit->SetPageView(false);
         edit->SetZoom(1.0f);
         window->UpdateAndRender();
+    }
+
+    // ===== DRAWN SHAPES =====
+    std::cerr << "\n--- Drawn shapes ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        // A rule: a line with no height.
+        RichTextFrame ruleFrame;
+        RichShape rule;
+        rule.kind = RichShape::Kind::Line;
+        rule.widthPt = 300.0f;
+        rule.lineColor = "#1F4E79";
+        rule.lineWidthPt = 1.5f;
+        ruleFrame.shapes = {rule};
+        // A turned, dashed box with words centred in it.
+        RichTextFrame boxFrame;
+        RichShape box;
+        box.kind = RichShape::Kind::RoundRectangle;
+        box.widthPt = 120.0f;
+        box.heightPt = 60.0f;
+        box.rotationDeg = 15.0f;
+        box.fillColor = "#FFE699";
+        box.lineColor = "#C00000";
+        box.dash = RichShape::Dash::Dashed;
+        boxFrame.shapes = {box};
+        boxFrame.textAnchor = RichShape::TextAnchor::Middle;
+        RichDocBlock boxWords;
+        RichTextRun boxWord;
+        boxWord.text = "Boxed";
+        boxWords.runs = {boxWord};
+        boxFrame.blocks = {boxWords};
+        // A group: a mirrored outline with an arrow, an ellipse, and a box
+        // whose words are a frame of their own.
+        RichTextFrame memberWords;
+        memberWords.shapeText = true;
+        RichDocBlock memberBlock;
+        RichTextRun memberWord;
+        memberWord.text = "Member words";
+        memberBlock.runs = {memberWord};
+        memberWords.blocks = {memberBlock};
+        RichShape outline;
+        outline.kind = RichShape::Kind::Path;
+        outline.widthPt = outline.heightPt = 40.0f;
+        outline.flipH = true;
+        outline.lineColor = "#000000";
+        outline.arrowEnd = true;
+        RichShape::PathPoint start, curve;
+        start.op = RichShape::PathPoint::Op::Move;
+        curve.op = RichShape::PathPoint::Op::Curve;
+        curve.c1x = 0.5f; curve.c2x = 1.0f; curve.c2y = 0.5f; curve.x = 1.0f; curve.y = 1.0f;
+        outline.path = {start, curve};
+        RichShape dot;
+        dot.kind = RichShape::Kind::Ellipse;
+        dot.xPt = 50.0f;
+        dot.widthPt = dot.heightPt = 20.0f;
+        dot.fillColor = "#ED7D31";
+        RichShape member;
+        member.xPt = 80.0f;
+        member.widthPt = 100.0f;
+        member.heightPt = 40.0f;
+        member.lineColor = "#4472C4";
+        member.textFrame = 3;
+        RichShape group;
+        group.kind = RichShape::Kind::Group;
+        group.widthPt = 180.0f;
+        group.heightPt = 40.0f;
+        group.rotationDeg = 10.0f;
+        group.children = {outline, dot, member};
+        RichTextFrame groupFrame;
+        groupFrame.shapes = {group};
+        document->frames = {ruleFrame, boxFrame, groupFrame, memberWords};
+
+        auto drawing = [](int frame, float width, float height) {
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.frameIndex = frame;
+            run.imageWidthPt = width;
+            run.imageHeightPt = height;
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            run.imageFloatAlign = RichTextAlign::Left;
+            return run;
+        };
+        RichTextRun words;
+        words.text = "Text below the drawing.";
+        RichDocBlock first, second, third;
+        first.runs = {drawing(0, 300.0f, 0.0f), words};
+        second.runs = {drawing(1, 120.0f, 60.0f), words};
+        third.runs = {drawing(2, 180.0f, 40.0f), words};
+        document->blocks = {first, second, third};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df ruleRect = edit->GetFloatRectForTest(0);
+        const Rect2Df boxRect = edit->GetFloatRectForTest(1);
+        const Rect2Df groupRect = edit->GetFloatRectForTest(2);
+        TEST("A rule is placed with no height: " + std::to_string(ruleRect.height) + " high, "
+             + std::to_string(ruleRect.width) + " wide", ruleRect.height == 0.0f && ruleRect.width > 300.0f);
+        TEST("A drawing with words keeps its own height: " + std::to_string(boxRect.height),
+             std::abs(boxRect.height - 80.0f) < 1.0f);
+        TEST("A group is placed whole: " + std::to_string(groupRect.width) + " x " + std::to_string(groupRect.height),
+             std::abs(groupRect.width - 240.0f) < 1.0f && groupRect.y > boxRect.y + boxRect.height);
+        TEST("Plain text spells a drawing's words and its members'",
+             document->ToPlainText().find("Boxed") != std::string::npos
+             && document->ToPlainText().find("Member words") != std::string::npos);
+        // A preset outline from Word's names.
+        RichShape star;
+        TEST("Presets give outlines: star5", star.ApplyPreset("star5") && star.kind == RichShape::Kind::Path
+             && star.path.size() == 11);
+        TEST("...and an unknown name leaves a rectangle",
+             !star.ApplyPreset("noSuchShape") && star.kind == RichShape::Kind::Rectangle);
+    }
+
+    // ===== MOVING AND RESIZING FLOATS =====
+    std::cerr << "\n--- Moving and resizing floats ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame drawing;
+        RichShape box;
+        box.kind = RichShape::Kind::Ellipse;
+        box.widthPt = 120.0f;
+        box.heightPt = 60.0f;
+        box.fillColor = "#70AD47";
+        box.gradientStops = {{0.0f, "#FFFFFF"}, {1.0f, "#70AD47"}};
+        box.gradientRadial = true;
+        drawing.shapes = {box};
+        document->frames = {drawing};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 120.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Left;
+        RichTextRun words;
+        for (int i = 0; i < 30; i++) words.text += "word" + std::to_string(i) + " ";
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor, words};
+        document->blocks = {paragraph};
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        auto runOf = [&]() -> const RichTextRun& { return edit->GetDocument()->blocks[0].runs[0]; };
+        Rect2Df on = edit->GetFloatElementRectForTest(0);
+        const float cx = on.x + on.width * 0.5f, cy = on.y + on.height * 0.5f;
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx, cy));
+        window->UpdateAndRender();
+        TEST("A click on a drawing selects it", edit->HasSelectedImage() && edit->GetSelectedImage().byteOffset == 0);
+
+        // Dragged 60 px right and 30 px down: offsets from its paragraph.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, cx, cy));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, cx + 30.0f, cy + 15.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, cx + 60.0f, cy + 30.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, cx + 60.0f, cy + 30.0f));
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("Dragging it moves it: offset " + std::to_string(runOf().imageOffsetXPt) + ", "
+             + std::to_string(runOf().imageOffsetYPt),
+             runOf().imageFloatAlign == RichTextAlign::Default && std::abs(runOf().imageOffsetXPt - 45.0f) < 1.0f
+             && std::abs(runOf().imageOffsetYPt - 22.5f) < 1.0f);
+        const Rect2Df moved = edit->GetFloatElementRectForTest(0);
+        TEST("...and it is drawn there", std::abs(moved.x - on.x - 60.0f) < 1.5f && std::abs(moved.y - on.y - 30.0f) < 1.5f);
+        TEST("...still selected", edit->HasSelectedImage());
+
+        // The bottom-right handle, dragged out: a corner keeps proportions,
+        // and the drawing remembers the size its shapes were drawn for.
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, moved.x + moved.width, moved.y + moved.height));
+        edit->OnEvent(MouseEvent(UCEventType::MouseMove, moved.x + moved.width + 80.0f, moved.y + moved.height + 40.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, moved.x + moved.width + 80.0f, moved.y + moved.height + 40.0f));
+        window->UpdateAndRender();
+        const RichTextFrame& resized = edit->GetDocument()->frames[0];
+        TEST("Its corner handle resizes it: " + std::to_string(runOf().imageWidthPt) + " x "
+             + std::to_string(runOf().imageHeightPt),
+             std::abs(runOf().imageWidthPt - 180.0f) < 1.5f && std::abs(runOf().imageHeightPt - 90.0f) < 1.5f);
+        TEST("...its shapes scale from the size they were drawn for",
+             resized.drawingWidthPt == 120.0f && resized.drawingHeightPt == 60.0f);
+        editor.Undo();
+        editor.Undo();
+        window->UpdateAndRender();
+        TEST("Undo puts it back where and as big as it was",
+             runOf().imageFloatAlign == RichTextAlign::Left && runOf().imageWidthPt == 120.0f);
+        // A frame behind the text leaves the text to the clicks.
+        edit->GetDocument()->blocks[0].runs[0].imageWrap = RichTextRun::ImageWrap::BehindText;
+        edit->SetDocument(edit->GetDocument());
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        on = edit->GetFloatElementRectForTest(0);
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, on.x + on.width * 0.5f, on.y + 4.0f));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, on.x + on.width * 0.5f, on.y + 4.0f));
+        TEST("A drawing behind the text is not picked up by a click", !edit->HasSelectedImage());
     }
 
     // ===== PDF =====

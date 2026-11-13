@@ -201,6 +201,74 @@
         "embeddings",
         "small"
       ]
+    },
+    {
+      "id": "whisper-small",
+      "displayName": "Whisper Small",
+      "description": "Speech to text in about 100 languages, for recordings and the sound of videos. A good balance of accuracy and speed on a computer without a GPU.",
+      "capability": "speechtotext",
+      "engine": "whisper-server",
+      "license": "MIT",
+      "files": [
+        {
+          "name": "ggml-small.bin",
+          "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+          "size": 488636416
+        }
+      ],
+      "requires": {
+        "memoryBytes": 1000000000
+      },
+      "tags": [
+        "speech",
+        "multilingual",
+        "recommended"
+      ]
+    },
+    {
+      "id": "whisper-base",
+      "displayName": "Whisper Base",
+      "description": "Small and fast speech to text in about 100 languages. Less accurate than Whisper Small; for an older or smaller computer.",
+      "capability": "speechtotext",
+      "engine": "whisper-server",
+      "license": "MIT",
+      "files": [
+        {
+          "name": "ggml-base.bin",
+          "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+          "size": 148897792
+        }
+      ],
+      "requires": {
+        "memoryBytes": 500000000
+      },
+      "tags": [
+        "speech",
+        "multilingual",
+        "small"
+      ]
+    },
+    {
+      "id": "whisper-large-v3-turbo-q5",
+      "displayName": "Whisper Large v3 Turbo (Q5_0)",
+      "description": "The most accurate local speech to text, in about 100 languages. Slower: best on a computer with 8 cores or more.",
+      "capability": "speechtotext",
+      "engine": "whisper-server",
+      "license": "MIT",
+      "files": [
+        {
+          "name": "ggml-large-v3-turbo-q5_0.bin",
+          "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+          "size": 573571072
+        }
+      ],
+      "requires": {
+        "memoryBytes": 1600000000
+      },
+      "tags": [
+        "speech",
+        "multilingual"
+      ]
     }
   ]
 }

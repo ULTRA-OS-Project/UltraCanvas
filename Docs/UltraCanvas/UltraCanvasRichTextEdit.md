@@ -544,6 +544,20 @@ undo step (`imageWidthPt` / `imageHeightPt`, never wider than the column).
 Delete removes a selected picture. A right-click selects the picture under the
 pointer first, so a host's context menu can offer picture items.
 
+Floating text frames and drawings are selected the same way (not one behind
+the text, which leaves the text to the clicks), and anything floating is
+**moved by dragging it**: on release it is no longer aligned but offset from
+what it is placed from - its paragraph, the page or the page's text area -
+by `UCRichDocumentEditor::SetFloatOffset`, one undo step, and both writers
+save the new place. A resized drawing keeps the size its shapes were drawn for
+(`RichTextFrame::drawingWidthPt` / `drawingHeightPt`) and its shapes scale to
+the new one. Frames and pictures in headers and footers are not picked up.
+
+```cpp
+// Move the floating object whose placeholder is at {block, offset}.
+editor->GetEditor().SetFloatOffset(RichDocPosition(block, placeholderOffset), /*xPt*/ 72, /*yPt*/ 12);
+```
+
 ```cpp
 if (editor->HasSelectedImage()) {
     editor->SetSelectedImageAltText("Quarterly revenue by region");
@@ -574,12 +588,109 @@ DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
 (`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
 write back out; HTML output floats them with CSS. A floating picture is
-selected, resized and described like any other. In a table cell or a header
-it stays in the line.
+selected, resized and described like any other. In a table cell it stays in
+the line.
 
-The wrap works a paragraph at a time: a paragraph that starts beside a picture
-is narrowed as a whole, so a long one beside a short picture stays narrow below
-it too.
+**In a header or footer** a floating picture or frame floats too: on every
+page it is placed from that page (or from its header paragraph), drawn with
+the header - under the body's text, as in Word - and the page's body wraps
+round it like round one of its own. That is how a Word letterhead keeps its
+logo and sender block in the header. A frame there shows each page's page
+number and page count. It cannot be selected or resized from the page; edit
+the header for that.
+
+The wrap works line by line, as in Writer: a paragraph beside a picture is
+narrowed only for the lines level with it, and its lines below the picture
+take the column's full width again. A top-and-bottom picture set lower down
+in its own paragraph (`imageOffsetYPt`) keeps the lines that fit above it
+there and continues the paragraph below it. (Such a paragraph is laid out in
+two parts joined into one layout, so the caret, clicks and selection treat
+it as one.) A paragraph that would be left too narrow beside a picture
+starts below it instead.
+
+**Placed from the page.** By default a float counts across from the text
+column and down from its paragraph. `floatHorizontalFrom` and
+`floatVerticalFrom` (`RichTextRun::FloatOrigin`: `Paragraph`, `Margin`,
+`Page`) make the offsets and the alignment count from the page's text area or
+from the page's edges instead, and `floatVerticalAlign` (`Top`, `Middle`,
+`Bottom`) aligns it down that area. In page view it then sits on the page its
+paragraph is on - a letterhead's sender block 13 cm from the page's left edge
+stays there whatever the margins. Outside page view a page-placed float sits
+at its paragraph.
+
+**Text frames.** A run with `frameIndex` (into `UCRichDocument::frames`) is a
+text box: a `RichTextFrame`'s paragraphs with its `backgroundColor`,
+`border` and `paddingPt`, floating like a picture. Its width is
+`imageWidthPt` (half the column when 0) and its height is its text's, at
+least `imageHeightPt`. ODT `draw:text-box`, DOCX `wps:txbx` and VML text
+boxes, and DOC text boxes read into it, and both writers save it. In a
+header or footer it floats as described above; in a table cell or inside
+another frame it does not (a cell drops it, a frame shows its text in
+line).
+
+```cpp
+auto document = std::make_shared<UCRichDocument>();
+RichTextFrame sender;
+RichDocBlock line;
+RichTextRun text;
+text.text = "Example Company";
+line.runs = {text};
+sender.blocks = {line};
+sender.backgroundColor = "#eeeeee";
+document->frames.push_back(sender);
+
+RichTextRun box;
+box.text = RichTextRun::kObjectReplacement;
+box.frameIndex = 0;
+box.imageWidthPt = 170.0f;
+box.imageWrap = RichTextRun::ImageWrap::Square;
+box.imageFloatAlign = RichTextAlign::Default;
+box.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+box.floatVerticalFrom = RichTextRun::FloatOrigin::Page;
+box.imageOffsetXPt = 368.5f;          // 13 cm from the page's left edge
+box.imageOffsetYPt = 56.7f;           // 2 cm from its top
+RichDocBlock address;
+RichTextRun name;
+name.text = "Recipient Name";
+address.runs = {box, name};
+document->blocks.push_back(address);
+editor->SetDocument(document);
+```
+
+**Drawings.** A frame with `shapes` is a drawing: each `RichShape` - a
+`Line`, `Rectangle`, `RoundRectangle`, `Ellipse`, `Path` (an outline from 0
+to 1 across its box) or `Group` - is drawn in the frame's box with its
+`fillColor`, `lineColor`, `lineWidthPt`, `dash` and arrowheads, turned by
+`rotationDeg` and mirrored by `flipH` / `flipV`. The frame's own words sit
+over its shapes, at `textAnchor` (top, middle or bottom); a group member's
+words are a frame of their own (`RichShape::textFrame`, with `shapeText`
+set), and a group member with a `mediaIndex` is a picture. A shape with two
+or more `gradientStops` is filled with a gradient: linear at
+`gradientAngleDeg` (clockwise from left-to-right), or radial from
+`gradientCenterX` / `gradientCenterY`. A drawing with no
+words is exactly as tall as it was drawn, so a rule (a line with no height)
+takes no room. `RichShape::ApplyPreset` takes Word's outline names
+(`"star5"`, `"rightArrow"`, `"flowChartDecision"`, ...). ODT, DOCX (DrawingML
+and VML) and DOC (OfficeArt) shapes and groups read into it, and both writers
+save it. A drawing is moved and resized like a picture; the shapes in it are
+not edited one by one.
+
+```cpp
+RichShape rule;
+rule.kind = RichShape::Kind::Line;
+rule.widthPt = 425.0f;                // across the column; no height
+rule.lineColor = "#1F4E79";
+rule.lineWidthPt = 1.5f;
+RichTextFrame drawing;
+drawing.shapes = {rule};
+document->frames.push_back(drawing);
+
+RichTextRun under;
+under.text = RichTextRun::kObjectReplacement;
+under.frameIndex = static_cast<int>(document->frames.size()) - 1;
+under.imageWidthPt = 425.0f;
+under.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+```
 
 ### Check lists
 
@@ -1149,7 +1260,15 @@ back. `ExportToPdf` is built on the same three.
 editor->SetZoom(1.5f);            // 150%; 0.25 to 5, Ctrl+wheel too
 editor->onZoomChanged = [](float zoom) { /* update a zoom box */ };
 editor->SetZoomRange(1.0f / 64.0f, 64.0f);   // follow a canvas's zoom instead
+editor->SetZoomFit(UltraCanvasRichTextEdit::ZoomFit::WholePage);   // or PageWidth
 ```
+
+`SetZoomFit` makes the zoom follow the element's size in page view, like a
+word processor's "Page width" (the page and the desk either side fill the
+width) and "Whole page" (all of the page is in view). It is worked out again
+whenever the element is resized; `SetZoom`, Ctrl+wheel and `ZoomFit::Off`
+end it, and printing and PDF export stay at 100 %. Outside page view there is
+no page to fit and the zoom stays as it is.
 
 Everything is drawn scaled: text, pictures, pages. Outside page view the text
 rewraps to the zoomed width; in page view the page is simply larger, and when
@@ -1178,6 +1297,9 @@ Honest limits of this first version — none of them silently misbehave:
 - **The input method's candidate window** is placed by the input method, not
   next to the caret, on X11 and Windows. On macOS and in the browser it opens
   at the caret (where the composition starts).
+- **A text frame's text cannot be edited**, and a frame cannot be moved or
+  resized; clicks go to the text underneath. Frames in table cells and in
+  other frames do not float (see *Floating pictures*).
 
 ## Related
 

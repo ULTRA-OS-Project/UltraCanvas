@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp
 // Spell checking and the editor context menu for UltraTexter
+// Version: 1.4.0 - "Picture Original Size" only for a picture, not a selected text frame or drawing
 // Version: 1.3.0 - the spelling, review, section and table menus go through Tr / TrF
 // Version: 1.2.0 - automatic language detection (Spelling > Detect Language
 //                  Automatically): a document mostly flagged in the current
@@ -659,7 +660,13 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
             if (!UCRichDocument::SniffImagePixelSize(document->media[static_cast<size_t>(media)].data, pw, ph)) return;
             edit->SetSelectedImageSize(static_cast<float>(pw) * 72.0f / 96.0f, static_cast<float>(ph) * 72.0f / 96.0f);
         });
-        original.enabled = editable;
+        // A text frame or drawing is selected like a picture but has no
+        // pixels of its own to go back to.
+        float w = 0, h = 0;
+        std::string alt;
+        int media = -1;
+        richEdit->GetEditor().GetImageInfo(richEdit->GetSelectedImage(), w, h, alt, media);
+        original.enabled = editable && media >= 0;
         items.push_back(std::move(original));
     }
 

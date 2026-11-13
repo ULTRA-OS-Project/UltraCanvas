@@ -15,6 +15,7 @@
 //                                (what UltraDesktop's "start with the desktop" asks)
 //   ChatCube --version / --help
 //
+// Version: 0.2.0 - the theme under the Own policy: ThemeFor over the settings' look (System follows the desktop) and --dark, the host's fonts
 // Version: 0.1.5 - the settings (ChatCubeSettings): the look from them unless --dark says, handed to the window
 // Version: 0.1.4 - --minimized (UltraDesktop's "start with the desktop")
 // Version: 0.1.3 - the preview pictures of files sent (UltraIM_SetPreviewMaker): pictures through the
@@ -22,7 +23,7 @@
 // Version: 0.1.2 - --dark
 // Version: 0.1.1 - --debug and --log
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ui/ChatCubeSettings.h"
@@ -37,6 +38,7 @@
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraIM/UltraIMCore.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetPlugins.h"
 #include "UltraRTC/UltraRTCCore.h"
@@ -219,14 +221,23 @@ int main(int argc, char** argv) {
     }
     if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
         return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "ChatCube");
-    // What the Settings window chose last; --dark wins over its look.
+    // What the Settings window chose last - the desktop's look under
+    // System - and --dark over it.
     ChatCube::Settings settings;
     settings.Load();
-    dark = dark || settings.dark;
+    dark = dark || settings.DarkFor(app.GetHostAppearance().dark);
     app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/ChatCube.png"));
     // The look, before any element is built: every element and the lists'
-    // own painting take their colours from it (ui/ChatCubeTheme.h).
-    UltraCanvas::UltraCanvasTheme::SetCurrent(ChatCube::ThemeFor(dark));
+    // own painting take their colours from it (ui/ChatCubeTheme.h). The
+    // app's own theme under the policy: the look decided at this start
+    // (the window's own painting reads it once), the host's fonts again on
+    // every change of the desktop.
+    app.SetThemePolicy(UltraCanvas::ThemePolicy::Own);
+    app.SetThemeProvider([dark](const UltraCanvas::HostAppearance& host) {
+        UltraCanvas::UltraCanvasTheme theme = ChatCube::ThemeFor(dark);
+        theme.TakeHostFonts(host);
+        return theme;
+    });
 
     UltraNet_Initialize();
     UltraRtc_Initialize();
@@ -252,7 +263,7 @@ int main(int argc, char** argv) {
     {
         ChatCube::ChatCubeWindow window(CHATCUBE_VERSION, "direct", settings);
         if (!window.Create()) {
-            std::fprintf(stderr, "ChatCube: the window could not be created.\n");
+            std::fprintf(stderr, "%s\n", UltraCanvas::Tr("ChatCube: the window could not be created.").c_str());
             exitCode = EXIT_FAILURE;
         } else {
             window.onClosed = [&app]() { app.Exit(); };

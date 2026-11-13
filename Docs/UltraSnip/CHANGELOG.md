@@ -1,3 +1,37 @@
+#### 2026-11-12 *0.1.8*
+- **A new app icon.** UltraSnip's icon is now a dark camera with a blue lens
+  inside a red dashed selection frame, on an off-white tile, in place of the
+  white frame and lens on indigo. `media/appicon/UltraSnip.png` (the window,
+  the taskbar, the Windows `.exe`, the macOS bundle and the 256x256 theme
+  icon on Linux) is 256x256 like every other app icon, and
+  `media/appicon/UltraSnip.svg` (the scalable theme icon, which Linux desktops
+  prefer) is redrawn to match, so no desktop shows the old one.
+
+#### 2026-11-11 *0.1.7*
+- **`--background`: UltraSnip waits for the session.** Started so (as
+  UltraDesktop does with the desktop), it shows no window and holds the
+  Print Screen key, so the key snips while no UltraSnip window is open, and
+  the desktop's screenshot button and Super+Shift+S reach a copy that is
+  running already. Its window, once a snip has shown it, hides when closed
+  instead of ending UltraSnip. A second `--background` start reaches the
+  running copy and changes nothing.
+
+#### 2026-11-11 *0.1.6*
+- **Print Screen starts a snip.** While UltraSnip runs, the Print Screen key
+  starts a snip with the shape, kind and delay chosen on the bar, as Start
+  does - taken from the system (`UltraCanvasGlobalShortcut::StartExclusive`),
+  so on Windows it no longer opens the Snipping Tool as well. Alt+Print
+  Screen and Win+Print Screen stay the system's. A press while a snip is
+  under way (the screen dimmed for a choice, the delay, a recording) is
+  ignored. *Settings > Behaviour > After a snip* has it, on by default.
+
+#### 2026-11-11 *0.1.5*
+- **The Start button is as wide as its word.** It was 72 pixels in every
+  language, growing only when a translation needed more ("Démarrer"), so a
+  short word ("開始") sat in empty room. It now takes the measured width of
+  its icon and its text in the language shown, in its own font, with the
+  button's padding.
+
 #### 2026-11-10 *0.1.4*
 - **Window mode shows the window it will take, in its own colours.** The
   desktop is darkened further than in Rectangle mode, and the window under

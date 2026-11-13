@@ -13,10 +13,13 @@
 // python3), unless ULTRAIM_TEST_MATRIX_REQUIRED is set (CI); the nio part
 // skips without matrix-nio[e2e] in that python, unless
 // ULTRAIM_TEST_MATRIX_NIO_REQUIRED is set.
+// Version: 0.2.5 - the group renamed, Bob kicked, invited back, and leaving it
+// Version: 0.2.4 - what can be deleted (one's own, for everyone only)
+// Version: 0.2.3 - searching a room (an encrypted one): words and kinds
 // Version: 0.2.2 - the same in a room created unencrypted, so both paths run in one build
 // Version: 0.2.1 - a picture, a video and a file each way
 // Version: 0.2.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 
 #include "MatrixHttp.h"
@@ -75,6 +78,11 @@ struct Events {
             list.push_back(e);
             changed.notify_all();
         };
+    }
+    // Forgets what arrived so far: the next WaitFor sees only what follows.
+    void Clear() {
+        std::lock_guard<std::mutex> lock(mutex);
+        list.clear();
     }
     bool WaitFor(const std::function<bool(const UltraIMEvent&)>& match, UltraIMEvent* found = nullptr,
                  int seconds = 30) {
@@ -294,6 +302,28 @@ std::vector<UltraIMMessage> Fetch(MatrixProvider& p, const std::string& conversa
     p.FetchMessages(conversationId, "", limit, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& m) {
         std::lock_guard<std::mutex> lock(mutex);
         out = m;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(30), [&]() { return done; });
+    return out;
+}
+
+UltraIMSearchPage Search(MatrixProvider& p, const std::string& conversationId, const std::string& text,
+                         UltraIMSearchKind kind = UltraIMSearchKind::AnyKind, UltraIMResult* result = nullptr) {
+    UltraIMMessageSearch search;
+    search.conversationId = conversationId;
+    search.text = text;
+    search.kind = kind;
+    UltraIMSearchPage out;
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    p.SearchMessages(search, [&](const UltraIMResult& r, const UltraIMSearchPage& page) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = page;
+        if (result) *result = r;
         done = true;
         cv.notify_all();
     });
@@ -683,6 +713,33 @@ void TestEndToEnd() {
         CHECK(pictures == 1);
     }
 
+    // Searching the room - an encrypted one, where the homeserver's own
+    // search sees nothing: its history read and matched on this device.
+    CHECK(UltraIM_HasCapability(bob->GetCapabilities(), UltraIMCapabilityFlags::SearchMessages));
+    {
+        UltraIMResult result;
+        UltraIMSearchPage found = Search(*bob, dm.conversationId, "HELLO", UltraIMSearchKind::AnyKind, &result);
+        CHECK(result && found.messages.size() == 1 && found.nextCursor.empty());
+        if (!found.messages.empty()) CHECK(found.messages[0].text == "hello bob" && found.messages[0].messageId == helloId);
+        found = Search(*bob, dm.conversationId, "", UltraIMSearchKind::Images);
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty()) CHECK(found.messages[0].text == "look" && found.messages[0].attachment.fileName == "pic.png");
+        CHECK(Search(*bob, dm.conversationId, "", UltraIMSearchKind::Videos).messages.size() == 1);
+        CHECK(Search(*bob, dm.conversationId, "", UltraIMSearchKind::Media).messages.size() == 2);
+        CHECK(Search(*alice, dm.conversationId, "notes", UltraIMSearchKind::Files).messages.size() == 1);
+        CHECK(Search(*bob, dm.conversationId, "", UltraIMSearchKind::Links).messages.empty());
+        CHECK(Search(*bob, dm.conversationId, "nowhere to be found").messages.empty());
+        const UltraIMSearchPage all = Search(*bob, dm.conversationId, "");
+        bool newestFirst = all.messages.size() >= 5;
+        for (size_t i = 1; i < all.messages.size(); ++i)
+            newestFirst = newestFirst && all.messages[i - 1].timestampMs >= all.messages[i].timestampMs;
+        CHECK(newestFirst);
+        Search(*bob, "", "hello", UltraIMSearchKind::AnyKind, &result);
+        CHECK(!result && result.code == UltraIMResultCode::CapabilityMissing);     // one room at a time
+        Search(*bob, "!nowhere:localhost", "hello", UltraIMSearchKind::AnyKind, &result);
+        CHECK(!result && result.code == UltraIMResultCode::NotFound);
+    }
+
     // The same through a room created unencrypted: the file travels in the
     // clear and the preview picture rides as thumbnail_url.
     if (e2ee) {
@@ -740,7 +797,15 @@ void TestEndToEnd() {
     CHECK(alice->SendText(dm.conversationId, "oops", o2));
     UltraIMEvent oops;
     CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }, &oops));
-    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId));
+    // Matrix's rules: one's own message, for everyone (a redaction) - there is no "for me".
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "oops"); }));
+    UltraIMDeleteChoices choices = alice->GetDeleteChoices(dm.conversationId, oops.message.messageId);
+    CHECK(choices.forEveryone && !choices.forMe);
+    choices = bob->GetDeleteChoices(dm.conversationId, oops.message.messageId);
+    CHECK(!choices.forEveryone && !choices.forMe);
+    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId, UltraIMDeleteScope::ForMe).code ==
+          UltraIMResultCode::CapabilityMissing);
+    CHECK(alice->DeleteMessage(dm.conversationId, oops.message.messageId, UltraIMDeleteScope::ForEveryone));
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
         return e.type == UltraIMEventType::MessageDelete && e.message.messageId == oops.message.messageId;
     }));
@@ -770,6 +835,39 @@ void TestEndToEnd() {
     CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
         return IsReceived(e, "hi team") && e.conversationId == group.conversationId;
     }));
+
+    // The group after it is made: renamed, Bob kicked and invited back, and
+    // Bob leaving it - each reaching the other side through the sync.
+    const auto isGroupEvent = [&](const UltraIMEvent& e, UltraIMEventType type) {
+        return e.type == type && e.conversationId == group.conversationId;
+    };
+    UltraIMConversation renamed;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) {
+        alice->RenameGroup(group.conversationId, "Crew", cb);
+    }, renamed));
+    CHECK(renamed.title == "Crew");
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return isGroupEvent(e, UltraIMEventType::ConversationUpdate) && e.conversation.title == "Crew";
+    }));
+    UltraIMResult kicked;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) {
+        alice->RemoveGroupMember(group.conversationId, "@bob:localhost", cb);
+    }, kicked) && kicked.success);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return isGroupEvent(e, UltraIMEventType::ConversationRemove); }));
+    bobEvents.Clear();
+    UltraIMConversation invitedBack;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) {
+        alice->AddGroupMembers(group.conversationId, {"@bob:localhost"}, cb);
+    }, invitedBack));
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) {
+        alice->AddGroupMembers(group.conversationId, {"bob"}, cb);
+    }, none));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return isGroupEvent(e, UltraIMEventType::ConversationUpdate); }));
+    bobEvents.Clear();
+    UltraIMResult left;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->LeaveConversation(group.conversationId, cb); }, left) &&
+          left.success);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return isGroupEvent(e, UltraIMEventType::ConversationRemove); }));
 
     // Plenty of history, then a fresh start from the stored session with a
     // short first sync: the older messages are paged back on request.

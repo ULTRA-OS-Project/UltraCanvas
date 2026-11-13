@@ -1,5 +1,8 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
+// Version: 0.2.3 - a room renamed, members invited and kicked, a room left (ManageGroups, LeaveConversation);
+//                  a room renamed by someone else updates its conversation as the sync brings it;
+//                  the members' names on the conversation
 // Version: 0.2.2 - a picture or a video sent goes with its preview picture (UltraIM_MakePreview)
 // Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
@@ -113,7 +116,8 @@ UltraIMCapabilityFlags MatrixProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     const F flags = F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
                     F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-                    F::CreateGroup | F::ImageMessages | F::FileTransfer;
+                    F::CreateGroup | F::ImageMessages | F::FileTransfer | F::SearchMessages | F::ManageGroups |
+                    F::LeaveConversation;
     return OlmAvailable() ? flags | F::E2EEncryption : flags;
 }
 
@@ -872,6 +876,9 @@ bool MatrixProvider::ApplyEvent(Room& room, const JSONValue& event, bool live, s
         const std::string membership = content["membership"].GetString();
         const std::string before = event["unsigned"]["prev_content"]["membership"].GetString();
         ApplyState(room, event);
+        // A new name or alias changes what the list shows: the conversation
+        // is updated (no line in the timeline).
+        if (type == "m.room.name" || type == "m.room.canonical_alias") return live;
         if (type != "m.room.member" || membership == before || user == userId_) return false;
         UltraIMMessage line;
         line.messageId = event["event_id"].GetString();
@@ -1056,7 +1063,10 @@ UltraIMConversation MatrixProvider::ConversationOf(const Room& room) const {
         for (size_t i = 0; i < names.size() && i < 3; ++i) c.title += (i ? ", " : "") + names[i];
         if (c.title.empty()) c.title = "Empty room";
     }
-    for (const auto& m : room.joined) c.memberIds.push_back(m);
+    for (const auto& m : room.joined) {
+        c.memberIds.push_back(m);
+        c.memberNames[m] = NameOf(room, m);
+    }
     c.isEncrypted = room.encrypted;
     if (!c.directContactId.empty()) {
         auto p = presence_.find(c.directContactId);
@@ -1204,6 +1214,35 @@ void MatrixProvider::FetchMessages(const std::string& conversationId, const std:
         FlushDownloads();
         onResult(r.Ok() ? UltraIMResult::Ok() : HttpError(r, UltraIMResultCode::NetworkError), slice());
     });
+}
+
+void MatrixProvider::FetchPageForSearch(const std::string& conversationId, const std::string& beforeMessageId,
+                                        int limit, int tries, UltraIMMessagesCallback onResult) {
+    FetchMessages(conversationId, beforeMessageId, limit,
+                  [this, conversationId, beforeMessageId, limit, tries, onResult](
+                      const UltraIMResult& result, const std::vector<UltraIMMessage>& messages) {
+                      bool more = false;
+                      if (result && messages.empty() && tries < 8) {
+                          std::lock_guard<std::mutex> lock(mutex_);
+                          auto it = rooms_.find(conversationId);
+                          more = it != rooms_.end() && !it->second.historyComplete && !it->second.prevBatch.empty() &&
+                                 !it->second.invited;
+                      }
+                      if (more) {
+                          FetchPageForSearch(conversationId, beforeMessageId, limit, tries + 1, onResult);
+                          return;
+                      }
+                      onResult(result, messages);
+                  });
+}
+
+void MatrixProvider::SearchMessages(const UltraIMMessageSearch& search, UltraIMSearchCallback onResult) {
+    // The server's own search cannot read an encrypted room and finds whole
+    // words only; reading the history here gives one answer for every room.
+    UltraIM_SearchByFetching(
+        [this](const std::string& conversationId, const std::string& beforeMessageId, int limit,
+               UltraIMMessagesCallback done) { FetchPageForSearch(conversationId, beforeMessageId, limit, 0, done); },
+        search, std::move(onResult));
 }
 
 // ============================================================================
@@ -1363,6 +1402,132 @@ void MatrixProvider::CreateGroup(const std::string& title, const std::vector<std
         event.conversation = c;
         Emit(event);
         onResult(UltraIMResult::Ok(), c);
+    });
+}
+
+void MatrixProvider::RenameGroup(const std::string& conversationId, const std::string& title,
+                                 UltraIMConversationCallback onResult) {
+    std::shared_ptr<MatrixHttp> http = Http();
+    if (!http || state_ != UltraIMConnectionState::Connected) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix"), {});
+        return;
+    }
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("name", JSONValue(title));
+    http->Request("PUT", std::string(kClient) + "/rooms/" + PathSegment(conversationId) + "/state/m.room.name",
+                  &body, 20000, [this, conversationId, title, onResult](const MatrixResponse& r) {
+        if (!r.Ok()) return onResult(HttpError(r, UltraIMResultCode::Unknown), {});
+        UltraIMConversation c;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto room = rooms_.find(conversationId);
+            if (room != rooms_.end()) {
+                room->second.name = title;
+                c = ConversationOf(room->second);
+            }
+        }
+        if (c.conversationId.empty()) return onResult(UltraIMResult::Ok(), c);   // the sync brings it
+        UltraIMEvent event;
+        event.type = UltraIMEventType::ConversationUpdate;
+        event.providerId = providerId_;
+        event.conversationId = conversationId;
+        event.conversation = c;
+        Emit(event);
+        onResult(UltraIMResult::Ok(), c);
+    });
+}
+
+void MatrixProvider::AddGroupMembers(const std::string& conversationId, const std::vector<std::string>& memberIds,
+                                     UltraIMConversationCallback onResult) {
+    std::shared_ptr<MatrixHttp> http = Http();
+    if (!http || state_ != UltraIMConnectionState::Connected) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix"), {});
+        return;
+    }
+    std::vector<std::string> users;
+    for (const auto& m : memberIds) {
+        const std::string user = Trim(m);
+        if (!IsUserId(user)) {
+            onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, user + " is not a Matrix ID (@name:server)"), {});
+            return;
+        }
+        users.push_back(user);
+    }
+    // The invitations go out together; the answer waits for the last of them.
+    struct Pending {
+        std::mutex mutex;
+        size_t left = 0;
+        UltraIMResult failure = UltraIMResult::Ok();
+    };
+    auto pending = std::make_shared<Pending>();
+    pending->left = users.size();
+    for (const std::string& user : users) {
+        JSONValue body = JSONValue::MakeObject();
+        body.Set("user_id", JSONValue(user));
+        http->Request("POST", std::string(kClient) + "/rooms/" + PathSegment(conversationId) + "/invite", &body, 20000,
+                      [this, conversationId, pending, onResult](const MatrixResponse& r) {
+            UltraIMResult failure = UltraIMResult::Ok();
+            {
+                std::lock_guard<std::mutex> lock(pending->mutex);
+                if (!r.Ok() && pending->failure) pending->failure = HttpError(r, UltraIMResultCode::Unknown);
+                if (--pending->left > 0) return;
+                failure = pending->failure;
+            }
+            UltraIMConversation c;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                const auto room = rooms_.find(conversationId);
+                if (room != rooms_.end()) c = ConversationOf(room->second);
+            }
+            onResult(failure, c);
+        });
+    }
+}
+
+void MatrixProvider::RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
+                                       UltraIMResultCallback onResult) {
+    std::shared_ptr<MatrixHttp> http = Http();
+    if (!http || state_ != UltraIMConnectionState::Connected) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix"));
+        return;
+    }
+    if (Trim(memberId) == userId_) return LeaveConversation(conversationId, onResult);
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("user_id", JSONValue(Trim(memberId)));
+    // The membership change comes back through the sync.
+    http->Request("POST", std::string(kClient) + "/rooms/" + PathSegment(conversationId) + "/kick", &body, 20000,
+                  [onResult](const MatrixResponse& r) {
+        onResult(r.Ok() ? UltraIMResult::Ok() : HttpError(r, UltraIMResultCode::Unknown));
+    });
+}
+
+void MatrixProvider::LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) {
+    std::shared_ptr<MatrixHttp> http = Http();
+    if (!http || state_ != UltraIMConnectionState::Connected) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix"));
+        return;
+    }
+    const std::string room = std::string(kClient) + "/rooms/" + PathSegment(conversationId);
+    JSONValue body = JSONValue::MakeObject();
+    http->Request("POST", room + "/leave", &body, 20000,
+                  [this, room, conversationId, onResult](const MatrixResponse& r) {
+        if (!r.Ok()) return onResult(HttpError(r, UltraIMResultCode::Unknown));
+        // Forgotten too, so it does not come back in the history of rooms left.
+        JSONValue none = JSONValue::MakeObject();
+        if (std::shared_ptr<MatrixHttp> again = Http()) again->Request("POST", room + "/forget", &none, 20000, [](const MatrixResponse&) {});
+        bool known = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            known = rooms_.erase(conversationId) > 0;
+        }
+        if (known) {
+            UltraIMEvent event;
+            event.type = UltraIMEventType::ConversationRemove;
+            event.providerId = providerId_;
+            event.conversationId = conversationId;
+            Emit(event);
+        }
+        onResult(UltraIMResult::Ok());
     });
 }
 
@@ -1861,7 +2026,21 @@ UltraIMResult MatrixProvider::EditMessage(const std::string& conversationId, con
     return UltraIMResult::Ok();
 }
 
-UltraIMResult MatrixProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId) {
+UltraIMDeleteChoices MatrixProvider::GetDeleteChoices(const std::string& conversationId,
+                                                      const std::string& messageId) const {
+    UltraIMDeleteChoices choices;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = rooms_.find(conversationId);
+    if (it == rooms_.end()) return choices;
+    for (const auto& m : it->second.timeline) {
+        if (m.messageId == messageId) choices.forEveryone = m.isOwn && m.type != UltraIMMessageType::SystemEvent;
+    }
+    return choices;
+}
+
+UltraIMResult MatrixProvider::DeleteMessage(const std::string& conversationId, const std::string& messageId,
+                                            UltraIMDeleteScope scope) {
+    if (scope == UltraIMDeleteScope::ForMe) return Unsupported("deleting a message for yourself alone");
     std::shared_ptr<MatrixHttp> http = Http();
     if (!http) return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix");
     // The redaction arrives back through the sync as a MessageDelete.
