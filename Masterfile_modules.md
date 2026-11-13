@@ -2928,6 +2928,10 @@ UltraIM elements must comply with the following rules:
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`
 - `UltraIM_FetchNearbyContacts` (people on the local network)
+- `UltraIM_RenameGroup`, `UltraIM_AddGroupMembers`,
+  `UltraIM_RemoveGroupMember` (a group after it is made: `ManageGroups`),
+  `UltraIM_LeaveConversation` (out of a group, or a 1:1 conversation
+  deleted on this device: `LeaveConversation`)
 - `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
   to encrypted conversations as a passphrase-protected file)
 - `UltraIM_FetchAccountProfile`, `UltraIM_UpdateAccountProfile` (the

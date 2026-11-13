@@ -6,6 +6,9 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
+//                  (RichTextFrame::drawingWidthPt / drawingHeightPt)
+// Version: 1.6.0 - Drawn shapes (RichShape, RichTextFrame::shapes)
 // Version: 1.5.0 - Text frames (RichTextRun::frameIndex, UCRichDocument::frames)
 //                  and floats placed from the page or its margins
 //                  (floatHorizontalFrom / floatVerticalFrom / floatVerticalAlign)
@@ -540,6 +543,72 @@ struct RichNote {
     std::vector<RichDocBlock> blocks;
 };
 
+// ===== DRAWN SHAPES =====
+// A line, rectangle, ellipse or freeform drawn in a frame - Word's drawing
+// shapes (DrawingML wps:wsp, VML, Word 97's OfficeArt), ODF's draw:rect,
+// draw:line, draw:path - or a group of them. Its box is in points from its
+// frame's top-left corner (a group member's from its group's).
+struct RichShape {
+    enum class Kind { Rectangle, RoundRectangle, Ellipse, Line, Path, Group };
+    Kind kind = Kind::Rectangle;
+    std::string name;
+    float xPt = 0.0f, yPt = 0.0f, widthPt = 0.0f, heightPt = 0.0f;
+    float rotationDeg = 0.0f;             // clockwise, about the box's centre
+    // Mirrored across (flipH) or down (flipV). A Line runs from the box's
+    // top-left to its bottom-right corner; flipped, from another corner.
+    bool flipH = false, flipV = false;
+    std::string fillColor;                // "#RRGGBB"; empty = not filled
+    // A gradient fill: two or more colours along the box (fillColor holds
+    // the first, for whatever draws one colour). Linear ones run at
+    // gradientAngleDeg - 0 left to right, 90 top to bottom (clockwise);
+    // radial ones from the box's centre (position 0) to its corners (1).
+    struct GradientStop {
+        float position = 0.0f;            // 0..1
+        std::string color;                // "#RRGGBB"
+    };
+    std::vector<GradientStop> gradientStops;
+    float gradientAngleDeg = 0.0f;
+    bool gradientRadial = false;
+    // A radial gradient's centre, from 0 to 1 across and down the box.
+    float gradientCenterX = 0.5f, gradientCenterY = 0.5f;
+    bool HasGradient() const { return gradientStops.size() >= 2; }
+    std::string lineColor;                // "#RRGGBB"; empty = no outline
+    float lineWidthPt = 0.75f;
+    enum class Dash { Solid, Dashed, Dotted };
+    Dash dash = Dash::Solid;
+    bool arrowStart = false, arrowEnd = false;   // arrowheads on a line or an open path
+    float cornerRadius = 0.1667f;         // RoundRectangle: a share of the shorter side
+    // Path: its outline, each point from 0 to 1 across and down its box.
+    struct PathPoint {
+        enum class Op { Move, Line, Curve, Close };
+        Op op = Op::Line;
+        float x = 0.0f, y = 0.0f;         // where it goes to
+        float c1x = 0.0f, c1y = 0.0f, c2x = 0.0f, c2y = 0.0f;   // Curve's control points
+    };
+    std::vector<PathPoint> path;
+    std::vector<RichShape> children;      // Group: its members
+    // Text in a group member: UCRichDocument::frames[textFrame], laid out in
+    // the member's box. (A lone shape's text is its frame's own blocks.)
+    int textFrame = -1;
+    float textPaddingPt = 3.6f;
+    enum class TextAnchor { Top, Middle, Bottom };
+    TextAnchor textAnchor = TextAnchor::Top;   // where its words sit down its box
+    // A picture in a group (a letterhead's logo beside its words):
+    // UCRichDocument::media[mediaIndex], drawn in the box instead of a fill.
+    int mediaIndex = -1;
+
+    // Takes a fill: anything but a line (an outline left open is filled as
+    // if closed, as Word and Writer fill it).
+    bool IsClosed() const { return kind != Kind::Line; }
+    // Has two free ends, for arrowheads: a line, or an outline left open.
+    bool IsOpen() const;
+    // Takes the outline of a DrawingML preset geometry (Word 97's shape types
+    // map onto the same names): "rect", "roundRect", "ellipse", "line",
+    // "triangle", "diamond", "hexagon", "star5", "rightArrow", ... Returns
+    // false for a name it does not know, leaving a rectangle.
+    bool ApplyPreset(const std::string& preset);
+};
+
 // ===== TEXT FRAMES =====
 // A text box's content and look, referenced by a run with frameIndex (which
 // also carries where it floats).
@@ -549,6 +618,21 @@ struct RichTextFrame {
     std::string backgroundColor;          // "#RRGGBB"; empty = none
     RichBorder border;                    // all four sides alike; widthPt 0 = none
     float paddingPt = 0.0f;               // between the border and the text
+    // A drawing: the shapes drawn in the frame's box, under its text (a
+    // rectangle with words in it, a rule, a logo drawn from shapes). A frame
+    // with shapes is a drawing, not a box: it shows no frame of its own.
+    std::vector<RichShape> shapes;
+    bool IsDrawing() const { return !shapes.empty(); }
+    // The box its shapes were drawn for, in points (0 = its run's size). A
+    // drawing resized on the page keeps this, and its shapes are scaled from
+    // it to the run's new size.
+    float drawingWidthPt = 0.0f, drawingHeightPt = 0.0f;
+    // Where the words sit down the frame when it is taller than they are
+    // (a shape's text is centred in Word by default).
+    RichShape::TextAnchor textAnchor = RichShape::TextAnchor::Top;
+    // A text frame used only for a group member's text (RichShape::textFrame):
+    // no run refers to it.
+    bool shapeText = false;
 };
 
 // ===== COMMENTS =====

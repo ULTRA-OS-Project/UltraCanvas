@@ -15,6 +15,8 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
+// Version: 1.4.0 - SetFloatOffset: a floating object moved to offsets; the picture calls
+//                  (IsImageAt, SetImageSize) take text frames and drawings too
 // Version: 1.3.0 - a run's own letter spacing as a format: RichCharFormatDelta::
 //                  setLetterSpacing, RichCharFormatState::letterSpacingPt
 // Version: 1.2.0 - the highlight colour (background behind the text) as a
@@ -406,6 +408,11 @@ public:
                       std::string& altText, int& mediaIndex) const;
     // Resizes it, one undo step. Sizes <= 0 are refused.
     bool SetImageSize(const RichDocPosition& image, float widthPt, float heightPt);
+    // Puts a floating picture, text frame or drawing at offsets from what it
+    // is placed from (its floatHorizontalFrom / floatVerticalFrom): it is no
+    // longer aligned, but offset. One undo step. False when `object` is not
+    // a floating object's placeholder.
+    bool SetFloatOffset(const RichDocPosition& object, float offsetXPt, float offsetYPt);
     // Sets the description a screen reader or a text export gives for it.
     bool SetImageAltText(const RichDocPosition& image, const std::string& altText);
     // Inserts a footnote or endnote reference at the caret, with a new note

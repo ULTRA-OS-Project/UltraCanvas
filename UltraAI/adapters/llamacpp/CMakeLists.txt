@@ -41,6 +41,16 @@ if(NOT TARGET llama)
                         "ULTRAAI_LLAMACPP_GIT_TAG.")
 endif()
 
+# Where the llama.cpp sources ended up, for the tests: gguf-py in that tree
+# writes the adapter test's model fixture, so the file matches the engine.
+if(ULTRAAI_LLAMACPP_SOURCE_DIR)
+    set_property(GLOBAL PROPERTY ULTRAAI_LLAMACPP_RESOLVED_SOURCE_DIR
+                 "${ULTRAAI_LLAMACPP_SOURCE_DIR}")
+else()
+    set_property(GLOBAL PROPERTY ULTRAAI_LLAMACPP_RESOLVED_SOURCE_DIR
+                 "${llama_cpp_SOURCE_DIR}")
+endif()
+
 add_library(UltraAI_AdapterLlama STATIC
     src/LlamaTextLLM.cpp
     src/LlamaEmbeddings.cpp

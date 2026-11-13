@@ -206,6 +206,24 @@ def test_groups_fan_out_only_between_members(client):
     assert [x["group_id"] for x in client.get("/v1/groups", headers=carol.auth).json()["groups"]] == [g["group_id"]]
 
 
+def test_group_renamed_by_a_member_and_told_to_everyone(client):
+    alice = Person(client, "Alice").join()
+    bob = Person(client, "Bob").join()
+    eve = Person(client, "Eve").join()
+    g = client.post("/v1/groups", headers=alice.auth, json={"title": "Team", "members": [bob.user_id]}).json()
+    path = "/v1/groups/" + g["group_id"]
+    with client.websocket_connect("/v1/ws", headers=alice.auth) as a:
+        a.receive_json()
+        renamed = client.patch(path, headers=bob.auth, json={"title": "Crew"})
+        assert renamed.status_code == 200 and renamed.json()["title"] == "Crew"
+        frame = a.receive_json()
+        assert frame["type"] == "group.update" and frame["group"]["title"] == "Crew"
+    assert client.get(path, headers=alice.auth).json()["title"] == "Crew"
+    # Not a member, or no name: refused.
+    assert client.patch(path, headers=eve.auth, json={"title": "Mine"}).status_code == 404
+    assert client.patch(path, headers=alice.auth, json={"title": ""}).status_code == 422
+
+
 def test_signalling_is_forwarded_untouched(client):
     alice = Person(client, "Alice").join()
     bob = Person(client, "Bob").join()

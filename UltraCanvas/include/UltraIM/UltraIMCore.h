@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.11 - UltraIM_RenameGroup, _AddGroupMembers, _RemoveGroupMember, _LeaveConversation
 // Version: 0.1.10 - UltraIM_DeleteMessage takes a scope; UltraIM_GetDeleteChoices
 // Version: 0.1.9 - UltraIM_SearchMessages; for providers and lists: UltraIM_MessageMatchesSearch,
 //                  UltraIM_ExtractLinks, UltraIM_FoldCase, UltraIM_SearchByFetching
@@ -13,7 +14,7 @@
 // Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -123,6 +124,20 @@ void UltraIM_AddContact(const std::string& providerId, const std::string& addres
 void UltraIM_CreateGroup(const std::string& providerId, const std::string& title,
                          const std::vector<std::string>& memberIds,
                          UltraIMConversationCallback onResult);
+// A group after it is made (ManageGroups): its name, members in and out
+// (taking someone else out may be for the group's owner alone,
+// UltraIMConversation::ownerId). The change also arrives as a
+// ConversationUpdate for everyone listening.
+void UltraIM_RenameGroup(const std::string& providerId, const std::string& conversationId,
+                         const std::string& title, UltraIMConversationCallback onResult);
+void UltraIM_AddGroupMembers(const std::string& providerId, const std::string& conversationId,
+                             const std::vector<std::string>& memberIds, UltraIMConversationCallback onResult);
+void UltraIM_RemoveGroupMember(const std::string& providerId, const std::string& conversationId,
+                               const std::string& memberId, UltraIMResultCallback onResult);
+// Out of a group, or a 1:1 conversation deleted with its history on this
+// device (LeaveConversation); a ConversationRemove follows.
+void UltraIM_LeaveConversation(const std::string& providerId, const std::string& conversationId,
+                               UltraIMResultCallback onResult);
 
 // ---- Sending -----------------------------------------------------------------
 // Return at once; the outcome arrives as a MessageDelivered event carrying

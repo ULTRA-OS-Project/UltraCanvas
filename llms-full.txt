@@ -3131,6 +3131,10 @@ UltraIM elements must comply with the following rules:
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`
 - `UltraIM_FetchNearbyContacts` (people on the local network)
+- `UltraIM_RenameGroup`, `UltraIM_AddGroupMembers`,
+  `UltraIM_RemoveGroupMember` (a group after it is made: `ManageGroups`),
+  `UltraIM_LeaveConversation` (out of a group, or a 1:1 conversation
+  deleted on this device: `LeaveConversation`)
 - `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
   to encrypted conversations as a passphrase-protected file)
 - `UltraIM_FetchAccountProfile`, `UltraIM_UpdateAccountProfile` (the
@@ -5906,7 +5910,7 @@ attaches the same six archives to a GitHub release:
 
 | Artifact | Contents |
 |---|---|
-| `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` the core needs |
+| `UltraCanvas-SDK-Linux-<version>-x86_64`, `-arm64` | shared core, Ubuntu 22.04 ABI, with the vendored `libcurl.so.4` and the run-time libraries a 22.04 machine set up by UltraCanvasStart lacks, all beside the core in `lib/` |
 | `UltraCanvas-SDK-MacOS-<version>-arm64`, `-x86_64` | shared core (`lib/libUltraCanvas.dylib`), built against the vcpkg libraries CI makes for the oldest supported macOS, with those libraries' development files in `deps/` |
 | `UltraCanvas-SDK-Windows-<version>-x86_64`, `-arm64` | shared core (`bin/libUltraCanvas.dll`), MSYS2 CLANG64 / CLANGARM64, with the MSYS2 packages' development files and DLLs in `deps/` |
 
@@ -6008,9 +6012,11 @@ The core is a shared library on every platform, and the modules (UltraNet,
 UltraDatabase, UltraCrypt, UltraVault, UltraMessage, VirtualFS, ...) are
 inside it: `UltraCanvas::UltraDatabase` and the other module targets resolve
 to the core, which exports their whole API, so an application links nothing
-else. On Linux the shared core sits in `lib/`; run an application with that
-directory on `LD_LIBRARY_PATH`, or set an rpath, or copy the `.so` files beside
-the executable the way `package-linux.sh` does. On macOS it is
+else. On Linux the shared core sits in `lib/` with the libraries it needs
+beside it. CMake gives a build-tree executable a run path to that directory,
+and the core finds the rest through its own `$ORIGIN` runpath, so the
+application starts without `LD_LIBRARY_PATH`. For a package, copy the `.so`
+files beside the executable the way `package-linux.sh` does. On macOS it is
 `lib/libUltraCanvas.dylib` with an `@rpath` install name: the application
 needs a run path to that directory (CMake writes one into a build-tree
 executable), or the dylib copied beside it the way `package-macos.sh` does
@@ -6057,18 +6063,44 @@ glib, tinyxml2 and libvips through pkg-config:
   the executable as `package-win.sh` does. `ULTRACANVAS_DEPS_DIR` names the
   directory, or is empty.
 - **The Linux SDK does not**: the distribution's `-dev` packages are the
-  right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them.
-  Only the ones an application compiles against are needed. The core also
-  records some of its own dependencies by the full path CI found them at,
-  such as `/usr/lib/x86_64-linux-gnu/libmp3lame.so`, which exists only
-  where `libmp3lame-dev` is installed, and `/usr/lib/libmupdf.a`, which CI
-  builds from source. The core is a shared library, so those are already
-  inside it or loaded with it at run time, and an application does not need
-  them on its link line. `UltraCanvasConfig.cmake` therefore leaves out any
-  such path the consuming machine does not have, and lists them in the
-  configure output (`UltraCanvas: not on this machine, left off the link
-  line ...`), instead of letting the build stop with *No rule to make
-  target*.
+  right source there (Ubuntu 22.04's for the SDK's ABI), as step 1 lists them,
+  and UltraCanvasStart installs. Only the ones an application compiles
+  against are needed:
+  - **The link line.** The core links a long list of libraries of its own:
+    FLAC, GStreamer, Vorbis, zbar, GTK, MuPDF and more. It is a shared
+    library, so those are inside it or loaded with it at run time, and an
+    application does not link them. `UltraCanvasConfig.cmake` keeps on the
+    application's link line only the libraries the public headers include,
+    which it finds through pkg-config (cairo, pango, glib, freetype,
+    harfbuzz, tinyxml2, libvips). It also keeps the imported targets, and
+    says in the configure output how many it left out. It also leaves out a
+    build-machine path the consuming machine does not have, such as
+    `/usr/lib/libmupdf.a`, which CI builds from source, and lists it.
+    VirtualFS is folded into the core too, so `VirtualFS::VirtualFS` gives
+    way to a target with only its headers and definitions.
+  - **The static plug-ins.** The plug-ins are static archives, compiled into
+    the application, so the libraries they name are the application's. The
+    CDR plug-in's are librevenge, lcms2 and ICU; the OCR plug-in's are
+    Tesseract, Leptonica and libarchive. UltraCanvasStart installs their
+    `-dev` packages on Linux when the SDK is chosen.
+  - **Run time.** The core's run-time libraries that such a machine does not
+    have are in the SDK's `lib/`, beside the core: libmp3lame, the FFmpeg
+    libraries, GStreamer, MuPDF's libraries and the rest. They are not
+    development files, so nothing links against them. The core and each of
+    them carry an `$ORIGIN` runpath, so the loader finds them beside the
+    file that needs them.
+  - **How CI decides and tests this.** The `sdk-linux` job of
+    `.github/workflows/build.yml` runs `scripts/sdk-linux-clean-consumer.sh`
+    in a clean `ubuntu:22.04` container, which has a desktop's libraries and
+    nothing else:
+    1. It runs the standalone UltraCanvasStart's install command, and
+       `--check` must then find nothing missing.
+    2. It adds to the SDK what the core still cannot load, from
+       UltraCanvasStart's own `lib/`.
+    3. It builds UltraCanvasStart's skeleton with the Build step's two
+       commands, and builds and runs `PackageConsumer`.
+
+    The SDK the release publishes is the one that job packed.
 
 ## Compatibility
 
@@ -48974,6 +49006,22 @@ private:
 Keep the menu in a member: `OpenMenu` shows it, and a menu that goes out of
 scope at the end of the handler closes before it is seen.
 
+Where selecting a row does something of its own - a messenger's chat list
+opens the chat that is selected - a right-click must not select. Turn the
+selection step off and let the menu act on the `row` it is handed; the
+selection stays where it was:
+
+```cpp
+void WireChatList(std::shared_ptr<UltraCanvasListView> chats) {
+    chats->SetSelectsOnContextMenu(false);
+    chats->onContextMenu = [](int row, const UCEvent& event) {
+        if (row < 0) return;
+        // build and open the menu for `row` at event.pointerWindow
+        (void)event;
+    };
+}
+```
+
 ```cpp
 // The view shows a sorting proxy over the source model
 auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(model);
@@ -53835,9 +53883,10 @@ Reported by the converters themselves in a build with tinyxml2 and zlib:
 | Alembic (`.abc`) | ✓ (first time sample) | — | — | — |
 | Blender (`.blend`) | ✓ | ✓ | — | — |
 | STEP (`.step .stp .p21`) | ✓ | ✓ | ✓ | ✓ |
+| IGES (`.igs .iges`) | — | ✓ | ✓ | ✓ |
 | AutoCAD DXF — 3D entities | — | ✓ | — | — |
 
-Six formats are writable — OBJ, PLY, STEP, 3DS, COLLADA and X3D/VRML — and the
+Seven formats are writable — OBJ, PLY, STEP, IGES, 3DS, COLLADA and X3D/VRML — and the
 rest are read-only. That is a property of the writers this repository has, not
 of the formats. `ModelWriterTest` asserts that this list and the converters'
 own `CanExport()` agree in both directions, so a format cannot be advertised
@@ -53888,6 +53937,29 @@ becomes its own face. The writer says so through `WarningCallback` rather than
 leaving you to notice. A document that already holds exact bodies is written as
 those bodies, losslessly, and does not go through faceting at all.
 
+**IGES is written in the form each body needs.** A closed solid becomes a
+manifold solid B-rep object (entity 186) with its vertex and edge lists, so its
+faces still share their edges when it is read back; an open body becomes
+trimmed surfaces (144) with their boundaries in model space, and B-spline
+faces also carry their trimming curves in (u, v). Analytic surfaces keep their
+IGES 5.3 entities (planes 190, cylinders 192, cones 194, spheres 196, tori
+198) rather than being converted to NURBS, so a reader older than IGES 5.2
+that knows only 128 will not take them. A mesh is written as a faceted solid,
+as for STEP, with the same warning. IGES must state a unit; a document that
+states none is written as millimetres, the format's own default.
+
+**The IGES reader takes both of the format's shapes.** A file of manifold solid
+B-rep objects arrives as closed solids with shared edges; a file of trimmed
+surfaces - which is what most IGES files are - arrives as one open body of
+independent faces, the way STEP's `shell_based_surface_model` does. Trimming
+curves in a surface's (u, v) are used only when, lifted onto the surface, they
+lie on the model-space edge they belong to; any that do not are dropped with a
+warning and the edge is projected instead, so a writer that parameterises a
+surface differently costs time, not a wrong face. Hyperbolic and parabolic
+arcs (read as their chord), offset surfaces (140), bounded surfaces (143),
+subfigure instances (408), and the compressed and binary forms of the file
+are not read, and the reader names each one it skipped.
+
 `.dxf` is deliberately **not** claimed by this plugin: a DXF is a drawing far
 more often than a model, so the Vector plugin's reader stays the default for
 it. A caller that wants the 3D entities asks for the converter by name —
@@ -53900,7 +53972,7 @@ surfaces with the topology that closes them into solids, in
 `ModelDocument::Brep`. A document holding only exact bodies is *not* empty, and
 `TotalFaceCount()` is zero until something tessellates it — which is what
 `TessellateOnImport` asks for, at the tolerance in
-`ConversionOptions::Tessellation`. A converter writing STEP to IGES wants it
+`ConversionOptions::Tessellation`. IGES is the same. A converter writing STEP to IGES wants it
 off, because tessellating and discarding is exactly the loss the B-rep
 structure exists to prevent.
 
@@ -65891,6 +65963,20 @@ undo step (`imageWidthPt` / `imageHeightPt`, never wider than the column).
 Delete removes a selected picture. A right-click selects the picture under the
 pointer first, so a host's context menu can offer picture items.
 
+Floating text frames and drawings are selected the same way (not one behind
+the text, which leaves the text to the clicks), and anything floating is
+**moved by dragging it**: on release it is no longer aligned but offset from
+what it is placed from - its paragraph, the page or the page's text area -
+by `UCRichDocumentEditor::SetFloatOffset`, one undo step, and both writers
+save the new place. A resized drawing keeps the size its shapes were drawn for
+(`RichTextFrame::drawingWidthPt` / `drawingHeightPt`) and its shapes scale to
+the new one. Frames and pictures in headers and footers are not picked up.
+
+```cpp
+// Move the floating object whose placeholder is at {block, offset}.
+editor->GetEditor().SetFloatOffset(RichDocPosition(block, placeholderOffset), /*xPt*/ 72, /*yPt*/ 12);
+```
+
 ```cpp
 if (editor->HasSelectedImage()) {
     editor->SetSelectedImageAltText("Quarterly revenue by region");
@@ -65988,6 +66074,41 @@ name.text = "Recipient Name";
 address.runs = {box, name};
 document->blocks.push_back(address);
 editor->SetDocument(document);
+```
+
+**Drawings.** A frame with `shapes` is a drawing: each `RichShape` - a
+`Line`, `Rectangle`, `RoundRectangle`, `Ellipse`, `Path` (an outline from 0
+to 1 across its box) or `Group` - is drawn in the frame's box with its
+`fillColor`, `lineColor`, `lineWidthPt`, `dash` and arrowheads, turned by
+`rotationDeg` and mirrored by `flipH` / `flipV`. The frame's own words sit
+over its shapes, at `textAnchor` (top, middle or bottom); a group member's
+words are a frame of their own (`RichShape::textFrame`, with `shapeText`
+set), and a group member with a `mediaIndex` is a picture. A shape with two
+or more `gradientStops` is filled with a gradient: linear at
+`gradientAngleDeg` (clockwise from left-to-right), or radial from
+`gradientCenterX` / `gradientCenterY`. A drawing with no
+words is exactly as tall as it was drawn, so a rule (a line with no height)
+takes no room. `RichShape::ApplyPreset` takes Word's outline names
+(`"star5"`, `"rightArrow"`, `"flowChartDecision"`, ...). ODT, DOCX (DrawingML
+and VML) and DOC (OfficeArt) shapes and groups read into it, and both writers
+save it. A drawing is moved and resized like a picture; the shapes in it are
+not edited one by one.
+
+```cpp
+RichShape rule;
+rule.kind = RichShape::Kind::Line;
+rule.widthPt = 425.0f;                // across the column; no height
+rule.lineColor = "#1F4E79";
+rule.lineWidthPt = 1.5f;
+RichTextFrame drawing;
+drawing.shapes = {rule};
+document->frames.push_back(drawing);
+
+RichTextRun under;
+under.text = RichTextRun::kObjectReplacement;
+under.frameIndex = static_cast<int>(document->frames.size()) - 1;
+under.imageWidthPt = 425.0f;
+under.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
 ```
 
 ### Check lists
@@ -92023,11 +92144,11 @@ View = `UltraCanvasRichTextEdit` draws it.
 
 | Feature | ODT | DOCX | DOC | Model | View | Note |
 |---|---|---|---|---|---|---|
-| Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. |
+| Inline pictures (PNG, JPEG, GIF) | yes | yes | yes | yes | yes | DOC: PNG/JPEG BLIPs; EMF/WMF/DIB not decoded. DOCX: VML pictures (`v:imagedata`, Word 2003 and older) in the line or floating. |
 | Picture on its own line | yes | yes | yes | yes | yes | |
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
-| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | no | no | no | no | no | |
+| Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradient fills (linear, axial, radial with their centre: ODF `draw:gradient`, DOCX `a:gradFill`, VML `v:fill`, DOC shades) are drawn and saved; pattern fills draw in one colour; no shadows, 3-D or WordArt. In page view a floating frame, drawing or picture is selected, moved by dragging and resized; the new place and size are saved. |
 | Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
 
@@ -92090,15 +92211,16 @@ orphan control, repeated table header rows), footnotes and endnotes, zoom
 and sideways scrolling, and (2026-11) positioned frames, text boxes and
 floating pictures placed from the page, text wrapping round them line by
 line, frames and floating pictures in headers and footers (DOC included),
-and zoom to the page's width or the whole page
-(`UltraCanvasRichTextEdit::SetZoomFit`).
+zoom to the page's width or the whole page
+(`UltraCanvasRichTextEdit::SetZoomFit`), and drawn shapes and groups from
+all three formats.
 
 1. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
    (their text lies after the main text in the piece table: `ccpFtn`,
    `ccpEdn`), comments and revision marks, sections and their columns,
    bookmarks and caption / cross-reference fields. ODT and DOCX read all of
    these.
-2. Shapes and charts: read-only display first.
+2. Charts: read-only display first.
 
 Each can be checked against a LibreOffice-generated fixture the way
 `Tests/fixtures/word97-formatting.*` is.
@@ -92117,10 +92239,17 @@ model or a reader can already carry, or that a document needs, but
   headers and footers cannot be selected or moved on the page, and are
   drawn under the body's text (Word's order; Writer draws a frame set in
   front of the text over it).
-- **A frame's text cannot be edited**, and a frame cannot be moved or
-  resized; clicks pass through it to the text underneath.
-- **Group shapes and drawn shapes** (lines, arrows, WordArt) are not shown;
-  only a shape's picture or text box is.
+- **A frame's text cannot be edited**: a click selects the frame (one
+  behind the text passes the click to the text) and it can be moved and
+  resized, but its words are changed only by editing the document's source.
+- **A drawing is edited as a whole**: it is selected, moved and resized
+  like a picture, but its shapes cannot be picked out one by one, and its
+  words cannot be edited. Frames and pictures in headers and footers cannot
+  be picked up at all. Pattern fills draw in one colour; shadows, glow, 3-D
+  and WordArt are not drawn; text wraps round a shape's box, not its
+  outline. Word's named outlines outside
+  the forty or so the model knows (`RichShape::ApplyPreset`) draw as their
+  box.
 - **One page setup per document.** Sections can have their own columns, but
   not their own size, margins or orientation; even/odd headers are not
   modelled.
@@ -92142,7 +92271,14 @@ soffice --headless --convert-to docx word97-formatting.fodt
 
 `word-frames.fodt` (a letterhead-like page: a page-anchored sender frame
 beside the address, a note box a paragraph wraps round, a floating picture)
-is converted the same way to `word-frames.odt`, `.doc` and `.docx`.
+is converted the same way to `word-frames.odt`, `.doc` and `.docx`, and so
+is `word-shapes.fodt` (a rule, a box of words, an ellipse, a dashed arrow, a
+triangle, a group and a turned box). `word-shapes-word.docx` is built by
+`make-word-shapes-fixture.py`: shapes as Word itself writes them, which
+LibreOffice's export does not produce (theme colours, a custom outline with
+an arc, a group with a picture, VML-only drawings, a VML picture).
+`word-gradients.fodt` (a linear, an axial and a radial fill) is converted
+like the others.
 
 `WordFormatsTest` checks that all three readers recover the same structure and
 that it survives a save to `.odt` and `.docx`. To cover a new feature, add it
@@ -92758,7 +92894,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 
 **Images** (libvips, build-dependent): PNG, JPEG, WebP, AVIF, HEIC/HEIF, GIF, BMP, TIFF, TGA, HDR, EXR, JPEG XL, JPEG 2000, Netpbm, QOI, PSD, ICO, FITS
 **Vector:** SVG/SVGZ (load); CorelDRAW, Xara (via plugins)
-**3D Models:** STL (load + save, via plugin)
+**3D Models** (via plugins): STL, STEP, IGES, OBJ, PLY, 3DS, COLLADA, X3D/VRML (load + save); FBX, Alembic, DirectX `.x`, MilkShape 3D, Blender (load)
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
 **Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
@@ -92931,11 +93067,29 @@ than its name, so it is loadable without being an advertised extension.
 | Format | Extension(s) | Load | Save | Provider |
 |--------|--------------|:----:|:----:|----------|
 | STL | `.stl` | ✅ ‡ | ✅ ‡ | STL plugin (built-in, ASCII + binary) |
+| STEP (ISO 10303 AP203 / AP214 / AP242) | `.step`, `.stp`, `.p21` | ✅ ‡ | ✅ ‡ | Models plugin: exact B-rep solids and surfaces |
+| IGES 5.3 | `.igs`, `.iges` | ✅ ‡ | ✅ ‡ | Models plugin: exact B-rep solids (186) and trimmed surfaces (144) |
+| Wavefront OBJ | `.obj` | ✅ ‡ | ✅ ‡ | Models plugin |
+| Stanford PLY | `.ply` | ✅ ‡ | ✅ ‡ | Models plugin (ASCII + binary) |
+| 3D Studio | `.3ds` | ✅ ‡ | ✅ ‡ | Models plugin |
+| COLLADA | `.dae` | ✅ ‡ | ✅ ‡ | Models plugin, when built with tinyxml2 |
+| X3D / VRML | `.x3d`, `.x3dv`, `.wrl`, `.vrml` | ✅ ‡ | ✅ ‡ | Models plugin, when built with tinyxml2 |
+| Autodesk FBX | `.fbx` | ✅ ‡ | — | Models plugin, when built with zlib (binary + ASCII) |
+| Alembic | `.abc` | ✅ ‡ | — | Models plugin (Ogawa archives; the first time sample) |
+| DirectX | `.x` | ✅ ‡ | — | Models plugin (text + binary) |
+| MilkShape 3D | `.ms3d` | ✅ ‡ | — | Models plugin |
+| Blender | `.blend` | ✅ ‡ | — | Models plugin, when built with zlib (the stored geometry, before modifiers) |
 
-STL support is provided by the STL graphics plugin; register it with
-`RegisterSTLPlugin()`. Other 3D formats (OBJ, glTF/GLB, FBX, 3DS, PLY,
-COLLADA) are **not** implemented by the FileLoader path — the demo app has a
-minimal OBJ reader for its GL viewer only.
+STL comes from the STL plugin and everything else from the Models plugin
+(`UltraCanvas/Plugins/Models/`); `RegisterModelFormatsPlugin()` registers both.
+The Models plugin reads into an editable `ModelStorage::ModelDocument`, and
+STEP and IGES carry exact surfaces rather than triangles - a viewer asks for a
+mesh with `ConversionOptions::TessellateOnImport`. What each reader and writer
+keeps and loses is in
+[UltraCanvasModelFormats](../../UltraCanvas/UltraCanvasModelFormats.md).
+The Models plugin also reads the 3D entities of a `.dxf` when a caller asks
+for its converter by name; it does not claim the extension, which stays with
+the Vector plugin's drawing reader.
 
 ### Documents
 
@@ -97461,21 +97615,23 @@ FILE: Docs/Modules/UltraAI/LocalRuntime.md
 
 ## Overview
 
-The local runtime runs language and embedding models on the user's own
-machine the way LocalAI's galleries do, without the user installing
-anything: the inference engine (llama.cpp's `llama-server`) and the model
-files are downloaded on demand, verified, started as a loopback process,
-shared between every UltraCanvas application that wants the same model,
-and stopped when nothing has used them for a while. The `local` provider
-serves `ITextLLM` and `IEmbeddings` through it and ranks first in the
-module's local-first routing, so an application that leaves `providerId`
-empty gets a model on this computer whenever one is installed or can be.
+The local runtime runs language, embedding and speech-to-text models on the
+user's own machine the way LocalAI's galleries do, without the user
+installing anything: the inference engine (llama.cpp's `llama-server`, or
+whisper.cpp's `whisper-server` for speech) and the model files are
+downloaded on demand, verified, started as a loopback process, shared
+between every UltraCanvas application that wants the same model, and
+stopped when nothing has used them for a while. The `local` provider serves
+`ITextLLM`, `IEmbeddings` and `ISpeechToText` through it and ranks first in
+the module's local-first routing, so an application that leaves
+`providerId` empty gets a model on this computer whenever one is installed
+or can be.
 
 Header: `UltraAILocalRuntime.h` (the runtime) and `UltraAILocal.h` (the
 provider). Design: [`../../Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md);
 this document is phase 1 of its plan (chat and embeddings over
-`llama-server`), with the user interface, speech, images and the
-supervisor process still to come. Built in-tree only
+`llama-server`) and the speech-to-text part of phase 3 (`whisper-server`),
+with text to speech, images and the supervisor process still to come. Built in-tree only
 (`ULTRAAI_LOCAL_RUNTIME`, default ON): it needs UltraNet, UltraCrypt and
 VirtualFS, which live in the shared core.
 
@@ -97509,12 +97665,12 @@ recommends and ask.
 
 | Part | What it is | Where |
 |---|---|---|
-| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
-| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
-| **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded). | `<root>/user-models.json` |
+| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20, and whisper.cpp's release v1.9.0 for Linux x64 and arm64 and Windows x64, CPU, hashed on 2026-11-10; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
+| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. A model whose engine has no build for this platform (and is not installed or overridden) is left out of `ListModels`: whisper-server has none for macOS or Windows on ARM. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
+| **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded); for `"speechtotext"`, a whisper.cpp ggml `.bin`, served by `whisper-server`. | `<root>/user-models.json` |
 | **Installs** | Background jobs on the runtime's worker: download to a `.part` file (resumed when one exists), verify the SHA-256 through UltraCrypt, move into place; an engine bundle is unpacked through VirtualFS and gets a `bundle.json`; a model gets its `model.json` last, so a half-installed model never counts as installed. | `InstallModel`, `InstallEngine`, `Cancel`, `ListJobs` |
-| **Supervision** | `Ensure(modelId)` starts `llama-server` on a free loopback port with `--api-key-file`, waits for `/health`, and records it in `runtime.json` — shared between processes under a lock file — so a second application finds the running engine instead of starting its own. Idle engines are stopped by `StopIdle()` (run by every `Ensure`). A model whose engine died twice in a row is marked and not retried until it is stopped or reinstalled. | `Ensure`, `Touch`, `StopIdle`, `StopModel`, `StopAll`, `ListRunning` |
-| **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
+| **Supervision** | `Ensure(modelId)` starts the model's engine on a free loopback port (`llama-server` with `--api-key-file`), waits for `/health`, and records it in `runtime.json` — shared between processes under a lock file — so a second application finds the running engine instead of starting its own. Idle engines are stopped by `StopIdle()` (run by every `Ensure`). A model whose engine died twice in a row is marked and not retried until it is stopped or reinstalled. | `Ensure`, `Touch`, `StopIdle`, `StopModel`, `StopAll`, `ListRunning` |
+| **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*; a model whose engine has CPU builds only for this platform (whisper-server; llama-server on an Intel Mac) is at most *runs on CPU*, unless the engine is an override. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
 
 ### Storage
 
@@ -97565,6 +97721,15 @@ cores (two left for the desktop), then the gallery's `defaultArgs`
 `--pooling`). `local_detail::BuildEngineArgs` is the one place this is
 decided.
 
+For `whisper-server`: `--host 127.0.0.1 --port <free> --model <file>
+--inference-path /v1/audio/transcriptions --language auto --threads <n>`,
+then the gallery's and the model's arguments. The inference path is the
+OpenAI audio API's, so the OpenAI adapter speaks to it unchanged; `auto`
+because the server's own default language is English. whisper.cpp's server
+takes no key: like every engine it listens on loopback only, but any
+process of the user's can reach it there. The builds are CPU builds, so a
+speech model's fit is *runs on CPU* whatever the GPU.
+
 Engines reach their libraries through their own folder (`$ORIGIN` on
 Linux, the bundle's layout on macOS and Windows), so a bundle runs from
 wherever it was unpacked.
@@ -97575,9 +97740,41 @@ wherever it was unpacked.
 variable `ULTRAAI_LOCAL_ENGINE_LLAMA_SERVER`, names a folder holding (or
 the path of) a `llama-server` executable; the runtime uses it instead of a
 bundle and downloads no engine. A developer's own CUDA build, or a test's
-fake engine.
+fake engine. `ULTRAAI_LOCAL_ENGINE_WHISPER_SERVER` does the same for
+`whisper-server` - on macOS, a whisper.cpp built with Metal is how the
+speech models are offered there.
 
 ---
+
+### Engines built here
+
+Where upstream publishes no build, this repository makes one:
+`.github/workflows/whisper-server.yml` builds whisper.cpp's server at a
+release tag for macOS on Apple silicon (Metal, the library embedded) and on
+Intel (CPU), both for macOS 13.3 and later and signed ad hoc; Windows on ARM
+(CPU and Vulkan, with clang-cl, as ggml refuses MSVC on ARM); and Vulkan
+builds for Windows x64 and Linux x64 and arm64 (glibc 2.39 and the system's
+Vulkan loader). Each is linked statically against whisper.cpp and ggml (and
+the C runtime on Windows), and each archive holds the executable,
+whisper.cpp's `LICENSE` and a `BUILD.txt` naming the commit, the CMake
+arguments and the run.
+
+Every build but Windows Vulkan (a hosted Windows runner has no Vulkan
+loader) is started with the runtime's own command line and must transcribe
+whisper.cpp's `samples/jfk.wav` sent to `/v1/audio/transcriptions` with the
+tiny model; Linux Vulkan runs on Mesa's software device. A pull request that
+changes the workflow or `scripts/whisper_gallery_entries.py` runs every build
+and test without publishing.
+
+To publish: Actions → *whisper-server* → *Run workflow* with the
+whisper.cpp tag and a revision (`r1`, then `r2` for every rebuild of the same
+tag - a published release is never replaced, because the gallery pins its
+hashes). The release `whisper-server-<tag>-<revision>` of this repository,
+not marked *latest*, carries the archives, `SHA256SUMS` and
+`whisper-server.gallery.json`: the bundle entries to add to the
+`whisper-server` engine in `LocalRuntimeBuiltinData.cpp` and to the model
+server's seed (`Server/UltraAIModelServer/ultraai_models/seed/index.json`).
+The engine's `version` stays the whisper.cpp tag.
 
 ## The gallery index
 
@@ -97752,9 +97949,10 @@ is the user's view of all of this.
 
 ## The `local` provider
 
-`CreateTextLLM` / `CreateEmbeddings` with `providerId = "local"`, or an
-empty `providerId` when nothing names another provider: `local` is first
-in `KnownLocalProviders` for `textllm`, `embeddings` and `translator`.
+`CreateTextLLM` / `CreateEmbeddings` / `CreateSpeechToText` with
+`providerId = "local"`, or an empty `providerId` when nothing names another
+provider: `local` is first in `KnownLocalProviders` for `textllm`,
+`embeddings`, `translator` and `speechtotext`.
 
 | Config field | Meaning |
 |---|---|
@@ -97769,6 +97967,19 @@ A request's `model` names another local model; each gets its own engine.
 catalogue's for this computer with ` (not installed)` in the name, each
 `runsLocally`, so a picker shows both. `RawProvider()` is the OpenAI
 delegate of the default model once it has been used.
+
+Speech to text (`CreateLocalSpeechToText`): the topic is `transcription`
+unless one is set (Whisper Small by default; Whisper Base and Whisper
+Large v3 Turbo are offered). Files only - live transcription is an error
+event. WAV, MP3, FLAC and Ogg Vorbis go as they are (whisper.cpp decodes
+them), with no size limit; `translateToEnglish` is whisper's own
+`translate` field on the same path; segments come with `verbose_json`, and
+their word timings only when `wordTimestamps` is asked for. The default
+60 s timeout is raised to 30 minutes, as an hour of sound takes minutes on
+the CPU; a timeout set by the caller is kept. UltraAI's speech transcriber
+for UltraCanvas applications (`UltraAISpeechTranscription.h`) uses it
+first; a `local` with nothing downloaded under the *Ask* policy steps aside
+for the next provider.
 
 Errors: `ModelNotFound` / `"needs-install"` (a download is needed and not
 allowed), `ModelNotFound` / `"too-large"` (the model does not fit this
@@ -97820,7 +98031,10 @@ loopback: the built-in data parses; the fit and the bundle choice; an
 install through an injected copy fetcher (progress, a wrong hash refused,
 a failed transfer resumed, `model.json` last); `Ensure` under each policy,
 the shared record found by a second runtime, the idle stop, the restart
-marker; and the `local` provider's chat and embeddings end to end. Nothing
+marker; and the `local` provider's chat, embeddings and speech to text end
+to end (the fake engine started as `whisper-server` answers on its
+inference path; a speech model whose engine has no build here is not
+offered). Nothing
 in it touches the network. `ULTRACANVAS_BUILD_ULTRAAI_TESTS=ON` builds the
 module's suite in-tree and CI runs it with the rest.
 
@@ -97835,8 +98049,14 @@ LocalRuntime::Instance().SetSettings(s);
 
 ## Limits (0.1.0)
 
-- Chat and embeddings only: speech-to-text, image generation and
-  text-to-speech engines are the proposal's phase 3.
+- Chat, embeddings and speech to text: image generation and text-to-speech
+  engines are still to come.
+- `whisper-server` comes from whisper.cpp's own release archives, which
+  hold CPU builds for Linux x64 and arm64 and Windows x64 only: no macOS,
+  no Windows on ARM, no GPU build. The rest are built here (*Engines built
+  here*, above) and join the gallery, without a format change, once the
+  first release of them is published. The whisper models' hashes are taken from Hugging Face at
+  install time; their sizes are whisper.cpp's published figures.
 - One `llama-server` process per model; the router mode (one process for
   every GGUF) and the `UltraAIHost` supervisor are phase 2. An engine
   started by an application that exits stays until an idle sweep from any
@@ -97957,7 +98177,15 @@ transcribes. `FindSpeechProvider` and `LastSpeechTranscriptionProvider` say
 which. UltraClipboard's *Extract text* uses it for copied recordings and
 videos.
 
-The provider that transcribes today is `openai` (`CreateOpenAISpeechToText`,
+First on the route is `local`: whisper.cpp's `whisper-server`, downloaded
+and started by the local runtime ([LocalRuntime.md](LocalRuntime.md)) with
+Whisper Small by default - nothing leaves the computer. It is offered on
+Linux (x64, arm64) and Windows x64, the platforms whisper.cpp publishes
+builds for. When its model is not downloaded and the download policy does
+not let the call fetch it, it steps aside for the next provider and the
+error says what to install.
+
+The cloud provider is `openai` (`CreateOpenAISpeechToText`,
 `adapters/openai`): the audio API (`/v1/audio/transcriptions`, multipart),
 `gpt-4o-transcribe` by default, `whisper-1` for timestamps and translation,
 25 MB per file. It is a cloud provider, used once chosen -
@@ -97987,7 +98215,8 @@ default, nothing leaves the network.
 option keys and limits. ComfyUI, Ollama and vLLM are separate programs the
 user installs; UltraAI talks to them over HTTP and links none of their code.
 The `local` provider needs no such program: the local runtime
-(`Docs/Modules/UltraAI/LocalRuntime.md`) fetches llama.cpp's server and a
+(`Docs/Modules/UltraAI/LocalRuntime.md`) fetches llama.cpp's server (or
+whisper.cpp's, for speech to text) and a
 model from a gallery and a catalogue on demand and runs them itself.
 
 ---
@@ -98126,7 +98355,7 @@ cmake -S UltraAI -B build \
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
-| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server` the runtime downloads from a hash-verified gallery, starts on loopback with a key, shares across applications and stops when idle; curated model catalogue, user GGUFs, Hugging Face files; hardware fit) | Complete (v0.1 — chat and embeddings; no dashboard page or framework dialog yet) |
+| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server`, `ISpeechToText` on a `whisper-server`, which the runtime downloads from a hash-verified gallery, starts on loopback, shares across applications and stops when idle; curated model catalogue, user GGUFs and whisper models, Hugging Face files; hardware fit) | Complete (v0.1 — chat, embeddings and speech to text; whisper-server on Linux and Windows x64 only) |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
@@ -100903,6 +101132,29 @@ UltraIMResult r = UltraIM_SendText("direct", conversationId, text, options);
 if (!r) { /* mark the row Failed */ }
 ```
 
+A group after it is made (the `ManageGroups` capability):
+`UltraIM_RenameGroup(provider, conversation, title, cb)`,
+`UltraIM_AddGroupMembers(provider, conversation, {ids}, cb)` - both answer
+the group as it is now - and `UltraIM_RemoveGroupMember(provider,
+conversation, id, cb)`, which the network may allow to the group's owner
+alone (`PermissionDenied`; `UltraIMConversation::ownerId` names the owner
+where the network has one, `""` where it does not say;
+`UltraIMConversation::memberNames` names the members it knows). Every member hears
+of the change as a `ConversationUpdate`. `UltraIM_LeaveConversation(provider,
+conversation, cb)` (`LeaveConversation`) takes the local user out of a group,
+or deletes a 1:1 conversation with its history on this device - the other
+side keeps theirs - and a `ConversationRemove` follows. ChatCube offers all
+of it from the chat list's right-click menu, as far as each network lists
+the capability.
+
+```cpp
+UltraIM_AddGroupMembers("direct", groupId, {"3f2a9c01..."},
+                        [](const UltraIMResult& r, const UltraIMConversation& group) {
+    if (!r) { /* r.message says why */ }
+});
+UltraIM_LeaveConversation("direct", groupId, [](const UltraIMResult&) {});
+```
+
 Calls: ask `UltraIM_CanCall(provider, conversation, video)` before offering
 the buttons — ChatCube Direct offers 1:1 voice and video calls while its
 relay socket or a local connection to the contact is up, not group calls yet. `UltraIM_StartCall` gives the call id;
@@ -101209,6 +101461,12 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
 - **Delivery ticks:** `Sending` → `Sent` (in the relay's queue) →
   `Delivered` (the peer's device has it: data-channel ack or receipt) →
   `Read` (`UltraIM_MarkRead` on the other side). Groups stop at `Sent`.
+- **Groups** are kept by the relay (`/v1/groups`), which tells every member
+  of a change (`group.update`). `RenameGroup` (relay 1.3.0 and later) and
+  `AddGroupMembers` are for any member, `RemoveGroupMember` for the group's
+  owner (`ownerId`); `LeaveConversation` leaves a group, and deletes a 1:1
+  conversation and its messages on this device while keeping the contact,
+  so a new message from them starts it again.
 - **Local record:** contacts and their keys, conversations, history and the
   outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
   `FetchMessages` answers from it; nothing waits for the network.
@@ -101344,6 +101602,10 @@ other over mDNS alone, which skips without a responder unless
   invitation is a conversation whose snippet says so; sending into it
   accepts it. `AddContact("@name:server")` opens a direct chat (or returns
   the one there is); `CreateGroup` makes a private room and invites.
+  `RenameGroup` sets `m.room.name`, `AddGroupMembers` invites,
+  `RemoveGroupMember` kicks (the homeserver's power levels decide whether
+  we may: `PermissionDenied` when not), and `LeaveConversation` leaves the
+  room and forgets it - a direct chat as much as a group.
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
   emotes, pictures, videos, audio and files with their attachments (the
   `filename` and the body as the caption, MSC2530), edits (`m.replace` -
@@ -101490,7 +101752,16 @@ process.
   private chats, basic groups and supergroups, channels. A conversation's id
   is the chat id, a message's the message id, a contact's the user id.
   `AddContact` takes `@username`, a `t.me/` link or `+phone`; `CreateGroup`
-  makes a basic group of such members.
+  makes a basic group of such members. `RenameGroup` (`setChatTitle`),
+  `AddGroupMembers` (`addChatMembers`, the same addresses; those whose
+  privacy settings refuse it come back as `PermissionDenied`),
+  `RemoveGroupMember` (`setChatMemberStatus` to left: a kick, also in a
+  supergroup) and `LeaveConversation` (`leaveChat`; a private chat's history
+  deleted for us alone with `deleteChatHistory`) - what an administrator
+  may do in most groups answers `PermissionDenied` to anyone else. A basic
+  group's members, their names and its creator come from its full info
+  (`getBasicGroupFullInfo`, then `updateBasicGroupFullInfo`); a supergroup
+  lists none.
 - **Messages:** text with replies, photos, files, audio, voice notes,
   videos (and animations, video notes) and stickers with their captions and
   attachments, the group's service messages as system lines; edits
@@ -110053,6 +110324,30 @@ action per numbered step, the SDK named for real, the report plain).
 The version is the first line of `Docs/UltraCanvasStart/CHANGELOG.md`, read by
 `cmake/UltraCanvasVersion.cmake` into `ULTRACANVASSTART_VERSION`. Every change
 to the application gets a new entry there.
+
+==============================================================================
+FILE: Docs/UltraCanvasStart/changelog.d/sdk-plugin-link-libraries.md
+==============================================================================
+
+- **On Linux with the SDK, Install also sets up the static plug-ins' link
+  libraries.** The SDK's plug-ins are static archives that the skeleton
+  links:
+  - the CDR plug-in names librevenge, lcms2 and ICU;
+  - the OCR plug-in names Tesseract, Leptonica and libarchive.
+
+  These were in the optional CDR and OCR groups, and libarchive had no entry
+  at all. On a clean Ubuntu 22.04 the skeleton stopped at `-lrevenge-0.0`,
+  then at `-ltesseract`, `-llept` and `-larchive`. With the SDK chosen on
+  Linux, the Tools step now checks and installs `librevenge-dev`,
+  `liblcms2-dev`, `libicu-dev`, `libtesseract-dev`, `libleptonica-dev` and
+  `libarchive-dev`, whatever groups are chosen. libarchive is a new entry in
+  the OCR group. A build from source, and macOS and Windows, whose SDKs
+  carry them in `deps/`, are unchanged (`StartPackages` 0.1.3,
+  `DependenciesFor`; test `DependenciesFor_adds_the_sdk_plugins_link_libraries_on_linux`).
+- **The Linux guide no longer says to set `LD_LIBRARY_PATH`.** The Linux SDK
+  carries the run-time libraries its core needs, beside it, with an
+  `$ORIGIN` runpath (framework changelog: `sdk-linux-clean-ubuntu`), so an
+  application built against it starts from its build folder as it is.
 
 ==============================================================================
 FILE: Docs/UltraMail/AccountSetup.md
