@@ -854,12 +854,15 @@ and never introduce a new literal copy of one:
    (marked `machine draft … reviewed by -` like the rest). A word every
    application has is in `Standard.json` or a base set already (the
    proposal's appendices): an application's own catalogue holds only what
-   is its own. The demo app is the one place a bare literal is right:
-   `DemoApp` is in `SKIP_APPS` of `scripts/extract_ui_strings.py`, so its
-   pages have no catalogue and wrap nothing - a demo page is example code a
-   developer reads beside its document, in English, not a product a person
-   runs in their language - and a review that finds no `Tr` there has found
-   nothing. **A catalogue under `media/locale/en/` that conflicts in a
+   is its own. The demo app is no exception: its pages have gone through
+   `Tr` since 0.9.516, `scripts/extract_ui_strings.py` builds its catalogue
+   (`media/locale/en/UltraCanvasDemo.json`, translated in every language
+   under `media/locale/`), and `check_locale_catalogues.py` fails a pull
+   request whose demo page adds a text without rerunning the extractor -
+   so a new demo page wraps its texts and reruns it like any application.
+   What a demo page leaves bare is what no reader translates: element ids,
+   code samples and parser input, proper names in sample data, and strings
+   the code compares or looks up. **A catalogue under `media/locale/en/` that conflicts in a
    merge is never merged by hand:** whichever branch merges second merges
    the base and runs `python3 scripts/extract_ui_strings.py` - it rebuilds a
    conflicted catalogue from both sides git keeps (its `@bases` and other
