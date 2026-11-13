@@ -1,3 +1,8 @@
+#### 2026-11-13 *1.82*
+- **Text boxes and drawings in a word-processing document can be picked up,
+  moved and resized on the page**, like pictures; the new place is saved.
+  "Picture Original Size" is offered only for a picture.
+
 #### 2026-11-12 *1.81*
 - **Zooming out at the end of a long document no longer blanks the page.** The
   line at the top of the window stays there (framework TextArea fix).

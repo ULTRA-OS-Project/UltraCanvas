@@ -1,3 +1,94 @@
+#### 2026-11-13 *0.9.549*
+- **IGES files open and save.** The Models plugin has a second exact B-rep
+  format beside STEP: IGES 5.3 (`.igs`, `.iges`), read into and written out of
+  `ModelDocument::Brep` by `ModelConverter::IgesConverter`
+  (`Plugins/Models/IGES/`), and reached through `LoadModelDocument` /
+  `SaveModelDocument` and the FileLoader inventory like every other 3D format.
+  - **Both shapes an IGES file takes are read.** Manifold solid B-rep objects
+    (186, with shells, faces, loops, edge and vertex lists) arrive as closed
+    solids whose faces share their edges; trimmed surfaces (144 with 142
+    boundaries), bounded planes and untrimmed bounded surfaces - what most IGES
+    files contain - arrive as one open body. Curves: lines, arcs, ellipses,
+    copious data, parametric splines (converted exactly to B-splines),
+    rational B-splines and composites, each under its transformation matrix.
+    Surfaces: planes (108, 190), cylinder, cone, sphere, torus (192-198),
+    ruled, revolution, tabulated cylinder and rational B-spline. Colours (the
+    standard numbers and colour definitions), name properties, the unit and
+    the sender's details come from the file.
+  - **A trimming curve in (u, v) has to agree with its edge to be kept.** It
+    is lifted onto the surface and checked against the model-space edge at its
+    ends and through its length, turned round if it runs the other way, and
+    dropped with a warning if it does not lie on the edge at all - so a writer
+    that parameterises a surface differently from the reader costs a projection,
+    not a wrong face.
+  - **Writing keeps a solid a solid.** A closed body is written as a manifold
+    solid B-rep object with one vertex list and one edge list, an open one as
+    trimmed surfaces with model-space boundaries (and (u, v) boundaries on
+    B-spline faces); analytic surfaces stay analytic and NURBS stay NURBS. A
+    document holding only meshes is written as a faceted solid, with the same
+    warning the STEP writer gives. Every number is built as a dot-decimal
+    string, never streamed, so the file is the same on a comma-decimal desktop
+    (`ModelLocaleDecimalTest` writes two IGES cases in both locales).
+  - Not read, and named in a warning when met: hyperbolic and parabolic arcs
+    (read as their chord), offset surfaces (140), bounded surfaces (143),
+    subfigure instances (408), and the compressed and binary forms of the file.
+- **`ModelIgesTest`** covers the card syntax (redefined delimiters, Hollerith
+  strings holding them, D exponents, decks with no line ends or CR LF ends,
+  strings split across cards) and measures the readers' results against two
+  samples in `media/3D/IGES` that `make_samples.py` builds entity by entity
+  without the C++ writer: a block whose meshed volume must be 6000, and a
+  plate-with-hole and boss whose area must be the plate less its hole plus the
+  boss's side. Every STEP sample also goes STEP -> IGES -> back and must mesh
+  to the same area and volume.
+- **The 3D model table in `Docs/Modules/FileLoader/formats.md` lists what the
+  Models plugin reads and writes.** It still said only STL was implemented and
+  that OBJ, FBX, 3DS, PLY and COLLADA were not, which had not been true since
+  the Models plugin arrived. The demo app has an IGES page with both samples.
+- **The file browser names and colours CAD files.** `.step`, `.stp`, `.p21`,
+  `.igs` and `.iges` had no entry in `UltraCanvasFilerWidget`'s type table, so
+  they showed with no type name on the generic 3D colour. They are now "STEP
+  Model" and "IGES Model" on the 3D ramp - STEP on glTF's rung, the older
+  IGES on the last - and `FilerFormatColorTest` checks the rungs.
+- **Word documents show their drawn shapes.** Lines, rectangles, rounded
+  rectangles, ellipses, freeform outlines and groups from `.odt`, `.docx` and
+  `.doc` were dropped; a letterhead's rules, a boxed heading and a diagram
+  now stand where the document puts them, in page view and when printed.
+  - Model: `RichShape` (kind, box, turn, mirroring, fill, line, dash,
+    arrowheads, outline points, group members, words, a picture in a group)
+    in `RichTextFrame::shapes`; `RichShape::ApplyPreset` knows about forty of
+    Word's named outlines; `RichTextFrame::textAnchor` centres a box's words.
+  - ODT: `draw:rect`, `draw:ellipse`, `draw:line`, `draw:path`,
+    `draw:polygon`, `draw:polyline`, `draw:custom-shape` and `draw:g` are read
+    and written.
+  - DOCX: `wps:wsp` shapes with preset or custom outlines, theme colours
+    (`wps:style`, `a:schemeClr` with tint, shade and luminance), `wpg:wgp`
+    groups with pictures and text boxes, and VML shapes and groups are read;
+    drawings are written as `wps` shapes and `wpg` groups. A header's
+    pictures now load (its own relationships were not read).
+  - DOC: OfficeArt shapes and groups - shape types, freeform vertices,
+    turns, flips, dashes and arrowheads.
+  - `UltraCanvasRichTextEdit` draws them (`DrawShape`); a drawing with no
+    words is as tall as it was drawn, so a rule takes no room.
+  - ODT text frames are written with their height and their words' vertical
+    place, so Writer no longer shrinks them; DOCX text boxes with a height
+    keep it instead of shrinking to their text.
+- **Frames and drawings in a Word document can be moved and resized on the
+  page.** A click selects a floating text frame or drawing as it does a
+  picture (one behind the text leaves the text to the clicks); dragging it
+  moves it, its handles resize it, and the new place and size are saved.
+  - `UCRichDocumentEditor::SetFloatOffset` moves a floating object (one undo
+    step); the picture calls address text frames and drawings too.
+  - A resized drawing keeps the size its shapes were drawn for
+    (`RichTextFrame::drawingWidthPt` / `drawingHeightPt`); its shapes scale
+    with it, on screen and in the saved file.
+- **Gradient fills are drawn as gradients**, not in their first colour:
+  `RichShape::gradientStops`, `gradientAngleDeg`, `gradientRadial` and the
+  radial centre, read from ODF `draw:gradient`, DOCX `a:gradFill`, VML
+  `v:fill` and Word 97 shades, and written to ODT and DOCX.
+- **VML pictures show.** A logo kept the Word 2003 way (`v:shape` with
+  `v:imagedata`) is read as a picture, in the line or floating where its
+  position says.
+
 #### 2026-11-12 *0.9.548*
 - **CI: a "Build result" commit status says whether the Build workflow really
   built a commit.** A new workflow, `build-result.yml`, follows every Build
