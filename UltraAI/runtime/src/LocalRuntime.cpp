@@ -387,8 +387,8 @@ bool LocalRuntime::Impl::IsModelInstalled(const LocalModelInfo& model, std::stri
 
 void LocalRuntime::Impl::DecorateModelLocked(LocalModelInfo& model) const {
     model.fit = ComputeFit(model, hardware_);
-    // An engine whose builds here are CPU builds only (whisper-server, and
-    // llama-server on an Intel Mac) runs the model on the CPU whatever the
+    // An engine whose builds here are CPU builds only (llama-server and
+    // whisper-server on an Intel Mac) runs the model on the CPU whatever the
     // GPU; a developer's own build (an override) may use it.
     if (model.fit == ModelFit::Recommended && !engineOverrides_.count(model.engineId) &&
         !EngineHasGpuBuildLocked(model.engineId)) {
@@ -416,7 +416,7 @@ std::vector<LocalModelInfo> LocalRuntime::Impl::AllModelsLocked() const {
         }
     }
     // A catalogue model whose engine has no build for this platform is not
-    // offered (whisper-server has none for macOS): it could not be started.
+    // offered (a gallery that leaves a platform out): it could not be started.
     for (auto& m : out) DecorateModelLocked(m);
     std::map<std::string, bool> runsHere;
     out.erase(std::remove_if(out.begin(), out.end(), [&](const LocalModelInfo& m) {

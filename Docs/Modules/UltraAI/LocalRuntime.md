@@ -1,7 +1,7 @@
 # UltraAI Local Runtime — models on this computer, nothing to install
 
-**Version:** 0.3.0
-**Last Modified:** 2026-11-10
+**Version:** 0.3.1
+**Last Modified:** 2026-11-13
 
 ## Overview
 
@@ -55,12 +55,12 @@ recommends and ask.
 
 | Part | What it is | Where |
 |---|---|---|
-| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20, and whisper.cpp's release v1.9.0 for Linux x64 and arm64 and Windows x64, CPU, hashed on 2026-11-10; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
-| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. A model whose engine has no build for this platform (and is not installed or overridden) is left out of `ListModels`: whisper-server has none for macOS or Windows on ARM. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
+| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20, and whisper.cpp's server v1.9.0 for Linux, macOS and Windows on x64 and arm64 - upstream's CPU builds for Linux and Windows x64, and the rest (Metal on Apple silicon, CPU on Intel Macs, Windows on ARM, Vulkan) built here (*Engines built here*), hashed on 2026-11-13; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
+| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. A model whose engine has no build for this platform (and is not installed or overridden) is left out of `ListModels`. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
 | **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded); for `"speechtotext"`, a whisper.cpp ggml `.bin`, served by `whisper-server`. | `<root>/user-models.json` |
 | **Installs** | Background jobs on the runtime's worker: download to a `.part` file (resumed when one exists), verify the SHA-256 through UltraCrypt, move into place; an engine bundle is unpacked through VirtualFS and gets a `bundle.json`; a model gets its `model.json` last, so a half-installed model never counts as installed. | `InstallModel`, `InstallEngine`, `Cancel`, `ListJobs` |
 | **Supervision** | `Ensure(modelId)` starts the model's engine on a free loopback port (`llama-server` with `--api-key-file`), waits for `/health`, and records it in `runtime.json` — shared between processes under a lock file — so a second application finds the running engine instead of starting its own. Idle engines are stopped by `StopIdle()` (run by every `Ensure`). A model whose engine died twice in a row is marked and not retried until it is stopped or reinstalled. | `Ensure`, `Touch`, `StopIdle`, `StopModel`, `StopAll`, `ListRunning` |
-| **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*; a model whose engine has CPU builds only for this platform (whisper-server; llama-server on an Intel Mac) is at most *runs on CPU*, unless the engine is an override. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
+| **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*; a model whose engine has CPU builds only for this platform (llama-server and whisper-server on an Intel Mac) is at most *runs on CPU*, unless the engine is an override. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
 
 ### Storage
 
@@ -117,8 +117,9 @@ then the gallery's and the model's arguments. The inference path is the
 OpenAI audio API's, so the OpenAI adapter speaks to it unchanged; `auto`
 because the server's own default language is English. whisper.cpp's server
 takes no key: like every engine it listens on loopback only, but any
-process of the user's can reach it there. The builds are CPU builds, so a
-speech model's fit is *runs on CPU* whatever the GPU.
+process of the user's can reach it there. Auto picks Metal on Apple
+silicon and Vulkan on Windows with a GPU; on Linux the CPU build, as the
+Vulkan builds (glibc 2.39) are optional and run only when chosen.
 
 Engines reach their libraries through their own folder (`$ORIGIN` on
 Linux, the bundle's layout on macOS and Windows), so a bundle runs from
@@ -131,8 +132,7 @@ variable `ULTRAAI_LOCAL_ENGINE_LLAMA_SERVER`, names a folder holding (or
 the path of) a `llama-server` executable; the runtime uses it instead of a
 bundle and downloads no engine. A developer's own CUDA build, or a test's
 fake engine. `ULTRAAI_LOCAL_ENGINE_WHISPER_SERVER` does the same for
-`whisper-server` - on macOS, a whisper.cpp built with Metal is how the
-speech models are offered there.
+`whisper-server`.
 
 ---
 
@@ -441,12 +441,12 @@ LocalRuntime::Instance().SetSettings(s);
 
 - Chat, embeddings and speech to text: image generation and text-to-speech
   engines are still to come.
-- `whisper-server` comes from whisper.cpp's own release archives, which
-  hold CPU builds for Linux x64 and arm64 and Windows x64 only: no macOS,
-  no Windows on ARM, no GPU build. The rest are built here (*Engines built
-  here*, above) and join the gallery, without a format change, once the
-  first release of them is published. The whisper models' hashes are taken from Hugging Face at
-  install time; their sizes are whisper.cpp's published figures.
+- `whisper-server` comes from whisper.cpp's own release archives (CPU
+  builds for Linux and Windows x64) and from this repository's release
+  `whisper-server-v1.9.0-r1` for the rest (*Engines built here*, above).
+  The Linux Vulkan builds need glibc 2.39 and are optional. No CUDA or
+  ROCm build yet. The whisper models' hashes are taken from Hugging Face
+  at install time; their sizes are whisper.cpp's published figures.
 - One `llama-server` process per model; the router mode (one process for
   every GGUF) and the `UltraAIHost` supervisor are phase 2. An engine
   started by an application that exits stays until an idle sweep from any

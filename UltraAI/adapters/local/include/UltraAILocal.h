@@ -28,8 +28,8 @@
 // unless one is set; files only (no live transcription); WAV, MP3, FLAC
 // and Ogg Vorbis as they are, with no size limit; translateToEnglish is
 // whisper's own translate. The default 60 s timeout is raised to 30
-// minutes: an hour of sound takes minutes on the CPU. whisper-server has
-// no builds for macOS or Windows on ARM, so there it offers no model.
+// minutes: an hour of sound takes minutes on the CPU. whisper-server is
+// built for Linux, macOS (Metal on Apple silicon) and Windows, x64 and ARM.
 //
 // Construction never performs I/O; the engine is started on first use.
 // When nothing is installed and downloads are not allowed, calls fail
@@ -38,10 +38,11 @@
 //
 // Registered as provider id "local" with runsLocally = true; first in
 // UltraAI's local-first routing (UltraAIRouting.h).
+// Version: 0.3.1 - whisper-server on every platform (comment)
 // Version: 0.3.0 - speech to text on whisper-server
 // Version: 0.2.0 - providerOptions["topic"]
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-13
 // Author: UltraAI Module
 #pragma once
 

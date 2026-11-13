@@ -95,8 +95,9 @@ videos.
 First on the route is `local`: whisper.cpp's `whisper-server`, downloaded
 and started by the local runtime ([LocalRuntime.md](LocalRuntime.md)) with
 Whisper Small by default - nothing leaves the computer. It is offered on
-Linux (x64, arm64) and Windows x64, the platforms whisper.cpp publishes
-builds for. When its model is not downloaded and the download policy does
+Linux, macOS and Windows, x64 and ARM: upstream's CPU builds, and the rest
+(Metal on Apple silicon, Windows on ARM, Vulkan) built by this repository.
+When its model is not downloaded and the download policy does
 not let the call fetch it, it steps aside for the next provider and the
 error says what to install.
 
@@ -270,7 +271,7 @@ cmake -S UltraAI -B build \
 | MiniMax adapter (`IVideoGen`: submit / poll / retrieve with job events; `IImageGen`: image-01 in base64 or url form; `ITextToSpeech`: one-shot and SSE-streamed synthesis, voice listing) | Complete (v0.1 — no text or music capabilities; no voice cloning) |
 | ElevenLabs adapter (`ITextToSpeech`: one-shot and streamed synthesis over newline-delimited JSON, voice listing with language filter, instant voice cloning; `xi-api-key` or bearer auth so a hosted relay can front it) | Complete (v0.1 — no speech-to-text, no WebSocket input streaming) |
 | Qwen local adapter (`ITextLLM` + `IEmbeddings`: endpoint discovery across Ollama / vLLM / llama.cpp server / LM Studio, model selection, keyless) | Complete |
-| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server`, `ISpeechToText` on a `whisper-server`, which the runtime downloads from a hash-verified gallery, starts on loopback, shares across applications and stops when idle; curated model catalogue, user GGUFs and whisper models, Hugging Face files; hardware fit) | Complete (v0.1 — chat, embeddings and speech to text; whisper-server on Linux and Windows x64 only) |
+| Local runtime and `local` provider (`ITextLLM` + `IEmbeddings` on a `llama-server`, `ISpeechToText` on a `whisper-server`, which the runtime downloads from a hash-verified gallery, starts on loopback, shares across applications and stops when idle; curated model catalogue, user GGUFs and whisper models, Hugging Face files; hardware fit) | Complete (v0.1 — chat, embeddings and speech to text) |
 | ComfyUI adapter (`IImageGen`: txt2img / img2img / inpaint / upscale templates, uploads, WebSocket progress and previews, `/history` fallback, `/object_info` capabilities; `IVideoGen`: Stable Video Diffusion image-to-video) | Complete (v0.2 — text-to-video needs a caller-supplied workflow) |
 | WebSocket on the transport seam (`ITransport::WebSocketStream`, UltraNet-backed, scriptable, recordable) | Complete |
 | Text-LLM translator (`ITranslator` over any `ITextLLM`: batched JSON exchange, auto-detect, formality, domain, glossary, markup preservation, language detection; registered for every text-LLM provider) | Complete (v0.1 — quality is the chosen model's; no vendor glossary ids) |
