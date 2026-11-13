@@ -426,6 +426,9 @@ namespace UltraCanvas {
         // whose entry no longer matches the line above is rebuilt.
         SyntaxLineState syntaxEntry;
         SyntaxLineState syntaxExit;
+        // True when the layout was highlighted from syntaxEntry: a plain line
+        // with highlighting on, or a line of code inside a Markdown fence.
+        bool syntaxTracked = false;
         virtual ~LineLayoutBase() {};
     };
 
@@ -1071,7 +1074,8 @@ namespace UltraCanvas {
                                                             bool withComposition = false);
         // The syntax state line `lineIndex` starts in: what the cached layout
         // of the line above left open, less a string or line comment when a
-        // real line break (not a length split) separates them.
+        // real line break (not a length split) separates them. Empty when the
+        // line above was not highlighted from a state (syntaxTracked).
         SyntaxLineState SyntaxStateBefore(int lineIndex) const;
 
         // MakeLineLayout dispatches here for MarkdownHybrid lines. Inspects lineLayouts[lineIndex-1]

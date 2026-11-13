@@ -876,10 +876,53 @@ for (const std::string& line : lines) {
 }
 ```
 
-Strings do not continue across a real line break, so C's `\`-continued
-strings and Python's triple-quoted strings are still coloured on their first
-line only. Fenced code blocks in Markdown mode are highlighted line by line
-without state.
+`SyntaxTokenizer::Tokenize(text)` does the same over a whole text: it splits it
+at `\n` (or `\r\n`), carries the state from line to line, and puts one
+`TokenType::Newline` token at each break - the tokens the text area colours.
+
+A string ends at its line unless the language lets it run on. Seven switches
+in `SyntaxTokenizationRules` say which strings do:
+
+| Rule | Languages | Example |
+|---|---|---|
+| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, C#, Elixir (`"""`) | a docstring |
+| `multiLineStringDelimiters` (quotes whose strings span lines) | JavaScript / TypeScript, Go (`` ` ``); Shell, Ruby, PHP, Perl (`"`, `'`); Rust (`"`) | a template literal |
+| `stringLineContinuation` (a `\` ends the line) | C, C++, Python, JavaScript / TypeScript | `"abc\` then `def"` |
+| `delimitedRawStrings` (`R"delim( … )delim"`, optional `u8` / `u` / `U` / `L`) | C++ | a raw string ends only at its own `)delim"` |
+| `levelledLongBrackets` (`[[ … ]]`, `[==[ … ]==]`, and after `--` a comment) | Lua | `[==[` ends only at `]==]` |
+| `hashRawStrings` (`r"…"`, `r#"…"#`, `br`, `cr`) | Rust | `r"C:\"` is complete; `r#"say "hi""#` holds quotes |
+| `verbatimStrings` (`@"…"`, `$@"…"`, `@$"…"`) | C# | `@"C:\"` is complete; `""` inside is a quote; spans lines |
+
+A string the language does not let span lines - an unclosed `"` in Java -
+still ends at the line, so a typo colours one line rather than the rest of the
+file.
+
+Letters written directly against a string's opening quote that belong to
+it - `stringPrefixes`: Python's `r`, `b`, `u`, `f` and their pairs (`rb`,
+`fr`, in any case), C and C++'s `L`, `u`, `U`, `u8` - are coloured with the
+string. A prefix never changes where the string ends: in Python a backslash
+keeps a quote from closing even a raw string, so `r"\""` is one string and
+`r"C:\"` is unterminated, as Python reads them.
+
+Block comments are matched before line comments, so a block opener that
+starts with the line-comment marker - Lua's `--[[ … ]]` (at any level,
+`--[==[ … ]==]`), MATLAB's `%{ … %}` - opens the block rather than being read
+as a line comment.
+
+In Markdown mode the lines of a fenced code block (```` ```cpp ````) carry the
+state the same way, with the fence's language: a `/* comment */` over several
+lines is coloured on all of them. The opening fence starts every block empty,
+so a comment left open in one block ends at its closing fence. The raw line
+under the cursor is read with the Markdown rules and starts empty too - it
+never takes a code block's state. Indented (four-space) code blocks are not
+highlighted.
+
+The fence's info string names the language through
+`SyntaxTokenizer::SetLanguageByTag`: its first word, matched against the
+language names in any case (`python`, `C++`), then file extensions (`py`,
+`cpp`, `js`), then common aliases (`golang`, `shell`, `csharp`); `{.rust}`
+works too. A tag that names no known language, such as `foo` or `text`,
+clears the language, and the block is shown plain.
 
 ### Single Selection
 The text area has one cursor and one selection; there is no multi-cursor API.
