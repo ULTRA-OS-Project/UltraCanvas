@@ -1261,6 +1261,18 @@ jobs:
       # against 13 with the cache (2026-10-13), and the whole matrix waited
       # on it. A pull request now restores main's cache on every push and
       # saves none.
+      #
+      # And a run on main saves one only when it compiled something: a fold
+      # commit changes a changelog line, so its six legs hit on every object
+      # but the two that carry the version, and the fresh 500 MB entry each
+      # saved was a copy of the one it had restored. With several release
+      # builds running at once (five between 19:00 and 20:03 on 2026-11-12,
+      # each saving ~3 GB of ccache plus the macOS vcpkg libraries) the
+      # copies overflowed the 10 GB budget before cache-prune.yml could
+      # delete the superseded ones, and the least-recently-used eviction
+      # took the one Linux entry a pull request then needed: its build step
+      # ran 77 minutes against 23 (#1226). See "Is this run's ccache worth
+      # saving" after the build.
       - name: Restore ccache
         id: ccache
         uses: actions/cache/restore@v5
@@ -1663,11 +1675,44 @@ jobs:
         if: always()
         run: ccache -s
 
-      # The objects of this run, for the next one - from main only, whether
-      # or not the build succeeded (a half-built tree is still a head start).
-      # See "Restore ccache" for why a pull request saves none.
-      - name: Save ccache (main)
+      # Worth saving: nothing was restored (the first run of a leg, or main's
+      # entry was evicted), or at least one compile in a hundred missed - a
+      # changed source, a changed header, a new compiler. A fold commit misses
+      # on the version stamps alone, and saving its cache would add a copy
+      # of the restored entry to the budget for the prune to delete later;
+      # the next run recompiles those few objects in seconds instead. The
+      # restored entry is read on every restore, which keeps it off the
+      # least-recently-used end of the budget. Any trouble reading the
+      # counters means save, as before.
+      - name: Is this run's ccache worth saving
+        id: ccache-worth
         if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
+        env:
+          RESTORED: ${{ steps.ccache.outputs.cache-matched-key }}
+        run: |
+          stats=$(ccache --print-stats 2>/dev/null || true)
+          misses=$(printf '%s\n' "$stats" | awk -F'\t' '$1 == "cache_miss" { print $2 }')
+          hits=$(printf '%s\n' "$stats" | awk -F'\t' '$1 == "direct_cache_hit" || $1 == "preprocessed_cache_hit" { n += $2 } END { print n + 0 }')
+          if [ -z "$RESTORED" ]; then
+            echo "save=true" >> "$GITHUB_OUTPUT"
+            echo "no cache was restored: saving this run's"
+          elif [ -z "$misses" ]; then
+            echo "save=true" >> "$GITHUB_OUTPUT"
+            echo "could not read ccache's counters: saving"
+          elif [ $((misses * 100)) -ge $((hits + misses)) ]; then
+            echo "save=true" >> "$GITHUB_OUTPUT"
+            echo "$misses of $((hits + misses)) compiles missed: saving"
+          else
+            echo "save=false" >> "$GITHUB_OUTPUT"
+            echo "$misses of $((hits + misses)) compiles missed: the restored entry ($RESTORED) stays, nothing saved"
+          fi
+
+      # The objects of this run, for the next one - from main only, whether
+      # or not the build succeeded (a half-built tree is still a head start),
+      # and only when the run compiled something (the step above). See
+      # "Restore ccache" for why a pull request saves none.
+      - name: Save ccache (main)
+        if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success' && steps.ccache-worth.outputs.save == 'true'
         uses: actions/cache/save@v5
         with:
           path: ${{ github.workspace }}/.ccache

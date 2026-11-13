@@ -8,7 +8,9 @@
 #
 # ubuntu-24.04: python3-numpy is a package, and the build is the standalone
 # UltraAI tree (cmake -S UltraAI), not the framework, so no other library is
-# needed. The engine is cached by the commit the adapter pins.
+# needed. The engine's sources are cached by the commit the adapter pins;
+# the compiled objects as build.yml keeps them: restored by prefix on every
+# run, saved by main alone, and cache-prune.yml deletes the superseded one.
 name: UltraAI llama.cpp adapter
 
 on:
@@ -61,10 +63,11 @@ jobs:
           key: llamacpp-src-${{ steps.pin.outputs.tag }}
 
       - name: Restore ccache
-        uses: actions/cache@v5
+        id: ccache
+        uses: actions/cache/restore@v5
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-ultraai-llamacpp-${{ steps.pin.outputs.tag }}-${{ github.sha }}
+          key: ccache-ultraai-llamacpp-${{ steps.pin.outputs.tag }}-${{ github.run_id }}
           restore-keys: |
             ccache-ultraai-llamacpp-${{ steps.pin.outputs.tag }}-
             ccache-ultraai-llamacpp-
@@ -94,3 +97,10 @@ jobs:
       - name: ccache statistics
         if: always()
         run: ccache -s
+
+      - name: Save ccache (main)
+        if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
