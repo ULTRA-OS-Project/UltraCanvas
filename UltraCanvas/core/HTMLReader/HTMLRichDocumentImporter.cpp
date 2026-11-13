@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLRichDocumentImporter.cpp
 // HTML → UCRichDocument. See the header for what is mapped and what is not.
+// Version: 1.4.0 - with HTMLRichImportOptions::fontInstalled, a run's font is the first
+//                  installed entry of its font-family list, as the reading pane draws it
 // Version: 1.3.0 - letter-spacing: a run's own (RichTextRun::letterSpacingPt), with the fonts
 // Version: 1.2.0 - Word's list paragraphs (mso-list) are list items, their typed
 //                  label the marker; every newline of a <pre> counts (the parser
@@ -551,7 +553,25 @@ private:
             run.highlightColor = context.highlight;
         }
         if (opts_.keepFonts) {
-            if (!style.fontFamily.empty() && !style.monospace) run.fontFamily = style.fontFamily;
+            // With fontInstalled, the font the reading pane drew the text
+            // in: the first entry of its font-family list this computer has,
+            // so a quote in a reply or a forward keeps that look rather than
+            // a name no system here has ("-apple-system", a mail's web
+            // font), which the editor would draw in a stray substitute. ""
+            // (the interface font) and nothing installed give the run no
+            // font of its own.
+            std::string family = style.fontFamily;
+            if (opts_.fontInstalled && style.fontFamilyList.size() >= 2) {
+                family.clear();
+                for (const std::string& entry : style.fontFamilyList) {
+                    if (entry.empty() || entry == "sans-serif" || entry == "serif" ||
+                        entry == "monospace" || opts_.fontInstalled(entry)) {
+                        family = entry;
+                        break;
+                    }
+                }
+            }
+            if (!family.empty() && !style.monospace) run.fontFamily = family;
             if (!run.subscript && !run.superscript
                 && std::fabs(style.fontSizePx - opts_.baseFontSizePx) > 0.5f) {
                 run.fontSizePt = std::round(style.fontSizePx * kPxToPt * 2.0f) / 2.0f;

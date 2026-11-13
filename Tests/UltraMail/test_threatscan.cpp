@@ -370,6 +370,35 @@ TEST(domain_mismatch_falls_back_to_a_bare_link) {
     REQUIRE_EQ(m.linkDomain, std::string("pay.elsewhere.test"));
 }
 
+TEST(domain_mismatch_a_proven_senders_country_domain_links_to_its_main_one) {
+    // PayPal Germany writes from paypal.de, signed, and links to paypal.com.
+    ScanInput in = Html("service@paypal.de",
+        "<a href=\"https://www.paypal.com/myaccount/activities/details/1\">40739418RG</a>"
+        "<a href=\"https://www.example-shop.co.uk/x\">Shop</a>");
+    in.authResults = "mx.example; dkim=pass header.d=paypal.de header.i=@paypal.de";
+    auto m = FindDomainMismatch(in);
+    REQUIRE(m.found);   // the unrelated shop is still a mismatch...
+    REQUIRE_EQ(m.linkDomain, std::string("www.example-shop.co.uk"));   // ...paypal.com is not
+
+    ScanInput own = Html("info@acme-tools.de",
+        "<a href=\"https://www.acme-tools.com/offer\">See the offer</a>"
+        "<a href=\"https://acme-tools.co.uk/help\">Help</a>");
+    own.authResults = "mx.example; dmarc=pass header.from=acme-tools.de";
+    REQUIRE(!FindDomainMismatch(own).found);
+}
+
+TEST(domain_mismatch_same_name_elsewhere_counts_only_for_a_proven_sender) {
+    // Unproven: "sparkasse.de" may be forged, its link to another suffix is told.
+    const auto forged = FindDomainMismatch(Html("info@sparkasse.de",
+        "<a href=\"https://sparkasse.com/login\">Log in</a>"));
+    REQUIRE(forged.found);
+    // Proven, but a cheap generic suffix: still told.
+    ScanInput cheap = Html("info@acme-tools.de",
+        "<a href=\"https://acme-tools.top/login\">Log in</a>");
+    cheap.authResults = "mx.example; dmarc=pass header.from=acme-tools.de";
+    REQUIRE(FindDomainMismatch(cheap).found);
+}
+
 // ---------------------------------------------------------------------------
 // Advance-fee fraud ("Nigeria connection" / 419)
 // ---------------------------------------------------------------------------

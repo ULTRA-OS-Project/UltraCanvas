@@ -1,5 +1,8 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.22.0 - font-family: the whole list kept (fontFamilyList) for the renderer to
+//                  draw in its first installed entry; -apple-system / system-ui /
+//                  BlinkMacSystemFont are the default font, not a name no system has
 // Version: 1.21.0 - form controls are inline-block, as in browsers (the builder
 //                  still draws a display-only control on a line of its own)
 // Version: 1.20.0 - <template> is not rendered (display: none, as in browsers)
@@ -72,6 +75,49 @@ namespace HTML {
 // ============================================================================
 // PUBLIC API
 // ============================================================================
+
+// A font-family list (or a <font face>) into a style: the whole list in
+// `fontFamilyList`, its first entry in `fontFamily` / `monospace`. The names
+// that stand for the system's interface font (-apple-system, system-ui,
+// BlinkMacSystemFont, ui-sans-serif) are "" - the default font, as a browser
+// draws them: handed on as a name, no system has it, and the text fell to
+// whichever font fontconfig listed first (LinkedIn's mail starts with
+// -apple-system). ui-monospace is "monospace", ui-serif "serif".
+static void ApplyFontFamilyList(ComputedStyle& s, const std::string& value) {
+    std::vector<std::string> list;
+    size_t start = 0;
+    while (start <= value.size()) {
+        size_t comma = value.find(',', start);
+        if (comma == std::string::npos) comma = value.size();
+        std::string family = Trim(value.substr(start, comma - start));
+        start = comma + 1;
+        if (family.size() >= 2 && (family.front() == '"' || family.front() == '\'')) {
+            family = Trim(family.substr(1, family.size() - 2));
+        }
+        if (family.empty()) continue;
+        const std::string lower = TrimLower(family);
+        if (lower == "-apple-system" || lower == "system-ui" ||
+            lower == "blinkmacsystemfont" || lower == "ui-sans-serif") family.clear();
+        else if (lower == "monospace" || lower == "ui-monospace") family = "monospace";
+        else if (lower == "serif" || lower == "ui-serif") family = "serif";
+        else if (lower == "sans-serif") family = "sans-serif";
+        list.push_back(family);
+    }
+    if (list.empty()) return;
+    const std::string& first = list.front();
+    if (first == "monospace") {
+        s.monospace = true;
+    } else {
+        s.fontFamily = first;
+        const std::string lower = TrimLower(first);
+        // monospace too when the list falls back to it: "Menlo, Consolas,
+        // monospace" is code, whichever of them is installed
+        s.monospace = lower.find("mono") != std::string::npos ||
+                      lower.find("courier") != std::string::npos ||
+                      std::find(list.begin(), list.end(), "monospace") != list.end();
+    }
+    s.fontFamilyList = std::move(list);
+}
 
 void StyleResolver::Resolve(Document& document, const ResolverOptions& options) {
     styles.clear();
@@ -158,11 +204,7 @@ void StyleResolver::ApplyLegacyAttributes(const Node& element, ComputedStyle& st
         if (colorsAllowed) {
             if (auto color = CssColor::Parse(TrimLower(element.GetAttribute("color")))) style.color = *color;
         }
-        std::string face = element.GetAttribute("face");
-        if (size_t comma = face.find(','); comma != std::string::npos) face = face.substr(0, comma);
-        face = Trim(face);
-        if (TrimLower(face) == "monospace") style.monospace = true;
-        else if (!face.empty()) style.fontFamily = face;
+        ApplyFontFamilyList(style, element.GetAttribute("face"));
         // size="1".."7" (3 is the normal size), or relative: "+1", "-2".
         std::string size = Trim(element.GetAttribute("size"));
         if (!size.empty()) {
@@ -244,6 +286,7 @@ void StyleResolver::ResolveElement(Node& element, const ComputedStyle& parentSty
 
     // Inherited properties come from the parent.
     style.fontFamily = parentStyle.fontFamily;
+    style.fontFamilyList = parentStyle.fontFamilyList;
     style.fontSizePx = parentStyle.fontSizePx;
     style.bold = parentStyle.bold;
     style.italic = parentStyle.italic;
@@ -978,7 +1021,7 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
     if (lower == "inherit") {
         if (prop == "color") { if (!opts.overrideAuthorColors) s.color = parentStyle.color; }
         else if (prop == "font-size") s.fontSizePx = parentStyle.fontSizePx;
-        else if (prop == "font-family") { s.fontFamily = parentStyle.fontFamily; s.monospace = parentStyle.monospace; }
+        else if (prop == "font-family") { s.fontFamily = parentStyle.fontFamily; s.fontFamilyList = parentStyle.fontFamilyList; s.monospace = parentStyle.monospace; }
         else if (prop == "font-weight") s.bold = parentStyle.bold;
         else if (prop == "font-style") s.italic = parentStyle.italic;
         else if (prop == "text-decoration" || prop == "text-decoration-line") {
@@ -1283,21 +1326,7 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         }
     }
     else if (prop == "font-family") {
-        std::string family = value;
-        size_t comma = family.find(',');
-        if (comma != std::string::npos) family = family.substr(0, comma);
-        family = Trim(family);
-        if (family.size() >= 2 && (family.front() == '"' || family.front() == '\'')) {
-            family = family.substr(1, family.size() - 2);
-        }
-        std::string genericCheck = TrimLower(family);
-        if (genericCheck == "monospace") {
-            s.monospace = true;
-        } else if (!family.empty()) {
-            s.fontFamily = family;
-            s.monospace = genericCheck.find("mono") != std::string::npos ||
-                          genericCheck.find("courier") != std::string::npos;
-        }
+        ApplyFontFamilyList(s, value);
     }
     else if (prop == "font-weight") {
         if (lower == "bold" || lower == "bolder") s.bold = true;

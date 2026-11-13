@@ -17,6 +17,7 @@
 #include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasTextUtils.h"
 
+#include <algorithm>
 #include <clocale>
 #include <iostream>
 #include <string>
@@ -552,6 +553,53 @@ static void TestFontSizeIgnoresLocale() {
     std::setlocale(LC_NUMERIC, saved.c_str());
 }
 
+// A font-family list: with fontInstalled, a run takes the first entry this
+// computer has - the font the reading pane drew - and without it the list's
+// first name. The check is a fake here, so the result is the same on every
+// machine CI runs on.
+static void TestFontFamilyLists() {
+    std::cout << "\n--- font-family lists ---\n";
+    const std::string html =
+        "<p><span style=\"font-family: NoSuchFont, sans-serif\">generic</span> "
+        "<span style=\"font-family: 'NoSuchFont', Arial, sans-serif\">named</span> "
+        "<span style=\"font-family: -apple-system, system-ui, Arial\">system</span> "
+        "<span style=\"font-family: NoSuchFont, AlsoMissing\">none</span> "
+        "<font face=\"NoSuchFont, Arial\">face</font> "
+        "<span style=\"font-family: Georgia\">single</span></p>";
+    auto run = [](const UCRichDocument& doc, const std::string& text) -> const RichTextRun* {
+        for (const auto& r : doc.blocks.at(0).runs) if (r.text == text) return &r;
+        return nullptr;
+    };
+
+    HTMLRichImportOptions options;
+    std::vector<std::string> asked;
+    options.fontInstalled = [&asked](const std::string& family) {
+        asked.push_back(family);
+        return family == "Arial";
+    };
+    UCRichDocument doc = ImportHTMLToRichDocument(html, options);
+    const RichTextRun* generic = run(doc, "generic");
+    CHECK(generic && generic->fontFamily == "sans-serif");
+    const RichTextRun* named = run(doc, "named");
+    CHECK(named && named->fontFamily == "Arial");
+    // system-ui and its vendor names are the interface font: no font of the run's own
+    const RichTextRun* system = run(doc, "system");
+    CHECK(system && system->fontFamily.empty());
+    const RichTextRun* none = run(doc, "none");
+    CHECK(none && none->fontFamily.empty());
+    const RichTextRun* face = run(doc, "face");
+    CHECK(face && face->fontFamily == "Arial");
+    // A single name is kept as written, without asking.
+    const RichTextRun* single = run(doc, "single");
+    CHECK(single && single->fontFamily == "Georgia");
+    CHECK(std::find(asked.begin(), asked.end(), "Georgia") == asked.end());
+
+    // Without the check, the list's first name, as before.
+    UCRichDocument plain = ImportHTMLToRichDocument(html);
+    const RichTextRun* firstName = run(plain, "generic");
+    CHECK(firstName && firstName->fontFamily == "NoSuchFont");
+}
+
 int main() {
     TestParagraphsAndRuns();
     TestLineBreaksAndDivs();
@@ -568,6 +616,7 @@ int main() {
     TestWordLists();
     TestPreNewlines();
     TestFontSizeIgnoresLocale();
+    TestFontFamilyLists();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

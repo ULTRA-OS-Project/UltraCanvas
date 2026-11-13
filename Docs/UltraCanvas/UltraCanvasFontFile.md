@@ -299,6 +299,7 @@ if (CountCharactersWithoutFont("你好") > 0) {
 if (!IsFontFamilyAvailable("Georgia")) {
     std::string where = FontDownloadUrl("Georgia");   // a search on Google Fonts
 }
+std::string family = FirstInstalledFontFamily({"Helvetica Neue", "Arial", "sans-serif"});
 ```
 
 | | |
@@ -306,10 +307,12 @@ if (!IsFontFamilyAvailable("Georgia")) {
 | `int CountCharactersWithoutFont(text, family = "")` | How many characters have no font: 0 when all of them do (and for an empty text), -1 when there is no text engine to ask. |
 | `std::vector<MissingScriptFont> FindScriptsWithoutFont(text, family = "")` | The same characters grouped by script, in the order the text first uses them. Each comes with a free font that covers it (the Noto family, SIL Open Font License) and its download page. The common scripts have names of their own ("Chinese", "Arabic", "Devanagari", ...). Any other is named by its ISO 15924 code and pointed at the whole Noto family. |
 | `std::string FontDownloadUrl(family)` | A search for the family on Google Fonts. |
-| `bool IsFontFamilyAvailable(family)` | Whether the text engine knows the family, ignoring case. A family it doesn't know is drawn in a substitute. |
+| `bool IsFontFamilyAvailable(family)` | Whether the text engine knows the family, ignoring case. A family it doesn't know is drawn in a substitute. The installed families are listed once per font set and kept, so calling it for every run of a page is cheap. |
+| `std::string FirstInstalledFontFamily(families)` | The entry of a CSS `font-family` list to draw in, as a browser picks it: the first the text engine has, or an entry that needs no font of that name (`""` for the interface font, or `"sans-serif"`, `"serif"`, `"monospace"`). `""` when nothing in the list is installed. `{"Helvetica Neue", "Arial"}` is `"Arial"` on Windows. The HTML reader draws a page's text in it. |
 
-Each call asks afresh, so a font installed or registered since the last call
-counts. Call them from the UI thread. On Windows after a cold start the
+The character counts ask afresh on each call. `IsFontFamilyAvailable` reads
+its list again whenever the font set changes (`GetFontSetGeneration`), so a
+font registered since the last call counts. Call them from the UI thread. On Windows after a cold start the
 system fonts can still be loading in the background
 (`GetSystemFontScanStatus()`). Until they arrive, only the bundled fonts
 count.
