@@ -45,7 +45,10 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
+try:
+    import yaml
+except ImportError:  # pragma: no cover - the one dependency, named plainly
+    sys.exit("check_cache_keys: needs PyYAML (pip install pyyaml) to read the workflows")
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"

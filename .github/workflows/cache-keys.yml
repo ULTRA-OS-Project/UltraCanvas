@@ -36,6 +36,10 @@ jobs:
     runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     steps:
       - uses: actions/checkout@v5
+      # The script reads the workflows with PyYAML, which GitHub's Ubuntu
+      # images carry; a leaner runner gets it here.
+      - name: PyYAML
+        run: python3 -c "import yaml" 2>/dev/null || pip3 install --user pyyaml
       - name: Check the cache keys against the prune's rules
         run: python3 scripts/check_cache_keys.py --strict
       - name: The check's own tests

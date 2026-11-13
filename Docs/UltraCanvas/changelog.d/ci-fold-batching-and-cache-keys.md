@@ -3,10 +3,11 @@
   `changelog-fold.yml` dispatched one release build per fold commit, so the
   five merges between 19:00 and 20:03 on 2026-11-12 became five release
   builds of six legs running at once - which is what overflowed the cache
-  budget and held every macOS runner. The fold now waits until `main` has
-  been quiet for ten minutes (at most twenty from the start) and folds
-  whatever landed by then: one fold commit, one release build, for the
-  burst; a dispatch by hand folds at once. `scripts/check_cache_keys.py`
+  budget and held every macOS runner. The fold now runs every ten minutes
+  instead of on every push, and folds once `main` has been quiet for ten
+  minutes, or when the oldest pending entry has waited twenty: one fold
+  commit, one release build, for the burst, and no runner held while it
+  waits; a dispatch by hand folds at once. `scripts/check_cache_keys.py`
   (`cache-keys.yml`, on every change under `.github/workflows/`) reports a
   cache key ending in a commit hash or carrying `github.run_number`, which
   `prune_actions_caches.py` never recognises as run-numbered so the entries

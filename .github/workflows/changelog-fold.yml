@@ -39,16 +39,19 @@ name: Changelog fold
 # line 1.
 #
 # Merges that land within minutes of each other are folded together: the
-# first step waits for main to go quiet (see it for the numbers), so a burst
-# of merges makes one fold commit and one release build, not one each.
+# scheduled run folds only once main has been quiet (see "Is it time to
+# fold" for the numbers), so a burst of merges makes one fold commit and one
+# release build, not one each.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      # Every product's pending entries: Docs/UltraCanvas/changelog.d/,
-      # Docs/<App>/changelog.d/, Docs/Modules/UltraWin/changelog.d/.
-      - 'Docs/**/changelog.d/**'
+  # Every ten minutes, off the hour (the top of the hour is when GitHub's
+  # schedules queue). A run with nothing pending, or with main still moving,
+  # takes a runner for the checkout and the look and is done; see "Is it time
+  # to fold" for when it folds. It used to run on every push that added an
+  # entry (Docs/**/changelog.d/**) and fold at once, which made one release
+  # build per merge however close together the merges landed.
+  schedule:
+    - cron: '3-59/10 * * * *'
   workflow_dispatch:
 
 # Never cancel a fold: it commits and pushes, and a half-run that is killed
@@ -75,49 +78,57 @@ jobs:
       # Merges land in bursts: five between 19:00 and 20:03 on 2026-11-12,
       # each folded and built on its own, so five release builds of six legs
       # ran at once, saved 15 GB of caches into a 10 GB budget and held every
-      # macOS runner while the pull requests queued behind them. This waits
-      # until main has been quiet for QUIET_MINUTES (at most MAX_MINUTES from
-      # the start) and then folds whatever has landed by then - one fold
-      # commit and one release build for the burst. A push during the wait
-      # queues one more run of this workflow (the concurrency group keeps
-      # one pending); it finds nothing left to fold and does nothing. The
-      # merges themselves are gated off build.yml either way, so the wait
-      # delays only the release artifacts, by minutes against the half hour
-      # to two hours their build takes. A dispatch by hand folds at once.
-      - name: Wait for the merges that follow close behind
-        if: github.event_name == 'push'
+      # macOS runner while the pull requests queued behind them. A scheduled
+      # run folds only once main has been quiet for QUIET_MINUTES, unless the
+      # oldest pending entry has waited MAX_MINUTES already - so a burst makes
+      # one fold commit and one release build, and a lone merge is folded by
+      # the second run after it. The merges themselves are gated off
+      # build.yml either way, so this delays only the release artifacts, by
+      # minutes against the half hour to two hours their build takes. A
+      # dispatch by hand folds at once.
+      - name: Is it time to fold
+        id: when
         env:
           QUIET_MINUTES: 10
           MAX_MINUTES: 20
+          BY_HAND: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          started=$(date +%s)
-          last_move=$started
-          head=$(git rev-parse origin/main)
-          echo "main is at ${head:0:9}; folding once it has been quiet for $QUIET_MINUTES minutes"
-          while :; do
-            sleep 60
-            git fetch -q origin main
-            now=$(date +%s)
-            new=$(git rev-parse origin/main)
-            if [ "$new" != "$head" ]; then
-              head=$new
-              last_move=$now
-              echo "main moved to ${new:0:9} at $(date -u +%H:%M); waiting on"
-            fi
-            if [ $((now - last_move)) -ge $((QUIET_MINUTES * 60)) ]; then
-              echo "quiet for $QUIET_MINUTES minutes - folding"
-              break
-            fi
-            if [ $((now - started)) -ge $((MAX_MINUTES * 60)) ]; then
-              echo "$MAX_MINUTES minutes since the start - folding what has landed"
-              break
-            fi
+          pending=$(find Docs -path '*/changelog.d/*.md' ! -name 'README.md' 2>/dev/null)
+          if [ -z "$pending" ]; then
+            echo "fold=false" >> "$GITHUB_OUTPUT"
+            echo "nothing pending"
+            exit 0
+          fi
+          if [ "$BY_HAND" = "true" ]; then
+            echo "fold=true" >> "$GITHUB_OUTPUT"
+            echo "dispatched by hand: folding now"
+            exit 0
+          fi
+          now=$(date +%s)
+          quiet=$(( (now - $(git log -1 --format=%ct HEAD)) / 60 ))
+          # When the oldest pending entry landed: the first commit that added
+          # any of them.
+          oldest=$now
+          for f in $pending; do
+            t=$(git log --diff-filter=A --format=%ct -- "$f" | tail -1)
+            [ -n "$t" ] && [ "$t" -lt "$oldest" ] && oldest=$t
           done
-          # The entries that landed meanwhile, so the fold below takes them too.
-          git pull -q --ff-only origin main
+          waited=$(( (now - oldest) / 60 ))
+          n=$(printf '%s\n' "$pending" | wc -l)
+          if [ "$quiet" -ge "$QUIET_MINUTES" ]; then
+            echo "fold=true" >> "$GITHUB_OUTPUT"
+            echo "$n entr(y/ies) pending, main quiet for $quiet minutes: folding"
+          elif [ "$waited" -ge "$MAX_MINUTES" ]; then
+            echo "fold=true" >> "$GITHUB_OUTPUT"
+            echo "$n entr(y/ies) pending, the oldest for $waited minutes: folding what has landed"
+          else
+            echo "fold=false" >> "$GITHUB_OUTPUT"
+            echo "$n entr(y/ies) pending, main moved $quiet minutes ago: the next run folds"
+          fi
 
       - name: Fold pending entries
         id: fold
+        if: steps.when.outputs.fold == 'true'
         run: |
           set -o pipefail
           python3 scripts/fold_changelog.py | tee fold.log

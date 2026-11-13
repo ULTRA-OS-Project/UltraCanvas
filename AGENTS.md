@@ -403,8 +403,9 @@ pruned, the combined `actions/cache` with a run-numbered key saves on every
 run of every branch (restore on every run, save on `main` alone), and a
 workflow that saves run-numbered caches must be on `cache-prune.yml`'s list.
 A release build saves its ccache only when it compiled something, and merges
-that land within minutes of each other are folded and released together
-(`changelog-fold.yml` waits for `main` to go quiet first).
+that land within minutes of each other are folded and released together:
+`changelog-fold.yml` runs every ten minutes and folds once `main` has been
+quiet for ten, or when the oldest pending entry has waited twenty.
 A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
 ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
 its runner is five to ten times slower and the two macOS rows share one code
