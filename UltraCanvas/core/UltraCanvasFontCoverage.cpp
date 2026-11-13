@@ -1,7 +1,8 @@
 // core/UltraCanvasFontCoverage.cpp
 // The characters of a text no font covers, by script. See UltraCanvasFontCoverage.h.
+// Version: 1.1.0 - IsFontFamilyAvailable from a list made once per font set (GetFontSetGeneration)
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFontCoverage.h"
@@ -11,6 +12,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <mutex>
+#include <unordered_set>
 
 namespace UltraCanvas {
 
@@ -187,10 +190,21 @@ namespace UltraCanvas {
             std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
             return s;
         };
-        const std::string wanted = lower(family);
-        for (const std::string& installed : GetInstalledFontFamilies())
-            if (lower(installed) == wanted) return true;
-        return false;
+        // The families, lowercased, made once per font set: listing them asks
+        // the text engine for every family's faces, and an HTML page asks
+        // for each run of its text. A new font set (a font registered, the
+        // Windows system fonts arriving after the start) makes it again.
+        static std::mutex mutex;
+        static std::unordered_set<std::string> families;
+        static unsigned long generation = 0;   // 0: not made yet
+        std::lock_guard<std::mutex> lock(mutex);
+        const unsigned long current = GetFontSetGeneration();
+        if (generation != current) {
+            families.clear();
+            for (const std::string& installed : GetInstalledFontFamilies()) families.insert(lower(installed));
+            generation = current;
+        }
+        return families.count(lower(family)) > 0;
     }
 
 } // namespace UltraCanvas

@@ -3,6 +3,8 @@
 // stylesheets (specificity + source order), then inline style="" attributes.
 // Produces one ComputedStyle per element with inherited text properties and
 // resolved-px box properties. Framework-independent.
+// Version: 1.21.0 - ComputedStyle::fontFamilyList: the whole font-family list, for a
+//                  renderer that draws in its first installed entry
 // Version: 1.20.0 - flex and grid containers and items: BoxLayoutMode, flex-*, order,
 //                  gap, justify / align / place-*, grid-template-* (repeat(), minmax(),
 //                  auto-fill / auto-fit, areas), grid-column / -row / -area, grid-auto-flow
@@ -186,6 +188,12 @@ struct ComputedStyle {
 
     // ---- inherited text properties ----
     std::string fontFamily;          // empty = resolver default
+    // The whole font-family list, in order, for a renderer that picks the
+    // first one installed (the element builder does): a name, "" for the system's
+    // interface font (system-ui, -apple-system, BlinkMacSystemFont), or a
+    // generic family ("sans-serif", "serif", "monospace"). Empty when the
+    // family came from no list; `fontFamily` is its first entry.
+    std::vector<std::string> fontFamilyList;
     float fontSizePx = 16.f;
     bool bold = false;
     bool italic = false;

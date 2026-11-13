@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.37.0 - text in the first installed font of its font-family list (FirstInstalledFamily):
+//                  "Helvetica Neue, Arial" is Arial where Helvetica Neue is missing
 // Version: 1.36.0 - a right-click on a linked picture: onLinkedImageContextMenu
 // Version: 1.35.0 - <video> and <audio> through BuildOptions::mediaFactory
 //                  (BuildMedia), placed and sized as browsers place them
@@ -120,6 +122,7 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextSelection.h"
+#include "UltraCanvasFontCoverage.h"   // IsFontFamilyAvailable: the first installed font of a list
 
 #include <algorithm>
 #include <cctype>
@@ -323,9 +326,25 @@ bool OnlyWhitespace(const std::vector<Node*>& run) {
 // weight and slant. FontStyle sizes are points; CSS sizes are px (96 dpi).
 // Inline <span size> markup converts the same way (PangoSize), so a 15px
 // button caption is no longer smaller than the 12px text around it.
+// The family a style's text is drawn in: the first entry of its font-family
+// list the text engine has - "Helvetica Neue, Arial" is Arial on Windows -
+// the interface font ("") or a generic family where the list names one
+// first. A list with nothing installed is the interface font: a name no
+// system has would fall to whatever font fontconfig ranks first.
+std::string FirstInstalledFamily(const ComputedStyle& style) {
+    if (style.fontFamilyList.size() < 2) return style.fontFamily;
+    for (const std::string& family : style.fontFamilyList) {
+        if (family.empty() || family == "sans-serif" || family == "serif" || family == "monospace" ||
+            IsFontFamilyAvailable(family))
+            return family;
+    }
+    return std::string();
+}
+
 FontStyle FontOf(const ComputedStyle& style) {
     FontStyle font;
-    font.fontFamily = style.monospace && style.fontFamily.empty() ? "monospace" : style.fontFamily;
+    const std::string family = FirstInstalledFamily(style);
+    font.fontFamily = family.empty() && style.monospace ? "monospace" : family;
     font.fontSize = style.fontSizePx * 72.f / 96.f;
     font.fontWeight = style.bold ? FontWeight::Bold : FontWeight::Normal;
     font.fontSlant = style.italic ? FontSlant::Italic : FontSlant::Normal;
