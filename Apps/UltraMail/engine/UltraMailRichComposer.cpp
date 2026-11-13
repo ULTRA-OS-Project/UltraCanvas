@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailRichComposer.cpp
+// Version: 0.2.1 - MakeRichEdit: the quote in the first installed font of each font-family list
 // Version: 0.2.0 - MakeRichEdit
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -6,6 +7,7 @@
 
 #include "HTMLReader/HTMLRichDocumentImporter.h"
 #include "UltraCanvasRichDocument.h"
+#include "UltraCanvasFontCoverage.h"   // IsFontFamilyAvailable
 
 #include <cstdio>
 #include <map>
@@ -118,6 +120,9 @@ bool MakeRichEdit(Draft& draft) {
         }
         return false;
     };
+    // The quote keeps the font the reading pane drew: the first installed
+    // entry of each font-family list, not a name this computer lacks.
+    options.fontInstalled = [](const std::string& family) { return IsFontFamilyAvailable(family); };
     draft.richBody = std::make_shared<UCRichDocument>(ImportHTMLToRichDocument(draft.body, options));
     return true;
 }

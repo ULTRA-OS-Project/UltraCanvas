@@ -24,7 +24,10 @@
     per font set (`GetFontSetGeneration`), not on every call, and listed again
     when the Windows system fonts arrive after the start.
   - A reply's or a forward's quote keeps the font the reading pane drew:
-    `ImportHTMLToRichDocument` gives a run the first installed entry of its
-    list (`FirstInstalledFontFamily`, new in `UltraCanvasFontCoverage.h`), not
-    its first name - "-apple-system" or a mail's web font, which the editor
-    drew in a stray substitute.
+    `HTMLRichImportOptions::fontInstalled` (UltraMail passes
+    `IsFontFamilyAvailable`) gives a run the first installed entry of its
+    list, not its first name - "-apple-system" or a mail's web font, which the
+    editor drew in a stray substitute. Without it the importer keeps the first
+    name, and stays free of the text engine. `FirstInstalledFontFamily` (new
+    in `UltraCanvasFontCoverage.h`) is the reading pane's choice.
+    `HTMLRichImportTest` covers the lists with a fake check.

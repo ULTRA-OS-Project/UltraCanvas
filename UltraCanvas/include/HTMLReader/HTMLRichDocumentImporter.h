@@ -26,6 +26,8 @@
 // its text kept. UCRichDocument::FromHTML - a rich paste - reads through it
 // too, with preAsCodeBlock and skipWordListLabels on.
 //
+// Version: 1.3.0 - fontInstalled: a run's font is the first installed entry of its
+//                  font-family list
 // Version: 1.2.0 - Word's list paragraphs are list items; a <pre>'s blank lines
 //                  are kept (only the newline right after <pre> is not content)
 // Version: 1.1.0 - dir="rtl" paragraphs; preAsCodeBlock and skipWordListLabels
@@ -65,6 +67,14 @@ struct HTMLRichImportOptions {
     // colours. Off gives the text the editor's own look.
     bool keepFonts = true;
     bool keepColors = true;
+    // Whether this computer has a font family (IsFontFamilyAvailable, in
+    // UltraCanvasFontCoverage.h). Given, a run takes the first entry of its
+    // font-family list that is installed - the font the reading pane drew it
+    // in: "-apple-system, 'Segoe UI', sans-serif" is no font of its own (the
+    // editor's), "NoSuchFont, Arial" is Arial. Without it, the list's first
+    // name, whether installed or not. A hook rather than a call, so the
+    // importer stays free of the text engine.
+    std::function<bool(const std::string& family)> fontInstalled;
     // <pre> becomes a code block (RichBlockType::CodeBlock): its lines as
     // written, in the view's code style. Off, it is a paragraph of
     // monospaced lines - right for a mail, whose <pre> is mostly a quoted
