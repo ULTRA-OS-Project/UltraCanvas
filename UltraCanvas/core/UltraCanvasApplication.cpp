@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.24.0 - the font aliases append "sans-serif" to a request without a generic family
+//                  (fontconfig's 49-sansserif.conf), so an unknown family falls to the sans font
 // Version: 1.23.0 - a key pressed with the focus on a popup's own window goes to the window the popup belongs
 //                  to: Escape closes the menu, the arrow keys and Enter work in it
 // Version: 1.22.0 - ApplyThemePolicy logs a theme set after Initialize (a provider, a host change)
@@ -453,6 +455,19 @@ namespace UltraCanvas {
                 // first (Unifont before Noto Color Emoji on Linux).
                 { "emoji",      kEmoji, sizeof(kEmoji) / sizeof(kEmoji[0]) },
             };
+            // fontconfig's 49-sansserif.conf: a request that names no
+            // generic family gets "sans-serif" last, so a family nobody has
+            // installed (a mail's "-apple-system", "Helvetica Neue" on
+            // Windows) falls to the interface sans font, not to whichever
+            // font fontconfig lists first. Before the aliases, which turn
+            // the "sans-serif" it adds into real families.
+            conf << "  <match target=\"pattern\">\n"
+                    "    <test qual=\"all\" name=\"family\" compare=\"not_eq\"><string>sans-serif</string></test>\n"
+                    "    <test qual=\"all\" name=\"family\" compare=\"not_eq\"><string>serif</string></test>\n"
+                    "    <test qual=\"all\" name=\"family\" compare=\"not_eq\"><string>monospace</string></test>\n"
+                    "    <test qual=\"all\" name=\"family\" compare=\"not_eq\"><string>emoji</string></test>\n"
+                    "    <edit name=\"family\" mode=\"append_last\"><string>sans-serif</string></edit>\n"
+                    "  </match>\n";
             for (const GenericAlias& alias : aliases) {
                 conf << "  <alias>\n"
                      << "    <family>" << alias.generic << "</family>\n"

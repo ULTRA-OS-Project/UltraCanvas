@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLStyleResolver.cpp
 // CSS cascade: user-agent defaults → author rules → inline styles.
+// Version: 1.22.0 - font-family: -apple-system / system-ui / BlinkMacSystemFont first in the
+//                  list is the default font, not a name no system has
 // Version: 1.21.0 - form controls are inline-block, as in browsers (the builder
 //                  still draws a display-only control on a line of its own)
 // Version: 1.20.0 - <template> is not rendered (display: none, as in browsers)
@@ -1283,20 +1285,36 @@ void StyleResolver::ApplyDeclaration(const Declaration& decl, ComputedStyle& s,
         }
     }
     else if (prop == "font-family") {
-        std::string family = value;
-        size_t comma = family.find(',');
-        if (comma != std::string::npos) family = family.substr(0, comma);
-        family = Trim(family);
-        if (family.size() >= 2 && (family.front() == '"' || family.front() == '\'')) {
-            family = family.substr(1, family.size() - 2);
-        }
-        std::string genericCheck = TrimLower(family);
-        if (genericCheck == "monospace") {
-            s.monospace = true;
-        } else if (!family.empty()) {
-            s.fontFamily = family;
-            s.monospace = genericCheck.find("mono") != std::string::npos ||
-                          genericCheck.find("courier") != std::string::npos;
+        // The first entry of the list, past the names that stand for the
+        // system's interface font (-apple-system, system-ui,
+        // BlinkMacSystemFont, ui-sans-serif): those become the default font
+        // (an empty family), as a browser draws them. Handed on as a name,
+        // no system has it, and the text fell to whichever font fontconfig
+        // listed first - a serif or a CJK face on Windows (LinkedIn's mail
+        // starts its list with -apple-system).
+        size_t start = 0;
+        while (start <= value.size()) {
+            size_t comma = value.find(',', start);
+            if (comma == std::string::npos) comma = value.size();
+            std::string family = Trim(value.substr(start, comma - start));
+            start = comma + 1;
+            if (family.size() >= 2 && (family.front() == '"' || family.front() == '\'')) {
+                family = family.substr(1, family.size() - 2);
+            }
+            const std::string genericCheck = TrimLower(family);
+            if (family.empty()) continue;
+            if (genericCheck == "-apple-system" || genericCheck == "system-ui" ||
+                genericCheck == "blinkmacsystemfont" || genericCheck == "ui-sans-serif") {
+                s.fontFamily.clear();
+                s.monospace = false;
+            } else if (genericCheck == "monospace" || genericCheck == "ui-monospace") {
+                s.monospace = true;
+            } else {
+                s.fontFamily = genericCheck == "ui-serif" ? "serif" : family;
+                s.monospace = genericCheck.find("mono") != std::string::npos ||
+                              genericCheck.find("courier") != std::string::npos;
+            }
+            break;
         }
     }
     else if (prop == "font-weight") {
