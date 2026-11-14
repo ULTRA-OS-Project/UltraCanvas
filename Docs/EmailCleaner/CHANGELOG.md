@@ -1,3 +1,9 @@
+#### 2026-11-14 *0.4.15*
+- **Follows UltraMail's cache directories for folder names that Windows or
+  macOS would take for another name** - a device name such as "Con", a
+  trailing dot or space, a name in decomposed Unicode; the cache of
+  EmailCleaner's own accounts is moved at the first start.
+
 #### 2026-11-12 *0.4.14*
 - **Follows UltraMail's layout of cached messages for folder names with
   `_`, `\`, `:` or a character Windows does not allow in a file name.** Such

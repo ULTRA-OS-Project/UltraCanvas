@@ -69,11 +69,13 @@ app and every runtime or library the database has, an item marked
 
 | Page | What it does |
 |---|---|
-| Overview | The store folder and database, the counts, the last publish; *Add an app or a component* (id, name, kind) creates the record and opens its form. |
+| Overview | The dashboard of the design's `AdminDashboard` artboard: the last 30 days as tiles (what the buyers paid against the 30 days before, the paid orders and how many carried a code, the apps with how many lack a release or changed since the last publish, what the partners are owed), what was paid per week as a bar chart over twelve weeks, the top apps of the 30 days with their share, the latest sales, the last publish with the warnings the next one would raise, the apps lacking texts in the target languages, and the signing keys; *Check and publish* and the other buttons lead to the pages; *Add an app or a component* (id, name, kind) creates the record and opens its form. |
+| Apps and components | The table of every record (the design's `AdminApps` artboard): name, id, kind, pricing with the trial, visibility, the latest release with its channel and date, how many of the target languages have texts, and the state - published, changed since the last publish, new and unpublished, deprecated with its successor, withdrawn, featured; the chips filter (all, apps, runtimes and libraries, changed, without a release, paid, featured), the field searches name and id, *Open* shows the form. |
 | An app or component | The form: every setting of the table in the store's README - identity (id, kind, name, publisher, license, homepage, support, privacy, open source, source, the categories as chips of the store's fixed list, tags), the store settings (visibility, lifecycle and successor, age rating, account, monetary model with price, currency and trial days, free update period with its date), the texts per language (the source language, the language shown, *Add language*, *Translate the missing languages* through UltraAI, the machine ones marked), the pictures (the icon and the screenshots copied into `media/<id>/` by `ImportMedia`), the releases newest first with their packages, an inline editor for a new release and for a new package (the build's file into the package store, OS, processor, variants, minimum OS version, the entry suggested from the archive, public or restricted). Save writes the draft through `PutComponent`, which reads it back the way the store does; Revert reloads; Delete asks first. Leaving a form with unsaved edits asks. |
 | Publish | The publish folder, the key, the passphrase, whether to copy the packages and media; *Check* builds the catalog and lists the warnings; *Publish* runs `Publish()` on a worker thread and reports the sequence, the counts and the warnings. Below it the upload: the server, the user, the password or the key file, *Upload* sends what changed (the status line names each file as it goes) and reports what went and what the server still has. |
 | Keys | The keys with their public halves, *Export .pub…* and *Retire*; a new key from a name and a passphrase typed twice. |
 | Affiliates and codes | The partners with their shares, who recruited them and what the ledger owes them; add or change one, switch one off, the join QR code. The codes with what they take off, the apps and the validity; a new code, its QR code, switch off, remove. A sale recorded by hand with what it credits. |
+| Finance | The books from the ledger for a period - all time, a year, a month: the statement by currency (paid, given back by the refunds and chargebacks, the partners' credits, net to the store), net by month as a bar chart in the main currency, revenue by app, the partners with what they earned, what a reversal took back, what was paid out and what is owed, a payout recorded, the reversals; *Statement CSV* writes the period for the books; *Sync sales* pulls the sales and the reversals. The design's VAT by country and statements archive are not here: the ledger knows no buyer country, and a statement is written when it is asked for. |
 | Settings | The store's settings (the URLs, the languages, the UltraAI provider) and the publishers. |
 
 The slow operations (a key's Argon2id seal, a publish, a translation) run
@@ -104,6 +106,7 @@ The settings in `admin.sqlite`:
 | `texts.languages` | the languages `translate` fills, codes separated by spaces; set by `init` to the official list |
 | `ai.provider`, `ai.base_url`, `ai.model` | the UltraAI translator's provider, server and model |
 | `catalog.sequence`, `catalog.published_at` | the last publish; set by `publish`, never by hand |
+| `payment.sales_seq`, `payment.reversals_seq` | how far `sale sync` has read the payment service's sales and its reversals; set by the sync, never by hand |
 | `upload.url`, `upload.user`, `upload.key_file` | where `upload` sends the publish folder (`sftp://user@host/path`, `ftps://`, `ftp://`, `https://`), the user when the URL names none, the SSH key file; the password is never kept |
 
 ## The command line
@@ -135,10 +138,15 @@ publish <outdir> --key <id> [--passphrase <p>] [--no-copy]
 upload <outdir> [--to <url>] [--user <name>] [--password <p>] [--key-file <pem>] [--all]
 affiliate add <id> <name> [--contact <c>] [--share <percent>] [--recruit-share <percent>] [--recruited-by <id>]
 affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report | qr <id> <file.svg>
+affiliate payout <id> <amount> <currency> [--note <text>] [--at <iso8601>]   what was paid to a partner; `report` says what is owed
 code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]
 code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>
 sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list
-sale sync [--from <url>] [--token <t>]                   the paid orders and the subscriptions' renewals from the payment service, once each
+sale sync [--from <url>] [--token <t>]                   the paid orders and the subscriptions' renewals from the payment service, once each, and its refunds and chargebacks
+sale reversal <refund|chargeback> <reference|sale-no> <amount> <currency> [--at <iso8601>]   a reversal by hand, of the sale with that reference or that number in `sale list`; the partners' credits go back in proportion
+sale reversals
+finance report [<YYYY-MM>|<YYYY>]                        the statement by currency, the apps, the partners and what they are owed, the months
+finance periods | statement [<period>] [-o <file.csv>]   the months with a sale; the report as CSV, for the books
 market standing                                          where this merchant stands at the marketplace: active, paused (terms), suspended; strikes
 market submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]
                                                          the app as saved here, signed, to the operator's review
@@ -153,7 +161,7 @@ published as the catalog's `payment_url`), `payment.licence_key` (the
 public half of its licence key, `GET /v1/keys`, published as
 `licence_key`; publish warns while it is missing), `payment.token` (the
 bearer token for `sale sync`, or `ULTRASTORE_PAY_ADMIN_TOKEN`), and
-`payment.sales_seq`, which `sale sync` keeps for itself. The window's
+`payment.sales_seq` and `payment.reversals_seq`, which `sale sync` keeps for itself. The window's
 *Affiliates and codes* page has *Sync sales*.
 
 **The marketplace** (`Market.h`; the marketplace service, `Server/UltraStoreMarket`,

@@ -1,3 +1,59 @@
+#### 2026-11-14 *0.9.561*
+- **The UltraCanvasStart archive is no longer lost on the Windows ARM leg.**
+  `scripts/package-ultracanvasstart.sh` collected the application's DLLs
+  with a bash loop of `objdump | sed | tr` through a process substitution -
+  five processes per DLL, some five hundred for the 132 it loads - and on
+  the Windows ARM runner, where MSYS2 runs x86-64-emulated, that loop once
+  ended eight seconds in, silently, with status 0 (2026-11-13, #1235): no
+  count, no archive, the step green, and the upload an hour later the one
+  that failed. The closure is now read by `scripts/pe_imports.py`, a PE
+  import-table reader in Python that handles x86, x86-64 and ARM64 images in
+  one process (tested against synthetic PE32 and PE32+ images in
+  `scripts/tests/test_pe_imports.py`); the objdump loop stays for a shell
+  with no Python, and a closure of zero DLLs is an error. The packaging step
+  in `build.yml` checks for the archive itself, runs the script once more
+  when it is missing, and fails there with the script's name on a second
+  miss, instead of at the upload.
+- **The Vectorizer plug-in's Rust crate builds only the static library it
+  links.** `vtracer-c/Cargo.toml` also declared a `cdylib`, a DLL nothing in
+  the tree loads or ships, and Corrosion listed that DLL's MinGW import
+  library (`libvtracer_c.dll.a`) among the build's byproducts. The MSYS2
+  Rust 1.100.0 package (2026-11-14) no longer writes that import library for
+  the `x86_64-pc-windows-gnullvm` target, so every Windows x64 build since
+  stopped at "Error copying file ... libvtracer_c.dll.a" after the crate had
+  compiled (#1244, #1245, #1248). The crate type is gone; the plug-in links
+  `libvtracer_c.a` as before on every platform.
+- **The Windows x86_64 build failed at the Vectorizer plugin's Rust library.**
+  `vtracer-c/Cargo.toml` lists `cdylib` beside `staticlib`, so Corrosion
+  imported both and copied the DLL's import library from
+  `release/deps/libvtracer_c.dll.a`, where Rust on
+  `x86_64-pc-windows-gnullvm` no longer writes it: *"Error copying file ...
+  No such file or directory"*, on every pull request. The plug-in only ever
+  links the archive, so `corrosion_import_crate` now takes
+  `CRATE_TYPES staticlib`: cargo is run with `--crate-type=staticlib`, the DLL
+  is not built at all, and `BUILD_SHARED_LIBS` can no longer make Corrosion
+  link it instead of the archive.
+
+#### 2026-11-14 *0.9.560*
+- **A pull request builds one row per operating system; `ci:distro` builds
+  all six.** Without a label a pull request now builds Linux x86_64, Windows
+  x86_64 and macOS on Apple silicon. Linux arm64, Windows ARM and macOS Intel
+  build on `main`, where the release is made, and on a pull request labelled
+  `ci:distro` (the distribution build); adding the label starts a run with
+  them. `ci:intel` still adds the Intel row alone. The Windows ARM row alone
+  took an hour on #1236 and #1238.
+  - A left-out row reports under its own name (`build (<os>, Release)`) as
+    not built, from a `build-skipped` job, so a required check never waits
+    on it.
+  - The clean-machine Linux SDK check tests only the Linux rows that were
+    built.
+- **CI: UltraMail's Unicode normalization table is checked.** A new workflow,
+  `ultramail-nfc-table.yml`, runs `scripts/generate_ultramail_nfc_table.py
+  --check` on the Python the table was made with whenever the table, the
+  script or the code that reads it changes, so a hand edit or a stale table
+  fails the pull request. Once a week it also runs on the newest Python and
+  fails when a newer Unicode version is out, saying to regenerate the table.
+
 #### 2026-11-14 *0.9.559*
 - **CI: a release build saves its ccache only when it compiled something,
   and the cache prune is no longer starved.** A fold commit changes a

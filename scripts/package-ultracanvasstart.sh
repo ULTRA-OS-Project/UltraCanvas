@@ -35,6 +35,9 @@
 #   ARCH=<label>   the architecture label in the name (default as the suite
 #                  packagers derive it: x86_64 or arm64)
 #
+# Version: 1.3.0 - the Windows DLL closure is read by scripts/pe_imports.py in
+#                  one process, not by a loop of objdump per DLL, and a
+#                  closure of zero DLLs is an error
 # Version: 1.2.0 - the Windows package takes the console companion
 #                  (UltraCanvasStart.com) along
 # Version: 1.1.0 - the Linux archive is xz
@@ -208,39 +211,57 @@ else
     # the .com, which waits for the .exe (cmake/UltraCanvasWindowsGuiApp.cmake).
     [ -f "$SOURCE/$APP.com" ] && cp "$SOURCE/$APP.com" "$PKG/$APP.com"
 
-    # The import table, read statically as package-win.sh reads it: ldd
-    # would load every module and runs into the codec deadlocks on ARM64.
-    if command -v objdump >/dev/null 2>&1; then
-        OBJDUMP=objdump
-    elif command -v llvm-objdump >/dev/null 2>&1; then
-        OBJDUMP=llvm-objdump
+    # The import tables, read statically as package-win.sh reads them (ldd
+    # would load every module and runs into the codec deadlocks on ARM64) -
+    # in one Python process (scripts/pe_imports.py): the closure over dist/
+    # of every DLL an import names that dist/ carries, and theirs in turn.
+    # It was a bash loop of objdump | sed | tr with sort -u through a process
+    # substitution, five processes per DLL, some five hundred for the 132
+    # DLLs the application loads; on the Windows ARM runner, where MSYS2 runs
+    # x86-64-emulated, that loop once ended eight seconds in, silently, with
+    # status 0 (2026-11-13, #1235): no count, no archive, and the upload
+    # after it failed. The objdump loop stays for a shell with no Python.
+    echo "Collecting DLLs..."
+    PYTHON="$(command -v python3 || command -v python || true)"
+    if [ -n "$PYTHON" ]; then
+        # MSYS2's mingw Python is a Windows program: give it paths it reads
+        # (C:/... when cygpath is there to make them), not /c/... ones.
+        topath() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s\n' "$1"; fi; }
+        count=$("$PYTHON" "$(topath "$SCRIPT_DIR/pe_imports.py")" \
+                    --closure "$(topath "$PKG/$APP.exe")" \
+                    --from "$(topath "$SOURCE")" --into "$(topath "$PKG")" | wc -l | tr -d ' ')
     else
-        echo "Error: need objdump or llvm-objdump to read the import tables" >&2
+        if command -v objdump >/dev/null 2>&1; then
+            OBJDUMP=objdump
+        elif command -v llvm-objdump >/dev/null 2>&1; then
+            OBJDUMP=llvm-objdump
+        else
+            echo "Error: need python3, objdump or llvm-objdump to read the import tables" >&2
+            exit 1
+        fi
+        pe_deps() {
+            "$OBJDUMP" -p "$1" 2>/dev/null | sed -n 's/.*DLL Name:[[:space:]]*//p' | tr -d '\r'
+        }
+        queue=("$PKG/$APP.exe")
+        count=0
+        while [ "${#queue[@]}" -gt 0 ]; do
+            current="${queue[0]}"
+            queue=("${queue[@]:1}")
+            while read -r name; do
+                [ -n "$name" ] || continue
+                [ -f "$SOURCE/$name" ] || continue
+                [ -f "$PKG/$name" ] && continue
+                cp "$SOURCE/$name" "$PKG/$name"
+                count=$((count + 1))
+                queue+=("$PKG/$name")
+            done < <(pe_deps "$current" | sort -u)
+        done
+    fi
+    echo "  $count DLLs from $SOURCE"
+    if [ "$count" -eq 0 ]; then
+        echo "Error: no DLL of $APP found in $SOURCE - the import tables were not read" >&2
         exit 1
     fi
-    pe_deps() {
-        "$OBJDUMP" -p "$1" 2>/dev/null | sed -n 's/.*DLL Name:[[:space:]]*//p' | tr -d '\r'
-    }
-
-    # The closure over dist/: every DLL an import names that dist/ carries
-    # (Windows' own are not in dist/ and stay the system's), and theirs in
-    # turn, until nothing new is named.
-    echo "Collecting DLLs..."
-    queue=("$PKG/$APP.exe")
-    count=0
-    while [ "${#queue[@]}" -gt 0 ]; do
-        current="${queue[0]}"
-        queue=("${queue[@]:1}")
-        while read -r name; do
-            [ -n "$name" ] || continue
-            [ -f "$SOURCE/$name" ] || continue
-            [ -f "$PKG/$name" ] && continue
-            cp "$SOURCE/$name" "$PKG/$name"
-            count=$((count + 1))
-            queue+=("$PKG/$name")
-        done < <(pe_deps "$current" | sort -u)
-    done
-    echo "  $count DLLs from $SOURCE"
 
     # The CA bundle: the SDK download is HTTPS, and the bundled libcurl
     # verifies against this file (package-win.sh puts it beside the .exe).

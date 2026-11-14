@@ -30,6 +30,7 @@
 // A passphrase comes from --passphrase, else ULTRASTOREADMIN_PASSPHRASE, else
 // a line on standard input.
 //
+// Version: 0.7.0 - finance report / statement / periods, sale reversal / reversals, sync pulls the reversals, affiliate payout
 // Version: 0.6.0 - market: the marketplace service (submit, notices, terms, standing, reports)
 // Version: 0.5.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.5.0 - sale sync
@@ -46,6 +47,7 @@
 #include "PackageStore.h"
 #include "Translation.h"
 #include "Affiliates.h"
+#include "Finance.h"
 #include "Market.h"
 #include "StoreQuery.h"
 #include "Uploader.h"
@@ -107,9 +109,12 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "  upload <outdir> [--to <url>] [--user <name>] [--password <p>] [--key-file <pem>] [--all]\n"
         "  affiliate add <id> <name> [--contact <c>] [--share <percent>] [--recruit-share <percent>] [--recruited-by <id>]\n"
         "  affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report | qr <id> <file.svg>\n"
+        "  affiliate payout <id> <amount> <currency> [--note <text>] [--at <iso8601>]\n"
         "  code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]\n"
         "  code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>\n"
         "  sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list | sync [--from <url>] [--token <t>]\n"
+        "  sale reversal <refund|chargeback> <reference|sale-no> <amount> <currency> [--at <iso8601>] | reversals\n"
+        "  finance report [<YYYY-MM>|<YYYY>] | periods | statement [<YYYY-MM>|<YYYY>] [-o <file.csv>]\n"
         "  market standing | submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]\n"
         "  market submissions | withdraw <submission> | notices [--all] | ack <notice> | terms [accept <version> --by <name>] | reports\n"
         "  --version | --help\n"
@@ -720,6 +725,10 @@ int CmdAffiliate(Store& store, const std::vector<std::string>& args) {
     if (sub == "list" || sub == "report") {
         const auto report = AffiliateReport(store.db);
         if (!report) return Fail(report.error);
+        std::vector<PartnerBalance> balances;   // what each is owed, all time (Finance.h)
+        if (sub == "report") {
+            if (const auto finance = BuildFinanceReport(store.db)) balances = finance.Value().partners;
+        }
         if (report.Value().empty()) { std::printf("no affiliate yet\n"); return 0; }
         for (const AffiliateTotals& t : report.Value()) {
             const Affiliate& a = t.affiliate;
@@ -731,8 +740,23 @@ int CmdAffiliate(Store& store, const std::vector<std::string>& args) {
                 for (const auto& [cur, sum] : t.recruitCredit) recruits += (recruits.empty() ? "" : ", ") + sum + " " + cur;
                 std::printf("                 %zu sale(s) with their codes: %s; %zu recruit sale(s): %s\n", t.ownSales, own.empty() ? "0.00" : own.c_str(),
                             t.recruitSales, recruits.empty() ? "0.00" : recruits.c_str());
+                {
+                    for (const PartnerBalance& b : balances) {
+                        if (b.affiliate.id != a.id) continue;
+                        std::printf("                 taken back by reversals: %s; paid out: %s; owed: %s\n", JoinMoney(b.takenBack).c_str(),
+                                    JoinMoney(b.paidOut).c_str(), JoinMoney(b.owed).c_str());
+                    }
+                }
             }
         }
+        return 0;
+    }
+    if (sub == "payout") {
+        if (pos.size() < 5) return Usage(stderr);
+        const auto paid = RecordPayout(store.db, pos[2], pos[3], pos[4], Option(args, "--note"), Option(args, "--at"));
+        if (!paid) return Fail(paid.error);
+        std::printf("payout %lld: %s %s to %s%s\n", static_cast<long long>(paid.Value().id), paid.Value().amount.c_str(), paid.Value().currency.c_str(),
+                    paid.Value().affiliate.c_str(), paid.Value().note.empty() ? "" : (" (" + paid.Value().note + ")").c_str());
         return 0;
     }
     if (pos.size() < 3) return Usage(stderr);
@@ -851,6 +875,33 @@ int CmdSale(Store& store, const std::vector<std::string>& args) {
         if (!report) return Fail(report.error);
         std::printf("synced from %s: %zu sale(s) recorded, %zu already there, sequence %llu\n", url.c_str(), report.Value().recorded,
                     report.Value().skipped, static_cast<unsigned long long>(report.Value().sequence));
+        // The refunds and the chargebacks too; a service from before them is
+        // said, not fatal: the sales are in.
+        const auto reversals = SyncReversals(store.db, url, token);
+        if (!reversals) { std::printf("reversals: not synced (%s%s%s)\n", reversals.error.message.c_str(), reversals.error.detail.empty() ? "" : ": ", reversals.error.detail.c_str()); return 0; }
+        std::printf("reversals: %zu recorded, %zu already there, sequence %llu\n", reversals.Value().recorded, reversals.Value().skipped,
+                    static_cast<unsigned long long>(reversals.Value().sequence));
+        return 0;
+    }
+    if (pos[1] == "reversal") {
+        if (pos.size() < 6) return Usage(stderr);
+        const auto v = RecordReversal(store.db, pos[2], pos[3], "", pos[4], pos[5], Option(args, "--at"));
+        if (!v) return Fail(v.error);
+        std::printf("%s %lld: %s %s of %s", v.Value().kind.c_str(), static_cast<long long>(v.Value().id), v.Value().amount.c_str(), v.Value().currency.c_str(), v.Value().reverses.c_str());
+        if (!v.Value().affiliate.empty()) std::printf("; %s gives back %s", v.Value().affiliate.c_str(), v.Value().affiliateCredit.c_str());
+        if (!v.Value().recruiter.empty()) std::printf("; %s gives back %s", v.Value().recruiter.c_str(), v.Value().recruiterCredit.c_str());
+        std::printf("\n");
+        return 0;
+    }
+    if (pos[1] == "reversals") {
+        const auto all = store.db.Reversals();
+        if (!all) return Fail(all.error);
+        if (all.Value().empty()) { std::printf("no reversal yet\n"); return 0; }
+        for (const ReversalRecord& v : all.Value()) {
+            std::printf("%4lld  %s  %-10s %-24s %10s %s  of %s%s  %s %s  %s %s\n", static_cast<long long>(v.id), v.at.c_str(), v.kind.c_str(), v.app.c_str(),
+                        v.amount.c_str(), v.currency.c_str(), v.reverses.c_str(), v.revoked ? "  licence taken back" : "",
+                        v.affiliate.c_str(), v.affiliate.empty() ? "" : v.affiliateCredit.c_str(), v.recruiter.c_str(), v.recruiter.empty() ? "" : v.recruiterCredit.c_str());
+        }
         return 0;
     }
     if (pos[1] == "list") {
@@ -864,6 +915,65 @@ int CmdSale(Store& store, const std::vector<std::string>& args) {
         return 0;
     }
     return Usage(stderr);
+}
+
+// finance ...: the books from the ledger (Finance.h), for a period - all
+// time, a year or a month: the statement by currency, the apps, the
+// partners and what they are owed, the months; the statement as CSV.
+int CmdFinance(Store& store, const std::vector<std::string>& args) {
+    if (!store.Open(false)) return 1;
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    if (pos[1] == "periods") {
+        const auto periods = FinancePeriods(store.db);
+        if (!periods) return Fail(periods.error);
+        if (periods.Value().empty()) { std::printf("no sale yet\n"); return 0; }
+        for (const std::string& p : periods.Value()) std::printf("%s  %s\n", p.c_str(), PeriodName(p).c_str());
+        return 0;
+    }
+    const std::string period = pos.size() > 2 ? pos[2] : std::string();
+    if (!period.empty() && period.size() != 4 && period.size() != 7) return Fail("The period is a year (2026) or a month (2026-10), or nothing for all time");
+    const auto report = BuildFinanceReport(store.db, period);
+    if (!report) return Fail(report.error);
+    const FinanceReport& r = report.Value();
+    if (pos[1] == "statement") {
+        const std::string csv = StatementCsv(r);
+        const std::string file = Option(args, "-o");
+        if (file.empty()) { std::fputs(csv.c_str(), stdout); return 0; }
+        std::ofstream out(UltraCanvas::PathFromUtf8(file), std::ios::binary | std::ios::trunc);
+        if (!out) return Fail("The statement could not be written: " + file);
+        out << csv;
+        std::printf("wrote %s\n", file.c_str());
+        return 0;
+    }
+    if (pos[1] != "report") return Usage(stderr);
+    std::printf("%s\n", PeriodName(period).c_str());
+    if (r.totals.net.empty()) { std::printf("  no sale and no reversal\n"); }
+    for (const auto& [currency, net] : r.totals.net) {
+        std::printf("  %s: %zu sale(s) paid %s; %zu reversal(s) refunded %s; partners' credits %s; net %s\n", currency.c_str(), r.totals.sales,
+                    MoneyOf(r.totals.paid, currency).c_str(), r.totals.reversals, MoneyOf(r.totals.refunded, currency).c_str(),
+                    MoneyOf(r.totals.credits, currency).c_str(), net.c_str());
+    }
+    if (!r.apps.empty()) std::printf("by app\n");
+    for (const AppFinance& a : r.apps) {
+        for (const auto& [currency, net] : a.totals.net) {
+            std::printf("  %-28s %s: %zu sale(s) paid %s, refunded %s, credits %s, net %s\n", a.app.c_str(), currency.c_str(), a.totals.sales,
+                        MoneyOf(a.totals.paid, currency).c_str(), MoneyOf(a.totals.refunded, currency).c_str(), MoneyOf(a.totals.credits, currency).c_str(), net.c_str());
+        }
+    }
+    if (!r.partners.empty()) std::printf("partners\n");
+    for (const PartnerBalance& p : r.partners) {
+        std::printf("  %-16s %-20s in the period %s; earned %s, taken back %s, paid out %s, owed %s\n", p.affiliate.id.c_str(), p.affiliate.name.c_str(),
+                    JoinMoney(p.inPeriod).c_str(), JoinMoney(p.earned).c_str(), JoinMoney(p.takenBack).c_str(), JoinMoney(p.paidOut).c_str(), JoinMoney(p.owed).c_str());
+    }
+    if (!r.months.empty()) std::printf("by month\n");
+    for (const MonthNet& m : r.months) {
+        if (m.totals.net.empty()) { std::printf("  %s  -\n", m.month.c_str()); continue; }
+        std::string line;
+        for (const auto& [currency, net] : m.totals.net) line += (line.empty() ? "" : "; ") + net + " " + currency;
+        std::printf("  %s  net %s (%zu sale(s), %zu reversal(s))\n", m.month.c_str(), line.c_str(), m.totals.sales, m.totals.reversals);
+    }
+    return 0;
 }
 
 } // namespace
@@ -1004,6 +1114,7 @@ int UltraStoreAdmin::Cli::Run(const std::vector<std::string>& argsIn) {
     if (cmd == "affiliate") return CmdAffiliate(store, args);
     if (cmd == "code")      return CmdCode(store, args);
     if (cmd == "sale")      return CmdSale(store, args);
+    if (cmd == "finance")   return CmdFinance(store, args);
     if (cmd == "market")    return CmdMarket(store, args);
     std::fprintf(stderr, "ultrastoreadmin: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
