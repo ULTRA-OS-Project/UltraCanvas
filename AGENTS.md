@@ -412,9 +412,12 @@ Intel) on main, where the release is made. The `ci:distro` label asks for
 all six on a pull request (the distribution build) and `ci:intel` for the
 Intel row alone; adding either starts a run with them. Ask for `ci:distro`
 when a change touches what only those rows would catch - a platform layer,
-the packaging, a bundled library - and add it when the user asks for a
-"distro build" with a pull request. A left-out row reports under its own
-name as skipped (`build-skipped`), so a required check never waits on it.
+the packaging, a bundled library, or code that behaves differently by
+platform (rule 8 of *Branch and pull-request rules*) - and add it when the
+user asks for a "distro build" with a pull request. A left-out row reports
+under its own name, so a required check never waits on it - and it reports
+**success** after a few seconds, with a notice that it was not built: a
+green row is not a build unless it ran for minutes.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
 llama.cpp adapter is built (the engine is fetched from GitHub, or taken from
@@ -1174,9 +1177,34 @@ For assistants:
    closing line names with ` — open as PR #<n>`, which covers a PR opened
    from the Claude UI — is not the number the title was given.
 
+8. **Label a platform-specific change `ci:distro` - and read the rows before
+   "green".** A pull request builds Linux x86_64, Windows x86_64 and macOS
+   on Apple silicon; Windows ARM, Linux arm64 and macOS Intel are built only
+   on `main` or with the `ci:distro` label (*Building and testing*). Add the
+   label when you open the PR (or right after - adding it starts a run with
+   all six rows) whenever the change:
+
+   - touches a platform layer (`UltraCanvas/OS/<Platform>/`), the
+     packaging, CI's build, or a bundled library; or
+   - is code whose behaviour differs by platform even outside those
+     directories - file names and paths (what Windows refuses, what macOS
+     takes as one name), line endings, locale, byte order, `#ifdef _WIN32` /
+     `__APPLE__` branches, ARM-specific intrinsics; or
+   - the user asks for a "distro build".
+
+   And when you report CI or merge "on green", count only the rows that
+   built: a row the PR leaves out reports **success** in a few seconds with
+   the notice *"... is built on main and on a pull request labelled
+   ci:distro"*. Say which rows built and which were left out, and treat
+   "Build result" (the commit status `build-result.yml` keeps) as the
+   verdict of the Build run - it is green only when that run succeeded with
+   jobs. (#1243 changed Windows and macOS file naming without the label: its
+   Windows ARM and macOS Intel rows read green after three seconds and were
+   first built on `main`.)
+
 For maintainers:
 
-8. **Merge with the PR title, not the branch name.** GitHub's default merge
+9. **Merge with the PR title, not the branch name.** GitHub's default merge
    commit is `Merge pull request #N from <owner>/<branch>`, which puts the
    branch's random words into `main`'s history. In the repository's
    *Settings → General → Pull Requests*, set the merge-commit default message
@@ -1184,6 +1212,6 @@ For maintainers:
    squash merges to **Pull request title** as well. Until that is set, edit
    the commit message in the merge dialog before confirming.
 
-9. **Do not merge a session's PR while the session may still push to it.**
-   Merge after the session says it is done — or, if merging early, tell the
-   session so it restarts from `main` and opens a fresh PR for the rest.
+10. **Do not merge a session's PR while the session may still push to it.**
+    Merge after the session says it is done — or, if merging early, tell the
+    session so it restarts from `main` and opens a fresh PR for the rest.
