@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en" data-page="app/org.ultraos.artcreator" data-root="../../" data-store-download="https://ultraos.eu/ultrastore" data-store-contact="https://ultraos.eu/contact">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArtCreator - UltraStore</title>
+<meta name="description" content="Vector drawing with bezier tools, text on paths and live effects.">
+<link rel="canonical" href="https://store.example/app/org.ultraos.artcreator/">
+<meta property="og:title" content="ArtCreator - UltraStore">
+<meta property="og:type" content="website">
+<meta property="og:description" content="Vector drawing with bezier tools, text on paths and live effects.">
+<meta property="og:url" content="https://store.example/app/org.ultraos.artcreator/">
+<meta property="og:image" content="https://store.example/media/org.ultraos.artcreator/ArtCreator.png">
+<link rel="icon" href="../../ultrastore.png">
+<style>:root{--ink:#0F172A;--body:#334155;--muted:#64748B;--line:#E2E8F0;--soft:#F1F5F9;--accent:#2563EB;--accent-soft:#DBEAFE;--accent-ink:#1D4ED8;--ok:#15803D;--ok-soft:#DCFCE7}
+*{box-sizing:border-box}html,body{margin:0;background:#fff;color:var(--ink)}
+body{font:15px/1.5 Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1,h2,h3,.name{font-family:Manrope,Inter,system-ui,sans-serif;font-weight:800;letter-spacing:-.01em;margin:0}
+a{color:var(--accent-ink)}p{margin:.4em 0;color:var(--body)}
+.wrap{max-width:1280px;margin:0 auto;padding:0 32px}
+header.top{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--line)}
+header.top .brand{display:flex;align-items:center;gap:8px;font:800 21px Manrope,Inter,sans-serif;color:var(--ink);text-decoration:none}
+header.top nav a{display:inline-block;padding:9px 16px;border-radius:20px;color:var(--body);text-decoration:none}
+header.top nav a.lit{background:var(--accent-soft);color:var(--accent-ink)}
+header.top .get{margin-left:auto;background:var(--accent);color:#fff;border-radius:20px;padding:10px 18px;font-weight:700;text-decoration:none}
+#ultracanvas-status{font-size:13px;color:var(--muted);padding:6px 0}
+section{padding:24px 0}section h2{font-size:26px;margin-bottom:4px}section .sub{color:var(--muted);margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;list-style:none;padding:0;margin:0}
+.card{border:1px solid var(--line);border-radius:20px;padding:20px;display:flex;flex-direction:column;gap:12px;background:#fff}
+.card .head{display:flex;gap:14px;align-items:flex-start}.card .head img{width:64px;height:64px;border-radius:22%;background:var(--soft)}
+.card .name{font-size:17px}.card .meta{font-size:13px;color:var(--muted)}.card .foot{display:flex;justify-content:space-between;align-items:center;margin-top:auto}
+.price{font-weight:700}.price.free{color:var(--ok)}
+.btn{display:inline-block;background:var(--accent);color:#fff;border-radius:26px;padding:14px 24px;font-weight:700;text-decoration:none}
+.btn.soft{background:var(--accent-soft);color:var(--accent-ink);padding:10px 18px;border-radius:20px}
+.hero{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;background:#EFF6FF;border:1px solid var(--accent-soft);border-radius:20px;padding:36px;margin-top:40px}
+.hero .text{flex:1 1 360px}.hero .eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--accent-ink)}.hero h2{font-size:34px}
+.hero img.shot{flex:0 1 560px;max-width:100%;border-radius:14px}.hero img.icon{width:72px;height:72px;border-radius:22%;vertical-align:middle;margin-right:12px}
+.chips{display:flex;flex-wrap:wrap;gap:10px;list-style:none;padding:0;margin:16px 0}.chips a{display:inline-block;border:1px solid var(--line);border-radius:22px;padding:10px 16px;color:var(--ink);text-decoration:none}
+.chips a.lit{background:var(--accent);color:#fff;border-color:var(--accent)}
+.app .head{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;padding-top:20px}.app .head img{width:112px;height:112px;border-radius:22%}
+.app h1{font-size:36px}.app .summary{font-size:18px}.badges{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.badges span{background:var(--soft);color:var(--body);border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700}
+.badges span.trial{background:var(--accent-soft);color:var(--accent-ink)}.badges span.ok{background:var(--ok-soft);color:var(--ok)}
+.facts{display:flex;flex-wrap:wrap;gap:28px;padding:24px 0}.facts div{font-weight:700}.facts small{display:block;font-weight:400;color:var(--muted);font-size:13px}
+.shots{display:flex;flex-wrap:wrap;gap:16px}.shots img{width:560px;max-width:100%;border-radius:14px;background:var(--soft)}
+.columns{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;padding-top:24px}.columns .texts{flex:2 1 420px}.columns .info{flex:1 1 300px;background:#F8FAFC;border:1px solid var(--line);border-radius:20px;padding:20px}
+.info dt{font-size:13px;color:var(--muted);margin-top:8px}.info dd{margin:0;font-weight:700}
+footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;background:#F8FAFC;padding:28px 0 36px;margin-top:40px;color:var(--muted);font-size:13px}
+footer .brand{font:800 18px Manrope,Inter,sans-serif;color:var(--ink)}
+html[data-ultracanvas-state="running"]{overflow:hidden}html[data-ultracanvas-state="running"] #ultrastore-shadow,html[data-ultracanvas-state="running"] #ultracanvas-status{display:none}
+@media (max-width:640px){.wrap{padding:0 16px}.hero{padding:24px}.app h1{font-size:28px}}
+</style>
+</head>
+<body>
+<div class="wrap"><header class="top"><a class="brand" href="../../"><img src="../../ultrastore.png" alt="" width="36" height="36">UltraStore</a><nav><a class="lit" href="../../">Discover</a><a href="../../categories/">Categories</a></nav><a class="get" href="https://ultraos.eu/ultrastore">Get UltraStore</a></header>
+<p id="ultracanvas-status"></p>
+<main id="ultrastore-shadow">
+<article class="app"><div class="head"><picture><source type="image/webp" srcset="../../media/org.ultraos.artcreator/ArtCreator-128.webp 1x, ../../media/org.ultraos.artcreator/ArtCreator-256.webp 2x"><img class="icon" src="../../media/org.ultraos.artcreator/ArtCreator.png" alt="ArtCreator" loading="lazy"></picture><div><h1>ArtCreator</h1><p class="summary">Vector drawing with bezier tools, text on paths and live effects.</p><p class="meta">ULTRA OS Project</p><div class="badges"><span class="trial">14-day free trial</span><span class="ok">Open source · MIT</span><span>No account needed</span><span>Updates free until 2027-12-31</span></div><p><a class="btn" href="ultrastore://app/org.ultraos.artcreator">Try free</a> <span class="price">19.90 EUR</span></p><p class="meta">Installing, trying and buying happen in the UltraStore app, which verifies every package. <a href="https://ultraos.eu/ultrastore">Get UltraStore</a>.</p></div></div>
+<div class="facts"><div>0.7.3<small>Version</small></div><div>2026-10-18<small>Released</small></div><div>Stable<small>Channel</small></div><div><a href="../../category/graphics/">Graphics and photos</a><small>Category</small></div><div>org.ultraos.artcreator<small>App id</small></div></div>
+<div class="columns"><div class="texts"><section><h2>About this app</h2><p>ArtCreator draws vector art with bezier tools, text on paths, live effects and layers, and exports SVG, PDF and the raster formats.</p></section><section><h2>What's new in 0.7.3</h2><p>Text on paths follows the path's direction.</p></section></div><dl class="info"><h2>Information</h2><dt>Publisher</dt><dd>ULTRA OS Project</dd><dt>Licence</dt><dd>MIT</dd><dt>Price</dt><dd>19.90 EUR</dd><dt>Homepage</dt><dd><a href="https://ultraos.eu">https://ultraos.eu</a></dd></dl></div></article>
+</main>
+<footer><span><span class="brand">UltraStore</span> · the ULTRA OS app store</span><span><a href="https://ultraos.eu/ultrastore">Get UltraStore</a> · <a href="https://ultraos.eu/contact">Contact</a> · Signed catalog 1</span></footer></div>
+<script src="../../ultracanvas-loader.js" data-app="../../ultrastore-web.wasm" data-runtime="../../runtime/d6051828bcfb/" data-runtime-version="0.0.0-fixture"></script>
+</body>
+</html>

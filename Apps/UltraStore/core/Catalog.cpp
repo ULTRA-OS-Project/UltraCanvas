@@ -1,6 +1,6 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
-// Version: 0.8.0 - the picture variants
+// Version: 0.8.0 - the picture variants; a price set on a free entry is kept
 // Version: 0.6.1 - market_url
 // Version: 0.6.0 - categories from one fixed list: StoreCategories, CategoryId, CheckCategories; read case-insensitively
 // Version: 0.5.1 - the messages a person reads through Tr, as whole sentences
@@ -333,7 +333,10 @@ JSONValue WriteComponent(const Component& c) {
         o.Set("screenshot_variants", lists);
     }
     if (!c.tags.empty()) o.Set("tags", WriteStrings(c.tags));
-    if (c.pricing.model != PricingModel::Free || c.pricing.trialDays > 0) {
+    // Written whenever something is set, a price on a free entry included:
+    // the admin backend keeps a component as this object and sets the
+    // fields one at a time (`app set price`, then `pricing.model`).
+    if (c.pricing.model != PricingModel::Free || c.pricing.trialDays > 0 || !c.pricing.price.empty() || !c.pricing.currency.empty()) {
         JSONValue pr = JSONValue::MakeObject();
         pr.Set("model", PricingModelName(c.pricing.model));
         if (!c.pricing.price.empty()) pr.Set("price", c.pricing.price);
@@ -341,7 +344,7 @@ JSONValue WriteComponent(const Component& c) {
         if (c.pricing.trialDays > 0) pr.Set("trial_days", static_cast<int64_t>(c.pricing.trialDays));
         o.Set("pricing", std::move(pr));
     }
-    if (c.updates.period != UpdatePeriod::Unlimited) {
+    if (c.updates.period != UpdatePeriod::Unlimited || !c.updates.until.empty()) {   // the date kept before the period is set, as the price is
         JSONValue up = JSONValue::MakeObject();
         up.Set("period", UpdatePeriodName(c.updates.period));
         if (!c.updates.until.empty()) up.Set("until", c.updates.until);

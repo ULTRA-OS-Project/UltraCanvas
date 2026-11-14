@@ -533,20 +533,20 @@ void WebStore::BuildDiscover() {
         Band band = AddBand("web.why", Theme::kPageBackground, 24.0f, 40.0f);
         band.inner->AddChild(SectionHead("web.why.head", Tr("Why UltraStore"), ""));
         auto grid = Grid("web.why.grid");
-        struct Tile { const char* title; const char* text; };
-        const Tile tiles[] = {
-            {"Signed catalog", "Every listing and package is Ed25519-signed and SHA-256 checked. Nothing a mirror serves can roll you back."},
-            {"Small downloads", "Apps share one UltraCanvas runtime. Install a second app and only its few megabytes come down."},
-            {"Try before you buy", "Paid apps install as a full trial. Buy once, and updates stay free for the period shown on the page."},
-            {"Linux, macOS, Windows", "The store picks the build for your machine, Raspberry Pi and Apple silicon included, and keeps it current."},
+        // Literal, so the catalogues carry them.
+        const std::pair<std::string, std::string> tiles[] = {
+            {Tr("Signed catalog"), Tr("Every listing and package is Ed25519-signed and SHA-256 checked. Nothing a mirror serves can roll you back.")},
+            {Tr("Small downloads"), Tr("Apps share one UltraCanvas runtime. Install a second app and only its few megabytes come down.")},
+            {Tr("Try before you buy"), Tr("Paid apps install as a full trial. Buy once, and updates stay free for the period shown on the page.")},
+            {Tr("Linux, macOS, Windows"), Tr("The store picks the build for your machine, Raspberry Pi and Apple silicon included, and keeps it current.")},
         };
         int n = 0;
-        for (const Tile& t : tiles) {
+        for (const auto& [title, text] : tiles) {
             const std::string id = "web.why." + std::to_string(n++);
             auto card = Theme::Surface(id, 8.0f, Theme::kSurfaceSoft);
             card->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(kCardMinWidth));
-            card->AddChild(Theme::Display(id + ".title", Tr(t.title), 17.0f));
-            card->AddChild(Theme::Text(id + ".text", Tr(t.text), 14.0f, FontWeight::Normal, Theme::kTextBody));
+            card->AddChild(Theme::Display(id + ".title", title, 17.0f));
+            card->AddChild(Theme::Text(id + ".text", text, 14.0f, FontWeight::Normal, Theme::kTextBody));
             grid->AddChild(card);
         }
         band.inner->AddChild(grid);
@@ -716,7 +716,9 @@ void WebStore::BuildApp(const Component& app) {
 
     // Screenshots, in the design's column, lazily: only this page asks for them.
     if (!app.screenshots.empty()) {
-        band.inner->AddChild(SectionHead("web.app.shots.head", Tr("Screenshots"), ""));
+        auto shotsHead = SectionHead("web.app.shots.head", Tr("Screenshots"), "");
+        shotsHead->SetPadding(16.0f, 0.0f, 16.0f, 0.0f);
+        band.inner->AddChild(shotsHead);
         auto row = Theme::Row("web.app.shots", Theme::kGap, true);
         for (size_t i = 0; i < app.screenshots.size(); ++i) {
             const std::vector<MediaVariant> none;

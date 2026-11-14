@@ -209,3 +209,45 @@ folder is therefore the site's document root: the admin backend's publish
 writes the store's `index.html`, the loader, the runtime (or its
 `data-runtime-version`) and the HTML shadow into it beside the catalog,
 and `upload` sends them with everything else, `catalog.json` last.
+
+## What the build found different (2026-11-14, `Apps/UltraStore/web`)
+
+Built as `Apps/UltraStore/web/` (its README has the layout and the
+numbers), with these corrections to the plan above:
+
+- **The signature is checked by the browser's own crypto, not UltraCrypt.**
+  UltraCrypt compiles under Emscripten, but the wasm sysroot has no
+  libsodium and the runtime does not carry UltraCrypt, so a side module
+  cannot call it. The module hands the catalog bytes, the signature and
+  the trusted keys to WebCrypto's Ed25519 (`crypto.subtle.verify`, in
+  Chromium, Firefox and Safari) and shows nothing until it answers; the
+  native build of the same code verifies with UltraCrypt. The trust rules
+  are the native store's: the compiled-in keys plus the keys the last
+  accepted catalog announced, kept in `localStorage` with the highest
+  sequence seen.
+- **Buy opens the native store, not the payment service's checkout.** An
+  order's licence has to land in the store that installs the app and
+  keeps the licence; a checkout started from a page would leave it with
+  the page. So *Install*, *Try* and *Buy* all open `ultrastore://app/<id>`,
+  and the page offers the store's download (`web.store_download_url`)
+  where the link finds no store. The payment service is not called from
+  the web.
+- **The HTML shadow is the admin backend's publish** (`WebSite.h`), one
+  `index.html` per page under the catalog base, each carrying the loader
+  script, `data-page` and `data-root` for the module, and the page's
+  texts for everything else; `?page=<page>` from the root is the same
+  page, and the back button works through the History API.
+- **The module's own code and the catalog's reader only**: `Catalog.cpp`
+  and `UltraStoreTypes.cpp` compile into the side module; the installer,
+  the resolver and the client stay out. `StoreTheme.h` is shared with the
+  native window, so the two look alike by construction.
+- **Fonts are the runtime's**: the side module carries none; the runtime's
+  `.data` holds `media/fonts`, Manrope and Inter among them. The subset of
+  the rule above is a change to the runtime build, not to the store.
+- **Measured by CI**: `wasm-build.yml`'s dynamic variant prints the
+  module's size in its *Demo sizes* table and
+  `Apps/UltraStore/web/test/webstore-test.mjs` checks the budgets (the
+  module's Brotli size, Discover's pictures, an app page's screenshots)
+  against a fixture store published by the admin backend
+  (`test/fixture`, `make-fixture.sh`) - the runtime from the site, a
+  tampered catalog refused, and the runtime from the extension.

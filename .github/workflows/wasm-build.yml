@@ -48,6 +48,8 @@ on:
       - 'UltraCanvas/third_party/stb/**'
       - 'Apps/DemoApp/**'
       - 'Apps/UltraDBAdmin/**'
+      - 'Apps/UltraStore/**'
+      - 'cmake/UltraStoreKeys.cmake'
       - 'Tests/UltraDBAdmin/e2e/**'
       - 'UltraCanvas/core/UltraDatabase/**'
       - 'UltraCanvas/include/UltraDatabase/**'
@@ -67,6 +69,8 @@ on:
       - 'UltraCanvas/third_party/stb/**'
       - 'Apps/DemoApp/**'
       - 'Apps/UltraDBAdmin/**'
+      - 'Apps/UltraStore/**'
+      - 'cmake/UltraStoreKeys.cmake'
       - 'Tests/UltraDBAdmin/e2e/**'
       - 'UltraCanvas/core/UltraDatabase/**'
       - 'UltraCanvas/include/UltraDatabase/**'
@@ -232,7 +236,16 @@ jobs:
           EM_PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
           PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
           PKG_CONFIG_LIBDIR: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
-        run: emcmake cmake -B build-wasm -S . ${{ matrix.configure }} -DBUILD_WASM_DEMOS=ON
+        run: |
+          # The dynamic variant also builds the UltraStore web store
+          # (Apps/UltraStore/web) as a side module, with the browser test's
+          # fixture key compiled in beside the store's keys: the fixture
+          # catalog (test/fixture) is signed with it. A test build only.
+          extra=""
+          if [ "${{ matrix.pic }}" = "1" ]; then
+            extra="-DULTRASTORE_WEB_TEST_KEYS=$(cat Apps/UltraStore/web/test/fixture/trusted-key.hex)"
+          fi
+          emcmake cmake -B build-wasm -S . ${{ matrix.configure }} -DBUILD_WASM_DEMOS=ON $extra
 
       # A job count, not a bare --parallel: under the Makefile generator that
       # is `make -j` with no limit, and run 3 of this workflow had hundreds of
@@ -278,6 +291,13 @@ jobs:
               done
               echo "| **$demo, all files** | **$(mb "$total")** | | |"
             done
+            # The web store's side module (the dynamic variant): what a
+            # visitor pays on top of the runtime, against its 150 KB
+            # Brotli budget (Docs/UltraStore/WebstoreBrief.md).
+            if [ -f Apps/UltraStore/web/ultrastore-web.wasm ]; then
+              f=Apps/UltraStore/web/ultrastore-web.wasm
+              echo "| ultrastore-web.wasm (the web store, a side module) | $(mb "$(kb "$f")") | $(gz "$f") | $(br "$f") |"
+            fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # One folder with the three pages and serve.py, so the artifact works
@@ -379,6 +399,26 @@ jobs:
         run: |
           npx playwright install chromium
           node UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs build-wasm/UltraCanvas/OS/WASM/runtime
+
+      # The UltraStore web store (Apps/UltraStore/web, Docs/UltraStore/WebstoreBrief.md):
+      # the fixture site the admin backend published, with this build's
+      # module, loader and runtime laid over it, in Chromium - the runtime
+      # from the site (Discover paints, the catalog verifies in the browser,
+      # an app page and a category open by address, the budgets hold), a
+      # tampered catalog refused, and the runtime from the extension.
+      - name: UltraStore web store in Chromium
+        if: matrix.pic == 1
+        env:
+          UWS_OUT: uws-${{ matrix.variant }}
+        run: node Apps/UltraStore/web/test/webstore-test.mjs build-wasm/Apps/UltraStore/web build-wasm/UltraCanvas/OS/WASM/runtime
+
+      - name: Upload the UltraStore web store screenshots and logs
+        if: always() && matrix.pic == 1
+        uses: actions/upload-artifact@v6
+        with:
+          name: ultrastore-web-${{ matrix.variant }}
+          path: uws-${{ matrix.variant }}
+          if-no-files-found: ignore
 
       - name: Upload the UltraCanvas runtime screenshots and logs
         if: always() && matrix.pic == 1
