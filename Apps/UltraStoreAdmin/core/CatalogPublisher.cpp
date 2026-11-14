@@ -9,6 +9,9 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "CatalogPublisher.h"
 
+#include "PackageStore.h"
+#include "WebSite.h"
+
 #include "Affiliates.h"
 #include "PageFrame.h"
 
@@ -246,9 +249,27 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
                 ++report.mediaCopied;
                 return true;
             };
+            // A variant over its budget (PackageStore.h, MediaBudget) is
+            // listed: the web store's pages are measured, and a heavy
+            // picture is the usual reason a page is over.
+            auto copyVariants = [&](const Component& c, const std::vector<UltraStore::MediaVariant>& list, MediaKind kind) -> bool {
+                for (const UltraStore::MediaVariant& v : list) {
+                    if (!copyMedia(c, v.url)) return false;
+                    const fs::path from = media / UltraCanvas::PathFromUtf8(v.url);
+                    const auto size = fs::is_regular_file(from, ec) ? fs::file_size(from, ec) : 0;
+                    const size_t budget = MediaBudget(kind, v.width);
+                    if (budget && size > budget) {
+                        report.warnings.push_back(c.id + ": " + v.url + " is " + std::to_string((size + 1023) / 1024) + " KB, over the " +
+                                                  std::to_string(budget / 1024) + " KB budget at " + std::to_string(v.width) + " px");
+                    }
+                }
+                return true;
+            };
             for (const Component& c : catalog.apps) {
                 if (!copyMedia(c, c.icon)) return R::Failure(ErrorCode::IoError, error);
+                if (!copyVariants(c, c.iconVariants, MediaKind::Icon)) return R::Failure(ErrorCode::IoError, error);
                 for (const std::string& s : c.screenshots) if (!copyMedia(c, s)) return R::Failure(ErrorCode::IoError, error);
+                for (const auto& list : c.screenshotVariants) if (!copyVariants(c, list, MediaKind::Screenshot)) return R::Failure(ErrorCode::IoError, error);
             }
         }
     }
@@ -320,6 +341,20 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
     }
     for (const PublishedPage& page : written) {
         if (const auto r = db.RememberPage(page.path, page.kind); !r) return R::Failure(r.error.code, r.error.message, r.error.detail);
+    }
+    // The web store beside the catalog (WebSite.h): wanted when web.site_dir
+    // names the web store build's site folder.
+    if (const std::string siteDir = db.Setting("web.site_dir"); !siteDir.empty()) {
+        WebSiteOptions web;
+        web.siteDirUtf8 = siteDir;
+        web.catalogBaseUrl = pagesBase;
+        web.storeDownloadUrl = db.Setting("web.store_download_url");
+        web.contactUrl = storeContact;
+        const auto site = WriteWebSite(catalog, options.outDirUtf8, web);
+        if (!site) return R::Failure(site.error.code, site.error.message, site.error.detail);
+        report.webPages = site.Value().pages;
+        report.webRuntime = site.Value().runtimeFolder;
+        for (const std::string& w : site.Value().warnings) report.warnings.push_back("web store: " + w);
     }
 
     // The catalog and its signature over those exact bytes.

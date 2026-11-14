@@ -173,7 +173,7 @@ Per app, what the admin backend offers and the catalog carries:
 | Links | `homepage`, `support_url`, `privacy_url` | |
 | Search | `categories`, `tags` | categories from the store's fixed list (below); tags free-form |
 | Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback; `source_language` names what the creator wrote, `machine_translated` the languages the server's UltraAI added (see *Translations*) |
-| Media | `icon`, `screenshots` | relative to the catalog URL, served from the same place |
+| Media | `icon`, `screenshots`, `icon_variants`, `screenshot_variants` | relative to the catalog URL, served from the same place. The variants are the pictures at the web store's sizes and browser formats, written by the admin backend at import: `icon_variants` a list of `{"format": "avif"\|"webp"\|"png"\|"jpeg", "width": <px>, "url": "media/<id>/icon-64.avif"}`, `screenshot_variants` one such list per screenshot in the screenshots' order. Icons at 64, 128 and 256 px, screenshots at 560 and 1120 px wide, never above the original. A store that does not know the keys ignores them; the web store picks the format the browser decodes and the smallest width at or above its slot times the device pixel ratio, falling back to `icon` / `screenshots` |
 | Codes | `codes[]` (catalog-wide) | the discount and affiliate codes in force: see *Affiliates and codes* |
 
 **Categories** come from one fixed list, so the store can name each in the
@@ -610,9 +610,22 @@ How the window and the web shop look is drawn in
 [`design/README.md`](design/README.md): the Discover page, an app's page,
 the category browser and the phone views, with every colour, size and font.
 
-The web shop itself - the shop pages as a WebAssembly site on the
-UltraCanvas runtime, with the size and picture rules - is planned in
-[`WebstoreBrief.md`](WebstoreBrief.md).
+**The web store** (`Apps/UltraStore/web/`, its [README](../../Apps/UltraStore/web/README.md))
+is the same shop in a browser: Discover, the categories and an app's page
+as an UltraCanvas application compiled to WebAssembly, a side module on
+the UltraCanvas runtime, served from the catalog base by the admin
+backend's publish (the setting `web.site_dir`), with an HTML shadow of
+every page for search engines and the moment before the module paints.
+It fetches `catalog.json` and `catalog.json.sig` from its own origin and
+verifies the signature in the browser (WebCrypto's Ed25519) against the
+keys built in and the ones an accepted catalog announced, with the same
+sequence check as the native store; a catalog that does not verify is not
+shown. It does not install, buy or verify a package: *Install*, *Try* and
+*Buy* open the native store's `ultrastore://app/<id>` link, because a
+licence and an install have to land in the store that keeps them, and
+where the store is missing the page offers its download
+(`web.store_download_url`). The brief it was built from, with what the
+build found different, is [`WebstoreBrief.md`](WebstoreBrief.md).
 
 `ultrastore` started plainly (or with `--catalog`, `--root`, `--channel`)
 opens the window; `Apps/UltraStore/ui/`. It follows the UltraStore shop
@@ -726,6 +739,16 @@ program, `ultrastore sha256` it, write a catalog.json with
 `http://127.0.0.1:8765/...` URLs, serve the folder with
 `python3 -m http.server 8765`, and start
 `ultrastore --catalog catalog.json --root /tmp/store`.
+
+The web store builds natively with the demos, `-DBUILD_WASM_DEMOS=ON`, as
+`ultrastore-web <publish folder> [page]`, over a folder the admin backend
+published (`Apps/UltraStore/web/test/make-fixture.sh` makes one); under
+emcmake with `-DULTRACANVAS_WASM_DYNAMIC=ON` it is the side module
+`ultrastore-web.wasm` and the `site/` folder, which `wasm-build.yml`'s
+dynamic variant builds, measures and opens in Chromium
+(`Apps/UltraStore/web/test/webstore-test.mjs`). Both trust the keys of
+`keys/*.pub` (`cmake/UltraStoreKeys.cmake`); `-DULTRASTORE_WEB_TEST_KEYS=
+<hex>` adds a test key, as CI does for the fixture.
 
 ## The operator tier (later)
 

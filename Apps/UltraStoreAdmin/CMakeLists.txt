@@ -33,6 +33,7 @@ add_library(UltraStoreAdminCore STATIC
     core/Uploader.cpp
     core/Affiliates.cpp
     core/PageFrame.cpp
+    core/WebSite.cpp
     core/Market.cpp
     core/Finance.cpp
 )

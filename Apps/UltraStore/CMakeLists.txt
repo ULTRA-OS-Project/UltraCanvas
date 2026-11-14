@@ -22,6 +22,7 @@
 # that cannot verify or cannot remember: -DBUILD_ULTRASTORE=OFF builds the
 # rest of the tree without it.
 #
+# Version: 0.3.1 - the keys through cmake/UltraStoreKeys.cmake, shared with the web store
 # Version: 0.3.0 - the window; built-in keys and servers (UltraStoreBuiltin.h)
 # Version: 0.2.0 - UltraInstaller
 # Version: 0.1.0
@@ -55,23 +56,8 @@ endif()
 # backend publishes the first catalog; the window says so.
 set(ULTRASTORE_SERVERS "https://store.ultraos.eu/v1" CACHE STRING
     "Catalog base URLs compiled into ultrastore, semicolon-separated (empty: the user enters one)")
-file(GLOB _ultrastore_key_files CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/keys/*.pub")
-list(SORT _ultrastore_key_files)
-set(ULTRASTORE_BUILTIN_KEYS_INIT "")
-foreach(_key_file IN LISTS _ultrastore_key_files)
-    file(STRINGS "${_key_file}" _key_lines REGEX "^[0-9a-fA-F]+$")
-    list(LENGTH _key_lines _key_count)
-    if(_key_count EQUAL 0)
-        message(FATAL_ERROR "UltraStore: ${_key_file} holds no hex key line")
-    endif()
-    list(GET _key_lines 0 _key_hex)
-    string(TOLOWER "${_key_hex}" _key_hex)
-    string(LENGTH "${_key_hex}" _key_len)
-    if(NOT _key_len EQUAL 64)
-        message(FATAL_ERROR "UltraStore: ${_key_file} is not a 64-digit hex public key")
-    endif()
-    string(APPEND ULTRASTORE_BUILTIN_KEYS_INIT "\"${_key_hex}\", ")
-endforeach()
+include(${CMAKE_SOURCE_DIR}/cmake/UltraStoreKeys.cmake)
+ultrastore_builtin_keys(ULTRASTORE_BUILTIN_KEYS_INIT)
 set(ULTRASTORE_BUILTIN_SERVERS_INIT "")
 foreach(_server IN LISTS ULTRASTORE_SERVERS)
     string(APPEND ULTRASTORE_BUILTIN_SERVERS_INIT "\"${_server}\", ")
