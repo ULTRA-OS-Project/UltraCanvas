@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/Finance.cpp
+// Version: 0.2.0 - a period as a date range, the weeks, DaysAgoIso
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Finance.h"
@@ -222,8 +223,62 @@ Result<PayoutRecord> RecordPayout(AdminDatabase& db, const std::string& affiliat
 
 // ----- the report -----
 
+namespace {
+// Days since 1970-01-01 of a civil date (Howard Hinnant's algorithm); the
+// inverse for the way back. Enough for the ledger's dates, no time zones.
+int64_t DaysFromCivil(int y, int m, int d) {
+    y -= m <= 2;
+    const int64_t era = (y >= 0 ? y : y - 399) / 400;
+    const int64_t yoe = y - era * 400;
+    const int64_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const int64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + doe - 719468;
+}
+std::string CivilFromDays(int64_t z) {
+    z += 719468;
+    const int64_t era = (z >= 0 ? z : z - 146096) / 146097;
+    const int64_t doe = z - era * 146097;
+    const int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const int64_t y = yoe + era * 400;
+    const int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const int64_t mp = (5 * doy + 2) / 153;
+    const int64_t d = doy - (153 * mp + 2) / 5 + 1;
+    const int64_t m = mp + (mp < 10 ? 3 : -9);
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "%04lld-%02lld-%02lld", static_cast<long long>(y + (m <= 2)), static_cast<long long>(m), static_cast<long long>(d));
+    return buffer;
+}
+bool DaysOf(const std::string& isoDate, int64_t& days) {
+    if (isoDate.size() < 10 || isoDate[4] != '-' || isoDate[7] != '-') return false;
+    const int y = std::atoi(isoDate.substr(0, 4).c_str()), m = std::atoi(isoDate.substr(5, 2).c_str()), d = std::atoi(isoDate.substr(8, 2).c_str());   // locale-ok: digits only
+    if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+    days = DaysFromCivil(y, m, d);
+    return true;
+}
+} // namespace
+
 bool InPeriod(const std::string& isoDate, const std::string& period) {
-    return period.empty() || isoDate.compare(0, period.size(), period) == 0;
+    if (period.empty()) return true;
+    if (const size_t dots = period.find(".."); dots != std::string::npos) {
+        const std::string from = period.substr(0, dots), to = period.substr(dots + 2);
+        const std::string day = isoDate.substr(0, 10);
+        return (from.empty() || day >= from) && (to.empty() || day < to);
+    }
+    return isoDate.compare(0, period.size(), period) == 0;
+}
+
+std::string DaysAgoIso(int days, const std::string& todayIso) {
+    int64_t today = 0;
+    if (!DaysOf(todayIso.empty() ? NowIso8601() : todayIso, today)) return {};
+    return CivilFromDays(today - days);
+}
+
+std::string WeekStartOf(const std::string& isoDate) {
+    int64_t days = 0;
+    if (!DaysOf(isoDate, days)) return {};
+    // 1970-01-01 was a Thursday: day 0 is weekday 3 with Monday as 0.
+    const int64_t weekday = ((days % 7) + 7 + 3) % 7;
+    return CivilFromDays(days - weekday);
 }
 
 std::string MonthOf(const std::string& isoDate) {
@@ -232,6 +287,7 @@ std::string MonthOf(const std::string& isoDate) {
 
 std::string PeriodName(const std::string& period) {
     if (period.empty()) return "All time";
+    if (const size_t dots = period.find(".."); dots != std::string::npos) return period.substr(0, dots) + " to " + period.substr(dots + 2);
     if (period.size() == 4) return period;
     const int m = std::atoi(period.substr(5, 2).c_str());   // locale-ok: digits only
     if (m < 1 || m > 12) return period;
@@ -341,6 +397,33 @@ Result<FinanceReport> BuildFinanceReport(const AdminDatabase& db, const std::str
         auto owes = [](const PartnerBalance& p) { for (const auto& [_, sum] : p.owed) if (CentsOrZero(sum) > 0) return true; return false; };
         return owes(a) && !owes(b);
     });
+    return R::Succeed(std::move(out));
+}
+
+Result<std::vector<WeekNet>> WeeklyFinance(const AdminDatabase& db, int weeks, const std::string& untilIso) {
+    using R = Result<std::vector<WeekNet>>;
+    const auto sales = db.Sales();
+    if (!sales) return R::Failure(sales.error.code, sales.error.message, sales.error.detail);
+    const auto reversals = db.Reversals();
+    if (!reversals) return R::Failure(reversals.error.code, reversals.error.message, reversals.error.detail);
+    const std::string lastWeek = WeekStartOf(untilIso.empty() ? NowIso8601() : untilIso);
+    if (lastWeek.empty()) return R::Failure(ErrorCode::InvalidArgument, "The date is YYYY-MM-DD", untilIso);
+    int64_t lastDays = 0;
+    DaysOf(lastWeek, lastDays);
+    std::vector<WeekNet> out;
+    for (int i = std::max(1, weeks) - 1; i >= 0; --i) {
+        WeekNet w;
+        w.weekStart = CivilFromDays(lastDays - 7 * i);
+        out.push_back(std::move(w));
+    }
+    auto bucket = [&out](const std::string& at) -> FinanceTotals* {
+        const std::string start = WeekStartOf(at);
+        for (WeekNet& w : out) if (w.weekStart == start) return &w.totals;
+        return nullptr;
+    };
+    for (const SaleRecord& s : sales.Value()) if (FinanceTotals* t = bucket(s.at)) AddTotals(*t, s);
+    for (const ReversalRecord& v : reversals.Value()) if (FinanceTotals* t = bucket(v.at)) AddTotals(*t, v);
+    for (WeekNet& w : out) FinishTotals(w.totals);
     return R::Succeed(std::move(out));
 }
 

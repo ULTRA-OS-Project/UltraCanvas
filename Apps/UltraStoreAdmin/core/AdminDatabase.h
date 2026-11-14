@@ -11,6 +11,7 @@
 // setting the catalog grows is kept without a schema change. The tables that
 // are queried on their own - package files by hash, keys, settings - are
 // tables.
+// Version: 0.5.1 - ComponentUpdates
 // Version: 0.5.0 - the reversals (refunds and chargebacks) and the payouts to the partners, schema 5
 // Version: 0.4.0 - the pages ever published (published_pages), schema 4
 // Version: 0.3.0 - a sale's reference (the payment service's order), schema 3
@@ -24,6 +25,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace UltraStoreAdmin {
@@ -169,6 +171,7 @@ public:
     Result<void> PutComponent(const Component& component);     // adds or replaces
     Result<Component> GetComponent(const std::string& id) const;
     Result<std::vector<Component>> Components() const;         // apps and components, by id
+    Result<std::vector<std::pair<std::string, std::string>>> ComponentUpdates() const;   // id -> when it was last written (ISO 8601), by id
     Result<void> RemoveComponent(const std::string& id);
 
     // ----- the files behind the packages -----
