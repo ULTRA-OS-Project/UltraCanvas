@@ -15,6 +15,8 @@
 //                                (what UltraDesktop's "start with the desktop" asks)
 //   ChatCube --version / --help
 //
+// Version: 0.2.1 - the look decided again at every change (the desktop's, the Settings window's): the
+//                  provider asks ChatCube::DarkLook; the elements follow the theme by default
 // Version: 0.2.0 - the theme under the Own policy: ThemeFor over the settings' look (System follows the desktop) and --dark, the host's fonts
 // Version: 0.1.5 - the settings (ChatCubeSettings): the look from them unless --dark says, handed to the window
 // Version: 0.1.4 - --minimized (UltraDesktop's "start with the desktop")
@@ -23,7 +25,7 @@
 // Version: 0.1.2 - --dark
 // Version: 0.1.1 - --debug and --log
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ui/ChatCubeSettings.h"
@@ -225,16 +227,21 @@ int main(int argc, char** argv) {
     // System - and --dark over it.
     ChatCube::Settings settings;
     settings.Load();
-    dark = dark || settings.DarkFor(app.GetHostAppearance().dark);
+    ChatCube::SetLookChoice(settings.look);
+    if (dark) ChatCube::ForceDarkLook();
     app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/ChatCube.png"));
     // The look, before any element is built: every element and the lists'
     // own painting take their colours from it (ui/ChatCubeTheme.h). The
-    // app's own theme under the policy: the look decided at this start
-    // (the window's own painting reads it once), the host's fonts again on
-    // every change of the desktop.
+    // app's own theme under the policy, built again on every change of the
+    // desktop (light or dark under System, its fonts) and when the Settings
+    // window changes the look; the window styles itself again then
+    // (ChatCubeWindow::ApplyLook). The framework's elements ChatCube does not
+    // colour itself - menus, dialogs, the tree's and lists' scroll bars -
+    // follow the theme as they would under the host's.
     app.SetThemePolicy(UltraCanvas::ThemePolicy::Own);
-    app.SetThemeProvider([dark](const UltraCanvas::HostAppearance& host) {
-        UltraCanvas::UltraCanvasTheme theme = ChatCube::ThemeFor(dark);
+    UltraCanvas::UltraCanvasUIElement::SetFollowThemeByDefault(true);
+    app.SetThemeProvider([](const UltraCanvas::HostAppearance& host) {
+        UltraCanvas::UltraCanvasTheme theme = ChatCube::ThemeFor(ChatCube::DarkLook(host.dark));
         theme.TakeHostFonts(host);
         return theme;
     });

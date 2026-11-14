@@ -1,10 +1,13 @@
 // Apps/ChatCube/ui/ChatCubeTheme.cpp
 // See ChatCubeTheme.h.
+// Version: 0.2.0 - L(), OnLook, RestyleForLook, SetInk: the look follows a change of the theme;
+//                  SetLookChoice / DarkLook: the theme provider decides light or dark at every change
+// Version: 0.1.4 - InkOn: initials that read on every avatar colour; the light avatars deeper (4.5:1 under white)
 // Version: 0.1.3 - PaintPin: the mark of a conversation pinned to the top
 // Version: 0.1.2 - PaintTicks: the ticks as strokes, for the fonts that have no check mark
 // Version: 0.1.1 - an avatar from the person's picture; a picture in a rounded box; a play mark
 // Version: 0.1.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ChatCubeTheme.h"
 
@@ -13,6 +16,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace UltraCanvas;
@@ -28,9 +33,11 @@ const Color kGreenOnDarkHover(96, 205, 128, 255);
 const Color kWhite(255, 255, 255, 255);
 
 // The avatar palette: eight hues that read on white and on the dark panel.
+// The light ones deep enough for white initials (4.5:1) and for a sender's
+// name on a white bubble; the dark ones light, under the dark ink (InkOn).
 const std::array<Color, 8> kAvatarsLight = {
-    Color(228, 93, 86, 255),  Color(224, 128, 44, 255),  Color(196, 160, 20, 255),  Color(52, 160, 96, 255),
-    Color(40, 150, 170, 255), Color(64, 118, 220, 255),  Color(132, 94, 210, 255),  Color(200, 82, 150, 255)};
+    Color(196, 79, 73, 255),  Color(172, 98, 33, 255),   Color(139, 113, 14, 255),  Color(43, 132, 79, 255),
+    Color(33, 127, 144, 255), Color(61, 113, 211, 255),  Color(132, 94, 210, 255),  Color(186, 76, 139, 255)};
 const std::array<Color, 8> kAvatarsDark = {
     Color(236, 112, 104, 255), Color(236, 148, 70, 255), Color(214, 180, 48, 255), Color(76, 184, 118, 255),
     Color(66, 176, 196, 255),  Color(96, 146, 236, 255), Color(156, 122, 228, 255), Color(220, 108, 172, 255)};
@@ -104,6 +111,36 @@ UltraCanvasTheme ThemeFor(bool dark) {
     return t;
 }
 
+namespace {
+
+struct LookChoice {
+    std::string look = "system";
+    bool forceDark = false;
+};
+
+LookChoice& Choice() {
+    static LookChoice choice;
+    return choice;
+}
+
+} // namespace
+
+bool SetLookChoice(const std::string& look) {
+    LookChoice& c = Choice();
+    if (c.look == look) return false;
+    c.look = look;
+    return true;
+}
+
+void ForceDarkLook() {
+    Choice().forceDark = true;
+}
+
+bool DarkLook(bool hostDark) {
+    const LookChoice& c = Choice();
+    return c.forceDark || c.look == "dark" || (c.look != "light" && hostDark);
+}
+
 Look LookOf(const UltraCanvasTheme& theme) {
     const ThemeRoles& r = theme.roles;
     Look l;
@@ -142,6 +179,89 @@ Look CurrentLook() {
     return LookOf(UltraCanvasTheme::Current());
 }
 
+// The colours of the theme in force, read again by RestyleForLook.
+namespace {
+
+Look& StoredLook() {
+    static Look look = CurrentLook();
+    return look;
+}
+
+struct Restyler {
+    std::weak_ptr<void> owner;
+    std::function<void()> apply;
+};
+
+std::vector<Restyler>& Restylers() {
+    static std::vector<Restyler> restylers;
+    return restylers;
+}
+
+// The role each label's text is in (SetInk, MakeLabel), by the label.
+struct InkRole {
+    std::weak_ptr<void> owner;
+    LookRole role;
+};
+
+std::unordered_map<const void*, InkRole>& InkRoles() {
+    static std::unordered_map<const void*, InkRole> roles;
+    return roles;
+}
+
+void TrackInk(const std::shared_ptr<UltraCanvasLabel>& label, LookRole role) {
+    auto& roles = InkRoles();
+    auto found = roles.find(label.get());
+    if (found != roles.end() && !found->second.owner.expired()) {
+        found->second.role = role;
+        return;
+    }
+    roles[label.get()] = InkRole{label, role};
+    UltraCanvasLabel* raw = label.get();
+    AddLookRestyler(label, [raw]() {
+        auto at = InkRoles().find(raw);
+        if (at != InkRoles().end()) raw->SetTextColor(L().*(at->second.role));
+    });
+}
+
+} // namespace
+
+const Look& L() {
+    return StoredLook();
+}
+
+void AddLookRestyler(std::weak_ptr<void> owner, std::function<void()> apply) {
+    Restylers().push_back(Restyler{std::move(owner), std::move(apply)});
+}
+
+void RestyleForLook() {
+    StoredLook() = CurrentLook();
+    // The elements gone since the last change leave the lists; one that a
+    // restyler builds now is added at the end and kept for the next.
+    auto& roles = InkRoles();
+    for (auto it = roles.begin(); it != roles.end();) {
+        if (it->second.owner.expired()) it = roles.erase(it);
+        else ++it;
+    }
+    auto& list = Restylers();
+    list.erase(std::remove_if(list.begin(), list.end(), [](const Restyler& r) { return r.owner.expired(); }),
+               list.end());
+    const size_t count = list.size();
+    for (size_t i = 0; i < count; ++i) {
+        if (list[i].owner.expired()) continue;
+        std::function<void()> apply = list[i].apply;    // a restyler may add to the list
+        apply();
+    }
+}
+
+void SetInk(const std::shared_ptr<UltraCanvasLabel>& label, LookRole role) {
+    if (!label) return;
+    // Styled here, not by the theme: a label that followed it would take
+    // the theme's body size on the next change.
+    label->SetFollowTheme(false);
+    label->SetTextColor(L().*role);
+    TrackInk(label, role);
+}
+
 std::string IconPath(const std::string& name) {
     return NormalizePath(GetResourcesDir() + "media/icons/chatcube/" + name + ".svg");
 }
@@ -168,6 +288,11 @@ std::string Initials(const std::string& title) {
     return out;
 }
 
+Color InkOn(const Color& fill) {
+    static const Color kDarkInk(20, 22, 26, 255);
+    return UltraCanvasTheme::Contrast(kDarkInk, fill) > UltraCanvasTheme::Contrast(kWhite, fill) ? kDarkInk : kWhite;
+}
+
 Color AvatarColor(const std::string& key, const Look& look) {
     uint32_t h = 2166136261u;
     for (unsigned char c : key) h = (h ^ c) * 16777619u;
@@ -186,7 +311,7 @@ void PaintAvatar(IRenderContext* ctx, const Point2Dd& centre, double radius, con
     ctx->SetTextWrap(TextWrap::WrapNone);
     ctx->SetTextAlignment(TextAlignment::Center);
     ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-    ctx->SetTextPaint(isGroup ? look.inkMuted : kWhite);
+    ctx->SetTextPaint(isGroup ? look.inkMuted : InkOn(fill));
     ctx->DrawTextInRect(text, Rect2Dd(centre.x - radius, centre.y - radius, 2 * radius, 2 * radius));
 }
 
