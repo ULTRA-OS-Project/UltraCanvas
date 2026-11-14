@@ -242,17 +242,26 @@ void UltraDesktopAppStarter::SetView(const std::string& view) {
 
 void UltraDesktopAppStarter::Rebuild() {
     if (!body_) return;
-    body_->ClearChildren();
-    tileApps_.clear();
-    dropZones_.clear();
-    tilesArea_ = nullptr;
+    // What the pane holds is thrown away and built again - unless the tree
+    // is on screen and stays on screen, in which case the tree and the list
+    // beside it are kept and only the tree's rows are replaced (FillTree).
+    // Replacing the elements threw away the view with them: the category the
+    // user had chosen, the rows they had opened and where they had scrolled
+    // to all went, on every keystroke in the filter box.
+    const auto dropThePane = [this]() {
+        body_->ClearChildren();
+        tileApps_.clear();
+        dropZones_.clear();
+        tilesArea_ = nullptr;
+        tree_.reset();
+        list_.reset();
+        listModel_.reset();
+    };
     nodeGroup_.clear();
-    tree_.reset();
-    list_.reset();
-    listModel_.reset();
     nodeApps_.clear();
     listed_.clear();
     if (!apps_) {
+        dropThePane();
         status_->SetText("Loading applications…");
         return;
     }
@@ -273,13 +282,19 @@ void UltraDesktopAppStarter::Rebuild() {
     }
     status_->SetText(std::to_string(shown) + " of " + std::to_string(apps_->size()) + " applications");
 
+    // The tree pane is kept only while it is the thing on screen and there
+    // is something to show in it.
+    const bool keepTreePane = !groups.empty() && view_ == "tree" && tree_ && list_ && listModel_;
+    if (!keepTreePane) dropThePane();
+
     if (groups.empty()) {
         auto none = CreateLabel("appsNone", filter_.empty() ? "No applications were found."
                                                             : "No application matches \"" + filter_ + "\".");
         none->SetTextColor(kStatusColor);
         body_->AddChild(none);
     } else if (view_ == "tree") {
-        BuildTreeAndList(groups);
+        if (keepTreePane) FillTree(groups);
+        else BuildTreeAndList(groups);
     } else {
         BuildTiles(groups);
     }
@@ -387,32 +402,16 @@ void UltraDesktopAppStarter::BuildTreeAndList(const std::vector<AppGroup>& group
     tree_->SetShowFirstChildOnExpand(false);
     tree_->size.width = CSSLayout::Dimension::Px(kTreeWidth);
     tree_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    tree_->SetRootNode(TreeNodeData("apps", "Applications"));
     tree_->SetRootVisible(false);
-    for (const AppGroup& group : groups) {
-        const std::string id = "cat:" + group.key;
-        TreeNodeData data(id, group.title + "  (" + std::to_string(group.count) + ")");
-        data.leftIcon = TreeNodeIcon(IconsDir() + group.icon, 18, 18);
-        data.showFirstChildOnExpand = false;
-        tree_->AddNode("apps", data);
-        if (group.category != AppCategory::Recent) nodeGroup_[id] = group.key;
-        std::vector<size_t>& all = nodeApps_[id];
-        for (size_t s = 0; s < group.sections.size(); ++s) {
-            const AppSection& section = group.sections[s];
-            all.insert(all.end(), section.apps.begin(), section.apps.end());
-            if (section.title.empty()) continue;
-            const std::string subId = id + ":" + std::to_string(s);
-            tree_->AddNode(id, TreeNodeData(subId, section.title + "  (" + std::to_string(section.apps.size()) + ")"));
-            nodeApps_[subId] = section.apps;
-            if (group.category != AppCategory::Recent) nodeGroup_[subId] = group.key;
-        }
-        // A split category lists its applications by name.
-        if (group.sections.size() > 1) {
-            std::sort(all.begin(), all.end());
-        }
-    }
     tree_->onNodeSelected = [this](TreeNode* node) {
         if (node) ShowListOf(node->data.nodeId);
+    };
+    // Which rows the user has open, so a rebuild can open them again.
+    tree_->onNodeExpanded  = [this](TreeNode* node) {
+        if (node) expandedNodes_.insert(node->data.nodeId);
+    };
+    tree_->onNodeCollapsed = [this](TreeNode* node) {
+        if (node) expandedNodes_.erase(node->data.nodeId);
     };
     pane->AddChild(tree_);
 
@@ -443,8 +442,48 @@ void UltraDesktopAppStarter::BuildTreeAndList(const std::vector<AppGroup>& group
     pane->AddChild(list_);
     body_->AddChild(pane);
 
-    // Where the window opens: the node chosen before (the filter rebuilt
-    // the tree), else the first category - Recent when there is a history.
+    FillTree(groups);
+}
+
+void UltraDesktopAppStarter::FillTree(const std::vector<AppGroup>& groups) {
+    if (!tree_) return;
+    // Every row is replaced; the scope keeps the view the user had, and the
+    // rows they had opened are opened again below (a new row is closed).
+    TreeRebuildScope keepTheView(*tree_);
+    tree_->SetRootNode(TreeNodeData("apps", "Applications"));
+    for (const AppGroup& group : groups) {
+        const std::string id = "cat:" + group.key;
+        TreeNodeData data(id, group.title + "  (" + std::to_string(group.count) + ")");
+        data.leftIcon = TreeNodeIcon(IconsDir() + group.icon, 18, 18);
+        data.showFirstChildOnExpand = false;
+        tree_->AddNode("apps", data);
+        if (group.category != AppCategory::Recent) nodeGroup_[id] = group.key;
+        std::vector<size_t>& all = nodeApps_[id];
+        for (size_t s = 0; s < group.sections.size(); ++s) {
+            const AppSection& section = group.sections[s];
+            all.insert(all.end(), section.apps.begin(), section.apps.end());
+            if (section.title.empty()) continue;
+            const std::string subId = id + ":" + std::to_string(s);
+            tree_->AddNode(id, TreeNodeData(subId, section.title + "  (" + std::to_string(section.apps.size()) + ")"));
+            nodeApps_[subId] = section.apps;
+            if (group.category != AppCategory::Recent) nodeGroup_[subId] = group.key;
+        }
+        // A split category lists its applications by name.
+        if (group.sections.size() > 1) {
+            std::sort(all.begin(), all.end());
+        }
+    }
+
+    // The rows the user had open. A row the filter left out comes back open
+    // when it returns, which is what someone narrowing a search expects.
+    for (const std::string& nodeId : expandedNodes_) {
+        if (TreeNode* node = tree_->FindNode(nodeId); node && !node->children.empty()) {
+            node->Expand();
+        }
+    }
+
+    // Where the window opens: the node chosen before (the filter filled the
+    // tree again), else the first category - Recent when there is a history.
     std::string start = nodeApps_.count(selectedNode_) ? selectedNode_ : "cat:" + groups.front().key;
     if (TreeNode* node = tree_->FindNode(start)) {
         tree_->SelectNode(node);
