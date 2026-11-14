@@ -401,9 +401,18 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
     folderTree_->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
         ShowFolderMenu(node, event);
     };
-    // A fitted tree follows the rows on show.
-    folderTree_->onNodeExpanded  = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
-    folderTree_->onNodeCollapsed = [this](TreeNode*) { if (folderTreeFitToText_) ApplyFolderTreeWidth(); };
+    // A fitted tree follows the rows on show, and what the user opened or
+    // closed is remembered for the next rebuild of the tree.
+    folderTree_->onNodeExpanded  = [this](TreeNode* node) {
+        if (suppressTreeCallback_) return;
+        if (node) collapsedFolders_.erase(node->data.nodeId);
+        if (folderTreeFitToText_) ApplyFolderTreeWidth();
+    };
+    folderTree_->onNodeCollapsed = [this](TreeNode* node) {
+        if (suppressTreeCallback_) return;
+        if (node) collapsedFolders_.insert(node->data.nodeId);
+        if (folderTreeFitToText_) ApplyFolderTreeWidth();
+    };
     FillWith(folderBox_, folderTree_);
     FillWith(folderPane, folderBox_);
 
@@ -1124,6 +1133,15 @@ void MailView::RebuildFolderTree() {
 
     Trace::Stage step("Expand the tree, select the folder, fit its width", 0);
     folderTree_->ExpandAll();
+    // ExpandAll opens every row of the new tree, so the rows the user had
+    // closed are closed again here - otherwise a folder collapsed by hand
+    // reopened at the next mail check. No callback fires for either: neither
+    // is the user's doing.
+    suppressTreeCallback_ = true;
+    for (const std::string& nodeId : collapsedFolders_) {
+        if (TreeNode* node = folderTree_->FindNode(nodeId)) folderTree_->CollapseNode(node);
+    }
+    suppressTreeCallback_ = false;
     SelectFolderNode(curAccount_, curFolder_);
     // The rows are all there: measure the tree once, put the view back, and
     // only then fit the pane to it (the fit counts the scrollbar, which is

@@ -6715,6 +6715,29 @@ else()
     message(STATUS "  ToolbarThicknessTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TOOLBAR ITEM REORDER TEST =====
+# EnableItemReordering: an item dragged past its neighbours takes their place
+# and the drop says where it ended up - including when two drag steps fall
+# inside one frame, where the move used to be undone by the hit test reading
+# bounds the layout had not caught up with. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolbarItemReorderTest...")
+    add_executable(ToolbarItemReorderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ToolbarItemReorderTest.cpp
+    )
+    target_include_directories(ToolbarItemReorderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ToolbarItemReorderTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolbarItemReorderTest PRIVATE UltraCanvas)
+    set_target_properties(ToolbarItemReorderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ToolbarItemReorderTest COMMAND ToolbarItemReorderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolbarItemReorderTest")
+else()
+    message(STATUS "  ToolbarItemReorderTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TOOLBAR OVERFLOW MENU TEST =====
 # groupSpacing is the gap across a separator, and ToolbarOverflowMode::Menu
 # takes what does not fit off the end of the bar into a chevron's menu.

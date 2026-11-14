@@ -1,5 +1,8 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.13.2 - 2026-11-14 - GetNodeAtY stops at the foot of the rows' viewport (the padding
+//                   and the border are over no row); ScrollTo does nothing for a row that is not
+//                   on show, instead of jumping to the top
 // Version: 1.13.1 - 2026-11-13 - the rows' viewport is the content box, not the whole element:
 //                   the last row can be scrolled fully into view, and a page of rows (Page Up /
 //                   Page Down) is the rows a page really shows
@@ -38,7 +41,7 @@
 //                  into the removed subtree
 // Version: 1.0.0 - the tree view: rows with icons and text, expanders, check flags, lines
 //                  (the numbers before 1.6.0 were given afterwards, from the framework changelog)
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-14
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -491,7 +494,9 @@ public:
     TreeNode* FindNode(const std::string& nodeId);
     // The row at element-local y (as scrolled: MapToLocal of a window
     // point), null below the last row - where something dragged from
-    // another element (a list's row) is dropped.
+    // another element (a list's row) is dropped. Null as well for a y outside
+    // the rows' viewport: above it in the fixed header band, and below it in
+    // the padding or on the bottom border, where Render draws no row either.
     TreeNode* GetNodeAtY(int y);
 
     // ===== REBUILDING THE ROWS IN PLACE =====
@@ -704,6 +709,11 @@ public:
     void SortAllNodes(bool ascending = true);
 
     // ===== SCROLLING =====
+    // Scroll `node`'s row into view, by the shortest move that shows it whole.
+    // A row with no place on screen - under a collapsed parent, hidden by the
+    // application or by a filter - is left alone, since no scroll position
+    // shows it; ScrollToSelection() opens the parents of the selected row
+    // first and is what reveals one.
     void ScrollTo(TreeNode* node);
     void ScrollBy(int deltaY);
     // Jump back to the first row (animated when the scrollbar has smooth scrolling on).

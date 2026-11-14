@@ -519,6 +519,12 @@ std::string DeviceExplorerPanel::IconFor(const DeviceGroup& group) const {
 
 void DeviceExplorerPanel::RebuildTree() {
     if (!deviceTree_) return;
+    // The tree is rebuilt row by row after every scan - the timer runs one
+    // while the user reads the list - and without the scope the measure that
+    // follows each AddNode leaves the view on the first row, so the device
+    // being read scrolled away by itself. The scope holds the scroll position
+    // and the selected row's place on screen.
+    TreeRebuildScope keepTheView(*deviceTree_);
     rebuilding_ = true;
     groups_ = GroupDevices(inventory_, grouping_, filter_);
 
