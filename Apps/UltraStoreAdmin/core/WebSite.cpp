@@ -117,7 +117,7 @@ bool WriteWhole(const fs::path& path, const std::string& bytes, std::string& err
     return true;
 }
 
-bool CopyFile(const fs::path& from, const fs::path& to, std::string& error) {
+bool CopySiteFile(const fs::path& from, const fs::path& to, std::string& error) {
     std::error_code ec;
     if (fs::is_regular_file(to, ec) && fs::file_size(to, ec) == fs::file_size(from, ec)) return true;
     fs::create_directories(to.parent_path(), ec);
@@ -442,9 +442,9 @@ Result<WebSiteReport> WriteWebSite(const Catalog& catalog, const std::string& ou
     } else {
         // The module, the loader and the mark.
         if (fs::is_regular_file(site / kModuleFile, ec)) {
-            if (!CopyFile(site / kModuleFile, out / kModuleFile, error)) return R::Failure(ErrorCode::IoError, error);
+            if (!CopySiteFile(site / kModuleFile, out / kModuleFile, error)) return R::Failure(ErrorCode::IoError, error);
             if (fs::is_regular_file(site / kLoaderFile, ec)) {
-                if (!CopyFile(site / kLoaderFile, out / kLoaderFile, error)) return R::Failure(ErrorCode::IoError, error);
+                if (!CopySiteFile(site / kLoaderFile, out / kLoaderFile, error)) return R::Failure(ErrorCode::IoError, error);
                 report.moduleCopied = true;
             } else {
                 report.warnings.push_back(std::string("the site folder has no ") + kLoaderFile + ": the pages are written without the web store's module");
@@ -453,7 +453,7 @@ Result<WebSiteReport> WriteWebSite(const Catalog& catalog, const std::string& ou
             report.warnings.push_back(std::string("the site folder has no ") + kModuleFile + ": the pages are written without the web store's module");
         }
         if (fs::is_regular_file(site / kMarkFile, ec)) {
-            if (!CopyFile(site / kMarkFile, out / kMarkFile, error)) return R::Failure(ErrorCode::IoError, error);
+            if (!CopySiteFile(site / kMarkFile, out / kMarkFile, error)) return R::Failure(ErrorCode::IoError, error);
         }
         // The runtime, under its hash: a visitor's browser keeps it for a year
         // (the host's cache header), and a new runtime is a new folder.
@@ -465,7 +465,7 @@ Result<WebSiteReport> WriteWebSite(const Catalog& catalog, const std::string& ou
                 for (const char* name : kRuntimeFiles) {
                     const fs::path from = site / "runtime" / name;
                     if (!fs::is_regular_file(from, ec)) { report.warnings.push_back(std::string("the site folder's runtime lacks ") + name); continue; }
-                    if (!CopyFile(from, out / UltraCanvas::PathFromUtf8(report.runtimeFolder) / name, error)) return R::Failure(ErrorCode::IoError, error);
+                    if (!CopySiteFile(from, out / UltraCanvas::PathFromUtf8(report.runtimeFolder) / name, error)) return R::Failure(ErrorCode::IoError, error);
                 }
             }
         } else if (report.moduleCopied) {

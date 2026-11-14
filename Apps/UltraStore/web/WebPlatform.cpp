@@ -109,7 +109,7 @@ void Platform::FetchText(const std::string& relativeUrl, std::function<void(bool
 }
 
 void Platform::LoadPicture(const std::string& relativeUrl, std::function<void(std::shared_ptr<UltraCanvas::UCImage>)> done) {
-    UltraCanvas::WASMResourceLoader::LoadImage(gRoot + relativeUrl,
+    UltraCanvas::WASMResourceLoader::LoadImage(gRoot + relativeUrl,   // win32-name-ok: the browser backend's own name, in an Emscripten-only block
         [done = std::move(done)](bool ok, int width, int height, const std::vector<uint8_t>& pixels) {
             if (!ok || width <= 0 || height <= 0) { done(nullptr); return; }
             done(UltraCanvas::UCImageRaster::FromRgba(pixels.data(), width, height));
