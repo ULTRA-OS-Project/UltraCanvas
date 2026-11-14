@@ -1,5 +1,7 @@
 // Apps/UltraClipboard/ui/ClipboardDialogs.cpp
 // The edit and settings dialogs. See ClipboardDialogs.h.
+// Version: 0.1.8 - the text areas' borders and the security note from the theme
+//                  (UltraCanvasTheme roles), so a dark look keeps them readable
 // Version: 0.1.7 - Proxy settings at the foot of the settings dialog (the shared
 //                  dialog: the cloud text recognition goes through that proxy)
 // Version: 0.1.6 - every text through Tr (UltraLocalisation)
@@ -18,6 +20,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasLanguageDetect.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
@@ -92,7 +95,7 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
     auto area = std::make_shared<UltraCanvasTextArea>("cbe.text", 0, 0, kContentWidth, 280);
     area->SetText(state->originalText);
     area->SetWordWrap(entry.kind != ClipboardEntryKind::Code);
-    area->SetBorders(1, Color(209, 213, 219), 6);
+    area->SetBorders(1, UltraCanvasTheme::Current().roles.lineStrong, 6);
     if (entry.kind == ClipboardEntryKind::Code) {
         if (auto* app = UltraCanvasApplication::GetInstance()) {
             area->SetFontFamily(app->GetDefaultMonospacedFontStyle().fontFamily);
@@ -283,7 +286,7 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     dialog->AddDialogElement(CreateLabel("cbs.excludedLabel", 0, 0, kContentWidth, 24,
                                          Tr("Never record copies from these programs (one per line):")));
     auto excluded = std::make_shared<UltraCanvasTextArea>("cbs.excluded", 0, 0, kContentWidth, 104);
-    excluded->SetBorders(1, Color(209, 213, 219), 6);
+    excluded->SetBorders(1, UltraCanvasTheme::Current().roles.lineStrong, 6);
     std::string excludedText;
     for (const std::string& name : policy.excludedApplications) excludedText += name + "\n";
     excluded->SetText(excludedText);
@@ -304,7 +307,7 @@ void ShowSettingsDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHisto
     auto securityLabel = CreateLabel("cbs.security", 0, 0, kContentWidth, 96, security);
     securityLabel->SetWrap(TextWrap::WrapWord);
     securityLabel->SetFontSize(8.5f);
-    securityLabel->SetTextColor(Color(90, 96, 105));
+    securityLabel->SetTextColor(UltraCanvasTheme::Current().roles.inkMuted);
     dialog->AddDialogElement(securityLabel);
 
     // The proxy every ULTRA OS application connects through - text

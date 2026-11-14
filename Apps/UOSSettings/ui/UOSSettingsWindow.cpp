@@ -1,6 +1,8 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.18.1 - the scrolled pages and tables take the theme's scrollbars
+//                  (ContainerStyle::FromTheme), not the light default
 // Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
 //                  same as Appearance > Look: one look for every application
 // Version: 0.17.0 - Desktop > Info bar: a switch for each icon of the desktop's
@@ -240,7 +242,7 @@ namespace {
         {
             // Vertically only: a vertical bar narrows the rows, which must not
             // turn into a horizontal overflow of its own width.
-            ContainerStyle cs;
+            ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
             cs.autoShowScrollbars = true;
             cs.autoShowHorizontalScrollbar = false;
             rows->SetContainerStyle(cs);
@@ -370,7 +372,7 @@ void UOSSettingsWindow::BuildInfoBarPage() {
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     {
-        ContainerStyle cs;
+        ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
         cs.autoShowScrollbars = true;
         cs.autoShowHorizontalScrollbar = false;
         page->SetContainerStyle(cs);
@@ -460,7 +462,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     {
         // The longest page: in a large desktop font its rows outgrow the
         // window, so it scrolls rather than losing its last rows under the bar.
-        ContainerStyle cs;
+        ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
         cs.autoShowScrollbars = true;
         cs.autoShowHorizontalScrollbar = false;
         page->SetContainerStyle(cs);
