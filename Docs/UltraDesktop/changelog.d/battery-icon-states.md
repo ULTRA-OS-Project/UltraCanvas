@@ -1,7 +1,11 @@
 - **The battery icon shows the charge.** Its fill is as long as the battery
-  is full, in steps of 20 %: one fifth from the first percent (up to 29 %),
-  two from 30 %, ..., all of it from 90 %. A bolt appears while it charges and the icon
-  turns green; below 25 % and not charging it turns red (the badge's red
+  is full, to the pixel: 10 pixels at the usual icon size (8 on a short
+  screen), one per 10 %, complete only at 100 % and at least one while any
+  charge is left. The level is read every 2 seconds. The icon is drawn on
+  its own pixel grid, so the fill stands 1 pixel clear of the outline and no
+  edge is blurred. A full battery is green inside the bar's white (in the
+  light theme, dark) outline; while charging the battery is green with a
+  white bolt over it; below 25 % and not charging it is red (the badge's red
   also starts at 25 % now, not 15 %). Without a battery the bar's usual
   glyph stays.
 - **"100" fits on the battery's badge.** The badge, and the keyboard

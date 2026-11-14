@@ -2,7 +2,9 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
-// Version: 0.7.4 - the battery's icon shows its level in 20 % steps, a bolt while charging,
+// Version: 0.7.4 - the battery's icon shows its level to the pixel, drawn
+//                  on the icon's own pixel grid; green inside a white outline
+//                  when full, green with a white bolt while charging,
 //                  red below 25 % (UpdateBatteryIcon); its badge and the
 //                  keyboard's grow inward, so "100" is not cut off
 // Version: 0.7.3 - running applications that do not fit the bar draw closer
@@ -196,30 +198,41 @@ uint64_t NativeHandleId(Handle handle) {
 
 // Below this, and not charging, the battery is red.
 constexpr int kBatteryLowPercent = 25;
-// The icon's fill moves in steps of this much: five of them when full.
-constexpr int kBatteryStepPercent = 20;
 
-// The battery button's icon, 24 x 24 in white (drawn through the button's
-// mask, like the bar's other glyphs): the outline, the cap, and a fill as
-// long as the charge, in fifths (kBatteryStepPercent) - the full 12 px at
-// 100 %. Charging adds a bolt, cut out of the fill where they overlap
-// (even-odd), so it shows at any level. `steps` is 0 to 5.
-std::string BatteryIconSvg(int steps, bool charging) {
-    const double fill = 12.0 * steps / 5.0;
+// The battery button's icon, drawn on its own pixel grid (`size` x `size`,
+// the size the bar shows it at) so every edge is a whole pixel: a 2 px
+// outline, the cap, and inside it, 1 px clear of the outline, a fill of
+// `pixels` - at most size - 10, which is 10 at the usual 20 px. Charging
+// adds a bolt over the battery in `bolt`. Two colours at once, so the button
+// draws it as it is, not through its one-colour mask.
+std::string BatteryIconSvg(int size, int pixels, const std::string& outline, const std::string& inside,
+                           const std::string& bolt = std::string()) {
+    const double h = size / 2.0;   // the middle, top to bottom
+    const int right = size - 3;    // the body's right edge; the cap is beyond
     std::ostringstream svg;
-    svg << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\">"
-        << "<rect x=\"2\" y=\"7\" width=\"17\" height=\"10\" rx=\"2\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2\"/>"
-        << "<path d=\"M21 10v4\" stroke=\"#fff\" stroke-width=\"2\" stroke-linecap=\"round\"/>";
-    std::string d;
-    if (steps > 0) {
-        std::ostringstream rect;
-        rect << "M4.5 9.5h" << fill << "v5h-" << fill << "Z";
-        d += rect.str();
+    svg << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 " << size << ' ' << size
+        << "\" width=\"" << size << "\" height=\"" << size << "\">"
+        << "<rect x=\"2\" y=\"" << h - 4 << "\" width=\"" << right - 3 << "\" height=\"8\" rx=\"1.5\""
+        << " fill=\"none\" stroke=\"" << outline << "\" stroke-width=\"2\"/>"
+        << "<rect x=\"" << right << "\" y=\"" << h - 2 << "\" width=\"2\" height=\"4\" fill=\"" << outline << "\"/>";
+    if (pixels > 0) {
+        svg << "<rect x=\"4\" y=\"" << h - 2 << "\" width=\"" << pixels << "\" height=\"4\" fill=\""
+            << inside << "\"/>";
     }
-    if (charging) d += "M11.9 8.4L8 12.7H10.5L9.3 15.6L13.3 11.3H10.8Z";
-    if (!d.empty()) svg << "<path fill-rule=\"evenodd\" fill=\"#fff\" d=\"" << d << "\"/>";
+    if (!bolt.empty()) {
+        const double x = h - 1;    // the bolt's middle, left to right
+        svg << "<path fill=\"" << bolt << "\" d=\"M" << x + 1.5 << ' ' << h - 4.5 << 'L' << x - 2.5 << ' ' << h + 0.5
+            << 'H' << x - 0.5 << 'L' << x - 1.5 << ' ' << h + 4.5 << 'L' << x + 2.5 << ' ' << h - 0.5
+            << 'H' << x + 0.5 << "Z\"/>";
+    }
     svg << "</svg>";
     return svg.str();
+}
+
+std::string HexOf(const Color& c) {
+    char text[8];
+    std::snprintf(text, sizeof text, "#%02x%02x%02x", c.r, c.g, c.b);
+    return text;
 }
 
 std::string Shorten(const std::string& text, size_t max) {
@@ -2503,16 +2516,23 @@ void UltraDesktopWindow::UpdateBatteryIcon(const DesktopDeviceActivity& now) {
     if (!button) return;
     const bool known = now.batteryPresent && now.batteryPercent >= 0;
     const int percent = known ? std::clamp(now.batteryPercent, 0, 100) : 0;
-    // To the nearest step (90 % and over is full), but a battery that has
-    // any charge left shows at least one.
-    int steps = known ? (percent + kBatteryStepPercent / 2) / kBatteryStepPercent : 0;
-    if (known && percent > 0) steps = std::max(steps, 1);
-    const bool charging = known && now.batteryCharging;
+    // As fine as the screen allows: one pixel of fill per 10 % at the usual
+    // 20 px icon (10 pixels), per 12.5 % at the 18 px of a short screen.
+    // Rounded down, so the fill is complete only at 100 %; a battery with
+    // any charge left shows at least one pixel.
+    const int size = InfoIconSize();
+    const int fillPixels = std::max(1, size - 10);
+    int pixels = known ? percent * fillPixels / 100 : 0;
+    if (known && percent > 0) pixels = std::max(pixels, 1);
+    const bool full = known && percent >= 100;
+    const bool charging = known && now.batteryCharging && !full;
     const bool low = known && !charging && percent < kBatteryLowPercent;
-    // The step, the state and the button: a bar built
-    // again (another theme, edge or screen) has a new button to dress.
+    // The fill, the state, the colours and the button: a bar built again
+    // (another theme, edge or screen) has a new button to dress.
+    const std::string ink = HexOf(Bars().ink);
     std::ostringstream key;
-    key << static_cast<const void*>(button.get()) << ':' << known << ':' << steps << ':' << charging << ':' << low;
+    key << static_cast<const void*>(button.get()) << ':' << known << ':' << size << ':' << pixels
+        << ':' << charging << ':' << low << ':' << full << ':' << ink;
     if (key.str() == batteryIconKey_) return;
     batteryIconKey_ = key.str();
     if (!known) {
@@ -2521,16 +2541,22 @@ void UltraDesktopWindow::UpdateBatteryIcon(const DesktopDeviceActivity& now) {
         button->SetIconMaskColor(Color(0, 0, 0, 0));
         return;
     }
-    const std::string svg = BatteryIconSvg(steps, charging);
+    // Full: the outline in the bar's ink, green inside. Charging: green,
+    // with the bolt in the ink over it. Low: red. Otherwise the bar's ink.
+    const std::string green = HexOf(kMarkerSaved);
+    const std::string red = HexOf(kMarkerOn);
+    const std::string svg = full     ? BatteryIconSvg(size, pixels, ink, green)
+                          : charging ? BatteryIconSvg(size, pixels, green, green, ink)
+                          : low      ? BatteryIconSvg(size, pixels, red, red)
+                                     : BatteryIconSvg(size, pixels, ink, ink);
     auto image = UCImage::LoadFromMemory(reinterpret_cast<const uint8_t*>(svg.data()), svg.size());
-    if (!image || image->GetWidth() <= 0) {
-        button->SetIcon(IconPath("battery.svg"));
-    } else {
+    if (image && image->GetWidth() > 0) {
         button->SetIcon(image);
+        button->SetUseIconAsMask(false);
+    } else {
+        button->SetIcon(IconPath("battery.svg"));
+        button->SetIconMaskColor(Color(0, 0, 0, 0));
     }
-    // Green while charging, red when low, otherwise the bar's ink (a
-    // transparent mask colour means "the text colour").
-    button->SetIconMaskColor(charging ? kMarkerSaved : low ? kMarkerOn : Color(0, 0, 0, 0));
 }
 
 void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,

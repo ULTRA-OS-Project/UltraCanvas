@@ -185,10 +185,12 @@ the right-hand monitor the primary.
   | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
   | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red below 25 %), keyboard layout - a wide pill grows inward, so "100" stays on the screen |
 
-  The battery's icon itself shows the charge: its fill is as long as the
-  battery is full, in 20 % steps (to the nearest step, at least one while
-  any charge is left, full from 90 %), a bolt is cut into it while charging (and the icon is
-  green), and below 25 % on battery the icon is red.
+  The battery's icon itself shows the charge, read every 2 seconds: its
+  fill is as long as the battery is full, to the pixel (10 pixels, one per
+  10 %; complete only at 100 %, at least one while any charge is left),
+  drawn on the icon's own pixel grid so it stays sharp. Full: green inside
+  the white outline. Charging: green with a white bolt. Below 25 % on
+  battery: red.
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
