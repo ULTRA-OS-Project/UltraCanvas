@@ -136,7 +136,7 @@ std::string DisplayName(const std::string& path) {
     return name.empty() ? path : name;
 }
 
-// The chip on a file's card: its extension ("pdf"), or "folder".
+// A file's kind for its fallback icon: its extension ("pdf"), or "folder".
 std::string KindTag(const std::string& path) {
     std::error_code ec;
     const fs::path p = PathFromUtf8(path);
@@ -305,6 +305,9 @@ void UltraDesktopCategoryBoard::SetDesign(const std::string& design) {
     // A file's path is its description: the tooltip shows it, the card
     // keeps to the name.
     style.showCardDescription = false;
+    // No file-type chips ("pdf", "jpg"): the name already carries its
+    // extension, and boards saved with a chip on each card hide it too.
+    style.showTags = false;
     style.cardTitleFontSize = kCardTitleFont;
     style.cardTextFontSize = kCardTextFont;
     style.metaFontSize = kCardMetaFont;
@@ -315,7 +318,7 @@ void UltraDesktopCategoryBoard::SetDesign(const std::string& design) {
 void UltraDesktopCategoryBoard::ApplyDisplayStyle() {
     KanbanBoardStyle& style = board_->EditStyle();
     if (display_ == "text") {
-        style.cardImageHeight = 0;   // no pictures: the name and its type
+        style.cardImageHeight = 0;   // no pictures: just the name
         style.centerCardTitle = false;
     } else if (display_ == "row") {
         style.cardImageHeight = kRowThumbnail;
@@ -414,7 +417,6 @@ void UltraDesktopCategoryBoard::AddFiles(const std::vector<std::string>& files, 
         const int cardId = data_->AddCard(columnId, DisplayName(path));
         if (cardId < 0) continue;
         data_->SetCardDescription(cardId, path);
-        data_->AddCardTag(cardId, KindTag(path));
         last = cardId;
     }
     if (last >= 0) board_->ScrollToCard(last);
