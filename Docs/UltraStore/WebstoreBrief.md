@@ -47,7 +47,8 @@ and the flags), and §4.3 of
    browser** (`WASMResourceLoader::LoadImage`), which is what the size rules
    below want anyway.
 3. **The catalog comes from the same origin and is verified in the
-   browser.** `WASMNetwork::FetchTextAsync("v1/catalog.json")` and its
+   browser.** The site lives at the catalog base (decided 2026-11-14), so
+   `WASMNetwork::FetchTextAsync("catalog.json")` and its
    `.sig`, `ParseCatalog`, and `VerifyCatalogSignature` through UltraCrypt,
    which builds under Emscripten (decided 2026-11-14). The web store trusts
    what the native store trusts: the compiled-in public keys of
@@ -166,7 +167,9 @@ never resized in the browser or in the store's code.
 ## What done looks like
 
 1. `Apps/UltraStore/web/` (or `Apps/UltraStoreWeb/`): the side module's
-   sources, a `site/` with `index.html`, the loader, the runtime's place,
+   sources, the site's `index.html` and loader as templates the admin
+   backend's publish lays into the publish folder beside `catalog.json`
+   (the site's document root is the catalog base), the runtime's place,
    the HTML shadow's output folder, and a README with the measured sizes.
 2. `wasm-build.yml` builds it beside the demos and prints its sizes; the
    runtime test opens it in Chromium, loads the catalog from a local
@@ -187,11 +190,17 @@ never resized in the browser or in the store's code.
   that cannot set headers is served the single-threaded build, which is
   the plan anyway; Brotli can be pre-compressed files if the host serves
   `.br`.)
-- Is the catalog's URL the site's origin? If not, CORS on the catalog's
-  server, or the site proxies it.
 - Does the operator want the extension path at all, or is the site-served
   runtime enough for the first release?
 
 Answered on 2026-11-14: the catalog carries the picture variants
-explicitly (the shape above), and the signature is verified in the browser
-because UltraCrypt builds under Emscripten.
+explicitly (the shape above); the signature is verified in the browser
+because UltraCrypt builds under Emscripten; and **the catalog's URL is the
+site's origin** - the site is served from the catalog base
+(`catalog.base_url`, the same host and path as `catalog.json`, the media
+and the free packages), so `catalog.json`, `catalog.json.sig` and every
+picture are same-origin fetches with no CORS and no proxy. The publish
+folder is therefore the site's document root: the admin backend's publish
+writes the store's `index.html`, the loader, the runtime (or its
+`data-runtime-version`) and the HTML shadow into it beside the catalog,
+and `upload` sends them with everything else, `catalog.json` last.
