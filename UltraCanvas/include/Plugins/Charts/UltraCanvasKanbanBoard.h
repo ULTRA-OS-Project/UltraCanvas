@@ -3,6 +3,8 @@
 // with priorities/due dates/assignees/tags, drag & drop, a built-in card
 // editor, move history for flow metrics, text-definition (Mermaid kanban)
 // and JSON loading, and a preset-based design/palette system.
+// Version: 1.4.0 - onCardPointerMoved: every pointer move over a card, so a
+//                  host can tell when the pointer comes to rest on one
 // Version: 1.3.0 - onDeleteKey: the application decides what the Delete key does to a card
 // Version: 1.2.0 - a card's picture beside its text (cardImagePlacement Left),
 //                  centred titles, onContextMenu, onCardHoverChanged and a
@@ -536,6 +538,10 @@ namespace UltraCanvas {
         // The card under the pointer changed (-1 = none any more, also when
         // a drag starts or the pointer leaves the board).
         std::function<void(int cardId)> onCardHoverChanged;
+        // The pointer moved over a card (not while dragging one): called on
+        // every move, the card's first one included, so a host that restarts
+        // a short timer here opens something when the pointer comes to rest.
+        std::function<void(int cardId)> onCardPointerMoved;
 
         // The Delete key on the selected card of an editable board. Set, it
         // decides: true = handled (the board removes nothing itself - the

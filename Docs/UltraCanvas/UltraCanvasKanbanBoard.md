@@ -240,8 +240,10 @@ lists Overdue plus every priority actually used on the board.
   `size` pixels square at most, with its title under it - beside the card
   over the board; it goes with `HideCardPreview()`, and by itself when the
   pointer leaves the card, a button is pressed, the board scrolls or a drag
-  starts. The host decides when it opens (the Sticker board waits two seconds
-  with an `UltraCanvasApplication` timer) and makes the picture.
+  starts. `onCardPointerMoved(cardId)` runs on every pointer move over a
+  card (not during a drag), so a host can open the preview once the pointer
+  comes to rest: the Sticker board restarts a short `UltraCanvasApplication`
+  timer there. The host decides when it opens and makes the picture.
   `GetCardBounds(cardId)` is a card's rectangle as last laid out.
 
 Callbacks:
@@ -261,6 +263,7 @@ board->onFilesDropped = [data](const std::vector<std::string>& files, int column
 };
 board->onContextMenu = [](int cardId, int columnId, const Point2Di& windowPos) { /* open a menu */ };
 board->onCardHoverChanged = [](int cardId) { /* -1 = none */ };
+board->onCardPointerMoved = [](int cardId) { /* restart a rest timer */ };
 ```
 
 ## Factories

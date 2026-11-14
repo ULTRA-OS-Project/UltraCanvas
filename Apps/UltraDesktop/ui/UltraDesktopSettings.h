@@ -59,7 +59,7 @@ struct CategoryBoardSettings {
     // picture with the name centred under it) or "row" (a small picture
     // and the name beside it).
     std::string display = "thumbnail";
-    // The larger preview after the pointer rests on a card for two seconds:
+    // The larger preview once the pointer rests on a card:
     // "small", "medium" or "large".
     std::string hoverPreview = "medium";
     float x = 320;

@@ -2753,6 +2753,7 @@ bool UltraCanvasKanbanBoardElement::HandleChartMouseMove(const Point2Di& mousePo
 
     const CardLayout* over = CardAt(mousePos);
     SetHoveredCard(over ? over->cardId : -1);
+    if (over && !draggingCard && onCardPointerMoved) onCardPointerMoved(over->cardId);
 
     // The card's preview says more than its tooltip, and the two would
     // cover each other.

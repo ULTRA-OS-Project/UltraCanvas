@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopCategoryBoard.cpp
 // The Sticker board: files sorted into categories. See the header.
+// Version: 0.5.0 - the hover preview opens when the pointer stops on a card
 // Version: 0.4.0 - the context menu, three card displays, the hover preview
 // Version: 0.3.0 - thumbnails as UltraFiler makes them (RenderFileThumbnail):
 //                  a PDF's first page, a page of a document's text
@@ -53,8 +54,9 @@ constexpr float kThumbnailHeight = 58.0f;
 constexpr int kThumbnailPixels = 2 * 58;
 // The small square beside the name in the "row" display.
 constexpr float kRowThumbnail = 34.0f;
-// How long the pointer rests on a card before its preview opens.
-constexpr unsigned kHoverPreviewDelayMs = 2000;
+// How long the pointer stays still on a card before its preview opens:
+// long enough that sweeping across the board opens nothing.
+constexpr unsigned kHoverRestMs = 350;
 
 struct DesignChoice {
     const char* key;
@@ -267,14 +269,13 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
         ShowContextMenu(cardId, columnId, at);
     };
     board_->onCardHoverChanged = [this](int cardId) { OnCardHover(cardId); };
+    board_->onCardPointerMoved = [this](int cardId) { OnCardPointerMoved(cardId); };
     AddChild(board_);
     SetDesign(kDesigns[0].key);
 }
 
 UltraDesktopCategoryBoard::~UltraDesktopCategoryBoard() {
-    if (hoverTimer_ != InvalidTimerId) {
-        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(hoverTimer_);
-    }
+    StopHoverTimer();
 }
 
 void UltraDesktopCategoryBoard::LoadFrom(const DesktopSettings& settings) {
@@ -576,22 +577,38 @@ void UltraDesktopCategoryBoard::MoveCardTo(int cardId, int columnId) {
 
 // ===== THE HOVER PREVIEW =====
 
+void UltraDesktopCategoryBoard::StopHoverTimer() {
+    if (hoverTimer_ == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(hoverTimer_);
+    hoverTimer_ = InvalidTimerId;
+}
+
 void UltraDesktopCategoryBoard::OnCardHover(int cardId) {
     hoverCardId_ = cardId;
+    restingCardId_ = -1;
+    StopHoverTimer();
+    // Made while the pointer is still on its way, so the preview is there
+    // the moment the pointer stops (a PDF's page takes a moment).
+    if (cardId >= 0 && !CardFile(cardId).empty()) PrepareHoverPreview(cardId, /*show=*/false);
+}
+
+void UltraDesktopCategoryBoard::OnCardPointerMoved(int cardId) {
+    if (cardId != hoverCardId_ || CardFile(cardId).empty()) return;
+    // Open already: moving on the card keeps it.
+    if (board_->GetPreviewCardId() == cardId) return;
+    restingCardId_ = -1;
+    StopHoverTimer();
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app) return;
-    if (hoverTimer_ != InvalidTimerId) {
-        app->StopTimer(hoverTimer_);
+    hoverTimer_ = app->StartTimer(kHoverRestMs, /*periodic=*/false, [this, cardId](TimerId) {
         hoverTimer_ = InvalidTimerId;
-    }
-    if (cardId < 0 || CardFile(cardId).empty()) return;
-    hoverTimer_ = app->StartTimer(kHoverPreviewDelayMs, /*periodic=*/false, [this, cardId](TimerId) {
-        hoverTimer_ = InvalidTimerId;
-        if (hoverCardId_ == cardId) ShowHoverPreview(cardId);
+        if (hoverCardId_ != cardId) return;
+        restingCardId_ = cardId;
+        PrepareHoverPreview(cardId, /*show=*/true);
     });
 }
 
-void UltraDesktopCategoryBoard::ShowHoverPreview(int cardId) {
+void UltraDesktopCategoryBoard::PrepareHoverPreview(int cardId, bool show) {
     const std::string path = CardFile(cardId);
     if (path.empty()) return;
     const float size = PreviewSize();
@@ -599,10 +616,10 @@ void UltraDesktopCategoryBoard::ShowHoverPreview(int cardId) {
     const std::string key = std::to_string(pixels) + "|" + path;
     auto ready = previews_.find(key);
     if (ready != previews_.end()) {
-        board_->ShowCardPreview(cardId, ready->second, size);
+        if (show) board_->ShowCardPreview(cardId, ready->second, size);
         return;
     }
-    if (previewPending_.count(key)) return;
+    if (previewPending_.count(key)) return;   // shown when it arrives
     previewPending_.insert(key);
     const std::string icons = NormalizePath(GetResourcesDir() + "media/icons/");
     work_.Run<std::shared_ptr<UCPixmap>>(
@@ -611,8 +628,9 @@ void UltraDesktopCategoryBoard::ShowHoverPreview(int cardId) {
             previewPending_.erase(key);
             if (!pixmap) return;
             previews_[key] = pixmap;
-            // Shown only while the pointer is still on that card.
-            if (hoverCardId_ == cardId) board_->ShowCardPreview(cardId, pixmap, size);
+            // Shown only once the pointer has come to rest on that card.
+            if (hoverCardId_ == cardId && restingCardId_ == cardId)
+                board_->ShowCardPreview(cardId, pixmap, size);
         });
 }
 

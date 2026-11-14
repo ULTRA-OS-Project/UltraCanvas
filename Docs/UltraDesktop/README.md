@@ -402,8 +402,8 @@ UOS-Settings is followed within a second.
   in the same menu (anywhere on the board), shows the cards as *Text only*,
   *Thumbnail and text* (the picture with the name centred under it - the
   default) or *Thumbnail and text in a row*, and sets the size of the *Mouse
-  hover preview* (*Small*, *Medium*, *Large*): resting the pointer on a
-  file's card for two seconds opens a larger picture of it beside the card.
+  hover preview* (*Small*, *Medium*, *Large*): when the pointer stops on a
+  file's card, a larger picture of it opens beside the card.
   The *Desktop* page of UOS-Settings has the same two choices. The board,
   its style and its display are kept.
 - **Notes** (the note button below it): free sticky notes over the
