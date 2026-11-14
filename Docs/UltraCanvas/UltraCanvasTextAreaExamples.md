@@ -880,18 +880,19 @@ for (const std::string& line : lines) {
 at `\n` (or `\r\n`), carries the state from line to line, and puts one
 `TokenType::Newline` token at each break - the tokens the text area colours.
 
-A string ends at its line unless the language lets it run on. Seven switches
+A string ends at its line unless the language lets it run on. Eight switches
 in `SyntaxTokenizationRules` say which strings do:
 
 | Rule | Languages | Example |
 |---|---|---|
-| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, C#, Elixir (`"""`) | a docstring |
+| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, Elixir (`"""`) | a docstring |
 | `multiLineStringDelimiters` (quotes whose strings span lines) | JavaScript / TypeScript, Go (`` ` ``); Shell, Ruby, PHP, Perl (`"`, `'`); Rust (`"`) | a template literal |
 | `stringLineContinuation` (a `\` ends the line) | C, C++, Python, JavaScript / TypeScript | `"abc\` then `def"` |
 | `delimitedRawStrings` (`R"delim( … )delim"`, optional `u8` / `u` / `U` / `L`) | C++ | a raw string ends only at its own `)delim"` |
 | `levelledLongBrackets` (`[[ … ]]`, `[==[ … ]==]`, and after `--` a comment) | Lua | `[==[` ends only at `]==]` |
 | `hashRawStrings` (`r"…"`, `r#"…"#`, `br`, `cr`) | Rust | `r"C:\"` is complete; `r#"say "hi""#` holds quotes |
 | `verbatimStrings` (`@"…"`, `$@"…"`, `@$"…"`) | C# | `@"C:\"` is complete; `""` inside is a quote; spans lines |
+| `quotedRawStrings` (three or more quotes, optional `$` / `$$`) | C# | `"""…"""` ends only at the same run of quotes; no escapes |
 
 A string the language does not let span lines - an unclosed `"` in Java -
 still ends at the line, so a typo colours one line rather than the rest of the
@@ -903,6 +904,13 @@ it - `stringPrefixes`: Python's `r`, `b`, `u`, `f` and their pairs (`rb`,
 string. A prefix never changes where the string ends: in Python a backslash
 keeps a quote from closing even a raw string, so `r"\""` is one string and
 `r"C:\"` is unterminated, as Python reads them.
+
+In C, C++, C# and GLSL a preprocessor directive - a line whose first
+character is `#`, indented or not, and the lines after it while each ends in
+`\` - is tokenized like code and then drawn in the preprocessor colour,
+except its strings, characters and comments: `#include "config.h"` shows its
+path as a string, a trailing `// note` as a comment, and a raw string or
+`/* comment */` that a `#define` opens carries on to the lines below.
 
 Block comments are matched before line comments, so a block opener that
 starts with the line-comment marker - Lua's `--[[ … ]]` (at any level,

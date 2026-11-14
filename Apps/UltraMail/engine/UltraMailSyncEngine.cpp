@@ -1,4 +1,12 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.9.0 - a body directory every file system takes as one name of its
+//                  own: a trailing '.' or space ~t / ~n, a Windows device name
+//                  (CON, NUL, COM1, ...) marked ~z, and the characters that
+//                  keep a name from being in Unicode NFC - the NFC quick check's
+//                  No and Maybe and every combining character, generated from
+//                  the UCD (UltraMailNfcEscapeTable.h) - ~x and their code, so
+//                  no two spellings of a name meet on macOS; MigrateBodyCache
+//                  moves all three earlier layouts (.layout-4)
 // Version: 0.8.0 - a body directory names its folder unambiguously: '/' is
 //                  '_' as before, and a literal '_', '\' and ':' - which
 //                  were '_' too ("a/b" and "a_b" shared one directory) - and
@@ -31,9 +39,11 @@
 #include "UltraMailMimeCodec.h"
 
 #include "UltraMailThreatScan.h"
+#include "UltraMailNfcEscapeTable.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -358,6 +368,62 @@ constexpr Escape kEscapes[] = {
     { '~', '~' }, { '_', 'u' }, { '\\', 'r' }, { ':', 'k' }, { '*', 's' },
     { '?', 'q' }, { '"', 'w' }, { '<', 'l' }, { '>', 'g' }, { '|', 'p' },
 };
+// Escapes with no character of their own: ~z (nothing - it breaks up a
+// Windows device name), ~t and ~n (a trailing '.' and space), ~x and six hex
+// digits (a code point; see NeedsCodeEscape).
+constexpr char kNoCharacter = 'z';
+constexpr char kTrailingDot = 't';
+constexpr char kTrailingSpace = 'n';
+constexpr char kCodePoint = 'x';
+
+// A code point written as ~x and its code, so that every directory name is in
+// Unicode Normalization Form C: APFS and HFS+ take canonically equivalent
+// names ("ü" and "u" + U+0308) as one name, and two different NFC strings
+// are never equivalent. The code points are those that do not pass the NFC
+// quick check on their own - NFC_Quick_Check No or Maybe, or a non-zero
+// combining class - generated from the Unicode Character Database
+// (UltraMailNfcEscapeTable.h, scripts/generate_ultramail_nfc_table.py).
+bool NeedsCodeEscape(char32_t cp) {
+    const auto* end = std::end(kNfcEscapeRanges);
+    const auto* it = std::upper_bound(std::begin(kNfcEscapeRanges), end, cp,
+        [](char32_t c, const NfcEscapeRange& r) { return c < r.first; });
+    return it != std::begin(kNfcEscapeRanges) && cp <= (it - 1)->last;
+}
+
+void AppendUtf8(std::string& out, char32_t cp) {
+    if (cp < 0x80) { out.push_back(static_cast<char>(cp)); return; }
+    if (cp < 0x800) {
+        out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+    } else if (cp < 0x10000) {
+        out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+    }
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+}
+
+// Whether Windows takes `dir` for a device: CON, PRN, AUX, NUL, COM0-9,
+// LPT0-9 (and COM/LPT with a superscript 1-3), CONIN$ and CONOUT$, in any
+// case, alone or before a '.' - "NUL.txt" is the device as well - and with
+// spaces before that '.'.
+bool IsWindowsDeviceName(const std::string& dir) {
+    std::string base = dir.substr(0, dir.find('.'));
+    while (!base.empty() && base.back() == ' ') base.pop_back();
+    std::string lower;
+    for (char c : base) lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    for (const char* d : { "con", "prn", "aux", "nul", "conin$", "conout$" })
+        if (lower == d) return true;
+    for (const char* p : { "com", "lpt" }) {
+        if (lower.rfind(p, 0) != 0) continue;
+        const std::string rest = lower.substr(3);
+        if (rest.size() == 1 && rest[0] >= '0' && rest[0] <= '9') return true;
+        if (rest == "\xc2\xb9" || rest == "\xc2\xb2" || rest == "\xc2\xb3") return true;   // ¹ ² ³
+    }
+    return false;
+}
 
 // The directories earlier versions cached the folder's bodies in: the name
 // with '/', '\' and ':' as '_' (layout 1), and that with the case mask, '~'
@@ -375,9 +441,9 @@ std::string Layout2CacheDirectory(const std::string& folder) {
     return out;
 }
 
-} // namespace
-
-std::string CacheDirectoryOf(const std::string& folder) {
+// The third layout: the escapes of kEscapes and the case mask, none of the
+// rest of CacheDirectoryOf's.
+std::string Layout3CacheDirectory(const std::string& folder) {
     const std::string name = folder.empty() ? std::string("INBOX") : folder;
     std::string out;
     for (char c : name) {
@@ -397,6 +463,56 @@ std::string CacheDirectoryOf(const std::string& folder) {
     return out;
 }
 
+} // namespace
+
+std::string CacheDirectoryOf(const std::string& folder) {
+    const std::string name = folder.empty() ? std::string("INBOX") : folder;
+    const std::vector<CodePoint> cps = DecodeUtf8(name);
+    std::string out;
+    for (std::size_t k = 0; k < cps.size(); ++k) {
+        const char32_t cp = cps[k].cp;
+        const bool last = k + 1 == cps.size();
+        if (cp == '/') { out.push_back('_'); continue; }
+        if (last && (cp == '.' || cp == ' ')) {   // Windows drops a trailing dot or space
+            out.push_back('~');
+            out.push_back(cp == '.' ? kTrailingDot : kTrailingSpace);
+            continue;
+        }
+        if (cp < 0x80) {
+            bool escaped = false;
+            for (const Escape& e : kEscapes) {
+                if (static_cast<char>(cp) != e.c) continue;
+                out.push_back('~');
+                out.push_back(e.code);
+                escaped = true;
+                break;
+            }
+            if (!escaped) out.push_back(static_cast<char>(cp));
+            continue;
+        }
+        if (NeedsCodeEscape(cp)) {
+            char hex[8];
+            std::snprintf(hex, sizeof hex, "%06x", static_cast<unsigned>(cp));
+            out.push_back('~');
+            out.push_back(kCodePoint);
+            out += hex;
+            continue;
+        }
+        // Everything else as it was written (a byte that is not UTF-8 too).
+        const std::size_t end = last ? name.size() : cps[k + 1].at;
+        out.append(name, cps[k].at, end - cps[k].at);
+    }
+    const std::string mask = CaseMask(name);
+    if (!mask.empty()) out += "~" + mask;
+    // A Windows device name ("CON", "nul.txt") is broken up after its first
+    // letter by ~z, which reads as nothing.
+    if (IsWindowsDeviceName(out)) {
+        out.insert(1, 1, kNoCharacter);
+        out.insert(1, 1, '~');
+    }
+    return out;
+}
+
 std::string FolderOfCacheDirectory(const std::string& directory) {
     std::string out;
     for (std::size_t i = 0; i < directory.size(); ++i) {
@@ -404,6 +520,17 @@ std::string FolderOfCacheDirectory(const std::string& directory) {
         if (c == '_') { out.push_back('/'); continue; }
         if (c != '~') { out.push_back(c); continue; }
         const char code = i + 1 < directory.size() ? directory[i + 1] : '\0';
+        if (code == kNoCharacter) { ++i; continue; }
+        if (code == kTrailingDot) { out.push_back('.'); ++i; continue; }
+        if (code == kTrailingSpace) { out.push_back(' '); ++i; continue; }
+        if (code == kCodePoint && i + 8 <= directory.size()) {
+            const std::string hex = directory.substr(i + 2, 6);
+            if (hex.find_first_not_of("0123456789abcdef") == std::string::npos) {
+                AppendUtf8(out, static_cast<char32_t>(std::stoul(hex, nullptr, 16)));
+                i += 7;
+                continue;
+            }
+        }
         const Escape* found = nullptr;
         for (const Escape& e : kEscapes) if (e.code == code) found = &e;
         if (!found) break;   // the lone '~' before the case mask
@@ -437,7 +564,7 @@ bool MoveBodyFile(const fs::path& from, const fs::path& to) {
 
 int MigrateBodyCache(const std::string& emlDir, const LocalStore& store) {
     const fs::path root = PathFromUtf8(emlDir);
-    const fs::path marker = root / ".layout-3";
+    const fs::path marker = root / ".layout-4";
     std::error_code ec;
     if (fs::exists(marker, ec)) return 0;
     int moved = 0;
@@ -452,7 +579,8 @@ int MigrateBodyCache(const std::string& emlDir, const LocalStore& store) {
         // Every directory a folder's bodies may be in: the present one first.
         auto directoriesOf = [](const std::string& name) {
             std::vector<std::string> dirs = { CacheDirectoryOf(name) };
-            for (const std::string& d : { Layout2CacheDirectory(name), Layout1CacheDirectory(name) })
+            for (const std::string& d : { Layout3CacheDirectory(name), Layout2CacheDirectory(name),
+                                          Layout1CacheDirectory(name) })
                 if (std::find(dirs.begin(), dirs.end(), d) == dirs.end()) dirs.push_back(d);
             return dirs;
         };
@@ -521,7 +649,7 @@ int MigrateBodyCache(const std::string& emlDir, const LocalStore& store) {
     }
     if (complete) {
         fs::create_directories(root, ec);
-        std::ofstream(marker) << "3\n";
+        std::ofstream(marker) << "4\n";
     }
     return moved;
 }

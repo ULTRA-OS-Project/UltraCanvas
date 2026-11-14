@@ -205,9 +205,17 @@ element, so it keeps its look through every change, as before; an element
 that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
 which puts the roles over the given style and follows on from there. A
 setter that changes one thing (`SetTextColor`, `SetFont`) does not stop
-the following: the next theme change puts the theme's value back, so a
+the following: the next theme change puts the theme's colour back, so a
 colour an application means to keep goes through `SetStyle`, or is set
-again from its own change handler.
+again from its own change handler. A **font size set by hand** is the
+exception: `SetFontSize` / `SetFont` on a label, a button or a tree view,
+and on the list's default delegate, is remembered, and the next theme
+change keeps that size (and `SetFont`'s family) while the colours follow -
+a caption with a size of its own no longer jumps to the body size when the
+look changes, and needs no `SetFollowTheme(false)` for it. A list hands the
+theme on to its delegate (`IItemDelegate::ApplyTheme`), also to one set
+with `SetDelegate` after the list was made; the default delegate keeps a
+text colour or size the application set on it.
 
 ```cpp
 UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
@@ -220,7 +228,20 @@ ButtonStyle own = button->GetStyle();
 own.cornerRadius = 10;
 button->SetStyle(own);                                      // styled by hand: follows no more
 button->SetFollowTheme(true);                               // the roles over the hand-set style, following again
+button->SetFontSize(15.0f);                                 // kept through every theme change; the colours follow
 ```
+
+Some defaults are made for one look and change with the theme's `dark`
+flag, so a light window looks as it always did and a dark one is not left
+with light parts: under a dark theme the split pane's handle and the icons
+on its bar take the roles (`SplitPaneStyle::FromTheme`), the scrollbar's
+thumb is the track mixed toward the ink rather than the bright control
+border, a tree's and the clipboard history's selected row is the soft
+accent with ink on it (a coloured icon on it keeps its contrast), the
+section card (`GroupBoxVisualStyle::SectionCard(theme)`) is the panel on the
+ground, and a button's `SetColors` / `SetTextColors` with fewer than four
+colours derive a disabled face and text that sink toward the ground instead
+of turning light grey.
 
 `SetCurrent` calls every **change handler** after the switch. The
 application installs one at start-up (`UltraCanvasApplicationBase::Initialize`)

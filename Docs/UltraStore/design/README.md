@@ -15,7 +15,7 @@ over these.
 | `Main.dc.html` | the shop's Discover (home) page: featured app, categories, Editor's picks, New and updated, Free essentials, Why UltraStore | page, 1440 wide |
 | `AppDetail.dc.html` | one app's page (UltraVideo): badges, Try / Buy, screenshots, About, What's new, What it installs, information, more from the publisher | page |
 | `Categories.dc.html` | Browse by category: the category chips and the price filter work (state in the script) | page |
-| `PhoneHome.dc.html`, `PhoneDetail.dc.html` | the same two screens on a phone, with a bottom tab bar | 390 × 844 |
+| `PhoneHome.dc.html`, `PhoneDetail.dc.html` | the same two screens on a phone, with a bottom tab bar; the reference for the web store (`Apps/UltraStore/web`) at phone width, where the header wraps and the cards go to one column | 390 × 844 |
 | `AdminDashboard.dc.html` | the admin backend's Overview: stat tiles, revenue by week, top apps, latest sales, last publish, translations, keys | page |
 | `AdminApps.dc.html` | Apps and components: the *Add an app or a component* panel and the table of every record | page |
 | `AdminAppEditor.dc.html` | the form of one app: identity, store settings, texts per language, pictures, releases and packages | page |

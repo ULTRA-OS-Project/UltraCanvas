@@ -23,12 +23,16 @@
 // Runs headless: keys are sent to the element as the application sends them
 // to the focused element. The ring check opens a real window and skips
 // itself without a DISPLAY.
+// Version: 1.2.0 - the ring is looked for along the row's edges, on all four
+//                  sides: a white pixel anywhere in the row also matched the
+//                  label, white on the selection, so the ring never seemed to
+//                  go; ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 makes a skip fail
 // Version: 1.1.1 - the selection is looked for as an area of its colour, so the
 //                  coloured fringes subpixel antialiasing leaves on black text
 //                  no longer make the plain row look selected
 // Version: 1.1.0 - the focus ring, on real pixels
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -309,16 +313,47 @@ bool RowShows(const std::shared_ptr<UltraCanvasWindow>& window, const Rect2Di& r
     return false;
 }
 
+// On how many of its four sides does a rectangle show `colour` along its
+// edge: a two-pixel band inside each side, which is where the focus ring
+// runs. The label - white on a selected row too, in the selection text colour
+// - sits in the middle of the row and never reaches a band, so it cannot pass
+// for the ring; looking for the colour anywhere in the row let it.
+int RingSides(const std::shared_ptr<UltraCanvasWindow>& window, const Rect2Di& ring, const Color& colour) {
+    const int band = 2;
+    const Rect2Di sides[] = {
+        Rect2Di(ring.x, ring.y, ring.width, band),                        // top
+        Rect2Di(ring.x, ring.y + ring.height - band, ring.width, band),   // bottom
+        Rect2Di(ring.x, ring.y, band, ring.height),                       // left
+        Rect2Di(ring.x + ring.width - band, ring.y, band, ring.height),   // right
+    };
+    int shown = 0;
+    for (const Rect2Di& side : sides) {
+        if (RowShows(window, side, colour)) ++shown;
+    }
+    return shown;
+}
+
 // The focus ring on real pixels: a real window under Xvfb, activated by hand
-// (DisplayTestSupport.h). Skips itself without a DISPLAY.
+// (DisplayTestSupport.h). Skips itself without a DISPLAY - unless
+// ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual-display step), where a
+// skip would pass for a run, so it fails instead.
+void SkipRing(const char* why) {
+    const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
+    if (required && std::string(required) == "1") {
+        TEST(std::string("focus ring on screen: a display was required, and ") + why, false);
+    } else {
+        std::cerr << "SKIP: focus ring on screen (" << why << ")" << std::endl;
+    }
+}
+
 void TestFocusRingOnScreen() {
     if (!std::getenv("DISPLAY")) {
-        std::cerr << "SKIP: focus ring on screen (no DISPLAY)" << std::endl;
+        SkipRing("no DISPLAY");
         return;
     }
     UltraCanvasApplication app;
     if (!app.Initialize("TreeViewKeyboardTest")) {
-        std::cerr << "SKIP: focus ring on screen (application would not initialise)" << std::endl;
+        SkipRing("application would not initialise");
         return;
     }
     WindowConfig cfg;
@@ -327,7 +362,7 @@ void TestFocusRingOnScreen() {
     cfg.height = 200;
     auto window = CreateWindow(cfg);
     if (!window) {
-        std::cerr << "SKIP: focus ring on screen (window could not be created)" << std::endl;
+        SkipRing("window could not be created");
         return;
     }
     window->Show();
@@ -342,30 +377,33 @@ void TestFocusRingOnScreen() {
     tree->ExpandAll();
 
     if (!DisplayTest::FocusElement(app, window, tree)) {
-        std::cerr << "SKIP: focus ring on screen (the window could not be activated)" << std::endl;
+        SkipRing("the window could not be activated");
         return;
     }
     tree->OnEvent(Key(UCKeys::Down));   // the first row: root
     tree->OnEvent(Key(UCKeys::Down));   // then a, the second row
     DisplayTest::Frame(window, {tree});
 
-    // The second row, inset to where the ring runs; the first row is plain.
-    const Rect2Di focusedRow(2, 21, 296, 18);
+    // The second row's selection fill, inside the tree's border: the ring
+    // runs one pixel in from its edges. The first row is plain.
+    const Rect2Di focusedRow(2, 21, 296, 19);
     const Rect2Di otherRow(2, 1, 296, 18);
     TEST("the focused row is drawn selected", RowShows(window, focusedRow, Color(0, 120, 215), Look::Area));
     TEST("the focused row carries a white focus ring while the tree is focused",
-         RowShows(window, focusedRow, Colors::White));
+         RingSides(window, focusedRow, Colors::White) == 4);
     TEST("an unfocused row is not drawn selected", !RowShows(window, otherRow, Color(0, 120, 215), Look::Area));
 
     window->ClearFocus();
     DisplayTest::Frame(window, {tree});
+    TEST("the tree is not focused once the window's focus is cleared", !tree->IsFocused());
     TEST("the ring goes when the focus leaves, the selection stays",
-         !RowShows(window, focusedRow, Colors::White) && RowShows(window, focusedRow, Color(0, 120, 215), Look::Area));
+         RingSides(window, focusedRow, Colors::White) == 0 &&
+         RowShows(window, focusedRow, Color(0, 120, 215), Look::Area));
 
     tree->SetFocus(true);
     tree->SetFocusRingColor(Color(255, 0, 255));
     DisplayTest::Frame(window, {tree});
-    TEST("SetFocusRingColor picks the ring's colour", RowShows(window, focusedRow, Color(255, 0, 255)));
+    TEST("SetFocusRingColor picks the ring's colour", RingSides(window, focusedRow, Color(255, 0, 255)) == 4);
     window->Close();
 }
 

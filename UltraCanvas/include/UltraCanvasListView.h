@@ -1,5 +1,7 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Version: 1.11.0 - the theme reaches the delegate (IItemDelegate::ApplyTheme): one set with SetDelegate
+//                   after construction takes it too, what the application set on it by hand stays
 // Version: 1.10.0 - SetSelectsOnContextMenu: a right-click menu that leaves the selection alone
 // Version: 1.9.0 - ListViewStyle::FromTheme, ApplyTheme: the list follows the theme, its default
 //                  delegate with it; a SetStyle by hand stops the following
@@ -151,6 +153,8 @@ namespace UltraCanvas {
         void SetModel(std::shared_ptr<IListModel> model);
         IListModel* GetModel() const;
 
+        // A list that follows the theme hands it to the new delegate at once
+        // (IItemDelegate::ApplyTheme), and again on every theme change.
         void SetDelegate(std::shared_ptr<IItemDelegate> delegate);
         IItemDelegate* GetDelegate() const;
 
@@ -162,8 +166,9 @@ namespace UltraCanvas {
 
         void SetStyle(const ListViewStyle& style);
         const ListViewStyle& GetStyle() const;
-        // The style from the theme, and the default delegate's ink, text on
-        // the selection and body font when the delegate is the default one
+        // The style from the theme, and the theme handed on to the delegate
+        // (IItemDelegate::ApplyTheme: the default delegate's ink, text on the
+        // selection and body font, each unless set on it by hand)
         void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         void SetRowHeight(int height);

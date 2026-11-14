@@ -13724,6 +13724,7 @@ void AnchorTo(const std::shared_ptr<UltraCanvasUIElement>& anchor,
               BadgeCorner corner = BadgeCorner::TopRight,
               float offsetX = 0.0f, float offsetY = 0.0f);
 void SetOverlayRing(bool);             // white separator ring (default on when anchored)
+void SetGrowInward(bool);              // a wide pill grows away from its corner (default off)
 
 std::function<void()> onClick;
 ```
@@ -13782,6 +13783,17 @@ count->SetFollowTheme(true);
   high z-index so it draws above the anchor. It sizes itself to its content and
   re-positions to the chosen corner each frame — so it tracks a moving or
   resizing anchor.
+- **Grow inward.** An anchored badge is centred on its corner, so a long
+  text sticks out past the anchor's edge by half its extra width. With
+  `SetGrowInward(true)` a pill wider than it is tall keeps the outer edge a
+  round badge would have and grows towards the anchor's middle - what a
+  badge on a bar at the edge of the screen needs, where "100" would
+  otherwise be cut off:
+
+  ```cpp
+  auto pill = toolbar->SetItemBadge("battery", "100", Colors::Green);
+  if (pill) pill->SetGrowInward(true);
+  ```
 - The badge publishes its content size to the CSS layout engine
   (`MeasureOwnContent` / `ComputeIntrinsicSizes`), so it also works as an
   auto-sized child of flex/grid containers; see `Docs/CSSLayout.md`.
@@ -17028,10 +17040,17 @@ void SetTextColors(const Color& normal, const Color& hover,
                    const Color& pressed, const Color& disabled);
 void SetTextColors(const Color& normal, const Color& hover);
 void SetTextColors(const Color& normal);
+// The forms with fewer colours derive the other states for the look in force
+// (UltraCanvasTheme::Current()): under a light theme a pressed face is
+// darkened and a disabled face or text lightened; under a dark one a hovered
+// or pressed face is a little lighter and a disabled face or text sinks
+// halfway into the theme's ground - a quiet disabled button, not a light
+// grey block. The four-colour forms set every state as given.
 
 void SetBorder(float width, const Color& color);
 
-// Font configuration
+// Font configuration: a font set here is the button's own - a theme change
+// keeps the size (and SetFont's family) while the colours follow
 void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetFontSize(float size);
@@ -17231,6 +17250,16 @@ tool->SetStyle(shape);                              // the shape once
 tool->SetThemeVariant(ButtonVariant::Ghost);        // the colours from the theme
 tool->SetFollowTheme(true);
 tool->SetThemeVariant(ButtonVariant::Selected);     // the active tool, re-styled at once
+```
+
+A following button keeps a font size set with `SetFontSize` (and a
+family set with `SetFont`) through every theme change: the colours follow,
+the size the application chose does not jump to the body size.
+
+```cpp
+auto compact = std::make_shared<UltraCanvasButton>("compact", 0, 0, 90, 22, "Compact");
+compact->SetFontSize(10.0f);                        // kept when the look changes
+compact->SetFollowTheme(true);                      // the colours from the theme
 ```
 
 A theme names the variants' colours as element roles where its design
@@ -17449,6 +17478,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.4.0 | 2026-11-14 | `SetColors` / `SetTextColors` with fewer colours derive the other states for the look (a dark theme's disabled button sinks toward the ground); a font size set by hand survives a theme change (Style Configuration, The theme and the button's variant) |
 | 1.3.1 | 2026-11-11 | A container sized to its content grows with its buttons: one more layout pass, run at the next frame (A Fixed Width Is a Minimum) |
 | 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |
 | 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
@@ -21853,11 +21883,16 @@ Enter copies, F2 edits, Delete deletes.
 
 `ClipboardRowStyle::FromTheme` puts the framework theme's roles
 (`UltraCanvasTheme.md`) over a base style's shape (heights, sizes, flags):
-the well for the list, ink and muted ink, text on the accent for the
-selected row, the panel for the header and a tile with hairlines, the
-actions in faint ink and ink when active with the hover fill, danger for
-delete, the accent for the pin, the selection and the hover fill; the
-"copied" green keeps its meaning. Without a base it starts from `Dark()` or
+the well for the list, ink and muted ink, the panel for the header and a
+tile with hairlines, the actions in faint ink and ink when active with the
+hover fill, danger for delete, the accent for the pin, the hover fill; the
+selected row in the accent with the text on the accent under a light theme,
+in the soft accent with ink under a dark one (the dark accent is a light
+blue that neither white nor dark text reads well on), the icons and the pin
+on a selected row in the selected title's colour; a link's tile
+(`linkTileBackground`, `linkTileBorder`, `linkGlyph`) the soft accent with
+the accent glyph under a dark theme, the base's light blue tile under a
+light one; the "copied" green keeps its meaning. Without a base it starts from `Dark()` or
 `Light()` by the theme's flag. The rows are drawn by a delegate, not an
 element, so the host hands the delegate the style from its own
 `ApplyTheme`.
@@ -28906,6 +28941,7 @@ FILE: Docs/UltraCanvas/UltraCanvasDropDownExamples.md
   - [Width from the Items](#width-from-the-items)
   - [Event Callbacks](#event-callbacks)
 - [Styles](#styles)
+- [Icons drawn in the text colour](#icons-drawn-in-the-text-colour)
 - [A font list: each font shown in itself](#a-font-list-each-font-shown-in-itself)
 - [Factory Functions](#factory-functions)
   - [CreateDropdown](#createdropdown)
@@ -28939,8 +28975,8 @@ FILE: Docs/UltraCanvas/UltraCanvasDropDownExamples.md
 
 The UltraCanvasDropDown is an interactive dropdown/combobox component that provides a user-friendly way to select from a list of options. It's part of the UltraCanvas Framework and offers styling, item icons, single or multiple selection, keyboard navigation, scrolling support, and event handling capabilities.
 
-**Version:** 1.3.0  
-**Last Modified:** 2026-10-15  
+**Version:** 1.4.0  
+**Last Modified:** 2026-11-14  
 **Author:** UltraCanvas Framework
 
 ## File Structure
@@ -28981,6 +29017,8 @@ struct DropdownItem {
     std::string value;         // Associated value
     std::string iconPath;      // Optional icon path
     std::string tooltip;       // Shown over the item in the open list (optional)
+    std::string fontFamily;    // The row drawn in this font in the open list (optional)
+    bool iconAsMask = false;   // The icon's shape in the item's text colour (a black line icon in the ink)
     bool enabled = true;       // Is item selectable
     bool separator = false;    // Is this a separator
     bool selected = false;     // Checked state in multi-selection mode
@@ -29032,6 +29070,9 @@ struct DropdownStyle {
     // Icon dimensions
     float iconSize = 16.0f;
     float iconPadding = 4.0f;
+    // Every item's icon drawn as a mask in the item's text colour
+    // (SetIconsAsMask sets it without a SetStyle)
+    bool iconsAsMask = false;
 
     // false: the button shows the selected item's icon alone (the list
     // still shows icon and text) - a compact, icon-only selector
@@ -29174,6 +29215,27 @@ There are no predefined dropdown styles and no builder: start from a default
 `DropdownStyle`, change the fields you need and pass it to `SetStyle()` (see
 *Dropdown with Custom Styling* below). The look of the list scrollbar comes
 from `scrollbarStyle`.
+
+## Icons drawn in the text colour
+
+An item's icon is drawn in its own colours. A monochrome line icon - black
+in its file - vanishes on a dark dropdown, so it can be drawn as a **mask**
+instead: its shape in the item's text colour (the theme's ink, faint when
+the item or the dropdown is disabled), in the open list and on the button.
+`SetIconsAsMask(true)` does it for every item and leaves the dropdown
+following the theme (it is not a `SetStyle`); `DropdownItem::iconAsMask`
+does it for one item.
+
+```cpp
+auto view = CreateDropdown("view", 0, 0, 152, 26);
+view->SetIconsAsMask(true);                          // the glyphs follow the ink, dark or light
+view->AddItem("Details", "Details", "media/icons/view-details.svg");
+view->AddItem("List", "List", "media/icons/view-list.svg");
+DropdownItem colourful("Treemap", "Treemap", "media/icons/view-treemap.svg");
+colourful.iconAsMask = true;                         // or per item
+view->AddItem(colourful);
+bool masked = view->GetIconsAsMask();
+```
 
 ## A font list: each font shown in itself
 
@@ -29504,6 +29566,7 @@ Planned features for future versions:
 
 ## Version History
 
+- **1.4.0** (2026-11-14): Icons drawn as masks in the item's text colour: `DropdownItem::iconAsMask`, `DropdownStyle::iconsAsMask`, `SetIconsAsMask()`
 - **1.2.5** (2026-10-07): Match the header: real `DropdownStyle` fields, `float` constructors and `CreateDropdown()`, multi-selection and icon API, list-view popup; removed the nonexistent DropdownStyles presets, DropdownBuilder, CreateAutoDropdown and shadow fields
 - **1.2.4** (2025-01-17): Popup rendering support
 - **1.2.3**: Added keyboard navigation improvements
@@ -41680,7 +41743,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.4.0 - `GroupBoxVisualStyle::FromTheme`, `ApplyTheme`: the group box follows the theme
+**Version:** 1.5.0 - `SectionCard(theme)` / `SectionPageColor(theme)`: the section card from the theme, dark under a dark one
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -41696,9 +41759,10 @@ interactive behaviour.
   `GroupBoxVisualStyle`.
 - **Style Presets**: `GroupBoxVisualStyle::Default()`,
   `GroupBoxVisualStyle::Card()` (iOS-like grouped card) and
-  `GroupBoxVisualStyle::SectionCard()` (a window section as a white card on
-  the light page of `Colors::SectionPage` - the look UltraMail's panes and
-  UltraPaint's side panel share).
+  `GroupBoxVisualStyle::SectionCard()` (a window section as a card on the
+  page of `SectionPageColor()` - white on `Colors::SectionPage` under a light
+  theme, the theme's panel on its ground under a dark one; the look
+  UltraMail's panes and UltraPaint's side panel share).
 - **Activator (checkbox or switch)**: an optional checkbox- or switch-style
   toggle in the title bar that enables/disables (greys out) the contained
   children. It can be placed on the **left or right** side of the title bar.
@@ -41871,14 +41935,18 @@ gb->SetCollapsible(true);
 
 ### Sections of a window as cards
 
-`SectionCard()` is one section of a window as a white card: a hairline border,
+`SectionCard()` is one section of a window as a card: a hairline border,
 8 px corners, the caption in bold grey over a hairline separator, 8 px of
 padding inside. It is drawn for the `Header` frame style and for a page of
-`Colors::SectionPage` around the cards - on a white page a white card shows
-nothing but its hairline. Its colours are compile-time constants beside the
-other UI colours (`Colors::SectionCardBackground`, `SectionCardBorder`,
-`SectionCardCaption`), so a container drawn as a matching card can use them
-too; a list inside a card takes `Colors::ListRowHover`
+`SectionPageColor()` around the cards - on a page of its own colour a card
+shows nothing but its hairline. It comes from the theme
+(`SectionCard(theme)`; `SectionCard()` and `SectionPageColor()` read the
+current one): under a light theme its colours are compile-time constants
+beside the other UI colours (`Colors::SectionCardBackground`,
+`SectionCardBorder`, `SectionCardCaption`, on `Colors::SectionPage`), so a
+container drawn as a matching card can use them too; under a dark theme the
+card is the theme's panel in a hairline (`line`) with the caption in muted
+ink, on the theme's ground. A list inside a light card takes `Colors::ListRowHover`
 and `Colors::ListRowSelected` for its rows (see
 `UltraCanvasListViewExamples.md`). Applications that share them look alike,
 and stay alike when they change; UltraMail and UltraPaint both build their
@@ -41889,11 +41957,11 @@ size to the application's body size, the padding.
 auto panel = CreateContainer("sidePanel", 0, 0, 300, 0);
 panel->layout.SetFlexColumn().SetFlexGap(8);
 panel->SetPadding(8);
-panel->SetBackgroundColor(Colors::SectionPage);
+panel->SetBackgroundColor(GroupBoxVisualStyle::SectionPageColor());   // the page under the cards, for the look
 
 auto layers = CreateGroupBox("layers", 0, 0, 268, 0, "Layers");
 layers->SetFrameStyle(GroupBoxFrameStyle::Header);
-GroupBoxVisualStyle card = GroupBoxVisualStyle::SectionCard();
+GroupBoxVisualStyle card = GroupBoxVisualStyle::SectionCard();   // the current theme's; SectionCard(theme) for another
 card.titleFont.fontSize = 9.0f;     // the application's body size
 card.contentPadding = 6.0f;
 layers->SetVisualStyle(card);
@@ -46044,8 +46112,10 @@ lists Overdue plus every priority actually used on the board.
   `size` pixels square at most, with its title under it - beside the card
   over the board; it goes with `HideCardPreview()`, and by itself when the
   pointer leaves the card, a button is pressed, the board scrolls or a drag
-  starts. The host decides when it opens (the Sticker board waits two seconds
-  with an `UltraCanvasApplication` timer) and makes the picture.
+  starts. `onCardPointerMoved(cardId)` runs on every pointer move over a
+  card (not during a drag), so a host can open the preview once the pointer
+  comes to rest: the Sticker board restarts a short `UltraCanvasApplication`
+  timer there. The host decides when it opens and makes the picture.
   `GetCardBounds(cardId)` is a card's rectangle as last laid out.
 
 Callbacks:
@@ -46065,6 +46135,7 @@ board->onFilesDropped = [data](const std::vector<std::string>& files, int column
 };
 board->onContextMenu = [](int cardId, int columnId, const Point2Di& windowPos) { /* open a menu */ };
 board->onCardHoverChanged = [](int cardId) { /* -1 = none */ };
+board->onCardPointerMoved = [](int cardId) { /* restart a rest timer */ };
 ```
 
 ## Factories
@@ -46454,7 +46525,7 @@ its text unless it is given a size.
 **Header:** `include/UltraCanvasLabel.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.13.0 - the theme and the label's variant
+**Version:** 2.14.0 - a font size set by hand survives a theme change
 
 ## Features
 
@@ -46552,6 +46623,20 @@ note->SetFollowTheme(true);
 
 A theme names `label.muted`, `label.faint` and `label.heading` as element
 roles where its design differs from the shared ink roles.
+
+A size set by hand stays: `SetFontSize` (and `SetFont`, with its family) is
+remembered, and a theme change gives the label the variant's colour but
+keeps that size - a 10 pt caption does not jump to the body size when the
+look changes, and needs no `SetFollowTheme(false)` for it. `SetTextColor`
+does not stop the following: the next change gives the variant's colour
+again, so a label meant to stay muted says so with `SetThemeVariant`.
+
+```cpp
+auto caption = CreateLabel("caption", 0, 0, 240, 16, "Updated 2 min ago");
+caption->SetFontSize(10.0f);                     // kept through every theme change
+caption->SetThemeVariant(LabelVariant::Muted);   // the muted ink of whichever look
+caption->SetFollowTheme(true);
+```
 
 ## Methods
 
@@ -48531,7 +48616,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.2.0 - `ListViewStyle::FromTheme`, `ApplyTheme`: the list follows the theme, its default delegate with it
+**Version:** 1.3.0 - the theme reaches the delegate (`IItemDelegate::ApplyTheme`), also one set after the list was made
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -48700,10 +48785,21 @@ the rows, the panel for the header with ink and hairline grid lines, the
 panel for alternate rows, the accent for the selection, the hover fill, the
 header at the caption size, the scrollbars from `ScrollbarStyle::FromTheme`.
 Under the theme policy a new list follows the theme by itself
-(`ApplyTheme`), and when its delegate is the `UltraCanvasDefaultListDelegate`
-that delegate takes ink, text on the accent for a selected row and the body
-font with it; a `SetStyle` by hand stops the following, `SetFollowTheme(true)`
-after it keeps both.
+(`ApplyTheme`) and hands the theme on to its delegate
+(`IItemDelegate::ApplyTheme`, a no-op unless a delegate overrides it) - at
+`SetDelegate`, so a delegate set after the list was made takes the theme it
+already has, and on every change after. The `UltraCanvasDefaultListDelegate`
+takes ink, text on the accent for a selected row and the body size there,
+each unless the application set it itself (`SetTextColor`,
+`SetSelectedTextColor`, `SetFontSize`), which then stays through every
+change. A `SetStyle` by hand stops the list's following,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto cells = std::make_shared<UltraCanvasDefaultListDelegate>();
+cells->SetFontSize(11.0f);              // the application's: kept through theme changes
+list->SetDelegate(cells);               // takes the theme's ink and selected text at once
+```
 
 ```cpp
 auto list = std::make_shared<UltraCanvasListView>("list", 300, 200);
@@ -53112,9 +53208,9 @@ FILE: Docs/UltraCanvas/UltraCanvasMessageCenter.md
 # UltraCanvasMessageCenter — The Desktop Message Centre
 
 **Status:** Phase 2 of UltraMessage (first UI consumer of the feed)
-**Version:** 0.1.1
+**Version:** 0.2.0 - follows the theme (`MessageCenterStyle::FromTheme`, `ApplyTheme`); its texts through `Tr`
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-05
+**Last Modified:** 2026-11-14
 
 `UltraCanvasMessageCenter` is the desktop message centre as one composite
 element: every chat message, mail and system notification on the UltraMessage
@@ -53231,9 +53327,33 @@ a demo or a test is `DefaultConnectOptions()` with `busPath` and
 | `Ingest(message)`, `RemoveEntry(id)`, `Clear()` | rows without a bus (a host feeding its own, tests) |
 | `MarkRead(id, read)`, `Dismiss(id)`, `InvokeAction(id, actionId)`, `Open(id)` | what the buttons do |
 | `onOpen`, `onSelectionChanged`, `onUnreadCountChanged`, `onError` | callbacks |
-| `SetStyle(MessageCenterStyle)` | colours, sizes, and `showSources` / `showDetail` / `showSearch` / `showFilters` for a compact embedding |
+| `SetStyle(MessageCenterStyle)` | colours, sizes, and `showSources` / `showDetail` / `showSearch` / `showFilters` for a compact embedding; a style set here stops the element following the theme |
+| `MessageCenterStyle::FromTheme(theme, base)`, `ApplyTheme(theme)` | the theme's roles over a style's sizes and flags (below) |
 | `GetListView()`, `GetSourcesTree()`, `GetSectionControl()`, `GetSearchInput()`, `GetDetailPane()`, `GetStatusLabel()` | the parts, for a host that restyles them |
 | `BuildEntry(message, out)`, `SectionForTopic(topic)`, `FormatTime(ms, nowMs)` | the translation, static, for tests |
+
+Under the theme policy the element follows the framework theme
+(`UltraCanvasTheme.md`) like any other: `MessageCenterStyle::FromTheme` puts
+the panel behind the feed and the detail, the well behind the sources, the
+soft accent behind the chosen row (with ink on it) and the hover fill, ink
+and muted ink, the accent for the unread mark and danger for an urgent one
+over the style's sizes and flags, and the element re-colours its feed,
+sources and labels from it on every change; the header's and the filter
+row's controls follow on their own. A host that sets its own colours calls
+`SetStyle` (which stops the following) or `SetFollowTheme(true)` after it
+for the roles over its sizes:
+
+```cpp
+auto center = CreateMessageCenter("center");
+MessageCenterStyle compact = center->GetStyle();
+compact.showSources = false;
+center->SetStyle(MessageCenterStyle::FromTheme(UltraCanvasTheme::Current(), compact));
+center->SetFollowTheme(true);   // the theme's colours over the compact shape, on every change
+```
+
+Its own texts - the sections, *Search messages*, *Unread*, *Refresh*, the
+detail pane's buttons and notes, the status line - are in the person's
+language (`Tr`, the standard set).
 
 What the element posts back, so sources and other feeds stay in step:
 
@@ -68858,7 +68978,7 @@ FILE: Docs/UltraCanvas/UltraCanvasScrollbarExamples.md
 
 **UltraCanvasScrollbar** is a standalone scrollbar control with full interaction support: thumb dragging, track paging, mouse-wheel scrolling, and optional arrow buttons. It works in either vertical or horizontal orientation and is configured through a single `ScrollbarStyle` struct that controls dimensions, colours (with separate normal / hover / pressed states), corner radius / end shape, an optional custom image (PNG or SVG) thumb handle, and scrolling behaviour. Several built-in style presets are provided, and a `std::function<void(int)> onScrollChange` callback reports live position changes.
 
-**Version:** 1.1.0 - `ScrollbarStyle::FromTheme`, `ApplyTheme`: a standalone bar follows the theme
+**Version:** 1.2.0 - a quieter thumb under a dark theme (`ScrollbarStyle::FromTheme`)
 **Header:** `include/UltraCanvasScrollbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -69025,7 +69145,11 @@ ScrollbarStyle& GetStyleRef();
 on the track and the thumb: the panel for the track with the hover fill and
 a hairline, the control border for the thumb, faint and muted ink as it is
 hovered and pressed, muted ink for the arrows on the panel; `scrollbar.track`
-and `scrollbar.thumb` where a theme names them. Under the theme policy a new
+and `scrollbar.thumb` where a theme names them. Under a dark theme that does
+not name `scrollbar.thumb`, the thumb is the track mixed a quarter of the way
+toward the ink (a third hovered, nearly half pressed), its border the thumb
+itself: it shows on the dark track without the glare of the light look's
+control-border grey. Under the theme policy a new
 standalone bar follows the theme by itself (`ApplyTheme`); a `SetStyle` by
 hand stops that. The bars an element owns (a list's, a tree's, a
 container's) take their owner's style, so they follow through the owner.
@@ -73236,6 +73360,22 @@ The splitter strip is as thick as the line plus its hit margin, widened
 further when a handle or icons need the room. Only the `splitterThickness`
 band is painted; the rest of the strip stays transparent, so a thin line can
 carry a much larger handle.
+
+Under the theme policy a split pane follows the framework theme
+(`UltraCanvasTheme.md`): `SplitPaneStyle::FromTheme` gives the bar the
+window's ground, the strong line under the pointer and the accent while it
+is dragged. Under a **dark** theme it themes the handle and the icons on
+the bar too - the handle on the raised surface in the strong line, the
+hover fill under the pointer, the soft accent while dragged, its grip in
+muted ink; the icons in muted ink, ink when hovered, faint ink when
+disabled - so a split pane on a dark ground has no light square on its bar.
+A light theme keeps the handle's and icons' light greys (below).
+
+```cpp
+SplitPaneStyle themed = SplitPaneStyle::FromTheme(UltraCanvasTheme::Dark(), split->GetSplitPaneStyle());
+// themed.handle.color is the dark theme's raised surface, themed.icons.iconColor its muted ink
+split->SetSplitPaneStyle(themed);
+```
 
 ## Splitter handle
 
@@ -77848,18 +77988,19 @@ for (const std::string& line : lines) {
 at `\n` (or `\r\n`), carries the state from line to line, and puts one
 `TokenType::Newline` token at each break - the tokens the text area colours.
 
-A string ends at its line unless the language lets it run on. Seven switches
+A string ends at its line unless the language lets it run on. Eight switches
 in `SyntaxTokenizationRules` say which strings do:
 
 | Rule | Languages | Example |
 |---|---|---|
-| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, C#, Elixir (`"""`) | a docstring |
+| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, Elixir (`"""`) | a docstring |
 | `multiLineStringDelimiters` (quotes whose strings span lines) | JavaScript / TypeScript, Go (`` ` ``); Shell, Ruby, PHP, Perl (`"`, `'`); Rust (`"`) | a template literal |
 | `stringLineContinuation` (a `\` ends the line) | C, C++, Python, JavaScript / TypeScript | `"abc\` then `def"` |
 | `delimitedRawStrings` (`R"delim( … )delim"`, optional `u8` / `u` / `U` / `L`) | C++ | a raw string ends only at its own `)delim"` |
 | `levelledLongBrackets` (`[[ … ]]`, `[==[ … ]==]`, and after `--` a comment) | Lua | `[==[` ends only at `]==]` |
 | `hashRawStrings` (`r"…"`, `r#"…"#`, `br`, `cr`) | Rust | `r"C:\"` is complete; `r#"say "hi""#` holds quotes |
 | `verbatimStrings` (`@"…"`, `$@"…"`, `@$"…"`) | C# | `@"C:\"` is complete; `""` inside is a quote; spans lines |
+| `quotedRawStrings` (three or more quotes, optional `$` / `$$`) | C# | `"""…"""` ends only at the same run of quotes; no escapes |
 
 A string the language does not let span lines - an unclosed `"` in Java -
 still ends at the line, so a typo colours one line rather than the rest of the
@@ -77871,6 +78012,13 @@ it - `stringPrefixes`: Python's `r`, `b`, `u`, `f` and their pairs (`rb`,
 string. A prefix never changes where the string ends: in Python a backslash
 keeps a quote from closing even a raw string, so `r"\""` is one string and
 `r"C:\"` is unterminated, as Python reads them.
+
+In C, C++, C# and GLSL a preprocessor directive - a line whose first
+character is `#`, indented or not, and the lines after it while each ends in
+`\` - is tokenized like code and then drawn in the preprocessor colour,
+except its strings, characters and comments: `#include "config.h"` shows its
+path as a string, a trailing `// note` as a comment, and a raw string or
+`/* comment */` that a `#define` opens carries on to the lines below.
 
 Block comments are matched before line comments, so a block opener that
 starts with the line-comment marker - Lua's `--[[ … ]]` (at any level,
@@ -79838,9 +79986,17 @@ element, so it keeps its look through every change, as before; an element
 that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
 which puts the roles over the given style and follows on from there. A
 setter that changes one thing (`SetTextColor`, `SetFont`) does not stop
-the following: the next theme change puts the theme's value back, so a
+the following: the next theme change puts the theme's colour back, so a
 colour an application means to keep goes through `SetStyle`, or is set
-again from its own change handler.
+again from its own change handler. A **font size set by hand** is the
+exception: `SetFontSize` / `SetFont` on a label, a button or a tree view,
+and on the list's default delegate, is remembered, and the next theme
+change keeps that size (and `SetFont`'s family) while the colours follow -
+a caption with a size of its own no longer jumps to the body size when the
+look changes, and needs no `SetFollowTheme(false)` for it. A list hands the
+theme on to its delegate (`IItemDelegate::ApplyTheme`), also to one set
+with `SetDelegate` after the list was made; the default delegate keeps a
+text colour or size the application set on it.
 
 ```cpp
 UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
@@ -79853,7 +80009,20 @@ ButtonStyle own = button->GetStyle();
 own.cornerRadius = 10;
 button->SetStyle(own);                                      // styled by hand: follows no more
 button->SetFollowTheme(true);                               // the roles over the hand-set style, following again
+button->SetFontSize(15.0f);                                 // kept through every theme change; the colours follow
 ```
+
+Some defaults are made for one look and change with the theme's `dark`
+flag, so a light window looks as it always did and a dark one is not left
+with light parts: under a dark theme the split pane's handle and the icons
+on its bar take the roles (`SplitPaneStyle::FromTheme`), the scrollbar's
+thumb is the track mixed toward the ink rather than the bright control
+border, a tree's and the clipboard history's selected row is the soft
+accent with ink on it (a coloured icon on it keeps its contrast), the
+section card (`GroupBoxVisualStyle::SectionCard(theme)`) is the panel on the
+ground, and a button's `SetColors` / `SetTextColors` with fewer than four
+colours derive a disabled face and text that sink toward the ground instead
+of turning light grey.
 
 `SetCurrent` calls every **change handler** after the switch. The
 application installs one at start-up (`UltraCanvasApplicationBase::Initialize`)
@@ -83856,8 +84025,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.
 
-**Version:** 1.4.0 - `ApplyTheme` on both views, `TreeColumnStyle::FromTheme`: the trees follow the theme  
-**Last Modified:** 2026-11-10  
+**Version:** 1.5.0 - a hand-set font size survives a theme change; a dark theme selects with the soft accent and ink  
+**Last Modified:** 2026-11-14  
 **Files:** 
 - Header: `include/UltraCanvasTreeView.h` (columns variant: `include/UltraCanvasColumnsTreeView.h`)
 - Implementation: `core/UltraCanvasTreeView.cpp`, `core/UltraCanvasColumnsTreeView.cpp`
@@ -84690,9 +84859,9 @@ inherited from `UltraCanvasUIElement`.
 
 `SetSelectionTextColor` is the text of a selected row (every cell of it in
 Columns mode); `Colors::Transparent`, the default, keeps the row's own text
-colour, and a node or cell coloured by hand keeps its colour either way. The
-theme sets the colour that reads on the accent (`onAccent`), so a light
-accent on a dark window does not get white text.
+colour, and a node or cell coloured by hand keeps its colour either way. A
+light theme sets the colour that reads on the accent (`onAccent`); a dark
+one selects with the soft accent and ink on it (below).
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
 (default `#E0E0E0`). `SetExpandButtonColors` sets the fill, the 1 px border
@@ -84710,15 +84879,19 @@ the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loadi
 Under the theme policy a new tree follows the framework theme
 (`UltraCanvasTheme.md`) by itself: `ApplyTheme` puts the roles onto the
 colours above - the well behind the rows with the control border round it,
-ink for the labels at the body size, the accent for the selection, the hover
-fill, the control border for the lines, the raised surface for the `+`/`-`
+ink for the labels at the body size (a size set with `SetFontSize` stays),
+the accent for the selection with the text on the accent - under a dark
+theme the soft accent with ink, so a blue icon on the selected row does not
+sink into a blue fill (`tree.selection` and `tree.on-selection` where a
+theme names them) - the hover fill, the control border for the lines, the raised surface for the `+`/`-`
 box with ink in it, muted ink for a chevron, the well and the accent for the
 check flags, the accent for a drop target and the loading bar, the floating
 buttons in muted ink with the panel for their arrow, the scrollbar from
 `ScrollbarStyle::FromTheme`. The tree has no style struct, so a colour set
 by hand does not stop the following (the next theme change puts the theme's
 back): an application that colours the tree itself calls
-`SetFollowTheme(false)` first. `UltraCanvasColumnsTreeView` adds
+`SetFollowTheme(false)` first. A font size is the exception: one set with
+`SetFontSize` is the tree's own and stays through every theme change. `UltraCanvasColumnsTreeView` adds
 `TreeColumnStyle::FromTheme` - hairline separators, the panel for the header
 band with ink; a section header keeps its black bar unless the theme names
 `columns-tree.group-header` and `columns-tree.on-group-header` - and a
@@ -88463,8 +88636,15 @@ line (Chrome 137), so the test runs Playwright's Chromium.
   into them fails to load with the missing symbol named.
 - **One app per page, in the window it creates.** As on any UltraCanvas
   page.
-- **Resources.** The runtime carries the bundled fonts; an app's own files
-  (images, data) are its own to fetch.
+- **Resources.** The runtime carries fonts: by default Manrope and Inter
+  cut to Latin, Greek and Cyrillic (`UCR_FONTS=subset`, 332 KB, made with
+  fonttools' `pyftsubset` at build time), or every file of `media/fonts`
+  with `UCR_FONTS=all`. An app's own files (images, data, its translation
+  catalogues) are its own to fetch; the UltraStore web store fetches its
+  catalogues into `media/locale/` and calls `UltraLocalisation::Load`.
+- **The UI-free modules an app may call** - UltraLocalisation and
+  UltraCrypt (with libsodium from the sysroot) - are in the main module
+  whole, not only what the library's own code pulls from them.
 - **Firefox and Safari** are untried.
 
 ## What would make it a product
@@ -108661,6 +108841,16 @@ encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
 
 ==============================================================================
+FILE: Docs/UltraClipboard/changelog.d/dark-look.md
+==============================================================================
+
+- **Dark look**: the window's bars, list, rows, icon buttons, filter,
+  status line, Undo and preview frame take the system look (the theme's
+  roles) instead of fixed light colours, and follow a change of look while
+  the window is open; the edit and settings dialogs' text-area borders and
+  the encryption note do the same.
+
+==============================================================================
 FILE: Docs/UltraNotifications/README.md
 ==============================================================================
 
@@ -108734,6 +108924,14 @@ UltraNotifications --version | --help
 `BUILD_ULTRANOTIFICATIONS` (on by default) builds it wherever the
 `UltraMessageCenter` library is built. It is packaged with the other
 applications on Linux, Windows and macOS.
+
+==============================================================================
+FILE: Docs/UltraNotifications/changelog.d/dark-look.md
+==============================================================================
+
+- **Dark look**: the window, the Quit footer and the message centre (list,
+  sources, detail, the unread and urgent marks) take the system look instead
+  of fixed light colours, and follow a change of look while it runs.
 
 ==============================================================================
 FILE: Docs/UltraSnip/README.md
@@ -108872,6 +109070,20 @@ change is kept in the settings folder and shows at the next start.
 | `main.cpp` | The command line and the single instance |
 
 ==============================================================================
+FILE: Docs/UltraSnip/changelog.d/dark-look.md
+==============================================================================
+
+- **UltraSnip follows the light or dark look.** The bar, the ground under the
+  snip, the rules and the status line were fixed light colours; they are now
+  the theme's, so a dark desktop gives a dark bar, and a change of look while
+  UltraSnip runs is taken at once. An error in the status line uses the
+  theme's warning red.
+- **The settings window is dark too.** Its buttons were white with a dark
+  icon in either look; they now use the theme's colours, and the window is
+  built again in the new look, on the page it showed, when the look changes
+  while it is open.
+
+==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md
 ==============================================================================
 
@@ -108964,6 +109176,18 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
+
+==============================================================================
+FILE: Docs/UltraPaint/changelog.d/section-page-dark.md
+==============================================================================
+
+- **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
+
+==============================================================================
+FILE: Docs/ArtCreator/changelog.d/section-page-dark.md
+==============================================================================
+
+- **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md
@@ -109448,8 +109672,8 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
 - **Choose how cards look:** right-click anywhere on the board, then
   **Display**: **Text only**, **Thumbnail and text** (the picture with the
   name under it, the usual one) or **Thumbnail and text in a row**.
-- **See a file larger:** rest the pointer on its card for two seconds and a
-  bigger preview opens beside it. Its size is **Display ▸ Mouse hover
+- **See a file larger:** stop the pointer on its card and a bigger preview
+  opens beside it. Its size is **Display ▸ Mouse hover
   preview**: **Small**, **Medium** or **Large**. Both choices are also on
   the **Desktop** page of the settings.
 - **Move or resize the board:** drag it by its title; resize it by the grip
@@ -109966,10 +110190,12 @@ organiser.
      capture (`ext-image-copy-capture-v1`) gives no picture: the tile shows
      the application's icon.
 
-   Drag a button to reorder; when the group is full it scrolls with the
-   mouse wheel. New applications join at the end.
-3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
-   by default, in the file manager), *UltraFiler*, and the applications the
+   Drag a button to reorder. When the buttons no longer fit, they first
+   move closer together, then get a smaller highlight around the same
+   icon; when the group is full even so it scrolls with the mouse wheel. New applications join at the end.
+3. **Pinned** — the *RAM disc* (UltraFiler shows its RAM disc, or opens the
+   *New RAM disc* dialog when there is none - `UltraFiler --ram-disc`; a
+   folder set in the settings opens instead), *UltraFiler*, and the applications the
    user pinned - from a running window's menu or a tile's in the
    Applications window - each with its own icon, one click to start, and
    *Unpin from taskbar* on its right-click menu. The pins are kept in the
@@ -110050,7 +110276,10 @@ the right-hand monitor the primary.
   copies, as before.
 - **Info panel**, anchored to the bottom: Email, Notifications, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
-  Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
+  Loudspeaker, Battery and Task Manager, then the tray icons. Each can be
+  switched off: *Hide this icon* on the info panel's right-click menu, or
+  UOS-Settings > Desktop > Info bar, which *Info bar icons...* on the same
+  menu opens (`hiddenInfoItems` in `desktop.json`). On a screen less than 960 pixels
   high the icons are smaller, and those that still do not fit fold into a
   chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
   upload, Task Manager, download, LAN, email, notifications - so the webcam's and
@@ -110061,7 +110290,17 @@ the right-hand monitor the primary.
   | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
   | green dot | a link is up | Wi-Fi joined |
   | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
-  | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
+  | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red below 25 %), keyboard layout - a wide pill grows inward, so "100" stays on the screen |
+
+  The battery's icon itself shows the charge, read every 2 seconds: its
+  fill is as long as the battery is full, to the pixel (10 pixels, one per
+  10 %; complete only at 100 %, at least one while any charge is left),
+  drawn on the icon's own pixel grid so it stays sharp. Full: green inside
+  the white outline. Charging: green with a white bolt. Below 25 % on
+  battery: red.
+  The percentage badge can be switched off - *Show the percentage* on the
+  battery's right-click menu, or UOS-Settings > Desktop > Battery
+  (`batteryPercent` in `desktop.json`); the tooltip still says it.
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
@@ -110123,7 +110362,9 @@ the right-hand monitor the primary.
 
 ### Theme and context menus
 
-The bars come in two themes, kept as `theme` in the settings: **dark**
+The bars come in two themes, and which one shows is the **system look**
+that every ULTRA OS application follows (`look` in Appearance.conf,
+UOS-Settings > Appearance > Look, or the host's when it says *system*): **dark**
 (light icons on dark grey, the running applications and the organiser
 carved in near black, the clock white on black - the default) and
 **light** (dark icons on light grey, the carved-in groups near white, the
@@ -110132,11 +110373,16 @@ The panels the bars open follow the theme - the clock, loudspeaker, Wi-Fi,
 Bluetooth, device and clipboard panels and the window pictures
 (`UltraDesktopPanelTheme`): dark grey with light text, or near white with
 dark text. A panel open when the theme changes closes, and opens in the new
-colours.
+colours. The *Theme* menus offer *Dark*, *Light* and *As the system* and
+write that look, so every application turns with the bars; a look changed
+in UOS-Settings or by the host turns the bars within a second. A desktop
+set up before this keeps its colours: its own earlier choice was written to
+Appearance.conf once (`lookMigrated`), unless a look was chosen there
+already.
 
 - **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
   with every picture type this build reads, through FileLoader), *Default
-  wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
+  wallpaper* (when another is set), *Theme* (*Dark*, *Light*, *As the system*), *Taskbar
   position* (*on the left*, *at the top*, *at the bottom*), *Drop files*
   (*Drop on sticker board*, *Drop on desktop*; below), *Arrange icons* (with
   the desktop icons), *Notes on the wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
@@ -110282,8 +110528,8 @@ UOS-Settings is followed within a second.
   in the same menu (anywhere on the board), shows the cards as *Text only*,
   *Thumbnail and text* (the picture with the name centred under it - the
   default) or *Thumbnail and text in a row*, and sets the size of the *Mouse
-  hover preview* (*Small*, *Medium*, *Large*): resting the pointer on a
-  file's card for two seconds opens a larger picture of it beside the card.
+  hover preview* (*Small*, *Medium*, *Large*): when the pointer stops on a
+  file's card, a larger picture of it opens beside the card.
   The *Desktop* page of UOS-Settings has the same two choices. The board,
   its style and its display are kept.
 - **Notes** (the note button below it): free sticky notes over the
@@ -110356,12 +110602,14 @@ earlier versions kept under `~/.config` is moved on the first start):
 {
   "taskbarEdge": "left",
   "wallpaper": "",
-  "ramDiscPath": "/dev/shm",
+  "ramDiscPath": "ultrafiler",
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
   "clockStyle": "analog-date",
   "theme": "dark",
   "dropFilesOn": "board",
+  "batteryPercent": true,
+  "hiddenInfoItems": [ "vpn" ],
   "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
@@ -110376,8 +110624,10 @@ earlier versions kept under `~/.config` is moved on the first start):
 An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
 (the framework's `media/images/landscape.jpg` where a package lacks it or
 cannot read AVIF). An
-empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
-RAM disc of its own, that is the default.
+empty `ramDiscPath` leaves the RAM disc button out; `"ultrafiler"`, the
+default, asks UltraFiler for its RAM disc (with another `filerProgram` the
+button just opens it), and a folder opens that folder. A file holding the
+earlier default, `/dev/shm`, is read as `"ultrafiler"`.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
@@ -110390,7 +110640,9 @@ applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
 `dropFilesOn` is `board` (the default) or `desktop`; `desktopIcons` keeps the
 desktop icons' places in the work area by name, and forgets one whose entry
-has gone. `theme` is `dark` (the default) or `light`; `clockStyle` one of
+has gone. `theme` records what the bars show, `dark` or `light` - the look
+itself is Appearance.conf's, and `lookMigrated` says the desktop's earlier
+choice was handed to it; `clockStyle` one of
 `analog-date` (the default), `analog`, `digital-date`, `digital` and
 `digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`
@@ -110539,10 +110791,129 @@ same.
 | Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
 | Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
 | Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
-| RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
+| RAM disc | UltraFiler's RAM disc - an ImDisk drive, or a folder in `%TEMP%` without ImDisk, which UltraFiler's dialog says |
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/battery-icon-states.md
+==============================================================================
+
+- **The battery icon shows the charge.** Its fill is as long as the battery
+  is full, to the pixel: 10 pixels at the usual icon size (8 on a short
+  screen), one per 10 %, complete only at 100 % and at least one while any
+  charge is left. The level is read every 2 seconds. The icon is drawn on
+  its own pixel grid, so the fill stands 1 pixel clear of the outline and no
+  edge is blurred. A full battery is green inside the bar's white (in the
+  light theme, dark) outline; while charging the battery is green with a
+  white bolt over it; below 25 % and not charging it is red (the badge's red
+  also starts at 25 % now, not 15 %). Without a battery the bar's usual
+  glyph stays.
+- **"100" fits on the battery's badge.** The badge, and the keyboard
+  layout's ("DEU"), grows inward from the corner instead of running off the
+  right edge of the screen (UltraCanvasBadge::SetGrowInward, framework).
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/battery-percent-option.md
+==============================================================================
+
+- **The battery's percentage badge can be switched off.** *Show the
+  percentage* on the battery icon's new right-click menu (beside *Battery
+  details...*) or UOS-Settings > Desktop > Battery; kept as
+  `batteryPercent` in `desktop.json`, on by default. Without it the icon's
+  fill shows the level and the tooltip the percentage. A change in
+  UOS-Settings shows within a second.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/dark-windows.md
+==============================================================================
+
+- **The desktop's own windows follow the light or dark look.** The
+  Applications window (its category headings, the count, the list beside the
+  tree), the Task Manager (the column header, the rows, the display and
+  desktop boxes, the state icons and words), the Sticker board (its bar and
+  title) and the clock panel (the clock face, its hands and ticks) take
+  their colours from the look in force instead of fixed light greys, so no
+  dark heading is lost on a dark window any more. A look changed while a
+  window is open - from the Theme menu, UOS-Settings or the system - is
+  taken at once.
+- **The Sticker board stands on a dark ground in a dark look.** The light
+  designs (Sticky notes, Poster, Schematic) keep their column and card
+  colours, but the board's ground, the column tracks, "+ Add card" and the
+  card editor are dark; the Dark design and every design in the light look
+  are unchanged.
+- **Sticky notes stay readable in a dark look.** A note's paper is light in
+  either look, so its text, caret, grip and buttons stay dark on it.
+- **The clock panel's figures** keep their green-on-black display in both
+  looks.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/info-bar-icons.md
+==============================================================================
+
+- **Each icon of the info bar can be switched off.** A right click on the
+  info panel offers *Hide this icon* (over one of its services' icons) and
+  *Info bar icons...*, which opens UOS-Settings on its new *Desktop > Info
+  bar* page: a tick box for Email, Notifications, Upload, Download,
+  Internet / LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
+  Loudspeaker, Battery, Task Manager and the other programs' tray icons. The
+  battery's right-click menu has both entries too. Kept as
+  `hiddenInfoItems` in `desktop.json`; a change in UOS-Settings shows within
+  a second. `UltraDesktopAppCategoriesTest` checks the setting.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/one-look.md
+==============================================================================
+
+- **One look for every application.** The bars' Dark / Light is now the
+  system look (Appearance.conf, UOS-Settings > Appearance > Look) that
+  every ULTRA OS application follows: the *Theme* menu on the desktop and
+  on the bars offers *Dark*, *Light* and *As the system* and switches all
+  of them at once, and a look chosen in UOS-Settings or by the host turns
+  the bars too. A desktop set up before keeps its colours: its own choice
+  (dark unless it was light) is written to Appearance.conf once, unless a
+  look was chosen there already (`lookMigrated` in `desktop.json`).
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/ram-disc-button-ultrafiler.md
+==============================================================================
+
+- **The RAM disc button opens UltraFiler's RAM disc.** A click has UltraFiler
+  show the RAM disc, or open the *New RAM disc* dialog when there is none
+  (`UltraFiler --ram-disc`), instead of opening `/dev/shm` itself, where
+  UltraFiler's discs are only folders. `ramDiscPath` in `desktop.json` is now
+  `"ultrafiler"` by default, on Windows and macOS too, so the button is there
+  on every platform; a settings file holding the earlier default `/dev/shm`
+  is read as `"ultrafiler"`. Another folder set there still opens that
+  folder, and an empty value still leaves the button out. With a file
+  manager other than UltraFiler the button opens it without the option.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/running-apps-tighten.md
+==============================================================================
+
+- **Many running applications draw closer together before they scroll.**
+  When the running applications no longer fit the taskbar, the gap between
+  them shrinks from 6 to 2 pixels; when that is still not enough, the
+  highlight around each icon shrinks from 40 to 32 pixels as well (the icon
+  keeps its 24). Only then does the group scroll. With room again they go
+  back to the usual spacing; the pinned and system buttons are not changed.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/sticker-board-hover-preview.md
+==============================================================================
+
+- **The Sticker board's hover preview opens when the pointer stops on a
+  card**, after a short rest (a third of a second) instead of two seconds.
+  The larger picture is made while the pointer is still on its way, so it is
+  there when the pointer stops.
+- **No more file-type chips on the Sticker board's cards.** A card no longer
+  shows its file's extension ("pdf", "jpg") under the name; boards saved
+  with one per card hide it too.
+- **A PDF shows no picture on the Sticker board when the build cannot draw
+  PDF pages** (no MuPDF): no icon on its card and no hover preview, rather
+  than the PDF icon. With MuPDF its card and preview show the first page.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
@@ -112513,6 +112884,36 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/dark-look.md
+==============================================================================
+
+- **UltraMail follows a dark desktop everywhere, and a change of the look
+  while it is open.** The folder, message-list and reading-pane cards, the
+  text fields, the account settings, the composer's attachment chips, the
+  contact manager's list, the outbox and the Settings window (which was a
+  light window on any desktop) take the desktop's colours; buttons put the
+  look's text on the accent and on the red of *Delete account*, so their
+  labels read in both looks; dialog icons and the paperclip are drawn in the
+  look's ink instead of black. Switching the desktop (or `Appearance.conf`)
+  between light and dark restyles every open UltraMail window at once - the
+  main window, the composer, the contact manager, Settings and the dialogs -
+  where before the hand-set colours kept the look UltraMail was started in,
+  and labels lost their sizes.
+- **A message's HTML stays on its own white page.** A formatted message keeps
+  the sender's colours on a white page - on a dark desktop a framed sheet
+  inside the dark reading pane - instead of the sender's dark text on the
+  dark pane. The composer's and the signature editor's formatted body is the
+  same white page, so the colours picked in the formatting bar (made for a
+  white page) stay readable while writing; the plain-text body follows the
+  look.
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/dialog-header-text-top.md
+==============================================================================
+
+- **A dialog's explaining text no longer runs over its title.** The text under a dialog's bold title starts at the top of its box; centred, a text that wrapped taller than the box spilled up over the title.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md

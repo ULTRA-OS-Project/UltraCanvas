@@ -4,6 +4,7 @@
 // one shape - releases with packages per target - and a release names the
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
+// Version: 0.8.0 - icon_variants / screenshot_variants: a picture at fixed sizes and browser formats, for the web store
 // Version: 0.7.1 - market_url: the marketplace service the app page reports a problem to
 // Version: 0.7.0 - categories from one fixed list (StoreCategories), read case-insensitively
 // Version: 0.6.0 - featured: the admin's pick for the store's hero and Editor's picks
@@ -120,6 +121,16 @@ Result<void> CheckCategories(const std::vector<std::string>& categories);
 
 // An app or a component: the id is reverse-DNS, stable forever, the key of
 // the local registry and the install folder's name.
+// A picture at one size in one format, published beside the original: the
+// web store asks the browser which format it decodes (AVIF, WebP) and picks
+// the smallest width at or above its slot, the native store keeps the
+// original. The url is relative to the catalog like every media path.
+struct MediaVariant {
+    std::string format;    // "avif", "webp", "png", "jpeg"
+    int width = 0;         // pixels
+    std::string url;
+};
+
 struct Component {
     ComponentKind kind = ComponentKind::App;
     std::string id;
@@ -136,6 +147,11 @@ struct Component {
     std::vector<std::string> machineTranslated;
     std::vector<std::string> categories;
     std::vector<std::string> screenshots; // relative to the catalog URL
+    // The pictures at fixed sizes and browser formats, when the admin backend
+    // published them (icon_variants, screenshot_variants: one list per
+    // screenshot, in the screenshots' order). Empty for a catalog without.
+    std::vector<MediaVariant> iconVariants;
+    std::vector<std::vector<MediaVariant>> screenshotVariants;
     // The admin backend's settings beyond the builds (apps; components keep
     // the defaults): the terms, the update period, the flags.
     Pricing pricing;

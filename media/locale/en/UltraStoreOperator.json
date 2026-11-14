@@ -3,6 +3,7 @@
   "@inherited": [
     "About",
     "Close",
+    "Dismiss",
     "History",
     "Name",
     "Open",
@@ -75,7 +76,6 @@
   "days": "days",
   "Decision": "Decision",
   "Decisions": "Decisions",
-  "Dismiss": "Dismiss",
   "Dismiss {0}? The reporter is told the outcome line.": "Dismiss {0}? The reporter is told the outcome line.",
   "dismissed": "dismissed",
   "Enforcement policy": "Enforcement policy",

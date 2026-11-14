@@ -406,13 +406,15 @@ A release build saves its ccache only when it compiled something, and merges
 that land within minutes of each other are folded and released together:
 `changelog-fold.yml` runs every ten minutes and folds once `main` has been
 quiet for ten, or when the oldest pending entry has waited twenty.
-A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
-ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
-its runner is five to ten times slower and the two macOS rows share one code
-base and one packaging script. A pull request that changes what only the
-Intel toolchain would catch (the macOS platform layer, the packaging, a
-bundled library) asks for that row with the `ci:intel` label; adding it
-starts a run with the full matrix.
+A pull request builds three rows - Linux x86_64, Windows x86_64 and macOS
+on Apple silicon - and the other three (Linux arm64, Windows ARM, macOS
+Intel) on main, where the release is made. The `ci:distro` label asks for
+all six on a pull request (the distribution build) and `ci:intel` for the
+Intel row alone; adding either starts a run with them. Ask for `ci:distro`
+when a change touches what only those rows would catch - a platform layer,
+the packaging, a bundled library - and add it when the user asks for a
+"distro build" with a pull request. A left-out row reports under its own
+name as skipped (`build-skipped`), so a required check never waits on it.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
 llama.cpp adapter is built (the engine is fetched from GitHub, or taken from

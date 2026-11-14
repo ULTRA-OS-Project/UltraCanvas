@@ -2288,9 +2288,12 @@ namespace UltraCanvas {
         const ThemeRoles& r = theme.roles;
         SetBackgroundColor(r.well);
         SetBordersColor(r.lineStrong);
-        fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
-        selectionColor = r.accent;
-        selectionTextColor = r.onAccent;
+        if (!fontSizeByHand) fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+        // The full accent under a light theme; under a dark one its light
+        // blue swallowed a blue icon on the selected row, so the soft accent
+        // with ink on it there.
+        selectionColor = theme.Role("tree.selection", theme.dark ? r.accentSoft : r.accent);
+        selectionTextColor = theme.Role("tree.on-selection", theme.dark ? r.ink : r.onAccent);
         hoverColor = r.hover;
         lineColor = r.lineStrong;
         textColor = r.ink;

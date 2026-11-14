@@ -1,7 +1,8 @@
 // core/UltraCanvasBadge.cpp
 // Platform-independent badge (count / status / overlay) implementation.
+// Version: 1.2.0 - grow-inward anchoring (SetGrowInward)
 // Version: 1.1.0 - honour BadgeStyle::cornerRadius (pill when negative).
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBadge.h"
@@ -99,7 +100,13 @@ namespace UltraCanvas {
                             ? (ab.x + ab.width) : ab.x;
         float cornerY = (corner == BadgeCorner::BottomLeft || corner == BadgeCorner::BottomRight)
                             ? (ab.y + ab.height) : ab.y;
-        return Point2Df(cornerX - w / 2.0f + anchorOffsetX,
+        float left = cornerX - w / 2.0f;
+        if (growInward && w > h) {
+            // Where a round badge (h across) would sit, widened inward.
+            const bool right = corner == BadgeCorner::TopRight || corner == BadgeCorner::BottomRight;
+            left = right ? cornerX + h / 2.0f - w : cornerX - h / 2.0f;
+        }
+        return Point2Df(left + anchorOffsetX,
                         cornerY - h / 2.0f + anchorOffsetY);
     }
 

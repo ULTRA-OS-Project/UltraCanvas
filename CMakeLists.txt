@@ -967,6 +967,15 @@ if(BUILD_ULTRASTORE)
     endif()
 endif()
 
+# The UltraStore web store (Apps/UltraStore/web, Docs/UltraStore/WebstoreBrief.md):
+# under emcmake a side module for that runtime and the site folder the admin
+# backend publishes; natively a desktop program over a publish folder, when
+# the store's core is built. With the demos, since it is looked at the same
+# way.
+if(BUILD_WASM_DEMOS AND ((EMSCRIPTEN AND ULTRACANVAS_WASM_DYNAMIC) OR (NOT EMSCRIPTEN AND TARGET UltraStoreCore)))
+    add_subdirectory(Apps/UltraStore/web)
+endif()
+
 # ===== ULTRASTOREADMIN =====
 # The store's admin backend: the apps and their settings in a database, the
 # packages, the signing key, the translations, the catalog generated and

@@ -17,6 +17,7 @@
 //      key and it rebuilds when one changed, so no setter resets it - only
 //      the inline images, which are not in the key, do (Reset()).
 //
+// Version: 2.20.0 - ApplyTheme keeps a font size or family set by hand
 // Version: 2.19.0 - the layout is an UltraCanvasTextLayoutCache keyed on its inputs
 // Version: 2.18.0 - FromTheme by LabelVariant
 // Version: 2.17.0 - LabelStyle::FromTheme
@@ -129,7 +130,15 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasLabel::ApplyTheme(const UltraCanvasTheme& theme) {
+        LabelStyle themed = LabelStyle::FromTheme(theme, GetStyle(), themeVariant);
+        if (fontSizeByHand) themed.fontStyle.fontSize = style.fontStyle.fontSize;
+        if (fontFamilyByHand) themed.fontStyle.fontFamily = style.fontStyle.fontFamily;
+        SetStyle(themed);
+    }
+
     void UltraCanvasLabel::SetFont(const std::string &fontFamily, float fontSize, FontWeight weight) {
+        if (!IsApplyingTheme()) fontFamilyByHand = fontSizeByHand = true;
         style.fontStyle.fontFamily = fontFamily;
         style.fontStyle.fontSize = fontSize;
         style.fontStyle.fontWeight = weight;
@@ -138,6 +147,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLabel::SetFontSize(float fontSize) {
+        if (!IsApplyingTheme()) fontSizeByHand = true;
         style.fontStyle.fontSize = fontSize;
         InvalidateLayout();
         RequestRedraw();

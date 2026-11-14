@@ -7,11 +7,11 @@
 //   * the file display (UltraCanvasFilerWidget::SetCaptionMaxLines), where 0
 //     is that "no limit" and a negative value cannot sneak in;
 //   * UltraFiler's config file (Apps/UltraFiler/UltraFilerSettings.h), read
-//     from a temporary folder here: 2 rows on a first start (the caption
-//     every earlier release drew), each choice across a restart, and a hand
+//     from a temporary folder here: 3 rows on a first start (earlier
+//     releases drew 2), each choice across a restart, and a hand
 //     edit outside 2..4 pulled into the range rather than dropped.
-// Version: 1.0.0
-// Last Modified: 2026-10-30
+// Version: 1.0.1
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilerWidget.h"
@@ -144,8 +144,8 @@ void TestSetting() {
     }
     RedirectConfigDirectory(root);
 
-    Check(UltraFilerSettings().fileNameMaxLines == 2, "a fresh installation shows 2 rows");
-    Check(LoadedLines() == 2, "no config file: 2 rows");
+    Check(UltraFilerSettings().fileNameMaxLines == 3, "a fresh installation shows 3 rows");
+    Check(LoadedLines() == 3, "no config file: 3 rows");
 
     for (int lines : {UltraFilerSettings::kFileNameLinesFull, 2, 3, 4}) {
         UltraFilerSettings settings;
@@ -164,7 +164,7 @@ void TestSetting() {
     Check(LoadedLines() == UltraFilerSettings::kMinFileNameLines,
           "a count under 2 is raised to 2");
     WriteConfig("display.file.names.lines = lots\n");
-    Check(LoadedLines() == 2, "an unreadable value keeps the default");
+    Check(LoadedLines() == 3, "an unreadable value keeps the default");
 
     std::filesystem::remove_all(root, ec);
 }

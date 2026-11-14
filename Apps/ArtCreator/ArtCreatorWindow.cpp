@@ -1194,7 +1194,7 @@ void ArtCreatorWindow::BuildRightPanel() {
     rightPanel->layout.SetFlexColumn().SetFlexGap(kPanelGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     rightPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     rightPanel->SetPadding(kPanelGap, 0, kPanelGap, kPanelGap);
-    rightPanel->SetBackgroundColor(Colors::SectionPage);
+    rightPanel->SetBackgroundColor(GroupBoxVisualStyle::SectionPageColor());
 
     // ----- icon: on top, and only in icon mode - the icon at its size -----
     BuildIconPanel();

@@ -1,0 +1,878 @@
+{
+  "schema": 2,
+  "generated": "2026-11-14T19:25:29Z",
+  "sequence": 1,
+  "trusted_keys": [
+    "0028b0498a4572845697cee27f2b10342b1a92d8ed68c8de89cb37878a9555bf"
+  ],
+  "publishers": [
+    {
+      "id": "ultra-os-project",
+      "name": "ULTRA OS Project",
+      "url": "https://ultraos.eu"
+    }
+  ],
+  "components": [
+    {
+      "id": "org.ultraos.ultracanvas-runtime",
+      "kind": "runtime",
+      "publisher": "ultra-os-project",
+      "name": "UltraCanvas runtime",
+      "releases": [
+        {
+          "version": "0.9.600",
+          "channel": "stable",
+          "date": "2026-11-01",
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/702bb719d7317d6b0d933b6a3e9e9e7d7e62c8007367ff644baa633c121b7725.zip",
+              "size": 197,
+              "sha256": "702bb719d7317d6b0d933b6a3e9e9e7d7e62c8007367ff644baa633c121b7725"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "apps": [
+    {
+      "id": "org.ultraos.anchorpoint",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "AnchorPoint",
+      "summary": {
+        "de": "Peer-to-peer file transfer between your own machines. (de)",
+        "en": "Peer-to-peer file transfer between your own machines."
+      },
+      "description": {
+        "en": "AnchorPoint moves files between machines directly, encrypted end to end, with no account and no server in between."
+      },
+      "source_language": "en",
+      "categories": [
+        "internet"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.anchorpoint/AnchorPoint.png",
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.anchorpoint/AnchorPoint-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.anchorpoint/AnchorPoint-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.anchorpoint/AnchorPoint-256.webp"
+        }
+      ],
+      "open_source": true,
+      "releases": [
+        {
+          "version": "0.4.0",
+          "channel": "stable",
+          "date": "2026-10-05",
+          "notes": {
+            "en": "Resumes a transfer where it stopped."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/eb0e9446bf733d8f8bd82f158ca5523a654763b3e285d690294cf4e53823739c.zip",
+              "size": 173,
+              "sha256": "eb0e9446bf733d8f8bd82f158ca5523a654763b3e285d690294cf4e53823739c",
+              "entry": "anchorpoint/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/eb0e9446bf733d8f8bd82f158ca5523a654763b3e285d690294cf4e53823739c.zip",
+              "size": 173,
+              "sha256": "eb0e9446bf733d8f8bd82f158ca5523a654763b3e285d690294cf4e53823739c",
+              "entry": "anchorpoint/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/packages/eb0e9446bf733d8f8bd82f158ca5523a654763b3e285d690294cf4e53823739c.zip",
+              "size": 173,
+              "sha256": "eb0e9446bf733d8f8bd82f158ca5523a654763b3e285d690294cf4e53823739c",
+              "entry": "anchorpoint/README.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.ultraos.artcreator",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "ArtCreator",
+      "summary": {
+        "de": "Vector drawing with bezier tools, text on paths and live effects. (de)",
+        "en": "Vector drawing with bezier tools, text on paths and live effects."
+      },
+      "description": {
+        "en": "ArtCreator draws vector art with bezier tools, text on paths, live effects and layers, and exports SVG, PDF and the raster formats."
+      },
+      "source_language": "en",
+      "categories": [
+        "graphics"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.artcreator/ArtCreator.png",
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.artcreator/ArtCreator-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.artcreator/ArtCreator-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.artcreator/ArtCreator-256.webp"
+        }
+      ],
+      "pricing": {
+        "model": "one-time",
+        "price": "19.90",
+        "currency": "EUR",
+        "trial_days": 14
+      },
+      "updates": {
+        "period": "until",
+        "until": "2027-12-31"
+      },
+      "open_source": true,
+      "featured": true,
+      "releases": [
+        {
+          "version": "0.7.3",
+          "channel": "stable",
+          "date": "2026-10-18",
+          "notes": {
+            "en": "Text on paths follows the path's direction."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/restricted/82764e1302cd184ec6ec32e9811e3fbbb3bef1b5e5240e28927bd47b6bfce612.zip",
+              "size": 170,
+              "sha256": "82764e1302cd184ec6ec32e9811e3fbbb3bef1b5e5240e28927bd47b6bfce612",
+              "entry": "artcreator/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/restricted/82764e1302cd184ec6ec32e9811e3fbbb3bef1b5e5240e28927bd47b6bfce612.zip",
+              "size": 170,
+              "sha256": "82764e1302cd184ec6ec32e9811e3fbbb3bef1b5e5240e28927bd47b6bfce612",
+              "entry": "artcreator/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/restricted/82764e1302cd184ec6ec32e9811e3fbbb3bef1b5e5240e28927bd47b6bfce612.zip",
+              "size": 170,
+              "sha256": "82764e1302cd184ec6ec32e9811e3fbbb3bef1b5e5240e28927bd47b6bfce612",
+              "entry": "artcreator/README.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.ultraos.texter",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "Texter",
+      "summary": {
+        "de": "A writing tool for notes, drafts and long documents. (de)",
+        "en": "A writing tool for notes, drafts and long documents."
+      },
+      "description": {
+        "en": "Texter writes plain and rich text, keeps every document as a file you own and exports PDF and HTML."
+      },
+      "source_language": "en",
+      "categories": [
+        "office"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.texter/Texter.png",
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.texter/Texter-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.texter/Texter-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.texter/Texter-256.webp"
+        }
+      ],
+      "open_source": true,
+      "releases": [
+        {
+          "version": "1.67",
+          "channel": "stable",
+          "date": "2026-10-28",
+          "notes": {
+            "en": "Footnotes."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/9223d65efceeee4b10921050af96ea456a63874405c6127c4212dc4ebbe143e0.zip",
+              "size": 158,
+              "sha256": "9223d65efceeee4b10921050af96ea456a63874405c6127c4212dc4ebbe143e0",
+              "entry": "texter/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/9223d65efceeee4b10921050af96ea456a63874405c6127c4212dc4ebbe143e0.zip",
+              "size": 158,
+              "sha256": "9223d65efceeee4b10921050af96ea456a63874405c6127c4212dc4ebbe143e0",
+              "entry": "texter/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/packages/9223d65efceeee4b10921050af96ea456a63874405c6127c4212dc4ebbe143e0.zip",
+              "size": 158,
+              "sha256": "9223d65efceeee4b10921050af96ea456a63874405c6127c4212dc4ebbe143e0",
+              "entry": "texter/README.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.ultraos.ultrafiler",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "UltraFiler",
+      "summary": {
+        "de": "Two-pane file manager with cloud drives, archives and previews built in. (de)",
+        "en": "Two-pane file manager with cloud drives, archives and previews built in."
+      },
+      "description": {
+        "en": "UltraFiler manages files in two panes, opens archives and cloud drives as folders and previews what it finds."
+      },
+      "source_language": "en",
+      "categories": [
+        "utilities"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.ultrafiler/UltraFiler.png",
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.ultrafiler/UltraFiler-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.ultrafiler/UltraFiler-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.ultrafiler/UltraFiler-256.webp"
+        }
+      ],
+      "open_source": true,
+      "releases": [
+        {
+          "version": "1.75.0",
+          "channel": "stable",
+          "date": "2026-10-30",
+          "notes": {
+            "en": "Archives open as folders without unpacking."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/b8877fd127ab81f549c835be75a66d932df4086451675477ed8500a2178ddeda.zip",
+              "size": 170,
+              "sha256": "b8877fd127ab81f549c835be75a66d932df4086451675477ed8500a2178ddeda",
+              "entry": "ultrafiler/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/b8877fd127ab81f549c835be75a66d932df4086451675477ed8500a2178ddeda.zip",
+              "size": 170,
+              "sha256": "b8877fd127ab81f549c835be75a66d932df4086451675477ed8500a2178ddeda",
+              "entry": "ultrafiler/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/packages/b8877fd127ab81f549c835be75a66d932df4086451675477ed8500a2178ddeda.zip",
+              "size": 170,
+              "sha256": "b8877fd127ab81f549c835be75a66d932df4086451675477ed8500a2178ddeda",
+              "entry": "ultrafiler/README.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.ultraos.ultramail",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "UltraMail",
+      "summary": {
+        "de": "Fast email for IMAP and Exchange, with an encrypted local vault. (de)",
+        "en": "Fast email for IMAP and Exchange, with an encrypted local vault."
+      },
+      "description": {
+        "en": "UltraMail reads and writes mail on IMAP and Exchange accounts, keeps an encrypted local vault and searches it in an instant."
+      },
+      "source_language": "en",
+      "categories": [
+        "communication"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.ultramail/UltraMail.png",
+      "screenshots": [
+        "media/org.ultraos.ultramail/shot-mail.png"
+      ],
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.ultramail/UltraMail-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.ultramail/UltraMail-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.ultramail/UltraMail-256.webp"
+        }
+      ],
+      "screenshot_variants": [
+        [
+          {
+            "format": "webp",
+            "width": 560,
+            "url": "media/org.ultraos.ultramail/shot-mail-560.webp"
+          },
+          {
+            "format": "webp",
+            "width": 1120,
+            "url": "media/org.ultraos.ultramail/shot-mail-1120.webp"
+          }
+        ]
+      ],
+      "open_source": true,
+      "featured": true,
+      "releases": [
+        {
+          "version": "0.10.59",
+          "channel": "stable",
+          "date": "2026-10-29",
+          "notes": {
+            "en": "Exchange calendars sync both ways."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/91a9debead90df1111fe0c7dc3cc7a0eca2a508a37377e8b7294a9636891f4f5.zip",
+              "size": 167,
+              "sha256": "91a9debead90df1111fe0c7dc3cc7a0eca2a508a37377e8b7294a9636891f4f5",
+              "entry": "ultramail/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/91a9debead90df1111fe0c7dc3cc7a0eca2a508a37377e8b7294a9636891f4f5.zip",
+              "size": 167,
+              "sha256": "91a9debead90df1111fe0c7dc3cc7a0eca2a508a37377e8b7294a9636891f4f5",
+              "entry": "ultramail/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/packages/91a9debead90df1111fe0c7dc3cc7a0eca2a508a37377e8b7294a9636891f4f5.zip",
+              "size": 167,
+              "sha256": "91a9debead90df1111fe0c7dc3cc7a0eca2a508a37377e8b7294a9636891f4f5",
+              "entry": "ultramail/README.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.ultraos.ultrapaint",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "UltraPaint",
+      "summary": {
+        "de": "Bitmap editor with layers, brushes and the PixelFX filter stack. (de)",
+        "en": "Bitmap editor with layers, brushes and the PixelFX filter stack."
+      },
+      "description": {
+        "en": "UltraPaint paints and retouches pictures with layers, brushes, selections and the PixelFX filters, and saves every format the image library writes."
+      },
+      "source_language": "en",
+      "categories": [
+        "graphics"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.ultrapaint/UltraPaint.png",
+      "screenshots": [
+        "media/org.ultraos.ultrapaint/shot-paint.png"
+      ],
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.ultrapaint/UltraPaint-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.ultrapaint/UltraPaint-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.ultrapaint/UltraPaint-256.webp"
+        }
+      ],
+      "screenshot_variants": [
+        [
+          {
+            "format": "webp",
+            "width": 560,
+            "url": "media/org.ultraos.ultrapaint/shot-paint-560.webp"
+          },
+          {
+            "format": "webp",
+            "width": 1120,
+            "url": "media/org.ultraos.ultrapaint/shot-paint-1120.webp"
+          }
+        ]
+      ],
+      "open_source": true,
+      "featured": true,
+      "releases": [
+        {
+          "version": "0.2.25",
+          "channel": "stable",
+          "date": "2026-10-21",
+          "notes": {
+            "en": "Brushes keep their pressure curve between sessions."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/8f37863cd58323ced06d5d167bddd5ceeaf58171dff2cb705ab525e4fdfc671b.zip",
+              "size": 170,
+              "sha256": "8f37863cd58323ced06d5d167bddd5ceeaf58171dff2cb705ab525e4fdfc671b",
+              "entry": "ultrapaint/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/8f37863cd58323ced06d5d167bddd5ceeaf58171dff2cb705ab525e4fdfc671b.zip",
+              "size": 170,
+              "sha256": "8f37863cd58323ced06d5d167bddd5ceeaf58171dff2cb705ab525e4fdfc671b",
+              "entry": "ultrapaint/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/packages/8f37863cd58323ced06d5d167bddd5ceeaf58171dff2cb705ab525e4fdfc671b.zip",
+              "size": 170,
+              "sha256": "8f37863cd58323ced06d5d167bddd5ceeaf58171dff2cb705ab525e4fdfc671b",
+              "entry": "ultrapaint/README.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.ultraos.ultrapassword",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "UltraPassword",
+      "summary": {
+        "de": "Password vault with a browser extension and two-factor codes. (de)",
+        "en": "Password vault with a browser extension and two-factor codes."
+      },
+      "description": {
+        "en": "UltraPassword keeps passwords and two-factor codes in a vault sealed with UltraCrypt, filled into the browser through its extension."
+      },
+      "source_language": "en",
+      "categories": [
+        "security"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.ultrapassword/UltraPassword.png",
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.ultrapassword/UltraPassword-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.ultrapassword/UltraPassword-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.ultrapassword/UltraPassword-256.webp"
+        }
+      ],
+      "open_source": true,
+      "releases": [
+        {
+          "version": "1.2.0",
+          "channel": "stable",
+          "date": "2026-10-10",
+          "notes": {
+            "en": "Passkeys."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/15ca7634cdc417743ee85dbb440cadb1f05fc2f69388e6b6cf49fa57958fad82.zip",
+              "size": 179,
+              "sha256": "15ca7634cdc417743ee85dbb440cadb1f05fc2f69388e6b6cf49fa57958fad82",
+              "entry": "ultrapassword/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/15ca7634cdc417743ee85dbb440cadb1f05fc2f69388e6b6cf49fa57958fad82.zip",
+              "size": 179,
+              "sha256": "15ca7634cdc417743ee85dbb440cadb1f05fc2f69388e6b6cf49fa57958fad82",
+              "entry": "ultrapassword/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/packages/15ca7634cdc417743ee85dbb440cadb1f05fc2f69388e6b6cf49fa57958fad82.zip",
+              "size": 179,
+              "sha256": "15ca7634cdc417743ee85dbb440cadb1f05fc2f69388e6b6cf49fa57958fad82",
+              "entry": "ultrapassword/README.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.ultraos.ultravideo",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "UltraVideo",
+      "summary": {
+        "de": "Cut, arrange and grade video on a real timeline, then export with one button. (de)",
+        "en": "Cut, arrange and grade video on a real timeline, then export with one button."
+      },
+      "description": {
+        "en": "UltraVideo is the video editor of ULTRA OS. Drop clips on a multi-track timeline, trim and split with the keyboard, add titles and transitions, and grade with the VideoFX engine. When the cut is done, one button renders to MP4, WebM or ProRes with the settings you used last time.\n\nProjects are plain files you can keep in any folder, open on another machine, or hand to a colleague. Every effect is non-destructive and the original footage is never touched."
+      },
+      "source_language": "en",
+      "categories": [
+        "video"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.ultravideo/UltraVideo.png",
+      "screenshots": [
+        "media/org.ultraos.ultravideo/shot-timeline.png",
+        "media/org.ultraos.ultravideo/shot-grading.png"
+      ],
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.ultravideo/UltraVideo-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.ultravideo/UltraVideo-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.ultravideo/UltraVideo-256.webp"
+        }
+      ],
+      "screenshot_variants": [
+        [
+          {
+            "format": "webp",
+            "width": 560,
+            "url": "media/org.ultraos.ultravideo/shot-timeline-560.webp"
+          },
+          {
+            "format": "webp",
+            "width": 1120,
+            "url": "media/org.ultraos.ultravideo/shot-timeline-1120.webp"
+          }
+        ],
+        [
+          {
+            "format": "webp",
+            "width": 560,
+            "url": "media/org.ultraos.ultravideo/shot-grading-560.webp"
+          },
+          {
+            "format": "webp",
+            "width": 1120,
+            "url": "media/org.ultraos.ultravideo/shot-grading-1120.webp"
+          }
+        ]
+      ],
+      "pricing": {
+        "model": "one-time",
+        "price": "29.90",
+        "currency": "EUR",
+        "trial_days": 30
+      },
+      "updates": {
+        "period": "until",
+        "until": "2027-12-31"
+      },
+      "age_rating": "3",
+      "open_source": true,
+      "featured": true,
+      "releases": [
+        {
+          "version": "0.7.0",
+          "channel": "stable",
+          "date": "2026-10-22",
+          "notes": {
+            "en": "Timeline: ripple delete and snap to clip edges. Export: ProRes 422 on macOS and Linux."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/restricted/64473bbb5278fcb40adfd4bfe60173bdf4d44093ffdeb8317e3b15f4e25f0e68.zip",
+              "size": 170,
+              "sha256": "64473bbb5278fcb40adfd4bfe60173bdf4d44093ffdeb8317e3b15f4e25f0e68",
+              "entry": "ultravideo/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/restricted/64473bbb5278fcb40adfd4bfe60173bdf4d44093ffdeb8317e3b15f4e25f0e68.zip",
+              "size": 170,
+              "sha256": "64473bbb5278fcb40adfd4bfe60173bdf4d44093ffdeb8317e3b15f4e25f0e68",
+              "entry": "ultravideo/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/restricted/64473bbb5278fcb40adfd4bfe60173bdf4d44093ffdeb8317e3b15f4e25f0e68.zip",
+              "size": 170,
+              "sha256": "64473bbb5278fcb40adfd4bfe60173bdf4d44093ffdeb8317e3b15f4e25f0e68",
+              "entry": "ultravideo/README.txt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "org.ultraos.ultraviewer",
+      "kind": "app",
+      "publisher": "ultra-os-project",
+      "name": "UltraViewer",
+      "summary": {
+        "de": "Media viewer for pictures, video and audio. (de)",
+        "en": "Media viewer for pictures, video and audio."
+      },
+      "description": {
+        "en": "UltraViewer shows pictures, plays video and audio, and steps through a folder with the keyboard."
+      },
+      "source_language": "en",
+      "categories": [
+        "video"
+      ],
+      "license": "MIT",
+      "homepage": "https://ultraos.eu",
+      "icon": "media/org.ultraos.ultraviewer/UltraViewer.png",
+      "icon_variants": [
+        {
+          "format": "webp",
+          "width": 64,
+          "url": "media/org.ultraos.ultraviewer/UltraViewer-64.webp"
+        },
+        {
+          "format": "webp",
+          "width": 128,
+          "url": "media/org.ultraos.ultraviewer/UltraViewer-128.webp"
+        },
+        {
+          "format": "webp",
+          "width": 256,
+          "url": "media/org.ultraos.ultraviewer/UltraViewer-256.webp"
+        }
+      ],
+      "open_source": true,
+      "releases": [
+        {
+          "version": "0.9.0",
+          "channel": "stable",
+          "date": "2026-10-12",
+          "notes": {
+            "en": "HEIF and AVIF pictures."
+          },
+          "depends": [
+            {
+              "id": "org.ultraos.ultracanvas-runtime",
+              "version": "0.9.600"
+            }
+          ],
+          "packages": [
+            {
+              "os": "linux",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/55edab6c7b35ed5451780406e4711b6c36514520fb541c37eb75a1aa3a4f2468.zip",
+              "size": 173,
+              "sha256": "55edab6c7b35ed5451780406e4711b6c36514520fb541c37eb75a1aa3a4f2468",
+              "entry": "ultraviewer/README.txt"
+            },
+            {
+              "os": "windows",
+              "arch": "x86_64",
+              "format": "zip",
+              "url": "https://store.example/packages/55edab6c7b35ed5451780406e4711b6c36514520fb541c37eb75a1aa3a4f2468.zip",
+              "size": 173,
+              "sha256": "55edab6c7b35ed5451780406e4711b6c36514520fb541c37eb75a1aa3a4f2468",
+              "entry": "ultraviewer/README.txt"
+            },
+            {
+              "os": "macos",
+              "arch": "arm64",
+              "format": "zip",
+              "url": "https://store.example/packages/55edab6c7b35ed5451780406e4711b6c36514520fb541c37eb75a1aa3a4f2468.zip",
+              "size": 173,
+              "sha256": "55edab6c7b35ed5451780406e4711b6c36514520fb541c37eb75a1aa3a4f2468",
+              "entry": "ultraviewer/README.txt"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

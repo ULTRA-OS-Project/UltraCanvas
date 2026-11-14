@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailOAuthCodeDialog.cpp
+// Version: 0.5.0 - the colours follow a change of the look
 // Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.0 - a header (globe tile, "Sign in with ..."); Continue carries
 //                  an icon
@@ -55,7 +56,7 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(dialog, Theme::CardBackground);
 
     auto content = CreateContainer("oauthCodeForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -76,7 +77,7 @@ void OAuthCodeDialog::Show(UltraCanvasWindowBase* parent,
                .SetFlexGap(Theme::kInnerGap)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto label = Theme::MakeLine("oauthCodeLbl", "Code", Theme::kControlHeight,
-                                 Theme::SizeBody(), Theme::TextSecondary());
+                                 Theme::SizeBody(), Theme::TextSecondary);
     label->SetElementSize(Size2Df(60.0f, Theme::kControlHeight));
     row->AddChild(label);
     auto code = CreateTextInput("oauthCodeField", 0, 0, 0, Theme::kControlHeight);

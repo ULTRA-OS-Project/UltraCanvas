@@ -14,6 +14,7 @@
 #   ultrastoreadmin      the window when started plainly, the commands when
 #                        given one.
 #
+# Version: 0.2.1 - core/Finance.cpp
 # Version: 0.2.0 - the window
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -32,7 +33,9 @@ add_library(UltraStoreAdminCore STATIC
     core/Uploader.cpp
     core/Affiliates.cpp
     core/PageFrame.cpp
+    core/WebSite.cpp
     core/Market.cpp
+    core/Finance.cpp
 )
 set_target_properties(UltraStoreAdminCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON

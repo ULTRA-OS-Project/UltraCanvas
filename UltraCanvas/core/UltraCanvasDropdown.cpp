@@ -2,6 +2,7 @@
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
 // The history is in the header (include/UltraCanvasDropdown.h).
+// Version: 1.4.0 - icons as masks in the item's text colour (DropdownItem::iconAsMask, SetIconsAsMask)
 // Version: 1.3.0 - DropdownItem::fontFamily, prepared in idle slices before the list opens
 // Version: 1.2.0 - SetPlaceholderText
 // Version: 1.1.0 - the button's text and the rows' are shaped once and kept
@@ -40,6 +41,7 @@ namespace UltraCanvas {
         if (role == DropdownSeparatorRole)        return item.separator ? 1 : 0;
         if (role == DropdownSelectedRole)         return item.selected ? 1 : 0;
         if (role == DropdownFontRole)             return item.fontFamily;
+        if (role == DropdownIconMaskRole)         return item.iconAsMask ? 1 : 0;
 
         return std::monostate{};
     }
@@ -109,7 +111,9 @@ namespace UltraCanvas {
                 static_cast<int>(style->iconSize),
                 static_cast<int>(style->iconSize)
             );
-            RenderIcon(ctx, iconPath, iconRect);
+            auto maskVal = model->GetData({row, 0}, DropdownIconMaskRole);
+            const bool asMask = style->iconsAsMask || (std::get_if<int>(&maskVal) && std::get<int>(maskVal) != 0);
+            RenderIcon(ctx, iconPath, iconRect, asMask, textColor);
             currentX += static_cast<int>(style->iconSize + style->iconPadding);
         }
 
@@ -182,13 +186,21 @@ namespace UltraCanvas {
         }
     }
 
-    void DropdownItemDelegate::RenderIcon(IRenderContext* ctx, const std::string& iconPath, const Rect2Di& iconRect) const {
+    void DropdownItemDelegate::RenderIcon(IRenderContext* ctx, const std::string& iconPath, const Rect2Di& iconRect,
+                                          bool asMask, const Color& maskColor) const {
         if (iconPath.empty()) return;
 
         auto icon = UCImage::Get(iconPath);
         if (icon && icon->IsValid()) {
-            ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+            if (asMask) ctx->DrawMask(maskColor, *icon.get(), Rect2Dd(iconRect), ImageFitMode::Contain);
+            else ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
         }
+    }
+
+    void UltraCanvasDropdown::SetIconsAsMask(bool asMask) {
+        if (style.iconsAsMask == asMask) return;
+        style.iconsAsMask = asMask;
+        RequestRedraw();
     }
 
     // ===== DROPDOWN CONSTRUCTOR =====
@@ -911,8 +923,10 @@ namespace UltraCanvas {
         std::string displayText = GetDisplayText();
         // The selected item's icon (single selection only).
         std::string iconPath;
+        bool iconAsMask = style.iconsAsMask;
         if (!multiSelectEnabled && selectedIndex >= 0 && selectedIndex < (int)items.size()) {
             iconPath = items[selectedIndex].iconPath;
+            iconAsMask = iconAsMask || items[selectedIndex].iconAsMask;
         }
         const bool showText = style.buttonShowsText && !displayText.empty();
 
@@ -936,7 +950,8 @@ namespace UltraCanvas {
                 );
                 auto icon = UCImage::Get(iconPath);
                 if (icon && icon->IsValid()) {
-                    ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+                    if (iconAsMask) ctx->DrawMask(textColor, *icon.get(), Rect2Dd(iconRect), ImageFitMode::Contain);
+                    else ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
                 }
                 textX += (int)(style.iconSize + style.iconPadding);
             }

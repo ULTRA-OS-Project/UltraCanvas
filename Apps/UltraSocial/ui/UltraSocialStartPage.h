@@ -4,8 +4,9 @@
 // name, one line on what it does and an "Add social account" button, centred,
 // with the networks it can post to underneath. Once an account exists the app
 // hides it and shows the compose view instead.
+// Version: 0.2.0 - a gear in the top-right corner opens Settings
 // Version: 0.1.0 - UltraMail's start page for UltraSocial
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -30,6 +31,8 @@ public:
 
     // Fired when the "Add social account" button is clicked.
     std::function<void()> onAddAccount;
+    // Fired when the gear (Settings) in the top-right corner is clicked.
+    std::function<void()> onOpenSettings;
 
 private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;

@@ -16,7 +16,8 @@
 // strings, R"delim( ... )delim"; Lua's long brackets at any level,
 // --[==[ ... ]==] and [==[ ... ]==]; string prefixes (Python's r"..", C's
 // L".."), coloured with their string; Rust raw strings (r#".."#) and C#
-// verbatim strings (@".."); and the whole-text Tokenize, which
+// verbatim strings (@".."); C# 11 raw strings (""".."""); preprocessor
+// lines that keep their strings and comments; and the whole-text Tokenize, which
 // must give the same tokens.
 // Version: 1.1.0
 // Last Modified: 2026-11-11
@@ -52,6 +53,7 @@ const char* Name(TokenType t) {
         case TokenType::Function: return "Function";
         case TokenType::Operator: return "Operator";
         case TokenType::Punctuation: return "Punctuation";
+        case TokenType::Preprocessor: return "Preprocessor";
         default: return "Other";
     }
 }
@@ -386,6 +388,56 @@ int main() {
         Expect(at[0], "return", TokenType::Keyword, "C#: @class is a name, not a string");
         auto ord = Highlight(tk, {{"var s = \"unclosed", "return s;"}, {}});
         Expect(ord[1], "return", TokenType::Keyword, "C#: an ordinary string ends at the line");
+    }
+
+    std::cout << "C# raw strings\n";
+    {
+        tk.SetLanguage("C#");
+        auto one = Highlight(tk, {{"var p = \"\"\"C:\\\"\"\" + x;"}, {}});
+        Expect(one[0], "\"\"\"C:\\\"\"\"", TokenType::String, "\"\"\"C:\\\"\"\" - no escapes, ends at \"\"\"");
+        Expect(one[0], "x", TokenType::Identifier, "code after it");
+        auto ml = Highlight(tk, {{"var s = \"\"\"", "  say \"hi\" and \"\"quoted\"\"", "  \"\"\"; return s;"}, {}});
+        Expect(ml[1], "  say \"hi\" and \"\"quoted\"\"", TokenType::String, "a raw string over lines holds \" and \"\"");
+        Expect(ml[2], "return", TokenType::Keyword, "code after the closing \"\"\"");
+        auto four = Highlight(tk, {{"var s = \"\"\"\"has \"\"\" inside\"\"\"\" + y;"}, {}});
+        Expect(four[0], "\"\"\"\"has \"\"\" inside\"\"\"\"", TokenType::String, "\"\"\"\" ends only at \"\"\"\"");
+        Expect(four[0], "y", TokenType::Identifier, "code after it");
+        auto interp = Highlight(tk, {{"var s = $$\"\"\"{{x}}\"\"\" + z;"}, {}});
+        Expect(interp[0], "$$\"\"\"{{x}}\"\"\"", TokenType::String, "$$\"\"\"..\"\"\" interpolated raw string");
+        auto empty = Highlight(tk, {{"var e = \"\" + w;"}, {}});
+        Expect(empty[0], "\"\"", TokenType::String, "\"\" is an empty string, not a raw one");
+        Expect(empty[0], "w", TokenType::Identifier, "code after it");
+        auto verb = Highlight(tk, {{"var v = @\"a\"\"b\" + q;"}, {}});
+        Expect(verb[0], "@\"a\"\"b\"", TokenType::String, "a verbatim string is unchanged");
+    }
+
+    std::cout << "Preprocessor lines\n";
+    {
+        tk.SetLanguage("C++");
+        auto raw = Highlight(tk, {{"#define SQL R\"(SELECT", "  *  FROM t)\"", "int x = 0;"}, {}});
+        Expect(raw[0], "define", TokenType::Preprocessor, "#define is a directive");
+        Expect(raw[0], "R\"(SELECT", TokenType::String, "a raw string in a #define is a string");
+        Expect(raw[1], "  *  FROM t)\"", TokenType::String, "...carried to the next line");
+        Expect(raw[2], "int", TokenType::Keyword, "code after the directive");
+        auto cont = Highlight(tk, {{"#define MAX(a, b) \\", "  ((a) > (b) ? (a) : (b))", "int y = MAX(1, 2);"}, {}});
+        Expect(cont[1], "a", TokenType::Preprocessor, "a \\-continued #define's next line is the directive");
+        Expect(cont[2], "int", TokenType::Keyword, "the directive ends without a \\");
+        auto inc = Highlight(tk, {{"#include \"config.h\" // local"}, {}});
+        Expect(inc[0], "\"config.h\"", TokenType::String, "#include \"..\": the path is a string");
+        Expect(inc[0], "// local", TokenType::Comment, "a comment on a directive line is a comment");
+        Expect(inc[0], "include", TokenType::Preprocessor, "...and include is the directive");
+        auto ind = Highlight(tk, {{"  #if DEBUG", "int z;"}, {}});
+        Expect(ind[0], "if", TokenType::Preprocessor, "an indented #if is a directive");
+        Expect(ind[1], "int", TokenType::Keyword, "code after it");
+        auto blk = Highlight(tk, {{"#define A 1 /* starts", "still comment */ int w;"}, {}});
+        Expect(blk[1], "still comment */", TokenType::Comment, "a block comment opened in a #define carries on");
+        Expect(blk[1], "int", TokenType::Keyword, "code after it, not the directive");
+        auto inside = Highlight(tk, {{"/* a comment", "#define X */ int v;"}, {}});
+        Expect(inside[1], "int", TokenType::Keyword, "a '#' inside a comment does not start a directive");
+
+        tk.SetLanguage("Python");
+        auto py = Highlight(tk, {{"# a comment", "return 1"}, {}});
+        Expect(py[0], "# a comment", TokenType::Comment, "Python: # is a comment, not a directive");
     }
 
     std::cout << "Tokenize: the whole text, as the text area sees it\n";

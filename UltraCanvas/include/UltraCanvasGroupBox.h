@@ -5,6 +5,8 @@
 // titled frame, an optional activator (checkbox or switch, on either side of
 // the title bar) that enables/disables the contents, an optional info icon
 // with help text, an optional close button, and optional collapsible behaviour.
+// Version: 1.6.0 - SectionCard(theme): the card from the theme (a dark card on a dark page), SectionCard()
+//                  of the current one; SectionPageColor(theme): the page under it
 // Version: 1.5.0 - GroupBoxVisualStyle::FromTheme, ApplyTheme: the group box follows the theme; a SetVisualStyle
 //                  by hand stops the following
 // Version: 1.4.0 - SetCloseButton / onCloseClicked: an "x" at the right end of the
@@ -95,16 +97,24 @@ namespace UltraCanvas {
         static GroupBoxVisualStyle Default();
         // iOS-like grouped card: filled rounded background, bold header, separator.
         static GroupBoxVisualStyle Card();
-        // One section of a window as a white card - UltraMail's folder,
+        // One section of a window as a card - UltraMail's folder,
         // message-list and message panes, UltraPaint's side panel: a hairline
         // border, 8 px corners and the caption in bold grey over a hairline
         // separator. Meant for GroupBoxFrameStyle::Header, on a page of
-        // Colors::SectionPage; its colours are the Colors::SectionCard* ones,
-        // and a list on it takes Colors::ListRowHover / ListRowSelected. The
-        // caption is 11 px: an application with another body size sets
+        // SectionPageColor(theme). Under a light theme its colours are the
+        // Colors::SectionCard* ones (a white card on Colors::SectionPage),
+        // and a list on it takes Colors::ListRowHover / ListRowSelected;
+        // under a dark one the card is the theme's panel in a hairline
+        // (ThemeRoles::line) with the caption in muted ink, on the ground.
+        // The caption is 11 px: an application with another body size sets
         // titleFont.fontSize to it, and contentPadding to what its content
-        // wants (8 px here).
+        // wants (8 px here). Without a theme: the current one.
+        static GroupBoxVisualStyle SectionCard(const UltraCanvasTheme& theme);
         static GroupBoxVisualStyle SectionCard();
+        // The page a section card sits on: Colors::SectionPage under a light
+        // theme, the theme's ground under a dark one.
+        static Color SectionPageColor(const UltraCanvasTheme& theme);
+        static Color SectionPageColor();
 
         // The theme's roles over a base's own shape (widths, radius, indents,
         // padding, the caption's weight) and its fills: a filled frame or

@@ -1,5 +1,6 @@
 // core/UltraCanvasImageElement.cpp
 // Image display component with loading, caching, and transformation support
+// Version: 1.12.0 - SetMaskColor: the picture's coverage filled with one colour
 // Version: 1.11.0 - LoadFromPixmap
 // Version: 1.10.0 - a right-click goes to onContextMenu, never to onClick
 // Version: 1.9.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
@@ -347,7 +348,21 @@ namespace UltraCanvas {
             ctx->Translate(-center.x, -center.y);
         }
 
-        if (!IsTinted()) {
+        if (IsDrawnAsMask()) {
+            // Mask: the picture's coverage (at the element's opacity) filled
+            // with maskColor - its shape in one colour, its own alpha kept.
+            ctx->BeginGroup();
+            DrawImageContent(ctx, contentRect);
+            auto coverage = ctx->EndGroupAsPattern();
+            // Without groups that drew straight through, in its own colours.
+            if (coverage) {
+                ctx->BeginGroup();
+                ctx->SetAlpha(1.0);
+                ctx->SetFillPaint(maskColor);
+                ctx->FillRectangle(Rect2Dd(contentRect.x, contentRect.y, contentRect.width, contentRect.height));
+                ctx->EndGroupMasked(coverage);
+            }
+        } else if (!IsTinted()) {
             DrawImageContent(ctx, contentRect);
         } else {
             // Tint: the picture multiplied by tintColor, painted through the

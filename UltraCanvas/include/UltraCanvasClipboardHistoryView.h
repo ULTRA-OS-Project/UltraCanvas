@@ -17,12 +17,15 @@
 // The actions are painted into the row, as UltraMail's contact list paints its
 // bin, and hit-tested through onCellClicked; the keyboard reaches them too
 // (Enter copies, F2 edits, Delete deletes - the window handles those keys).
+// Version: 1.5.0 - the Link tile's colours in the style (linkTile*, linkGlyph), dark under a dark theme;
+//                  under a dark theme the selected row is the soft accent with ink, and the icons and
+//                  the pin on a selected row take the selected title's colour
 // Version: 1.4.0 - ClipboardRowStyle::FromTheme: the rows from the theme over Light() or Dark()
 // Version: 1.3.0 - the text in the person's language (Tr); ClipboardEntryKindLabel,
 //                  ClipboardEntryDisplayTitle
 // Version: 1.2.0 - ClipboardRowAction::SaveAs, shown with ClipboardRowStyle::saveAction;
 //                  the icons left of the text (ClipboardRowStyle::actionsLeftOfText)
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -111,6 +114,10 @@ struct ClipboardRowStyle {
     Color copiedBackground = Color(220, 252, 231);
     Color tileBackground = Color(243, 244, 246);
     Color tileBorder = Color(229, 231, 235);
+    // A link's tile: its fill, its border (transparent: none) and the chain glyph
+    Color linkTileBackground = Color(232, 241, 251);
+    Color linkTileBorder = Color(207, 227, 247);
+    Color linkGlyph = Colors::Selection;
     Color selectionBackground = Colors::Selection;
     Color hoverBackground = Colors::SelectionHover;
     Color listBackground = Colors::White;
@@ -118,10 +125,14 @@ struct ClipboardRowStyle {
     static ClipboardRowStyle Light();
     static ClipboardRowStyle Dark();   // the desktop's bar colours, compact
     // The theme's roles over a base's own shape (heights, sizes, flags):
-    // the well for the list, ink and muted ink, text on the accent for the
-    // selected row, the panel for the header and a tile with hairlines, the
-    // actions in faint ink and ink when active with the hover fill, danger
-    // for delete, the accent for the pin, the selection and the hover fill;
+    // the well for the list, ink and muted ink, the panel for the header and
+    // a tile with hairlines, the actions in faint ink and ink when active
+    // with the hover fill, danger for delete, the accent for the pin, the
+    // hover fill; the selected row in the accent with the text on the
+    // accent under a light theme, in the soft accent with ink under a dark
+    // one (the dark accent is a light blue: white or dark text both read
+    // poorly on it); a link's tile the soft accent with the accent glyph
+    // under a dark theme, the base's light blue tile under a light one;
     // the "copied" green keeps its meaning. Without a base: Dark() or
     // Light() by the theme's flag
     static ClipboardRowStyle FromTheme(const UltraCanvasTheme& theme, const ClipboardRowStyle& base);

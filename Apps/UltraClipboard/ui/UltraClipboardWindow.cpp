@@ -1,5 +1,9 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
+// Version: 0.2.5 - the look from the theme (UltraCanvasTheme roles): the bars, the
+//                  list and its rows, the icon buttons, the filter, the status line
+//                  and the preview frame follow a dark look, and a change while it
+//                  runs (ApplyLook)
 // Version: 0.2.4 - ... or which one transcribed a recording
 // Version: 0.2.3 - Extract text says which UltraAI provider read a picture
 // Version: 0.2.2 - every text through Tr (UltraLocalisation)
@@ -35,6 +39,7 @@
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #ifdef ULTRACLIPBOARD_HAS_ULTRAAI
@@ -68,10 +73,10 @@ constexpr int kPreviewDelayMs = 150; // the pointer rests on a thumbnail this lo
 constexpr float kPreviewShare = 0.6f;  // of the list's width, at its right
 constexpr float kPreviewFrame = 12;    // the frame around the picture
 
-const Color kChrome(250, 251, 252);
-const Color kLine(229, 231, 235);
-const Color kMuted(107, 114, 128);
-const Color kLink(37, 99, 235);
+// The window's own colours are the current theme's roles (ApplyLook): the
+// bars and the preview frame on the ground, hairlines, muted ink for the
+// status line, the accent for Undo.
+const ThemeRoles& Roles() { return UltraCanvasTheme::Current().roles; }
 
 // The filter segments, in order.
 enum Filter { All, Texts, Images, Files, Links, Pinned };
@@ -93,21 +98,42 @@ ClipboardHistoryQuery QueryFor(int filter, const std::string& text) {
     return query;
 }
 
-std::shared_ptr<UltraCanvasButton> IconButton(const std::string& id, const std::string& icon,
-                                              const std::string& tooltip) {
-    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 34, 34, "");
-    ButtonStyle style = button->GetStyle();
+// A quiet icon button in a bar: no fill at rest, the theme's hover and
+// pressed fills; the icon a mask in muted ink, ink under the pointer.
+void StyleIconButton(UltraCanvasButton& button) {
+    const ThemeRoles& r = Roles();
+    ButtonStyle style = button.GetStyle();
     style.normalColor = Colors::Transparent;
-    style.hoverColor = Color(229, 231, 235);
-    style.pressedColor = Color(209, 213, 219);
+    style.hoverColor = r.hover;
+    style.pressedColor = r.pressed;
     style.borderColor = Colors::Transparent;
     style.cornerRadius = 6;
     style.useIconAsMask = true;
     // A mask icon takes the text colour.
-    style.normalTextColor = Color(75, 85, 99);
-    style.hoverTextColor = Color(17, 24, 39);
-    style.pressedTextColor = Color(17, 24, 39);
-    button->SetStyle(style);
+    style.normalTextColor = r.inkMuted;
+    style.hoverTextColor = r.ink;
+    style.pressedTextColor = r.ink;
+    button.SetStyle(style);
+}
+
+// The filter: flat segments, ink at rest, the accent for the chosen one.
+SegmentedControlStyle KindStyle() {
+    const ThemeRoles& r = Roles();
+    SegmentedControlStyle style = SegmentedControlStyle::Flat();
+    style.normalTextColor = r.ink;
+    style.hoverColor = r.hover;
+    style.selectedColor = r.accent;
+    style.selectedTextColor = r.onAccent;
+    style.paddingHorizontal = 14;
+    style.cornerRadius = 15;
+    style.fontSize = 10;
+    return style;
+}
+
+std::shared_ptr<UltraCanvasButton> IconButton(const std::string& id, const std::string& icon,
+                                              const std::string& tooltip) {
+    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 34, 34, "");
+    StyleIconButton(*button);
     button->SetIcon(GetResourcesDir() + "media/icons/clipboard/" + icon);
     button->SetIconSize(18, 18);
     button->SetTooltip(tooltip);
@@ -228,6 +254,7 @@ std::string LanguageFileExtension(const std::string& language) {
 UltraClipboardWindow::UltraClipboardWindow(UltraCanvasApplication& app) : app_(app) {}
 
 UltraClipboardWindow::~UltraClipboardWindow() {
+    if (themeHandler_) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     if (timer_) app_.StopTimer(timer_);
     if (previewTimer_) app_.StopTimer(previewTimer_);
     if (previewViewer_) previewViewer_->CloseFile();
@@ -254,28 +281,19 @@ bool UltraClipboardWindow::Create(const std::string& search, int64_t editId) {
     config.height = 720;
     config.minWidth = 640;
     config.minHeight = 400;
-    config.backgroundColor = Colors::White;
+    config.backgroundColor = Roles().ground;
     window_ = CreateWindow(config);
     if (!window_) return false;
 
     UltraCanvasWindow* window = window_.get();
     window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    window->SetBackgroundColor(Colors::White);
+    window->SetBackgroundColor(Roles().ground);
     window->AddChild(BuildToolbar());
 
     model_ = std::make_shared<ClipboardHistoryListModel>();
-    ClipboardRowStyle rowStyle = ClipboardRowStyle::Light();
-    rowStyle.saveAction = true;
-    if (history_) rowStyle.actionsLeftOfText = history_->GetPolicy().iconSide == ClipboardIconSide::Left;
-    rows_ = std::make_shared<ClipboardHistoryRowDelegate>(rowStyle);
     list_ = std::make_shared<UltraCanvasListView>("ucb.list");
-    ListViewStyle listStyle;
-    listStyle.backgroundColor = rows_->Style().listBackground;
-    listStyle.selectionBackgroundColor = rows_->Style().selectionBackground;
-    listStyle.hoverBackgroundColor = rows_->Style().hoverBackground;
-    list_->SetStyle(listStyle);
     list_->SetModel(model_);
-    list_->SetDelegate(rows_);
+    StyleList(history_ && history_->GetPolicy().iconSide == ClipboardIconSide::Left);
     list_->SetVariableRowHeights(true);
     list_->SetBorders(0);
     list_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -332,10 +350,15 @@ bool UltraClipboardWindow::Create(const std::string& search, int64_t editId) {
         return true;
     };
 
+    // A dark look, or one chosen while the window is open: the colours set
+    // here by hand follow it.
+    themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
+
     if (!history_) {
         // Shown, not hidden: an empty list would say "nothing copied".
         status_->SetText(TrF("The clipboard history could not be opened: {0}", openError));
-        status_->SetTextColor(Color(185, 28, 28));
+        statusIsError_ = true;
+        status_->SetTextColor(Roles().danger);
         search_->SetDisabled(true);
         kinds_->SetDisabled(true);
         recording_->SetDisabled(true);
@@ -417,8 +440,9 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildToolbar() {
     toolbar->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     toolbar->SetPadding(12, 16, 10, 16);
-    toolbar->SetBackgroundColor(kChrome);
-    toolbar->SetBorderBottom(1, kLine);
+    toolbar->SetBackgroundColor(Roles().ground);
+    toolbar->SetBorderBottom(1, Roles().line);
+    toolbar_ = toolbar;
 
     // The search, the recording switch, settings and the rest.
     auto top = std::make_shared<UltraCanvasContainer>("ucb.top");
@@ -431,6 +455,7 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildToolbar() {
     searchStyle.borderRadius = 6;
     searchStyle.paddingLeft = 10;
     search_->SetStyle(searchStyle);
+    search_->SetFollowTheme(true);   // the theme's colours over this shape, now and on a change
     search_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     search_->onTextChanged = [this](const std::string&) { Reload(); };
     top->AddChild(search_);
@@ -444,9 +469,9 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildToolbar() {
     };
     top->AddChild(recording_);
 
-    auto settings = IconButton("ucb.settings", "settings.svg", Tr("Settings"));
-    settings->SetOnClick([this]() { OpenSettings(); });
-    top->AddChild(settings);
+    settingsButton_ = IconButton("ucb.settings", "settings.svg", Tr("Settings"));
+    settingsButton_->SetOnClick([this]() { OpenSettings(); });
+    top->AddChild(settingsButton_);
     // An icon, not a "⋯" glyph: the UI font (Ubuntu) has none, and the
     // fallback font left it as a missing-glyph box on Windows.
     moreButton_ = IconButton("ucb.more", "more.svg", Tr("More"));
@@ -459,13 +484,7 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildToolbar() {
     for (const std::string& name : {Tr("All"), Tr("Text"), Tr("Images"), Tr("Files"), Tr("Links"), Tr("Pinned")})
         kinds_->AddSegment(name);
     kinds_->SetWidthMode(SegmentWidthMode::FitContent);
-    SegmentedControlStyle kindStyle = SegmentedControlStyle::Flat();
-    kindStyle.normalTextColor = Color(55, 65, 81);
-    kindStyle.hoverColor = Color(229, 231, 235);
-    kindStyle.paddingHorizontal = 14;
-    kindStyle.cornerRadius = 15;
-    kindStyle.fontSize = 10;
-    kinds_->SetStyle(kindStyle);
+    kinds_->SetStyle(KindStyle());
     kinds_->SetSelectedIndex(All);
     kinds_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
     kinds_->onSegmentSelected = [this](int) { Reload(); };
@@ -473,37 +492,84 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildToolbar() {
     return toolbar;
 }
 
+// The list and its rows from the theme: the row delegate's colours are fixed
+// when it is made, so a change of look makes a new one with the same shape.
+void UltraClipboardWindow::StyleList(bool actionsLeftOfText) {
+    ClipboardRowStyle rowStyle = ClipboardRowStyle::FromTheme(UltraCanvasTheme::Current(), ClipboardRowStyle::Light());
+    rowStyle.saveAction = true;
+    rowStyle.actionsLeftOfText = actionsLeftOfText;
+    rows_ = std::make_shared<ClipboardHistoryRowDelegate>(rowStyle);
+    ListViewStyle listStyle = ListViewStyle::FromTheme(UltraCanvasTheme::Current(), list_->GetStyle());
+    listStyle.backgroundColor = rowStyle.listBackground;
+    listStyle.selectionBackgroundColor = rowStyle.selectionBackground;
+    listStyle.hoverBackgroundColor = rowStyle.hoverBackground;
+    list_->SetStyle(listStyle);
+    list_->SetDelegate(rows_);
+}
+
+// Undo: a text button in the accent, the soft accent under the pointer.
+void UltraClipboardWindow::StyleUndo() {
+    const ThemeRoles& r = Roles();
+    ButtonStyle undoStyle = undo_->GetStyle();
+    undoStyle.normalColor = Colors::Transparent;
+    undoStyle.hoverColor = r.accentSoft;
+    undoStyle.pressedColor = r.pressed;
+    undoStyle.normalTextColor = r.accent;
+    undoStyle.hoverTextColor = r.accent;
+    undoStyle.pressedTextColor = r.accent;
+    undoStyle.borderColor = Colors::Transparent;
+    undoStyle.cornerRadius = 5;
+    undoStyle.fontSize = 9;
+    undo_->SetStyle(undoStyle);
+}
+
+// Every colour this window sets by hand, again from the current theme.
+void UltraClipboardWindow::ApplyLook() {
+    if (!window_) return;
+    const ThemeRoles& r = Roles();
+    window_->SetBackgroundColor(r.ground);
+    for (auto* bar : {toolbar_.get(), statusBar_.get(), preview_.get()})
+        if (bar) bar->SetBackgroundColor(r.ground);
+    if (toolbar_) toolbar_->SetBorderBottom(1, r.line);
+    if (statusBar_) statusBar_->SetBorderTop(1, r.line);
+    if (preview_) preview_->SetBorders(1, r.line);
+    if (settingsButton_) StyleIconButton(*settingsButton_);
+    if (moreButton_) StyleIconButton(*moreButton_);
+    if (kinds_) kinds_->SetStyle(KindStyle());
+    if (status_) status_->SetTextColor(statusIsError_ ? r.danger : r.inkMuted);
+    if (message_) message_->SetTextColor(r.ink);
+    if (hint_) hint_->SetTextColor(r.inkMuted);
+    if (undo_) StyleUndo();
+    if (list_ && rows_) {
+        // A fresh delegate: the "copied" check of the last copy starts over.
+        StyleList(rows_->Style().actionsLeftOfText);
+        list_->RequestRedraw();
+    }
+    window_->RequestRedraw();
+}
+
 std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildStatusBar() {
     auto bar = std::make_shared<UltraCanvasContainer>("ucb.status");
     bar->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bar->SetPadding(5, 16, 5, 16);
-    bar->SetBackgroundColor(kChrome);
-    bar->SetBorderTop(1, kLine);
+    bar->SetBackgroundColor(Roles().ground);
+    bar->SetBorderTop(1, Roles().line);
+    statusBar_ = bar;
 
     status_ = CreateLabel("ucb.stats", 0, 0, 200, 24, "");
     status_->SetFontSize(9);
-    status_->SetTextColor(kMuted);
+    status_->SetTextColor(Roles().inkMuted);
     status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     bar->AddChild(status_);
     message_ = CreateLabel("ucb.message", 0, 0, 220, 24, "");
     message_->SetFontSize(9);
-    message_->SetTextColor(Color(17, 24, 39));
+    message_->SetTextColor(Roles().ink);
     message_->SetAlignment(TextAlignment::Right);
     message_->layoutItem.SetFlexShrink(1);
     bar->AddChild(message_);
     undo_ = std::make_shared<UltraCanvasButton>("ucb.undo", 0, 0, 60, 24, Tr("Undo"));
-    ButtonStyle undoStyle = undo_->GetStyle();
-    undoStyle.normalColor = Colors::Transparent;
-    undoStyle.hoverColor = Color(219, 234, 254);
-    undoStyle.pressedColor = Color(191, 219, 254);
-    undoStyle.normalTextColor = kLink;
-    undoStyle.hoverTextColor = kLink;
-    undoStyle.pressedTextColor = kLink;
-    undoStyle.borderColor = Colors::Transparent;
-    undoStyle.cornerRadius = 5;
-    undoStyle.fontSize = 9;
-    undo_->SetStyle(undoStyle);
+    StyleUndo();
     undo_->SetTooltip(Tr("Undo  Ctrl+Z"));
     undo_->SetVisible(false);
     undo_->layoutItem.SetFlexShrink(0);
@@ -511,7 +577,7 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildStatusBar() {
     bar->AddChild(undo_);
     hint_ = CreateLabel("ucb.hint", 0, 0, 200, 24, Tr("Super+V opens the quick panel"));
     hint_->SetFontSize(9);
-    hint_->SetTextColor(kMuted);
+    hint_->SetTextColor(Roles().inkMuted);
     hint_->SetAlignment(TextAlignment::Right);
     hint_->layoutItem.SetFlexShrink(0);
     bar->AddChild(hint_);
@@ -1282,8 +1348,8 @@ std::shared_ptr<UltraCanvasContainer> UltraClipboardWindow::BuildPreview() {
     preview_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     preview_->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
     preview_->SetPadding(kPreviewFrame);
-    preview_->SetBackgroundColor(kChrome);
-    preview_->SetBorders(1, kLine);
+    preview_->SetBackgroundColor(Roles().ground);
+    preview_->SetBorders(1, Roles().line);
     preview_->SetVisible(false);
 
     previewViewer_ = CreateMediaViewer("ucb.preview.viewer", 0, 0, 0, 0);

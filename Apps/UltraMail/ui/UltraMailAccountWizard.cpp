@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
+// Version: 0.8.0 - the guide and the colours follow a change of the look (UltraMailTheme.h Follow)
 // Version: 0.7.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.6.0 - a header (envelope tile, title, the one-line intro); Show
 //                  info, Continue carry icons
@@ -10,7 +11,7 @@
 // Version: 0.4.1 - live hint per address: browser sign-in for Gmail / Outlook,
 //                  an app password for Yahoo / iCloud (or a typed password
 //                  at an OAuth2 provider)
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountWizard.h"
 
@@ -60,7 +61,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(dialog, Theme::CardBackground);
 
     // ===== CONTENT: intro + labelled input rows =====
     auto content = CreateContainer("wizardForm", 0, 0, 0, 0);
@@ -83,7 +84,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         auto label = Theme::MakeLine(id + "Label", labelText, Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
 
@@ -111,7 +112,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     // Provider-specific advice that follows the address as it is typed: Gmail
     // and Outlook sign in through the browser (OAuth2) when the password is
     // left empty; they, Yahoo and iCloud need an app password otherwise.
-    auto hint = Theme::MakeLine("wizHint", "", 30, Theme::SizeBody(), Theme::TextSecondary());
+    auto hint = Theme::MakeLine("wizHint", "", 30, Theme::SizeBody(), Theme::TextSecondary);
     hint->SetWrap(TextWrap::WrapWord);
     content->AddChild(hint);
     hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -126,7 +127,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto guideLabel = Theme::MakeLine("wizGuideLabel", "How to set up an iCloud mail account",
                                       Theme::kControlHeight, Theme::SizeBody(),
-                                      Theme::TextPrimary());
+                                      Theme::TextPrimary);
     guideRow->AddChild(guideLabel);
     guideLabel->layoutItem.SetFlexGrow(1);
     auto guideBtn = CreateButton("wizGuideBtn", 0, 0, 90, Theme::kControlHeight, Tr("Show info"));
@@ -143,10 +144,10 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     guide->SetWordWrap(true);
     guide->SetShowLineNumbers(false);
     guide->SetHighlightCurrentLine(false);
-    guide->SetBackgroundColor(Theme::Sidebar());
-    guide->SetBorders(1.0f, Theme::CardBorder(), Theme::kControlRadius);
+    Theme::SetFill(guide, Theme::Sidebar);
+    Theme::SetFrame(guide, 1.0f, Theme::CardBorder, Theme::kControlRadius);
     guide->SetFontSize(Theme::SizeBody());
-    guide->SetTextColor(Theme::TextPrimary());
+    Theme::SetInk(guide, Theme::TextPrimary);
     guide->SetText(ICloudSetupGuide(), false);
     guide->SetElementSize(Size2Df(0, static_cast<float>(kGuideHeight)));
     guide->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);

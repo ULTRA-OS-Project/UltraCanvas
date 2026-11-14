@@ -1,5 +1,6 @@
 // core/UltraCanvasScrollbar.cpp
 // Platform-independent scrollbar component implementation
+// Version: 1.3.0 - FromTheme: a quieter thumb under a dark theme
 // Version: 1.2.0
 // Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
@@ -612,6 +613,15 @@ namespace UltraCanvas {
         s.arrowPressedColor = r.ink;
         s.arrowBackgroundColor = r.panel;
         s.arrowBackgroundHoverColor = r.hover;
+        if (theme.dark && !theme.HasRole("scrollbar.thumb")) {
+            // The control border (the light look's thumb) glares on a dark
+            // track: a grey mixed from the track toward the ink instead.
+            const Color track = theme.Role("scrollbar.track", r.panel);
+            s.thumbColor = track.Blend(r.ink, 0.25f).WithAlpha(base.thumbColor.a);
+            s.thumbHoverColor = track.Blend(r.ink, 0.35f).WithAlpha(base.thumbHoverColor.a);
+            s.thumbPressedColor = track.Blend(r.ink, 0.45f).WithAlpha(base.thumbPressedColor.a);
+            s.thumbBorderColor = s.thumbColor;
+        }
         return s;
     }
 } // namespace UltraCanvas

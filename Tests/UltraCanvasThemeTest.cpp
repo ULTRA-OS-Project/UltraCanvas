@@ -3,6 +3,8 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.15.0 - the dark split pane handle, section card, clipboard rows and scrollbar thumb; the button's
+//                   derived states for the look; a size set by hand through ApplyTheme; a late delegate
 // Version: 1.14.0 - TakeHostFonts: the host's fonts onto an own theme
 // Version: 1.13.0 - the media elements and the viewers: the players and recorders, the video tile, the slideshow,
 //                   the font viewer and the curve editor
@@ -87,6 +89,12 @@
 #endif
 #ifndef UC_TEST_HAS_COLOR_PALETTE_MANAGER
 #define UC_TEST_HAS_COLOR_PALETTE_MANAGER 1
+#endif
+#ifndef UC_TEST_HAS_CLIPBOARD_VIEW
+#define UC_TEST_HAS_CLIPBOARD_VIEW 1
+#endif
+#if UC_TEST_HAS_CLIPBOARD_VIEW
+#include "UltraCanvasClipboardHistoryView.h"
 #endif
 #ifndef UC_TEST_HAS_SLIDESHOW
 #define UC_TEST_HAS_SLIDESHOW 1
@@ -363,9 +371,15 @@ int main() {
     {
         ScrollbarStyle sbBase = ScrollbarStyle::Minimal();
         const ScrollbarStyle sb = ScrollbarStyle::FromTheme(own, sbBase);
-        CHECK(sb.trackColor.r == r.panel.r && sb.trackColor.a == sbBase.trackColor.a && sb.thumbColor.r == r.lineStrong.r && sb.thumbColor.a == sbBase.thumbColor.a
-              && Same(sb.trackBorderColor, r.line) && Same(sb.thumbBorderColor, r.lineStrong) && sb.thumbHoverColor.r == r.inkFaint.r && sb.thumbPressedColor.r == r.inkMuted.r,
-              "scrollbar: the panel for the track and the control border for the thumb at the base's alpha, faint and muted ink hovered and pressed");
+        const ScrollbarStyle sbLight = ScrollbarStyle::FromTheme(light, sbBase);
+        CHECK(sbLight.trackColor.r == light.roles.panel.r && sbLight.trackColor.a == sbBase.trackColor.a && sbLight.thumbColor.r == light.roles.lineStrong.r
+              && sbLight.thumbColor.a == sbBase.thumbColor.a && Same(sbLight.trackBorderColor, light.roles.line) && Same(sbLight.thumbBorderColor, light.roles.lineStrong)
+              && sbLight.thumbHoverColor.r == light.roles.inkFaint.r && sbLight.thumbPressedColor.r == light.roles.inkMuted.r,
+              "scrollbar, light: the panel for the track and the control border for the thumb at the base's alpha, faint and muted ink hovered and pressed");
+        CHECK(sb.trackColor.r == r.panel.r && sb.trackColor.a == sbBase.trackColor.a && sb.thumbColor.a == sbBase.thumbColor.a && Same(sb.trackBorderColor, r.line)
+              && sb.thumbColor.r > r.panel.r + 25 && sb.thumbColor.r < r.lineStrong.r && sb.thumbHoverColor.r > sb.thumbColor.r
+              && sb.thumbPressedColor.r > sb.thumbHoverColor.r && sb.thumbBorderColor.r == sb.thumbColor.r,
+              "scrollbar, dark: a thumb mixed from the track toward the ink - visible on the panel, quieter than the control border");
         CHECK(Same(sb.arrowColor, r.inkMuted) && Same(sb.arrowHoverColor, r.ink) && Same(sb.arrowBackgroundColor, r.panel) && Same(sb.arrowBackgroundHoverColor, r.hover)
               && sb.trackSize == sbBase.trackSize && sb.thumbCornerRadius == sbBase.thumbCornerRadius, "scrollbar: the arrows in muted ink on the panel; the base's sizes stay");
         UltraCanvasTheme barred = own;
@@ -409,7 +423,8 @@ int main() {
         ContainerStyle csBase;
         csBase.autoShowScrollbars = true;
         const ContainerStyle cs = ContainerStyle::FromTheme(own, csBase);
-        CHECK(cs.autoShowScrollbars && Same(cs.scrollbarStyle.trackBorderColor, r.line) && Same(cs.scrollbarStyle.thumbBorderColor, r.lineStrong),
+        CHECK(cs.autoShowScrollbars && Same(cs.scrollbarStyle.trackBorderColor, r.line)
+              && Same(cs.scrollbarStyle.thumbColor, ScrollbarStyle::FromTheme(own, csBase.scrollbarStyle).thumbColor),
               "container: the scrollbars from the theme, the base's flags kept");
         const GroupBoxVisualStyle gb = GroupBoxVisualStyle::FromTheme(own);
         CHECK(gb.backgroundColor.a == 0 && Same(gb.borderColor, r.line) && Same(gb.titleColor, r.ink) && Same(gb.disabledTitleColor, r.inkFaint)
@@ -692,9 +707,9 @@ int main() {
         auto freshTree = std::make_shared<UltraCanvasTreeView>("fresh-tree", 0, 0, 200, 100);
         auto freshCols = std::make_shared<UltraCanvasColumnsTreeView>("fresh-cols", 0, 0, 200, 100);
         CHECK(freshBar->GetFollowTheme() && Same(freshBar->GetStyle().trackBorderColor, dark.roles.line) && Same(freshList->GetStyle().backgroundColor, dark.roles.well)
-              && Same(freshTree->GetTextColor(), dark.roles.ink) && Same(freshTree->GetSelectionColor(), dark.roles.accent)
-              && Same(freshTree->GetSelectionTextColor(), dark.roles.onAccent) && Same(freshTree->GetVerticalScrollbarStyle().trackBorderColor, dark.roles.line),
-              "a new scrollbar, list view and tree view are styled from the theme, the tree's selected text on the accent, its scrollbar with it");
+              && Same(freshTree->GetTextColor(), dark.roles.ink) && Same(freshTree->GetSelectionColor(), dark.roles.accentSoft)
+              && Same(freshTree->GetSelectionTextColor(), dark.roles.ink) && Same(freshTree->GetVerticalScrollbarStyle().trackBorderColor, dark.roles.line),
+              "a new scrollbar, list view and tree view are styled from the theme, a dark tree's selection the soft accent with ink, its scrollbar with it");
         UltraCanvasUIElement::SetFollowThemeByDefault(false);
         CHECK(UltraCanvasTreeView("plain").GetSelectionTextColor().a == 0, "a tree that does not follow keeps the row's own text colour on a selected row");
         UltraCanvasUIElement::SetFollowThemeByDefault(true);
@@ -953,6 +968,106 @@ int main() {
               "a high-contrast dark host gives the dark high-contrast preset with the accent at 7:1");
         host.dark = false;
         CHECK(UltraCanvasTheme::FromHost(host).name == "Host Light High Contrast", "a high-contrast light host the light one");
+    }
+
+    std::printf("the dark look of the split pane, the section card, the clipboard rows\n");
+    {
+        const SplitPaneStyle paneLight = SplitPaneStyle::FromTheme(light);
+        const SplitPaneStyle paneDark = SplitPaneStyle::FromTheme(dark);
+        CHECK(Same(paneLight.handle.color, SplitPaneStyle().handle.color) && Same(paneLight.icons.iconColor, SplitPaneStyle().icons.iconColor),
+              "split pane, light: the handle and the icons keep their greys");
+        CHECK(Same(paneDark.handle.color, dark.roles.raised) && Same(paneDark.handle.hoverColor, dark.roles.hover)
+              && Same(paneDark.handle.activeColor, dark.roles.accentSoft) && Same(paneDark.handle.borderColor, dark.roles.lineStrong)
+              && Same(paneDark.handle.gripColor, dark.roles.inkMuted) && Same(paneDark.icons.iconColor, dark.roles.inkMuted),
+              "split pane, dark: the handle on the raised surface, hover, soft accent, strong line; grip and icons in muted ink");
+        const GroupBoxVisualStyle cardLight = GroupBoxVisualStyle::SectionCard(light);
+        const GroupBoxVisualStyle cardDark = GroupBoxVisualStyle::SectionCard(dark);
+        CHECK(Same(cardLight.backgroundColor, Colors::SectionCardBackground) && Same(cardLight.borderColor, Colors::SectionCardBorder)
+              && Same(cardLight.titleColor, Colors::SectionCardCaption) && Same(GroupBoxVisualStyle::SectionPageColor(light), Colors::SectionPage),
+              "section card, light: the section-card colours on the section page, as before");
+        CHECK(Same(cardDark.backgroundColor, dark.roles.panel) && Same(cardDark.borderColor, dark.roles.line) && Same(cardDark.titleColor, dark.roles.inkMuted)
+              && Same(GroupBoxVisualStyle::SectionPageColor(dark), dark.roles.ground) && cardDark.cornerRadius == cardLight.cornerRadius,
+              "section card, dark: the panel in a hairline, the caption in muted ink, on the ground; the same shape");
+        UltraCanvasTheme::SetCurrent(dark);
+        CHECK(Same(GroupBoxVisualStyle::SectionCard().backgroundColor, dark.roles.panel), "SectionCard() is the current theme's");
+        UltraCanvasTheme::SetCurrent(light);
+#if UC_TEST_HAS_CLIPBOARD_VIEW
+        const ClipboardRowStyle rowsLight = ClipboardRowStyle::FromTheme(light, ClipboardRowStyle::Light());
+        const ClipboardRowStyle rowsDark = ClipboardRowStyle::FromTheme(dark, ClipboardRowStyle::Light());
+        CHECK(Same(rowsLight.selectionBackground, light.roles.accent) && Same(rowsLight.selectedTitleColor, light.roles.onAccent)
+              && Same(rowsLight.linkTileBackground, ClipboardRowStyle::Light().linkTileBackground),
+              "clipboard rows, light: the accent with its text, the light link tile");
+        CHECK(Contrast(rowsDark.selectedTitleColor, rowsDark.selectionBackground) >= 7.0 && Same(rowsDark.linkTileBackground, dark.roles.accentSoft)
+              && Contrast(rowsDark.linkGlyph, rowsDark.linkTileBackground) >= 3.0,
+              "clipboard rows, dark: the selected row's text reads (7:1), the link tile is dark with its glyph showing");
+#endif
+    }
+
+    std::printf("derived button colours for the look\n");
+    {
+        UltraCanvasTheme::SetCurrent(light);
+        UltraCanvasButton lightButton("derive-light", 0, 0, 80, 24, "B");
+        lightButton.SetColors(light.roles.raised, light.roles.hover);
+        lightButton.SetTextColors(light.roles.ink);
+        CHECK(Same(lightButton.GetStyle().disabledColor, light.roles.raised.Lighten(0.3f)) && Same(lightButton.GetStyle().pressedColor, light.roles.raised.Darken(0.1f))
+              && Same(lightButton.GetStyle().disabledTextColor, light.roles.ink.Lighten(0.3f)),
+              "light: a pressed face darkened, a disabled face and text lightened, as before");
+        UltraCanvasTheme::SetCurrent(dark);
+        UltraCanvasButton darkButton("derive-dark", 0, 0, 80, 24, "B");
+        darkButton.SetColors(dark.roles.raised, dark.roles.hover);
+        darkButton.SetTextColors(dark.roles.ink);
+        const ButtonStyle& ds = darkButton.GetStyle();
+        CHECK(Luminance(ds.disabledColor) <= Luminance(dark.roles.raised) && Contrast(ds.disabledColor, dark.roles.ground) < 1.3,
+              "dark: a disabled face no lighter than at rest, close to the ground (not a light grey block)");
+        CHECK(Contrast(ds.disabledTextColor, ds.disabledColor) >= 2.5 && Contrast(ds.disabledTextColor, ds.disabledColor) < Contrast(dark.roles.ink, dark.roles.raised)
+              && Luminance(ds.pressedColor) > Luminance(dark.roles.raised) && Luminance(ds.hoverTextColor) >= Luminance(dark.roles.ink),
+              "dark: the disabled text quieter but legible, a pressed face lighter, the hovered text no dimmer");
+        UltraCanvasTheme::SetCurrent(light);
+    }
+
+    std::printf("a size set by hand survives a theme change\n");
+    {
+        UltraCanvasTheme::SetCurrent(light);
+        auto sized = std::make_shared<UltraCanvasLabel>("sized", 0, 0, 80, 24, "Sized");
+        sized->SetFollowTheme(true);
+        sized->SetFontSize(9.0f);
+        sized->OnThemeChanged(dark);
+        CHECK(Near(sized->GetStyle().fontStyle.fontSize, 9.0, 1e-9) && Same(sized->GetStyle().textColor, dark.roles.ink) && sized->GetFollowTheme(),
+              "label: SetFontSize stays through ApplyTheme while the colour follows");
+        auto plainLabel = std::make_shared<UltraCanvasLabel>("plain-label", 0, 0, 80, 24, "Plain");
+        plainLabel->SetFollowTheme(true);
+        plainLabel->OnThemeChanged(dark);
+        CHECK(Near(plainLabel->GetStyle().fontStyle.fontSize, dark.FontSize(ThemeTextRole::Body), 1e-9), "label: one without a size of its own takes the body size");
+        auto sizedButton = std::make_shared<UltraCanvasButton>("sized-button", 0, 0, 80, 24, "Sized");
+        sizedButton->SetFollowTheme(true);
+        sizedButton->SetFontSize(15.0f);
+        sizedButton->OnThemeChanged(dark);
+        CHECK(Near(sizedButton->GetStyle().fontSize, 15.0, 1e-6) && Same(sizedButton->GetStyle().normalColor, dark.roles.raised),
+              "button: SetFontSize stays while the colours follow");
+        auto sizedTree = std::make_shared<UltraCanvasTreeView>("sized-tree", 0, 0, 200, 100);
+        sizedTree->SetFollowTheme(true);
+        sizedTree->SetFontSize(10.0f);
+        sizedTree->OnThemeChanged(dark);
+        CHECK(Near(sizedTree->GetFontSize(), 10.0, 1e-6) && Same(sizedTree->GetTextColor(), dark.roles.ink), "tree view: SetFontSize stays while the colours follow");
+    }
+
+    std::printf("a delegate set after the list was made\n");
+    {
+        UltraCanvasTheme::SetCurrent(dark);
+        auto list = std::make_shared<UltraCanvasListView>("late-list", 0, 0, 200, 100);
+        list->SetFollowTheme(true);
+        auto late = std::make_shared<UltraCanvasDefaultListDelegate>();
+        list->SetDelegate(late);
+        CHECK(Same(late->GetTextColor(), dark.roles.ink) && Same(late->GetSelectedTextColor(), dark.roles.onAccent)
+              && Near(late->GetFontSize(), dark.FontSize(ThemeTextRole::Body), 1e-6), "SetDelegate hands it the theme");
+        auto styledCells = std::make_shared<UltraCanvasDefaultListDelegate>();
+        styledCells->SetTextColor(Color(1, 2, 3));
+        styledCells->SetFontSize(11.0f);
+        list->SetDelegate(styledCells);
+        list->OnThemeChanged(light);
+        CHECK(Same(styledCells->GetTextColor(), Color(1, 2, 3)) && Near(styledCells->GetFontSize(), 11.0, 1e-6)
+              && Same(styledCells->GetSelectedTextColor(), light.roles.onAccent), "what the application set on it stays, the rest follows");
+        UltraCanvasTheme::SetCurrent(light);
     }
 
     UltraCanvasTheme::SetCurrent(light);

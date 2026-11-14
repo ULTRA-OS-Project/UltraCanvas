@@ -1,0 +1,1 @@
+- **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
