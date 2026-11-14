@@ -20,7 +20,7 @@
 // cards as text only, as a thumbnail with the name centred under it, or as a
 // small thumbnail with the name beside it (the default is the thumbnail),
 // and the size of the hover preview - the larger picture of a file that
-// opens beside its card after the pointer has rested on it for two seconds.
+// opens beside its card as soon as the pointer comes to rest on it.
 // UOS-Settings offers the same two choices.
 // Version: 0.6.0 - the ground, the bar and the title from the theme in force,
 //                  again when it changes (ApplyLook)
@@ -120,9 +120,14 @@ private:
     void MoveCardTo(int cardId, int columnId);
     // The style's card metrics for display_ (after a design is applied).
     void ApplyDisplayStyle();
-    // The pointer rests on a card: the preview after two seconds.
+    // The pointer reaches a card: its preview is made ahead (not shown).
     void OnCardHover(int cardId);
-    void ShowHoverPreview(int cardId);
+    // The pointer moved on a card: the rest timer starts again.
+    void OnCardPointerMoved(int cardId);
+    // The preview of `cardId`, made on a worker if not yet; shown when made
+    // if `show` and the pointer still rests on that card.
+    void PrepareHoverPreview(int cardId, bool show);
+    void StopHoverTimer();
     float PreviewSize() const;
     // A file card's thumbnail, when it is ready; asks for one otherwise.
     std::shared_ptr<UltraCanvas::UCPixmap> Thumbnail(const UltraCanvas::KanbanCard& card);
@@ -139,9 +144,11 @@ private:
     std::string display_ = "thumbnail";
     std::string hoverPreview_ = "medium";
 
-    // The hover preview: the card under the pointer, the timer that waits
-    // the two seconds, and the larger pictures made so far, by path and size.
+    // The hover preview: the card under the pointer, the card the pointer
+    // has come to rest on (-1 while it moves), the timer that waits for the
+    // rest, and the larger pictures made so far, by path and size.
     int hoverCardId_ = -1;
+    int restingCardId_ = -1;
     UltraCanvas::TimerId hoverTimer_ = UltraCanvas::InvalidTimerId;
     std::map<std::string, std::shared_ptr<UltraCanvas::UCPixmap>> previews_;
     std::set<std::string> previewPending_;

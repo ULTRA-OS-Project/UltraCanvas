@@ -236,8 +236,8 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
 - **Choose how cards look:** right-click anywhere on the board, then
   **Display**: **Text only**, **Thumbnail and text** (the picture with the
   name under it, the usual one) or **Thumbnail and text in a row**.
-- **See a file larger:** rest the pointer on its card for two seconds and a
-  bigger preview opens beside it. Its size is **Display ▸ Mouse hover
+- **See a file larger:** stop the pointer on its card and a bigger preview
+  opens beside it. Its size is **Display ▸ Mouse hover
   preview**: **Small**, **Medium** or **Large**. Both choices are also on
   the **Desktop** page of the settings.
 - **Move or resize the board:** drag it by its title; resize it by the grip
