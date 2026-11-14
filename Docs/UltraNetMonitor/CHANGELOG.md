@@ -1,3 +1,9 @@
+#### 2026-11-14 *0.19*
+- **No bright divider in dark.** The bar between the process list and the
+  connection list was a fixed light grey with a light handle; it now takes
+  the theme's colours. The tables, the columns and the toolbars keep
+  following the theme when the look changes while UltraNetMonitor runs.
+
 #### 2026-11-02 *0.18*
 - **The History tab is never blank for want of a click.** Selecting the tab
   reads the store over the chosen range, as Names and Events already

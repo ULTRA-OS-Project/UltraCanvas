@@ -1,3 +1,84 @@
+#### 2026-11-14 *0.4.18*
+- **The battery icon shows the charge.** Its fill is as long as the battery
+  is full, to the pixel: 10 pixels at the usual icon size (8 on a short
+  screen), one per 10 %, complete only at 100 % and at least one while any
+  charge is left. The level is read every 2 seconds. The icon is drawn on
+  its own pixel grid, so the fill stands 1 pixel clear of the outline and no
+  edge is blurred. A full battery is green inside the bar's white (in the
+  light theme, dark) outline; while charging the battery is green with a
+  white bolt over it; below 25 % and not charging it is red (the badge's red
+  also starts at 25 % now, not 15 %). Without a battery the bar's usual
+  glyph stays.
+- **"100" fits on the battery's badge.** The badge, and the keyboard
+  layout's ("DEU"), grows inward from the corner instead of running off the
+  right edge of the screen (UltraCanvasBadge::SetGrowInward, framework).
+- **The battery's percentage badge can be switched off.** *Show the
+  percentage* on the battery icon's new right-click menu (beside *Battery
+  details...*) or UOS-Settings > Desktop > Battery; kept as
+  `batteryPercent` in `desktop.json`, on by default. Without it the icon's
+  fill shows the level and the tooltip the percentage. A change in
+  UOS-Settings shows within a second.
+- **The desktop's own windows follow the light or dark look.** The
+  Applications window (its category headings, the count, the list beside the
+  tree), the Task Manager (the column header, the rows, the display and
+  desktop boxes, the state icons and words), the Sticker board (its bar and
+  title) and the clock panel (the clock face, its hands and ticks) take
+  their colours from the look in force instead of fixed light greys, so no
+  dark heading is lost on a dark window any more. A look changed while a
+  window is open - from the Theme menu, UOS-Settings or the system - is
+  taken at once.
+- **The Sticker board stands on a dark ground in a dark look.** The light
+  designs (Sticky notes, Poster, Schematic) keep their column and card
+  colours, but the board's ground, the column tracks, "+ Add card" and the
+  card editor are dark; the Dark design and every design in the light look
+  are unchanged.
+- **Sticky notes stay readable in a dark look.** A note's paper is light in
+  either look, so its text, caret, grip and buttons stay dark on it.
+- **The clock panel's figures** keep their green-on-black display in both
+  looks.
+- **Each icon of the info bar can be switched off.** A right click on the
+  info panel offers *Hide this icon* (over one of its services' icons) and
+  *Info bar icons...*, which opens UOS-Settings on its new *Desktop > Info
+  bar* page: a tick box for Email, Notifications, Upload, Download,
+  Internet / LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
+  Loudspeaker, Battery, Task Manager and the other programs' tray icons. The
+  battery's right-click menu has both entries too. Kept as
+  `hiddenInfoItems` in `desktop.json`; a change in UOS-Settings shows within
+  a second. `UltraDesktopAppCategoriesTest` checks the setting.
+- **One look for every application.** The bars' Dark / Light is now the
+  system look (Appearance.conf, UOS-Settings > Appearance > Look) that
+  every ULTRA OS application follows: the *Theme* menu on the desktop and
+  on the bars offers *Dark*, *Light* and *As the system* and switches all
+  of them at once, and a look chosen in UOS-Settings or by the host turns
+  the bars too. A desktop set up before keeps its colours: its own choice
+  (dark unless it was light) is written to Appearance.conf once, unless a
+  look was chosen there already (`lookMigrated` in `desktop.json`).
+- **The RAM disc button opens UltraFiler's RAM disc.** A click has UltraFiler
+  show the RAM disc, or open the *New RAM disc* dialog when there is none
+  (`UltraFiler --ram-disc`), instead of opening `/dev/shm` itself, where
+  UltraFiler's discs are only folders. `ramDiscPath` in `desktop.json` is now
+  `"ultrafiler"` by default, on Windows and macOS too, so the button is there
+  on every platform; a settings file holding the earlier default `/dev/shm`
+  is read as `"ultrafiler"`. Another folder set there still opens that
+  folder, and an empty value still leaves the button out. With a file
+  manager other than UltraFiler the button opens it without the option.
+- **Many running applications draw closer together before they scroll.**
+  When the running applications no longer fit the taskbar, the gap between
+  them shrinks from 6 to 2 pixels; when that is still not enough, the
+  highlight around each icon shrinks from 40 to 32 pixels as well (the icon
+  keeps its 24). Only then does the group scroll. With room again they go
+  back to the usual spacing; the pinned and system buttons are not changed.
+- **The Sticker board's hover preview opens when the pointer stops on a
+  card**, after a short rest (a third of a second) instead of two seconds.
+  The larger picture is made while the pointer is still on its way, so it is
+  there when the pointer stops.
+- **No more file-type chips on the Sticker board's cards.** A card no longer
+  shows its file's extension ("pdf", "jpg") under the name; boards saved
+  with one per card hide it too.
+- **A PDF shows no picture on the Sticker board when the build cannot draw
+  PDF pages** (no MuPDF): no icon on its card and no hover preview, rather
+  than the PDF icon. With MuPDF its card and preview show the first page.
+
 #### 2026-11-11 *0.4.17*
 - **UltraSnip starts with the desktop.** It is in the *Start with the
   desktop* menu as `UltraSnip --background`, ticked by default: from the

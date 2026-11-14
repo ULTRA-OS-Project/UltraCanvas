@@ -1,3 +1,56 @@
+#### 2026-11-14 *0.9.562*
+- **A badge can grow inward instead of past its anchor's edge.**
+  `UltraCanvasBadge::SetGrowInward(true)`: an anchored pill wider than it is
+  tall keeps the outer edge a round badge would have on its corner and
+  grows towards the anchor's middle. A badge is still centred on its corner
+  by default. UltraDesktop uses it for the battery's "100" and the keyboard
+  layout, which ran off the right edge of the screen.
+- **C# 11 raw strings end at their own run of quotes, with no escapes.**
+  `"""…"""` went through the shared `"""` string rule, which applied escapes,
+  so `"""C:\"""` ran on past its end, and a raw string opened with four or
+  more quotes (`""""…""""`, to hold `"""` inside) closed at the first three.
+  A new switch, `quotedRawStrings` (C#), opens one at three or more quotes,
+  after any `$` of an interpolated raw string, and keeps it open across lines
+  until the same run of quotes, through the line state's end marker. `""` is
+  still an empty string, and `@"…"` verbatim strings are unchanged.
+- **A preprocessor line keeps its strings and comments.** A line starting with
+  `#` was one token from the `#` to the end, so a raw string a `#define`
+  opened never registered - the lines after it came out as code - and neither
+  did a `/* comment */` opened there, the path in `#include "config.h"` or a
+  trailing `// note`. Directive lines are now tokenized like code and drawn in
+  the preprocessor colour except for strings, characters and comments, which
+  keep their colour and their state across lines. A `#define` continued with a
+  trailing `\` stays a directive on the next line, and an indented `#if` is a
+  directive too (only column 0 counted before). C, C++, C# and GLSL.
+- **The dark look's leftovers in the framework.** Under a dark theme the split pane's handle and the icons on its bar take the roles (`SplitPaneStyle::FromTheme`; they kept light greys, a bright square on the bar); the scrollbar's thumb is the track mixed toward the ink, not the bright control-border grey; a tree's selected row is the soft accent with ink (a blue icon sank into the blue fill; `tree.selection` / `tree.on-selection` roles); the clipboard history's selected row is the soft accent with ink and its Link tile a dark tile (`ClipboardRowStyle::linkTile*`, `linkGlyph`); `GroupBoxVisualStyle::SectionCard(theme)` and `SectionPageColor(theme)` give a dark section card on the ground (`SectionCard()` reads the current theme). A light theme looks as before.
+- **A text file's preview page reads in either look.** The white page's text took the theme's ink, near-white on white under a dark theme; it is the light look's ink now, as the rasterized page always was.
+- **A font size set by hand survives a theme change.** `SetFontSize` / `SetFont` on a label, a button and a tree view are remembered, and `ApplyTheme` keeps them while the colours follow - a caption no longer jumps to the body size when the look changes, and needs no `SetFollowTheme(false)` for it.
+- **A list hands the theme to its delegate** (`IItemDelegate::ApplyTheme`), also to one set with `SetDelegate` after the list was made; the default delegate keeps a text colour or size the application set on it.
+- **`UltraCanvasButton::SetColors` / `SetTextColors` with fewer colours derive the other states for the look.** Under a dark theme a disabled face and text sink toward the ground instead of turning light grey (every settings-page "Restore defaults" was a grey block when disabled), and a hovered or pressed face is a little lighter; light is unchanged.
+- **Icons drawn as masks in a colour.** A dropdown item's icon can be drawn in the item's text colour (`DropdownItem::iconAsMask`, `UltraCanvasDropdown::SetIconsAsMask`), so a black line icon follows the ink on a dark dropdown; `UltraCanvasImageElement::SetMaskColor` draws a picture's shape in one colour (its alpha kept), which `SetTintColor`'s multiply cannot make lighter.
+- **`UltraCanvasKanbanBoardElement::onCardPointerMoved(cardId)`** runs on
+  every pointer move over a card (not during a drag), so a host can open a
+  card's preview when the pointer comes to rest instead of after a fixed
+  delay from entering the card.
+- **The message centre follows the theme** (`MessageCenterStyle::FromTheme`, `UltraCanvasMessageCenter::ApplyTheme`; a `SetStyle` by hand stops it) and its own texts - the sections, *Search messages*, *Unread*, *Refresh*, the detail pane's buttons and notes, the status line - go through `Tr`, translated in every language of the standard set.
+- **TreeViewKeyboardTest said the tree view's focus ring stayed after the
+  focus left; it was the label.** The check looked for a white pixel anywhere
+  in the focused row, and the theme draws a selected row's label in white
+  (`onAccent`) as well, so the row still "showed the ring" with none drawn -
+  and the check that the ring is there passed on the label alone. The tree was
+  right: `IsFocused()` goes false with the window's focus and the ring goes
+  with it. The ring is now looked for along the row's edges, where it runs, on
+  all four sides while the tree is focused and on none once it is not; a
+  build that draws the ring regardless of focus fails the test.
+- **CI runs the focus-ring half of TreeViewKeyboardTest.** A new Linux step
+  runs it under `xvfb-run` with `ULTRACANVAS_TEST_DISPLAY_REQUIRED=1`, which
+  turns the test's skips (no display, no window) into failures; "Run unit
+  tests" has no display, so there that half skipped and the failure went
+  unseen.
+- **The UltraCanvas runtime carries a font subset** (`UCR_FONTS=subset`, the default): Manrope and Inter cut to Latin, Greek and Cyrillic with Inter's optical size pinned, 332 KB in the `.data` instead of the 4.6 MB of every bundled font, made with fonttools' `pyftsubset` at build time (`pipx install fonttools`; without it the two fonts go in whole, with a warning); `UCR_FONTS=all` keeps the old content. The main module also carries UltraLocalisation and UltraCrypt whole, so an app may load its catalogues and verify signatures.
+- **libsodium in the wasm sysroot** (`build-wasm-sysroot.sh`): UltraCrypt builds with its backend under Emscripten, so the store's Ed25519 check and the vault's sealing work in the browser.
+- The root build adds `Apps/UltraStore/web` with `BUILD_WASM_DEMOS`: natively where the store's core is built, under emcmake with `ULTRACANVAS_WASM_DYNAMIC` as a side module for the UltraCanvas runtime; `cmake/UltraStoreKeys.cmake` holds the store's trusted-keys loop for both stores. `wasm-build.yml`'s dynamic variant builds it, prints the module's size in the *Demo sizes* table and runs `Apps/UltraStore/web/test/webstore-test.mjs` in Chromium (the runtime from the site and from the extension, a tampered catalog refused, the budgets).
+
 #### 2026-11-14 *0.9.561*
 - **The UltraCanvasStart archive is no longer lost on the Windows ARM leg.**
   `scripts/package-ultracanvasstart.sh` collected the application's DLLs

@@ -1,3 +1,25 @@
+#### 2026-11-14 *1.107.16*
+- **The path bar is dark on a dark desktop.** The breadcrumb above the file
+  display (and the one over each half of the split view) was a light grey
+  strip under a dark theme; it now takes the theme's colours and follows a
+  change of look while UltraFiler runs.
+- **The folder tree's drive rows and selected row read in dark.** With the
+  default drive colour, the drive rows are a quiet blue tint of the dark
+  ground instead of a light blue band; a colour you picked yourself stays
+  as it is. The selected row's text is white or dark by its background, so
+  it is no longer dark blue on blue.
+- **Disabled buttons no longer turn into light grey blocks in dark.** Back
+  and Forward with nowhere to go, and the buttons of the Attributes, Access
+  and folder export windows, use the theme's colours in every state.
+- **`UltraFiler --ram-disc` shows the RAM disc, or offers to make one.** The
+  first RAM disc mounted now opens in a tab (a tab on it already is switched
+  to); when there is none, the *New RAM disc* dialog opens, as *+ Drive > RAM
+  disc...* does. A running UltraFiler takes the request from a later start
+  and comes forward. Asked before the start-up probe has answered, it waits
+  for it; a system that cannot make RAM discs says so. UltraDesktop's RAM
+  disc button starts it this way.
+- **The view-mode dropdown's glyphs show in the dark look.** They are drawn in the dropdown's text colour (framework `SetIconsAsMask`), not black on the dark field.
+
 #### 2026-11-14 *1.107.15*
 - **File names under thumbnail tiles take up to 3 rows by default.** A fresh
   installation (or a config with no or an unreadable

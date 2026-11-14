@@ -1,1 +1,0 @@
-- **Icons drawn as masks in a colour.** A dropdown item's icon can be drawn in the item's text colour (`DropdownItem::iconAsMask`, `UltraCanvasDropdown::SetIconsAsMask`), so a black line icon follows the ink on a dark dropdown; `UltraCanvasImageElement::SetMaskColor` draws a picture's shape in one colour (its alpha kept), which `SetTintColor`'s multiply cannot make lighter.

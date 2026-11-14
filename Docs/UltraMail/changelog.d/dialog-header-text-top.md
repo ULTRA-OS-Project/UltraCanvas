@@ -1,1 +1,0 @@
-- **A dialog's explaining text no longer runs over its title.** The text under a dialog's bold title starts at the top of its box; centred, a text that wrapped taller than the box spilled up over the title.

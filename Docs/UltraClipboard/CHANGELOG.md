@@ -1,3 +1,10 @@
+#### 2026-11-14 *0.1.11*
+- **Dark look**: the window's bars, list, rows, icon buttons, filter,
+  status line, Undo and preview frame take the system look (the theme's
+  roles) instead of fixed light colours, and follow a change of look while
+  the window is open; the edit and settings dialogs' text-area borders and
+  the encryption note do the same.
+
 #### 2026-11-11 *0.1.10*
 - **Proxy settings** at the foot of the settings dialog: text recognition by
   a cloud model goes through the proxy every ULTRA OS application shares,
