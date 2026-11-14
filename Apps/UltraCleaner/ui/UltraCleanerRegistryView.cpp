@@ -173,6 +173,10 @@ void RegistryView::SetBusy(bool busy) {
 
 void RegistryView::RefreshList() {
     if (!tree_) return;
+    // The findings are listed again from scratch - after a scan, and after
+    // every clean or restore - so without the scope the user was thrown back
+    // to the first finding each time, however far down the list they were.
+    TreeRebuildScope keepTheView(*tree_);
     TreeNodeData rootData(kRootId,
         scanned_ ? std::to_string(report_.findings.size()) +
                        (report_.findings.size() == 1 ? " entry" : " entries") +

@@ -417,6 +417,13 @@ bool PasswordApp::SaveVault() {
 // ===========================================================================
 void PasswordApp::RebuildTree() {
     if (!tree_) return;
+    // Every row is replaced below. Without the scope the tree is measured
+    // while it is empty and the view falls back to its first row, so a vault
+    // scrolled halfway - after a rename, a move, an entry added - jumped back
+    // to the top under the user. The scope keeps the scroll position and the
+    // selected row's place on screen; the expanded rows are restored just
+    // below, as before.
+    TreeRebuildScope keepTheView(*tree_);
     rebuildingTree_ = true;
     TreeNodeData root(GroupNode(kRootGroupId),
                       vault_.GetName().empty() ? "Vault" : vault_.GetName());

@@ -793,6 +793,10 @@ const ConnectionSpec* DbAdminWindow::SelectedConnection() const {
 }
 
 void DbAdminWindow::RebuildTree() {
+    // The connection list is replaced row by row; the scope keeps the view
+    // where the user left it instead of measuring the tree while it is empty
+    // and falling back to the first row.
+    TreeRebuildScope keepTheView(*tree_);
     nodes_.clear();
     loading_.clear();
     selectedNode_.clear();
