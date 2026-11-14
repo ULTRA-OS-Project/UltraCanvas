@@ -28,6 +28,7 @@ namespace {
 //   Telegram   {"ok": false, "description": "..."}
 //   X          {"title": "Unauthorized", "detail": "...", "status": 401}
 //   Meta       {"error": {"message": "...", "type": "...", "code": 190}}
+//   Discord    {"message": "Unknown Webhook", "code": 10015}
 std::string ServerErrorMessage(const JSONValue& doc) {
     std::string message;
     if (doc.Contains("error") && doc["error"].IsObject()) {
@@ -44,6 +45,8 @@ std::string ServerErrorMessage(const JSONValue& doc) {
         }
     } else if (doc.Contains("description")) {
         message = doc["description"].GetString("");
+    } else if (doc.Contains("message")) {
+        message = doc["message"].GetString("");
     } else if (doc.Contains("title")) {
         message = doc["title"].GetString("");
         if (doc.Contains("detail")) {

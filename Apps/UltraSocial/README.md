@@ -93,6 +93,14 @@ OAuth2 — `UltraNet/UltraNetOAuth2.h`) and **UltraDatabase** (local store).
 >   to `/{page}/feed`, one photo + caption to `/{page}/photos` as a
 >   multipart upload (no public URL needed). Meta's error-object shape is
 >   surfaced.
+> - **Discord connector** — a channel webhook (channel settings →
+>   Integrations → Webhooks), pasted as its URL: no sign-in and no app
+>   registration. Adding it fetches the webhook (`GET` on the URL) to check
+>   and name it; posts go to `<url>?wait=true` as JSON `content`, or
+>   multipart `payload_json` + `files[n]` with up to ten images and their
+>   alt text, and the returned message id gives the Recent-posts link.
+>   Posts show the webhook's name and avatar (Discord allows no posting as
+>   a user); Discord's `{"message": ...}` errors are surfaced.
 > - **X media** — images upload through the v2 media endpoint and attach
 >   as `media_ids` on the tweet (4 images, ≤5 MB each), inside the same
 >   refresh-retry as text tweets.
@@ -133,6 +141,7 @@ Apps/UltraSocial/
       UltraSocialXConnector.{h,cpp}
       UltraSocialLinkedInConnector.{h,cpp}
       UltraSocialFacebookConnector.{h,cpp}
+      UltraSocialDiscordConnector.{h,cpp}
   ui/
     UltraSocialApp.{h,cpp}             app manager: store + vault + windows,
                                        worker-thread sign-in/publish

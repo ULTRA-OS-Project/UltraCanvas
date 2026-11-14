@@ -34,6 +34,7 @@ set(ULTRASOCIAL_ENGINE_SOURCES
     engine/connectors/UltraSocialXConnector.cpp
     engine/connectors/UltraSocialLinkedInConnector.cpp
     engine/connectors/UltraSocialFacebookConnector.cpp
+    engine/connectors/UltraSocialDiscordConnector.cpp
 )
 
 add_library(UltraSocialEngine STATIC ${ULTRASOCIAL_ENGINE_SOURCES})
