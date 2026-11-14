@@ -1,3 +1,46 @@
+#### 2026-11-14 *0.1.15*
+- **The Apps and components page** (the design's `AdminApps` artboard): the
+  table of every record with its pricing, visibility, latest release, the
+  languages its texts cover and its state against the last publish -
+  published, changed since, new and unpublished, deprecated with its
+  successor, withdrawn, featured - filtered by chips and searched by name
+  or id; *Open* shows the form. The sidebar keeps the per-app items.
+- **The Overview's revenue tile** names every currency with its own change
+  against the 30 days before, since nothing is converted; the figure on the
+  tile is the currency with the most sales.
+- **The Finance page** (the design's `AdminFinance` artboard, on
+  `Finance.h`): the books from the ledger for a period - all time, a year,
+  a month - as the statement by currency (paid, given back, the partners'
+  credits, net to the store), net by month as a bar chart in the main
+  currency, revenue by app, the partners with what they earned, what a
+  reversal took back, what was paid out and what they are owed, and the
+  refunds and chargebacks of the period; *Statement CSV* writes the period
+  for the books. The same from the command line: `finance report`,
+  `finance periods`, `finance statement [-o <file.csv>]`.
+- **Refunds and chargebacks in the ledger.** `sale sync` (the window's
+  *Sync sales* too) pulls the payment service's reversals
+  (`GET /v1/reversals`) once each, the sequence kept in
+  `payment.reversals_seq`; `sale reversal` records one by hand;
+  `sale reversals` lists them. A reversal takes the partners' credits back
+  in the proportion of the amount reversed, never more than the sale
+  credited, so a partner keeps no credit on money the store gave back.
+- **Payouts.** `affiliate payout <id> <amount> <currency>` and the Finance
+  page's *Record payout* record what was paid to a partner; `affiliate
+  report` and the page say what is still owed: earned, less taken back,
+  less paid out. `admin.sqlite` schema 5: the `reversals` and `payouts`
+  tables; an older database is upgraded on opening.
+- **The Overview is the design's dashboard.** The last 30 days as tiles -
+  what the buyers paid against the 30 days before, the paid orders and how
+  many carried a code, the apps with how many lack a release or changed
+  since the last publish, what the partners are owed - then what was paid
+  per week as a bar chart over twelve weeks, the top apps of the 30 days
+  with their share, the latest sales, the last publish with the warnings
+  the next one would raise, the apps lacking texts in the target languages
+  (a button opens the one with the most missing), and the signing keys.
+  `Finance.h` gains a date-range period (`YYYY-MM-DD..YYYY-MM-DD`), the
+  weeks (`WeeklyFinance`) and the date helpers behind it; the database
+  tells when each component was last written (`ComponentUpdates`).
+
 #### 2026-11-12 *0.1.14*
 - Every text of the window goes through `Tr`
   (`media/locale/<lang>/UltraStoreAdmin.json`), sentences with values as
