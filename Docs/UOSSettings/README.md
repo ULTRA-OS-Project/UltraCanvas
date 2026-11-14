@@ -26,7 +26,7 @@ UOS-Settings opens on this page.
 | Field | What it does |
 |---|---|
 | **Taskbar** | The screen edge the taskbar sits on: Left, Top or Bottom. |
-| **Theme** | The bars' colours: Dark (the default) or Light. |
+| **Theme** | The look of every application, the desktop's bars included: Dark, Light or As the system. The same setting as *Appearance > Look* (`look` in Appearance.conf). |
 | **Dropped files** | Where files dropped on the wallpaper go: the Sticker board's Unsorted category (the default) or the Desktop folder, shown as icons. |
 | **Battery** | The battery on the right bar: *Icon and percentage* (the default, the percentage as a badge on the icon) or *Icon only* - the icon's fill shows the level either way, and its tooltip the percentage. Also on the battery's right-click menu in UltraDesktop. |
 | **Wallpaper** | The picture behind the desktop; empty is the framework's picture. *Browse...* opens the file dialog. |

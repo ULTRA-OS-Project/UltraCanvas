@@ -258,7 +258,9 @@ the right-hand monitor the primary.
 
 ### Theme and context menus
 
-The bars come in two themes, kept as `theme` in the settings: **dark**
+The bars come in two themes, and which one shows is the **system look**
+that every ULTRA OS application follows (`look` in Appearance.conf,
+UOS-Settings > Appearance > Look, or the host's when it says *system*): **dark**
 (light icons on dark grey, the running applications and the organiser
 carved in near black, the clock white on black - the default) and
 **light** (dark icons on light grey, the carved-in groups near white, the
@@ -267,11 +269,16 @@ The panels the bars open follow the theme - the clock, loudspeaker, Wi-Fi,
 Bluetooth, device and clipboard panels and the window pictures
 (`UltraDesktopPanelTheme`): dark grey with light text, or near white with
 dark text. A panel open when the theme changes closes, and opens in the new
-colours.
+colours. The *Theme* menus offer *Dark*, *Light* and *As the system* and
+write that look, so every application turns with the bars; a look changed
+in UOS-Settings or by the host turns the bars within a second. A desktop
+set up before this keeps its colours: its own earlier choice was written to
+Appearance.conf once (`lookMigrated`), unless a look was chosen there
+already.
 
 - **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
   with every picture type this build reads, through FileLoader), *Default
-  wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
+  wallpaper* (when another is set), *Theme* (*Dark*, *Light*, *As the system*), *Taskbar
   position* (*on the left*, *at the top*, *at the bottom*), *Drop files*
   (*Drop on sticker board*, *Drop on desktop*; below), *Arrange icons* (with
   the desktop icons), *Notes on the wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
@@ -529,7 +536,9 @@ applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
 `dropFilesOn` is `board` (the default) or `desktop`; `desktopIcons` keeps the
 desktop icons' places in the work area by name, and forgets one whose entry
-has gone. `theme` is `dark` (the default) or `light`; `clockStyle` one of
+has gone. `theme` records what the bars show, `dark` or `light` - the look
+itself is Appearance.conf's, and `lookMigrated` says the desktop's earlier
+choice was handed to it; `clockStyle` one of
 `analog-date` (the default), `analog`, `digital-date`, `digital` and
 `digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`
