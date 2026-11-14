@@ -55,7 +55,7 @@ std::string gRoot;   // the site's root relative to the page ("", "../../")
 // picture, which answers a moment later; until then AVIF is not chosen.
 void ProbeFormats() {
     EM_ASM({
-        Module.ucStoreFormats = { webp: 0, avif: 0 };
+        Module.ucStoreFormats = ({ webp: 0, avif: 0 });   // in parentheses: a comma outside them splits the macro argument
         try {
             var c = document.createElement('canvas');
             c.width = c.height = 1;
@@ -149,7 +149,7 @@ void Platform::Verify(const std::string& catalogBytes, const Bytes& signature, c
         var data = HEAPU8.slice($0, $0 + $1);
         var sig = HEAPU8.slice($2, $2 + $3);
         var keyBytes = HEAPU8.slice($4, $4 + $5);
-        Module.ucStoreVerify = { done: false, ok: false, error: '' };
+        Module.ucStoreVerify = ({ done: false, ok: false, error: '' });
         (async function() {
             try {
                 if (!(window.crypto && window.crypto.subtle)) throw new Error('this browser has no WebCrypto (a secure page is needed)');
