@@ -2911,6 +2911,10 @@ void UltraFilerWindow::StartRamDiskProbe() {
                 ramDiskAvailable = available;
                 UpdateAddDriveButton();
                 ApplyRamDiskList(discs);
+                if (ramDiskOpenPending) {
+                    ramDiskOpenPending = false;
+                    OpenRamDisc();
+                }
             });
         }
         // Programs started by Extract and Run in an earlier session whose
@@ -3092,6 +3096,37 @@ void UltraFilerWindow::AddRamDisk() {
             }, window.get());
         });
     });
+}
+
+void UltraFilerWindow::OpenRamDisc() {
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
+    // The probe pays for the slow first question (see StartRamDiskProbe):
+    // until it has answered, the request waits for it.
+    if (!ramDiskProbed) {
+        ramDiskOpenPending = true;
+        return;
+    }
+    if (!ramDiskAvailable) {
+        UltraCanvasAlert::Error(Tr("This system cannot make RAM discs."), Tr("RAM disc"),
+                                nullptr, window.get());
+        return;
+    }
+    // Asked afresh: a disc made or ejected by another program since the
+    // last listing counts. Cheap once the probe has answered.
+    std::vector<UltraFilerRamDisks::RamDisc> discs;
+    try {
+        discs = UltraFilerRamDisks::List();
+    } catch (const std::exception&) {
+        discs = knownRamDiscs;
+    }
+    ApplyRamDiskList(discs);
+    if (discs.empty()) {
+        AddRamDisk();
+        return;
+    }
+    OpenFolders({discs.front().mountPath});
 }
 
 void UltraFilerWindow::RefreshRamDiskNodes() {

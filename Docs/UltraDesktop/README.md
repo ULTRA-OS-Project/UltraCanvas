@@ -88,8 +88,9 @@ organiser.
 
    Drag a button to reorder; when the group is full it scrolls with the
    mouse wheel. New applications join at the end.
-3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
-   by default, in the file manager), *UltraFiler*, and the applications the
+3. **Pinned** — the *RAM disc* (UltraFiler shows its RAM disc, or opens the
+   *New RAM disc* dialog when there is none - `UltraFiler --ram-disc`; a
+   folder set in the settings opens instead), *UltraFiler*, and the applications the
    user pinned - from a running window's menu or a tile's in the
    Applications window - each with its own icon, one click to start, and
    *Unpin from taskbar* on its right-click menu. The pins are kept in the
@@ -476,7 +477,7 @@ earlier versions kept under `~/.config` is moved on the first start):
 {
   "taskbarEdge": "left",
   "wallpaper": "",
-  "ramDiscPath": "/dev/shm",
+  "ramDiscPath": "ultrafiler",
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
   "clockStyle": "analog-date",
@@ -496,8 +497,10 @@ earlier versions kept under `~/.config` is moved on the first start):
 An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
 (the framework's `media/images/landscape.jpg` where a package lacks it or
 cannot read AVIF). An
-empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
-RAM disc of its own, that is the default.
+empty `ramDiscPath` leaves the RAM disc button out; `"ultrafiler"`, the
+default, asks UltraFiler for its RAM disc (with another `filerProgram` the
+button just opens it), and a folder opens that folder. A file holding the
+earlier default, `/dev/shm`, is read as `"ultrafiler"`.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
@@ -659,7 +662,7 @@ same.
 | Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
 | Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
 | Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
-| RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
+| RAM disc | UltraFiler's RAM disc - an ImDisk drive, or a folder in `%TEMP%` without ImDisk, which UltraFiler's dialog says |
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |

@@ -446,6 +446,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
 
     ramDisc_ = std::make_shared<UltraCanvasTextInput>("uos-dt-ramdisc", 0, 0, 260, 28);
     ramDisc_->SetPlaceholder(Tr("None: no RAM disc button"));
+    ramDisc_->SetTooltip(Tr("\"ultrafiler\": UltraFiler shows its RAM disc, or offers to make one. A folder: that folder opens. Empty: no RAM disc button."));
     wireText(ramDisc_);
     addRow("uos-dt-ramdisc-row", "RAM disc", ramDisc_);
 

@@ -97,6 +97,8 @@
 // Version: 1.30.0 - Extras > Open location: the UltraCanvas and system folders
 //                  (crash dumps, settings, application data, logs, ...), and
 //                  Enter location… (Ctrl+L) for a typed %VAR% / $VAR / ~ path
+// Version: 1.30.0 - OpenRamDisc: `UltraFiler --ram-disc` (UltraDesktop's RAM
+//                  disc button) shows the RAM disc, or offers to make one
 // Version: 1.29.1 - a remote drive's path bar is its own (FillRemoteBreadcrumb):
 //                  it was resolved as a local path, which on Windows put an
 //                  "ultracloud:" node under the user folder that opened an
@@ -187,6 +189,13 @@ public:
     // opens its folder; what does not exist is skipped. The window comes
     // forward either way.
     void OpenFolders(const std::vector<std::string>& paths);
+    // `UltraFiler --ram-disc` (UltraDesktop's RAM disc button), at start-up
+    // or handed over by a later start: shows the first RAM disc mounted now
+    // (OpenFolders, so a tab on it already is switched to), or, when there
+    // is none, opens the New RAM disc dialog (AddRamDisk). Before the
+    // start-up probe has answered it waits for it; a system that cannot
+    // make RAM discs says so. The window comes forward either way.
+    void OpenRamDisc();
 
 private:
     // Per-tab browsing state: the folder widget of the tab plus its own
@@ -1473,6 +1482,8 @@ private:
     std::thread ramDiskProbeWorker;
     bool ramDiskProbed = false;
     bool ramDiskAvailable = false;
+    // OpenRamDisc was asked for before the probe answered: done when it does.
+    bool ramDiskOpenPending = false;
     // The worker reading what the New RAM disc dialog shows (AddRamDisk),
     // and whether its answer is still awaited - a second click meanwhile
     // does nothing rather than opening two dialogs.

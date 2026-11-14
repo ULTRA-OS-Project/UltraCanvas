@@ -5,6 +5,8 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.11.0 - ramDiscPath "ultrafiler" (kRamDiscFromFiler, the default
+//                  everywhere): the button asks UltraFiler for its RAM disc
 // Version: 0.10.0 - UltraSnip starts with the desktop by default (startupDefaults 2)
 // Version: 0.9.0 - UltraNotifications starts with the desktop by default
 //                  (startupDefaults: added once to a settings file older
@@ -80,14 +82,16 @@ struct StartupProgram {
     bool builtIn;               // part of the desktop itself (the Sticker board), not a program
 };
 
+// DesktopSettings::ramDiscPath's value for "UltraFiler's own RAM disc".
+inline constexpr const char* kRamDiscFromFiler = "ultrafiler";
+
 struct DesktopSettings {
     TaskbarEdge taskbarEdge = TaskbarEdge::Left;
     std::string wallpaper;              // "" = the framework's default picture
-#if defined(_WIN32)
-    std::string ramDiscPath;            // Windows has no RAM disc of its own: no button
-#else
-    std::string ramDiscPath = "/dev/shm";   // "" = no RAM disc button
-#endif
+    // kRamDiscFromFiler (the default): the button has UltraFiler show its RAM
+    // disc, or offer to make one when there is none (`UltraFiler --ram-disc`).
+    // A folder: the button opens that folder. "" = no RAM disc button.
+    std::string ramDiscPath = kRamDiscFromFiler;
     std::string filerProgram = "UltraFiler";
     // The clock at the foot of the right bar: "analog-date" (the face over
     // the date, the default), "analog", "digital-date", "digital" or

@@ -2,6 +2,8 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.7.2 - the RAM disc button has UltraFiler show its RAM disc, or
+//                  open the New RAM disc dialog when there is none (--ram-disc)
 // Version: 0.7.1 - the panels get the desktop window as their parent (placed on Wayland)
 // Version: 0.7.0 - the running apps grouped: one button per application with
 //                  the count of its windows, their pictures on a short rest
@@ -594,12 +596,15 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, Bars().inset, Bars().bar, kWaveLength);
     bar->AddChild(wave2);
 
-    // 3. Pinned: the RAM disc (when there is one - Windows has none of its
-    // own) and UltraFiler.
+    // 3. Pinned: the RAM disc (unless switched off in the settings) and
+    // UltraFiler.
     auto pinned = MakeGroup("Taskbar.Pinned", vertical, false);
     TuckAgainstWave(pinned, wave2, vertical, false);
     if (!settings_.ramDiscPath.empty()) {
-        AddBarButton(pinned, "ramdisc", "RAM disc (" + settings_.ramDiscPath + ")", IconPath("ramdisc.svg"),
+        const std::string tip = settings_.ramDiscPath == kRamDiscFromFiler
+                ? std::string("RAM disc")
+                : "RAM disc (" + settings_.ramDiscPath + ")";
+        AddBarButton(pinned, "ramdisc", tip, IconPath("ramdisc.svg"),
                      [this]() { OpenRamDisc(); });
     }
     AddBarButton(pinned, "filer", "UltraFiler", IconPath("ultrafiler.svg"),
@@ -1661,12 +1666,28 @@ void UltraDesktopWindow::OpenTasks() {
 }
 
 void UltraDesktopWindow::OpenRamDisc() {
-    OpenFiler(settings_.ramDiscPath);
+    if (settings_.ramDiscPath != kRamDiscFromFiler) {
+        OpenFiler(settings_.ramDiscPath);   // a folder of the user's choosing
+        return;
+    }
+    // UltraFiler knows its RAM discs: it shows the disc, or opens the New
+    // RAM disc dialog when there is none. Another file manager does not
+    // know --ram-disc, and is opened as it is.
+    const std::string program = PathToUtf8(PathFromUtf8(settings_.filerProgram).stem());
+    if (program != "UltraFiler") {
+        OpenFiler();
+        return;
+    }
+    LaunchFiler({"--ram-disc"});
 }
 
 void UltraDesktopWindow::OpenFiler(const std::string& path) {
     std::vector<std::string> arguments;
     if (!path.empty()) arguments.push_back(path);
+    LaunchFiler(arguments);
+}
+
+void UltraDesktopWindow::LaunchFiler(const std::vector<std::string>& arguments) {
     std::string error;
     if (!UltraCanvasDesktopShell::LaunchProgram(settings_.filerProgram, arguments, &error)) {
         debugOutput << "UltraDesktop: " << error << std::endl;

@@ -2,6 +2,8 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.10.0 - ramDiscPath: "/dev/shm", the earlier default, read as
+//                  kRamDiscFromFiler
 // Version: 0.9.0 - UltraSnip among the StartupPrograms, on once by default (startupDefaults 2)
 // Version: 0.8.0 - startupDefaults: UltraNotifications added once to
 //                  startWithDesktop
@@ -193,6 +195,9 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     if (ParseTaskbarEdge(root.Get("taskbarEdge").GetString(), edge)) loaded.taskbarEdge = edge;
     loaded.wallpaper = root.Get("wallpaper").GetString();
     loaded.ramDiscPath = root.Get("ramDiscPath").GetString(loaded.ramDiscPath);
+    // The earlier default opened the tmpfs itself, where UltraFiler's discs
+    // are folders: the button now asks UltraFiler for the disc instead.
+    if (loaded.ramDiscPath == "/dev/shm") loaded.ramDiscPath = kRamDiscFromFiler;
     loaded.filerProgram = root.Get("filerProgram").GetString(loaded.filerProgram);
     const std::string clock = root.Get("clockStyle").GetString(loaded.clockStyle);
     if (IsClockStyle(clock)) loaded.clockStyle = clock;

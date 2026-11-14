@@ -153,6 +153,9 @@ public:
     // first in the Apps window's Recent (DesktopSettings::recentApps).
     void NoteAppStarted(const UltraCanvas::UCDesktopEntry& entry);
     void OpenTasks();
+    // The RAM disc button: UltraFiler shows its RAM disc, or opens the New
+    // RAM disc dialog when there is none (DesktopSettings::ramDiscPath is
+    // kRamDiscFromFiler); a folder set in the settings is opened instead.
     void OpenRamDisc();
     void OpenFiler(const std::string& path = "");
     void TakeScreenshot();
@@ -228,6 +231,8 @@ public:
     void SaveSettings();
 
 private:
+    // Starts the file manager (DesktopSettings::filerProgram) with these arguments.
+    void LaunchFiler(const std::vector<std::string>& arguments);
     // ===== CONSTRUCTION =====
     void BuildLayout();
     void LayoutForSize(float width, float height);

@@ -20,6 +20,7 @@
     "Top"
   ],
   "\"The Windows desktop\", or \"Switch back to the Windows desktop\" on the desktop's settings button, brings Explorer back at once. If the desktop ever does not respond: Ctrl+Shift+Esc, \"Run new task\", UltraDesktop --restore-desktop.": "\"The Windows desktop\", or \"Switch back to the Windows desktop\" on the desktop's settings button, brings Explorer back at once. If the desktop ever does not respond: Ctrl+Shift+Esc, \"Run new task\", UltraDesktop --restore-desktop.",
+  "\"ultrafiler\": UltraFiler shows its RAM disc, or offers to make one. A folder: that folder opens. Empty: no RAM disc button.": "\"ultrafiler\": UltraFiler shows its RAM disc, or offers to make one. A folder: that folder opens. Empty: no RAM disc button.",
   "A choice": "A choice",
   "A field": "A field",
   "A label in the look": "A label in the look",
