@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/ui/AdminWindow.cpp
 // The shell, the store's pages (Overview, Settings, Keys, Publish) and the
 // worker thread; the component form is in AdminComponentPage.cpp.
+// Version: 0.7.0 - the Apps and components page
 // Version: 0.6.0 - the Overview as the dashboard
 // Version: 0.5.0 - the Finance page; Sync sales pulls the reversals too
 // Version: 0.5.0 - the Marketplace page and the notices banner
@@ -27,6 +28,7 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
+#include <cctype>
 #include <sstream>
 #include <fstream>
 
@@ -41,6 +43,7 @@ namespace UltraStoreAdmin::Ui {
 namespace {
 
 constexpr const char* kOverview = "overview";
+constexpr const char* kApps = "apps";
 constexpr const char* kPublish = "publish";
 constexpr const char* kKeys = "keys";
 constexpr const char* kAffiliates = "affiliates";
@@ -162,6 +165,7 @@ void AdminWindow::BuildShell() {
     sidebar_->SetElementSize(CSSLayout::Dimension::Px(240), CSSLayout::Dimension::Auto());
     const int store = sidebar_->AddSection(Tr("Store"));
     sidebar_->AddItem(store, kOverview, Tr("Overview"), Theme::Icon("home.svg"));
+    sidebar_->AddItem(store, kApps, Tr("Apps and components"), Theme::Icon("list-check.svg"));
     sidebar_->AddItem(store, kPublish, Tr("Publish"), Theme::Icon("folder-download.svg"));
     sidebar_->AddItem(store, kKeys, Tr("Keys"), Theme::Icon("list-check.svg"));
     sidebar_->AddItem(store, kAffiliates, Tr("Affiliates and codes"), Theme::Icon("user-plus.svg"));
@@ -197,6 +201,7 @@ void AdminWindow::BuildShell() {
     noticesBanner_->SetVisible(false);
     pageHost_->AddChild(noticesBanner_);
     BuildOverviewPage();
+    BuildAppsPage();
     BuildPublishPage();
     BuildAffiliatesPage();
     BuildFinancePage();
@@ -246,6 +251,7 @@ void AdminWindow::ShowPage(const std::string& id) {
     for (auto& [key, page] : pages_) page->SetVisible(key == id);
     if (id != kComponent && sidebar_->GetSelectedId() != id) sidebar_->Select(id, false);
     if (id == kOverview) RefreshOverview();
+    if (id == kApps) RefreshAppsPage();
     if (id == kKeys) RefreshKeysPage();
     if (id == kPublish) RefreshKeysPage();
     if (id == kAffiliates) RefreshAffiliatesPage();
@@ -492,18 +498,29 @@ void AdminWindow::RefreshOverview() {
     std::string currency = now ? now.Value().mainCurrency : std::string();
     if (currency.empty() && allTime) currency = allTime.Value().mainCurrency;
     if (now && !currency.empty()) {
-        const std::string paid = MoneyOf(now.Value().totals.paid, currency);
-        tileRevenue_->SetText(paid + " " + currency);
-        const std::string paidBefore = previous ? MoneyOf(previous.Value().totals.paid, currency) : std::string("0.00");
-        int64_t a = 0, b = 0;
-        DecimalCents(paid, a);
-        DecimalCents(paidBefore, b);
-        if (b > 0) {
-            const long long percent = static_cast<long long>(((a - b) * 100 + (a >= b ? b / 2 : -(b / 2))) / b);
-            tileRevenueSub_->SetText(TrF("{0}% against the 30 days before ({1})", (percent >= 0 ? "+" : "") + std::to_string(percent), paidBefore));
-        } else {
-            tileRevenueSub_->SetText(Tr("Nothing in the 30 days before"));
+        // The main currency on the tile; every currency with its own change
+        // against the 30 days before underneath, since nothing is converted.
+        tileRevenue_->SetText(MoneyOf(now.Value().totals.paid, currency) + " " + currency);
+        std::string deltas;
+        std::vector<std::string> currencies;
+        for (const auto& [cur, _] : now.Value().totals.paid) currencies.push_back(cur);
+        if (previous) for (const auto& [cur, _] : previous.Value().totals.paid) if (std::find(currencies.begin(), currencies.end(), cur) == currencies.end()) currencies.push_back(cur);
+        for (const std::string& cur : currencies) {
+            const std::string paid = MoneyOf(now.Value().totals.paid, cur);
+            const std::string paidBefore = previous ? MoneyOf(previous.Value().totals.paid, cur) : std::string("0.00");
+            int64_t a = 0, b = 0;
+            DecimalCents(paid, a);
+            DecimalCents(paidBefore, b);
+            std::string line;
+            if (b > 0) {
+                const long long percent = static_cast<long long>(((a - b) * 100 + (a >= b ? b / 2 : -(b / 2))) / b);
+                line = TrF("{0} {1}: {2}% against the 30 days before ({3})", paid, cur, (percent >= 0 ? "+" : "") + std::to_string(percent), paidBefore);
+            } else {
+                line = TrF("{0} {1}: nothing in the 30 days before", paid, cur);
+            }
+            deltas += (deltas.empty() ? "" : "\n") + line;
         }
+        tileRevenueSub_->SetText(deltas);
         size_t withCode = 0;
         if (const auto sales = db_.Sales()) {
             for (const SaleRecord& s : sales.Value()) if (!s.code.empty() && InPeriod(s.at, from + "..")) ++withCode;
@@ -654,6 +671,133 @@ void AdminWindow::RefreshOverview() {
         overviewKeys_->AddChild(Theme::Caption(id, key.name + "  " + key.publicKeyHex.substr(0, 8) + "…" + key.publicKeyHex.substr(key.publicKeyHex.size() > 6 ? key.publicKeyHex.size() - 6 : 0) +
                                                    "  " + (key.Active() ? Tr("active") : TrF("retired {0}", key.retiredAt))));
     }
+    pageHost_->InvalidateLayout();
+    pageHost_->RequestRedraw();
+}
+
+// ===========================================================================
+// Apps and components
+// ===========================================================================
+void AdminWindow::BuildAppsPage() {
+    std::shared_ptr<Container> header, body;
+    BuildPage(kApps, Tr("Apps and components"), header, body);
+    appsSearch_ = Theme::Pin(CreateTextInput("uaL.search", 0, 0, 240, Theme::kControlHeight));
+    appsSearch_->SetPlaceholder(Tr("Filter by name or id"));
+    appsSearch_->onTextChanged = [this](const std::string&) { RefreshAppsPage(); };
+    header->AddChild(appsSearch_);
+    auto add = Theme::Button("uaL.add", Tr("Add an app or a component"), 210, Theme::ButtonKind::Primary);
+    add->onClick = [this]() { EnsureDraftSaved([this]() { ShowPage(kOverview); if (newId_) newId_->SetFocus(true); }); };
+    header->AddChild(add);
+    body->AddChild(Theme::Caption("uaL.hint", Tr("Every record of the database, the catalog's component objects kept whole. Open shows a record's form; the state says where it stands against the last publish.")));
+    appsFilter_ = Theme::Pin(CreateChipGroup("uaL.filter", 0, 0, 0, 0));
+    for (const char* label : {"All", "Apps", "Runtimes and libraries", "Changed since publish", "No release", "Paid", "Featured"}) appsFilter_->AddChip(Tr(label));
+    appsFilter_->SetSelectedIndex(0);
+    appsFilter_->onSelectionChanged = [this](int) { RefreshAppsPage(); };
+    body->AddChild(appsFilter_);
+    auto table = Theme::Surface("uaL.table", 0.0f);
+    table->SetPadding(8.0f);
+    auto head = Theme::Row("uaL.head", Theme::kInnerGap);
+    head->SetPadding(6.0f, 8.0f);
+    auto column = [&head](const std::string& id, const std::string& title, float width) {
+        auto label = Theme::Caption(id, title);
+        label->SetElementSize(CSSLayout::Dimension::Px(width), CSSLayout::Dimension::Auto());
+        head->AddChild(label);
+    };
+    column("uaL.h.name", Tr("Name"), 190);
+    column("uaL.h.id", Tr("Id"), 210);
+    column("uaL.h.kind", Tr("Kind"), 70);
+    column("uaL.h.pricing", Tr("Pricing"), 170);
+    column("uaL.h.visibility", Tr("Visibility"), 80);
+    column("uaL.h.release", Tr("Latest release"), 180);
+    column("uaL.h.languages", Tr("Languages"), 80);
+    column("uaL.h.state", Tr("State"), 170);
+    table->AddChild(head);
+    appsList_ = Theme::Column("uaL.rows", 0.0f);
+    table->AddChild(appsList_);
+    appsCount_ = Theme::Caption("uaL.count", "");
+    appsCount_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    table->AddChild(appsCount_);
+    body->AddChild(table);
+}
+
+void AdminWindow::RefreshAppsPage() {
+    if (!appsList_) return;
+    appsList_->ClearChildren();
+    const int filter = appsFilter_ ? appsFilter_->GetSelectedIndex() : 0;
+    std::string needle = appsSearch_ ? appsSearch_->GetText() : std::string();
+    std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    const std::string publishedAt = db_.IsOpen() ? db_.Setting("catalog.published_at") : std::string();
+    std::map<std::string, std::string> updated;
+    if (db_.IsOpen()) { if (const auto all = db_.ComponentUpdates()) for (const auto& [id, at] : all.Value()) updated[id] = at; }
+    std::vector<std::string> targets;
+    {
+        std::istringstream in(db_.IsOpen() ? db_.Setting("texts.languages") : std::string());
+        for (std::string code; in >> code;) targets.push_back(code);
+        if (targets.empty()) targets = OfficialLanguageCodes();
+    }
+    size_t shown = 0;
+    int n = 0;
+    for (const UltraStore::Component& c : components_) {
+        const bool isApp = c.kind == UltraStore::ComponentKind::App;
+        const bool noRelease = c.releases.empty();
+        const bool changed = publishedAt.empty() || updated[c.id] > publishedAt;
+        const bool paid = c.pricing.model != UltraStore::PricingModel::Free;
+        if (filter == 1 && !isApp) continue;
+        if (filter == 2 && isApp) continue;
+        if (filter == 3 && !changed) continue;
+        if (filter == 4 && !noRelease) continue;
+        if (filter == 5 && !paid) continue;
+        if (filter == 6 && !c.featured) continue;
+        if (!needle.empty()) {
+            std::string hay = c.name + " " + c.id;
+            std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+            if (hay.find(needle) == std::string::npos) continue;
+        }
+        ++shown;
+        const std::string id = "uaL.row" + std::to_string(n++);
+        auto row = Theme::Row(id, Theme::kInnerGap);
+        row->SetPadding(6.0f, 8.0f);
+        row->SetBorders(0.0f, Theme::kBorder, 0.0f);
+        if (n % 2 == 0) row->SetBackgroundColor(Theme::kSurfaceSoft);
+        auto cell = [&row](const std::string& cid, const std::string& text, float width, bool bold = false, const Color& color = Theme::kTextPrimary) {
+            auto label = Theme::Text(cid, text, 12.0f, bold ? FontWeight::Bold : FontWeight::Normal, color);
+            label->SetWrap(TextWrap::WrapNone);
+            label->SetElementSize(CSSLayout::Dimension::Px(width), CSSLayout::Dimension::Auto());
+            row->AddChild(label);
+            return label;
+        };
+        auto name = cell(id + ".name", c.name.empty() ? c.id : c.name, 190, true);
+        name->SetTooltip(c.id);
+        cell(id + ".id", c.id, 210, false, Theme::kTextSecondary);
+        cell(id + ".kind", isApp ? Tr("App") : (c.kind == UltraStore::ComponentKind::Runtime ? Tr("Runtime") : Tr("Library")), 70);
+        std::string pricing = isApp ? UltraStore::PriceLabel(c.pricing) : std::string("-");
+        if (isApp && c.pricing.trialDays > 0) pricing += " · " + TrF("{0}-day trial", c.pricing.trialDays);
+        cell(id + ".pricing", pricing, 170);
+        cell(id + ".visibility", isApp ? UltraStore::VisibilityName(c.visibility) : std::string("-"), 80);
+        std::string release = Tr("no release");
+        if (!noRelease) release = c.releases.front().version + " · " + c.releases.front().channel + (c.releases.front().date.empty() ? "" : " · " + c.releases.front().date);
+        cell(id + ".release", release, 180, false, noRelease ? Color(180, 83, 9, 255) : Theme::kTextPrimary);
+        const size_t missing = isApp ? LanguagesToFill(c, targets).size() : 0;
+        cell(id + ".languages", isApp ? TrF("{0} of {1}", targets.size() - std::min(targets.size(), missing), targets.size()) : std::string("-"), 80,
+             false, missing ? Theme::kTextSecondary : Theme::kTextPrimary);
+        std::string state;
+        Color stateColor = Theme::kSuccess;
+        if (c.lifecycle == UltraStore::Lifecycle::Withdrawn) { state = Tr("Withdrawn"); stateColor = Theme::kTextSecondary; }
+        else if (c.lifecycle == UltraStore::Lifecycle::Deprecated) { state = c.successor.empty() ? Tr("Deprecated") : TrF("Deprecated → {0}", c.successor); stateColor = Theme::kTextSecondary; }
+        else if (noRelease) { state = Tr("New, unpublished"); stateColor = Color(180, 83, 9, 255); }
+        else if (changed) { state = Tr("Changed since publish"); stateColor = Theme::kAccentSoftText; }
+        else state = Tr("Published");
+        if (c.featured) state += " · " + Tr("featured");
+        cell(id + ".state", state, 170, true, stateColor);
+        auto open = Theme::Button(id + ".open", Tr("Open"), 60);
+        const std::string componentId = c.id;
+        open->onClick = [this, componentId]() { EnsureDraftSaved([this, componentId]() { ShowComponent(componentId); }); };
+        row->AddChild(open);
+        appsList_->AddChild(row);
+    }
+    if (shown == 0) appsList_->AddChild(Theme::Caption("uaL.none", components_.empty() ? Tr("No app or component yet: add one on the Overview.") : Tr("Nothing matches the filter.")));
+    appsCount_->SetText(TrF("{0} of {1} shown", shown, components_.size()));
+    appsList_->InvalidateLayout();
     pageHost_->InvalidateLayout();
     pageHost_->RequestRedraw();
 }

@@ -8,6 +8,7 @@
 // use - so the window and the command line never disagree. The slow ones
 // (a new key's Argon2id seal, a publish, a translation) run on a worker
 // thread and report through UltraCanvasApplication::PostToUIThread.
+// Version: 0.7.0 - the Apps and components page: the table with its filters and search
 // Version: 0.6.0 - the Overview as the design's dashboard: the tiles, revenue by week, top apps, latest sales, the publish, the translations, the keys
 // Version: 0.5.0 - the Finance page: the statement, net by month, the apps, the partners and their payouts, the reversals
 // Version: 0.4.0 - the Marketplace page and the notices banner
@@ -81,6 +82,11 @@ private:
     // ----- the store pages -----
     void BuildOverviewPage();
     void RefreshOverview();
+    // The table of every app and component (the design's AdminApps artboard):
+    // the filter chips, the search, one row each with its state against the
+    // last publish; Open shows the form.
+    void BuildAppsPage();
+    void RefreshAppsPage();
     void BuildSettingsPage();
     void LoadSettingsPage();
     void SaveSettingsPage();
@@ -181,6 +187,11 @@ private:
     std::string overviewTranslateId_;      // the app with the most languages missing, which the button opens
     std::shared_ptr<TextInput> newId_, newName_;
     std::shared_ptr<Dropdown> newKind_;
+    // apps and components
+    std::shared_ptr<UltraCanvas::UltraCanvasChipGroup> appsFilter_;
+    std::shared_ptr<TextInput> appsSearch_;
+    std::shared_ptr<Container> appsList_;
+    std::shared_ptr<Label> appsCount_;
     // settings
     std::map<std::string, std::shared_ptr<TextInput>> settingInputs_;
     std::shared_ptr<Label> settingsInfo_;
