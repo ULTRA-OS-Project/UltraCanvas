@@ -187,12 +187,13 @@ public:
     // Display > File names: how many lines a name may take under a thumbnail
     // tile (and in a treemap cell) - 0 for the full name however many lines
     // it needs, otherwise 2, 3 or 4, past which the head of the last line
-    // gives way to "…" so the extension stays readable. Two by default, the
-    // caption every earlier release drew. The column views keep one line.
+    // gives way to "…" so the extension stays readable. Three by default, so
+    // a long name keeps more of itself; earlier releases drew two. The column
+    // views keep one line.
     static constexpr int kFileNameLinesFull = 0;
     static constexpr int kMinFileNameLines  = 2;
     static constexpr int kMaxFileNameLines  = 4;
-    int fileNameMaxLines = 2;
+    int fileNameMaxLines = 3;
 
     // Display > File icons: whose icons an entry with no picture of its own
     // is drawn with - UltraFiler's own drawn folder shape and coloured sheet,
@@ -817,7 +818,7 @@ public:
     static int ParseFileNameLines(const std::string& text) {
         const std::string value = Trim(text);
         if (value == "full") return kFileNameLinesFull;
-        int lines = 2;   // stays when the value is not a number
+        int lines = 3;   // the default stays when the value is not a number
         ParseInt(value, lines, kMinFileNameLines, kMaxFileNameLines);
         return lines;
     }
