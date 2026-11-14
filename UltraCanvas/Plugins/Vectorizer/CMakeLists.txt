@@ -30,10 +30,18 @@ if(NOT _uc_rust_ok)
 endif()
 ultracanvas_fetch_corrosion()
 
+# Only the staticlib: the plug-in links the archive and nothing loads the
+# DLL. Cargo.toml lists cdylib too, and importing it made Corrosion copy the
+# DLL's import library from release/deps/ - where Rust on
+# x86_64-pc-windows-gnullvm no longer writes it, which failed every Windows
+# x86_64 build ("Error copying file ... deps/libvtracer_c.dll.a"). With
+# CRATE_TYPES Corrosion builds with --crate-type=staticlib, so the DLL is not
+# built at all, and BUILD_SHARED_LIBS can no longer pick it over the archive.
 corrosion_import_crate(
     MANIFEST_PATH ${CMAKE_CURRENT_SOURCE_DIR}/vtracer-c/Cargo.toml
     PROFILE       release
     CRATES        vtracer_c
+    CRATE_TYPES   staticlib
 )
 
 # Corrosion exposes the staticlib as the CMake target `vtracer_c`.

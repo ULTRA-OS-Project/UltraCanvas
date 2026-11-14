@@ -17,6 +17,7 @@
 // the payout - is the payment service's; the admin records sales by hand
 // until it exists (RecordSale), so the report and the payouts work from
 // day one.
+// Version: 0.2.4 - DecimalCents / DecimalFromCents for Finance.h
 // Version: 0.2.3 - SyncSales takes the payment's `reference` (a renewal is a sale of its own)
 // Version: 0.2.2 - JoinPage and RetiredCodePage in the page frame (PageFrame.h), like CodeLandingPage
 // Version: 0.2.1 - JoinPage (the page behind the join link, with the store's contact; closed for a partner switched off), RetiredCodePage
@@ -69,6 +70,9 @@ struct AffiliateTotals {
 };
 Result<std::vector<AffiliateTotals>> AffiliateReport(const AdminDatabase& db);
 
+// Hundredths of a decimal string ("29.90" -> 2990); false when it is not one. And back, two places.
+bool DecimalCents(const std::string& decimal, int64_t& cents);
+std::string DecimalFromCents(int64_t cents);
 // The decimal sum of two decimals, two places ("12.30" + "0.7" = "13.00").
 std::string AddDecimals(const std::string& a, const std::string& b);
 // percent of a decimal, to the cent, half up ("29.90" at 20 -> "5.98").
