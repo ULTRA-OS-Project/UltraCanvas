@@ -104,7 +104,8 @@ catalog names them (`icon_variants`, `screenshot_variants`, the store's
 README, *Catalog*). A format this machine's image library cannot write
 (no AVIF encoder) is a warning, not a failure. The budgets - 12 KB for an
 icon at 256 px, 120 KB for a screenshot at 1120 px, less for a smaller
-size - are warned about at import and listed by `publish`.
+size but never under 2 KB - are warned about at import and listed by
+`publish`.
 
 The settings in `admin.sqlite`:
 

@@ -143,7 +143,9 @@ size_t MediaBudget(MediaKind kind, int width) {
     const uint64_t reference = kind == MediaKind::Icon ? 12u * 1024 : 120u * 1024;
     const uint64_t referenceWidth = kind == MediaKind::Icon ? 256 : 1120;
     const uint64_t w = static_cast<uint64_t>(width);
-    return static_cast<size_t>(reference * w * w / (referenceWidth * referenceWidth));
+    // A floor for the small sizes: a container's own bytes (an AVIF's boxes,
+    // a WebP's chunks) do not shrink with the picture.
+    return static_cast<size_t>(std::max<uint64_t>(2048, reference * w * w / (referenceWidth * referenceWidth)));
 }
 
 Result<ImportedMedia> ImportMediaVariants(const std::string& sourceUtf8, const std::string& storeDirUtf8,

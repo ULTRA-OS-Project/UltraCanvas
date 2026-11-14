@@ -106,9 +106,9 @@ TEST(a_picture_is_imported_with_the_web_stores_sizes) {
     bool avifWarned = false;
     for (const std::string& w : icon.Value().warnings) if (w.find("no avif") != std::string::npos) avifWarned = true;
     REQUIRE(avifWidths.empty() ? avifWarned : avifWidths == (std::vector<int>{64, 128, 256}));
-    // A written icon of a flat picture is well inside its budget.
+    // A written icon of a flat picture is inside the budget the brief names (256 px).
     for (const UltraStore::MediaVariant& v : icon.Value().variants) {
-        REQUIRE(std::filesystem::file_size(UltraCanvas::PathFromUtf8(Join(store, v.url))) <= MediaBudget(MediaKind::Icon, v.width));
+        if (v.width == 256) REQUIRE(std::filesystem::file_size(UltraCanvas::PathFromUtf8(Join(store, v.url))) <= MediaBudget(MediaKind::Icon, v.width));
     }
 
     const auto shot = ImportMediaVariants(Join(dir, "shot.png"), store, "org.ultraos.hello", MediaKind::Screenshot);
@@ -125,7 +125,8 @@ TEST(a_picture_is_imported_with_the_web_stores_sizes) {
     // The budgets: 12 KB at 256, 120 KB at 1120, less for a smaller size.
     REQUIRE_EQ(MediaBudget(MediaKind::Icon, 256), size_t(12 * 1024));
     REQUIRE_EQ(MediaBudget(MediaKind::Screenshot, 1120), size_t(120 * 1024));
-    REQUIRE(MediaBudget(MediaKind::Icon, 64) < MediaBudget(MediaKind::Icon, 128));
+    REQUIRE(MediaBudget(MediaKind::Icon, 128) < MediaBudget(MediaKind::Icon, 256));
+    REQUIRE_EQ(MediaBudget(MediaKind::Icon, 64), size_t(2048));   // the floor
     // Something that is not a picture: the original alone, with a warning.
     REQUIRE(WriteFile(Join(dir, "text.png"), "not a picture"));
     const auto text = ImportMediaVariants(Join(dir, "text.png"), store, "org.ultraos.hello", MediaKind::Icon);

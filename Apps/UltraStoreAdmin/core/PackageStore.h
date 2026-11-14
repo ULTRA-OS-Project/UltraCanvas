@@ -71,7 +71,8 @@ const std::vector<int>& MediaWidths(MediaKind kind);
 
 // What a published file of the kind and width may weigh, in bytes: an icon
 // 12 KB at 256 px, a screenshot 120 KB at 1120 px, scaled down with the
-// width (the budget is per pixel). ImportMediaVariants and publish warn above it.
+// width (the budget is per pixel), never under 2 KB (a container's own
+// bytes). ImportMediaVariants and publish warn above it.
 size_t MediaBudget(MediaKind kind, int width);
 
 // ImportMedia, then the variants beside the original. A format the image
