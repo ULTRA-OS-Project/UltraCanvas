@@ -2,7 +2,7 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
-// Version: 0.7.4 - the battery's icon shows its level, a bolt while charging,
+// Version: 0.7.4 - the battery's icon shows its level in 20 % steps, a bolt while charging,
 //                  red below 25 % (UpdateBatteryIcon); its badge and the
 //                  keyboard's grow inward, so "100" is not cut off
 // Version: 0.7.3 - running applications that do not fit the bar draw closer
@@ -196,21 +196,24 @@ uint64_t NativeHandleId(Handle handle) {
 
 // Below this, and not charging, the battery is red.
 constexpr int kBatteryLowPercent = 25;
+// The icon's fill moves in steps of this much: five of them when full.
+constexpr int kBatteryStepPercent = 20;
 
 // The battery button's icon, 24 x 24 in white (drawn through the button's
 // mask, like the bar's other glyphs): the outline, the cap, and a fill as
-// long as the charge - the full 12 px at 100 %. Charging adds a bolt, cut out
-// of the fill where they overlap (even-odd), so it shows at any level.
-// `fillHalves` is the fill's length in half pixels (0 to 24).
-std::string BatteryIconSvg(int fillHalves, bool charging) {
+// long as the charge, in fifths (kBatteryStepPercent) - the full 12 px at
+// 100 %. Charging adds a bolt, cut out of the fill where they overlap
+// (even-odd), so it shows at any level. `steps` is 0 to 5.
+std::string BatteryIconSvg(int steps, bool charging) {
+    const double fill = 12.0 * steps / 5.0;
     std::ostringstream svg;
     svg << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\">"
         << "<rect x=\"2\" y=\"7\" width=\"17\" height=\"10\" rx=\"2\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2\"/>"
         << "<path d=\"M21 10v4\" stroke=\"#fff\" stroke-width=\"2\" stroke-linecap=\"round\"/>";
     std::string d;
-    if (fillHalves > 0) {
+    if (steps > 0) {
         std::ostringstream rect;
-        rect << "M4.5 9.5h" << fillHalves / 2.0 << "v5h-" << fillHalves / 2.0 << "Z";
+        rect << "M4.5 9.5h" << fill << "v5h-" << fill << "Z";
         d += rect.str();
     }
     if (charging) d += "M11.9 8.4L8 12.7H10.5L9.3 15.6L13.3 11.3H10.8Z";
@@ -2500,13 +2503,16 @@ void UltraDesktopWindow::UpdateBatteryIcon(const DesktopDeviceActivity& now) {
     if (!button) return;
     const bool known = now.batteryPresent && now.batteryPercent >= 0;
     const int percent = known ? std::clamp(now.batteryPercent, 0, 100) : 0;
-    const int fillHalves = known ? (percent * 24 + 50) / 100 : 0;
+    // To the nearest step (90 % and over is full), but a battery that has
+    // any charge left shows at least one.
+    int steps = known ? (percent + kBatteryStepPercent / 2) / kBatteryStepPercent : 0;
+    if (known && percent > 0) steps = std::max(steps, 1);
     const bool charging = known && now.batteryCharging;
     const bool low = known && !charging && percent < kBatteryLowPercent;
-    // The level in half pixels, the state and the button: a bar built
+    // The step, the state and the button: a bar built
     // again (another theme, edge or screen) has a new button to dress.
     std::ostringstream key;
-    key << static_cast<const void*>(button.get()) << ':' << known << ':' << fillHalves << ':' << charging << ':' << low;
+    key << static_cast<const void*>(button.get()) << ':' << known << ':' << steps << ':' << charging << ':' << low;
     if (key.str() == batteryIconKey_) return;
     batteryIconKey_ = key.str();
     if (!known) {
@@ -2515,7 +2521,7 @@ void UltraDesktopWindow::UpdateBatteryIcon(const DesktopDeviceActivity& now) {
         button->SetIconMaskColor(Color(0, 0, 0, 0));
         return;
     }
-    const std::string svg = BatteryIconSvg(fillHalves, charging);
+    const std::string svg = BatteryIconSvg(steps, charging);
     auto image = UCImage::LoadFromMemory(reinterpret_cast<const uint8_t*>(svg.data()), svg.size());
     if (!image || image->GetWidth() <= 0) {
         button->SetIcon(IconPath("battery.svg"));

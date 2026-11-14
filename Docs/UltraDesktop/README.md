@@ -186,7 +186,8 @@ the right-hand monitor the primary.
   | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red below 25 %), keyboard layout - a wide pill grows inward, so "100" stays on the screen |
 
   The battery's icon itself shows the charge: its fill is as long as the
-  battery is full, a bolt is cut into it while charging (and the icon is
+  battery is full, in 20 % steps (to the nearest step, at least one while
+  any charge is left, full from 90 %), a bolt is cut into it while charging (and the icon is
   green), and below 25 % on battery the icon is red.
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
