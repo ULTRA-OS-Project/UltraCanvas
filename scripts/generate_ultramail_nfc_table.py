@@ -31,6 +31,11 @@ property: escaping more than needed is harmless).
 Usage:
     python3 scripts/generate_ultramail_nfc_table.py          # write the header
     python3 scripts/generate_ultramail_nfc_table.py --check  # exit 1 if stale
+
+CI (.github/workflows/ultramail-nfc-table.yml) runs --check on the Python the
+table was made with whenever the table, this script or the code using it
+changes, and once a week on the newest Python, which says when a new Unicode
+version is out and the table is due to be regenerated.
 """
 import sys
 import unicodedata
@@ -115,7 +120,19 @@ def main():
     if "--check" in sys.argv[1:]:
         current = OUT.read_text(encoding="utf-8") if OUT.exists() else ""
         if current != text:
-            print(f"{OUT.relative_to(ROOT)} is stale: run {Path(__file__).name}")
+            import re
+            m = re.search(r'kNfcEscapeUnicodeVersion = "([^"]+)"', current)
+            made_from = m.group(1) if m else "?"
+            if made_from != unicodedata.unidata_version:
+                print(f"{OUT.relative_to(ROOT)} was made from Unicode {made_from}; "
+                      f"this Python ({sys.version.split()[0]}) has Unicode "
+                      f"{unicodedata.unidata_version}. Regenerate it with this Python "
+                      f"(python3 scripts/{Path(__file__).name}) and pin the new Python "
+                      f"version in .github/workflows/ultramail-nfc-table.yml.")
+            else:
+                print(f"{OUT.relative_to(ROOT)} does not match Unicode "
+                      f"{unicodedata.unidata_version}: it was edited by hand or the "
+                      f"script changed - run python3 scripts/{Path(__file__).name}")
             return 1
         print(f"{OUT.relative_to(ROOT)}: up to date")
         return 0
