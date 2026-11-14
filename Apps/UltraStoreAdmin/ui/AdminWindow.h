@@ -8,6 +8,7 @@
 // use - so the window and the command line never disagree. The slow ones
 // (a new key's Argon2id seal, a publish, a translation) run on a worker
 // thread and report through UltraCanvasApplication::PostToUIThread.
+// Version: 0.5.0 - the Finance page: the statement, net by month, the apps, the partners and their payouts, the reversals
 // Version: 0.4.0 - the Marketplace page and the notices banner
 // Version: 0.3.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.3.0 - the Affiliates and codes page
@@ -17,6 +18,7 @@
 #pragma once
 
 #include "AdminDatabase.h"
+#include "Finance.h"
 #include "Market.h"
 #include "PackageStore.h"
 
@@ -31,6 +33,8 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
+#include "Plugins/Charts/UltraCanvasChartDataStructures.h"
+#include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 
 #include <atomic>
 #include <functional>
@@ -87,6 +91,13 @@ private:
     void UploadNow();
     void BuildAffiliatesPage();
     void RefreshAffiliatesPage();
+    // The books (Finance.h): the statement for the chosen period, net by
+    // month as a bar chart, the apps, the partners with what they are owed
+    // and a payout recorded, the reversals; the statement exported as CSV.
+    void BuildFinancePage();
+    void RefreshFinancePage();
+    std::string FinancePeriod() const;          // the period the dropdown names
+    std::string AppName(const std::string& id) const;
     // The marketplace (Market.h): the standing, the notices with their
     // acknowledgement, the terms with their acceptance, a submission, the
     // submissions and the reports. The service is asked on a worker; the
@@ -183,6 +194,15 @@ private:
     std::shared_ptr<TextInput> cCode_, cPercent_, cAmount_, cCurrency_, cApps_, cFrom_, cUntil_;
     std::shared_ptr<Dropdown> cAffiliate_;
     std::shared_ptr<TextInput> sCode_, sApp_, sAmount_, sCurrency_;
+    // finance
+    std::shared_ptr<Dropdown> financePeriod_, payoutPartner_;
+    std::shared_ptr<Label> financeStatement_, financeChartCaption_, financeReversals_;
+    std::shared_ptr<Container> financeApps_, financePartners_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBarChartElement> financeChart_;
+    std::shared_ptr<UltraCanvas::ChartDataVector> financeChartData_;
+    std::shared_ptr<TextInput> payoutAmount_, payoutCurrency_, payoutNote_;
+    std::vector<std::string> financePeriods_;
+    FinanceReport finance_;
     // the component form
     std::shared_ptr<Container> formBody_;
     std::shared_ptr<Label> formTitle_;

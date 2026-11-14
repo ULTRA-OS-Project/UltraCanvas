@@ -11,6 +11,7 @@
 // setting the catalog grows is kept without a schema change. The tables that
 // are queried on their own - package files by hash, keys, settings - are
 // tables.
+// Version: 0.5.0 - the reversals (refunds and chargebacks) and the payouts to the partners, schema 5
 // Version: 0.4.0 - the pages ever published (published_pages), schema 4
 // Version: 0.3.0 - a sale's reference (the payment service's order), schema 3
 // Version: 0.2.0 - affiliates, codes, sales (schema 2)
@@ -34,7 +35,7 @@ using UltraStore::ErrorCode;
 using UltraStore::Publisher;
 using UltraStore::Result;
 
-inline constexpr int kAdminSchemaVersion = 4;   // 2: affiliates, codes, sales; 3: sales.reference; 4: published_pages
+inline constexpr int kAdminSchemaVersion = 5;   // 2: affiliates, codes, sales; 3: sales.reference; 4: published_pages; 5: reversals, payouts
 
 // A signing key: the public half in the open, the seed sealed (KeyVault.h).
 struct KeyRecord {
@@ -110,6 +111,39 @@ struct SaleRecord {
     std::string reference;           // the payment service's order id, "" for a sale recorded by hand
 };
 
+// A refund or a chargeback as the payment service reports it
+// (GET /v1/reversals): what it takes back of a sale or a renewal in the
+// ledger, named by that sale's reference, and the partners' credits it
+// takes back with it - the same share of the amount reversed that the sale
+// credited them with, so a partner never keeps a credit on money the store
+// gave back. Amounts are positive decimals; the finance report subtracts.
+struct ReversalRecord {
+    int64_t id = 0;
+    std::string at;                  // ISO 8601
+    std::string kind;                // "refund" or "chargeback"
+    std::string reference;           // the payment service's reference of the reversal itself, "" for one recorded by hand
+    std::string reverses;            // the reference of the sale or renewal it takes back
+    std::string app;
+    std::string amount;              // taken back from the buyer's payment
+    std::string currency;
+    std::string affiliate;           // whose credit is taken back, or ""
+    std::string recruiter;
+    std::string affiliateCredit;     // taken back
+    std::string recruiterCredit;
+    bool revoked = false;            // the licence went with it
+};
+
+// Money paid out to a partner, so the report says what is still owed:
+// what the ledger credited them, less what was taken back, less this.
+struct PayoutRecord {
+    int64_t id = 0;
+    std::string at;                  // ISO 8601
+    std::string affiliate;
+    std::string amount;
+    std::string currency;
+    std::string note;                // the bank reference, a word
+};
+
 class AdminDatabase {
 public:
     AdminDatabase() = default;
@@ -163,6 +197,14 @@ public:
     Result<SaleRecord> AddSale(const SaleRecord& sale);       // as given; the credits are the caller's (Affiliates.h, RecordSale)
     Result<std::vector<SaleRecord>> Sales() const;
     bool HasSaleReference(const std::string& reference) const;   // a sale with this reference is in the ledger
+    Result<SaleRecord> SaleByReference(const std::string& reference) const;   // NotFound when none
+
+    // ----- the reversals and the payouts (Finance.h records them) -----
+    Result<ReversalRecord> AddReversal(const ReversalRecord& reversal);   // as given; the credits taken back are the caller's
+    Result<std::vector<ReversalRecord>> Reversals() const;
+    bool HasReversalReference(const std::string& reference) const;
+    Result<PayoutRecord> AddPayout(const PayoutRecord& payout);
+    Result<std::vector<PayoutRecord>> Payouts() const;
 
     // ----- the pages ever published -----
     Result<void> RememberPage(const std::string& path, const std::string& kind);   // once; the first date stays

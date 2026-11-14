@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/AdminDatabase.cpp
+// Version: 0.5.0 - the reversals and the payouts (schema 5), SaleByReference
 // Version: 0.3.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.3.0 - sales.reference
 // Version: 0.2.0 - affiliates, codes, sales
@@ -80,6 +81,15 @@ Result<void> AdminDatabase::Open(const std::string& databasePathUtf8) {
         // schema 4
         "CREATE TABLE IF NOT EXISTS published_pages ("
         " path TEXT PRIMARY KEY, kind TEXT NOT NULL, first_published_at TEXT NOT NULL)",
+        // schema 5
+        "CREATE TABLE IF NOT EXISTS reversals ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'refund', reference TEXT NOT NULL DEFAULT '',"
+        " reverses TEXT NOT NULL DEFAULT '', app TEXT NOT NULL DEFAULT '', amount TEXT NOT NULL DEFAULT '0', currency TEXT NOT NULL DEFAULT '',"
+        " affiliate TEXT NOT NULL DEFAULT '', recruiter TEXT NOT NULL DEFAULT '', affiliate_credit TEXT NOT NULL DEFAULT '0',"
+        " recruiter_credit TEXT NOT NULL DEFAULT '0', revoked INTEGER NOT NULL DEFAULT 0)",
+        "CREATE TABLE IF NOT EXISTS payouts ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, affiliate TEXT NOT NULL, amount TEXT NOT NULL DEFAULT '0',"
+        " currency TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '')",
     };
     for (const char* sql : kTables) {
         if (const UltraDbResult r = UltraDb_Exec(connection_, sql); !r) {
@@ -511,6 +521,117 @@ bool AdminDatabase::HasSaleReference(const std::string& reference) const {
     return !rs.Empty();
 }
 
+namespace {
+SaleRecord SaleFromRow(const UltraDbRow& row) {
+    SaleRecord sale;
+    sale.id = row["id"].AsInt64();
+    sale.at = Str(row, "at");
+    sale.code = Str(row, "code");
+    sale.app = Str(row, "app");
+    sale.amount = Str(row, "amount");
+    sale.currency = Str(row, "currency");
+    sale.affiliate = Str(row, "affiliate");
+    sale.recruiter = Str(row, "recruiter");
+    sale.affiliateCredit = Str(row, "affiliate_credit");
+    sale.recruiterCredit = Str(row, "recruiter_credit");
+    sale.reference = Str(row, "reference");
+    return sale;
+}
+constexpr const char* kSaleColumns = "id, at, code, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit, reference";
+} // namespace
+
+Result<SaleRecord> AdminDatabase::SaleByReference(const std::string& reference) const {
+    if (reference.empty()) return Result<SaleRecord>::Failure(ErrorCode::NotFound, "No sale has an empty reference");
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_, std::string("SELECT ") + kSaleColumns + " FROM sales WHERE reference = ? LIMIT 1", {UltraDbValue(reference)}, rs); !r) {
+        return DbFailure<SaleRecord>(r, "read a sale");
+    }
+    if (rs.Empty()) return Result<SaleRecord>::Failure(ErrorCode::NotFound, "No sale in the ledger has this reference", reference);
+    return Result<SaleRecord>::Succeed(SaleFromRow(rs.Row(0)));
+}
+
+Result<ReversalRecord> AdminDatabase::AddReversal(const ReversalRecord& reversal) {
+    const std::string at = reversal.at.empty() ? NowIso8601() : reversal.at;
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT INTO reversals (at, kind, reference, reverses, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit, revoked)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        {UltraDbValue(at), UltraDbValue(reversal.kind), UltraDbValue(reversal.reference), UltraDbValue(reversal.reverses), UltraDbValue(reversal.app),
+         UltraDbValue(reversal.amount), UltraDbValue(reversal.currency), UltraDbValue(reversal.affiliate), UltraDbValue(reversal.recruiter),
+         UltraDbValue(reversal.affiliateCredit), UltraDbValue(reversal.recruiterCredit), UltraDbValue(reversal.revoked ? 1 : 0)});
+    if (!r) return DbFailure<ReversalRecord>(r, "record the reversal");
+    ReversalRecord out = reversal;
+    out.id = r.lastInsertId;
+    out.at = at;
+    return Result<ReversalRecord>::Succeed(std::move(out));
+}
+
+Result<std::vector<ReversalRecord>> AdminDatabase::Reversals() const {
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_,
+            "SELECT id, at, kind, reference, reverses, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit, revoked FROM reversals ORDER BY id", rs); !r) {
+        return DbFailure<std::vector<ReversalRecord>>(r, "read its reversals");
+    }
+    std::vector<ReversalRecord> out;
+    for (size_t i = 0; i < rs.Size(); ++i) {
+        const UltraDbRow& row = rs.Row(i);
+        ReversalRecord v;
+        v.id = row["id"].AsInt64();
+        v.at = Str(row, "at");
+        v.kind = Str(row, "kind");
+        v.reference = Str(row, "reference");
+        v.reverses = Str(row, "reverses");
+        v.app = Str(row, "app");
+        v.amount = Str(row, "amount");
+        v.currency = Str(row, "currency");
+        v.affiliate = Str(row, "affiliate");
+        v.recruiter = Str(row, "recruiter");
+        v.affiliateCredit = Str(row, "affiliate_credit");
+        v.recruiterCredit = Str(row, "recruiter_credit");
+        v.revoked = row["revoked"].AsInt() != 0;
+        out.push_back(std::move(v));
+    }
+    return Result<std::vector<ReversalRecord>>::Succeed(std::move(out));
+}
+
+bool AdminDatabase::HasReversalReference(const std::string& reference) const {
+    if (reference.empty()) return false;
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_, "SELECT id FROM reversals WHERE reference = ? LIMIT 1", {UltraDbValue(reference)}, rs); !r) return false;
+    return !rs.Empty();
+}
+
+Result<PayoutRecord> AdminDatabase::AddPayout(const PayoutRecord& payout) {
+    const std::string at = payout.at.empty() ? NowIso8601() : payout.at;
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT INTO payouts (at, affiliate, amount, currency, note) VALUES (?, ?, ?, ?, ?)",
+        {UltraDbValue(at), UltraDbValue(payout.affiliate), UltraDbValue(payout.amount), UltraDbValue(payout.currency), UltraDbValue(payout.note)});
+    if (!r) return DbFailure<PayoutRecord>(r, "record the payout");
+    PayoutRecord out = payout;
+    out.id = r.lastInsertId;
+    out.at = at;
+    return Result<PayoutRecord>::Succeed(std::move(out));
+}
+
+Result<std::vector<PayoutRecord>> AdminDatabase::Payouts() const {
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_, "SELECT id, at, affiliate, amount, currency, note FROM payouts ORDER BY id", rs); !r) {
+        return DbFailure<std::vector<PayoutRecord>>(r, "read its payouts");
+    }
+    std::vector<PayoutRecord> out;
+    for (size_t i = 0; i < rs.Size(); ++i) {
+        const UltraDbRow& row = rs.Row(i);
+        PayoutRecord p;
+        p.id = row["id"].AsInt64();
+        p.at = Str(row, "at");
+        p.affiliate = Str(row, "affiliate");
+        p.amount = Str(row, "amount");
+        p.currency = Str(row, "currency");
+        p.note = Str(row, "note");
+        out.push_back(std::move(p));
+    }
+    return Result<std::vector<PayoutRecord>>::Succeed(std::move(out));
+}
+
 Result<std::vector<SaleRecord>> AdminDatabase::Sales() const {
     UltraDbResultSet rs;
     if (const UltraDbResult r = UltraDb_Query(connection_,
@@ -518,22 +639,7 @@ Result<std::vector<SaleRecord>> AdminDatabase::Sales() const {
         return DbFailure<std::vector<SaleRecord>>(r, "read its sales");
     }
     std::vector<SaleRecord> out;
-    for (size_t i = 0; i < rs.Size(); ++i) {
-        const UltraDbRow& row = rs.Row(i);
-        SaleRecord sale;
-        sale.id = row["id"].AsInt64();
-        sale.at = Str(row, "at");
-        sale.code = Str(row, "code");
-        sale.app = Str(row, "app");
-        sale.amount = Str(row, "amount");
-        sale.currency = Str(row, "currency");
-        sale.affiliate = Str(row, "affiliate");
-        sale.recruiter = Str(row, "recruiter");
-        sale.affiliateCredit = Str(row, "affiliate_credit");
-        sale.recruiterCredit = Str(row, "recruiter_credit");
-        sale.reference = Str(row, "reference");
-        out.push_back(std::move(sale));
-    }
+    for (size_t i = 0; i < rs.Size(); ++i) out.push_back(SaleFromRow(rs.Row(i)));
     return Result<std::vector<SaleRecord>>::Succeed(std::move(out));
 }
 

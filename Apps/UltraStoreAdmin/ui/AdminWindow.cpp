@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/ui/AdminWindow.cpp
 // The shell, the store's pages (Overview, Settings, Keys, Publish) and the
 // worker thread; the component form is in AdminComponentPage.cpp.
+// Version: 0.5.0 - the Finance page; Sync sales pulls the reversals too
 // Version: 0.5.0 - the Marketplace page and the notices banner
 // Version: 0.4.0 - the payment settings and Sync sales
 // Version: 0.3.0 - the Affiliates and codes page
@@ -41,6 +42,7 @@ constexpr const char* kOverview = "overview";
 constexpr const char* kPublish = "publish";
 constexpr const char* kKeys = "keys";
 constexpr const char* kAffiliates = "affiliates";
+constexpr const char* kFinance = "finance";
 constexpr const char* kSettings = "settings";
 constexpr const char* kMarket = "market";
 constexpr const char* kComponent = "component";
@@ -161,6 +163,7 @@ void AdminWindow::BuildShell() {
     sidebar_->AddItem(store, kPublish, Tr("Publish"), Theme::Icon("folder-download.svg"));
     sidebar_->AddItem(store, kKeys, Tr("Keys"), Theme::Icon("list-check.svg"));
     sidebar_->AddItem(store, kAffiliates, Tr("Affiliates and codes"), Theme::Icon("user-plus.svg"));
+    sidebar_->AddItem(store, kFinance, Tr("Finance"), Theme::Icon("chart.svg"));
     sidebar_->AddItem(store, kMarket, Tr("Marketplace"), Theme::Icon("mail.svg"));
     sidebar_->AddItem(store, kSettings, Tr("Settings"), Theme::Icon("settings.svg"));
     appsSection_ = sidebar_->AddSection(Tr("Apps"));
@@ -194,6 +197,7 @@ void AdminWindow::BuildShell() {
     BuildOverviewPage();
     BuildPublishPage();
     BuildAffiliatesPage();
+    BuildFinancePage();
     BuildMarketPage();
     BuildKeysPage();
     BuildSettingsPage();
@@ -243,6 +247,7 @@ void AdminWindow::ShowPage(const std::string& id) {
     if (id == kKeys) RefreshKeysPage();
     if (id == kPublish) RefreshKeysPage();
     if (id == kAffiliates) RefreshAffiliatesPage();
+    if (id == kFinance) RefreshFinancePage();
     if (id == kMarket) RefreshMarketPage();
     pageHost_->InvalidateLayout();
     pageHost_->RequestRedraw();
@@ -878,6 +883,9 @@ void AdminWindow::BuildAffiliatesPage() {
             const auto report = SyncSales(db_, url, token);
             if (!report) { out.ok = false; out.message = report.error.message + (report.error.detail.empty() ? "" : " (" + report.error.detail + ")"); return out; }
             out.message = TrF("Synced: {0} sale(s) recorded, {1} already there", report.Value().recorded, report.Value().skipped);
+            // The refunds and the chargebacks too; a service from before them is said, not fatal.
+            if (const auto reversals = SyncReversals(db_, url, token)) out.message += "; " + TrF("{0} reversal(s) recorded, {1} already there", reversals.Value().recorded, reversals.Value().skipped);
+            else out.message += "; " + TrF("reversals not synced: {0}", reversals.error.message);
             return out;
         }, [this](const JobOutcome&) { RefreshAffiliatesPage(); });
     };
@@ -1030,6 +1038,265 @@ void AdminWindow::RefreshAffiliatesPage() {
     }
     affiliatesList_->InvalidateLayout();
     codesList_->InvalidateLayout();
+    pageHost_->InvalidateLayout();
+    pageHost_->RequestRedraw();
+}
+
+// ===========================================================================
+// Finance
+// ===========================================================================
+void AdminWindow::BuildFinancePage() {
+    std::shared_ptr<Container> header, body;
+    BuildPage(kFinance, Tr("Finance"), header, body);
+    financePeriod_ = Theme::Pin(CreateDropdown("uaF.period", 0, 0, 200, Theme::kControlHeight));
+    financePeriod_->onSelectionChanged = [this](int, const DropdownItem&) { RefreshFinancePage(); };
+    header->AddChild(financePeriod_);
+    auto exportCsv = Theme::Button("uaF.export", Tr("Statement CSV"), 130);
+    exportCsv->SetTooltip(Tr("The statement, the apps, the partners and the months of the chosen period as a CSV file, for the books"));
+    exportCsv->onClick = [this]() {
+        FileDialogOptions opts;
+        const std::string period = FinancePeriod();
+        opts.SetTitle(Tr("Save the statement")).SetDefaultFileName("ultrastore-statement-" + (period.empty() ? std::string("all") : period) + ".csv")
+            .AddFilter("CSV", "csv").SetParentWindow(window_.get());
+        UltraCanvasFileLoader::SaveFileDialog(opts, [this, period](DialogResult result, const std::string& path) {
+            if (result != DialogResult::OK || path.empty()) return;
+            const auto report = BuildFinanceReport(db_, period);
+            if (!report) { SetStatus(report.error.message, true); return; }
+            std::ofstream out(PathFromUtf8(path), std::ios::binary | std::ios::trunc);
+            if (!out) { SetStatus(TrF("The statement could not be written: {0}", path), true); return; }
+            out << StatementCsv(report.Value());
+            SetStatus(TrF("Wrote {0}", path));
+        });
+    };
+    header->AddChild(exportCsv);
+    auto sync = Theme::Button("uaF.sync", Tr("Sync sales"), 100, Theme::ButtonKind::Primary);
+    sync->SetTooltip(Tr("Fetch the paid orders, the refunds and the chargebacks from the payment service into the ledger"));
+    sync->onClick = [this]() {
+        const std::string url = db_.Setting("payment.url"), token = db_.Setting("payment.token");
+        RunJob(Tr("Syncing the sales"), [this, url, token]() {
+            JobOutcome out;
+            const auto report = SyncSales(db_, url, token);
+            if (!report) { out.ok = false; out.message = report.error.message + (report.error.detail.empty() ? "" : " (" + report.error.detail + ")"); return out; }
+            out.message = TrF("Synced: {0} sale(s) recorded, {1} already there", report.Value().recorded, report.Value().skipped);
+            if (const auto reversals = SyncReversals(db_, url, token)) out.message += "; " + TrF("{0} reversal(s) recorded, {1} already there", reversals.Value().recorded, reversals.Value().skipped);
+            else out.message += "; " + TrF("reversals not synced: {0}", reversals.error.message);
+            return out;
+        }, [this](const JobOutcome&) { RefreshFinancePage(); });
+    };
+    header->AddChild(sync);
+    body->AddChild(Theme::Caption("uaF.hint",
+        Tr("The books from the ledger: what the buyers paid, what the payment service gave back, what the partners earned, and what is left to the store. "
+           "Each currency is listed on its own; nothing is converted. Net is paid less refunded less the partners' credits.")));
+
+    // ----- the statement -----
+    auto statement = Theme::Surface("uaF.st", Theme::kInnerGap);
+    statement->AddChild(Theme::Text("uaF.st.title", Tr("Statement"), 14.0f, FontWeight::Bold));
+    financeStatement_ = Theme::Text("uaF.st.text", "", 13.0f);
+    statement->AddChild(financeStatement_);
+    body->AddChild(statement);
+
+    // ----- net by month -----
+    auto chart = Theme::Surface("uaF.ch", Theme::kInnerGap);
+    chart->AddChild(Theme::Text("uaF.ch.title", Tr("Net by month"), 14.0f, FontWeight::Bold));
+    financeChartCaption_ = Theme::Caption("uaF.ch.caption", "");
+    chart->AddChild(financeChartCaption_);
+    financeChartData_ = std::make_shared<ChartDataVector>();
+    financeChart_ = Theme::Pin(CreateBarChartElement("uaF.chart", 0, 0, 600, 220));
+    financeChart_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(220));
+    financeChart_->SetDataSource(financeChartData_);
+    financeChart_->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
+    financeChart_->SetBarColor(Theme::kAccent);
+    financeChart_->SetBarBorderWidth(0.0);
+    financeChart_->SetBarSpacing(0.35);
+    financeChart_->SetBackgroundColor(Theme::kSurface);
+    financeChart_->SetPlotAreaColor(Theme::kSurface);
+    financeChart_->SetGridColor(Theme::kBorder);
+    financeChart_->SetEmptyMessage(Tr("No sale yet."));
+    financeChart_->SetEmptyMessageColor(Theme::kTextSecondary);
+    chart->AddChild(financeChart_);
+    body->AddChild(chart);
+
+    // ----- by app -----
+    auto apps = Theme::Surface("uaF.apps", Theme::kInnerGap);
+    apps->AddChild(Theme::Text("uaF.apps.title", Tr("Revenue by app"), 14.0f, FontWeight::Bold));
+    financeApps_ = Theme::Column("uaF.apps.items", 4.0f);
+    apps->AddChild(financeApps_);
+    body->AddChild(apps);
+
+    // ----- the partners -----
+    auto partners = Theme::Surface("uaF.p", Theme::kInnerGap);
+    partners->AddChild(Theme::Text("uaF.p.title", Tr("Partners: what they are owed"), 14.0f, FontWeight::Bold));
+    partners->AddChild(Theme::Caption("uaF.p.hint", Tr("Earned by their codes and their recruits' sales, less what a refund or a chargeback took back, less what was paid out. Owed is all time; the first column is the period.")));
+    financePartners_ = Theme::Column("uaF.p.items", 4.0f);
+    partners->AddChild(financePartners_);
+    auto payout = Theme::Row("uaF.pay", Theme::kInnerGap, true);
+    payoutPartner_ = Theme::Pin(CreateDropdown("uaF.pay.partner", 0, 0, 220, Theme::kControlHeight));
+    payout->AddChild(payoutPartner_);
+    payoutAmount_ = Theme::Pin(CreateTextInput("uaF.pay.amount", 0, 0, 90, Theme::kControlHeight));
+    payoutAmount_->SetPlaceholder("112.40");
+    payout->AddChild(payoutAmount_);
+    payoutCurrency_ = Theme::Pin(CreateTextInput("uaF.pay.currency", 0, 0, 70, Theme::kControlHeight));
+    payoutCurrency_->SetPlaceholder("EUR");
+    payout->AddChild(payoutCurrency_);
+    payoutNote_ = Theme::Pin(CreateTextInput("uaF.pay.note", 0, 0, 200, Theme::kControlHeight));
+    payoutNote_->SetPlaceholder(Tr("the bank reference, optional"));
+    payout->AddChild(payoutNote_);
+    auto record = Theme::Button("uaF.pay.record", Tr("Record payout"), 120, Theme::ButtonKind::Primary);
+    record->onClick = [this]() {
+        const int who = payoutPartner_->GetSelectedIndex();
+        const std::string partner = who >= 0 && payoutPartner_->GetItem(who) ? payoutPartner_->GetItem(who)->value : std::string();
+        const auto paid = RecordPayout(db_, partner, payoutAmount_->GetText(), payoutCurrency_->GetText(), payoutNote_->GetText());
+        if (!paid) { SetStatus(paid.error.message + (paid.error.detail.empty() ? "" : " (" + paid.error.detail + ")"), true); return; }
+        payoutAmount_->SetText("");
+        payoutNote_->SetText("");
+        SetStatus(TrF("Payout recorded: {0} {1} to {2}", paid.Value().amount, paid.Value().currency, paid.Value().affiliate));
+        RefreshFinancePage();
+    };
+    payout->AddChild(record);
+    partners->AddChild(payout);
+    body->AddChild(partners);
+
+    // ----- the reversals -----
+    auto reversals = Theme::Surface("uaF.rev", Theme::kInnerGap);
+    reversals->AddChild(Theme::Text("uaF.rev.title", Tr("Refunds and chargebacks"), 14.0f, FontWeight::Bold));
+    financeReversals_ = Theme::Caption("uaF.rev.text", "");
+    reversals->AddChild(financeReversals_);
+    body->AddChild(reversals);
+}
+
+std::string AdminWindow::FinancePeriod() const {
+    if (!financePeriod_) return {};
+    const int i = financePeriod_->GetSelectedIndex();
+    return i >= 0 && financePeriod_->GetItem(i) ? financePeriod_->GetItem(i)->value : std::string();
+}
+
+std::string AdminWindow::AppName(const std::string& id) const {
+    for (const UltraStore::Component& c : components_) if (c.id == id && !c.name.empty()) return c.name;
+    return id;
+}
+
+void AdminWindow::RefreshFinancePage() {
+    if (!financeStatement_ || !db_.IsOpen()) return;
+    // The periods: all time, each year with a sale, each month, newest first;
+    // the choice survives the refresh.
+    const std::string chosen = FinancePeriod();
+    if (const auto periods = FinancePeriods(db_)) financePeriods_ = periods.Value();
+    financePeriod_->onSelectionChanged = nullptr;
+    financePeriod_->ClearItems();
+    financePeriod_->AddItem(Tr("All time"), "");
+    std::vector<std::string> years;
+    for (const std::string& m : financePeriods_) if (years.empty() || years.back() != m.substr(0, 4)) years.push_back(m.substr(0, 4));
+    for (const std::string& y : years) financePeriod_->AddItem(y, y);
+    for (const std::string& m : financePeriods_) financePeriod_->AddItem(PeriodName(m), m);
+    int select = 0;
+    for (int i = 0; i < financePeriod_->GetItemCount(); ++i) if (financePeriod_->GetItem(i)->value == chosen) select = i;
+    financePeriod_->SetSelectedIndex(select, false);
+    financePeriod_->onSelectionChanged = [this](int, const DropdownItem&) { RefreshFinancePage(); };
+    const std::string period = FinancePeriod();
+
+    const auto report = BuildFinanceReport(db_, period);
+    if (!report) { SetStatus(report.error.message, true); return; }
+    finance_ = report.Value();
+    const FinanceReport& r = finance_;
+
+    // The statement, one block per currency.
+    std::string text = PeriodName(period);
+    if (r.totals.net.empty()) text += "\n" + Tr("No sale and no reversal in this period.");
+    for (const auto& [currency, net] : r.totals.net) {
+        text += "\n\n" + currency;
+        text += "\n" + TrF("Paid by the buyers: {0}  ({1} sale(s))", MoneyOf(r.totals.paid, currency), r.totals.sales);
+        text += "\n" + TrF("Given back: -{0}  ({1} refund(s) and chargeback(s))", MoneyOf(r.totals.refunded, currency), r.totals.reversals);
+        text += "\n" + TrF("Partners' credits: -{0}", MoneyOf(r.totals.credits, currency));
+        text += "\n" + TrF("Net to the store: {0} {1}", net, currency);
+    }
+    financeStatement_->SetText(text);
+
+    // Net by month, in the main currency.
+    financeChartData_->Clear();
+    if (!r.mainCurrency.empty()) {
+        int i = 0;
+        for (const MonthNet& m : r.months) {
+            const int month = std::atoi(m.month.substr(5, 2).c_str());   // locale-ok: digits only
+            const std::string label = month >= 1 && month <= 12 ? PeriodName(m.month).substr(0, 3) + " " + m.month.substr(2, 2) : m.month;
+            financeChartData_->AddPoint(ChartDataPoint(i++, std::atof(MoneyOf(m.totals.net, r.mainCurrency).c_str()), 0, label));   // locale-ok: a decimal point
+        }
+        financeChartCaption_->SetText(TrF("Net to the store per month in {0}, the {1} months up to {2}.", r.mainCurrency, r.months.size(),
+                                          r.months.empty() ? std::string() : PeriodName(r.months.back().month)));
+    } else {
+        financeChartCaption_->SetText(Tr("The chart shows the currency with the most sales once there is one."));
+    }
+    financeChart_->SetDataSource(financeChartData_);
+    financeChart_->RequestRedraw();
+
+    // By app.
+    financeApps_->ClearChildren();
+    if (r.apps.empty()) financeApps_->AddChild(Theme::Caption("uaF.apps.none", Tr("No sale in this period.")));
+    int n = 0;
+    for (const AppFinance& a : r.apps) {
+        const std::string id = "uaF.app" + std::to_string(n++);
+        auto row = Theme::Row(id, Theme::kInnerGap, true);
+        auto name = Theme::Text(id + ".name", AppName(a.app), 13.0f, FontWeight::Bold);
+        name->SetTooltip(a.app);
+        name->SetElementSize(CSSLayout::Dimension::Px(220), CSSLayout::Dimension::Auto());
+        row->AddChild(name);
+        std::string line;
+        for (const auto& [currency, net] : a.totals.net) {
+            line += (line.empty() ? "" : "  ·  ") + TrF("{0} sale(s), paid {1}, given back {2}, credits {3}, net {4} {5}", a.totals.sales,
+                                                           MoneyOf(a.totals.paid, currency), MoneyOf(a.totals.refunded, currency),
+                                                           MoneyOf(a.totals.credits, currency), net, currency);
+        }
+        auto figures = Theme::Caption(id + ".figures", line);
+        figures->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        row->AddChild(figures);
+        financeApps_->AddChild(row);
+    }
+
+    // The partners, and the payout form's choice of them.
+    financePartners_->ClearChildren();
+    const std::string chosenPartner = payoutPartner_->GetSelectedIndex() >= 0 && payoutPartner_->GetItem(payoutPartner_->GetSelectedIndex())
+                                          ? payoutPartner_->GetItem(payoutPartner_->GetSelectedIndex())->value : std::string();
+    payoutPartner_->ClearItems();
+    if (r.partners.empty()) financePartners_->AddChild(Theme::Caption("uaF.p.none", Tr("No partner yet.")));
+    n = 0;
+    int selectPartner = 0;
+    for (const PartnerBalance& b : r.partners) {
+        payoutPartner_->AddItem(b.affiliate.name + " (" + b.affiliate.id + ")", b.affiliate.id);
+        if (b.affiliate.id == chosenPartner) selectPartner = n;
+        const std::string id = "uaF.partner" + std::to_string(n++);
+        auto row = Theme::Row(id, Theme::kInnerGap, true);
+        auto name = Theme::Text(id + ".name", b.affiliate.name + (b.affiliate.enabled ? std::string() : "  " + Tr("(off)")), 13.0f, FontWeight::Bold);
+        name->SetTooltip(b.affiliate.id);
+        name->SetElementSize(CSSLayout::Dimension::Px(220), CSSLayout::Dimension::Auto());
+        row->AddChild(name);
+        auto figures = Theme::Caption(id + ".figures", TrF("In the period: {0} ({1} sale(s))  ·  earned {2}, taken back {3}, paid out {4}", JoinMoney(b.inPeriod), b.sales,
+                                                           JoinMoney(b.earned), JoinMoney(b.takenBack), JoinMoney(b.paidOut)));
+        figures->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        row->AddChild(figures);
+        bool owes = false;
+        for (const auto& [_, sum] : b.owed) if (!sum.empty() && sum != "0.00" && sum[0] != '-') owes = true;
+        auto owed = Theme::Text(id + ".owed", TrF("Owed: {0}", JoinMoney(b.owed)), 13.0f, FontWeight::Bold, owes ? Theme::kAccentSoftText : Theme::kTextSecondary);
+        row->AddChild(owed);
+        financePartners_->AddChild(row);
+    }
+    if (payoutPartner_->GetItemCount() > 0) payoutPartner_->SetSelectedIndex(selectPartner, false);
+
+    // The reversals of the period, newest first, at most eight.
+    if (r.reversals.empty()) financeReversals_->SetText(Tr("No refund and no chargeback in this period."));
+    else {
+        std::string lines;
+        size_t shown = 0;
+        for (const ReversalRecord& v : r.reversals) {
+            if (shown++ == 8) { lines += "\n" + TrF("and {0} more", r.reversals.size() - 8); break; }
+            lines += (lines.empty() ? "" : "\n") + v.at + "  " + (v.kind == "chargeback" ? Tr("chargeback") : Tr("refund")) + "  " + AppName(v.app) + "  " + v.amount + " " + v.currency;
+            if (!v.reverses.empty()) lines += "  " + TrF("of {0}", v.reverses);
+            if (!v.affiliate.empty()) lines += "  " + TrF("{0} gives back {1}", v.affiliate, v.affiliateCredit);
+            if (!v.recruiter.empty()) lines += ", " + TrF("{0} gives back {1}", v.recruiter, v.recruiterCredit);
+            if (v.revoked) lines += "  " + Tr("(licence taken back)");
+        }
+        financeReversals_->SetText(lines);
+    }
+    financeApps_->InvalidateLayout();
+    financePartners_->InvalidateLayout();
     pageHost_->InvalidateLayout();
     pageHost_->RequestRedraw();
 }
