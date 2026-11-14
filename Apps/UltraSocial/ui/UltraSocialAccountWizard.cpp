@@ -1,4 +1,8 @@
 // Apps/UltraSocial/ui/UltraSocialAccountWizard.cpp
+// Version: 0.5.0 - set up as standard: the app registration Reddit, X and
+//                  LinkedIn sign in through comes from Settings (the gear on
+//                  the start page), and the form asks for it only while
+//                  Settings have none; an empty server is the default shown
 // Version: 0.4.0 - UltraMail's look: themed inputs, a primary Connect button;
 //                  the network's hint in a tinted box under the fields, at
 //                  the height of its text (in the grid it was cut to a line)
@@ -47,6 +51,10 @@ struct NetworkForm {
     const char* secretPlaceholder;
     const char* clientIdLabel;
     const char* clientIdPlaceholder;
+    // The hint once Settings hold this network's app registration: the
+    // client-id fields are gone then, so the hint no longer talks of them.
+    // Null for networks that need no registration.
+    const char* configuredHint;
 };
 
 constexpr std::array<NetworkForm, 7> kForms{{
@@ -57,21 +65,21 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "Instance", "mastodon.social",
       "", "",
       "Access token", "optional — empty opens the browser",
-      "", "" },
+      "", "", nullptr },
     { SocialNetwork::Bluesky, "Bluesky",
       "Create an app password under Settings → App Passwords on "
       "Bluesky, then sign in with it here — never your main password.",
       "Server (PDS)", "bsky.social (default)",
       "Handle / e-mail", "erika.bsky.social",
       "App password", "xxxx-xxxx-xxxx-xxxx",
-      "", "" },
+      "", "", nullptr },
     { SocialNetwork::Telegram, "Telegram channel",
       "Create a bot with @BotFather, add it to your channel as an "
       "administrator, and paste its token here.",
       "Server", "(default)",
       "Channel", "@mychannel",
       "Bot token", "123456:ABC-DEF…",
-      "", "" },
+      "", "", nullptr },
     { SocialNetwork::Reddit, "Reddit",
       "Register an 'installed app' at reddit.com/prefs/apps with redirect "
       "http://127.0.0.1:17995/callback, paste its client id, then sign in "
@@ -80,7 +88,9 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "Server", "(default)",
       "Subreddit", "optional, e.g. r/test",
       "", "",
-      "Client ID", "from reddit.com/prefs/apps" },
+      "Client ID", "from reddit.com/prefs/apps",
+      "Sign in through your browser. Text posts go to the subreddit below "
+      "(empty = your profile)." },
     { SocialNetwork::X, "X (Twitter)",
       "Register an app in the X developer portal (OAuth 2.0 public client, "
       "redirect http://127.0.0.1:17996/callback), paste its client id, then "
@@ -88,7 +98,9 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "Server", "(default)",
       "", "",
       "", "",
-      "Client ID", "from the X developer portal" },
+      "Client ID", "from the X developer portal",
+      "Sign in through your browser. Mind the free tier's monthly write "
+      "cap." },
     { SocialNetwork::LinkedIn, "LinkedIn",
       "Register an app at linkedin.com/developers with the 'Sign In with "
       "LinkedIn' and 'Share on LinkedIn' products and redirect "
@@ -97,7 +109,8 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "Server", "(default)",
       "", "",
       "Client secret", "from your LinkedIn app",
-      "Client ID", "from your LinkedIn app" },
+      "Client ID", "from your LinkedIn app",
+      "Sign in through your browser." },
     { SocialNetwork::Facebook, "Facebook Page",
       "Posting goes to a Page you manage (personal profiles have no "
       "posting API). Create a Meta app, grant it pages_manage_posts for "
@@ -106,12 +119,13 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "Server", "(default)",
       "Page ID", "e.g. 103245...",
       "Page access token", "EAAB…",
-      "", "" },
+      "", "", nullptr },
 }};
 
 } // namespace
 
 void AccountWizard::Show(UltraCanvasWindowBase* parent,
+                         const SignInSettings& settings,
                          std::function<void(const WizardInput&)> onSubmit) {
     DialogConfig config;
     config.title      = "Add social account";
@@ -211,14 +225,30 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
         row.input->SetPlaceholder(placeholder);
     };
 
+    // Set up as standard: a network whose app registration is in Settings
+    // drops its client-id rows (LinkedIn's client secret is part of the
+    // registration too), and a server field shows the default it falls back
+    // to when left empty.
     auto applyForm = [hint, applyRow, serverRow, identifierRow, secretRow,
-                      clientIdRow](int index) {
+                      clientIdRow, settings](int index) {
         const auto& form = kForms[static_cast<std::size_t>(index)];
-        hint->SetText(form.hint);
-        applyRow(serverRow,     form.serverLabel,     form.serverPlaceholder);
+        const bool registered = form.configuredHint &&
+                                !NeedsClientId(form.network, settings);
+        hint->SetText(registered ? form.configuredHint : form.hint);
+
+        std::string serverPlaceholder = form.serverPlaceholder;
+        if (form.network == SocialNetwork::Mastodon)
+            serverPlaceholder = settings.mastodonInstance + " (default)";
+        else if (form.network == SocialNetwork::Bluesky)
+            serverPlaceholder = settings.blueskyServer + " (default)";
+
+        applyRow(serverRow,     form.serverLabel,     serverPlaceholder.c_str());
         applyRow(identifierRow, form.identifierLabel, form.identifierPlaceholder);
-        applyRow(secretRow,     form.secretLabel,     form.secretPlaceholder);
-        applyRow(clientIdRow,   form.clientIdLabel,   form.clientIdPlaceholder);
+        const bool secretIsRegistration = form.network == SocialNetwork::LinkedIn;
+        applyRow(secretRow, registered && secretIsRegistration ? "" : form.secretLabel,
+                 form.secretPlaceholder);
+        applyRow(clientIdRow, registered ? "" : form.clientIdLabel,
+                 form.clientIdPlaceholder);
     };
     applyForm(0);
     network->SetSelectedIndex(0, /*runNotifications=*/false);
