@@ -8,10 +8,14 @@
 // presence colours, the avatar palette) and a fallback for each, so a theme
 // that does not name them still looks right.
 //
+// Version: 0.2.0 - the look follows a change of the theme while ChatCube runs: L() read again by
+//                  RestyleForLook, OnLook for every colour set by hand, SetInk for a label's role;
+//                  SetLookChoice / DarkLook: light or dark decided again at every change
+// Version: 0.1.3 - InkOn: an avatar's initials in white or the dark ink, whichever reads on its colour
 // Version: 0.1.2 - PaintTicks: a bubble's ticks drawn as strokes, not as a glyph a font may lack
 // Version: 0.1.1 - an avatar from the person's picture; a picture in a rounded box; a play mark
 // Version: 0.1.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -21,6 +25,7 @@
 #include "UltraCanvasTheme.h"
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -28,6 +33,15 @@ namespace ChatCube {
 
 // The theme for the light or the dark look.
 UltraCanvas::UltraCanvasTheme ThemeFor(bool dark);
+
+// Which look: the Settings window's choice ("system", "light", "dark") with
+// --dark over it. main.cpp's theme provider asks DarkLook with the desktop's
+// look, at the start and on every change of the desktop; the window sets
+// the choice again when the Settings window changes it, and SetLookChoice
+// says whether it changed (the theme is then built again).
+bool SetLookChoice(const std::string& look);
+void ForceDarkLook();           // --dark
+bool DarkLook(bool hostDark);
 
 // The colours the window's own painting reads, from the theme's roles.
 struct Look {
@@ -44,6 +58,32 @@ struct Look {
 Look LookOf(const UltraCanvas::UltraCanvasTheme& theme);
 Look CurrentLook();
 
+// The colours of the theme in force (main.cpp: ChatCube::ThemeFor, light or
+// dark). Kept, and read again by RestyleForLook when the theme changes.
+const Look& L();
+
+// A colour of the look, by its role: &Look::inkMuted.
+using LookRole = UltraCanvas::Color Look::*;
+
+// The look can change while ChatCube runs - the desktop turns dark, the
+// Settings window's Look page is changed. Every colour set by hand is set
+// through OnLook: `apply` runs now and again after every change, for as long
+// as `element` lives. RestyleForLook reads L() again and runs them all; the
+// main window calls it from its theme change handler.
+void AddLookRestyler(std::weak_ptr<void> owner, std::function<void()> apply);
+void RestyleForLook();
+template <class E, class F>
+void OnLook(const std::shared_ptr<E>& element, F apply) {
+    if (!element) return;
+    E* raw = element.get();
+    apply(*raw);
+    AddLookRestyler(std::weak_ptr<void>(element), [raw, apply]() { apply(*raw); });
+}
+
+// A label's text in a role of the look (a status line turning to danger and
+// back): set now, and kept in that role when the look changes.
+void SetInk(const std::shared_ptr<UltraCanvas::UltraCanvasLabel>& label, LookRole role);
+
 // ChatCube's icon of that name (media/icons/chatcube/<name>.svg), drawn as a
 // mask in the button's text colour.
 std::string IconPath(const std::string& name);
@@ -52,6 +92,9 @@ std::string IconPath(const std::string& name);
 // "Team" -> "T"); the first code point of the first two words, so a name in
 // any script gets its first letters.
 std::string Initials(const std::string& title);
+// The words on a colour painted by hand (an avatar's initials): white or a
+// near-black ink, whichever reads better on it.
+UltraCanvas::Color InkOn(const UltraCanvas::Color& fill);
 // The avatar colour of a person or group, by a stable key (their id).
 UltraCanvas::Color AvatarColor(const std::string& key, const Look& look);
 // A round avatar: the initials on the person's colour, or a group mark.

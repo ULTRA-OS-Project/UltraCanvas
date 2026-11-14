@@ -11,6 +11,8 @@
 //
 // Started in the background (SetKeepRunning), closing the window hides it
 // and the program stays connected and counting; Ctrl+Q or Quit ends it.
+// Version: 0.1.1 - ApplyLook: the window, the footer and the message centre
+//                  from the theme (a dark look, and a change while it runs)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -50,6 +52,9 @@ private:
     void UnreadChanged(int unread);
     bool OnKey(const UltraCanvas::UCEvent& event);
     void Quit();
+    // The colours set here by hand - the window, the footer, the message
+    // centre's style - from the current UltraCanvasTheme.
+    void ApplyLook();
 
     UltraCanvas::UltraCanvasApplication& app_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
@@ -59,6 +64,7 @@ private:
     bool keepRunning_ = false;
     bool shown_ = false;
     int unread_ = -1;
+    int themeHandler_ = 0;   // UltraCanvasTheme::AddChangeHandler, removed in the destructor
 };
 
 } // namespace UltraNotifications

@@ -476,6 +476,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     naming it — or the machine restarts, and one left by an earlier run is
     found again at start-up. Its row keeps *Delete* disabled like the other
     roots; tabs inside a disc move to Home when it is ejected.
+    `UltraFiler --ram-disc` (UltraDesktop's RAM disc button) opens the first
+    disc mounted, or the *New RAM disc* dialog when there is none.
 - **Archives:** packing and unpacking run in the background behind a progress
   window: a ring with the percentage, the file being handled and Cancel.
   Cancelling a pack removes the half-written archive; cancelling an unpack keeps

@@ -26,8 +26,9 @@ UOS-Settings opens on this page.
 | Field | What it does |
 |---|---|
 | **Taskbar** | The screen edge the taskbar sits on: Left, Top or Bottom. |
-| **Theme** | The bars' colours: Dark (the default) or Light. |
+| **Theme** | The look of every application, the desktop's bars included: Dark, Light or As the system. The same setting as *Appearance > Look* (`look` in Appearance.conf). |
 | **Dropped files** | Where files dropped on the wallpaper go: the Sticker board's Unsorted category (the default) or the Desktop folder, shown as icons. |
+| **Battery** | The battery on the right bar: *Icon and percentage* (the default, the percentage as a badge on the icon) or *Icon only* - the icon's fill shows the level either way, and its tooltip the percentage. Also on the battery's right-click menu in UltraDesktop. |
 | **Wallpaper** | The picture behind the desktop; empty is the framework's picture. *Browse...* opens the file dialog. |
 | **RAM disc** | The folder the desktop's drive button opens; empty, no button (the default on Windows). |
 | **File manager** | The program the desktop's folder buttons start. |
@@ -45,6 +46,20 @@ checks the file once a second and rebuilds its bars when one of these fields
 changed. The file is read and written by UltraDesktop's own settings code
 (`Apps/UltraDesktop/ui/UltraDesktopSettings.*`, compiled into UOS-Settings
 too), so the two programs agree on it.
+
+### Desktop > Info bar
+
+A tick box for each icon of the desktop's info panel, the icons at the foot
+of its right bar: Email, Notifications, Upload, Download, Internet / LAN,
+VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone, Loudspeaker,
+Battery, Task Manager and the tray icons of other programs. Unticked, the
+icon leaves the bar within a second (`hiddenInfoItems` in `desktop.json`);
+what it watches keeps running. The desktop opens this page from *Info bar
+icons...* on the info panel's right-click menu, which also offers *Hide this
+icon* for the icon under the pointer.
+
+`UOS-Settings --page <page>` opens the window on a page - `desktop/info-bar`
+here - and a running UOS-Settings shows the page when it is started so.
 
 ### Language
 

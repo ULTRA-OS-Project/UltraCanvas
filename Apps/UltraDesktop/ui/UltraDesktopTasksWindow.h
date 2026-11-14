@@ -4,6 +4,7 @@
 // are several), and Show, Close and Kill task - and the machine itself on a second tab as
 // the framework's UltraCanvasHardwareInfoPanel shows it (CPU load and
 // temperature, memory, storage, the network interfaces and the rest).
+// Version: 0.6.0 - the colours from the theme in force, again when it changes (ApplyLook)
 // Version: 0.5.0 - the desktop's own windows left out; Windows' display numbers
 // Version: 0.4.0 - the state as an icon and a word
 // Version: 0.3.0 - the display column, Show onto a display, Kill task
@@ -19,10 +20,12 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
     class UltraCanvasContainer;
     class UltraCanvasHardwareInfoPanel;
+    class UltraCanvasLabel;
 }
 
 namespace UltraDesktop {
@@ -43,6 +46,8 @@ public:
 
 private:
     void RebuildWindowList();
+    // The theme changed: the header in the new colours, the rows made again.
+    void ApplyLook();
     void OnTimer();
     static std::shared_ptr<UltraCanvas::UltraCanvasContainer> BadgeCell(const std::string& id, int width,
                                                                        const std::string& text,
@@ -52,7 +57,10 @@ private:
     void KillTask(uint64_t id, const std::string& title);
 
     bool open_ = false;
+    int themeHandler_ = 0;   // UltraCanvasTheme::AddChangeHandler's id, removed in the destructor
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> header_;
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasLabel>> headerLabels_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> windowRows_;
     std::shared_ptr<UltraCanvas::UltraCanvasHardwareInfoPanel> hardware_;
     UltraCanvas::TimerId timer_ = 0;

@@ -224,6 +224,7 @@ private:
     // selection callback does not treat it as the user's click.
     bool adjustingSelection_ = false;
     UltraCanvas::TimerId uiTimer_ = 0;
+    int themeHandler_ = 0;   // UltraCanvasTheme change handler: the split pane's divider
 };
 
 } // namespace UltraNetMonitor

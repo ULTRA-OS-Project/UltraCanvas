@@ -2,6 +2,8 @@
 // See the header. The window, the page skeleton and the controls come from
 // the framework's UltraCanvasSettingsPageKit, which UltraFiler's settings
 // window is built on too, so the two read as one family.
+// Version: 0.5.0 - the buttons and the unwritable-type line in the theme's colours; the window
+//                  built again, on the page it showed, when the theme changes while it is open
 // Version: 0.4.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
 // Version: 0.4.0 - After a snip: the Print Screen key starts a snip
 // Version: 0.3.0 - the texts go through Tr (UltraLocalisation); "Translate UltraSnip..." on the
@@ -25,6 +27,7 @@
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
@@ -94,6 +97,8 @@ struct DialogState : public UltraCanvasSettingsWindow {
 };
 
 std::shared_ptr<DialogState> g_dialog;
+int g_themeHandler = 0;                      // builds the open window again in the new theme
+UltraCanvasWindowBase* g_parent = nullptr;   // the window it was opened over
 
 void ApplyAndSave(DialogState* d) {
     if (d->syncing) return;
@@ -194,16 +199,17 @@ std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::
     auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
     b->SetFontSize(TextFontSize());
     b->SetCornerRadius(4.0f);
-    b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-    b->SetTextColors(TextColor());
-    b->SetBorder(1.0f, Color(0, 0, 0, 60));
+    // every state named: the two-colour forms lighten the disabled face, which suits only a light look
+    const ThemeRoles& roles = UltraCanvasTheme::Current().roles;
+    b->SetColors(roles.raised, roles.hover, roles.pressed, roles.panel);
+    b->SetTextColors(roles.ink, roles.ink, roles.ink, roles.inkFaint);
+    b->SetBorder(1.0f, Rule());
     if (!iconFile.empty()) {
         b->SetIcon(IconPath(iconFile));
         b->SetIconSize(15, 15);
         b->SetIconPosition(ButtonIconPosition::Left);
         b->SetIconSpacing(label.empty() ? 0 : 5);
-        b->SetUseIconAsMask(true);
-        b->SetIconMaskColor(Color(55, 55, 60, 255));
+        b->SetUseIconAsMask(true);   // drawn in the text colour: the theme's ink
     }
     if (onClick) b->SetOnClick(std::move(onClick));
     b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -358,7 +364,7 @@ void UpdateFormatLine(DialogState* d) {
     std::string text = TrF("Pictures are written as .{0}.", ext);
     if (!writable) text += "  " + Tr("This build cannot write that type: the snip is saved as PNG instead.");
     d->formatLine->SetText(text);
-    d->formatLine->SetTextColor(writable ? TextColor() : Color(185, 28, 28, 255));
+    d->formatLine->SetTextColor(writable ? TextColor() : UltraCanvasTheme::Current().roles.danger);
     d->formatLine->RequestRedraw();
     if (d->formatSettingsButton) {
         const bool hasSettings = writable && UltraCanvasFileLoader::HasSaveSettings(ext);
@@ -745,10 +751,37 @@ void UltraSnipSettingsDialog::Show(UltraCanvasWindowBase* parent, UltraSnipSetti
     d->settings = settings;
     d->onChanged = std::move(onChanged);
     g_dialog = d;
+    g_parent = parent;
     BuildDialog(d.get(), parent);
+    // The kit sets its colours by hand when it builds, so a theme change
+    // while the window is open builds it again where it was, on the same page
+    if (!g_themeHandler) {
+        g_themeHandler = UltraCanvasTheme::AddChangeHandler([](const UltraCanvasTheme&) {
+            if (!g_dialog || !g_dialog->window || g_dialog->closed) return;
+            const std::string page = g_dialog->shownPage;
+            int x = 0, y = 0;
+            g_dialog->window->GetWindowPosition(x, y);
+            UltraSnipSettings* openSettings = g_dialog->settings;
+            std::function<void()> openOnChanged = g_dialog->onChanged;
+            UltraCanvasWindowBase* parent = g_parent;
+            g_dialog->window->onWindowClosed = nullptr;
+            g_dialog->window->Close();
+            auto again = std::make_shared<DialogState>();
+            again->settings = openSettings;
+            again->onChanged = std::move(openOnChanged);
+            g_dialog = again;
+            BuildDialog(again.get(), parent);
+            if (!again->window) return;
+            again->window->SetWindowPosition(x, y);
+            if (!page.empty()) again->SelectPage(page);
+        });
+    }
 }
 
 void UltraSnipSettingsDialog::Shutdown() {
+    if (g_themeHandler) UltraCanvasTheme::RemoveChangeHandler(g_themeHandler);
+    g_themeHandler = 0;
+    g_parent = nullptr;
     if (g_dialog && g_dialog->window && !g_dialog->closed) {
         g_dialog->window->onWindowClosed = nullptr;
         g_dialog->window->Close();

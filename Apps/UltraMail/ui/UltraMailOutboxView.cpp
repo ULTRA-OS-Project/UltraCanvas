@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailOutboxView.cpp
+// Version: 0.5.0 - the list and its rows follow a change of the look
 // Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.0 - Send now, Edit and Delete carry icons
 // Version: 0.2.0 - SetNote; Edit and Delete while a send runs
@@ -45,13 +46,13 @@ std::string StatusOf(const OutboxItem& item, bool sending, bool held) {
 std::shared_ptr<UltraCanvasContainer> OutboxView::Build() {
     root_ = CreateContainer("outboxView", 0, 0, 0, 0);
     root_->SetPadding(Theme::kPagePadding);
-    root_->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(root_, Theme::CardBackground);
     root_->layout.SetFlexColumn()
                  .SetFlexGap(Theme::kGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     summary_ = Theme::MakeLine("outboxSummary", "", Theme::kControlHeight,
-                               Theme::SizeBody(), Theme::TextSecondary());
+                               Theme::SizeBody(), Theme::TextSecondary);
     summary_->SetWrap(TextWrap::WrapWord);
     root_->AddChild(summary_);
 
@@ -67,22 +68,29 @@ std::shared_ptr<UltraCanvasContainer> OutboxView::Build() {
     list_->SetModel(model_);
     list_->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
     ListViewStyle style;
-    style.backgroundColor          = Theme::CardBackground();
     style.showHeader               = true;
-    style.headerBackgroundColor    = Theme::Sidebar();
-    style.headerTextColor          = Theme::TextSecondary();
-    style.headerFontSize           = Theme::SizeBody();
-    style.selectionBackgroundColor = Theme::RowSelected();
-    style.hoverBackgroundColor     = Theme::RowHover();
     list_->SetStyle(style);
-    // The app's text size and colour, dark on the light selection too.
+    // The app's text size and colour, the ink on the soft selection too.
     auto rows = std::make_shared<UltraCanvasDefaultListDelegate>();
     rows->SetFontSize(Theme::SizeBody());
-    rows->SetTextColor(Theme::TextPrimary());
-    rows->SetSelectedTextColor(Theme::TextPrimary());
     list_->SetDelegate(rows);
+    Theme::Follow(list_, "style", [rows](UltraCanvasListView& l) {
+        ListViewStyle look = ListViewStyle::FromTheme(UltraCanvasTheme::Current(), l.GetStyle());
+        look.backgroundColor          = Theme::CardBackground();
+        look.alternateRowColor        = Theme::CardBackground();
+        look.headerBackgroundColor    = Theme::Sidebar();
+        look.headerTextColor          = Theme::TextSecondary();
+        look.headerFontSize           = Theme::SizeBody();
+        look.gridLineColor            = Theme::Divider();
+        look.selectionBackgroundColor = Theme::RowSelected();
+        look.hoverBackgroundColor     = Theme::RowHover();
+        l.SetStyle(look);
+        rows->SetTextColor(Theme::TextPrimary());
+        rows->SetSelectedTextColor(Theme::TextPrimary());
+        l.RequestRedraw();
+    });
     list_->SetColumnsResizable(true);
-    list_->SetBorders(1.0f, Theme::CardBorder(), Theme::kControlRadius);
+    Theme::SetFrame(list_, 1.0f, Theme::CardBorder, Theme::kControlRadius);
     list_->onSelectionChanged = [this](const std::vector<int>&) { UpdateButtons(); };
     // Double-click: open it to correct it (Edit).
     list_->onItemDoubleClicked = [this](int) {

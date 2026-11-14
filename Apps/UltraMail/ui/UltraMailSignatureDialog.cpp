@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSignatureDialog.cpp
+// Version: 0.5.0 - the HTML editor is the message's white page in either look (Theme::StyleMessagePaper)
 // Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.0 - a header with the signature icon; the HTML editor's tools
 //                  and page share one framed card; HTML source / Design and
@@ -168,7 +169,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(dialog, Theme::CardBackground);
 
     auto state = std::make_shared<EditorState>();
 
@@ -178,7 +179,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     // ----- Kind: None | Plain text | HTML -----
     auto kindRow = MakeRow("sigKindRow", Theme::kInnerGap);
     auto kindLabel = Theme::MakeLine("sigKindLbl", "Signature", Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
     kindLabel->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     kindRow->AddChild(kindLabel);
     auto kind = CreateSegmentedControl("sigKind", 0, 0, 270, Theme::kControlHeight);
@@ -193,7 +194,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     // ----- The editors: one visible at a time, taking the spare height -----
     auto noneNote = Theme::MakeLine("sigNone",
         "No signature is added to messages from this account.",
-        Theme::kControlHeight, Theme::SizeBody(), Theme::TextMuted());
+        Theme::kControlHeight, Theme::SizeBody(), Theme::TextMuted);
     dialog->AddChild(noneNote);
     state->noneNote = noneNote.get();
 
@@ -201,7 +202,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     text->SetEditingMode(TextAreaEditingMode::PlainText);
     text->SetWordWrap(true);
     Theme::StyleTextArea(text);
-    text->SetBorders(1.0f, Theme::CardBorder());   // framed like the HTML editor
+    Theme::SetFrame(text, 1.0f, Theme::CardBorder);   // framed like the HTML editor
     text->SetPlaceholder(Tr("Erika Example\nSales, ACME Ltd.\n+49 30 1234567"));
     text->SetText(current.text);
     dialog->AddChild(text);
@@ -242,12 +243,8 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     state->formatRule = barRule.get();
 
     auto rich = CreateRichTextEdit("sigRich", 0, 0, 0, 0);
-    {
-        RichTextEditStyle style = rich->GetStyle();
-        style.baseFont.fontSize = Theme::SizeBody() + 1.0f;   // as the composer
-        style.drawBorder = false;                            // the card is the frame
-        rich->SetStyle(style);
-    }
+    // As the composer: the message's white page, the card is the frame.
+    Theme::StyleMessagePaper<RichTextEditStyle>(rich, Theme::SizeBody() + 1.0f, /*drawBorder=*/false);
     rich->SetShowFontNotice(false);   // as the composer
     rich->SetDocument(SignatureDocument(current.html));
     htmlPane->AddChild(rich);
@@ -280,7 +277,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     state->onReplies = onReplies.get();
 
     auto hint = Theme::MakeLine("sigHint", "", 2 * Theme::kControlHeight,
-                                Theme::SizeBody(), Theme::TextSecondary());
+                                Theme::SizeBody(), Theme::TextSecondary);
     hint->SetWrap(TextWrap::WrapWord);
     dialog->AddChild(hint);
     state->hint = hint.get();

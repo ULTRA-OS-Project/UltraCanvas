@@ -2,6 +2,25 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.0 - one look for everything: the bars follow the system look
+//                  (Appearance.conf, UltraCanvasTheme), the Theme menu sets it
+//                  for every application (Dark, Light, As the system), and the
+//                  desktop's earlier choice is handed to it once (FollowLook)
+// Version: 0.7.6 - each icon of the info panel can be switched off
+//                  (hiddenInfoItems): "Hide this icon" on its right-click
+//                  menu, "Info bar icons..." opening UOS-Settings' page for them
+// Version: 0.7.5 - the battery's percentage badge can be switched off: the
+//                  battery's right-click menu, UOS-Settings (batteryPercent)
+// Version: 0.7.4 - the battery's icon shows its level to the pixel, drawn
+//                  on the icon's own pixel grid; green inside a white outline
+//                  when full, green with a white bolt while charging,
+//                  red below 25 % (UpdateBatteryIcon); its badge and the
+//                  keyboard's grow inward, so "100" is not cut off
+// Version: 0.7.3 - running applications that do not fit the bar draw closer
+//                  together, then in a smaller highlight, before they scroll
+//                  (FitRunningButtons)
+// Version: 0.7.2 - the RAM disc button has UltraFiler show its RAM disc, or
+//                  open the New RAM disc dialog when there is none (--ram-disc)
 // Version: 0.7.1 - the panels get the desktop window as their parent (placed on Wayland)
 // Version: 0.7.0 - the running apps grouped: one button per application with
 //                  the count of its windows, their pictures on a short rest
@@ -48,6 +67,8 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasAppearanceSettings.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasAudioDevices.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasHardwareInfo.h"
@@ -84,6 +105,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <set>
+#include <sstream>
 #include <type_traits>
 
 #ifndef ULTRADESKTOP_VERSION
@@ -101,6 +123,12 @@ constexpr int   kBarThickness   = 52;   // the taskbar's width (height when hori
 constexpr int   kInfoPanelWidth = 48;   // the right bar: icons only, labels are tooltips
 constexpr int   kBarButton      = 40;   // one item's box
 constexpr int   kBarIcon        = 24;
+constexpr float kBarSpacing     = 6;    // between two items of a group (MakeGroup)
+// The running applications when they do not all fit (FitRunningButtons):
+// first the gap shrinks, then the highlight around the icon - the icon
+// itself keeps its size.
+constexpr float kRunningSpacingTight = 2;
+constexpr int   kRunningButtonTight  = 32;
 // The settings button shows the ULTRA OS logo (384 x 200), wider than an icon.
 constexpr int   kLogoButtonWide = 64;
 constexpr int   kLogoWidth      = 384;
@@ -179,6 +207,48 @@ uint64_t NativeHandleId(Handle handle) {
     }
 }
 
+// UOS-Settings' page with a switch for each icon of the info panel.
+constexpr const char* kInfoBarSettingsPage = "desktop/info-bar";
+
+// Below this, and not charging, the battery is red.
+constexpr int kBatteryLowPercent = 25;
+
+// The battery button's icon, drawn on its own pixel grid (`size` x `size`,
+// the size the bar shows it at) so every edge is a whole pixel: a 2 px
+// outline, the cap, and inside it, 1 px clear of the outline, a fill of
+// `pixels` - at most size - 10, which is 10 at the usual 20 px. Charging
+// adds a bolt over the battery in `bolt`. Two colours at once, so the button
+// draws it as it is, not through its one-colour mask.
+std::string BatteryIconSvg(int size, int pixels, const std::string& outline, const std::string& inside,
+                           const std::string& bolt = std::string()) {
+    const double h = size / 2.0;   // the middle, top to bottom
+    const int right = size - 3;    // the body's right edge; the cap is beyond
+    std::ostringstream svg;
+    svg << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 " << size << ' ' << size
+        << "\" width=\"" << size << "\" height=\"" << size << "\">"
+        << "<rect x=\"2\" y=\"" << h - 4 << "\" width=\"" << right - 3 << "\" height=\"8\" rx=\"1.5\""
+        << " fill=\"none\" stroke=\"" << outline << "\" stroke-width=\"2\"/>"
+        << "<rect x=\"" << right << "\" y=\"" << h - 2 << "\" width=\"2\" height=\"4\" fill=\"" << outline << "\"/>";
+    if (pixels > 0) {
+        svg << "<rect x=\"4\" y=\"" << h - 2 << "\" width=\"" << pixels << "\" height=\"4\" fill=\""
+            << inside << "\"/>";
+    }
+    if (!bolt.empty()) {
+        const double x = h - 1;    // the bolt's middle, left to right
+        svg << "<path fill=\"" << bolt << "\" d=\"M" << x + 1.5 << ' ' << h - 4.5 << 'L' << x - 2.5 << ' ' << h + 0.5
+            << 'H' << x - 0.5 << 'L' << x - 1.5 << ' ' << h + 4.5 << 'L' << x + 2.5 << ' ' << h - 0.5
+            << 'H' << x + 0.5 << "Z\"/>";
+    }
+    svg << "</svg>";
+    return svg.str();
+}
+
+std::string HexOf(const Color& c) {
+    char text[8];
+    std::snprintf(text, sizeof text, "#%02x%02x%02x", c.r, c.g, c.b);
+    return text;
+}
+
 std::string Shorten(const std::string& text, size_t max) {
     if (text.size() <= max) return text;
     return text.substr(0, max - 1) + "…";
@@ -227,6 +297,7 @@ const BarPalette& UltraDesktopWindow::Bars() const {
 UltraDesktopWindow::UltraDesktopWindow() = default;
 
 UltraDesktopWindow::~UltraDesktopWindow() {
+    if (lookHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(lookHandler_);
     toasts_.reset();   // its windows, its bus connection
     // The poll thread, the shell monitor and the shortcut's thread all hand
     // over through members of this object: stop them before anything else goes.
@@ -264,6 +335,25 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
         debugOutput << "UltraDesktop: settings not read (" << error << "), using the defaults" << std::endl;
     }
     if (edgeOverride) settings_.taskbarEdge = *edgeOverride;
+    // One look for every application: the system's (Appearance.conf). The
+    // desktop chose its own before; that choice becomes the system's once,
+    // so an existing desktop does not change colour when the system's look
+    // takes over - unless a look was chosen there already.
+    if (!settings_.lookMigrated) {
+        AppearanceSettings appearance = AppearanceSettings::Load();
+        if (appearance.look == "system") {
+            appearance.look = settings_.theme == "light" ? "light" : "dark";
+            if (appearance.Save()) {
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->RefreshHostAppearance();
+            }
+        }
+        settings_.lookMigrated = true;
+        SaveSettings();
+    }
+    settings_.theme = UltraCanvasTheme::Current().dark ? "dark" : "light";
+    // The look changed - from the Theme menu here, UOS-Settings or the
+    // host: the bars follow.
+    lookHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { FollowLook(); });
     {
         std::error_code ec;
         settingsFileTime_ = std::filesystem::last_write_time(PathFromUtf8(settingsPath_), ec);
@@ -472,7 +562,7 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     look.iconSize = ToolbarIconSize::Large;
     look.showIconLabels = false;
     look.centerIcons = true;
-    look.itemSpacing = 6.0f;
+    look.itemSpacing = kBarSpacing;
     group->SetAppearance(look);
     group->SetPadding(6, 4);
     group->layoutItem.SetFlexShrink(0.0f);
@@ -594,12 +684,15 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, Bars().inset, Bars().bar, kWaveLength);
     bar->AddChild(wave2);
 
-    // 3. Pinned: the RAM disc (when there is one - Windows has none of its
-    // own) and UltraFiler.
+    // 3. Pinned: the RAM disc (unless switched off in the settings) and
+    // UltraFiler.
     auto pinned = MakeGroup("Taskbar.Pinned", vertical, false);
     TuckAgainstWave(pinned, wave2, vertical, false);
     if (!settings_.ramDiscPath.empty()) {
-        AddBarButton(pinned, "ramdisc", "RAM disc (" + settings_.ramDiscPath + ")", IconPath("ramdisc.svg"),
+        const std::string tip = settings_.ramDiscPath == kRamDiscFromFiler
+                ? std::string("RAM disc")
+                : "RAM disc (" + settings_.ramDiscPath + ")";
+        AddBarButton(pinned, "ramdisc", tip, IconPath("ramdisc.svg"),
                      [this]() { OpenRamDisc(); });
     }
     AddBarButton(pinned, "filer", "UltraFiler", IconPath("ultrafiler.svg"),
@@ -773,6 +866,31 @@ void UltraDesktopWindow::ShowClockMenu(int windowX, int windowY) {
     popupMenu_->AddItem(MenuItemData::Action("Calendar and clock...", [this]() { OpenClockPanel(); }));
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::ShowBatteryMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("BatteryMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Battery"));
+    popupMenu_->AddItem(MenuItemData::Checkbox("Show the percentage", settings_.batteryPercent, [this](bool on) {
+        SetBatteryPercentShown(on);
+    }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Battery details...", [this]() { OpenDevicePanel("battery"); }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    AddInfoBarItems(*popupMenu_, "battery");
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX - 250, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::SetBatteryPercentShown(bool shown) {
+    if (settings_.batteryPercent == shown) return;
+    settings_.batteryPercent = shown;
+    SaveSettings();
+    // At once, from the level last read, rather than at the next reading.
+    if (haveLastActivity_) ApplyBattery(lastActivity_);
+    else if (info_ && !shown) info_->ClearItemBadge("battery");
 }
 
 void UltraDesktopWindow::OpenClockPanel() {
@@ -1289,22 +1407,30 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     info_->SetAppearance(tight);
     info_->SetPadding(4, 4);
     info_->AddStretch(1.0f);
-    AddBarButton(info_, "mail",      "Email",        IconPath("mail.svg"),      [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraMail"); });
-    AddBarButton(info_, "notifications", Tr("Notifications"), IconPath("notifications.svg"),
-                 [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNotifications"); });
-    AddBarButton(info_, "upload",    "Upload",       IconPath("upload.svg"),    [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "download",  "Download",     IconPath("download.svg"),  [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "lan",       "Internet / LAN", IconPath("lan.svg"),     [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "vpn",       "VPN",          IconPath("vpn.svg"),       [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "bluetooth", "Bluetooth",    IconPath("bluetooth.svg"), [this]() { OpenBluetoothPanel(); });
-    AddBarButton(info_, "wifi",      "Wi-Fi",        IconPath("wifi.svg"),      [this]() { OpenWifiPanel(); });
-    AddBarButton(info_, "usb",       "USB",          IconPath("usb.svg"),       [this]() { OpenDevicePanel("usb"); });
-    AddBarButton(info_, "keyboard",  "Keyboard",     IconPath("keyboard.svg"),  [this]() { OpenDevicePanel("keyboard"); });
-    AddBarButton(info_, "webcam",    "Webcam",       IconPath("webcam.svg"),    [this]() { OpenDevicePanel("webcam"); });
-    AddBarButton(info_, "mic",       "Microphone",   IconPath("mic.svg"),       [this]() { OpenDevicePanel("mic"); });
-    AddBarButton(info_, "speaker",   "Loudspeaker",  IconPath("speaker.svg"),   [this]() { OpenVolumePanel(); });
-    AddBarButton(info_, "battery",   "Battery",      IconPath("battery.svg"),   [this]() { OpenDevicePanel("battery"); });
-    AddBarButton(info_, "tasks",     "Task Manager", IconPath("tasks.svg"),     [this]() { OpenTasks(); });
+    // Only the icons not switched off (UOS-Settings > Desktop > Info bar).
+    const auto add = [this](const char* id, const std::string& tooltip, const char* icon,
+                            std::function<void()> onClick) -> std::shared_ptr<UltraCanvasButton> {
+        if (!settings_.ShowsInfoItem(id)) return nullptr;
+        return AddBarButton(info_, id, tooltip, IconPath(icon), std::move(onClick));
+    };
+    add("mail", "Email", "mail.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraMail"); });
+    add("notifications", Tr("Notifications"), "notifications.svg",
+        [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNotifications"); });
+    add("upload", "Upload", "upload.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("download", "Download", "download.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("lan", "Internet / LAN", "lan.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("vpn", "VPN", "vpn.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("bluetooth", "Bluetooth", "bluetooth.svg", [this]() { OpenBluetoothPanel(); });
+    add("wifi", "Wi-Fi", "wifi.svg", [this]() { OpenWifiPanel(); });
+    add("usb", "USB", "usb.svg", [this]() { OpenDevicePanel("usb"); });
+    add("keyboard", "Keyboard", "keyboard.svg", [this]() { OpenDevicePanel("keyboard"); });
+    add("webcam", "Webcam", "webcam.svg", [this]() { OpenDevicePanel("webcam"); });
+    add("mic", "Microphone", "mic.svg", [this]() { OpenDevicePanel("mic"); });
+    add("speaker", "Loudspeaker", "speaker.svg", [this]() { OpenVolumePanel(); });
+    if (auto battery = add("battery", "Battery", "battery.svg", [this]() { OpenDevicePanel("battery"); })) {
+        battery->onContextMenu = [this](int windowX, int windowY) { ShowBatteryMenu(windowX, windowY); };
+    }
+    add("tasks", "Task Manager", "tasks.svg", [this]() { OpenTasks(); });
     for (const auto& item : info_->GetItems()) {
         if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item)) {
             button->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
@@ -1422,11 +1548,13 @@ std::vector<MenuItemData> UltraDesktopWindow::TaskbarEdgeItems() {
 }
 
 std::vector<MenuItemData> UltraDesktopWindow::ThemeItems() {
+    // The look of every ULTRA OS application, not only the bars'.
+    const std::string look = AppearanceSettings::Load().look;
     std::vector<MenuItemData> items;
-    items.push_back(MenuItemData::Radio(Tr("Dark"), 3, settings_.theme != "light",
-                                        [this]() { SetTheme("dark"); }));
-    items.push_back(MenuItemData::Radio(Tr("Light"), 3, settings_.theme == "light",
-                                        [this]() { SetTheme("light"); }));
+    items.push_back(MenuItemData::Radio(Tr("Dark"), 3, look == "dark", [this]() { SetTheme("dark"); }));
+    items.push_back(MenuItemData::Radio(Tr("Light"), 3, look == "light", [this]() { SetTheme("light"); }));
+    items.push_back(MenuItemData::Radio(Tr("As the system"), 3, look != "dark" && look != "light",
+                                        [this]() { SetTheme("system"); }));
     return items;
 }
 
@@ -1500,8 +1628,38 @@ void UltraDesktopWindow::InstallBarMenu(const std::shared_ptr<UltraCanvasToolbar
                 return;
             }
         }
-        ShowBarMenu(at.x, at.y);
+        if (bar == info_.get()) ShowInfoBarMenu(at.x, at.y, itemId);
+        else ShowBarMenu(at.x, at.y);
     });
+}
+
+void UltraDesktopWindow::ShowInfoBarMenu(int windowX, int windowY, const std::string& itemId) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("InfoBarMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Info bar"));
+    AddInfoBarItems(*popupMenu_, itemId);
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Desktop settings..."), [this]() { OpenSystemSettings(); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX - 250, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::AddInfoBarItems(UltraCanvasMenu& menu, const std::string& itemId) {
+    // A service's own icon (not a tray icon, not the space between).
+    bool known = false;
+    for (const InfoItem& item : DesktopSettings::InfoItems()) known = known || itemId == item.id;
+    if (known) {
+        menu.AddItem(MenuItemData::Action("Hide this icon", [this, itemId]() { SetInfoItemShown(itemId, false); }));
+    }
+    menu.AddItem(MenuItemData::Action("Info bar icons...", [this]() { OpenSystemSettings(kInfoBarSettingsPage); }));
+}
+
+void UltraDesktopWindow::SetInfoItemShown(const std::string& id, bool shown) {
+    if (settings_.ShowsInfoItem(id) == shown) return;
+    settings_.SetShowsInfoItem(id, shown);
+    ApplySettings();   // saved, and the bars built again with or without the icon
 }
 
 void UltraDesktopWindow::SetDropTarget(const std::string& target) {
@@ -1562,10 +1720,29 @@ void UltraDesktopWindow::SetTaskbarEdge(TaskbarEdge edge) {
     ApplySettings();
 }
 
-void UltraDesktopWindow::SetTheme(const std::string& theme) {
-    if (!DesktopSettings::IsTheme(theme) || settings_.theme == theme) return;
+void UltraDesktopWindow::SetTheme(const std::string& look) {
+    // The system's look, for every application: "dark", "light" or
+    // "system" (the host's). Written to Appearance.conf; this application
+    // reads it again now, the others when their settings watcher sees the
+    // file change - and FollowLook rebuilds the bars.
+    if (look != "dark" && look != "light" && look != "system") return;
+    AppearanceSettings appearance = AppearanceSettings::Load();
+    if (appearance.look == look) return;
+    appearance.look = look;
+    if (!appearance.Save()) {
+        debugOutput << "UltraDesktop: the look could not be saved" << std::endl;
+        return;
+    }
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->RefreshHostAppearance();
+    FollowLook();
+}
+
+void UltraDesktopWindow::FollowLook() {
+    const std::string theme = UltraCanvasTheme::Current().dark ? "dark" : "light";
+    if (theme == settings_.theme) return;
     settings_.theme = theme;
     SaveSettings();
+    if (!window_) return;
     BuildLayout();
     RefreshDesktops();
 }
@@ -1603,9 +1780,11 @@ void UltraDesktopWindow::OpenDisplaySettings() {
 
 // ===== WHAT THE BARS DO =====
 
-void UltraDesktopWindow::OpenSystemSettings() {
+void UltraDesktopWindow::OpenSystemSettings(const std::string& page) {
     std::string error;
-    if (UltraCanvasDesktopShell::LaunchProgram("UOS-Settings", {}, &error)) return;
+    std::vector<std::string> arguments;
+    if (!page.empty()) arguments = {"--page", page};
+    if (UltraCanvasDesktopShell::LaunchProgram("UOS-Settings", arguments, &error)) return;
     debugOutput << "UltraDesktop: UOS-Settings: " << error << std::endl;
     UltraCanvasDialogManager::ShowWarning(
             "UOS-Settings, the ULTRA OS settings application, could not be started. "
@@ -1661,12 +1840,28 @@ void UltraDesktopWindow::OpenTasks() {
 }
 
 void UltraDesktopWindow::OpenRamDisc() {
-    OpenFiler(settings_.ramDiscPath);
+    if (settings_.ramDiscPath != kRamDiscFromFiler) {
+        OpenFiler(settings_.ramDiscPath);   // a folder of the user's choosing
+        return;
+    }
+    // UltraFiler knows its RAM discs: it shows the disc, or opens the New
+    // RAM disc dialog when there is none. Another file manager does not
+    // know --ram-disc, and is opened as it is.
+    const std::string program = PathToUtf8(PathFromUtf8(settings_.filerProgram).stem());
+    if (program != "UltraFiler") {
+        OpenFiler();
+        return;
+    }
+    LaunchFiler({"--ram-disc"});
 }
 
 void UltraDesktopWindow::OpenFiler(const std::string& path) {
     std::vector<std::string> arguments;
     if (!path.empty()) arguments.push_back(path);
+    LaunchFiler(arguments);
+}
+
+void UltraDesktopWindow::LaunchFiler(const std::vector<std::string>& arguments) {
     std::string error;
     if (!UltraCanvasDesktopShell::LaunchProgram(settings_.filerProgram, arguments, &error)) {
         debugOutput << "UltraDesktop: " << error << std::endl;
@@ -1948,16 +2143,18 @@ void UltraDesktopWindow::CheckSettingsFile() {
                          written.ramDiscPath != settings_.ramDiscPath ||
                          written.filerProgram != settings_.filerProgram ||
                          written.virtualDesktops != settings_.virtualDesktops ||
-                         written.theme != settings_.theme ||
-                         written.dropFilesOn != settings_.dropFilesOn;
+                         written.dropFilesOn != settings_.dropFilesOn ||
+                         written.hiddenInfoItems != settings_.hiddenInfoItems;
+    // The battery's badge: shown or taken away, nothing to rebuild.
+    if (written.batteryPercent != settings_.batteryPercent) SetBatteryPercentShown(written.batteryPercent);
     if (!changed) return;
     settings_.taskbarEdge = written.taskbarEdge;
     settings_.wallpaper = written.wallpaper;
     settings_.ramDiscPath = written.ramDiscPath;
     settings_.filerProgram = written.filerProgram;
     settings_.virtualDesktops = written.virtualDesktops;
-    settings_.theme = written.theme;
     settings_.dropFilesOn = written.dropFilesOn;
+    settings_.hiddenInfoItems = written.hiddenInfoItems;
     // Written back with the notes as they are now, should a note have
     // changed between UOS-Settings reading the file and writing it.
     ApplySettings();
@@ -2031,6 +2228,7 @@ void UltraDesktopWindow::OnTimer() {
         RefreshWindows();
     }
     if (trayDirty_.exchange(false)) RefreshTray();
+    FitRunningButtons();   // also after a resize, or the pins taking more room
     FitInfoPanel();
     if (boardWindow_ && settings_.categoryBoard.visible) PlaceCategoryBoard();
     if (desktopIcons_ && settings_.dropFilesOn == "desktop" && ++desktopIconTicks_ >= kDesktopIconTicks) {
@@ -2212,6 +2410,51 @@ void UltraDesktopWindow::RefreshWindows() {
         }
         button->SetPressed(active);
     }
+    FitRunningButtons();
+    running_->InvalidateLayout();
+    running_->RequestRedraw();
+}
+
+void UltraDesktopWindow::FitRunningButtons() {
+    if (!running_) return;
+    const bool vertical = running_->GetOrientation() == ToolbarOrientation::Vertical;
+    // The group's own length does not follow its items (it grows into what
+    // the bar leaves over and scrolls past that), so there is no see-saw
+    // between the two densities. MakeGroup's padding: 6 at each end of a
+    // vertical group, 4 of a horizontal one.
+    const float room = (vertical ? running_->GetHeight() : running_->GetWidth()) - (vertical ? 12.0f : 8.0f);
+    if (room <= 0) return;   // not laid out yet
+    const std::vector<std::shared_ptr<UltraCanvasUIElement>> items = running_->GetItems();
+    const float count = static_cast<float>(items.size());
+    const auto length = [count](float box, float gap) {
+        return count > 0 ? count * box + (count - 1) * gap : 0.0f;
+    };
+    // Normal when everything fits; closer together when that is enough;
+    // otherwise also the smaller highlight (and the group scrolls when even
+    // that is too long).
+    int density = 0;
+    if (length(kBarButton, kBarSpacing) > room)
+        density = length(kBarButton, kRunningSpacingTight) > room ? 2 : 1;
+    const int box = density == 2 ? kRunningButtonTight : kBarButton;
+    bool changed = false;
+    if (density != runningDensity_) {
+        runningDensity_ = density;
+        ToolbarAppearance look = running_->GetAppearance();
+        look.itemSpacing = density == 0 ? kBarSpacing : kRunningSpacingTight;
+        running_->SetAppearance(look);
+        changed = true;
+    }
+    // Every button, not only on a change: one just added comes at the
+    // normal size (StyleBarButton).
+    for (const auto& item : items) {
+        auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item);
+        if (!button) continue;
+        const Size2Df size = button->GetOriginalSize();   // as set, not as last laid out
+        if (static_cast<int>(size.width) == box && static_cast<int>(size.height) == box) continue;
+        button->SetElementSize(Size2Df(static_cast<float>(box), static_cast<float>(box)));
+        changed = true;
+    }
+    if (!changed) return;
     running_->InvalidateLayout();
     running_->RequestRedraw();
 }
@@ -2390,6 +2633,76 @@ void UltraDesktopWindow::ShowGroupMenu(const std::string& key, int windowX, int 
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
+void UltraDesktopWindow::UpdateBatteryIcon(const DesktopDeviceActivity& now) {
+    auto button = info_ ? std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("battery")) : nullptr;
+    if (!button) return;
+    const bool known = now.batteryPresent && now.batteryPercent >= 0;
+    const int percent = known ? std::clamp(now.batteryPercent, 0, 100) : 0;
+    // As fine as the screen allows: one pixel of fill per 10 % at the usual
+    // 20 px icon (10 pixels), per 12.5 % at the 18 px of a short screen.
+    // Rounded down, so the fill is complete only at 100 %; a battery with
+    // any charge left shows at least one pixel.
+    const int size = InfoIconSize();
+    const int fillPixels = std::max(1, size - 10);
+    int pixels = known ? percent * fillPixels / 100 : 0;
+    if (known && percent > 0) pixels = std::max(pixels, 1);
+    const bool full = known && percent >= 100;
+    const bool charging = known && now.batteryCharging && !full;
+    const bool low = known && !charging && percent < kBatteryLowPercent;
+    // The fill, the state, the colours and the button: a bar built again
+    // (another theme, edge or screen) has a new button to dress.
+    const std::string ink = HexOf(Bars().ink);
+    std::ostringstream key;
+    key << static_cast<const void*>(button.get()) << ':' << known << ':' << size << ':' << pixels
+        << ':' << charging << ':' << low << ':' << full << ':' << ink;
+    if (key.str() == batteryIconKey_) return;
+    batteryIconKey_ = key.str();
+    if (!known) {
+        // No battery, or its level unread: the bar's own glyph, as before.
+        button->SetIcon(IconPath("battery.svg"));
+        button->SetIconMaskColor(Color(0, 0, 0, 0));
+        return;
+    }
+    // Full: the outline in the bar's ink, green inside. Charging: green,
+    // with the bolt in the ink over it. Low: red. Otherwise the bar's ink.
+    const std::string green = HexOf(kMarkerSaved);
+    const std::string red = HexOf(kMarkerOn);
+    const std::string svg = full     ? BatteryIconSvg(size, pixels, ink, green)
+                          : charging ? BatteryIconSvg(size, pixels, green, green, ink)
+                          : low      ? BatteryIconSvg(size, pixels, red, red)
+                                     : BatteryIconSvg(size, pixels, ink, ink);
+    auto image = UCImage::LoadFromMemory(reinterpret_cast<const uint8_t*>(svg.data()), svg.size());
+    if (image && image->GetWidth() > 0) {
+        button->SetIcon(image);
+        button->SetUseIconAsMask(false);
+    } else {
+        button->SetIcon(IconPath("battery.svg"));
+        button->SetIconMaskColor(Color(0, 0, 0, 0));
+    }
+}
+
+void UltraDesktopWindow::ApplyBattery(const DesktopDeviceActivity& now) {
+    if (!info_) return;
+    UpdateBatteryIcon(now);
+    auto button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("battery"));
+    if (now.batteryPresent && now.batteryPercent >= 0) {
+        const Color color = now.batteryCharging ? kMarkerSaved
+                          : now.batteryPercent < kBatteryLowPercent ? kMarkerOn : kMarkerCount;
+        // Grows inward: "100" would run past the screen's edge. Switched
+        // off, the icon's fill and the tooltip still say it.
+        if (!settings_.batteryPercent) {
+            info_->ClearItemBadge("battery");
+        } else if (auto badge = info_->SetItemBadge("battery", std::to_string(now.batteryPercent), color)) {
+            badge->SetGrowInward(true);
+        }
+        if (button) button->SetTooltip("Battery: " + std::to_string(now.batteryPercent) + "%" +
+                                       (now.batteryCharging ? ", charging" : ""));
+    } else {
+        info_->ClearItemBadge("battery");
+        if (button) button->SetTooltip("Battery: none (mains power)");
+    }
+}
+
 void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
                                              const DesktopDeviceActivity& before, bool haveBefore) {
     if (!info_) return;
@@ -2446,21 +2759,14 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
     else info_->ClearItemBadge("usb");
     tooltip("usb", "USB: " + std::to_string(now.usbDeviceCount) + " device" + (now.usbDeviceCount == 1 ? "" : "s"));
 
-    if (now.batteryPresent && now.batteryPercent >= 0) {
-        const Color color = now.batteryCharging ? kMarkerSaved : now.batteryPercent <= 15 ? kMarkerOn : kMarkerCount;
-        info_->SetItemBadge("battery", std::to_string(now.batteryPercent), color);
-        tooltip("battery", "Battery: " + std::to_string(now.batteryPercent) + "%" +
-                           (now.batteryCharging ? ", charging" : ""));
-    } else {
-        info_->ClearItemBadge("battery");
-        tooltip("battery", "Battery: none (mains power)");
-    }
+    ApplyBattery(now);
 
     if (!now.keyboardLayout.empty()) {
         std::string layout = now.keyboardLayout;
         std::transform(layout.begin(), layout.end(), layout.begin(),
                        [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-        info_->SetItemBadge("keyboard", Shorten(layout, 3), kMarkerCount);
+        if (auto badge = info_->SetItemBadge("keyboard", Shorten(layout, 3), kMarkerCount))
+            badge->SetGrowInward(true);   // "DEU" stays on the screen
         tooltip("keyboard", "Keyboard layout: " + layout);
     }
 }
@@ -2894,7 +3200,9 @@ void UltraDesktopWindow::StartSnipShortcut() {
 
 void UltraDesktopWindow::RefreshTray() {
     if (!info_ || !trayHost_.IsRunning()) return;
-    const std::vector<DesktopTrayIcon> icons = trayHost_.ListIcons();
+    // Switched off in the settings: none, and any shown go.
+    const std::vector<DesktopTrayIcon> icons = settings_.ShowsInfoItem("tray") ? trayHost_.ListIcons()
+                                                                                 : std::vector<DesktopTrayIcon>();
     std::set<std::string> wanted;
     for (const DesktopTrayIcon& icon : icons) wanted.insert(kTrayPrefix + icon.id);
 

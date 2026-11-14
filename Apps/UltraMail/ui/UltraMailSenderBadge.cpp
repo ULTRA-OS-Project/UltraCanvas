@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSenderBadge.cpp
+// Version: 0.4.0 - the reading pane's badge follows a change of the look
 // Version: 0.3.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.2.0 - website icons, iconKey, no icon on a spam or scam badge; the
 //                  verified sender domain in the tooltip
@@ -198,11 +199,17 @@ MakeSenderBadgeElement(const std::string& id, const SenderBadge& badge, float si
         // framed monogram rather than leaving an empty square.
     }
 
-    box->SetBackgroundColor(colors.fill);
-    box->SetBorders(kBorderWidth, colors.border, side * kRadiusFraction);
+    // The verdict's colours, again when the look changes.
+    const SenderClass cls = badge.cls;
+    Theme::Follow(box, "badge", [cls, side](UltraCanvasContainer& b) {
+        const BadgeColors look = BadgeColorsFor(cls);
+        b.SetBackgroundColor(look.fill);
+        b.SetBorders(kBorderWidth, look.border, side * kRadiusFraction);
+    });
 
     auto letter = Theme::MakeText(id + ".letter", badge.initial, side * 0.45f,
                                   colors.text, FontWeight::Bold);
+    Theme::Follow(letter, "ink", [cls](UltraCanvasLabel& l) { l.SetTextColor(BadgeColorsFor(cls).text); });
     letter->SetAlignment(TextAlignment::Center);
     box->AddChild(letter);
     return box;

@@ -299,7 +299,6 @@
   "The key that sends what is typed in the message field:": "المفتاح الذي يرسل ما كُتب في حقل الرسالة:",
   "The key to your ChatCube ID is encrypted with your password, so without it nobody can read the key - not even from a copy of the files. ChatCube asks for it at every start. Keep it safe: nobody can recover it for you.": "مفتاح ChatCube ID الخاص بك مشفّر بكلمة مرورك، فلا يستطيع أحد قراءة المفتاح بدونها - ولا حتى من نسخة من الملفات. يطلبها ChatCube في كل تشغيل. احتفظ بها بأمان: لا يستطيع أحد استردادها لك.",
   "the local network": "الشبكة المحلية",
-  "The look is chosen when ChatCube starts, since every part of the window takes its colours as it is built: a change here, or of the computer's look under System, shows the next time ChatCube is started. System is the computer's own light or dark mode, and the Look page of UOS-Settings over it.": "يُختار الشكل عند بدء ChatCube، لأن كل جزء من النافذة يأخذ ألوانه عند بنائه: التغيير هنا، أو تغيير شكل الكمبيوتر تحت النظام، يظهر في التشغيل التالي لـ ChatCube. النظام هو الوضع الفاتح أو الداكن للكمبيوتر نفسه، وفوقه صفحة الشكل في UOS-Settings.",
   "The Matrix module was not found (Plugins/UltraIM).": "لم يُعثر على وحدة Matrix (Plugins/UltraIM).",
   "The networks ChatCube talks through, and where each stands:": "الشبكات التي يتواصل عبرها ChatCube، وحالة كل منها:",
   "The password could not be set: {0} - set it in Edit profile.": "تعذّر تعيين كلمة المرور: {0} - عيّنها في تعديل الملف الشخصي.",

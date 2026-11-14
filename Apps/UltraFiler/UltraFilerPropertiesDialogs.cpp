@@ -6,6 +6,7 @@
 // matrix (special bits like setuid are preserved), reduced to a single
 // "Read-only" switch on Windows, where only the write bits map onto the
 // filesystem attribute.
+// Version: 1.1.1 - the buttons name every state's colour: a disabled one is not a light grey block in dark
 // Version: 1.1.0 - the colours are the theme's (UltraFilerLook.h)
 // Version: 1.0.3 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.0.2 - the interface strings go through Tr (UltraLocalisation)
@@ -82,8 +83,8 @@ namespace {
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
         b->SetFontSize(kFontSize);
         b->SetCornerRadius(4.0f);
-        b->SetColors(Look().button, Look().hover);
-        b->SetTextColors(Look().ink);
+        b->SetColors(Look().button, Look().hover, Look().pressed, Look().panel);
+        b->SetTextColors(Look().ink, Look().ink, Look().ink, Look().inkFaint);
         b->SetBorder(1.0f, Look().border);
         if (onClick) b->SetOnClick(std::move(onClick));
         b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);

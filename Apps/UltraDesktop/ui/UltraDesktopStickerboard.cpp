@@ -1,5 +1,8 @@
 // Apps/UltraDesktop/ui/UltraDesktopStickerboard.cpp
 // Sticky notes over the wallpaper. See the header.
+// Version: 0.2.0 - a note's controls in the light theme's colours whatever the
+//                  desktop's look: the paper is always light, so its text, caret,
+//                  grip and buttons stay dark on it in a dark look too
 // Version: 0.1.1 - the notes and the "+" are added to the board (they were
 //                  placed, never added, so none showed)
 // Version: 0.1.0
@@ -12,6 +15,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasTheme.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -41,6 +45,15 @@ Color PaperColor(const std::string& hex) {
     return Color(255, 245, 157, 255);
 }
 
+// The colours of what sits on a note: the paper is light in either look,
+// so its text, caret, selection and buttons are the light theme's - a dark
+// look's light ink would vanish on it. Set by hand, so the framework's
+// re-style on a theme change leaves them alone.
+const UltraCanvasTheme& PaperTheme() {
+    static const UltraCanvasTheme light = UltraCanvasTheme::Light();
+    return light;
+}
+
 std::string NextPaper(const std::string& current) {
     const size_t count = sizeof(kPapers) / sizeof(kPapers[0]);
     for (size_t i = 0; i < count; ++i) {
@@ -60,7 +73,7 @@ UltraDesktopStickerboard::UltraDesktopStickerboard(const std::string& identifier
 
     // The "+" in the board's top-left corner.
     auto add = std::make_shared<UltraCanvasButton>("Stickerboard.Add", 12, 12, kAddButton, kAddButton, "+");
-    ButtonStyle style = add->GetStyle();
+    ButtonStyle style = ButtonStyle::FromTheme(PaperTheme(), add->GetStyle());
     style.normalColor = Color(255, 245, 157, 230);
     style.hoverColor = Color(255, 235, 120, 255);
     style.pressedColor = Color(240, 220, 90, 255);
@@ -123,6 +136,7 @@ void UltraDesktopStickerboard::BuildNote(const Sticker& sticker) {
     bar->SetContainerStyle(plain);
 
     note.grip = CreateLabel("Sticker." + id + ".Grip", "⋯");
+    note.grip->SetFollowTheme(false);   // dark on the paper in either look
     note.grip->SetTextColor(Color(0, 0, 0, 120));
     note.grip->SetAlignment(TextAlignment::Center);
     note.grip->layoutItem.SetFlexGrow(1.0f);
@@ -132,8 +146,7 @@ void UltraDesktopStickerboard::BuildNote(const Sticker& sticker) {
     auto colour = std::make_shared<UltraCanvasButton>("Sticker." + id + ".Color", 0, 0, 22, 20, "◐");
     auto close = std::make_shared<UltraCanvasButton>("Sticker." + id + ".Close", 0, 0, 22, 20, "×");
     for (auto& b : {colour, close}) {
-        ButtonStyle style = b->GetStyle();
-        style.normalColor = Colors::Transparent;
+        ButtonStyle style = ButtonStyle::FromTheme(PaperTheme(), b->GetStyle(), ButtonVariant::Ghost);
         style.hoverColor = Color(0, 0, 0, 40);
         style.pressedColor = Color(0, 0, 0, 70);
         style.borderWidth = 0;
@@ -153,8 +166,13 @@ void UltraDesktopStickerboard::BuildNote(const Sticker& sticker) {
     note.text->SetText(sticker.text, /*runNotifications=*/false);
     note.text->SetWordWrap(true);
     note.text->SetShowLineNumbers(false);
+    // The light theme's text area on the paper, whatever the desktop's look.
+    note.text->SetFollowTheme(false);
+    note.text->ApplyTheme(PaperTheme());
+    note.text->SetBackgroundColor(paper);
     TextAreaStyle textStyle = note.text->GetStyle();
     textStyle.backgroundColor = paper;
+    textStyle.currentLineColor = paper;
     textStyle.borderColor = Colors::Transparent;
     textStyle.fontColor = Color(40, 40, 40, 255);
     note.text->SetStyle(textStyle);
@@ -196,8 +214,10 @@ void UltraDesktopStickerboard::CycleColor(const std::string& id) {
     s->color = NextPaper(s->color);
     const Color paper = PaperColor(s->color);
     found->second.card->SetBackgroundColor(paper);
+    found->second.text->SetBackgroundColor(paper);
     TextAreaStyle textStyle = found->second.text->GetStyle();
     textStyle.backgroundColor = paper;
+    textStyle.currentLineColor = paper;
     found->second.text->SetStyle(textStyle);
     Persist();
     RequestRedraw();

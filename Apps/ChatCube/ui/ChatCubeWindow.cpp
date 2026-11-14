@@ -25,7 +25,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -180,6 +180,7 @@ ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId, Sett
 }
 
 ChatCubeWindow::~ChatCubeWindow() {
+    if (themeHandler_) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     // The tiles go with the window: no picture may be pushed into them after.
     if (!callId_.empty()) UltraIM_SetCallVideoSinks(providerId_, callId_, nullptr, nullptr);
     if (subscription_) UltraIM_Unsubscribe(subscription_);
@@ -201,11 +202,14 @@ bool ChatCubeWindow::Create() {
         return false;
     }
     window_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    window_->SetBackgroundColor(L().ground);
+    OnLook(window_, [](UltraCanvasWindow& w) { w.SetBackgroundColor(L().ground); });
     window_->AddChild(BuildSignInPage());
     window_->AddChild(BuildConnectingPage());
     window_->AddChild(BuildChatView());
     ApplySettings();
+    // A change of the look while ChatCube runs: the framework's elements
+    // follow the theme by themselves, ApplyLook brings ChatCube's own.
+    themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
     window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
 
     subscription_ = UltraIM_Subscribe([this](const UltraIMEvent& e) { OnEvent(e); });
@@ -250,7 +254,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     signInPage_->AddChild(title);
     signInPage_->AddChild(MakeLabel("cc-signin-tagline",
                                     Tr("Chat directly with the people you know - end-to-end encrypted"),
-                                    11.0f, L().inkMuted));
+                                    11.0f, &Look::inkMuted));
     signInPage_->AddSpacer(10);
 
     // The form, on a card.
@@ -258,8 +262,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     card->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     card->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     card->size.width = CSSLayout::Dimension::Px(kFormWidth + 48);
-    card->SetBackgroundColor(L().panel);
-    card->SetBorders(1.0f, L().line, 14.0f);
+    OnLook(card, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorders(1.0f, L().line, 14.0f);
+    });
     card->SetPadding(22, 24, 18, 24);
 
     name_ = MakeInput("cc-signin-name", Tr("Your name, as your contacts will see it"), static_cast<int>(kFormWidth));
@@ -285,15 +291,17 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     localNetwork_ = std::make_shared<UltraCanvasCheckbox>("cc-signin-lan", 0, 0, static_cast<long>(kFormWidth), 22,
                                                           Tr("Also find people on this network"));
     localNetwork_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    CheckboxVisualStyle lanStyle = localNetwork_->GetVisualStyle();
-    lanStyle.base.fontSize = kTextFont;                 // the size of the page's other text
-    lanStyle.base.textColor = L().ink;
-    lanStyle.boxColor = L().panel;
-    lanStyle.boxBorderColor = L().lineStrong;
-    lanStyle.boxHoverColor = L().hover;
-    lanStyle.checkmarkColor = L().accent;
-    lanStyle.checkmarkHoverColor = L().accent;
-    localNetwork_->SetVisualStyle(lanStyle);
+    OnLook(localNetwork_, [](UltraCanvasCheckbox& box) {
+        CheckboxVisualStyle lanStyle = CheckboxVisualStyle::FromTheme(UltraCanvasTheme::Current(), box.GetVisualStyle());
+        lanStyle.base.fontSize = kTextFont;                 // the size of the page's other text
+        lanStyle.base.textColor = L().ink;
+        lanStyle.boxColor = L().panel;
+        lanStyle.boxBorderColor = L().lineStrong;
+        lanStyle.boxHoverColor = L().hover;
+        lanStyle.checkmarkColor = L().accent;
+        lanStyle.checkmarkHoverColor = L().accent;
+        box.SetVisualStyle(lanStyle);
+    });
     card->AddChild(localNetwork_);
 
     // How signing in on this computer is protected - a new ID's choice;
@@ -301,15 +309,18 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     protectionRow_ = std::make_shared<UltraCanvasContainer>("cc-signin-protection-row");
     protectionRow_->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     protectionRow_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    protectionRow_->AddChild(MakeLabel("cc-signin-protection-caption", Tr("Signing in on this computer"), 9.0f, L().inkMuted));
+    protectionRow_->AddChild(MakeLabel("cc-signin-protection-caption", Tr("Signing in on this computer"), 9.0f, &Look::inkMuted));
     protection_ = std::make_shared<UltraCanvasDropdown>("cc-signin-protection", 0, 0, kFormWidth, kControlHeight);
     protection_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    DropdownStyle dropStyle = protection_->GetStyle();
-    dropStyle.fontSize = kTextFont;
-    dropStyle.cornerRadius = kControlRadius;
-    dropStyle.itemHeight = 28.0f;
-    dropStyle.maxItemWidth = kFormWidth + 60;
-    protection_->SetStyle(dropStyle);
+    // The theme's colours (ChatCube's), in the page's size.
+    OnLook(protection_, [](UltraCanvasDropdown& drop) {
+        DropdownStyle dropStyle = DropdownStyle::FromTheme(UltraCanvasTheme::Current(), drop.GetStyle());
+        dropStyle.fontSize = kTextFont;
+        dropStyle.cornerRadius = kControlRadius;
+        dropStyle.itemHeight = 28.0f;
+        dropStyle.maxItemWidth = kFormWidth + 60;
+        drop.SetStyle(dropStyle);
+    });
     // In UltraIMSignInProtection's order.
     protection_->AddItem(Tr("No password - this computer signs in by itself"));
     protection_->AddItem(Tr("A password"));
@@ -345,7 +356,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     recoverToggle_->SetOnClick([this]() { ToggleRecoveryForm(); });
     card->AddChild(recoverToggle_);
 
-    signInStatus_ = MakeLabel("cc-signin-status", "", kTextFont, L().inkMuted);
+    signInStatus_ = MakeLabel("cc-signin-status", "", kTextFont, &Look::inkMuted);
     signInStatus_->SetWrap(TextWrap::WrapWord);
     signInStatus_->SetAlignment(TextAlignment::Center);
     signInStatus_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -357,7 +368,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
         Tr("Your ChatCube ID is a key made on this computer. Messages are end-to-end encrypted; "
            "the relay only connects you and keeps messages for people who are offline. "
            "Which relay is set in Settings > Networks > Relay."),
-        9.0f, L().inkFaint);
+        9.0f, &Look::inkFaint);
     note->SetWrap(TextWrap::WrapWord);
     note->SetAlignment(TextAlignment::Center);
     note->size.width = CSSLayout::Dimension::Px(kFormWidth + 48);
@@ -380,9 +391,9 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConnectingPage() {
     connectingPage_->AddSpacer(6);
     connectingTitle_ = MakeLabel("cc-connecting-title", Tr("Connecting\xE2\x80\xA6"), 13.0f);
     connectingPage_->AddChild(connectingTitle_);
-    connectingRelay_ = MakeLabel("cc-connecting-relay", "", 10.0f, L().inkMuted);
+    connectingRelay_ = MakeLabel("cc-connecting-relay", "", 10.0f, &Look::inkMuted);
     connectingPage_->AddChild(connectingRelay_);
-    connectingStatus_ = MakeLabel("cc-connecting-status", "", kTextFont, L().inkMuted);
+    connectingStatus_ = MakeLabel("cc-connecting-status", "", kTextFont, &Look::inkMuted);
     connectingStatus_->SetWrap(TextWrap::WrapWord);
     connectingStatus_->SetAlignment(TextAlignment::Center);
     connectingStatus_->size.width = CSSLayout::Dimension::Px(kFormWidth + 48);
@@ -410,8 +421,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     sidebar->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
     sidebar->SetPadding(10, 8, 8, 8);
-    sidebar->SetBorderRight(1, L().line);
-    sidebar->SetBackgroundColor(L().sidebar);
+    OnLook(sidebar, [](UltraCanvasContainer& c) {
+        c.SetBorderRight(1, L().line);
+        c.SetBackgroundColor(L().sidebar);
+    });
 
     // Who I am: the logo, my ID in groups of four, and a copy button.
     auto idRow = MakeRow("cc-myid-row", 8);
@@ -419,8 +432,8 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     auto idColumn = std::make_shared<UltraCanvasContainer>("cc-myid-column");
     idColumn->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     idColumn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    idColumn->AddChild(MakeLabel("cc-myid-caption", Tr("My ChatCube ID"), 8.5f, L().inkFaint));
-    myId_ = MakeLabel("cc-myid", "", 9.5f, L().ink);
+    idColumn->AddChild(MakeLabel("cc-myid-caption", Tr("My ChatCube ID"), 8.5f, &Look::inkFaint));
+    myId_ = MakeLabel("cc-myid", "", 9.5f, &Look::ink);
     myId_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     idColumn->AddChild(myId_);
     idRow->AddChild(idColumn);
@@ -516,7 +529,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     telegramForm_->AddChild(telegramApiHash_);
     // Where the code went, in the form itself: the status line moves on,
     // and a code that went to another Telegram app is easy to miss.
-    telegramHint_ = MakeLabel("cc-telegram-hint", "", 9.0f, L().inkMuted);
+    telegramHint_ = MakeLabel("cc-telegram-hint", "", 9.0f, &Look::inkMuted);
     telegramHint_->SetWrap(TextWrap::WrapWord);
     telegramHint_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     telegramForm_->AddChild(telegramHint_);
@@ -590,14 +603,16 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     conversationList_->SetModel(conversations_);
     conversationList_->SetDelegate(std::make_shared<ConversationDelegate>());
     conversationList_->SetRowHeight(64);
-    ListViewStyle listStyle = conversationList_->GetStyle();
-    listStyle.backgroundColor = L().sidebar;
-    // The rows paint their own rounded selection and hover.
-    listStyle.selectionBackgroundColor = Colors::Transparent;
-    listStyle.hoverBackgroundColor = Colors::Transparent;
-    conversationList_->SetStyle(listStyle);
-    conversationList_->SetBackgroundColor(L().sidebar);
-    conversationList_->SetBorders(0, Colors::Transparent);
+    OnLook(conversationList_, [](UltraCanvasListView& list) {
+        // The theme's scrollbars; the rows paint their own rounded selection and hover.
+        ListViewStyle listStyle = ListViewStyle::FromTheme(UltraCanvasTheme::Current(), list.GetStyle());
+        listStyle.backgroundColor = L().sidebar;
+        listStyle.selectionBackgroundColor = Colors::Transparent;
+        listStyle.hoverBackgroundColor = Colors::Transparent;
+        list.SetStyle(listStyle);
+        list.SetBackgroundColor(L().sidebar);
+        list.SetBorders(0, Colors::Transparent);
+    });
     conversationList_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     conversationList_->onSelectionChanged = [this](const std::vector<int>& rows) {
         if (fillingList_ || rows.empty()) return;
@@ -621,14 +636,17 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     auto pane = std::make_shared<UltraCanvasContainer>("cc-pane");
     pane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     pane->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    pane->SetBackgroundColor(L().ground);
+    OnLook(pane, [](UltraCanvasContainer& c) { c.SetBackgroundColor(L().ground); });
 
     // ----- header: the avatar, the name and its state, the call buttons -----
     auto header = MakeRow("cc-header", 10);
     header->SetPadding(9, 14, 9, 14);
-    header->SetBackgroundColor(L().panel);
-    header->SetBorderBottom(1, L().line);
-    headerAvatar_ = MakeLabel("cc-header-avatar", "", 12.0f, Color(255, 255, 255, 255));
+    OnLook(header, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorderBottom(1, L().line);
+    });
+    // Its colours are the conversation's (UpdateHeader).
+    headerAvatar_ = MakeLabel("cc-header-avatar", "", 12.0f);
     headerAvatar_->SetFontWeight(FontWeight::Bold);
     headerAvatar_->SetAlignment(TextAlignment::Center);
     headerAvatar_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -652,7 +670,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     title_ = MakeLabel("cc-title", "", 12.5f);
     title_->SetFontWeight(FontWeight::Bold);
     titles->AddChild(title_);
-    subtitle_ = MakeLabel("cc-subtitle", "", 9.0f, L().inkMuted);
+    subtitle_ = MakeLabel("cc-subtitle", "", 9.0f, &Look::inkMuted);
     titles->AddChild(subtitle_);
     header->AddChild(titles);
     voiceCall_ = MakeIconButton("cc-call", "call", "", kIconButton + 2);
@@ -676,10 +694,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     auto emptyLogo = MakeLogo("cc-empty-logo", 64);
     emptyLogo->SetOpacity(0.35f);
     empty->AddChild(emptyLogo);
-    empty->AddChild(MakeLabel("cc-empty-title", Tr("Your conversations"), 13.0f, L().inkMuted));
+    empty->AddChild(MakeLabel("cc-empty-title", Tr("Your conversations"), 13.0f, &Look::inkMuted));
     auto hint = MakeLabel("cc-empty",
                           Tr("Pick a conversation on the left, or add a contact by the ChatCube ID they give you."),
-                          10.0f, L().inkFaint);
+                          10.0f, &Look::inkFaint);
     hint->SetAlignment(TextAlignment::Center);
     hint->SetWrap(TextWrap::WrapWord);
     hint->size.width = CSSLayout::Dimension::Px(380);
@@ -708,13 +726,15 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     messageList_->SetModel(messages_);
     messageList_->SetDelegate(bubbles_);
     messageList_->SetVariableRowHeights(true);
-    ListViewStyle messageStyle = messageList_->GetStyle();
-    messageStyle.backgroundColor = L().ground;
-    messageStyle.selectionBackgroundColor = Colors::Transparent;   // bubbles show their own state
-    messageStyle.hoverBackgroundColor = Colors::Transparent;
-    messageList_->SetStyle(messageStyle);
-    messageList_->SetBackgroundColor(L().ground);
-    messageList_->SetBorders(0, Colors::Transparent);
+    OnLook(messageList_, [](UltraCanvasListView& list) {
+        ListViewStyle messageStyle = ListViewStyle::FromTheme(UltraCanvasTheme::Current(), list.GetStyle());
+        messageStyle.backgroundColor = L().ground;
+        messageStyle.selectionBackgroundColor = Colors::Transparent;   // bubbles show their own state
+        messageStyle.hoverBackgroundColor = Colors::Transparent;
+        list.SetStyle(messageStyle);
+        list.SetBackgroundColor(L().ground);
+        list.SetBorders(0, Colors::Transparent);
+    });
     messageList_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     messageList_->SetVisible(false);
     // A click on a picture, or on a file's bubble, opens it.
@@ -732,16 +752,20 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     inputRow->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::End);
     inputRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     inputRow->SetPadding(10, 14, 10, 14);
-    inputRow->SetBackgroundColor(L().panel);
-    inputRow->SetBorderTop(1, L().line);
+    OnLook(inputRow, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorderTop(1, L().line);
+    });
     // The rounded field: the strip of what goes with the next message
     // (hidden while empty) over the row with the paperclip, the text and
     // the send button.
     auto composer = std::make_shared<UltraCanvasContainer>("cc-composer");
     composer->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     composer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    composer->SetBackgroundColor(L().well);
-    composer->SetBorders(1.0f, L().line, 22.0f);
+    OnLook(composer, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().well);
+        c.SetBorders(1.0f, L().line, 22.0f);
+    });
     composer->SetPadding(5, 6, 5, 6);
     attachmentStrip_ = std::make_shared<UltraCanvasContainer>("cc-attachments");
     attachmentStrip_->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap).SetFlexGap(6)
@@ -764,8 +788,8 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     input_->SetShowLineNumbers(false);
     input_->SetFontSize(11.0f);
     input_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    {
-        TextAreaStyle st = input_->GetStyle();
+    OnLook(input_, [](UltraCanvasTextArea& area) {
+        TextAreaStyle st = area.GetStyle();
         st.backgroundColor = L().well;
         st.borderColor = Colors::Transparent;
         st.fontColor = L().ink;
@@ -774,10 +798,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
         st.currentLineHighlightColor = Colors::Transparent;
         st.scrollbarCornerRadius = 4.0f;
-        input_->SetStyle(st);
-    }
-    input_->SetBackgroundColor(L().well);
-    input_->SetBorders(0, Colors::Transparent);
+        area.SetStyle(st);
+        area.SetBackgroundColor(L().well);
+        area.SetBorders(0, Colors::Transparent);
+    });
     // Enter sends; Shift+Enter is left to the text area, which breaks the
     // line - or, as the Settings window may say, Ctrl+Enter sends and Enter
     // is the text area's. Ctrl+V (Shift+Insert) with a picture or a file on
@@ -818,8 +842,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
     // ----- the call bar (hidden without a call) -----
     callBar_ = MakeRow("cc-call-bar");
     callBar_->SetPadding(8, 14, 8, 14);
-    callBar_->SetBackgroundColor(L().callBar);
-    callBar_->SetBorderBottom(1, L().line);
+    OnLook(callBar_, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().callBar);
+        c.SetBorderBottom(1, L().line);
+    });
     callText_ = MakeLabel("cc-call-text", "", 11.0f);
     callText_->SetFontWeight(FontWeight::Bold);
     callText_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -834,14 +860,14 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
     callMute_->SetOnClick([this]() { ToggleMute(); });
     callBar_->AddChild(callMute_);
     callEnd_ = MakeIconButton("cc-call-end", "hangup", Tr("Hang up"), 104, true);
-    {
-        ButtonStyle st = callEnd_->GetStyle();
+    OnLook(callEnd_, [](UltraCanvasButton& b) {
+        ButtonStyle st = b.GetStyle();
         st.normalColor = L().danger;
         st.hoverColor = Darker(L().danger, 24);
         st.pressedColor = Darker(L().danger, 40);
-        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = Color(255, 255, 255, 255);
-        callEnd_->SetStyle(st);
-    }
+        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = InkOn(L().danger);
+        b.SetStyle(st);
+    });
     callEnd_->SetOnClick([this]() { EndCall(); });
     callBar_->AddChild(callEnd_);
     callBar_->SetVisible(false);
@@ -882,7 +908,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
     body->AddChild(BuildConversationPane());
     chatView_->AddChild(body);
 
-    status_ = MakeLabel("cc-status", "", 9.0f, L().inkMuted);
+    status_ = MakeLabel("cc-status", "", 9.0f, &Look::inkMuted);
     status_->SetMargin(3, 14, 5, 14);
     chatView_->AddChild(status_);
     return chatView_;
@@ -1815,7 +1841,7 @@ void ChatCubeWindow::SignInToMatrix(bool stored) {
 void ChatCubeWindow::RefreshNearby() {
     UltraIM_FetchNearbyContacts(providerId_, [this](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
         nearbyBox_->ClearChildren();
-        if (!list.empty()) nearbyBox_->AddChild(MakeLabel("cc-nearby-title", Tr("On this network"), 9.0f, L().inkMuted));
+        if (!list.empty()) nearbyBox_->AddChild(MakeLabel("cc-nearby-title", Tr("On this network"), 9.0f, &Look::inkMuted));
         for (const UltraIMContact& person : list) {
             auto row = MakeRow("cc-nearby-row", 6);
             auto name = MakeLabel("cc-nearby-name", person.displayName, kTextFont);
@@ -1934,8 +1960,9 @@ void ChatCubeWindow::UpdateHeader() {
         photo = image && image->IsValid();
     }
     headerAvatar_->SetText(c->isGroup ? "#" : Initials(c->title));
-    headerAvatar_->SetBackgroundColor(c->isGroup ? L().well : AvatarColor(c->conversationId, L()));
-    headerAvatar_->SetTextColor(c->isGroup ? L().inkMuted : Color(255, 255, 255, 255));
+    const Color avatar = c->isGroup ? L().well : AvatarColor(c->conversationId, L());
+    headerAvatar_->SetBackgroundColor(avatar);
+    headerAvatar_->SetTextColor(c->isGroup ? L().inkMuted : InkOn(avatar));
     headerAvatar_->SetVisible(!photo);
     headerPhoto_->SetVisible(photo);
     // The paperclip, for a network that takes pictures or files.
@@ -2140,8 +2167,10 @@ void ChatCubeWindow::StageAttachment(const std::string& path, bool ownFile) {
     tile->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     tile->size.width = CSSLayout::Dimension::Px(static_cast<float>(width));
     tile->size.height = CSSLayout::Dimension::Px(static_cast<float>(kTileSide));
-    tile->SetBackgroundColor(L().panel);
-    tile->SetBorders(1.0f, L().line, 10.0f);
+    OnLook(tile, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorders(1.0f, L().line, 10.0f);
+    });
     const std::string fileName = PathToUtf8(PathFromUtf8(path).filename());
     if (picture) {
         auto image = std::make_shared<UltraCanvasImageElement>(id + "-picture", 0, 0, kTileSide, kTileSide);
@@ -2161,7 +2190,7 @@ void ChatCubeWindow::StageAttachment(const std::string& path, bool ownFile) {
         name->SetText(fileName);
         name->SetFontSize(kTextFont);
         name->SetFontWeight(FontWeight::Bold);
-        name->SetTextColor(L().ink);
+        SetInk(name, &Look::ink);
         name->SetWrap(TextWrap::WrapNone);
         name->SetTooltip(fileName);
         tile->AddChild(name);
@@ -2169,20 +2198,23 @@ void ChatCubeWindow::StageAttachment(const std::string& path, bool ownFile) {
         auto size = std::make_shared<UltraCanvasLabel>(id + "-size", 10, 34, textWidth, 16);
         size->SetText(bytes > 0 ? FormatSize(bytes) : std::string());
         size->SetFontSize(kTextFont - 1.0f);
-        size->SetTextColor(L().inkMuted);
+        SetInk(size, &Look::inkMuted);
         tile->AddChild(size);
     }
     // The x, over the tile's top right corner (a non-zero offset places it
     // there, outside the flow).
     auto remove = std::make_shared<UltraCanvasButton>(id + "-remove", width - kTileClose - 3, 3, kTileClose, kTileClose, "");
-    ButtonStyle st = remove->GetStyle();
-    st.cornerRadius = kTileClose / 2.0f;
-    st.borderWidth = 0.0f;
-    st.normalColor = Color(0, 0, 0, 150);
-    st.hoverColor = L().danger;
-    st.pressedColor = Darker(L().danger, 24);
-    st.normalTextColor = st.hoverTextColor = st.pressedTextColor = Color(255, 255, 255, 255);
-    remove->SetStyle(st);
+    // White on a dark disc over the picture, red under the pointer.
+    OnLook(remove, [](UltraCanvasButton& b) {
+        ButtonStyle st = b.GetStyle();
+        st.cornerRadius = kTileClose / 2.0f;
+        st.borderWidth = 0.0f;
+        st.normalColor = Color(0, 0, 0, 150);
+        st.hoverColor = L().danger;
+        st.pressedColor = Darker(L().danger, 24);
+        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = Color(255, 255, 255, 255);
+        b.SetStyle(st);
+    });
     remove->SetIcon(IconPath("close"));
     remove->SetIconSize(12, 12);
     remove->SetUseIconAsMask(true);
@@ -2614,7 +2646,18 @@ void ChatCubeWindow::OpenSettings() {
     settingsWindow_->Show(window_.get());
 }
 
+void ChatCubeWindow::ApplyLook() {
+    RestyleForLook();
+    UpdateHeader();
+    if (conversationList_) conversationList_->RequestRedraw();
+    if (messageList_) messageList_->RequestRedraw();
+    if (window_) window_->RequestRedraw();
+}
+
 void ChatCubeWindow::ApplySettings() {
+    // The look: built again when the Settings window changed it.
+    if (SetLookChoice(settings_.look))
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->ApplyThemePolicy();
     // The send key, in the field's hint and on the send button.
     if (input_) {
         input_->SetPlaceholder(settings_.ctrlEnterSends

@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailWaitDialog.cpp
+// Version: 0.5.0 - the colours and the progress bar follow a change of the look
 // Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.0 - the title in a header with an icon tile, a busy bar under
 //                  the text
@@ -38,19 +39,19 @@ std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(dialog, Theme::CardBackground);
 
     dialog->AddChild(Theme::MakeDialogHeader("waitHeader", icon, title, text, 64.0f));
 
     // Something is happening, even while nothing changes on screen. It turns
     // until the dialog closes, and goes with it.
     auto busy = CreateBusyIndicator("waitBusy", 0, 0, 0, 4, BusyIndicatorKind::Bar);
-    {
-        BusyIndicatorStyle style = busy->GetStyle();
+    Theme::Follow(busy, "style", [](UltraCanvasBusyIndicator& b) {
+        BusyIndicatorStyle style = b.GetStyle();
         style.arcColor   = Theme::Accent();
         style.trackColor = Theme::AccentSoft();
-        busy->SetStyle(style);
-    }
+        b.SetStyle(style);
+    });
     busy->SetMargin(0, 0, 0, 52);   // under the text, past the header's icon
     dialog->AddChild(busy);
     busy->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);

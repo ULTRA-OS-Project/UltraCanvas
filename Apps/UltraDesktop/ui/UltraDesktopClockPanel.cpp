@@ -1,5 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopClockPanel.cpp
 // The clock panel. See the header.
+// Version: 0.2.0 - the face, its hands and ticks in the panel colours (a dark
+//                  face in a dark look); the figures' panel keeps its display look
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -23,7 +25,10 @@ namespace {
 
 constexpr int kPanelWidth = 320;
 constexpr int kPanelHeight = 600;
-const Color kFace(236, 236, 240);
+// The figures: a seven-segment display, green on black in either look.
+const Color kDigitsGround(20, 20, 20, 255);
+const Color kDigitsLit(120, 220, 160, 255);
+const Color kDigitsText(220, 220, 220, 255);
 
 const char* const kDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 const char* const kMonths[] = {"January", "February", "March", "April", "May", "June", "July",
@@ -70,8 +75,12 @@ void UltraDesktopClockPanel::Build(UltraCanvasWindow& window) {
     // The face: the gauge's analog clock, ticking on its own timer.
     auto face = CreateGaugeDiagramElement("clock.face", 0, 0, kPanelWidth - 24, 250);
     face->SetMode(GaugeMode::AnalogClock);
-    face->SetBackgroundColor(kFace);
+    // The face in the panel's raised colour, the hands in its text colour
+    // and the ticks and numbers muted: dark on light, or light on dark.
+    face->SetBackgroundColor(PanelColors().raised);
     face->SetTextColor(PanelColors().text);
+    face->SetClockHandColor(PanelColors().text);
+    face->SetClockTickColor(PanelColors().muted);
     face->SetShowLabels(true);
     face->layoutItem.SetFlexShrink(0.0f);
     face->SetElementSize(Size2Df(static_cast<float>(kPanelWidth - 24), 250));
@@ -82,9 +91,9 @@ void UltraDesktopClockPanel::Build(UltraCanvasWindow& window) {
     digits->SetMode(GaugeMode::Digital);
     digits->SetDigitalClock(true);
     digits->SetDigitalFontFamily("DSEG7 Classic,DSEG7 Modern,Digital-7,Monospace");
-    digits->SetGaugeColor(Color(120, 220, 160, 255));
-    digits->SetBackgroundColor(Color(20, 20, 20, 255));
-    digits->SetTextColor(PanelColors().text);
+    digits->SetGaugeColor(kDigitsLit);
+    digits->SetBackgroundColor(kDigitsGround);
+    digits->SetTextColor(kDigitsText);   // on its own black ground, not the panel's
     digits->layoutItem.SetFlexShrink(0.0f);
     digits->SetElementSize(Size2Df(static_cast<float>(kPanelWidth - 24), 72));
     window.AddChild(digits);

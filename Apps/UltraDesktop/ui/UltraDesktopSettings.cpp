@@ -2,6 +2,11 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.13.0 - lookMigrated
+// Version: 0.12.0 - hiddenInfoItems, InfoItems
+// Version: 0.11.0 - batteryPercent
+// Version: 0.10.0 - ramDiscPath: "/dev/shm", the earlier default, read as
+//                  kRamDiscFromFiler
 // Version: 0.9.0 - UltraSnip among the StartupPrograms, on once by default (startupDefaults 2)
 // Version: 0.8.0 - startupDefaults: UltraNotifications added once to
 //                  startWithDesktop
@@ -120,6 +125,11 @@ std::string DesktopSettings::ToJson() const {
     root.Set("clockStyle", clockStyle);
     root.Set("theme", theme);
     root.Set("dropFilesOn", dropFilesOn);
+    root.Set("batteryPercent", batteryPercent);
+    root.Set("lookMigrated", lookMigrated);
+    JSONValue hidden = JSONValue::MakeArray();
+    for (const std::string& id : hiddenInfoItems) hidden.Append(JSONValue(id));
+    root.Set("hiddenInfoItems", std::move(hidden));
     JSONValue icons = JSONValue::MakeObject();
     for (const auto& [name, place] : desktopIcons) {
         JSONValue at = JSONValue::MakeObject();
@@ -193,7 +203,16 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     if (ParseTaskbarEdge(root.Get("taskbarEdge").GetString(), edge)) loaded.taskbarEdge = edge;
     loaded.wallpaper = root.Get("wallpaper").GetString();
     loaded.ramDiscPath = root.Get("ramDiscPath").GetString(loaded.ramDiscPath);
+    // The earlier default opened the tmpfs itself, where UltraFiler's discs
+    // are folders: the button now asks UltraFiler for the disc instead.
+    if (loaded.ramDiscPath == "/dev/shm") loaded.ramDiscPath = kRamDiscFromFiler;
     loaded.filerProgram = root.Get("filerProgram").GetString(loaded.filerProgram);
+    loaded.batteryPercent = root.Get("batteryPercent").GetBoolean(loaded.batteryPercent);
+    loaded.lookMigrated = root.Get("lookMigrated").GetBoolean(false);
+    const JSONValue& hidden = root.Get("hiddenInfoItems");
+    for (size_t i = 0; i < hidden.GetSize(); ++i) {
+        loaded.SetShowsInfoItem(hidden.At(i).GetString(), false);   // once each
+    }
     const std::string clock = root.Get("clockStyle").GetString(loaded.clockStyle);
     if (IsClockStyle(clock)) loaded.clockStyle = clock;
     const std::string theme = root.Get("theme").GetString(loaded.theme);
@@ -352,6 +371,41 @@ void DesktopSettings::SetStartsWithDesktop(const std::string& program, bool star
         startWithDesktop.erase(std::remove(startWithDesktop.begin(), startWithDesktop.end(), program),
                                startWithDesktop.end());
     }
+}
+
+const std::vector<InfoItem>& DesktopSettings::InfoItems() {
+    static const std::vector<InfoItem> items = {
+        {"mail", "Email - the unread count from UltraMail"},
+        {"notifications", "Notifications - the unread count from UltraNotifications"},
+        {"upload", "Upload - the traffic going out"},
+        {"download", "Download - the traffic coming in"},
+        {"lan", "Internet / LAN - the link"},
+        {"vpn", "VPN"},
+        {"bluetooth", "Bluetooth"},
+        {"wifi", "Wi-Fi"},
+        {"usb", "USB - the devices attached"},
+        {"keyboard", "Keyboard - the layout"},
+        {"webcam", "Webcam - lit while it is in use"},
+        {"mic", "Microphone - lit while it is in use"},
+        {"speaker", "Loudspeaker - the volume"},
+        {"battery", "Battery"},
+        {"tasks", "Task Manager"},
+        {"tray", "Other programs' tray icons"},
+    };
+    return items;
+}
+
+bool DesktopSettings::ShowsInfoItem(const std::string& id) const {
+    return std::find(hiddenInfoItems.begin(), hiddenInfoItems.end(), id) == hiddenInfoItems.end();
+}
+
+void DesktopSettings::SetShowsInfoItem(const std::string& id, bool shown) {
+    const bool showing = ShowsInfoItem(id);
+    if (shown && !showing) {
+        hiddenInfoItems.erase(std::remove(hiddenInfoItems.begin(), hiddenInfoItems.end(), id),
+                              hiddenInfoItems.end());
+    }
+    if (!shown && showing && !id.empty()) hiddenInfoItems.push_back(id);
 }
 
 void DesktopSettings::SetPinned(const std::string& key, bool pinned) {

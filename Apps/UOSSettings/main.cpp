@@ -21,13 +21,19 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 #ifndef UOSSETTINGS_VERSION
 #define UOSSETTINGS_VERSION "0.0"
 #endif
 
 int main(int argc, char** argv) {
+    std::string page;   // --page desktop/info-bar: the page to open on
     for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--page") == 0 && i + 1 < argc) {
+            page = argv[++i];
+            continue;
+        }
         if (std::strcmp(argv[i], "--version") == 0) {
             std::printf("UOS-Settings %s\n", UOSSETTINGS_VERSION);
             return EXIT_SUCCESS;
@@ -44,7 +50,10 @@ int main(int argc, char** argv) {
     // --version above runs alongside an open window; only the window claims.
     using UltraCanvas::UltraCanvasSingleInstance;
     UltraCanvasSingleInstance instance("org.ultraos.uossettings", "UOS-Settings");
-    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    // A page asked for travels to a copy already running, which shows it.
+    UltraCanvas::JSONValue request = UltraCanvas::JSONValue::MakeObject();
+    if (!page.empty()) request.Set("page", UltraCanvas::JSONValue(page));
+    const UltraCanvasSingleInstance::Start start = instance.Claim(request);
     if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy came forward
 
     UltraCanvas::UltraCanvasApplication app;
@@ -64,8 +73,13 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     window.onClosed = [&app]() { app.Exit(); };
+    window.ShowSettingsPage(page);
     window.Show();
-    instance.ListenRaise();   // a later start brings this window forward
+    // A later start brings this window forward, on its page when it names one.
+    instance.Listen([&window](const UltraCanvas::JSONValue& request) {
+        window.ShowSettingsPage(request.Get("page").GetString());
+        UltraCanvasSingleInstance::BringToFront();
+    });
     app.Run();
     instance.Close();         // no request reaches the window once it starts to go
     return EXIT_SUCCESS;

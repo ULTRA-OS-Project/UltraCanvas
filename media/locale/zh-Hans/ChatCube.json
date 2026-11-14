@@ -289,7 +289,6 @@
   "The key that sends what is typed in the message field:": "发送消息输入框中所输入内容的按键：",
   "The key to your ChatCube ID is encrypted with your password, so without it nobody can read the key - not even from a copy of the files. ChatCube asks for it at every start. Keep it safe: nobody can recover it for you.": "您的 ChatCube ID 的密钥用您的密码加密，因此没有密码，任何人都无法读取密钥 - 即使从文件副本中也不行。ChatCube 每次启动时都会要求输入密码。请妥善保管：没有人能为您找回它。",
   "the local network": "本地网络",
-  "The look is chosen when ChatCube starts, since every part of the window takes its colours as it is built: a change here, or of the computer's look under System, shows the next time ChatCube is started. System is the computer's own light or dark mode, and the Look page of UOS-Settings over it.": "外观在 ChatCube 启动时确定，因为窗口的每个部分在创建时就取得了颜色：此处的更改，或“系统”下计算机外观的更改，会在下次启动 ChatCube 时显示。“系统”即计算机本身的浅色或深色模式，并由 UOS-Settings 的“外观”页面覆盖。",
   "The Matrix module was not found (Plugins/UltraIM).": "未找到 Matrix 模块（Plugins/UltraIM）。",
   "The networks ChatCube talks through, and where each stands:": "ChatCube 通信使用的网络及各自的状态：",
   "The password could not be set: {0} - set it in Edit profile.": "无法设置密码：{0} - 请在“编辑个人资料”中设置。",

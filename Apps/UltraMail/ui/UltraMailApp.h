@@ -3,6 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.14.0 - ApplyLook and the theme change handler: every open window follows a
+//                  change of the desktop's look
 // Version: 0.13.0 - the stored mail is encrypted at rest with the storage key in the
 //                  vault (UltraMailStorage.h); the vault opens first (OpenVault / UnlockVault): with a
 //                  Primary Password it is asked for before any stored mail is read;
@@ -50,7 +52,7 @@
 //                   (RunOutboxJob)
 // Version: 0.9.0 - server settings per account (provider table, autoconfig
 //                  lookup, manual page with a login check); stored on the account.
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -130,6 +132,9 @@ public:
     // Create the main window: the start page (no account yet) or the account
     // view (actions · account bar · inbox table | message details).
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> CreateMainWindow();
+    // The look changed (UltraCanvasTheme): every element UltraMail styled
+    // itself is styled again from the new theme, in every open window.
+    void ApplyLook();
 
     // Reload accounts + status, rebuild the account bar and the mail view, and
     // switch between the start page and the account view.
@@ -821,6 +826,7 @@ private:
     // close it repeats go through. While the question is open, a second close
     // does not ask it again.
     bool quitConfirmed_ = false;
+    int themeHandler_ = 0;   // UltraCanvasTheme::AddChangeHandler, removed in the destructor
     bool quitQuestionOpen_ = false;
     // The account view root; hidden while the start page is up (no account
     // configured) and shown once the first account exists.

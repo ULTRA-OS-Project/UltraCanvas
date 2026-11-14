@@ -1,9 +1,10 @@
 // Apps/UltraMail/ui/UltraMailPassphraseDialog.cpp
+// Version: 0.9.0 - the colours follow a change of the look
 // Version: 0.8.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.7.0 - PassphrasePrompt; the Primary Password's words; a mistake asks again
 // Version: 0.6.0 - a header with a lock tile; Set password / Unlock carry icons
 // Version: 0.5.0 - themed inputs and buttons
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailPassphraseDialog.h"
 
@@ -73,7 +74,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(dialog, Theme::CardBackground);
 
     auto content = CreateContainer("passForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -89,7 +90,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
         auto err = CreateLabel("passError", 0, 0, 400, 16, prompt.errorText);
         err->SetWrap(TextWrap::WrapWord);
         err->SetFontSize(Theme::SizeBody());
-        err->SetTextColor(Theme::WaitingText());
+        Theme::SetInk(err, Theme::WaitingText);
         content->AddChild(err);
         err->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     }
@@ -102,7 +103,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent, PassphrasePrompt prom
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Lbl", labelText, Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
         label->SetElementSize(Size2Df(104.0f, Theme::kControlHeight));
         row->AddChild(label);
         Theme::StyleInput(input);

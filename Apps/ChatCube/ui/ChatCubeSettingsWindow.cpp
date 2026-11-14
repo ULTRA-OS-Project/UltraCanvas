@@ -3,7 +3,7 @@
 // chosen page on the right, the page's "Restore defaults" and Close at the
 // foot - the layout of UltraFiler's settings window, in ChatCube's colours.
 //
-// Pages: Appearance > Look (light or dark, from the next start), Appearance >
+// Pages: Appearance > Look (system, light or dark, at once), Appearance >
 // Time & date (a 24- or 12-hour clock; the date as day.month.year,
 // year-month-day or month/day/year), Messages > Sending (Enter or Ctrl+Enter
 // sends), Messages > Typing (whether the other side is told I am typing, and
@@ -14,13 +14,14 @@
 // through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.4.2 - the look follows a change while open (OnLook): a choice on the Look page shows at once
 // Version: 0.4.1 - every text a person reads through Tr (UltraLocalisation)
 // Version: 0.4.0 - Networks > Relay: the relay server, no longer asked on the sign-in page
 // Version: 0.3.0 - Appearance > Look: System beside Light and Dark
 // Version: 0.2.0 - Networks > Proxy: the proxy Matrix and the relay are
 //                  reached through, shared by every ULTRA OS application
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettingsWindow.h"
@@ -89,12 +90,6 @@ constexpr const char* kPageExtras      = "extras";
 constexpr const char* kPageDataFolder  = "extras/data";
 constexpr const char* kPageAbout       = "extras/about";
 
-// The colours of the look ChatCube started in.
-const Look& L() {
-    static const Look look = CurrentLook();
-    return look;
-}
-
 } // namespace
 
 // The open window and its controls. The controls' callbacks hold a raw
@@ -153,11 +148,11 @@ void ApplyAndSave(State* d) {
 // ===== TEXT =====
 
 std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
-                                            float fontSize = kTextFontSize, const Color& color = L().ink) {
+                                            float fontSize = kTextFontSize, LookRole role = &Look::ink) {
     auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
     l->SetText(text);
     l->SetFontSize(fontSize);
-    l->SetTextColor(color);
+    SetInk(l, role);
     l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     l->size.width = CSSLayout::Dimension::Auto();
     l->size.height = CSSLayout::Dimension::Auto();
@@ -166,8 +161,8 @@ std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::st
 
 // A paragraph: word-wrapped at `width`, as tall as its lines.
 std::shared_ptr<UltraCanvasLabel> MakeText(const std::string& id, const std::string& text, int width = kTextWidth,
-                                           float fontSize = kTextFontSize, const Color& color = L().ink) {
-    auto l = MakeLabel(id, text, fontSize, color);
+                                           float fontSize = kTextFontSize, LookRole role = &Look::ink) {
+    auto l = MakeLabel(id, text, fontSize, role);
     l->SetWrap(TextWrap::WrapWord);
     l->size.width = CSSLayout::Dimension::Px(static_cast<float>(width));
     return l;
@@ -191,7 +186,7 @@ PageParts MakePage(const std::string& id, const std::string& title, const std::s
     auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
     titleLabel->SetFontWeight(FontWeight::Bold);
     parts.page->AddChild(titleLabel);
-    auto captionLabel = MakeText(id + "-caption", caption, kTextWidth, kTextFontSize, L().inkMuted);
+    auto captionLabel = MakeText(id + "-caption", caption, kTextWidth, kTextFontSize, &Look::inkMuted);
     captionLabel->SetMargin(6, 0, 0, 0);
     parts.page->AddChild(captionLabel);
 
@@ -211,15 +206,17 @@ PageParts MakePage(const std::string& id, const std::string& title, const std::s
     parts.notes = std::make_shared<UltraCanvasContainer>(id + "-notes");
     parts.notes->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Start);
     parts.notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    parts.notes->SetBackgroundColor(L().well);
-    parts.notes->SetBorderLeft(3, L().accent);
+    OnLook(parts.notes, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().well);
+        c.SetBorderLeft(3, L().accent);
+    });
     parts.notes->SetPadding(10, 12, 10, 12);
     parts.page->AddChild(parts.notes);
     return parts;
 }
 
 void AddNote(PageParts& parts, const std::string& id, const std::string& text) {
-    parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize, L().inkMuted));
+    parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize, &Look::inkMuted));
 }
 
 // A caption inside the body, introducing a second group of controls.
@@ -236,18 +233,22 @@ void AddBodyCaption(PageParts& parts, const std::string& id, const std::string& 
 std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& text, int width,
                                               std::function<void()> onClick, const std::string& icon = "") {
     auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 30, text);
-    ButtonStyle st = b->GetStyle();
-    st.cornerRadius = 8.0f;
-    st.fontSize = kTextFontSize;
-    st.borderWidth = 1.0f;
-    st.borderColor = L().line;
-    st.normalColor = L().panel;
-    st.hoverColor = L().hover;
-    st.pressedColor = L().pressed;
-    st.normalTextColor = st.hoverTextColor = st.pressedTextColor = L().ink;
-    st.disabledColor = L().well;
-    st.disabledTextColor = L().inkFaint;
-    b->SetStyle(st);
+    ButtonStyle shape = b->GetStyle();
+    shape.cornerRadius = 8.0f;
+    shape.fontSize = kTextFontSize;
+    shape.borderWidth = 1.0f;
+    b->SetStyle(shape);
+    OnLook(b, [](UltraCanvasButton& button) {
+        ButtonStyle st = button.GetStyle();
+        st.borderColor = L().line;
+        st.normalColor = L().panel;
+        st.hoverColor = L().hover;
+        st.pressedColor = L().pressed;
+        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = L().ink;
+        st.disabledColor = L().well;
+        st.disabledTextColor = L().inkFaint;
+        button.SetStyle(st);
+    });
     if (!icon.empty()) {
         b->SetIcon(IconPath(icon));
         b->SetIconSize(16, 16);
@@ -271,17 +272,19 @@ std::shared_ptr<UltraCanvasContainer> MakeButtonRow(const std::string& id) {
 // One choice of a radio group, in the window's text size and colours.
 std::shared_ptr<UltraCanvasRadio> MakeChoice(const std::string& id, const std::string& text, bool checked) {
     auto radio = UltraCanvasRadio::Create(id, -1, -1, text, checked);
-    RadioVisualStyle style = radio->GetVisualStyle();
-    style.base.fontSize = kTextFontSize;
-    style.base.textColor = L().ink;
-    style.base.textHoverColor = L().ink;
-    style.base.textDisabledColor = L().inkFaint;
-    style.outerColor = L().panel;
-    style.outerBorderColor = L().lineStrong;
-    style.outerHoverColor = L().hover;
-    style.outerPressedColor = L().pressed;
-    style.innerDotColor = L().accent;
-    radio->SetVisualStyle(style);
+    OnLook(radio, [](UltraCanvasRadio& r) {
+        RadioVisualStyle style = RadioVisualStyle::FromTheme(UltraCanvasTheme::Current(), r.GetVisualStyle());
+        style.base.fontSize = kTextFontSize;
+        style.base.textColor = L().ink;
+        style.base.textHoverColor = L().ink;
+        style.base.textDisabledColor = L().inkFaint;
+        style.outerColor = L().panel;
+        style.outerBorderColor = L().lineStrong;
+        style.outerHoverColor = L().hover;
+        style.outerPressedColor = L().pressed;
+        style.innerDotColor = L().accent;
+        r.SetVisualStyle(style);
+    });
     radio->size.width = CSSLayout::Dimension::Px(kTextWidth);
     radio->size.height = CSSLayout::Dimension::Px(kControlHeight);
     radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -292,11 +295,13 @@ std::shared_ptr<UltraCanvasRadio> MakeChoice(const std::string& id, const std::s
 std::shared_ptr<UltraCanvasSwitch> MakeSwitch(const std::string& id, const std::string& text, bool checked,
                                               std::function<void(bool)> onChange) {
     auto sw = UltraCanvasSwitch::Create(id, 0, 0, text, checked);
-    SwitchVisualStyle style = SwitchVisualStyle::FromTheme(UltraCanvasTheme::Current(), sw->GetVisualStyle());
-    style.base.fontSize = kTextFontSize;
-    style.base.textColor = L().ink;
-    style.base.textHoverColor = L().ink;
-    sw->SetVisualStyle(style);
+    OnLook(sw, [](UltraCanvasSwitch& toggle) {
+        SwitchVisualStyle style = SwitchVisualStyle::FromTheme(UltraCanvasTheme::Current(), toggle.GetVisualStyle());
+        style.base.fontSize = kTextFontSize;
+        style.base.textColor = L().ink;
+        style.base.textHoverColor = L().ink;
+        toggle.SetVisualStyle(style);
+    });
     sw->size.width = CSSLayout::Dimension::Px(kTextWidth);
     sw->size.height = CSSLayout::Dimension::Px(kControlHeight);
     sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -313,17 +318,21 @@ std::shared_ptr<UltraCanvasTextInput> MakeTextField(const std::string& id, const
     t->SetPlaceholder(placeholder);
     t->SetFontSize(kTextFontSize);
     t->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    TextInputStyle st = t->GetStyle();
-    st.backgroundColor = L().panel;
-    st.borderColor = L().line;
-    st.focusBorderColor = L().accent;
-    st.textColor = L().ink;
-    st.placeholderColor = L().inkFaint;
-    st.caretColor = L().ink;
-    st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
-    st.borderRadius = 8;
-    st.paddingLeft = st.paddingRight = 10;
-    t->SetStyle(st);
+    TextInputStyle shape = t->GetStyle();
+    shape.borderRadius = 8;
+    shape.paddingLeft = shape.paddingRight = 10;
+    t->SetStyle(shape);
+    OnLook(t, [](UltraCanvasTextInput& field) {
+        TextInputStyle st = field.GetStyle();
+        st.backgroundColor = L().panel;
+        st.borderColor = L().line;
+        st.focusBorderColor = L().accent;
+        st.textColor = L().ink;
+        st.placeholderColor = L().inkFaint;
+        st.caretColor = L().ink;
+        st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
+        field.SetStyle(st);
+    });
     return t;
 }
 
@@ -353,10 +362,8 @@ std::shared_ptr<UltraCanvasContainer> BuildLookPage(State* d) {
     };
 
     AddNote(parts, "cc-set-look-note1",
-            Tr("The look is chosen when ChatCube starts, since every part of the window takes its colours as "
-            "it is built: a change here, or of the computer's look under System, shows the next time "
-            "ChatCube is started. System is the computer's own light or dark mode, and the Look page of "
-            "UOS-Settings over it."));
+            Tr("A change here shows at once, in every ChatCube window. Under System, ChatCube turns light or "
+            "dark with the computer: its own light or dark mode, and the Look page of UOS-Settings over it."));
     AddNote(parts, "cc-set-look-note2",
             Tr("Started with --dark, ChatCube is dark whatever is chosen here."));
     return parts.page;
@@ -483,13 +490,15 @@ void FillAccounts(State* d) {
         block->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Start);
         block->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         block->size.width = CSSLayout::Dimension::Px(kTextWidth);
-        block->SetBackgroundColor(L().panel);
-        block->SetBorders(1.0f, L().line, 8.0f);
+        OnLook(block, [](UltraCanvasContainer& c) {
+            c.SetBackgroundColor(L().panel);
+            c.SetBorders(1.0f, L().line, 8.0f);
+        });
         block->SetPadding(8, 12, 8, 12);
         auto name = MakeLabel(id + "-name", account.name, 11.0f);
         name->SetFontWeight(FontWeight::Bold);
         block->AddChild(name);
-        block->AddChild(MakeText(id + "-state", account.state, kTextWidth - 26, kTextFontSize, L().inkMuted));
+        block->AddChild(MakeText(id + "-state", account.state, kTextWidth - 26, kTextFontSize, &Look::inkMuted));
         if (account.providerId == "direct") {
             const std::string myId = d->hooks->myId ? d->hooks->myId() : std::string();
             if (!myId.empty()) {
@@ -623,7 +632,7 @@ std::shared_ptr<UltraCanvasContainer> BuildDataFolderPage(State* d) {
         if (d->window) d->window->RequestRedraw();
     }, "copy"));
     parts.body->AddChild(row);
-    d->dataStatus = MakeText("cc-set-data-status", "", kTextWidth, kTextFontSize, L().inkMuted);
+    d->dataStatus = MakeText("cc-set-data-status", "", kTextWidth, kTextFontSize, &Look::inkMuted);
     parts.body->AddChild(d->dataStatus);
 
     const std::string settingsFile = Settings::File();
@@ -664,7 +673,7 @@ std::shared_ptr<UltraCanvasContainer> BuildAboutPage(State* d) {
     auto name = MakeLabel("cc-set-about-name", "ChatCube " + d->version, 13.0f);
     name->SetFontWeight(FontWeight::Bold);
     column->AddChild(name);
-    column->AddChild(MakeLabel("cc-set-about-line", "UltraCanvas Framework / ULTRA OS", kTextFontSize, L().inkMuted));
+    column->AddChild(MakeLabel("cc-set-about-line", "UltraCanvas Framework / ULTRA OS", kTextFontSize, &Look::inkMuted));
     row->AddChild(column);
     parts.body->AddChild(row);
 
@@ -740,7 +749,10 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
         return;
     }
     d->window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    d->window->SetBackgroundColor(L().ground);
+    OnLook(d->window, [](UltraCanvasWindow& w) {
+        w.SetBackgroundColor(L().ground);
+        w.RequestRedraw();
+    });
 
     // ----- the tree of pages | the page -----
     auto content = std::make_shared<UltraCanvasContainer>("cc-set-content");
@@ -748,18 +760,23 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     content->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     d->tree = std::make_shared<UltraCanvasTreeView>("cc-set-tree");
-    d->tree->SetFontSize(kTreeFontSize);
     d->tree->SetRowHeight(26);
     d->tree->SetSelectionMode(TreeSelectionMode::Single);
     d->tree->SetLineStyle(TreeLineStyle::NoLine);
-    d->tree->SetBackgroundColor(L().sidebar);
-    d->tree->SetTextColor(L().ink);
-    d->tree->SetSelectionColor(L().accentSoft);
-    d->tree->SetHoverColor(L().hover);
-    // The +/- boxes of UltraFiler's tree, in the look's colours.
-    d->tree->SetExpandButtonColors(L().well, L().lineStrong, L().inkMuted);
-    d->tree->SetFocusRingColor(L().accent);
-    d->tree->SetBorderRight(1, L().line);
+    // The tree follows the theme (its scroll bar, the expanders) and is
+    // given ChatCube's colours and size over it, now and after every change.
+    OnLook(d->tree, [](UltraCanvasTreeView& tree) {
+        tree.SetFontSize(kTreeFontSize);
+        tree.SetSelectionTextColor(L().ink);
+        tree.SetBackgroundColor(L().sidebar);
+        tree.SetTextColor(L().ink);
+        tree.SetSelectionColor(L().accentSoft);
+        tree.SetHoverColor(L().hover);
+        // The +/- boxes of UltraFiler's tree, in the look's colours.
+        tree.SetExpandButtonColors(L().well, L().lineStrong, L().inkMuted);
+        tree.SetFocusRingColor(L().accent);
+        tree.SetBorderRight(1, L().line);
+    });
     // A section has no page of its own: opening one moves on to its first page.
     d->tree->SetShowFirstChildOnExpand(true);
     d->tree->SetAutoExpandSelectedNode(true);
@@ -791,7 +808,7 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     d->pageArea = std::make_shared<UltraCanvasContainer>("cc-set-pages");
     d->pageArea->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     d->pageArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    d->pageArea->SetBackgroundColor(L().panel);
+    OnLook(d->pageArea, [](UltraCanvasContainer& c) { c.SetBackgroundColor(L().panel); });
     content->AddChild(d->pageArea);
 
     AddPage(d, kPageLook, BuildLookPage(d));
@@ -812,8 +829,10 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     bottom->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     bottom->SetPadding(8, 12, 8, 12);
-    bottom->SetBackgroundColor(L().ground);
-    bottom->SetBorderTop(1, L().line);
+    OnLook(bottom, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().ground);
+        c.SetBorderTop(1, L().line);
+    });
     // The left part takes the room Close leaves, so Close keeps its place
     // whether or not the page has defaults to restore.
     auto bottomLeft = std::make_shared<UltraCanvasContainer>("cc-set-bottom-left");

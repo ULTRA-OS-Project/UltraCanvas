@@ -94,6 +94,7 @@ void AnchorTo(const std::shared_ptr<UltraCanvasUIElement>& anchor,
               BadgeCorner corner = BadgeCorner::TopRight,
               float offsetX = 0.0f, float offsetY = 0.0f);
 void SetOverlayRing(bool);             // white separator ring (default on when anchored)
+void SetGrowInward(bool);              // a wide pill grows away from its corner (default off)
 
 std::function<void()> onClick;
 ```
@@ -152,6 +153,17 @@ count->SetFollowTheme(true);
   high z-index so it draws above the anchor. It sizes itself to its content and
   re-positions to the chosen corner each frame — so it tracks a moving or
   resizing anchor.
+- **Grow inward.** An anchored badge is centred on its corner, so a long
+  text sticks out past the anchor's edge by half its extra width. With
+  `SetGrowInward(true)` a pill wider than it is tall keeps the outer edge a
+  round badge would have and grows towards the anchor's middle - what a
+  badge on a bar at the edge of the screen needs, where "100" would
+  otherwise be cut off:
+
+  ```cpp
+  auto pill = toolbar->SetItemBadge("battery", "100", Colors::Green);
+  if (pill) pill->SetGrowInward(true);
+  ```
 - The badge publishes its content size to the CSS layout engine
   (`MeasureOwnContent` / `ComputeIntrinsicSizes`), so it also works as an
   auto-sized child of flex/grid containers; see `Docs/CSSLayout.md`.

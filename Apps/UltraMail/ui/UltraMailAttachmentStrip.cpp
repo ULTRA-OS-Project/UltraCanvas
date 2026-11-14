@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAttachmentStrip.cpp
+// Version: 0.5.0 - a chip's card and paperclip follow the look (the clip in the secondary ink)
 // Version: 0.4.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.3.1 - the chip's menu is anchored to the chip (OpenMenuAnchored): below
 //                  it, or above it at the foot of the window, ending just over it;
@@ -8,7 +9,7 @@
 //                  drew as a box; a click opens the chip's menu under it, a
 //                  double-click still opens the attachment
 // Version: 0.2.1 - the strip is hidden while the message has no attachments
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-14
 // V0.2.0: chips are themed cards
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAttachmentStrip.h"
@@ -57,11 +58,10 @@ AttachmentChip::AttachmentChip(const std::string& id, float x, float y, float w,
                                std::function<void()> onSaveAs)
     : UltraCanvasContainer(id, x, y, w, h),
       onOpen_(std::move(onOpen)), onSaveAs_(std::move(onSaveAs)) {
-    // A small white card with the paperclip, the name and the size.
+    // A small card with the paperclip, the name and the size (its colours
+    // are set, and follow the look, where the strip makes it).
     SetShowVerticalScrollbar(false);
     SetShowHorizontalScrollbar(false);
-    SetBackgroundColor(Theme::CardBackground());
-    SetBorders(1.0f, Theme::CardBorder(), 8.0f);
     // It is clicked, like a button.
     SetMouseCursor(UCMouseCursor::Hand);
 
@@ -75,19 +75,19 @@ AttachmentChip::AttachmentChip(const std::string& id, float x, float y, float w,
     // The paperclip the message list marks mail with attachments with. A
     // type emoji used to stand here, and a font without colour emoji (the
     // usual case on Linux and Windows) drew it as a box of lines.
-    auto clip = CreateImageElement(id + ".clip", 9, (h - kIcon) / 2, kIcon, kIcon);
-    clip->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/paperclip.svg"));
-    clip->SetInteractive(false);
+    auto clip = Theme::MakeIconGlyph(id + ".clip", NormalizePath(GetResourcesDir() + "media/icons/paperclip.svg"),
+                                     static_cast<float>(kIcon), Theme::TextSecondary,
+                                     9.0f, (h - kIcon) / 2);
     AddChild(clip);
 
     auto nameLabel = CreateLabel(id + ".name", 32, 3, w - 38, 14, name);
     nameLabel->SetFontSize(Theme::SizeBody());
-    nameLabel->SetTextColor(Theme::TextPrimary());
+    Theme::SetInk(nameLabel, Theme::TextPrimary);
     nameLabel->SetInteractive(false);
     AddChild(nameLabel);
     auto sizeLabel = CreateLabel(id + ".size", 32, 17, w - 38, 13, HumanSize(att.Size()));
     sizeLabel->SetFontSize(Theme::SizeSmall());
-    sizeLabel->SetTextColor(Theme::TextMuted());
+    Theme::SetInk(sizeLabel, Theme::TextMuted);
     sizeLabel->SetInteractive(false);
     AddChild(sizeLabel);
 }
@@ -203,6 +203,7 @@ void AttachmentStrip::SetAttachments(std::vector<Attachment> attachments) {
         auto chip = std::make_shared<AttachmentChip>(
             "att_" + std::to_string(i), x, y, kChipW, kChipH,
             (*attachments_)[i], std::move(openCb), std::move(saveCb));
+        Theme::ApplyCard(chip, 8.0f);
         strip_->AddChild(chip);
         if (vertical_) y += kChipH + kGap;
         else           x += kChipW + kGap;

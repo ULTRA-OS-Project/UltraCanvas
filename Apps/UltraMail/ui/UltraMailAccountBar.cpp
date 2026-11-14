@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
+// Version: 0.9.0 - the tiles, counters and filter card follow a change of the look (Theme::Follow)
 // Version: 0.8.1 - the counters keep their colours: CounterTint / CounterText return the colour, not a reference to the temporary the theme function returned
 // Version: 0.8.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.7.0 - the counters are click targets of their own that filter the
@@ -16,7 +17,7 @@
 //                  page: initial in a tinted avatar square, local part as the
 //                  name, and the three counters as tinted count · caption
 //                  pills instead of saturated badges.
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountBar.h"
 
@@ -72,7 +73,7 @@ public:
 std::shared_ptr<UltraCanvasLabel> MakeName(const std::string& id, const std::string& email,
                                            float size) {
     // The local part only; the full address is one hover away.
-    auto name = Theme::MakeText(id, EmailLocalPart(email), size, Theme::TextPrimary(),
+    auto name = Theme::MakeText(id, EmailLocalPart(email), size, Theme::TextPrimary,
                                 FontWeight::Bold);
     name->SetTooltip(email);
     return name;
@@ -134,18 +135,18 @@ void AccountBar::BuildFilterRow() {
     CSSLayout::BoxConstraints limits;
     limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
     filterCard_->boxConstraints = limits;
-    filterCard_->SetBackgroundColor(Theme::CardBackground());
-    filterCard_->SetBorders(1.0f, Theme::CardBorder(), Theme::kCardRadius);
+    Theme::SetFill(filterCard_, Theme::CardBackground);
+    Theme::SetFrame(filterCard_, 1.0f, Theme::CardBorder, Theme::kCardRadius);
     filterCard_->SetPadding(10, 14);
     filterCard_->layout.SetFlexRow()
                        .SetFlexGap(14)
                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto what = CreateContainer("acctFilterWhat", 0, 0, 0, 0);
     what->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    filterTitle_ = Theme::MakeText("acctFilterTitle", "", Theme::SizeBody(), Theme::TextPrimary(),
+    filterTitle_ = Theme::MakeText("acctFilterTitle", "", Theme::SizeBody(), Theme::TextPrimary,
                                    FontWeight::Bold);
     filterAccount_ = Theme::MakeText("acctFilterAccount", "", Theme::SizeSmall(),
-                                     Theme::TextSecondary());
+                                     Theme::TextSecondary);
     what->AddChild(filterTitle_);
     what->AddChild(filterAccount_);
     filterCard_->AddChild(what);
@@ -195,7 +196,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::MakeCounter(const std::string&
         const std::string account = acc;   // a copy: see the tiles' handler
         if (onFilterAccount) onFilterAccount(account, kind);
     });
-    pill->SetBackgroundColor(CounterTint(kind));
+    Theme::Follow(pill, "fill", [kind](UltraCanvasContainer& p) { p.SetBackgroundColor(CounterTint(kind)); });
     pill->SetBorders(0.0f, Colors::Transparent, height * 0.5f);
     pill->SetPadding(0, 12);
     pill->layout.SetFlexRow()
@@ -204,11 +205,16 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::MakeCounter(const std::string&
     CSSLayout::BoxConstraints tall;
     tall.minHeight = tall.maxHeight = CSSLayout::Dimension::Px(height);
     pill->boxConstraints = tall;
-    pill->AddChild(Theme::MakeText(id + acc + ".n", std::to_string(count), kCountSize,
-                                   CounterText(kind), FontWeight::Bold));
-    if (!caption.empty())
-        pill->AddChild(Theme::MakeText(id + acc + ".c", caption, Theme::SizeSecondary(),
-                                       CounterText(kind)));
+    auto inkOfKind = [kind](UltraCanvasLabel& l) { l.SetTextColor(CounterText(kind)); };
+    auto number = Theme::MakeText(id + acc + ".n", std::to_string(count), kCountSize,
+                                  CounterText(kind), FontWeight::Bold);
+    Theme::Follow(number, "ink", inkOfKind);
+    pill->AddChild(number);
+    if (!caption.empty()) {
+        auto words = Theme::MakeText(id + acc + ".c", caption, Theme::SizeSecondary(), CounterText(kind));
+        Theme::Follow(words, "ink", inkOfKind);
+        pill->AddChild(words);
+    }
     pill->PassPointerThroughContent();
     // "Unread" counts the unread mail from before today (today's is the
     // first counter), but a click shows all of it, today's too.
@@ -229,8 +235,10 @@ void AccountBar::MarkActiveCounter() {
         const bool active = filter_.Active() && key.first == filterAccountId_ &&
                             key.second == filter_.kind;
         const float radius = pill->GetHeight() > 0 ? pill->GetHeight() * 0.5f : kTilePill * 0.5f;
-        pill->SetBorders(active ? 1.5f : 0.0f,
-                         active ? CounterText(key.second) : Colors::Transparent, radius);
+        const MessageFilterKind kind = key.second;
+        Theme::Follow(pill, "frame", [active, kind, radius](UltraCanvasContainer& p) {
+            p.SetBorders(active ? 1.5f : 0.0f, active ? CounterText(kind) : Colors::Transparent, radius);
+        });
         pill->RequestRedraw();
     }
 }
@@ -309,7 +317,7 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     who->AddChild(MakeName("acctName_" + acc, account.email, Theme::SizeHeading()));
     auto domain = Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
-                                  Theme::SizeSecondary(), Theme::TextSecondary());
+                                  Theme::SizeSecondary(), Theme::TextSecondary);
     domain->SetTooltip(account.email);
     who->AddChild(domain);
     card->AddChild(who);
@@ -377,9 +385,7 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         CSSLayout::BoxConstraints limits;
         limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
         tile->boxConstraints = limits;
-        tile->SetBackgroundColor(selected ? Theme::AccentSoft() : Theme::CardBackground());
-        tile->SetBorders(selected ? 2.0f : 1.0f,
-                         selected ? Theme::Accent() : Theme::CardBorder(), Theme::kCardRadius);
+        StyleTile(tile, selected);
         tile->SetPadding(12, 14);
         tile->layout.SetFlexColumn()
                     .SetFlexGap(10)
@@ -405,7 +411,7 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         who->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         who->AddChild(MakeName("acctName_" + acc, account.email, Theme::SizeBody()));
         who->AddChild(Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
-                                      Theme::SizeSmall(), Theme::TextSecondary()));
+                                      Theme::SizeSmall(), Theme::TextSecondary));
         head->AddChild(who);
         tile->AddChild(head);
 
@@ -432,12 +438,20 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
     }
 }
 
+// A tile's face: the accent's soft fill and a firmer accent frame when it is
+// the account shown, a card otherwise - again when the look changes.
+void AccountBar::StyleTile(const std::shared_ptr<UltraCanvasContainer>& tile, bool selected) {
+    Theme::Follow(tile, "card", [selected](UltraCanvasContainer& t) {
+        t.SetBackgroundColor(selected ? Theme::AccentSoft() : Theme::CardBackground());
+        t.SetBorders(selected ? 2.0f : 1.0f, selected ? Theme::Accent() : Theme::CardBorder(),
+                     Theme::kCardRadius);
+    });
+}
+
 void AccountBar::SetSelected(const std::string& accountId) {
     for (const auto& [acc, tile] : tiles_) {
         const bool selected = (acc == accountId);
-        tile->SetBackgroundColor(selected ? Theme::AccentSoft() : Theme::CardBackground());
-        tile->SetBorders(selected ? 2.0f : 1.0f,
-                         selected ? Theme::Accent() : Theme::CardBorder(), Theme::kCardRadius);
+        StyleTile(tile, selected);
         tile->RequestRedraw();
     }
 }

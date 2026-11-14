@@ -289,7 +289,6 @@
   "The key that sends what is typed in the message field:": "แป้นที่ใช้ส่งสิ่งที่พิมพ์ในช่องข้อความ:",
   "The key to your ChatCube ID is encrypted with your password, so without it nobody can read the key - not even from a copy of the files. ChatCube asks for it at every start. Keep it safe: nobody can recover it for you.": "คีย์ของ ChatCube ID ของคุณถูกเข้ารหัสด้วยรหัสผ่าน ดังนั้นหากไม่มีรหัสผ่าน จะไม่มีใครอ่านคีย์ได้ - แม้จากสำเนาของไฟล์ ChatCube จะถามรหัสผ่านทุกครั้งที่เริ่มโปรแกรม เก็บรักษาให้ปลอดภัย: ไม่มีใครกู้คืนให้คุณได้",
   "the local network": "เครือข่ายในพื้นที่",
-  "The look is chosen when ChatCube starts, since every part of the window takes its colours as it is built: a change here, or of the computer's look under System, shows the next time ChatCube is started. System is the computer's own light or dark mode, and the Look page of UOS-Settings over it.": "รูปลักษณ์จะถูกเลือกเมื่อ ChatCube เริ่มทำงาน เนื่องจากทุกส่วนของหน้าต่างรับสีขณะถูกสร้าง: การเปลี่ยนแปลงที่นี่ หรือการเปลี่ยนรูปลักษณ์ของคอมพิวเตอร์ภายใต้ ระบบ จะแสดงเมื่อเริ่ม ChatCube ครั้งถัดไป ระบบ คือโหมดสว่างหรือมืดของคอมพิวเตอร์เอง โดยมีหน้า รูปลักษณ์ ของ UOS-Settings อยู่เหนือกว่า",
   "The Matrix module was not found (Plugins/UltraIM).": "ไม่พบโมดูล Matrix (Plugins/UltraIM)",
   "The networks ChatCube talks through, and where each stands:": "เครือข่ายที่ ChatCube ใช้สื่อสาร และสถานะของแต่ละเครือข่าย:",
   "The password could not be set: {0} - set it in Edit profile.": "ไม่สามารถตั้งรหัสผ่านได้: {0} - ตั้งค่าใน แก้ไขโปรไฟล์",

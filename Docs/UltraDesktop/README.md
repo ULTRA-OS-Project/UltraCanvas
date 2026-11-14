@@ -86,10 +86,12 @@ organiser.
      capture (`ext-image-copy-capture-v1`) gives no picture: the tile shows
      the application's icon.
 
-   Drag a button to reorder; when the group is full it scrolls with the
-   mouse wheel. New applications join at the end.
-3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
-   by default, in the file manager), *UltraFiler*, and the applications the
+   Drag a button to reorder. When the buttons no longer fit, they first
+   move closer together, then get a smaller highlight around the same
+   icon; when the group is full even so it scrolls with the mouse wheel. New applications join at the end.
+3. **Pinned** — the *RAM disc* (UltraFiler shows its RAM disc, or opens the
+   *New RAM disc* dialog when there is none - `UltraFiler --ram-disc`; a
+   folder set in the settings opens instead), *UltraFiler*, and the applications the
    user pinned - from a running window's menu or a tile's in the
    Applications window - each with its own icon, one click to start, and
    *Unpin from taskbar* on its right-click menu. The pins are kept in the
@@ -170,7 +172,10 @@ the right-hand monitor the primary.
   copies, as before.
 - **Info panel**, anchored to the bottom: Email, Notifications, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
-  Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
+  Loudspeaker, Battery and Task Manager, then the tray icons. Each can be
+  switched off: *Hide this icon* on the info panel's right-click menu, or
+  UOS-Settings > Desktop > Info bar, which *Info bar icons...* on the same
+  menu opens (`hiddenInfoItems` in `desktop.json`). On a screen less than 960 pixels
   high the icons are smaller, and those that still do not fit fold into a
   chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
   upload, Task Manager, download, LAN, email, notifications - so the webcam's and
@@ -181,7 +186,17 @@ the right-hand monitor the primary.
   | red dot | a device is on, or a link is down | webcam in use, microphone recording, Bluetooth powered; Internet/LAN with no link, Wi-Fi present but not joined |
   | green dot | a link is up | Wi-Fi joined |
   | yellow dot | activity | download or upload traffic (more than 4 KB in two seconds), loudspeaker playing, VPN up |
-  | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
+  | grey pill | a count or a value | Email unread (from UltraMail), notifications unread (from UltraNotifications, while it runs), USB devices attached, battery percentage (green while charging, red below 25 %), keyboard layout - a wide pill grows inward, so "100" stays on the screen |
+
+  The battery's icon itself shows the charge, read every 2 seconds: its
+  fill is as long as the battery is full, to the pixel (10 pixels, one per
+  10 %; complete only at 100 %, at least one while any charge is left),
+  drawn on the icon's own pixel grid so it stays sharp. Full: green inside
+  the white outline. Charging: green with a white bolt. Below 25 % on
+  battery: red.
+  The percentage badge can be switched off - *Show the percentage* on the
+  battery's right-click menu, or UOS-Settings > Desktop > Battery
+  (`batteryPercent` in `desktop.json`); the tooltip still says it.
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
@@ -243,7 +258,9 @@ the right-hand monitor the primary.
 
 ### Theme and context menus
 
-The bars come in two themes, kept as `theme` in the settings: **dark**
+The bars come in two themes, and which one shows is the **system look**
+that every ULTRA OS application follows (`look` in Appearance.conf,
+UOS-Settings > Appearance > Look, or the host's when it says *system*): **dark**
 (light icons on dark grey, the running applications and the organiser
 carved in near black, the clock white on black - the default) and
 **light** (dark icons on light grey, the carved-in groups near white, the
@@ -252,11 +269,16 @@ The panels the bars open follow the theme - the clock, loudspeaker, Wi-Fi,
 Bluetooth, device and clipboard panels and the window pictures
 (`UltraDesktopPanelTheme`): dark grey with light text, or near white with
 dark text. A panel open when the theme changes closes, and opens in the new
-colours.
+colours. The *Theme* menus offer *Dark*, *Light* and *As the system* and
+write that look, so every application turns with the bars; a look changed
+in UOS-Settings or by the host turns the bars within a second. A desktop
+set up before this keeps its colours: its own earlier choice was written to
+Appearance.conf once (`lookMigrated`), unless a look was chosen there
+already.
 
 - **The wallpaper** (right click): *Change wallpaper...* (an Open dialog
   with every picture type this build reads, through FileLoader), *Default
-  wallpaper* (when another is set), *Theme* (*Dark*, *Light*), *Taskbar
+  wallpaper* (when another is set), *Theme* (*Dark*, *Light*, *As the system*), *Taskbar
   position* (*on the left*, *at the top*, *at the bottom*), *Drop files*
   (*Drop on sticker board*, *Drop on desktop*; below), *Arrange icons* (with
   the desktop icons), *Notes on the wallpaper*, *Display settings...* and *Desktop settings...* (UOS-Settings).
@@ -476,12 +498,14 @@ earlier versions kept under `~/.config` is moved on the first start):
 {
   "taskbarEdge": "left",
   "wallpaper": "",
-  "ramDiscPath": "/dev/shm",
+  "ramDiscPath": "ultrafiler",
   "filerProgram": "UltraFiler",
   "virtualDesktops": 3,
   "clockStyle": "analog-date",
   "theme": "dark",
   "dropFilesOn": "board",
+  "batteryPercent": true,
+  "hiddenInfoItems": [ "vpn" ],
   "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
@@ -496,8 +520,10 @@ earlier versions kept under `~/.config` is moved on the first start):
 An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
 (the framework's `media/images/landscape.jpg` where a package lacks it or
 cannot read AVIF). An
-empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
-RAM disc of its own, that is the default.
+empty `ramDiscPath` leaves the RAM disc button out; `"ultrafiler"`, the
+default, asks UltraFiler for its RAM disc (with another `filerProgram` the
+button just opens it), and a folder opens that folder. A file holding the
+earlier default, `/dev/shm`, is read as `"ultrafiler"`.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
@@ -510,7 +536,9 @@ applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
 `dropFilesOn` is `board` (the default) or `desktop`; `desktopIcons` keeps the
 desktop icons' places in the work area by name, and forgets one whose entry
-has gone. `theme` is `dark` (the default) or `light`; `clockStyle` one of
+has gone. `theme` records what the bars show, `dark` or `light` - the look
+itself is Appearance.conf's, and `lookMigrated` says the desktop's earlier
+choice was handed to it; `clockStyle` one of
 `analog-date` (the default), `analog`, `digital-date`, `digital` and
 `digital-seconds`.
 `startWithDesktop` names the programs started with the desktop - `ChatCube`
@@ -659,7 +687,7 @@ same.
 | Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
 | Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
 | Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
-| RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
+| RAM disc | UltraFiler's RAM disc - an ImDisk drive, or a folder in `%TEMP%` without ImDisk, which UltraFiler's dialog says |
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |

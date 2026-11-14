@@ -70,6 +70,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.2 - the look follows a change while ChatCube runs: the desktop turning dark or light
+//                  under System, or the Settings window's Look page, re-colours every window at once
 // Version: 0.3.1 - a right-click on a conversation in the list opens its menu: open it, mark it read or
 //                  unread, pin it to the top, call, copy the ID, delete the chat; for a group its
 //                  members (each with their own menu), add members, rename and leave it
@@ -95,7 +97,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -293,6 +295,11 @@ private:
     // The settings as they are now, onto the window: the send key's words,
     // the nearby list, the typing line, the times and dates in the lists.
     void ApplySettings();
+    // The theme changed (the desktop's look, the Settings window's Look
+    // page): every colour set by hand set again (RestyleForLook), the
+    // header's avatar and the lists painted in the new look.
+    void ApplyLook();
+    int themeHandler_ = 0;
     // Every network and where it stands, for the Settings window's Accounts page.
     std::vector<ChatCubeSettingsWindow::Account> Accounts() const;
     // Out of Matrix or Telegram: its conversations leave the list.

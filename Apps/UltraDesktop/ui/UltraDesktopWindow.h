@@ -147,12 +147,16 @@ public:
     // The ULTRA OS settings button: starts UOS-Settings, the system's settings
     // application, where the desktop has its page (taskbar edge, wallpaper,
     // RAM disc, file manager, virtual desktops).
-    void OpenSystemSettings();
+    // `page`: the UOS-Settings page to open on ("desktop/info-bar").
+    void OpenSystemSettings(const std::string& page = std::string());
     void OpenAppStarter();
     // An application was started from the Apps window or a taskbar pin:
     // first in the Apps window's Recent (DesktopSettings::recentApps).
     void NoteAppStarted(const UltraCanvas::UCDesktopEntry& entry);
     void OpenTasks();
+    // The RAM disc button: UltraFiler shows its RAM disc, or opens the New
+    // RAM disc dialog when there is none (DesktopSettings::ramDiscPath is
+    // kRamDiscFromFiler); a folder set in the settings is opened instead.
     void OpenRamDisc();
     void OpenFiler(const std::string& path = "");
     void TakeScreenshot();
@@ -228,6 +232,8 @@ public:
     void SaveSettings();
 
 private:
+    // Starts the file manager (DesktopSettings::filerProgram) with these arguments.
+    void LaunchFiler(const std::vector<std::string>& arguments);
     // ===== CONSTRUCTION =====
     void BuildLayout();
     void LayoutForSize(float width, float height);
@@ -247,7 +253,11 @@ private:
     void ShowBarMenu(int windowX, int windowY);
     void InstallBarMenu(const std::shared_ptr<UltraCanvas::UltraCanvasToolbar>& group);
     void SetTaskbarEdge(TaskbarEdge edge);
-    void SetTheme(const std::string& theme);
+    // The look of every application ("dark", "light", "system"), written to
+    // Appearance.conf; FollowLook rebuilds the bars when the look in force
+    // changes, wherever it was changed.
+    void SetTheme(const std::string& look);
+    void FollowLook();
     // A picture for the wallpaper, through FileLoader's Open dialog.
     void ChooseWallpaper();
     void SetWallpaper(const std::string& path);   // "" = the default picture
@@ -290,7 +300,27 @@ private:
     // ===== LIVE DATA =====
     void OnTimer();
     void RefreshWindows();
+    // Running applications that do not fit the bar at the usual spacing move
+    // closer together, and when that is not enough get a smaller highlight
+    // around their icons; back to normal once they fit again.
+    void FitRunningButtons();
     void RefreshDesktops();
+    // The battery's icon: its level as a fill, a bolt while charging, green
+    // while charging and red below 25 %; only redrawn when that changes.
+    void UpdateBatteryIcon(const UltraCanvas::DesktopDeviceActivity& now);
+    // The battery's icon, badge (unless switched off) and tooltip.
+    void ApplyBattery(const UltraCanvas::DesktopDeviceActivity& now);
+    // The battery's right-click menu: the percentage badge on or off, and
+    // the battery panel. SetBatteryPercentShown saves the choice and shows
+    // it at once (DesktopSettings::batteryPercent).
+    void ShowBatteryMenu(int windowX, int windowY);
+    // A right click on the info panel: "Hide this icon" over a service's
+    // icon, "Info bar icons..." (UOS-Settings' page), the theme.
+    void ShowInfoBarMenu(int windowX, int windowY, const std::string& itemId);
+    void AddInfoBarItems(UltraCanvas::UltraCanvasMenu& menu, const std::string& itemId);
+    // Switches one of the info panel's icons on or off, saves, rebuilds the bars.
+    void SetInfoItemShown(const std::string& id, bool shown);
+    void SetBatteryPercentShown(bool shown);
     void ApplyDeviceActivity(const UltraCanvas::DesktopDeviceActivity& now,
                              const UltraCanvas::DesktopDeviceActivity& before, bool haveBefore);
     void ApplyNotices();
@@ -473,6 +503,12 @@ private:
         bool active = false;     // one of them has the focus
     };
     std::map<std::string, RunningGroup> runningGroups_;
+    // How tightly the running applications are packed (FitRunningButtons):
+    // 0 as usual, 1 closer together, 2 also in a smaller highlight.
+    int runningDensity_ = 0;
+    int lookHandler_ = 0;   // UltraCanvasTheme::AddChangeHandler's id (FollowLook)
+    // What the battery's icon was last made for (UpdateBatteryIcon).
+    std::string batteryIconKey_;
     std::map<uint64_t, std::string> runningTitles_;
     uint64_t nextRunningItem_ = 0;
     std::shared_ptr<UltraDesktopWindowPreviews> previews_;

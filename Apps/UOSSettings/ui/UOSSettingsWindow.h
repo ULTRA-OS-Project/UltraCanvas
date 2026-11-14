@@ -87,6 +87,9 @@ public:
 
     bool Create();
     void Show();
+    // Shows the page `pageId` ("desktop/info-bar") - `UOS-Settings --page`,
+    // also when a later start hands it over. An unknown id is ignored.
+    void ShowSettingsPage(const std::string& pageId);
 
     // The window was closed.
 
@@ -98,6 +101,11 @@ private:
     // the sticky notes in it are UltraDesktop's).
     void SaveDesktopPage();
     void BrowseWallpaper();
+    // Desktop > Info bar: a tick box per icon of the desktop's info panel
+    // (DesktopSettings::InfoItems), written to the desktop's settings file.
+    void BuildInfoBarPage();
+    void RefreshInfoBarPage();
+    void SaveInfoBarPage();
     // On Windows, what the sign-in starts: the Windows desktop (the way
     // back: a desktop the sign-in started closes), UltraDesktop beside
     // Explorer (switched over and started now), or UltraDesktop instead of
@@ -141,6 +149,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> edge_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> theme_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> dropFiles_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> battery_;   // the percentage badge or the icon only
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> wallpaper_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> ramDisc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filer_;
@@ -155,6 +164,9 @@ private:
     // "Start with the desktop": one per DesktopSettings::StartupPrograms(),
     // with the program's name.
     std::vector<std::pair<std::string, std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>>> startup_;
+    // Desktop > Info bar: one per DesktopSettings::InfoItems(), by its id.
+    std::vector<std::pair<std::string, std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>>> infoItems_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> infoBarStatus_;
 
     // ----- Last used folder -----
     // One table row per application. Rows are made once and then updated in

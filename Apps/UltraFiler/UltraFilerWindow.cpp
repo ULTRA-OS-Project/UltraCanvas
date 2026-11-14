@@ -65,6 +65,11 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.45.1 - the drive rows of the folder tree keep a dark tint under a dark theme while
+//                  their colour is the default (a light blue band before), again on a theme change;
+//                  the path bars take the theme's colours (a light grey strip before) and follow it;
+//                  the tool buttons name every state's colour (a disabled Back was a light grey block);
+//                  the selected tree row's text by contrast with its background (dark on blue in dark)
 // Version: 1.45.0 - the look is the theme's (UltraFilerLook.h): every colour set by hand is a role, ApplyLook on a theme change
 // Version: 1.44.0 - a file on a drive with no preview is fetched and opened in its
 //                  program (OpenRemoteFile); programs and launchers are refused
@@ -364,7 +369,8 @@ namespace {
     // The colour of the used slice: green while there is room, amber when it
     // is getting tight, red when the volume is nearly full - so the chart
     // answers "should I care?" before its number is read. The free slice is
-    // always the same light grey.
+    // the theme's line colour (FilerLook::freeSlice); these three read on
+    // a light and a dark ground alike.
     Color VolumeUsedColor(double usedPercent) {
         if (usedPercent >= 90.0) return Color(198, 60, 60, 255);
         if (usedPercent >= 75.0) return Color(214, 152, 46, 255);
@@ -399,15 +405,17 @@ namespace {
     // Flat command-bar button (Windows 11 style): quiet until hovered. The
     // icon is drawn as a mask in the text colour, so it follows the ink.
     void ApplyToolLook(UltraCanvasButton& b, const FilerLook& look) {
-        b.SetColors(look.button, look.hover);
-        b.SetTextColors(look.ink);
+        // Every state named: the two-colour forms derive pressed and
+        // disabled by darkening and lightening, which suits only a light look
+        b.SetColors(look.button, look.hover, look.pressed, look.panel);
+        b.SetTextColors(look.ink, look.ink, look.ink, look.inkFaint);
         b.SetBorder(1.0f, look.border);
     }
     // A round icon button floating over a pane: the panel surface, the
     // soft accent under the pointer, a light border so it stays legible
     // over whatever it overlays.
     void ApplyFloatingLook(UltraCanvasButton& b, const FilerLook& look) {
-        b.SetColors(look.panel, look.active);
+        b.SetColors(look.panel, look.active, look.pressed, look.panel);
         b.SetBorder(1.0f, look.border);
     }
     // A toggle-style tool button. On: the soft accent that stays under the
@@ -415,7 +423,8 @@ namespace {
     // click that turned it on - with the accent outline; off: the row's
     // own ground, tinted only under the pointer.
     void ApplyToggleLook(UltraCanvasButton& b, bool active, const FilerLook& look) {
-        b.SetColors(active ? look.active : look.ground, active ? look.activeHover : look.hover);
+        b.SetColors(active ? look.active : look.ground, active ? look.activeHover : look.hover,
+                    look.pressed, look.ground);
         b.SetBorder(active ? 1.0f : 0.0f, active ? look.activeBorder : Colors::Transparent);
     }
     // Every remembered button and row styled again from `look`.
@@ -954,7 +963,9 @@ namespace {
     void StyleFlatToolButton(const std::shared_ptr<UltraCanvasButton>& b) { StyleToggleButton(b, false); }
 
     BreadcrumbStyle MakePathBreadcrumbStyle() {
-        BreadcrumbStyle s = BreadcrumbStyle::Arrow();
+        // The arrow shape with the theme's colours (Arrow() alone is the
+        // light look); the bar follows the theme from there (SetFollowTheme)
+        BreadcrumbStyle s = BreadcrumbStyle::FromTheme(UltraCanvasTheme::Current(), BreadcrumbStyle::Arrow());
         s.overflowMode = BreadcrumbOverflowMode::Collapse;
         s.keepFirstItemOnCollapse = true;
         s.minVisibleAfterCollapse = 2;
@@ -1628,6 +1639,7 @@ void UltraFilerWindow::ApplyLook() {
     if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
     if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
     if (statusProgress) statusProgress->SetGaugeColor(look.accent);
+    ApplyTreeColors();   // the default drive rows have a light and a dark tint
     if (computerPane) computerPane->SetBackgroundColor(look.panel);
     ApplyTabStripStyle();   // the strips' colours are the theme's
     if (splitViewShown) StyleSplitHeaders();
@@ -2759,6 +2771,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
     breadcrumb->SetStyle(MakePathBreadcrumbStyle());
+    breadcrumb->SetFollowTheme(true);
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
@@ -2911,6 +2924,10 @@ void UltraFilerWindow::StartRamDiskProbe() {
                 ramDiskAvailable = available;
                 UpdateAddDriveButton();
                 ApplyRamDiskList(discs);
+                if (ramDiskOpenPending) {
+                    ramDiskOpenPending = false;
+                    OpenRamDisc();
+                }
             });
         }
         // Programs started by Extract and Run in an earlier session whose
@@ -3092,6 +3109,37 @@ void UltraFilerWindow::AddRamDisk() {
             }, window.get());
         });
     });
+}
+
+void UltraFilerWindow::OpenRamDisc() {
+    if (!window) return;
+    if (window->IsMinimized()) window->Restore();
+    window->RaiseAndFocus();
+    // The probe pays for the slow first question (see StartRamDiskProbe):
+    // until it has answered, the request waits for it.
+    if (!ramDiskProbed) {
+        ramDiskOpenPending = true;
+        return;
+    }
+    if (!ramDiskAvailable) {
+        UltraCanvasAlert::Error(Tr("This system cannot make RAM discs."), Tr("RAM disc"),
+                                nullptr, window.get());
+        return;
+    }
+    // Asked afresh: a disc made or ejected by another program since the
+    // last listing counts. Cheap once the probe has answered.
+    std::vector<UltraFilerRamDisks::RamDisc> discs;
+    try {
+        discs = UltraFilerRamDisks::List();
+    } catch (const std::exception&) {
+        discs = knownRamDiscs;
+    }
+    ApplyRamDiskList(discs);
+    if (discs.empty()) {
+        AddRamDisk();
+        return;
+    }
+    OpenFolders({discs.front().mountPath});
 }
 
 void UltraFilerWindow::RefreshRamDiskNodes() {
@@ -5729,13 +5777,31 @@ void UltraFilerWindow::RunNextNetworkJob() {
 void UltraFilerWindow::ApplyTreeColors() {
     if (!folderTree) return;
     folderTree->SetSelectionColor(settings.treeSelectedFolderColor);
+    // The selected row's text by its own background, as the drive rows'
+    // below: the theme's text on the accent is dark under a dark theme (its
+    // accent is a light blue), unreadable on the default mid blue
+    const Color& selected = settings.treeSelectedFolderColor;
+    const Color selectedDark(32, 32, 36, 255);
+    folderTree->SetSelectionTextColor(
+        UltraCanvasTheme::Contrast(selected, Colors::White) >= UltraCanvasTheme::Contrast(selected, selectedDark)
+            ? Colors::White : selectedDark);
     // A dark drive background needs light text: the drive rows are the only
     // ones painted with a user-chosen colour, and black on dark blue is
     // unreadable - as the tree's own ink would be on a light drive row under
     // a dark theme, so the text colour is chosen by the row's own
     // background, not left to the tree (Colors::Black would mean "the
     // tree's default colour", which is the theme's ink).
-    const Color& drive = settings.treeDriveBackgroundColor;
+    // The default drive colour is a light blue made for a light ground;
+    // under a dark theme it is the accent tinted into the ground instead,
+    // so the drive rows stand out as quietly as they do in light. A colour
+    // the user chose is theirs, in either look.
+    Color drive = settings.treeDriveBackgroundColor;
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+    if (theme.dark && drive == UltraFilerSettings::kDefaultTreeDriveBackgroundColor) {
+        const ThemeRoles& r = theme.roles;
+        const auto mix = [](uint8_t a, uint8_t b) { return static_cast<uint8_t>(a + (b - a) * 0.18); };
+        drive = Color(mix(r.ground.r, r.accent.r), mix(r.ground.g, r.accent.g), mix(r.ground.b, r.accent.b), 255);
+    }
     const int luminance = (drive.r * 299 + drive.g * 587 + drive.b * 114) / 1000;
     const Color driveTextColor = luminance < 128 ? Colors::White : Color(32, 32, 36, 255);
     // A connected phone is shown as the drive it is to the user, as Explorer
@@ -9451,6 +9517,7 @@ void UltraFilerWindow::BuildSplitViewPanes() {
         crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,
                                                         0, 0, 0, 28);
         crumb->SetStyle(MakePathBreadcrumbStyle());
+        crumb->SetFollowTheme(true);
         crumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
         header->AddChild(crumb);
