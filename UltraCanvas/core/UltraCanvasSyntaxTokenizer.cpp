@@ -153,6 +153,25 @@ namespace UltraCanvas {
         return false;
     }
 
+// A C# 11 raw string opening at `pos`: any number of '$' (interpolated), then
+// three or more quotes - not inside a word. `endMarker` is the same run of
+// quotes; an ordinary "" (two quotes) is an empty string, not this.
+    static bool MatchQuotedRawString(const std::string& line, size_t pos,
+                                     size_t& bodyStart, std::string& endMarker) {
+        if (pos > 0) {
+            unsigned char prev = static_cast<unsigned char>(line[pos - 1]);
+            if (std::isalnum(prev) || prev == '_' || prev == '$' || prev == '"' || prev == '@') return false;
+        }
+        size_t i = pos;
+        while (i < line.length() && line[i] == '$') i++;
+        size_t quoteStart = i;
+        while (i < line.length() && line[i] == '"') i++;
+        if (i - quoteStart < 3) return false;
+        endMarker = std::string(i - quoteStart, '"');
+        bodyStart = i;
+        return true;
+    }
+
 // A string that ends only at its own marker - a C++ raw string, a Lua long
 // bracket, a Rust raw string, a C# verbatim string - opening at `pos`, as
 // the language's rules allow. `doubledQuotes`: a doubled marker inside it
@@ -164,6 +183,7 @@ namespace UltraCanvas {
         if (rules.levelledLongBrackets && MatchLongBracket(line, pos, bodyStart, endMarker)) return true;
         if (rules.delimitedRawStrings && MatchRawStringOpen(line, pos, bodyStart, endMarker)) return true;
         if (rules.hashRawStrings && MatchHashRawString(line, pos, bodyStart, endMarker)) return true;
+        if (rules.quotedRawStrings && MatchQuotedRawString(line, pos, bodyStart, endMarker)) return true;
         if (rules.verbatimStrings && MatchVerbatimString(line, pos, bodyStart)) {
             endMarker = "\"";
             doubledQuotes = true;
@@ -242,15 +262,51 @@ namespace UltraCanvas {
 
 // Tokenize one line of a sequence, continuing what the line above left open
     std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeLine(const std::string& line, SyntaxLineState& state) const {
-        std::vector<Token> tokens;
-
         if (!currentRules || line.empty()) {
-            return tokens;
+            return {};
         }
 
         if (currentRules->isCss) {
             return TokenizeCssLine(line, state, false);
         }
+
+        // A preprocessor directive: a line whose first character is '#' -
+        // unless it starts inside a comment or string the line above left
+        // open - or the next line of one continued with a backslash. It is
+        // tokenized like code, so a string, raw string or comment in it keeps
+        // its colour and its state; everything else takes the directive's.
+        bool directive = false;
+        if (currentRules->hasPreprocessor) {
+            const bool startsClean = state.blockComment < 0 && state.blockCommentEnd.empty() &&
+                                     !state.lineComment && state.openString == 0 &&
+                                     state.openLongString < 0 && state.rawStringEnd.empty();
+            const size_t first = line.find_first_not_of(" \t");
+            directive = state.inDirective ||
+                        (startsClean && first != std::string::npos && line[first] == '#');
+        }
+
+        std::vector<Token> tokens = TokenizeCodeLine(line, state);
+
+        if (directive) {
+            for (Token& t : tokens) {
+                if (t.type != TokenType::String && t.type != TokenType::Character &&
+                    t.type != TokenType::Comment && t.type != TokenType::Whitespace) {
+                    t.type = TokenType::Preprocessor;
+                }
+            }
+            size_t backslashes = 0;
+            for (size_t i = line.length(); i > 0 && line[i - 1] == '\\'; --i) backslashes++;
+            state.inDirective = true;
+            state.directiveContinues = backslashes % 2 == 1;
+        } else {
+            state.inDirective = false;
+            state.directiveContinues = false;
+        }
+        return tokens;
+    }
+
+    std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeCodeLine(const std::string& line, SyntaxLineState& state) const {
+        std::vector<Token> tokens;
 
         size_t position = 0;
         int currentColumn = 0;
@@ -510,15 +566,6 @@ namespace UltraCanvas {
                     position = numberResult.first;
                     continue;
                 }
-            }
-
-            // Try to match preprocessor directives (only at start of line)
-            if (currentRules->hasPreprocessor && line[position] == '#' && currentColumn == 0) {
-                token.type = TokenType::Preprocessor;
-                token.length = line.length() - position;
-                token.text = line.substr(position);
-                tokens.push_back(token);
-                return tokens; // Preprocessor takes whole line
             }
 
             // Try to match operators

@@ -100,6 +100,10 @@ namespace UltraCanvas {
         //   verbatimStrings: C# verbatim strings, @"..", $@"..", @$"..": no
         //     escapes, a doubled "" stands for a quote, and they may span lines.
         bool verbatimStrings = false;
+        //   quotedRawStrings: C# 11 raw strings, three or more quotes
+        //     ("""..""", """".."""", with $ / $$ prefixes): no escapes,
+        //     and they end only at the same run of quotes, across lines.
+        bool quotedRawStrings = false;
         // Letters written directly before a string's opening quote that are
         // part of the string - Python's r"..", b"..", f"..", rb"..", C's
         // L"..", u8"..". Matched in any case. The prefix is coloured with the
@@ -244,6 +248,9 @@ namespace UltraCanvas {
         // `guess`: no state from the line above, so where the line starts
         // (inside a block, a comment) is inferred from the line itself.
         std::vector<Token> TokenizeCssLine(const std::string &line, SyntaxLineState &state, bool guess) const;
+        // Every other language: the line's tokens before a preprocessor
+        // directive line is recoloured (TokenizeLine does that).
+        std::vector<Token> TokenizeCodeLine(const std::string &line, SyntaxLineState &state) const;
 
         bool IsWordCharacter(char c) const;
 
@@ -1147,8 +1154,8 @@ namespace UltraCanvas {
         rules.hasStringInterpolation = true;
         rules.interpolationDelimiters = {{"${", "}"}};
 
-        rules.multiLineStrings = {{"\"\"\"", "\"\"\""}};      // text blocks / raw strings
         rules.verbatimStrings = true;
+        rules.quotedRawStrings = true;                    // """..""" raw strings
         return rules;
     }
 
