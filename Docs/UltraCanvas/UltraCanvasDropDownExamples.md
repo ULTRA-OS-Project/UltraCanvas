@@ -21,6 +21,7 @@
   - [Width from the Items](#width-from-the-items)
   - [Event Callbacks](#event-callbacks)
 - [Styles](#styles)
+- [Icons drawn in the text colour](#icons-drawn-in-the-text-colour)
 - [A font list: each font shown in itself](#a-font-list-each-font-shown-in-itself)
 - [Factory Functions](#factory-functions)
   - [CreateDropdown](#createdropdown)
@@ -54,8 +55,8 @@
 
 The UltraCanvasDropDown is an interactive dropdown/combobox component that provides a user-friendly way to select from a list of options. It's part of the UltraCanvas Framework and offers styling, item icons, single or multiple selection, keyboard navigation, scrolling support, and event handling capabilities.
 
-**Version:** 1.3.0  
-**Last Modified:** 2026-10-15  
+**Version:** 1.4.0  
+**Last Modified:** 2026-11-14  
 **Author:** UltraCanvas Framework
 
 ## File Structure
@@ -96,6 +97,8 @@ struct DropdownItem {
     std::string value;         // Associated value
     std::string iconPath;      // Optional icon path
     std::string tooltip;       // Shown over the item in the open list (optional)
+    std::string fontFamily;    // The row drawn in this font in the open list (optional)
+    bool iconAsMask = false;   // The icon's shape in the item's text colour (a black line icon in the ink)
     bool enabled = true;       // Is item selectable
     bool separator = false;    // Is this a separator
     bool selected = false;     // Checked state in multi-selection mode
@@ -147,6 +150,9 @@ struct DropdownStyle {
     // Icon dimensions
     float iconSize = 16.0f;
     float iconPadding = 4.0f;
+    // Every item's icon drawn as a mask in the item's text colour
+    // (SetIconsAsMask sets it without a SetStyle)
+    bool iconsAsMask = false;
 
     // false: the button shows the selected item's icon alone (the list
     // still shows icon and text) - a compact, icon-only selector
@@ -289,6 +295,27 @@ There are no predefined dropdown styles and no builder: start from a default
 `DropdownStyle`, change the fields you need and pass it to `SetStyle()` (see
 *Dropdown with Custom Styling* below). The look of the list scrollbar comes
 from `scrollbarStyle`.
+
+## Icons drawn in the text colour
+
+An item's icon is drawn in its own colours. A monochrome line icon - black
+in its file - vanishes on a dark dropdown, so it can be drawn as a **mask**
+instead: its shape in the item's text colour (the theme's ink, faint when
+the item or the dropdown is disabled), in the open list and on the button.
+`SetIconsAsMask(true)` does it for every item and leaves the dropdown
+following the theme (it is not a `SetStyle`); `DropdownItem::iconAsMask`
+does it for one item.
+
+```cpp
+auto view = CreateDropdown("view", 0, 0, 152, 26);
+view->SetIconsAsMask(true);                          // the glyphs follow the ink, dark or light
+view->AddItem("Details", "Details", "media/icons/view-details.svg");
+view->AddItem("List", "List", "media/icons/view-list.svg");
+DropdownItem colourful("Treemap", "Treemap", "media/icons/view-treemap.svg");
+colourful.iconAsMask = true;                         // or per item
+view->AddItem(colourful);
+bool masked = view->GetIconsAsMask();
+```
 
 ## A font list: each font shown in itself
 
@@ -619,6 +646,7 @@ Planned features for future versions:
 
 ## Version History
 
+- **1.4.0** (2026-11-14): Icons drawn as masks in the item's text colour: `DropdownItem::iconAsMask`, `DropdownStyle::iconsAsMask`, `SetIconsAsMask()`
 - **1.2.5** (2026-10-07): Match the header: real `DropdownStyle` fields, `float` constructors and `CreateDropdown()`, multi-selection and icon API, list-view popup; removed the nonexistent DropdownStyles presets, DropdownBuilder, CreateAutoDropdown and shadow fields
 - **1.2.4** (2025-01-17): Popup rendering support
 - **1.2.3**: Added keyboard navigation improvements

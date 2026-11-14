@@ -4433,7 +4433,10 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     viewDropdown->SetFitWidthToItems(true);
     // Each entry carries a glyph of the layout it selects, so the dropdown
     // reads as a set of layouts rather than a list of names. The value stays
-    // the entry text - only onSelectionChanged's index is used.
+    // the entry text - only onSelectionChanged's index is used. The glyphs
+    // are black line icons: drawn as masks in the dropdown's text colour, so
+    // they are the theme's ink on a dark dropdown too.
+    viewDropdown->SetIconsAsMask(true);
     viewDropdown->AddItem(Tr("Details"), "Details", IconPath("view-details.svg"));
     viewDropdown->AddItem(Tr("List"), "List", IconPath("view-list.svg"));
     viewDropdown->AddItem(Tr("Small icons"), "Small icons", IconPath("view-icons-small.svg"));
