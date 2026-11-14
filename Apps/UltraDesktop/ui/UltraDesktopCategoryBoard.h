@@ -22,6 +22,8 @@
 // and the size of the hover preview - the larger picture of a file that
 // opens beside its card after the pointer has rested on it for two seconds.
 // UOS-Settings offers the same two choices.
+// Version: 0.6.0 - the ground, the bar and the title from the theme in force,
+//                  again when it changes (ApplyLook)
 // Version: 0.5.0 - the Delete key asks first and does what the menu's Delete
 //                  does (the file to the trash, a note deleted)
 // Version: 0.4.0 - AddFilesToCategory (a drop on the wallpaper: "Unsorted"); MakeFilePicture shared
@@ -104,6 +106,8 @@ public:
 
 private:
     void SaveBoard();
+    // The ground, the bar and the title in the current theme's colours.
+    void ApplyLook();
     void OpenCardFile(int cardId);
     // The card's file when it is one that exists; "" for a note.
     std::string CardFile(int cardId) const;
@@ -124,6 +128,8 @@ private:
     std::shared_ptr<UltraCanvas::UCPixmap> Thumbnail(const UltraCanvas::KanbanCard& card);
 
     UltraDesktopWindow* desktop_;   // owns this board through its window
+    int themeHandler_ = 0;          // UltraCanvasTheme::AddChangeHandler's id, removed in the destructor
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> bar_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> title_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> designPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasKanbanBoardElement> board_;

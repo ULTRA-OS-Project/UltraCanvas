@@ -1,5 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopTasksWindow.cpp
 // The Task Manager window. See the header.
+// Version: 0.4.0 - the colours from the theme in force (the header, the rows, the
+//                  badges, the state), again when it changes while the window is open
 // Version: 0.3.0 - the display each window is on (the virtual desktop only
 //                  where there are several); Show brings an off-screen window
 //                  back; Kill task
@@ -23,12 +25,17 @@
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasWindow.h"
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
+#include <iterator>
 #include <map>
+#include <vector>
 #include <sstream>
 
 using namespace UltraCanvas;
@@ -53,12 +60,44 @@ constexpr int kKillWidth = 82;
 constexpr int kActionsColumn = kButtonWidth * 2 + kKillWidth + kColumnGap * 2;
 constexpr unsigned kShowSettleMs = 350;   // a restored window has its place by then
 
+// The window's colours are the theme's: the header on the raised surface,
+// a row in the well (the window in front on the soft accent), muted ink
+// for the column names and the state.
+const ThemeRoles& Roles() { return UltraCanvasTheme::Current().roles; }
+
+// A state icon in the theme's colours: the grey of its outline becomes the
+// muted ink and its blue the accent, so the icon reads on a dark row as on
+// a light one. Kept by file and colours; null when the file is not there.
+std::shared_ptr<UCImage> StateIcon(const std::string& path) {
+    const std::string ink = Roles().inkMuted.ToHexString();
+    const std::string accent = Roles().accent.ToHexString();
+    static std::map<std::string, std::shared_ptr<UCImage>> made;
+    const std::string key = path + ink + accent;
+    auto found = made.find(key);
+    if (found != made.end()) return found->second;
+    std::ifstream in(PathFromUtf8(path), std::ios::binary);
+    if (!in) return nullptr;
+    std::string svg((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    auto replaceAll = [&svg](const std::string& from, const std::string& to) {
+        for (size_t at = svg.find(from); at != std::string::npos; at = svg.find(from, at + to.size())) {
+            svg.replace(at, from.size(), to);
+        }
+    };
+    replaceAll("#555", ink);
+    replaceAll("#1f6fd1", accent);
+    const std::vector<uint8_t> bytes(svg.begin(), svg.end());
+    auto image = UCImage::LoadFromMemory(bytes);
+    made[key] = image;
+    return image;
+}
+
 } // namespace
 
 UltraDesktopTasksWindow::UltraDesktopTasksWindow()
     : iconsDir_(NormalizePath(GetResourcesDir() + "media/icons/desktop/")) {}
 
 UltraDesktopTasksWindow::~UltraDesktopTasksWindow() {
+    if (themeHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     if (timer_ != 0) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(timer_);
     }
@@ -92,13 +131,18 @@ void UltraDesktopTasksWindow::Open() {
     header->layout.SetFlexRow().SetFlexGap(kColumnGap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     header->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(28));
     header->layoutItem.SetFlexShrink(0.0f);
-    header->SetBackgroundColor(Color(232, 232, 232, 255));
+    header->SetBackgroundColor(Roles().raised);
+    header->SetBorderBottom(1, Roles().line);
+    header_ = header;
+    headerLabels_.clear();
     // Lined up with the rows: the page's padding plus the row's.
     header->SetPadding(4, 8 + 8, 4, 8 + 8);
-    auto column = [&header](const std::string& id, const std::string& text, int width, bool grow) {
+    auto column = [this, &header](const std::string& id, const std::string& text, int width, bool grow) {
         auto label = CreateLabel(id, 0, 0, width, 20, text);
         label->SetFontWeight(FontWeight::Bold);
-        label->SetTextColor(Color(70, 70, 70, 255));
+        label->SetThemeVariant(LabelVariant::Muted);
+        label->SetTextColor(Roles().inkMuted);
+        headerLabels_.push_back(label);
         if (grow) {
             label->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
         } else {
@@ -147,10 +191,31 @@ void UltraDesktopTasksWindow::Open() {
     }
     RebuildWindowList();
     window_->Show();
+    // The look changes while the window is open: the framework re-styles
+    // the elements that follow the theme, ApplyLook what this window
+    // coloured itself.
+    if (themeHandler_ == 0) {
+        themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
+    }
 
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         timer_ = app->StartTimer(kTimerMs, /*periodic=*/true, [this](TimerId) { OnTimer(); });
     }
+}
+
+void UltraDesktopTasksWindow::ApplyLook() {
+    if (!open_ || !window_) return;
+    if (header_) {
+        header_->SetBackgroundColor(Roles().raised);
+        header_->SetBorderBottom(1, Roles().line);
+    }
+    for (auto& label : headerLabels_) {
+        if (label) label->SetTextColor(Roles().inkMuted);
+    }
+    // The rows take the theme as they are made: made again.
+    lastListing_.clear();
+    RebuildWindowList();
+    window_->RequestRedraw();
 }
 
 void UltraDesktopTasksWindow::Raise() {
@@ -178,8 +243,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopTasksWindow::BadgeCell(const s
                                                                        const std::string& tooltip) {
     auto badge = CreateLabel(id, 0, 0, text.size() > 2 ? 34 : 24, 24, text);
     badge->SetAlignment(TextAlignment::Center);
-    badge->SetBorders(1, Color(140, 140, 140, 255), 4);
-    badge->SetBackgroundColor(Colors::White);
+    badge->SetBorders(1, Roles().lineStrong, 4);
+    badge->SetBackgroundColor(Roles().well);
+    badge->SetTextColor(Roles().ink);
     badge->SetTooltip(tooltip);
     auto cell = CreateContainer(id + "Cell", 0, 0, width, 26);
     cell->layout.SetFlexRow()
@@ -267,8 +333,10 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
         row->layout.SetFlexRow().SetFlexGap(kColumnGap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         row->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(34));
         row->layoutItem.SetFlexShrink(0.0f);
-        row->SetBackgroundColor(w.active ? Color(225, 235, 255, 255) : Color(245, 245, 245, 255));
-        row->SetBorders(0, Colors::Transparent, 6);
+        // The well with a hairline, so a row stands out from the ground in
+        // either look; the window in front on the soft accent.
+        row->SetBackgroundColor(w.active ? Roles().accentSoft : Roles().well);
+        row->SetBorders(1, w.active ? Roles().accent : Roles().line, 6);
         row->SetPadding(4, 8);
 
         const std::string key = std::to_string(w.id);
@@ -289,7 +357,8 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
             auto icon = CreateLabel("tmIcon" + key, 0, 0, kIconColumn, kIconColumn, letter);
             icon->SetAlignment(TextAlignment::Center);
             icon->SetFontWeight(FontWeight::Bold);
-            icon->SetBackgroundColor(Color(210, 220, 235, 255));
+            icon->SetBackgroundColor(Roles().raised);
+            icon->SetTextColor(Roles().ink);
             icon->SetBorders(0, Colors::Transparent, 4);
             icon->layoutItem.SetFlexShrink(0.0f);
             row->AddChild(icon);
@@ -310,12 +379,13 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
         stateCell->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         stateCell->layoutItem.SetFlexShrink(0.0f);
         auto stateImage = CreateImageElement("tmStateIcon" + key, 0, 0, 18, 18);
-        stateImage->LoadFromFile(iconsDir_ + stateIcon);
+        if (auto themed = StateIcon(iconsDir_ + stateIcon)) stateImage->LoadFromImage(themed);
+        else stateImage->LoadFromFile(iconsDir_ + stateIcon);
         stateImage->SetFitMode(ImageFitMode::Contain);
         stateImage->layoutItem.SetFlexShrink(0.0f);
         stateCell->AddChild(stateImage);
         auto state = CreateLabel("tmState" + key, 0, 0, kStateColumn - 24, 22, stateWord);
-        state->SetTextColor(w.active ? Color(31, 111, 209, 255) : Color(110, 110, 110, 255));
+        state->SetTextColor(w.active ? Roles().accent : Roles().inkMuted);
         stateCell->AddChild(state);
         stateCell->SetTooltip(std::string(w.minimized ? "Minimized" : w.maximized ? "Maximized" : "Open") +
                               (w.active ? ", in front" : ""));
@@ -357,7 +427,8 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
     if (shown == 0) {
         auto none = CreateLabel("tmNone", UltraCanvasDesktopShell::IsAvailable()
                 ? "No application windows are open." : "The window list is not available on this platform.");
-        none->SetTextColor(Color(110, 110, 110, 255));
+        none->SetThemeVariant(LabelVariant::Muted);
+        none->SetTextColor(Roles().inkMuted);
         windowRows_->AddChild(none);
     }
     windowRows_->InvalidateLayout();

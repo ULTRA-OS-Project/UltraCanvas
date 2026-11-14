@@ -20,6 +20,8 @@
 // of time (Preload, a little after it starts), and a later Open shows that
 // list at once and reads it again behind it. One click starts an
 // application; a right click pins it to the taskbar or unpins it.
+// Version: 0.5.0 - the colours from the theme in force (UltraCanvasTheme), and
+//                  again when it changes while the window is open (ApplyLook)
 // Version: 0.4.0 - an application dragged onto another category (or moved by
 //                  its menu) stays there; a big Start-menu folder is a category
 // Version: 0.3.0 - categories and sub-categories, Recent, the tiles and the
@@ -101,6 +103,9 @@ public:
 
 private:
     void ShowApps(AppList apps);
+    // The theme changed: the status, and the headings, tiles and drag label
+    // made again in the new colours.
+    void ApplyLook();
     void Rebuild();
     void BuildTiles(const std::vector<AppGroup>& groups);
     void BuildTreeAndList(const std::vector<AppGroup>& groups);
@@ -148,6 +153,7 @@ private:
     UltraDesktopPanelWork work_;
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> menu_;
     bool open_ = false;
+    int themeHandler_ = 0;   // UltraCanvasTheme::AddChangeHandler's id, removed in the destructor
     std::string filter_;
     std::string view_;
     AppList apps_;
