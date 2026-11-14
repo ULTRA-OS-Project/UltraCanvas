@@ -1,5 +1,7 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.8.0 - the bar, the snip's ground, the rules and the status line are the theme's
+//                  roles, again on every theme change (ApplyLook): a dark desktop gives a dark bar
 // Version: 0.7.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
 // Version: 0.7.0 - resident (--background, started by UltraDesktop): a close hides the window
 // Version: 0.6.0 - the Print Screen key starts a snip, taken from the system (StartExclusive)
@@ -36,6 +38,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSettingsPageKit.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
 #include "UltraLocalisation/UltraLocalisation.h"
@@ -56,11 +59,14 @@ using namespace UltraCanvas;
 namespace UltraSnip {
 
 namespace {
-const Color kChrome(246, 246, 248, 255);
-const Color kLine(214, 214, 220, 255);
-const Color kCanvas(232, 232, 236, 255);
-const Color kStatusText(70, 70, 80, 255);
-const Color kErrorText(185, 28, 28, 255);
+// The window's colours: roles of the current theme, read when they are set
+// (and again by ApplyLook when the theme changes)
+const ThemeRoles& Roles() { return UltraCanvasTheme::Current().roles; }
+Color ChromeColor() { return Roles().panel; }        // the bar
+Color LineColor() { return Roles().line; }           // the rules, the line under the bar
+Color CanvasColor() { return Roles().ground; }       // under the snip
+Color StatusColor() { return Roles().inkMuted; }     // the line of news
+Color ErrorColor() { return Roles().danger; }        // ... when something went wrong
 constexpr int kBarHeight = 44;              // the bar: 28-high controls with 8 above and below
 constexpr int kControlHeight = 28;
 constexpr int kChoiceWidth = 34;            // one icon segment
@@ -98,6 +104,7 @@ int IndexOf(const int* values, size_t count, int value) {
 UltraSnipWindow::UltraSnipWindow(UltraCanvasApplication& app) : app_(app) {}
 
 UltraSnipWindow::~UltraSnipWindow() {
+    if (themeHandler_) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     printKey_.Stop();   // no press reaches a window being taken down
     UltraSnipSettingsDialog::Shutdown();
     if (delayTimer_) app_.StopTimer(delayTimer_);
@@ -125,17 +132,22 @@ bool UltraSnipWindow::Create() {
     config.height = kBarHeight;
     config.minWidth = kMinWidth;
     config.minHeight = kBarHeight;
-    config.backgroundColor = kCanvas;
+    config.backgroundColor = CanvasColor();
     window_ = CreateWindow(config);
     if (!window_) return false;
 
     UltraCanvasWindow* window = window_.get();
     window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    window->SetBackgroundColor(kCanvas);
+    window->SetBackgroundColor(CanvasColor());
     window->AddChild(BuildToolbar());
     window->AddChild(BuildContent());
     ApplySettingsToControls();
     ShowNothing(Tr("Click Start, or press Ctrl+N, to take a snip."));
+    // The theme changing while UltraSnip runs (a dark desktop, Dark on the
+    // Look page): the elements that follow it re-style by themselves,
+    // ApplyLook brings the colours set here along
+    themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
+    ApplyLook();
 
     window->InstallEventFilter("ultrasnip-keys", [this](const UCEvent& event) { return OnKey(event); },
                                {UCEventType::KeyDown});
@@ -169,6 +181,7 @@ std::shared_ptr<UltraCanvasSegmentedControl> MakeIconChoice(const std::string& i
     look.paddingVertical = 4;
     look.cornerRadius = 4.0f;
     control->SetStyle(look);
+    control->SetFollowTheme(true);   // the sizes above, the theme's colours over them
     for (const auto& segment : segments) control->AddSegment("", SettingsPageKit::IconPath(segment.first));
     for (size_t i = 0; i < segments.size(); ++i) control->SetSegmentTooltip(static_cast<int>(i), segments[i].second);
     control->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -177,7 +190,7 @@ std::shared_ptr<UltraCanvasSegmentedControl> MakeIconChoice(const std::string& i
 
 std::shared_ptr<UltraCanvasContainer> MakeBarRule(const std::string& id) {
     auto rule = std::make_shared<UltraCanvasContainer>(id, 0, 0, 1, 22);
-    rule->SetBackgroundColor(kLine);
+    rule->SetBackgroundColor(LineColor());
     rule->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return rule;
 }
@@ -193,7 +206,8 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     bar->size.height = CSSLayout::Dimension::Px(kBarHeight);
     bar->SetPadding(0, 10, 0, 10);
-    bar->SetBackgroundColor(kChrome);
+    bar->SetBackgroundColor(ChromeColor());
+    bar_ = bar;
 
     // As wide as its icon and its word in the language shown, measured in its
     // own font when the bar is laid out (the button grows to its text, and a
@@ -233,6 +247,7 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     delayLook.paddingVertical = 4;
     delayLook.cornerRadius = 4.0f;
     delays_->SetStyle(delayLook);
+    delays_->SetFollowTheme(true);
     IRenderContext* measure = window_ ? window_->GetRenderContext() : nullptr;
     if (measure) {
         measure->PushState();
@@ -265,7 +280,8 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     actions_ = std::make_shared<UltraCanvasContainer>("snip.actions");
     actions_->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     actions_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    actions_->AddChild(MakeBarRule("snip.actions-rule"));
+    actionsRule_ = MakeBarRule("snip.actions-rule");
+    actions_->AddChild(actionsRule_);
 
     saveButton_ = MakeButton("snip.save", "", kIconButtonWidth, [this]() { SaveAs(); }, "save.svg");
     saveButton_->SetTooltip(Tr("Save as: the snip under another name or type (Ctrl+S)"));
@@ -289,7 +305,7 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildToolbar() {
     // What just happened: the size, saved, copied - short enough for two
     // lines in any language; the saved file's whole path is the tooltip
     status_ = CreateLabel("snip.status", "");
-    status_->SetTextColor(kStatusText);
+    status_->SetTextColor(StatusColor());
     status_->SetFontSize(SettingsPageKit::NoteFontSize());
     status_->SetWrap(TextWrap::WrapWord);
     status_->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
@@ -309,8 +325,8 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildContent() {
     content_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch)
         .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
     content_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
-    content_->SetBackgroundColor(kCanvas);
-    content_->SetBorderTop(1, kLine);
+    content_->SetBackgroundColor(CanvasColor());
+    content_->SetBorderTop(1, LineColor());
     content_->SetPadding(12);
 
     picture_ = CreateImageElement("snip.picture", 0, 0, 0, 0);
@@ -818,9 +834,35 @@ void UltraSnipWindow::UpdateActions() {
 void UltraSnipWindow::SetStatus(const std::string& text, bool error) {
     if (!status_) return;
     status_->SetText(text);
-    status_->SetTextColor(error ? kErrorText : kStatusText);
+    statusError_ = error;
+    status_->SetTextColor(error ? ErrorColor() : StatusColor());
     // The whole path in the tooltip; the line names the file only
     status_->SetTooltip(resultPath_.empty() ? std::string() : resultPath_);
+}
+
+// The colours set by hand, from the theme now in force: the bar, its rule,
+// the snip's ground, the status line and the kit's buttons (the segmented
+// choices, the image and the media viewer follow the theme by themselves).
+void UltraSnipWindow::ApplyLook() {
+    if (!window_) return;
+    window_->SetBackgroundColor(CanvasColor());
+    if (bar_) bar_->SetBackgroundColor(ChromeColor());
+    if (actionsRule_) actionsRule_->SetBackgroundColor(LineColor());
+    if (content_) {
+        content_->SetBackgroundColor(CanvasColor());
+        content_->SetBorderTop(1, LineColor());
+    }
+    if (status_) status_->SetTextColor(statusError_ ? ErrorColor() : StatusColor());
+    for (const auto& button : {startButton_, saveButton_, copyButton_, folderButton_, paintButton_, settingsButton_}) {
+        if (!button) continue;
+        // every state named: the kit's two-colour form lightens the disabled
+        // face, a light grey block on a dark bar
+        const ThemeRoles& r = Roles();
+        button->SetColors(r.raised, r.hover, r.pressed, r.panel);
+        button->SetTextColors(r.ink, r.ink, r.ink, r.inkFaint);
+        button->SetBorder(1.0f, SettingsPageKit::Rule());
+    }
+    window_->RequestRedraw();
 }
 
 bool UltraSnipWindow::CopyPictureToClipboard() {

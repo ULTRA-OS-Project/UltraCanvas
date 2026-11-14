@@ -1,6 +1,7 @@
 // Apps/UltraFiler/UltraFilerFolderExport.cpp
 // "Extras > Export": the folder content / folder tree as text, and the window
 // that shows it with a Save button.
+// Version: 1.1.1 - the buttons name every state's colour: a disabled one is not a light grey block in dark
 // Version: 1.1.0 - the colours are the theme's (UltraFilerLook.h)
 // Version: 1.0.2 - the texts the wrapping tool 1.1.0 finds (the page kit's buttons, dropdown items, dialog buttons, tree nodes) go through Tr
 // Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
@@ -586,8 +587,8 @@ void UltraFilerFolderExportWindow::Open(const std::string& folder, FolderExportK
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 90, 28, label);
         b->SetFontSize(kFontSize);
         b->SetCornerRadius(4.0f);
-        b->SetColors(Look().button, Look().hover);
-        b->SetTextColors(Look().ink);
+        b->SetColors(Look().button, Look().hover, Look().pressed, Look().panel);
+        b->SetTextColors(Look().ink, Look().ink, Look().ink, Look().inkFaint);
         b->SetBorder(1.0f, Look().border);
         b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return b;

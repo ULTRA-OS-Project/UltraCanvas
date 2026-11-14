@@ -6,6 +6,7 @@
 // UltraCanvasImageElement, a recording in the media viewer). Until there is
 // a snip the window is the bar alone. The window hides itself while a snip
 // is taken, so it is never in the picture, and comes back with the result.
+// Version: 0.4.0 - ApplyLook: the bar, the ground and the status line from the theme, again on a change
 // Version: 0.3.0 - one bar at the top, icons, the bar alone until there is a snip
 // Version: 0.2.0 - the settings window; pictures written in the chosen type and folder;
 //                  the window stays hidden after a desktop snip when asked
@@ -98,6 +99,7 @@ private:
     void ShowNothing(const std::string& message);
     void UpdateActions();
     void SetStatus(const std::string& text, bool error = false);
+    void ApplyLook();                                   // the colours set by hand, from the theme
     bool CopyPictureToClipboard();
     bool SavePictureTo(const std::string& path, std::string& error);
     void SaveAs();
@@ -129,6 +131,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> paintButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> settingsButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
+    bool statusError_ = false;                          // the status line says what went wrong
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> bar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> actionsRule_;
+    int themeHandler_ = 0;                              // UltraCanvasTheme change handler: ApplyLook
 
     bool compact_ = true;                               // the bar alone
     int openHeight_ = 600;                              // the window's height opened out
