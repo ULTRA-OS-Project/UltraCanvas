@@ -7641,10 +7641,11 @@ void UltraFilerWindow::BuildComputerPage() {
 
     // The card rows, wrapping into as many lines as they need;
     // RebuildComputerDriveCards fills them. None scrolls by itself - the
-    // page does. The drives (and the phones and cameras) first, then the
-    // remote drives and the RAM discs, each under a heading of its own that
-    // shows only while the section has a card - the names the tree gives
-    // the same sections.
+    // page does. The overview puts every card in the drives' row: the drives
+    // (and the phones and cameras), then the RAM discs, then the remote
+    // drives. Opened from the tree's Remote Drives or RAM Discs section, the
+    // page shows that section's cards alone, under a heading of its own - the
+    // name the tree gives the section.
     auto makeCardRow = [](const std::string& id) {
         auto row = MakeLayoutBox(id);
         row->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
@@ -7783,7 +7784,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
     struct CardSource {
         std::string path, label, icon;
         std::string under;   // the line at the foot of the card
-        UltraCanvasContainer* row = nullptr;
+        ComputerSection section = ComputerSection::All;   // the tree section it belongs to
     };
     std::vector<CardSource> sources;
     // A RAM disc that is also a mounted volume (ImDisk's drive letter,
@@ -7793,7 +7794,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
     for (const MountedVolume& volume : volumes) {
         if (ramPaths.count(volume.path)) continue;
         sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path,
-                           computerDriveRow.get()});
+                           ComputerSection::All});
     }
     if (remoteDrives) {
         for (const RemoteDrive& d : remoteDrives->Drives()) {
@@ -7803,47 +7804,54 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
             std::string under = DeviceKindWord(d.deviceKind);
             if (!d.serverUrl.empty()) under += " - " + d.serverUrl;   // the manufacturer
             sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under,
-                               computerDriveRow.get()});
-        }
-        // The FTP servers and cloud accounts: the server under the name, or
-        // for an account signed into through the browser, the provider.
-        if (computerRemoteRow) {
-            for (const RemoteDrive& d : remoteDrives->Drives()) {
-                if (d.isDevice) continue;
-                sources.push_back({d.rootPath, d.displayName, "cloud.svg",
-                                   d.serverUrl.empty() ? d.providerId : d.serverUrl,
-                                   computerRemoteRow.get()});
-            }
+                               ComputerSection::All});
         }
     }
-    if (computerRamRow) {
-        for (const auto& disc : knownRamDiscs) {
-            // The Windows fallback without ImDisk is a folder on the disk:
-            // said under the name, as the tree says it after it.
-            std::string under = disc.mountPath;
-            if (!disc.trueRam) under += " - " + Tr("on disk");
-            sources.push_back({disc.mountPath, disc.name, "drive.png", under,
-                               computerRamRow.get()});
+    // The RAM discs, then the FTP servers and cloud accounts: in the
+    // overview they join the drives' row (after the drives), each section of
+    // the tree shows its own alone.
+    for (const auto& disc : knownRamDiscs) {
+        // The Windows fallback without ImDisk is a folder on the disk:
+        // said under the name, as the tree says it after it.
+        std::string under = disc.mountPath;
+        if (!disc.trueRam) under += " - " + Tr("on disk");
+        sources.push_back({disc.mountPath, disc.name, "drive.png", under,
+                           ComputerSection::Ram});
+    }
+    if (remoteDrives) {
+        // The server under the name, or for an account signed into through
+        // the browser, the provider.
+        for (const RemoteDrive& d : remoteDrives->Drives()) {
+            if (d.isDevice) continue;
+            sources.push_back({d.rootPath, d.displayName, "cloud.svg",
+                               d.serverUrl.empty() ? d.providerId : d.serverUrl,
+                               ComputerSection::Remote});
         }
     }
 
     // Opened from a section of the tree, the page shows that section alone
     // (ShowComputerSection): only its cards are made, so the status line
-    // counts what is shown.
+    // counts what is shown. The Cloud Storage section has folders, no cards.
     const bool all = computerSection == ComputerSection::All;
-    UltraCanvasContainer* onlyRow =
-            computerSection == ComputerSection::Remote ? computerRemoteRow.get()
-          : computerSection == ComputerSection::Ram    ? computerRamRow.get()
-                                                       : nullptr;
-    if (!all)
+    if (!all) {
+        const ComputerSection only = computerSection;
         sources.erase(std::remove_if(sources.begin(), sources.end(),
-                                     [onlyRow](const CardSource& c) { return c.row != onlyRow; }),
+                                     [only](const CardSource& c) { return c.section != only; }),
                       sources.end());
+    }
+    // The overview puts every card in the drives' row; a section view puts
+    // its cards under its own heading.
+    auto rowFor = [&](const CardSource& c) -> UltraCanvasContainer* {
+        if (all || c.section == ComputerSection::All) return computerDriveRow.get();
+        if (c.section == ComputerSection::Remote && computerRemoteRow) return computerRemoteRow.get();
+        if (c.section == ComputerSection::Ram && computerRamRow) return computerRamRow.get();
+        return computerDriveRow.get();
+    };
 
     bool anyRemote = false, anyRam = false;
     for (const CardSource& source : sources) {
-        if (source.row == computerRemoteRow.get()) anyRemote = true;
-        if (source.row == computerRamRow.get()) anyRam = true;
+        if (rowFor(source) == computerRemoteRow.get()) anyRemote = true;
+        if (rowFor(source) == computerRamRow.get()) anyRam = true;
     }
     const bool foldersShown = all || computerSection == ComputerSection::Cloud;
     if (computerFoldersHeading) {
@@ -7920,7 +7928,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         mount->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         card->AddChild(mount);
 
-        source.row->AddChild(card);
+        rowFor(source)->AddChild(card);
         computerDriveCards.push_back({path, pie, usage, space});
 
         // What is already known about the volume goes up at once; the fresh
