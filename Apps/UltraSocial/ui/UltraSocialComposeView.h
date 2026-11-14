@@ -6,10 +6,11 @@
 // account, per that network's limit - the caption limit when media is
 // attached), the scheduled queue and the recent posts. Pure view - the app
 // supplies accounts and handles posting.
+// Version: 0.3.0 - a gear in the toolbar opens Settings, as on the start page
 // Version: 0.2.0 - UltraMail's look: toolbar, cards, network avatars, a
 //                  flex layout that follows the window
 // Version: 0.1.0 (Phase 1)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -80,6 +81,7 @@ public:
 
     std::function<void()> onAddMedia;     // open the file picker
     std::function<void()> onAddAccount;   // open the wizard
+    std::function<void()> onOpenSettings; // the toolbar's gear
     std::function<void()> onPost;
     std::function<void()> onPostLater;    // open the schedule dialog
     std::function<void(int64_t)> onCancelScheduled;
