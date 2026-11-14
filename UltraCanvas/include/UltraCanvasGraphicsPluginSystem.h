@@ -1,7 +1,8 @@
 // include/UltraCanvasGraphicsPluginSystem.h
 // Complete graphics plugin system with all required components
+// Version: 1.4.1 - .igs / .iges are 3D files
 // Version: 1.4.0
-// Last Modified: 2026-09-16
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -137,6 +138,7 @@ namespace UltraCanvas {
                     {"wrl", GraphicsFormatType::ThreeD}, {"vrml", GraphicsFormatType::ThreeD},
                     {"step", GraphicsFormatType::ThreeD}, {"stp", GraphicsFormatType::ThreeD},
                     {"p21", GraphicsFormatType::ThreeD},
+                    {"igs", GraphicsFormatType::ThreeD}, {"iges", GraphicsFormatType::ThreeD},
 
                     // Video formats
                     {"mp4", GraphicsFormatType::Video}, {"mpg", GraphicsFormatType::Video},

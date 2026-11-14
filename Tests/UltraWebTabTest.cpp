@@ -4,20 +4,25 @@
 // history; a link to a file is handed to the window as a download; the
 // built-in app runs in the tab's own area; and a tab can go while its app
 // runs. Two tabs keep two histories. A local path opens as a file:// page,
-// with '\' a separator only on Windows.
+// with '\' a separator only on Windows. An app that asks for a device gets
+// the permission bar above its area; the answer reaches it, is kept for its
+// origin, and the next tab running it is not asked again.
+// Version: 1.2.0 - the device permission bar (TestPermissionBar)
 // Version: 1.1.0 - local paths, '\' in a file's name (TestLocalPaths)
 // Version: 1.0.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 
 #include "ui/UltraWebTab.h"
 #include "host/UltraWebPages.h"
+#include "host/UltraWebPermissions.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraNet/UltraNetCore.h"
 #include "WasmHost/UltraCanvasWasmHost.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <condition_variable>
 #include <cstdio>
 #include <deque>
@@ -166,9 +171,68 @@ void TestApp() {
     Check(true, "and nothing it left behind runs into the closed tab");
 }
 
+// An app that opens a peer with an audio track and asks for the microphone.
+const char* const kMicrophoneApp = R"((module
+  (import "ultracanvas" "uc_rtc_peer_open" (func $open (param i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_audio_add" (func $audio (param i32 i32 i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_microphone" (func $mic (param i32 i32) (result i32)))
+  (import "ultracanvas" "uc_rtc_poll" (func $poll (param i32 i32 i32 i32) (result i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 0) "audio")
+  (func (export "uc_abi_version") (result i32) (i32.const 4))
+  (func (export "uc_main")
+    (drop (call $mic (call $audio (call $open (i32.const 0) (i32.const 0)) (i32.const 0) (i32.const 5) (i32.const 0))
+                     (i32.const 1))))
+  (func (export "uc_event") (param i32 i32 i32)
+    (block $done (loop $read
+      (br_if $done (i32.lt_s (call $poll (local.get 2) (i32.const 100) (i32.const 200) (i32.const 1000)) (i32.const 0)))
+      (br $read)))))
+)";
+
+void TestPermissionBar(const std::filesystem::path& dir) {
+    std::printf("the device permission bar\n");
+    if (!UltraCanvasWasm_IsAvailable()) {
+        std::printf("  skipped: %s\n", UltraCanvasWasm_EngineDescription().c_str());
+        return;
+    }
+    const std::filesystem::path app = dir / "call.wat";
+    Write(app, kMicrophoneApp);
+    Recorder seen;
+    auto tab = std::make_unique<UltraWebTab>("t4", seen.Host());
+    tab->Navigate(PathToUtf8(app));
+    Check(Pump([&] { return tab->IsApp(); }), "the app runs: " + tab->StatusText());
+    const std::string question = tab->PermissionQuestion();
+    Check(question.find("wants to use your microphone") != std::string::npos &&
+              question.find("call.wat") != std::string::npos,
+          "the bar asks for the microphone, naming the app: " + question);
+    Check(tab->Page()->GetChildren().size() == 2 && tab->Page()->GetChildren()[1] == tab->Area(),
+          "the bar sits above the app's area");
+    tab->AnswerPermission(true);
+    Check(tab->PermissionQuestion().empty() && tab->Page()->GetChildren().size() == 1, "an answer takes the bar away");
+    Pump([] { return false; }, 1);   // the answer reaches the app on a later turn
+    const std::string partition = UltraWebStorage::PartitionFor(PathToUtf8(app));
+    Check(PermissionStore::Shared()->Get(partition, "microphone") == PermissionStore::Answer::Allowed,
+          "the answer is kept for the app's origin");
+
+    // The same app in another tab: not asked again.
+    auto second = std::make_unique<UltraWebTab>("t5", seen.Host());
+    second->Navigate(PathToUtf8(app));
+    Check(Pump([&] { return second->IsApp(); }), "the app runs again");
+    Check(second->PermissionQuestion().empty(), "and is not asked again");
+    Pump([] { return false; }, 1);
+    second.reset();
+    tab.reset();
+    PermissionStore::Shared()->Clear();
+}
+
 } // namespace
 
 int main() {
+    // The permission store lives in the settings folder: a temporary one.
+    const std::filesystem::path settings = std::filesystem::temp_directory_path() / "ultraweb-tab-test-settings";
+#ifndef _WIN32
+    setenv("XDG_CONFIG_HOME", settings.c_str(), 1);   // path-string-ok: a temp path, ASCII
+#endif
     UltraNet_Initialize();
     const std::filesystem::path dir = std::filesystem::temp_directory_path() / "ultraweb-tab-test";
     std::filesystem::remove_all(dir);
@@ -179,7 +243,9 @@ int main() {
     TestPages(dir);
     TestLocalPaths(dir);
     TestApp();
+    TestPermissionBar(dir);
     std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(settings);
     UltraNet_Shutdown();
     if (g_failures) {
         std::printf("%d check(s) failed\n", g_failures);

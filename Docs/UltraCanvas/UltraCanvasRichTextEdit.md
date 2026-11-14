@@ -544,6 +544,21 @@ undo step (`imageWidthPt` / `imageHeightPt`, never wider than the column).
 Delete removes a selected picture. A right-click selects the picture under the
 pointer first, so a host's context menu can offer picture items.
 
+Floating text frames and drawings are selected the same way (not one behind
+the text, which leaves the text to the clicks), and anything floating is
+**moved by dragging it**: on release it is no longer aligned but offset from
+what it is placed from - its paragraph, the page or the page's text area -
+by `UCRichDocumentEditor::SetFloatOffset`, one undo step, and both writers
+save the new place. A resized drawing keeps the size its shapes were drawn for
+(`RichTextFrame::drawingWidthPt` / `drawingHeightPt`) and its shapes scale to
+the new one. Frames and pictures in a header or footer are picked up, moved
+and resized the same way while that header or footer is being edited.
+
+```cpp
+// Move the floating object whose placeholder is at {block, offset}.
+editor->GetEditor().SetFloatOffset(RichDocPosition(block, placeholderOffset), /*xPt*/ 72, /*yPt*/ 12);
+```
+
 ```cpp
 if (editor->HasSelectedImage()) {
     editor->SetSelectedImageAltText("Quarterly revenue by region");
@@ -641,6 +656,66 @@ name.text = "Recipient Name";
 address.runs = {box, name};
 document->blocks.push_back(address);
 editor->SetDocument(document);
+```
+
+**Drawings.** A frame with `shapes` is a drawing: each `RichShape` - a
+`Line`, `Rectangle`, `RoundRectangle`, `Ellipse`, `Path` (an outline from 0
+to 1 across its box) or `Group` - is drawn in the frame's box with its
+`fillColor`, `lineColor`, `lineWidthPt`, `dash` and arrowheads, turned by
+`rotationDeg` and mirrored by `flipH` / `flipV`. The frame's own words sit
+over its shapes, at `textAnchor` (top, middle or bottom); a group member's
+words are a frame of their own (`RichShape::textFrame`, with `shapeText`
+set), and a group member with a `mediaIndex` is a picture. A shape with two
+or more `gradientStops` is filled with a gradient: linear at
+`gradientAngleDeg` (clockwise from left-to-right), or radial from
+`gradientCenterX` / `gradientCenterY`. A `fillPattern` (Word's preset names
+- `"pct50"`, `"dnDiag"`, `"smCheck"` ... - or an 8 x 8 tile of its own,
+`"bits:"` and 16 hex digits) draws in `fillColor` on `patternBackColor`
+(none when empty); a `fillMediaIndex` fills the shape with a picture,
+repeated at its own size or stretched (`fillPictureTiled`). A drawing with no
+words is exactly as tall as it was drawn, so a rule (a line with no height)
+takes no room. `RichShape::ApplyPreset` takes Word's outline names
+(`"star5"`, `"rightArrow"`, `"flowChartDecision"`, ...). ODT, DOCX (DrawingML
+and VML) and DOC (OfficeArt) shapes and groups read into it, and both writers
+save it. A drawing is moved and resized like a picture; the shapes in it are
+not edited one by one.
+
+**A frame's words, edited in place.** A double-click on a floating text frame
+(or a drawing with words) in the body opens its paragraphs where the frame
+stands: they are laid out at its inner width over its fill and border, and
+typed, formatted and undone like the body's; a click outside the frame, or
+Escape, goes back, and they are written into `UCRichDocument::frames`.
+`EditFrame(frameIndex)` does the same from code, `IsEditingFrame()` says
+whether it is open, and `FinishHeaderFooterEditing()` closes it.
+
+```cpp
+if (editor->EditFrame(0)) {
+    editor->GetEditor().InsertText("Example Company");
+    editor->FinishHeaderFooterEditing();
+}
+```
+
+**Metafile pictures.** EMF and WMF pictures and picture fills (Word 97 keeps
+many pictures, and Writer's DOC export its hatches, that way) are drawn
+through the Vector plugin's readers, at twice their size so they stay sharp
+when zoomed; an application that does not register the plugin shows an empty
+box in their place.
+
+```cpp
+RichShape rule;
+rule.kind = RichShape::Kind::Line;
+rule.widthPt = 425.0f;                // across the column; no height
+rule.lineColor = "#1F4E79";
+rule.lineWidthPt = 1.5f;
+RichTextFrame drawing;
+drawing.shapes = {rule};
+document->frames.push_back(drawing);
+
+RichTextRun under;
+under.text = RichTextRun::kObjectReplacement;
+under.frameIndex = static_cast<int>(document->frames.size()) - 1;
+under.imageWidthPt = 425.0f;
+under.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
 ```
 
 ### Check lists

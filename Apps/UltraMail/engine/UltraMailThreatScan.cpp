@@ -1,4 +1,7 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.11.3 - a proven sender's links to its own organisation under another suffix
+//   (paypal.de -> paypal.com: .com/.net/.org or a country's) are its own (SameOrganisation):
+//   not foreign domains, not the warning's "button domain", not a link-target mismatch
 // Version: 0.11.2 - an attachment is a program when FileAssociations::RunsCodeWhenOpened
 //   says so - the question UltraMail asks before opening one - not by a list of its own:
 //   scripts (.sh, .py), shortcuts (.url, .desktop), installers (.pkg, .deb, .msix), disk
@@ -340,6 +343,27 @@ void Add(ThreatReport& r, int score, const char* code, const std::string& detail
 }
 
 // Case-insensitive header lookup over a parsed part's header map.
+// The sender's own organisation under another suffix: a global company
+// sends from its country's domain and links to its main one (paypal.de ->
+// paypal.com, amazon.de -> amazon.co.uk). Only for a proven sender - the
+// receiving server checked the From domain is theirs, so a forged
+// "sparkasse.de" pointing at sparkasse.top is still told - and only to the
+// suffixes a company keeps its main site under (.com, .net, .org, a country's
+// own, "co.uk" included), not the cheap generic ones (.top, .xyz) a fraudster
+// registers the same name under.
+bool SameOrganisation(const std::string& senderReg, const std::string& linkReg,
+                      bool senderAuthenticated) {
+    if (!senderAuthenticated || senderReg.empty() || linkReg.empty()) return false;
+    if (senderReg == linkReg) return true;
+    const std::string label = BaseLabel(senderReg);
+    if (label.empty() || label != BaseLabel(linkReg)) return false;
+    const std::string suffix = linkReg.substr(linkReg.find('.') + 1);
+    const std::string tld = suffix.substr(suffix.rfind('.') + 1);
+    return suffix == "com" || suffix == "net" || suffix == "org" ||
+           (tld.size() == 2 && std::isalpha(static_cast<unsigned char>(tld[0])) &&
+            std::isalpha(static_cast<unsigned char>(tld[1])));
+}
+
 std::string Header(const std::map<std::string, std::string>& headers,
                    const std::string& name) {
     const std::string want = Lower(name);
@@ -1369,7 +1393,8 @@ ThreatReport ScanMessage(const ScanInput& input) {
     for (const auto& link : links) {
         if (link.host.empty()) continue;
         const std::string linkReg = RegistrableDomain(link.host);
-        const bool ownDomain = !senderReg.empty() && linkReg == senderReg;
+        const bool ownDomain = !senderReg.empty() &&
+            (linkReg == senderReg || SameOrganisation(senderReg, linkReg, authenticated));
         if (!ownDomain) foreignDomains.insert(linkReg);
 
         // A target hidden behind userinfo: http://paypal.com@203.0.113.9/…
@@ -1408,7 +1433,7 @@ ThreatReport ScanMessage(const ScanInput& input) {
         const std::string claimedHost = ClaimedHostIn(link.text);
         if (!claimedHost.empty()) {
             const std::string claimedReg = RegistrableDomain(claimedHost);
-            if (!claimedReg.empty() && claimedReg != linkReg && linkReg != senderReg &&
+            if (!claimedReg.empty() && claimedReg != linkReg && !ownDomain &&
                 !(authenticated && claimedReg == senderReg)) {
                 Add(report, 50, "link-target-mismatch",
                     "A link reads \"" + claimedHost + "\" but actually goes to " +
@@ -2311,6 +2336,10 @@ DomainMismatch FindDomainMismatch(const ScanInput& input) {
         input.fromAddr.empty() ? input.fromName : input.fromAddr);
     const std::string senderReg = RegistrableDomain(senderDomain);
     if (senderReg.empty()) return out;
+    // A proven sender's links to its own organisation under another suffix
+    // (paypal.de -> paypal.com) are its own, not a button leading away.
+    const bool authenticated =
+        !VerifiedSenderDomain(ParseAuthenticationResults(input.authResults), senderDomain).empty();
 
     const MessageLink* button   = nullptr;   // off-domain, with text
     const MessageLink* footer   = nullptr;   // off-domain "unsubscribe" link
@@ -2319,7 +2348,8 @@ DomainMismatch FindDomainMismatch(const ScanInput& input) {
     for (const auto& link : links) {
         if (link.host.empty()) continue;
         const std::string linkReg = RegistrableDomain(link.host);
-        if (linkReg.empty() || linkReg == senderReg) continue;
+        if (linkReg.empty() || SameOrganisation(senderReg, linkReg, authenticated) ||
+            linkReg == senderReg) continue;
         const std::string text = Trim(link.text);
         if (text.empty()) {
             if (!bareLink) bareLink = &link;

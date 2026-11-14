@@ -5,19 +5,22 @@
 // address, the title, the status line, whether back / forward can go. The
 // window (UltraWebWindow) puts the area under its tab strip and points its
 // toolbar at the active tab.
+// Version: 0.3.0 - the device permission bar above the area (Page); apps' calls
 // Version: 0.2.0 - onOpenInNewTab: target="_blank" links
 // Version: 0.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "../host/UltraWebGuest.h"
 #include "../host/UltraWebLoader.h"
 
+#include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasWebView.h"
 
+#include <deque>
 #include <functional>
 #include <memory>
 #include <string>
@@ -46,8 +49,15 @@ public:
     UltraWebTab(const UltraWebTab&) = delete;
     UltraWebTab& operator=(const UltraWebTab&) = delete;
 
-    // The tab's page, for the window's tab strip to show.
+    // The tab's page, for the window's tab strip to show: the permission bar
+    // (while an app asks for a device) above the area.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> Page() const { return page_; }
+    // The area: a web page, or the running app's UC_ROOT_HANDLE.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Area() const { return area_; }
+    // The question on the permission bar ("" when it is hidden), and its
+    // answer as the bar's buttons give it - for tests.
+    std::string PermissionQuestion() const;
+    void AnswerPermission(bool allowed);
 
     // Open what an address names: an app (about:demo, a .wasm or .wat path
     // or URL) runs, anything else opens as a web page.
@@ -76,8 +86,24 @@ private:
     void ClearArea();
     void SetStatus(const std::string& text);
     void Changed();
+    // GuestServices::askPermission: the answer kept for the app's origin, or
+    // the bar - one question at a time, the others waiting.
+    void AskPermission(const std::string& device, std::function<void(bool)> answer);
+    void ShowNextQuestion();
+    void DropQuestions();
+
+    struct Question {
+        std::string device;
+        std::function<void(bool)> answer;
+    };
 
     Host host_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> bar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> barText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> allow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> block_;
+    std::deque<Question> questions_;      // the front one is on the bar
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> area_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> errorTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> errorDetail_;

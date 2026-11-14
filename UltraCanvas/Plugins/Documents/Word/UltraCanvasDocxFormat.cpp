@@ -2,6 +2,12 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.6.0 - Pattern fills (a:pattFill) and picture fills (a:blipFill) read and written
+// Version: 1.5.0 - Gradient fills read and written (a:gradFill, VML v:fill); VML pictures
+//                  (v:imagedata) as pictures in the line or floating
+// Version: 1.4.0 - Drawn shapes: wps shapes (preset and custom outlines, theme colours), wpg
+//                  groups with pictures and text, VML shapes and groups; a header's own
+//                  relationships, so its pictures load
 // Version: 1.3.0 - w:spacing in w:rPr: a run's (and a character style's) letter spacing, read
 //                  and written
 // Version: 1.2.0
@@ -20,6 +26,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <set>
@@ -30,6 +37,7 @@ namespace UltraCanvas {
 using WordFormatInternal::EscapeXml;
 using WordFormatInternal::MathBlockAsParagraph;
 using WordFormatInternal::ToLower;
+using WordFormatInternal::ApplyOfficeArtShapeType;
 
 namespace {
 
@@ -60,6 +68,7 @@ std::string CharacterSpacingXml(float points) {
 
 struct DocxRelationship {
     std::string target;
+    std::string type;
     bool external = false;
 };
 
@@ -132,6 +141,7 @@ public:
             return false;
         }
         LoadRelationships();
+        LoadTheme();
         LoadStyles();
         LoadSettings();
         LoadNumbering();
@@ -403,21 +413,27 @@ private:
         return v.empty() || (v != "false" && v != "0" && v != "none");
     }
 
-    void LoadRelationships() {
+    void LoadRelationships() { relationships_ = ReadRelationships("word/_rels/document.xml.rels"); }
+
+    // A part's relationships (word/_rels/<part>.rels).
+    std::map<std::string, DocxRelationship> ReadRelationships(const std::string& relsPath) {
+        std::map<std::string, DocxRelationship> out;
         std::string relsXml;
-        if (!zip_.ReadEntry("word/_rels/document.xml.rels", relsXml)) return;
+        if (!zip_.ReadEntry(relsPath, relsXml)) return out;
         tinyxml2::XMLDocument rels;
-        if (rels.Parse(relsXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        if (rels.Parse(relsXml.c_str()) != tinyxml2::XML_SUCCESS) return out;
         auto* root = rels.FirstChildElement("Relationships");
-        if (!root) return;
+        if (!root) return out;
         for (auto* rel = root->FirstChildElement("Relationship"); rel;
              rel = rel->NextSiblingElement("Relationship")) {
             DocxRelationship entry;
             entry.target = Attr(rel, "Target");
+            entry.type = Attr(rel, "Type");
             entry.external = std::string(Attr(rel, "TargetMode")) == "External";
             std::string id = Attr(rel, "Id");
-            if (!id.empty()) relationships_[id] = entry;
+            if (!id.empty()) out[id] = entry;
         }
+        return out;
     }
 
     // Resolves a relationship target relative to word/ into a package path.
@@ -1024,19 +1040,25 @@ private:
     // A text box: Word's wps:wsp with a wps:txbx, or a VML v:textbox
     // (w:pict). Its paragraphs become a text frame floating where the shape
     // is anchored, with the shape's fill, outline and inner margin.
-    bool ParseTextBox(tinyxml2::XMLElement* drawing, InlineContext& ctx) {
-        auto* content = FindDescendant(drawing, "w:txbxContent");
-        if (!content) return false;
-        RichTextFrame frame;
+    // A text box's paragraphs and tables (w:txbxContent).
+    std::vector<RichDocBlock> ParseTextBoxContent(tinyxml2::XMLElement* content) {
         const size_t start = doc_->blocks.size();
         for (auto* elem = content->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
             const std::string tag = elem->Name() ? elem->Name() : "";
             if (tag == "w:p") ParseParagraph(elem);
             else if (tag == "w:tbl") ParseTable(elem);
         }
-        frame.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
-                            std::make_move_iterator(doc_->blocks.end()));
+        std::vector<RichDocBlock> blocks(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                         std::make_move_iterator(doc_->blocks.end()));
         doc_->blocks.resize(start);
+        return blocks;
+    }
+
+    bool ParseTextBox(tinyxml2::XMLElement* drawing, InlineContext& ctx) {
+        auto* content = FindDescendant(drawing, "w:txbxContent");
+        if (!content) return false;
+        RichTextFrame frame;
+        frame.blocks = ParseTextBoxContent(content);
 
         RichTextRun run;
         run.text = RichTextRun::kObjectReplacement;
@@ -1049,11 +1071,8 @@ private:
                 run.imageHeightPt = extent->FloatAttribute("cy", 0.0f) / kEmuPerPoint;
             }
             if (auto* shape = FindDescendant(drawing, "wps:spPr")) {
-                auto colourOf = [](tinyxml2::XMLElement* fill) -> std::string {
-                    auto* rgb = fill ? fill->FirstChildElement("a:srgbClr") : nullptr;
-                    const std::string value = rgb ? Attr(rgb, "val") : "";
-                    return value.size() == 6 ? "#" + value : "";
-                };
+                // srgbClr, or a theme colour (Word's white box is bg1).
+                auto colourOf = [&](tinyxml2::XMLElement* fill) -> std::string { return DrawingColor(fill); };
                 frame.backgroundColor = colourOf(shape->FirstChildElement("a:solidFill"));
                 if (auto* line = shape->FirstChildElement("a:ln"); line && !line->FirstChildElement("a:noFill")) {
                     const std::string colour = colourOf(line->FirstChildElement("a:solidFill"));
@@ -1066,6 +1085,7 @@ private:
             // The inner margin (Word's default is 0.1 inch).
             if (auto* body = FindDescendant(drawing, "wps:bodyPr")) {
                 frame.paddingPt = body->FloatAttribute("lIns", 91440.0f) / kEmuPerPoint;
+                frame.textAnchor = TextAnchorOf(body);
             }
             if (drawing->FirstChildElement("wp:inline")) {
                 run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;   // in the line: on lines of its own
@@ -1150,7 +1170,995 @@ private:
         return true;
     }
 
+    // ===== DRAWN SHAPES =====
+    // The theme's colour scheme (word/theme/theme1.xml): "accent1" -> "4472C4".
+    std::map<std::string, std::string> themeColors_;
+
+    void LoadTheme() {
+        // Office's own scheme, for a package without a theme.
+        themeColors_ = {{"dk1", "000000"}, {"lt1", "FFFFFF"}, {"dk2", "44546A"}, {"lt2", "E7E6E6"},
+                        {"accent1", "4472C4"}, {"accent2", "ED7D31"}, {"accent3", "A5A5A5"},
+                        {"accent4", "FFC000"}, {"accent5", "5B9BD5"}, {"accent6", "70AD47"},
+                        {"hlink", "0563C1"}, {"folHlink", "954F72"}};
+        std::string path = "word/theme/theme1.xml";
+        for (const auto& [id, rel] : relationships_) {
+            if (rel.type.size() >= 6 && rel.type.compare(rel.type.size() - 6, 6, "/theme") == 0) {
+                path = ResolvePartPath(rel.target);
+            }
+        }
+        std::string xml;
+        if (!zip_.ReadEntry(path, xml)) return;
+        tinyxml2::XMLDocument theme;
+        if (theme.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !theme.RootElement()) return;
+        auto* scheme = FindDescendant(theme.RootElement(), "a:clrScheme");
+        for (auto* entry = scheme ? scheme->FirstChildElement() : nullptr; entry; entry = entry->NextSiblingElement()) {
+            std::string name = entry->Name() ? entry->Name() : "";
+            if (name.rfind("a:", 0) == 0) name = name.substr(2);
+            std::string value;
+            if (auto* rgb = entry->FirstChildElement("a:srgbClr")) value = Attr(rgb, "val");
+            else if (auto* sys = entry->FirstChildElement("a:sysClr")) value = Attr(sys, "lastClr");
+            if (value.size() == 6) themeColors_[name] = value;
+        }
+    }
+
+    // A DrawingML colour (the element holding a:srgbClr, a:schemeClr, ...)
+    // as "#RRGGBB", its tint, shade and luminance changes applied; `placeholder`
+    // is the colour a style reference passes in (a:schemeClr val="phClr").
+    std::string DrawingColor(tinyxml2::XMLElement* holder, const std::string& placeholder = "") const {
+        if (!holder) return "";
+        tinyxml2::XMLElement* colour = nullptr;
+        std::string hex;
+        for (auto* child = holder->FirstChildElement(); child && hex.empty(); child = child->NextSiblingElement()) {
+            const std::string tag = child->Name() ? child->Name() : "";
+            colour = child;
+            if (tag == "a:srgbClr") hex = Attr(child, "val");
+            else if (tag == "a:sysClr") hex = Attr(child, "lastClr");
+            else if (tag == "a:scrgbClr") {
+                auto channel = [&](const char* name) {
+                    const float linear = std::clamp(child->FloatAttribute(name, 0.0f) / 100000.0f, 0.0f, 1.0f);
+                    const float value = linear <= 0.0031308f ? linear * 12.92f
+                                                             : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
+                    return static_cast<int>(std::lround(value * 255.0f));
+                };
+                char buffer[8];
+                std::snprintf(buffer, sizeof buffer, "%02X%02X%02X", channel("r"), channel("g"), channel("b"));
+                hex = buffer;
+            } else if (tag == "a:schemeClr") {
+                std::string name = Attr(child, "val");
+                if (name == "phClr") {
+                    hex = placeholder.size() == 7 ? placeholder.substr(1) : "";
+                    continue;
+                }
+                if (name == "bg1") name = "lt1";
+                else if (name == "tx1") name = "dk1";
+                else if (name == "bg2") name = "lt2";
+                else if (name == "tx2") name = "dk2";
+                auto found = themeColors_.find(name);
+                if (found != themeColors_.end()) hex = found->second;
+            } else if (tag == "a:prstClr") {
+                static const std::map<std::string, std::string> named = {
+                    {"black", "000000"}, {"white", "FFFFFF"}, {"red", "FF0000"}, {"green", "008000"},
+                    {"blue", "0000FF"}, {"yellow", "FFFF00"}, {"gray", "808080"}, {"orange", "FFA500"}};
+                auto found = named.find(Attr(child, "val"));
+                if (found != named.end()) hex = found->second;
+            }
+        }
+        if (hex.size() != 6 || !colour) return "";
+        float rgb[3];
+        for (int i = 0; i < 3; ++i) {
+            rgb[i] = static_cast<float>(std::strtol(hex.substr(static_cast<size_t>(i) * 2, 2).c_str(), nullptr, 16)) / 255.0f;
+        }
+        for (auto* change = colour->FirstChildElement(); change; change = change->NextSiblingElement()) {
+            const std::string tag = change->Name() ? change->Name() : "";
+            const float amount = change->FloatAttribute("val", 100000.0f) / 100000.0f;
+            if (tag == "a:shade") {
+                for (float& c : rgb) c *= amount;
+            } else if (tag == "a:tint") {
+                for (float& c : rgb) c = c + (1.0f - c) * (1.0f - amount);
+            } else if (tag == "a:lumMod" || tag == "a:lumOff") {
+                // In HSL: lightness times lumMod, plus lumOff.
+                const float hi = std::max({rgb[0], rgb[1], rgb[2]}), lo = std::min({rgb[0], rgb[1], rgb[2]});
+                float l = (hi + lo) * 0.5f;
+                float sat = 0.0f, hue = 0.0f;
+                if (hi > lo) {
+                    const float d = hi - lo;
+                    sat = l > 0.5f ? d / (2.0f - hi - lo) : d / (hi + lo);
+                    if (hi == rgb[0]) hue = (rgb[1] - rgb[2]) / d + (rgb[1] < rgb[2] ? 6.0f : 0.0f);
+                    else if (hi == rgb[1]) hue = (rgb[2] - rgb[0]) / d + 2.0f;
+                    else hue = (rgb[0] - rgb[1]) / d + 4.0f;
+                    hue /= 6.0f;
+                }
+                l = std::clamp(tag == "a:lumMod" ? l * amount : l + amount, 0.0f, 1.0f);
+                auto toRgb = [](float p, float q, float t) {
+                    if (t < 0.0f) t += 1.0f;
+                    if (t > 1.0f) t -= 1.0f;
+                    if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
+                    if (t < 0.5f) return q;
+                    if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
+                    return p;
+                };
+                if (sat <= 0.0f) {
+                    rgb[0] = rgb[1] = rgb[2] = l;
+                } else {
+                    const float q = l < 0.5f ? l * (1.0f + sat) : l + sat - l * sat;
+                    const float p2 = 2.0f * l - q;
+                    rgb[0] = toRgb(p2, q, hue + 1.0f / 3.0f);
+                    rgb[1] = toRgb(p2, q, hue);
+                    rgb[2] = toRgb(p2, q, hue - 1.0f / 3.0f);
+                }
+            }
+        }
+        char out[8];
+        std::snprintf(out, sizeof out, "#%02X%02X%02X", static_cast<int>(std::lround(std::clamp(rgb[0], 0.0f, 1.0f) * 255.0f)),
+                      static_cast<int>(std::lround(std::clamp(rgb[1], 0.0f, 1.0f) * 255.0f)),
+                      static_cast<int>(std::lround(std::clamp(rgb[2], 0.0f, 1.0f) * 255.0f)));
+        return out;
+    }
+
+    // A wps:wsp that is a plain text box: a rectangle with words, drawn as a
+    // text frame with its own fill and border.
+    static bool IsPlainTextBox(tinyxml2::XMLElement* wsp) {
+        if (!wsp->FirstChildElement("wps:txbx")) return false;
+        auto* spPr = wsp->FirstChildElement("wps:spPr");
+        if (!spPr) return true;
+        if (spPr->FirstChildElement("a:custGeom")) return false;
+        auto* xfrm = spPr->FirstChildElement("a:xfrm");
+        if (xfrm && (xfrm->IntAttribute("rot", 0) != 0)) return false;
+        auto* preset = spPr->FirstChildElement("a:prstGeom");
+        const std::string name = preset ? Attr(preset, "prst") : "rect";
+        if (name != "rect") return false;
+        // A fill or line from the theme (wps:style) needs the shape's colours.
+        for (const char* tag : {"a:gradFill", "a:pattFill", "a:blipFill"}) {
+            if (spPr->FirstChildElement(tag)) return false;
+        }
+        // A dashed outline is a shape's, not a frame border's.
+        auto* line = spPr->FirstChildElement("a:ln");
+        if (line) {
+            auto* dash = line->FirstChildElement("a:prstDash");
+            if (dash && std::string(Attr(dash, "val")) != "solid") return false;
+        }
+        // A shape coloured by its theme style (Word's "add text" to a shape)
+        // states no fill or line of its own.
+        if (auto* style = wsp->FirstChildElement("wps:style")) {
+            auto* fillRef = style->FirstChildElement("a:fillRef");
+            auto* lineRef = style->FirstChildElement("a:lnRef");
+            const bool ownFill = spPr->FirstChildElement("a:noFill") || spPr->FirstChildElement("a:solidFill");
+            const bool ownLine = line && (line->FirstChildElement("a:noFill") || line->FirstChildElement("a:solidFill"));
+            if ((fillRef && fillRef->IntAttribute("idx", 0) > 0 && !ownFill)
+                || (lineRef && lineRef->IntAttribute("idx", 0) > 0 && !ownLine)) return false;
+        }
+        return true;
+    }
+
+    struct ChildSpace { double offX = 0, offY = 0, extX = 1, extY = 1; double scaleX = 1, scaleY = 1; };
+
+    // A shape's box (a:xfrm) in points within its parent: a top-level
+    // shape's from (0, 0); a group member's mapped from the group's child
+    // space (chOff / chExt) onto the group's box.
+    static void ReadTransform(tinyxml2::XMLElement* xfrm, const ChildSpace& space, RichShape& shape) {
+        if (!xfrm) return;
+        shape.rotationDeg = static_cast<float>(xfrm->IntAttribute("rot", 0)) / 60000.0f;
+        shape.flipH = std::string(Attr(xfrm, "flipH")) == "1" || std::string(Attr(xfrm, "flipH")) == "true";
+        shape.flipV = std::string(Attr(xfrm, "flipV")) == "1" || std::string(Attr(xfrm, "flipV")) == "true";
+        auto* off = xfrm->FirstChildElement("a:off");
+        auto* ext = xfrm->FirstChildElement("a:ext");
+        const double x = off ? static_cast<double>(ParseEmu(Attr(off, "x"))) : space.offX;
+        const double y = off ? static_cast<double>(ParseEmu(Attr(off, "y"))) : space.offY;
+        const double cx = ext ? static_cast<double>(ParseEmu(Attr(ext, "cx"))) : 0.0;
+        const double cy = ext ? static_cast<double>(ParseEmu(Attr(ext, "cy"))) : 0.0;
+        shape.xPt = static_cast<float>((x - space.offX) * space.scaleX / kEmuPerPoint);
+        shape.yPt = static_cast<float>((y - space.offY) * space.scaleY / kEmuPerPoint);
+        shape.widthPt = static_cast<float>(cx * space.scaleX / kEmuPerPoint);
+        shape.heightPt = static_cast<float>(cy * space.scaleY / kEmuPerPoint);
+    }
+
+    // a:custGeom's outline, each point scaled into 0..1 across its path's
+    // own width and height; arcs become curves.
+    // Returns false when every path says it takes no fill.
+    static bool ReadCustomGeometry(tinyxml2::XMLElement* geometry, RichShape& shape) {
+        using Op = RichShape::PathPoint::Op;
+        shape.kind = RichShape::Kind::Path;
+        shape.path.clear();
+        auto* list = geometry->FirstChildElement("a:pathLst");
+        bool filled = false;
+        for (auto* path = list ? list->FirstChildElement("a:path") : nullptr; path; path = path->NextSiblingElement("a:path")) {
+            filled = filled || std::string(Attr(path, "fill")) != "none";
+            double pw = static_cast<double>(ParseEmu(Attr(path, "w")));
+            double ph = static_cast<double>(ParseEmu(Attr(path, "h")));
+            if (pw <= 0.0) pw = std::max(1.0, static_cast<double>(shape.widthPt) * kEmuPerPoint);
+            if (ph <= 0.0) ph = std::max(1.0, static_cast<double>(shape.heightPt) * kEmuPerPoint);
+            double curX = 0.0, curY = 0.0;
+            auto point = [&](tinyxml2::XMLElement* pt, double& px, double& py) {
+                px = pt ? static_cast<double>(ParseEmu(Attr(pt, "x"))) : 0.0;
+                py = pt ? static_cast<double>(ParseEmu(Attr(pt, "y"))) : 0.0;
+            };
+            auto add = [&](Op op, double x, double y) {
+                RichShape::PathPoint p;
+                p.op = op;
+                p.x = static_cast<float>(x / pw);
+                p.y = static_cast<float>(y / ph);
+                shape.path.push_back(p);
+                curX = x;
+                curY = y;
+            };
+            auto curve = [&](double c1x, double c1y, double c2x, double c2y, double x, double y) {
+                RichShape::PathPoint p;
+                p.op = Op::Curve;
+                p.c1x = static_cast<float>(c1x / pw); p.c1y = static_cast<float>(c1y / ph);
+                p.c2x = static_cast<float>(c2x / pw); p.c2y = static_cast<float>(c2y / ph);
+                p.x = static_cast<float>(x / pw); p.y = static_cast<float>(y / ph);
+                shape.path.push_back(p);
+                curX = x;
+                curY = y;
+            };
+            for (auto* step = path->FirstChildElement(); step; step = step->NextSiblingElement()) {
+                const std::string tag = step->Name() ? step->Name() : "";
+                double x = 0, y = 0;
+                if (tag == "a:moveTo" || tag == "a:lnTo") {
+                    point(step->FirstChildElement("a:pt"), x, y);
+                    add(tag == "a:moveTo" ? Op::Move : Op::Line, x, y);
+                } else if (tag == "a:cubicBezTo") {
+                    double c[6] = {};
+                    int i = 0;
+                    for (auto* pt = step->FirstChildElement("a:pt"); pt && i < 6; pt = pt->NextSiblingElement("a:pt"), i += 2) {
+                        point(pt, c[i], c[i + 1]);
+                    }
+                    if (i == 6) curve(c[0], c[1], c[2], c[3], c[4], c[5]);
+                } else if (tag == "a:quadBezTo") {
+                    double c[4] = {};
+                    int i = 0;
+                    for (auto* pt = step->FirstChildElement("a:pt"); pt && i < 4; pt = pt->NextSiblingElement("a:pt"), i += 2) {
+                        point(pt, c[i], c[i + 1]);
+                    }
+                    if (i == 4) {
+                        curve(curX + (c[0] - curX) * 2.0 / 3.0, curY + (c[1] - curY) * 2.0 / 3.0,
+                              c[2] + (c[0] - c[2]) * 2.0 / 3.0, c[3] + (c[1] - c[3]) * 2.0 / 3.0, c[2], c[3]);
+                    }
+                } else if (tag == "a:arcTo") {
+                    // An elliptical arc from the current point: angles in
+                    // 60000ths of a degree, as quarter-turn (or shorter) curves.
+                    const double wR = static_cast<double>(ParseEmu(Attr(step, "wR")));
+                    const double hR = static_cast<double>(ParseEmu(Attr(step, "hR")));
+                    constexpr double kRad = 3.14159265358979323846 / 180.0 / 60000.0;
+                    double start = static_cast<double>(ParseEmu(Attr(step, "stAng"))) * kRad;
+                    const double sweep = static_cast<double>(ParseEmu(Attr(step, "swAng"))) * kRad;
+                    const double cx = curX - wR * std::cos(start), cy = curY - hR * std::sin(start);
+                    const int pieces = std::max(1, static_cast<int>(std::ceil(std::abs(sweep) / (3.14159265358979323846 / 2.0))));
+                    const double piece = sweep / pieces;
+                    const double k = 4.0 / 3.0 * std::tan(piece / 4.0);
+                    for (int i = 0; i < pieces; ++i) {
+                        const double a0 = start, a1 = start + piece;
+                        const double x0 = cx + wR * std::cos(a0), y0 = cy + hR * std::sin(a0);
+                        const double x1 = cx + wR * std::cos(a1), y1 = cy + hR * std::sin(a1);
+                        curve(x0 - k * wR * std::sin(a0), y0 + k * hR * std::cos(a0),
+                              x1 + k * wR * std::sin(a1), y1 - k * hR * std::cos(a1), x1, y1);
+                        start = a1;
+                    }
+                } else if (tag == "a:close") {
+                    RichShape::PathPoint p;
+                    p.op = Op::Close;
+                    shape.path.push_back(p);
+                }
+            }
+        }
+        return filled;
+    }
+
+    // A shape's geometry, fill and outline (wps:spPr, pic:spPr), falling back
+    // to its theme style's (wps:style) where it states none.
+    void ReadShapeLook(tinyxml2::XMLElement* spPr, tinyxml2::XMLElement* styleRefs, RichShape& shape) {
+        std::string styleFill, styleLine;
+        float styleLineWidth = 0.0f;
+        if (styleRefs) {
+            if (auto* ref = styleRefs->FirstChildElement("a:fillRef"); ref && ref->IntAttribute("idx", 0) > 0) {
+                styleFill = DrawingColor(ref);
+            }
+            if (auto* ref = styleRefs->FirstChildElement("a:lnRef"); ref && ref->IntAttribute("idx", 0) > 0) {
+                styleLine = DrawingColor(ref);
+                const int idx = ref->IntAttribute("idx", 1);
+                styleLineWidth = idx >= 3 ? 1.5f : idx == 2 ? 1.0f : 0.5f;   // Office's line styles
+            }
+        }
+        if (auto* preset = spPr ? spPr->FirstChildElement("a:prstGeom") : nullptr) {
+            const std::string name = Attr(preset, "prst");
+            shape.ApplyPreset(name);
+            if (shape.kind == RichShape::Kind::RoundRectangle) {
+                if (auto* list = preset->FirstChildElement("a:avLst")) {
+                    for (auto* gd = list->FirstChildElement("a:gd"); gd; gd = gd->NextSiblingElement("a:gd")) {
+                        const std::string formula = Attr(gd, "fmla");
+                        if (std::string(Attr(gd, "name")) == "adj" && formula.rfind("val ", 0) == 0) {
+                            double adjust = 16667.0;
+                            WordFormatInternal::ReadNumberAt(formula, 4, adjust);
+                            shape.cornerRadius = std::clamp(static_cast<float>(adjust / 100000.0), 0.0f, 0.5f);
+                        }
+                    }
+                }
+            }
+        }
+        bool takesFill = true;
+        if (auto* custom = spPr && !spPr->FirstChildElement("a:prstGeom") ? spPr->FirstChildElement("a:custGeom") : nullptr) {
+            takesFill = ReadCustomGeometry(custom, shape);
+        }
+        bool fillStated = false;
+        if (spPr) {
+            if (spPr->FirstChildElement("a:noFill")) {
+                fillStated = true;
+            } else if (auto* solid = spPr->FirstChildElement("a:solidFill")) {
+                shape.fillColor = DrawingColor(solid);
+                fillStated = true;
+            } else if (auto* gradient = spPr->FirstChildElement("a:gradFill")) {
+                ReadGradient(gradient, shape);
+                fillStated = true;
+            } else if (auto* picture = spPr->FirstChildElement("a:blipFill")) {
+                // A picture fill: tiled, or stretched over the shape.
+                auto* blip = picture->FirstChildElement("a:blip");
+                shape.fillMediaIndex = blip ? LoadImageByRelId(Attr(blip, "r:embed")) : -1;
+                shape.fillPictureTiled = picture->FirstChildElement("a:tile") != nullptr;
+                fillStated = shape.fillMediaIndex >= 0;
+            } else if (auto* pattern = spPr->FirstChildElement("a:pattFill")) {
+                // A preset pattern: its foreground on its background.
+                shape.fillColor = DrawingColor(pattern->FirstChildElement("a:fgClr"));
+                if (shape.fillColor.empty()) shape.fillColor = "#000000";
+                auto* back = pattern->FirstChildElement("a:bgClr");
+                shape.patternBackColor = back ? DrawingColor(back) : "#FFFFFF";
+                // A background made all but invisible is none.
+                auto* backColour = back ? back->FirstChildElement() : nullptr;
+                auto* alpha = backColour ? backColour->FirstChildElement("a:alpha") : nullptr;
+                if (alpha && alpha->IntAttribute("val", 100000) < 50000) shape.patternBackColor.clear();
+                shape.fillPattern = Attr(pattern, "prst");
+                if (shape.fillPattern.empty()) shape.fillPattern = "pct5";   // DrawingML's default
+                fillStated = true;
+            }
+        }
+        if (!fillStated) shape.fillColor = styleFill;
+        shape.lineColor = styleLine;
+        if (styleLineWidth > 0.0f) shape.lineWidthPt = styleLineWidth;
+        if (auto* line = spPr ? spPr->FirstChildElement("a:ln") : nullptr) {
+            if (line->Attribute("w")) shape.lineWidthPt = static_cast<float>(ParseEmu(Attr(line, "w"))) / kEmuPerPoint;
+            if (line->FirstChildElement("a:noFill")) shape.lineColor.clear();
+            else if (auto* solid = line->FirstChildElement("a:solidFill")) shape.lineColor = DrawingColor(solid);
+            else if (auto* gradient = line->FirstChildElement("a:gradFill")) {
+                auto* list = gradient->FirstChildElement("a:gsLst");
+                shape.lineColor = DrawingColor(list ? list->FirstChildElement("a:gs") : nullptr);
+            }
+            if (auto* dash = line->FirstChildElement("a:prstDash")) {
+                const std::string kind = Attr(dash, "val");
+                if (kind == "dot" || kind == "sysDot") shape.dash = RichShape::Dash::Dotted;
+                else if (!kind.empty() && kind != "solid") shape.dash = RichShape::Dash::Dashed;
+            } else if (auto* custom = line->FirstChildElement("a:custDash")) {
+                // Its first dash's length, in thousandths of a percent of the
+                // line's width: one width or less is a dot.
+                auto* first = custom->FirstChildElement("a:ds");
+                shape.dash = first && first->IntAttribute("d", 300000) <= 100000 ? RichShape::Dash::Dotted
+                                                                                  : RichShape::Dash::Dashed;
+            }
+            auto arrow = [](tinyxml2::XMLElement* end) {
+                const std::string type = end ? Attr(end, "type") : "";
+                return !type.empty() && type != "none";
+            };
+            shape.arrowStart = arrow(line->FirstChildElement("a:headEnd"));
+            shape.arrowEnd = arrow(line->FirstChildElement("a:tailEnd"));
+        }
+        if (!shape.IsClosed() || !takesFill) shape.fillColor.clear();
+    }
+
+    // a:gradFill: its stops (a:gs, positions in thousandths of a percent),
+    // and a:lin's angle (60000ths of a degree, clockwise from left-to-right)
+    // or a:path's round kinds, from the centre out.
+    void ReadGradient(tinyxml2::XMLElement* gradient, RichShape& shape) const {
+        shape.gradientStops.clear();
+        auto* list = gradient->FirstChildElement("a:gsLst");
+        for (auto* stop = list ? list->FirstChildElement("a:gs") : nullptr; stop; stop = stop->NextSiblingElement("a:gs")) {
+            const std::string colour = DrawingColor(stop);
+            if (colour.empty()) continue;
+            shape.gradientStops.push_back({std::clamp(stop->FloatAttribute("pos", 0.0f) / 100000.0f, 0.0f, 1.0f), colour});
+        }
+        std::stable_sort(shape.gradientStops.begin(), shape.gradientStops.end(),
+                         [](const RichShape::GradientStop& a, const RichShape::GradientStop& b) { return a.position < b.position; });
+        if (auto* linear = gradient->FirstChildElement("a:lin")) {
+            shape.gradientAngleDeg = static_cast<float>(ParseEmu(Attr(linear, "ang"))) / 60000.0f;
+        } else if (auto* path = gradient->FirstChildElement("a:path")) {
+            shape.gradientRadial = true;
+            // Its centre: the middle of a:fillToRect (insets from each side).
+            if (auto* focus = path->FirstChildElement("a:fillToRect")) {
+                const float l = focus->FloatAttribute("l", 50000.0f), t = focus->FloatAttribute("t", 50000.0f);
+                const float r = focus->FloatAttribute("r", 50000.0f), b = focus->FloatAttribute("b", 50000.0f);
+                shape.gradientCenterX = std::clamp((l + 100000.0f - r) * 0.5f / 100000.0f, 0.0f, 1.0f);
+                shape.gradientCenterY = std::clamp((t + 100000.0f - b) * 0.5f / 100000.0f, 0.0f, 1.0f);
+            }
+        } else {
+            shape.gradientAngleDeg = 90.0f;      // Word's default: top to bottom
+        }
+        shape.fillColor = shape.gradientStops.empty() ? "" : shape.gradientStops.front().color;
+        if (shape.gradientStops.size() < 2) shape.gradientStops.clear();
+    }
+
+    static RichShape::TextAnchor TextAnchorOf(tinyxml2::XMLElement* bodyPr) {
+        const std::string anchor = bodyPr ? Attr(bodyPr, "anchor") : "";
+        if (anchor == "ctr") return RichShape::TextAnchor::Middle;
+        if (anchor == "b") return RichShape::TextAnchor::Bottom;
+        return RichShape::TextAnchor::Top;
+    }
+
+    // The words of a shape whose theme style colours them (wps:style's
+    // fontRef - Word's white text on a blue shape) take that colour where
+    // they state none.
+    void ColourShapeText(std::vector<RichDocBlock>& blocks, tinyxml2::XMLElement* styleRefs) const {
+        auto* fontRef = styleRefs ? styleRefs->FirstChildElement("a:fontRef") : nullptr;
+        const std::string colour = DrawingColor(fontRef);
+        if (colour.empty()) return;
+        for (RichDocBlock& block : blocks) {
+            for (RichTextRun& run : block.runs) {
+                if (run.color.empty()) run.color = colour;
+            }
+        }
+    }
+
+    // One member of a drawing (wps:wsp, wpg:grpSp, pic:pic, or the top-level
+    // wpg:wgp itself), in `space`. Its words go into a frame of their own
+    // unless `ownBlocks` takes them (a lone shape's text is its frame's).
+    bool ReadDrawingShape(tinyxml2::XMLElement* element, const ChildSpace& space, RichShape& shape,
+                          std::vector<RichDocBlock>* ownBlocks, float* ownPadding, RichShape::TextAnchor* ownAnchor,
+                          int depth) {
+        if (depth > 16) return false;
+        const std::string tag = element->Name() ? element->Name() : "";
+        if (tag == "wps:wsp") {
+            auto* spPr = element->FirstChildElement("wps:spPr");
+            ReadTransform(spPr ? spPr->FirstChildElement("a:xfrm") : nullptr, space, shape);
+            if (auto* cNvPr = element->FirstChildElement("wps:cNvPr")) shape.name = Attr(cNvPr, "name");
+            auto* styleRefs = element->FirstChildElement("wps:style");
+            ReadShapeLook(spPr, styleRefs, shape);
+            if (auto* content = FindDescendant(element, "w:txbxContent")) {
+                std::vector<RichDocBlock> blocks = ParseTextBoxContent(content);
+                ColourShapeText(blocks, styleRefs);
+                auto* bodyPr = element->FirstChildElement("wps:bodyPr");
+                const float padding = (bodyPr ? bodyPr->FloatAttribute("lIns", 91440.0f) : 91440.0f) / kEmuPerPoint;
+                if (ownBlocks) {
+                    *ownBlocks = std::move(blocks);
+                    if (ownPadding) *ownPadding = padding;
+                    if (ownAnchor) *ownAnchor = TextAnchorOf(bodyPr);
+                } else if (!blocks.empty()) {
+                    RichTextFrame words;
+                    words.blocks = std::move(blocks);
+                    words.shapeText = true;
+                    shape.textFrame = static_cast<int>(doc_->frames.size());
+                    shape.textPaddingPt = padding;
+                    shape.textAnchor = TextAnchorOf(bodyPr);
+                    doc_->frames.push_back(std::move(words));
+                }
+            }
+            return true;
+        }
+        if (tag == "pic:pic") {
+            auto* spPr = element->FirstChildElement("pic:spPr");
+            ReadTransform(spPr ? spPr->FirstChildElement("a:xfrm") : nullptr, space, shape);
+            auto* blip = FindDescendant(element, "a:blip");
+            shape.mediaIndex = blip ? LoadImageByRelId(Attr(blip, "r:embed")) : -1;
+            if (shape.mediaIndex < 0) return false;
+            ReadShapeLook(spPr, nullptr, shape);
+            shape.fillColor.clear();
+            return true;
+        }
+        if (tag == "wpg:wgp" || tag == "wpg:grpSp") {
+            shape.kind = RichShape::Kind::Group;
+            auto* groupPr = element->FirstChildElement("wpg:grpSpPr");
+            auto* xfrm = groupPr ? groupPr->FirstChildElement("a:xfrm") : nullptr;
+            if (tag == "wpg:grpSp") ReadTransform(xfrm, space, shape);
+            // Its members' child space, mapped onto its box.
+            ChildSpace inner;
+            if (xfrm) {
+                auto* chOff = xfrm->FirstChildElement("a:chOff");
+                auto* chExt = xfrm->FirstChildElement("a:chExt");
+                auto* ext = xfrm->FirstChildElement("a:ext");
+                if (chOff) {
+                    inner.offX = static_cast<double>(ParseEmu(Attr(chOff, "x")));
+                    inner.offY = static_cast<double>(ParseEmu(Attr(chOff, "y")));
+                }
+                const double chX = chExt ? static_cast<double>(ParseEmu(Attr(chExt, "cx"))) : 0.0;
+                const double chY = chExt ? static_cast<double>(ParseEmu(Attr(chExt, "cy"))) : 0.0;
+                const double boxX = static_cast<double>(shape.widthPt) * kEmuPerPoint;
+                const double boxY = static_cast<double>(shape.heightPt) * kEmuPerPoint;
+                const double extX = ext ? static_cast<double>(ParseEmu(Attr(ext, "cx"))) : boxX;
+                const double extY = ext ? static_cast<double>(ParseEmu(Attr(ext, "cy"))) : boxY;
+                inner.scaleX = chX > 0.0 ? (boxX > 0.0 ? boxX : extX) / chX : 1.0;
+                inner.scaleY = chY > 0.0 ? (boxY > 0.0 ? boxY : extY) / chY : 1.0;
+            }
+            for (auto* member = element->FirstChildElement(); member; member = member->NextSiblingElement()) {
+                const std::string memberTag = member->Name() ? member->Name() : "";
+                if (memberTag != "wps:wsp" && memberTag != "wpg:grpSp" && memberTag != "pic:pic") continue;
+                RichShape child;
+                if (ReadDrawingShape(member, inner, child, nullptr, nullptr, nullptr, depth + 1)) {
+                    shape.children.push_back(std::move(child));
+                }
+            }
+            return !shape.children.empty();
+        }
+        return false;
+    }
+
+    // A DrawingML shape or group (wps:wsp, wpg:wgp) in a w:drawing: a frame
+    // holding the drawing, floating where it is anchored.
+    void ParseDrawingShapes(tinyxml2::XMLElement* drawing, tinyxml2::XMLElement* graphicData, InlineContext& ctx) {
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        if (auto* extent = FindDescendant(drawing, "wp:extent")) {
+            run.imageWidthPt = static_cast<float>(ParseEmu(Attr(extent, "cx"))) / kEmuPerPoint;
+            run.imageHeightPt = static_cast<float>(ParseEmu(Attr(extent, "cy"))) / kEmuPerPoint;
+        }
+        RichTextFrame frame;
+        if (auto* docPr = FindDescendant(drawing, "wp:docPr")) frame.name = Attr(docPr, "name");
+        auto* element = graphicData->FirstChildElement("wps:wsp");
+        if (!element) element = graphicData->FirstChildElement("wpg:wgp");
+        if (!element) return;
+        RichShape shape;
+        shape.widthPt = run.imageWidthPt;
+        shape.heightPt = run.imageHeightPt;
+        ChildSpace top;
+        const bool lone = std::string(element->Name()) == "wps:wsp";
+        if (lone) {
+            frame.paddingPt = 7.2f;
+            if (!ReadDrawingShape(element, top, shape, &frame.blocks, &frame.paddingPt, &frame.textAnchor, 0)) return;
+            // The anchor places it: the box is the frame's.
+            shape.xPt = shape.yPt = 0.0f;
+            shape.widthPt = run.imageWidthPt;
+            shape.heightPt = run.imageHeightPt;
+        } else {
+            if (!ReadDrawingShape(element, top, shape, nullptr, nullptr, nullptr, 0)) return;
+            shape.xPt = shape.yPt = 0.0f;
+        }
+        frame.shapes.push_back(std::move(shape));
+        if (drawing->FirstChildElement("wp:inline")) {
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;   // in the line: on lines of its own
+        } else {
+            ApplyAnchorPlacement(drawing->FirstChildElement("wp:anchor"), run);
+        }
+        run.imageAltText = frame.name;
+        run.frameIndex = static_cast<int>(doc_->frames.size());
+        doc_->frames.push_back(std::move(frame));
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
+    }
+
+    // ===== VML SHAPES =====
+    // Word 2007's drawings, and every DOCX's fallback: v:line, v:rect,
+    // v:roundrect, v:oval, v:shape (a path or a preset), v:group.
+    static std::map<std::string, std::string> VmlStyle(const tinyxml2::XMLElement* shape) {
+        std::map<std::string, std::string> css;
+        std::istringstream declarations(Attr(shape, "style"));
+        std::string declaration;
+        while (std::getline(declarations, declaration, ';')) {
+            const size_t colon = declaration.find(':');
+            if (colon == std::string::npos) continue;
+            std::string name = ToLower(declaration.substr(0, colon));
+            name.erase(std::remove(name.begin(), name.end(), ' '), name.end());
+            css[name] = declaration.substr(colon + 1);
+        }
+        return css;
+    }
+
+    static std::string VmlColour(std::string value) {
+        value.erase(std::remove(value.begin(), value.end(), ' '), value.end());
+        const size_t space = value.find('[');
+        if (space != std::string::npos) value = value.substr(0, space);
+        if (value.size() == 7 && value[0] == '#') return value;
+        if (value.size() == 4 && value[0] == '#') {
+            return std::string("#") + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
+        }
+        static const std::map<std::string, std::string> named = {
+            {"black", "#000000"}, {"white", "#FFFFFF"}, {"red", "#FF0000"}, {"green", "#008000"},
+            {"blue", "#0000FF"}, {"yellow", "#FFFF00"}, {"gray", "#808080"}, {"silver", "#C0C0C0"},
+            {"navy", "#000080"}, {"maroon", "#800000"}, {"teal", "#008080"}, {"purple", "#800080"}};
+        auto found = named.find(ToLower(value));
+        return found == named.end() ? "" : found->second;
+    }
+
+    static bool VmlOff(const char* value) {
+        const std::string v = value ? value : "";
+        return v == "f" || v == "false" || v == "0";
+    }
+
+    // v:fill type="gradient" (linear) or "gradientRadial": the shape's
+    // colour and color2, placed by focus and turned by angle as Word 97's
+    // shades are (WordFormatInternal::ApplyOfficeShade).
+    static void ReadVmlGradient(tinyxml2::XMLElement* fill, RichShape& shape) {
+        const std::string type = Attr(fill, "type");
+        if ((type != "gradient" && type != "gradientRadial") || shape.fillColor.empty()) return;
+        std::string back = VmlColour(Attr(fill, "color2"));
+        if (back.empty()) back = "#FFFFFF";
+        double angle = 0.0, focus = 0.0;
+        WordFormatInternal::ReadNumberAt(Attr(fill, "angle"), 0, angle);
+        const std::string focusText = Attr(fill, "focus");
+        WordFormatInternal::ReadNumberAt(focusText, 0, focus);
+        if (!focusText.empty() && focusText.find('%') == std::string::npos) focus *= 100.0;   // a fraction
+        WordFormatInternal::ApplyOfficeShade(shape, shape.fillColor, back, focus, angle, type == "gradientRadial");
+        // A round one's centre (focusposition, fractions of the box).
+        double centre[2] = {0.0, 0.0};                       // VML's default: the top-left corner
+        if (shape.gradientRadial) {
+            WordFormatInternal::ReadNumbers(Attr(fill, "focusposition"), centre, 2);
+            shape.gradientCenterX = static_cast<float>(std::clamp(centre[0], 0.0, 1.0));
+            shape.gradientCenterY = static_cast<float>(std::clamp(centre[1], 0.0, 1.0));
+        }
+    }
+
+    // A VML shape's look: fill, stroke (v:stroke's dash style and arrows).
+    static void ReadVmlLook(tinyxml2::XMLElement* element, RichShape& shape) {
+        if (!VmlOff(Attr(element, "filled"))) {
+            std::string fill = VmlColour(Attr(element, "fillcolor"));
+            if (fill.empty() && !element->Attribute("fillcolor")) fill = "#FFFFFF";   // VML's default fill
+            shape.fillColor = fill;
+        }
+        if (auto* fill = element->FirstChildElement("v:fill")) {
+            if (VmlOff(Attr(fill, "on"))) shape.fillColor.clear();
+            else if (!VmlColour(Attr(fill, "color")).empty() && !shape.fillColor.empty()) shape.fillColor = VmlColour(Attr(fill, "color"));
+            ReadVmlGradient(fill, shape);
+        }
+        if (!VmlOff(Attr(element, "stroked"))) {
+            std::string colour = VmlColour(Attr(element, "strokecolor"));
+            shape.lineColor = colour.empty() ? "#000000" : colour;
+            const float weight = CssLengthPt(Attr(element, "strokeweight"));
+            shape.lineWidthPt = weight > 0.0f ? weight : 0.75f;
+        }
+        if (auto* stroke = element->FirstChildElement("v:stroke")) {
+            if (!VmlColour(Attr(stroke, "color")).empty() && !shape.lineColor.empty()) shape.lineColor = VmlColour(Attr(stroke, "color"));
+            const std::string weight = Attr(stroke, "weight");
+            if (!weight.empty() && !shape.lineColor.empty()) {
+                // A bare number is EMU here; else a CSS length.
+                const bool emu = weight.find_first_not_of("0123456789") == std::string::npos;
+                double emuWidth = 0.0;
+                if (emu) WordFormatInternal::ReadNumberAt(weight, 0, emuWidth);
+                const float points = emu ? static_cast<float>(emuWidth) / kEmuPerPoint : CssLengthPt(weight);
+                if (points > 0.0f) shape.lineWidthPt = points;
+            }
+            if (VmlOff(Attr(stroke, "on"))) shape.lineColor.clear();
+            const std::string dash = Attr(stroke, "dashstyle");
+            if (dash.find("dot") != std::string::npos && dash.find("dash") == std::string::npos) shape.dash = RichShape::Dash::Dotted;
+            else if (!dash.empty() && dash != "solid") shape.dash = RichShape::Dash::Dashed;
+            const std::string start = Attr(stroke, "startarrow"), end = Attr(stroke, "endarrow");
+            shape.arrowStart = !start.empty() && start != "none";
+            shape.arrowEnd = !end.empty() && end != "none";
+        }
+        if (!shape.IsClosed()) shape.fillColor.clear();
+    }
+
+    // A VML path ("m 0,0 l 100,0 x e"): m, l, c, x (close), e (end), with
+    // their relative forms t, r, v; scaled by the coordinate size.
+    static void ReadVmlPath(const std::string& text, double sizeX, double sizeY, RichShape& shape) {
+        using Op = RichShape::PathPoint::Op;
+        shape.kind = RichShape::Kind::Path;
+        shape.path.clear();
+        std::vector<double> numbers;
+        char command = 0;
+        double curX = 0, curY = 0;
+        auto flush = [&]() {
+            auto emit = [&](Op op, double x, double y) {
+                RichShape::PathPoint p;
+                p.op = op;
+                p.x = static_cast<float>(x / sizeX);
+                p.y = static_cast<float>(y / sizeY);
+                shape.path.push_back(p);
+                curX = x;
+                curY = y;
+            };
+            const bool relative = command == 't' || command == 'r' || command == 'v';
+            const double baseX = relative ? curX : 0.0, baseY = relative ? curY : 0.0;
+            if (command == 'm' || command == 't') {
+                if (numbers.size() >= 2) emit(Op::Move, baseX + numbers[0], baseY + numbers[1]);
+            } else if (command == 'l' || command == 'r') {
+                for (size_t i = 0; i + 1 < numbers.size(); i += 2) {
+                    const double bx = command == 'r' ? curX : 0.0, by = command == 'r' ? curY : 0.0;
+                    emit(Op::Line, bx + numbers[i], by + numbers[i + 1]);
+                }
+            } else if (command == 'c' || command == 'v') {
+                for (size_t i = 0; i + 5 < numbers.size(); i += 6) {
+                    const double bx = command == 'v' ? curX : 0.0, by = command == 'v' ? curY : 0.0;
+                    RichShape::PathPoint p;
+                    p.op = Op::Curve;
+                    p.c1x = static_cast<float>((bx + numbers[i]) / sizeX);
+                    p.c1y = static_cast<float>((by + numbers[i + 1]) / sizeY);
+                    p.c2x = static_cast<float>((bx + numbers[i + 2]) / sizeX);
+                    p.c2y = static_cast<float>((by + numbers[i + 3]) / sizeY);
+                    curX = bx + numbers[i + 4];
+                    curY = by + numbers[i + 5];
+                    p.x = static_cast<float>(curX / sizeX);
+                    p.y = static_cast<float>(curY / sizeY);
+                    shape.path.push_back(p);
+                }
+            }
+            numbers.clear();
+        };
+        size_t i = 0;
+        while (i < text.size()) {
+            const char c = text[i];
+            if (std::isalpha(static_cast<unsigned char>(c))) {
+                flush();
+                command = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                if (command == 'x') {
+                    RichShape::PathPoint p;
+                    p.op = Op::Close;
+                    shape.path.push_back(p);
+                }
+                ++i;
+            } else if (c == '-' || c == '+' || std::isdigit(static_cast<unsigned char>(c)) || c == '.') {
+                double value = 0.0;
+                const size_t next = WordFormatInternal::ReadNumberAt(text, i, value);
+                if (next == i) { ++i; continue; }
+                numbers.push_back(value);
+                i = next;
+            } else {
+                if (c == ',' && i + 1 < text.size() && text[i + 1] == ',') numbers.push_back(0.0);   // ",," is a zero
+                ++i;
+            }
+        }
+        flush();
+    }
+
+    // One VML shape (or group) in `space`: the parent's coordinate origin
+    // and size (coordorigin / coordsize) mapped onto its box in points.
+    bool ReadVmlShape(tinyxml2::XMLElement* element, const ChildSpace& space, RichShape& shape, int depth) {
+        if (depth > 16) return false;
+        const std::string tag = element->Name() ? element->Name() : "";
+        auto css = VmlStyle(element);
+        auto number = [&](const char* name) {
+            auto found = css.find(name);
+            double value = 0.0;
+            if (found != css.end()) WordFormatInternal::ReadNumbers(found->second, &value, 1);
+            return value;
+        };
+        if (depth == 0) {
+            shape.widthPt = CssLengthPt(css["width"]);
+            shape.heightPt = CssLengthPt(css["height"]);
+        } else {
+            // A member: its left/top/width/height in the group's coordinates.
+            shape.xPt = static_cast<float>((number("left") - space.offX) * space.scaleX);
+            shape.yPt = static_cast<float>((number("top") - space.offY) * space.scaleY);
+            shape.widthPt = static_cast<float>(number("width") * space.scaleX);
+            shape.heightPt = static_cast<float>(number("height") * space.scaleY);
+        }
+        shape.rotationDeg = static_cast<float>(number("rotation"));
+        const std::string flip = css["flip"];
+        shape.flipH = flip.find('x') != std::string::npos;
+        shape.flipV = flip.find('y') != std::string::npos;
+        shape.name = Attr(element, "id");
+        if (tag == "v:group") {
+            shape.kind = RichShape::Kind::Group;
+            ChildSpace inner;
+            double origin[2] = {0, 0}, size[2] = {1000, 1000};
+            WordFormatInternal::ReadNumbers(Attr(element, "coordorigin"), origin, 2);
+            if (WordFormatInternal::ReadNumbers(Attr(element, "coordsize"), size, 2) < 2) size[0] = size[1] = 1000;
+            const double ox = origin[0], oy = origin[1], sx = size[0], sy = size[1];
+            inner.offX = ox;
+            inner.offY = oy;
+            inner.scaleX = sx > 0 ? shape.widthPt / sx : 1.0;
+            inner.scaleY = sy > 0 ? shape.heightPt / sy : 1.0;
+            for (auto* member = element->FirstChildElement(); member; member = member->NextSiblingElement()) {
+                RichShape child;
+                if (ReadVmlShape(member, inner, child, depth + 1)) shape.children.push_back(std::move(child));
+            }
+            return !shape.children.empty();
+        }
+        if (tag == "v:line") {
+            // from / to, in the parent's coordinates (points at the top level).
+            double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+            const std::string fromText = Attr(element, "from"), toText = Attr(element, "to");
+            auto parse = [&](const std::string& value, double& x, double& y) {
+                const size_t comma = value.find(',');
+                if (comma == std::string::npos) return;
+                if (depth == 0) {
+                    x = CssLengthPt(value.substr(0, comma));
+                    y = CssLengthPt(value.substr(comma + 1));
+                } else {
+                    double pair[2] = {0, 0};
+                    WordFormatInternal::ReadNumbers(value, pair, 2);
+                    x = pair[0];
+                    y = pair[1];
+                }
+            };
+            parse(fromText, x1, y1);
+            parse(toText, x2, y2);
+            const double scaleX = depth == 0 ? 1.0 : space.scaleX, scaleY = depth == 0 ? 1.0 : space.scaleY;
+            const double offX = depth == 0 ? 0.0 : space.offX, offY = depth == 0 ? 0.0 : space.offY;
+            shape.kind = RichShape::Kind::Line;
+            shape.xPt = static_cast<float>((std::min(x1, x2) - offX) * scaleX);
+            shape.yPt = static_cast<float>((std::min(y1, y2) - offY) * scaleY);
+            shape.widthPt = static_cast<float>(std::abs(x2 - x1) * scaleX);
+            shape.heightPt = static_cast<float>(std::abs(y2 - y1) * scaleY);
+            shape.flipH = x2 < x1;
+            shape.flipV = y2 < y1;
+            if (shape.flipH && shape.flipV) shape.flipH = shape.flipV = false;   // the same line, drawn back
+        } else if (tag == "v:rect") {
+            shape.kind = RichShape::Kind::Rectangle;
+        } else if (tag == "v:roundrect") {
+            shape.kind = RichShape::Kind::RoundRectangle;
+            const std::string arc = Attr(element, "arcsize");
+            if (!arc.empty()) {
+                double value = 0.0;
+                WordFormatInternal::ReadNumberAt(arc, 0, value);
+                if (arc.back() == 'f') value /= 65536.0;
+                else if (arc.back() == '%') value /= 100.0;
+                shape.cornerRadius = static_cast<float>(std::clamp(value, 0.0, 0.5));
+            }
+        } else if (tag == "v:oval") {
+            shape.kind = RichShape::Kind::Ellipse;
+        } else if (tag == "v:shape" || tag == "v:polyline") {
+            std::string path = Attr(element, "path");
+            double size[2] = {21600, 21600};
+            if (WordFormatInternal::ReadNumbers(Attr(element, "coordsize"), size, 2) < 2) size[0] = size[1] = 21600;
+            const double sx = size[0], sy = size[1];
+            if (tag == "v:polyline") {
+                // points="x1,y1 x2,y2 ..." in points.
+                std::string all = Attr(element, "points");
+                std::replace(all.begin(), all.end(), ' ', ',');
+                std::istringstream values(all);
+                std::vector<double> numbers;
+                for (std::string token; std::getline(values, token, ',');) {
+                    if (!token.empty()) numbers.push_back(CssLengthPt(token));
+                }
+                double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+                for (size_t i = 0; i + 1 < numbers.size(); i += 2) {
+                    minX = std::min(minX, numbers[i]); maxX = std::max(maxX, numbers[i]);
+                    minY = std::min(minY, numbers[i + 1]); maxY = std::max(maxY, numbers[i + 1]);
+                }
+                if (numbers.size() < 4) return false;
+                shape.kind = RichShape::Kind::Path;
+                for (size_t i = 0; i + 1 < numbers.size(); i += 2) {
+                    RichShape::PathPoint p;
+                    p.op = i == 0 ? RichShape::PathPoint::Op::Move : RichShape::PathPoint::Op::Line;
+                    p.x = maxX > minX ? static_cast<float>((numbers[i] - minX) / (maxX - minX)) : 0.0f;
+                    p.y = maxY > minY ? static_cast<float>((numbers[i + 1] - minY) / (maxY - minY)) : 0.0f;
+                    shape.path.push_back(p);
+                }
+                if (depth == 0) {
+                    shape.widthPt = static_cast<float>(maxX - minX);
+                    shape.heightPt = static_cast<float>(maxY - minY);
+                }
+            } else if (!path.empty()) {
+                ReadVmlPath(path, sx > 0 ? sx : 21600, sy > 0 ? sy : 21600, shape);
+            } else {
+                // A preset by its shape type (o:spt, or the type's "#_x0000_t5").
+                int type = element->IntAttribute("o:spt", 0);
+                const std::string typeRef = Attr(element, "type");
+                const size_t t = typeRef.find("_t");
+                if (type == 0 && t != std::string::npos) type = std::atoi(typeRef.c_str() + t + 2);
+                if (!ApplyOfficeArtShapeType(type, shape)) return false;
+            }
+        } else {
+            return false;
+        }
+        ReadVmlLook(element, shape);
+        if (auto* box = element->FirstChildElement("v:textbox")) {
+            if (auto* content = box->FirstChildElement("w:txbxContent")) {
+                std::vector<RichDocBlock> blocks = ParseTextBoxContent(content);
+                if (!blocks.empty()) {
+                    RichTextFrame words;
+                    words.blocks = std::move(blocks);
+                    words.shapeText = true;
+                    shape.textFrame = static_cast<int>(doc_->frames.size());
+                    doc_->frames.push_back(std::move(words));
+                }
+            }
+        }
+        return true;
+    }
+
+    // Where a VML shape sits: floating (position:absolute) from the page,
+    // its margin or its paragraph, wrapped as w10:wrap says; else in the
+    // line, on lines of its own.
+    static void ReadVmlPlacement(tinyxml2::XMLElement* element, std::map<std::string, std::string>& css, RichTextRun& run) {
+        using Origin = RichTextRun::FloatOrigin;
+        if (css["position"].find("absolute") == std::string::npos) {
+            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            return;
+        }
+        auto length = [&](const char* name) {
+            auto found = css.find(name);
+            return found == css.end() ? 0.0f : CssLengthPt(found->second);
+        };
+        const std::string across = css["mso-position-horizontal-relative"];
+        const std::string down = css["mso-position-vertical-relative"];
+        run.floatHorizontalFrom = across == "page" ? Origin::Page : Origin::Margin;
+        run.floatVerticalFrom = down == "page" ? Origin::Page : down == "margin" ? Origin::Margin : Origin::Paragraph;
+        const std::string alignAcross = css["mso-position-horizontal"];
+        if (alignAcross == "right" || alignAcross == "outside") run.imageFloatAlign = RichTextAlign::Right;
+        else if (alignAcross == "center") run.imageFloatAlign = RichTextAlign::Center;
+        else if (alignAcross == "left" || alignAcross == "inside") run.imageFloatAlign = RichTextAlign::Left;
+        else {
+            run.imageFloatAlign = RichTextAlign::Default;
+            const float x = length("margin-left") + length("left");
+            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+        }
+        const float y = length("margin-top") + length("top");
+        run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+        run.imageWrap = RichTextRun::ImageWrap::InFrontOfText;
+        if (auto* wrap = FindDescendant(element, "w10:wrap")) {
+            const std::string type = Attr(wrap, "type");
+            if (type == "topAndBottom") run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            else if (type == "square" || type == "tight" || type == "through") run.imageWrap = RichTextRun::ImageWrap::Square;
+        }
+        const std::string z = css["z-index"];
+        if (!z.empty() && z[0] == '-') run.imageWrap = RichTextRun::ImageWrap::BehindText;
+    }
+
+    // A VML picture (v:shape with v:imagedata, as Word 2003 and older
+    // documents keep a logo): a picture in the line, or floating where its
+    // CSS position says.
+    void ParseVmlPicture(tinyxml2::XMLElement* element, InlineContext& ctx) {
+        auto* data = FindDescendant(element, "v:imagedata");
+        std::string relId = Attr(data, "r:id");
+        if (relId.empty()) relId = Attr(data, "r:pict");
+        const int mediaIndex = LoadImageByRelId(relId);
+        if (mediaIndex < 0) return;
+        auto css = VmlStyle(element);
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.mediaIndex = mediaIndex;
+        run.imageWidthPt = CssLengthPt(css["width"]);
+        run.imageHeightPt = CssLengthPt(css["height"]);
+        run.imageAltText = Attr(element, "alt");
+        if (run.imageAltText.empty()) run.imageAltText = Attr(data, "o:title");
+        if (css["position"].find("absolute") != std::string::npos) ReadVmlPlacement(element, css, run);
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
+    }
+
+    // w:pict without a text box: its VML shapes, as a drawing floating where
+    // the first of them says (its CSS position), or in the line.
+    void ParseVmlDrawing(tinyxml2::XMLElement* pict, InlineContext& ctx) {
+        for (auto* element = pict->FirstChildElement(); element; element = element->NextSiblingElement()) {
+            const std::string tag = element->Name() ? element->Name() : "";
+            if (tag == "v:shapetype" || tag == "w10:wrap" || tag == "o:lock") continue;
+            if ((tag == "v:shape" || tag == "v:rect") && FindDescendant(element, "v:imagedata")) {
+                ParseVmlPicture(element, ctx);                                       // a VML picture
+                continue;
+            }
+            RichShape shape;
+            ChildSpace top;
+            if (!ReadVmlShape(element, top, shape, 0)) continue;
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            auto css = VmlStyle(element);
+            if (tag == "v:line") {
+                run.imageWidthPt = std::max(shape.widthPt, 0.0f);
+                run.imageHeightPt = std::max(shape.heightPt, 0.0f);
+                // A line's place is its from point: the CSS margin is unused.
+                css["margin-left"] = std::to_string(shape.xPt) + "pt";
+                css["margin-top"] = std::to_string(shape.yPt) + "pt";
+            } else {
+                run.imageWidthPt = shape.widthPt;
+                run.imageHeightPt = shape.heightPt;
+            }
+            shape.xPt = shape.yPt = 0.0f;
+            ReadVmlPlacement(element, css, run);
+            RichTextFrame frame;
+            frame.name = shape.name;
+            frame.shapes.push_back(std::move(shape));
+            run.imageAltText = frame.name;
+            run.frameIndex = static_cast<int>(doc_->frames.size());
+            doc_->frames.push_back(std::move(frame));
+            run.lineBreakBefore = ctx.pendingLineBreak;
+            ctx.pendingLineBreak = false;
+            ctx.runs.push_back(std::move(run));
+        }
+    }
+
     void ParseDrawing(tinyxml2::XMLElement* drawing, InlineContext& ctx) {
+        if (std::string(drawing->Name() ? drawing->Name() : "") == "w:pict") {
+            // VML: a text box, else drawn shapes.
+            if (!ParseTextBox(drawing, ctx)) ParseVmlDrawing(drawing, ctx);
+            return;
+        }
+        auto* graphicData = FindDescendant(drawing, "a:graphicData");
+        const std::string uri = graphicData ? Attr(graphicData, "uri") : "";
+        if (uri.find("wordprocessingGroup") != std::string::npos
+            || uri.find("wordprocessingShape") != std::string::npos) {
+            // A plain rectangle of text keeps the text box's own look; any
+            // other shape, or a group, is a drawing.
+            auto* wsp = graphicData->FirstChildElement("wps:wsp");
+            if (wsp && IsPlainTextBox(wsp)) ParseTextBox(drawing, ctx);
+            else ParseDrawingShapes(drawing, graphicData, ctx);
+            return;
+        }
         auto* blip = FindDescendant(drawing, "a:blip");
         if (!blip) {
             ParseTextBox(drawing, ctx);
@@ -1868,12 +2876,22 @@ private:
         if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
         auto* root = part.RootElement();
         if (!root) return;
+        // Its pictures are named by its own relationships (over the
+        // document's, for a package that leaves them out).
+        const size_t slash = partName.find_last_of('/');
+        std::map<std::string, DocxRelationship> partRels = relationships_;
+        for (auto& [id, rel] : ReadRelationships(partName.substr(0, slash + 1) + "_rels/"
+                                                 + partName.substr(slash + 1) + ".rels")) {
+            partRels[id] = rel;
+        }
+        std::swap(relationships_, partRels);
         const size_t start = doc_->blocks.size();
         for (auto* elem = root->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
             std::string tag = elem->Name() ? elem->Name() : "";
             if (tag == "w:p") ParseParagraph(elem);
             else if (tag == "w:tbl") ParseTable(elem);
         }
+        std::swap(relationships_, partRels);
         out.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
                    std::make_move_iterator(doc_->blocks.end()));
         doc_->blocks.resize(start);
@@ -2502,6 +3520,10 @@ private:
     void WriteTextBox(std::ostringstream& xml, const RichTextRun& run) {
         const RichTextFrame* frame = doc_->FrameFor(run);
         if (!frame) return;
+        if (frame->IsDrawing()) {
+            WriteDrawingFrame(xml, run, *frame);
+            return;
+        }
         const int drawingId = ++inlineDrawingId_;
         const long long cx = static_cast<long long>((run.imageWidthPt > 0.0f ? run.imageWidthPt : 144.0f) * kEmuPerPoint);
         const long long cy = static_cast<long long>(std::max(14.0f, run.imageHeightPt) * kEmuPerPoint);
@@ -2530,8 +3552,236 @@ private:
         }
         xml << "</wps:spPr><wps:txbx><w:txbxContent>" << WriteBlocks(blocks) << "</w:txbxContent></wps:txbx>"
             << "<wps:bodyPr wrap=\"square\" lIns=\"" << inset << "\" tIns=\"" << inset << "\" rIns=\"" << inset
-            << "\" bIns=\"" << inset << "\" anchor=\"t\"><a:spAutoFit/></wps:bodyPr></wps:wsp>"
+            << "\" bIns=\"" << inset << "\" anchor=\"" << BodyAnchor(frame->textAnchor) << "\">"
+            // A box with a height keeps it; one without grows to its text.
+            << (run.imageHeightPt > 0.0f ? "<a:noAutofit/>" : "<a:spAutoFit/>") << "</wps:bodyPr></wps:wsp>"
             << "</a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice></mc:AlternateContent>";
+    }
+
+    // ===== DRAWN SHAPES =====
+    static long long Emu(float points) { return static_cast<long long>(std::llround(points * kEmuPerPoint)); }
+
+    // a:xfrm: a shape's box in EMU from the drawing's top-left, turned and
+    // mirrored; a group's also maps its members' space onto itself.
+    static void WriteShapeTransform(std::ostringstream& xml, const RichShape& shape, float originX, float originY,
+                                    bool group) {
+        const long long x = Emu(originX + shape.xPt), y = Emu(originY + shape.yPt);
+        const long long cx = std::max(0LL, Emu(shape.widthPt)), cy = std::max(0LL, Emu(shape.heightPt));
+        xml << "<a:xfrm";
+        double turn = std::fmod(static_cast<double>(shape.rotationDeg), 360.0);
+        if (turn < 0.0) turn += 360.0;
+        if (turn != 0.0) xml << " rot=\"" << std::llround(turn * 60000.0) << "\"";
+        if (shape.flipH) xml << " flipH=\"1\"";
+        if (shape.flipV) xml << " flipV=\"1\"";
+        xml << "><a:off x=\"" << x << "\" y=\"" << y << "\"/><a:ext cx=\"" << cx << "\" cy=\"" << cy << "\"/>";
+        if (group) xml << "<a:chOff x=\"" << x << "\" y=\"" << y << "\"/><a:chExt cx=\"" << cx << "\" cy=\"" << cy << "\"/>";
+        xml << "</a:xfrm>";
+    }
+
+    // A shape's outline (a:prstGeom or a:custGeom), fill and line.
+    static void WriteShapeLook(std::ostringstream& xml, const RichShape& shape) {
+        using Kind = RichShape::Kind;
+        using Op = RichShape::PathPoint::Op;
+        auto rgb = [](const std::string& hex) { return hex.size() == 7 ? hex.substr(1) : std::string("000000"); };
+        switch (shape.kind) {
+            case Kind::RoundRectangle:
+                xml << "<a:prstGeom prst=\"roundRect\"><a:avLst><a:gd name=\"adj\" fmla=\"val "
+                    << std::lround(std::clamp(shape.cornerRadius, 0.0f, 0.5f) * 100000.0f)
+                    << "\"/></a:avLst></a:prstGeom>";
+                break;
+            case Kind::Ellipse: xml << "<a:prstGeom prst=\"ellipse\"><a:avLst/></a:prstGeom>"; break;
+            case Kind::Line: xml << "<a:prstGeom prst=\"line\"><a:avLst/></a:prstGeom>"; break;
+            case Kind::Path: {
+                constexpr long long kSpan = 100000;
+                xml << "<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l=\"0\" t=\"0\" r=\"r\" b=\"b\"/>"
+                    << "<a:pathLst><a:path w=\"" << kSpan << "\" h=\"" << kSpan << "\""
+                    << (shape.fillColor.empty() ? " fill=\"none\"" : "") << ">";
+                auto pt = [&](float x, float y) {
+                    xml << "<a:pt x=\"" << std::llround(x * kSpan) << "\" y=\"" << std::llround(y * kSpan) << "\"/>";
+                };
+                for (const RichShape::PathPoint& point : shape.path) {
+                    switch (point.op) {
+                        case Op::Move: xml << "<a:moveTo>"; pt(point.x, point.y); xml << "</a:moveTo>"; break;
+                        case Op::Line: xml << "<a:lnTo>"; pt(point.x, point.y); xml << "</a:lnTo>"; break;
+                        case Op::Curve:
+                            xml << "<a:cubicBezTo>";
+                            pt(point.c1x, point.c1y);
+                            pt(point.c2x, point.c2y);
+                            pt(point.x, point.y);
+                            xml << "</a:cubicBezTo>";
+                            break;
+                        case Op::Close: xml << "<a:close/>"; break;
+                    }
+                }
+                xml << "</a:path></a:pathLst></a:custGeom>";
+                break;
+            }
+            default: xml << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>"; break;
+        }
+        if (shape.HasPictureFill() && shape.IsClosed()) {
+            xml << "<a:blipFill rotWithShape=\"1\"><a:blip r:embed=\"rIdImg" << (shape.fillMediaIndex + 1) << "\"/>"
+                << (shape.fillPictureTiled
+                        ? "<a:tile tx=\"0\" ty=\"0\" sx=\"100000\" sy=\"100000\" flip=\"none\" algn=\"tl\"/>"
+                        : "<a:stretch><a:fillRect/></a:stretch>")
+                << "</a:blipFill>";
+        } else if (shape.fillColor.empty() || !shape.IsClosed()) {
+            xml << "<a:noFill/>";
+        } else if (shape.HasPattern()) {
+            // No background: white, made fully transparent (as Writer saves it).
+            xml << "<a:pattFill prst=\"" << EscapeXml(RichShape::NearestPresetPattern(shape.fillPattern))
+                << "\"><a:fgClr><a:srgbClr val=\"" << EscapeXml(rgb(shape.fillColor)) << "\"/></a:fgClr><a:bgClr>"
+                << (shape.patternBackColor.empty() ? std::string("<a:srgbClr val=\"FFFFFF\"><a:alpha val=\"0\"/></a:srgbClr>")
+                                                   : "<a:srgbClr val=\"" + EscapeXml(rgb(shape.patternBackColor)) + "\"/>")
+                << "</a:bgClr></a:pattFill>";
+        } else if (shape.HasGradient()) {
+            xml << "<a:gradFill rotWithShape=\"1\"><a:gsLst>";
+            for (const RichShape::GradientStop& stop : shape.gradientStops) {
+                xml << "<a:gs pos=\"" << std::lround(std::clamp(stop.position, 0.0f, 1.0f) * 100000.0f)
+                    << "\"><a:srgbClr val=\"" << EscapeXml(rgb(stop.color)) << "\"/></a:gs>";
+            }
+            xml << "</a:gsLst>";
+            if (shape.gradientRadial) {
+                const long l = std::lround(std::clamp(shape.gradientCenterX, 0.0f, 1.0f) * 100000.0f);
+                const long t = std::lround(std::clamp(shape.gradientCenterY, 0.0f, 1.0f) * 100000.0f);
+                xml << "<a:path path=\"circle\"><a:fillToRect l=\"" << l << "\" t=\"" << t << "\" r=\"" << (100000 - l)
+                    << "\" b=\"" << (100000 - t) << "\"/></a:path>";
+            } else {
+                double angle = std::fmod(static_cast<double>(shape.gradientAngleDeg), 360.0);
+                if (angle < 0.0) angle += 360.0;
+                xml << "<a:lin ang=\"" << std::llround(angle * 60000.0) << "\" scaled=\"0\"/>";
+            }
+            xml << "</a:gradFill>";
+        } else {
+            xml << "<a:solidFill><a:srgbClr val=\"" << EscapeXml(rgb(shape.fillColor)) << "\"/></a:solidFill>";
+        }
+        if (shape.lineColor.empty()) {
+            xml << "<a:ln><a:noFill/></a:ln>";
+            return;
+        }
+        xml << "<a:ln w=\"" << Emu(shape.lineWidthPt) << "\"><a:solidFill><a:srgbClr val=\""
+            << EscapeXml(rgb(shape.lineColor)) << "\"/></a:solidFill>";
+        if (shape.dash == RichShape::Dash::Dashed) xml << "<a:prstDash val=\"dash\"/>";
+        else if (shape.dash == RichShape::Dash::Dotted) xml << "<a:prstDash val=\"sysDot\"/>";
+        if (shape.arrowStart) xml << "<a:headEnd type=\"triangle\"/>";
+        if (shape.arrowEnd) xml << "<a:tailEnd type=\"triangle\"/>";
+        xml << "</a:ln>";
+    }
+
+    static const char* BodyAnchor(RichShape::TextAnchor anchor) {
+        return anchor == RichShape::TextAnchor::Middle ? "ctr" : anchor == RichShape::TextAnchor::Bottom ? "b" : "t";
+    }
+
+    // A wps:wsp: its outline and look, then its words (a text box) if any.
+    void WriteShapeElement(std::ostringstream& xml, const RichShape& shape, float originX, float originY,
+                           bool member, const std::vector<RichDocBlock>* words, float padding,
+                           RichShape::TextAnchor anchor) {
+        xml << "<wps:wsp>";
+        if (member) {
+            const int id = ++inlineDrawingId_;
+            xml << "<wps:cNvPr id=\"" << id << "\" name=\""
+                << EscapeXml(shape.name.empty() ? "Shape " + std::to_string(id) : shape.name) << "\"/>";
+        }
+        xml << (shape.kind == RichShape::Kind::Line ? "<wps:cNvCnPr/>" : "<wps:cNvSpPr/>") << "<wps:spPr>";
+        WriteShapeTransform(xml, shape, originX, originY, false);
+        WriteShapeLook(xml, shape);
+        xml << "</wps:spPr>";
+        const long long inset = Emu(std::max(0.0f, padding));
+        if (words && !words->empty() && shape.kind != RichShape::Kind::Line) {
+            xml << "<wps:txbx><w:txbxContent>" << WriteBlocks(*words) << "</w:txbxContent></wps:txbx>";
+        }
+        xml << "<wps:bodyPr wrap=\"square\" lIns=\"" << inset << "\" tIns=\"" << inset << "\" rIns=\"" << inset
+            << "\" bIns=\"" << inset << "\" anchor=\"" << BodyAnchor(anchor) << "\"><a:noAutofit/></wps:bodyPr></wps:wsp>";
+    }
+
+    // A group member: a shape, a picture or a group of its own.
+    void WriteGroupMember(std::ostringstream& xml, const RichShape& shape, float originX, float originY, int depth) {
+        if (depth > 16) return;
+        if (shape.kind == RichShape::Kind::Group) {
+            xml << "<wpg:grpSp><wpg:cNvGrpSpPr/><wpg:grpSpPr>";
+            WriteShapeTransform(xml, shape, originX, originY, true);
+            xml << "</wpg:grpSpPr>";
+            for (const RichShape& member : shape.children) {
+                WriteGroupMember(xml, member, originX + shape.xPt, originY + shape.yPt, depth + 1);
+            }
+            xml << "</wpg:grpSp>";
+            return;
+        }
+        if (shape.mediaIndex >= 0 && shape.mediaIndex < static_cast<int>(doc_->media.size())) {
+            const int id = ++inlineDrawingId_;
+            xml << "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"" << id << "\" name=\""
+                << EscapeXml(shape.name.empty() ? "Picture " + std::to_string(id) : shape.name)
+                << "\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rIdImg" << (shape.mediaIndex + 1)
+                << "\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr>";
+            WriteShapeTransform(xml, shape, originX, originY, false);
+            xml << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>";
+            if (!shape.lineColor.empty()) {
+                RichShape outline = shape;
+                outline.fillColor.clear();
+                std::ostringstream look;
+                WriteShapeLook(look, outline);
+                const std::string text = look.str();
+                const size_t line = text.find("<a:ln");
+                if (line != std::string::npos) xml << text.substr(line);
+            }
+            xml << "</pic:spPr></pic:pic>";
+            return;
+        }
+        const RichTextFrame* words = shape.textFrame >= 0 && shape.textFrame < static_cast<int>(doc_->frames.size())
+            ? &doc_->frames[static_cast<size_t>(shape.textFrame)] : nullptr;
+        WriteShapeElement(xml, shape, originX, originY, true, words ? &words->blocks : nullptr,
+                          shape.textPaddingPt, shape.textAnchor);
+    }
+
+    // A drawing as Word draws one: a lone shape as a wps shape (its frame's
+    // words in its text box); several shapes, or a group, as a wpg group.
+    void WriteDrawingFrame(std::ostringstream& xml, const RichTextRun& run, const RichTextFrame& frame) {
+        const int drawingId = ++inlineDrawingId_;
+        const long long cx = std::max(0LL, Emu(run.imageWidthPt));
+        const long long cy = std::max(0LL, Emu(run.imageHeightPt));
+        const std::string name = frame.name.empty() ? "Drawing " + std::to_string(drawingId) : frame.name;
+        const bool lone = frame.shapes.size() == 1 && frame.shapes.front().kind != RichShape::Kind::Group
+                       && frame.shapes.front().mediaIndex < 0;
+        xml << "<mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\""
+               " xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\""
+               " xmlns:wpg=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\">"
+               "<mc:Choice Requires=\"" << (lone ? "wps" : "wpg") << "\"><w:drawing>";
+        WriteAnchorPlacement(xml, run, drawingId, cx, cy);
+        xml << "<wp:docPr id=\"" << drawingId << "\" name=\"" << EscapeXml(name) << "\"/>"
+            << "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">";
+        if (lone) {
+            RichShape shape = frame.shapes.front();
+            shape.xPt = shape.yPt = 0.0f;
+            shape.widthPt = run.imageWidthPt;
+            shape.heightPt = run.imageHeightPt;
+            xml << "<a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">";
+            WriteShapeElement(xml, shape, 0.0f, 0.0f, false, &frame.blocks, frame.paddingPt, frame.textAnchor);
+        } else {
+            // One group is the drawing's own (its members in its space);
+            // several shapes are grouped in the frame's.
+            const RichShape* only = frame.shapes.size() == 1 && frame.shapes.front().kind == RichShape::Kind::Group
+                ? &frame.shapes.front() : nullptr;
+            xml << "<a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\">"
+                << "<wpg:wgp xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><wpg:cNvGrpSpPr/>"
+                << "<wpg:grpSpPr><a:xfrm";
+            if (only) {
+                double turn = std::fmod(static_cast<double>(only->rotationDeg), 360.0);
+                if (turn < 0.0) turn += 360.0;
+                if (turn != 0.0) xml << " rot=\"" << std::llround(turn * 60000.0) << "\"";
+                if (only->flipH) xml << " flipH=\"1\"";
+                if (only->flipV) xml << " flipV=\"1\"";
+            }
+            // The members' space: the group's own, else the size the shapes
+            // were drawn for (a resized drawing), mapped onto the frame.
+            const long long chX = only ? std::max(1LL, Emu(only->widthPt))
+                                : frame.drawingWidthPt > 0.0f ? std::max(1LL, Emu(frame.drawingWidthPt)) : cx;
+            const long long chY = only ? std::max(1LL, Emu(only->heightPt))
+                                : frame.drawingHeightPt > 0.0f ? std::max(1LL, Emu(frame.drawingHeightPt)) : cy;
+            xml << "><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx << "\" cy=\"" << cy
+                << "\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"" << chX << "\" cy=\"" << chY << "\"/></a:xfrm></wpg:grpSpPr>";
+            for (const RichShape& shape : only ? only->children : frame.shapes) WriteGroupMember(xml, shape, 0.0f, 0.0f, 0);
+            xml << "</wpg:wgp>";
+        }
+        xml << "</a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice></mc:AlternateContent>";
     }
 
     void WriteDrawingElement(std::ostringstream& xml, const RichDocBlock& block, int drawingId,

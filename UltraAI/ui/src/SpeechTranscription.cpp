@@ -1,6 +1,7 @@
 // UltraAI/ui/src/SpeechTranscription.cpp
 // UltraAI as UltraCanvas's speech transcriber. See
 // include/UltraAISpeechTranscription.h.
+// Version: 1.1.0 - the local runtime's whisper engine; one with no model yet steps aside
 // Version: 1.0.0
 // Last Modified: 2026-11-10
 // Author: UltraAI Module
@@ -23,6 +24,7 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace UltraAI {
@@ -33,20 +35,30 @@ namespace fs = std::filesystem;
 
 thread_local std::string g_lastProvider;
 
-// The first provider on the route that constructs, and the provider itself.
-bool FindProvider(std::string& providerId, std::unique_ptr<ISpeechToText>* provider) {
+// The providers on the route that construct, in order: the test double
+// hears nothing, and the local runtime counts when it offers a model for
+// this computer.
+std::vector<std::pair<std::string, std::unique_ptr<ISpeechToText>>> Providers(bool firstOnly) {
+    std::vector<std::pair<std::string, std::unique_ptr<ISpeechToText>>> out;
     for (const std::string& id : ResolveProviderOrder("speechtotext", ListSpeechToTextProviders())) {
-        if (id == "mock") continue;   // the test double hears nothing
+        if (id == "mock") continue;
         SpeechToTextConfig config;
         config.providerId = id;
         Error error;
         std::unique_ptr<ISpeechToText> candidate = CreateSpeechToText(config, &error);
         if (!candidate) continue;
-        providerId = id;
-        if (provider) *provider = std::move(candidate);
-        return true;
+        if (id == "local" && candidate->GetCapabilities().models.empty()) continue;
+        out.emplace_back(id, std::move(candidate));
+        if (firstOnly) break;
     }
-    return false;
+    return out;
+}
+
+// The local runtime's answer when its model is not downloaded and the
+// download policy does not let a call fetch it: not set up, so the next
+// provider is asked.
+bool NotSetUp(const Error& error) {
+    return error.code == ErrorCode::ModelNotFound && error.providerCode == "needs-install";
 }
 
 std::string LowerExtension(const std::string& path) {
@@ -144,7 +156,10 @@ bool SoundToSend(const std::string& path, const STTProviderCapabilities& caps, M
 
 bool FindSpeechProvider(std::string& providerId) {
     providerId.clear();
-    return FindProvider(providerId, nullptr);
+    auto providers = Providers(true);
+    if (providers.empty()) return false;
+    providerId = providers.front().first;
+    return true;
 }
 
 std::string LastSpeechTranscriptionProvider() { return g_lastProvider; }
@@ -155,27 +170,31 @@ void RegisterUltraAISpeechTranscription() {
     UltraCanvasFileLoader::SetSpeechTranscriber(
             [fallback](const std::string& path, std::string& text, std::string& error) {
         g_lastProvider.clear();
-        std::string providerId;
-        std::unique_ptr<ISpeechToText> provider;
-        if (!FindProvider(providerId, &provider)) {
-            if (fallback) return fallback(path, text, error);
-            // The standard set's sentence (UltraCanvasFileLoaderText.cpp has it).
-            error = UltraCanvas::Tr("Speech to text is not available: no speech recognition (UltraAI STT or "
-                                    "another engine) is set up.");
-            return false;
+        std::string notSetUp;   // the first provider's that is there but has no model yet
+        for (auto& [providerId, provider] : Providers(false)) {
+            TranscribeRequest request;
+            if (!SoundToSend(path, provider->GetCapabilities(), request.audio, error)) return false;
+            request.segmentTimestamps = false;   // the words are what is wanted
+            const TranscribeResponse response = provider->Transcribe(request);
+            if (NotSetUp(response.error)) {
+                if (notSetUp.empty()) notSetUp = providerId + ": " + response.error.message;
+                continue;
+            }
+            if (!response.error.IsOk()) {
+                error = UltraCanvas::Tr("Speech to text failed.") + "\n" + providerId +
+                        (response.error.message.empty() ? std::string() : ": " + response.error.message);
+                return false;
+            }
+            text = response.text;
+            g_lastProvider = providerId;
+            return true;
         }
-        TranscribeRequest request;
-        if (!SoundToSend(path, provider->GetCapabilities(), request.audio, error)) return false;
-        request.segmentTimestamps = false;   // the words are what is wanted
-        const TranscribeResponse response = provider->Transcribe(request);
-        if (!response.error.IsOk()) {
-            error = UltraCanvas::Tr("Speech to text failed.") + "\n" + providerId +
-                    (response.error.message.empty() ? std::string() : ": " + response.error.message);
-            return false;
-        }
-        text = response.text;
-        g_lastProvider = providerId;
-        return true;
+        if (fallback) return fallback(path, text, error);
+        // The standard set's sentence (UltraCanvasFileLoaderText.cpp has it).
+        error = UltraCanvas::Tr("Speech to text is not available: no speech recognition (UltraAI STT or "
+                                "another engine) is set up.");
+        if (!notSetUp.empty()) error += "\n" + notSetUp;
+        return false;
     });
 }
 

@@ -718,7 +718,9 @@ namespace {
                 dm.name = m.id;
                 // The task is stored with the endpoint and compared ("translation"):
                 // data, not text, so it stays English.
-                dm.task = (m.capability == "embeddings" ? "embeddings" : "chat") +
+                dm.task = (m.capability == "embeddings"     ? "embeddings"
+                           : m.capability == "speechtotext" ? "speech to text"
+                                                            : "chat") +
                           std::string(m.installed ? ", installed" : ", not installed");
                 d->epModels.push_back(std::move(dm));
             }

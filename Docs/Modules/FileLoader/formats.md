@@ -90,11 +90,29 @@ than its name, so it is loadable without being an advertised extension.
 | Format | Extension(s) | Load | Save | Provider |
 |--------|--------------|:----:|:----:|----------|
 | STL | `.stl` | ✅ ‡ | ✅ ‡ | STL plugin (built-in, ASCII + binary) |
+| STEP (ISO 10303 AP203 / AP214 / AP242) | `.step`, `.stp`, `.p21` | ✅ ‡ | ✅ ‡ | Models plugin: exact B-rep solids and surfaces |
+| IGES 5.3 | `.igs`, `.iges` | ✅ ‡ | ✅ ‡ | Models plugin: exact B-rep solids (186) and trimmed surfaces (144) |
+| Wavefront OBJ | `.obj` | ✅ ‡ | ✅ ‡ | Models plugin |
+| Stanford PLY | `.ply` | ✅ ‡ | ✅ ‡ | Models plugin (ASCII + binary) |
+| 3D Studio | `.3ds` | ✅ ‡ | ✅ ‡ | Models plugin |
+| COLLADA | `.dae` | ✅ ‡ | ✅ ‡ | Models plugin, when built with tinyxml2 |
+| X3D / VRML | `.x3d`, `.x3dv`, `.wrl`, `.vrml` | ✅ ‡ | ✅ ‡ | Models plugin, when built with tinyxml2 |
+| Autodesk FBX | `.fbx` | ✅ ‡ | — | Models plugin, when built with zlib (binary + ASCII) |
+| Alembic | `.abc` | ✅ ‡ | — | Models plugin (Ogawa archives; the first time sample) |
+| DirectX | `.x` | ✅ ‡ | — | Models plugin (text + binary) |
+| MilkShape 3D | `.ms3d` | ✅ ‡ | — | Models plugin |
+| Blender | `.blend` | ✅ ‡ | — | Models plugin, when built with zlib (the stored geometry, before modifiers) |
 
-STL support is provided by the STL graphics plugin; register it with
-`RegisterSTLPlugin()`. Other 3D formats (OBJ, glTF/GLB, FBX, 3DS, PLY,
-COLLADA) are **not** implemented by the FileLoader path — the demo app has a
-minimal OBJ reader for its GL viewer only.
+STL comes from the STL plugin and everything else from the Models plugin
+(`UltraCanvas/Plugins/Models/`); `RegisterModelFormatsPlugin()` registers both.
+The Models plugin reads into an editable `ModelStorage::ModelDocument`, and
+STEP and IGES carry exact surfaces rather than triangles - a viewer asks for a
+mesh with `ConversionOptions::TessellateOnImport`. What each reader and writer
+keeps and loses is in
+[UltraCanvasModelFormats](../../UltraCanvas/UltraCanvasModelFormats.md).
+The Models plugin also reads the 3D entities of a `.dxf` when a caller asks
+for its converter by name; it does not claim the extension, which stays with
+the Vector plugin's drawing reader.
 
 ### Documents
 

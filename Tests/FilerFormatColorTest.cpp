@@ -289,6 +289,20 @@ void TestFallbacks() {
     Check(Contrast(unranked, ColorOfFile("svg", FilerFileCategory::Vector)) < 2.0,
           "and lands inside the vector ramp rather than beside it");
 
+    // The CAD exchange formats are ranked 3D models, not plugin formats left
+    // on the category colour: STEP shares glTF's rung, IGES the last one.
+    for (const char* ext : {"step", "stp", "p21"})
+        Check(SameColor(ColorOfFile(ext, FilerFileCategory::Model3D),
+                        ColorOfFile("gltf", FilerFileCategory::Model3D)),
+              std::string(".") + ext + " is on the STEP rung of the 3D ramp");
+    for (const char* ext : {"igs", "iges"})
+        Check(SameColor(ColorOfFile(ext, FilerFileCategory::Model3D),
+                        ColorOfFile("obj", FilerFileCategory::Model3D)),
+              std::string(".") + ext + " is on the last rung of the 3D ramp");
+    Check(!SameColor(ColorOfFile("step", FilerFileCategory::Model3D),
+                     ColorOfFile("igs", FilerFileCategory::Model3D)),
+          "and the older IGES sits a rung below STEP");
+
     // A shortcut carries its target's category and its own extension, which
     // nothing ranks - so it takes the target's family colour.
     FilerEntry shortcut = FileEntry("Firefox.lnk", "lnk",

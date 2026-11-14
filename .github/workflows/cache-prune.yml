@@ -17,9 +17,12 @@ name: Cache prune
 on:
   # After a run of a workflow that saves run-numbered caches: that is when an
   # entry is superseded, and removing it then keeps the budget from evicting
-  # the entry that replaced it.
+  # the entry that replaced it. Only a run on main saves one (each of these
+  # workflows restores on a pull request and saves nothing), so the job
+  # below skips the completions of pull-request runs without taking a
+  # runner.
   workflow_run:
-    workflows: [Build, Wayland build, Element modules, Android build]
+    workflows: [Build, Wayland build, Element modules, Android build, UltraAI llama.cpp adapter]
     types: [completed]
   # And every six hours whatever ran, for the caches of pull requests closed
   # meanwhile and for a run the trigger above missed.
@@ -39,14 +42,22 @@ permissions:
   contents: read
   pull-requests: read
 
-# One prune at a time. A newer one replaces one still waiting: it lists the
-# caches afresh, so it does all the waiting one would have.
-concurrency:
-  group: cache-prune
-  cancel-in-progress: false
+# No concurrency group. One was here ("a newer prune replaces one still
+# waiting"), and it starved the prune exactly when the budget needed it: a
+# group keeps one run queued at most, so on an evening when every runner
+# was taken for an hour, each Build completion cancelled the prune still
+# waiting for a runner and queued its own - twelve in a row between 20:24
+# and 21:15 on 2026-11-12, with no prune running while five release builds
+# saved ~15 GB of superseded entries, and the least-recently-used eviction
+# took the caches the pull requests needed. Two prunes beside each other are
+# harmless by design: each lists the caches afresh, and one deleting what
+# the other already deleted reads a 404, which the script counts as done.
 
 jobs:
   prune:
+    # A pull-request run saves no run-numbered cache, so its completion
+    # leaves nothing to prune; the schedule covers closed pull requests.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:

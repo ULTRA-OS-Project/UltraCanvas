@@ -824,6 +824,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   Used by `UltraCanvasFilerWidget` under Display > File icons > Host OS icons.
   See `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`.
 
+- **UltraCanvasFilePreviews** (`UltraCanvasFilePreviews.h`) — the registry of
+  file preview providers: a format registers, under its extensions, a
+  thumbnail (`RenderThumbnail`, at a `FileThumbnailRequest` size) and/or a
+  preview document (`ReadDocument`, the start of its text as a
+  `UCRichDocument`); callers ask `RenderFileThumbnailFromProvider`,
+  `RenderFileThumbnailAs`, `ReadPreviewDocument` and `CanRenderFileThumbnail` /
+  `CanReadPreviewDocument`. Any number of providers, the latest registration
+  of an extension winning; thread-safe for the Filer's thumbnail workers. The
+  formats compiled in register on the first query
+  (`RegisterBuiltinFilePreviewProviders`, `core/UltraCanvasFilePreviewsBuiltin.cpp`):
+  PDF first page, EPUB / Mobipocket covers, video poster frames, Word-processing
+  documents and PowerPoint decks. `UltraCanvasFilerWidget` reaches those
+  formats only through it. The single-provider seams
+  `UltraCanvasVectorPreview.h` and `UltraCanvasModelPreview.h` predate it. See
+  `Docs/UltraCanvas/UltraCanvasFilePreviews.md`; tests in
+  `Tests/FilePreviewsTest.cpp`.
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
   document rather than as something to render text with: its name records are
@@ -2928,6 +2944,10 @@ UltraIM elements must comply with the following rules:
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`
 - `UltraIM_FetchNearbyContacts` (people on the local network)
+- `UltraIM_RenameGroup`, `UltraIM_AddGroupMembers`,
+  `UltraIM_RemoveGroupMember` (a group after it is made: `ManageGroups`),
+  `UltraIM_LeaveConversation` (out of a group, or a 1:1 conversation
+  deleted on this device: `LeaveConversation`)
 - `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
   to encrypted conversations as a passphrase-protected file)
 - `UltraIM_FetchAccountProfile`, `UltraIM_UpdateAccountProfile` (the

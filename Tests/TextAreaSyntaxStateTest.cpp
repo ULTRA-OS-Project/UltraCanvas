@@ -5,18 +5,23 @@
 //     cached layout of a line the edit did not touch is rebuilt because what
 //     the line above leaves open changed;
 //   - a word the language lists as a type is drawn with the type style (it
-//     used to fall through to the default colour).
+//     used to fall through to the default colour);
+//   - in Markdown mode, a block comment inside a ``` code fence colours all of
+//     its lines, ends at the fence, and never leaks into the raw line the
+//     cursor is editing (read with the Markdown rules, not the fence's);
+//   - a fence in a language the tokenizer does not know is shown plain.
 //
 // Every token class is painted one pure colour so a pixel says which class
 // covers it. Runs headless under Xvfb; skips when there is no display.
-// Version: 1.0.0
-// Last Modified: 2026-09-25
+// Version: 1.1.0
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasWindow.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -42,7 +47,7 @@ static int failCount = 0;
 
 namespace {
 
-const Color kComment(255, 0, 0);
+const Color kComment(255, 0, 255);   // magenta: no Markdown decoration uses it
 const Color kCode(0, 0, 255);
 const Color kType(0, 200, 0);
 
@@ -138,6 +143,48 @@ int main() {
     area->SetText("size_t uint8_t");
     Counts types = CountPixels(window, area);
     TEST("A type is drawn with the type style", types.type > 100);
+
+    // ===== MARKDOWN FENCED CODE =====
+    // A ``` block is highlighted line by line with its language's rules; its
+    // lines carry state among themselves like a plain code file does.
+    std::cerr << "\n--- A block comment inside a Markdown code fence ---" << std::endl;
+    style.fontColor = Color(0, 0, 0);     // prose and the fence's language tag
+    style.fixedFontStyle.fontSize = 28;   // code lines use the fixed-width font
+    style.fixedFontStyle.fontWeight = FontWeight::Bold;
+    area->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+    area->SetDisplayOnly(true);           // every line rendered, none raw for editing
+    area->SetText("```cpp\n/*\nwhile return while\n*/\n```");
+    Counts fenced = CountPixels(window, area);
+    TEST("The fenced comment is drawn in the comment colour", fenced.comment > 200);
+    TEST("Its middle line is not drawn as code", fenced.code < 20);
+
+    area->SetText("```cpp\nwhile return while\n```");
+    Counts fencedCode = CountPixels(window, area);
+    TEST("Code in a fence is still drawn as code", fencedCode.code > 200 && fencedCode.comment < 20);
+
+    area->SetText("```cpp\n/* never closed\n```\n\n```cpp\nwhile return while\n```");
+    Counts nextBlock = CountPixels(window, area);
+    TEST("A comment left open in one fence does not run into the next", nextBlock.code > 200);
+
+    // An unknown language shows plain - not in the previous fence's language.
+    area->SetText("```cpp\nwhile return while\n```\n\n```foo\nwhile return while\n```");
+    Counts unknownLang = CountPixels(window, area);
+    TEST("A fence in an unknown language is not highlighted as the one before it",
+         std::abs(unknownLang.code - fencedCode.code) < fencedCode.code / 10);
+
+    // Editing: the line under the cursor is shown raw and read with the
+    // Markdown rules. It must not take a C++ comment state from the code line
+    // above it - in the Markdown rules that state would mean an HTML comment.
+    std::cerr << "\n--- The raw cursor line after an open fenced comment ---" << std::endl;
+    area->SetDisplayOnly(false);
+    area->SetReadOnly(false);
+    area->SetText("```cpp\n/* open\n```");
+    area->SetCursorPosition({0, 0});
+    Counts cursorOnOpen = CountPixels(window, area);
+    area->SetCursorPosition({2, 0});
+    Counts cursorOnClose = CountPixels(window, area);
+    TEST("The raw closing fence is not drawn as a comment",
+         std::abs(cursorOnClose.comment - cursorOnOpen.comment) < 10);
 
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;

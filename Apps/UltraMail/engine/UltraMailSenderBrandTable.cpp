@@ -24,6 +24,8 @@
 //    (Sparkasse) is recognised but not claimed, so its genuine mail is not
 //    flagged as impersonation.
 //
+// Version: 0.1.3 - PayPal's regional domains (paypal.de, paypal.co.uk, ...): its German
+//                  receipts come from service@paypal.de
 // Version: 0.1.2 - Etsy and Pinterest too: no entry trusts a name under any suffix
 // Version: 0.1.1 - Amazon, eBay, Google and DHL list their country domains
 //                  instead of trusting their name under any suffix
@@ -97,7 +99,11 @@ std::vector<BrandRule> BuildRules() {
            "amazon.sg", "amazon.cn"},
           {}, {"amazon", "amazon prime", "prime video", "aws"} },
         { {"paypal",    "PayPal",    "https://www.paypal.com/favicon.ico",    0x003087, C::Payment},
-          {"paypal.com", "paypal-communication.com"}, {}, {"paypal"} },
+          {"paypal.com", "paypal-communication.com",
+           // the regional sites, which also send the mail: service@paypal.de
+           "paypal.de", "paypal.at", "paypal.ch", "paypal.co.uk", "paypal.ie",
+           "paypal.fr", "paypal.be", "paypal.nl", "paypal.it", "paypal.es",
+           "paypal.pl", "paypal.ca", "paypal.com.au"}, {}, {"paypal"} },
         { {"stripe",    "Stripe",    "https://stripe.com/favicon.ico",        0x635BFF, C::Payment},
           {"stripe.com"}, {}, {"stripe"} },
         { {"ebay",      "eBay",      "https://www.ebay.com/favicon.ico",      0xE53238, C::Shopping},

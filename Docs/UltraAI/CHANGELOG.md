@@ -1,3 +1,88 @@
+#### 2026-11-13 *0.1.29*
+- **Local speech to text on every platform.** The gallery's `whisper-server`
+  now has a build for macOS (Metal on Apple silicon, CPU on Intel Macs, from
+  13.3), Windows on ARM (CPU and Vulkan) and Vulkan on Windows x64, from this
+  repository's release `whisper-server-v1.9.0-r1`, each built by
+  `.github/workflows/whisper-server.yml` and tested by transcribing a sample
+  with the runtime's own command line, and pinned by SHA-256. The speech
+  models are offered there, and Auto picks Metal or Vulkan where the computer
+  has the GPU. Linux keeps upstream's CPU builds by default: its Vulkan
+  builds need glibc 2.39 (Ubuntu 24.04 and later), so they are optional,
+  used only when chosen. The model server's seed carries the same list.
+
+#### 2026-11-12 *0.1.28*
+- **The llama.cpp adapter is built and tested in CI, on a generated model.**
+  The adapter is opt-in (it vendors the engine), so the build rows never
+  compiled it and its test skipped its inference checks without a model file
+  in `ULTRAAI_TEST_LLAMA_MODEL`; a change to it was compile-checked by hand
+  at best. Now `UltraAI/tests/make_tiny_llama_gguf.py` writes the fixture at
+  build time with the gguf-py of the llama.cpp checkout the adapter is built
+  from: a random one-layer llama with a byte-fallback vocabulary and Gemma's
+  chat template, 115 KB, with its output rows arranged so greedy decoding
+  never picks end-of-sequence. `ctest` points the test at it (when Python
+  with numpy is available; otherwise the test still skips and says so), and
+  the new `ultraai-llamacpp.yml` workflow builds the adapter on every change
+  under `UltraAI/` and fails unless the inference checks ran. The test also
+  checks the same-role turn merge end to end: a history with two user turns
+  prompts with the same token count and the same greedy reply as the merged
+  turn.
+- **A local whisper engine in the gallery: speech to text on this
+  computer.** The built-in gallery publishes whisper.cpp's `whisper-server`
+  v1.9.0 - the upstream CPU builds for Linux x64, Linux arm64 and Windows
+  x64, pinned by SHA-256 - and the catalogue offers Whisper Small (the
+  default), Whisper Base and Whisper Large v3 Turbo (Q5_0) under a new
+  `transcription` topic. The runtime starts it on loopback with
+  `--inference-path /v1/audio/transcriptions --language auto`, so the
+  `local` provider now serves `ISpeechToText` (`CreateLocalSpeechToText`)
+  through the OpenAI adapter: WAV, MP3, FLAC and Ogg Vorbis as they are, no
+  size limit, translation through whisper's own `translate`, segments and
+  (when asked) word timings, 30 minutes' timeout by default. `local` is
+  first on the speech-to-text route, so UltraClipboard's *Extract text* on a
+  recording or video runs on this computer once the model is there; with it
+  not downloaded under the *Ask* policy the transcriber steps aside for the
+  next provider, and the error says what to install.
+- **Models whose engine has no build here are not offered.** `ListModels`
+  and `Recommend` leave out a catalogue model whose engine has no gallery
+  build for this platform, no installed bundle and no override - the whisper
+  models on macOS and Windows on ARM, where whisper.cpp publishes no server
+  (`ULTRAAI_LOCAL_ENGINE_WHISPER_SERVER` brings one's own). A model on an
+  engine with CPU builds only here (whisper-server; llama-server on an Intel
+  Mac) fits as *runs on CPU*, whatever the GPU, unless the engine is an
+  override.
+- **User whisper models.** `AddModelFile` and `AddHuggingFaceModel` take
+  `"speechtotext"` (a whisper.cpp ggml `.bin`, served by `whisper-server`);
+  the dashboard's *Local models* page adds a `.bin` as a speech-to-text
+  model and labels it so, and the *Get a local model* dialog names a
+  speech-to-text model. The OpenAI adapter reads the word timings inside
+  each segment, as whisper.cpp's server returns them.
+- The model server's seed carries the new engine, models and topic.
+- **whisper-server built here for the platforms upstream leaves out.** A new
+  workflow, `.github/workflows/whisper-server.yml`, builds whisper.cpp's
+  server at a release tag for macOS (Metal on Apple silicon, CPU on Intel),
+  Windows on ARM (CPU and Vulkan) and Vulkan on Windows x64 and Linux x64 and
+  arm64, tests each build by transcribing whisper.cpp's JFK sample with the
+  runtime's own command line, and publishes them as a release of this
+  repository with `SHA256SUMS` and the gallery's bundle entries
+  (`scripts/whisper_gallery_entries.py`). Run by hand; a pull request that
+  changes it builds and tests without publishing. The gallery takes the
+  entries once the first release is out.
+
+#### 2026-11-12 *0.1.27*
+- **The model server's lists are signed, and the client checks them.** The
+  model server signs `index.json`, `catalogue.json` and `topics.json` with its
+  Ed25519 key (the signature in the `X-UltraAI-Signature` header and as
+  `<document>.sig`) and publishes its keys in `keys.json`. The local runtime
+  pins those keys on the first refresh from a server
+  (`LocalRuntimeSettings::trustedKeys`) and from then on refuses a refresh
+  whose index, catalogue or topics are not signed by a pinned key - nothing
+  is replaced, and the error's `providerCode` is `"bad-signature"`. A new
+  model server address drops the old pins; a gallery that publishes no keys
+  (the built-in one, a plain mirror) stays unsigned. Settings > Model topics
+  says whether the lists in use are signed and by which key.
+- The settings window's pages - Default providers, Local models, Model
+  topics, Local & cloud, Endpoints - go through `Tr`, so they show in the
+  desktop's language once `media/locale/<lang>/UltraAI.json` has them.
+
 #### 2026-11-12 *0.1.26*
 - **Consecutive same-role turns are merged before a chat template sees
   them.** Two `user` messages in a row (or two `assistant` ones) now reach

@@ -11,6 +11,13 @@
 // first that constructs transcribes. The choice is made at every file, so a
 // provider set up while the application runs is used from the next one on.
 //
+// The local runtime's provider ("local", whisper.cpp's server, first on the
+// route) counts when it offers a model for this computer (none where the
+// gallery has no whisper-server build for the platform). When that model is not
+// downloaded and the download policy does not let a call fetch it, it steps
+// aside: the next provider transcribes, and when none does, the error says
+// what to install.
+//
 // What is sent: a sound file of a type the provider takes
 // (STTProviderCapabilities::supportedEncodings), within its size limit, goes
 // as it is. Anything else - every video, another sound type, a file over
@@ -28,8 +35,10 @@
 //   std::string provider;
 //   if (UltraAI::FindSpeechProvider(provider)) { /* provider transcribes */ }
 //
+// Version: 1.1.1 - whisper-server on every platform (comment)
+// Version: 1.1.0 - the local runtime's whisper engine
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-13
 // Author: UltraAI Module
 #pragma once
 

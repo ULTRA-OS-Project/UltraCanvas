@@ -1,3 +1,55 @@
+#### 2026-11-13 *0.1.23*
+- **ChatCube speaks 30 more languages.** Every text it shows is translated
+  into Arabic, Catalan, Chinese (simplified and traditional), Czech,
+  Danish, Dutch, Finnish, French, German, Greek, Hebrew, Hindi, Hungarian,
+  Indonesian, Italian, Japanese, Korean, Norwegian, Polish, Portuguese
+  (Portugal and Brazil), Romanian, Russian, Spanish, Swedish, Thai,
+  Turkish, Ukrainian and Vietnamese - `media/locale/<lang>/ChatCube.json`,
+  367 texts each, in the terms each language's standard catalogue
+  already uses. They are machine drafts (`@translated-by: machine draft
+  2026-11-13, reviewed by -`) until a speaker of the language reviews them.
+
+#### 2026-11-13 *0.1.22*
+- **Escape closes the chat list's menus, and the next click works**, also with
+  the pointer over a submenu on a desktop where the focus follows the pointer
+  (UltraCanvas: a popup's own window hands its keys on).
+- **Telegram supergroups show their members** in the chat list's menu: the
+  most recently active, by name, the creator marked owner, and "Members
+  (5,240)" with "and 5,200 more" for the rest - also under the group's name.
+- **Renaming a ChatCube group on an older relay says why it cannot be done**:
+  "This relay cannot rename groups yet - it needs ChatCube relay 1.3.0 or
+  later". The relay's README says how its operator updates it.
+
+#### 2026-11-13 *0.1.21*
+- **A right-click on a chat in the list opens its menu** - without opening
+  the chat. For every chat: *Open*, *Mark as read* / *Mark as unread* (a dot
+  where the count would be, until you open it), *Pin to top* / *Unpin*
+  (pinned chats stay above the rest, with a pin). For a person: *Voice call*
+  and *Video call* where the network can call them, *Copy ChatCube ID* (or
+  *Copy address* on Matrix and Telegram), *Add to group* with the groups of
+  that network they are not in yet, and *Delete chat*, which deletes the chat
+  and its messages on this computer only - they keep theirs, and a new
+  message from them starts it again. For a group: *Members*, each with a menu
+  of their own (*Send a message*, *Copy ID*, and - for the group's owner -
+  *Remove from group*), *Add members*, *Rename group* and *Leave group*.
+  Members are shown by name; a big group lists its first 40 and says how
+  many more. ChatCube, Matrix and Telegram groups have all of it, as far as
+  the network lets the account (in most Telegram groups renaming and taking
+  people out is for administrators). Pins and unread marks are kept with
+  the settings. Renaming a ChatCube group needs ChatCube relay 1.3.0.
+- **"1 member", not "1 members"**, under a group's name.
+
+#### 2026-11-12 *0.1.20*
+- **Every text ChatCube shows goes through UltraLocalisation (`Tr`)**, so
+  ChatCube can be translated: the sign-in, recovery and Connecting pages,
+  the sidebar, the conversation pane, calls, the status line, the Edit
+  profile window and every Settings page. The English catalogue,
+  `media/locale/en/ChatCube.json`, now holds all 329 texts. Sentences with
+  a name or a number in them are whole texts with placeholders, so a
+  translation can put them in its own order.
+  - In English, "1 member", "1 byte" and "1 room key imported" are now
+    singular.
+
 #### 2026-11-12 *0.1.19*
 - **The relay is a setting, not a field on the sign-in page.** ChatCube
   Direct signs in through `https://relay-chatcube.ultraos.eu` unless it is

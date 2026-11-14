@@ -13,12 +13,13 @@
 // python3), unless ULTRAIM_TEST_MATRIX_REQUIRED is set (CI); the nio part
 // skips without matrix-nio[e2e] in that python, unless
 // ULTRAIM_TEST_MATRIX_NIO_REQUIRED is set.
+// Version: 0.2.5 - the group renamed, Bob kicked, invited back, and leaving it
 // Version: 0.2.4 - what can be deleted (one's own, for everyone only)
 // Version: 0.2.3 - searching a room (an encrypted one): words and kinds
 // Version: 0.2.2 - the same in a room created unencrypted, so both paths run in one build
 // Version: 0.2.1 - a picture, a video and a file each way
 // Version: 0.2.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
 
 #include "MatrixHttp.h"
@@ -77,6 +78,11 @@ struct Events {
             list.push_back(e);
             changed.notify_all();
         };
+    }
+    // Forgets what arrived so far: the next WaitFor sees only what follows.
+    void Clear() {
+        std::lock_guard<std::mutex> lock(mutex);
+        list.clear();
     }
     bool WaitFor(const std::function<bool(const UltraIMEvent&)>& match, UltraIMEvent* found = nullptr,
                  int seconds = 30) {
@@ -829,6 +835,39 @@ void TestEndToEnd() {
     CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
         return IsReceived(e, "hi team") && e.conversationId == group.conversationId;
     }));
+
+    // The group after it is made: renamed, Bob kicked and invited back, and
+    // Bob leaving it - each reaching the other side through the sync.
+    const auto isGroupEvent = [&](const UltraIMEvent& e, UltraIMEventType type) {
+        return e.type == type && e.conversationId == group.conversationId;
+    };
+    UltraIMConversation renamed;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) {
+        alice->RenameGroup(group.conversationId, "Crew", cb);
+    }, renamed));
+    CHECK(renamed.title == "Crew");
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return isGroupEvent(e, UltraIMEventType::ConversationUpdate) && e.conversation.title == "Crew";
+    }));
+    UltraIMResult kicked;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) {
+        alice->RemoveGroupMember(group.conversationId, "@bob:localhost", cb);
+    }, kicked) && kicked.success);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return isGroupEvent(e, UltraIMEventType::ConversationRemove); }));
+    bobEvents.Clear();
+    UltraIMConversation invitedBack;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) {
+        alice->AddGroupMembers(group.conversationId, {"@bob:localhost"}, cb);
+    }, invitedBack));
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) {
+        alice->AddGroupMembers(group.conversationId, {"bob"}, cb);
+    }, none));
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return isGroupEvent(e, UltraIMEventType::ConversationUpdate); }));
+    bobEvents.Clear();
+    UltraIMResult left;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->LeaveConversation(group.conversationId, cb); }, left) &&
+          left.success);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) { return isGroupEvent(e, UltraIMEventType::ConversationRemove); }));
 
     // Plenty of history, then a fresh start from the stored session with a
     // short first sync: the older messages are paged back on request.

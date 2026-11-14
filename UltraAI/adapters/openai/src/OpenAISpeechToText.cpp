@@ -2,6 +2,7 @@
 // OpenAI-compatible ISpeechToText: file transcription over the audio API
 // (POST {baseUrl}/v1/audio/transcriptions, /v1/audio/translations), a
 // multipart upload. See include/UltraAIOpenAI.h.
+// Version: 0.1.1 - the words inside segments (whisper.cpp's server)
 // Version: 0.1.0
 // Last Modified: 2026-11-10
 // Author: UltraAI Module
@@ -213,6 +214,17 @@ private:
                 seg.text = s.value("text", "");
                 seg.startSec = s.value("start", 0.0);
                 seg.endSec = s.value("end", 0.0);
+                // whisper.cpp's server times the words inside each segment.
+                if (s.contains("words") && s["words"].is_array()) {
+                    for (const auto& w : s["words"]) {
+                        WordTiming word;
+                        word.word = w.value("word", "");
+                        word.startSec = w.value("start", 0.0);
+                        word.endSec = w.value("end", 0.0);
+                        word.confidence = w.value("probability", 0.0);
+                        seg.words.push_back(std::move(word));
+                    }
+                }
                 out.segments.push_back(std::move(seg));
             }
         }

@@ -2,6 +2,9 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.6.0 - RichShape::PatternBit: Word's preset pattern tiles
+// Version: 1.5.0 - Drawn shapes: RichShape presets; plain text, Markdown and HTML
+//                  spell a drawing's group members' words
 // Version: 1.4.0 - ToHTML writes a run's own letter-spacing; a character style's letter
 //                  spacing applies and overlays
 // Version: 1.3.2 - ToHTML writes font sizes dot-decimal under any locale
@@ -750,6 +753,19 @@ std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std
                 if (frame && depth < 8) {
                     std::vector<RichDocBlock> inner = FramesInline(document, frame->blocks, depth + 1);
                     out.insert(out.end(), std::make_move_iterator(inner.begin()), std::make_move_iterator(inner.end()));
+                    // A drawing's words: those in its group members' boxes.
+                    std::vector<const RichShape*> stack;
+                    for (auto it = frame->shapes.rbegin(); it != frame->shapes.rend(); ++it) stack.push_back(&*it);
+                    while (!stack.empty()) {
+                        const RichShape* shape = stack.back();
+                        stack.pop_back();
+                        if (shape->textFrame >= 0 && shape->textFrame < static_cast<int>(document.frames.size())) {
+                            std::vector<RichDocBlock> words = FramesInline(
+                                document, document.frames[static_cast<size_t>(shape->textFrame)].blocks, depth + 1);
+                            out.insert(out.end(), std::make_move_iterator(words.begin()), std::make_move_iterator(words.end()));
+                        }
+                        for (auto it = shape->children.rbegin(); it != shape->children.rend(); ++it) stack.push_back(&*it);
+                    }
                 }
                 continue;
             }
@@ -769,6 +785,194 @@ std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std
 }
 
 } // namespace
+
+// ===== DRAWN SHAPES =====
+
+bool RichShape::PatternBit(const std::string& pattern, int x, int y) {
+    x &= 7;
+    y &= 7;
+    if (pattern.size() == 21 && pattern.compare(0, 5, "bits:") == 0) {
+        const int row = std::stoi(pattern.substr(5 + static_cast<size_t>(y) * 2, 2), nullptr, 16);
+        return (row & (0x80 >> x)) != 0;
+    }
+    // Percent shades: dots spread evenly through the tile.
+    struct Tile { const char* name; uint8_t rows[8]; };
+    static const Tile kShades[] = {
+        {"pct5", {0x80, 0, 0, 0, 0x08, 0, 0, 0}},
+        {"pct10", {0x80, 0, 0x08, 0, 0x80, 0, 0x08, 0}},
+        {"pct20", {0x88, 0, 0x22, 0, 0x88, 0, 0x22, 0}},
+        {"pct25", {0x88, 0x22, 0x88, 0x22, 0x88, 0x22, 0x88, 0x22}},
+        {"pct30", {0xAA, 0x44, 0xAA, 0x11, 0xAA, 0x44, 0xAA, 0x11}},
+        {"pct40", {0xAA, 0x55, 0xAA, 0x51, 0xAA, 0x55, 0xAA, 0x15}},
+        {"pct50", {0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55}},
+        {"pct60", {0xEE, 0x55, 0xBB, 0x55, 0xEE, 0x55, 0xBB, 0x55}},
+        {"pct70", {0x77, 0xDD, 0x77, 0xD5, 0x77, 0xDD, 0x77, 0x5D}},
+        {"pct75", {0x77, 0xDD, 0x77, 0xDD, 0x77, 0xDD, 0x77, 0xDD}},
+        {"pct80", {0xF7, 0xDD, 0x7F, 0xDD, 0xF7, 0xDD, 0x7F, 0xDD}},
+        {"pct90", {0xFF, 0xF7, 0xFF, 0x7F, 0xFF, 0xF7, 0xFF, 0x7F}},
+        {"smConfetti", {0x80, 0x04, 0x40, 0x02, 0x20, 0x01, 0x10, 0x08}},
+        {"lgConfetti", {0xC1, 0x18, 0x83, 0x30, 0x0C, 0x61, 0x06, 0x30}},
+        {"horzBrick", {0xFF, 0x80, 0x80, 0x80, 0xFF, 0x08, 0x08, 0x08}},
+        {"diagBrick", {0x80, 0x40, 0x20, 0x10, 0x18, 0x24, 0x42, 0x81}},
+        {"solidDmnd", {0x10, 0x38, 0x7C, 0xFE, 0x7C, 0x38, 0x10, 0x00}},
+        {"openDmnd", {0x80, 0x41, 0x22, 0x14, 0x08, 0x14, 0x22, 0x41}},
+        {"dotDmnd", {0x80, 0x00, 0x22, 0x00, 0x08, 0x00, 0x22, 0x00}},
+        {"plaid", {0xAA, 0x55, 0xAA, 0x55, 0xF0, 0xF0, 0xF0, 0xF0}},
+        {"sphere", {0x77, 0x98, 0xF8, 0xF8, 0x77, 0x89, 0x8F, 0x8F}},
+        {"weave", {0x88, 0x54, 0x22, 0x45, 0x88, 0x14, 0x22, 0x51}},
+        {"divot", {0x00, 0x10, 0x08, 0x10, 0x00, 0x01, 0x80, 0x01}},
+        {"shingle", {0x03, 0x84, 0x48, 0x30, 0x0C, 0x02, 0x01, 0x01}},
+        {"wave", {0x00, 0x18, 0x25, 0xC0, 0x00, 0x18, 0x25, 0xC0}},
+        {"trellis", {0xFF, 0x66, 0xFF, 0x99, 0xFF, 0x66, 0xFF, 0x99}},
+        {"zigZag", {0x81, 0x42, 0x24, 0x18, 0x81, 0x42, 0x24, 0x18}},
+    };
+    for (const Tile& tile : kShades) {
+        if (pattern == tile.name) return (tile.rows[y] & (0x80 >> x)) != 0;
+    }
+    // Lines: across, down, and both diagonals, light (thin, far apart),
+    // dark (thick) and narrow (close together).
+    auto rows = [&](int every, int thick) { return y % every < thick; };
+    auto columns = [&](int every, int thick) { return x % every < thick; };
+    auto down = [&](int every, int thick) { return ((x - y) % every + every) % every < thick; };
+    auto up = [&](int every, int thick) { return (x + y) % every < thick; };
+    if (pattern == "horz") return rows(8, 1);
+    if (pattern == "ltHorz") return rows(4, 1);
+    if (pattern == "narHorz") return rows(2, 1);
+    if (pattern == "dkHorz") return rows(4, 2);
+    if (pattern == "dashHorz") return rows(4, 1) && x < 4;
+    if (pattern == "vert") return columns(8, 1);
+    if (pattern == "ltVert") return columns(4, 1);
+    if (pattern == "narVert") return columns(2, 1);
+    if (pattern == "dkVert") return columns(4, 2);
+    if (pattern == "dashVert") return columns(4, 1) && y < 4;
+    if (pattern == "dnDiag") return down(8, 1);
+    if (pattern == "ltDnDiag") return down(4, 1);
+    if (pattern == "dkDnDiag") return down(4, 2);
+    if (pattern == "wdDnDiag") return down(8, 3);
+    if (pattern == "dashDnDiag") return down(4, 1) && y < 4;
+    if (pattern == "upDiag") return up(8, 1);
+    if (pattern == "ltUpDiag") return up(4, 1);
+    if (pattern == "dkUpDiag") return up(4, 2);
+    if (pattern == "wdUpDiag") return up(8, 3);
+    if (pattern == "dashUpDiag") return up(4, 1) && y < 4;
+    if (pattern == "cross" || pattern == "lgGrid") return rows(8, 1) || columns(8, 1);
+    if (pattern == "smGrid") return rows(4, 1) || columns(4, 1);
+    if (pattern == "dotGrid") return (rows(4, 1) || columns(4, 1)) && (x + y) % 2 == 0;
+    if (pattern == "diagCross") return down(8, 1) || up(8, 1);
+    if (pattern == "smCheck") return ((x / 2) + (y / 2)) % 2 == 0;
+    if (pattern == "lgCheck") return ((x / 4) + (y / 4)) % 2 == 0;
+    return (x + y) % 2 == 0;                     // a name it does not know: half and half
+}
+
+std::string RichShape::NearestPresetPattern(const std::string& pattern) {
+    static const char* kPresets[] = {
+        "pct5", "pct10", "pct20", "pct25", "pct30", "pct40", "pct50", "pct60", "pct70", "pct75", "pct80", "pct90",
+        "horz", "vert", "ltHorz", "ltVert", "dkHorz", "dkVert", "narHorz", "narVert", "dashHorz", "dashVert",
+        "cross", "dnDiag", "upDiag", "ltDnDiag", "ltUpDiag", "dkDnDiag", "dkUpDiag", "wdDnDiag", "wdUpDiag",
+        "dashDnDiag", "dashUpDiag", "diagCross", "smCheck", "lgCheck", "smGrid", "lgGrid", "dotGrid",
+        "smConfetti", "lgConfetti", "horzBrick", "diagBrick", "solidDmnd", "openDmnd", "dotDmnd", "plaid",
+        "sphere", "weave", "divot", "shingle", "wave", "trellis", "zigZag"};
+    if (pattern.compare(0, 5, "bits:") != 0) return pattern;
+    std::string best = "pct50";
+    int bestDistance = 65;
+    for (const char* preset : kPresets) {
+        int distance = 0;
+        for (int i = 0; i < 64; ++i) {
+            distance += PatternBit(pattern, i % 8, i / 8) != PatternBit(preset, i % 8, i / 8) ? 1 : 0;
+        }
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = preset;
+        }
+    }
+    return best;
+}
+
+bool RichShape::IsOpen() const {
+    if (kind == Kind::Line) return true;
+    if (kind != Kind::Path) return false;
+    for (const PathPoint& point : path) {
+        if (point.op == PathPoint::Op::Close) return false;
+    }
+    return true;
+}
+
+bool RichShape::ApplyPreset(const std::string& preset) {
+    using Op = PathPoint::Op;
+    path.clear();
+    auto polygon = [&](std::initializer_list<std::pair<float, float>> points) {
+        kind = Kind::Path;
+        bool first = true;
+        for (const auto& [x, y] : points) {
+            PathPoint point;
+            point.op = first ? Op::Move : Op::Line;
+            point.x = x;
+            point.y = y;
+            path.push_back(point);
+            first = false;
+        }
+        PathPoint close;
+        close.op = Op::Close;
+        path.push_back(close);
+    };
+    kind = Kind::Rectangle;
+    if (preset == "rect" || preset == "flowChartProcess" || preset == "textBox" || preset == "frame") return true;
+    if (preset == "roundRect" || preset == "flowChartAlternateProcess") { kind = Kind::RoundRectangle; return true; }
+    if (preset == "flowChartTerminator") { kind = Kind::RoundRectangle; cornerRadius = 0.5f; return true; }
+    if (preset == "ellipse" || preset == "flowChartConnector") { kind = Kind::Ellipse; return true; }
+    if (preset == "line" || preset.rfind("straightConnector", 0) == 0) { kind = Kind::Line; return true; }
+    if (preset == "triangle" || preset == "flowChartExtract") { polygon({{0.5f, 0}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "flowChartMerge") { polygon({{0, 0}, {1, 0}, {0.5f, 1}}); return true; }
+    if (preset == "rtTriangle") { polygon({{0, 0}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "diamond" || preset == "flowChartDecision") { polygon({{0.5f, 0}, {1, 0.5f}, {0.5f, 1}, {0, 0.5f}}); return true; }
+    if (preset == "parallelogram" || preset == "flowChartInputOutput") {
+        polygon({{0.25f, 0}, {1, 0}, {0.75f, 1}, {0, 1}});
+        return true;
+    }
+    if (preset == "trapezoid") { polygon({{0.25f, 0}, {0.75f, 0}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "pentagon") { polygon({{0.5f, 0}, {1, 0.38f}, {0.81f, 1}, {0.19f, 1}, {0, 0.38f}}); return true; }
+    if (preset == "hexagon" || preset == "flowChartPreparation") {
+        polygon({{0.25f, 0}, {0.75f, 0}, {1, 0.5f}, {0.75f, 1}, {0.25f, 1}, {0, 0.5f}});
+        return true;
+    }
+    if (preset == "octagon") {
+        polygon({{0.29f, 0}, {0.71f, 0}, {1, 0.29f}, {1, 0.71f}, {0.71f, 1}, {0.29f, 1}, {0, 0.71f}, {0, 0.29f}});
+        return true;
+    }
+    if (preset == "homePlate") { polygon({{0, 0}, {0.8f, 0}, {1, 0.5f}, {0.8f, 1}, {0, 1}}); return true; }
+    if (preset == "chevron") { polygon({{0, 0}, {0.8f, 0}, {1, 0.5f}, {0.8f, 1}, {0, 1}, {0.2f, 0.5f}}); return true; }
+    if (preset == "plus" || preset == "mathPlus") {
+        polygon({{0.35f, 0}, {0.65f, 0}, {0.65f, 0.35f}, {1, 0.35f}, {1, 0.65f}, {0.65f, 0.65f}, {0.65f, 1},
+                 {0.35f, 1}, {0.35f, 0.65f}, {0, 0.65f}, {0, 0.35f}, {0.35f, 0.35f}});
+        return true;
+    }
+    if (preset == "rightArrow") {
+        polygon({{0, 0.25f}, {0.6f, 0.25f}, {0.6f, 0}, {1, 0.5f}, {0.6f, 1}, {0.6f, 0.75f}, {0, 0.75f}});
+        return true;
+    }
+    if (preset == "leftArrow") {
+        polygon({{1, 0.25f}, {0.4f, 0.25f}, {0.4f, 0}, {0, 0.5f}, {0.4f, 1}, {0.4f, 0.75f}, {1, 0.75f}});
+        return true;
+    }
+    if (preset == "upArrow") {
+        polygon({{0.25f, 1}, {0.25f, 0.4f}, {0, 0.4f}, {0.5f, 0}, {1, 0.4f}, {0.75f, 0.4f}, {0.75f, 1}});
+        return true;
+    }
+    if (preset == "downArrow") {
+        polygon({{0.25f, 0}, {0.25f, 0.6f}, {0, 0.6f}, {0.5f, 1}, {1, 0.6f}, {0.75f, 0.6f}, {0.75f, 0}});
+        return true;
+    }
+    if (preset == "star5") {
+        polygon({{0.5f, 0}, {0.62f, 0.38f}, {1, 0.38f}, {0.69f, 0.62f}, {0.81f, 1}, {0.5f, 0.76f},
+                 {0.19f, 1}, {0.31f, 0.62f}, {0, 0.38f}, {0.38f, 0.38f}});
+        return true;
+    }
+    if (preset == "star4") {
+        polygon({{0.5f, 0}, {0.6f, 0.4f}, {1, 0.5f}, {0.6f, 0.6f}, {0.5f, 1}, {0.4f, 0.6f}, {0, 0.5f}, {0.4f, 0.4f}});
+        return true;
+    }
+    return false;
+}
 
 std::vector<RichDocBlock> UCRichDocument::WithFramesInlineIn(const std::vector<RichDocBlock>& blocks) const {
     return FramesInline(*this, blocks, 0);

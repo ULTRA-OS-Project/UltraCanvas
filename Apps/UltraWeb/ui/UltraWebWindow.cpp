@@ -1,5 +1,7 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
+// Version: 0.10.0 - tabs show their Page (the device permission bar above the
+//                   area); Ctrl+Shift+Delete forgets the device permissions too
 // Version: 0.9.0 - a streamed download sends the site's cookies; the cookie
 //                  jar is written when the window closes; Ctrl+Shift+Delete
 //                  clears it
@@ -16,11 +18,13 @@
 
 #include "../host/UltraWebCookies.h"
 #include "../host/UltraWebDownloads.h"
+#include "../host/UltraWebPermissions.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -224,7 +228,7 @@ UltraWebTab& UltraWebWindow::NewTab(const std::string& address) {
     host.onOpenInNewTab = [this](UltraWebTab&, const std::string& url) { NewTab(url); };
     tabs_.push_back(std::make_unique<UltraWebTab>("uwTab" + std::to_string(++tabSerial_), std::move(host)));
     UltraWebTab& tab = *tabs_.back();
-    const int index = tabStrip_->AddTab(tab.Title(), tab.Area());
+    const int index = tabStrip_->AddTab(tab.Title(), tab.Page());
     tabStrip_->SetActiveTab(index);
     ShowActiveTab();
     if (!address.empty()) {
@@ -324,8 +328,10 @@ void UltraWebWindow::InstallShortcuts() {
                 const size_t count = jar->Count();
                 jar->Clear();
                 jar->Flush();
-                SetStatus(count == 0 ? std::string("No cookies to clear")
-                                     : "Cleared " + std::to_string(count) + (count == 1 ? " cookie" : " cookies"));
+                // What apps were allowed (the camera, the microphone) goes too.
+                PermissionStore::Shared()->Clear();
+                SetStatus(count == 0 ? Tr("No cookies to clear; the apps' device permissions are forgotten")
+                                     : TrF("Cleared {0} cookies; the apps' device permissions are forgotten", count));
                 return true;
             }
             default: return false;

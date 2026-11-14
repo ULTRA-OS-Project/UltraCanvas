@@ -1,3 +1,63 @@
+#### 2026-11-13 *0.10.94*
+- **The account tiles' counters lost their coloured backgrounds.** Since the
+  theme work the theme's colours are functions that return a colour, and the
+  tile's `CounterTint` / `CounterText` handed back a reference to that
+  temporary, which was gone before the pill used it. They return the colour
+  now: blue, green and orange pills again.
+- **PayPal's German receipts were marked as PayPal impersonation.** They come
+  from `service@paypal.de`, and the known-sender table listed only
+  `paypal.com`: a mail that says "PayPal" from a domain that is not PayPal's
+  scored `brand-impersonation` and showed the phishing strip. PayPal's
+  regional domains (paypal.de, .at, .ch, .co.uk, .ie, .fr, .be, .nl, .it,
+  .es, .pl, .ca, .com.au) are its own now, listed one by one as the table does
+  for Amazon, eBay, Google and DHL - not "paypal under any suffix", which would
+  trust a squatted paypal.xyz too.
+- **A proven sender's links to its own organisation under another suffix are
+  its own.** A company signing its mail as `example.de` and linking to
+  `example.com` (or `.net`, `.org`, a country's own, `co.uk` included) no
+  longer has that link counted as a foreign domain or shown as the warning's
+  "button domain". Only when the receiving server proved the From domain, and
+  not for the cheap generic suffixes (`example.top`): a forged sender keeps
+  every warning.
+- **A reply's or forward's quote is in the font the message was shown in.** It
+  took the first name of the mail's font list ("-apple-system", PayPal's web
+  font), which the editor does not have and drew in a stray substitute; it
+  takes the first one installed now.
+
+#### 2026-11-13 *0.10.93*
+- **The folder tree no longer scrolls back to the top while you read.** With
+  more than one account the tree is taller than its pane, and every folder
+  rescan - which runs after each mail check, not only when you ask for it -
+  rebuilt it row by row and left the view on the first row: the folder you had
+  open scrolled out of sight behind your back, moments after you had picked
+  it. The rebuild now holds the view (the framework's new
+  `TreeRebuildScope`): the tree comes back scrolled exactly as you left it,
+  with the open folder still selected and still at the same height, even when
+  the rescan found new folders above it.
+- **A folder opened from outside the tree is scrolled into view.** Opening an
+  account's inbox from the account bar, or a folder from a message, selected
+  its row without bringing it on screen, so in a tall tree the selection was
+  invisible. A row already on screen stays exactly where it is.
+
+#### 2026-11-12 *0.10.92*
+- **A folder called "a/b" and one called "a_b" no longer share - and
+  overwrite - their downloaded messages.** The folder's cache directory wrote
+  `/` as `_`, so both were cached in one directory, and so were names with
+  `\` or `:` in that place. A literal `_`, `\` and `:` now have codes of their
+  own (`a_b` is cached as `a~ub`), and so have the characters Windows does not
+  allow in a file name (`* ? " < > |`): a folder called "What?" could not
+  have its messages cached on Windows at all. Folders without those
+  characters keep their directories. The first start moves the cached
+  messages of both earlier layouts; where two folders shared a directory each
+  takes its own, and a message both had under the same number is downloaded
+  again when it is read.
+- **Folders whose names differ only in an accented or non-Latin letter ("Über"
+  and "über", "Входящие" and "входящие") no longer share their downloaded
+  messages on Windows and macOS.** The code that tells such names apart knew
+  only the letters a-z; it now knows the letters of the Latin, Greek,
+  Cyrillic, Armenian and Georgian alphabets. A folder named in the usual way
+  ("Über", "Entwürfe") keeps its directory; the first start moves the others.
+
 #### 2026-11-12 *0.10.91*
 - **The warning strip can be translated in full.** Its advice ("Do not sign
   in, pay or reply ..."), the footnotes that say what phishing, a romance

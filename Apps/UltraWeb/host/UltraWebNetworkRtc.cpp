@@ -4,8 +4,10 @@
 // process-wide dispatcher, which another module might want); each event is
 // translated here and posted to the UI thread, where a closed peer drops it.
 // Built without UltraRTC (ULTRAWEB_HAS_RTC unset), there is no engine.
+// Version: 0.2.0 - calls: tracks, the offer, the microphone, the camera, the speaker,
+//                  pictures to a sink; track events
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebRtc.h"
@@ -68,9 +70,40 @@ bool Translate(const UltraRtcPeerEvent& e, RtcEvent& out) {
             out.number = e.isBinary ? 1u : 0u;
             out.text = e.isBinary ? std::string(e.binary.begin(), e.binary.end()) : e.text;
             return true;
+        case UltraRtcPeerEventType::Track:
+            out.kind = UC_RTC_TRACK;
+            out.channel = e.track;
+            out.number = e.mediaKind == UltraRtcMediaKind::Video ? UC_RTC_VIDEO : UC_RTC_AUDIO;
+            out.text = e.mid;
+            return true;
+        case UltraRtcPeerEventType::TrackOpen:
+            out.kind = UC_RTC_TRACK_OPEN;
+            out.channel = e.track;
+            return true;
+        case UltraRtcPeerEventType::TrackClose:
+            out.kind = UC_RTC_TRACK_CLOSE;
+            out.channel = e.track;
+            return true;
         default:
-            return false;   // gathering and signalling states, errors, media tracks
+            return false;   // gathering and signalling states, errors
     }
+}
+
+UltraRtcDirection DirectionOf(uint32_t direction) {
+    switch (direction) {
+        case UC_RTC_SENDONLY: return UltraRtcDirection::SendOnly;
+        case UC_RTC_RECVONLY: return UltraRtcDirection::RecvOnly;
+        default: return UltraRtcDirection::SendRecv;
+    }
+}
+
+// UltraRTC's picture to a sink; nullptr for none.
+UltraRtcVideoFrameCallback ToEngine(RtcFrameSink sink) {
+    if (!sink) return nullptr;
+    return [sink = std::move(sink)](const UltraRtcVideoFrame& frame) {
+        if (frame.width > 0 && frame.height > 0 && frame.rgba.size() >= size_t(frame.width) * size_t(frame.height) * 4)
+            sink(frame.rgba.data(), frame.width, frame.height);
+    };
 }
 
 class EnginePeer : public RtcPeer, public std::enable_shared_from_this<EnginePeer> {
@@ -126,6 +159,41 @@ public:
                                : UltraRtc_DataChannelSendText(channel, std::string(data.begin(), data.end())));
     }
     int32_t CloseChannel(uint64_t channel) override { return ResultOf(UltraRtc_DataChannelClose(channel)); }
+
+    int32_t AddTrack(bool video, const std::string& mid, uint32_t direction, const RtcVideoConfig& config,
+                     uint64_t& outTrack) override {
+        UltraRtcHandle track = UltraRtcInvalidHandle;
+        UltraRtcResult result;
+        if (video) {
+            UltraRtcVideoConfig engine;
+            engine.width = config.width;
+            engine.height = config.height;
+            engine.fps = config.fps;
+            engine.bitrateKbps = config.kbps;
+            result = UltraRtc_AddVideoTrack(peer_, mid, DirectionOf(direction), engine, track);
+        } else {
+            result = UltraRtc_AddAudioTrack(peer_, mid, DirectionOf(direction), track);
+        }
+        outTrack = track;
+        return ResultOf(result);
+    }
+    int32_t Offer() override { return ResultOf(UltraRtc_SetLocalDescription(peer_, UltraRtcSdpType::Offer)); }
+    int32_t SetMicrophone(uint64_t track, bool on) override {
+        return ResultOf(on ? UltraRtc_StartMicrophone(track) : UltraRtc_StopMicrophone(track));
+    }
+    int32_t SetCamera(uint64_t track, bool on, RtcFrameSink selfView) override {
+        return ResultOf(on ? UltraRtc_StartCamera(track, std::string(), ToEngine(std::move(selfView)))
+                           : UltraRtc_StopCamera(track));
+    }
+    int32_t SetPlayback(uint64_t track, bool on) override {
+        return ResultOf(on ? UltraRtc_StartPlayback(track) : UltraRtc_StopPlayback(track));
+    }
+    int32_t SetTrackEnabled(uint64_t track, bool enabled) override {
+        return ResultOf(UltraRtc_SetTrackEnabled(track, enabled));
+    }
+    int32_t ShowVideo(uint64_t track, RtcFrameSink sink) override {
+        return ResultOf(UltraRtc_SetVideoFrameCallback(track, ToEngine(std::move(sink))));
+    }
     void Close() override {
         if (closed_.exchange(true)) return;
         if (peer_ != UltraRtcInvalidHandle) UltraRtc_ClosePeer(peer_);

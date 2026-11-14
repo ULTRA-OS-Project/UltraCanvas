@@ -397,6 +397,15 @@ recognises it; and no leg's `restore-keys` prefix may be the start of another
 leg's key. `vcpkg-macos-15-` once matched `vcpkg-macos-15-intel-...`, and the
 arm64 leg restored x86_64 libraries and rebuilt them all; name a leg by its
 runner and its architecture (`vcpkg-${{ matrix.os }}-${{ matrix.arch_label }}-`).
+`scripts/check_cache_keys.py` enforces the first rule in CI (`cache-keys.yml`):
+a key ending in a commit hash or carrying `github.run_number` is never
+pruned, the combined `actions/cache` with a run-numbered key saves on every
+run of every branch (restore on every run, save on `main` alone), and a
+workflow that saves run-numbered caches must be on `cache-prune.yml`'s list.
+A release build saves its ccache only when it compiled something, and merges
+that land within minutes of each other are folded and released together:
+`changelog-fold.yml` runs every ten minutes and folds once `main` has been
+quiet for ten, or when the oldest pending entry has waited twenty.
 A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
 ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
 its runner is five to ten times slower and the two macOS rows share one code
@@ -405,7 +414,12 @@ Intel toolchain would catch (the macOS platform layer, the packaging, a
 bundled library) asks for that row with the `ci:intel` label; adding it
 starts a run with the full matrix.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
-then `ctest --test-dir build`. Framework tests live under `Tests/`.
+then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
+llama.cpp adapter is built (the engine is fetched from GitHub, or taken from
+`ULTRAAI_LLAMACPP_SOURCE_DIR`) and its test runs on a model the build
+generates (`UltraAI/tests/make_tiny_llama_gguf.py`, needs Python with
+numpy); `ultraai-llamacpp.yml` runs that in CI, since the build rows never
+compile the adapter. Framework tests live under `Tests/`.
 
 **Downloads in CI retry.** Apt installs go through `ci-apt.sh`; every other
 download a CI step makes retries too: a file through
@@ -849,12 +863,15 @@ and never introduce a new literal copy of one:
    (marked `machine draft … reviewed by -` like the rest). A word every
    application has is in `Standard.json` or a base set already (the
    proposal's appendices): an application's own catalogue holds only what
-   is its own. The demo app is the one place a bare literal is right:
-   `DemoApp` is in `SKIP_APPS` of `scripts/extract_ui_strings.py`, so its
-   pages have no catalogue and wrap nothing - a demo page is example code a
-   developer reads beside its document, in English, not a product a person
-   runs in their language - and a review that finds no `Tr` there has found
-   nothing. **A catalogue under `media/locale/en/` that conflicts in a
+   is its own. The demo app is no exception: its pages have gone through
+   `Tr` since 0.9.516, `scripts/extract_ui_strings.py` builds its catalogue
+   (`media/locale/en/UltraCanvasDemo.json`, translated in every language
+   under `media/locale/`), and `check_locale_catalogues.py` fails a pull
+   request whose demo page adds a text without rerunning the extractor -
+   so a new demo page wraps its texts and reruns it like any application.
+   What a demo page leaves bare is what no reader translates: element ids,
+   code samples and parser input, proper names in sample data, and strings
+   the code compares or looks up. **A catalogue under `media/locale/en/` that conflicts in a
    merge is never merged by hand:** whichever branch merges second merges
    the base and runs `python3 scripts/extract_ui_strings.py` - it rebuilds a
    conflicted catalogue from both sides git keeps (its `@bases` and other

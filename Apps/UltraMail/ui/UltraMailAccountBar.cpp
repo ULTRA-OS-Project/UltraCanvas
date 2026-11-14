@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
+// Version: 0.8.1 - the counters keep their colours: CounterTint / CounterText return the colour, not a reference to the temporary the theme function returned
 // Version: 0.8.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.7.0 - the counters are click targets of their own that filter the
 //                  list (onFilterAccount), the active one framed in its colour;
@@ -43,12 +44,12 @@ constexpr float kTilePill     = 18.0f;
 constexpr float kCountSize    = 11.0f;
 
 // A counter's colours, by the filter it applies.
-const Color& CounterTint(MessageFilterKind kind) {
+Color CounterTint(MessageFilterKind kind) {
     return kind == MessageFilterKind::NewToday    ? Theme::NewTodayTint()
          : kind == MessageFilterKind::Unread      ? Theme::UnreadTint()
                                                   : Theme::WaitingTint();
 }
-const Color& CounterText(MessageFilterKind kind) {
+Color CounterText(MessageFilterKind kind) {
     return kind == MessageFilterKind::NewToday    ? Theme::NewTodayText()
          : kind == MessageFilterKind::Unread      ? Theme::UnreadText()
                                                   : Theme::WaitingText();

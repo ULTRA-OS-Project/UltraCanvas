@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeSettings.cpp
 // ChatCube's preferences in <settings folder>/ChatCube/settings.json.
+// Version: 0.3.1 - ChatMarks under "chats.pinned" and "chats.unread"
 // Version: 0.3.0 - the relay server (networks.relay)
 // Version: 0.2.0 - the look is system, light or dark
 // Version: 0.1.0
@@ -9,6 +10,7 @@
 #include "ChatCubeSettings.h"
 
 #include "UltraCanvasAppSettings.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace ChatCube {
 
@@ -63,17 +65,34 @@ bool Settings::Save() const {
     return file.Save();
 }
 
+void ChatMarks::Load() {
+    UltraCanvas::UltraCanvasAppSettings file(kApp);
+    file.Load();
+    const std::vector<std::string> p = file.GetList("chats.pinned");
+    const std::vector<std::string> u = file.GetList("chats.unread");
+    pinned = std::set<std::string>(p.begin(), p.end());
+    unread = std::set<std::string>(u.begin(), u.end());
+}
+
+bool ChatMarks::Save() const {
+    UltraCanvas::UltraCanvasAppSettings file(kApp);
+    file.Load();                // keeps the Settings window's keys
+    file.Set("chats.pinned", std::vector<std::string>(pinned.begin(), pinned.end()));
+    file.Set("chats.unread", std::vector<std::string>(unread.begin(), unread.end()));
+    return file.Save();
+}
+
 std::string Settings::File() {
     return UltraCanvas::UltraCanvasAppSettings(kApp).File();
 }
 
 std::string DateStyleExample(DateStyle style) {
     switch (style) {
-        case DateStyle::YearMonthDay: return "2026-10-31  (year, month, day)";
-        case DateStyle::MonthDayYear: return "10/31/2026  (month, day, year)";
+        case DateStyle::YearMonthDay: return UltraCanvas::Tr("2026-10-31  (year, month, day)");
+        case DateStyle::MonthDayYear: return UltraCanvas::Tr("10/31/2026  (month, day, year)");
         case DateStyle::DayMonthYear: break;
     }
-    return "31.10.2026  (day, month, year)";
+    return UltraCanvas::Tr("31.10.2026  (day, month, year)");
 }
 
 } // namespace ChatCube

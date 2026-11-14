@@ -1,0 +1,14 @@
+{
+  "@language": "en",
+  "@bases": [
+    "Web"
+  ],
+  "@inherited": [
+    "Allow",
+    "Block"
+  ],
+  "Cleared {0} cookies; the apps' device permissions are forgotten": "Cleared {0} cookies; the apps' device permissions are forgotten",
+  "No cookies to clear; the apps' device permissions are forgotten": "No cookies to clear; the apps' device permissions are forgotten",
+  "{0} wants to use your camera": "{0} wants to use your camera",
+  "{0} wants to use your microphone": "{0} wants to use your microphone"
+}

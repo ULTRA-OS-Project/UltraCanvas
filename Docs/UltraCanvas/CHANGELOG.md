@@ -1,3 +1,475 @@
+#### 2026-11-14 *0.9.559*
+- **CI: a release build saves its ccache only when it compiled something,
+  and the cache prune is no longer starved.** A fold commit changes a
+  changelog line, so each of the six legs hit on every object but the two
+  that carry the version - and still saved a fresh 500 MB entry, a copy of
+  the one it had restored. With five release builds running at once on the
+  evening of 2026-11-12, those copies and the macOS vcpkg libraries
+  overflowed the 10 GB cache budget before `cache-prune.yml` could delete
+  the superseded entries: its concurrency group kept one run queued at
+  most, so each Build completion cancelled the prune still waiting for a
+  runner (twelve in a row), and the least-recently-used eviction took the
+  one Linux entry a pull request then needed - its build step ran 77
+  minutes against 23 (#1226). `build.yml` now saves a leg's cache only when
+  nothing was restored or at least one compile in a hundred missed; the
+  prune runs without a concurrency group (two beside each other are harmless
+  by design) and skips the completions of pull-request runs, which save
+  nothing; and `ultraai-llamacpp.yml`, which saved a 300 MB entry under a
+  commit-suffixed key on every run that the prune never recognised, keeps
+  its ccache as `build.yml` does and is on the prune's list.
+- **CI: merges that land within minutes of each other are folded and
+  released together, and a new check keeps cache keys prunable.**
+  `changelog-fold.yml` dispatched one release build per fold commit, so the
+  five merges between 19:00 and 20:03 on 2026-11-12 became five release
+  builds of six legs running at once - which is what overflowed the cache
+  budget and held every macOS runner. The fold now runs every ten minutes
+  instead of on every push, and folds once `main` has been quiet for ten
+  minutes, or when the oldest pending entry has waited twenty: one fold
+  commit, one release build, for the burst, and no runner held while it
+  waits; a dispatch by hand folds at once. `scripts/check_cache_keys.py`
+  (`cache-keys.yml`, on every change under `.github/workflows/`) reports a
+  cache key ending in a commit hash or carrying `github.run_number`, which
+  `prune_actions_caches.py` never recognises as run-numbered so the entries
+  pile up until GitHub's seven-day expiry; the combined `actions/cache` with
+  a run-numbered key, which saves on every run of every branch; a
+  run-numbered restore without `restore-keys`; and a workflow that saves
+  run-numbered caches without being on the prune's list - the shape
+  `ultraai-llamacpp.yml` shipped on 2026-11-12. Its tests are in
+  `scripts/tests/test_check_cache_keys.py`.
+
+#### 2026-11-13 *0.9.558*
+- **Mail that names the system font drew in a stray serif or CJK face on
+  Windows (LinkedIn's among them).** The HTML reader took the first name of a
+  `font-family` list, and LinkedIn's starts with `-apple-system`, which no
+  Windows or Linux system has; with the Windows system fonts in fontconfig,
+  such a name fell to whichever font fontconfig listed first.
+  - `HTMLStyleResolver`: `-apple-system`, `system-ui`, `BlinkMacSystemFont`
+    and `ui-sans-serif` first in the list are the default (interface) font, as
+    in a browser; `ui-monospace` is monospace, `ui-serif` serif.
+  - The fontconfig configuration the framework writes (Windows, Android) gets
+    fontconfig's `49-sansserif.conf` rule: a request naming no generic family
+    has `sans-serif` appended, so any family nobody installed falls to the sans
+    font.
+  - The same rule draws a mail's web font (PayPal's `SupremeLLTest`, from an
+    `@font-face` the reader does not load) in the sans font, not in a stray
+    one.
+- **HTML text is drawn in the first font of its `font-family` list that is
+  installed**, as in a browser: `"Helvetica Neue", Arial, sans-serif` is
+  Arial on Windows, PayPal's `SupremeLLTest, 'Avant Garde', Helvetica, Arial`
+  is Arial, `Menlo, Consolas, monospace` is Consolas. The resolver keeps the
+  whole list (`ComputedStyle::fontFamilyList`, a `<font face>` list too); the
+  element builder picks from it; a list with nothing installed is the
+  interface font. A list naming `monospace` is code, whatever its first name.
+  - `IsFontFamilyAvailable` is cheap: the installed families are listed once
+    per font set (`GetFontSetGeneration`), not on every call, and listed again
+    when the Windows system fonts arrive after the start.
+  - A reply's or a forward's quote keeps the font the reading pane drew:
+    `HTMLRichImportOptions::fontInstalled` (UltraMail passes
+    `IsFontFamilyAvailable`) gives a run the first installed entry of its
+    list, not its first name - "-apple-system" or a mail's web font, which the
+    editor drew in a stray substitute. Without it the importer keeps the first
+    name, and stays free of the text engine. `FirstInstalledFontFamily` (new
+    in `UltraCanvasFontCoverage.h`) is the reading pane's choice.
+    `HTMLRichImportTest` covers the lists with a fake check.
+
+#### 2026-11-13 *0.9.557*
+- **A text frame's words are edited in place.** A double-click on a
+  floating text frame (or a drawing with words) opens its paragraphs where
+  the frame stands, at its inner width over its fill and border; a click
+  outside it or Escape goes back, and the words are written into the
+  document's frame (`UltraCanvasRichTextEdit::EditFrame`, `IsEditingFrame`).
+- **EMF and WMF pictures show.** Word 97's metafile pictures (their
+  compressed records inflated), Writer's DOC hatches (kept as EMF textures)
+  and EMF / WMF pictures in DOCX and ODT are drawn through the Vector
+  plugin's readers, at twice their size; they used to be dropped or drawn
+  as an empty box.
+
+#### 2026-11-13 *0.9.556*
+- **A tree view built again from its source no longer throws the view back to
+  the first row.** `UltraCanvasTreeView::SetRootNode` empties the tree before
+  the new rows are added, and the measure that followed each `AddNode` found
+  no content at all and clamped the scroll offset to 0 - so an application
+  that rebuilds its tree on a refresh (a folder rescan, a device list, a
+  reload) left the user looking at the top of a tree they had scrolled
+  through, with the row they had selected often off screen. The rebuild is now
+  wrapped: `BeginRebuild()` / `EndRebuild()`, or the `TreeRebuildScope` that
+  calls both for a block, hold the view while the rows are replaced. The
+  scroll position comes back as it was, the row that was selected returns to
+  the same height on screen even when rows were added above it, and a
+  selection that moved on during the rebuild - another account, a folder that
+  is gone - is scrolled into view instead. The tree is also measured once at
+  the end rather than after every row, so a rebuild of *n* rows is no longer
+  *n* measures of the whole tree. Nothing changes for a caller that does not
+  wrap its rebuild.
+- **A tree view's last row can be scrolled fully into view.** The tree
+  measured the room it has for rows as its whole height less the header band,
+  although `Render` draws them in the content box - the element without its
+  border and padding. A tree with the default 1 px border therefore counted
+  two pixels it does not show: scrolled to the end, the last row sat a border's
+  width under the content edge and no scrolling could bring it out, Page Up and
+  Page Down moved one row more than a page really shows, and the floating "go to
+  the selected entry" button hid itself while the row it pointed at was still
+  partly cut off. All of them now measure what `Render` clips the rows to, so
+  the scroll range reaches the last row and a page is the rows a page shows.
+  A tree given padding gains the most, having had that much more phantom room.
+
+#### 2026-11-13 *0.9.555*
+- **Pattern and picture fills are drawn as they are**, not in one colour.
+  `RichShape::fillPattern` holds Word's preset patterns (`"pct50"`,
+  `"dnDiag"`, `"smCheck"`, ...) or an 8 x 8 tile of their own, drawn in the
+  fill colour on `patternBackColor`; `fillMediaIndex` fills a shape with a
+  picture, tiled or stretched.
+  - Read from DOCX `a:pattFill` and `a:blipFill`, ODF `draw:hatch` and
+    `draw:fill-image` (inline pictures too), and DOC pattern bitmaps,
+    textures and picture fills.
+  - Written to DOCX by name; to ODT as a hatch, or for dots and checks as
+    the pattern's tile.
+- **Frames, drawings and pictures in a header or footer can be picked up
+  while it is being edited**: they are drawn and placed as its own (they
+  used to vanish while it was open), selected by a click (which no longer
+  leaves the header), moved by dragging and resized, and saved in place.
+
+#### 2026-11-13 *0.9.554*
+- **Lua long brackets are coloured at every level.** Lua's long strings and
+  block comments take any number of `=` between the brackets - `[==[ … ]==]`,
+  `--[=[ … ]=]` - and end only at the bracket with the same number. The
+  tokenizer knew only the level-0 `[[ ]]` and `--[[ ]]`, so a levelled comment
+  was read as a line comment and the lines after it as code, and a `]]` inside
+  a `[==[` string closed it early. A new switch, `levelledLongBrackets` (on
+  for Lua), matches the opening at any level and keeps the comment or string
+  open, without escapes, until its own closing bracket; the line state carries
+  that marker from line to line (`SyntaxLineState::blockCommentEnd`, and
+  `rawStringEnd` as C++ raw strings use).
+- **A block comment inside a Markdown code fence is coloured on every line.**
+  Fenced code (```` ```cpp ````) in Markdown mode was highlighted one line at a
+  time with no state, so only the first line of a `/* … */` spanning several
+  lines was drawn as a comment and the rest as code. The fence's lines now hand
+  each other the line state, as a plain code file's lines have since 0.9.57;
+  each opening fence starts empty, so a comment left open in one block ends at
+  its closing fence. The raw line under the cursor, which is read with the
+  Markdown rules, never takes a code block's state: in those rules it would
+  have meant an open `<!-- -->` comment.
+- **Rust raw strings and C# verbatim strings end where the compiler says.**
+  Their prefix changes where the string ends, and the tokenizer read them as
+  ordinary strings with escapes: C#'s `@"C:\"` ran past its closing quote to
+  the end of the line, Rust's `r"C:\"` on into the lines after it (Rust's
+  ordinary strings may span lines), `r#"say "hi""#` ended at the
+  first inner quote, and a C# verbatim string's doubled `""` or its second
+  line came out as code. Two switches, `hashRawStrings` (Rust: `r`, `br`, `cr`
+  with any number of `#`) and `verbatimStrings` (C#: `@"`, `$@"`, `@$"`), open
+  them with no escapes and keep them open to their own end - `"` and as many
+  `#`, or a `"` that is not doubled - across lines, through the same end marker
+  in the line state that C++ raw strings and Lua long brackets use. Rust's raw
+  identifiers (`r#match`) and C#'s (`@class`) stay names.
+- **A string's prefix is coloured with the string.** Python's `r"…"`,
+  `rb"…"`, `f"…"` and C / C++'s `L"…"`, `u8"…"` showed the prefix as a separate
+  name in front of the string. A per-language list, `stringPrefixes`, now joins
+  a listed prefix written directly against the quote to its string, in any
+  case. Where the string ends is unchanged, and rightly: Python still lets a
+  backslash keep a quote from closing a raw string (`r"\""` is one string).
+- **A variable named `e`, `f`, `L` or `u` is no longer coloured as a number.**
+  The number test accepted a word made only of a number suffix (`f`, `L`, `u`)
+  or the exponent letter (`e`, and so `e1`), in every language. A number now
+  has to start with a digit or a point and hold a digit; `1e5`, `.5` and
+  `1.5f` are unchanged.
+- `SyntaxTokenizationRules::hasRawStrings` and `rawStringPrefix` are removed:
+  nothing read them, and the string switches that do the work replaced them.
+- **Lua's `--[[ … ]]` and MATLAB's `%{ … %}` block comments are coloured.**
+  The tokenizer looked for line comments before block comments, so `--`
+  claimed `--[[` and the rest of its line, the block never opened, and the
+  lines inside it were coloured as code; MATLAB's `%{` went the same way under
+  `%`. Block comments are now matched first, in the line-by-line and the
+  whole-text tokenizer.
+- **C++ raw strings are coloured to their end, across lines.**
+  `R"(…)"`, `R"delim(…)delim"` and the `u8R` / `uR` / `UR` / `LR` forms were
+  read as a name and an ordinary string, which ended at the first `"` inside
+  the raw text and at the end of the line. A fourth string switch,
+  `delimitedRawStrings` (on for C++), matches the opening, takes its delimiter,
+  and keeps the string open, without escapes, until its own `)delim"` -
+  carried from line to line in `SyntaxLineState::rawStringEnd`.
+- **Strings that run across lines are coloured on every line, per language.**
+  A string ended at the end of its line in every language, so a Python
+  docstring, a JavaScript template literal or a C string continued with a
+  backslash was coloured on its first line only, and the lines after it as
+  code. Three rules in `SyntaxTokenizationRules` now say which strings span
+  lines: `multiLineStrings` (`"""` / `'''` in Python and Dart, `"""` in Kotlin,
+  Swift, Java, Scala, C# and Elixir), `multiLineStringDelimiters`
+  (the backtick in JavaScript, TypeScript and Go; both quotes in Shell, Ruby,
+  PHP and Perl; `"` in Rust) and `stringLineContinuation` (a trailing `\` in C,
+  C++, Python and JavaScript). Elsewhere an unclosed string still stops at its
+  line, so a missing quote colours one line, not the rest of the file.
+- **A Markdown code fence in an unknown language is shown plain.** The fence's
+  language was looked up by exact name, then by extension, and when both failed
+  the shared code-block tokenizer kept the previous fence's language: a block
+  tagged `foo` after a C++ one was coloured as C++. And since names were
+  matched case-sensitively, a block tagged `python` only ever worked when the
+  block before it was Python. The new `SyntaxTokenizer::SetLanguageByTag`
+  matches names in any case, then extensions, then common aliases (`golang`,
+  `shell`, `csharp`, `{.rust}`), and clears the language when nothing matches.
+- **`SyntaxTokenizer::Tokenize(text)` gives the tokens the text area colours.**
+  The whole-text tokenizer was a separate scanner that had fallen behind the
+  line-by-line one: it knew only level-0 Lua brackets, none of the strings that
+  span lines, no C++ raw strings, and it dropped every line break - it built a
+  `Newline` token for each and never added it to the result. It now runs
+  `TokenizeLine` over each line with the line state carried between them, with
+  one `Newline` token per `\n` or `\r\n`, so the two can no longer disagree.
+  Seven private helpers only the old scanner used (`ParseString`,
+  `ParseComment`, `ParseWord`, `ParseCharacter`, `ParsePreprocessor`,
+  `ParseStringInLine`, `IsIdentifier`) were removed.
+
+#### 2026-11-13 *0.9.553*
+- **A chart the build would have in no form now stops the configure, or is
+  compiled in.** A chart left out of `ULTRACANVAS_CHARTS` (the default
+  selection is empty) must be buildable as a runtime module. On WebAssembly
+  and Android, which load no modules, it is now compiled in, as the chart
+  engine proposal's compile-time fallback (§12.11) says. Before, it was left
+  out with a warning, so the default WebAssembly and Android builds had no
+  parallel coordinate chart. With `ULTRACANVAS_CHART_RUNTIME_MODULES=OFF`, or
+  a static core on Windows, the configure now stops and names the chart and
+  the ways out, as it does for widgets.
+- **`UltraCanvasFilePreviews`: a registry of file preview providers.** A format
+  registers, under its extensions, a thumbnail (`RenderThumbnail`) and/or a
+  preview document (`ReadDocument`, the start of its text). Callers ask
+  `RenderFileThumbnailFromProvider`, `RenderFileThumbnailAs` and
+  `ReadPreviewDocument`. Any number of providers can be registered, and the
+  latest registration of an extension wins. The registry is thread-safe for
+  the Filer's thumbnail workers. The formats compiled in register themselves
+  on the first query: the PDF first page, EPUB and Mobipocket covers, video
+  poster frames, Word-processing documents and PowerPoint decks.
+  `UltraCanvasFilerWidget` no longer includes the PDF, Word, PowerPoint,
+  e-book or video-thumbnail code; it asks the registry. Its tiles, text
+  previews and `RenderFileThumbnail` are unchanged: identical lines and
+  pixels for every test file, before and after.
+- **The MediaViewer can be a runtime module.** It joins the selectable
+  widgets in `ULTRACANVAS_WIDGETS` as `"media-viewer"`
+  (`MakeMediaViewerDescriptor`, `RegisterMediaViewerElement`). It is still
+  compiled in by default. Left out, it is built as
+  `ultracanvas-widget-media-viewer`, together with
+  `UltraCanvasMediaViewerWindow`. That happens only with a shared core, the
+  shipping configuration. The viewer reaches about 45 core objects, and a
+  static host would have to keep all of them for it. UltraViewer, UltraFiler, UltraMail,
+  EmailCleaner, ChatCube, UltraClipboard, UltraSnip and DemoApp use its
+  classes, so the configure stops if one of them is built without it.
+  Widget modules are now compiled with the core library's own include paths
+  and compile definitions, so a feature switch means the same on both sides of
+  the module boundary. The Element modules CI job now runs twice, with a static
+  and with a shared core, and builds the viewer's module in the shared one.
+- **A widget the build would have in no form now stops the configure.** A
+  widget left out of `ULTRACANVAS_WIDGETS` must be buildable as a runtime
+  module. Three things rule a module out:
+  - the build has no runtime modules (WebAssembly, Android, or
+    `ULTRACANVAS_WIDGET_RUNTIME_MODULES=OFF`);
+  - a static core on Windows;
+  - a static core for a widget built against a shared core only (the
+    MediaViewer).
+
+  The configure now stops and names the widgets and the ways out. Before, it
+  warned or skipped them, and an application asking for one by name found out
+  only at run time. The Element modules CI job's static row compiles the
+  MediaViewer in, and a new step checks that leaving it out of a static core
+  is refused.
+
+#### 2026-11-13 *0.9.552*
+- **A menu in its own window answers the keyboard wherever the key lands.**
+  Where the focus follows the pointer (X11 with no window manager), a key
+  pressed over a popup went to the popup's own window, which did not ask for
+  keys, so X passed it on to the root: Escape left the menu open, the arrow
+  keys and Enter did nothing, and the next click was spent closing the menu.
+  The popup's X11 window now takes key presses (`KeyPressMask`), and the
+  application hands keyboard events from a popup's window to the window the
+  popup belongs to, as it already did the pointer. With a window manager
+  nothing changes: a popup window never has the focus there.
+  `PopupOwnWindowTest` checks Escape sent to the menu's own window.
+- **UltraIM: a group's whole member count.** `UltraIMConversation::memberCount`
+  says how many are in a group whose `memberIds` list only a first page; 0 when
+  `memberIds` is everyone. Provider ABI 7. Telegram now lists a supergroup's
+  members - the 200 most recently active (`getSupergroupMembers`), its creator
+  as `ownerId` - with the total in `memberCount`, asked again when someone
+  joins or leaves, and after the provider's own add and remove.
+- **UltraIM Direct: renaming a group on a relay older than 1.3.0** says that
+  the relay needs updating, instead of "the relay refused the request" (the
+  older relay answers `405`).
+
+#### 2026-11-13 *0.9.551*
+- **The Linux SDK is tested and finished on a clean Ubuntu 22.04, the way a
+  user meets it.** The CMake package test runs on the runner that built the
+  SDK, where every library the framework uses is installed, so it could not
+  see what a user's machine lacks.
+  - **New CI job.** `sdk-linux` in `.github/workflows/build.yml`, for
+    x86_64 and arm64, runs `scripts/sdk-linux-clean-consumer.sh` in a
+    `ubuntu:22.04` container that has only a desktop's libraries (those
+    `package-linux.sh` leaves to the host):
+    1. The standalone UltraCanvasStart of the same build runs `--plan`.
+       The job runs the install command it prints, and `--check` must then
+       find nothing missing.
+    2. The SDK gets the run-time libraries its core still cannot load there.
+    3. UltraCanvasStart's skeleton is built with the Build step's two
+       commands, and `PackageConsumer` is built and run.
+
+    The SDK it packs replaces the build leg's artifact, and `publish-sdk`
+    waits for it, so the release publishes the tested one.
+  - **What it found at once.**
+    - The 0.9.465 SDK stopped with "No rule to make target
+      '/usr/lib/x86_64-linux-gnu/libmp3lame.so'" (fixed by #1093).
+    - With that fixed, the link stopped at `-lFLAC`, `-larchive`, GStreamer,
+      Vorbis, Opus, `-lzbar` and `-lrevenge-0.0`. On the job's first run, with
+      0.9.548, the newer OCR plug-in's `-ltesseract`, `-llept` and
+      `-larchive` were also missing.
+    - The core could not load 31 libraries, such as `libmp3lame.so.0` and
+      `libavcodec.so.58`, 63 with their own dependencies.
+  - **The link line.** For a shared core without `deps/` (the Linux SDK),
+    `UltraCanvasConfig.cmake` keeps on the application's link line only the
+    libraries the public headers include, which pkg-config re-finds, plus
+    imported targets, generator expressions and flags. The core's own 35
+    are left out, and the configure output says how many. VirtualFS is
+    folded into the core, so `VirtualFS::VirtualFS` gives way to
+    `UltraCanvas::VirtualFSHeaders`, its include directories and definitions
+    without `libVirtualFS.a` and `-larchive`.
+  - **Run time.** The Linux SDK carries the core's run-time libraries that a
+    22.04 machine set up by UltraCanvasStart lacks, beside the core in
+    `lib/`. They come from the standalone UltraCanvasStart's `lib/`, which
+    holds the core's whole closure. They and the core carry an `$ORIGIN`
+    runpath, so an application starts without `LD_LIBRARY_PATH`. The x86_64
+    archive grows from about 61 MB to 82 MB.
+  - **Checked** by running the script in a clean Ubuntu 22.04 root against
+    the 0.9.465 SDK and standalone UltraCanvasStart, with the new
+    `UltraCanvasConfig.cmake` sections applied:
+    - without `librevenge-dev`, the skeleton stopped only at
+      `-lrevenge-0.0`, which UltraCanvasStart now installs (its changelog);
+    - with it, the skeleton built with no library missing, and
+      `PackageConsumer` built and ran without `LD_LIBRARY_PATH`;
+    - the same against 0.9.547, with the static plug-ins' six `-dev`
+      packages that UltraCanvasStart now installs: 64 libraries added, and
+      the skeleton and `PackageConsumer` built and ran.
+
+#### 2026-11-13 *0.9.550*
+- **UltraIM: a group managed after it is made, and a conversation left.**
+  `UltraIM_RenameGroup`, `UltraIM_AddGroupMembers` and
+  `UltraIM_RemoveGroupMember` (capability `ManageGroups`), and
+  `UltraIM_LeaveConversation` (`LeaveConversation`: out of a group, or a 1:1
+  conversation deleted with its history on this device);
+  `UltraIMConversation::ownerId` names a group's owner where the network has
+  one, and `memberNames` the members by name. Provider ABI 6
+  (`ULTRAIM_PLUGIN_HOST_ABI_VERSION`): modules built for 5 are skipped until
+  rebuilt. ChatCube Direct does it through the relay (`PATCH /v1/groups/{id}`
+  renames, ChatCube relay 1.3.0), Matrix through `m.room.name`, invite,
+  kick, leave and forget, Telegram through TDLib's `setChatTitle`,
+  `addChatMembers`, `setChatMemberStatus` (left), `leaveChat` and
+  `deleteChatHistory` - a basic group's members and creator from its full
+  info (`getBasicGroupFullInfo`, `updateBasicGroupFullInfo`).
+- **UltraIM Direct: a group's owner on every update.** One re-read from the
+  store (a message read, sent, received or deleted) went out without it.
+- **UltraIM Matrix: a room renamed by someone else is renamed in the list.**
+  A new `m.room.name` or alias arriving in a live sync changed the room
+  without a `ConversationUpdate`, so the old title stayed until a restart.
+- **UltraCanvasListView: `SetSelectsOnContextMenu(false)`.** A right press
+  then hands `onContextMenu` the row under the pointer without selecting it,
+  for a list where selecting does something of its own (a messenger's chat
+  list opens the chat).
+
+#### 2026-11-13 *0.9.549*
+- **IGES files open and save.** The Models plugin has a second exact B-rep
+  format beside STEP: IGES 5.3 (`.igs`, `.iges`), read into and written out of
+  `ModelDocument::Brep` by `ModelConverter::IgesConverter`
+  (`Plugins/Models/IGES/`), and reached through `LoadModelDocument` /
+  `SaveModelDocument` and the FileLoader inventory like every other 3D format.
+  - **Both shapes an IGES file takes are read.** Manifold solid B-rep objects
+    (186, with shells, faces, loops, edge and vertex lists) arrive as closed
+    solids whose faces share their edges; trimmed surfaces (144 with 142
+    boundaries), bounded planes and untrimmed bounded surfaces - what most IGES
+    files contain - arrive as one open body. Curves: lines, arcs, ellipses,
+    copious data, parametric splines (converted exactly to B-splines),
+    rational B-splines and composites, each under its transformation matrix.
+    Surfaces: planes (108, 190), cylinder, cone, sphere, torus (192-198),
+    ruled, revolution, tabulated cylinder and rational B-spline. Colours (the
+    standard numbers and colour definitions), name properties, the unit and
+    the sender's details come from the file.
+  - **A trimming curve in (u, v) has to agree with its edge to be kept.** It
+    is lifted onto the surface and checked against the model-space edge at its
+    ends and through its length, turned round if it runs the other way, and
+    dropped with a warning if it does not lie on the edge at all - so a writer
+    that parameterises a surface differently from the reader costs a projection,
+    not a wrong face.
+  - **Writing keeps a solid a solid.** A closed body is written as a manifold
+    solid B-rep object with one vertex list and one edge list, an open one as
+    trimmed surfaces with model-space boundaries (and (u, v) boundaries on
+    B-spline faces); analytic surfaces stay analytic and NURBS stay NURBS. A
+    document holding only meshes is written as a faceted solid, with the same
+    warning the STEP writer gives. Every number is built as a dot-decimal
+    string, never streamed, so the file is the same on a comma-decimal desktop
+    (`ModelLocaleDecimalTest` writes two IGES cases in both locales).
+  - Not read, and named in a warning when met: hyperbolic and parabolic arcs
+    (read as their chord), offset surfaces (140), bounded surfaces (143),
+    subfigure instances (408), and the compressed and binary forms of the file.
+- **`ModelIgesTest`** covers the card syntax (redefined delimiters, Hollerith
+  strings holding them, D exponents, decks with no line ends or CR LF ends,
+  strings split across cards) and measures the readers' results against two
+  samples in `media/3D/IGES` that `make_samples.py` builds entity by entity
+  without the C++ writer: a block whose meshed volume must be 6000, and a
+  plate-with-hole and boss whose area must be the plate less its hole plus the
+  boss's side. Every STEP sample also goes STEP -> IGES -> back and must mesh
+  to the same area and volume.
+- **The 3D model table in `Docs/Modules/FileLoader/formats.md` lists what the
+  Models plugin reads and writes.** It still said only STL was implemented and
+  that OBJ, FBX, 3DS, PLY and COLLADA were not, which had not been true since
+  the Models plugin arrived. The demo app has an IGES page with both samples.
+- **The file browser names and colours CAD files.** `.step`, `.stp`, `.p21`,
+  `.igs` and `.iges` had no entry in `UltraCanvasFilerWidget`'s type table, so
+  they showed with no type name on the generic 3D colour. They are now "STEP
+  Model" and "IGES Model" on the 3D ramp - STEP on glTF's rung, the older
+  IGES on the last - and `FilerFormatColorTest` checks the rungs.
+- **Word documents show their drawn shapes.** Lines, rectangles, rounded
+  rectangles, ellipses, freeform outlines and groups from `.odt`, `.docx` and
+  `.doc` were dropped; a letterhead's rules, a boxed heading and a diagram
+  now stand where the document puts them, in page view and when printed.
+  - Model: `RichShape` (kind, box, turn, mirroring, fill, line, dash,
+    arrowheads, outline points, group members, words, a picture in a group)
+    in `RichTextFrame::shapes`; `RichShape::ApplyPreset` knows about forty of
+    Word's named outlines; `RichTextFrame::textAnchor` centres a box's words.
+  - ODT: `draw:rect`, `draw:ellipse`, `draw:line`, `draw:path`,
+    `draw:polygon`, `draw:polyline`, `draw:custom-shape` and `draw:g` are read
+    and written.
+  - DOCX: `wps:wsp` shapes with preset or custom outlines, theme colours
+    (`wps:style`, `a:schemeClr` with tint, shade and luminance), `wpg:wgp`
+    groups with pictures and text boxes, and VML shapes and groups are read;
+    drawings are written as `wps` shapes and `wpg` groups. A header's
+    pictures now load (its own relationships were not read).
+  - DOC: OfficeArt shapes and groups - shape types, freeform vertices,
+    turns, flips, dashes and arrowheads.
+  - `UltraCanvasRichTextEdit` draws them (`DrawShape`); a drawing with no
+    words is as tall as it was drawn, so a rule takes no room.
+  - ODT text frames are written with their height and their words' vertical
+    place, so Writer no longer shrinks them; DOCX text boxes with a height
+    keep it instead of shrinking to their text.
+- **Frames and drawings in a Word document can be moved and resized on the
+  page.** A click selects a floating text frame or drawing as it does a
+  picture (one behind the text leaves the text to the clicks); dragging it
+  moves it, its handles resize it, and the new place and size are saved.
+  - `UCRichDocumentEditor::SetFloatOffset` moves a floating object (one undo
+    step); the picture calls address text frames and drawings too.
+  - A resized drawing keeps the size its shapes were drawn for
+    (`RichTextFrame::drawingWidthPt` / `drawingHeightPt`); its shapes scale
+    with it, on screen and in the saved file.
+- **Gradient fills are drawn as gradients**, not in their first colour:
+  `RichShape::gradientStops`, `gradientAngleDeg`, `gradientRadial` and the
+  radial centre, read from ODF `draw:gradient`, DOCX `a:gradFill`, VML
+  `v:fill` and Word 97 shades, and written to ODT and DOCX.
+- **VML pictures show.** A logo kept the Word 2003 way (`v:shape` with
+  `v:imagedata`) is read as a picture, in the line or floating where its
+  position says.
+
+#### 2026-11-12 *0.9.548*
+- **CI: a "Build result" commit status says whether the Build workflow really
+  built a commit.** A new workflow, `build-result.yml`, follows every Build
+  run from outside it (`workflow_run`): the status is pending while a run is
+  going, green only when the newest run of that commit succeeded and ran jobs,
+  and red when it failed, timed out, was cancelled, failed to start or ended
+  with no jobs. Until now a run that never started any job left nothing red on
+  the commit, and a pull request read as mergeable although no platform had
+  built it (#1153 on 2026-11-09). Make "Build result" a required status check
+  of `main` in the branch protection settings so that such a pull request
+  cannot be merged.
+
 #### 2026-11-12 *0.9.547*
 - **The UltraCanvas runtime for browsers (prototype): apps keep the whole
   C++ API and ship only their own code.** UltraCanvas, cairo, pango, glib

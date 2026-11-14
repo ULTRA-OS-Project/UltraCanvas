@@ -74,6 +74,7 @@ too, in its upgrade request).
 | `PUT` / `DELETE /v1/contacts/{id}` | add / remove |
 | `POST /v1/groups` | `{title, members}` → `{group_id, conversation: "group:<id>", title, owner, members}` |
 | `GET /v1/groups`, `GET /v1/groups/{id}` | the caller's groups |
+| `PATCH /v1/groups/{id}` | `{title}` — any member renames (1.3.0) |
 | `POST /v1/groups/{id}/members` | `{user_id}` — any member adds |
 | `DELETE /v1/groups/{id}/members/{user}` | the owner removes anyone; anyone leaves |
 | `POST /v1/messages` | `{messages: [{to, message_id, conversation, envelope}]}` — offline 1:1 copies, or one copy per group member (sender and recipient must both be members of a `group:` conversation). A `message_id` already queued for that recipient is not queued twice. Envelopes up to 64 KiB |
@@ -200,6 +201,30 @@ Settings come from the environment (`.env.example` lists them). Deployment:
 `deploy/chatcube-relay.service` (systemd), `deploy/nginx.conf` (TLS and the
 WebSocket upgrade in front of it), `deploy/turnserver.conf` (coturn, sharing
 `CHATCUBE_RELAY_TURN_SECRET`).
+
+### Updating a running relay
+
+A ChatCube newer than its relay works, but what needs the newer relay says
+so instead of happening: renaming a group needs 1.3.0, and an older relay
+answers ChatCube with `405 Method Not Allowed`, which ChatCube shows as "This
+relay cannot rename groups yet - it needs ChatCube relay 1.3.0 or later". On
+the server, with the layout of `deploy/chatcube-relay.service`:
+
+```bash
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.2.0"}
+sudo systemctl stop chatcube-relay
+# The database first: an upgrade migrates it, and the older relay then refuses it.
+sudo cp /var/lib/chatcube-relay/relay.sqlite3 /var/lib/chatcube-relay/relay.sqlite3.bak
+# This directory's new code into /opt/chatcube-relay (a checkout: git pull;
+# a copy: rsync -a --exclude .venv Server/ChatCubeRelay/ /opt/chatcube-relay/)
+sudo -u chatcube-relay /opt/chatcube-relay/.venv/bin/pip install -e /opt/chatcube-relay
+sudo systemctl start chatcube-relay
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.3.0"}
+```
+
+(The database's file is whatever `CHATCUBE_RELAY_DB` names in
+`/etc/chatcube-relay.env`.) Clients stay signed in across the restart: their
+sessions are in the database, and they reconnect by themselves.
 
 Give ChatCube the relay's `https://` address. A bare host is taken as
 `https://`, and an `http://` address that the server redirects to `https://`

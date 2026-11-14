@@ -1,5 +1,7 @@
 // Plugins/UltraIM/telegram/TelegramRequests.cpp
 // Telegram provider - the TDLib requests it sends
+// Version: 0.1.6 - GetSupergroupMembers
+// Version: 0.1.5 - SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat, DeleteChatHistory, GetBasicGroupFullInfo
 // Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument
 // Version: 0.1.2 - RequestQrCode
@@ -277,6 +279,59 @@ TdObject CreateBasicGroup(const std::vector<int64_t>& userIds, const std::string
     o.Set("user_ids", Ids(userIds));
     o.Set("title", TdObject(title));
     o.Set("message_auto_delete_time", TdObject(0));
+    return o;
+}
+
+TdObject SetChatTitle(int64_t chatId, const std::string& title) {
+    TdObject o = Make("setChatTitle");
+    o.Set("chat_id", TdObject(chatId));
+    o.Set("title", TdObject(title));
+    return o;
+}
+
+TdObject AddChatMembers(int64_t chatId, const std::vector<int64_t>& userIds) {
+    TdObject o = Make("addChatMembers");
+    o.Set("chat_id", TdObject(chatId));
+    o.Set("user_ids", Ids(userIds));
+    return o;
+}
+
+TdObject RemoveChatMember(int64_t chatId, int64_t userId) {
+    TdObject o = Make("setChatMemberStatus");
+    o.Set("chat_id", TdObject(chatId));
+    TdObject member = Make("messageSenderUser");
+    member.Set("user_id", TdObject(userId));
+    o.Set("member_id", member);
+    o.Set("status", Make("chatMemberStatusLeft"));
+    return o;
+}
+
+TdObject LeaveChat(int64_t chatId) {
+    TdObject o = Make("leaveChat");
+    o.Set("chat_id", TdObject(chatId));
+    return o;
+}
+
+TdObject DeleteChatHistory(int64_t chatId) {
+    TdObject o = Make("deleteChatHistory");
+    o.Set("chat_id", TdObject(chatId));
+    o.Set("remove_from_chat_list", TdObject(true));
+    o.Set("revoke", TdObject(false));       // ours alone: the other side keeps theirs
+    return o;
+}
+
+TdObject GetBasicGroupFullInfo(int64_t basicGroupId) {
+    TdObject o = Make("getBasicGroupFullInfo");
+    o.Set("basic_group_id", TdObject(basicGroupId));
+    return o;
+}
+
+TdObject GetSupergroupMembers(int64_t supergroupId, int32_t offset, int32_t limit) {
+    TdObject o = Make("getSupergroupMembers");
+    o.Set("supergroup_id", TdObject(supergroupId));
+    o.Set("filter", Make("supergroupMembersFilterRecent"));
+    o.Set("offset", TdObject(static_cast<int64_t>(offset)));
+    o.Set("limit", TdObject(static_cast<int64_t>(limit)));
     return o;
 }
 

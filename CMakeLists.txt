@@ -568,9 +568,11 @@ function(ultracanvas_require_widgets build_flag app_name)
     endif()
 endfunction()
 ultracanvas_require_widgets(BUILD_DEMO_APP DemoApp
-    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas)
+    VideoTimeline Slideshow Album ColorPaletteManager VectorCanvas MediaViewer)
 ultracanvas_require_widgets(BUILD_ULTRAPAINT_APP UltraPaint ColorPaletteManager)
 ultracanvas_require_widgets(BUILD_ARTCREATOR_APP ArtCreator ColorPaletteManager VectorCanvas)
+ultracanvas_require_widgets(BUILD_ULTRAFILER_APP UltraFiler MediaViewer)
+ultracanvas_require_widgets(BUILD_ULTRAVIEWER_APP UltraViewer MediaViewer)
 
 # ===== WEBASSEMBLY DEMOS =====
 # The browser validation apps under UltraCanvas/OS/WASM/demo/ (wasm-demo and
@@ -657,6 +659,8 @@ endif()
 # UltraDatabase); UI targets are added in later phases. Enabled by default
 # whenever UltraDatabase is available.
 option(BUILD_ULTRAMAIL "Build the UltraMail application" ON)
+# UltraMail shows files in UltraCanvasMediaViewer, by its classes.
+ultracanvas_require_widgets(BUILD_ULTRAMAIL UltraMail MediaViewer)
 if(BUILD_ULTRAMAIL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraMail)
 endif()
@@ -666,6 +670,8 @@ endif()
 # what, when. Builds on the UltraMail engine (accounts + cached bodies), so it
 # is added after it and only when that target exists.
 option(BUILD_EMAILCLEANER "Build the EmailCleaner application" ON)
+# EmailCleaner shows files in UltraCanvasMediaViewer, by its classes.
+ultracanvas_require_widgets(BUILD_EMAILCLEANER EmailCleaner MediaViewer)
 if(BUILD_EMAILCLEANER AND TARGET UltraMailEngine)
     add_subdirectory(Apps/EmailCleaner)
 endif()
@@ -749,6 +755,8 @@ endif()
 # The ULTRA OS native messenger on UltraIM: peer-to-peer, end-to-end
 # encrypted chat with no account, groups through a relay (Server/ChatCubeRelay).
 option(BUILD_CHATCUBE "Build the ChatCube messenger" ON)
+# ChatCube shows files in UltraCanvasMediaViewer, by its classes.
+ultracanvas_require_widgets(BUILD_CHATCUBE ChatCube MediaViewer)
 if(BUILD_CHATCUBE)
     message(STATUS "")
     message(STATUS "── Building ChatCube ──")
@@ -820,6 +828,8 @@ endif()
 # entry, search, pins and the history's settings. UltraDesktop records the
 # history and opens this from its quick panel (Super+V).
 option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
+# UltraClipboard shows files in UltraCanvasMediaViewer, by its classes.
+ultracanvas_require_widgets(BUILD_ULTRACLIPBOARD UltraClipboard MediaViewer)
 if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
 endif()
@@ -840,6 +850,8 @@ endif()
 # video (Videos/Screen Recordings, through VideoFX's frame recorder).
 # UltraDesktop's screenshot button and Super+Shift+S start it.
 option(BUILD_ULTRASNIP "Build the UltraSnip application" ON)
+# UltraSnip shows files in UltraCanvasMediaViewer, by its classes.
+ultracanvas_require_widgets(BUILD_ULTRASNIP UltraSnip MediaViewer)
 if(BUILD_ULTRASNIP)
     add_subdirectory(Apps/UltraSnip)
 endif()

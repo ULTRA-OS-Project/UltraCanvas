@@ -1,7 +1,7 @@
 // core/UltraCanvasSyntaxHighlighter.cpp
 // Implementation of Tokenize and TokenizeLine methods for SyntaxTokenizer
-// Version: 1.0.0
-// Last Modified: 2024-12-20
+// Version: 1.1.0
+// Last Modified: 2026-11-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSyntaxTokenizer.h"
@@ -21,204 +21,27 @@ namespace UltraCanvas {
         return 1; // fallback for continuation/invalid bytes
     }
 
-// Main tokenization method - tokenizes entire text
+// Tokenize a whole text: line by line, each line continuing from what the
+// line above left open, exactly as the text area highlights it - one
+// Newline token between lines (for \n or \r\n).
     std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::Tokenize(const std::string& text) const {
         std::vector<Token> tokens;
-
         if (!currentRules || text.empty()) {
             return tokens;
         }
-
-        if (currentRules->isCss) {
-            // Line by line, as the text area highlights it.
-            SyntaxLineState state;
-            size_t start = 0;
-            while (start <= text.length()) {
-                size_t end = text.find('\n', start);
-                std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
-                if (!line.empty() && line.back() == '\r') line.pop_back();
-                auto lineTokens = TokenizeCssLine(line, state, false);
-                state = state.AtLineBreak();
-                tokens.insert(tokens.end(), lineTokens.begin(), lineTokens.end());
-                if (end == std::string::npos) break;
-                tokens.push_back({TokenType::Newline, "\n", 1});
-                start = end + 1;
-            }
-            return tokens;
+        SyntaxLineState state;
+        size_t start = 0;
+        while (start <= text.length()) {
+            size_t end = text.find('\n', start);
+            std::string line = text.substr(start, end == std::string::npos ? std::string::npos : end - start);
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            auto lineTokens = TokenizeLine(line, state);
+            tokens.insert(tokens.end(), lineTokens.begin(), lineTokens.end());
+            if (end == std::string::npos) break;
+            tokens.push_back({TokenType::Newline, "\n", 1});
+            state = state.AtLineBreak();
+            start = end + 1;
         }
-
-//        int currentLine = 0;
-        size_t position = 0;
-        int currentColumn = 0;
-        std::string whitespacePrefix = "";
-
-        while (position < text.length()) {
-            // Track newlines
-            if (text[position] == '\r' && text[position + 1] == '\n') {
-//                currentLine++;
-                currentColumn = 0;
-                position += 2;
-                Token token;
-                token.type = TokenType::Newline;
-                token.text = "\n";
-                token.length = 1;
-                continue;
-            }
-
-            if (text[position] == '\n') {
-//                currentLine++;
-                currentColumn = 0;
-                position++;
-                Token token;
-                token.type = TokenType::Newline;
-                token.text = "\n";
-                token.length = 1;
-                continue;
-            }
-
-            // Skip whitespace (but track column position)
-            if (IsWhitespace(text[position])) {
-                whitespacePrefix.push_back(text[position]);
-                currentColumn++;
-                position++;
-                continue;
-            }
-
-            if (!whitespacePrefix.empty()) {
-                Token token;
-                token.type = TokenType::Whitespace;
-                token.length = whitespacePrefix.length();
-                token.text = whitespacePrefix;
-                tokens.push_back(token);
-                whitespacePrefix.clear();
-            }
-
-            Token token;
-//            token.line = currentLine;
-//            token.column = currentColumn;
-//            token.start = position;
-
-            // Try to match comments first (they have priority)
-            auto commentResult = ParseComment(text, position);
-            if (commentResult.first > position) {
-                token.type = commentResult.second;
-                token.length = commentResult.first - position;
-                token.text = text.substr(position, token.length);
-                tokens.push_back(token);
-
-                // Update position and column
-                for (size_t i = 0; i < token.length; i++) {
-                    if (text[position + i] == '\n') {
-//                        currentLine++;
-                        currentColumn = 0;
-                    } else {
-                        currentColumn++;
-                    }
-                }
-                position = commentResult.first;
-                continue;
-            }
-
-            // Try to match strings
-//            if (text[position] == '\n') {
-//                auto stringResult = ParseString(text, position, text[position]);
-//                if (stringResult.first > position) {
-//                    token.type = stringResult.second;
-//                    token.length = stringResult.first - position;
-//                    token.text = text.substr(position, token.length);
-//                    tokens.push_back(token);
-//
-//                    currentColumn += token.length;
-//                    position = stringResult.first;
-//                    continue;
-//                }
-//            }
-
-            // Try to match character literals
-            if (IsCharacterDelimiter(text[position])) {
-                auto charResult = ParseCharacter(text, position);
-                if (charResult.first > position) {
-                    token.type = TokenType::Character;
-                    token.length = charResult.first - position;
-                    token.text = text.substr(position, token.length);
-                    tokens.push_back(token);
-
-                    currentColumn += token.length;
-                    position = charResult.first;
-                    continue;
-                }
-            }
-
-            // Try to match numbers
-            if (IsDigit(text[position]) ||
-                (text[position] == '.' && position + 1 < text.length() && IsDigit(text[position + 1]))) {
-                auto numberResult = ParseNumber(text, position);
-                if (numberResult.first > position) {
-                    token.type = numberResult.second;
-                    token.length = numberResult.first - position;
-                    token.text = text.substr(position, token.length);
-                    tokens.push_back(token);
-
-                    currentColumn += token.length;
-                    position = numberResult.first;
-                    continue;
-                }
-            }
-
-            // Try to match preprocessor directives
-            if (currentRules->hasPreprocessor && text[position] == '#' && currentColumn == 0) {
-                auto preprocessorResult = ParsePreprocessor(text, position);
-                if (preprocessorResult.first > position) {
-                    token.type = TokenType::Preprocessor;
-                    token.length = preprocessorResult.first - position;
-                    token.text = text.substr(position, token.length);
-                    tokens.push_back(token);
-
-                    currentColumn += token.length;
-                    position = preprocessorResult.first;
-                    continue;
-                }
-            }
-
-            // Try to match operators (before words to handle things like ++ correctly)
-            auto operatorResult = ParseOperator(text, position);
-            if (operatorResult.first > position) {
-                token.type = operatorResult.second;
-                token.length = operatorResult.first - position;
-                token.text = text.substr(position, token.length);
-                tokens.push_back(token);
-
-                currentColumn += token.length;
-                position = operatorResult.first;
-                continue;
-            }
-
-            // Try to match words (keywords, identifiers, etc.)
-            if (IsWordCharacter(text[position]) || text[position] == '_') {
-                auto wordResult = ParseWord(text, position);
-                if (wordResult.first > position) {
-                    token.type = wordResult.second;
-                    token.length = wordResult.first - position;
-                    token.text = text.substr(position, token.length);
-                    tokens.push_back(token);
-
-                    currentColumn += token.length;
-                    position = wordResult.first;
-                    continue;
-                }
-            }
-
-            // Handle punctuation and other single characters (UTF-8 aware)
-            int charBytes = Utf8CharBytes(static_cast<unsigned char>(text[position]));
-            token.type = TokenType::Punctuation;
-            token.length = charBytes;
-            token.text = text.substr(position, charBytes);
-            tokens.push_back(token);
-
-            currentColumn++;
-            position += charBytes;
-        }
-
         return tokens;
     }
 
@@ -234,6 +57,175 @@ namespace UltraCanvas {
         }
         closed = false;
         return line.length();
+    }
+
+// The same for a string closed by a multi-character delimiter (""", ]]).
+    static size_t FindLongStringEnd(const std::string& line, size_t from, const std::string& endDelim,
+                                    bool escapes, bool& closed) {
+        size_t i = from;
+        while (i < line.length()) {
+            if (escapes && line[i] == '\\' && i + 1 < line.length()) { i += 2; continue; }
+            if (line.compare(i, endDelim.length(), endDelim) == 0) {
+                closed = true;
+                return i + endDelim.length();
+            }
+            i++;
+        }
+        closed = false;
+        return line.length();
+    }
+
+// A C++ raw string opening at `pos`: [u8|u|U|L]R"delim( - not inside a word
+// (myR"(...)" is an identifier and a string). On a match, `bodyStart` is just
+// past the "(" and `endMarker` is )delim". The delimiter is at most 16
+// characters, none of them a space, ( ) or \.
+    static bool MatchRawStringOpen(const std::string& line, size_t pos,
+                                   size_t& bodyStart, std::string& endMarker) {
+        if (pos > 0) {
+            unsigned char prev = static_cast<unsigned char>(line[pos - 1]);
+            if (std::isalnum(prev) || prev == '_') return false;
+        }
+        size_t i = pos;
+        if (line.compare(i, 2, "u8") == 0) i += 2;
+        else if (i < line.length() && (line[i] == 'u' || line[i] == 'U' || line[i] == 'L')) i += 1;
+        if (line.compare(i, 2, "R\"") != 0) return false;
+        i += 2;
+        size_t delimStart = i;
+        while (i < line.length() && line[i] != '(') {
+            char c = line[i];
+            if (c == ' ' || c == ')' || c == '\\' || c == '\t' || i - delimStart >= 16) return false;
+            i++;
+        }
+        if (i >= line.length()) return false;
+        endMarker = ")" + line.substr(delimStart, i - delimStart) + "\"";
+        bodyStart = i + 1;
+        return true;
+    }
+
+// A Lua long bracket opening at `pos`: '[', any number of '=', '['. On a
+// match, `bodyStart` is just past it and `endMarker` is ']', as many '=', ']'.
+    static bool MatchLongBracket(const std::string& line, size_t pos,
+                                 size_t& bodyStart, std::string& endMarker) {
+        if (pos >= line.length() || line[pos] != '[') return false;
+        size_t i = pos + 1;
+        while (i < line.length() && line[i] == '=') i++;
+        if (i >= line.length() || line[i] != '[') return false;
+        const size_t level = i - pos - 1;
+        endMarker = "]" + std::string(level, '=') + "]";
+        bodyStart = i + 1;
+        return true;
+    }
+
+// A Rust raw string opening at `pos`: [b|c]r, any number of '#', '"' - not
+// inside a word, and not a raw identifier (r#match has no quote). On a match
+// `endMarker` is '"' and as many '#'.
+    static bool MatchHashRawString(const std::string& line, size_t pos,
+                                   size_t& bodyStart, std::string& endMarker) {
+        if (pos > 0) {
+            unsigned char prev = static_cast<unsigned char>(line[pos - 1]);
+            if (std::isalnum(prev) || prev == '_') return false;
+        }
+        size_t i = pos;
+        if (i < line.length() && (line[i] == 'b' || line[i] == 'c')) i++;
+        if (i >= line.length() || line[i] != 'r') return false;
+        i++;
+        size_t hashStart = i;
+        while (i < line.length() && line[i] == '#') i++;
+        if (i >= line.length() || line[i] != '"') return false;
+        endMarker = "\"" + std::string(i - hashStart, '#');
+        bodyStart = i + 1;
+        return true;
+    }
+
+// A C# verbatim string opening at `pos`: @", $@" or @$" - not inside a word.
+    static bool MatchVerbatimString(const std::string& line, size_t pos, size_t& bodyStart) {
+        if (pos > 0) {
+            unsigned char prev = static_cast<unsigned char>(line[pos - 1]);
+            if (std::isalnum(prev) || prev == '_' || prev == '@' || prev == '$') return false;
+        }
+        for (const char* open : {"@\"", "$@\"", "@$\""}) {
+            size_t n = std::strlen(open);
+            if (line.compare(pos, n, open) == 0) {
+                bodyStart = pos + n;
+                return true;
+            }
+        }
+        return false;
+    }
+
+// A string that ends only at its own marker - a C++ raw string, a Lua long
+// bracket, a Rust raw string, a C# verbatim string - opening at `pos`, as
+// the language's rules allow. `doubledQuotes`: a doubled marker inside it
+// is a quote character (C#).
+    static bool MatchMarkedString(const SyntaxTokenizationRules& rules, const std::string& line,
+                                  size_t pos, size_t& bodyStart, std::string& endMarker,
+                                  bool& doubledQuotes) {
+        doubledQuotes = false;
+        if (rules.levelledLongBrackets && MatchLongBracket(line, pos, bodyStart, endMarker)) return true;
+        if (rules.delimitedRawStrings && MatchRawStringOpen(line, pos, bodyStart, endMarker)) return true;
+        if (rules.hashRawStrings && MatchHashRawString(line, pos, bodyStart, endMarker)) return true;
+        if (rules.verbatimStrings && MatchVerbatimString(line, pos, bodyStart)) {
+            endMarker = "\"";
+            doubledQuotes = true;
+            return true;
+        }
+        return false;
+    }
+
+// Where such a string ends from `from` on: just past its marker, or npos
+// when it is still open at the end of the line.
+    static size_t FindMarkedEnd(const std::string& line, size_t from, const std::string& marker,
+                                bool doubledQuotes) {
+        size_t i = from;
+        while (true) {
+            size_t at = line.find(marker, i);
+            if (at == std::string::npos) return std::string::npos;
+            if (doubledQuotes && line.compare(at + marker.length(), marker.length(), marker) == 0) {
+                i = at + 2 * marker.length();   // "" - a quote inside the string
+                continue;
+            }
+            return at + marker.length();
+        }
+    }
+
+// Does a string opened with `delimiter` and still open at the end of `line`
+// carry on into the next line? Per language: a quote whose strings span lines,
+// or a backslash continuation (an odd run of backslashes ends the line).
+    static bool StringContinuesPastLine(const SyntaxTokenizationRules& rules,
+                                        const std::string& line, char delimiter) {
+        if (std::find(rules.multiLineStringDelimiters.begin(), rules.multiLineStringDelimiters.end(),
+                      delimiter) != rules.multiLineStringDelimiters.end()) {
+            return true;
+        }
+        if (!rules.stringLineContinuation) return false;
+        size_t backslashes = 0;
+        for (size_t i = line.length(); i > 0 && line[i - 1] == '\\'; --i) backslashes++;
+        return backslashes % 2 == 1;
+    }
+
+// A string token just added to `tokens` takes in a prefix written directly
+// before its quote (Python's rb, C's u8): the identifier right before it -
+// nothing in between - when the language lists it, in any case.
+    static void AbsorbStringPrefix(std::vector<SyntaxTokenizer::Token>& tokens,
+                                   const SyntaxTokenizationRules& rules) {
+        if (rules.stringPrefixes.empty() || tokens.size() < 2) return;
+        SyntaxTokenizer::Token& prefix = tokens[tokens.size() - 2];
+        if (prefix.type != TokenType::Identifier) return;
+        std::string lower = prefix.text;
+        std::transform(lower.begin(), lower.end(), lower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        bool listed = false;
+        for (const std::string& p : rules.stringPrefixes) {
+            std::string lp = p;
+            std::transform(lp.begin(), lp.end(), lp.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            if (lp == lower) { listed = true; break; }
+        }
+        if (!listed) return;
+        prefix.type = TokenType::String;
+        prefix.text += tokens.back().text;
+        prefix.length = prefix.text.size();
+        tokens.pop_back();
     }
 
 // Tokenize a single line with no knowledge of the lines around it
@@ -278,17 +270,53 @@ namespace UltraCanvas {
             tokens.push_back({TokenType::Comment, line.substr(0, position), position});
         }
         state.blockComment = -1;
+        if (!state.blockCommentEnd.empty()) {
+            size_t endPos = line.find(state.blockCommentEnd, position);
+            if (endPos == std::string::npos) {
+                tokens.push_back({TokenType::Comment, line.substr(position), line.length() - position});
+                return tokens;
+            }
+            size_t end = endPos + state.blockCommentEnd.length();
+            tokens.push_back({TokenType::Comment, line.substr(position, end - position), end - position});
+            position = end;
+            state.blockCommentEnd.clear();
+        }
         if (state.lineComment) {
             tokens.push_back({TokenType::Comment, line, line.length()});
             return tokens;
+        }
+        if (state.openLongString >= 0 &&
+            state.openLongString < static_cast<int>(currentRules->multiLineStrings.size())) {
+            bool closed = false;
+            size_t end = FindLongStringEnd(line, 0, currentRules->multiLineStrings[state.openLongString].second,
+                                           currentRules->hasEscapeSequences, closed);
+            tokens.push_back({TokenType::String, line.substr(0, end), end});
+            if (!closed) return tokens;
+            position = end;
+        }
+        state.openLongString = -1;
+        if (!state.rawStringEnd.empty()) {
+            size_t end = FindMarkedEnd(line, 0, state.rawStringEnd, state.rawStringDoubledQuotes);
+            if (end == std::string::npos) {
+                tokens.push_back({TokenType::String, line, line.length()});
+                return tokens;
+            }
+            tokens.push_back({TokenType::String, line.substr(0, end), end});
+            position = end;
+            state.rawStringEnd.clear();
+            state.rawStringDoubledQuotes = false;
         }
         if (state.openString) {
             bool closed = false;
             size_t end = FindStringEnd(line, 0, state.openString, currentRules->hasEscapeSequences, closed);
             tokens.push_back({TokenType::String, line.substr(0, end), end});
-            if (!closed) return tokens;
+            if (!closed) {
+                state.openStringSpansLines = StringContinuesPastLine(*currentRules, line, state.openString);
+                return tokens;
+            }
             position = end;
             state.openString = 0;
+            state.openStringSpansLines = false;
         }
 
         while (position < line.length()) {
@@ -314,20 +342,29 @@ namespace UltraCanvas {
 //            token.column = currentColumn;
 //            token.start = position;
 
-            // Try to match single-line comments
-            bool foundComment = false;
-            for (const auto& commentPrefix : currentRules->singleLineComments) {
-                if (line.substr(position, commentPrefix.length()) == commentPrefix) {
+            // Block comments before line comments: in some languages the
+            // block opener starts with the line-comment marker (Lua's --[[
+            // after --, MATLAB's %{ after %), and the line comment would take
+            // it and the rest of the line, leaving the block never opened.
+            if (currentRules->levelledLongBrackets && line.compare(position, 2, "--") == 0) {
+                size_t bodyStart = 0;
+                std::string endMarker;
+                if (MatchLongBracket(line, position + 2, bodyStart, endMarker)) {
+                    size_t endPos = line.find(endMarker, bodyStart);
+                    size_t end = endPos == std::string::npos ? line.length() : endPos + endMarker.length();
                     token.type = TokenType::Comment;
-                    token.length = line.length() - position;
-                    token.text = line.substr(position);
+                    token.length = end - position;
+                    token.text = line.substr(position, token.length);
                     tokens.push_back(token);
-                    state.lineComment = true;
-                    return tokens; // Rest of line is comment
+                    if (endPos == std::string::npos) {
+                        state.blockCommentEnd = endMarker;
+                        return tokens;
+                    }
+                    position = end;
+                    continue;
                 }
             }
-
-            // Try to match multi-line comment starts
+            bool foundComment = false;
             for (size_t k = 0; k < currentRules->multiLineComments.size(); ++k) {
                 const auto& [startDelim, endDelim] = currentRules->multiLineComments[k];
                 if (line.substr(position, startDelim.length()) == startDelim) {
@@ -357,6 +394,69 @@ namespace UltraCanvas {
 
             if (foundComment) continue;
 
+            // Try to match single-line comments
+            for (const auto& commentPrefix : currentRules->singleLineComments) {
+                if (line.substr(position, commentPrefix.length()) == commentPrefix) {
+                    token.type = TokenType::Comment;
+                    token.length = line.length() - position;
+                    token.text = line.substr(position);
+                    tokens.push_back(token);
+                    state.lineComment = true;
+                    return tokens; // Rest of line is comment
+                }
+            }
+
+            // Strings that end only at their own marker, with no escapes:
+            // C++ raw strings, Lua long brackets, Rust raw strings, C#
+            // verbatim strings.
+            {
+                size_t bodyStart = 0;
+                std::string endMarker;
+                bool doubledQuotes = false;
+                if (MatchMarkedString(*currentRules, line, position, bodyStart, endMarker, doubledQuotes)) {
+                    size_t endAt = FindMarkedEnd(line, bodyStart, endMarker, doubledQuotes);
+                    size_t end = endAt == std::string::npos ? line.length() : endAt;
+                    token.type = TokenType::String;
+                    token.length = end - position;
+                    token.text = line.substr(position, token.length);
+                    tokens.push_back(token);
+                    if (endAt == std::string::npos) {
+                        state.rawStringEnd = endMarker;
+                        state.rawStringDoubledQuotes = doubledQuotes;
+                        return tokens;
+                    }
+                    currentColumn += token.length;
+                    position = end;
+                    continue;
+                }
+            }
+
+            // Strings that may span lines and open with more than one
+            // character (""", [[): before the one-character delimiters,
+            // which would read """ as an empty string and a quote.
+            bool foundLongString = false;
+            for (size_t k = 0; k < currentRules->multiLineStrings.size(); ++k) {
+                const auto& [openDelim, closeDelim] = currentRules->multiLineStrings[k];
+                if (line.compare(position, openDelim.length(), openDelim) != 0) continue;
+                bool closed = false;
+                size_t end = FindLongStringEnd(line, position + openDelim.length(), closeDelim,
+                                               currentRules->hasEscapeSequences, closed);
+                token.type = TokenType::String;
+                token.length = end - position;
+                token.text = line.substr(position, token.length);
+                tokens.push_back(token);
+                AbsorbStringPrefix(tokens, *currentRules);
+                if (!closed) {
+                    state.openLongString = static_cast<int8_t>(k);
+                    return tokens;
+                }
+                currentColumn += token.length;
+                position = end;
+                foundLongString = true;
+                break;
+            }
+            if (foundLongString) continue;
+
             // Try to match strings
             if (IsStringDelimiter(line[position])) {
                 bool closed = false;
@@ -366,8 +466,10 @@ namespace UltraCanvas {
                 token.length = end - position;
                 token.text = line.substr(position, token.length);
                 tokens.push_back(token);
+                AbsorbStringPrefix(tokens, *currentRules);
                 if (!closed) {
                     state.openString = line[position];
+                    state.openStringSpansLines = StringContinuesPastLine(*currentRules, line, line[position]);
                     return tokens;
                 }
 
@@ -516,7 +618,11 @@ namespace UltraCanvas {
             return true;
         }
 
-        // Check for decimal/float number
+        // Check for decimal/float number. It starts with a digit or a point
+        // and holds a digit: a lone suffix or exponent letter - a variable
+        // named f, L, u or e - is a name, not a number.
+        if (!IsDigit(text[0]) && text[0] != '.') return false;
+        if (std::none_of(text.begin(), text.end(), [this](char c) { return IsDigit(c); })) return false;
         bool hasDecimalPoint = false;
         bool hasExponent = false;
 
@@ -539,19 +645,6 @@ namespace UltraCanvas {
                 }
                 return false;
             }
-        }
-
-        return true;
-    }
-
-// Check if text is a valid identifier
-    bool SyntaxTokenizer::IsIdentifier(const std::string& text) const {
-        if (text.empty()) return false;
-
-        if (!std::isalpha(text[0]) && text[0] != '_') return false;
-
-        for (size_t i = 1; i < text.length(); i++) {
-            if (!std::isalnum(text[i]) && text[i] != '_') return false;
         }
 
         return true;
@@ -587,79 +680,6 @@ namespace UltraCanvas {
         // This would need context from the next token
 
         return TokenType::Identifier;
-    }
-
-// Parse a string literal
-    std::pair<size_t, TokenType> SyntaxTokenizer::ParseString(const std::string& text, size_t pos, char delimiter) const {
-        if (!currentRules) return {pos, TokenType::Unknown};
-
-        size_t endPos = pos + 1;
-
-        while (endPos < text.length()) {
-            if (text[endPos] == delimiter) {
-                // Check if it's escaped
-                if (endPos > 0 && text[endPos - 1] == '\\' && currentRules->hasEscapeSequences) {
-                    // Count consecutive backslashes
-                    int backslashCount = 0;
-                    size_t checkPos = endPos - 1;
-                    while (checkPos > pos && text[checkPos] == '\\') {
-                        backslashCount++;
-                        checkPos--;
-                    }
-                    // If odd number of backslashes, the quote is escaped
-                    if (backslashCount % 2 == 1) {
-                        endPos++;
-                        continue;
-                    }
-                }
-                return {endPos + 1, TokenType::String};
-            }
-
-            // Check for string interpolation (template literals)
-            if (currentRules->hasStringInterpolation) {
-                if (delimiter == '`' && text[endPos] == '$' && endPos + 1 < text.length() && text[endPos + 1] == '{') {
-                    // Handle interpolation - for now, just continue
-                    endPos++;
-                    continue;
-                }
-            }
-
-            endPos++;
-        }
-
-        // Unclosed string
-        return {text.length(), TokenType::String};
-    }
-
-// Parse a comment
-    std::pair<size_t, TokenType> SyntaxTokenizer::ParseComment(const std::string& text, size_t pos) const {
-        if (!currentRules) return {pos, TokenType::Unknown};
-
-        // Check single-line comments
-        for (const auto& commentPrefix : currentRules->singleLineComments) {
-            if (text.substr(pos, commentPrefix.length()) == commentPrefix) {
-                size_t endPos = text.find('\n', pos);
-                if (endPos == std::string::npos) {
-                    endPos = text.length();
-                }
-                return {endPos, TokenType::Comment};
-            }
-        }
-
-        // Check multi-line comments
-        for (const auto& [startDelim, endDelim] : currentRules->multiLineComments) {
-            if (text.substr(pos, startDelim.length()) == startDelim) {
-                size_t endPos = text.find(endDelim, pos + startDelim.length());
-                if (endPos != std::string::npos) {
-                    endPos += endDelim.length();
-                } else {
-                    endPos = text.length();
-                }
-                return {endPos, TokenType::Comment};
-            }
-        }
-
-        return {pos, TokenType::Unknown};
     }
 
 // Parse a number
@@ -739,25 +759,6 @@ namespace UltraCanvas {
         return {pos, TokenType::Unknown};
     }
 
-// Parse a word (identifier, keyword, etc.)
-    std::pair<size_t, TokenType> SyntaxTokenizer::ParseWord(const std::string& text, size_t pos) const {
-        if (!IsWordCharacter(text[pos]) && text[pos] != '_') {
-            return {pos, TokenType::Unknown};
-        }
-
-        size_t endPos = pos;
-        while (endPos < text.length() && (IsWordCharacter(text[endPos]) || text[endPos] == '_' || IsDigit(text[endPos]))) {
-            endPos++;
-        }
-
-        if (endPos > pos) {
-            std::string word = text.substr(pos, endPos - pos);
-            return {endPos, ClassifyWord(word)};
-        }
-
-        return {pos, TokenType::Unknown};
-    }
-
 // Parse an operator
     std::pair<size_t, TokenType> SyntaxTokenizer::ParseOperator(const std::string& text, size_t pos) const {
         if (!currentRules) return {pos, TokenType::Unknown};
@@ -816,31 +817,6 @@ namespace UltraCanvas {
     }
 
 // Line-specific parsing helpers (similar to main parsing but bounded to single line)
-    std::pair<size_t, TokenType> SyntaxTokenizer::ParseStringInLine(const std::string& line, size_t pos, char delimiter) const {
-        size_t endPos = pos + 1;
-
-        while (endPos < line.length()) {
-            if (line[endPos] == delimiter) {
-                if (endPos > 0 && line[endPos - 1] == '\\' && currentRules->hasEscapeSequences) {
-                    int backslashCount = 0;
-                    size_t checkPos = endPos - 1;
-                    while (checkPos > pos && line[checkPos] == '\\') {
-                        backslashCount++;
-                        checkPos--;
-                    }
-                    if (backslashCount % 2 == 1) {
-                        endPos++;
-                        continue;
-                    }
-                }
-                return {endPos + 1, TokenType::String};
-            }
-            endPos++;
-        }
-
-        return {line.length(), TokenType::String};
-    }
-
     std::pair<size_t, TokenType> SyntaxTokenizer::ParseCharacterInLine(const std::string& line, size_t pos) const {
         if (pos + 1 >= line.length()) return {pos, TokenType::Unknown};
 
@@ -875,53 +851,6 @@ namespace UltraCanvas {
             endPos++;
         }
         return {endPos, TokenType::Identifier}; // Classification happens in calling code
-    }
-
-    std::pair<size_t, TokenType> SyntaxTokenizer::ParseCharacter(const std::string& text, size_t pos) const {
-        if (!currentRules || pos >= text.length()) return {pos, TokenType::Unknown};
-
-        if (!IsCharacterDelimiter(text[pos])) return {pos, TokenType::Unknown};
-
-        size_t endPos = pos + 1;
-
-        // Handle escape sequences
-        if (endPos < text.length() && text[endPos] == '\\' && currentRules->hasEscapeSequences) {
-            endPos += 2; // Skip escape sequence
-        } else if (endPos < text.length()) {
-            endPos++; // Regular character
-        }
-
-        // Check for closing delimiter
-        if (endPos < text.length() && text[endPos] == text[pos]) {
-            return {endPos + 1, TokenType::Character};
-        }
-
-        // Unclosed character literal
-        return {endPos, TokenType::Character};
-    }
-
-    std::pair<size_t, TokenType> SyntaxTokenizer::ParsePreprocessor(const std::string& text, size_t pos) const {
-        if (!currentRules || !currentRules->hasPreprocessor) return {pos, TokenType::Unknown};
-
-        if (text[pos] != '#') return {pos, TokenType::Unknown};
-
-        // Preprocessor directives usually go to end of line
-        size_t endPos = text.find('\n', pos);
-        if (endPos == std::string::npos) {
-            endPos = text.length();
-        }
-
-        // Handle line continuations
-        while (endPos > pos && endPos < text.length() && text[endPos - 1] == '\\') {
-            size_t nextLine = text.find('\n', endPos + 1);
-            if (nextLine == std::string::npos) {
-                endPos = text.length();
-                break;
-            }
-            endPos = nextLine;
-        }
-
-        return {endPos, TokenType::Preprocessor};
     }
 
 // ===== CSS =====

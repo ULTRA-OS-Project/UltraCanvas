@@ -1,0 +1,46 @@
+# Checks every Actions cache key in .github/workflows against what
+# cache-prune.yml can manage (scripts/check_cache_keys.py, which explains the
+# rules): a key ending in a commit hash or carrying github.run_number is
+# never recognised as run-numbered, so its entries pile up until GitHub's
+# seven-day expiry; the combined actions/cache with a run-numbered key saves
+# on every run of every branch; a run-numbered restore without restore-keys
+# never hits; and a workflow that saves run-numbered caches has to be on the
+# prune's list. ultraai-llamacpp.yml shipped the first of these on
+# 2026-11-12 - 300 MB per run, pull requests included - and the budget it
+# crowded is the one every pull request's ccache comes from.
+name: Cache keys
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/check_cache_keys.py'
+      - 'scripts/tests/test_check_cache_keys.py'
+  pull_request:
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/check_cache_keys.py'
+      - 'scripts/tests/test_check_cache_keys.py'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    steps:
+      - uses: actions/checkout@v5
+      # The script reads the workflows with PyYAML, which GitHub's Ubuntu
+      # images carry; a leaner runner gets it here.
+      - name: PyYAML
+        run: python3 -c "import yaml" 2>/dev/null || pip3 install --user pyyaml
+      - name: Check the cache keys against the prune's rules
+        run: python3 scripts/check_cache_keys.py --strict
+      - name: The check's own tests
+        run: python3 -m unittest scripts/tests/test_check_cache_keys.py -v

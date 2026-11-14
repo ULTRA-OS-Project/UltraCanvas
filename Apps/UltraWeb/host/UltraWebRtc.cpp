@@ -1,8 +1,9 @@
 // Apps/UltraWeb/host/UltraWebRtc.cpp
 // An app's peer connections: the rules (UltraWebRtc.h). The UltraRTC service
 // is in UltraWebNetworkRtc.cpp, so the browser runtime builds the rules alone.
+// Version: 0.2.0 - VideoConfig
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-12
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebRtc.h"
@@ -83,6 +84,25 @@ int32_t ParseConfig(const std::string& json, const std::string& appAddress, RtcC
             out.iceServers.push_back(std::move(entry));
         }
     }
+    return UC_OK;
+}
+
+int32_t VideoConfig(uint32_t width, uint32_t height, uint32_t fps, uint32_t kbps, RtcVideoConfig& out,
+                    std::string& reason) {
+    out = RtcVideoConfig{};
+    auto pick = [&](uint32_t given, int& field, uint32_t low, uint32_t high, const char* what) {
+        if (given == 0) return true;
+        if (given < low || given > high) {
+            reason = std::string(what) + " " + std::to_string(given) + " is outside " + std::to_string(low) + ".." +
+                     std::to_string(high);
+            return false;
+        }
+        field = int(given);
+        return true;
+    };
+    if (!pick(width, out.width, 16, 1920, "the width") || !pick(height, out.height, 16, 1080, "the height") ||
+        !pick(fps, out.fps, 1, 30, "the frame rate") || !pick(kbps, out.kbps, 50, 4000, "the bit rate"))
+        return UC_ERR_STATE;
     return UC_OK;
 }
 

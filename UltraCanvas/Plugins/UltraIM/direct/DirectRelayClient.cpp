@@ -153,6 +153,7 @@ UltraNetHttpMethod MethodFor(const std::string& method) {
     if (method == "POST") return UltraNetHttpMethod::Post;
     if (method == "PUT") return UltraNetHttpMethod::Put;
     if (method == "DELETE") return UltraNetHttpMethod::Delete;
+    if (method == "PATCH") return UltraNetHttpMethod::Patch;
     return UltraNetHttpMethod::Get;
 }
 

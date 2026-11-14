@@ -332,7 +332,10 @@ UltraDesktop's bars, whose window is kept below all others, opened under the
 applications' windows. The menu stays that window's in every other way - it is
 laid out and drawn there, keeps the keyboard there, and a click in its own
 window reaches it as a click in that window, at the same place - so nothing
-about building or handling a menu changes.
+about building or handling a menu changes. A key that reaches the menu's own
+window - where the focus follows the pointer, as on X11 with no window
+manager - is handed to that window too, so Escape, the arrow keys and Enter
+work in the menu whichever window the system gave the key to.
 
 The menu's window is cut to the panel's outline (transparent outside it on
 macOS and Wayland), so the rounded corners show whatever is beneath. It has no

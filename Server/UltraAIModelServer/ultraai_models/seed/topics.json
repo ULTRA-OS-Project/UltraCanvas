@@ -43,6 +43,13 @@
       "description": "Embeddings for finding related text.",
       "capability": "embeddings",
       "models": [{"id": "qwen3-embedding-0.6b-q8", "default": true}, {"id": "nomic-embed-text-v1.5-q8"}]
+    },
+    {
+      "id": "transcription",
+      "name": "Transcription",
+      "description": "Turning recordings and the sound of videos into text.",
+      "capability": "speechtotext",
+      "models": [{"id": "whisper-small", "default": true}, {"id": "whisper-base"}, {"id": "whisper-large-v3-turbo-q5"}]
     }
   ]
 }
