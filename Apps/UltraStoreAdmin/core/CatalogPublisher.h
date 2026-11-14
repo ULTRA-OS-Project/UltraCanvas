@@ -13,6 +13,8 @@
 //   <out>/restricted/<sha256>.<format>      the packages of paid apps - the server hands
 //                                           these out only through a buyer's short-lived
 //                                           signed URL (the access scheme, see the README)
+//   <out>/index.html, app/<id>/, ...        the web store (WebSite.h), when web.site_dir is set
+// Version: 0.4.0 - the web store's site (WebSite.h) when web.site_dir is set: the pages, the module, the runtime under its hash
 // Version: 0.3.2 - a join page per partner, join/<affiliate>/index.html, behind the join QR code; a closed or
 //                  no-longer-valid page replaces the page of a partner or code switched off or removed (the database remembers
 //                  every page ever published), since the uploader never deletes
@@ -51,6 +53,8 @@ struct PublishReport {
     size_t codePages = 0;            // go/<CODE>/index.html written, one per code in the catalog
     size_t joinPages = 0;            // join/<affiliate>/index.html written, one per enabled partner
     size_t retiredPages = 0;         // the pages of codes out of the catalog and of partners switched off or removed, saying so
+    size_t webPages = 0;             // the web store's pages (WebSite.h), when web.site_dir is set
+    std::string webRuntime;          // "runtime/<hash>/" when the runtime was laid beside the catalog
     std::vector<std::string> warnings;
 };
 
