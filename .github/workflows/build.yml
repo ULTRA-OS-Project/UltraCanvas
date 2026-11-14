@@ -2339,6 +2339,19 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^SmartHomeWidgets$"
 
+      # The tree view's focus ring is checked on real pixels: drawn round the
+      # focused row while the tree holds the focus, gone once it leaves, in
+      # the colour SetFocusRingColor gives. "Run unit tests" has no display,
+      # so there that part skips; here it has to run.
+      - name: Run the tree view focus-ring test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^TreeViewKeyboardTest$"
+
       # The vanished-folder test's second half drives the Filer's folder watch,
       # which only runs inside the application's timers: a subfolder deleted on
       # disk is reported through onFolderChangedOnDisk (what UltraFiler's folder
