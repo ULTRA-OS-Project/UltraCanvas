@@ -7558,6 +7558,15 @@ void UltraFilerWindow::BuildComputerPage() {
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     computerPane->SetPadding(10, 12, 10, 12);
     computerPane->SetBackgroundColor(Look().panel);
+    {
+        // A container clips by default: without the vertical bar the cards
+        // past the window's foot - the RAM discs, a remote drive's lines -
+        // were cut off with no way to reach them.
+        ContainerStyle cs = computerPane->GetContainerStyle();
+        cs.autoShowScrollbars = true;
+        cs.autoShowHorizontalScrollbar = false;
+        computerPane->SetContainerStyle(cs);
+    }
 
     auto makeHeading = [](const std::string& id, const std::string& text) {
         auto heading = CreateLabel(id, 0, 0, 200, 22, text);
@@ -7901,9 +7910,16 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         pie->onSliceClick = [this, path](size_t) { NavigateTo(path); };
         card->AddChild(pie);
 
-        // The drive's name is the button that opens it.
-        card->AddChild(MakeToolButton(id + "-open", label, source.icon, 0,
-                                      [this, path]() { NavigateTo(path); }));
+        // The drive's name is the button that opens it. A tool button draws
+        // its icon as a mask in the ink colour, which suits the line-art SVGs
+        // but turns a full-colour bitmap (drive.png) into a black square:
+        // those keep their own colours.
+        auto open = MakeToolButton(id + "-open", label, source.icon, 0,
+                                   [this, path]() { NavigateTo(path); });
+        const std::string& icon = source.icon;
+        const bool svg = icon.size() >= 4 && icon.compare(icon.size() - 4, 4, ".svg") == 0;
+        if (!svg) open->SetUseIconAsMask(false);
+        card->AddChild(open);
 
         auto usage = CreateLabel(id + "-usage", 0, 0, kComputerCardWidth, 18, "");
         usage->SetFontSize(UiFontSize());
@@ -7962,15 +7978,19 @@ void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
             std::snprintf(kpi, sizeof kpi, "%.0f%%", percent);
             card.pie->SetCenterKPI(kpi, "used");
         } else {
-            // Nothing known (yet): a neutral full ring and no number.
+            // Nothing known (yet), or a drive that reports no size (an FTP
+            // server, a cloud account): a neutral full ring saying so in its
+            // hole, and "Size not available" under the name.
             slices.emplace_back(1, 1.0, 0, "Size not available", 1.0, Look().freeSlice);
-            card.pie->SetCenterKPI("", "");
+            card.pie->SetCenterKPI(Tr("n/a"), "");
         }
         auto data = std::make_shared<ChartDataVector>();
         data->LoadFromArray(slices);
         card.pie->SetDataSource(data);
-        if (card.usageLabel) card.usageLabel->SetText(DescribeVolumeUsage(space));
-        if (card.spaceLabel) card.spaceLabel->SetText(DescribeVolumeSpace(space));
+        const bool sized = space.known && space.totalBytes > 0;
+        if (card.usageLabel) card.usageLabel->SetText(sized ? DescribeVolumeUsage(space) : std::string());
+        if (card.spaceLabel)
+            card.spaceLabel->SetText(sized ? DescribeVolumeSpace(space) : Tr("Size not available"));
         card.pie->RequestRedraw();
     }
 }
