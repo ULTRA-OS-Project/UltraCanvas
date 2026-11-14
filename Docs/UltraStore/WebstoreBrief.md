@@ -26,7 +26,7 @@ and the flags), and §4.3 of
 | **The framework separate from the site's content** | **The UltraCanvas runtime**: UltraCanvas linked once as an Emscripten *main module* (`-sMAIN_MODULE`), served by the site or installed by the browser extension; an app is a *side module* of its own code only, `ultracanvas_wasm_app(<target> <sources>)` in `cmake/UltraCanvasWasmApp.cmake`, loaded with `dlopen` and its ordinary `main()` called. Measured: the sample app is 8.5 KB compressed on top of a runtime of 9.9 MB compressed, paid once per browser (extension) or once per site (served, one-year cache). Needs `-DULTRACANVAS_WASM_THREADS=OFF -DULTRACANVAS_WASM_DYNAMIC=ON` and the `-fPIC` sysroot. Status: a prototype, Chromium only, an app bound to the runtime build it was compiled against (`data-runtime-version` makes the loader fall back to the site's copy). | `UltraCanvasWasmRuntime.md`, `UltraCanvas/OS/WASM/runtime/` |
 | The other shape | One Emscripten page with the framework linked in: 6.5 MB module raw, 2.05 MB Brotli, plus the fonts `.data`; every site pays it. CI builds it in four variants and prints a *Demo sizes* table each run. | `.github/workflows/wasm-build.yml` |
 | A page-like app, the pattern | `ultraos-frontpage.cpp`: one scrolling container filling the window, Block layout for wrapped text, Flex rows, popup menus, several pages from one module through `?page=`, the rebuild posted to the UI thread, `Maximize()` under `__EMSCRIPTEN__` | `UltraCanvas/OS/WASM/demo/` |
-| The catalog | `catalog.json`, signed (Ed25519 over the bytes), `Catalog.h`'s `ParseCatalog` is pure JSON; `CatalogClient` fetches through UltraNet, which the browser build compiles out | `Apps/UltraStore/core/` |
+| The catalog | `catalog.json`, signed (Ed25519 over the bytes), `Catalog.h`'s `ParseCatalog` is pure JSON and `Verifier.h` checks the signature through UltraCrypt, which builds under Emscripten; `CatalogClient` fetches through UltraNet, which the browser build compiles out | `Apps/UltraStore/core/` |
 | The look | Every colour, size, radius and font of the shop pages, and the app icons as `media/appicon/*.png` and `.svg` | `design/`, `media/appicon/` |
 | Image export | `UCImage` writes PNG, JPEG, WebP (quality 80, effort 4), AVIF (quality 65, speed 6), JPEG XL through libvips on the desktop (`UltraCanvasImage.h`, the export option structs); the admin backend's `ImportMedia` copies an app's icon and screenshots into `media/<id>/` | `UltraCanvasImagePerformanceTest.md`, `Apps/UltraStoreAdmin/core/` |
 
@@ -46,12 +46,20 @@ and the flags), and §4.3 of
    there is no libvips in the module: **pictures are decoded by the
    browser** (`WASMResourceLoader::LoadImage`), which is what the size rules
    below want anyway.
-3. **The catalog comes from the same origin.** `WASMNetwork::FetchTextAsync("v1/catalog.json")`,
-   parsed with `ParseCatalog`. Verify the signature in the browser only if
-   `UltraCrypt` builds under Emscripten (check: it links libsodium; the
-   sysroot may not have it). If it does not, say so in the page's README:
-   the web store shows what HTTPS from the operator's own host serves, and
-   the native store remains the one that verifies before installing.
+3. **The catalog comes from the same origin and is verified in the
+   browser.** `WASMNetwork::FetchTextAsync("v1/catalog.json")` and its
+   `.sig`, `ParseCatalog`, and `VerifyCatalogSignature` through UltraCrypt,
+   which builds under Emscripten (decided 2026-11-14). The web store trusts
+   what the native store trusts: the compiled-in public keys of
+   `Apps/UltraStore/keys/` and the `trusted_keys` an accepted catalog
+   announces, kept in `localStorage` the way `CatalogClient` keeps them in
+   its cache, with the same sequence check against a rollback. A catalog
+   that does not verify is not shown; the page says so and offers the
+   native store's download. Build `UltraStoreCore` for the browser without
+   `CatalogClient` and `Downloader` (they are UltraNet's) rather than
+   rewriting the parser and the verifier: a `ULTRASTORE_NO_NET` switch in
+   `Apps/UltraStore/CMakeLists.txt`, or the two files left out of the
+   browser target.
 4. **Buying and installing stay with the native store and the payment
    service.** *Install* on the web is a deep link (`ultrastore://app/<id>`,
    with `?code=` when a code is in force) and, where the store is not
@@ -103,12 +111,34 @@ never resized in the browser or in the store's code.
 - **Budgets per file.** An icon ≤ 12 KB at 256 px, a screenshot ≤ 120 KB
   at 1120 px, the hero ≤ 180 KB at 1920 px; `ImportMedia` warns above
   them and publish lists the offenders.
-- **Where it runs.** The admin backend's `ImportMedia` (desktop, libvips,
-  `WebpExportOptions` / `AvifExportOptions`) writes the variants beside the
-  original into `media/<id>/`, and the catalog gains `icon_variants` /
-  `screenshot_variants` (or a naming rule the web store derives, which
-  keeps the catalog schema at 2): decide one and write it in the store's
-  README, *Catalog*, with the admin README's settings table.
+- **Where it runs, and how the catalog names them.** The admin backend's
+  `ImportMedia` (desktop, libvips, `WebpExportOptions` /
+  `AvifExportOptions`) writes the variants beside the original into
+  `media/<id>/`, and **the catalog carries them explicitly** (decided
+  2026-11-14): beside `icon` and `screenshots`, which stay as they are for
+  every store built so far, an app gets
+
+  ```json
+  "icon_variants": [
+    {"format": "avif", "width": 64,  "url": "media/org.ultraos.ultravideo/icon-64.avif"},
+    {"format": "webp", "width": 64,  "url": "media/org.ultraos.ultravideo/icon-64.webp"},
+    {"format": "avif", "width": 256, "url": "media/org.ultraos.ultravideo/icon-256.avif"}
+  ],
+  "screenshot_variants": [
+    [{"format": "avif", "width": 560, "url": "…/shot-1-560.avif"}, {"format": "webp", "width": 1120, "url": "…/shot-1-1120.webp"}]
+  ]
+  ```
+
+  one list per screenshot, in the screenshots' order; `width` in pixels,
+  `format` the file's (`avif`, `webp`, `png`, `jpeg`), `url` relative to
+  the catalog like every media path. A store that does not know the keys
+  ignores them, so the catalog stays schema 2; `Catalog.h` gains the two
+  fields (`MediaVariant {format, width, url}`), `ParseCatalog` reads them
+  leniently, the writer emits them when present, and the store's README,
+  *Catalog*, lists them in the Media row with this shape. The web store
+  picks the variant by format the browser decodes, then the smallest width
+  at or above the slot times the device pixel ratio; without variants it
+  falls back to `icon` / `screenshots`.
 - **Decorative pictures of the site itself** (the hero's mock-up, the "why
   UltraStore" tiles) are drawn by UltraCanvas elements, as the design does
   with `div`s, not shipped as pictures.
@@ -141,8 +171,11 @@ never resized in the browser or in the store's code.
 2. `wasm-build.yml` builds it beside the demos and prints its sizes; the
    runtime test opens it in Chromium, loads the catalog from a local
    server, opens an app page, follows a category, and checks the budgets.
-3. The admin backend publishes the picture variants and the HTML shadow
-   into the publish folder; `publish` warns on a picture over budget.
+3. The admin backend publishes the picture variants, names them in the
+   catalog (`icon_variants`, `screenshot_variants`) and writes the HTML
+   shadow into the publish folder; `publish` warns on a picture over
+   budget. `Catalog.h` reads and writes the two fields, with a test in
+   `Tests/UltraStore` that a catalog without them still parses.
 4. The store's README, *The window*, says the web store exists and what it
    does not do (install, buy, verify) and why; the design README's note on
    the phone artboards points at it.
@@ -158,3 +191,7 @@ never resized in the browser or in the store's code.
   server, or the site proxies it.
 - Does the operator want the extension path at all, or is the site-served
   runtime enough for the first release?
+
+Answered on 2026-11-14: the catalog carries the picture variants
+explicitly (the shape above), and the signature is verified in the browser
+because UltraCrypt builds under Emscripten.
