@@ -610,6 +610,10 @@ How the window and the web shop look is drawn in
 [`design/README.md`](design/README.md): the Discover page, an app's page,
 the category browser and the phone views, with every colour, size and font.
 
+The web shop itself - the shop pages as a WebAssembly site on the
+UltraCanvas runtime, with the size and picture rules - is planned in
+[`WebstoreBrief.md`](WebstoreBrief.md).
+
 `ultrastore` started plainly (or with `--catalog`, `--root`, `--channel`)
 opens the window; `Apps/UltraStore/ui/`. It follows the UltraStore shop
 design (the canvas *UltraStore Shop Design*, 2026-11-05): a white ground,
