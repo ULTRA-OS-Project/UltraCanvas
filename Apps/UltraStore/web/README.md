@@ -142,8 +142,20 @@ commit the result.
 
 The *Demo sizes* table of the dynamic variant of `wasm-build.yml` is the
 record: the module's raw, gzip and Brotli sizes beside the runtime's. The
-first measured numbers go here once that workflow has run on `main` with
-the store in it.
+browser test's first run (2026-11-14, emsdk 6.0.11, Release):
+
+| | Raw | Brotli |
+|---|---:|---:|
+| `ultrastore-web.wasm`, the store | 473 KB | **103 KB** (the brief's rule: 150 KB) |
+| the runtime's `.data` (the two subset fonts) | 377 KB | |
+| the runtime's `.js` | 556 KB | |
+| the runtime's `.wasm` | 24.2 MB | see the *Demo sizes* table |
+
+Discover's first screen asked for 27 files besides the runtime and the
+module, 97 KB of pictures (the rule: 300 KB); UltraVideo's page fetched
+its two screenshots at 560 px, 12 KB (the rule: 500 KB). With the
+extension installed the site sent 546 KB in all, the module and the page
+included.
 
 The runtime's fonts (`UCR_FONTS=subset`, `UltraCanvas/OS/WASM/runtime/CMakeLists.txt`):
 Manrope and Inter cut to Latin, Greek and Cyrillic, Inter's optical size

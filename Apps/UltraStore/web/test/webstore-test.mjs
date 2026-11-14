@@ -156,7 +156,8 @@ if (process.env.UWS_CHROME) launch.executablePath = process.env.UWS_CHROME;
     console.log(`     the first screen asked for ${firstScreen.length} files besides the runtime and the module, ${kib(total(pictures))} of pictures`);
     check(total(pictures) <= 300 * 1024, `site: Discover's pictures are within 300 KiB (${kib(total(pictures))})`);
     check(firstScreen.filter((r) => r.path.endsWith('catalog.json')).length === 1, 'site: one catalog.json');
-    check(served.some((r) => /icon-\d+\.webp$/.test(r.path)), 'site: the icons came as the catalog\'s WebP variants');
+    // The variants are named after the original's stem (UltraVideo-64.webp).
+    check(served.some((r) => /^media\/.*-(64|128|256)\.webp$/.test(r.path)), 'site: the icons came as the catalog\'s WebP variants');
 
     // An app's page by its address, a category, and back.
     await page.goto(base + 'app/org.ultraos.ultravideo/');
