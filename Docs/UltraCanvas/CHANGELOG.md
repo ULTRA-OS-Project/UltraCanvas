@@ -1,3 +1,42 @@
+#### 2026-11-14 *0.9.559*
+- **CI: a release build saves its ccache only when it compiled something,
+  and the cache prune is no longer starved.** A fold commit changes a
+  changelog line, so each of the six legs hit on every object but the two
+  that carry the version - and still saved a fresh 500 MB entry, a copy of
+  the one it had restored. With five release builds running at once on the
+  evening of 2026-11-12, those copies and the macOS vcpkg libraries
+  overflowed the 10 GB cache budget before `cache-prune.yml` could delete
+  the superseded entries: its concurrency group kept one run queued at
+  most, so each Build completion cancelled the prune still waiting for a
+  runner (twelve in a row), and the least-recently-used eviction took the
+  one Linux entry a pull request then needed - its build step ran 77
+  minutes against 23 (#1226). `build.yml` now saves a leg's cache only when
+  nothing was restored or at least one compile in a hundred missed; the
+  prune runs without a concurrency group (two beside each other are harmless
+  by design) and skips the completions of pull-request runs, which save
+  nothing; and `ultraai-llamacpp.yml`, which saved a 300 MB entry under a
+  commit-suffixed key on every run that the prune never recognised, keeps
+  its ccache as `build.yml` does and is on the prune's list.
+- **CI: merges that land within minutes of each other are folded and
+  released together, and a new check keeps cache keys prunable.**
+  `changelog-fold.yml` dispatched one release build per fold commit, so the
+  five merges between 19:00 and 20:03 on 2026-11-12 became five release
+  builds of six legs running at once - which is what overflowed the cache
+  budget and held every macOS runner. The fold now runs every ten minutes
+  instead of on every push, and folds once `main` has been quiet for ten
+  minutes, or when the oldest pending entry has waited twenty: one fold
+  commit, one release build, for the burst, and no runner held while it
+  waits; a dispatch by hand folds at once. `scripts/check_cache_keys.py`
+  (`cache-keys.yml`, on every change under `.github/workflows/`) reports a
+  cache key ending in a commit hash or carrying `github.run_number`, which
+  `prune_actions_caches.py` never recognises as run-numbered so the entries
+  pile up until GitHub's seven-day expiry; the combined `actions/cache` with
+  a run-numbered key, which saves on every run of every branch; a
+  run-numbered restore without `restore-keys`; and a workflow that saves
+  run-numbered caches without being on the prune's list - the shape
+  `ultraai-llamacpp.yml` shipped on 2026-11-12. Its tests are in
+  `scripts/tests/test_check_cache_keys.py`.
+
 #### 2026-11-13 *0.9.558*
 - **Mail that names the system font drew in a stray serif or CJK face on
   Windows (LinkedIn's among them).** The HTML reader took the first name of a
