@@ -5,3 +5,6 @@
 - **No more file-type chips on the Sticker board's cards.** A card no longer
   shows its file's extension ("pdf", "jpg") under the name; boards saved
   with one per card hide it too.
+- **A PDF shows no picture on the Sticker board when the build cannot draw
+  PDF pages** (no MuPDF): no icon on its card and no hover preview, rather
+  than the PDF icon. With MuPDF its card and preview show the first page.

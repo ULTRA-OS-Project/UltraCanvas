@@ -1,6 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopCategoryBoard.cpp
 // The Sticker board: files sorted into categories. See the header.
-// Version: 0.5.0 - the hover preview opens when the pointer stops on a card
+// Version: 0.5.0 - the hover preview opens when the pointer stops on a card;
+//                  no picture of a PDF in a build without MuPDF
 // Version: 0.4.0 - the context menu, three card displays, the hover preview
 // Version: 0.3.0 - thumbnails as UltraFiler makes them (RenderFileThumbnail):
 //                  a PDF's first page, a page of a document's text
@@ -19,6 +20,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasFilePreviews.h"
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasLabel.h"
@@ -150,6 +152,17 @@ std::string KindTag(const std::string& path) {
     return ext.empty() ? "file" : ext;
 }
 
+// A PDF in a build that cannot draw its pages (no MuPDF - a Windows build
+// whose MSYS2 had no package, say): the board shows no picture of it, on
+// the card or as the hover preview, rather than the type's icon.
+bool PdfWithoutRenderer(const std::string& path) {
+    return KindTag(path) == "pdf" && !CanRenderFileThumbnail("pdf");
+}
+
+// A file's picture on the board: MakeFilePicture, but none for a PDF that
+// cannot be drawn.
+std::shared_ptr<UCPixmap> BoardPicture(const std::string& path, int pixels, const std::string& icons);
+
 } // namespace
 
 std::shared_ptr<UCPixmap> MakeFilePicture(const std::string& path, int pixels, const std::string& icons) {
@@ -171,6 +184,13 @@ std::shared_ptr<UCPixmap> MakeFilePicture(const std::string& path, int pixels, c
     }
     return nullptr;
 }
+
+namespace {
+std::shared_ptr<UCPixmap> BoardPicture(const std::string& path, int pixels, const std::string& icons) {
+    if (PdfWithoutRenderer(path)) return nullptr;
+    return MakeFilePicture(path, pixels, icons);
+}
+} // namespace
 
 const std::vector<std::string>& UltraDesktopCategoryBoard::DefaultCategories() {
     static const std::vector<std::string> categories = {"Docs", "Work", "Home"};
@@ -623,7 +643,7 @@ void UltraDesktopCategoryBoard::PrepareHoverPreview(int cardId, bool show) {
     previewPending_.insert(key);
     const std::string icons = NormalizePath(GetResourcesDir() + "media/icons/");
     work_.Run<std::shared_ptr<UCPixmap>>(
-        [path, pixels, icons]() { return MakeFilePicture(path, pixels, icons); },
+        [path, pixels, icons]() { return BoardPicture(path, pixels, icons); },
         [this, key, cardId, size](std::shared_ptr<UCPixmap> pixmap) {
             previewPending_.erase(key);
             if (!pixmap) return;
@@ -650,7 +670,7 @@ std::shared_ptr<UCPixmap> UltraDesktopCategoryBoard::Thumbnail(const KanbanCard&
     const std::string icons = NormalizePath(GetResourcesDir() + "media/icons/");
     // Off the UI thread: a photo decodes, the system is asked for an icon.
     work_.Run<std::shared_ptr<UCPixmap>>(
-        [path, icons]() { return MakeFilePicture(path, kThumbnailPixels, icons); },
+        [path, icons]() { return BoardPicture(path, kThumbnailPixels, icons); },
         [this, path](std::shared_ptr<UCPixmap> pixmap) {
             pending_.erase(path);
             if (!pixmap) {
