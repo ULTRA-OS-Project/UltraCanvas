@@ -293,7 +293,6 @@
   "The key that sends what is typed in the message field:": "Klávesa, která odešle text napsaný v poli zprávy:",
   "The key to your ChatCube ID is encrypted with your password, so without it nobody can read the key - not even from a copy of the files. ChatCube asks for it at every start. Keep it safe: nobody can recover it for you.": "Klíč k vašemu ChatCube ID je zašifrován vaším heslem, takže bez něj nikdo klíč nepřečte – ani z kopie souborů. ChatCube o něj žádá při každém spuštění. Dobře ho chraňte: nikdo ho za vás nemůže obnovit.",
   "the local network": "místní síť",
-  "The look is chosen when ChatCube starts, since every part of the window takes its colours as it is built: a change here, or of the computer's look under System, shows the next time ChatCube is started. System is the computer's own light or dark mode, and the Look page of UOS-Settings over it.": "Vzhled se volí při spuštění ChatCube, protože každá část okna dostává své barvy při sestavení: změna zde nebo vzhledu počítače v části Systém se projeví při příštím spuštění ChatCube. Systém je vlastní světlý nebo tmavý režim počítače a nad ním stránka Vzhled v UOS-Settings.",
   "The Matrix module was not found (Plugins/UltraIM).": "Modul Matrix nebyl nalezen (Plugins/UltraIM).",
   "The networks ChatCube talks through, and where each stands:": "Sítě, přes které ChatCube komunikuje, a stav každé z nich:",
   "The password could not be set: {0} - set it in Edit profile.": "Heslo se nepodařilo nastavit: {0} – nastavte ho v Úpravě profilu.",
