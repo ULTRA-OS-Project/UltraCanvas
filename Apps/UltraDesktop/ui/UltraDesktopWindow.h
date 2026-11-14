@@ -300,6 +300,9 @@ private:
     // around their icons; back to normal once they fit again.
     void FitRunningButtons();
     void RefreshDesktops();
+    // The battery's icon: its level as a fill, a bolt while charging, green
+    // while charging and red below 25 %; only redrawn when that changes.
+    void UpdateBatteryIcon(const UltraCanvas::DesktopDeviceActivity& now);
     void ApplyDeviceActivity(const UltraCanvas::DesktopDeviceActivity& now,
                              const UltraCanvas::DesktopDeviceActivity& before, bool haveBefore);
     void ApplyNotices();
@@ -485,6 +488,8 @@ private:
     // How tightly the running applications are packed (FitRunningButtons):
     // 0 as usual, 1 closer together, 2 also in a smaller highlight.
     int runningDensity_ = 0;
+    // What the battery's icon was last made for (UpdateBatteryIcon).
+    std::string batteryIconKey_;
     std::map<uint64_t, std::string> runningTitles_;
     uint64_t nextRunningItem_ = 0;
     std::shared_ptr<UltraDesktopWindowPreviews> previews_;

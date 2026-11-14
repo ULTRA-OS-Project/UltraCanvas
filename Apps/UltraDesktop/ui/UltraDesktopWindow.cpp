@@ -2,6 +2,9 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.7.4 - the battery's icon shows its level, a bolt while charging,
+//                  red below 25 % (UpdateBatteryIcon); its badge and the
+//                  keyboard's grow inward, so "100" is not cut off
 // Version: 0.7.3 - running applications that do not fit the bar draw closer
 //                  together, then in a smaller highlight, before they scroll
 //                  (FitRunningButtons)
@@ -89,6 +92,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <set>
+#include <sstream>
 #include <type_traits>
 
 #ifndef ULTRADESKTOP_VERSION
@@ -188,6 +192,31 @@ uint64_t NativeHandleId(Handle handle) {
     } else {
         return static_cast<uint64_t>(handle);
     }
+}
+
+// Below this, and not charging, the battery is red.
+constexpr int kBatteryLowPercent = 25;
+
+// The battery button's icon, 24 x 24 in white (drawn through the button's
+// mask, like the bar's other glyphs): the outline, the cap, and a fill as
+// long as the charge - the full 12 px at 100 %. Charging adds a bolt, cut out
+// of the fill where they overlap (even-odd), so it shows at any level.
+// `fillHalves` is the fill's length in half pixels (0 to 24).
+std::string BatteryIconSvg(int fillHalves, bool charging) {
+    std::ostringstream svg;
+    svg << "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\">"
+        << "<rect x=\"2\" y=\"7\" width=\"17\" height=\"10\" rx=\"2\" fill=\"none\" stroke=\"#fff\" stroke-width=\"2\"/>"
+        << "<path d=\"M21 10v4\" stroke=\"#fff\" stroke-width=\"2\" stroke-linecap=\"round\"/>";
+    std::string d;
+    if (fillHalves > 0) {
+        std::ostringstream rect;
+        rect << "M4.5 9.5h" << fillHalves / 2.0 << "v5h-" << fillHalves / 2.0 << "Z";
+        d += rect.str();
+    }
+    if (charging) d += "M11.9 8.4L8 12.7H10.5L9.3 15.6L13.3 11.3H10.8Z";
+    if (!d.empty()) svg << "<path fill-rule=\"evenodd\" fill=\"#fff\" d=\"" << d << "\"/>";
+    svg << "</svg>";
+    return svg.str();
 }
 
 std::string Shorten(const std::string& text, size_t max) {
@@ -2466,6 +2495,38 @@ void UltraDesktopWindow::ShowGroupMenu(const std::string& key, int windowX, int 
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
+void UltraDesktopWindow::UpdateBatteryIcon(const DesktopDeviceActivity& now) {
+    auto button = info_ ? std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("battery")) : nullptr;
+    if (!button) return;
+    const bool known = now.batteryPresent && now.batteryPercent >= 0;
+    const int percent = known ? std::clamp(now.batteryPercent, 0, 100) : 0;
+    const int fillHalves = known ? (percent * 24 + 50) / 100 : 0;
+    const bool charging = known && now.batteryCharging;
+    const bool low = known && !charging && percent < kBatteryLowPercent;
+    // The level in half pixels, the state and the button: a bar built
+    // again (another theme, edge or screen) has a new button to dress.
+    std::ostringstream key;
+    key << static_cast<const void*>(button.get()) << ':' << known << ':' << fillHalves << ':' << charging << ':' << low;
+    if (key.str() == batteryIconKey_) return;
+    batteryIconKey_ = key.str();
+    if (!known) {
+        // No battery, or its level unread: the bar's own glyph, as before.
+        button->SetIcon(IconPath("battery.svg"));
+        button->SetIconMaskColor(Color(0, 0, 0, 0));
+        return;
+    }
+    const std::string svg = BatteryIconSvg(fillHalves, charging);
+    auto image = UCImage::LoadFromMemory(reinterpret_cast<const uint8_t*>(svg.data()), svg.size());
+    if (!image || image->GetWidth() <= 0) {
+        button->SetIcon(IconPath("battery.svg"));
+    } else {
+        button->SetIcon(image);
+    }
+    // Green while charging, red when low, otherwise the bar's ink (a
+    // transparent mask colour means "the text colour").
+    button->SetIconMaskColor(charging ? kMarkerSaved : low ? kMarkerOn : Color(0, 0, 0, 0));
+}
+
 void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
                                              const DesktopDeviceActivity& before, bool haveBefore) {
     if (!info_) return;
@@ -2522,9 +2583,13 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
     else info_->ClearItemBadge("usb");
     tooltip("usb", "USB: " + std::to_string(now.usbDeviceCount) + " device" + (now.usbDeviceCount == 1 ? "" : "s"));
 
+    UpdateBatteryIcon(now);
     if (now.batteryPresent && now.batteryPercent >= 0) {
-        const Color color = now.batteryCharging ? kMarkerSaved : now.batteryPercent <= 15 ? kMarkerOn : kMarkerCount;
-        info_->SetItemBadge("battery", std::to_string(now.batteryPercent), color);
+        const Color color = now.batteryCharging ? kMarkerSaved
+                          : now.batteryPercent < kBatteryLowPercent ? kMarkerOn : kMarkerCount;
+        // Grows inward: "100" would run past the screen's edge.
+        if (auto badge = info_->SetItemBadge("battery", std::to_string(now.batteryPercent), color))
+            badge->SetGrowInward(true);
         tooltip("battery", "Battery: " + std::to_string(now.batteryPercent) + "%" +
                            (now.batteryCharging ? ", charging" : ""));
     } else {
@@ -2536,7 +2601,8 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
         std::string layout = now.keyboardLayout;
         std::transform(layout.begin(), layout.end(), layout.begin(),
                        [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-        info_->SetItemBadge("keyboard", Shorten(layout, 3), kMarkerCount);
+        if (auto badge = info_->SetItemBadge("keyboard", Shorten(layout, 3), kMarkerCount))
+            badge->SetGrowInward(true);   // "DEU" stays on the screen
         tooltip("keyboard", "Keyboard layout: " + layout);
     }
 }
