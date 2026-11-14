@@ -147,7 +147,8 @@ public:
     // The ULTRA OS settings button: starts UOS-Settings, the system's settings
     // application, where the desktop has its page (taskbar edge, wallpaper,
     // RAM disc, file manager, virtual desktops).
-    void OpenSystemSettings();
+    // `page`: the UOS-Settings page to open on ("desktop/info-bar").
+    void OpenSystemSettings(const std::string& page = std::string());
     void OpenAppStarter();
     // An application was started from the Apps window or a taskbar pin:
     // first in the Apps window's Recent (DesktopSettings::recentApps).
@@ -309,6 +310,12 @@ private:
     // the battery panel. SetBatteryPercentShown saves the choice and shows
     // it at once (DesktopSettings::batteryPercent).
     void ShowBatteryMenu(int windowX, int windowY);
+    // A right click on the info panel: "Hide this icon" over a service's
+    // icon, "Info bar icons..." (UOS-Settings' page), the theme.
+    void ShowInfoBarMenu(int windowX, int windowY, const std::string& itemId);
+    void AddInfoBarItems(UltraCanvas::UltraCanvasMenu& menu, const std::string& itemId);
+    // Switches one of the info panel's icons on or off, saves, rebuilds the bars.
+    void SetInfoItemShown(const std::string& id, bool shown);
     void SetBatteryPercentShown(bool shown);
     void ApplyDeviceActivity(const UltraCanvas::DesktopDeviceActivity& now,
                              const UltraCanvas::DesktopDeviceActivity& before, bool haveBefore);

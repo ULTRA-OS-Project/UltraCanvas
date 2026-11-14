@@ -5,6 +5,7 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.13.0 - hiddenInfoItems, InfoItems: each icon of the info bar on or off
 // Version: 0.12.0 - batteryPercent: the battery's percentage badge, on or off
 // Version: 0.11.0 - ramDiscPath "ultrafiler" (kRamDiscFromFiler, the default
 //                  everywhere): the button asks UltraFiler for its RAM disc
@@ -86,6 +87,13 @@ struct StartupProgram {
 // DesktopSettings::ramDiscPath's value for "UltraFiler's own RAM disc".
 inline constexpr const char* kRamDiscFromFiler = "ultrafiler";
 
+// One icon of the right bar's info panel, which can be switched off
+// (DesktopSettings::hiddenInfoItems).
+struct InfoItem {
+    const char* id;             // the button's item id in the info panel: "wifi"; the key in hiddenInfoItems
+    const char* label;          // what the settings show
+};
+
 struct DesktopSettings {
     TaskbarEdge taskbarEdge = TaskbarEdge::Left;
     std::string wallpaper;              // "" = the framework's default picture
@@ -113,6 +121,9 @@ struct DesktopSettings {
     // the icon alone - the level is in the icon's fill either way, and in
     // its tooltip. Chosen on the battery's right-click menu or in UOS-Settings.
     bool batteryPercent = true;
+    // The info panel's icons switched off, by InfoItem::id; the others show.
+    // An id the desktop does not know is kept, for a newer desktop.
+    std::vector<std::string> hiddenInfoItems;
     // Where the desktop icons lie, in work-area coordinates, by the entry's
     // name in the Desktop folder. An entry not listed is placed in the
     // first free cell of the grid.
@@ -178,6 +189,12 @@ struct DesktopSettings {
     static const std::vector<StartupProgram>& StartupPrograms();
     bool StartsWithDesktop(const std::string& program) const;
     void SetStartsWithDesktop(const std::string& program, bool start);
+
+    // The info panel's icons, top to bottom, as the settings list them; the
+    // tray icons of other programs are the last ("tray").
+    static const std::vector<InfoItem>& InfoItems();
+    bool ShowsInfoItem(const std::string& id) const;
+    void SetShowsInfoItem(const std::string& id, bool shown);
 
     // `key` was started: first in recentApps, once, the oldest dropped.
     void NoteAppStarted(const std::string& key);

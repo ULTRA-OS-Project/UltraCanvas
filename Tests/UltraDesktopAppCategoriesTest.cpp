@@ -517,6 +517,26 @@ void TestBatteryAndRamDisc() {
     Check(custom.FromJson(R"({"ramDiscPath":"/mnt/fast","batteryPercent":false})", &error) &&
               custom.ramDiscPath == "/mnt/fast" && !custom.batteryPercent,
           "a folder of the user's own and the percentage off are kept");
+
+    std::cout << "\nThe info bar's icons\n";
+    DesktopSettings bar;
+    bool allShown = true;
+    for (const InfoItem& item : DesktopSettings::InfoItems()) allShown = allShown && bar.ShowsInfoItem(item.id);
+    Check(allShown && bar.hiddenInfoItems.empty(), "every icon shows by default");
+    bar.SetShowsInfoItem("vpn", false);
+    bar.SetShowsInfoItem("vpn", false);
+    bar.SetShowsInfoItem("tray", false);
+    Check(bar.hiddenInfoItems == std::vector<std::string>({"vpn", "tray"}), "hidden once each");
+    DesktopSettings barAgain;
+    Check(barAgain.FromJson(bar.ToJson(), &error) && !barAgain.ShowsInfoItem("vpn") &&
+              !barAgain.ShowsInfoItem("tray") && barAgain.ShowsInfoItem("wifi"),
+          "the hidden icons survive a save");
+    barAgain.SetShowsInfoItem("vpn", true);
+    Check(barAgain.ShowsInfoItem("vpn") && barAgain.hiddenInfoItems.size() == 1, "an icon shown again");
+    DesktopSettings doubled;
+    Check(doubled.FromJson(R"({"hiddenInfoItems":["mail","mail","future-thing"]})", &error) &&
+              doubled.hiddenInfoItems == std::vector<std::string>({"mail", "future-thing"}),
+          "a repeated id is read once; an id this desktop does not know is kept");
 }
 
 int main() {

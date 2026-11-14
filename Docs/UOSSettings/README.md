@@ -47,6 +47,20 @@ changed. The file is read and written by UltraDesktop's own settings code
 (`Apps/UltraDesktop/ui/UltraDesktopSettings.*`, compiled into UOS-Settings
 too), so the two programs agree on it.
 
+### Desktop > Info bar
+
+A tick box for each icon of the desktop's info panel, the icons at the foot
+of its right bar: Email, Notifications, Upload, Download, Internet / LAN,
+VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone, Loudspeaker,
+Battery, Task Manager and the tray icons of other programs. Unticked, the
+icon leaves the bar within a second (`hiddenInfoItems` in `desktop.json`);
+what it watches keeps running. The desktop opens this page from *Info bar
+icons...* on the info panel's right-click menu, which also offers *Hide this
+icon* for the icon under the pointer.
+
+`UOS-Settings --page <page>` opens the window on a page - `desktop/info-bar`
+here - and a running UOS-Settings shows the page when it is started so.
+
 ### Language
 
 The language every application shows its menus, buttons and messages in:

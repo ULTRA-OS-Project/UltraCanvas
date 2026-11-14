@@ -2,6 +2,9 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.7.6 - each icon of the info panel can be switched off
+//                  (hiddenInfoItems): "Hide this icon" on its right-click
+//                  menu, "Info bar icons..." opening UOS-Settings' page for them
 // Version: 0.7.5 - the battery's percentage badge can be switched off: the
 //                  battery's right-click menu, UOS-Settings (batteryPercent)
 // Version: 0.7.4 - the battery's icon shows its level to the pixel, drawn
@@ -197,6 +200,9 @@ uint64_t NativeHandleId(Handle handle) {
         return static_cast<uint64_t>(handle);
     }
 }
+
+// UOS-Settings' page with a switch for each icon of the info panel.
+constexpr const char* kInfoBarSettingsPage = "desktop/info-bar";
 
 // Below this, and not charging, the battery is red.
 constexpr int kBatteryLowPercent = 25;
@@ -846,6 +852,8 @@ void UltraDesktopWindow::ShowBatteryMenu(int windowX, int windowY) {
     }));
     popupMenu_->AddItem(MenuItemData::Separator());
     popupMenu_->AddItem(MenuItemData::Action("Battery details...", [this]() { OpenDevicePanel("battery"); }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    AddInfoBarItems(*popupMenu_, "battery");
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX - 250, windowY), *window_, settings);
 }
@@ -1373,24 +1381,30 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     info_->SetAppearance(tight);
     info_->SetPadding(4, 4);
     info_->AddStretch(1.0f);
-    AddBarButton(info_, "mail",      "Email",        IconPath("mail.svg"),      [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraMail"); });
-    AddBarButton(info_, "notifications", Tr("Notifications"), IconPath("notifications.svg"),
-                 [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNotifications"); });
-    AddBarButton(info_, "upload",    "Upload",       IconPath("upload.svg"),    [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "download",  "Download",     IconPath("download.svg"),  [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "lan",       "Internet / LAN", IconPath("lan.svg"),     [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "vpn",       "VPN",          IconPath("vpn.svg"),       [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "bluetooth", "Bluetooth",    IconPath("bluetooth.svg"), [this]() { OpenBluetoothPanel(); });
-    AddBarButton(info_, "wifi",      "Wi-Fi",        IconPath("wifi.svg"),      [this]() { OpenWifiPanel(); });
-    AddBarButton(info_, "usb",       "USB",          IconPath("usb.svg"),       [this]() { OpenDevicePanel("usb"); });
-    AddBarButton(info_, "keyboard",  "Keyboard",     IconPath("keyboard.svg"),  [this]() { OpenDevicePanel("keyboard"); });
-    AddBarButton(info_, "webcam",    "Webcam",       IconPath("webcam.svg"),    [this]() { OpenDevicePanel("webcam"); });
-    AddBarButton(info_, "mic",       "Microphone",   IconPath("mic.svg"),       [this]() { OpenDevicePanel("mic"); });
-    AddBarButton(info_, "speaker",   "Loudspeaker",  IconPath("speaker.svg"),   [this]() { OpenVolumePanel(); });
-    auto battery = AddBarButton(info_, "battery", "Battery", IconPath("battery.svg"),
-                                [this]() { OpenDevicePanel("battery"); });
-    battery->onContextMenu = [this](int windowX, int windowY) { ShowBatteryMenu(windowX, windowY); };
-    AddBarButton(info_, "tasks",     "Task Manager", IconPath("tasks.svg"),     [this]() { OpenTasks(); });
+    // Only the icons not switched off (UOS-Settings > Desktop > Info bar).
+    const auto add = [this](const char* id, const std::string& tooltip, const char* icon,
+                            std::function<void()> onClick) -> std::shared_ptr<UltraCanvasButton> {
+        if (!settings_.ShowsInfoItem(id)) return nullptr;
+        return AddBarButton(info_, id, tooltip, IconPath(icon), std::move(onClick));
+    };
+    add("mail", "Email", "mail.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraMail"); });
+    add("notifications", Tr("Notifications"), "notifications.svg",
+        [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNotifications"); });
+    add("upload", "Upload", "upload.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("download", "Download", "download.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("lan", "Internet / LAN", "lan.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("vpn", "VPN", "vpn.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("bluetooth", "Bluetooth", "bluetooth.svg", [this]() { OpenBluetoothPanel(); });
+    add("wifi", "Wi-Fi", "wifi.svg", [this]() { OpenWifiPanel(); });
+    add("usb", "USB", "usb.svg", [this]() { OpenDevicePanel("usb"); });
+    add("keyboard", "Keyboard", "keyboard.svg", [this]() { OpenDevicePanel("keyboard"); });
+    add("webcam", "Webcam", "webcam.svg", [this]() { OpenDevicePanel("webcam"); });
+    add("mic", "Microphone", "mic.svg", [this]() { OpenDevicePanel("mic"); });
+    add("speaker", "Loudspeaker", "speaker.svg", [this]() { OpenVolumePanel(); });
+    if (auto battery = add("battery", "Battery", "battery.svg", [this]() { OpenDevicePanel("battery"); })) {
+        battery->onContextMenu = [this](int windowX, int windowY) { ShowBatteryMenu(windowX, windowY); };
+    }
+    add("tasks", "Task Manager", "tasks.svg", [this]() { OpenTasks(); });
     for (const auto& item : info_->GetItems()) {
         if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item)) {
             button->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
@@ -1586,8 +1600,38 @@ void UltraDesktopWindow::InstallBarMenu(const std::shared_ptr<UltraCanvasToolbar
                 return;
             }
         }
-        ShowBarMenu(at.x, at.y);
+        if (bar == info_.get()) ShowInfoBarMenu(at.x, at.y, itemId);
+        else ShowBarMenu(at.x, at.y);
     });
+}
+
+void UltraDesktopWindow::ShowInfoBarMenu(int windowX, int windowY, const std::string& itemId) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("InfoBarMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Info bar"));
+    AddInfoBarItems(*popupMenu_, itemId);
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Desktop settings..."), [this]() { OpenSystemSettings(); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX - 250, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::AddInfoBarItems(UltraCanvasMenu& menu, const std::string& itemId) {
+    // A service's own icon (not a tray icon, not the space between).
+    bool known = false;
+    for (const InfoItem& item : DesktopSettings::InfoItems()) known = known || itemId == item.id;
+    if (known) {
+        menu.AddItem(MenuItemData::Action("Hide this icon", [this, itemId]() { SetInfoItemShown(itemId, false); }));
+    }
+    menu.AddItem(MenuItemData::Action("Info bar icons...", [this]() { OpenSystemSettings(kInfoBarSettingsPage); }));
+}
+
+void UltraDesktopWindow::SetInfoItemShown(const std::string& id, bool shown) {
+    if (settings_.ShowsInfoItem(id) == shown) return;
+    settings_.SetShowsInfoItem(id, shown);
+    ApplySettings();   // saved, and the bars built again with or without the icon
 }
 
 void UltraDesktopWindow::SetDropTarget(const std::string& target) {
@@ -1689,9 +1733,11 @@ void UltraDesktopWindow::OpenDisplaySettings() {
 
 // ===== WHAT THE BARS DO =====
 
-void UltraDesktopWindow::OpenSystemSettings() {
+void UltraDesktopWindow::OpenSystemSettings(const std::string& page) {
     std::string error;
-    if (UltraCanvasDesktopShell::LaunchProgram("UOS-Settings", {}, &error)) return;
+    std::vector<std::string> arguments;
+    if (!page.empty()) arguments = {"--page", page};
+    if (UltraCanvasDesktopShell::LaunchProgram("UOS-Settings", arguments, &error)) return;
     debugOutput << "UltraDesktop: UOS-Settings: " << error << std::endl;
     UltraCanvasDialogManager::ShowWarning(
             "UOS-Settings, the ULTRA OS settings application, could not be started. "
@@ -2051,7 +2097,8 @@ void UltraDesktopWindow::CheckSettingsFile() {
                          written.filerProgram != settings_.filerProgram ||
                          written.virtualDesktops != settings_.virtualDesktops ||
                          written.theme != settings_.theme ||
-                         written.dropFilesOn != settings_.dropFilesOn;
+                         written.dropFilesOn != settings_.dropFilesOn ||
+                         written.hiddenInfoItems != settings_.hiddenInfoItems;
     // The battery's badge: shown or taken away, nothing to rebuild.
     if (written.batteryPercent != settings_.batteryPercent) SetBatteryPercentShown(written.batteryPercent);
     if (!changed) return;
@@ -2062,6 +2109,7 @@ void UltraDesktopWindow::CheckSettingsFile() {
     settings_.virtualDesktops = written.virtualDesktops;
     settings_.theme = written.theme;
     settings_.dropFilesOn = written.dropFilesOn;
+    settings_.hiddenInfoItems = written.hiddenInfoItems;
     // Written back with the notes as they are now, should a note have
     // changed between UOS-Settings reading the file and writing it.
     ApplySettings();
@@ -3107,7 +3155,9 @@ void UltraDesktopWindow::StartSnipShortcut() {
 
 void UltraDesktopWindow::RefreshTray() {
     if (!info_ || !trayHost_.IsRunning()) return;
-    const std::vector<DesktopTrayIcon> icons = trayHost_.ListIcons();
+    // Switched off in the settings: none, and any shown go.
+    const std::vector<DesktopTrayIcon> icons = settings_.ShowsInfoItem("tray") ? trayHost_.ListIcons()
+                                                                                 : std::vector<DesktopTrayIcon>();
     std::set<std::string> wanted;
     for (const DesktopTrayIcon& icon : icons) wanted.insert(kTrayPrefix + icon.id);
 

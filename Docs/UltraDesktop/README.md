@@ -172,7 +172,10 @@ the right-hand monitor the primary.
   copies, as before.
 - **Info panel**, anchored to the bottom: Email, Notifications, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
-  Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
+  Loudspeaker, Battery and Task Manager, then the tray icons. Each can be
+  switched off: *Hide this icon* on the info panel's right-click menu, or
+  UOS-Settings > Desktop > Info bar, which *Info bar icons...* on the same
+  menu opens (`hiddenInfoItems` in `desktop.json`). On a screen less than 960 pixels
   high the icons are smaller, and those that still do not fit fold into a
   chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
   upload, Task Manager, download, LAN, email, notifications - so the webcam's and
@@ -495,6 +498,7 @@ earlier versions kept under `~/.config` is moved on the first start):
   "theme": "dark",
   "dropFilesOn": "board",
   "batteryPercent": true,
+  "hiddenInfoItems": [ "vpn" ],
   "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
