@@ -1,0 +1,6 @@
+{
+  "runtime_version": "@ULTRACANVAS_VERSION@",
+  "module": "ultrastore-web.wasm",
+  "loader": "ultracanvas-loader.js",
+  "runtime": "runtime/"
+}

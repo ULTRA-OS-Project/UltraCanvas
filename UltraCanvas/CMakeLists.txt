@@ -3290,7 +3290,10 @@ target_link_libraries(uc-crypt PUBLIC UltraCanvasBase32)
 if(SODIUM_FOUND)
     target_compile_definitions(uc-crypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
     target_include_directories(uc-crypt PRIVATE ${SODIUM_INCLUDE_DIRS})
-    target_link_directories(uc-crypt PUBLIC ${SODIUM_LIBRARY_DIRS})
+    # The build interface only under Emscripten: the wasm sysroot's lib/ is
+    # under the source directory, which an exported link directory may not
+    # be (the same rule as libvips's above).
+    _uc_public_link_directories(uc-crypt ${SODIUM_LIBRARY_DIRS})
     target_link_libraries(uc-crypt PUBLIC ${SODIUM_LIBRARIES})
 endif()
 # X.509 and CMS (include/UltraCrypt/UltraCryptX509.h: certificates, S/MIME's

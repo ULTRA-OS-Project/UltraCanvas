@@ -32,8 +32,9 @@ Apps/UltraStoreAdmin/
   core/                          UltraStoreAdminCore (static), on UltraStoreCore, UltraDatabase, UltraCrypt, UltraAI
     AdminDatabase.h/.cpp         admin.sqlite: settings, publishers, components (whole), package files, keys, the pages ever published, the sequence
     KeyVault.h/.cpp              the seed sealed with the passphrase; a new pair
-    PackageStore.h/.cpp          a build into the package store under its hash; the archive's listing; the entry
+    PackageStore.h/.cpp          a build into the package store under its hash; the archive's listing; the entry; a picture with its web sizes
     CatalogPublisher.h/.cpp      the catalog from the database, laid out, signed, verified; the publish folder
+    WebSite.h/.cpp               the web store's site in the publish folder: the HTML shadow pages, the module, the runtime under its hash
     Translation.h/.cpp           the official languages; TranslateComponent over an ITextTranslator; the UltraAI one
     Uploader.h/.cpp              the publish folder onto the host: what changed, catalog.json last; SFTP/FTPS/FTP and HTTPS PUT on UltraNet
     Affiliates.h/.cpp            the partners' credits (two tiers), the sales ledger and report, the links, QR codes as SVG, the go/ pages
@@ -88,13 +89,23 @@ of the last action, red when it failed.
 | What | Where |
 |---|---|
 | the admin store: `admin.sqlite`, `packages/`, `media/<id>/<file>` | `UltraCanvasDataFolderRoot() / "UltraStoreAdmin"` (`~/.local/share/UltraStoreAdmin`, `~/Library/Application Support/UltraStoreAdmin`, `%APPDATA%\UltraStoreAdmin`), or `--store <dir>` |
-| the publish folder | wherever `publish <outdir>` says: `catalog.json`, `catalog.json.sig`, `media/`, `packages/`, `restricted/` |
+| the publish folder | wherever `publish <outdir>` says: `catalog.json`, `catalog.json.sig`, `media/`, `packages/`, `restricted/`, `go/`, `join/`, and with `web.site_dir` the web store: `index.html`, `categories/`, `category/<id>/`, `app/<id>/`, `ultrastore-web.wasm`, `ultracanvas-loader.js`, `runtime/<hash>/`, `ultrastore.png` |
 
 The media paths in the catalog (`media/<id>/<file>`) are relative to the
 catalog's URL, as the store expects, and to the admin store folder on this
 side: `app media <id> icon <file>` copies the file there and records the
 relative path, `publish` copies it into the publish folder under the same
-path.
+path. The same import writes the picture at the web store's sizes beside
+the original (`ImportMediaVariants`, `PackageStore.h`): an icon at 64, 128
+and 256 px, a screenshot at 560 and 1120 px wide, never above the
+original, each as AVIF (quality 65) and WebP (lossless for an icon,
+quality 80 for a screenshot), named `<stem>-<width>.avif` / `.webp`; the
+catalog names them (`icon_variants`, `screenshot_variants`, the store's
+README, *Catalog*). A format this machine's image library cannot write
+(no AVIF encoder) is a warning, not a failure. The budgets - 12 KB for an
+icon at 256 px, 120 KB for a screenshot at 1120 px, less for a smaller
+size but never under 2 KB - are warned about at import and listed by
+`publish`.
 
 The settings in `admin.sqlite`:
 
@@ -102,7 +113,9 @@ The settings in `admin.sqlite`:
 |---|---|
 | `catalog.base_url` | where `catalog.json` will be served: `https://store.example/v1` |
 | `packages.base_url` | where `packages/` and `restricted/` are served; the catalog's URL when unset |
-| `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages |
+| `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages and the web store's |
+| `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake): set, `publish` lays the web store beside the catalog - the HTML shadow pages, the module, the loader, the runtime under `runtime/<hash>/`; unset, nothing of the site is written |
+| `web.store_download_url` | where the native store is downloaded; the web store's *Get UltraStore* |
 | `texts.languages` | the languages `translate` fills, codes separated by spaces; set by `init` to the official list |
 | `ai.provider`, `ai.base_url`, `ai.model` | the UltraAI translator's provider, server and model |
 | `catalog.sequence`, `catalog.published_at` | the last publish; set by `publish`, never by hand |
@@ -126,7 +139,7 @@ app set <id> <field> <value>                             name publisher license 
                                                          open_source featured pricing.model price currency trial_days
                                                          updates.period updates.until
 app text <id> summary|description <lang> <text or @file>
-app media <id> icon|screenshot <file>
+app media <id> icon|screenshot <file>                   copied into the media store, with its web sizes (AVIF and WebP)
 app show <id> | list | export <id> <file> | remove <id>
 release add <id> <version> [--channel beta] [--date <d>] [--depends <id>@<version> ...] [--notes <lang> <text>]
 release remove <id> <version>
@@ -257,6 +270,22 @@ Hello.
   look where the browser asks for one); the mark comes from the
   framework's `media/icons/desktop/` and is copied to the publish folder's
   `media/` when publish finds it there.
+- A picture variant over its budget (`MediaBudget`, `PackageStore.h`) is
+  listed: a heavy picture is the usual reason a web store page is over its
+  own budget.
+- With `web.site_dir` set, the web store (`WebSite.h`,
+  `Docs/UltraStore/WebstoreBrief.md`) is laid beside the catalog: a page
+  for Discover, the categories, each category and each app that is not
+  hidden (`index.html`, `categories/`, `category/<id>/`, `app/<id>/`, each
+  an HTML shadow of what the module draws, with the texts, the icon as a
+  `<picture>` of the catalog's variants, the `ultrastore://` link, a
+  canonical link and the preview tags), the module `ultrastore-web.wasm`,
+  the runtime's loader (it looks for the UltraCanvas extension first and
+  falls back to the site's runtime), and the runtime under
+  `runtime/<first 12 hex digits of its .wasm's SHA-256>/`, so the host can
+  serve it with a one-year cache and a new runtime is a new folder. A site
+  folder without the module gives the pages without the script, warned
+  about; nothing is deleted on a later publish, as with the other pages.
 - The sequence is recorded only after the files are in place, so a failed
   publish leaves the next one at the same number.
 

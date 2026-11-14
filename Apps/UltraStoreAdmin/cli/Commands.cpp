@@ -356,7 +356,10 @@ bool SetField(Component& c, const std::string& field, const std::string& value, 
     else if (field == "support_url") c.supportUrl = value;
     else if (field == "privacy_url") c.privacyUrl = value;
     else if (field == "source_url") c.sourceUrl = value;
-    else if (field == "icon") c.icon = value;
+    else if (field == "icon") {
+        if (value != c.icon) c.iconVariants.clear();   // the variants were made from the picture named before
+        c.icon = value;
+    }
     else if (field == "source_language") c.sourceLanguage = value;
     else if (field == "categories") {
         // The store's list only (UltraStore::StoreCategories), any case.
@@ -471,12 +474,27 @@ int CmdApp(Store& store, const std::vector<std::string>& args) {
         if (pos.size() < 5) return Usage(stderr);
         const std::string what = pos[3];
         if (what != "icon" && what != "screenshot") return Fail("media is icon or screenshot");
-        const auto imported = ImportMedia(pos[4], store.dir, id);
+        const auto imported = ImportMediaVariants(pos[4], store.dir, id, what == "icon" ? MediaKind::Icon : MediaKind::Screenshot);
         if (!imported) return Fail(imported.error);
-        const std::string& relative = imported.Value();
-        if (what == "icon") c.icon = relative;
-        else if (std::find(c.screenshots.begin(), c.screenshots.end(), relative) == c.screenshots.end()) c.screenshots.push_back(relative);
+        const ImportedMedia& media = imported.Value();
+        const std::string& relative = media.original;
+        if (what == "icon") {
+            c.icon = relative;
+            c.iconVariants = media.variants;
+        } else {
+            // The variants list runs beside the screenshots, one entry each.
+            c.screenshotVariants.resize(c.screenshots.size());
+            const auto at = std::find(c.screenshots.begin(), c.screenshots.end(), relative);
+            if (at == c.screenshots.end()) {
+                c.screenshots.push_back(relative);
+                c.screenshotVariants.push_back(media.variants);
+            } else {
+                c.screenshotVariants[static_cast<size_t>(at - c.screenshots.begin())] = media.variants;
+            }
+        }
         std::printf("%s -> %s\n", pos[4].c_str(), relative.c_str());
+        for (const UltraStore::MediaVariant& v : media.variants) std::printf("  %s %d px\n", v.url.c_str(), v.width);
+        for (const std::string& w : media.warnings) std::printf("warning: %s\n", w.c_str());
     } else {
         return Usage(stderr);
     }

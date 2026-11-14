@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
+// Version: 0.8.0 - the picture variants; a price set on a free entry is kept
 // Version: 0.6.1 - market_url
 // Version: 0.6.0 - categories from one fixed list: StoreCategories, CategoryId, CheckCategories; read case-insensitively
 // Version: 0.5.1 - the messages a person reads through Tr, as whole sentences
@@ -102,6 +103,34 @@ JSONValue WriteStrings(const std::vector<std::string>& items) {
     return a;
 }
 
+// The picture variants: lenient, an entry without a format, a width or a
+// url is left out, since the store never relies on them.
+std::vector<MediaVariant> ReadVariants(const JSONValue& v) {
+    std::vector<MediaVariant> out;
+    for (const JSONValue& e : v.GetElements()) {
+        if (!e.IsObject()) continue;
+        MediaVariant m;
+        m.format = e.Get("format").GetString();
+        m.width = static_cast<int>(e.Get("width").GetInteger(0));
+        m.url = e.Get("url").GetString();
+        if (m.format.empty() || m.width <= 0 || m.url.empty()) continue;
+        out.push_back(std::move(m));
+    }
+    return out;
+}
+
+JSONValue WriteVariants(const std::vector<MediaVariant>& items) {
+    JSONValue a = JSONValue::MakeArray();
+    for (const MediaVariant& m : items) {
+        JSONValue o = JSONValue::MakeObject();
+        o.Set("format", m.format);
+        o.Set("width", static_cast<int64_t>(m.width));
+        o.Set("url", m.url);
+        a.Append(o);
+    }
+    return a;
+}
+
 // where: "apps[2].releases[0].packages[1]" for the error detail.
 Result<Package> ReadPackage(const JSONValue& v, const std::string& where, bool requireUrl) {
     if (!v.IsObject()) return Result<Package>::Failure(ErrorCode::ParseError, Tr("A package entry is not an object"), where);
@@ -186,6 +215,8 @@ Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, c
         if (!id.empty() && std::find(c.categories.begin(), c.categories.end(), id) == c.categories.end()) c.categories.push_back(id);
     }
     c.screenshots = ReadStrings(v.Get("screenshots"));
+    c.iconVariants = ReadVariants(v.Get("icon_variants"));
+    for (const JSONValue& list : v.Get("screenshot_variants").GetElements()) c.screenshotVariants.push_back(ReadVariants(list));
     c.tags = ReadStrings(v.Get("tags"));
     if (v.Contains("pricing")) {
         const JSONValue& pr = v.Get("pricing");
@@ -295,8 +326,17 @@ JSONValue WriteComponent(const Component& c) {
     if (!c.homepage.empty()) o.Set("homepage", c.homepage);
     if (!c.icon.empty()) o.Set("icon", c.icon);
     if (!c.screenshots.empty()) o.Set("screenshots", WriteStrings(c.screenshots));
+    if (!c.iconVariants.empty()) o.Set("icon_variants", WriteVariants(c.iconVariants));
+    if (!c.screenshotVariants.empty()) {
+        JSONValue lists = JSONValue::MakeArray();
+        for (const auto& list : c.screenshotVariants) lists.Append(WriteVariants(list));
+        o.Set("screenshot_variants", lists);
+    }
     if (!c.tags.empty()) o.Set("tags", WriteStrings(c.tags));
-    if (c.pricing.model != PricingModel::Free || c.pricing.trialDays > 0) {
+    // Written whenever something is set, a price on a free entry included:
+    // the admin backend keeps a component as this object and sets the
+    // fields one at a time (`app set price`, then `pricing.model`).
+    if (c.pricing.model != PricingModel::Free || c.pricing.trialDays > 0 || !c.pricing.price.empty() || !c.pricing.currency.empty()) {
         JSONValue pr = JSONValue::MakeObject();
         pr.Set("model", PricingModelName(c.pricing.model));
         if (!c.pricing.price.empty()) pr.Set("price", c.pricing.price);
@@ -304,7 +344,7 @@ JSONValue WriteComponent(const Component& c) {
         if (c.pricing.trialDays > 0) pr.Set("trial_days", static_cast<int64_t>(c.pricing.trialDays));
         o.Set("pricing", std::move(pr));
     }
-    if (c.updates.period != UpdatePeriod::Unlimited) {
+    if (c.updates.period != UpdatePeriod::Unlimited || !c.updates.until.empty()) {   // the date kept before the period is set, as the price is
         JSONValue up = JSONValue::MakeObject();
         up.Set("period", UpdatePeriodName(c.updates.period));
         if (!c.updates.until.empty()) up.Set("until", c.updates.until);
