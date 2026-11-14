@@ -86,8 +86,9 @@ organiser.
      capture (`ext-image-copy-capture-v1`) gives no picture: the tile shows
      the application's icon.
 
-   Drag a button to reorder; when the group is full it scrolls with the
-   mouse wheel. New applications join at the end.
+   Drag a button to reorder. When the buttons no longer fit, they first
+   move closer together, then get a smaller highlight around the same
+   icon; when the group is full even so it scrolls with the mouse wheel. New applications join at the end.
 3. **Pinned** — the *RAM disc* (UltraFiler shows its RAM disc, or opens the
    *New RAM disc* dialog when there is none - `UltraFiler --ram-disc`; a
    folder set in the settings opens instead), *UltraFiler*, and the applications the

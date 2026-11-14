@@ -2,6 +2,9 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.7.3 - running applications that do not fit the bar draw closer
+//                  together, then in a smaller highlight, before they scroll
+//                  (FitRunningButtons)
 // Version: 0.7.2 - the RAM disc button has UltraFiler show its RAM disc, or
 //                  open the New RAM disc dialog when there is none (--ram-disc)
 // Version: 0.7.1 - the panels get the desktop window as their parent (placed on Wayland)
@@ -103,6 +106,12 @@ constexpr int   kBarThickness   = 52;   // the taskbar's width (height when hori
 constexpr int   kInfoPanelWidth = 48;   // the right bar: icons only, labels are tooltips
 constexpr int   kBarButton      = 40;   // one item's box
 constexpr int   kBarIcon        = 24;
+constexpr float kBarSpacing     = 6;    // between two items of a group (MakeGroup)
+// The running applications when they do not all fit (FitRunningButtons):
+// first the gap shrinks, then the highlight around the icon - the icon
+// itself keeps its size.
+constexpr float kRunningSpacingTight = 2;
+constexpr int   kRunningButtonTight  = 32;
 // The settings button shows the ULTRA OS logo (384 x 200), wider than an icon.
 constexpr int   kLogoButtonWide = 64;
 constexpr int   kLogoWidth      = 384;
@@ -474,7 +483,7 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     look.iconSize = ToolbarIconSize::Large;
     look.showIconLabels = false;
     look.centerIcons = true;
-    look.itemSpacing = 6.0f;
+    look.itemSpacing = kBarSpacing;
     group->SetAppearance(look);
     group->SetPadding(6, 4);
     group->layoutItem.SetFlexShrink(0.0f);
@@ -2052,6 +2061,7 @@ void UltraDesktopWindow::OnTimer() {
         RefreshWindows();
     }
     if (trayDirty_.exchange(false)) RefreshTray();
+    FitRunningButtons();   // also after a resize, or the pins taking more room
     FitInfoPanel();
     if (boardWindow_ && settings_.categoryBoard.visible) PlaceCategoryBoard();
     if (desktopIcons_ && settings_.dropFilesOn == "desktop" && ++desktopIconTicks_ >= kDesktopIconTicks) {
@@ -2233,6 +2243,51 @@ void UltraDesktopWindow::RefreshWindows() {
         }
         button->SetPressed(active);
     }
+    FitRunningButtons();
+    running_->InvalidateLayout();
+    running_->RequestRedraw();
+}
+
+void UltraDesktopWindow::FitRunningButtons() {
+    if (!running_) return;
+    const bool vertical = running_->GetOrientation() == ToolbarOrientation::Vertical;
+    // The group's own length does not follow its items (it grows into what
+    // the bar leaves over and scrolls past that), so there is no see-saw
+    // between the two densities. MakeGroup's padding: 6 at each end of a
+    // vertical group, 4 of a horizontal one.
+    const float room = (vertical ? running_->GetHeight() : running_->GetWidth()) - (vertical ? 12.0f : 8.0f);
+    if (room <= 0) return;   // not laid out yet
+    const std::vector<std::shared_ptr<UltraCanvasUIElement>> items = running_->GetItems();
+    const float count = static_cast<float>(items.size());
+    const auto length = [count](float box, float gap) {
+        return count > 0 ? count * box + (count - 1) * gap : 0.0f;
+    };
+    // Normal when everything fits; closer together when that is enough;
+    // otherwise also the smaller highlight (and the group scrolls when even
+    // that is too long).
+    int density = 0;
+    if (length(kBarButton, kBarSpacing) > room)
+        density = length(kBarButton, kRunningSpacingTight) > room ? 2 : 1;
+    const int box = density == 2 ? kRunningButtonTight : kBarButton;
+    bool changed = false;
+    if (density != runningDensity_) {
+        runningDensity_ = density;
+        ToolbarAppearance look = running_->GetAppearance();
+        look.itemSpacing = density == 0 ? kBarSpacing : kRunningSpacingTight;
+        running_->SetAppearance(look);
+        changed = true;
+    }
+    // Every button, not only on a change: one just added comes at the
+    // normal size (StyleBarButton).
+    for (const auto& item : items) {
+        auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item);
+        if (!button) continue;
+        const Size2Df size = button->GetOriginalSize();   // as set, not as last laid out
+        if (static_cast<int>(size.width) == box && static_cast<int>(size.height) == box) continue;
+        button->SetElementSize(Size2Df(static_cast<float>(box), static_cast<float>(box)));
+        changed = true;
+    }
+    if (!changed) return;
     running_->InvalidateLayout();
     running_->RequestRedraw();
 }

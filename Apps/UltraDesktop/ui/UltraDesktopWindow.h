@@ -295,6 +295,10 @@ private:
     // ===== LIVE DATA =====
     void OnTimer();
     void RefreshWindows();
+    // Running applications that do not fit the bar at the usual spacing move
+    // closer together, and when that is not enough get a smaller highlight
+    // around their icons; back to normal once they fit again.
+    void FitRunningButtons();
     void RefreshDesktops();
     void ApplyDeviceActivity(const UltraCanvas::DesktopDeviceActivity& now,
                              const UltraCanvas::DesktopDeviceActivity& before, bool haveBefore);
@@ -478,6 +482,9 @@ private:
         bool active = false;     // one of them has the focus
     };
     std::map<std::string, RunningGroup> runningGroups_;
+    // How tightly the running applications are packed (FitRunningButtons):
+    // 0 as usual, 1 closer together, 2 also in a smaller highlight.
+    int runningDensity_ = 0;
     std::map<uint64_t, std::string> runningTitles_;
     uint64_t nextRunningItem_ = 0;
     std::shared_ptr<UltraDesktopWindowPreviews> previews_;
