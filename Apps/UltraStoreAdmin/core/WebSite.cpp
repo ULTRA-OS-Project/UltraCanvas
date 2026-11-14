@@ -105,7 +105,8 @@ bool ReadWhole(const fs::path& path, std::string& out) {
 bool WriteWhole(const fs::path& path, const std::string& bytes, std::string& error) {
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
-    const fs::path temp = path.string() + ".tmp";
+    fs::path temp = path;
+    temp += ".tmp";
     {
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
         if (!out) { error = "cannot write " + UltraCanvas::PathToUtf8(path); return false; }
