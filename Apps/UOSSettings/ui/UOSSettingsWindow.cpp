@@ -1,6 +1,8 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
+//                  same as Appearance > Look: one look for every application
 // Version: 0.17.0 - Desktop > Info bar: a switch for each icon of the desktop's
 //                  info panel; --page opens the window on a page (ShowSettingsPage)
 // Version: 0.16.0 - Desktop: the battery's percentage badge, on or off
@@ -521,8 +523,11 @@ void UOSSettingsWindow::BuildDesktopPage() {
     addRow("uos-dt-edge-row", "Taskbar", edge_);
 
     theme_ = std::make_shared<UltraCanvasDropdown>("uos-dt-theme", 0, 0, 200, 28);
+    // The look of every application, the desktop's bars included - the
+    // same setting as Appearance > Look, written to Appearance.conf.
     theme_->AddItem(Tr("Dark"), "dark");
     theme_->AddItem(Tr("Light"), "light");
+    theme_->AddItem(Tr("As the system"), "system");
     theme_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
@@ -729,7 +734,10 @@ void UOSSettingsWindow::RefreshDesktopPage() {
                                 : settings.taskbarEdge == UltraDesktop::TaskbarEdge::Bottom ? 2 : 0,
                                 false);
     }
-    if (theme_) theme_->SetSelectedIndex(settings.theme == "light" ? 1 : 0, false);
+    if (theme_) {
+        const std::string look = AppearanceSettings::Load().look;
+        theme_->SetSelectedIndex(look == "dark" ? 0 : look == "light" ? 1 : 2, false);
+    }
     if (dropFiles_) dropFiles_->SetSelectedIndex(settings.dropFilesOn == "desktop" ? 1 : 0, false);
     if (battery_) battery_->SetSelectedIndex(settings.batteryPercent ? 0 : 1, false);
     if (wallpaper_) wallpaper_->SetText(settings.wallpaper);
@@ -776,7 +784,16 @@ void UOSSettingsWindow::SaveDesktopPage() {
                              : index == 2 ? UltraDesktop::TaskbarEdge::Bottom
                                           : UltraDesktop::TaskbarEdge::Left;
     }
-    if (theme_) settings.theme = theme_->GetSelectedIndex() == 1 ? "light" : "dark";
+    if (theme_) {
+        // Appearance.conf, not the desktop's file: every application's look.
+        AppearanceSettings appearance = AppearanceSettings::Load();
+        const int index = theme_->GetSelectedIndex();
+        const std::string look = index == 0 ? "dark" : index == 1 ? "light" : "system";
+        if (appearance.look != look) {
+            appearance.look = look;
+            appearance.Save();
+        }
+    }
     if (dropFiles_) settings.dropFilesOn = dropFiles_->GetSelectedIndex() == 1 ? "desktop" : "board";
     if (battery_) settings.batteryPercent = battery_->GetSelectedIndex() != 1;
     if (wallpaper_) settings.wallpaper = wallpaper_->GetText();

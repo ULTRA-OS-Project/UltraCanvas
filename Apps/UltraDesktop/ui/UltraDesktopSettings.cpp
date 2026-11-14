@@ -2,6 +2,7 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.13.0 - lookMigrated
 // Version: 0.12.0 - hiddenInfoItems, InfoItems
 // Version: 0.11.0 - batteryPercent
 // Version: 0.10.0 - ramDiscPath: "/dev/shm", the earlier default, read as
@@ -125,6 +126,7 @@ std::string DesktopSettings::ToJson() const {
     root.Set("theme", theme);
     root.Set("dropFilesOn", dropFilesOn);
     root.Set("batteryPercent", batteryPercent);
+    root.Set("lookMigrated", lookMigrated);
     JSONValue hidden = JSONValue::MakeArray();
     for (const std::string& id : hiddenInfoItems) hidden.Append(JSONValue(id));
     root.Set("hiddenInfoItems", std::move(hidden));
@@ -206,6 +208,7 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     if (loaded.ramDiscPath == "/dev/shm") loaded.ramDiscPath = kRamDiscFromFiler;
     loaded.filerProgram = root.Get("filerProgram").GetString(loaded.filerProgram);
     loaded.batteryPercent = root.Get("batteryPercent").GetBoolean(loaded.batteryPercent);
+    loaded.lookMigrated = root.Get("lookMigrated").GetBoolean(false);
     const JSONValue& hidden = root.Get("hiddenInfoItems");
     for (size_t i = 0; i < hidden.GetSize(); ++i) {
         loaded.SetShowsInfoItem(hidden.At(i).GetString(), false);   // once each

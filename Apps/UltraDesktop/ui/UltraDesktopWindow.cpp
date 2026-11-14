@@ -2,6 +2,10 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.0 - one look for everything: the bars follow the system look
+//                  (Appearance.conf, UltraCanvasTheme), the Theme menu sets it
+//                  for every application (Dark, Light, As the system), and the
+//                  desktop's earlier choice is handed to it once (FollowLook)
 // Version: 0.7.6 - each icon of the info panel can be switched off
 //                  (hiddenInfoItems): "Hide this icon" on its right-click
 //                  menu, "Info bar icons..." opening UOS-Settings' page for them
@@ -63,6 +67,8 @@
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasAppearanceSettings.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasAudioDevices.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasHardwareInfo.h"
@@ -291,6 +297,7 @@ const BarPalette& UltraDesktopWindow::Bars() const {
 UltraDesktopWindow::UltraDesktopWindow() = default;
 
 UltraDesktopWindow::~UltraDesktopWindow() {
+    if (lookHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(lookHandler_);
     toasts_.reset();   // its windows, its bus connection
     // The poll thread, the shell monitor and the shortcut's thread all hand
     // over through members of this object: stop them before anything else goes.
@@ -328,6 +335,25 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
         debugOutput << "UltraDesktop: settings not read (" << error << "), using the defaults" << std::endl;
     }
     if (edgeOverride) settings_.taskbarEdge = *edgeOverride;
+    // One look for every application: the system's (Appearance.conf). The
+    // desktop chose its own before; that choice becomes the system's once,
+    // so an existing desktop does not change colour when the system's look
+    // takes over - unless a look was chosen there already.
+    if (!settings_.lookMigrated) {
+        AppearanceSettings appearance = AppearanceSettings::Load();
+        if (appearance.look == "system") {
+            appearance.look = settings_.theme == "light" ? "light" : "dark";
+            if (appearance.Save()) {
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->RefreshHostAppearance();
+            }
+        }
+        settings_.lookMigrated = true;
+        SaveSettings();
+    }
+    settings_.theme = UltraCanvasTheme::Current().dark ? "dark" : "light";
+    // The look changed - from the Theme menu here, UOS-Settings or the
+    // host: the bars follow.
+    lookHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { FollowLook(); });
     {
         std::error_code ec;
         settingsFileTime_ = std::filesystem::last_write_time(PathFromUtf8(settingsPath_), ec);
@@ -1522,11 +1548,13 @@ std::vector<MenuItemData> UltraDesktopWindow::TaskbarEdgeItems() {
 }
 
 std::vector<MenuItemData> UltraDesktopWindow::ThemeItems() {
+    // The look of every ULTRA OS application, not only the bars'.
+    const std::string look = AppearanceSettings::Load().look;
     std::vector<MenuItemData> items;
-    items.push_back(MenuItemData::Radio(Tr("Dark"), 3, settings_.theme != "light",
-                                        [this]() { SetTheme("dark"); }));
-    items.push_back(MenuItemData::Radio(Tr("Light"), 3, settings_.theme == "light",
-                                        [this]() { SetTheme("light"); }));
+    items.push_back(MenuItemData::Radio(Tr("Dark"), 3, look == "dark", [this]() { SetTheme("dark"); }));
+    items.push_back(MenuItemData::Radio(Tr("Light"), 3, look == "light", [this]() { SetTheme("light"); }));
+    items.push_back(MenuItemData::Radio(Tr("As the system"), 3, look != "dark" && look != "light",
+                                        [this]() { SetTheme("system"); }));
     return items;
 }
 
@@ -1692,10 +1720,29 @@ void UltraDesktopWindow::SetTaskbarEdge(TaskbarEdge edge) {
     ApplySettings();
 }
 
-void UltraDesktopWindow::SetTheme(const std::string& theme) {
-    if (!DesktopSettings::IsTheme(theme) || settings_.theme == theme) return;
+void UltraDesktopWindow::SetTheme(const std::string& look) {
+    // The system's look, for every application: "dark", "light" or
+    // "system" (the host's). Written to Appearance.conf; this application
+    // reads it again now, the others when their settings watcher sees the
+    // file change - and FollowLook rebuilds the bars.
+    if (look != "dark" && look != "light" && look != "system") return;
+    AppearanceSettings appearance = AppearanceSettings::Load();
+    if (appearance.look == look) return;
+    appearance.look = look;
+    if (!appearance.Save()) {
+        debugOutput << "UltraDesktop: the look could not be saved" << std::endl;
+        return;
+    }
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->RefreshHostAppearance();
+    FollowLook();
+}
+
+void UltraDesktopWindow::FollowLook() {
+    const std::string theme = UltraCanvasTheme::Current().dark ? "dark" : "light";
+    if (theme == settings_.theme) return;
     settings_.theme = theme;
     SaveSettings();
+    if (!window_) return;
     BuildLayout();
     RefreshDesktops();
 }
@@ -2096,7 +2143,6 @@ void UltraDesktopWindow::CheckSettingsFile() {
                          written.ramDiscPath != settings_.ramDiscPath ||
                          written.filerProgram != settings_.filerProgram ||
                          written.virtualDesktops != settings_.virtualDesktops ||
-                         written.theme != settings_.theme ||
                          written.dropFilesOn != settings_.dropFilesOn ||
                          written.hiddenInfoItems != settings_.hiddenInfoItems;
     // The battery's badge: shown or taken away, nothing to rebuild.
@@ -2107,7 +2153,6 @@ void UltraDesktopWindow::CheckSettingsFile() {
     settings_.ramDiscPath = written.ramDiscPath;
     settings_.filerProgram = written.filerProgram;
     settings_.virtualDesktops = written.virtualDesktops;
-    settings_.theme = written.theme;
     settings_.dropFilesOn = written.dropFilesOn;
     settings_.hiddenInfoItems = written.hiddenInfoItems;
     // Written back with the notes as they are now, should a note have

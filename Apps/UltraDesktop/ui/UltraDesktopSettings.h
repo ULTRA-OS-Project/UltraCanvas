@@ -5,6 +5,8 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.14.0 - theme follows the system look (Appearance.conf); lookMigrated:
+//                  the desktop's earlier choice handed to it once
 // Version: 0.13.0 - hiddenInfoItems, InfoItems: each icon of the info bar on or off
 // Version: 0.12.0 - batteryPercent: the battery's percentage badge, on or off
 // Version: 0.11.0 - ramDiscPath "ultrafiler" (kRamDiscFromFiler, the default
@@ -112,6 +114,12 @@ struct DesktopSettings {
     // right-click menu or in UOS-Settings.
     std::string theme = "dark";
     static bool IsTheme(const std::string& theme);
+    // Since 0.14.0 the look of every ULTRA OS application - the bars
+    // included - is the one in Appearance.conf (UOS-Settings > Appearance >
+    // Look); `theme` above only records what the bars show. Set once the
+    // desktop's own earlier choice was written there, so an existing
+    // desktop keeps its look when the system's takes over.
+    bool lookMigrated = false;
     // Files dropped on the wallpaper: "board" (onto the Sticker board, in
     // its "Unsorted" category - the default) or "desktop" (moved into the
     // Desktop folder, whose contents the wallpaper then shows as icons).

@@ -253,7 +253,11 @@ private:
     void ShowBarMenu(int windowX, int windowY);
     void InstallBarMenu(const std::shared_ptr<UltraCanvas::UltraCanvasToolbar>& group);
     void SetTaskbarEdge(TaskbarEdge edge);
-    void SetTheme(const std::string& theme);
+    // The look of every application ("dark", "light", "system"), written to
+    // Appearance.conf; FollowLook rebuilds the bars when the look in force
+    // changes, wherever it was changed.
+    void SetTheme(const std::string& look);
+    void FollowLook();
     // A picture for the wallpaper, through FileLoader's Open dialog.
     void ChooseWallpaper();
     void SetWallpaper(const std::string& path);   // "" = the default picture
@@ -502,6 +506,7 @@ private:
     // How tightly the running applications are packed (FitRunningButtons):
     // 0 as usual, 1 closer together, 2 also in a smaller highlight.
     int runningDensity_ = 0;
+    int lookHandler_ = 0;   // UltraCanvasTheme::AddChangeHandler's id (FollowLook)
     // What the battery's icon was last made for (UpdateBatteryIcon).
     std::string batteryIconKey_;
     std::map<uint64_t, std::string> runningTitles_;
