@@ -29,6 +29,9 @@
 // fills it from a ToolbarLayout - groups of command ids - and a command
 // registry, and RefreshCommandStates re-reads each command's enabled, checked
 // and label state into its button.
+// Version: 1.15.1 - a dragged item moves at most one place per layout: the move left the items'
+//                  bounds behind until the next frame, and two drag steps inside one frame put
+//                  the item back where it started, so the drop reordered nothing
 // Version: 1.15.0 - the SetAppearance rule and the constructor tail of a bar that follows by default
 // Version: 1.14.0 - RefreshCommandStates: a folded group of check commands shows the
 //                   checked one, pressed
@@ -306,6 +309,16 @@ namespace UltraCanvas {
         int      reorderIndex     = -1;   // where that item currently sits
         bool     reorderActive    = false;
         Point2Di reorderStart;
+        // True from a move until the layout that carries it out. MoveItem
+        // reorders the children and asks for a layout, but their bounds are
+        // the old ones until that layout runs - and the hit test that picks
+        // the next target reads those bounds while walking the new order, so
+        // the item under the pointer answers with its OLD neighbour's index.
+        // Two drag steps inside one frame therefore moved the item out and
+        // straight back, and a drag that ended on such a pair reordered
+        // nothing at all. One move per layout, and every step after it reads
+        // bounds that mean what they say.
+        bool     reorderMovedPendingLayout = false;
 
         // Scroll hints (ToolbarOverflowMode::Scroll): a chevron drawn over
         // the edge the items continue past, and a page scroll on a click

@@ -232,7 +232,10 @@ changed. A plain click still clicks. Spacers and separators are not dragged
 (they take no events). The toolbar watches the window's pointer events for
 this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
-it.
+it. The item moves at most one place per layout: its new place only becomes
+real when the layout that follows the move has run, and reading the pointer
+against the old places in between would send it straight back where it came
+from.
 
 With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
 surface — the padding and the gaps between its items — never by an item: a

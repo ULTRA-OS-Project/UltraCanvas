@@ -687,6 +687,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        // The items' bounds are about to match the order they are in, so a
+        // drag may move its item again (see reorderMovedPendingLayout).
+        reorderMovedPendingLayout = false;
         if (overflowMode == ToolbarOverflowMode::Menu && overflowButton) {
             ArrangeWithOverflowMenu(finalRect, ctx);
             return;
@@ -1246,6 +1249,7 @@ namespace UltraCanvas {
                 reorderCandidate = index;
                 reorderIndex = index;
                 reorderStart = event.pointerWindow;
+                reorderMovedPendingLayout = false;
                 return false;   // the item still gets its press
             }
             case UCEventType::MouseMove: {
@@ -1263,15 +1267,24 @@ namespace UltraCanvas {
                     }
                     if (app) app->CaptureMouse(this);
                 }
-                const int target = ItemIndexAtLocal(local);
-                if (target >= 0 && target != reorderIndex) {
-                    // Move without the public callback: one notification on
-                    // release says where the item ended up.
-                    auto saved = std::move(onItemReordered);
-                    onItemReordered = nullptr;
-                    MoveItem(reorderIndex, target);
-                    onItemReordered = std::move(saved);
-                    reorderIndex = target;
+                // One move per layout. Until the layout that follows a move
+                // has run, every item still occupies its old place, so the
+                // hit test below would read the dragged item's new index off
+                // its neighbour's rectangle and move it straight back - a
+                // drag of several steps within one frame ended where it
+                // began, and dropped it there (reorderMovedPendingLayout).
+                if (!reorderMovedPendingLayout) {
+                    const int target = ItemIndexAtLocal(local);
+                    if (target >= 0 && target != reorderIndex) {
+                        // Move without the public callback: one notification on
+                        // release says where the item ended up.
+                        auto saved = std::move(onItemReordered);
+                        onItemReordered = nullptr;
+                        MoveItem(reorderIndex, target);
+                        onItemReordered = std::move(saved);
+                        reorderIndex = target;
+                        reorderMovedPendingLayout = true;
+                    }
                 }
                 return true;
             }
@@ -1283,6 +1296,7 @@ namespace UltraCanvas {
                 reorderCandidate = -1;
                 reorderIndex = -1;
                 reorderActive = false;
+                reorderMovedPendingLayout = false;
                 if (!wasDragging) return false;   // a click: the item handles it
                 if (app) app->ReleaseMouse();
                 if (from != to && onItemReordered) onItemReordered(from, to);
