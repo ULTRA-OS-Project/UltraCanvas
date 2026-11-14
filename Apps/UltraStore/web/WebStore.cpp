@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <set>
 
 using namespace UltraCanvas;
@@ -164,11 +166,56 @@ WebStore::WebStore(UltraCanvasApplication& app, std::shared_ptr<UltraCanvasWindo
 
 void WebStore::Start() {
     ReadTrustState();
-    BuildShell();
-    page_ = Platform::Page();
-    Platform::OnNavigate([this]() { ShowPage(Platform::Page()); });
-    BuildMessage(Tr("Loading the catalog"), Tr("The signed catalog is being fetched and checked."), false);
-    LoadCatalog();
+    LoadLocale([this]() {
+        BuildShell();
+        page_ = Platform::Page();
+        Platform::OnNavigate([this]() { ShowPage(Platform::Page()); });
+        BuildMessage(Tr("Loading the catalog"), Tr("The signed catalog is being fetched and checked."), false);
+        LoadCatalog();
+    });
+}
+
+void WebStore::LoadLocale(std::function<void()> then) {
+#if defined(__EMSCRIPTEN__)
+    // The first language the browser names that is not English, as a tag
+    // and as its base ("de-AT", "de"): the site has a folder per catalogue
+    // language, and a regional one where a translator made it.
+    std::vector<std::string> candidates;
+    for (const std::string& tag : Platform::Languages()) {
+        if (tag.empty() || tag.rfind("en", 0) == 0) continue;
+        candidates.push_back(tag);
+        if (const size_t dash = tag.find('-'); dash != std::string::npos) candidates.push_back(tag.substr(0, dash));
+        break;
+    }
+    if (candidates.empty()) { then(); return; }
+    const std::string folder = UltraLocalisation::ShippedFolder();
+    auto attempt = std::make_shared<std::function<void(size_t)>>();
+    std::weak_ptr<int> token = alive_;
+    *attempt = [this, token, candidates, folder, then, attempt](size_t index) {
+        if (token.expired()) return;
+        if (index >= candidates.size()) { then(); return; }
+        const std::string tag = candidates[index];
+        Platform::FetchText("locale/" + tag + "/UltraStore.json", [this, token, candidates, folder, then, attempt, index, tag](bool ok, const std::string& store) {
+            if (token.expired()) return;
+            if (!ok) { (*attempt)(index + 1); return; }
+            Platform::FetchText("locale/" + tag + "/Standard.json", [this, token, folder, then, tag, store](bool okStandard, const std::string& standard) {
+                if (token.expired()) return;
+                // Into the virtual file system, where the module's Tr reads.
+                std::error_code ec;
+                const std::filesystem::path dir = std::filesystem::path(folder) / tag;
+                std::filesystem::create_directories(dir, ec);
+                { std::ofstream out(dir / "UltraStore.json", std::ios::binary | std::ios::trunc); out << store; }
+                if (okStandard) { std::ofstream out(dir / "Standard.json", std::ios::binary | std::ios::trunc); out << standard; }
+                const bool loaded = UltraLocalisation::Load(tag, "UltraStore");
+                Platform::Log("locale " + tag + (loaded ? " loaded" : " not loaded"));
+                then();
+            });
+        });
+    };
+    (*attempt)(0);
+#else
+    then();
+#endif
 }
 
 void WebStore::LoadCatalog() {

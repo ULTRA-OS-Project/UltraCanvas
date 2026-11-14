@@ -40,6 +40,11 @@ std::vector<std::string> Platform::Languages() {
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
+#if defined(ULTRASTORE_WEB_ULTRACRYPT)
+#include "UltraCrypt/UltraCryptCore.h"
+#include "Verifier.h"
+#endif
+
 namespace UltraStore::Web {
 
 namespace {
@@ -125,6 +130,16 @@ bool Platform::DecodesFormat(const std::string& format) {
 
 void Platform::Verify(const std::string& catalogBytes, const Bytes& signature, const std::vector<Bytes>& keys,
                       std::function<void(bool, const std::string&)> done) {
+#if defined(ULTRASTORE_WEB_ULTRACRYPT)
+    // The native store's verifier, through the runtime's UltraCrypt on
+    // libsodium, when this build has it; the browser's WebCrypto otherwise.
+    if (UltraCrypt_IsAvailable()) {
+        const Result<void> verified = VerifyCatalogSignature(catalogBytes, signature, keys);
+        Log(std::string("signature checked by UltraCrypt: ") + (verified.Ok() ? "ok" : verified.error.message));
+        done(verified.Ok(), verified.Ok() ? std::string() : verified.error.message);
+        return;
+    }
+#endif
     std::vector<uint8_t> flat;
     for (const Bytes& k : keys) if (k.size() == 32) flat.insert(flat.end(), k.begin(), k.end());
     if (flat.empty()) { done(false, "no trusted key"); return; }

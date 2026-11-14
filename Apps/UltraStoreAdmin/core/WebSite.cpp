@@ -456,6 +456,15 @@ Result<WebSiteReport> WriteWebSite(const Catalog& catalog, const std::string& ou
         if (fs::is_regular_file(site / kMarkFile, ec)) {
             if (!CopySiteFile(site / kMarkFile, out / kMarkFile, error)) return R::Failure(ErrorCode::IoError, error);
         }
+        // The translation catalogues, locale/<lang>/<set>.json: the module
+        // fetches the visitor's language's at start.
+        if (fs::is_directory(site / "locale", ec)) {
+            for (const fs::directory_entry& entry : fs::recursive_directory_iterator(site / "locale", ec)) {
+                if (!entry.is_regular_file(ec)) continue;
+                const fs::path relative = fs::relative(entry.path(), site, ec);
+                if (!CopySiteFile(entry.path(), out / relative, error)) return R::Failure(ErrorCode::IoError, error);
+            }
+        }
         // The runtime, under its hash: a visitor's browser keeps it for a year
         // (the host's cache header), and a new runtime is a new folder.
         const fs::path runtimeWasm = site / "runtime" / "ultracanvas-runtime.wasm";

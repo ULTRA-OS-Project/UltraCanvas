@@ -43,6 +43,20 @@ if(EMSCRIPTEN)
     ultracanvas_wasm_app(ultrastore-web ${_web_sources}
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/Catalog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../core/UltraStoreTypes.cpp)
+    # With UltraCrypt on libsodium in this build (the sysroot's), the module
+    # verifies the way the native store does, through the runtime's
+    # UltraCrypt (the runtime carries it whole); WebCrypto stays the
+    # fallback, and the only way without it.
+    if(TARGET uc-crypt)
+        get_target_property(_web_crypt_defs uc-crypt INTERFACE_COMPILE_DEFINITIONS)
+        if(_web_crypt_defs MATCHES "ULTRACRYPT_HAVE_SODIUM")
+            target_sources(ultrastore-web PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/Verifier.cpp)
+            target_compile_definitions(ultrastore-web PRIVATE ULTRASTORE_WEB_ULTRACRYPT=1 ULTRACRYPT_HAVE_SODIUM=1)
+            message(STATUS "  [✓] UltraStore web store verifies through UltraCrypt (libsodium), WebCrypto as the fallback")
+        else()
+            message(STATUS "  [−] UltraStore web store verifies through WebCrypto only (no libsodium in the sysroot)")
+        endif()
+    endif()
     target_include_directories(ultrastore-web PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../core
         ${CMAKE_CURRENT_SOURCE_DIR}/../ui
@@ -56,8 +70,21 @@ if(EMSCRIPTEN)
     set(_web_site ${CMAKE_CURRENT_BINARY_DIR}/site)
     set(_runtime_dir ${CMAKE_BINARY_DIR}/UltraCanvas/OS/WASM/runtime)
     configure_file(${CMAKE_CURRENT_SOURCE_DIR}/site.json.in ${CMAKE_CURRENT_BINARY_DIR}/site.json @ONLY)
+    # The translation catalogues the store's chrome follows the visitor's
+    # language with: the store's own set and the standard set per language,
+    # staged at configure, under site/locale/<lang>/. The module fetches the
+    # visitor's at start (WebStore.cpp, LoadLocale).
+    set(_web_locale ${CMAKE_CURRENT_BINARY_DIR}/locale-stage)
+    file(REMOVE_RECURSE ${_web_locale})
+    file(GLOB _web_catalogues CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/media/locale/*/UltraStore.json")
+    foreach(_web_catalogue IN LISTS _web_catalogues)
+        get_filename_component(_web_lang_dir ${_web_catalogue} DIRECTORY)
+        get_filename_component(_web_lang ${_web_lang_dir} NAME)
+        file(COPY ${_web_catalogue} ${_web_lang_dir}/Standard.json DESTINATION ${_web_locale}/${_web_lang})
+    endforeach()
     add_custom_target(ultrastore-web-site ALL
         COMMAND ${CMAKE_COMMAND} -E make_directory ${_web_site}/runtime
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${_web_locale} ${_web_site}/locale
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ultrastore-web> ${_web_site}/
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/UltraCanvas/OS/WASM/runtime/site/ultracanvas-loader.js ${_web_site}/
         COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/site.json ${_web_site}/

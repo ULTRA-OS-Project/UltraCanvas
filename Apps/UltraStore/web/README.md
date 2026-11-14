@@ -26,8 +26,10 @@ the store itself is [`Docs/UltraStore/README.md`](../../../Docs/UltraStore/READM
   picks between the two.
 - **The catalog from its own origin, verified in the browser**: the site
   is served from the catalog base, so `catalog.json` and `catalog.json.sig`
-  are same-origin fetches. The signature is checked with WebCrypto's
-  Ed25519 against the keys built in (`Apps/UltraStore/keys/*.pub`, the
+  are same-origin fetches. The signature is checked through the runtime's
+  UltraCrypt on libsodium (the native store's `Verifier.cpp`, compiled
+  into the module when the build has libsodium) and otherwise with
+  WebCrypto's Ed25519, against the keys built in (`Apps/UltraStore/keys/*.pub`, the
   same as the native store's, through `cmake/UltraStoreKeys.cmake`) and
   the keys the last accepted catalog announced, kept in `localStorage`
   with the highest sequence seen, so a mirror cannot roll a visitor back.
@@ -45,6 +47,11 @@ the store itself is [`Docs/UltraStore/README.md`](../../../Docs/UltraStore/READM
   offers the download named by the admin's setting
   `web.store_download_url`. No account, no cart, no payment call from the
   web.
+- **The texts in the visitor's language**: the site carries the store's
+  catalogue and the standard set per language (`locale/<lang>/`), and the
+  module fetches the browser's first non-English language's before it
+  draws (`LoadLocale`), so the chrome is translated along with the
+  catalog's own texts. English needs no fetch.
 - **Every page has an address**: `?page=app/<id>`, `?page=category/<id>`,
   `?page=categories` from the root, and the folders the admin backend
   publishes (`app/<id>/`, `category/<id>/`, `categories/`), each an HTML
@@ -72,7 +79,8 @@ Apps/UltraStore/web/
 What the build leaves under emcmake, `site/`, is what the admin backend's
 `publish` lays beside `catalog.json` when the setting `web.site_dir` names
 it: `ultrastore-web.wasm`, `ultracanvas-loader.js`, `ultrastore.png`,
-`site.json`, `runtime/ultracanvas-runtime.{js,wasm,data}`. Publish copies
+`site.json`, `locale/<lang>/{UltraStore,Standard}.json`,
+`runtime/ultracanvas-runtime.{js,wasm,data}`. Publish copies
 the runtime to `runtime/<first 12 hex digits of the .wasm's SHA-256>/`, so
 the host serves it with `Cache-Control: public, max-age=31536000,
 immutable` and a new runtime is a new folder; Brotli is the host's
@@ -137,11 +145,18 @@ record: the module's raw, gzip and Brotli sizes beside the runtime's. The
 first measured numbers go here once that workflow has run on `main` with
 the store in it.
 
+The runtime's fonts (`UCR_FONTS=subset`, `UltraCanvas/OS/WASM/runtime/CMakeLists.txt`):
+Manrope and Inter cut to Latin, Greek and Cyrillic, Inter's optical size
+pinned at 14, measured with fonttools 4.68:
+
+| File | Whole | Subset |
+|---|---:|---:|
+| `Inter-Variable.ttf` | 856 KB | 216 KB |
+| `Manrope-Variable.ttf` | 161 KB | 116 KB |
+| both | 1017 KB | **332 KB** (the brief's rule: 400 KB) |
+
 ## What it does not do
 
 Install, buy or verify a package (the native store's), show ratings or
-install counts (the catalog has none), translate the chrome into the
-browser's language yet (the texts go through `Tr`, the catalogues are not
-served to the browser in this release; the catalog's own texts come in
-the browser's language), or run without WebAssembly (the HTML shadow
-stays, with the deep links and the store's download).
+install counts (the catalog has none), or run without WebAssembly (the
+HTML shadow stays, with the deep links and the store's download).

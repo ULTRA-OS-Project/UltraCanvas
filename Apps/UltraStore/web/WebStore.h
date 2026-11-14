@@ -52,6 +52,13 @@ public:
     void Start();
 
 private:
+    // ----- the language -----
+    // In the browser: the store's catalogue and the standard set for the
+    // visitor's language, fetched from the site (locale/<lang>/), put where
+    // UltraLocalisation reads them, loaded; then `then`. Natively the
+    // application loaded them at start, so `then` runs at once.
+    void LoadLocale(std::function<void()> then);
+
     // ----- the catalog -----
     void LoadCatalog();
     void CatalogArrived(const std::string& bytes, const std::string& signatureText);

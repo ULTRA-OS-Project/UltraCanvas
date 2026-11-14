@@ -35,8 +35,10 @@ void SetNativePage(const std::string& page);
 
 int main(int argc, char* argv[]) {
     // Static, as every UltraCanvas application in a browser: Run() never returns.
+    // "UltraStore": the application's name is its catalogue's
+    // (media/locale/<lang>/UltraStore.json), shared with the native store.
     static UltraCanvasApplication app;
-    if (!app.Initialize(argv[0])) return 1;
+    if (!app.Initialize("UltraStore")) return 1;
 
     int width = 1280, height = 860;
     std::string site, page;

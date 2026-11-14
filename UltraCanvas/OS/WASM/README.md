@@ -67,7 +67,7 @@ application-facing view of the platform, is in
 The REQUIRED pkg-config dependencies (cairo + pixman, pango + pangocairo,
 fontconfig, freetype, harfbuzz, glib, tinyxml2, libvips + vips-cpp) do not
 ship as Emscripten ports. `build-wasm-sysroot.sh` cross-compiles all of them
-(plus zlib, libpng, libjpeg-turbo, libtiff, libwebp, expat, libffi, pcre2)
+(plus zlib, libpng, libjpeg-turbo, libtiff, libwebp, expat, libffi, pcre2, and libsodium for UltraCrypt)
 into a static sysroot with
 `.pc` files, following [kleisauke/wasm-vips](https://github.com/kleisauke/wasm-vips)
 where that project builds the same dependency — including its pre-patched

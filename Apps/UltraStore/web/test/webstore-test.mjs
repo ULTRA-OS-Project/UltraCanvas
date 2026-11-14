@@ -62,7 +62,7 @@ function resolve(urlPath) {
     const rel = decodeURIComponent(urlPath).replace(/^\/+/, '');
     const m = rel.match(/^runtime\/[0-9a-f]+\/(.+)$/);
     if (m) return path.join(site, 'runtime', m[1]);
-    if (rel === 'ultrastore-web.wasm' || rel === 'ultracanvas-loader.js' || rel === 'ultrastore.png') return path.join(site, rel);
+    if (rel === 'ultrastore-web.wasm' || rel === 'ultracanvas-loader.js' || rel === 'ultrastore.png' || rel.startsWith('locale/')) return path.join(site, rel);
     let file = path.join(fixture, rel);
     if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
     return file;
@@ -179,6 +179,25 @@ if (process.env.UWS_CHROME) launch.executablePath = process.env.UWS_CHROME;
     await browser.close();
     console.log(`     the site sent ${kib(total(served))}:`);
     for (const r of served.slice(0, 40)) console.log(`       ${r.path.padEnd(60)} ${kib(r.bytes)}`);
+}
+
+// ===== 1b. A German visitor: the catalogues come from the site =====
+{
+    const browser = await chromium.launch(launch);
+    const context = await browser.newContext({ locale: 'de-DE', viewport: { width: 1280, height: 900 } });
+    const page = await context.newPage();
+    const log = watch(page, '1b-german');
+    served = [];
+    await page.goto(base);
+    const s = await waitState(page);
+    check(s.state === 'running', `german: the module runs (${s.status})`);
+    check(await log.waitFor('[ultrastore-web] locale de loaded', startTimeout), 'german: the German catalogues were fetched and loaded');
+    check(await log.waitFor('[ultrastore-web] catalog accepted', startTimeout), 'german: the catalog is accepted');
+    check(served.some((r) => r.path === 'locale/de/UltraStore.json'), 'german: the site sent the store\'s German set');
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: path.join(out, '1b-german.png') });
+    log.done();
+    await browser.close();
 }
 
 // ===== 2. A tampered catalog =====

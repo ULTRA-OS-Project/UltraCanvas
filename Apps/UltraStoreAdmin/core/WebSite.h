@@ -16,6 +16,9 @@
 //                                          cache it for a year and a new
 //                                          runtime is a new folder
 //   <out>/ultrastore.png                   the mark the pages show
+//   <out>/locale/<lang>/UltraStore.json, Standard.json
+//                                          the translation catalogues the module
+//                                          fetches for the visitor's language
 //
 // Every page is an HTML shadow of what the module draws - the title, the
 // texts, the icon as a <picture> of the catalog's variants, the price, the

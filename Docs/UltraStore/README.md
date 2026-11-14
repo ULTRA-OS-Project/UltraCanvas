@@ -617,10 +617,13 @@ the UltraCanvas runtime, served from the catalog base by the admin
 backend's publish (the setting `web.site_dir`), with an HTML shadow of
 every page for search engines and the moment before the module paints.
 It fetches `catalog.json` and `catalog.json.sig` from its own origin and
-verifies the signature in the browser (WebCrypto's Ed25519) against the
-keys built in and the ones an accepted catalog announced, with the same
-sequence check as the native store; a catalog that does not verify is not
-shown. It does not install, buy or verify a package: *Install*, *Try* and
+verifies the signature in the browser - through the runtime's UltraCrypt
+on libsodium, the native store's own verifier, with WebCrypto's Ed25519 as
+the fallback - against the keys built in and the ones an accepted catalog
+announced, with the same sequence check as the native store; a catalog
+that does not verify is not shown. Its texts follow the visitor's
+language: the site carries the catalogues, the module fetches the
+browser's language's before it draws. It does not install, buy or verify a package: *Install*, *Try* and
 *Buy* open the native store's `ultrastore://app/<id>` link, because a
 licence and an install have to land in the store that keeps them, and
 where the store is missing the page offers its download
