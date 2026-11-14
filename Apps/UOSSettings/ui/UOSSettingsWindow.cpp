@@ -1,6 +1,7 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.16.0 - Desktop: the battery's percentage badge, on or off
 // Version: 0.15.0 - every text through Tr / TrF / TrN; the window's colours and sizes are the theme's (the kit's functions)
 // Version: 0.14.0 - Appearance > Look: Appearance.conf (the look, accent, font, size, scale, contrast)
 //                  with a preview strip styled from the theme the choices give
@@ -436,6 +437,16 @@ void UOSSettingsWindow::BuildDesktopPage() {
     };
     addRow("uos-dt-drop-row", "Dropped files", dropFiles_);
 
+    // The battery on the right bar: its percentage as a badge, or the icon
+    // alone (whose fill shows the level either way).
+    battery_ = std::make_shared<UltraCanvasDropdown>("uos-dt-battery", 0, 0, 220, 28);
+    battery_->AddItem(Tr("Icon and percentage"), "percent");
+    battery_->AddItem(Tr("Icon only"), "icon");
+    battery_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-battery-row", "Battery", battery_);
+
     wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
     wallpaper_->SetPlaceholder(Tr("ULTRA OS A (the default picture)"));
     wireText(wallpaper_);
@@ -620,6 +631,7 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     }
     if (theme_) theme_->SetSelectedIndex(settings.theme == "light" ? 1 : 0, false);
     if (dropFiles_) dropFiles_->SetSelectedIndex(settings.dropFilesOn == "desktop" ? 1 : 0, false);
+    if (battery_) battery_->SetSelectedIndex(settings.batteryPercent ? 0 : 1, false);
     if (wallpaper_) wallpaper_->SetText(settings.wallpaper);
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
@@ -666,6 +678,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
     }
     if (theme_) settings.theme = theme_->GetSelectedIndex() == 1 ? "light" : "dark";
     if (dropFiles_) settings.dropFilesOn = dropFiles_->GetSelectedIndex() == 1 ? "desktop" : "board";
+    if (battery_) settings.batteryPercent = battery_->GetSelectedIndex() != 1;
     if (wallpaper_) settings.wallpaper = wallpaper_->GetText();
     if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();

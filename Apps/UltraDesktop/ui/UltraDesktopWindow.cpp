@@ -2,6 +2,8 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.7.5 - the battery's percentage badge can be switched off: the
+//                  battery's right-click menu, UOS-Settings (batteryPercent)
 // Version: 0.7.4 - the battery's icon shows its level to the pixel, drawn
 //                  on the icon's own pixel grid; green inside a white outline
 //                  when full, green with a white bolt while charging,
@@ -834,6 +836,29 @@ void UltraDesktopWindow::ShowClockMenu(int windowX, int windowY) {
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
+void UltraDesktopWindow::ShowBatteryMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("BatteryMenu", 0, 0, 240, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Battery"));
+    popupMenu_->AddItem(MenuItemData::Checkbox("Show the percentage", settings_.batteryPercent, [this](bool on) {
+        SetBatteryPercentShown(on);
+    }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Battery details...", [this]() { OpenDevicePanel("battery"); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX - 250, windowY), *window_, settings);
+}
+
+void UltraDesktopWindow::SetBatteryPercentShown(bool shown) {
+    if (settings_.batteryPercent == shown) return;
+    settings_.batteryPercent = shown;
+    SaveSettings();
+    // At once, from the level last read, rather than at the next reading.
+    if (haveLastActivity_) ApplyBattery(lastActivity_);
+    else if (info_ && !shown) info_->ClearItemBadge("battery");
+}
+
 void UltraDesktopWindow::OpenClockPanel() {
     if (!window_) return;
     if (!clockPanel_) clockPanel_ = std::make_shared<UltraDesktopClockPanel>();
@@ -1362,7 +1387,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     AddBarButton(info_, "webcam",    "Webcam",       IconPath("webcam.svg"),    [this]() { OpenDevicePanel("webcam"); });
     AddBarButton(info_, "mic",       "Microphone",   IconPath("mic.svg"),       [this]() { OpenDevicePanel("mic"); });
     AddBarButton(info_, "speaker",   "Loudspeaker",  IconPath("speaker.svg"),   [this]() { OpenVolumePanel(); });
-    AddBarButton(info_, "battery",   "Battery",      IconPath("battery.svg"),   [this]() { OpenDevicePanel("battery"); });
+    auto battery = AddBarButton(info_, "battery", "Battery", IconPath("battery.svg"),
+                                [this]() { OpenDevicePanel("battery"); });
+    battery->onContextMenu = [this](int windowX, int windowY) { ShowBatteryMenu(windowX, windowY); };
     AddBarButton(info_, "tasks",     "Task Manager", IconPath("tasks.svg"),     [this]() { OpenTasks(); });
     for (const auto& item : info_->GetItems()) {
         if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item)) {
@@ -2025,6 +2052,8 @@ void UltraDesktopWindow::CheckSettingsFile() {
                          written.virtualDesktops != settings_.virtualDesktops ||
                          written.theme != settings_.theme ||
                          written.dropFilesOn != settings_.dropFilesOn;
+    // The battery's badge: shown or taken away, nothing to rebuild.
+    if (written.batteryPercent != settings_.batteryPercent) SetBatteryPercentShown(written.batteryPercent);
     if (!changed) return;
     settings_.taskbarEdge = written.taskbarEdge;
     settings_.wallpaper = written.wallpaper;
@@ -2559,6 +2588,28 @@ void UltraDesktopWindow::UpdateBatteryIcon(const DesktopDeviceActivity& now) {
     }
 }
 
+void UltraDesktopWindow::ApplyBattery(const DesktopDeviceActivity& now) {
+    if (!info_) return;
+    UpdateBatteryIcon(now);
+    auto button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("battery"));
+    if (now.batteryPresent && now.batteryPercent >= 0) {
+        const Color color = now.batteryCharging ? kMarkerSaved
+                          : now.batteryPercent < kBatteryLowPercent ? kMarkerOn : kMarkerCount;
+        // Grows inward: "100" would run past the screen's edge. Switched
+        // off, the icon's fill and the tooltip still say it.
+        if (!settings_.batteryPercent) {
+            info_->ClearItemBadge("battery");
+        } else if (auto badge = info_->SetItemBadge("battery", std::to_string(now.batteryPercent), color)) {
+            badge->SetGrowInward(true);
+        }
+        if (button) button->SetTooltip("Battery: " + std::to_string(now.batteryPercent) + "%" +
+                                       (now.batteryCharging ? ", charging" : ""));
+    } else {
+        info_->ClearItemBadge("battery");
+        if (button) button->SetTooltip("Battery: none (mains power)");
+    }
+}
+
 void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
                                              const DesktopDeviceActivity& before, bool haveBefore) {
     if (!info_) return;
@@ -2615,19 +2666,7 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
     else info_->ClearItemBadge("usb");
     tooltip("usb", "USB: " + std::to_string(now.usbDeviceCount) + " device" + (now.usbDeviceCount == 1 ? "" : "s"));
 
-    UpdateBatteryIcon(now);
-    if (now.batteryPresent && now.batteryPercent >= 0) {
-        const Color color = now.batteryCharging ? kMarkerSaved
-                          : now.batteryPercent < kBatteryLowPercent ? kMarkerOn : kMarkerCount;
-        // Grows inward: "100" would run past the screen's edge.
-        if (auto badge = info_->SetItemBadge("battery", std::to_string(now.batteryPercent), color))
-            badge->SetGrowInward(true);
-        tooltip("battery", "Battery: " + std::to_string(now.batteryPercent) + "%" +
-                           (now.batteryCharging ? ", charging" : ""));
-    } else {
-        info_->ClearItemBadge("battery");
-        tooltip("battery", "Battery: none (mains power)");
-    }
+    ApplyBattery(now);
 
     if (!now.keyboardLayout.empty()) {
         std::string layout = now.keyboardLayout;

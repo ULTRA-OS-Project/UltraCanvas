@@ -499,6 +499,26 @@ void TestStartupDefaults() {
           "an empty list, the defaults applied, starts nothing");
 }
 
+void TestBatteryAndRamDisc() {
+    std::cout << "\nThe battery's badge and the RAM disc button\n";
+    DesktopSettings fresh;
+    Check(fresh.batteryPercent, "the battery shows its percentage by default");
+    Check(fresh.ramDiscPath == kRamDiscFromFiler, "the RAM disc button asks UltraFiler by default");
+    fresh.batteryPercent = false;
+    DesktopSettings reread;
+    std::string error;
+    Check(reread.FromJson(fresh.ToJson(), &error) && !reread.batteryPercent,
+          "the percentage switched off survives a save");
+    DesktopSettings old;
+    Check(old.FromJson(R"({"ramDiscPath":"/dev/shm"})", &error) && old.ramDiscPath == kRamDiscFromFiler &&
+              old.batteryPercent,
+          "the earlier /dev/shm default reads as UltraFiler's RAM disc; no batteryPercent means on");
+    DesktopSettings custom;
+    Check(custom.FromJson(R"({"ramDiscPath":"/mnt/fast","batteryPercent":false})", &error) &&
+              custom.ramDiscPath == "/mnt/fast" && !custom.batteryPercent,
+          "a folder of the user's own and the percentage off are kept");
+}
+
 int main() {
     std::cout << "UltraDesktopAppCategoriesTest\n";
     TestFreedesktopCategories();
@@ -512,6 +532,7 @@ int main() {
     TestMacOSFolders();
     TestSettings();
     TestStartupDefaults();
+    TestBatteryAndRamDisc();
     std::cout << (g_failures == 0 ? "All passed\n" : std::to_string(g_failures) + " failed\n");
     return g_failures == 0 ? 0 : 1;
 }

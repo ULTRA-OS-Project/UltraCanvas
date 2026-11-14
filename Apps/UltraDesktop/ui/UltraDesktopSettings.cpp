@@ -2,6 +2,7 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.11.0 - batteryPercent
 // Version: 0.10.0 - ramDiscPath: "/dev/shm", the earlier default, read as
 //                  kRamDiscFromFiler
 // Version: 0.9.0 - UltraSnip among the StartupPrograms, on once by default (startupDefaults 2)
@@ -122,6 +123,7 @@ std::string DesktopSettings::ToJson() const {
     root.Set("clockStyle", clockStyle);
     root.Set("theme", theme);
     root.Set("dropFilesOn", dropFilesOn);
+    root.Set("batteryPercent", batteryPercent);
     JSONValue icons = JSONValue::MakeObject();
     for (const auto& [name, place] : desktopIcons) {
         JSONValue at = JSONValue::MakeObject();
@@ -199,6 +201,7 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     // are folders: the button now asks UltraFiler for the disc instead.
     if (loaded.ramDiscPath == "/dev/shm") loaded.ramDiscPath = kRamDiscFromFiler;
     loaded.filerProgram = root.Get("filerProgram").GetString(loaded.filerProgram);
+    loaded.batteryPercent = root.Get("batteryPercent").GetBoolean(loaded.batteryPercent);
     const std::string clock = root.Get("clockStyle").GetString(loaded.clockStyle);
     if (IsClockStyle(clock)) loaded.clockStyle = clock;
     const std::string theme = root.Get("theme").GetString(loaded.theme);

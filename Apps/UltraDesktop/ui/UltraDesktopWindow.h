@@ -303,6 +303,13 @@ private:
     // The battery's icon: its level as a fill, a bolt while charging, green
     // while charging and red below 25 %; only redrawn when that changes.
     void UpdateBatteryIcon(const UltraCanvas::DesktopDeviceActivity& now);
+    // The battery's icon, badge (unless switched off) and tooltip.
+    void ApplyBattery(const UltraCanvas::DesktopDeviceActivity& now);
+    // The battery's right-click menu: the percentage badge on or off, and
+    // the battery panel. SetBatteryPercentShown saves the choice and shows
+    // it at once (DesktopSettings::batteryPercent).
+    void ShowBatteryMenu(int windowX, int windowY);
+    void SetBatteryPercentShown(bool shown);
     void ApplyDeviceActivity(const UltraCanvas::DesktopDeviceActivity& now,
                              const UltraCanvas::DesktopDeviceActivity& before, bool haveBefore);
     void ApplyNotices();

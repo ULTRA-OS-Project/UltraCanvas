@@ -191,6 +191,9 @@ the right-hand monitor the primary.
   drawn on the icon's own pixel grid so it stays sharp. Full: green inside
   the white outline. Charging: green with a white bolt. Below 25 % on
   battery: red.
+  The percentage badge can be switched off - *Show the percentage* on the
+  battery's right-click menu, or UOS-Settings > Desktop > Battery
+  (`batteryPercent` in `desktop.json`); the tooltip still says it.
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
@@ -491,6 +494,7 @@ earlier versions kept under `~/.config` is moved on the first start):
   "clockStyle": "analog-date",
   "theme": "dark",
   "dropFilesOn": "board",
+  "batteryPercent": true,
   "desktopIcons": { "report.pdf": { "x": 16, "y": 56 } },
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],

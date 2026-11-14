@@ -5,6 +5,7 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.12.0 - batteryPercent: the battery's percentage badge, on or off
 // Version: 0.11.0 - ramDiscPath "ultrafiler" (kRamDiscFromFiler, the default
 //                  everywhere): the button asks UltraFiler for its RAM disc
 // Version: 0.10.0 - UltraSnip starts with the desktop by default (startupDefaults 2)
@@ -108,6 +109,10 @@ struct DesktopSettings {
     // Desktop folder, whose contents the wallpaper then shows as icons).
     std::string dropFilesOn = "board";
     static bool IsDropTarget(const std::string& target);
+    // The battery's percentage as a badge on its icon (the default), or
+    // the icon alone - the level is in the icon's fill either way, and in
+    // its tooltip. Chosen on the battery's right-click menu or in UOS-Settings.
+    bool batteryPercent = true;
     // Where the desktop icons lie, in work-area coordinates, by the entry's
     // name in the Desktop folder. An entry not listed is placed in the
     // first free cell of the grid.
