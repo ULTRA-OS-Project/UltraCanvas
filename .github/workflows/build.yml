@@ -22,9 +22,10 @@ on:
     branches:
       - main
       - 'claude/**'
-    # The default types plus `labeled`: adding the `ci:intel` label to a pull
-    # request starts a run whose matrix has the macOS Intel row (the gate
-    # reads the labels), without a push to carry it.
+    # The default types plus `labeled`: adding the `ci:distro` label (every
+    # row) or the `ci:intel` one (the macOS Intel row) to a pull request
+    # starts a run with those rows (the gate reads the labels), without a
+    # push to carry it.
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
@@ -77,6 +78,8 @@ jobs:
       pending: ${{ steps.check.outputs.pending }}
       os: ${{ steps.matrix.outputs.os }}
       include: ${{ steps.matrix.outputs.include }}
+      skipped: ${{ steps.matrix.outputs.skipped }}
+      sdk_linux: ${{ steps.matrix.outputs.sdk_linux }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -122,22 +125,25 @@ jobs:
       # an `exclude` is applied BEFORE `include`, so the row's include entry
       # added it back as a job of its own without a build type (2026-10-24).
       #
-      # The macOS Intel row builds on main only - a push, or a dispatch - and
-      # not on pull requests. Its runner compiles five to ten times slower
-      # than every other row and is the scarcest (16-27 minutes in the queue
-      # on 2026-10-13), so it finished a pull request's matrix 45-100 minutes
-      # after the other five rows had, with nothing of its own to say: the
-      # two macOS rows share one code base and one packaging script, and what
-      # differs between them (the libraries' vcpkg triplet, the deployment
-      # target's x86_64 SDK) is checked on every run on main, before anything
-      # is released. A pull request's matrix is five rows and finishes with
-      # the Windows ARM one.
+      # A pull request builds three rows: Linux x86_64, Windows x86_64 and
+      # macOS on Apple silicon - one per operating system, and the only
+      # macOS one, so the macOS platform layer is checked before a merge.
+      # The other three - Linux arm64, Windows ARM and macOS Intel - build
+      # on main (a push, or a dispatch), where the release is made, and on
+      # a pull request labelled `ci:distro`, the distribution build. The
+      # Windows ARM row took an hour on its own on 2026-11-13 (#1236,
+      # #1238), and the Intel runner compiles five to ten times slower than
+      # the rest and is the scarcest; what differs in those rows (another
+      # MSYS2 toolchain, another vcpkg triplet, the same code and the same
+      # packaging scripts) is checked on every run on main, before anything
+      # is released.
       #
-      # A pull request that changes what only the Intel toolchain would
-      # catch - the macOS platform layer, the packaging, a bundled library -
-      # asks for the row with the `ci:intel` label: adding it starts a run
-      # with the full matrix (the `labeled` event above), so the failure
-      # shows on the pull request rather than on main.
+      # A pull request that changes what only those rows would catch - a
+      # platform layer, the packaging, a bundled library - asks for them
+      # with `ci:distro` (all six) or `ci:intel` (the Intel row only):
+      # adding the label starts a run with them (the `labeled` event
+      # above), so the failure shows on the pull request rather than on
+      # main.
       #
       # NOTE: GitHub retired macos-13 (the last x86_64 image of the
       # macos-NN series) in December 2025. `macos-15-intel` is its
@@ -161,9 +167,10 @@ jobs:
       - id: matrix
         shell: bash
         env:
-          WITH_INTEL: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:intel') }}
+          ALL_ROWS: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:distro') }}
+          WITH_INTEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:intel') }}
         run: |
-          python3 - "$WITH_INTEL" >> "$GITHUB_OUTPUT" <<'PY'
+          python3 - "$ALL_ROWS" "$WITH_INTEL" >> "$GITHUB_OUTPUT" <<'PY'
           import json, sys
           rows = [
               {"os": "macos-15",         "arch_label": "arm64"},
@@ -177,11 +184,45 @@ jobs:
                "msystem": "CLANGARM64", "msys_prefix": "mingw-w64-clang-aarch64",
                "msys_toolchain": "mingw-w64-clang-aarch64-clang"},
           ]
+          # The rows a pull request builds without a label (see above).
+          standard = {"ubuntu-22.04", "windows-latest", "macos-15"}
           if sys.argv[1] != "true":
-              rows = [r for r in rows if r["os"] != "macos-15-intel"]
+              keep = standard | ({"macos-15-intel"} if sys.argv[2] == "true" else set())
+              skipped = [r["os"] for r in rows if r["os"] not in keep]
+              rows = [r for r in rows if r["os"] in keep]
+          else:
+              skipped = []
           print("os=" + json.dumps([r["os"] for r in rows]))
           print("include=" + json.dumps(rows))
+          # The rows left out, for the `build-skipped` job below.
+          print("skipped=" + json.dumps(skipped))
+          # The clean-machine SDK check (sdk-linux) tests the Linux rows built.
+          linux = [{"arch": "x86_64", "runner": "ubuntu-22.04"},
+                   {"arch": "arm64", "runner": "ubuntu-22.04-arm"}]
+          print("sdk_linux=" + json.dumps([l for l in linux if l["runner"] in [r["os"] for r in rows]]))
           PY
+
+  # A row a pull request leaves out (see the gate's `matrix` step) still
+  # reports, under its own job name, that it was not built for this pull
+  # request. Branch protection knows the rows by their names
+  # (`build (<os>, Release)`), and a required one that never reports holds
+  # the pull request back for good; this one says "skipped - add ci:distro"
+  # instead. It builds nothing, and it runs only where rows were left out.
+  build-skipped:
+    needs: gate
+    if: needs.gate.outputs.skipped != '[]' && needs.gate.outputs.skipped != ''
+    strategy:
+      matrix:
+        os: ${{ fromJSON(needs.gate.outputs.skipped) }}
+        build_type: [Release]
+    name: build (${{ matrix.os }}, ${{ matrix.build_type }})
+    runs-on: ubuntu-22.04   # the pool the build legs use
+    timeout-minutes: 5
+    steps:
+      - name: Not built for this pull request
+        shell: bash
+        run: |
+          echo "::notice::${{ matrix.os }} is built on main and on a pull request labelled ci:distro - add the label to build it here."
 
   build:
     needs: gate
@@ -2801,15 +2842,13 @@ jobs:
   # one tested here: publish-sdk needs this job.
   sdk-linux:
     name: Linux SDK on a clean Ubuntu 22.04 (${{ matrix.arch }})
-    needs: build
+    needs: [gate, build]
     strategy:
       fail-fast: false
+      # One leg per Linux row the build job ran (the gate's `sdk_linux`): a
+      # pull request without `ci:distro` builds no arm64 SDK to test.
       matrix:
-        include:
-          - arch: x86_64
-            runner: ubuntu-22.04
-          - arch: arm64
-            runner: ubuntu-22.04-arm
+        include: ${{ fromJSON(needs.gate.outputs.sdk_linux) }}
     runs-on: ${{ matrix.runner }}
     container: ubuntu:22.04
     # The apt installs are most of it (about 10 minutes); the cap is for a
