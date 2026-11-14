@@ -2592,9 +2592,27 @@ jobs:
       # libraries it loads (scripts/package-ultracanvasstart.sh; the script
       # runs the packaged application before it is done). On macOS
       # package-macos.sh --start-app does it, where the signing is.
+      #
+      # The step checks for the archive itself. On 2026-11-13 (#1235) the
+      # Windows ARM leg's script ended eight seconds in, silently and with
+      # status 0 - MSYS2 runs x86-64-emulated there - so this step passed
+      # with no archive and the upload at the end was what failed, an hour
+      # later and with a message about paths. A run that ends without the
+      # archive is run once more (the script starts from a clean folder);
+      # a second miss fails here, naming the script.
       - name: Package UltraCanvasStart on its own (Linux, Windows)
         if: runner.os != 'macOS'
-        run: scripts/package-ultracanvasstart.sh
+        run: |
+          have_archive() { ls dist-start/*.tar.xz dist-start/*.zip 2>/dev/null | grep -q .; }
+          scripts/package-ultracanvasstart.sh
+          if ! have_archive; then
+            echo "::warning::package-ultracanvasstart.sh ended without an archive in dist-start/ - running it once more"
+            scripts/package-ultracanvasstart.sh
+          fi
+          if ! have_archive; then
+            echo "::error::package-ultracanvasstart.sh ended without an archive in dist-start/ twice; its last line should read 'Package complete'"
+            exit 1
+          fi
 
       # What the package weighs, and where the weight is: the core library
       # (one shared copy of the framework and the modules folded into it), the
