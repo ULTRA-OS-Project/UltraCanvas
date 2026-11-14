@@ -1,0 +1,72 @@
+name: UltraMail NFC table
+
+# Apps/UltraMail/engine/UltraMailNfcEscapeTable.h - the code points UltraMail
+# writes as ~x escapes in a cache directory name so that every such name is in
+# Unicode NFC and no two folder names meet in one directory on macOS - is
+# generated from the Unicode Character Database that Python's unicodedata
+# carries (scripts/generate_ultramail_nfc_table.py). Two checks:
+#
+#   pinned  on a change to the table, the script or the code that reads the
+#           table: --check on the Python the table was made with, so a hand
+#           edit or a script change without a regenerated table fails, and
+#           nothing about the runner's own Python can.
+#   latest  once a week (and by hand): --check on the newest Python. It fails
+#           when that Python carries a newer Unicode version than the table -
+#           new combining marks or compositions the table does not know yet -
+#           saying to regenerate the table and move `PINNED_PYTHON` below.
+#           Scheduled, not on pull requests: a new Python must not turn every
+#           unrelated pull request red.
+
+# Trigger policy matches plugin-abi.yml: `pull_request` covers feature
+# branches, so listing them under `push` too would run this check twice.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'Apps/UltraMail/engine/UltraMailNfcEscapeTable.h'
+      - 'Apps/UltraMail/engine/UltraMailSyncEngine.cpp'
+      - 'scripts/generate_ultramail_nfc_table.py'
+      - '.github/workflows/ultramail-nfc-table.yml'
+  pull_request:
+    # `branches` filters the BASE branch; see locale-numbers.yml for why
+    # `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  schedule:
+    - cron: '23 5 * * 2'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  # The Python the table was made with: 3.13 carries Unicode 15.1. Move it
+  # together with a regenerated table.
+  PINNED_PYTHON: '3.13'
+
+jobs:
+  pinned:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-22.04   # the pool the build legs use (see platform-names.yml)
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PINNED_PYTHON }}
+      - name: The table is the one its Unicode version gives
+        run: python3 scripts/generate_ultramail_nfc_table.py --check
+
+  latest:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          check-latest: true
+      - name: The table knows the newest Unicode version
+        run: python3 scripts/generate_ultramail_nfc_table.py --check
