@@ -29,6 +29,10 @@
 // fills it from a ToolbarLayout - groups of command ids - and a command
 // registry, and RefreshCommandStates re-reads each command's enabled, checked
 // and label state into its button.
+// Version: 1.15.1 - a dragged item is placed by where the items are drawn, not by where they
+//                  are in the list: a move changes the list at once and the rectangles only at
+//                  the next layout, so two drag steps inside one frame put the item back where
+//                  it started and the drop reordered nothing (ItemAtLocal / ItemSlotAtLocal)
 // Version: 1.15.0 - the SetAppearance rule and the constructor tail of a bar that follows by default
 // Version: 1.14.0 - RefreshCommandStates: a folded group of check commands shows the
 //                   checked one, pressed
@@ -573,7 +577,23 @@ namespace UltraCanvas {
         std::string PointerFilterId() const;
         bool HandlePointerEvent(const UCEvent& event);
         bool HandleReorderEvent(const UCEvent& event);
-        int  ItemIndexAtLocal(const Point2Df& local) const;
+        // The two questions a point over the bar can be asked, kept apart
+        // because a reorder answers them differently until the layout that
+        // follows it has run: MoveItem puts the item at its new index in the
+        // list at once, while every item keeps the rectangle it was last
+        // drawn in. A hit test that walked the list and read the rectangles
+        // answered with the index of whichever item used to be there.
+        //
+        // ItemAtLocal: the item drawn under the point - what was clicked,
+        // right-clicked or pressed - whatever index it currently has.
+        std::shared_ptr<UltraCanvasUIElement> ItemAtLocal(const Point2Df& local) const;
+        // ItemSlotAtLocal: the place under the point, counting the items in
+        // the order they are drawn (0 = the first). What a drag wants: the
+        // place the item is being dropped into, which is where it will be in
+        // the list once the layout has caught up.
+        int  ItemSlotAtLocal(const Point2Df& local) const;
+        // Where an item sits in the list of items now, or -1.
+        int  IndexOfItem(const UltraCanvasUIElement* item) const;
         bool ScrollHintsActive() const;
         // -1: the hint at the start edge, +1: at the end edge, 0: neither.
         int  ScrollHintAtLocal(const Point2Df& local) const;

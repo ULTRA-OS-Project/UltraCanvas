@@ -440,6 +440,13 @@ private:
 
     // Folder-tree node id -> (accountId, folderName).
     std::map<std::string, std::pair<std::string, std::string>> folderNodeId_;
+    // The rows the user collapsed, by node id. Every rebuild of the tree
+    // expands it in full (the rows are new nodes with no state of their own),
+    // so without this a folder rescan - one follows every mail check - would
+    // reopen what they closed. An id stays in the set while its folder is
+    // missing from the tree: a folder renamed on the server and back is not
+    // the user opening it.
+    std::set<std::string> collapsedFolders_;
     // (accountId + "\n" + folder) -> the separator its name is read by, for
     // every folder in the tree (RebuildFolderTree).
     std::map<std::string, std::string> folderDelims_;

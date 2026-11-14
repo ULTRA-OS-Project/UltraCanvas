@@ -41,6 +41,7 @@
 
 #include <functional>
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <vector>
@@ -108,7 +109,13 @@ private:
     void ApplyLook();
     void Rebuild();
     void BuildTiles(const std::vector<AppGroup>& groups);
+    // Build the tree pane - the tree, the list beside it - once, and fill
+    // the tree's rows from `groups`. A rebuild that still shows the tree
+    // keeps the pane and calls FillTree alone, so the category chosen, the
+    // rows opened and the scroll position survive a keystroke in the filter
+    // box, a new list of applications or an application moved.
     void BuildTreeAndList(const std::vector<AppGroup>& groups);
+    void FillTree(const std::vector<AppGroup>& groups);
     void ShowListOf(const std::string& nodeId);
     void SetView(const std::string& view);
     void Launch(const UltraCanvas::UCDesktopEntry& entry);
@@ -170,6 +177,10 @@ private:
     std::map<std::string, std::vector<size_t>> nodeApps_;
     std::vector<size_t> listed_;
     std::string selectedNode_;
+    // The tree rows the user opened, by node id. The rows of a filled tree
+    // are new nodes, closed as they are created, so without this every
+    // rebuild closed the category the user was looking in.
+    std::set<std::string> expandedNodes_;
 };
 
 } // namespace UltraDesktop

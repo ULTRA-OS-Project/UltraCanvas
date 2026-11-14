@@ -660,6 +660,13 @@ namespace UltraCanvas {
 
     void UltraCanvasTreeView::ScrollTo(TreeNode *node) {
         if (!node) return;
+        // A row with no place on screen - under a collapsed parent, hidden by
+        // the application or by a filter - cannot be revealed by scrolling,
+        // and must not be answered with the top of the tree: GetNodeDisplayY
+        // reports 0 for a row its walk never reaches, so revealing a hidden
+        // row used to jump the view to the first one. ScrollToSelection(),
+        // which opens the parents first, is what reveals such a row.
+        if (FindShownNodeY(node) < 0) return;
         // Revealing a node positions the tree directly — it is normally the
         // answer to a keyboard move that has already happened.
         scrollAnim.Cancel();
@@ -1322,6 +1329,13 @@ namespace UltraCanvas {
 
         // y is element-local now; subtract local content offset + header band + add scroll
         int localContentY = GetBorderTopWidth() + GetPaddingTop() + GetHeaderHeight();
+        // Below the rows' viewport - in the padding or on the bottom border -
+        // there is no row, however many rows the scroll offset puts under that
+        // y further down the content. Render() stops the rows at the same
+        // edge, so a point past it is over nothing: it used to name the row
+        // that would have been drawn there, and a click on the bottom border
+        // selected it.
+        if (y >= localContentY + GetRowsViewHeight()) return nullptr;
         int relativeY = y - localContentY + scrollOffsetY;
         if (relativeY < 0) return nullptr;   // click landed in the fixed header band
         int nodeIndex = relativeY / rowHeight;
