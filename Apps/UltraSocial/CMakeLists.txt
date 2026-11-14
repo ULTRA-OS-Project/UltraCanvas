@@ -26,6 +26,7 @@ set(ULTRASOCIAL_ENGINE_SOURCES
     engine/UltraSocialConnector.cpp
     engine/UltraSocialPublisher.cpp
     engine/UltraSocialPaths.cpp
+    engine/UltraSocialSettings.cpp
     engine/connectors/UltraSocialMastodonConnector.cpp
     engine/connectors/UltraSocialBlueskyConnector.cpp
     engine/connectors/UltraSocialTelegramConnector.cpp
@@ -46,6 +47,20 @@ target_link_libraries(UltraSocialEngine PUBLIC UltraDatabase)
 # Account credentials live in UltraVault's device-key vault (Argon2id +
 # XChaCha20-Poly1305 via UltraCrypt), not in a format of UltraSocial's own.
 target_link_libraries(UltraSocialEngine PUBLIC UltraVault)
+
+# The app registrations a build ships as standard (UltraSocialSettings.h).
+# Empty by default: the user enters their own once, in Settings. A
+# distribution that registered UltraSocial with Reddit / X / LinkedIn passes
+# its ids here and nobody is asked.
+set(ULTRASOCIAL_REDDIT_CLIENT_ID "" CACHE STRING "Reddit app client id UltraSocial signs in with by default")
+set(ULTRASOCIAL_X_CLIENT_ID "" CACHE STRING "X app client id UltraSocial signs in with by default")
+set(ULTRASOCIAL_LINKEDIN_CLIENT_ID "" CACHE STRING "LinkedIn app client id UltraSocial signs in with by default")
+set(ULTRASOCIAL_LINKEDIN_CLIENT_SECRET "" CACHE STRING "LinkedIn app client secret UltraSocial signs in with by default")
+target_compile_definitions(UltraSocialEngine PRIVATE
+    ULTRASOCIAL_REDDIT_CLIENT_ID="${ULTRASOCIAL_REDDIT_CLIENT_ID}"
+    ULTRASOCIAL_X_CLIENT_ID="${ULTRASOCIAL_X_CLIENT_ID}"
+    ULTRASOCIAL_LINKEDIN_CLIENT_ID="${ULTRASOCIAL_LINKEDIN_CLIENT_ID}"
+    ULTRASOCIAL_LINKEDIN_CLIENT_SECRET="${ULTRASOCIAL_LINKEDIN_CLIENT_SECRET}")
 
 # UltraCanvasJSON lives in the UltraCanvas core library; UltraNet supplies
 # HTTP/OAuth2/sockets through its home, which is the shared core that
@@ -77,6 +92,7 @@ set(ULTRASOCIAL_UI_SOURCES
     ui/UltraSocialAccountWizard.cpp
     ui/UltraSocialComposeView.cpp
     ui/UltraSocialStartPage.cpp
+    ui/UltraSocialSettingsDialog.cpp
 )
 
 add_executable(UltraSocial main.cpp ${ULTRASOCIAL_UI_SOURCES})

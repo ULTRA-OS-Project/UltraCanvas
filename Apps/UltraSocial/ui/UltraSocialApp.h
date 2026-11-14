@@ -5,6 +5,8 @@
 // block on the network — the OAuth flow for as long as the user takes in
 // the browser); results marshal back to the UI through a queue drained by
 // a main-thread timer. Texter-style app-composition class.
+// Version: 0.3.0 - sign-in settings set as standard, edited in Settings
+//                  (the gear on the start page and in the toolbar)
 // Version: 0.2.0 - UltraMail's first-run start page; the compose view fills
 //                  and follows the window
 // Version: 0.1.0 (Phase 1)
@@ -14,6 +16,7 @@
 
 #include "UltraSocialAccountWizard.h"
 #include "UltraSocialComposeView.h"
+#include "UltraSocialSettingsDialog.h"
 #include "UltraSocialStartPage.h"
 
 #include "UltraSocialCredentialVault.h"
@@ -44,6 +47,10 @@ public:
 
 private:
     void HandleAddAccount();
+    void HandleOpenSettings();
+    // After a sign-in the form had to ask a client id for (Settings had
+    // none), keep it in Settings, so it is asked for once.
+    void RememberRegistration(const WizardInput& input);
     void HandleWizardSubmit(const WizardInput& input);
     void HandleAddMedia();
     void HandlePost();
@@ -74,6 +81,10 @@ private:
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     AccountWizard wizard_;
+    SettingsDialog settingsDialog_;
+    // The sign-in settings (standard values until the user changes them),
+    // loaded from the vault at start-up.
+    SignInSettings signInSettings_;
     StartPage startPage_;
     ComposeView composeView_;
 
