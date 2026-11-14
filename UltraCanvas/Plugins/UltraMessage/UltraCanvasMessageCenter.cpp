@@ -1,5 +1,6 @@
 // UltraCanvas/Plugins/UltraMessage/UltraCanvasMessageCenter.cpp
 // See include/Plugins/UltraMessage/UltraCanvasMessageCenter.h.
+// Version: 0.2.0 - FromTheme / ApplyTheme; the texts through Tr
 // Version: 0.1.1 - a NoJournal notice is not a row: the feed lists what the journal holds
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -7,6 +8,7 @@
 #include "Plugins/UltraMessage/UltraCanvasMessageCenter.h"
 #include "UltraMessage/UltraMessageUltraCanvas.h"
 #include "UltraCanvasApplication.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -19,7 +21,15 @@ namespace UltraCanvas {
 
 namespace {
 
-constexpr const char* kSectionNames[] = {"All", "Chats", "Mail", "System"};
+// The sections' names in the person's language, in MessageCenterSection order.
+std::string SectionName(int section) {
+    switch (section) {
+        case 1: return Tr("Chats");
+        case 2: return Tr("Mail");
+        case 3: return Tr("System");
+        default: return Tr("All");
+    }
+}
 
 std::string Lower(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(),
@@ -152,10 +162,11 @@ UltraCanvasMessageCenter::UltraCanvasMessageCenter(const std::string& identifier
     AddChild(status_);
     status_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     ApplyStyle();
+    ApplyThemeIfFollowing();
     RebuildSources();
     RebuildVisible();
     ShowDetail(nullptr);
-    SetStatus("Not connected");
+    SetStatus(Tr("Not connected"));
 }
 
 UltraCanvasMessageCenter::~UltraCanvasMessageCenter() {
@@ -169,7 +180,7 @@ void UltraCanvasMessageCenter::BuildHeader() {
     header_->SetPadding(4, 6);
 
     sections_ = CreateSegmentedControl(id + ".sections", 0, 0, 320, static_cast<float>(style_.controlHeight));
-    for (const char* name : kSectionNames) sections_->AddSegment(name);
+    for (int section = 0; section <= 3; ++section) sections_->AddSegment(SectionName(section));
     sections_->SetSelectedIndex(0);
     sections_->onSegmentSelected = [this](int index) {
         if (index >= 0 && index <= 3) SetSection(static_cast<MessageCenterSection>(index));
@@ -188,13 +199,13 @@ void UltraCanvasMessageCenter::BuildHeader() {
     header_->AddChild(stretch);
 
     search_ = CreateTextInput(id + ".search", 0, 0, 220, style_.controlHeight);
-    search_->SetPlaceholder("Search messages");
+    search_->SetPlaceholder(Tr("Search messages"));
     search_->onTextChanged = [this](const std::string& text) { SetSearchText(text); };
     FixedInRow(search_);
     header_->AddChild(search_);
 
     header_->AddChild(Spacer(id + ".gap3", 6));
-    refreshButton_ = CreateButton(id + ".refresh", 0, 0, 84, static_cast<float>(style_.controlHeight), "Refresh");
+    refreshButton_ = CreateButton(id + ".refresh", 0, 0, 84, static_cast<float>(style_.controlHeight), Tr("Refresh"));
     refreshButton_->onClick = [this]() { Refresh(); };
     FixedInRow(refreshButton_);
     header_->AddChild(refreshButton_);
@@ -210,7 +221,7 @@ void UltraCanvasMessageCenter::BuildFilters() {
                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     filters_->SetPadding(2, 6);
 
-    unreadChip_ = CreateFilterChip(id + ".chip.unread", 0, 0, "Unread", false);
+    unreadChip_ = CreateFilterChip(id + ".chip.unread", 0, 0, Tr("Unread"), false);
     unreadChip_->SetVariant(ChipVariant::Outlined);
     unreadChip_->onSelectedChanged = [this](bool selected) { SetUnreadOnly(selected); };
     FixedInRow(unreadChip_);
@@ -316,14 +327,14 @@ void UltraCanvasMessageCenter::BuildDetail() {
     detailButtons_->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
                           .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     const float bh = static_cast<float>(style_.controlHeight);
-    openButton_ = CreateButton(id + ".open", 0, 0, 80, bh, "Open");
+    openButton_ = CreateButton(id + ".open", 0, 0, 80, bh, Tr("Open"));
     openButton_->onClick = [this]() { if (!selectedId_.empty()) Open(selectedId_); };
-    readButton_ = CreateButton(id + ".read", 0, 0, 104, bh, "Mark unread");
+    readButton_ = CreateButton(id + ".read", 0, 0, 104, bh, Tr("Mark unread"));
     readButton_->onClick = [this]() {
         const MessageCenterEntry* entry = GetSelectedEntry();
         if (entry) MarkRead(entry->message.envelope.id, entry->unread);
     };
-    dismissButton_ = CreateButton(id + ".dismiss", 0, 0, 80, bh, "Dismiss");
+    dismissButton_ = CreateButton(id + ".dismiss", 0, 0, 80, bh, Tr("Dismiss"));
     dismissButton_->onClick = [this]() { if (!selectedId_.empty()) Dismiss(selectedId_); };
     for (auto& button : {openButton_, readButton_, dismissButton_}) {
         FixedInRow(button);
@@ -335,30 +346,64 @@ void UltraCanvasMessageCenter::BuildDetail() {
 }
 
 void UltraCanvasMessageCenter::SetStyle(const MessageCenterStyle& style) {
+    StyleSetByHand();
     style_ = style;
     ApplyStyle();
     RebuildVisible();
 }
 
+MessageCenterStyle MessageCenterStyle::FromTheme(const UltraCanvasTheme& theme, const MessageCenterStyle& base) {
+    MessageCenterStyle s = base;
+    const ThemeRoles& r = theme.roles;
+    s.background = r.panel;
+    s.sidebar = r.well;
+    s.rowSelected = r.accentSoft;
+    s.rowHover = r.hover;
+    s.textPrimary = r.ink;
+    s.textSecondary = r.inkMuted;
+    s.unreadMark = r.accent;
+    s.urgentMark = r.danger;
+    return s;
+}
+
+void UltraCanvasMessageCenter::ApplyTheme(const UltraCanvasTheme& theme) {
+    UltraCanvasContainer::ApplyTheme(theme);
+    style_ = MessageCenterStyle::FromTheme(theme, style_);
+    ApplyStyle();
+}
+
+// The parts coloured from the style are the element's: they stop following
+// the theme on their own (which would undo the style's colours in whatever
+// order the theme change reaches them), and take the theme's other parts -
+// scrollbars, borders, the +/- boxes - from here.
 void UltraCanvasMessageCenter::ApplyStyle() {
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
     if (list_) {
-        ListViewStyle st;
+        ListViewStyle st = ListViewStyle::FromTheme(theme, list_->GetStyle());
         st.backgroundColor = style_.background;
         st.showHeader = false;
         st.rowHeight = style_.rowHeight;
         st.showGridLines = false;
         st.selectionBackgroundColor = style_.rowSelected;
         st.hoverBackgroundColor = style_.rowHover;
-        list_->SetStyle(st);
+        list_->SetStyle(st);   // stops its own following
+        list_->SetBordersColor(theme.roles.lineStrong);
     }
     if (delegate_) delegate_->style = style_;
     if (sources_) {
+        sources_->SetFollowTheme(false);
+        sources_->ApplyTheme(theme);   // scrollbar, lines, the +/- boxes
         sources_->SetBackgroundColor(style_.sidebar);
         sources_->SetSelectionColor(style_.rowSelected);
+        // the chosen source sits on the soft selection: its text in ink,
+        // not the text for the full accent
+        sources_->SetSelectionTextColor(style_.textPrimary);
         sources_->SetHoverColor(style_.rowHover);
         sources_->SetTextColor(style_.textPrimary);
         sources_->SetFontSize(style_.fontSize);
     }
+    for (const auto& label : {detailTitle_, detailMeta_, detailBody_, status_})
+        if (label) label->SetFollowTheme(false);
     if (detailTitle_) { detailTitle_->SetFontSize(style_.titleFontSize); detailTitle_->SetTextColor(style_.textPrimary); }
     if (detailMeta_)  { detailMeta_->SetFontSize(style_.fontSize - 1); detailMeta_->SetTextColor(style_.textSecondary); }
     if (detailBody_)  { detailBody_->SetFontSize(style_.fontSize); detailBody_->SetTextColor(style_.textPrimary); }
@@ -396,7 +441,7 @@ bool UltraCanvasMessageCenter::Connect(const UltraMsgConnectOptions& options) {
     endpoint_ = UltraMsg_Connect(options, &error);
     if (endpoint_ == UltraMsgInvalidHandle) {
         Fail(error, "connect");
-        SetStatus("Not connected: " + error.message);
+        SetStatus(TrF("Not connected: {0}", error.message));
         return false;
     }
     ownsEndpoint_ = true;
@@ -404,9 +449,10 @@ bool UltraCanvasMessageCenter::Connect(const UltraMsgConnectOptions& options) {
     Refresh();
     UltraMsgBrokerInfo info;
     if (UltraMsg_GetBrokerInfo(endpoint_, info))
-        SetStatus(std::string("Connected to ") + info.busPath + (info.inProcess ? " (hosting the broker)" : ""));
+        SetStatus(info.inProcess ? TrF("Connected to {0} (hosting the broker)", info.busPath)
+                                 : TrF("Connected to {0}", info.busPath));
     else
-        SetStatus("Connected");
+        SetStatus(Tr("Connected"));
     return true;
 }
 
@@ -415,7 +461,7 @@ void UltraCanvasMessageCenter::Disconnect() {
     if (endpoint_ != UltraMsgInvalidHandle && ownsEndpoint_) UltraMsg_Disconnect(endpoint_);
     endpoint_ = UltraMsgInvalidHandle;
     ownsEndpoint_ = false;
-    SetStatus("Not connected");
+    SetStatus(Tr("Not connected"));
 }
 
 bool UltraCanvasMessageCenter::IsConnected() const {
@@ -752,7 +798,7 @@ void UltraCanvasMessageCenter::RebuildSources() {
     if (!sources_) return;
     suppressTreeCallback_ = true;
     sources_->SetRootNode(TreeNodeData("root", "Sources"));
-    TreeNodeData all("all", "All messages");
+    TreeNodeData all("all", Tr("All messages"));
     all.showCheckbox = false;
     sources_->AddNode("root", all);
 
@@ -771,7 +817,7 @@ void UltraCanvasMessageCenter::RebuildSources() {
         const auto& sources = perSection[section];
         int unread = 0;
         for (const auto& [key, s] : sources) unread += s.unread;
-        std::string label = kSectionNames[section];
+        std::string label = SectionName(section);
         if (unread > 0) label += " (" + std::to_string(unread) + ")";
         TreeNodeData node("sec:" + std::to_string(section), label);
         node.showCheckbox = false;
@@ -830,8 +876,8 @@ void UltraCanvasMessageCenter::ShowDetail(const MessageCenterEntry* entry) {
     for (auto& button : actionButtons_) detailButtons_->RemoveChild(button);
     actionButtons_.clear();
     if (!entry) {
-        detailTitle_->SetText("Nothing selected");
-        detailMeta_->SetText(entries_.empty() ? "The feed is empty." : "Select a message.");
+        detailTitle_->SetText(Tr("Nothing selected"));
+        detailMeta_->SetText(entries_.empty() ? Tr("The feed is empty.") : Tr("Select a message."));
         detailBody_->SetText("");
         openButton_->SetVisible(false);
         readButton_->SetVisible(false);
@@ -864,7 +910,7 @@ void UltraCanvasMessageCenter::ShowDetail(const MessageCenterEntry* entry) {
     detailBody_->SetText(entry->body);
     openButton_->SetVisible(true);
     readButton_->SetVisible(true);
-    readButton_->SetText(entry->unread ? "Mark read" : "Mark unread");
+    readButton_->SetText(entry->unread ? Tr("Mark read") : Tr("Mark unread"));
     dismissButton_->SetVisible(true);
     const float bh = static_cast<float>(style_.controlHeight);
     for (const auto& action : entry->actions) {

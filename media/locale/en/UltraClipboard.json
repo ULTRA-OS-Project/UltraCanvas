@@ -1,6 +1,7 @@
 {
   "@language": "en",
   "@inherited": [
+    "All",
     "All files",
     "Cancel",
     "Copied to the clipboard",
@@ -27,7 +28,6 @@
   ],
   "1 year": "1 year",
   "Aa  Case": "Aa  Case",
-  "All": "All",
   "Classic: the picture floating over the list": "Classic: the picture floating over the list",
   "Clear clipboard history": "Clear clipboard history",
   "Clear history…": "Clear history…",
