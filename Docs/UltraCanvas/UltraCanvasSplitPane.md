@@ -115,6 +115,22 @@ further when a handle or icons need the room. Only the `splitterThickness`
 band is painted; the rest of the strip stays transparent, so a thin line can
 carry a much larger handle.
 
+Under the theme policy a split pane follows the framework theme
+(`UltraCanvasTheme.md`): `SplitPaneStyle::FromTheme` gives the bar the
+window's ground, the strong line under the pointer and the accent while it
+is dragged. Under a **dark** theme it themes the handle and the icons on
+the bar too - the handle on the raised surface in the strong line, the
+hover fill under the pointer, the soft accent while dragged, its grip in
+muted ink; the icons in muted ink, ink when hovered, faint ink when
+disabled - so a split pane on a dark ground has no light square on its bar.
+A light theme keeps the handle's and icons' light greys (below).
+
+```cpp
+SplitPaneStyle themed = SplitPaneStyle::FromTheme(UltraCanvasTheme::Dark(), split->GetSplitPaneStyle());
+// themed.handle.color is the dark theme's raised surface, themed.icons.iconColor its muted ink
+split->SetSplitPaneStyle(themed);
+```
+
 ## Splitter handle
 
 ```cpp

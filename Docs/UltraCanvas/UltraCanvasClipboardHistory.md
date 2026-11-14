@@ -278,11 +278,16 @@ Enter copies, F2 edits, Delete deletes.
 
 `ClipboardRowStyle::FromTheme` puts the framework theme's roles
 (`UltraCanvasTheme.md`) over a base style's shape (heights, sizes, flags):
-the well for the list, ink and muted ink, text on the accent for the
-selected row, the panel for the header and a tile with hairlines, the
-actions in faint ink and ink when active with the hover fill, danger for
-delete, the accent for the pin, the selection and the hover fill; the
-"copied" green keeps its meaning. Without a base it starts from `Dark()` or
+the well for the list, ink and muted ink, the panel for the header and a
+tile with hairlines, the actions in faint ink and ink when active with the
+hover fill, danger for delete, the accent for the pin, the hover fill; the
+selected row in the accent with the text on the accent under a light theme,
+in the soft accent with ink under a dark one (the dark accent is a light
+blue that neither white nor dark text reads well on), the icons and the pin
+on a selected row in the selected title's colour; a link's tile
+(`linkTileBackground`, `linkTileBorder`, `linkGlyph`) the soft accent with
+the accent glyph under a dark theme, the base's light blue tile under a
+light one; the "copied" green keeps its meaning. Without a base it starts from `Dark()` or
 `Light()` by the theme's flag. The rows are drawn by a delegate, not an
 element, so the host hands the delegate the style from its own
 `ApplyTheme`.

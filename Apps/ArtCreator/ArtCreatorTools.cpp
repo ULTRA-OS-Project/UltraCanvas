@@ -222,7 +222,7 @@ std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, co
     box->SetFrameStyle(GroupBoxFrameStyle::Framed);
     box->SetTitleAlignment(GroupBoxTitleAlignment::Right);
     st.cornerRadius = 10.0f;
-    st.backgroundColor = Colors::SectionPage;
+    st.backgroundColor = GroupBoxVisualStyle::SectionPageColor();
     st.titleIndent = 10.0f;
     st.titleGap = 3.0f;
     st.titleVerticalPadding = 0.0f;

@@ -43,7 +43,7 @@ its text unless it is given a size.
 **Header:** `include/UltraCanvasLabel.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
-**Version:** 2.13.0 - the theme and the label's variant
+**Version:** 2.14.0 - a font size set by hand survives a theme change
 
 ## Features
 
@@ -141,6 +141,20 @@ note->SetFollowTheme(true);
 
 A theme names `label.muted`, `label.faint` and `label.heading` as element
 roles where its design differs from the shared ink roles.
+
+A size set by hand stays: `SetFontSize` (and `SetFont`, with its family) is
+remembered, and a theme change gives the label the variant's colour but
+keeps that size - a 10 pt caption does not jump to the body size when the
+look changes, and needs no `SetFollowTheme(false)` for it. `SetTextColor`
+does not stop the following: the next change gives the variant's colour
+again, so a label meant to stay muted says so with `SetThemeVariant`.
+
+```cpp
+auto caption = CreateLabel("caption", 0, 0, 240, 16, "Updated 2 min ago");
+caption->SetFontSize(10.0f);                     // kept through every theme change
+caption->SetThemeVariant(LabelVariant::Muted);   // the muted ink of whichever look
+caption->SetFollowTheme(true);
+```
 
 ## Methods
 

@@ -1,5 +1,8 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.14.0 - SetColors / SetTextColors with fewer than four colours derive the others for the look:
+//                  under a dark theme the disabled face and text sink toward the ground instead of
+//                  turning light grey; a font size or family set by hand survives ApplyTheme
 // Version: 2.13.1 - a width grown during a layout pass asks for one more pass at the next frame:
 //                  the parent read the given width before the button measured its text
 // Version: 2.13.0 - ButtonStyle::wrap: the text wrapped onto the lines its area holds, from the top
@@ -21,6 +24,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasImage.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
@@ -38,6 +42,17 @@ namespace UltraCanvas {
             const Point2Dd device = ctx->UserToDevice(Point2Dd(r.x, r.y));
             const Point2Dd snapped = ctx->DeviceToUser(Point2Dd(std::round(device.x), std::round(device.y)));
             return Rect2Df(static_cast<float>(snapped.x), static_cast<float>(snapped.y), r.width, r.height);
+        }
+
+        // The states SetColors / SetTextColors derive from fewer colours, for
+        // the look in force. A light look darkens a pressed face and lightens
+        // a disabled one (as always); under a dark theme lightening turns a
+        // dark face into a light grey block, so there a pressed face is a
+        // little lighter, a hovered one too, and a disabled face or text sinks
+        // halfway into the window's ground.
+        bool DarkLook() { return UltraCanvasTheme::Current().dark; }
+        Color SunkIntoGround(const Color& c, float amount) {
+            return c.Blend(UltraCanvasTheme::Current().roles.ground, amount).WithAlpha(c.a);
         }
     }
 
@@ -274,16 +289,18 @@ namespace UltraCanvas {
     void UltraCanvasButton::SetColors(const Color& normal, const Color& hover) {
         style.normalColor = normal;
         style.hoverColor = hover;
-        style.pressedColor = normal.Darken(0.1);
-        style.disabledColor = normal.Lighten(0.3);
+        const bool dark = DarkLook();
+        style.pressedColor = dark ? normal.Lighten(0.12f) : normal.Darken(0.1);
+        style.disabledColor = dark ? SunkIntoGround(normal, 0.5f) : normal.Lighten(0.3);
         RequestRedraw();
     }
 
     void UltraCanvasButton::SetColors(const Color& normal) {
         style.normalColor = normal;
-        style.hoverColor = normal.Darken(0.1);
-        style.pressedColor = normal.Darken(0.2);
-        style.disabledColor = normal.Lighten(0.3);
+        const bool dark = DarkLook();
+        style.hoverColor = dark ? normal.Lighten(0.08f) : normal.Darken(0.1);
+        style.pressedColor = dark ? normal.Lighten(0.16f) : normal.Darken(0.2);
+        style.disabledColor = dark ? SunkIntoGround(normal, 0.5f) : normal.Lighten(0.3);
         RequestRedraw();
     }
 
@@ -300,15 +317,22 @@ namespace UltraCanvas {
         style.normalTextColor = normal;
         style.hoverTextColor = hover;
         style.pressedTextColor = normal.Darken(0.1);
-        style.disabledTextColor = normal.Lighten(0.3);
+        style.disabledTextColor = DarkLook() ? SunkIntoGround(normal, 0.45f) : normal.Lighten(0.3);
         RequestRedraw();
     }
 
     void UltraCanvasButton::SetTextColors(const Color& normal) {
         style.normalTextColor = normal;
-        style.hoverTextColor = normal.Darken(0.1);
-        style.pressedTextColor = normal.Darken(0.2);
-        style.disabledTextColor = normal.Lighten(0.3);
+        if (DarkLook()) {
+            // light text on a dark face: brighter under the pointer, not dimmer
+            style.hoverTextColor = normal.Lighten(0.1f);
+            style.pressedTextColor = normal;
+            style.disabledTextColor = SunkIntoGround(normal, 0.45f);
+        } else {
+            style.hoverTextColor = normal.Darken(0.1);
+            style.pressedTextColor = normal.Darken(0.2);
+            style.disabledTextColor = normal.Lighten(0.3);
+        }
         RequestRedraw();
     }
 
@@ -321,6 +345,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::SetFont(const std::string& family, float size, FontWeight weight) {
+        if (!IsApplyingTheme()) fontFamilyByHand = fontSizeByHand = true;
         style.fontFamily = family;
         style.fontSize = size;
         style.fontWeight = weight;
@@ -329,6 +354,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::SetFontSize(float size) {
+        if (!IsApplyingTheme()) fontSizeByHand = true;
         style.fontSize = size;
         InvalidateLayout();
         RequestRedraw();
@@ -1339,6 +1365,22 @@ namespace UltraCanvas {
         return false;
     }
 
+
+    void UltraCanvasButton::ApplyTheme(const UltraCanvasTheme& theme) {
+        ButtonStyle themed = ButtonStyle::FromTheme(theme, GetStyle(), themeVariant);
+        // A size or family set by hand (SetFontSize, SetFont) stays: the
+        // colours follow the look, the type the application chose does not
+        // jump to the body size.
+        if (fontSizeByHand) {
+            themed.fontSize = style.fontSize;
+            themed.fontStyle.fontSize = style.fontStyle.fontSize;
+        }
+        if (fontFamilyByHand) {
+            themed.fontFamily = style.fontFamily;
+            themed.fontStyle.fontFamily = style.fontStyle.fontFamily;
+        }
+        SetStyle(themed);
+    }
 
     ButtonStyle ButtonStyle::FromTheme(const UltraCanvasTheme& theme, const ButtonStyle& base, ButtonVariant variant) {
         ButtonStyle s = base;

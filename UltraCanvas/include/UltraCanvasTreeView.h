@@ -1,5 +1,8 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.14.0 - 2026-11-14 - a font size set by hand (SetFontSize) survives ApplyTheme; under a dark
+//                   theme the selected row is the soft accent with ink on it (a blue icon no longer
+//                   sinks into a blue fill); "tree.selection" / "tree.on-selection" roles
 // Version: 1.13.1 - 2026-11-13 - the rows' viewport is the content box, not the whole element:
 //                   the last row can be scrolled fully into view, and a page of rows (Page Up /
 //                   Page Down) is the rows a page really shows
@@ -300,6 +303,7 @@ private:
     int iconSpacing;               // Space between icon and text
     int textPadding;               // Padding around text
     float fontSize = 12.0f;        // Row label font size
+    bool fontSizeByHand = false;   // set by SetFontSize: ApplyTheme keeps it
     bool showRootLines;            // Show lines for root level
     bool showExpandButtons;        // Show +/- buttons
     bool showFirstChildOnExpand;   // auto open first child on expand node
@@ -577,7 +581,13 @@ public:
     void SetIndentSize(int size) { indentSize = size; }
     int GetIndentSize() const { return indentSize; }
 
-    void SetFontSize(float size) { fontSize = size; }
+    // A size set here is the tree's own: ApplyTheme keeps it while the
+    // colours follow the theme.
+    void SetFontSize(float size) {
+        fontSize = size;
+        if (!IsApplyingTheme()) fontSizeByHand = true;
+        RequestRedraw();
+    }
     float GetFontSize() const { return fontSize; }
     
     void SetSelectionMode(TreeSelectionMode mode);
@@ -736,8 +746,12 @@ public:
     const TreeScrollToTopStyle& GetScrollToTopButtonStyle() const { return scrollToTopStyle; }
 
     // The theme's roles onto the tree's colours: the well behind the rows
-    // with the control border round it, ink for the labels at the body size,
-    // the accent for the selection, the hover fill, the control border for
+    // with the control border round it, ink for the labels at the body size
+    // (a size set with SetFontSize stays),
+    // the accent for the selection with the text on the accent (under a dark
+    // theme the soft accent with ink, so a coloured icon on the selected row
+    // keeps its contrast; "tree.selection" and "tree.on-selection" where a
+    // theme names them), the hover fill, the control border for
     // the lines, the raised surface for the +/- box with ink in it, muted
     // ink for a chevron, the well and the accent for the check flags, the
     // accent for a drop target and the loading bar; the floating buttons in

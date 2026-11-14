@@ -167,10 +167,17 @@ void SetTextColors(const Color& normal, const Color& hover,
                    const Color& pressed, const Color& disabled);
 void SetTextColors(const Color& normal, const Color& hover);
 void SetTextColors(const Color& normal);
+// The forms with fewer colours derive the other states for the look in force
+// (UltraCanvasTheme::Current()): under a light theme a pressed face is
+// darkened and a disabled face or text lightened; under a dark one a hovered
+// or pressed face is a little lighter and a disabled face or text sinks
+// halfway into the theme's ground - a quiet disabled button, not a light
+// grey block. The four-colour forms set every state as given.
 
 void SetBorder(float width, const Color& color);
 
-// Font configuration
+// Font configuration: a font set here is the button's own - a theme change
+// keeps the size (and SetFont's family) while the colours follow
 void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetFontSize(float size);
@@ -370,6 +377,16 @@ tool->SetStyle(shape);                              // the shape once
 tool->SetThemeVariant(ButtonVariant::Ghost);        // the colours from the theme
 tool->SetFollowTheme(true);
 tool->SetThemeVariant(ButtonVariant::Selected);     // the active tool, re-styled at once
+```
+
+A following button keeps a font size set with `SetFontSize` (and a
+family set with `SetFont`) through every theme change: the colours follow,
+the size the application chose does not jump to the body size.
+
+```cpp
+auto compact = std::make_shared<UltraCanvasButton>("compact", 0, 0, 90, 22, "Compact");
+compact->SetFontSize(10.0f);                        // kept when the look changes
+compact->SetFollowTheme(true);                      // the colours from the theme
 ```
 
 A theme names the variants' colours as element roles where its design
@@ -588,6 +605,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.4.0 | 2026-11-14 | `SetColors` / `SetTextColors` with fewer colours derive the other states for the look (a dark theme's disabled button sinks toward the ground); a font size set by hand survives a theme change (Style Configuration, The theme and the button's variant) |
 | 1.3.1 | 2026-11-11 | A container sized to its content grows with its buttons: one more layout pass, run at the next frame (A Fixed Width Is a Minimum) |
 | 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |
 | 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |

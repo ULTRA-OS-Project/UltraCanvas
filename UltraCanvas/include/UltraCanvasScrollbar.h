@@ -1,5 +1,7 @@
 // include/UltraCanvasScrollbar.h
 // Standalone scrollbar UI control with full interaction support
+// Version: 2.4.0 - FromTheme under a dark theme: a thumb mixed from the track toward the ink (visible, not
+//                  the bright control-border grey it was)
 // Version: 2.3.0 - ScrollbarStyle::FromTheme, ApplyTheme: a standalone bar follows the theme (an owner's
 //                  bar takes the owner's FromTheme); a SetStyle by hand stops the following
 // Version: 2.2.0
@@ -89,7 +91,10 @@ namespace UltraCanvas {
         // panel for the track with the hover fill and a hairline, the control
         // border for the thumb, faint and muted ink as it is hovered and
         // pressed, muted ink for the arrows on the panel; "scrollbar.track"
-        // and "scrollbar.thumb" where a theme names them
+        // and "scrollbar.thumb" where a theme names them. Under a dark theme
+        // the thumb is the track mixed a quarter of the way toward the ink
+        // (a third, then nearly half, hovered and pressed), its border the
+        // thumb itself: it shows without glaring
         static ScrollbarStyle FromTheme(const UltraCanvasTheme& theme, const ScrollbarStyle& base);
         static ScrollbarStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ScrollbarStyle()); }
         static ScrollbarStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }

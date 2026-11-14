@@ -1,5 +1,8 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.14.0 - the two- and one-colour SetColors / SetTextColors derive the other states for the look
+//                  (a dark theme's disabled button sinks toward the ground, not to light grey); a font
+//                  size or family set by hand (SetFontSize, SetFont) survives a theme change
 // Version: 2.13.1 - a width grown while a layout pass measured the button asks for one more pass,
 //                  so a row sized to its content takes the grown width too
 // Version: 2.13.0 - FromTheme sets the interface font at the body size; a SetStyle by hand stops the following;
@@ -176,6 +179,9 @@ namespace UltraCanvas {
         std::shared_ptr<UCImage> icon;
         ButtonStyle style;
         ButtonVariant themeVariant = ButtonVariant::Standard;
+        // A size / family set by SetFontSize or SetFont: ApplyTheme keeps them
+        bool fontSizeByHand = false;
+        bool fontFamilyByHand = false;
         ButtonIconPosition iconPosition = ButtonIconPosition::Left;
 
         // Icon properties
@@ -315,6 +321,12 @@ namespace UltraCanvas {
         std::shared_ptr<UCImage> GetIconImage() const { return icon; }
 
         // ===== STYLING METHODS =====
+        // The forms with fewer colours derive the others for the look in
+        // force (UltraCanvasTheme::Current()): under a light theme a pressed
+        // face is darkened and a disabled face or text lightened; under a
+        // dark one a hovered or pressed face is a little lighter and a
+        // disabled face or text sinks halfway into the theme's ground, so a
+        // disabled button reads as quieter, not as a light grey block.
         void SetColors(const Color& normal, const Color& hover,
                        const Color& pressed, const Color& disabled);
         void SetColors(const Color& normal, const Color& hover);
@@ -324,6 +336,9 @@ namespace UltraCanvas {
         void SetTextColors(const Color& normal, const Color& hover);
         void SetTextColors(const Color& normal);
         void SetBorder(float width, const Color& color);
+        // A font set here is the button's own: ApplyTheme keeps it (the
+        // family and the size with SetFont, the size with SetFontSize) while
+        // the colours follow the theme. SetStyle replaces all of it.
         void SetFont(const std::string& family, float size,
                      FontWeight weight = FontWeight::Normal);
         void SetFontSize(float size);
@@ -372,7 +387,9 @@ namespace UltraCanvas {
         void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
-        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(ButtonStyle::FromTheme(theme, GetStyle(), themeVariant)); }
+        // ButtonStyle::FromTheme for the button's variant; a font size or
+        // family set by hand (SetFontSize, SetFont) is kept, the colours follow
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         // The button's part in the window for the theme (Standard unless
         // set); a following button re-styles at once, so an active tool
         // switches between Ghost and Selected with this alone

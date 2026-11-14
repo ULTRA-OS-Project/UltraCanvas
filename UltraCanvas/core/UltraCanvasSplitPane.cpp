@@ -1,5 +1,6 @@
 // core/UltraCanvasSplitPane.cpp
 // Split pane container that divides content into N draggable panes along one axis
+// Version: 1.5.0 - FromTheme: the handle and the bar's icons under a dark theme
 // Version: 1.4.0 - SplitPaneStyle::FromTheme
 // Version: 1.3.0 - Arrange places the panes once (no block-layout pass first, which
 //                 reset the scroll position of everything in them on a resize)
@@ -1023,6 +1024,20 @@ namespace UltraCanvas {
         s.splitterColor = r.ground;
         s.splitterHoverColor = r.lineStrong;
         s.splitterActiveColor = r.accent;
+        if (theme.dark) {
+            // The handle's and the icons' defaults are light greys made for a
+            // light ground: on a dark one they are a bright square.
+            s.handle.color = r.raised;
+            s.handle.hoverColor = r.hover;
+            s.handle.activeColor = r.accentSoft;
+            if (base.handle.borderColor.a > 0) s.handle.borderColor = r.lineStrong;
+            s.handle.gripColor = r.inkMuted;
+            s.icons.iconColor = r.inkMuted;
+            s.icons.iconHoverColor = r.ink;
+            s.icons.iconDisabledColor = r.inkFaint;
+            s.icons.hoverBackgroundColor = r.ink.WithAlpha(30);
+            s.icons.pressedBackgroundColor = r.ink.WithAlpha(55);
+        }
         return s;
     }
 } // namespace UltraCanvas

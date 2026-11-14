@@ -57,8 +57,8 @@
 
 The `UltraCanvasTreeView` is a hierarchical tree view control component that provides a powerful and flexible way to display tree-structured data with support for icons, custom styling, selection modes, and interactive features. It is part of the UltraCanvas cross-platform UI framework.
 
-**Version:** 1.4.0 - `ApplyTheme` on both views, `TreeColumnStyle::FromTheme`: the trees follow the theme  
-**Last Modified:** 2026-11-10  
+**Version:** 1.5.0 - a hand-set font size survives a theme change; a dark theme selects with the soft accent and ink  
+**Last Modified:** 2026-11-14  
 **Files:** 
 - Header: `include/UltraCanvasTreeView.h` (columns variant: `include/UltraCanvasColumnsTreeView.h`)
 - Implementation: `core/UltraCanvasTreeView.cpp`, `core/UltraCanvasColumnsTreeView.cpp`
@@ -891,9 +891,9 @@ inherited from `UltraCanvasUIElement`.
 
 `SetSelectionTextColor` is the text of a selected row (every cell of it in
 Columns mode); `Colors::Transparent`, the default, keeps the row's own text
-colour, and a node or cell coloured by hand keeps its colour either way. The
-theme sets the colour that reads on the accent (`onAccent`), so a light
-accent on a dark window does not get white text.
+colour, and a node or cell coloured by hand keeps its colour either way. A
+light theme sets the colour that reads on the accent (`onAccent`); a dark
+one selects with the soft accent and ink on it (below).
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
 (default `#E0E0E0`). `SetExpandButtonColors` sets the fill, the 1 px border
@@ -911,15 +911,19 @@ the accent blue `Color(37, 99, 235)`; see [Rows still loading](#rows-still-loadi
 Under the theme policy a new tree follows the framework theme
 (`UltraCanvasTheme.md`) by itself: `ApplyTheme` puts the roles onto the
 colours above - the well behind the rows with the control border round it,
-ink for the labels at the body size, the accent for the selection, the hover
-fill, the control border for the lines, the raised surface for the `+`/`-`
+ink for the labels at the body size (a size set with `SetFontSize` stays),
+the accent for the selection with the text on the accent - under a dark
+theme the soft accent with ink, so a blue icon on the selected row does not
+sink into a blue fill (`tree.selection` and `tree.on-selection` where a
+theme names them) - the hover fill, the control border for the lines, the raised surface for the `+`/`-`
 box with ink in it, muted ink for a chevron, the well and the accent for the
 check flags, the accent for a drop target and the loading bar, the floating
 buttons in muted ink with the panel for their arrow, the scrollbar from
 `ScrollbarStyle::FromTheme`. The tree has no style struct, so a colour set
 by hand does not stop the following (the next theme change puts the theme's
 back): an application that colours the tree itself calls
-`SetFollowTheme(false)` first. `UltraCanvasColumnsTreeView` adds
+`SetFollowTheme(false)` first. A font size is the exception: one set with
+`SetFontSize` is the tree's own and stays through every theme change. `UltraCanvasColumnsTreeView` adds
 `TreeColumnStyle::FromTheme` - hairline separators, the panel for the header
 band with ink; a section header keeps its black bar unless the theme names
 `columns-tree.group-header` and `columns-tree.on-group-header` - and a

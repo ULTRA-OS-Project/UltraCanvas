@@ -6,6 +6,7 @@
 // RecalculatePadding() so the inherited container lays the children out
 // inside the visible frame, below the caption.
 // Version: 1.3.0 - the close button (SetCloseButton / onCloseClicked)
+// Version: 1.4.0 - SectionCard(theme) / SectionPageColor(theme): dark under a dark theme
 // Version: 1.2.0 - the SectionCard preset (Colors::SectionCard*)
 // Version: 1.1.1 - the help tooltip is anchored at the info icon's top edge (tooltips
 //                 now sit above the spot passed)
@@ -48,14 +49,30 @@ namespace UltraCanvas {
     }
 
     GroupBoxVisualStyle GroupBoxVisualStyle::SectionCard() {
+        return SectionCard(UltraCanvasTheme::Current());
+    }
+
+    Color GroupBoxVisualStyle::SectionPageColor() {
+        return SectionPageColor(UltraCanvasTheme::Current());
+    }
+
+    Color GroupBoxVisualStyle::SectionPageColor(const UltraCanvasTheme& theme) {
+        return theme.dark ? theme.roles.ground : Colors::SectionPage;
+    }
+
+    GroupBoxVisualStyle GroupBoxVisualStyle::SectionCard(const UltraCanvasTheme& theme) {
         GroupBoxVisualStyle s;
-        s.backgroundColor       = Colors::SectionCardBackground;
-        s.borderColor           = Colors::SectionCardBorder;
+        // the light card's colours are the section-card ones; a dark theme's
+        // roles otherwise, so the card is not a white block on a dark page
+        const ThemeRoles& r = theme.roles;
+        s.backgroundColor       = theme.dark ? r.panel : Colors::SectionCardBackground;
+        s.borderColor           = theme.dark ? r.line : Colors::SectionCardBorder;
         s.borderWidth           = 1.0f;
         s.cornerRadius          = 8.0f;
         s.titleFont.fontSize    = 11.0f;
         s.titleFont.fontWeight  = FontWeight::Bold;
-        s.titleColor            = Colors::SectionCardCaption;
+        s.titleColor            = theme.dark ? r.inkMuted : Colors::SectionCardCaption;
+        s.disabledTitleColor    = theme.dark ? r.inkFaint : s.disabledTitleColor;
         s.titleIndent           = 8.0f;
         s.titleVerticalPadding  = 4.0f;
         s.headerBackgroundColor = Colors::Transparent;

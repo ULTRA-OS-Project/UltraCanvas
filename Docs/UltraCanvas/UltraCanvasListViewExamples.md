@@ -43,7 +43,7 @@
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.2.0 - `ListViewStyle::FromTheme`, `ApplyTheme`: the list follows the theme, its default delegate with it
+**Version:** 1.3.0 - the theme reaches the delegate (`IItemDelegate::ApplyTheme`), also one set after the list was made
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -212,10 +212,21 @@ the rows, the panel for the header with ink and hairline grid lines, the
 panel for alternate rows, the accent for the selection, the hover fill, the
 header at the caption size, the scrollbars from `ScrollbarStyle::FromTheme`.
 Under the theme policy a new list follows the theme by itself
-(`ApplyTheme`), and when its delegate is the `UltraCanvasDefaultListDelegate`
-that delegate takes ink, text on the accent for a selected row and the body
-font with it; a `SetStyle` by hand stops the following, `SetFollowTheme(true)`
-after it keeps both.
+(`ApplyTheme`) and hands the theme on to its delegate
+(`IItemDelegate::ApplyTheme`, a no-op unless a delegate overrides it) - at
+`SetDelegate`, so a delegate set after the list was made takes the theme it
+already has, and on every change after. The `UltraCanvasDefaultListDelegate`
+takes ink, text on the accent for a selected row and the body size there,
+each unless the application set it itself (`SetTextColor`,
+`SetSelectedTextColor`, `SetFontSize`), which then stays through every
+change. A `SetStyle` by hand stops the list's following,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto cells = std::make_shared<UltraCanvasDefaultListDelegate>();
+cells->SetFontSize(11.0f);              // the application's: kept through theme changes
+list->SetDelegate(cells);               // takes the theme's ink and selected text at once
+```
 
 ```cpp
 auto list = std::make_shared<UltraCanvasListView>("list", 300, 200);
