@@ -13,6 +13,7 @@
 //
 // The window's Finance page and `ultrastoreadmin finance` are both views of
 // BuildFinanceReport, so they never disagree.
+// Version: 0.2.0 - a period as a date range (from..to), the weeks for the dashboard, DaysAgoIso
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -55,11 +56,15 @@ Result<PayoutRecord> RecordPayout(AdminDatabase& db, const std::string& affiliat
 
 // ----- the report -----
 
-// A period is "" (all time), "YYYY" or "YYYY-MM"; a record is in it when its
-// date starts with it.
+// A period is "" (all time), "YYYY" or "YYYY-MM" - a record is in it when
+// its date starts with it - or a range "YYYY-MM-DD..YYYY-MM-DD", the first
+// day included and the last excluded, which the dashboard uses for "the
+// last 30 days".
 bool InPeriod(const std::string& isoDate, const std::string& period);
 std::string MonthOf(const std::string& isoDate);          // "2026-10"
-std::string PeriodName(const std::string& period);        // "October 2026", "2026", "All time"
+std::string PeriodName(const std::string& period);        // "October 2026", "2026", "All time", "2026-10-06 to 2026-11-05"
+std::string DaysAgoIso(int days, const std::string& todayIso = {});   // today (UTC) minus days, "YYYY-MM-DD"; today when given, for tests
+std::string WeekStartOf(const std::string& isoDate);      // the Monday of that date's week, "YYYY-MM-DD"
 
 struct FinanceTotals {
     size_t sales = 0, reversals = 0;
@@ -76,6 +81,11 @@ struct AppFinance {
 
 struct MonthNet {
     std::string month;        // "2026-10"
+    FinanceTotals totals;
+};
+
+struct WeekNet {
+    std::string weekStart;    // the Monday, "2026-10-05"
     FinanceTotals totals;
 };
 
@@ -102,6 +112,10 @@ Result<FinanceReport> BuildFinanceReport(const AdminDatabase& db, const std::str
 
 // The months that have a sale or a reversal, newest first ("2026-10").
 Result<std::vector<std::string>> FinancePeriods(const AdminDatabase& db);
+
+// The last `weeks` weeks up to and including the week of `untilIso` (today
+// when empty), oldest first, each with its totals: the dashboard's chart.
+Result<std::vector<WeekNet>> WeeklyFinance(const AdminDatabase& db, int weeks = 12, const std::string& untilIso = {});
 
 // The report as CSV: the statement by currency, the apps, the partners, the
 // months. Decimal points, commas between fields, one header line per block.

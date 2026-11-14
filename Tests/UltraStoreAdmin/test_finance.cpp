@@ -3,6 +3,7 @@
 // proportion, the payment service's reversals go into the ledger once, a
 // payout lowers what is owed, and the report adds it all up by period, app,
 // month and partner - and writes it as CSV.
+// Version: 0.2.0 - a range period, the weeks, the dates
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "admin_helpers.h"
@@ -200,5 +201,52 @@ TEST(the_report_adds_up_by_period_app_month_and_partner) {
     REQUIRE(csv.find("org.ultraos.hello,EUR,2,53.82,0.00,5.98,47.84\n") != std::string::npos);
     REQUIRE(csv.find("aff-anna,Anna,EUR,4.78,9.56,2.39,4.00,3.17\n") != std::string::npos);
     REQUIRE(csv.find("2026-10,EUR,3,63.72,9.90,5.98,47.84\n") != std::string::npos);
+    RemoveDir(dir);
+}
+
+TEST(a_range_period_the_weeks_and_the_dates) {
+    REQUIRE_EQ(DaysAgoIso(30, "2026-11-05"), std::string("2026-10-06"));
+    REQUIRE_EQ(DaysAgoIso(0, "2026-03-01"), std::string("2026-03-01"));
+    REQUIRE_EQ(DaysAgoIso(1, "2026-03-01"), std::string("2026-02-28"));
+    REQUIRE_EQ(DaysAgoIso(1, "2024-03-01"), std::string("2024-02-29"));
+    REQUIRE(DaysAgoIso(1, "nonsense").empty());
+    REQUIRE_EQ(WeekStartOf("2026-11-05T12:00:00Z"), std::string("2026-11-02"));   // a Thursday: its Monday
+    REQUIRE_EQ(WeekStartOf("2026-11-02"), std::string("2026-11-02"));             // a Monday stays
+    REQUIRE_EQ(WeekStartOf("2026-11-01"), std::string("2026-10-26"));             // a Sunday: the Monday before
+    REQUIRE_EQ(WeekStartOf("1970-01-01"), std::string("1969-12-29"));             // day zero was a Thursday
+    REQUIRE(InPeriod("2026-10-06T00:00:00Z", "2026-10-06..2026-11-05"));
+    REQUIRE(InPeriod("2026-11-04T23:59:59Z", "2026-10-06..2026-11-05"));
+    REQUIRE(!InPeriod("2026-11-05T00:00:00Z", "2026-10-06..2026-11-05"));
+    REQUIRE(!InPeriod("2026-10-05T23:00:00Z", "2026-10-06..2026-11-05"));
+    REQUIRE(InPeriod("2026-10-05T23:00:00Z", "..2026-11-05"));
+    REQUIRE_EQ(PeriodName("2026-10-06..2026-11-05"), std::string("2026-10-06 to 2026-11-05"));
+
+    const std::string dir = TempDir("finance-weeks");
+    AdminDatabase db;
+    REQUIRE(db.Open(Join(dir, "admin.sqlite")).Ok());
+    REQUIRE(RecordSale(db, "", "org.ultraos.hello", "10.00", "EUR", "2026-10-26T12:00:00Z", "w1").Ok());   // Monday, week of 26 Oct
+    REQUIRE(RecordSale(db, "", "org.ultraos.hello", "20.00", "EUR", "2026-11-01T12:00:00Z", "w2").Ok());   // Sunday, the same week
+    REQUIRE(RecordSale(db, "", "org.ultraos.hello", "5.00", "EUR", "2026-11-03T12:00:00Z", "w3").Ok());    // the week of 2 Nov
+    REQUIRE(RecordReversal(db, "refund", "w1", "", "10.00", "EUR", "2026-11-04T09:00:00Z", "w1/r").Ok());
+    REQUIRE(RecordSale(db, "", "org.ultraos.hello", "99.00", "EUR", "2026-08-01T12:00:00Z", "old").Ok());  // before the window
+    const auto weeks = WeeklyFinance(db, 4, "2026-11-05");
+    REQUIRE(weeks.Ok());
+    REQUIRE_EQ(weeks.Value().size(), size_t(4));
+    REQUIRE_EQ(weeks.Value()[0].weekStart, std::string("2026-10-12"));
+    REQUIRE_EQ(weeks.Value()[3].weekStart, std::string("2026-11-02"));
+    REQUIRE_EQ(MoneyOf(weeks.Value()[2].totals.paid, "EUR"), std::string("30.00"));
+    REQUIRE_EQ(weeks.Value()[2].totals.sales, size_t(2));
+    REQUIRE_EQ(MoneyOf(weeks.Value()[3].totals.paid, "EUR"), std::string("5.00"));
+    REQUIRE_EQ(MoneyOf(weeks.Value()[3].totals.refunded, "EUR"), std::string("10.00"));
+    REQUIRE_EQ(MoneyOf(weeks.Value()[3].totals.net, "EUR"), std::string("-5.00"));
+    REQUIRE_EQ(MoneyOf(weeks.Value()[0].totals.paid, "EUR"), std::string("0.00"));
+    const auto last30 = BuildFinanceReport(db, "2026-10-06..2026-11-05");
+    REQUIRE(last30.Ok());
+    REQUIRE_EQ(last30.Value().totals.sales, size_t(3));
+    REQUIRE_EQ(MoneyOf(last30.Value().totals.paid, "EUR"), std::string("35.00"));
+    REQUIRE(!WeeklyFinance(db, 4, "nonsense").Ok());
+    const auto updates = db.ComponentUpdates();
+    REQUIRE(updates.Ok());
+    REQUIRE(updates.Value().empty());
     RemoveDir(dir);
 }
