@@ -35,9 +35,11 @@ and the flags), and §4.3 of
 1. **Runtime plus side module, not one page per site.** The web store is
    an UltraCanvas app built with `ultracanvas_wasm_app()`, served next to
    the runtime the site hosts (`site/runtime/`, content-hashed file names,
-   `Cache-Control: public, max-age=31536000, immutable`, Brotli). A visitor
-   with the extension downloads the store's own code only; one without pays
-   the runtime once for the whole site. The alternative, one page with the
+   `Cache-Control: public, max-age=31536000, immutable`, Brotli). For the
+   first release the site serves the runtime and no extension is published
+   (decided 2026-11-14); a visitor pays the runtime once per release for
+   the whole site, and the loader's extension lookup stays in place for
+   later. The alternative, one page with the
    framework linked in, is the fallback if the runtime's prototype limits
    (below) block the build; it is the same C++ either way.
 2. **Single-threaded.** Dynamic linking needs it, and so does a static host
@@ -190,10 +192,13 @@ never resized in the browser or in the store's code.
   that cannot set headers is served the single-threaded build, which is
   the plan anyway; Brotli can be pre-compressed files if the host serves
   `.br`.)
-- Does the operator want the extension path at all, or is the site-served
-  runtime enough for the first release?
 
-Answered on 2026-11-14: the catalog carries the picture variants
+Answered on 2026-11-14: **the first release serves the runtime from the
+site** - no browser extension is published or asked for; the loader keeps
+its extension lookup and falls back to the site's copy, so an extension
+can come later without a change to the store. The runtime file carries its
+content hash in its name and a one-year cache, so a visitor pays it once
+per framework release. Further, the catalog carries the picture variants
 explicitly (the shape above); the signature is verified in the browser
 because UltraCrypt builds under Emscripten; and **the catalog's URL is the
 site's origin** - the site is served from the catalog base
