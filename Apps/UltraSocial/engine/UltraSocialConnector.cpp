@@ -5,6 +5,7 @@
 #include "UltraSocialConnector.h"
 
 #include "connectors/UltraSocialBlueskyConnector.h"
+#include "connectors/UltraSocialDiscordConnector.h"
 #include "connectors/UltraSocialFacebookConnector.h"
 #include "connectors/UltraSocialLinkedInConnector.h"
 #include "connectors/UltraSocialMastodonConnector.h"
@@ -30,6 +31,8 @@ std::shared_ptr<ISocialConnector> CreateConnector(SocialNetwork network) {
             return std::make_shared<LinkedInConnector>();
         case SocialNetwork::Facebook:
             return std::make_shared<FacebookConnector>();
+        case SocialNetwork::Discord:
+            return std::make_shared<DiscordConnector>();
     }
     return nullptr;
 }

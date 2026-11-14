@@ -21,7 +21,8 @@ enum class SocialNetwork {
     Reddit,
     X,
     LinkedIn,
-    Facebook        // Facebook Pages (personal profiles have no posting API)
+    Facebook,       // Facebook Pages (personal profiles have no posting API)
+    Discord         // a channel, through its webhook (no posting as a user)
 };
 
 std::string   ToString(SocialNetwork network);

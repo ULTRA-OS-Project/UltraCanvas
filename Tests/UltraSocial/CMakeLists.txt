@@ -14,6 +14,7 @@ set(ULTRASOCIAL_TEST_SOURCES
     test_outbox.cpp
     test_paths.cpp
     test_settings.cpp
+    test_discord_connector.cpp
 )
 
 add_executable(UltraSocialEngineTests ${ULTRASOCIAL_TEST_SOURCES})

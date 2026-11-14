@@ -16,6 +16,7 @@ std::string ToString(SocialNetwork network) {
         case SocialNetwork::X:        return "x";
         case SocialNetwork::LinkedIn: return "linkedin";
         case SocialNetwork::Facebook: return "facebook";
+        case SocialNetwork::Discord:  return "discord";
     }
     return "mastodon";
 }
@@ -27,6 +28,7 @@ SocialNetwork SocialNetworkFromString(const std::string& s) {
     if (s == "x")        return SocialNetwork::X;
     if (s == "linkedin") return SocialNetwork::LinkedIn;
     if (s == "facebook") return SocialNetwork::Facebook;
+    if (s == "discord")  return SocialNetwork::Discord;
     return SocialNetwork::Mastodon;
 }
 
