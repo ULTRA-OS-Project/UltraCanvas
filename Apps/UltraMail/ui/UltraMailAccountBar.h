@@ -12,6 +12,7 @@
 // card shows all of it again (onSelectAccount). While the list is filtered, a
 // second row holds a card of the same look under the account's card, naming
 // the filter, with a "Show all emails" button (onShowAll).
+// Version: 0.7.0 - StyleTile: a tile's face follows a change of the look
 // Version: 0.6.0 - the counters filter the list (onFilterAccount); ShowFilter: the
 //                  filter's card in a row under the account's, with "Show all
 //                  emails" (onShowAll); the summary card is a click target too
@@ -20,7 +21,7 @@
 //                  (a rebuild from a tile's own click destroyed that tile, and
 //                  the account id its handler was holding, mid-click)
 // Version: 0.3.0
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -100,6 +101,7 @@ private:
                     const std::string& selectedAccountId);
 
     void BuildFilterRow();
+    static void StyleTile(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& tile, bool selected);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeCounter(
         const std::string& accountId, MessageFilterKind kind, int count,
         const std::string& caption, float height);

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.15.0 - the formatted body is a white page in either look (Theme::StyleMessagePaper);
+//                   the attachments column follows a change of the look
 // Version: 0.14.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.13.0 - Send, the attach buttons and Cancel on top; every
 //                   formatting tool in one row; Font and Size show the text
@@ -26,7 +28,7 @@
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -155,7 +157,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
         Theme::StyleInput(input);
@@ -249,7 +251,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine("cSecureLbl", "Security", Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
         secureMethod_ = CreateSegmentedControl("cSecure", 0, 0, 90.0f * (methods.size() + 1),
@@ -367,10 +369,9 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     body_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     rich_ = CreateRichTextEdit("cRich", 0, 0, 0, 0);
-    RichTextEditStyle richStyle = rich_->GetStyle();
-    richStyle.baseFont.fontSize = Theme::SizeBody() + 1.0f;   // as the plain body
-    richStyle.drawBorder = false;
-    rich_->SetStyle(richStyle);
+    // The formatted body is the message's white page in either look (as the
+    // reading pane shows it), at the plain body's size, framed by the card.
+    Theme::StyleMessagePaper<RichTextEditStyle>(rich_, Theme::SizeBody() + 1.0f, /*drawBorder=*/false);
     // A mail names fonts the sender has (Calibri, Arial ...) and draws fine
     // in a substitute: no notice over the text being written.
     rich_->SetShowFontNotice(false);
@@ -418,16 +419,22 @@ void ComposeView::PlaceAttachments() {
     attachWrap_->SetContainerStyle(style);
     if (attachmentsRight_) {
         // A tinted column, set off from the text by a line.
-        attachWrap_->SetBackgroundColor(Theme::Sidebar());
-        attachWrap_->SetBorderLeft(1.0f, Theme::Divider());
+        Theme::SetFill(attachWrap_, Theme::Sidebar);
+        Theme::Follow(attachWrap_, "frame", [](UltraCanvasContainer& w) {
+            w.SetBorderLeft(1.0f, Theme::Divider());
+        });
         attachWrap_->size.width  = CSSLayout::Dimension::Px(AttachmentStrip::ColumnWidth() + 1.0f);
         attachWrap_->size.height = CSSLayout::Dimension::Auto();
         attachWrap_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         bodyRow_->AddChild(attachWrap_);
     } else {
-        attachWrap_->SetBackgroundColor(Colors::Transparent);
-        attachWrap_->SetBorderLeft(0.0f, Colors::Transparent);
+        Theme::Follow(attachWrap_, "fill", [](UltraCanvasContainer& w) {
+            w.SetBackgroundColor(Colors::Transparent);
+        });
+        Theme::Follow(attachWrap_, "frame", [](UltraCanvasContainer& w) {
+            w.SetBorderLeft(0.0f, Colors::Transparent);
+        });
         attachWrap_->size.width  = CSSLayout::Dimension::Auto();
         attachWrap_->size.height = CSSLayout::Dimension::Px(kAttachRowHeight);
         attachWrap_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)

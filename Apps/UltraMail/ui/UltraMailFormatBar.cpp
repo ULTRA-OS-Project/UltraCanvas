@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailFormatBar.cpp
+// Version: 0.7.0 - the bar's face follows a change of the look
 // Version: 0.6.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.5.0 - the Font list shows each font in itself (DropdownItem::fontFamily)
 // Version: 0.4.0 - Options::singleRow (every tool in one row); Font and Size
@@ -140,7 +141,7 @@ FormatBar FormatBar::Build(const Options& options) {
         bar.root->SetContainerStyle(style);
     }
     bar.root->SetPadding(kStripPadding);
-    bar.root->SetBackgroundColor(Theme::Sidebar());
+    Theme::SetFill(bar.root, Theme::Sidebar);
     CapToParentWidth(*bar.root);
 
     // Every tool goes on the list SetToolsVisible hides; the host's own
