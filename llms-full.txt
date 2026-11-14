@@ -82525,7 +82525,11 @@ changed. A plain click still clicks. Spacers and separators are not dragged
 (they take no events). The toolbar watches the window's pointer events for
 this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
-it.
+it. The place the item is dropped into is counted in the order the
+items are *drawn*, not the order they are in: a move reorders the bar's
+children at once, while their rectangles follow only at the next layout, and
+reading the pointer against the two mixed together would send the item
+straight back where it came from.
 
 With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
 surface — the padding and the gaps between its items — never by an item: a
@@ -108678,6 +108682,18 @@ passwords and tampering, the unlock back-off, CSV in and out (Chrome and
 Bitwarden layouts included) and the generator.
 
 ==============================================================================
+FILE: Docs/UltraPassword/changelog.d/tree-keeps-the-view.md
+==============================================================================
+
+- **The vault tree no longer jumps back to its first row when it is rebuilt.**
+  Every change - a rename, a move, an entry added or deleted, a group opened -
+  lists the tree again from the vault, and the view fell back to the top each
+  time, however far down the user had scrolled. The rebuild now holds the view
+  (the framework's `TreeRebuildScope`): the scroll position comes back as it
+  was and the selected row keeps its place on screen. The rows that were open
+  are restored as before.
+
+==============================================================================
 FILE: Docs/UltraClipboard/README.md
 ==============================================================================
 
@@ -108841,16 +108857,6 @@ encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
 
 ==============================================================================
-FILE: Docs/UltraClipboard/changelog.d/dark-look.md
-==============================================================================
-
-- **Dark look**: the window's bars, list, rows, icon buttons, filter,
-  status line, Undo and preview frame take the system look (the theme's
-  roles) instead of fixed light colours, and follow a change of look while
-  the window is open; the edit and settings dialogs' text-area borders and
-  the encryption note do the same.
-
-==============================================================================
 FILE: Docs/UltraNotifications/README.md
 ==============================================================================
 
@@ -108924,14 +108930,6 @@ UltraNotifications --version | --help
 `BUILD_ULTRANOTIFICATIONS` (on by default) builds it wherever the
 `UltraMessageCenter` library is built. It is packaged with the other
 applications on Linux, Windows and macOS.
-
-==============================================================================
-FILE: Docs/UltraNotifications/changelog.d/dark-look.md
-==============================================================================
-
-- **Dark look**: the window, the Quit footer and the message centre (list,
-  sources, detail, the unread and urgent marks) take the system look instead
-  of fixed light colours, and follow a change of look while it runs.
 
 ==============================================================================
 FILE: Docs/UltraSnip/README.md
@@ -109070,20 +109068,6 @@ change is kept in the settings folder and shows at the next start.
 | `main.cpp` | The command line and the single instance |
 
 ==============================================================================
-FILE: Docs/UltraSnip/changelog.d/dark-look.md
-==============================================================================
-
-- **UltraSnip follows the light or dark look.** The bar, the ground under the
-  snip, the rules and the status line were fixed light colours; they are now
-  the theme's, so a dark desktop gives a dark bar, and a change of look while
-  UltraSnip runs is taken at once. An error in the status line uses the
-  theme's warning red.
-- **The settings window is dark too.** Its buttons were white with a dark
-  icon in either look; they now use the theme's colours, and the window is
-  built again in the new look, on the page it showed, when the look changes
-  while it is open.
-
-==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md
 ==============================================================================
 
@@ -109176,18 +109160,6 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/section-page-dark.md
-==============================================================================
-
-- **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
-
-==============================================================================
-FILE: Docs/ArtCreator/changelog.d/section-page-dark.md
-==============================================================================
-
-- **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md
@@ -109429,6 +109401,18 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
 | A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB, it does not speak IPP, or a firewall blocks port 631. |
+
+==============================================================================
+FILE: Docs/DeviceExplorer/changelog.d/tree-keeps-the-view.md
+==============================================================================
+
+- **The device tree no longer scrolls back to the top while you read it.** The
+  scan timer rebuilds the tree row by row, so the device being read scrolled
+  out from under the pointer every time the inventory came back - the more
+  devices, the worse. The rebuild now holds the view (the framework's
+  `TreeRebuildScope`): the scroll position and the selected row's place on
+  screen survive it, and a device that has gone is still replaced by the
+  computer row, scrolled into view.
 
 ==============================================================================
 FILE: Docs/UltraDesktop/Manual.md
@@ -110797,123 +110781,20 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/battery-icon-states.md
+FILE: Docs/UltraDesktop/changelog.d/apps-window-keeps-the-tree.md
 ==============================================================================
 
-- **The battery icon shows the charge.** Its fill is as long as the battery
-  is full, to the pixel: 10 pixels at the usual icon size (8 on a short
-  screen), one per 10 %, complete only at 100 % and at least one while any
-  charge is left. The level is read every 2 seconds. The icon is drawn on
-  its own pixel grid, so the fill stands 1 pixel clear of the outline and no
-  edge is blurred. A full battery is green inside the bar's white (in the
-  light theme, dark) outline; while charging the battery is green with a
-  white bolt over it; below 25 % and not charging it is red (the badge's red
-  also starts at 25 % now, not 15 %). Without a battery the bar's usual
-  glyph stays.
-- **"100" fits on the battery's badge.** The badge, and the keyboard
-  layout's ("DEU"), grows inward from the corner instead of running off the
-  right edge of the screen (UltraCanvasBadge::SetGrowInward, framework).
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/battery-percent-option.md
-==============================================================================
-
-- **The battery's percentage badge can be switched off.** *Show the
-  percentage* on the battery icon's new right-click menu (beside *Battery
-  details...*) or UOS-Settings > Desktop > Battery; kept as
-  `batteryPercent` in `desktop.json`, on by default. Without it the icon's
-  fill shows the level and the tooltip the percentage. A change in
-  UOS-Settings shows within a second.
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/dark-windows.md
-==============================================================================
-
-- **The desktop's own windows follow the light or dark look.** The
-  Applications window (its category headings, the count, the list beside the
-  tree), the Task Manager (the column header, the rows, the display and
-  desktop boxes, the state icons and words), the Sticker board (its bar and
-  title) and the clock panel (the clock face, its hands and ticks) take
-  their colours from the look in force instead of fixed light greys, so no
-  dark heading is lost on a dark window any more. A look changed while a
-  window is open - from the Theme menu, UOS-Settings or the system - is
-  taken at once.
-- **The Sticker board stands on a dark ground in a dark look.** The light
-  designs (Sticky notes, Poster, Schematic) keep their column and card
-  colours, but the board's ground, the column tracks, "+ Add card" and the
-  card editor are dark; the Dark design and every design in the light look
-  are unchanged.
-- **Sticky notes stay readable in a dark look.** A note's paper is light in
-  either look, so its text, caret, grip and buttons stay dark on it.
-- **The clock panel's figures** keep their green-on-black display in both
-  looks.
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/info-bar-icons.md
-==============================================================================
-
-- **Each icon of the info bar can be switched off.** A right click on the
-  info panel offers *Hide this icon* (over one of its services' icons) and
-  *Info bar icons...*, which opens UOS-Settings on its new *Desktop > Info
-  bar* page: a tick box for Email, Notifications, Upload, Download,
-  Internet / LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
-  Loudspeaker, Battery, Task Manager and the other programs' tray icons. The
-  battery's right-click menu has both entries too. Kept as
-  `hiddenInfoItems` in `desktop.json`; a change in UOS-Settings shows within
-  a second. `UltraDesktopAppCategoriesTest` checks the setting.
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/one-look.md
-==============================================================================
-
-- **One look for every application.** The bars' Dark / Light is now the
-  system look (Appearance.conf, UOS-Settings > Appearance > Look) that
-  every ULTRA OS application follows: the *Theme* menu on the desktop and
-  on the bars offers *Dark*, *Light* and *As the system* and switches all
-  of them at once, and a look chosen in UOS-Settings or by the host turns
-  the bars too. A desktop set up before keeps its colours: its own choice
-  (dark unless it was light) is written to Appearance.conf once, unless a
-  look was chosen there already (`lookMigrated` in `desktop.json`).
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/ram-disc-button-ultrafiler.md
-==============================================================================
-
-- **The RAM disc button opens UltraFiler's RAM disc.** A click has UltraFiler
-  show the RAM disc, or open the *New RAM disc* dialog when there is none
-  (`UltraFiler --ram-disc`), instead of opening `/dev/shm` itself, where
-  UltraFiler's discs are only folders. `ramDiscPath` in `desktop.json` is now
-  `"ultrafiler"` by default, on Windows and macOS too, so the button is there
-  on every platform; a settings file holding the earlier default `/dev/shm`
-  is read as `"ultrafiler"`. Another folder set there still opens that
-  folder, and an empty value still leaves the button out. With a file
-  manager other than UltraFiler the button opens it without the option.
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/running-apps-tighten.md
-==============================================================================
-
-- **Many running applications draw closer together before they scroll.**
-  When the running applications no longer fit the taskbar, the gap between
-  them shrinks from 6 to 2 pixels; when that is still not enough, the
-  highlight around each icon shrinks from 40 to 32 pixels as well (the icon
-  keeps its 24). Only then does the group scroll. With room again they go
-  back to the usual spacing; the pinned and system buttons are not changed.
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/sticker-board-hover-preview.md
-==============================================================================
-
-- **The Sticker board's hover preview opens when the pointer stops on a
-  card**, after a short rest (a third of a second) instead of two seconds.
-  The larger picture is made while the pointer is still on its way, so it is
-  there when the pointer stops.
-- **No more file-type chips on the Sticker board's cards.** A card no longer
-  shows its file's extension ("pdf", "jpg") under the name; boards saved
-  with one per card hide it too.
-- **A PDF shows no picture on the Sticker board when the build cannot draw
-  PDF pages** (no MuPDF): no icon on its card and no hover preview, rather
-  than the PDF icon. With MuPDF its card and preview show the first page.
+- **The Apps window's category tree keeps its place while you type in the
+  filter box.** Every keystroke - and every new list of applications, and
+  every application moved to another category - built the window's pane again
+  from nothing, tree element and all, so the category you had chosen, the
+  categories you had opened and the place you had scrolled to went with the
+  discarded element each time. The tree and the list beside it are now kept
+  and only the tree's rows are replaced: the view stays where it was (the
+  framework's `TreeRebuildScope`), the categories you opened open again, and
+  the category you were looking in stays selected with its applications still
+  listed. Switching to the tiles and back, or a filter that matches nothing,
+  builds the pane afresh as before.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
@@ -112886,34 +112767,14 @@ folder.
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
 
 ==============================================================================
-FILE: Docs/UltraMail/changelog.d/dark-look.md
+FILE: Docs/UltraMail/changelog.d/folder-tree-keeps-collapsed-folders.md
 ==============================================================================
 
-- **UltraMail follows a dark desktop everywhere, and a change of the look
-  while it is open.** The folder, message-list and reading-pane cards, the
-  text fields, the account settings, the composer's attachment chips, the
-  contact manager's list, the outbox and the Settings window (which was a
-  light window on any desktop) take the desktop's colours; buttons put the
-  look's text on the accent and on the red of *Delete account*, so their
-  labels read in both looks; dialog icons and the paperclip are drawn in the
-  look's ink instead of black. Switching the desktop (or `Appearance.conf`)
-  between light and dark restyles every open UltraMail window at once - the
-  main window, the composer, the contact manager, Settings and the dialogs -
-  where before the hand-set colours kept the look UltraMail was started in,
-  and labels lost their sizes.
-- **A message's HTML stays on its own white page.** A formatted message keeps
-  the sender's colours on a white page - on a dark desktop a framed sheet
-  inside the dark reading pane - instead of the sender's dark text on the
-  dark pane. The composer's and the signature editor's formatted body is the
-  same white page, so the colours picked in the formatting bar (made for a
-  white page) stay readable while writing; the plain-text body follows the
-  look.
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/dialog-header-text-top.md
-==============================================================================
-
-- **A dialog's explaining text no longer runs over its title.** The text under a dialog's bold title starts at the top of its box; centred, a text that wrapped taller than the box spilled up over the title.
+- **A folder you collapse in the tree stays collapsed.** Every folder rescan -
+  one follows each mail check - rebuilds the tree and expanded it in full, so a
+  mailbox closed by hand reopened a minute later by itself. What you close
+  stays closed for as long as the program runs, and reopening it is enough to
+  have it open again.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
