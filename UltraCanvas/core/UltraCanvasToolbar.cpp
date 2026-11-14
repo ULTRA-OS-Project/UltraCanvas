@@ -687,9 +687,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
-        // The items' bounds are about to match the order they are in, so a
-        // drag may move its item again (see reorderMovedPendingLayout).
-        reorderMovedPendingLayout = false;
         if (overflowMode == ToolbarOverflowMode::Menu && overflowButton) {
             ArrangeWithOverflowMenu(finalRect, ctx);
             return;
@@ -1089,7 +1086,7 @@ namespace UltraCanvas {
         if (!contextPressPending) return false;
         contextPressPending = false;
         std::string itemId;
-        const int index = ItemIndexAtLocal(local);
+        const int index = IndexOfItem(ItemAtLocal(local).get());
         if (index >= 0) {
             const auto order = GetItemOrder();
             if (index < static_cast<int>(order.size())) itemId = order[static_cast<size_t>(index)];
@@ -1206,20 +1203,50 @@ namespace UltraCanvas {
         }
     }
 
-    int UltraCanvasToolbar::ItemIndexAtLocal(const Point2Df& local) const {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasToolbar::ItemAtLocal(const Point2Df& local) const {
         // Children's bounds are in this container's frame, before the scroll
         // offset that Render subtracts; put the pointer into the same frame.
         auto* self = const_cast<UltraCanvasToolbar*>(this);
         const Point2Df p(local.x + self->GetHorizontalScrollPosition(),
                          local.y + self->GetVerticalScrollPosition());
+        for (auto& c : Children()) {
+            if (!IsItem(c.get())) continue;
+            auto item = std::static_pointer_cast<UltraCanvasUIElement>(c);
+            if (item->IsVisible() && item->GetBounds().Contains(p)) return item;
+        }
+        return nullptr;
+    }
+
+    int UltraCanvasToolbar::IndexOfItem(const UltraCanvasUIElement* item) const {
+        if (!item) return -1;
         int index = 0;
         for (auto& c : Children()) {
             if (!IsItem(c.get())) continue;
-            auto* child = static_cast<UltraCanvasUIElement*>(c.get());
-            if (child->IsVisible() && child->GetBounds().Contains(p)) return index;
+            if (static_cast<const UltraCanvasUIElement*>(c.get()) == item) return index;
             ++index;
         }
         return -1;
+    }
+
+    int UltraCanvasToolbar::ItemSlotAtLocal(const Point2Df& local) const {
+        auto item = ItemAtLocal(local);
+        if (!item) return -1;
+        // The place it occupies on screen, not the place it has in the list:
+        // the items are counted along the bar, by the rectangles they were
+        // last drawn in. The two agree except between a reorder and the
+        // layout that carries it out - which is exactly when a drag asks.
+        const bool vertical = (toolbarOrientation == ToolbarOrientation::Vertical);
+        const Rect2Df mine = item->GetBounds();
+        const float minePos = vertical ? mine.y : mine.x;
+        int slot = 0;
+        for (auto& c : Children()) {
+            if (!IsItem(c.get())) continue;
+            auto* other = static_cast<UltraCanvasUIElement*>(c.get());
+            if (other == item.get() || !other->IsVisible()) continue;
+            const Rect2Df bounds = other->GetBounds();
+            if ((vertical ? bounds.y : bounds.x) < minePos) ++slot;
+        }
+        return slot;
     }
 
     bool UltraCanvasToolbar::HandleReorderEvent(const UCEvent& event) {
@@ -1236,9 +1263,7 @@ namespace UltraCanvas {
                 if (event.button != UCMouseButton::Left) return false;
                 if (reorderActive) return true;
                 if (!GetLocalBounds().Contains(local)) { reorderCandidate = -1; return false; }
-                const int index = ItemIndexAtLocal(local);
-                if (index < 0) { reorderCandidate = -1; return false; }
-                auto item = GetWidgetAt(index);
+                auto item = ItemAtLocal(local);
                 // Spacers and separators take no events and are not dragged.
                 if (!item || !item->Contains(item->MapToLocal(Point2Df(
                         static_cast<float>(event.pointerWindow.x),
@@ -1246,10 +1271,11 @@ namespace UltraCanvas {
                     reorderCandidate = -1;
                     return false;
                 }
+                const int index = IndexOfItem(item.get());
+                if (index < 0) { reorderCandidate = -1; return false; }
                 reorderCandidate = index;
                 reorderIndex = index;
                 reorderStart = event.pointerWindow;
-                reorderMovedPendingLayout = false;
                 return false;   // the item still gets its press
             }
             case UCEventType::MouseMove: {
@@ -1267,24 +1293,20 @@ namespace UltraCanvas {
                     }
                     if (app) app->CaptureMouse(this);
                 }
-                // One move per layout. Until the layout that follows a move
-                // has run, every item still occupies its old place, so the
-                // hit test below would read the dragged item's new index off
-                // its neighbour's rectangle and move it straight back - a
-                // drag of several steps within one frame ended where it
-                // began, and dropped it there (reorderMovedPendingLayout).
-                if (!reorderMovedPendingLayout) {
-                    const int target = ItemIndexAtLocal(local);
-                    if (target >= 0 && target != reorderIndex) {
-                        // Move without the public callback: one notification on
-                        // release says where the item ended up.
-                        auto saved = std::move(onItemReordered);
-                        onItemReordered = nullptr;
-                        MoveItem(reorderIndex, target);
-                        onItemReordered = std::move(saved);
-                        reorderIndex = target;
-                        reorderMovedPendingLayout = true;
-                    }
+                // The place under the pointer, counted in the order the
+                // items are drawn - not their order in the list, which a
+                // move changes at once while the rectangles follow only at
+                // the next layout. Asking the list was what sent a dragged
+                // item straight back where it came from.
+                const int target = ItemSlotAtLocal(local);
+                if (target >= 0 && target != reorderIndex) {
+                    // Move without the public callback: one notification on
+                    // release says where the item ended up.
+                    auto saved = std::move(onItemReordered);
+                    onItemReordered = nullptr;
+                    MoveItem(reorderIndex, target);
+                    onItemReordered = std::move(saved);
+                    reorderIndex = target;
                 }
                 return true;
             }
@@ -1296,7 +1318,6 @@ namespace UltraCanvas {
                 reorderCandidate = -1;
                 reorderIndex = -1;
                 reorderActive = false;
-                reorderMovedPendingLayout = false;
                 if (!wasDragging) return false;   // a click: the item handles it
                 if (app) app->ReleaseMouse();
                 if (from != to && onItemReordered) onItemReordered(from, to);
