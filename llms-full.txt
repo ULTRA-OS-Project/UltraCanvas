@@ -46112,8 +46112,10 @@ lists Overdue plus every priority actually used on the board.
   `size` pixels square at most, with its title under it - beside the card
   over the board; it goes with `HideCardPreview()`, and by itself when the
   pointer leaves the card, a button is pressed, the board scrolls or a drag
-  starts. The host decides when it opens (the Sticker board waits two seconds
-  with an `UltraCanvasApplication` timer) and makes the picture.
+  starts. `onCardPointerMoved(cardId)` runs on every pointer move over a
+  card (not during a drag), so a host can open the preview once the pointer
+  comes to rest: the Sticker board restarts a short `UltraCanvasApplication`
+  timer there. The host decides when it opens and makes the picture.
   `GetCardBounds(cardId)` is a card's rectangle as last laid out.
 
 Callbacks:
@@ -46133,6 +46135,7 @@ board->onFilesDropped = [data](const std::vector<std::string>& files, int column
 };
 board->onContextMenu = [](int cardId, int columnId, const Point2Di& windowPos) { /* open a menu */ };
 board->onCardHoverChanged = [](int cardId) { /* -1 = none */ };
+board->onCardPointerMoved = [](int cardId) { /* restart a rest timer */ };
 ```
 
 ## Factories
@@ -109662,8 +109665,8 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
 - **Choose how cards look:** right-click anywhere on the board, then
   **Display**: **Text only**, **Thumbnail and text** (the picture with the
   name under it, the usual one) or **Thumbnail and text in a row**.
-- **See a file larger:** rest the pointer on its card for two seconds and a
-  bigger preview opens beside it. Its size is **Display ▸ Mouse hover
+- **See a file larger:** stop the pointer on its card and a bigger preview
+  opens beside it. Its size is **Display ▸ Mouse hover
   preview**: **Small**, **Medium** or **Large**. Both choices are also on
   the **Desktop** page of the settings.
 - **Move or resize the board:** drag it by its title; resize it by the grip
@@ -110518,8 +110521,8 @@ UOS-Settings is followed within a second.
   in the same menu (anywhere on the board), shows the cards as *Text only*,
   *Thumbnail and text* (the picture with the name centred under it - the
   default) or *Thumbnail and text in a row*, and sets the size of the *Mouse
-  hover preview* (*Small*, *Medium*, *Large*): resting the pointer on a
-  file's card for two seconds opens a larger picture of it beside the card.
+  hover preview* (*Small*, *Medium*, *Large*): when the pointer stops on a
+  file's card, a larger picture of it opens beside the card.
   The *Desktop* page of UOS-Settings has the same two choices. The board,
   its style and its display are kept.
 - **Notes** (the note button below it): free sticky notes over the
@@ -110889,6 +110892,21 @@ FILE: Docs/UltraDesktop/changelog.d/running-apps-tighten.md
   highlight around each icon shrinks from 40 to 32 pixels as well (the icon
   keeps its 24). Only then does the group scroll. With room again they go
   back to the usual spacing; the pinned and system buttons are not changed.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/sticker-board-hover-preview.md
+==============================================================================
+
+- **The Sticker board's hover preview opens when the pointer stops on a
+  card**, after a short rest (a third of a second) instead of two seconds.
+  The larger picture is made while the pointer is still on its way, so it is
+  there when the pointer stops.
+- **No more file-type chips on the Sticker board's cards.** A card no longer
+  shows its file's extension ("pdf", "jpg") under the name; boards saved
+  with one per card hide it too.
+- **A PDF shows no picture on the Sticker board when the build cannot draw
+  PDF pages** (no MuPDF): no icon on its card and no hover preview, rather
+  than the PDF icon. With MuPDF its card and preview show the first page.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
